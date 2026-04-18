@@ -2,6 +2,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import net from "node:net";
 import { resolveStatePath } from "./shared.js";
 import { resolveNativeHelperPath, runNativeHelper } from "./native-helper.js";
 import { screenshotPixelToScreenPoint } from "./screenshot-coordinates.js";
@@ -115,21 +117,48 @@ type SessionPaths = {
   screenshotPath: string;
 };
 
-type OverlayCommandPayload = {
+type AutomationDaemonRequestPayload = {
   seq: number;
-  action: "show" | "hide" | "close";
-  frame?: Rect;
-  viewportFrame?: Rect;
-  cursorPoint?: { x: number; y: number };
-  interactionKind?: string | null;
-  // Preferred exact target window ID plus fallback identity hints. Codex's
-  // overlay API takes `aboveWindowID` directly; we mirror that when Stella
-  // has a resolved `windowId`, and only fall back to pid/title matching when
-  // the live window ID has changed.
-  targetWindowId?: number | null;
-  targetPid?: number;
-  targetBundleId?: string | null;
-  targetWindowTitle?: string | null;
+  argv: string[];
+  env: Record<string, string>;
+};
+
+type AutomationDaemonResponsePayload = {
+  seq: number;
+  status: number;
+  stdout: string;
+  stderr: string;
+};
+
+type AutomationHelperResult = {
+  status: number;
+  stdout: string;
+  stderr: string;
+  error?: Error;
+  timedOut?: boolean;
+};
+
+type SessionTargetSelector = {
+  pid?: number | null;
+  bundleId?: string | null;
+  appName?: string | null;
+};
+
+type SessionTargetRecord = {
+  key: string;
+  appName: string;
+  bundleId?: string | null;
+  pid?: number | null;
+  windowTitle?: string | null;
+  statePath: string;
+  screenshotPath: string;
+  capturedAt?: string | null;
+  updatedAt: string;
+};
+
+type SessionTargetRegistry = {
+  activeTargetKey?: string | null;
+  targets: Record<string, SessionTargetRecord>;
 };
 
 const stateDir = path.join(resolveStatePath(), "stella-computer");
@@ -145,6 +174,8 @@ const defaultSessionStateExample = path.join(
 const defaultLockTimeoutMs = 30_000;
 const staleLockTimeoutMs = 90_000;
 const lockPollIntervalMs = 125;
+const automationDaemonStartupBudgetMs = 1_500;
+const automationDaemonRequestTimeoutMs = 15_000;
 
 const usage = `stella-computer - control macOS apps through Accessibility
 
@@ -169,12 +200,14 @@ Notes:
   - snapshot writes element state to ${defaultSessionStateExample}
   - get-state is an alias for snapshot
   - click/fill/focus/secondary-action/scroll/drag reuse the last snapshot state unless --state is provided
+  - snapshots are also cached per target under sessions/<session>/targets/<target>/last-snapshot.json so one session can retain multiple apps
   - snapshot captures a window screenshot by default; pass --no-screenshot to skip it
   - --all-windows enumerates every accessibility window the app advertises (default: focused only)
   - successful actions refresh the numbered snapshot state and the attached screenshot automatically
   - screenshots are auto-attached inline (base64 PNG); pass --no-inline-screenshot to keep only the file path
   - the agent runtime detects "[stella-attach-image]" markers in output and attaches the image as vision input on the next turn
   - Stella isolates default state/screenshot files by session; agent runs set that session automatically
+  - non-snapshot commands may also use --app/--bundle-id/--pid to select a cached target snapshot inside the current session
   - HID fallbacks require --allow-hid (or STELLA_COMPUTER_ALLOW_HID=1) because they can interfere with active user input
   - element actions accept the numbered IDs shown in snapshot output (and still accept legacy @d refs); macOS Accessibility is tried first so Stella avoids taking over the physical cursor
   - click-screenshot / drag-screenshot interpret coordinates in attached screenshot pixels, then map them back into screen space using the saved window frame
@@ -275,12 +308,6 @@ const deriveScreenshotPath = (statePath: string) => {
   return path.join(parsed.dir, `${parsed.name}.png`);
 };
 
-const overlayCommandPath = (sessionPaths: SessionPaths) =>
-  path.join(sessionPaths.sessionDir, "overlay-command.json");
-
-const overlayPidPath = (sessionPaths: SessionPaths) =>
-  path.join(sessionPaths.sessionDir, "overlay.pid");
-
 const resolveSessionPaths = (sessionOverride?: string | null): SessionPaths => {
   const sessionId =
     sanitizeStellaComputerSessionId(sessionOverride) ??
@@ -296,11 +323,11 @@ const resolveSessionPaths = (sessionOverride?: string | null): SessionPaths => {
   };
 };
 
-const withStatePath = (args: string[], sessionPaths: SessionPaths) => {
+const withStatePath = (args: string[], statePath: string) => {
   if (hasOption(args, "--state")) {
     return args;
   }
-  return ["--state", sessionPaths.statePath, ...args];
+  return ["--state", statePath, ...args];
 };
 
 const ensureStateDirectory = (sessionPaths: SessionPaths) => {
@@ -319,6 +346,25 @@ const pidIsRunning = (pid: number) => {
   }
 };
 
+const killDetachedProcess = (pid: number | null | undefined) => {
+  if (!pid || !Number.isInteger(pid) || pid <= 0) {
+    return;
+  }
+  try {
+    if (process.platform !== "win32") {
+      process.kill(-pid, "SIGKILL");
+      return;
+    }
+  } catch {
+    // fall through to direct pid kill
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // ignore kill failures
+  }
+};
+
 const readPidFile = (pidPath: string) => {
   try {
     const raw = fs.readFileSync(pidPath, "utf8").trim();
@@ -331,16 +377,44 @@ const readPidFile = (pidPath: string) => {
 
 const delayMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const ensureOverlayDaemon = async (sessionPaths: SessionPaths) => {
-  const pidPath = overlayPidPath(sessionPaths);
+const automationSocketsDir = () => path.join(stateDir, "daemon-sockets");
+
+const automationSocketPath = (sessionPaths: SessionPaths) =>
+  path.join(
+    automationSocketsDir(),
+    `${createHash("sha1").update(sessionPaths.sessionId).digest("hex").slice(0, 16)}.sock`,
+  );
+
+const automationPidPath = (sessionPaths: SessionPaths) =>
+  path.join(sessionPaths.sessionDir, "automation.pid");
+
+const resetAutomationDaemonFiles = (sessionPaths: SessionPaths) => {
+  fs.rmSync(automationPidPath(sessionPaths), { force: true });
+  fs.rmSync(automationSocketPath(sessionPaths), { force: true });
+};
+
+const filteredAutomationDaemonEnv = () =>
+  Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key, value]) =>
+        key.startsWith("STELLA_COMPUTER_") && typeof value === "string",
+    ),
+  ) as Record<string, string>;
+
+const ensureAutomationDaemon = async (sessionPaths: SessionPaths) => {
+  const pidPath = automationPidPath(sessionPaths);
+  const socketPath = automationSocketPath(sessionPaths);
   const existingPid = readPidFile(pidPath);
-  if (existingPid && pidIsRunning(existingPid)) {
+  if (existingPid && pidIsRunning(existingPid) && fs.existsSync(socketPath)) {
     return true;
   }
-  fs.rmSync(pidPath, { force: true });
-  fs.rmSync(overlayCommandPath(sessionPaths), { force: true });
+  if (existingPid && pidIsRunning(existingPid) && !fs.existsSync(socketPath)) {
+    killDetachedProcess(existingPid);
+  }
+  resetAutomationDaemonFiles(sessionPaths);
+  fs.mkdirSync(automationSocketsDir(), { recursive: true });
 
-  const helperPath = resolveNativeHelperPath("desktop_overlay");
+  const helperPath = resolveNativeHelperPath("desktop_automation");
   if (!helperPath) {
     return false;
   }
@@ -348,8 +422,9 @@ const ensureOverlayDaemon = async (sessionPaths: SessionPaths) => {
   const child = spawn(
     helperPath,
     [
-      "--command-file",
-      overlayCommandPath(sessionPaths),
+      "daemon",
+      "--socket-path",
+      socketPath,
       "--pid-file",
       pidPath,
     ],
@@ -357,302 +432,122 @@ const ensureOverlayDaemon = async (sessionPaths: SessionPaths) => {
       detached: process.platform !== "win32",
       stdio: "ignore",
       windowsHide: true,
-      env: process.env,
+      env: {
+        ...process.env,
+        STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
+      },
     },
   );
   child.unref();
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (
+    let attempt = 0;
+    attempt < Math.ceil(automationDaemonStartupBudgetMs / 25);
+    attempt += 1
+  ) {
     await delayMs(25);
     const pid = readPidFile(pidPath);
-    if (pid && pidIsRunning(pid)) {
+    if (pid && pidIsRunning(pid) && fs.existsSync(socketPath)) {
       return true;
     }
   }
   return false;
 };
 
-const writeOverlayCommand = (sessionPaths: SessionPaths, payload: OverlayCommandPayload) => {
-  const finalPath = overlayCommandPath(sessionPaths);
-  const tempPath = `${finalPath}.tmp`;
-  fs.writeFileSync(tempPath, JSON.stringify(payload));
-  fs.renameSync(tempPath, finalPath);
-};
-
-// The daemon writes its real per-move duration into
-// `overlay-busy-until.json`. Wrappers should always read that file;
-// they never compute their own duration. We keep this constant only as
-// the *upper bound* spawn budget (spawn = first show, no inbound move
-// yet) so we don't wedge waiting for a busy clock the daemon may not
-// have written yet.
-const overlaySpawnBudgetMs = 1200;
-
-const overlayBusyUntilPath = (sessionPaths: SessionPaths) =>
-  path.join(sessionPaths.sessionDir, "overlay-busy-until.json");
-
-type OverlayBusyState = {
-  busyUntilMs: number;
-  // Wall-clock ms at which the daemon says the cursor satisfies Codex's
-  // `nextInteractionTiming.closeEnough` predicate. For click-like moves
-  // this is the moment the wrapper is allowed to dispatch the underlying
-  // HID action so it lands in sync with the visible press pulse. For
-  // non-click moves it equals `busyUntilMs`. May be 0/undefined if read
-  // from a daemon binary that predates the field.
-  actionReadyAtMs: number;
-};
-
-const readOverlayBusyState = (sessionPaths: SessionPaths): OverlayBusyState => {
-  try {
-    const raw = fs.readFileSync(overlayBusyUntilPath(sessionPaths), "utf8");
-    const parsed = JSON.parse(raw) as {
-      busyUntilMs?: number;
-      actionReadyAtMs?: number;
-    };
-    const busyUntilMs = Number.isFinite(parsed.busyUntilMs)
-      ? Number(parsed.busyUntilMs)
-      : 0;
-    const actionReadyAtMs = Number.isFinite(parsed.actionReadyAtMs)
-      ? Number(parsed.actionReadyAtMs)
-      : busyUntilMs;
-    return { busyUntilMs, actionReadyAtMs };
-  } catch {
-    return { busyUntilMs: 0, actionReadyAtMs: 0 };
-  }
-};
-
-const readOverlayBusyUntil = (sessionPaths: SessionPaths): number =>
-  readOverlayBusyState(sessionPaths).busyUntilMs;
-
-const writeOverlayBusyUntil = (sessionPaths: SessionPaths, busyUntilMs: number) => {
-  const finalPath = overlayBusyUntilPath(sessionPaths);
-  const tempPath = `${finalPath}.tmp`;
-  // Pre-seed both fields so a click-like helper that races us doesn't
-  // see only `busyUntilMs` and assume actionReady = busyUntil. The
-  // daemon will overwrite both in a few ms with its real values.
-  fs.writeFileSync(
-    tempPath,
-    JSON.stringify({ busyUntilMs, actionReadyAtMs: busyUntilMs }),
-  );
-  fs.renameSync(tempPath, finalPath);
-};
-
-const waitForOverlayIdle = async (sessionPaths: SessionPaths) => {
-  // Re-read the busy file repeatedly: the daemon may extend the budget
-  // mid-move (e.g. queue a follow-up action) while we're sleeping.
-  // Without re-reading, we'd return early and race the next show.
-  for (;;) {
-    const busyUntilMs = readOverlayBusyUntil(sessionPaths);
-    const remainingMs = busyUntilMs - Date.now();
-    if (remainingMs <= 0) return;
-    await delayMs(Math.min(remainingMs, 60));
-  }
-};
-
-// Wait until the daemon publishes that the cursor has reached its
-// `closeEnough` threshold to the click target. This is what gates the
-// real HID action dispatch so the click visually lands in sync with
-// the press pulse instead of after the full move + pulse animation.
-//
-// Re-reads the file each loop iteration because the daemon may move
-// `actionReadyAtMs` *earlier* mid-flight if the cursor crosses the
-// distance threshold before the predicted progress threshold (the file
-// gets re-published with `actionReadyInSeconds: 0` the moment that
-// happens in `tick()`).
-const waitForOverlayActionReady = async (sessionPaths: SessionPaths) => {
-  for (;;) {
-    const { actionReadyAtMs } = readOverlayBusyState(sessionPaths);
-    const remainingMs = actionReadyAtMs - Date.now();
-    if (remainingMs <= 0) return;
-    await delayMs(Math.min(remainingMs, 30));
-  }
-};
-
-// After we write a `show` command, the daemon needs a few ms to pick
-// it up off disk, build the path, and publish the real per-move
-// duration into the busy file. We pre-seed a short upper-bound budget
-// before sending the command, then wait here for the daemon to either:
-//   (a) overwrite the file with its own (typically longer) duration,
-//   (b) leave the pre-seeded value in place (e.g. spawn-only frame),
-// then return. This keeps the wrapper from racing the daemon.
-const waitForDaemonBusyClock = async (
+const runAutomationDaemonCommand = async (
   sessionPaths: SessionPaths,
-  showSentAtMs: number,
-) => {
-  const deadline = showSentAtMs + 250;
-  for (;;) {
-    const busyUntilMs = readOverlayBusyUntil(sessionPaths);
-    if (busyUntilMs > showSentAtMs + overlaySpawnBudgetMs - 50) return;
-    if (Date.now() > deadline) return;
-    await delayMs(15);
-  }
-};
-
-const isValidRect = (rect: Rect | null | undefined): rect is Rect =>
-  !!rect &&
-  Number.isFinite(rect.x) &&
-  Number.isFinite(rect.y) &&
-  Number.isFinite(rect.width) &&
-  Number.isFinite(rect.height) &&
-  rect.width > 0 &&
-  rect.height > 0;
-
-type ResolvedOverlayTarget = {
-  frame: Rect;
-  viewportFrame: Rect;
-  cursorPoint: { x: number; y: number };
-  interactionKind?: string | null;
-  targetWindowId?: number | null;
-  targetPid?: number;
-  targetBundleId?: string | null;
-  targetWindowTitle?: string | null;
-};
-
-const resolveOverlayTarget = (
-  command: string,
-  args: string[],
-  snapshot: SnapshotDocument | null,
-): ResolvedOverlayTarget | null => {
-  const { positionals } = splitArgsIntoPositionalsAndOptions(args);
-  const centerOf = (frame: Rect) => ({
-    x: frame.x + frame.width / 2,
-    y: frame.y + frame.height / 2,
-  });
-
-  if (!snapshot || !isValidRect(snapshot.windowFrame)) {
-    return null;
-  }
-
-  const identity = {
-    interactionKind: command,
-    targetWindowId: snapshot.windowId ?? null,
-    targetPid: snapshot.pid,
-    targetBundleId: snapshot.bundleId ?? null,
-    targetWindowTitle: snapshot.windowTitle ?? null,
-  } as const;
-
-  if (command === "click-point" && positionals.length >= 2) {
-    const x = Number(positionals[0]);
-    const y = Number(positionals[1]);
-    if (Number.isFinite(x) && Number.isFinite(y)) {
-      const frame = { x: x - 24, y: y - 24, width: 48, height: 48 };
-      return {
-        frame,
-        viewportFrame: snapshot.windowFrame,
-        cursorPoint: { x, y },
-        ...identity,
-      };
-    }
-  }
-
-  if (positionals.length === 0) {
-    return null;
-  }
-
-  const targetId = positionals[0];
-  const entry =
-    snapshot.indices?.[targetId] ??
-    snapshot.refs?.[targetId] ??
-    null;
-  if (!entry?.frame) {
-    return null;
-  }
-  return {
-    frame: entry.frame,
-    viewportFrame: snapshot.windowFrame,
-    cursorPoint: centerOf(entry.frame),
-    ...identity,
-  };
-};
-
-const commandUsesPersistentOverlay = (command: string) =>
-  command === "click" ||
-  command === "fill" ||
-  command === "focus" ||
-  command === "secondary-action" ||
-  command === "perform-secondary-action" ||
-  command === "scroll" ||
-  command === "click-point";
-
-// Mirror of the daemon-side `isClickLikeInteraction` predicate. The
-// wrapper waits on `actionReadyAtMs` (early release at closeEnough) for
-// these commands; everything else waits on full move completion before
-// dispatching the helper, since there's no visible press to sync to.
-const commandIsClickLike = (command: string) =>
-  command === "click" ||
-  command === "click-point" ||
-  command === "secondary-action" ||
-  command === "perform-secondary-action";
-
-const withNoOverlayFlag = (args: string[]) =>
-  hasOption(args, "--no-overlay") ? args : [...args, "--no-overlay"];
-
-const maybePrimePersistentOverlay = async (
-  command: string,
   helperArgs: string[],
-  sessionPaths: SessionPaths,
-) => {
-  if (
-    !commandUsesPersistentOverlay(command) ||
-    hasOption(helperArgs.slice(1), "--no-overlay") ||
-    process.env.STELLA_COMPUTER_NO_OVERLAY === "1"
-  ) {
-    return {
-      helperArgs,
-      daemonActive: false,
-    };
-  }
-
-  const statePath = getOptionValue(helperArgs.slice(1), "--state") ?? sessionPaths.statePath;
-  const target = resolveOverlayTarget(command, helperArgs.slice(1), readSnapshotDocument(statePath));
-  if (!target) {
-    return {
-      helperArgs: withNoOverlayFlag(helperArgs),
-      daemonActive: false,
-    };
-  }
-
-  const daemonReady = await ensureOverlayDaemon(sessionPaths);
+  timeoutMs = automationDaemonRequestTimeoutMs,
+): Promise<AutomationHelperResult> => {
+  const daemonReady = await ensureAutomationDaemon(sessionPaths);
   if (!daemonReady) {
+    resetAutomationDaemonFiles(sessionPaths);
     return {
-      helperArgs,
-      daemonActive: false,
+      status: 1,
+      stdout: "",
+      stderr: "desktop_automation daemon failed to start",
     };
   }
 
-  // Pace consecutive actions: don't fire a new arc (or its underlying
-  // mouse action) until the previous arc has finished animating. The
-  // daemon owns the busy clock — it knows the real per-move duration —
-  // so we just read whatever it wrote.
-  await waitForOverlayIdle(sessionPaths);
+  const seq = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+  const payload = JSON.stringify({
+    seq,
+    argv: helperArgs,
+    env: {
+      ...filteredAutomationDaemonEnv(),
+      STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
+    },
+  } satisfies AutomationDaemonRequestPayload);
 
-  const showSentAt = Date.now();
-  writeOverlayCommand(sessionPaths, {
-    seq: showSentAt,
-    action: "show",
-    frame: target.frame,
-    viewportFrame: target.viewportFrame,
-    cursorPoint: target.cursorPoint,
-    interactionKind: target.interactionKind,
-    targetWindowId: target.targetWindowId,
-    targetPid: target.targetPid,
-    targetBundleId: target.targetBundleId,
-    targetWindowTitle: target.targetWindowTitle,
+  return await new Promise<AutomationHelperResult>((resolve) => {
+    let settled = false;
+    const responseChunks: Buffer[] = [];
+    const socket = net.createConnection({ path: automationSocketPath(sessionPaths) });
+    const settle = (result: AutomationHelperResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      const pid = readPidFile(automationPidPath(sessionPaths));
+      killDetachedProcess(pid);
+      resetAutomationDaemonFiles(sessionPaths);
+      settle({
+        status: 1,
+        stdout: "",
+        stderr: `desktop_automation daemon timed out after ${timeoutMs}ms`,
+        timedOut: true,
+      });
+    }, timeoutMs);
+
+    socket.on("connect", () => {
+      socket.write(`${payload}\n`);
+    });
+    socket.on("data", (chunk) => {
+      responseChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    socket.on("end", () => {
+      try {
+        const responseText = Buffer.concat(responseChunks).toString("utf8");
+        const response = parseJson<AutomationDaemonResponsePayload>(responseText);
+        if (response.seq !== seq) {
+          settle({
+            status: 1,
+            stdout: "",
+            stderr: "desktop_automation daemon returned a mismatched response sequence",
+          });
+          return;
+        }
+        settle({
+          status: response.status,
+          stdout: response.stdout,
+          stderr: response.stderr,
+        });
+      } catch {
+        settle({
+          status: 1,
+          stdout: "",
+          stderr: "desktop_automation daemon returned an invalid response",
+        });
+      }
+    });
+    socket.on("error", (error) => {
+      const pid = readPidFile(automationPidPath(sessionPaths));
+      if (pid && !pidIsRunning(pid)) {
+        resetAutomationDaemonFiles(sessionPaths);
+      }
+      settle({
+        status: 1,
+        stdout: "",
+        stderr:
+          error instanceof Error
+            ? `desktop_automation daemon connection failed: ${error.message}`
+            : "desktop_automation daemon connection failed",
+      });
+    });
   });
-  // Pre-seed a short upper-bound budget so the *next* invocation that
-  // races us doesn't see an empty file and skip waiting. The daemon
-  // will overwrite this with the real duration in a few ms.
-  writeOverlayBusyUntil(sessionPaths, showSentAt + overlaySpawnBudgetMs);
-  // Now wait for the daemon to either (a) actually start the move and
-  // publish a real duration, or (b) finish a quick spawn-only frame.
-  // Either way, by the time we return, we're either still in our
-  // pre-seeded budget OR the daemon has taken over the budget — so the
-  // wrapper-side action body below races against an accurate clock.
-  await waitForDaemonBusyClock(sessionPaths, showSentAt);
-
-  return {
-    helperArgs: withNoOverlayFlag(helperArgs),
-    daemonActive: true,
-  };
 };
 
 const ensureSnapshotArgs = (args: string[], sessionPaths: SessionPaths) => {
@@ -1059,17 +954,236 @@ const readSnapshotDocument = (statePath: string): SnapshotDocument | null => {
   }
 };
 
+const sessionTargetsDir = (sessionPaths: SessionPaths) =>
+  path.join(sessionPaths.sessionDir, "targets");
+
+const sessionTargetRegistryPath = (sessionPaths: SessionPaths) =>
+  path.join(sessionPaths.sessionDir, "targets.json");
+
+const targetKeyFromSnapshot = (snapshot: SnapshotDocument) => {
+  const bundleId = normalizeLockKey(snapshot.bundleId ?? "");
+  if (bundleId) {
+    return `bundle-${bundleId}`;
+  }
+  const appName = normalizeLockKey(snapshot.appName ?? "");
+  if (appName) {
+    return `app-${appName}`;
+  }
+  return `pid-${snapshot.pid}`;
+};
+
+const targetStatePathForKey = (sessionPaths: SessionPaths, key: string) =>
+  path.join(sessionTargetsDir(sessionPaths), key, "last-snapshot.json");
+
+const writeJsonAtomic = (finalPath: string, value: unknown) => {
+  fs.mkdirSync(path.dirname(finalPath), { recursive: true });
+  const tempPath = `${finalPath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(value, null, 2));
+  fs.renameSync(tempPath, finalPath);
+};
+
+const readSessionTargetRegistry = (sessionPaths: SessionPaths): SessionTargetRegistry => {
+  try {
+    const raw = fs.readFileSync(sessionTargetRegistryPath(sessionPaths), "utf8");
+    const parsed = parseJson<SessionTargetRegistry>(raw);
+    return {
+      activeTargetKey: parsed.activeTargetKey ?? null,
+      targets: parsed.targets ?? {},
+    };
+  } catch {
+    return {
+      activeTargetKey: null,
+      targets: {},
+    };
+  }
+};
+
+const writeSessionTargetRegistry = (
+  sessionPaths: SessionPaths,
+  registry: SessionTargetRegistry,
+) => {
+  writeJsonAtomic(sessionTargetRegistryPath(sessionPaths), registry);
+};
+
+const mirrorSnapshotToPath = (
+  snapshot: SnapshotDocument,
+  destinationStatePath: string,
+  destinationScreenshotPath: string,
+) => {
+  const nextSnapshot: SnapshotDocument = {
+    ...snapshot,
+    screenshotPath: snapshot.screenshotPath ? destinationScreenshotPath : snapshot.screenshotPath,
+    screenshot: snapshot.screenshot
+      ? {
+          ...snapshot.screenshot,
+          path:
+            snapshot.screenshotPath || snapshot.screenshot.path
+              ? destinationScreenshotPath
+              : snapshot.screenshot.path,
+        }
+      : snapshot.screenshot,
+  };
+  if (
+    snapshot.screenshotPath &&
+    snapshot.screenshotPath !== destinationScreenshotPath &&
+    fs.existsSync(snapshot.screenshotPath)
+  ) {
+    fs.mkdirSync(path.dirname(destinationScreenshotPath), { recursive: true });
+    fs.copyFileSync(snapshot.screenshotPath, destinationScreenshotPath);
+  }
+  writeJsonAtomic(destinationStatePath, nextSnapshot);
+};
+
+const syncSessionTargetSnapshot = (
+  sessionPaths: SessionPaths,
+  statePath: string,
+) => {
+  const snapshot = readSnapshotDocument(statePath);
+  if (!snapshot?.ok) {
+    return;
+  }
+  const key = targetKeyFromSnapshot(snapshot);
+  const targetStatePath = targetStatePathForKey(sessionPaths, key);
+  const targetScreenshotPath = deriveScreenshotPath(targetStatePath);
+  mirrorSnapshotToPath(snapshot, targetStatePath, targetScreenshotPath);
+  if (statePath !== sessionPaths.statePath) {
+    mirrorSnapshotToPath(snapshot, sessionPaths.statePath, sessionPaths.screenshotPath);
+  }
+  const registry = readSessionTargetRegistry(sessionPaths);
+  registry.activeTargetKey = key;
+  registry.targets[key] = {
+    key,
+    appName: snapshot.appName,
+    bundleId: snapshot.bundleId ?? null,
+    pid: snapshot.pid,
+    windowTitle: snapshot.windowTitle ?? null,
+    statePath: targetStatePath,
+    screenshotPath: targetScreenshotPath,
+    capturedAt: snapshot.capturedAt ?? null,
+    updatedAt: new Date().toISOString(),
+  };
+  writeSessionTargetRegistry(sessionPaths, registry);
+};
+
+const hasTargetSelector = (selector: SessionTargetSelector) =>
+  selector.pid != null || !!selector.bundleId || !!selector.appName;
+
+const describeTargetSelector = (selector: SessionTargetSelector) => {
+  if (selector.bundleId) return `bundle '${selector.bundleId}'`;
+  if (selector.pid != null) return `pid ${selector.pid}`;
+  if (selector.appName) return `app '${selector.appName}'`;
+  return "the requested target";
+};
+
+const consumeActionTargetSelector = (args: string[]) => {
+  let nextArgs = args;
+  const pidResult = stripOptionValue(nextArgs, "--pid");
+  nextArgs = pidResult.args;
+  const bundleResult = stripOptionValue(nextArgs, "--bundle-id");
+  nextArgs = bundleResult.args;
+  const appResult = stripOptionValue(nextArgs, "--app");
+  nextArgs = appResult.args;
+  const invalidPid =
+    pidResult.value != null &&
+    !Number.isFinite(Number(pidResult.value));
+  const parsedPid =
+    pidResult.value != null && Number.isFinite(Number(pidResult.value))
+      ? Number(pidResult.value)
+      : null;
+  return {
+    args: nextArgs,
+    selector: {
+      pid: parsedPid,
+      bundleId: bundleResult.value,
+      appName: appResult.value,
+    } satisfies SessionTargetSelector,
+    missingValue:
+      pidResult.missingValue || bundleResult.missingValue || appResult.missingValue,
+    invalidPid,
+  };
+};
+
+const resolveTargetRecord = (
+  sessionPaths: SessionPaths,
+  selector: SessionTargetSelector,
+): SessionTargetRecord => {
+  const registry = readSessionTargetRegistry(sessionPaths);
+  const targets = Object.values(registry.targets);
+  if (selector.pid != null) {
+    const exact = targets.find((target) => target.pid === selector.pid);
+    if (exact) return exact;
+    throw new Error(
+      `No cached target snapshot for pid ${selector.pid} in session '${sessionPaths.sessionId}'. Take a snapshot of that app first.`,
+    );
+  }
+  if (selector.bundleId) {
+    const needle = normalizeLockKey(selector.bundleId);
+    const exact = targets.find(
+      (target) => normalizeLockKey(target.bundleId ?? "") === needle,
+    );
+    if (exact) return exact;
+    throw new Error(
+      `No cached target snapshot for bundle '${selector.bundleId}' in session '${sessionPaths.sessionId}'. Take a snapshot of that app first.`,
+    );
+  }
+  if (selector.appName) {
+    const needle = normalizeLockKey(selector.appName);
+    const exact = targets.filter(
+      (target) => normalizeLockKey(target.appName ?? "") === needle,
+    );
+    if (exact.length === 1) {
+      return exact[0]!;
+    }
+    if (exact.length > 1) {
+      throw new Error(
+        `Multiple cached targets match --app '${selector.appName}'. Use --bundle-id or --pid instead.`,
+      );
+    }
+    const fuzzy = targets.filter((target) => {
+      const appName = normalizeLockKey(target.appName ?? "");
+      const bundleId = normalizeLockKey(target.bundleId ?? "");
+      return appName.includes(needle) || bundleId.includes(needle);
+    });
+    if (fuzzy.length === 1) {
+      return fuzzy[0]!;
+    }
+    if (fuzzy.length > 1) {
+      throw new Error(
+        `Multiple cached targets partially match --app '${selector.appName}'. Use --bundle-id or --pid instead.`,
+      );
+    }
+    throw new Error(
+      `No cached target snapshot for app '${selector.appName}' in session '${sessionPaths.sessionId}'. Take a snapshot of that app first.`,
+    );
+  }
+  throw new Error(`No target selector provided for session '${sessionPaths.sessionId}'.`);
+};
+
+const resolveActionStatePath = (
+  sessionPaths: SessionPaths,
+  args: string[],
+  selector: SessionTargetSelector,
+) => {
+  const explicitStatePath = getOptionValue(args, "--state");
+  if (explicitStatePath) {
+    return explicitStatePath;
+  }
+  if (!hasTargetSelector(selector)) {
+    return sessionPaths.statePath;
+  }
+  return resolveTargetRecord(sessionPaths, selector).statePath;
+};
+
 const translateScreenshotCoordinateCommand = (
   command: string,
   args: string[],
-  sessionPaths: SessionPaths,
+  statePath: string,
 ) => {
   if (command !== "click-screenshot" && command !== "drag-screenshot") {
     return { command, args };
   }
 
   const { positionals, options } = splitArgsIntoPositionalsAndOptions(args);
-  const statePath = getOptionValue(options, "--state") ?? sessionPaths.statePath;
   const snapshot = readSnapshotDocument(statePath);
 
   if (command === "click-screenshot") {
@@ -1178,6 +1292,8 @@ const resolveLockKeys = (
   ) {
     keys.add("global-hid");
   }
+
+  keys.add(`session-${sessionPaths.sessionId}`);
 
   return [...keys].sort();
 };
@@ -1328,8 +1444,66 @@ const runCommand = async (
 
   let effectiveCommand = command === "get-state" ? "snapshot" : command;
   let effectiveArgs = args;
+  let selectedStatePath = sessionPaths.statePath;
+  if (effectiveCommand !== "list-apps" && effectiveCommand !== "snapshot") {
+    const selection = consumeActionTargetSelector(effectiveArgs);
+    if (selection.missingValue) {
+      emitError(
+        {
+          ok: false,
+          error:
+            "Target selectors require a value. Use --app NAME, --bundle-id ID, or --pid PID.",
+          warnings: [],
+          screenshotPath: null,
+        },
+        jsonMode,
+      );
+      return 1;
+    }
+    if (selection.invalidPid) {
+      emitError(
+        {
+          ok: false,
+          error: "Target selector --pid requires a numeric PID.",
+          warnings: [],
+          screenshotPath: null,
+        },
+        jsonMode,
+      );
+      return 1;
+    }
+    effectiveArgs = selection.args;
+    try {
+      selectedStatePath = resolveActionStatePath(
+        sessionPaths,
+        effectiveArgs,
+        selection.selector,
+      );
+    } catch (error) {
+      emitError(
+        {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+          warnings: hasTargetSelector(selection.selector)
+            ? [
+                `Session target selection failed for ${describeTargetSelector(
+                  selection.selector,
+                )}.`,
+              ]
+            : [],
+          screenshotPath: null,
+        },
+        jsonMode,
+      );
+      return 1;
+    }
+  }
   try {
-    const translated = translateScreenshotCoordinateCommand(effectiveCommand, args, sessionPaths);
+    const translated = translateScreenshotCoordinateCommand(
+      effectiveCommand,
+      effectiveArgs,
+      selectedStatePath,
+    );
     effectiveCommand = translated.command;
     effectiveArgs = translated.args;
   } catch (error) {
@@ -1349,9 +1523,11 @@ const runCommand = async (
       ? ["list-apps"]
       : effectiveCommand === "snapshot"
       ? ["snapshot", ...ensureSnapshotArgs(effectiveArgs, sessionPaths)]
-      : [effectiveCommand, ...withStatePath(effectiveArgs, sessionPaths)];
+      : [effectiveCommand, ...withStatePath(effectiveArgs, selectedStatePath)];
   const statePathForCommand =
-    getOptionValue(initialHelperArgs.slice(1), "--state") ?? sessionPaths.statePath;
+    effectiveCommand === "snapshot"
+      ? getOptionValue(initialHelperArgs.slice(1), "--state") ?? sessionPaths.statePath
+      : selectedStatePath;
 
   validateHidAccess(effectiveCommand, initialHelperArgs.slice(1), jsonMode);
   ensureCommandPaths(effectiveCommand, initialHelperArgs.slice(1));
@@ -1375,37 +1551,17 @@ const runCommand = async (
   }
 
   try {
-    const { helperArgs, daemonActive } = await maybePrimePersistentOverlay(
-      effectiveCommand,
-      initialHelperArgs,
-      sessionPaths,
-    );
-    // Gate the actual HID dispatch on the daemon's recovered Codex
-    // `nextInteractionTiming.closeEnough` deadline so the real click
-    // lands at the same moment the cursor's press pulse fires
-    // visually, instead of after the full move completes. Only applies
-    // to click-like interactions; for everything else
-    // `actionReadyAtMs` equals `busyUntilMs` so the early release is a
-    // no-op anyway.
-    if (daemonActive && commandIsClickLike(effectiveCommand)) {
-      await waitForOverlayActionReady(sessionPaths);
-    }
-    const result = await runNativeHelper({
-      helperName: "desktop_automation",
-      helperArgs,
-      env: {
-        ...process.env,
-        STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
-      },
-    });
-    if (daemonActive) {
-      // The daemon's animation usually outlasts the helper's actual
-      // mouse-down/up. Hold the wrapper open until the move has
-      // visually finished, otherwise the next `bun stella-computer`
-      // invocation can race in and overwrite the in-flight `show`
-      // command before the cursor reaches its destination.
-      await waitForOverlayIdle(sessionPaths);
-    }
+    const result =
+      effectiveCommand === "list-apps"
+        ? await runNativeHelper({
+            helperName: "desktop_automation",
+            helperArgs: initialHelperArgs,
+            env: {
+              ...process.env,
+              STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
+            },
+          })
+        : await runAutomationDaemonCommand(sessionPaths, initialHelperArgs);
 
     if (result.error) {
       throw result.error;
@@ -1439,6 +1595,14 @@ const runCommand = async (
       return 1;
     }
 
+    const parsed = parseJson<
+      SnapshotDocument | ActionPayload | ListAppsPayload | ErrorPayload
+    >(result.stdout);
+
+    if (parsed.ok && effectiveCommand !== "list-apps") {
+      syncSessionTargetSnapshot(sessionPaths, statePathForCommand);
+    }
+
     if (jsonMode) {
       process.stdout.write(result.stdout);
       if (!result.stdout.endsWith("\n")) {
@@ -1446,10 +1610,6 @@ const runCommand = async (
       }
       return result.status === 0 ? 0 : 1;
     }
-
-    const parsed = parseJson<
-      SnapshotDocument | ActionPayload | ListAppsPayload | ErrorPayload
-    >(result.stdout);
 
     if (!parsed.ok) {
       formatError(parsed as ErrorPayload);

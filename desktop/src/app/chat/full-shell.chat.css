@@ -23,11 +23,18 @@
 }
 
 /*
- * Latest turn: stretch to fill the scroll viewport so the user bubble
- * can sit at the top with the assistant reply below, regardless of window size.
- * 100cqh = 100% of .chat-viewport-region's height (the nearest size container).
+ * Latest turn (full-shell only): stretch to fill the scroll viewport so
+ * the user bubble can sit at the top with the assistant reply below,
+ * regardless of window size. 100cqh = 100% of .chat-viewport-region's
+ * height (the nearest size container).
+ *
+ * Scoped to .chat-viewport-region so the rule does NOT apply inside the
+ * compact conversation surface used by the chat sidebar — that surface
+ * has no size container in scope, so 100cqh would fall back to the
+ * layout viewport and reserve a full screen of empty space below the
+ * pending message.
  */
-.session-turn--last-turn {
+.chat-viewport-region .session-turn--last-turn {
   min-height: calc(100cqh - 48px);
 }
 

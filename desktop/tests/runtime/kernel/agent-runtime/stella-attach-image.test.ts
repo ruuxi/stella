@@ -49,10 +49,10 @@ describe("extractAttachImageBlocks (stella-computer auto-read)", () => {
     const tempDir = createTempDir();
     const imgPath = writePng(tempDir);
 
-    const text = `<stella_computer_state>
+    const text = `<app_state>
 App=com.apple.finder (pid 504)
-@d1 menu bar
-</stella_computer_state>
+0 menu bar
+</app_state>
 [stella-attach-image] 1x1 1KB inline=image/png ${imgPath}
 `;
     const result = await extractAttachImageBlocks(text);
@@ -69,7 +69,7 @@ App=com.apple.finder (pid 504)
 
   it("falls back to the raw text when the referenced file is missing", async () => {
     const text =
-      "<stella_computer_state>...</stella_computer_state>\n" +
+      "<app_state>...</app_state>\n" +
       "[stella-attach-image] 1x1 1KB inline=image/png /tmp/does-not-exist-zzzz.png\n";
     const result = await extractAttachImageBlocks(text);
     expect(result.images).toEqual([]);

@@ -29,40 +29,39 @@ The Swift binary builds via `desktop/native/build.sh` (raw `swiftc -O`) — no X
 Snapshot/action results are rendered as a compact tree designed for low token cost and easy pattern-matching by the model.
 
 ```
-<stella_computer_state>
-App=com.apple.finder (pid 504)
-Window: "Desktop", App: Finder.
-@d1 scroll area (disabled) desktop
-	@d2 group desktop
-		@d3 image Screenshot 2026-04-13 at 12.10.39 AM, Secondary Actions: open
-@d5 menu bar
-	@d6 menu bar item Finder
-	@d7 menu bar item File
-	@d8 menu bar item (focused) Edit
-The focused UI element is @d8.
-</stella_computer_state>
-[stella-attach-image] 2174x1142 243KB inline=image/png /path/to/last-snapshot.png
-
---- App-specific instructions ---
+<app_specific_instructions>
 # Finder Computer Use
 - Sidebar entries are AXRow rows under an AXOutline; click to navigate.
 - ...
---- end app-specific instructions ---
+</app_specific_instructions>
+<app_state>
+App=com.apple.finder (pid 504)
+Window: "Desktop", App: Finder.
+0 scroll area (disabled) desktop
+	1 group desktop
+		2 image Screenshot 2026-04-13 at 12.10.39 AM, Secondary Actions: Open
+4 menu bar
+	5 menu bar item Finder
+	6 menu bar item File
+	7 menu bar item (focused) Edit
+The focused UI element is 7 menu bar item.
+</app_state>
+[stella-attach-image] 2174x1142 243KB inline=image/png /path/to/last-snapshot.png
 ```
 
 Format rules:
 
-- One node per line, tab-indented, `<ref> <role> [(<state-flags>)] <label>[, Secondary Actions: a, b, c][, ID: ...][, URL: ...]`.
+- One node per line, tab-indented, `<id> <role> [(<state-flags>)] <label>[, Secondary Actions: a, b, c][, ID: ...][, URL: ...]`.
 - AX role names are stripped of `AX` and lowercased (`AXScrollArea` → `scroll area`).
-- State flags inside `(...)`: `disabled`, `selected`, `focused` (only those that apply).
-- `AXPress` is implicit on every clickable node and is hidden from the Secondary Actions list; everything else (e.g. `open`, `AXShowMenu`, `AXCancel`, `AXPick`) is surfaced.
-- Refs use the `@d<N>` namespace (sequential per snapshot). The prefix exists for unambiguous CLI parsing — `stella-computer click @d12` is unambiguous, `click 12` is not.
+- State flags inside `(...)`: `disabled`, `selected`, `focused`, plus `settable` / inferred value type when relevant.
+- `AXPress` is implicit on every clickable node and is hidden from the Secondary Actions list; everything else (e.g. `Open`, `Show Menu`, `Cancel`, `Pick`) is surfaced in humanized form.
+- Snapshot output uses sequential numeric element IDs (`0`, `1`, `2`, ...). The Swift state file still preserves legacy `@d<N>` refs internally so old callers continue to work, but the renderer and CLI now prefer plain numeric IDs.
 
 The trailing `[stella-attach-image]` line carries `<width>x<height>` plus `<bytes>KB` plus `inline=image/png` (when base64 was included) plus the file path. The runtime auto-attach hook reads this line, slurps the PNG, and emits an `image` content block alongside the text — meaning the model sees the screenshot on its very next turn without an extra `Read` tool call.
 
-## Ref matching algorithm
+## Element matching algorithm
 
-Refs are not stable handles to AX elements; the AX object identity dies when the tree mutates. Each action call (`click`, `fill`, `focus`, `secondary-action`, `scroll`, `drag-element`) re-walks the live AX tree and rematches the saved ref using a multi-feature scoring function.
+Element IDs are not stable handles to AX elements; the AX object identity dies when the tree mutates. Each action call (`click`, `fill`, `focus`, `secondary-action`, `scroll`, `drag-element`) re-walks the live AX tree and rematches the saved element entry using a multi-feature scoring function.
 
 Inputs to the score (from `RefEntry` saved at snapshot time vs. live `CandidateNode`):
 
@@ -79,11 +78,11 @@ Inputs to the score (from `RefEntry` saved at snapshot time vs. live `CandidateN
 
 Acceptance is **percentile-based**, not absolute:
 
-1. `maxPossibleScore(entry)` is computed based on which fields the saved ref actually has populated. A thin ref with no identifier and no label has a much smaller ceiling than a fully-populated one.
+1. `maxPossibleScore(entry)` is computed based on which fields the saved element entry actually has populated. A thin entry with no identifier and no label has a much smaller ceiling than a fully-populated one.
 2. The best candidate must clear `STELLA_COMPUTER_MIN_CONFIDENCE` (default `0.30`) of that ceiling.
 3. The gap between best and second-best must clear `STELLA_COMPUTER_MIN_GAP` (default `0.07`) of the ceiling.
 4. Both checks are bypassed if a "stable exact" match exists: `identifier == identifier`, `url == url`, or `(primaryLabel + childPath)` exact, or `(primaryLabel + frame)` close.
-5. Otherwise the action fails with either `Failed to resolve <ref>` (no candidate cleared the floor) or `Ambiguous match for <ref>` (best vs. second-best gap too small) — both with the percentile printed in the warning.
+5. Otherwise the action fails with either `Failed to resolve <element>` (no candidate cleared the floor) or `Ambiguous match for <element>` (best vs. second-best gap too small) — both with the percentile printed in the warning.
 
 Tolerating small UI mutations between snapshot and action while still refusing to guess when the gap is too thin is the whole point: a fuzzy ranked match is more robust than a deterministic match-or-fail at the cost of a small confidence warning when matching is uncertain.
 
@@ -102,9 +101,9 @@ When the original target pid has died, Stella revalidates via `NSWorkspace.share
 5. SnapshotBuilder.buildNode walk:
    - cycle detection via CFHash visited set
    - 1st batched read: role + title + focused + value + url   (cheap "deciding" set)
-   - if actionable, 2nd batched read: subrole + description + identifier + enabled + selected + position + size
+   - if actionable, 2nd batched read: subrole + description + identifier + enabled + selected + position + size + value metadata
    - axChildren(role): AXVisibleChildren ∪ AXContents ∪ role-specific arrays ∪ kAXChildren
-   - assigns sequential refs (@d1, @d2, ...) for actionable nodes only
+   - assigns sequential numeric indices for every rendered node and preserves legacy `@d...` refs for actionable nodes
 6. captureScreenshot(rect, pid, includeBase64=true):
    - SCK path (macOS 14+): SCShareableContent → largest on-screen window for pid
      → SCContentFilter(desktopIndependentWindow) → SCStreamConfiguration with pointPixelScale
@@ -120,16 +119,18 @@ Two-tier batched reads matter: a normal Finder window walks 200-300 nodes; witho
 
 | CLI tool | AX-first path | HID fallback |
 |---|---|---|
-| `click <ref>` | `AXUIElementPerformAction(elem, kAXPressAction)` | `runSystemEventsOnTarget` `click at {x,y}` → CGEvent leftMouseDown/Up |
-| `secondary-action <ref> <action>` | `AXUIElementPerformAction(elem, action)` (validated against `AXUIElementCopyActionNames`) | none |
-| `fill <ref> <text>` | `AXUIElementSetAttributeValue(elem, kAXValueAttribute, text)` (string then numeric coercion); on `.success` with mismatched readback returns `AXValue(transformed)` early — does NOT fall through to keystroke (avoids double-edit on Numbers etc.) | `cmd+a` + `delete` + System Events `keystroke` chunked at 200 chars |
-| `focus <ref>` | `AXUIElementSetAttributeValue(elem, kAXFocusedAttribute, true)` | none |
-| `scroll <ref> <dir> [--pages N]` | `AXUIElementPerformAction(elem, kAXScroll{Up,Down,Left,Right}ByPageAction)` × N | none |
+| `click <element>` | `AXUIElementPerformAction(elem, kAXPressAction)` | `runSystemEventsOnTarget` `click at {x,y}` → CGEvent leftMouseDown/Up |
+| `secondary-action <element> <action>` | `AXUIElementPerformAction(elem, action)` (validated against `AXUIElementCopyActionNames`) | none |
+| `fill <element> <text>` | `AXUIElementSetAttributeValue(elem, kAXValueAttribute, text)` (string then numeric coercion); on `.success` with mismatched readback returns `AXValue(transformed)` early — does NOT fall through to keystroke (avoids double-edit on Numbers etc.) | `cmd+a` + `delete` + System Events `keystroke` chunked at 200 chars |
+| `focus <element>` | `AXUIElementSetAttributeValue(elem, kAXFocusedAttribute, true)` | none |
+| `scroll <element> <dir> [--pages N]` | `AXUIElementPerformAction(elem, kAXScroll{Up,Down,Left,Right}ByPageAction)` × N | none |
 | `type <text> --allow-hid` | (no AX path — the AX target is implied focus) | System Events `keystroke` (chunked) → CGEvent unicode keyboardEvent |
 | `press <key> --allow-hid` | (no AX path) | System Events `key code <N> using {modifiers}` → CGEvent keyboardEvent |
 | `click-point <x> <y> --allow-hid` | (no AX path) | System Events `click at {x,y}` → CGEvent left mouseDown/Up |
+| `click-screenshot <x_px> <y_px> --allow-hid` | Wrapper-only convenience: converts screenshot pixels back into global screen points using `windowFrame` + `screenshot.widthPx/heightPx`, then delegates to `click-point`. | same as `click-point` once translated |
 | `drag <fx> <fy> <tx> <ty> --allow-hid` | none — coordinate-only | CGEvent leftMouseDown/Dragged/Up sequence with linear stepping |
-| `drag-element <src-ref> <dest> --allow-hid` | NSDraggingSession with overlay panel hosting `DragSourceView : NSDraggingSource`. Pasteboard payload extracted from source AX element (`AXURL` for Finder/browser items, AXValue for text fields). Cursor driven from src to dest with synthesized `leftMouseDragged` events. | none — only mode |
+| `drag-screenshot <from_x_px> <from_y_px> <to_x_px> <to_y_px> --allow-hid` | Wrapper-only convenience: converts screenshot pixels back into global screen points, then delegates to `drag`. | same as `drag` once translated |
+| `drag-element <src-element> <dest> --allow-hid` | NSDraggingSession with overlay panel hosting `DragSourceView : NSDraggingSource`. Pasteboard payload extracted from source AX element (`AXURL` for Finder/browser items, AXValue for text fields). Cursor driven from src to dest with synthesized `leftMouseDragged` events. | none — only mode |
 
 System Events delivery uses `NSAppleScript` in-process (compiled scripts cached in `compiledScriptCache`) with `tell application "System Events" / tell first process whose unix id is <pid>` preamble. `STELLA_COMPUTER_NO_RAISE=1` (or `--no-raise`) suppresses the `set frontmost to true` step so background automation doesn't yank focus.
 
@@ -152,7 +153,7 @@ The Anthropic provider (`runtime/ai/providers/anthropic.ts::convertContentBlocks
 ## Action overlay (lens + software cursor)
 
 `ActionOverlayController` shows a transparent borderless `NSPanel`
-(`ActionOverlayWindow`) over the target screen during every ref-based
+(`ActionOverlayWindow`) over the target screen during every element-targeted
 action (`click`, `fill`, `focus`, `secondary-action`, `scroll`). The panel
 hosts two `CALayer`s:
 
@@ -203,7 +204,7 @@ cached for the process lifetime.
 
 ## Per-app operator instructions
 
-Bundled markdown lives in the Swift binary itself (`bundledAppInstructions: [String: String]`) keyed by bundle id. When `snapshot` resolves to `com.apple.finder`, `com.apple.Notes`, `com.apple.iCal`, `com.apple.MobileSMS`, `com.apple.Safari`, or `com.apple.MobileSafari`, the matching markdown is appended to the result under `--- App-specific instructions ---` markers.
+Bundled markdown lives in the Swift binary itself (`bundledAppInstructions: [String: String]`) keyed by bundle id. When `snapshot` / `get-state` resolves to `com.apple.finder`, `com.apple.Notes`, `com.apple.iCal`, `com.apple.MobileSMS`, `com.apple.Safari`, `com.apple.MobileSafari`, or `com.spotify.client`, the matching markdown is emitted ahead of the state block inside `<app_specific_instructions>` markers.
 
 `STELLA_COMPUTER_APP_INSTRUCTIONS_DIR=<dir>` enables loose markdown overlays: a file at `<dir>/<bundle-id>.md` overrides or extends the bundled set. Used to add per-app guidance without rebuilding the binary.
 
@@ -213,9 +214,9 @@ Bundled markdown lives in the Swift binary itself (`bundledAppInstructions: [Str
 |---|---|---|
 | Hardcoded forbidden bundle ids | `baseForbiddenBundleIdentifiers` in Swift | `STELLA_COMPUTER_FORBIDDEN_BUNDLES=a,b,c` (extends only — base set always applies) |
 | Hardcoded forbidden URL substrings | `baseForbiddenUrlSubstrings` in Swift | `STELLA_COMPUTER_FORBIDDEN_URL_SUBSTRINGS=foo,bar` (extends only) |
-| Pre-action URL check | inside `actionCandidate` — fails immediately if the saved ref's URL matches | (covered by env override) |
+| Pre-action URL check | inside `actionCandidate` — fails immediately if the saved element entry's URL matches | (covered by env override) |
 | Post-action URL check | inside `refreshSnapshotAfterAction` — walks the refreshed snapshot looking for a focused/window-root URL match, surfaces a loud warning. Doesn't undo the action; the agent is expected to step back. | (covered by env override) |
-| HID gate | `--allow-hid` flag or `STELLA_COMPUTER_ALLOW_HID=1` env var — required for `drag`, `drag-element`, `click-point`, `type`, `press`, and `click --coordinate-fallback`. | none — explicit opt-in only |
+| HID gate | `--allow-hid` flag or `STELLA_COMPUTER_ALLOW_HID=1` env var — required for `drag`, `drag-screenshot`, `drag-element`, `click-point`, `click-screenshot`, `type`, `press`, and `click --coordinate-fallback`. | none — explicit opt-in only |
 
 Base forbidden bundles include Stella's own surfaces (defense-in-depth: `com.stella.desktop`, `com.stella.app`, `com.stella.runtime`), system security surfaces (`com.apple.systempreferences`, `com.apple.SystemSettings`, `com.apple.keychainaccess`, `com.apple.SecurityAgent`, `com.apple.LocalAuthentication.UIAgent`), and common password managers (1Password, LastPass, Bitwarden, Dashlane).
 
@@ -259,10 +260,10 @@ Failed actions auto-capture a "what the screen looked like at the failure moment
 Locally verified in Stella:
 
 - Finder snapshot with default screenshot attach
-- Ref-based `fill` on Finder's search field
+- Element-targeted `fill` on Finder's search field
 - `list-apps` discovery + frontmost-first sort
-- `secondary-action @d8 AXRaise` against a live Finder window
-- Stale-snapshot ref rematching: an older snapshot file resolves the current Finder search field and refreshes its own screenshot/state
+- `secondary-action 8 Raise` against a live Finder window
+- Stale-snapshot element rematching: an older snapshot file resolves the current Finder search field and refreshes its own screenshot/state
 - Timeout protection: wedged native helper calls return a bounded error instead of trapping the CLI
 - `extractAttachImageBlocks` unit-tested for: passthrough, single-PNG extraction, missing-file fallback, non-image-extension rejection, MIME inference
 
@@ -270,4 +271,4 @@ Known weak spots:
 
 - `scroll` is implemented but some apps don't expose `kAXScroll{Up,Down,Left,Right}ByPageAction`; falls back to a no-op with a warning naming the missing AX action.
 - `drag-element` only works on elements that expose a draggable payload (AXURL or settable AXValue); splitter / slider drag must use the raw `drag` coordinate path.
-- Some apps expose incomplete or stale AX trees; prefer a fresh snapshot before retrying when ref resolution fails.
+- Some apps expose incomplete or stale AX trees; prefer a fresh snapshot before retrying when element resolution fails.

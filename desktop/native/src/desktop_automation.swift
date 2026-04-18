@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 import CoreGraphics
+import Darwin
 import Foundation
 import OSAKit
 import QuartzCore
@@ -132,6 +133,25 @@ struct ErrorPayload: Codable {
     let warnings: [String]
     let screenshot: Screenshot?
     let screenshotPath: String?
+}
+
+struct AutomationDaemonRequest: Codable {
+    let seq: Int
+    let argv: [String]
+    let env: [String: String]?
+}
+
+struct AutomationDaemonResponse: Codable {
+    let seq: Int
+    let status: Int32
+    let stdout: String
+    let stderr: String
+}
+
+struct CommandExecutionResult {
+    let status: Int32
+    let stdout: String
+    let stderr: String
 }
 
 struct SnapshotOptions {
@@ -448,12 +468,30 @@ let digitKeyCodes: [String: CGKeyCode] = [
     "9": 25,
 ]
 
-let traceEnabled = ProcessInfo.processInfo.environment["STELLA_COMPUTER_TRACE"] == "1"
+func traceEnabled() -> Bool {
+    ProcessInfo.processInfo.environment["STELLA_COMPUTER_TRACE"] == "1"
+}
 
 func trace(_ message: @autoclosure () -> String) {
-    guard traceEnabled else { return }
+    guard traceEnabled() else { return }
     fputs("[trace] \(message())\n", stderr)
 }
+
+let daemonScopedEnvironmentKeys: [String] = [
+    "STELLA_COMPUTER_ALLOW_HID",
+    "STELLA_COMPUTER_ALWAYS_SIMULATE_CLICK",
+    "STELLA_COMPUTER_ALWAYS_SIMULATE_INPUT",
+    "STELLA_COMPUTER_APP_INSTRUCTIONS_DIR",
+    "STELLA_COMPUTER_FORBIDDEN_BUNDLES",
+    "STELLA_COMPUTER_FORBIDDEN_URL_SUBSTRINGS",
+    "STELLA_COMPUTER_MIN_CONFIDENCE",
+    "STELLA_COMPUTER_MIN_GAP",
+    "STELLA_COMPUTER_NO_INLINE_SCREENSHOT",
+    "STELLA_COMPUTER_NO_OVERLAY",
+    "STELLA_COMPUTER_NO_RAISE",
+    "STELLA_COMPUTER_SESSION",
+    "STELLA_COMPUTER_TRACE",
+]
 
 // Hardcoded forbidden bundle identifiers. The agent must never automate these
 // to prevent self-takeover or sensitive-app interference.
@@ -646,16 +684,37 @@ let oopHostingBundleIdentifierPrefixes: [String] = [
     "com.github.Electron",
 ]
 
-func exitWithJson<T: Encodable>(_ payload: T, code: Int32 = 0) -> Never {
+func encodedJson<T: Encodable>(_ payload: T) throws -> String {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    if let data = try? encoder.encode(payload),
-       let text = String(data: data, encoding: .utf8) {
-        print(text)
-    } else {
-        print("{\"ok\":false,\"error\":\"failed to encode response\"}")
+    let data = try encoder.encode(payload)
+    return String(data: data, encoding: .utf8) ?? "{\"ok\":false,\"error\":\"failed to encode response\"}"
+}
+
+func commandResult<T: Encodable>(
+    _ payload: T,
+    code: Int32 = 0,
+    stderr: String = ""
+) -> CommandExecutionResult {
+    let stdout: String
+    do {
+        stdout = try encodedJson(payload)
+    } catch {
+        stdout = "{\"ok\":false,\"error\":\"failed to encode response\"}"
     }
-    exit(code)
+    return CommandExecutionResult(status: code, stdout: stdout, stderr: stderr)
+}
+
+func emitCommandResult(_ result: CommandExecutionResult) -> Never {
+    print(result.stdout)
+    if !result.stderr.isEmpty {
+        fputs("\(result.stderr)\n", stderr)
+    }
+    exit(result.status)
+}
+
+func exitWithJson<T: Encodable>(_ payload: T, code: Int32 = 0) -> Never {
+    emitCommandResult(commandResult(payload, code: code))
 }
 
 func normalized(_ value: String?) -> String {
@@ -1628,6 +1687,133 @@ func shouldEnableManualAccessibility(for app: NSRunningApplication) -> Bool {
 // (which can be visually disruptive in some apps) every command invocation.
 var preparedTargetPids: Set<Int32> = []
 
+let observedAppNotificationNames: [String] = [
+    kAXFocusedUIElementChangedNotification as String,
+    kAXFocusedWindowChangedNotification as String,
+    kAXMainWindowChangedNotification as String,
+    kAXWindowCreatedNotification as String,
+    kAXUIElementDestroyedNotification as String,
+]
+
+final class AutomationObserverContext {
+    let pid: Int32
+
+    init(pid: Int32) {
+        self.pid = pid
+    }
+}
+
+final class ObservedAutomationTarget {
+    let pid: Int32
+    let bundleId: String?
+    let observer: AXObserver
+    let appElement: AXUIElement
+    let context: AutomationObserverContext
+    var installedNotifications: [String]
+    var lastEventAt: Date?
+    var eventCounts: [String: Int]
+
+    init(
+        pid: Int32,
+        bundleId: String?,
+        observer: AXObserver,
+        appElement: AXUIElement,
+        context: AutomationObserverContext
+    ) {
+        self.pid = pid
+        self.bundleId = bundleId
+        self.observer = observer
+        self.appElement = appElement
+        self.context = context
+        self.installedNotifications = []
+        self.lastEventAt = nil
+        self.eventCounts = [:]
+    }
+}
+
+final class AutomationObserverManager {
+    static let shared = AutomationObserverManager()
+
+    private var observedTargets: [Int32: ObservedAutomationTarget] = [:]
+
+    func ensureObserved(_ target: AppTarget) {
+        let pid = target.app.processIdentifier
+        if observedTargets[pid] != nil {
+            return
+        }
+
+        var observerRef: AXObserver?
+        let creation = AXObserverCreate(pid, { _, _, notification, refcon in
+            guard let refcon else { return }
+            let context = Unmanaged<AutomationObserverContext>
+                .fromOpaque(refcon)
+                .takeUnretainedValue()
+            AutomationObserverManager.shared.recordEvent(
+                pid: context.pid,
+                notification: notification as String
+            )
+        }, &observerRef)
+        guard creation == .success, let observerRef else {
+            return
+        }
+
+        let context = AutomationObserverContext(pid: pid)
+        let observed = ObservedAutomationTarget(
+            pid: pid,
+            bundleId: target.app.bundleIdentifier,
+            observer: observerRef,
+            appElement: target.axApp,
+            context: context
+        )
+
+        CFRunLoopAddSource(
+            CFRunLoopGetMain(),
+            AXObserverGetRunLoopSource(observerRef),
+            CFRunLoopMode.commonModes
+        )
+
+        for notificationName in observedAppNotificationNames {
+            let result = AXObserverAddNotification(
+                observerRef,
+                target.axApp,
+                notificationName as CFString,
+                Unmanaged.passUnretained(context).toOpaque()
+            )
+            if result == .success || result == .notificationAlreadyRegistered {
+                observed.installedNotifications.append(notificationName)
+            }
+        }
+
+        observedTargets[pid] = observed
+    }
+
+    func forget(pid: Int32) {
+        guard let observed = observedTargets.removeValue(forKey: pid) else {
+            return
+        }
+        for notificationName in observed.installedNotifications {
+            _ = AXObserverRemoveNotification(
+                observed.observer,
+                observed.appElement,
+                notificationName as CFString
+            )
+        }
+        CFRunLoopRemoveSource(
+            CFRunLoopGetMain(),
+            AXObserverGetRunLoopSource(observed.observer),
+            CFRunLoopMode.commonModes
+        )
+    }
+
+    private func recordEvent(pid: Int32, notification: String) {
+        guard let observed = observedTargets[pid] else {
+            return
+        }
+        observed.lastEventAt = Date()
+        observed.eventCounts[notification, default: 0] += 1
+    }
+}
+
 func prepareTargetForAutomation(_ target: AppTarget) {
     let pid = target.app.processIdentifier
 
@@ -1636,6 +1822,7 @@ func prepareTargetForAutomation(_ target: AppTarget) {
     AXUIElementSetMessagingTimeout(target.axApp, axMessagingTimeoutSeconds)
 
     if preparedTargetPids.contains(pid) {
+        AutomationObserverManager.shared.ensureObserved(target)
         return
     }
     preparedTargetPids.insert(pid)
@@ -1658,6 +1845,7 @@ func prepareTargetForAutomation(_ target: AppTarget) {
         "AXEnhancedUserInterface" as CFString,
         kCFBooleanTrue
     )
+    AutomationObserverManager.shared.ensureObserved(target)
 }
 
 func configureMessagingTimeout(for target: AppTarget) {
@@ -1668,33 +1856,19 @@ func configureMessagingTimeout(for target: AppTarget) {
 // don't keep stale "prepared" state across runs.
 func forgetPreparedTarget(pid: Int32) {
     preparedTargetPids.remove(pid)
+    AutomationObserverManager.shared.forget(pid: pid)
 }
 
-// MARK: - Action overlay (software cursor)
+// MARK: - Overlay support
 //
-// Visual feedback while the agent acts. Architecture mirrors the recovered
-// shape of Codex's `ComputerUseCursor`: a borderless screen-spanning panel
-// hosting a software cursor pointer drawn at the action point, with
-// spring-driven fade-in / fade-out and cursor movement between targets.
-//
-// Timing constants are inferred from the bundled 45-frame sprite analysis
-// (alpha sum 331k → 397k → 365k, so ~20% breathing depth, near-loop), the
-// modern SwiftUI spring API hint (`initWithPerceptualDuration:bounce:`),
-// and typical Apple HIG durations. We do NOT copy the upstream sprites;
-// the cursor sprite is drawn once into an NSImage in `softwareCursorImage()`.
-//
-// Lifetime model: the CLI is one-shot, so we keep the overlay in-process
-// for just the action duration. `showOverlay(...)` blocks for the
-// fade-in + brief hold + fade-out sequence (~700ms total), then the
-// caller invokes the action and tears the overlay down afterwards. For
-// chained agent actions this adds ~700ms per call but the visual feedback
-// is worth it; pass `--no-overlay` (or `STELLA_COMPUTER_NO_OVERLAY=1`) to
-// disable.
+// The long-lived daemon path below owns the real session overlay state.
+// Keep the older one-shot controller only as a fallback for direct helper
+// execution outside daemon mode.
 
 let overlayFadeInDuration: TimeInterval = 0.18
-let overlayFadeOutDuration: TimeInterval = 0.22
+let legacyOverlayFadeOutDuration: TimeInterval = 0.22
 let overlayHoldDuration: TimeInterval = 0.30  // visible time after fade-in completes
-let overlayCursorMoveDuration: TimeInterval = 1.10
+let legacyOverlayCursorMoveDuration: TimeInterval = 1.10
 let overlayCursorPreRotationDuration: TimeInterval = 0.55
 let overlayCursorPreRotationLeadFraction: CGFloat = 0.55
 let overlayCursorOvershoot: CGFloat = 0.18
@@ -1702,6 +1876,34 @@ let overlayCursorSettleDuration: TimeInterval = 0.32
 let overlayCursorMinPathDistance: CGFloat = 6
 let overlayCursorBaseRotation: CGFloat = 0.18
 let overlayCursorTangentLagFraction: CGFloat = 0.45
+let overlayFadeOutDuration: TimeInterval = 0.18
+let overlayCursorMoveDuration: TimeInterval = 0.85
+let overlayCursorPathOutHandleFactor: CGFloat = 0.42
+let overlayCursorPathInHandleFactor: CGFloat = 0.42
+let overlayCursorTimingControl1: CGPoint = CGPoint(x: 0.42, y: 0.0)
+let overlayCursorTimingControl2: CGPoint = CGPoint(x: 0.58, y: 1.0)
+let overlayCursorMaxAngleRateRadPerSec: CGFloat = 9.5
+let overlayCursorTangentCarryoverFraction: CGFloat = 1.0
+let overlayCursorLoadingWiggleAmplitudeDegrees: CGFloat = 4.5
+let overlayCursorLoadingWiggleFrequencyHz: CGFloat = 1.6
+let overlayCursorLoadingWiggleRampDuration: TimeInterval = 0.22
+let overlayCursorClickCloseEnoughProgress: CGFloat = 0.88
+let overlayCursorClickCloseEnoughDistance: CGFloat = 18
+let overlayCursorClickPressDuration: TimeInterval = 0.055
+let overlayCursorClickPulseDuration: TimeInterval = 0.18
+let overlayCursorClickPressedScale: CGFloat = 0.92
+let overlayCursorClickReleaseOvershootScale: CGFloat = 1.03
+let overlayIdleTimeout: TimeInterval = 20.0
+let overlayCursorTailAnchor = CGPoint(x: 15, y: 14)
+let overlayCursorTailLength: CGFloat = 16.0
+let overlayCursorTailBaseWidth: CGFloat = 6.4
+let overlayCursorTailTipWidth: CGFloat = 0.7
+let overlayCursorTailSegmentCount = 14
+let overlayCursorTailIdleWiggleAmplitude: CGFloat = 1.6
+let overlayCursorTailMoveWiggleAmplitude: CGFloat = 3.4
+let overlayCursorTailWiggleFrequencyHz: CGFloat = 1.55
+let overlayCursorTailWaveNumber: CGFloat = 1.35
+let overlayCursorTailRestingCurl: CGFloat = 0.0
 
 final class ActionOverlayWindow: NSPanel {
     init(frame: CGRect) {
@@ -1711,15 +1913,12 @@ final class ActionOverlayWindow: NSPanel {
             backing: .buffered,
             defer: false
         )
-        // Transparent, click-through, above app windows but below menu bar.
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
         ignoresMouseEvents = true
-        level = .popUpMenu
+        level = .normal
         collectionBehavior = [
-            .canJoinAllSpaces,
-            .stationary,
             .ignoresCycle,
             .fullScreenAuxiliary,
         ]
@@ -1901,7 +2100,7 @@ final class ActionOverlayController {
         let fadeOut = CABasicAnimation(keyPath: "opacity")
         fadeOut.fromValue = 1
         fadeOut.toValue = 0
-        fadeOut.duration = overlayFadeOutDuration
+        fadeOut.duration = legacyOverlayFadeOutDuration
         fadeOut.timingFunction = CAMediaTimingFunction(name: .easeIn)
         fadeOut.fillMode = .forwards
         fadeOut.isRemovedOnCompletion = false
@@ -1910,7 +2109,7 @@ final class ActionOverlayController {
         host.layer?.displayIfNeeded()
         win.displayIfNeeded()
         CATransaction.flush()
-        runAnimationLoop(for: overlayFadeOutDuration + 0.03)
+        runAnimationLoop(for: legacyOverlayFadeOutDuration + 0.03)
         win.orderOut(nil)
         window = nil
         cursorLayer = nil
@@ -2004,6 +2203,251 @@ func setCursorRotation(_ layer: CALayer, rotation: CGFloat) {
     layer.transform = CATransform3DMakeRotation(rotation, 0, 0, 1)
 }
 
+func setCursorTransform(_ layer: CALayer, rotation: CGFloat, scale: CGFloat) {
+    var transform = CATransform3DIdentity
+    transform = CATransform3DScale(transform, scale, scale, 1)
+    transform = CATransform3DRotate(transform, rotation, 0, 0, 1)
+    layer.transform = transform
+}
+
+func normalizeAngle(_ angle: CGFloat) -> CGFloat {
+    var normalized = angle
+    while normalized <= -.pi { normalized += 2 * .pi }
+    while normalized > .pi { normalized -= 2 * .pi }
+    return normalized
+}
+
+func shortestAngleDelta(from current: CGFloat, to target: CGFloat) -> CGFloat {
+    normalizeAngle(target - current)
+}
+
+func smoothstep(edge0: CGFloat, edge1: CGFloat, value: CGFloat) -> CGFloat {
+    guard edge0 != edge1 else { return value >= edge1 ? 1 : 0 }
+    let t = max(0, min(1, (value - edge0) / (edge1 - edge0)))
+    return t * t * (3 - 2 * t)
+}
+
+func addPoints(_ lhs: CGPoint, _ rhs: CGPoint) -> CGPoint {
+    CGPoint(x: lhs.x + rhs.x, y: lhs.y + rhs.y)
+}
+
+func subtractPoints(_ lhs: CGPoint, _ rhs: CGPoint) -> CGPoint {
+    CGPoint(x: lhs.x - rhs.x, y: lhs.y - rhs.y)
+}
+
+func scalePoint(_ point: CGPoint, by scalar: CGFloat) -> CGPoint {
+    CGPoint(x: point.x * scalar, y: point.y * scalar)
+}
+
+func screenContaining(point: CGPoint) -> NSScreen? {
+    for screen in NSScreen.screens {
+        if topLeftFrame(for: screen).contains(point) { return screen }
+    }
+    return nil
+}
+
+func mouseLocationInAXCoordinates(screen _: NSScreen) -> CGPoint {
+    if let event = CGEvent(source: nil) {
+        return event.location
+    }
+    let appKit = NSEvent.mouseLocation
+    let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+    return CGPoint(x: appKit.x, y: primaryHeight - appKit.y)
+}
+
+func clampPoint(_ point: CGPoint, into rect: CGRect, inset: CGFloat = 6) -> CGPoint {
+    let minX = rect.minX + inset
+    let maxX = rect.maxX - inset
+    let minY = rect.minY + inset
+    let maxY = rect.maxY - inset
+    return CGPoint(
+        x: min(max(point.x, minX), maxX),
+        y: min(max(point.y, minY), maxY)
+    )
+}
+
+struct OverlayTargetIdentity: Equatable {
+    let targetWindowID: CGWindowID?
+    let pid: pid_t
+    let bundleId: String?
+    let windowTitle: String?
+    let viewportFrame: CGRect
+}
+
+struct WindowEntry {
+    let windowID: CGWindowID
+    let pid: pid_t
+    let frame: CGRect
+    let title: String?
+    let layer: Int
+}
+
+func enumerateOnScreenWindows() -> [WindowEntry] {
+    let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+    guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+        return []
+    }
+    return raw.compactMap { entry -> WindowEntry? in
+        guard let windowID = entry[kCGWindowNumber as String] as? CGWindowID,
+              let bounds = entry[kCGWindowBounds as String] as? [String: CGFloat],
+              let pidNumber = entry[kCGWindowOwnerPID as String] as? Int else {
+            return nil
+        }
+        let layer = entry[kCGWindowLayer as String] as? Int ?? 0
+        if layer < 0 || layer > 3 { return nil }
+        let x = bounds["X"] ?? 0
+        let y = bounds["Y"] ?? 0
+        let w = bounds["Width"] ?? 0
+        let h = bounds["Height"] ?? 0
+        if w <= 0 || h <= 0 { return nil }
+        return WindowEntry(
+            windowID: windowID,
+            pid: pid_t(pidNumber),
+            frame: CGRect(x: x, y: y, width: w, height: h),
+            title: entry[kCGWindowName as String] as? String,
+            layer: layer
+        )
+    }
+}
+
+func findTargetWindow(
+    in entries: [WindowEntry],
+    identity: OverlayTargetIdentity
+) -> (entry: WindowEntry, indexFromFront: Int)? {
+    var best: (entry: WindowEntry, indexFromFront: Int, score: CGFloat)?
+    for (index, entry) in entries.enumerated() {
+        if entry.pid != identity.pid { continue }
+        let intersection = entry.frame.intersection(identity.viewportFrame)
+        let overlapArea = intersection.isNull ? 0 : intersection.width * intersection.height
+        if overlapArea <= 0 { continue }
+        var score = overlapArea
+        if let title = identity.windowTitle,
+           let entryTitle = entry.title,
+           !title.isEmpty,
+           title == entryTitle {
+            score *= 4
+        }
+        if best == nil || score > best!.score {
+            best = (entry, index, score)
+        }
+    }
+    guard let pick = best else { return nil }
+    return (pick.entry, pick.indexFromFront)
+}
+
+func resolveTargetWindow(
+    in entries: [WindowEntry],
+    identity: OverlayTargetIdentity
+) -> (entry: WindowEntry, indexFromFront: Int, resolvedBy: String)? {
+    if let targetWindowID = identity.targetWindowID,
+       let directIndex = entries.firstIndex(where: { $0.windowID == targetWindowID && $0.pid == identity.pid }) {
+        return (entries[directIndex], directIndex, "windowId")
+    }
+    if let fallback = findTargetWindow(in: entries, identity: identity) {
+        return (fallback.entry, fallback.indexFromFront, "identity")
+    }
+    return nil
+}
+
+struct BezierFunction {
+    let c1: CGPoint
+    let c2: CGPoint
+
+    static let easeInEaseOut = BezierFunction(
+        c1: CGPoint(x: 0.42, y: 0.0),
+        c2: CGPoint(x: 0.58, y: 1.0)
+    )
+
+    private static func cubic(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat {
+        let oneMinus = 1 - t
+        return 3 * oneMinus * oneMinus * t * a
+            + 3 * oneMinus * t * t * b
+            + t * t * t
+    }
+
+    func value(at progress: CGFloat) -> CGFloat {
+        let p = max(0, min(1, progress))
+        if p <= 0 { return 0 }
+        if p >= 1 { return 1 }
+        var lo: CGFloat = 0
+        var hi: CGFloat = 1
+        var t: CGFloat = p
+        for _ in 0..<24 {
+            let x = BezierFunction.cubic(c1.x, c2.x, t)
+            if abs(x - p) < 0.0005 { break }
+            if x < p { lo = t } else { hi = t }
+            t = (lo + hi) * 0.5
+        }
+        return BezierFunction.cubic(c1.y, c2.y, t)
+    }
+}
+
+struct CursorMotionPath {
+    let start: CGPoint
+    let controlOut: CGPoint
+    let controlIn: CGPoint
+    let end: CGPoint
+
+    static func make(
+        start: CGPoint,
+        end: CGPoint,
+        launchTangent: CGPoint,
+        arrivalTangent: CGPoint,
+        outHandleFactor: CGFloat,
+        inHandleFactor: CGFloat
+    ) -> CursorMotionPath {
+        let distance = hypot(end.x - start.x, end.y - start.y)
+        let outLen = distance * outHandleFactor
+        let inLen = distance * inHandleFactor
+        let unitLaunch = normalized(launchTangent)
+        let unitArrival = normalized(arrivalTangent)
+        let controlOut = addPoints(start, scalePoint(unitLaunch, by: outLen))
+        let controlIn = subtractPoints(end, scalePoint(unitArrival, by: inLen))
+        return CursorMotionPath(start: start, controlOut: controlOut, controlIn: controlIn, end: end)
+    }
+
+    func position(at u: CGFloat) -> CGPoint {
+        let t = max(0, min(1, u))
+        let oneMinus = 1 - t
+        let a = oneMinus * oneMinus * oneMinus
+        let b = 3 * oneMinus * oneMinus * t
+        let c = 3 * oneMinus * t * t
+        let d = t * t * t
+        return CGPoint(
+            x: a * start.x + b * controlOut.x + c * controlIn.x + d * end.x,
+            y: a * start.y + b * controlOut.y + c * controlIn.y + d * end.y
+        )
+    }
+
+    func tangent(at u: CGFloat) -> CGPoint {
+        let t = max(0, min(1, u))
+        let oneMinus = 1 - t
+        let a = 3 * oneMinus * oneMinus
+        let b = 6 * oneMinus * t
+        let c = 3 * t * t
+        return CGPoint(
+            x: a * (controlOut.x - start.x) + b * (controlIn.x - controlOut.x) + c * (end.x - controlIn.x),
+            y: a * (controlOut.y - start.y) + b * (controlIn.y - controlOut.y) + c * (end.y - controlIn.y)
+        )
+    }
+}
+
+func normalized(_ v: CGPoint) -> CGPoint {
+    let magnitude = hypot(v.x, v.y)
+    if magnitude == 0 { return CGPoint(x: 0, y: 1) }
+    return CGPoint(x: v.x / magnitude, y: v.y / magnitude)
+}
+
+func blendUnitVectors(_ a: CGPoint, _ b: CGPoint, weight: CGFloat) -> CGPoint {
+    let w = max(0, min(1, weight))
+    return normalized(
+        CGPoint(
+            x: a.x + (b.x - a.x) * w,
+            y: a.y + (b.y - a.y) * w
+        )
+    )
+}
+
 func animateCursorAlongCurve(
     _ cursor: CALayer,
     to dest: CGPoint,
@@ -2066,7 +2510,7 @@ func animateCursorAlongCurve(
 
     let move = CAKeyframeAnimation(keyPath: "position")
     move.path = path
-    move.duration = overlayCursorMoveDuration
+    move.duration = legacyOverlayCursorMoveDuration
     move.calculationMode = .linear
     move.beginTime = now + preRotationLead
     move.timingFunction = CAMediaTimingFunction(controlPoints: 0.42, 0.0, 0.58, 1.0)
@@ -2074,7 +2518,7 @@ func animateCursorAlongCurve(
     move.isRemovedOnCompletion = false
     cursor.add(move, forKey: "cursorMove")
 
-    let settleStart = preRotationLead + overlayCursorMoveDuration
+    let settleStart = preRotationLead + legacyOverlayCursorMoveDuration
     let settle = CABasicAnimation(keyPath: "transform.rotation.z")
     settle.fromValue = overshootHeading
     settle.toValue = overlayCursorBaseRotation
@@ -2128,10 +2572,8 @@ func overlayViewportFrame(statePath: String) -> Rect? {
     return nil
 }
 
-// Run the overlay show → hold → action → hide flow synchronously around
-// `body`. Returns whatever `body` returns. When `frame` is nil (e.g. the
-// candidate has no AX frame) the overlay is skipped. When `cursorPoint` is
-// nil the cursor sprite is anchored at the target frame center.
+// Legacy one-shot overlay path used only when the helper is executed
+// outside daemon mode.
 func withActionOverlay<T>(
     enabled: Bool,
     statePath: String,
@@ -2160,7 +2602,7 @@ func withActionOverlay<T>(
        hypot(previousCursor.x - cursor.x, previousCursor.y - cursor.y) >= 2 {
         overlay.moveCursor(to: cursor, viewportFrame: viewport)
         let preLead = overlayCursorPreRotationDuration * Double(overlayCursorPreRotationLeadFraction)
-        runAnimationLoop(for: preLead + overlayCursorMoveDuration + overlayCursorSettleDuration + 0.04)
+        runAnimationLoop(for: preLead + legacyOverlayCursorMoveDuration + overlayCursorSettleDuration + 0.04)
     }
 
     // Brief hold so the user actually sees the cursor land before the action
@@ -2177,6 +2619,733 @@ func withActionOverlay<T>(
 func overlayEnabled(_ options: ActionOptions) -> Bool {
     if envBool("STELLA_COMPUTER_NO_OVERLAY") { return false }
     return options.showOverlay
+}
+
+struct UnifiedOverlayTarget {
+    let frame: CGRect
+    let viewportFrame: CGRect
+    let cursorPoint: CGPoint
+    let interactionKind: String?
+    let targetIdentity: OverlayTargetIdentity?
+}
+
+func resolvedUnifiedOverlayTarget(
+    snapshot: SnapshotDocument,
+    target: AppTarget,
+    frame: Rect?,
+    cursorPoint: CGPoint? = nil,
+    interactionKind: String?
+) -> UnifiedOverlayTarget? {
+    guard let windowFrame = snapshot.windowFrame else { return nil }
+    let viewportFrame = rectToCGRect(windowFrame)
+    guard viewportFrame.width > 0, viewportFrame.height > 0 else { return nil }
+
+    let resolvedCursorPoint: CGPoint
+    if let cursorPoint {
+        resolvedCursorPoint = cursorPoint
+    } else if let frame {
+        resolvedCursorPoint = frameCenter(frame)
+    } else {
+        return nil
+    }
+
+    let overlayFrame = frame.map(rectToCGRect)
+        ?? CGRect(x: resolvedCursorPoint.x - 24, y: resolvedCursorPoint.y - 24, width: 48, height: 48)
+    let targetWindowID = snapshot.windowId ?? resolveOnScreenWindowID(
+        pid: target.app.processIdentifier,
+        expectedTitle: snapshot.windowTitle,
+        expectedFrame: snapshot.windowFrame
+    )
+    let identity = OverlayTargetIdentity(
+        targetWindowID: targetWindowID,
+        pid: target.app.processIdentifier,
+        bundleId: snapshot.bundleId ?? target.app.bundleIdentifier,
+        windowTitle: snapshot.windowTitle,
+        viewportFrame: viewportFrame
+    )
+    return UnifiedOverlayTarget(
+        frame: overlayFrame,
+        viewportFrame: viewportFrame,
+        cursorPoint: resolvedCursorPoint,
+        interactionKind: interactionKind,
+        targetIdentity: identity
+    )
+}
+
+struct OverlayBusyClockState {
+    let busyUntilMs: Double
+    let actionReadyAtMs: Double
+}
+
+func readOverlayBusyClockState(at path: String) -> OverlayBusyClockState {
+    guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+          let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return OverlayBusyClockState(busyUntilMs: 0, actionReadyAtMs: 0)
+    }
+    let busyUntilMs = (raw["busyUntilMs"] as? NSNumber)?.doubleValue ?? 0
+    let actionReadyAtMs = (raw["actionReadyAtMs"] as? NSNumber)?.doubleValue ?? busyUntilMs
+    return OverlayBusyClockState(
+        busyUntilMs: busyUntilMs,
+        actionReadyAtMs: actionReadyAtMs
+    )
+}
+
+final class PersistentOverlayController {
+    private let busyUntilPath: String
+    private var window: ActionOverlayWindow?
+    private var cursorLayer: CALayer?
+    private var tailGradient: CAGradientLayer?
+    private var tailGradientMask: CAShapeLayer?
+    private var tailStroke: CAShapeLayer?
+    private var currentScreen: NSScreen?
+    private var currentViewportFrame: CGRect?
+    private var currentTargetIdentity: OverlayTargetIdentity?
+    private var currentInteractionKind: String?
+    private var lastOrderedAboveWindowID: CGWindowID?
+    private var lastTargetOnScreen: Bool?
+    private var animationFinishesAt: CFTimeInterval = 0
+    private var pendingShow: (viewportFrame: CGRect, cursorPoint: CGPoint)?
+    private var currentPosition: CGPoint?
+    private var activePath: CursorMotionPath?
+    private var activeTiming: BezierFunction = .easeInEaseOut
+    private var activeStartTime: CFTimeInterval = 0
+    private var activeDuration: TimeInterval = overlayCursorMoveDuration
+    private var lastArrivalTangent: CGPoint?
+    private var renderedAngle: CGFloat = overlayCursorBaseRotation
+    private var idleAnimationStartedAt: CFTimeInterval?
+    private var clickPulseStartedAt: CFTimeInterval?
+    private var shouldTriggerClickPulse = false
+    private var didTriggerClickPulseForMove = false
+    private var lastTickAt: CFTimeInterval?
+
+    init(busyUntilPath: String) {
+        self.busyUntilPath = busyUntilPath
+    }
+
+    private func writeBusyUntil(remainingSeconds: TimeInterval, actionReadyInSeconds: TimeInterval? = nil) {
+        let nowMs = Date().timeIntervalSince1970 * 1000
+        let busyUntilMs = nowMs + max(0, remainingSeconds) * 1000
+        let actionReadyAtMs = nowMs
+            + max(0, min(remainingSeconds, actionReadyInSeconds ?? remainingSeconds)) * 1000
+        let payload: [String: Any] = [
+            "busyUntilMs": busyUntilMs,
+            "actionReadyAtMs": actionReadyAtMs,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        let url = URL(fileURLWithPath: busyUntilPath)
+        let tempURL = url.appendingPathExtension("tmp")
+        try? data.write(to: tempURL, options: [.atomic])
+        try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.moveItem(at: tempURL, to: url)
+    }
+
+    func showOrMove(
+        frame _: CGRect,
+        viewportFrame: CGRect,
+        cursorAt cursorPoint: CGPoint,
+        targetIdentity: OverlayTargetIdentity?,
+        interactionKind: String?
+    ) {
+        guard tryBootstrapAppKit() else { return }
+        let now = CACurrentMediaTime()
+        let viewportCenter = CGPoint(x: viewportFrame.midX, y: viewportFrame.midY)
+        guard let targetScreen = screenContaining(point: viewportCenter)
+            ?? screenContaining(point: cursorPoint)
+            ?? NSScreen.main else {
+            return
+        }
+
+        currentTargetIdentity = targetIdentity
+        currentInteractionKind = interactionKind
+
+        if window == nil || currentScreen !== targetScreen || currentViewportFrame != viewportFrame {
+            rebuildWindow(screen: targetScreen, viewportFrame: viewportFrame, cursorPoint: cursorPoint)
+            refreshOverlayWindowOrdering()
+        }
+        currentInteractionKind = interactionKind
+
+        if isBusy(at: now) {
+            pendingShow = (viewportFrame, cursorPoint)
+            return
+        }
+
+        setTarget(cursorPoint, viewportFrame: viewportFrame)
+    }
+
+    func tickPendingShow() {
+        guard let pending = pendingShow else { return }
+        if isBusy(at: CACurrentMediaTime()) { return }
+        pendingShow = nil
+        setTarget(pending.cursorPoint, viewportFrame: pending.viewportFrame)
+    }
+
+    private func scheduleAnimationFinish(extraTail: TimeInterval = 0) {
+        let now = CACurrentMediaTime()
+        animationFinishesAt = now + activeDuration + extraTail
+    }
+
+    private func isClickLikeInteraction(_ kind: String?) -> Bool {
+        switch kind {
+        case "click", "click-point", "secondary-action", "perform-secondary-action":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func loadingAngleOffset(at now: CFTimeInterval) -> CGFloat {
+        guard activePath == nil, window != nil else { return 0 }
+        let start = idleAnimationStartedAt ?? now
+        let elapsed = max(0, now - start)
+        let ramp = min(1, elapsed / overlayCursorLoadingWiggleRampDuration)
+        let amplitude = (overlayCursorLoadingWiggleAmplitudeDegrees * .pi / 180) * CGFloat(ramp)
+        let phase = CGFloat(elapsed) * overlayCursorLoadingWiggleFrequencyHz * 2 * .pi
+        return sin(phase) * amplitude
+    }
+
+    private func startClickPulseIfNeeded(at now: CFTimeInterval) {
+        guard clickPulseStartedAt == nil else { return }
+        clickPulseStartedAt = now
+    }
+
+    private func clickPulseScale(at now: CFTimeInterval) -> CGFloat {
+        guard let startedAt = clickPulseStartedAt else { return 1 }
+        let elapsed = now - startedAt
+        if elapsed <= 0 {
+            return 1
+        }
+        if elapsed >= overlayCursorClickPulseDuration {
+            clickPulseStartedAt = nil
+            return 1
+        }
+        if elapsed <= overlayCursorClickPressDuration {
+            let t = CGFloat(elapsed / overlayCursorClickPressDuration)
+            let eased = smoothstep(edge0: 0, edge1: 1, value: t)
+            return 1 + (overlayCursorClickPressedScale - 1) * eased
+        }
+        let releaseElapsed = elapsed - overlayCursorClickPressDuration
+        let releaseDuration = overlayCursorClickPulseDuration - overlayCursorClickPressDuration
+        let t = CGFloat(releaseElapsed / max(releaseDuration, 0.0001))
+        let overshoot = sin(t * .pi)
+        let base = overlayCursorClickPressedScale + (1 - overlayCursorClickPressedScale) * t
+        let boost = (overlayCursorClickReleaseOvershootScale - 1) * overshoot
+        return base + boost
+    }
+
+    func tick() {
+        refreshOverlayWindowOrdering()
+
+        guard let cursor = cursorLayer, let position = currentPosition else {
+            lastTickAt = CACurrentMediaTime()
+            return
+        }
+        let now = CACurrentMediaTime()
+        let previousTick = lastTickAt ?? (now - (1.0 / 60.0))
+        let dt = min(max(now - previousTick, 1.0 / 240.0), 1.0 / 24.0)
+        lastTickAt = now
+
+        let idleAngleOffset = loadingAngleOffset(at: now)
+        var clickScale = clickPulseScale(at: now)
+
+        guard let path = activePath else {
+            applyCursorState(
+                cursor,
+                position: position,
+                rotation: renderedAngle + idleAngleOffset,
+                scale: clickScale
+            )
+            updateTailPath(at: now, hasActivePath: false)
+            return
+        }
+
+        let rawProgress = CGFloat((now - activeStartTime) / activeDuration)
+        let progress = max(0, min(1, rawProgress))
+        let u = activeTiming.value(at: progress)
+        let nextPosition = path.position(at: u)
+        let tangent = path.tangent(at: u)
+        let targetAngle = rotationForHeading(dx: tangent.x, dy: tangent.y)
+        let angleDelta = shortestAngleDelta(from: renderedAngle, to: targetAngle)
+        let maxStep = overlayCursorMaxAngleRateRadPerSec * CGFloat(dt)
+        let limited = max(-maxStep, min(maxStep, angleDelta))
+        let newAngle = normalizeAngle(renderedAngle + limited)
+
+        if shouldTriggerClickPulse && !didTriggerClickPulseForMove {
+            let remainingDistance = hypot(path.end.x - nextPosition.x, path.end.y - nextPosition.y)
+            if progress >= overlayCursorClickCloseEnoughProgress
+                || remainingDistance <= overlayCursorClickCloseEnoughDistance {
+                didTriggerClickPulseForMove = true
+                startClickPulseIfNeeded(at: now)
+                clickScale = clickPulseScale(at: now)
+                let totalRemaining = max(0, animationFinishesAt - now)
+                writeBusyUntil(remainingSeconds: totalRemaining, actionReadyInSeconds: 0)
+            }
+        }
+
+        currentPosition = nextPosition
+        renderedAngle = newAngle
+        applyCursorState(cursor, position: nextPosition, rotation: newAngle, scale: clickScale)
+        updateTailPath(at: now, hasActivePath: true)
+
+        if progress >= 1 {
+            lastArrivalTangent = normalized(path.tangent(at: 1))
+            if shouldTriggerClickPulse && !didTriggerClickPulseForMove {
+                didTriggerClickPulseForMove = true
+                startClickPulseIfNeeded(at: now)
+            }
+            activePath = nil
+            idleAnimationStartedAt = now
+        }
+    }
+
+    func hide() {
+        guard let win = window, let host = win.contentView else { return }
+        let fadeOut = CABasicAnimation(keyPath: "opacity")
+        fadeOut.fromValue = 1
+        fadeOut.toValue = 0
+        fadeOut.duration = overlayFadeOutDuration
+        fadeOut.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        fadeOut.fillMode = .forwards
+        fadeOut.isRemovedOnCompletion = false
+        host.layer?.add(fadeOut, forKey: "fadeOut")
+        host.layer?.opacity = 0
+        CATransaction.flush()
+        RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: overlayFadeOutDuration + 0.03))
+        hideImmediate()
+    }
+
+    private func rebuildWindow(screen: NSScreen, viewportFrame: CGRect, cursorPoint: CGPoint) {
+        hideImmediate(preservingTargetIdentity: true)
+        let winFrame = appKitFrame(fromAXRect: viewportFrame, screen: screen)
+        let win = ActionOverlayWindow(frame: winFrame)
+        let hostBounds = NSRect(origin: .zero, size: winFrame.size)
+        let host = OverlayHostView(frame: hostBounds)
+        host.wantsLayer = true
+        host.layer?.backgroundColor = .clear
+        host.layer?.opacity = 1
+        host.layer?.masksToBounds = true
+        win.contentView = host
+
+        let mouseAX = mouseLocationInAXCoordinates(screen: screen)
+        let spawnAX = clampPoint(mouseAX, into: viewportFrame)
+        let cursor = makeCursorLayer(at: spawnAX, viewportFrame: viewportFrame, screen: screen)
+        host.layer?.addSublayer(cursor)
+        cursorLayer = cursor
+        currentPosition = cursor.position
+        activePath = nil
+        lastArrivalTangent = nil
+        renderedAngle = overlayCursorBaseRotation
+        idleAnimationStartedAt = CACurrentMediaTime()
+        clickPulseStartedAt = nil
+        shouldTriggerClickPulse = false
+        didTriggerClickPulseForMove = false
+        lastTickAt = CACurrentMediaTime()
+
+        win.orderFrontRegardless()
+        window = win
+        currentScreen = screen
+        currentViewportFrame = viewportFrame
+        refreshOverlayWindowOrdering()
+        host.layer?.displayIfNeeded()
+        win.displayIfNeeded()
+        CATransaction.flush()
+    }
+
+    private func refreshOverlayWindowOrdering() {
+        guard let win = window else { return }
+        guard let identity = currentTargetIdentity else { return }
+        let entries = enumerateOnScreenWindows()
+        let match = resolveTargetWindow(in: entries, identity: identity)
+        let isOnScreen = match != nil
+        if isOnScreen != lastTargetOnScreen {
+            lastTargetOnScreen = isOnScreen
+            if isOnScreen {
+                win.orderFrontRegardless()
+            } else {
+                win.orderOut(nil)
+                lastOrderedAboveWindowID = nil
+            }
+        }
+        guard let match = match else { return }
+        let targetWindowID = match.entry.windowID
+        win.order(.above, relativeTo: Int(targetWindowID))
+        if targetWindowID != lastOrderedAboveWindowID {
+            lastOrderedAboveWindowID = targetWindowID
+        }
+    }
+
+    private func setTarget(_ point: CGPoint, viewportFrame: CGRect) {
+        guard cursorLayer != nil else { return }
+        let dest = overlayLocalPoint(fromAXPoint: point, viewportFrame: viewportFrame)
+        let start = currentPosition ?? dest
+        let distance = hypot(dest.x - start.x, dest.y - start.y)
+
+        let straightTangent = normalized(CGPoint(x: dest.x - start.x, y: dest.y - start.y))
+        let launchTangent: CGPoint
+        if let last = lastArrivalTangent, distance >= overlayCursorMinPathDistance {
+            launchTangent = blendUnitVectors(
+                last,
+                straightTangent,
+                weight: 1 - overlayCursorTangentCarryoverFraction
+            )
+        } else {
+            launchTangent = straightTangent
+        }
+        let arrivalTangent = straightTangent
+
+        let path = CursorMotionPath.make(
+            start: start,
+            end: dest,
+            launchTangent: launchTangent,
+            arrivalTangent: arrivalTangent,
+            outHandleFactor: overlayCursorPathOutHandleFactor,
+            inHandleFactor: overlayCursorPathInHandleFactor
+        )
+
+        activePath = path
+        activeTiming = BezierFunction(
+            c1: overlayCursorTimingControl1,
+            c2: overlayCursorTimingControl2
+        )
+        shouldTriggerClickPulse = isClickLikeInteraction(currentInteractionKind)
+        didTriggerClickPulseForMove = false
+        clickPulseStartedAt = nil
+        idleAnimationStartedAt = nil
+        activeStartTime = CACurrentMediaTime()
+        let scaled = overlayCursorMoveDuration * Double(min(1.0, max(0.45, distance / 600.0)))
+        activeDuration = scaled
+        let clickTail = shouldTriggerClickPulse ? overlayCursorClickPulseDuration : 0
+        scheduleAnimationFinish(extraTail: clickTail)
+        let totalRemaining = activeDuration + clickTail + 0.06
+        let actionReady = shouldTriggerClickPulse
+            ? activeDuration * Double(overlayCursorClickCloseEnoughProgress)
+            : totalRemaining
+        writeBusyUntil(remainingSeconds: totalRemaining, actionReadyInSeconds: actionReady)
+    }
+
+    private func makeCursorLayer(at point: CGPoint, viewportFrame: CGRect, screen: NSScreen) -> CALayer {
+        let img = softwareCursorImage()
+        let container = CALayer()
+        container.contentsScale = screen.backingScaleFactor
+        container.bounds = CGRect(origin: .zero, size: img.size)
+        container.anchorPoint = CGPoint(x: 0.5, y: 36.0 / 38.0)
+        container.position = overlayLocalPoint(fromAXPoint: point, viewportFrame: viewportFrame)
+        setCursorTransform(container, rotation: overlayCursorBaseRotation, scale: 1)
+        container.shadowColor = NSColor.black.cgColor
+        container.shadowOpacity = 0.35
+        container.shadowRadius = 4
+        container.shadowOffset = CGSize(width: 0, height: -1)
+
+        let initialPath = tailPath(phase: 0, amplitude: overlayCursorTailIdleWiggleAmplitude)
+
+        let gradient = CAGradientLayer()
+        gradient.contentsScale = screen.backingScaleFactor
+        gradient.frame = container.bounds
+        gradient.colors = [
+            NSColor(calibratedWhite: 1, alpha: 0.98).cgColor,
+            NSColor(calibratedRed: 0.82, green: 0.85, blue: 0.89, alpha: 0.98).cgColor,
+        ]
+        gradient.startPoint = CGPoint(x: 0.5, y: 1)
+        gradient.endPoint = CGPoint(x: 0.5, y: 0)
+
+        let mask = CAShapeLayer()
+        mask.contentsScale = screen.backingScaleFactor
+        mask.frame = container.bounds
+        mask.fillColor = NSColor.white.cgColor
+        mask.path = initialPath
+        gradient.mask = mask
+
+        let stroke = CAShapeLayer()
+        stroke.contentsScale = screen.backingScaleFactor
+        stroke.frame = container.bounds
+        stroke.fillColor = NSColor.clear.cgColor
+        stroke.strokeColor = NSColor(calibratedWhite: 0.08, alpha: 0.72).cgColor
+        stroke.lineWidth = 1.2
+        stroke.lineJoin = .round
+        stroke.lineCap = .round
+        stroke.path = initialPath
+
+        container.addSublayer(gradient)
+        container.addSublayer(stroke)
+        tailGradient = gradient
+        tailGradientMask = mask
+        tailStroke = stroke
+
+        let head = CALayer()
+        head.contents = img
+        head.contentsScale = screen.backingScaleFactor
+        head.frame = container.bounds
+        container.addSublayer(head)
+        return container
+    }
+
+    private func tailPath(phase: CGFloat, amplitude: CGFloat) -> CGPath {
+        let segments = max(4, overlayCursorTailSegmentCount)
+        let length = overlayCursorTailLength
+        let curl = overlayCursorTailRestingCurl
+        let waveK = overlayCursorTailWaveNumber * .pi
+        var centerline: [CGPoint] = []
+        var lateralBasis: [CGPoint] = []
+        for i in 0...segments {
+            let s = CGFloat(i) / CGFloat(segments)
+            let bend = curl * s
+            let dir = CGPoint(x: -sin(bend), y: -cos(bend))
+            let prev = centerline.last ?? overlayCursorTailAnchor
+            let step = length / CGFloat(segments)
+            let next = i == 0
+                ? overlayCursorTailAnchor
+                : CGPoint(x: prev.x + dir.x * step, y: prev.y + dir.y * step)
+            centerline.append(next)
+            lateralBasis.append(CGPoint(x: -dir.y, y: dir.x))
+        }
+
+        var lateral: [CGFloat] = []
+        for i in 0...segments {
+            let s = CGFloat(i) / CGFloat(segments)
+            let ramp = 0.18 + 0.82 * s * s
+            let wave = sin(phase + s * waveK)
+            lateral.append(amplitude * ramp * wave)
+        }
+
+        var halfWidths: [CGFloat] = []
+        for i in 0...segments {
+            let s = CGFloat(i) / CGFloat(segments)
+            let w = overlayCursorTailBaseWidth
+                + (overlayCursorTailTipWidth - overlayCursorTailBaseWidth) * s
+            halfWidths.append(w * 0.5)
+        }
+
+        var leftEdge: [CGPoint] = []
+        var rightEdge: [CGPoint] = []
+        for i in 0...segments {
+            let c = centerline[i]
+            let lat = lateralBasis[i]
+            let off = lateral[i]
+            let hw = halfWidths[i]
+            let centerOffset = CGPoint(x: c.x + lat.x * off, y: c.y + lat.y * off)
+            leftEdge.append(
+                CGPoint(x: centerOffset.x + lat.x * hw, y: centerOffset.y + lat.y * hw)
+            )
+            rightEdge.append(
+                CGPoint(x: centerOffset.x - lat.x * hw, y: centerOffset.y - lat.y * hw)
+            )
+        }
+
+        let path = CGMutablePath()
+        guard let firstLeft = leftEdge.first, let firstRight = rightEdge.first else {
+            return path
+        }
+        path.move(to: firstLeft)
+        for i in 1..<leftEdge.count {
+            let prev = leftEdge[i - 1]
+            let curr = leftEdge[i]
+            let mid = CGPoint(x: (prev.x + curr.x) * 0.5, y: (prev.y + curr.y) * 0.5)
+            path.addQuadCurve(to: mid, control: prev)
+            if i == leftEdge.count - 1 {
+                path.addLine(to: curr)
+            }
+        }
+
+        let tip = centerline.last!
+        let lastRight = rightEdge.last!
+        let tipDir = lateralBasis.last!
+        let beyondTip = CGPoint(
+            x: tip.x - tipDir.y * overlayCursorTailTipWidth * 0.6,
+            y: tip.y + tipDir.x * overlayCursorTailTipWidth * 0.6
+        )
+        path.addQuadCurve(to: lastRight, control: beyondTip)
+        for i in stride(from: rightEdge.count - 2, through: 0, by: -1) {
+            let next = rightEdge[i]
+            let prev = rightEdge[i + 1]
+            let mid = CGPoint(x: (prev.x + next.x) * 0.5, y: (prev.y + next.y) * 0.5)
+            path.addQuadCurve(to: mid, control: prev)
+            if i == 0 {
+                path.addLine(to: next)
+            }
+        }
+        path.addLine(to: firstRight)
+        path.closeSubpath()
+        return path
+    }
+
+    private func updateTailPath(at now: CFTimeInterval, hasActivePath: Bool) {
+        guard let mask = tailGradientMask, let stroke = tailStroke else { return }
+        let phase = CGFloat(now) * overlayCursorTailWiggleFrequencyHz * 2 * .pi
+        let amplitude = hasActivePath
+            ? overlayCursorTailMoveWiggleAmplitude
+            : overlayCursorTailIdleWiggleAmplitude
+        let path = tailPath(phase: phase, amplitude: amplitude)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        mask.path = path
+        stroke.path = path
+        CATransaction.commit()
+    }
+
+    private func applyCursorState(
+        _ cursor: CALayer,
+        position: CGPoint,
+        rotation: CGFloat,
+        scale: CGFloat = 1
+    ) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        cursor.position = position
+        setCursorTransform(cursor, rotation: rotation, scale: scale)
+        CATransaction.commit()
+    }
+
+    private func isBusy(at now: CFTimeInterval) -> Bool {
+        activePath != nil || now < animationFinishesAt
+    }
+
+    private func hideImmediate(preservingTargetIdentity: Bool = false) {
+        window?.orderOut(nil)
+        window = nil
+        cursorLayer = nil
+        tailGradient = nil
+        tailGradientMask = nil
+        tailStroke = nil
+        currentScreen = nil
+        currentViewportFrame = nil
+        if !preservingTargetIdentity {
+            currentTargetIdentity = nil
+        }
+        currentInteractionKind = nil
+        lastOrderedAboveWindowID = nil
+        lastTargetOnScreen = nil
+        currentPosition = nil
+        activePath = nil
+        lastArrivalTangent = nil
+        renderedAngle = overlayCursorBaseRotation
+        idleAnimationStartedAt = nil
+        clickPulseStartedAt = nil
+        shouldTriggerClickPulse = false
+        didTriggerClickPulseForMove = false
+        lastTickAt = nil
+    }
+}
+
+final class UnifiedAutomationOverlayService {
+    private let busyUntilPath: String
+    private let controller: PersistentOverlayController
+    private var timer: Timer?
+    private var lastActivity = Date()
+    private var hasVisibleOverlay = false
+
+    init(busyUntilPath: String) {
+        self.busyUntilPath = busyUntilPath
+        self.controller = PersistentOverlayController(busyUntilPath: busyUntilPath)
+        try? FileManager.default.removeItem(atPath: busyUntilPath)
+    }
+
+    func start() {
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            self?.tick()
+        }
+    }
+
+    func perform<T>(
+        enabled: Bool,
+        target: UnifiedOverlayTarget?,
+        body: () -> T
+    ) -> T {
+        guard enabled, let target else {
+            return body()
+        }
+
+        waitUntilIdle()
+        lastActivity = Date()
+        hasVisibleOverlay = true
+        controller.showOrMove(
+            frame: target.frame,
+            viewportFrame: target.viewportFrame,
+            cursorAt: target.cursorPoint,
+            targetIdentity: target.targetIdentity,
+            interactionKind: target.interactionKind
+        )
+
+        if overlayInteractionIsClickLike(target.interactionKind) {
+            waitUntilActionReady()
+        }
+
+        defer {
+            waitUntilIdle()
+        }
+        return body()
+    }
+
+    func hide() {
+        controller.hide()
+        hasVisibleOverlay = false
+    }
+
+    private func tick() {
+        controller.tick()
+        controller.tickPendingShow()
+        if hasVisibleOverlay, Date().timeIntervalSince(lastActivity) > overlayIdleTimeout {
+            hide()
+        }
+    }
+
+    private func waitUntilActionReady() {
+        waitUntil {
+            readOverlayBusyClockState(at: busyUntilPath).actionReadyAtMs
+        }
+    }
+
+    private func waitUntilIdle() {
+        waitUntil {
+            readOverlayBusyClockState(at: busyUntilPath).busyUntilMs
+        }
+    }
+
+    private func waitUntil(deadline: () -> Double) {
+        while deadline() > Date().timeIntervalSince1970 * 1000 {
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.016))
+        }
+    }
+}
+
+private var currentAutomationOverlayService: UnifiedAutomationOverlayService?
+
+func overlayInteractionIsClickLike(_ kind: String?) -> Bool {
+    switch kind {
+    case "click", "click-point", "secondary-action", "perform-secondary-action":
+        return true
+    default:
+        return false
+    }
+}
+
+func withUnifiedActionOverlay<T>(
+    enabled: Bool,
+    statePath: String,
+    snapshot: SnapshotDocument?,
+    target: AppTarget,
+    frame: Rect?,
+    cursorPoint: CGPoint? = nil,
+    interactionKind: String,
+    body: () -> T
+) -> T {
+    if let service = currentAutomationOverlayService {
+        let overlayTarget = snapshot.flatMap {
+            resolvedUnifiedOverlayTarget(
+                snapshot: $0,
+                target: target,
+                frame: frame,
+                cursorPoint: cursorPoint,
+                interactionKind: interactionKind
+            )
+        }
+        return service.perform(enabled: enabled, target: overlayTarget, body: body)
+    }
+    return withActionOverlay(
+        enabled: enabled,
+        statePath: statePath,
+        frame: frame,
+        cursorPoint: cursorPoint,
+        body: body
+    )
 }
 
 // ScreenCaptureKit-backed window capture. Falls back to /usr/sbin/screencapture
@@ -4050,8 +5219,7 @@ func actionSuccessPayload(
     )
 }
 
-func run() throws {
-    let args = Array(CommandLine.arguments.dropFirst())
+func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
     guard let command = args.first else {
         throw NSError(domain: "desktop_automation", code: 6, userInfo: [
             NSLocalizedDescriptionKey: "Missing command."
@@ -4062,7 +5230,7 @@ func run() throws {
     // `list-apps` is pure NSWorkspace + LaunchServices and does not need a
     // WindowServer connection, so it short-circuits before the bootstrap.
     if command == "list-apps" {
-        exitWithJson(listAppsCommand())
+        return commandResult(listAppsCommand())
     }
 
     // Every other command touches a GUI-bound API: ScreenCaptureKit (used
@@ -4078,7 +5246,7 @@ func run() throws {
     // job, etc.) so the model gets a directly actionable message instead
     // of a process-killing CG assertion.
     guard tryBootstrapAppKit() else {
-        exitWithJson(
+        return commandResult(
             ErrorPayload(
                 ok: false,
                 error:
@@ -4094,7 +5262,7 @@ func run() throws {
     }
 
     guard AXIsProcessTrusted() else {
-        exitWithJson(
+        return commandResult(
             ErrorPayload(
                 ok: false,
                 error: "Accessibility permission is required for desktop automation.",
@@ -4109,7 +5277,7 @@ func run() throws {
     switch command {
     case "snapshot":
         let options = try snapshotOptions(from: commandArgs)
-        exitWithJson(try snapshotCommand(options))
+        return commandResult(try snapshotCommand(options))
     case "click":
         let options = try actionOptions(from: commandArgs)
         let positional = positionalArguments(commandArgs)
@@ -4125,10 +5293,13 @@ func run() throws {
             ])
         }
         let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
-        let (clicked, usedAction) = withActionOverlay(
+        let (clicked, usedAction) = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
-            frame: resolved.candidate.frame
+            snapshot: snapshot,
+            target: target,
+            frame: resolved.candidate.frame,
+            interactionKind: "click"
         ) {
             performClick(
                 candidate: resolved.candidate,
@@ -4158,7 +5329,7 @@ func run() throws {
             inlineScreenshot: options.inlineScreenshot
         )
         warnings.append(contentsOf: refreshWarnings)
-        exitWithJson(
+        return commandResult(
             actionSuccessPayload(
                 action: "click",
                 ref: ref,
@@ -4180,10 +5351,13 @@ func run() throws {
         let ref = positional[0]
         let text = positional[1]
         let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
-        let (filled, fillUsedAction) = withActionOverlay(
+        let (filled, fillUsedAction) = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
-            frame: resolved.candidate.frame
+            snapshot: snapshot,
+            target: target,
+            frame: resolved.candidate.frame,
+            interactionKind: "fill"
         ) {
             setValue(
                 candidate: resolved.candidate,
@@ -4213,7 +5387,7 @@ func run() throws {
             inlineScreenshot: options.inlineScreenshot
         )
         warnings.append(contentsOf: refreshWarnings)
-        exitWithJson(
+        return commandResult(
             actionSuccessPayload(
                 action: "fill",
                 ref: ref,
@@ -4233,10 +5407,13 @@ func run() throws {
             ])
         }
         let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
-        let focusOk = withActionOverlay(
+        let focusOk = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
-            frame: resolved.candidate.frame
+            snapshot: snapshot,
+            target: target,
+            frame: resolved.candidate.frame,
+            interactionKind: "focus"
         ) {
             setFocused(resolved.candidate.element)
         }
@@ -4258,7 +5435,7 @@ func run() throws {
             inlineScreenshot: options.inlineScreenshot
         )
         warnings.append(contentsOf: refreshWarnings)
-        exitWithJson(
+        return commandResult(
             actionSuccessPayload(
                 action: "focus",
                 ref: ref,
@@ -4294,10 +5471,13 @@ func run() throws {
                 captureDiagnosticScreenshot: options.captureScreenshot
             )
         }
-        let secondaryOk = withActionOverlay(
+        let secondaryOk = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
-            frame: resolved.candidate.frame
+            snapshot: snapshot,
+            target: target,
+            frame: resolved.candidate.frame,
+            interactionKind: command
         ) {
             performSemanticAction(candidate: resolved.candidate, actionName: resolvedActionName)
         }
@@ -4319,7 +5499,7 @@ func run() throws {
             inlineScreenshot: options.inlineScreenshot
         )
         warnings.append(contentsOf: refreshWarnings)
-        exitWithJson(
+        return commandResult(
             actionSuccessPayload(
                 action: "secondary-action",
                 ref: ref,
@@ -4347,10 +5527,13 @@ func run() throws {
             ])
         }
         let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
-        let scrollResult = withActionOverlay(
+        let scrollResult = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
-            frame: resolved.candidate.frame
+            snapshot: snapshot,
+            target: target,
+            frame: resolved.candidate.frame,
+            interactionKind: "scroll"
         ) {
             performScroll(
                 candidate: resolved.candidate,
@@ -4382,7 +5565,7 @@ func run() throws {
         )
         warnings.append(contentsOf: refreshWarnings)
         let pageSummary = pages == 1 ? "1 page" : "\(pages) pages"
-        exitWithJson(
+        return commandResult(
             actionSuccessPayload(
                 action: "scroll",
                 ref: ref,
@@ -4413,7 +5596,19 @@ func run() throws {
         guard let target else {
             throw failure("click-point requires a valid target app context.")
         }
-        guard postLeftClick(at: CGPoint(x: x, y: y), target: target, raise: !options.noRaise) else {
+        let point = CGPoint(x: x, y: y)
+        let clicked = withUnifiedActionOverlay(
+            enabled: overlayEnabled(options),
+            statePath: options.statePath,
+            snapshot: snapshot,
+            target: target,
+            frame: nil,
+            cursorPoint: point,
+            interactionKind: "click-point"
+        ) {
+            postLeftClick(at: point, target: target, raise: !options.noRaise)
+        }
+        guard clicked else {
             throw failureWithScreenshot(
                 "Failed to send pointer click.",
                 statePath: options.statePath,
@@ -4430,7 +5625,7 @@ func run() throws {
             inlineScreenshot: options.inlineScreenshot
         )
         warnings.append(contentsOf: refreshWarnings)
-        exitWithJson(
+        return commandResult(
             actionSuccessPayload(
                 action: "click-point",
                 ref: nil,
@@ -4487,7 +5682,7 @@ func run() throws {
             inlineScreenshot: options.inlineScreenshot
         )
         warnings.append(contentsOf: refreshWarnings)
-        exitWithJson(
+        return commandResult(
             actionSuccessPayload(
                 action: "drag",
                 ref: nil,
@@ -4631,7 +5826,7 @@ func run() throws {
             inlineScreenshot: options.inlineScreenshot
         )
         warnings.append(contentsOf: refreshWarnings)
-        exitWithJson(
+        return commandResult(
             actionSuccessPayload(
                 action: "drag-element",
                 ref: sourceRef,
@@ -4676,7 +5871,7 @@ func run() throws {
             inlineScreenshot: options.inlineScreenshot
         )
         warnings.append(contentsOf: refreshWarnings)
-        exitWithJson(
+        return commandResult(
             actionSuccessPayload(
                 action: "type",
                 ref: nil,
@@ -4721,7 +5916,7 @@ func run() throws {
             inlineScreenshot: options.inlineScreenshot
         )
         warnings.append(contentsOf: refreshWarnings)
-        exitWithJson(
+        return commandResult(
             actionSuccessPayload(
                 action: "press",
                 ref: nil,
@@ -4739,28 +5934,327 @@ func run() throws {
     }
 }
 
-do {
-    try run()
-} catch let failure as DesktopAutomationFailure {
-    exitWithJson(
-        ErrorPayload(
-            ok: false,
-            error: failure.message,
-            warnings: failure.warnings,
-            screenshot: failure.screenshot,
-            screenshotPath: failure.screenshotPath
-        ),
-        code: 1
-    )
-} catch {
-    exitWithJson(
-        ErrorPayload(
-            ok: false,
-            error: error.localizedDescription,
-            warnings: [],
-            screenshot: nil,
-            screenshotPath: nil
-        ),
-        code: 1
+func executeCommand(args: [String]) -> CommandExecutionResult {
+    do {
+        return try executeCommandInternal(args: args)
+    } catch let failure as DesktopAutomationFailure {
+        return commandResult(
+            ErrorPayload(
+                ok: false,
+                error: failure.message,
+                warnings: failure.warnings,
+                screenshot: failure.screenshot,
+                screenshotPath: failure.screenshotPath
+            ),
+            code: 1
+        )
+    } catch {
+        return commandResult(
+            ErrorPayload(
+                ok: false,
+                error: error.localizedDescription,
+                warnings: [],
+                screenshot: nil,
+                screenshotPath: nil
+            ),
+            code: 1
+        )
+    }
+}
+
+struct AutomationDaemonOptions {
+    let socketPath: String
+    let pidFile: String
+}
+
+func automationDaemonOptions(from args: [String]) throws -> AutomationDaemonOptions {
+    guard let socketPath = parseNamedOption(args, key: "--socket-path"),
+          let pidFile = parseNamedOption(args, key: "--pid-file") else {
+        throw NSError(domain: "desktop_automation_daemon", code: 1, userInfo: [
+            NSLocalizedDescriptionKey:
+                "desktop_automation daemon requires --socket-path and --pid-file."
+        ])
+    }
+    return AutomationDaemonOptions(
+        socketPath: socketPath,
+        pidFile: pidFile
     )
 }
+
+func writeTextAtomic(_ text: String, to path: String) throws {
+    let url = URL(fileURLWithPath: path)
+    try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true,
+        attributes: nil
+    )
+    guard let data = text.data(using: .utf8) else {
+        throw NSError(domain: "desktop_automation_daemon", code: 4, userInfo: [
+            NSLocalizedDescriptionKey: "Failed to encode daemon file contents."
+        ])
+    }
+    try data.write(to: url, options: .atomic)
+}
+
+func withDaemonRequestEnvironment(
+    _ env: [String: String],
+    body: () -> CommandExecutionResult
+) -> CommandExecutionResult {
+    let scopedKeys = Array(Set(daemonScopedEnvironmentKeys).union(env.keys))
+    var previousValues: [String: String?] = [:]
+    for key in scopedKeys {
+        previousValues[key] = ProcessInfo.processInfo.environment[key]
+        unsetenv(key)
+    }
+    for (key, value) in env {
+        setenv(key, value, 1)
+    }
+    let result = body()
+    for key in scopedKeys {
+        if let previous = previousValues[key] {
+            if let previous {
+                setenv(key, previous, 1)
+            } else {
+                unsetenv(key)
+            }
+        } else {
+            unsetenv(key)
+        }
+    }
+    return result
+}
+
+final class AutomationDaemon {
+    private let options: AutomationDaemonOptions
+    private let serverQueue = DispatchQueue(label: "desktop_automation.daemon.server")
+    private var listeningFD: Int32 = -1
+
+    init(options: AutomationDaemonOptions) {
+        self.options = options
+    }
+
+    func start() throws -> Never {
+        guard tryBootstrapAppKit() else {
+            throw NSError(domain: "desktop_automation_daemon", code: 2, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "desktop_automation daemon requires a graphical (WindowServer) session."
+            ])
+        }
+        guard AXIsProcessTrusted() else {
+            throw NSError(domain: "desktop_automation_daemon", code: 3, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Accessibility permission is required for the desktop_automation daemon."
+            ])
+        }
+
+        signal(SIGPIPE, SIG_IGN)
+        try FileManager.default.createDirectory(
+            at: URL(fileURLWithPath: options.socketPath).deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        try? FileManager.default.removeItem(atPath: options.socketPath)
+        try writeTextAtomic(String(ProcessInfo.processInfo.processIdentifier), to: options.pidFile)
+        let overlayBusyUntilPath = URL(fileURLWithPath: options.pidFile)
+            .deletingLastPathComponent()
+            .appendingPathComponent("overlay-busy-until.json")
+            .path
+        let overlayService = UnifiedAutomationOverlayService(busyUntilPath: overlayBusyUntilPath)
+        overlayService.start()
+        currentAutomationOverlayService = overlayService
+        listeningFD = try makeListeningSocket(at: options.socketPath)
+        serverQueue.async { [weak self] in
+            self?.acceptLoop()
+        }
+        while true {
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.25))
+        }
+    }
+
+    private func acceptLoop() {
+        while true {
+            let clientFD = accept(listeningFD, nil, nil)
+            if clientFD < 0 {
+                if errno == EINTR {
+                    continue
+                }
+                fputs("desktop_automation daemon accept failed: \(String(cString: strerror(errno)))\n", stderr)
+                continue
+            }
+            handleClient(clientFD)
+        }
+    }
+
+    private func handleClient(_ clientFD: Int32) {
+        defer {
+            close(clientFD)
+        }
+
+        guard let requestData = readSocketData(from: clientFD) else {
+            return
+        }
+
+        let decoder = JSONDecoder()
+        guard let request = try? decoder.decode(AutomationDaemonRequest.self, from: requestData) else {
+            let response = AutomationDaemonResponse(
+                seq: 0,
+                status: 1,
+                stdout: "{\"ok\":false,\"error\":\"invalid daemon request\"}",
+                stderr: ""
+            )
+            _ = writeSocketData(encodedResponseData(for: response), to: clientFD)
+            return
+        }
+
+        let result = executeDaemonRequest(request)
+        let response = AutomationDaemonResponse(
+            seq: request.seq,
+            status: result.status,
+            stdout: result.stdout,
+            stderr: result.stderr
+        )
+        _ = writeSocketData(encodedResponseData(for: response), to: clientFD)
+    }
+
+    private func executeDaemonRequest(_ request: AutomationDaemonRequest) -> CommandExecutionResult {
+        if request.argv.first == "daemon" {
+            return commandResult(
+                ErrorPayload(
+                    ok: false,
+                    error: "desktop_automation daemon cannot execute nested daemon commands.",
+                    warnings: [],
+                    screenshot: nil,
+                    screenshotPath: nil
+                ),
+                code: 1
+            )
+        }
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var result = commandResult(
+            ErrorPayload(
+                ok: false,
+                error: "desktop_automation daemon failed to execute request.",
+                warnings: [],
+                screenshot: nil,
+                screenshotPath: nil
+            ),
+            code: 1
+        )
+
+        DispatchQueue.main.async {
+            result = withDaemonRequestEnvironment(request.env ?? [:]) {
+                executeCommand(args: request.argv)
+            }
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+        return result
+    }
+}
+
+func encodedResponseData(for response: AutomationDaemonResponse) -> Data {
+    if let text = try? encodedJson(response) {
+        return Data(text.utf8)
+    }
+    return Data("{\"seq\":0,\"status\":1,\"stdout\":\"\",\"stderr\":\"failed to encode daemon response\"}".utf8)
+}
+
+func readSocketData(from fd: Int32) -> Data? {
+    var data = Data()
+    var byte: UInt8 = 0
+    while true {
+        let count = read(fd, &byte, 1)
+        if count > 0 {
+            if byte == 0x0A {
+                return data
+            }
+            data.append(&byte, count: 1)
+            continue
+        }
+        if count == 0 {
+            return data.isEmpty ? nil : data
+        }
+        if errno == EINTR {
+            continue
+        }
+        return nil
+    }
+}
+
+func writeSocketData(_ data: Data, to fd: Int32) -> Bool {
+    let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: false)
+    do {
+        try handle.write(contentsOf: data)
+        return true
+    } catch {
+        return false
+    }
+}
+
+func makeListeningSocket(at path: String) throws -> Int32 {
+    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+    guard fd >= 0 else {
+        throw NSError(domain: "desktop_automation_daemon", code: 5, userInfo: [
+            NSLocalizedDescriptionKey: "Failed to create daemon socket."
+        ])
+    }
+
+    var address = sockaddr_un()
+    address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+    address.sun_family = sa_family_t(AF_UNIX)
+    let maxPathLength = MemoryLayout.size(ofValue: address.sun_path)
+    let utf8Path = path.utf8CString
+    guard utf8Path.count <= maxPathLength else {
+        close(fd)
+        throw NSError(domain: "desktop_automation_daemon", code: 6, userInfo: [
+            NSLocalizedDescriptionKey: "Daemon socket path is too long."
+        ])
+    }
+
+    withUnsafeMutablePointer(to: &address.sun_path) { pointer in
+        let buffer = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: CChar.self)
+        buffer.initialize(repeating: 0, count: maxPathLength)
+        _ = utf8Path.withUnsafeBufferPointer { chars in
+            strncpy(buffer, chars.baseAddress, maxPathLength - 1)
+        }
+    }
+
+    let addressLength = socklen_t(address.sun_len)
+    let bindResult = withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            bind(fd, $0, addressLength)
+        }
+    }
+    guard bindResult == 0 else {
+        let message = String(cString: strerror(errno))
+        close(fd)
+        throw NSError(domain: "desktop_automation_daemon", code: 7, userInfo: [
+            NSLocalizedDescriptionKey: "Failed to bind daemon socket: \(message)"
+        ])
+    }
+
+    guard listen(fd, SOMAXCONN) == 0 else {
+        let message = String(cString: strerror(errno))
+        close(fd)
+        throw NSError(domain: "desktop_automation_daemon", code: 8, userInfo: [
+            NSLocalizedDescriptionKey: "Failed to listen on daemon socket: \(message)"
+        ])
+    }
+
+    return fd
+}
+
+let cliArgs = Array(CommandLine.arguments.dropFirst())
+if cliArgs.first == "daemon" {
+    do {
+        let daemon = AutomationDaemon(options: try automationDaemonOptions(from: Array(cliArgs.dropFirst())))
+        try daemon.start()
+    } catch {
+        fputs("desktop_automation daemon failed to start: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+}
+
+emitCommandResult(executeCommand(args: cliArgs))

@@ -38,14 +38,6 @@ swiftc -O -o "$OUTPUT_DIR/desktop_automation" src/desktop_automation.swift \
   -framework ScreenCaptureKit
 echo "Build successful: $OUTPUT_DIR/desktop_automation"
 
-echo "Building desktop_overlay (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/desktop_overlay" src/desktop_overlay.swift \
-  -framework AppKit \
-  -framework CoreGraphics \
-  -framework Foundation \
-  -framework QuartzCore
-echo "Build successful: $OUTPUT_DIR/desktop_overlay"
-
 echo "Building home_apps (macOS)..."
 swiftc -O -o "$OUTPUT_DIR/home_apps" src/home_apps.swift \
   -framework AppKit \
