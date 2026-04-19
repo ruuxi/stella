@@ -168,12 +168,6 @@ const listRecentAppsMac = async (limit: number): Promise<RecentApp[] | null> => 
     return null
   }
 
-  if (Array.isArray(parsed.warnings) && parsed.warnings.length > 0) {
-    for (const w of parsed.warnings) {
-      console.log('[home] home_apps diag:', w)
-    }
-  }
-
   const cleaned: RecentApp[] = []
   const seenPids = new Set<number>()
 
