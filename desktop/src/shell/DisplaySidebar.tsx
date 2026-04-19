@@ -22,8 +22,8 @@ type DisplaySidebarProps = {
   onOpenChange?: (open: boolean) => void;
 };
 
-export const DisplaySidebar = forwardRef<DisplaySidebarHandle>(
-  function DisplaySidebar({ onOpenChange }: DisplaySidebarProps, ref) {
+export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarProps>(
+  function DisplaySidebar({ onOpenChange }, ref) {
     const { gradientMode, gradientColor } = useTheme();
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);

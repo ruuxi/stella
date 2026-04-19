@@ -79,6 +79,10 @@ export type MessagePayload = {
   agentType?: string;
   attachments?: Attachment[];
   mode?: string;
+  /** Set on assistant_message events to thread back to the user message
+   *  that triggered them (used by the renderer to pin the in-flight turn
+   *  and dismiss the pending state once the assistant reply lands). */
+  userMessageId?: string;
   usage?: {
     inputTokens?: number;
     outputTokens?: number;
@@ -153,6 +157,10 @@ export type TaskItem = {
   description: string;
   agentType: string;
   status: "running" | "completed" | "error" | "canceled";
+  /** Identifier of the agent run that owns this task. Set when a task is
+   *  produced from streaming events (resume snapshots, task-upserts).
+   *  Tasks reconstructed from local persisted events may not have it. */
+  runId?: string;
   anchorTurnId?: string;
   parentTaskId?: string;
   statusText?: string;
