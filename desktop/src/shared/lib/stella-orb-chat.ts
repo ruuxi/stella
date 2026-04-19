@@ -53,3 +53,9 @@ export function dispatchOpenDisplaySidebar() {
 export function dispatchCloseDisplaySidebar() {
   window.dispatchEvent(new CustomEvent(STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT));
 }
+
+export const STELLA_SHOW_HOME_EVENT = "stella:show-home";
+
+export function dispatchShowHome() {
+  window.dispatchEvent(new CustomEvent(STELLA_SHOW_HOME_EVENT));
+}

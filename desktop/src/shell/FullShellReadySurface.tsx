@@ -12,7 +12,9 @@ import { secureSignOut } from "@/global/auth/services/auth";
 import {
   dispatchCloseDisplaySidebar,
   dispatchCloseSidebarChat,
+  dispatchOpenDisplaySidebar,
   dispatchOpenSidebarChat,
+  dispatchShowHome,
 } from "@/shared/lib/stella-orb-chat";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
@@ -36,16 +38,15 @@ type PendingAskStellaRequest = {
 
 type FullShellReadySurfaceProps = {
   /**
-   * True while the onboarding splash is animating out. Currently consumed
-   * by sub-surfaces (kept on the type so callers don't have to change), but
-   * the home page no longer needs to coordinate any composer-entering
-   * animation since the composer lives in the sidebar.
+   * True while the onboarding splash is animating out — drives the chat
+   * composer's fade-in animation so the composer enters in time with the
+   * splash exit.
    */
   onboardingExiting?: boolean;
 };
 
 export const FullShellReadySurface = ({
-  onboardingExiting: _onboardingExiting,
+  onboardingExiting,
 }: FullShellReadySurfaceProps) => {
   const { state, setView } = useUiState();
   const activeConversationId = state.conversationId;
@@ -54,6 +55,7 @@ export const FullShellReadySurface = ({
     useState<PendingAskStellaRequest | null>(null);
   const [isSidebarChatOpen, setIsSidebarChatOpen] = useState(false);
   const [isDisplaySidebarOpen, setIsDisplaySidebarOpen] = useState(false);
+  const [isShowingHomeContent, setIsShowingHomeContent] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
@@ -81,6 +83,10 @@ export const FullShellReadySurface = ({
 
   const showChatView = useCallback(() => {
     if (state.view === "chat") {
+      // Already on chat view — clicking Home/Back forces the home overlay
+      // back into view (the runtime listens for STELLA_SHOW_HOME_EVENT and
+      // calls forceShowHome on the idle-home-visibility hook).
+      dispatchShowHome();
       return;
     }
     setView("chat");
@@ -122,22 +128,28 @@ export const FullShellReadySurface = ({
 
   const showChatSurface = state.view === "chat" || state.view === "social";
 
-  // Right-click toggles the chat sidebar from any view. When the display
-  // sidebar happens to be open (a runtime-driven HTML panel), favor closing
-  // it first so the same gesture dismisses whichever overlay is showing.
+  // Right-click context-menu gesture targets the appropriate overlay based
+  // on the active view: on chat (Home) it opens/closes the Display sidebar
+  // so the runtime's HTML panel is the focus; everywhere else it opens/closes
+  // the chat sidebar.
   const handleContextMenuOpenSidebarChat = useCallback(() => {
+    if (state.view === "chat") {
+      dispatchOpenDisplaySidebar();
+      return;
+    }
     dispatchOpenSidebarChat();
-  }, []);
+  }, [state.view]);
 
   const handleContextMenuCloseSidebarChat = useCallback(() => {
-    if (isDisplaySidebarOpen) {
+    if (state.view === "chat") {
       dispatchCloseDisplaySidebar();
       return;
     }
     dispatchCloseSidebarChat();
-  }, [isDisplaySidebarOpen]);
+  }, [state.view]);
 
-  const isContextMenuPanelOpen = isSidebarChatOpen || isDisplaySidebarOpen;
+  const isContextMenuPanelOpen =
+    state.view === "chat" ? isDisplaySidebarOpen : isSidebarChatOpen;
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
@@ -150,6 +162,7 @@ export const FullShellReadySurface = ({
       <Sidebar
         className={drawerOpen ? "sidebar--drawer-open" : undefined}
         activeView={state.view}
+        isShowingHomeContent={isShowingHomeContent}
         onSignIn={showAuthDialog}
         onConnect={showConnectDialog}
         onSettings={showSettingsDialog}
@@ -198,12 +211,14 @@ export const FullShellReadySurface = ({
             <FullShellRuntime
               activeConversationId={activeConversationId}
               activeView={state.view}
+              composerEntering={Boolean(onboardingExiting)}
               conversationId={activeConversationId}
               onSignIn={showAuthDialog}
               pendingAskStellaRequest={pendingAskStellaRequest}
               onPendingAskStellaHandled={handlePendingAskStellaHandled}
               onSidebarChatOpenChange={setIsSidebarChatOpen}
               onDisplaySidebarOpenChange={setIsDisplaySidebarOpen}
+              onHomeContentChange={setIsShowingHomeContent}
             />
           </Suspense>
         </div>
