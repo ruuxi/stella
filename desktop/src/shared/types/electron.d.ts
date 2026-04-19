@@ -793,7 +793,22 @@ export type ElectronScreenGuideApi = {
 // ---------------------------------------------------------------------------
 
 export type ElectronDisplayApi = {
-  onUpdate: (callback: (html: string) => void) => () => void;
+  /**
+   * Subscribes to runtime-driven Display sidebar updates.
+   *
+   * Payload is either a raw HTML string (legacy: emitted by the agent's
+   * `Display` tool) or a structured `DisplayPayload` object describing what
+   * to render. Callers should pass through `normalizeDisplayPayload` from
+   * `@/shared/contracts/display-payload` to handle both shapes uniformly.
+   */
+  onUpdate: (callback: (payload: string | unknown) => void) => () => void;
+  /**
+   * Reads a file as base64 from the main process. Used by the PDF viewer
+   * to load local PDFs without giving the renderer file:// access.
+   */
+  readFile: (
+    filePath: string,
+  ) => Promise<{ contentsBase64: string; sizeBytes: number; mimeType: string }>;
 };
 
 export type ElectronOfficePreviewApi = {
