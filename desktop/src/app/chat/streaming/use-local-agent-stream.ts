@@ -331,14 +331,18 @@ function streamStoreReducer(
       const nextRunsById = { ...state.runsById };
       const nextTasksByRunId = { ...state.tasksByRunId };
       for (const task of action.tasks) {
-        nextRunsById[task.runId] = nextRunsById[task.runId] ?? {
-          runId: task.runId,
+        // Hydrate tasks always come from resume snapshots which carry runId;
+        // skip any oddballs that don't, since they can't be bucketed by run.
+        const runId = task.runId;
+        if (!runId) continue;
+        nextRunsById[runId] = nextRunsById[runId] ?? {
+          runId,
           conversationId: action.conversationId,
           terminal: false,
           statusText: null,
         };
-        nextTasksByRunId[task.runId] = {
-          ...(nextTasksByRunId[task.runId] ?? {}),
+        nextTasksByRunId[runId] = {
+          ...(nextTasksByRunId[runId] ?? {}),
           [task.id]: task,
         };
       }
@@ -421,6 +425,7 @@ const toTaskFromResumeSnapshot = (
   nowMs: number,
 ): TaskItem => ({
   id: snapshot.taskId,
+  runId: snapshot.runId,
   description: snapshot.description ?? "Task",
   agentType: snapshot.agentType || AGENT_IDS.GENERAL,
   status:
