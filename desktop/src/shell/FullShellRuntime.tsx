@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { HomeContent } from "@/app/home/HomeContent";
+import { ChatColumn } from "@/app/chat/ChatColumn";
 import { SocialView } from "@/app/social/SocialView";
 import type { ViewType } from "@/shared/contracts/ui";
 import {
@@ -27,23 +27,27 @@ type PendingAskStellaRequest = {
 type FullShellRuntimeProps = {
   activeConversationId: string | null;
   activeView: ViewType;
+  composerEntering: boolean;
   conversationId: string | null;
   onSignIn: () => void;
   pendingAskStellaRequest: PendingAskStellaRequest | null;
   onPendingAskStellaHandled: (requestId: number) => void;
   onSidebarChatOpenChange?: (open: boolean) => void;
   onDisplaySidebarOpenChange?: (open: boolean) => void;
+  onHomeContentChange?: (showing: boolean) => void;
 };
 
 export const FullShellRuntime = ({
   activeConversationId,
   activeView,
+  composerEntering,
   conversationId,
   onSignIn,
   pendingAskStellaRequest,
   onPendingAskStellaHandled,
   onSidebarChatOpenChange,
   onDisplaySidebarOpenChange,
+  onHomeContentChange,
 }: FullShellRuntimeProps) => {
   const sidebarRef = useRef<ChatSidebarHandle>(null);
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
@@ -53,6 +57,21 @@ export const FullShellRuntime = ({
     activeView,
     isDev: import.meta.env.DEV,
   });
+
+  useEffect(() => {
+    onHomeContentChange?.(chat.showHomeContent);
+  }, [chat.showHomeContent, onHomeContentChange]);
+
+  const activeViewRef = useRef(activeView);
+  const showHomeContentRef = useRef(chat.showHomeContent);
+
+  useEffect(() => {
+    activeViewRef.current = activeView;
+  }, [activeView]);
+
+  useEffect(() => {
+    showHomeContentRef.current = chat.showHomeContent;
+  }, [chat.showHomeContent]);
 
   useEffect(() => {
     if (!pendingAskStellaRequest) {
@@ -69,15 +88,20 @@ export const FullShellRuntime = ({
     onPendingAskStellaHandled(pendingAskStellaRequest.id);
   }, [onPendingAskStellaHandled, pendingAskStellaRequest]);
 
-  // Display sidebar mirrors any HTML the runtime emits. Always mount it,
-  // and update its content as it changes — opening on the first payload
-  // for whichever view is active.
+  // Display sidebar mirrors any HTML the runtime emits. Always mount it.
+  // When the user is on home (chat view, home content visible), the first
+  // HTML push opens the sidebar; in other contexts it just updates content
+  // so the user has to invoke it themselves via the orb / event.
   useEffect(() => {
     return window.electronAPI?.display.onUpdate((html) => {
       latestDisplayHtmlRef.current = html;
       const ds = displaySidebarRef.current;
       if (!ds) return;
-      ds.update(html);
+      if (showHomeContentRef.current && activeViewRef.current === "chat") {
+        ds.open(html);
+      } else {
+        ds.update(html);
+      }
     });
   }, []);
 
@@ -156,7 +180,16 @@ export const FullShellRuntime = ({
   return (
     <>
       {activeView === "chat" ? (
-        <HomeContent conversationId={conversationId} />
+        <ChatColumn
+          conversation={chat.conversation}
+          composer={chat.composer}
+          scroll={chat.scroll}
+          composerEntering={composerEntering}
+          conversationId={conversationId}
+          showHomeContent={chat.showHomeContent}
+          onSuggestionClick={chat.onSuggestionClick}
+          onDismissHome={chat.dismissHome}
+        />
       ) : activeView === "social" ? (
         <SocialView onSignIn={onSignIn} />
       ) : null}

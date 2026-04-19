@@ -13,6 +13,7 @@ import {
 } from "@/ui/dropdown-menu";
 import { ShiftingGradient } from "../background/ShiftingGradient";
 import {
+  CustomArrowLeft as ArrowLeft,
   CustomHouse as House,
   CustomDevice as Device,
   CustomLogIn as LogIn,
@@ -28,6 +29,7 @@ import "./sidebar.css";
 interface SidebarProps {
   className?: string;
   activeView?: ViewType;
+  isShowingHomeContent?: boolean;
   hideThemePicker?: boolean;
   themePickerOpen?: boolean;
   onThemePickerOpenChange?: (open: boolean) => void;
@@ -134,6 +136,7 @@ const AuthButton = ({
 export const Sidebar = ({
   className,
   activeView,
+  isShowingHomeContent,
   hideThemePicker,
   themePickerOpen,
   onThemePickerOpenChange,
@@ -181,9 +184,15 @@ export const Sidebar = ({
           onClick={onChat}
         >
           <span className="sidebar-nav-icon">
-            <House size={18} />
+            {activeView === "chat" && !isShowingHomeContent ? (
+              <ArrowLeft size={18} />
+            ) : (
+              <House size={18} />
+            )}
           </span>
-          <span className="sidebar-nav-label">Home</span>
+          <span className="sidebar-nav-label">
+            {activeView === "chat" && !isShowingHomeContent ? "Back" : "Home"}
+          </span>
         </button>
         <button
           type="button"
