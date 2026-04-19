@@ -6,7 +6,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useRef, useState, useEffect } from "react";
 import { animate } from "motion";
 import type { ChatContext } from "@/shared/types/electron";
-import { ComposerContextRow } from "./ComposerContextRow";
+import { ComposerContextRow, ComposerSuggestionContextRow } from "./ComposerContextRow";
 import {
   ComposerAddButton,
   ComposerStopButton,
@@ -136,6 +136,10 @@ export function Composer({
 
   return (
     <div className="composer">
+      <ComposerSuggestionContextRow
+        chatContext={chatContext}
+        setChatContext={setChatContext}
+      />
       <div ref={shellRef} className="composer-shell" {...dropHandlers}>
         <DropOverlay visible={isDragOver} variant="full" />
         <div ref={shellContentRef} className="composer-shell-content">

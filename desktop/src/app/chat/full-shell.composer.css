@@ -23,6 +23,14 @@
   transition: box-shadow 200ms ease;
 }
 
+/* Suggestion chips (auto-context: frontmost app, browser tab, recents)
+ * sit above the shell. Constrain to the same max-width as the shell so the
+ * chips align with the input below them. */
+.composer > .composer-context-actions--suggestions {
+  width: 100%;
+  max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
+}
+
 /* Wraps the optional chip strip + form so the ResizeObserver can spring
  * the shell to the right height when chips appear/disappear. */
 .composer-shell-content {
