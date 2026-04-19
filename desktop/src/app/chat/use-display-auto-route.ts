@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import { isOfficePreviewRef } from "@/shared/contracts/office-preview";
-import type { DisplayPayload } from "@/shared/contracts/display-payload";
+import type { EventRecord } from "./lib/event-transforms";
+import { isOfficePreviewRef } from "../../shared/contracts/office-preview";
+import type { DisplayPayload } from "../../shared/contracts/display-payload";
 
 /**
  * Watches the conversation event stream and routes "visual" tool outputs
@@ -40,7 +40,8 @@ export const useDisplayAutoRoute = (
   }, [events]);
 };
 
-type Candidate = {
+/** Internal — exported for unit tests. */
+export type DisplayCandidate = {
   sourceId: string;
   timestamp: number;
   payload: DisplayPayload;
@@ -48,15 +49,19 @@ type Candidate = {
 
 const PDF_PATH_PATTERN = /\.pdf(?:[?#].*)?$/i;
 
-const findLatestDisplayCandidate = (
+/**
+ * Pure routing logic for `useDisplayAutoRoute`. Exported separately so the
+ * rules can be unit-tested without mounting React.
+ */
+export const findLatestDisplayCandidate = (
   events: EventRecord[],
-): Candidate | null => {
+): DisplayCandidate | null => {
   // Build a quick map of pending Read requests so we can pair them up with
   // their tool_result event.
   const pendingPdfReads = new Map<string, { path: string; timestamp: number }>();
-  let best: Candidate | null = null;
+  let best: DisplayCandidate | null = null;
 
-  const consider = (next: Candidate) => {
+  const consider = (next: DisplayCandidate) => {
     if (!best || next.timestamp >= best.timestamp) {
       best = next;
     }
