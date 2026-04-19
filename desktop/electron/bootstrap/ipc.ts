@@ -3,6 +3,7 @@ import { registerBrowserHandlers } from "../ipc/browser-handlers.js";
 import { registerDiscoveryHandlers } from "../ipc/discovery-handlers.js";
 import { registerGoogleWorkspaceHandlers } from "../ipc/google-workspace-handlers.js";
 import { registerCaptureHandlers } from "../ipc/capture-handlers.js";
+import { registerDisplayHandlers } from "../ipc/display-handlers.js";
 import { registerHomeHandlers } from "../ipc/home-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
@@ -128,6 +129,11 @@ export const registerBootstrapIpcHandlers = (
 
   registerOfficePreviewHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerDisplayHandlers({
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

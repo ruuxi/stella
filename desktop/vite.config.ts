@@ -36,6 +36,95 @@ const IGNORED_SELF_MOD_WATCH_FILES = new Set(
   ),
 )
 
+const PDF_WORKER_PUBLIC_REL = path.posix.join('vendor', 'pdfjs', 'pdf.worker.min.mjs')
+const PDF_WORKER_PUBLIC_ABS = path.resolve(__dirname, 'public', PDF_WORKER_PUBLIC_REL)
+
+/**
+ * Copies the pdfjs-dist worker into `public/vendor/pdfjs/` so the renderer
+ * can load it as a static asset, served by Vite's dev server and emitted
+ * verbatim into `dist/` at build time.
+ *
+ * We can't rely on Vite/Rolldown to resolve the deep package path with
+ * `?url`: the bun-managed node_modules layout hides pdfjs-dist behind
+ * `.bun/node_modules/` and the deep path probe (`new URL("pdfjs-dist/...")`)
+ * only sees Vite's import-map resolver, which doesn't expose deep file
+ * paths through that channel. Copying via Node's resolver is the most
+ * portable path: it works under bun's symlink layout, npm's flat layout,
+ * and pnpm's strict-peer layout.
+ */
+function pdfWorkerAsset(): Plugin {
+  const candidatePaths = [
+    // wojtekmaj/react-pdf nests pdfjs-dist as its own dependency, which is
+    // the most stable resolution target across package managers.
+    path.resolve(
+      __dirname,
+      '..',
+      'node_modules',
+      '.bun',
+      'node_modules',
+      'pdfjs-dist',
+      'build',
+      'pdf.worker.min.mjs',
+    ),
+    path.resolve(
+      __dirname,
+      '..',
+      'node_modules',
+      'pdfjs-dist',
+      'build',
+      'pdf.worker.min.mjs',
+    ),
+    path.resolve(__dirname, 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.min.mjs'),
+  ]
+
+  const resolveSource = (): string | null => {
+    for (const candidate of candidatePaths) {
+      try {
+        if (fs.statSync(candidate).isFile()) {
+          return candidate
+        }
+      } catch {
+        /* try next */
+      }
+    }
+    return null
+  }
+
+  const ensureWorkerCopied = () => {
+    const sourcePath = resolveSource()
+    if (!sourcePath) {
+      console.warn(
+        '[pdf-worker-asset] Could not locate pdfjs-dist/build/pdf.worker.min.mjs; PDF previews will not render.',
+      )
+      return
+    }
+    const destPath = PDF_WORKER_PUBLIC_ABS
+    fs.mkdirSync(path.dirname(destPath), { recursive: true })
+
+    let needsCopy = true
+    try {
+      const sourceStat = fs.statSync(sourcePath)
+      const destStat = fs.statSync(destPath)
+      if (destStat.size === sourceStat.size && destStat.mtimeMs >= sourceStat.mtimeMs) {
+        needsCopy = false
+      }
+    } catch {
+      needsCopy = true
+    }
+
+    if (needsCopy) {
+      fs.copyFileSync(sourcePath, destPath)
+    }
+  }
+
+  return {
+    name: 'pdf-worker-asset',
+    configResolved() {
+      ensureWorkerCopied()
+    },
+  }
+}
+
 /** Writes the resolved dev server URL to .vite-dev-url so Electron can discover it. */
 function devServerUrl(): Plugin {
   return {
@@ -348,7 +437,14 @@ function selfModHmrControl(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), devServerUrl(), workspacePanelServer(), selfModHmrControl()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    devServerUrl(),
+    workspacePanelServer(),
+    selfModHmrControl(),
+    pdfWorkerAsset(),
+  ],
   base: './',
   build: {
     outDir: 'dist',

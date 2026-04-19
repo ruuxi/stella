@@ -8,13 +8,21 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "@/context/theme-context";
+import {
+  type DisplayPayload,
+  normalizeDisplayPayload,
+} from "@/shared/contracts/display-payload";
+import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
+import { PdfViewerCard } from "@/app/chat/PdfViewerCard";
 import { applyMorphdomHtml } from "./apply-morphdom-html";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./display-sidebar.css";
 
 export interface DisplaySidebarHandle {
-  open(html: string): void;
-  update(html: string): void;
+  /** Open the sidebar with the given payload (legacy: bare HTML string). */
+  open(payload: DisplayPayload | string): void;
+  /** Update the visible payload without changing open state. */
+  update(payload: DisplayPayload | string): void;
   close(): void;
 }
 
@@ -26,28 +34,44 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarPro
   function DisplaySidebar({ onOpenChange }, ref) {
     const { gradientMode, gradientColor } = useTheme();
     const [isOpen, setIsOpen] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
+    const [payload, setPayload] = useState<DisplayPayload | null>(null);
+    const htmlContainerRef = useRef<HTMLDivElement>(null);
 
-    const applyHtml = useCallback((html: string) => {
-      const container = containerRef.current;
-      if (!container) return;
-      applyMorphdomHtml(container, "display-sidebar__content", html, {
-        executeScripts: true,
-      });
+    const applyPayload = useCallback((next: DisplayPayload) => {
+      setPayload(next);
+      if (next.kind === "html") {
+        // Defer until the html container exists in the DOM (it's gated on
+        // `payload.kind === "html"` below).
+        requestAnimationFrame(() => {
+          const container = htmlContainerRef.current;
+          if (!container) return;
+          applyMorphdomHtml(container, "display-sidebar__content", next.html, {
+            executeScripts: true,
+          });
+        });
+      }
     }, []);
 
-    useImperativeHandle(ref, () => ({
-      open(html: string) {
-        setIsOpen(true);
-        requestAnimationFrame(() => applyHtml(html));
-      },
-      update(html: string) {
-        requestAnimationFrame(() => applyHtml(html));
-      },
-      close() {
-        setIsOpen(false);
-      },
-    }), [applyHtml]);
+    useImperativeHandle(
+      ref,
+      () => ({
+        open(rawPayload) {
+          const next = normalizeDisplayPayload(rawPayload);
+          if (!next) return;
+          setIsOpen(true);
+          applyPayload(next);
+        },
+        update(rawPayload) {
+          const next = normalizeDisplayPayload(rawPayload);
+          if (!next) return;
+          applyPayload(next);
+        },
+        close() {
+          setIsOpen(false);
+        },
+      }),
+      [applyPayload],
+    );
 
     useEffect(() => {
       if (!isOpen) return;
@@ -62,7 +86,7 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarPro
       onOpenChange?.(isOpen);
     }, [isOpen, onOpenChange]);
 
-    const handleClick = useCallback((e: React.MouseEvent) => {
+    const handleHtmlClick = useCallback((e: React.MouseEvent) => {
       const el = (e.target as HTMLElement).closest(
         "[data-action]",
       ) as HTMLElement | null;
@@ -102,11 +126,29 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarPro
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
-          <div
-            ref={containerRef}
-            className="display-sidebar__content"
-            onClick={handleClick}
-          />
+
+          {payload?.kind === "html" && (
+            <div
+              ref={htmlContainerRef}
+              className="display-sidebar__content"
+              onClick={handleHtmlClick}
+            />
+          )}
+
+          {payload?.kind === "office" && (
+            <div className="display-sidebar__rich">
+              <OfficePreviewCard previewRef={payload.previewRef} />
+            </div>
+          )}
+
+          {payload?.kind === "pdf" && (
+            <div className="display-sidebar__rich display-sidebar__rich--pdf">
+              <PdfViewerCard
+                filePath={payload.filePath}
+                {...(payload.title ? { title: payload.title } : {})}
+              />
+            </div>
+          )}
         </div>
       </aside>,
       portalTarget,

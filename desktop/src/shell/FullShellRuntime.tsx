@@ -1,6 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { ChatColumn } from "@/app/chat/ChatColumn";
+import { useDisplayAutoRoute } from "@/app/chat/use-display-auto-route";
 import { SocialView } from "@/app/social/SocialView";
+import {
+  type DisplayPayload,
+  normalizeDisplayPayload,
+} from "@/shared/contracts/display-payload";
 import type { ViewType } from "@/shared/contracts/ui";
 import {
   STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT,
@@ -51,7 +56,7 @@ export const FullShellRuntime = ({
 }: FullShellRuntimeProps) => {
   const sidebarRef = useRef<ChatSidebarHandle>(null);
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
-  const latestDisplayHtmlRef = useRef<string | null>(null);
+  const latestDisplayPayloadRef = useRef<DisplayPayload | null>(null);
   const chat = useFullShellChat({
     activeConversationId,
     activeView,
@@ -88,22 +93,36 @@ export const FullShellRuntime = ({
     onPendingAskStellaHandled(pendingAskStellaRequest.id);
   }, [onPendingAskStellaHandled, pendingAskStellaRequest]);
 
-  // Display sidebar mirrors any HTML the runtime emits. Always mount it.
-  // When the user is on home (chat view, home content visible), the first
-  // HTML push opens the sidebar; in other contexts it just updates content
-  // so the user has to invoke it themselves via the orb / event.
-  useEffect(() => {
-    return window.electronAPI?.display.onUpdate((html) => {
-      latestDisplayHtmlRef.current = html;
-      const ds = displaySidebarRef.current;
-      if (!ds) return;
-      if (showHomeContentRef.current && activeViewRef.current === "chat") {
-        ds.open(html);
-      } else {
-        ds.update(html);
-      }
-    });
+  // Push a new payload (HTML, office preview, PDF) into the Display
+  // sidebar. When the home pane is visible inside the chat view the first
+  // payload also opens the sidebar; otherwise we only hot-update its
+  // content so we don't steal focus from whatever the user is doing.
+  const routeDisplayPayload = useCallback((payload: DisplayPayload) => {
+    latestDisplayPayloadRef.current = payload;
+    const ds = displaySidebarRef.current;
+    if (!ds) return;
+    if (showHomeContentRef.current && activeViewRef.current === "chat") {
+      ds.open(payload);
+    } else {
+      ds.update(payload);
+    }
   }, []);
+
+  // Runtime-side `Display` tool / future structured payloads arrive here.
+  // The legacy channel passes a raw HTML string; structured payloads come
+  // through as a `DisplayPayload`. `normalizeDisplayPayload` accepts both.
+  useEffect(() => {
+    return window.electronAPI?.display.onUpdate((rawPayload) => {
+      const payload = normalizeDisplayPayload(rawPayload);
+      if (!payload) return;
+      routeDisplayPayload(payload);
+    });
+  }, [routeDisplayPayload]);
+
+  // Renderer-side auto-routing: when a chat tool result produces something
+  // visual (office preview ref, PDF read), surface it in the sidebar
+  // automatically. No new tool call required from the agent.
+  useDisplayAutoRoute(chat.conversation.events, routeDisplayPayload);
 
   // Cmd+right-click → "Open chat" surfaces the pointed-at window as a one-shot
   // suggestion chip in the sidebar. The main process broadcasts via
@@ -142,9 +161,9 @@ export const FullShellRuntime = ({
     };
 
     const handleOpenDisplay = () => {
-      const html = latestDisplayHtmlRef.current;
-      if (!html) return;
-      displaySidebarRef.current?.open(html);
+      const payload = latestDisplayPayloadRef.current;
+      if (!payload) return;
+      displaySidebarRef.current?.open(payload);
     };
 
     const handleCloseDisplay = () => {
