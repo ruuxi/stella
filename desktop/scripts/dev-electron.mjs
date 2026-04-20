@@ -21,11 +21,13 @@ const require = createRequire(import.meta.url)
 const DEV_MACOS_APP_NAME = 'Stella'
 const DEV_MACOS_BUNDLE_ID = 'com.stella.app'
 const DEV_MACOS_RUNTIME_DIR_NAME = '.stella-dev-runtime'
-const projectDir = process.cwd()
+const scriptDir = dirname(fileURLToPath(import.meta.url))
+const desktopDir = resolve(scriptDir, '..')
+const repoRootDir = resolve(desktopDir, '..')
 let electronBinary = require('electron')
-const watchedDir = path.join(projectDir, 'dist-electron')
-const runtimeReloadStateFile = path.join(projectDir, '.stella-runtime-reload-state.json')
-const devRuntimeRoot = path.join(projectDir, DEV_MACOS_RUNTIME_DIR_NAME)
+const watchedDir = path.join(desktopDir, 'dist-electron')
+const runtimeReloadStateFile = path.join(repoRootDir, '.stella-runtime-reload-state.json')
+const devRuntimeRoot = path.join(desktopDir, DEV_MACOS_RUNTIME_DIR_NAME)
 const legacyRuntimeElectronBinary = path.join(
   devRuntimeRoot,
   'Stella.app',
@@ -34,7 +36,7 @@ const legacyRuntimeElectronBinary = path.join(
   'Electron',
 )
 const requiredFiles = [
-  path.join(projectDir, '.vite-dev-url'),
+  path.join(desktopDir, '.vite-dev-url'),
   path.join(watchedDir, 'desktop', 'electron', 'main.js'),
   path.join(watchedDir, 'desktop', 'electron', 'preload.js'),
 ]
@@ -73,7 +75,7 @@ const MIC_USAGE_DESCRIPTION =
   'Stella uses your microphone for voice conversations.'
 
 const patchDevIcon = () => {
-  const appIcon = path.join(projectDir, 'build', 'icon.icns')
+  const appIcon = path.join(desktopDir, 'build', 'icon.icns')
   const appBundle = path.join(path.dirname(electronBinary), '..')
   const electronIcon = path.join(appBundle, 'Resources', 'electron.icns')
   const infoPlist = path.join(appBundle, 'Info.plist')
@@ -189,8 +191,6 @@ if (process.platform === 'darwin') {
   patchDevAppName()
   patchDevMicrophoneUsageDescription()
 }
-
-const scriptDir = dirname(fileURLToPath(import.meta.url))
 let disclaimBinary = null
 
 if (process.platform === 'darwin') {
@@ -357,7 +357,7 @@ const startApp = () => {
   const spawnArgs = useDisclaim ? [electronBinary, '.'] : ['.']
 
   const child = spawn(spawnCmd, spawnArgs, {
-    cwd: projectDir,
+    cwd: repoRootDir,
     env: {
       ...process.env,
       NODE_ENV: 'development',
@@ -518,7 +518,7 @@ watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
   scheduleRestart()
 })
 
-rootWatcher = watch(projectDir, (_eventType, filename) => {
+rootWatcher = watch(repoRootDir, (_eventType, filename) => {
   if (
     typeof filename !== 'string' ||
     filename !== path.basename(runtimeReloadStateFile)

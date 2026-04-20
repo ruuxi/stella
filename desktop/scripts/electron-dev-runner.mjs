@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, '..');
+const repoRootDir = resolve(desktopDir, '..');
 const viteBinPath = resolve(desktopDir, 'node_modules', 'vite', 'bin', 'vite.js');
 const viteDevUrlPath = resolve(desktopDir, '.vite-dev-url');
 const pidFilePath = resolve(desktopDir, '.electron-dev-runner.pid');
@@ -57,6 +58,7 @@ const processSpecs = [
     name: 'vite',
     command: process.execPath,
     args: [viteBinPath],
+    cwd: desktopDir,
     env: {
       ...process.env,
       NODE_ENV: 'development',
@@ -66,12 +68,14 @@ const processSpecs = [
     name: 'electron-build',
     command: process.execPath,
     args: [resolve(scriptDir, 'dev-electron-build.mjs')],
+    cwd: repoRootDir,
     env: process.env,
   },
   {
     name: 'electron-main',
     command: process.execPath,
     args: [resolve(scriptDir, 'dev-electron.mjs')],
+    cwd: repoRootDir,
     env: process.env,
   },
 ];
@@ -167,7 +171,7 @@ function handleRequiredFailure(spec, detail) {
 function spawnProcess(spec) {
   log(`starting ${spec.name}`);
   const child = spawn(spec.command, spec.args, {
-    cwd: desktopDir,
+    cwd: spec.cwd,
     env: spec.env,
     stdio: 'inherit',
     detached: process.platform !== 'win32',

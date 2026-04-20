@@ -412,10 +412,9 @@ async fn write_settings(ctx: &InstallerContext, state: &InstallerState) {
 async fn write_launch_script(install_dir: &str) -> String {
     let script_path = launch_script_of(install_dir);
     let launch_env = dugite_launch_env(install_dir);
-    let desktop_dir = desktop_dir_of(install_dir).to_string_lossy().to_string();
 
     if cfg!(target_os = "windows") {
-        let mut content = format!("@echo off\r\ncd /d \"{desktop_dir}\"\r\n");
+        let mut content = format!("@echo off\r\ncd /d \"{install_dir}\"\r\n");
         if let Some(git_path) = launch_env.get("STELLA_GIT_BIN") {
             content.push_str(&format!("set \"STELLA_GIT_BIN={git_path}\"\r\n"));
         }
@@ -434,7 +433,7 @@ async fn write_launch_script(install_dir: &str) -> String {
         content.push_str("bun run electron:dev\r\n");
         let _ = fs::write(&script_path, content).await;
     } else {
-        let mut content = format!("#!/bin/sh\ncd \"{desktop_dir}\"\n");
+        let mut content = format!("#!/bin/sh\ncd \"{install_dir}\"\n");
         if let Some(git_path) = launch_env.get("STELLA_GIT_BIN") {
             content.push_str(&format!("export STELLA_GIT_BIN=\"{git_path}\"\n"));
         }
@@ -1423,7 +1422,7 @@ pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {
 
     Some(LaunchInfo {
         command: vec!["bun".into(), "run".into(), "electron:dev".into()],
-        cwd: desktop_dir_of(dir).to_string_lossy().to_string(),
+        cwd: dir.clone(),
         env: dugite_launch_env(dir),
     })
 }
