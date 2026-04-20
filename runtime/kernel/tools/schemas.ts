@@ -409,37 +409,48 @@ const WebFetchJsonSchema = {
   required: ["url"],
 };
 
-const SaveMemoryJsonSchema = {
+const MemoryJsonSchema = {
   type: "object",
   properties: {
-    content: { type: "string", description: "Text to save as a memory entry" },
-    tags: {
-      type: "array",
-      items: { type: "string" },
-      description: "Optional tags for categorization",
-    },
-  },
-  required: ["content"],
-};
-
-const RecallMemoriesJsonSchema = {
-  type: "object",
-  properties: {
-    query: {
+    action: {
       type: "string",
-      description: "Search query to find relevant memories",
+      enum: ["add", "replace", "remove"],
+      description: "Mutation to apply to the chosen target.",
     },
-    limit: {
-      type: "number",
-      description: "Maximum number of memories to return",
+    target: {
+      type: "string",
+      enum: ["memory", "user"],
+      description:
+        "Which store to mutate. 'user' = who the user is. 'memory' = your cross-session notes.",
+    },
+    content: {
+      type: "string",
+      description: "Required for action=add and action=replace. The new entry text.",
+    },
+    oldText: {
+      type: "string",
+      description:
+        "Required for action=replace and action=remove. A short unique substring identifying the entry to replace or remove.",
     },
   },
-  required: ["query"],
+  required: ["action", "target"],
 };
 
 const NoResponseJsonSchema = {
   type: "object",
   properties: {},
+};
+
+const ExploreJsonSchema = {
+  type: "object",
+  properties: {
+    question: {
+      type: "string",
+      description:
+        "A focused question or topic to scout for in state/. Will return JSON with relevant/maybe paths and a list of phrases nothing was found for.",
+    },
+  },
+  required: ["question"],
 };
 
 // ─── Tool Descriptions ──────────────────────────────────────────────────────
@@ -616,22 +627,25 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- HTTP URLs are auto-upgraded to HTTPS.\n" +
     "- prompt describes what information you want to extract.\n" +
     "- Content is truncated to ~30,000 characters.",
-  SaveMemory:
-    "Save information worth remembering across conversations.\n\n" +
-    "Usage:\n" +
-    "- content: the text to remember (preferences, decisions, facts, personal details).\n" +
-    "- tags: optional array of strings for categorization.\n" +
-    "- The system auto-deduplicates similar entries.",
-  RecallMemories:
-    "Look up past context from saved memories.\n\n" +
-    "Usage:\n" +
-    "- query: search text to find relevant memories.\n" +
-    "- limit: optional max number of results.\n" +
-    "- Use when the user references past conversations, preferences, or you need prior context.",
+  Memory:
+    "Manage durable memory entries that survive across sessions. Two stores:\n\n" +
+    "- target=\"user\": who the user is - persistent preferences, communication style, identity, expectations.\n" +
+    "- target=\"memory\": your own notes - cross-session patterns, recurring decisions, persistent observations.\n\n" +
+    "Both stores appear at the top of every conversation as a frozen block, so you don't need a tool to read them. Mutations land immediately on disk and appear in the next session.\n\n" +
+    "Actions:\n" +
+    "- add: append a new entry. content is required.\n" +
+    "- replace: update an existing entry by substring match. oldText (a short unique substring) and content (the new entry text) are both required. Ambiguous match returns previews so you can be more specific.\n" +
+    "- remove: delete an entry by substring match. oldText is required.\n\n" +
+    "Save proactively when the user reveals identity facts or persistent expectations. Do NOT save task content (notes already capture that) or environment / tool / skill facts (those belong in state/skills/ or state/knowledge/, written by the General agent).",
   NoResponse:
     "Signal that you have nothing to say right now.\n\n" +
     "Call this instead of generating a message when a system event, task result, or heartbeat check " +
     "does not warrant a visible response. Do NOT call this for user messages — always reply to users.",
+  Explore:
+    "Run a quick scout pass over state/ to find paths relevant to a focused question. " +
+    "Returns a wrapped <explore_findings>{relevant, maybe, nothing_found_for}</explore_findings> " +
+    "block with paths and short reasons - no summaries, just pointers. " +
+    "Use this when the initial findings injected with your task are insufficient or when you want to look in a different area.",
 };
 
 // ─── JSON Schema Map (for LLM tool definitions) ────────────────────────────
@@ -656,7 +670,7 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   TaskPause: TaskPauseJsonSchema,
   TaskUpdate: TaskUpdateJsonSchema,
   WebFetch: WebFetchJsonSchema,
-  SaveMemory: SaveMemoryJsonSchema,
-  RecallMemories: RecallMemoriesJsonSchema,
+  Memory: MemoryJsonSchema,
   NoResponse: NoResponseJsonSchema,
+  Explore: ExploreJsonSchema,
 };

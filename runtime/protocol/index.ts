@@ -239,8 +239,6 @@ export const METHOD_NAMES = {
   INTERNAL_STORE_UPDATE_THREAD_SUMMARY: "internal.store.updateThreadSummary",
   INTERNAL_STORE_UPDATE_ORCHESTRATOR_REMINDER_COUNTER: "internal.store.updateOrchestratorReminderCounter",
   INTERNAL_STORE_RECORD_RUN_EVENT: "internal.store.recordRunEvent",
-  INTERNAL_STORE_SAVE_MEMORY: "internal.store.saveMemory",
-  INTERNAL_STORE_RECALL_MEMORIES: "internal.store.recallMemories",
   INTERNAL_STORE_LIST_LOCAL_CHAT_EVENTS: "internal.store.listLocalChatEvents",
   INTERNAL_STORE_BEGIN_SELF_MOD_RUN: "internal.store.beginSelfModRun",
   INTERNAL_STORE_FINALIZE_SELF_MOD_RUN: "internal.store.finalizeSelfModRun",

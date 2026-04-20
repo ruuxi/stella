@@ -3,6 +3,7 @@ export const AGENT_IDS = {
   SCHEDULE: "schedule",
   GENERAL: "general",
   OFFLINE_RESPONDER: "offline_responder",
+  EXPLORE: "explore",
 } as const;
 
 export type AgentId = (typeof AGENT_IDS)[keyof typeof AGENT_IDS];
@@ -103,6 +104,23 @@ const BUILTIN_AGENT_DEFINITIONS = [
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
     agentEnginePreference: null,
+    modelSettings: null,
+  },
+  {
+    id: AGENT_IDS.EXPLORE,
+    name: "Explore",
+    description:
+      "Stateless one-shot helper. Reads state/ to surface relevant paths for an upcoming General task.",
+    activityLabel: "Exploring",
+    bundledCore: true,
+    taskSubagent: false,
+    includeInAgentRoster: false,
+    usesLocalCliRuntime: false,
+    promptRole: "subagent",
+    includesStellaDocumentation: false,
+    controlsSelfModHmr: false,
+    localCliWorkingDirectory: null,
+    agentEnginePreference: "general",
     modelSettings: null,
   },
 ] as const satisfies readonly AgentDefinition[];
@@ -235,8 +253,8 @@ export const TOOL_IDS = {
   WEB_SEARCH: "WebSearch",
   WEB_FETCH: "WebFetch",
   NO_RESPONSE: "NoResponse",
-  SAVE_MEMORY: "SaveMemory",
-  RECALL_MEMORIES: "RecallMemories",
+  MEMORY: "Memory",
+  EXPLORE: "Explore",
 } as const;
 
 export type ToolId = (typeof TOOL_IDS)[keyof typeof TOOL_IDS];

@@ -23,6 +23,12 @@ export type LocalTaskManagerAgentContext = {
   taskDepth?: number;
   maxTaskDepth: number;
   coreMemory?: string;
+  /**
+   * Frozen MEMORY + USER PROFILE snapshot for the system prompt.
+   * Populated only for the Orchestrator (General agents do not see memory).
+   * Each block is the rendered text from MemoryStore.formatForSystemPrompt or undefined when empty.
+   */
+  memorySnapshot?: { memory?: string; user?: string };
   threadHistory?: Array<{
     timestamp?: number;
     role: string;

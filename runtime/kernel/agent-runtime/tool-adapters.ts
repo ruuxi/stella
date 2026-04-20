@@ -14,7 +14,10 @@ import type {
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { TOOL_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import { AnyToolArgsSchema, textFromUnknown } from "./shared.js";
-import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
+import {
+  dispatchLocalTool,
+  type LocalExploreHandler,
+} from "../tools/local-tool-dispatch.js";
 
 export const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -24,8 +27,8 @@ export const STELLA_LOCAL_TOOLS = [
   "TaskOutput",
   TOOL_IDS.WEB_FETCH,
   TOOL_IDS.NO_RESPONSE,
-  TOOL_IDS.SAVE_MEMORY,
-  TOOL_IDS.RECALL_MEMORIES,
+  TOOL_IDS.MEMORY,
+  TOOL_IDS.EXPLORE,
 ] as const;
 
 const getToolMetadataIndex = (toolCatalog?: ToolMetadata[]) =>
@@ -206,6 +209,7 @@ type RuntimeToolExecutionArgs = RuntimeToolContextArgs & {
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
+  explore?: LocalExploreHandler;
   hookEmitter?: HookEmitter;
   signal?: AbortSignal;
   onUpdate?: ToolUpdateCallback;
@@ -218,6 +222,8 @@ export const executeRuntimeToolCall = async (
     conversationId: args.conversationId,
     webSearch: args.webSearch,
     store: args.store,
+    ...(args.explore ? { explore: args.explore } : {}),
+    ...(args.signal ? { signal: args.signal } : {}),
   });
   if (localResult.handled) {
     return {
@@ -300,6 +306,7 @@ export const createPiTools = (opts: {
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
+  explore?: LocalExploreHandler;
   hookEmitter?: HookEmitter;
 }): AgentTool[] => {
   const requested = getRequestedRuntimeToolNames(opts.toolsAllowlist);
@@ -332,6 +339,7 @@ export const createPiTools = (opts: {
           store: opts.store,
           toolExecutor: opts.toolExecutor,
           webSearch: opts.webSearch,
+          ...(opts.explore ? { explore: opts.explore } : {}),
           hookEmitter: opts.hookEmitter,
           signal,
           onUpdate: onUpdate

@@ -181,13 +181,6 @@ export type RuntimeRunEvent = {
 
 export type RuntimeSelfModApplied = NonNullable<RuntimeRunEvent["selfModApplied"]>;
 
-export type RuntimeMemory = {
-  timestamp: number;
-  conversationId: string;
-  content: string;
-  tags?: string[];
-};
-
 export type SqliteStatement = {
   run(...params: unknown[]): unknown;
   all(...params: unknown[]): unknown[];
@@ -215,8 +208,6 @@ const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 export const MAX_EVENTS_PER_CONVERSATION = 2000;
 export const DEFAULT_CONVERSATION_SETTING_KEY = "default_conversation_id";
-export const MAX_RECALL_RESULTS = 8;
-export const SQLITE_MEMORY_SCAN_LIMIT = 400;
 
 export const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
@@ -468,44 +459,3 @@ export const eventTextFromPayload = (payload?: Record<string, unknown>): string 
   return typeof text === "string" ? text.trim() : "";
 };
 
-export const escapeSqlLike = (value: string): string =>
-  value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-
-export const toJsonTags = (tags?: string[]): string | null => {
-  if (!tags || tags.length === 0) return null;
-  const cleaned = tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0);
-  if (cleaned.length === 0) return null;
-  return JSON.stringify(cleaned);
-};
-
-export const parseJsonTags = (value: string | null): string[] | undefined => {
-  if (!value) return undefined;
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return undefined;
-    const tags = parsed.filter((entry): entry is string => typeof entry === "string");
-    return tags.length > 0 ? tags : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-export const scoreMemoryMatches = (
-  query: string,
-  rows: RuntimeMemory[],
-): Array<{ row: RuntimeMemory; score: number }> => {
-  const tokens = query.split(/\s+/).filter((token) => token.length > 0);
-  return rows
-    .map((row) => {
-      const haystack = `${row.content} ${(row.tags ?? []).join(" ")}`.toLowerCase();
-      const score = haystack.includes(query)
-        ? 2
-        : tokens.reduce((acc, token) => (haystack.includes(token) ? acc + 1 : acc), 0);
-      return { row, score };
-    })
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return b.row.timestamp - a.row.timestamp;
-    });
-};

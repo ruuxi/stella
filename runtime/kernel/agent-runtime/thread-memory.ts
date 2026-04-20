@@ -303,34 +303,63 @@ export const buildStartupPromptMessages = async (args: {
   stellaHome?: string;
   stellaRoot?: string;
 }): Promise<RuntimePromptMessage[]> => {
-  if (args.context.threadHistory?.length) {
-    return [];
-  }
   const messages: RuntimePromptMessage[] = [];
+  const shouldIncludeStartupDocs = !(args.context.threadHistory?.length);
 
-  const registryContent = await readRegistryContent({
-    stellaHome: args.stellaHome,
-    stellaRoot: args.stellaRoot,
-  });
-  if (registryContent) {
-    messages.push(
-      createInternalPromptMessage(
-        buildStartupDocMessage(LIFE_REGISTRY_DISPLAY_PATH, registryContent),
-        "hidden",
-        "bootstrap.startup_doc",
-      ),
-    );
+  if (shouldIncludeStartupDocs) {
+    const registryContent = await readRegistryContent({
+      stellaHome: args.stellaHome,
+      stellaRoot: args.stellaRoot,
+    });
+    if (registryContent) {
+      messages.push(
+        createInternalPromptMessage(
+          buildStartupDocMessage(LIFE_REGISTRY_DISPLAY_PATH, registryContent),
+          "hidden",
+          "bootstrap.startup_doc",
+        ),
+      );
+    }
+
+    const coreMemory = args.context.coreMemory?.trim();
+    if (coreMemory) {
+      messages.push(
+        createInternalPromptMessage(
+          buildStartupDocMessage(LIFE_CORE_MEMORY_DISPLAY_PATH, coreMemory),
+          "hidden",
+          "bootstrap.startup_doc",
+        ),
+      );
+    }
   }
 
-  const coreMemory = args.context.coreMemory?.trim();
-  if (coreMemory) {
-    messages.push(
-      createInternalPromptMessage(
-        buildStartupDocMessage(LIFE_CORE_MEMORY_DISPLAY_PATH, coreMemory),
-        "hidden",
-        "bootstrap.startup_doc",
-      ),
-    );
+  // Frozen Memory + User Profile snapshot. Populated only for the Orchestrator
+  // by buildAgentContext - General agents do not see the snapshot.
+  //
+  // Unlike startup docs, we resend this on resumed turns because runtimeInternal
+  // bootstrap messages are not persisted in thread history.
+  const memorySnapshot = args.context.memorySnapshot;
+  if (memorySnapshot) {
+    const userBlock = memorySnapshot.user?.trim();
+    if (userBlock) {
+      messages.push(
+        createInternalPromptMessage(
+          `<memory_snapshot target="user">\n${userBlock}\n</memory_snapshot>`,
+          "hidden",
+          "bootstrap.memory_snapshot",
+        ),
+      );
+    }
+    const memoryBlock = memorySnapshot.memory?.trim();
+    if (memoryBlock) {
+      messages.push(
+        createInternalPromptMessage(
+          `<memory_snapshot target="memory">\n${memoryBlock}\n</memory_snapshot>`,
+          "hidden",
+          "bootstrap.memory_snapshot",
+        ),
+      );
+    }
   }
 
   return messages;

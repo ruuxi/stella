@@ -10,7 +10,7 @@ const BUNDLED_AGENT_DIR = new URL(
   import.meta.url,
 );
 
-const BUNDLED_AGENT_ORDER = new Map(
+const BUNDLED_AGENT_ORDER = new Map<string, number>(
   BUNDLED_CORE_AGENT_IDS.map((agentId, index) => [agentId, index]),
 );
 
