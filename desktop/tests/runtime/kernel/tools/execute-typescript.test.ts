@@ -96,28 +96,28 @@ return {
     ).toBe(true);
   });
 
-  it("reads life docs, writes workspace files, and runs reusable libraries", async () => {
+  it("reads life docs, writes workspace files, and runs reusable skills", async () => {
     const stellaRoot = createTempDir("stella-code-mode-root-");
     const lifeRoot = path.join(stellaRoot, "state");
 
-    mkdirSync(path.join(lifeRoot, "knowledge"), { recursive: true });
-    mkdirSync(path.join(lifeRoot, "capabilities", "to-upper"), {
+    mkdirSync(path.join(lifeRoot, "skills", "guide"), { recursive: true });
+    mkdirSync(path.join(lifeRoot, "skills", "to-upper", "scripts"), {
       recursive: true,
     });
 
     writeFileSync(path.join(stellaRoot, "demo.txt"), "hello stella", "utf-8");
     writeFileSync(
-      path.join(lifeRoot, "knowledge", "guide.md"),
+      path.join(lifeRoot, "skills", "guide", "SKILL.md"),
       "# Guide\n\nVerified workflow.",
       "utf-8",
     );
     writeFileSync(
-      path.join(lifeRoot, "capabilities", "to-upper", "index.md"),
+      path.join(lifeRoot, "skills", "to-upper", "SKILL.md"),
       "---\nname: to-upper\ndescription: Uppercase text.\n---\n",
       "utf-8",
     );
     writeFileSync(
-      path.join(lifeRoot, "capabilities", "to-upper", "program.ts"),
+      path.join(lifeRoot, "skills", "to-upper", "scripts", "program.ts"),
       'return String(input ?? "").toUpperCase();',
       "utf-8",
     );
@@ -126,12 +126,12 @@ return {
     const result = await host.executeTool(
       "ExecuteTypescript",
       {
-        summary: "read life and run library",
+        summary: "read life and run skill",
         code: `
 const original = await workspace.readText("demo.txt");
 await workspace.writeText("result.txt", original.toUpperCase());
 const guide = await life.read("guide");
-const transformed = await libraries.run("to-upper", original);
+const transformed = await skills.run("to-upper", original);
 const written = await workspace.readText("result.txt");
 return { original, guide, transformed, written };
         `,
@@ -149,14 +149,14 @@ return { original, guide, transformed, written };
 
     const details = result.details as {
       calls: Array<{ binding: string; method: string }>;
-      libraries: Array<{ name: string }>;
+      skills: Array<{ name: string }>;
     };
     expect(
       details.calls.some(
         (entry) => entry.binding === "workspace" && entry.method === "writeText",
       ),
     ).toBe(true);
-    expect(details.libraries[0]?.name).toBe("to-upper");
+    expect(details.skills[0]?.name).toBe("to-upper");
   });
 
   it("runs shell.exec with string-first arguments and rejects the old object form", async () => {

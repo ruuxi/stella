@@ -8,7 +8,7 @@ import { transform } from "esbuild";
 import { parse as parseYaml } from "yaml";
 
 const EXECUTE_TYPESCRIPT_TOOL_NAME = "ExecuteTypescript";
-const MAX_LIBRARY_DEPTH = 4;
+const MAX_SKILL_DEPTH = 4;
 const MAX_LOGS = 200;
 const MAX_CALLS = 400;
 const MAX_SEARCH_RESULTS = 200;
@@ -468,7 +468,7 @@ const createBindingCall = async (runtime, binding, method, argsValue, fn) => {
       argsPreview,
       error: errorMessage,
     });
-    throw withPhase(error, binding === "libraries" ? "library" : "binding");
+    throw withPhase(error, binding === "skills" ? "skill" : "binding");
   }
 };
 
@@ -755,7 +755,7 @@ const createRuntime = (payload) => {
   const state = {
     logs: [],
     calls: [],
-    libraries: [],
+    skills: [],
   };
   const timer = createExecutionTimer(Date.now() + payload.timeoutMs);
   const runtime = {
@@ -829,67 +829,65 @@ const createRuntime = (payload) => {
 
   const consoleBinding = Object.freeze(createConsoleBinding(runtime));
 
-  const runLibrary = async (libraryName, input, libraryDepth) => {
-    const normalizedName = String(libraryName)
-      .replace(/^life\/capabilities\//u, "")
-      .replace(/^life\/libraries\//u, "")
-      .replace(/^capabilities\//u, "")
-      .replace(/^libraries\//u, "")
+  const runSkill = async (skillName, input, skillDepth) => {
+    const normalizedName = String(skillName)
+      .replace(/^life\/skills\//u, "")
+      .replace(/^skills\//u, "")
       .trim();
     if (!normalizedName) {
-      throw new ExecuteTypescriptError("libraries.run requires a library name", "library");
+      throw new ExecuteTypescriptError("skills.run requires a skill name", "skill");
     }
-    if (libraryDepth >= MAX_LIBRARY_DEPTH) {
+    if (skillDepth >= MAX_SKILL_DEPTH) {
       throw new ExecuteTypescriptError(
-        `Nested library depth exceeded (${MAX_LIBRARY_DEPTH})`,
-        "library",
+        `Nested skill depth exceeded (${MAX_SKILL_DEPTH})`,
+        "skill",
       );
     }
     return await createBindingCall(
       runtime,
-      "libraries",
+      "skills",
       "run",
       { name: normalizedName, input },
       async () => {
-        const libraryDir = resolvePathWithinRoot(
-          path.join(lifeRoot, "capabilities"),
+        const skillDir = resolvePathWithinRoot(
+          path.join(lifeRoot, "skills"),
           normalizedName,
         );
-        const programPath = path.join(libraryDir, "program.ts");
+        const programPath = path.join(skillDir, "scripts", "program.ts");
         const code = await fs.readFile(programPath, "utf8").catch(() => null);
         if (code === null) {
           throw new ExecuteTypescriptError(
-            `Capability program not found: ${toLifeDisplayPath(lifeRoot, programPath)}`,
-            "library",
+            `Skill program not found: ${toLifeDisplayPath(lifeRoot, programPath)}`,
+            "skill",
           );
         }
-        emitUpdate(`Code mode · running capability ${normalizedName}`, {
+        emitUpdate(`Code mode · running skill ${normalizedName}`, {
           tool: EXECUTE_TYPESCRIPT_TOOL_NAME,
-          kind: "library_start",
-          statusText: `Code mode · running capability ${normalizedName}`,
-          library: normalizedName,
+          kind: "skill_start",
+          statusText: `Code mode · running skill ${normalizedName}`,
+          skill: normalizedName,
         });
         const startedAt = Date.now();
         try {
           const value = await executeProgram({
             runtime,
             code,
-            sourceLabel: `state/capabilities/${normalizedName}/program.ts`,
+            sourceLabel: `state/skills/${normalizedName}/scripts/program.ts`,
             input,
-            libraryDepth: libraryDepth + 1,
+            skillDepth: skillDepth + 1,
           });
           const durationMs = Date.now() - startedAt;
-          runtime.state.libraries.push({
+          runtime.state.skills.push({
             name: normalizedName,
             durationMs,
             inputPreview: previewUnknown(input),
             resultPreview: previewUnknown(value),
           });
-          emitUpdate(`Code mode · library ${normalizedName} finished`, {
+          emitUpdate(`Code mode · skill ${normalizedName} finished`, {
             tool: EXECUTE_TYPESCRIPT_TOOL_NAME,
-            kind: "library_end",
-            statusText: `Code mode · library ${normalizedName} finished`,
-            library: normalizedName,
+            kind: "skill_end",
+            statusText: `Code mode · skill ${normalizedName} finished`,
+            skill: normalizedName,
             durationMs,
             resultPreview: previewUnknown(value),
           });
@@ -897,21 +895,21 @@ const createRuntime = (payload) => {
         } catch (error) {
           const durationMs = Date.now() - startedAt;
           const errorMessage = error instanceof Error ? error.message : String(error);
-          runtime.state.libraries.push({
+          runtime.state.skills.push({
             name: normalizedName,
             durationMs,
             inputPreview: previewUnknown(input),
             error: errorMessage,
           });
-          emitUpdate(`Code mode · library ${normalizedName} failed`, {
+          emitUpdate(`Code mode · skill ${normalizedName} failed`, {
             tool: EXECUTE_TYPESCRIPT_TOOL_NAME,
-            kind: "library_end",
-            statusText: `Code mode · library ${normalizedName} failed`,
-            library: normalizedName,
+            kind: "skill_end",
+            statusText: `Code mode · skill ${normalizedName} failed`,
+            skill: normalizedName,
             durationMs,
             error: errorMessage,
           });
-          throw withPhase(error, "library");
+          throw withPhase(error, "skill");
         }
       },
     );
@@ -1056,10 +1054,13 @@ const createRuntime = (payload) => {
         try {
           return await fs.readFile(directPath, "utf8");
         } catch {
-          const slug = normalized.replace(/^knowledge\//u, "").replace(/\.md$/u, "");
+          const slug = normalized
+            .replace(/^skills\//u, "")
+            .replace(/\/SKILL\.md$/u, "")
+            .replace(/\.md$/u, "");
           const candidate = resolvePathWithinRoot(
-            path.join(lifeRoot, "knowledge"),
-            `${slug}.md`,
+            path.join(lifeRoot, "skills"),
+            path.join(slug, "SKILL.md"),
           );
           return await fs.readFile(candidate, "utf8");
         }
@@ -1275,13 +1276,13 @@ const createRuntime = (payload) => {
       }),
   });
 
-  const libraries = Object.freeze({
+  const skills = Object.freeze({
     list: async () =>
-      await createBindingCall(runtime, "libraries", "list", {}, async () => {
-        const librariesRoot = path.join(lifeRoot, "capabilities");
+      await createBindingCall(runtime, "skills", "list", {}, async () => {
+        const skillsRoot = path.join(lifeRoot, "skills");
         let entries;
         try {
-          entries = await fs.readdir(librariesRoot, { withFileTypes: true });
+          entries = await fs.readdir(skillsRoot, { withFileTypes: true });
         } catch {
           return [];
         }
@@ -1290,11 +1291,11 @@ const createRuntime = (payload) => {
           if (!entry.isDirectory()) {
             continue;
           }
-          const libraryDir = path.join(librariesRoot, entry.name);
-          const indexPath = path.join(libraryDir, "index.md");
-          const programPath = path.join(libraryDir, "program.ts");
+          const skillDir = path.join(skillsRoot, entry.name);
+          const skillPath = path.join(skillDir, "SKILL.md");
+          const programPath = path.join(skillDir, "scripts", "program.ts");
           const [docs, hasProgram] = await Promise.all([
-            fs.readFile(indexPath, "utf8").catch(() => null),
+            fs.readFile(skillPath, "utf8").catch(() => null),
             fs.stat(programPath).then(() => true).catch(() => false),
           ]);
           const description = docs
@@ -1302,7 +1303,7 @@ const createRuntime = (payload) => {
             : undefined;
           results.push({
             name: entry.name,
-            path: toLifeDisplayPath(lifeRoot, libraryDir),
+            path: toLifeDisplayPath(lifeRoot, skillDir),
             hasProgram,
             ...(description ? { description } : {}),
           });
@@ -1311,21 +1312,19 @@ const createRuntime = (payload) => {
       }),
 
     read: async (name) =>
-      await createBindingCall(runtime, "libraries", "read", { name }, async () => {
+      await createBindingCall(runtime, "skills", "read", { name }, async () => {
         const normalizedName = String(name)
-          .replace(/^life\/capabilities\//u, "")
-          .replace(/^life\/libraries\//u, "")
-          .replace(/^capabilities\//u, "")
-          .replace(/^libraries\//u, "")
+          .replace(/^life\/skills\//u, "")
+          .replace(/^skills\//u, "")
           .trim();
-        const libraryDir = resolvePathWithinRoot(
-          path.join(lifeRoot, "capabilities"),
+        const skillDir = resolvePathWithinRoot(
+          path.join(lifeRoot, "skills"),
           normalizedName,
         );
-        const indexPath = path.join(libraryDir, "index.md");
-        const programPath = path.join(libraryDir, "program.ts");
+        const skillPath = path.join(skillDir, "SKILL.md");
+        const programPath = path.join(skillDir, "scripts", "program.ts");
         const [docs, program] = await Promise.all([
-          fs.readFile(indexPath, "utf8").catch(() => null),
+          fs.readFile(skillPath, "utf8").catch(() => null),
           fs.readFile(programPath, "utf8").catch(() => null),
         ]);
         const description = docs
@@ -1333,14 +1332,14 @@ const createRuntime = (payload) => {
           : undefined;
         return {
           name: normalizedName,
-          path: toLifeDisplayPath(lifeRoot, libraryDir),
+          path: toLifeDisplayPath(lifeRoot, skillDir),
           ...(description ? { description } : {}),
           ...(docs ? { docs } : {}),
           ...(program ? { program } : {}),
         };
       }),
 
-    run: async (name, input) => await runLibrary(name, input, 0),
+    run: async (name, input) => await runSkill(name, input, 0),
   });
 
   runtime.bindings = {
@@ -1349,14 +1348,14 @@ const createRuntime = (payload) => {
     browser,
     office,
     shell: Object.freeze({ exec: shellExec }),
-    libraries,
+    skills,
     console: consoleBinding,
   };
 
   return runtime;
 };
 
-const executeProgram = async ({ runtime, code, sourceLabel, input, libraryDepth }) => {
+const executeProgram = async ({ runtime, code, sourceLabel, input, skillDepth }) => {
   runtime.timer.assertAlive("compile");
 
   if (/\bimport\s+/u.test(code) || /\bexport\s+/u.test(code)) {
@@ -1368,7 +1367,7 @@ const executeProgram = async ({ runtime, code, sourceLabel, input, libraryDepth 
 
   const wrappedSource = `
 module.exports = async function(__stella_bindings) {
-  const { workspace, life, browser, office, shell, libraries, console, input } = __stella_bindings;
+  const { workspace, life, browser, office, shell, skills, console, input } = __stella_bindings;
 ${code}
 };
 `;
@@ -1400,7 +1399,7 @@ ${code}
     const moduleObject = { exports: {} };
     const runnerFilename = path.join(
       runtime.workspaceRoot,
-      `.__stella_execute_typescript_${libraryDepth}.cjs`,
+      `.__stella_execute_typescript_${skillDepth}.cjs`,
     );
     const requireFn = createRequire(runnerFilename);
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -1449,7 +1448,7 @@ const handlePayload = async (payload) => {
       code: String(payload.code ?? ""),
       sourceLabel: String(payload.sourceLabel ?? EXECUTE_TYPESCRIPT_TOOL_NAME),
       input: payload.input,
-      libraryDepth: 0,
+      skillDepth: 0,
     });
     sendMessage({
       type: "result",

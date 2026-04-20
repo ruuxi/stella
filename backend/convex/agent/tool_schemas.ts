@@ -164,10 +164,10 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- Write a program body, not a full module. Top-level await and return are allowed.\n" +
     "- The program runs with full Node.js capabilities, including Buffer, process, require(), child_process, and fetch.\n" +
     "- Because this is a program body, static import/export syntax is not supported. Use require() or await import() instead.\n" +
-    "- Use the provided bindings instead: workspace, life, shell, libraries, console.\n" +
+    "- Use the provided bindings instead: workspace, life, shell, skills, console.\n" +
     "- Call Stella-native CLIs like stella-browser and stella-office through shell.exec(command, options?).\n" +
     "- Return JSON-serializable data. Keep code focused and deterministic.\n" +
-    "- Prefer structured bindings for workspace/life/libraries, and use shell.exec for CLI workflows.",
+    "- Prefer structured bindings for workspace/life/skills, and use shell.exec for CLI workflows.",
   Bash:
     "Execute a shell command on the local device.\n\n" +
     "Usage:\n" +

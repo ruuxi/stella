@@ -25,7 +25,7 @@ const EXECUTE_TYPESCRIPT_RUNNER_PATH = fileURLToPath(
   new URL("./execute-typescript-runner.js", import.meta.url),
 );
 
-type ExecutionPhase = "compile" | "execute" | "binding" | "library";
+type ExecutionPhase = "compile" | "execute" | "binding" | "skill";
 
 type ExecuteTypescriptLogEntry = {
   level: "log" | "info" | "warn" | "error";
@@ -42,7 +42,7 @@ type ExecuteTypescriptCallEntry = {
   error?: string;
 };
 
-type ExecuteTypescriptLibraryEntry = {
+type ExecuteTypescriptSkillEntry = {
   name: string;
   durationMs: number;
   inputPreview?: string;
@@ -57,7 +57,7 @@ type ExecuteTypescriptDetails = {
   value?: unknown;
   logs: ExecuteTypescriptLogEntry[];
   calls: ExecuteTypescriptCallEntry[];
-  libraries: ExecuteTypescriptLibraryEntry[];
+  skills: ExecuteTypescriptSkillEntry[];
   error?: {
     message: string;
     phase: ExecutionPhase;
@@ -97,9 +97,9 @@ type ExecuteTypescriptUpdate =
     }
   | {
       tool: typeof EXECUTE_TYPESCRIPT_TOOL_NAME;
-      kind: "library_start" | "library_end";
+      kind: "skill_start" | "skill_end";
       statusText: string;
-      library: string;
+      skill: string;
       durationMs?: number;
       resultPreview?: string;
       error?: string;
@@ -131,7 +131,7 @@ type ExecutionTimer = {
 type ExecutionState = {
   logs: ExecuteTypescriptLogEntry[];
   calls: ExecuteTypescriptCallEntry[];
-  libraries: ExecuteTypescriptLibraryEntry[];
+  skills: ExecuteTypescriptSkillEntry[];
 };
 
 type ExecutionEnvironment = {
@@ -297,7 +297,7 @@ const createBindingCall = async <T>(
       argsPreview,
       error: errorMessage,
     });
-    throw withPhase(error, binding === "libraries" ? "library" : "binding");
+    throw withPhase(error, binding === "skills" ? "skill" : "binding");
   }
 };
 
@@ -405,11 +405,11 @@ const applyExecutionState = (
       ...state.calls.slice(0, MAX_CALLS) as ExecuteTypescriptCallEntry[],
     );
   }
-  if (Array.isArray(state.libraries)) {
-    target.libraries.splice(
+  if (Array.isArray(state.skills)) {
+    target.skills.splice(
       0,
-      target.libraries.length,
-      ...state.libraries as ExecuteTypescriptLibraryEntry[],
+      target.skills.length,
+      ...state.skills as ExecuteTypescriptSkillEntry[],
     );
   }
 };
@@ -578,7 +578,7 @@ export const createExecuteTypescriptToolHandlers = (
     const state: ExecutionState = {
       logs: [],
       calls: [],
-      libraries: [],
+      skills: [],
     };
 
     emitUpdate(extras, "Code mode · compiling program", {
@@ -608,7 +608,7 @@ export const createExecuteTypescriptToolHandlers = (
         ...(serializedValue !== undefined ? { value: serializedValue } : {}),
         logs: state.logs,
         calls: state.calls,
-        libraries: state.libraries,
+        skills: state.skills,
       };
       return {
         result: serializedValue === undefined ? "Program completed." : serializedValue,
@@ -622,7 +622,7 @@ export const createExecuteTypescriptToolHandlers = (
         success: false,
         logs: state.logs,
         calls: state.calls,
-        libraries: state.libraries,
+        skills: state.skills,
         error: {
           message: typedError.message,
           phase: typedError.phase,

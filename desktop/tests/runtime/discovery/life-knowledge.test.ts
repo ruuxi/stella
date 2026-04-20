@@ -13,7 +13,7 @@ const tempDirs: string[] = [];
 const createTempHome = async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "stella-life-knowledge-"));
   tempDirs.push(dir);
-  await fs.mkdir(path.join(dir, "state", "knowledge"), { recursive: true });
+  await fs.mkdir(path.join(dir, "state", "skills"), { recursive: true });
   await fs.writeFile(
     path.join(dir, "state", "registry.md"),
     [
@@ -21,15 +21,15 @@ const createTempHome = async () => {
       "",
       "## Entry Points",
       "",
-      "- [Knowledge Index](knowledge/index.md)",
+      "- [Skills Index](skills/index.md)",
       "",
       "## Fast Paths",
       "",
-      "- Browser automation: [stella-browser](abilities/stella-browser.md)",
+      "- Browser automation: [stella-browser](skills/stella-browser/SKILL.md)",
       "",
       "## Reference Docs",
       "",
-      "- [stella-browser command reference](abilities/references/commands.md)",
+      "- [stella-browser command reference](skills/stella-browser/references/commands.md)",
       "",
       "## Notes",
       "",
@@ -39,17 +39,17 @@ const createTempHome = async () => {
     "utf-8",
   );
   await fs.writeFile(
-    path.join(dir, "state", "knowledge", "index.md"),
+    path.join(dir, "state", "skills", "index.md"),
     [
-      "# Knowledge Index",
+      "# Skills Index",
       "",
       "## Entries",
       "",
-      "- [computer-use](computer-use/index.md): browser and desktop-app operating guidance.",
+      "- [computer-use](computer-use/SKILL.md): browser and desktop-app operating guidance.",
       "",
       "## Related Abilities",
       "",
-      "- [stella-browser](../abilities/stella-browser.md)",
+      "- [stella-browser](stella-browser/SKILL.md)",
       "",
       "## Backlinks",
       "",
@@ -68,7 +68,7 @@ afterEach(async () => {
 });
 
 describe("life knowledge discovery writer", () => {
-  it("writes LLM-summarized knowledge pages and raw signal dumps", async () => {
+  it("writes LLM-summarized summary pages and raw signal dumps", async () => {
     const stellaHome = await createTempHome();
     const payload: DiscoveryKnowledgeSeedPayload = {
       coreMemory: "[who]\n- Rahul builds Stella.\n",
@@ -106,17 +106,17 @@ describe("life knowledge discovery writer", () => {
 
     expect(await discoveryKnowledgeExists(stellaHome)).toBe(true);
 
-    // Knowledge pages contain LLM-summarized content
+    // Skill file (user-profile/SKILL.md) and per-category summary pages
     const skillFile = await fs.readFile(
-      path.join(stellaHome, "state", "knowledge", "user-profile", "index.md"),
+      path.join(stellaHome, "state", "skills", "user-profile", "SKILL.md"),
       "utf-8",
     );
-    const browsingKnowledge = await fs.readFile(
-      path.join(stellaHome, "state", "knowledge", "user-profile", "browsing-bookmarks.md"),
+    const browsingSummary = await fs.readFile(
+      path.join(stellaHome, "state", "skills", "user-profile", "browsing-bookmarks.md"),
       "utf-8",
     );
-    const devKnowledge = await fs.readFile(
-      path.join(stellaHome, "state", "knowledge", "user-profile", "dev-environment.md"),
+    const devSummary = await fs.readFile(
+      path.join(stellaHome, "state", "skills", "user-profile", "dev-environment.md"),
       "utf-8",
     );
 
@@ -130,20 +130,20 @@ describe("life knowledge discovery writer", () => {
       "utf-8",
     );
 
-    // index.md links to both knowledge pages and raw
-    expect(skillFile).toContain("## Knowledge Pages");
+    // SKILL.md links to both summary pages and raw
+    expect(skillFile).toContain("## Summary Pages");
     expect(skillFile).toContain("[Browsing & Bookmarks](browsing-bookmarks.md)");
     expect(skillFile).toContain("[Development Environment](dev-environment.md)");
     expect(skillFile).toContain("## Raw Discovery Data");
     expect(skillFile).toContain("../../raw/discovery/browsing-bookmarks.md");
 
-    // Knowledge pages have LLM-summarized content, not raw domain lists
-    expect(browsingKnowledge).toContain("heavy user of AI coding tools");
-    expect(browsingKnowledge).not.toContain("cursor.com (12)");
-    expect(browsingKnowledge).toContain("Raw: [Browsing & Bookmarks]");
+    // Summary pages have LLM-summarized content, not raw domain lists
+    expect(browsingSummary).toContain("heavy user of AI coding tools");
+    expect(browsingSummary).not.toContain("cursor.com (12)");
+    expect(browsingSummary).toContain("Raw: [Browsing & Bookmarks]");
 
-    expect(devKnowledge).toContain("Two active projects");
-    expect(devKnowledge).not.toContain("847 files");
+    expect(devSummary).toContain("Two active projects");
+    expect(devSummary).not.toContain("847 files");
 
     // Raw files contain the unprocessed signal data
     expect(rawBrowsing).toContain("Browsing & Bookmarks (Raw)");
@@ -155,14 +155,14 @@ describe("life knowledge discovery writer", () => {
     expect(rawDev).toContain("847 files");
 
     // Index and registry updated
-    const knowledgeIndex = await fs.readFile(
-      path.join(stellaHome, "state", "knowledge", "index.md"),
+    const skillsIndex = await fs.readFile(
+      path.join(stellaHome, "state", "skills", "index.md"),
       "utf-8",
     );
-    expect(knowledgeIndex).toContain("[user-profile](user-profile/index.md)");
+    expect(skillsIndex).toContain("[user-profile](user-profile/SKILL.md)");
   });
 
-  it("skips knowledge pages when categoryAnalyses is absent", async () => {
+  it("skips summary pages when categoryAnalyses is absent", async () => {
     const stellaHome = await createTempHome();
     const payload: DiscoveryKnowledgeSeedPayload = {
       coreMemory: "[who]\n- Test user.\n",
@@ -173,12 +173,12 @@ describe("life knowledge discovery writer", () => {
 
     await writeDiscoveryKnowledge(stellaHome, payload);
 
-    // index.md exists
+    // SKILL.md exists
     const skillFile = await fs.readFile(
-      path.join(stellaHome, "state", "knowledge", "user-profile", "index.md"),
+      path.join(stellaHome, "state", "skills", "user-profile", "SKILL.md"),
       "utf-8",
     );
-    expect(skillFile).toContain("No knowledge pages are populated yet.");
+    expect(skillFile).toContain("No summary pages are populated yet.");
 
     // Raw still written
     const rawBrowsing = await fs.readFile(
@@ -187,15 +187,15 @@ describe("life knowledge discovery writer", () => {
     );
     expect(rawBrowsing).toContain("cursor.com (5)");
 
-    // No knowledge page for browsing since no analysis was provided
+    // No summary page for browsing since no analysis was provided
     await expect(
       fs.access(
-        path.join(stellaHome, "state", "knowledge", "user-profile", "browsing-bookmarks.md"),
+        path.join(stellaHome, "state", "skills", "user-profile", "browsing-bookmarks.md"),
       ),
     ).rejects.toThrow();
   });
 
-  it("does not duplicate registry or knowledge index entries on repeated writes", async () => {
+  it("does not duplicate registry or skills index entries on repeated writes", async () => {
     const stellaHome = await createTempHome();
     const payload: DiscoveryKnowledgeSeedPayload = {
       coreMemory: "[who]\n- Test user.\n",
@@ -205,8 +205,8 @@ describe("life knowledge discovery writer", () => {
     await writeDiscoveryKnowledge(stellaHome, payload);
     await writeDiscoveryKnowledge(stellaHome, payload);
 
-    const knowledgeIndex = await fs.readFile(
-      path.join(stellaHome, "state", "knowledge", "index.md"),
+    const skillsIndex = await fs.readFile(
+      path.join(stellaHome, "state", "skills", "index.md"),
       "utf-8",
     );
     const registry = await fs.readFile(
@@ -215,11 +215,11 @@ describe("life knowledge discovery writer", () => {
     );
 
     expect(
-      knowledgeIndex.match(/\[user-profile\]\(user-profile\/index\.md\)/g)?.length,
+      skillsIndex.match(/\[user-profile\]\(user-profile\/SKILL\.md\)/g)?.length,
     ).toBe(1);
     expect(
       registry.match(
-        /User profile and context: \[user-profile\]\(knowledge\/user-profile\/index\.md\)/g,
+        /User profile and context: \[user-profile\]\(skills\/user-profile\/SKILL\.md\)/g,
       )?.length,
     ).toBe(1);
   });
