@@ -20,13 +20,11 @@ const desktopGeneratedPaths = [
   resolve(desktopDir, 'dist-electron'),
 ];
 const stellaStateRuntimePaths = [
-  'canvas',
   'electron-user-data',
-  'logs',
   'office-previews',
   'raw',
   'tmp',
-  'knowledge/user-profile',
+  'skills/user-profile',
   'core-memory.md',
   'device.json',
   'local-scheduler.json',

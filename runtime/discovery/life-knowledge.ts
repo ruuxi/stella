@@ -10,9 +10,9 @@ const USER_PROFILE_TITLE = "User Profile";
 const USER_PROFILE_DESCRIPTION =
   "Structured onboarding memory for the user, with backlinks to raw discovery data.";
 
-const KNOWLEDGE_INDEX_LINE = `- [${USER_PROFILE_SLUG}](${USER_PROFILE_SLUG}/index.md): structured onboarding memory for the user, including projects, apps, interests, and environment.`;
+const SKILLS_INDEX_LINE = `- [${USER_PROFILE_SLUG}](${USER_PROFILE_SLUG}/SKILL.md): structured onboarding memory for the user, including projects, apps, interests, and environment.`;
 const REGISTRY_FAST_PATH_LINE =
-  `- User profile and context: [${USER_PROFILE_SLUG}](knowledge/${USER_PROFILE_SLUG}/index.md)`;
+  `- User profile and context: [${USER_PROFILE_SLUG}](skills/${USER_PROFILE_SLUG}/SKILL.md)`;
 
 const RAW_DISCOVERY_DIR = "discovery";
 
@@ -45,13 +45,13 @@ const knowledgePages: KnowledgePageDef[] = [
 const normalizeContent = (value: string): string => value.trim().replace(/\n{3,}/g, "\n\n");
 
 const topicDir = (stellaHome: string) =>
-  path.join(stellaHome, "state", "knowledge", USER_PROFILE_SLUG);
+  path.join(stellaHome, "state", "skills", USER_PROFILE_SLUG);
 
 const rawDiscoveryDir = (stellaHome: string) =>
   path.join(stellaHome, "state", "raw", RAW_DISCOVERY_DIR);
 
-const knowledgeIndexPath = (stellaHome: string) =>
-  path.join(stellaHome, "state", "knowledge", "index.md");
+const skillsIndexPath = (stellaHome: string) =>
+  path.join(stellaHome, "state", "skills", "index.md");
 
 const registryPath = (stellaHome: string) =>
   path.join(stellaHome, "state", "registry.md");
@@ -64,7 +64,7 @@ const buildRawFile = (page: RawSignalPage, content: string): string =>
     `# ${page.title} (Raw)`,
     "",
     "Unprocessed discovery signals collected during onboarding.",
-    `See the curated version in the [User Profile](../../knowledge/${USER_PROFILE_SLUG}/index.md).`,
+    `See the curated version in the [User Profile](../../skills/${USER_PROFILE_SLUG}/SKILL.md).`,
     "",
     normalizeContent(content),
   ].join("\n");
@@ -87,9 +87,9 @@ const buildKnowledgePage = (
         "",
         "## Backlinks",
         "",
-        `- [${USER_PROFILE_TITLE}](index.md)`,
+        `- [${USER_PROFILE_TITLE}](SKILL.md)`,
         `- Raw: [${rawPage.title}](${rawRelPath(rawPage.fileName)})`,
-        "- [Knowledge Index](../index.md)",
+        "- [Skills Index](../index.md)",
       );
     }
   } else {
@@ -97,8 +97,8 @@ const buildKnowledgePage = (
       "",
       "## Backlinks",
       "",
-      `- [${USER_PROFILE_TITLE}](index.md)`,
-      "- [Knowledge Index](../index.md)",
+      `- [${USER_PROFILE_TITLE}](SKILL.md)`,
+      "- [Skills Index](../index.md)",
     );
   }
 
@@ -133,13 +133,13 @@ const buildSkillFile = (
     "",
     "## How To Use",
     "",
-    "- Start with the knowledge pages below — they are LLM-summarized from raw discovery data.",
+    "- Start with the summary pages below — they are LLM-summarized from raw discovery data.",
     "- Drop into raw when you need the full unprocessed source material.",
     "- Prefer updating these pages over expanding `state/core-memory.md` when new durable context appears.",
     "",
-    "## Knowledge Pages",
+    "## Summary Pages",
     "",
-    ...(pageLinks.length > 0 ? pageLinks : ["- No knowledge pages are populated yet."]),
+    ...(pageLinks.length > 0 ? pageLinks : ["- No summary pages are populated yet."]),
     "",
     "## Raw Discovery Data",
     "",
@@ -149,7 +149,7 @@ const buildSkillFile = (
     "",
     "## Backlinks",
     "",
-    "- [Knowledge Index](../index.md)",
+    "- [Skills Index](../index.md)",
     "- [Life Registry](../../registry.md)",
   ].join("\n");
 };
@@ -172,12 +172,12 @@ const upsertLineBeforeHeading = (
   return `${content.slice(0, index).trimEnd()}\n${line}\n\n${content.slice(index + 1)}`;
 };
 
-const ensureKnowledgeIndexEntry = async (stellaHome: string) => {
-  const filePath = knowledgeIndexPath(stellaHome);
+const ensureSkillsIndexEntry = async (stellaHome: string) => {
+  const filePath = skillsIndexPath(stellaHome);
   const content = await fs.readFile(filePath, "utf-8");
   const updated = upsertLineBeforeHeading(
     content,
-    KNOWLEDGE_INDEX_LINE,
+    SKILLS_INDEX_LINE,
     "## Related Abilities",
   );
   if (updated !== content) {
@@ -202,7 +202,7 @@ export const discoveryKnowledgeExists = async (
   stellaHome: string,
 ): Promise<boolean> => {
   try {
-    await fs.access(path.join(topicDir(stellaHome), "index.md"));
+    await fs.access(path.join(topicDir(stellaHome), "SKILL.md"));
     return true;
   } catch {
     return false;
@@ -213,10 +213,10 @@ export const writeDiscoveryKnowledge = async (
   stellaHome: string,
   payload: DiscoveryKnowledgeSeedPayload,
 ): Promise<void> => {
-  const knowledgeRoot = topicDir(stellaHome);
+  const skillRoot = topicDir(stellaHome);
   const rawRoot = rawDiscoveryDir(stellaHome);
   await Promise.all([
-    fs.mkdir(knowledgeRoot, { recursive: true }),
+    fs.mkdir(skillRoot, { recursive: true }),
     fs.mkdir(rawRoot, { recursive: true }),
   ]);
 
@@ -233,15 +233,15 @@ export const writeDiscoveryKnowledge = async (
 
   await Promise.all([
     fs.writeFile(
-      path.join(knowledgeRoot, "index.md"),
+      path.join(skillRoot, "SKILL.md"),
       buildSkillFile(availableKnowledgePages, availableRawPages),
       "utf-8",
     ),
 
-    // LLM-summarized knowledge pages
+    // LLM-summarized summary pages
     ...availableKnowledgePages.map((page) =>
       fs.writeFile(
-        path.join(knowledgeRoot, page.fileName),
+        path.join(skillRoot, page.fileName),
         buildKnowledgePage(page, analyses[page.key]!, availableRawKeys.has(page.key)),
         "utf-8",
       ),
@@ -258,7 +258,7 @@ export const writeDiscoveryKnowledge = async (
   ]);
 
   await Promise.all([
-    ensureKnowledgeIndexEntry(stellaHome),
+    ensureSkillsIndexEntry(stellaHome),
     ensureRegistryEntry(stellaHome),
   ]);
 };

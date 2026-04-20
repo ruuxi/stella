@@ -217,7 +217,7 @@ If `secondary-action` reports "Action X is not available for N", read the availa
 
 ## Backlinks
 
-- [knowledge-index](state/knowledge/index.md)
+- [Skills Index](state/skills/index.md)
 - [registry](state/registry.md)
 - [general-agent](runtime/extensions/stella-runtime/agents/general.md)
 - [implementation notes](docs/stella-computer.md)

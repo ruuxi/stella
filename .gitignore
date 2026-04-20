@@ -19,10 +19,9 @@ state/*
 state/electron-user-data/
 !state/DREAM.md
 !state/registry.md
-!state/capabilities/
-!state/knowledge/
+!state/skills/
 state/stella-computer/sessions/
-state/knowledge/user-profile/
+state/skills/user-profile/
 !state/notes/
 state/notes/*
 !state/notes/README.md

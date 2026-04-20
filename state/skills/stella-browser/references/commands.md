@@ -1,6 +1,6 @@
 # Command Reference
 
-Supported `stella-browser` commands for Stella's extension-backed browser mode. For the normal workflow, see [stella-browser](state/knowledge/stella-browser.md).
+Supported `stella-browser` commands for Stella's extension-backed browser mode. For the normal workflow, see [stella-browser](../SKILL.md).
 
 Stella uses the user's real Chrome browser through the extension bridge. This reference intentionally omits standalone CLI surfaces such as proxy workflows, auth/state vaults, isolated sessions, provider switching, iOS/Appium, and direct CDP connection setup.
 

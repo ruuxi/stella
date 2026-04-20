@@ -26,4 +26,4 @@ Use this entry when the user wants to package, export, publish, or share a featu
 ## Backlinks
 
 - [Life Registry](state/registry.md)
-- [Knowledge Index](state/knowledge/index.md)
+- [Skills Index](state/skills/index.md)

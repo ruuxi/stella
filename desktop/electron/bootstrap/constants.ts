@@ -8,7 +8,7 @@ export const HARD_RESET_MUTABLE_HOME_PATHS = [
   "state/office-previews",
   "state/raw",
   "state/tmp",
-  "state/knowledge/user-profile",
+  "state/skills/user-profile",
   "state/core-memory.md",
   "state/device.json",
   "state/local-scheduler.json",

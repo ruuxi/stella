@@ -29,10 +29,10 @@ export const EXECUTE_TYPESCRIPT_TOOL_DESCRIPTION =
   "- Write a program body, not a full module. Top-level await and return are allowed.\n" +
   "- The program runs with full Node.js capabilities, including Buffer, process, require(), and fetch.\n" +
   "- Because this is a program body, static import/export syntax is not supported. Use require() or await import() instead.\n" +
-  "- Use the provided bindings instead: workspace, life, shell, libraries, console.\n" +
+  "- Use the provided bindings instead: workspace, life, shell, skills, console.\n" +
   "- Always use shell.exec(command, options?) for running shell commands. Do not use child_process.exec/spawn directly — Stella CLI wrappers (stella-browser, stella-office, stella-ui, stella-computer) are only available through shell.exec.\n" +
   "- Return JSON-serializable data. Keep code focused and deterministic.\n" +
-  "- Before solving from scratch, check state/capabilities/ for an existing capability with libraries.list() or libraries.run(name, input).";
+  "- Before solving from scratch, check state/skills/ for an existing skill with skills.list() or skills.run(name, input).";
 
 export const EXECUTE_TYPESCRIPT_PROMPT_GUIDANCE = `
 Code mode:
@@ -42,7 +42,7 @@ Code mode:
 - Static import/export syntax is not supported inside program bodies. Use require() or await import() instead.
 - Use the provided globals instead, and return JSON-serializable data.
 - Always use shell.exec() for running commands. Do not use child_process directly — Stella CLI wrappers (stella-browser, stella-office, stella-ui, stella-computer) are only available through shell.exec.
-- Before solving from scratch, check state/capabilities/ for existing capabilities with libraries.list() or libraries.run(name, input).
+- Before solving from scratch, check state/skills/ for existing skills with skills.list() or skills.run(name, input).
 
 Available globals:
 \`\`\`ts
@@ -76,8 +76,8 @@ declare const workspace: {
 
 declare const life: {
   read(pathOrSlug: string): Promise<string>;
-  list(area?: "knowledge" | "notes" | "raw" | "outputs" | "capabilities"): Promise<string[]>;
-  search(query: string, args?: { area?: "knowledge" | "notes" | "raw" | "outputs" | "capabilities"; maxResults?: number }): Promise<Array<{
+  list(area?: "skills" | "notes" | "raw" | "outputs"): Promise<string[]>;
+  search(query: string, args?: { area?: "skills" | "notes" | "raw" | "outputs"; maxResults?: number }): Promise<Array<{
     path: string;
     line: number;
     text: string;
@@ -95,7 +95,7 @@ declare const shell: {
   ): Promise<string>;
 };
 
-declare const libraries: {
+declare const skills: {
   list(): Promise<Array<{ name: string; path: string; hasProgram: boolean; description?: string }>>;
   read(name: string): Promise<{
     name: string;
@@ -123,11 +123,11 @@ const report = await shell.exec("stella-office view report.docx text");
 \`\`\`
 
 state/ layout:
-- \`state/knowledge/\` stores human-readable manuals, workflows, and reference docs.
-- \`state/capabilities/<name>/\` stores reusable executable capabilities. Each has:
-  - \`index.md\` for docs (what it does, when to use it, approach used)
-  - \`program.ts\` for executable logic (full Node.js + Stella bindings)
-  - optional \`input.schema.json\` and \`output.schema.json\`
-- Use \`libraries.run(name, input)\` when a reusable capability already exists.
-- After succeeding at something non-trivial, save the working approach as a new library.
+- \`state/skills/<name>/SKILL.md\` is Stella's unified skill surface. Each skill folder has:
+  - \`SKILL.md\` with frontmatter (\`name\`, \`description\`) plus instructions, decision logic, and gotchas
+  - optional \`scripts/program.ts\` for deterministic executable logic (full Node.js + Stella bindings)
+  - optional \`references/\`, \`templates/\`, \`assets/\`, \`input.schema.json\`, \`output.schema.json\`
+- Read a skill's \`SKILL.md\` with \`life.read("<name>")\` (slug-shorthand) before following its instructions.
+- Use \`skills.run(name, input)\` when a skill ships a frozen \`scripts/program.ts\` and you want to invoke it directly.
+- After succeeding at something non-trivial, save the working approach as a new skill (markdown only, or markdown + program if it warrants freezing).
 `.trim();
