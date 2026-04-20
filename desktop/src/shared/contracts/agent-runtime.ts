@@ -254,7 +254,6 @@ export const TOOL_IDS = {
   WEB_FETCH: "WebFetch",
   NO_RESPONSE: "NoResponse",
   MEMORY: "Memory",
-  EXPLORE: "Explore",
 } as const;
 
 export type ToolId = (typeof TOOL_IDS)[keyof typeof TOOL_IDS];

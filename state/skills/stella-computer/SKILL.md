@@ -10,6 +10,18 @@ Use `stella-computer` for arbitrary macOS apps outside Stella itself (Finder, No
 
 For Stella's own running UI use `stella-ui` instead. For browser content use `stella-browser` (DOM-level access via the extension bridge). Use `stella-computer` for everything else on the desktop.
 
+## Code mode usage
+
+From inside an `Exec` program, drive `stella-computer` through `tools.shell`. The CLI is auto-injected into the shell PATH and the session id is wired automatically per task.
+
+```ts
+const apps = await tools.shell({ command: "stella-computer list-apps" });
+const snap = await tools.shell({
+  command: "stella-computer snapshot --app Finder",
+});
+text(snap.output);
+```
+
 ## Core Workflow
 
 Every desktop automation follows the same shape:
@@ -26,7 +38,7 @@ stella-computer fill 9 "search text"
 stella-computer click 4
 ```
 
-The snapshot screenshot is auto-attached as a vision content block on your next turn. **Do not run a separate Read for the screenshot path** — the image is already in your context.
+The snapshot screenshot is auto-attached as a vision content block on your next turn. **Do not call `tools.read_file` for the screenshot path** — the image is already in your context.
 
 ## Reading a snapshot
 

@@ -8,7 +8,7 @@ description: Index of Stella's skills under state/skills. Each skill is a folder
 Each skill is a folder. The folder name is the skill ID. Inside:
 
 - `SKILL.md` — frontmatter (`name`, `description`) plus instructions, decision logic, gotchas. Always present.
-- `scripts/program.ts` — optional. Deterministic executable program runnable via `skills.run(name, input)`. Add this when an approach has been used reliably across multiple sessions and re-derivation cost is unacceptable.
+- `scripts/program.ts` — optional. Deterministic executable program runnable as a plain shell entrypoint when the `SKILL.md` tells a future agent to use it. Add this when an approach has been used reliably across multiple sessions and re-derivation cost is unacceptable.
 - `references/`, `templates/`, `assets/` — optional supporting files the skill references by relative path.
 - `input.schema.json`, `output.schema.json` — optional input/output schemas for documentation.
 

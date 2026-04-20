@@ -5,6 +5,7 @@ import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
 import { createTaskLifecycleResponseTarget } from "../agent-runtime/response-target.js";
 import { runExplore } from "../agent-runtime/explore.js";
+import { shouldUseAutomaticSkillExplore } from "../exec/skill-catalog.js";
 import { LocalTaskManager } from "../tasks/local-task-manager.js";
 import type { TaskToolRequest, ToolContext, ToolResult } from "../tools/types.js";
 import type {
@@ -104,58 +105,54 @@ const resolveToolWorkingDirectory = (
 ): string | undefined =>
   normalizeString(args.working_directory ?? args.cwd) ?? normalizeString(fallbackCwd);
 
-const READ_ONLY_EXECUTE_TYPESCRIPT_WORKSPACE_METHODS = new Set([
-  "readText",
+const READ_ONLY_EXEC_TOOLS = new Set([
+  "read_file",
   "search",
   "glob",
-  "gitStatus",
-  "gitDiff",
+  "web_fetch",
+  "web_search",
+  "task_output",
+  "heartbeat_get",
+  "cron_list",
 ]);
 
-const READ_ONLY_EXECUTE_TYPESCRIPT_LIFE_METHODS = new Set([
-  "read",
-  "list",
-  "search",
-]);
-
-const EXECUTE_TYPESCRIPT_MUTATION_PATTERNS: RegExp[] = [
-  /\bworkspace\.(?:writeText|replaceText)\s*\(/,
-  /\b(?:shell|browser|office)\s*\./,
-  /\blibraries\s*\.\s*run\s*\(/,
+const EXEC_MUTATION_PATTERNS: RegExp[] = [
+  /\btools\s*\.\s*write_file\s*\(/,
+  /\btools\s*\.\s*apply_patch\s*\(/,
+  // `tools.shell` subsumes run/status/kill via op; treat any call as a
+  // potential mutator since op='run' may execute arbitrary commands.
+  /\btools\s*\.\s*shell\s*\(/,
+  /\btools\s*\.\s*display\s*\(/,
+  /\btools\s*\.\s*memory\s*\(/,
+  /\btools\s*\.\s*task_(?:create|update|pause)\s*\(/,
+  /\btools\s*\.\s*cron_(?:add|update|remove|run)\s*\(/,
+  /\btools\s*\.\s*heartbeat_(?:upsert|run)\s*\(/,
+  /\btools\s*\.\s*schedule\s*\(/,
   /\bfs(?:\.promises)?\.(?:writeFile|appendFile|cp|copyFile|rename|rm|rmdir|unlink|mkdir|mkdtemp|truncate|chmod|chown|utimes)\s*\(/,
+  /\bchild_process\s*\.\s*(?:exec|execFile|spawn|fork)\s*\(/,
   /\bprocess\s*\.\s*chdir\s*\(/,
-  /\b(?:const|let|var)\s*\{[^}]+\}\s*=\s*(?:workspace|life)\b/,
-  /\b(?:const|let|var)\s+\w+\s*=\s*(?:workspace|life)\b/,
-  /\b(?:workspace|life)\s*\[/,
   /\b(?:require|import)\s*\(/,
 ];
 
 const isClearlyReadOnlyExecuteTypescript = (
   args: Record<string, unknown>,
 ): boolean => {
-  const code = normalizeString(args.code);
+  const code =
+    normalizeString(args.source) ?? normalizeString(args.code);
   if (!code) {
     return false;
   }
 
-  for (const pattern of EXECUTE_TYPESCRIPT_MUTATION_PATTERNS) {
+  for (const pattern of EXEC_MUTATION_PATTERNS) {
     if (pattern.test(code)) {
       return false;
     }
   }
 
-  const workspaceCalls = code.matchAll(/\bworkspace\.(\w+)\s*\(/g);
-  for (const match of workspaceCalls) {
+  const toolCalls = code.matchAll(/\btools\s*\.\s*(\w+)\s*\(/g);
+  for (const match of toolCalls) {
     const method = match[1];
-    if (!method || !READ_ONLY_EXECUTE_TYPESCRIPT_WORKSPACE_METHODS.has(method)) {
-      return false;
-    }
-  }
-
-  const lifeCalls = code.matchAll(/\blife\.(\w+)\s*\(/g);
-  for (const match of lifeCalls) {
-    const method = match[1];
-    if (!method || !READ_ONLY_EXECUTE_TYPESCRIPT_LIFE_METHODS.has(method)) {
+    if (!method || !READ_ONLY_EXEC_TOOLS.has(method)) {
       return false;
     }
   }
@@ -169,6 +166,9 @@ export const resolveHmrToolTargetPath = (
   fallbackCwd?: string,
 ): string | null => {
   const workingDirectory = resolveToolWorkingDirectory(args, fallbackCwd);
+  // The legacy Write/Edit/Bash tool surface is gone; Exec is the only mutating
+  // surface that ever shows up in this hot path now. We keep the legacy names
+  // as no-ops so callers that still inspect tool ids defensively don't break.
   if (toolName === "Write" || toolName === "Edit") {
     const rawPath = normalizeString(
       args.file_path ?? args.path ?? args.target_path,
@@ -182,16 +182,14 @@ export const resolveHmrToolTargetPath = (
     if (rawPath) {
       return resolvePath(rawPath, workingDirectory);
     }
-    // Shell commands often mutate files without explicit path args (for example
-    // package installs/codegen). Treat repo-local working-directory commands as
-    // potential writes so HMR pauses before the command runs.
     return workingDirectory
       ? resolvePath(workingDirectory, normalizeString(fallbackCwd))
       : null;
   }
-  if (toolName === "ExecuteTypescript") {
-    // Code mode can write through workspace bindings, shell.exec, or direct Node
-    // filesystem APIs. Only skip HMR pause for programs that are clearly read-only.
+  if (toolName === "Exec" || toolName === "ExecuteTypescript") {
+    // Exec can write through `tools.write_file` / `apply_patch`, `tools.shell`,
+    // or direct Node filesystem APIs. Only skip the HMR pause for programs
+    // that are clearly read-only.
     const basePath = normalizeString(fallbackCwd);
     if (!basePath) {
       return null;
@@ -444,12 +442,11 @@ export const createTaskOrchestration = (
           }),
         );
       }
-      // Per-task Explore: run the cheap-model scout over state/ before the
-      // General agent starts. The findings are inlined into the General
-      // agent's first user message so it can read them without a tool call.
-      // For non-General agents (e.g. SCHEDULE), skip the scout entirely.
       let exploreFindingsBlock = "";
-      if (agentType === AGENT_IDS.GENERAL) {
+      if (
+        agentType === AGENT_IDS.GENERAL &&
+        await shouldUseAutomaticSkillExplore(context.stellaRoot)
+      ) {
         exploreFindingsBlock = await runExplore({
           context,
           conversationId,
@@ -462,25 +459,6 @@ export const createTaskOrchestration = (
       const composedUserPrompt = exploreFindingsBlock
         ? `${exploreFindingsBlock}\n\n${taskDescription}\n\n${taskPrompt}`
         : `${taskDescription}\n\n${taskPrompt}`;
-
-      // Allow the General agent to invoke Explore again mid-task with a
-      // narrower question. Closes over `context` so the handler has access
-      // to the same toolHost / model routing as the initial scout.
-      const exploreHandler =
-        agentType === AGENT_IDS.GENERAL
-          ? (handlerArgs: {
-              conversationId: string;
-              question: string;
-              signal?: AbortSignal;
-            }) =>
-              runExplore({
-                context,
-                conversationId: handlerArgs.conversationId,
-                taskDescription: "",
-                taskPrompt: handlerArgs.question,
-                signal: handlerArgs.signal ?? abortSignal,
-              })
-          : undefined;
 
       let subagentSucceeded = false;
       try {
@@ -525,7 +503,6 @@ export const createTaskOrchestration = (
               }
             : undefined,
           webSearch: deps.webSearch,
-          ...(exploreHandler ? { explore: exploreHandler } : {}),
           hookEmitter: context.hookEmitter,
         });
         subagentSucceeded = !result.error;

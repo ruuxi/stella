@@ -8,7 +8,7 @@ import {
 describe("task-orchestration HMR target resolution", () => {
   const stellaRoot = path.resolve("/tmp/stella-root");
 
-  it("resolves explicit bash file targets", () => {
+  it("resolves explicit bash file targets (legacy)", () => {
     const targetPath = resolveHmrToolTargetPath(
       "Bash",
       {
@@ -22,53 +22,13 @@ describe("task-orchestration HMR target resolution", () => {
     expect(targetPath && isHmrPathUnderDirectory(targetPath, stellaRoot)).toBe(true);
   });
 
-  it("treats path-less bash commands as writes in the working directory", () => {
-    const cwd = path.resolve(stellaRoot, "desktop");
+  it("treats Exec programs that call mutating tools as writes in stellaRoot", () => {
     const targetPath = resolveHmrToolTargetPath(
-      "Bash",
-      {
-        command: "bun install",
-        working_directory: cwd,
-      },
-      stellaRoot,
-    );
-
-    expect(targetPath).toBe(cwd);
-    expect(targetPath && isHmrPathUnderDirectory(targetPath, stellaRoot)).toBe(true);
-  });
-
-  it("resolves relative working directories against stella root", () => {
-    const targetPath = resolveHmrToolTargetPath(
-      "Bash",
-      {
-        command: "npm run build",
-        working_directory: "desktop",
-      },
-      stellaRoot,
-    );
-
-    expect(targetPath).toBe(path.resolve(stellaRoot, "desktop"));
-  });
-
-  it("falls back to stella root when bash cwd is omitted", () => {
-    const targetPath = resolveHmrToolTargetPath(
-      "Bash",
-      {
-        command: "bun install",
-      },
-      stellaRoot,
-    );
-
-    expect(targetPath).toBe(stellaRoot);
-    expect(targetPath && isHmrPathUnderDirectory(targetPath, stellaRoot)).toBe(true);
-  });
-
-  it("treats ExecuteTypescript as a potential stella-root write", () => {
-    const targetPath = resolveHmrToolTargetPath(
-      "ExecuteTypescript",
+      "Exec",
       {
         summary: "scan and update files",
-        code: "return await workspace.writeText('desktop/tmp.txt', 'x')",
+        source:
+          "await tools.write_file({ path: '/tmp/stella-root/desktop/tmp.txt', content: 'x' });",
       },
       stellaRoot,
     );
@@ -77,12 +37,12 @@ describe("task-orchestration HMR target resolution", () => {
     expect(targetPath && isHmrPathUnderDirectory(targetPath, stellaRoot)).toBe(true);
   });
 
-  it("treats clearly read-only ExecuteTypescript as non-mutating", () => {
+  it("treats clearly read-only Exec programs as non-mutating", () => {
     const targetPath = resolveHmrToolTargetPath(
-      "ExecuteTypescript",
+      "Exec",
       {
         summary: "read source files",
-        code: "return await workspace.glob('desktop/src/**/*.ts')",
+        source: "const files = await tools.glob({ pattern: 'desktop/src/**/*.ts' });",
       },
       stellaRoot,
     );
@@ -90,12 +50,13 @@ describe("task-orchestration HMR target resolution", () => {
     expect(targetPath).toBeNull();
   });
 
-  it("keeps ExecuteTypescript conservative for ambiguous code", () => {
+  it("keeps Exec conservative for ambiguous code (require / direct fs)", () => {
     const targetPath = resolveHmrToolTargetPath(
-      "ExecuteTypescript",
+      "Exec",
       {
         summary: "load helpers and run script",
-        code: "const fs = require('node:fs/promises'); return await fs.readFile('README.md', 'utf8');",
+        source:
+          "const fs = require('node:fs/promises'); return await fs.readFile('README.md', 'utf8');",
       },
       stellaRoot,
     );
@@ -117,12 +78,12 @@ describe("task-orchestration HMR target resolution", () => {
     expect(targetPath && isHmrPathUnderDirectory(targetPath, stellaRoot)).toBe(false);
   });
 
-  it("cannot infer ExecuteTypescript writes without a stella root fallback", () => {
+  it("cannot infer Exec writes without a stella root fallback", () => {
     const targetPath = resolveHmrToolTargetPath(
-      "ExecuteTypescript",
+      "Exec",
       {
         summary: "read only",
-        code: "return await workspace.glob('**/*.ts')",
+        source: "const files = await tools.glob({ pattern: '**/*.ts' });",
       },
     );
 
