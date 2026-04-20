@@ -113,6 +113,19 @@ export type StellaHostRunnerOptions = {
   scheduleApi?: ScheduleToolApi;
   displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
+  /**
+   * Optional handler that powers the Exec registry's `tools.web_search`
+   * builtin. Wire this when an Exa client is configured.
+   */
+  webSearch?: (
+    query: string,
+    options?: { category?: string },
+  ) => Promise<{ text: string }>;
+  /**
+   * Optional MemoryStore wired to the orchestrator's `tools.memory` builtin.
+   * Defaults to `runtimeStore.memoryStore` when not provided.
+   */
+  memoryStore?: import("../memory/memory-store.js").MemoryStore;
   listLocalChatEvents?: (
     conversationId: string,
     maxItems: number,
@@ -280,6 +293,14 @@ export type RunnerContext = {
     registerExtensionTools: (tools: ToolDefinition[]) => void;
     killAllShells: () => void;
     killShellsByPort: (port: number) => void;
+    getExecRegistry: () => import("../tools/registry/registry.js").ExecToolRegistry;
+    getExecHost: () => import("../exec/exec-host.js").ExecHost;
+    registerExecTool: (
+      tool: Parameters<
+        import("../tools/registry/registry.js").ExecToolRegistry["register"]
+      >[0],
+    ) => void;
+    shutdown: () => Promise<void>;
   };
 };
 

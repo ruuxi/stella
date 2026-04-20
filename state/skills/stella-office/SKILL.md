@@ -10,10 +10,16 @@ AI-friendly CLI for `.docx`, `.xlsx`, `.pptx`. Stella bundles this command direc
 
 ## Availability
 
-- Use `stella-office` inside `Bash`.
-- Stella exposes it as a native bundled command, similar to `stella-browser`.
+- Call `stella-office` from inside an `Exec` program through `tools.shell({ command: "stella-office ..." })`. Stella auto-injects the binary into shell PATH.
 - If the command is unexpectedly unavailable, the bundled binary for this platform may not be present yet.
-- For live chat previews inside Stella, use `stella-office preview <file>`.
+- For live chat previews inside Stella, use `tools.shell({ command: "stella-office preview <file>" })`.
+
+```ts
+const result = await tools.shell({
+  command: "stella-office docx view /abs/path/report.docx text",
+});
+text(result.output);
+```
 
 ---
 

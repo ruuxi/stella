@@ -4,10 +4,15 @@ const INTERNAL_TASK_TOOL_NAMES = new Set([
   "TaskPause",
   "TaskCancel",
   "TaskOutput",
+  "task_create",
+  "task_update",
+  "task_pause",
+  "task_cancel",
+  "task_output",
 ]);
 
 const LEAKED_INTERNAL_TOOL_TRANSCRIPT_RE =
-  /\[Tool (?:call|result)\]\s*Task(?:Create|Update|Pause|Cancel|Output)\b/;
+  /\[Tool (?:call|result)\]\s*(?:Task(?:Create|Update|Pause|Cancel|Output)|task_(?:create|update|pause|cancel|output))\b/;
 const ASSISTANT_PREFIX_RE = /^\[Assistant\]\s*/i;
 const INTERNAL_TRANSCRIPT_LINE_RE =
   /^\[(?:Assistant thinking|Assistant tool calls|Tool call|Tool result)\]/i;

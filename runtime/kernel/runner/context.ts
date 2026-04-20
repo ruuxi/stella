@@ -27,9 +27,10 @@ import {
 import { anyApi } from "convex/server";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
 import {
-  EXECUTE_TYPESCRIPT_PROMPT_GUIDANCE,
-  EXECUTE_TYPESCRIPT_TOOL_NAME,
-} from "../tools/execute-typescript-contract.js";
+  EXEC_TOOL_NAME,
+  buildExecPromptGuidance,
+} from "../exec/exec-contract.js";
+import { renderSkillCatalogBlock } from "../exec/skill-catalog.js";
 import type {
   RunnerContext,
   ParsedAgentLike,
@@ -270,6 +271,8 @@ export const createRunnerContext = ({
   listLocalChatEvents,
   appendLocalChatEvent,
   getDefaultConversationId,
+  webSearch,
+  memoryStore,
 }: StellaHostRunnerOptions): RunnerContext => {
   const envProxyBaseUrl = sanitizeStellaBase(
     process.env.STELLA_LLM_PROXY_URL ?? null,
@@ -290,6 +293,10 @@ export const createRunnerContext = ({
     requestCredential,
     displayHtml,
     scheduleApi,
+    ...(webSearch ? { webSearch } : {}),
+    ...(memoryStore ?? runtimeStore?.memoryStore
+      ? { memoryStore: memoryStore ?? runtimeStore.memoryStore }
+      : {}),
     taskApi: {
       createTask: async (request) => {
         if (!context.state.localTaskManager) {
@@ -494,8 +501,11 @@ export const buildAgentContext = async (
   const enginePref = getAgentEnginePreference(args.agentType);
 
   const toolsAllowlist = agent?.toolsAllowlist;
-  if (toolsAllowlist?.includes(EXECUTE_TYPESCRIPT_TOOL_NAME)) {
-    dynamicContextSections.push(EXECUTE_TYPESCRIPT_PROMPT_GUIDANCE);
+  if (toolsAllowlist?.includes(EXEC_TOOL_NAME)) {
+    const registry = context.toolHost.getExecRegistry();
+    const enabledTools = registry.list({ agentType: args.agentType });
+    dynamicContextSections.push(buildExecPromptGuidance(enabledTools));
+    dynamicContextSections.push(await renderSkillCatalogBlock(context.stellaRoot));
   }
 
   let memorySnapshot: { memory?: string; user?: string } | undefined;

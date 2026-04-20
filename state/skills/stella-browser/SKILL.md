@@ -8,6 +8,22 @@ description: Browser automation through Stella's Chrome extension bridge. Use wh
 
 Stella uses the user's actual Chrome browser through the extension bridge. It does not rely on separate browser installs, proxy workflows, auth vaults, isolated automation sessions, or iOS/Appium providers for normal browser tasks.
 
+## Code mode usage
+
+From inside an `Exec` program, call the CLI through `tools.shell`:
+
+```ts
+const { output } = await tools.shell({
+  command: "stella-browser open https://example.com",
+});
+const snapshot = await tools.shell({
+  command: "stella-browser snapshot -i",
+});
+text(snapshot.output);
+```
+
+Stella auto-injects `stella-browser` into the shell PATH, so no setup or env wiring is required.
+
 ## Extension Mode Workflow
 
 Every browser automation follows this pattern:

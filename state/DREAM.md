@@ -38,7 +38,7 @@ Evaluate the health and relevance of saved skills:
 - **Prune unused skills.** If a skill has never been read or invoked and is unlikely to be needed again, remove its folder.
 - **Update stale approaches.** If the approach a skill encodes has changed (an app updated, an API changed), update both `SKILL.md` and any `scripts/program.ts`.
 - **Demote brittle programs.** If a skill's `scripts/program.ts` keeps failing while the `SKILL.md` instructions still work, consider deleting the program and falling back to instruction-only.
-- **Promote stable patterns.** If a skill has been re-derived from `SKILL.md` reliably across multiple sessions, freeze a `scripts/program.ts` so future runs skip the re-derivation cost.
+- **Promote stable patterns.** If a skill has been re-derived from `SKILL.md` reliably across multiple sessions, freeze a `scripts/program.ts` so future runs skip the re-derivation cost. Future agents should run it as a plain shell entrypoint when the skill instructs them to do so.
 
 ### 5. Prune and Index
 

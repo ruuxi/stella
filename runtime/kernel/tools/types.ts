@@ -129,6 +129,19 @@ export type ToolHostOptions = {
   scheduleApi?: ScheduleToolApi;
   extensionTools?: import("../extensions/types.js").ToolDefinition[];
   displayHtml?: (html: string) => void;
+  /**
+   * Optional handler for the Exec registry's `tools.web_search` builtin. When
+   * omitted, `tools.web_search` is not registered.
+   */
+  webSearch?: (
+    query: string,
+    options?: { category?: string },
+  ) => Promise<{ text: string }>;
+  /**
+   * Optional MemoryStore wired to the orchestrator. When provided,
+   * `tools.memory` is registered (orchestrator-only).
+   */
+  memoryStore?: import("../memory/memory-store.js").MemoryStore;
   requestCredential?: (payload: {
     provider: string;
     label?: string;

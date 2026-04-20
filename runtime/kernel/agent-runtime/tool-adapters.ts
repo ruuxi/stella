@@ -11,24 +11,15 @@ import type {
   ToolResult,
   ToolUpdateCallback,
 } from "../tools/types.js";
+import type { ExecContentItem } from "../tools/registry/registry.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { TOOL_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import { AnyToolArgsSchema, textFromUnknown } from "./shared.js";
-import {
-  dispatchLocalTool,
-  type LocalExploreHandler,
-} from "../tools/local-tool-dispatch.js";
+import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
 
 export const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
-  "TaskUpdate",
-  "TaskCreate",
-  "TaskPause",
-  "TaskOutput",
-  TOOL_IDS.WEB_FETCH,
   TOOL_IDS.NO_RESPONSE,
-  TOOL_IDS.MEMORY,
-  TOOL_IDS.EXPLORE,
 ] as const;
 
 const getToolMetadataIndex = (toolCatalog?: ToolMetadata[]) =>
@@ -158,6 +149,38 @@ export const extractAttachImageBlocks = async (
   return { text: stripped, images };
 };
 
+/**
+ * `Exec` and `Wait` return their `text(...)` / `image(...)` content items in
+ * `details.content`. This lifts them into proper content blocks so the model
+ * sees images on the very next turn (mirroring `[stella-attach-image]` for
+ * legacy CLIs).
+ */
+const extractExecContentBlocks = (
+  details: unknown,
+): { text: string[]; images: ImageBlock[] } => {
+  const out = { text: [] as string[], images: [] as ImageBlock[] };
+  if (!details || typeof details !== "object") return out;
+  const record = details as { content?: ExecContentItem[] };
+  if (!Array.isArray(record.content)) return out;
+  for (const item of record.content) {
+    if (!item || typeof item !== "object") continue;
+    if (item.type === "text" && typeof item.text === "string" && item.text.trim()) {
+      out.text.push(item.text);
+    } else if (
+      item.type === "image" &&
+      typeof item.mimeType === "string" &&
+      typeof item.data === "string"
+    ) {
+      out.images.push({
+        type: "image",
+        mimeType: item.mimeType,
+        data: item.data,
+      });
+    }
+  }
+  return out;
+};
+
 type RuntimeToolContextArgs = {
   toolCallId: string;
   runId: string;
@@ -209,7 +232,6 @@ type RuntimeToolExecutionArgs = RuntimeToolContextArgs & {
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
-  explore?: LocalExploreHandler;
   hookEmitter?: HookEmitter;
   signal?: AbortSignal;
   onUpdate?: ToolUpdateCallback;
@@ -222,7 +244,6 @@ export const executeRuntimeToolCall = async (
     conversationId: args.conversationId,
     webSearch: args.webSearch,
     store: args.store,
-    ...(args.explore ? { explore: args.explore } : {}),
     ...(args.signal ? { signal: args.signal } : {}),
   });
   if (localResult.handled) {
@@ -306,7 +327,6 @@ export const createPiTools = (opts: {
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
-  explore?: LocalExploreHandler;
   hookEmitter?: HookEmitter;
 }): AgentTool[] => {
   const requested = getRequestedRuntimeToolNames(opts.toolsAllowlist);
@@ -339,7 +359,6 @@ export const createPiTools = (opts: {
           store: opts.store,
           toolExecutor: opts.toolExecutor,
           webSearch: opts.webSearch,
-          ...(opts.explore ? { explore: opts.explore } : {}),
           hookEmitter: opts.hookEmitter,
           signal,
           onUpdate: onUpdate
@@ -357,13 +376,20 @@ export const createPiTools = (opts: {
         // referenced PNG(s) into image content blocks. This is what makes
         // `stella-computer snapshot` "auto-read" its screenshot — the model
         // sees the image on the very next turn with no extra Read step.
-        const { text: forwardedText, images } = await extractAttachImageBlocks(
-          formatted.text,
-        );
+        const { text: forwardedText, images: legacyImages } =
+          await extractAttachImageBlocks(formatted.text);
+        // `Exec` / `Wait` results carry text(...) / image(...) content
+        // explicitly; surface them as proper content blocks so vision
+        // round-trips work without going through the legacy marker.
+        const execExtras = extractExecContentBlocks(toolResult.details);
+        const combinedText = [forwardedText, ...execExtras.text]
+          .filter((entry) => entry && entry.trim().length > 0)
+          .join("\n\n");
         return {
           content: [
-            { type: "text" as const, text: forwardedText },
-            ...images,
+            { type: "text" as const, text: combinedText },
+            ...legacyImages,
+            ...execExtras.images,
           ],
           details: formatted.details,
         };

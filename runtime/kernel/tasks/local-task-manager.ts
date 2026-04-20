@@ -247,7 +247,7 @@ const getFsLockKey = (
 };
 
 const isTaskCreateTool = (toolName: string): boolean =>
-  toolName === "TaskCreate";
+  toolName === "TaskCreate" || toolName === "task_create";
 
 const TASK_UPDATE_INTERRUPT_ERROR = "Interrupted by task update";
 export const TASK_SHUTDOWN_CANCEL_REASON = "Canceled because Stella closed or restarted.";

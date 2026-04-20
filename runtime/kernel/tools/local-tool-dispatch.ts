@@ -6,18 +6,6 @@ export type LocalToolStore = {
   memoryStore: MemoryStore;
 };
 
-/**
- * Optional Explore handler. When present, the General agent can call the
- * `Explore` tool to launch an additional scout pass over `state/` mid-task.
- * Returns the wrapped `<explore_findings>...</explore_findings>` block as a
- * string. Always returns; never throws (failures yield the unavailable block).
- */
-export type LocalExploreHandler = (args: {
-  conversationId: string;
-  question: string;
-  signal?: AbortSignal;
-}) => Promise<string>;
-
 const isMemoryTarget = (value: unknown): value is MemoryTarget =>
   value === "memory" || value === "user";
 
@@ -33,7 +21,6 @@ export type LocalToolDeps = {
     options?: { category?: string },
   ) => Promise<{ text: string }>;
   store?: LocalToolStore | null;
-  explore?: LocalExploreHandler;
   signal?: AbortSignal;
 };
 
@@ -116,28 +103,6 @@ export async function dispatchLocalTool(
       result = deps.store.memoryStore.remove(target, oldText);
     }
     return { handled: true, text: JSON.stringify(result) };
-  }
-
-  if (toolName === TOOL_IDS.EXPLORE) {
-    if (!deps.explore) {
-      return {
-        handled: true,
-        text: `<explore_findings status="unavailable">{"relevant": [], "maybe": [], "nothing_found_for": []}</explore_findings>`,
-      };
-    }
-    const question = typeof args.question === "string" ? args.question.trim() : "";
-    if (!question) {
-      return {
-        handled: true,
-        text: `<explore_findings status="unavailable">{"relevant": [], "maybe": [], "nothing_found_for": ["question was empty"]}</explore_findings>`,
-      };
-    }
-    const text = await deps.explore({
-      conversationId: deps.conversationId,
-      question,
-      ...(deps.signal ? { signal: deps.signal } : {}),
-    });
-    return { handled: true, text };
   }
 
   return { handled: false };

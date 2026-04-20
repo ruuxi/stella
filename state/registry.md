@@ -26,10 +26,14 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 ## Memory Structure
 
-- `skills/<name>/SKILL.md` — how things work, when to use them, decision logic. Mutable. Update when reality changes. Optionally ships a `scripts/program.ts` for deterministic execution via `skills.run(name, input)`.
+- `skills/<name>/SKILL.md` — how things work, when to use them, decision logic. Mutable. Update when reality changes. Optionally ships a `scripts/program.ts` for deterministic execution when a skill instructs a future agent to run it via shell.
 - `notes/` — what happened, what was tried, what's open. Append-only. Never modify a past day's entry.
 - `raw/` — unprocessed source material. Immutable after capture. Synthesize into `skills/` when useful.
 - `outputs/` — generated artifacts worth keeping. Only file if likely to matter again.
+
+## Code Mode
+
+The General agent runs everything through `Exec` (Codex-style code mode). Capabilities live on the global `tools` object inside each program: `tools.read_file`, `tools.write_file`, `tools.apply_patch`, `tools.shell`, `tools.glob`, `tools.search`, `tools.web_*`, plus agent-specific tools like tasks, scheduling, display, and memory when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large. Built-in helpers: `text(value)`, `image(absolutePath)`, `store(key, value)` / `load(key)`, `notify(text)`, `yield_control()`, `exit(value?)`, plus `// @exec: yield_after_ms=…` for long-running cells resumed by `Wait({ cell_id })`.
 
 ## Dream
 

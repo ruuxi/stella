@@ -1,46 +1,32 @@
 /**
- * Frontend-local tool metadata and schemas for the PI runtime.
+ * Tool metadata + JSON schemas exposed to the LLM.
  *
- * The PI runtime currently consumes the tool names, descriptions, and safety
- * helpers from this module.
+ * Codex-style code mode: the only general-purpose surface is `Exec` + `Wait`.
+ * `RequestCredential` and `AskUserQuestion` stay top-level because they need
+ * to round-trip through the chat UI (not the V8 runtime). Everything else
+ * lives inside `tools.*` via the `ExecToolRegistry`.
  *
- * Schemas are plain JSON Schema objects — no Zod, no conversion libraries.
+ * The Explore subagent additionally calls `Read` / `Grep` through
+ * `toolHost.executeTool`, so we keep those two internal-only descriptors
+ * (and matching handler entries in `registry.ts`) so the existing Explore
+ * loop continues to work.
  */
 
 import {
-  EXECUTE_TYPESCRIPT_JSON_SCHEMA,
-  EXECUTE_TYPESCRIPT_TOOL_DESCRIPTION,
-} from "./execute-typescript-contract.js";
-
-// ─── Device Tool Names ──────────────────────────────────────────────────────
+  EXEC_JSON_SCHEMA,
+  WAIT_JSON_SCHEMA,
+  WAIT_TOOL_DESCRIPTION,
+  buildExecToolDescription,
+} from "../exec/exec-contract.js";
 
 export const DEVICE_TOOL_NAMES = [
-  "Read",
-  "Write",
-  "Edit",
-  "Grep",
-  "ExecuteTypescript",
-  "Bash",
-  "KillShell",
-  "ShellStatus",
+  "Exec",
+  "Wait",
   "AskUserQuestion",
   "RequestCredential",
-  "Schedule",
-  "Display",
-  "DisplayGuidelines",
-  "HeartbeatGet",
-  "HeartbeatUpsert",
-  "HeartbeatRun",
-  "CronList",
-  "CronAdd",
-  "CronUpdate",
-  "CronRemove",
-  "CronRun",
 ] as const;
 
 export type DeviceToolName = (typeof DEVICE_TOOL_NAMES)[number];
-
-// ─── Dangerous Command Patterns ─────────────────────────────────────────────
 
 export const DANGEROUS_COMMAND_PATTERNS: Array<{
   pattern: RegExp;
@@ -81,146 +67,6 @@ export function getDangerousCommandReason(command: string): string | null {
   return null;
 }
 
-// ─── JSON Schemas (plain objects) ───────────────────────────────────────────
-// Each schema is a standard JSON Schema object passed directly to LLM tool
-// definitions. No conversion step needed.
-
-const ReadJsonSchema = {
-  type: "object",
-  properties: {
-    file_path: {
-      type: "string",
-      description:
-        "File path to read. Absolute paths are allowed; relative paths resolve from the repo desktop root by default.",
-    },
-    offset: {
-      type: "number",
-      description: "Line number to start reading from (1-based)",
-    },
-    limit: { type: "number", description: "Max number of lines to read" },
-  },
-  required: ["file_path"],
-};
-
-const WriteJsonSchema = {
-  type: "object",
-  properties: {
-    file_path: {
-      type: "string",
-      description:
-        "File path to write. Absolute paths are allowed; relative paths resolve from the repo desktop root by default.",
-    },
-    content: { type: "string", description: "Full file contents to write" },
-  },
-  required: ["file_path", "content"],
-};
-
-const EditJsonSchema = {
-  type: "object",
-  properties: {
-    file_path: {
-      type: "string",
-      description:
-        "File path to edit. Absolute paths are allowed; relative paths resolve from the repo desktop root by default.",
-    },
-    old_string: {
-      type: "string",
-      description:
-        "Exact text to find and replace (must be unique unless replace_all=true)",
-    },
-    new_string: { type: "string", description: "Replacement text" },
-    replace_all: {
-      type: "boolean",
-      description: "Replace all occurrences instead of requiring uniqueness",
-    },
-  },
-  required: ["file_path", "old_string", "new_string"],
-};
-
-const GrepJsonSchema = {
-  type: "object",
-  properties: {
-    pattern: { type: "string", description: "Regex pattern to search for" },
-    path: { type: "string", description: "File or directory to search in" },
-    glob: {
-      type: "string",
-      description: 'Filter files by glob pattern (e.g. "*.tsx")',
-    },
-    type: {
-      type: "string",
-      description: 'Filter by file type (e.g. "ts", "py", "json")',
-    },
-    output_mode: {
-      type: "string",
-      enum: ["content", "files_with_matches", "count"],
-      description: "What to return: matching lines, file paths, or counts",
-    },
-    case_insensitive: {
-      type: "boolean",
-      description: "Case-insensitive search",
-    },
-    context_lines: {
-      type: "number",
-      description:
-        "Lines of context around each match (for output_mode=content)",
-    },
-    max_results: {
-      type: "number",
-      description: "Maximum number of results to return",
-    },
-  },
-  required: ["pattern"],
-};
-
-const BashJsonSchema = {
-  type: "object",
-  properties: {
-    command: { type: "string", description: "The shell command to execute" },
-    description: {
-      type: "string",
-      description: "Human-readable description of what this command does",
-    },
-    timeout: {
-      type: "number",
-      description: "Timeout in milliseconds (default 120000, max 600000)",
-    },
-    working_directory: {
-      type: "string",
-      description: "Working directory for the command",
-    },
-    run_in_background: {
-      type: "boolean",
-      description: "Run in background and return a shell_id immediately",
-    },
-  },
-  required: ["command"],
-};
-
-const KillShellJsonSchema = {
-  type: "object",
-  properties: {
-    shell_id: {
-      type: "string",
-      description: "Shell ID returned by Bash with run_in_background=true",
-    },
-  },
-  required: ["shell_id"],
-};
-
-const ShellStatusJsonSchema = {
-  type: "object",
-  properties: {
-    shell_id: {
-      type: "string",
-      description: "Shell ID to check. Omit to list all shells.",
-    },
-    tail_lines: {
-      type: "number",
-      description: "Number of output lines to return from the end (default 50)",
-    },
-  },
-};
-
 const AskUserQuestionJsonSchema = {
   type: "object",
   properties: {
@@ -231,11 +77,11 @@ const AskUserQuestionJsonSchema = {
         properties: {
           question: {
             type: "string",
-            description: "The question to ask (end with ?)",
+            description: "The question to ask (end with ?).",
           },
           header: {
             type: "string",
-            description: "Short label displayed as a tag (max 12 chars)",
+            description: "Short label displayed as a tag (max 12 chars).",
           },
           options: {
             type: "array",
@@ -244,12 +90,12 @@ const AskUserQuestionJsonSchema = {
               properties: {
                 label: {
                   type: "string",
-                  description: "Option text (1-5 words)",
+                  description: "Option text (1-5 words).",
                 },
                 description: {
                   type: "string",
                   description:
-                    "What this option means or what happens if chosen",
+                    "What this option means or what happens if chosen.",
                 },
               },
               required: ["label", "description"],
@@ -257,7 +103,7 @@ const AskUserQuestionJsonSchema = {
           },
           multiSelect: {
             type: "boolean",
-            description: "Allow selecting multiple options",
+            description: "Allow selecting multiple options.",
           },
         },
         required: ["question", "header", "options", "multiSelect"],
@@ -272,141 +118,49 @@ const RequestCredentialJsonSchema = {
   properties: {
     provider: {
       type: "string",
-      description: 'Unique key for this secret (e.g. "github_token")',
+      description: 'Unique key for this secret (e.g. "github_token").',
     },
     label: {
       type: "string",
-      description: 'Display name shown to the user (e.g. "GitHub Token")',
+      description: 'Display name shown to the user (e.g. "GitHub Token").',
     },
     description: {
       type: "string",
-      description: "Why this credential is needed",
+      description: "Why this credential is needed.",
     },
-    placeholder: { type: "string", description: "Input placeholder text" },
+    placeholder: { type: "string", description: "Input placeholder text." },
   },
   required: ["provider"],
 };
 
-const ScheduleJsonSchema = {
+// Internal-only schemas (Explore subagent + memory-review reach these through
+// `executeTool` / `dispatchLocalTool`).
+const ReadJsonSchema = {
   type: "object",
   properties: {
-    prompt: {
-      type: "string",
-      description:
-        "Plain-language scheduling request for local cron jobs and heartbeats.",
-    },
+    file_path: { type: "string", description: "Absolute or repo-relative file path." },
+    offset: { type: "number" },
+    limit: { type: "number" },
   },
-  required: ["prompt"],
+  required: ["file_path"],
 };
 
-const WebSearchJsonSchema = {
+const GrepJsonSchema = {
   type: "object",
   properties: {
-    query: {
+    pattern: { type: "string" },
+    path: { type: "string" },
+    glob: { type: "string" },
+    type: { type: "string" },
+    output_mode: {
       type: "string",
-      description:
-        "Natural language search query — write descriptively, not as keywords",
+      enum: ["content", "files_with_matches", "count"],
     },
-    category: {
-      type: "string",
-      enum: ["company", "people", "research paper"],
-      description:
-        "Optional filter. 'company' for company research, 'people' for non-public figures, 'research paper' for academic papers. Omit for news, sports, general facts.",
-    },
+    case_insensitive: { type: "boolean" },
+    context_lines: { type: "number" },
+    max_results: { type: "number" },
   },
-  required: ["query"],
-};
-
-const DisplayJsonSchema = {
-  type: "object",
-  properties: {
-    i_have_read_guidelines: {
-      type: "boolean",
-      description:
-        "Confirm you have already called DisplayGuidelines in this conversation.",
-    },
-    html: {
-      type: "string",
-      description:
-        "HTML or SVG content to render. For SVG: raw SVG starting with <svg>. " +
-        "For HTML: raw content fragment, no DOCTYPE/<html>/<head>/<body>.",
-    },
-  },
-  required: ["i_have_read_guidelines", "html"],
-};
-
-const DisplayGuidelinesJsonSchema = {
-  type: "object",
-  properties: {
-    modules: {
-      type: "array",
-      items: {
-        type: "string",
-        enum: ["interactive", "chart", "mockup", "art", "diagram", "text"],
-      },
-      description: "Which module(s) to load. Pick all that fit.",
-    },
-  },
-  required: ["modules"],
-};
-
-const TaskCreateJsonSchema = {
-  type: "object",
-  properties: {
-    description: {
-      type: "string",
-      description: "Short summary of the task (shown in task list)",
-    },
-    prompt: {
-      type: "string",
-      description:
-        "Detailed instructions for the subagent - this is the agent's ONLY context",
-    },
-  },
-  required: ["description", "prompt"],
-};
-
-const TaskOutputJsonSchema = {
-  type: "object",
-  properties: {
-    thread_id: { type: "string", description: "Durable thread ID returned by TaskCreate" },
-  },
-  required: ["thread_id"],
-};
-
-const TaskPauseJsonSchema = {
-  type: "object",
-  properties: {
-    thread_id: { type: "string", description: "Durable thread ID to pause" },
-  },
-  required: ["thread_id"],
-};
-
-const TaskUpdateJsonSchema = {
-  type: "object",
-  properties: {
-    thread_id: { type: "string", description: "Durable thread ID returned by TaskCreate" },
-    message: {
-      type: "string",
-      description: "New instruction to deliver to the task thread",
-    },
-  },
-  required: ["thread_id", "message"],
-};
-
-const WebFetchJsonSchema = {
-  type: "object",
-  properties: {
-    url: {
-      type: "string",
-      description: "URL to fetch (HTTP auto-upgrades to HTTPS)",
-    },
-    prompt: {
-      type: "string",
-      description: "What information you want from this page",
-    },
-  },
-  required: ["url"],
+  required: ["pattern"],
 };
 
 const MemoryJsonSchema = {
@@ -421,7 +175,7 @@ const MemoryJsonSchema = {
       type: "string",
       enum: ["memory", "user"],
       description:
-        "Which store to mutate. 'user' = who the user is. 'memory' = your cross-session notes.",
+        "Which store to mutate. 'user' = identity store. 'memory' = your own notes.",
     },
     content: {
       type: "string",
@@ -430,247 +184,34 @@ const MemoryJsonSchema = {
     oldText: {
       type: "string",
       description:
-        "Required for action=replace and action=remove. A short unique substring identifying the entry to replace or remove.",
+        "Required for action=replace and action=remove. A short unique substring identifying the entry.",
     },
   },
   required: ["action", "target"],
 };
 
-const NoResponseJsonSchema = {
-  type: "object",
-  properties: {},
-};
-
-const ExploreJsonSchema = {
-  type: "object",
-  properties: {
-    question: {
-      type: "string",
-      description:
-        "A focused question or topic to scout for in state/. Will return JSON with relevant/maybe paths and a list of phrases nothing was found for.",
-    },
-  },
-  required: ["question"],
-};
-
-// ─── Tool Descriptions ──────────────────────────────────────────────────────
-
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
-  Read:
-    "Read a file from the local filesystem.\n\n" +
-    "Usage:\n" +
-    "- file_path may be absolute or repo-relative.\n" +
-    "- Relative file_path values resolve from the repo desktop root by default.\n" +
-    "- By default reads up to 2000 lines from the start. Use offset and limit for large files.\n" +
-    "- Returns content with line numbers (cat -n format).\n" +
-    "- Always read a file before editing or overwriting it.\n" +
-    "- Can read images (PNG, JPG, etc.) — contents are returned as visual data.",
-  Write:
-    "Write a full file to the local filesystem.\n\n" +
-    "Usage:\n" +
-    "- file_path may be absolute or repo-relative.\n" +
-    "- Relative file_path values resolve from the repo desktop root by default.\n" +
-    "- content replaces the full file contents.\n" +
-    "- Creates parent directories when needed.\n" +
-    "- Use this for new files or intentional full-file replacements.\n" +
-    "- Prefer Edit for targeted changes to existing files.",
-  Edit:
-    "Make exact string replacements in a file.\n\n" +
-    "Usage:\n" +
-    "- file_path may be absolute or repo-relative. Relative paths resolve from the repo desktop root by default.\n" +
-    "- Review the file content first (prefer Read; Bash is also fine). This tool will fail if you haven't seen the file.\n" +
-    "- old_string must match the file content exactly, including whitespace and indentation.\n" +
-    "- The edit will FAIL if old_string appears more than once in the file. Provide more surrounding context to make it unique, or use replace_all=true to change every occurrence.\n" +
-    "- Prefer this over Write for modifying existing files.",
-  Grep:
-    "Search file contents using ripgrep regex.\n\n" +
-    "Usage:\n" +
-    '- pattern is a regular expression (e.g. "function\\s+\\w+", "TODO|FIXME").\n' +
-    "- output_mode controls what's returned:\n" +
-    '  - "files_with_matches" (default): just file paths that match.\n' +
-    '  - "content": matching lines with context.\n' +
-    '  - "count": number of matches per file.\n' +
-    '- Use glob to filter by file pattern (e.g. "*.ts") or type for standard file types (e.g. "js", "py").\n' +
-    "- Use this instead of Bash with grep or rg.",
-  ExecuteTypescript: EXECUTE_TYPESCRIPT_TOOL_DESCRIPTION,
-  Bash:
-    "Execute a shell command on the local device.\n\n" +
-    "Usage:\n" +
-    "- Use Bash for shell commands, scripts, process control, package installs, and CLI tools.\n" +
-    "- Prefer ExecuteTypescript when the task needs loops, batching, parallel calls, aggregation, or exact math across multiple operations.\n" +
-    "- Prefer Read, Write, and Edit for repo file inspection and modifications.\n" +
-    "- For targeted edits to existing files, prefer the Edit tool over sed/awk.\n" +
-    "- Default timeout is 120 seconds, max 600 seconds.\n" +
-    "- When run_in_background=true, returns immediately with a shell_id. Use KillShell to stop it later.\n" +
-    "- Use description to explain non-obvious commands (helps with logging and debugging).\n" +
-    "- On Windows, commands run in Git Bash for consistent bash syntax.",
-  KillShell:
-    "Stop a background shell process.\n\n" +
-    "Usage:\n" +
-    "- Use the shell_id returned by Bash when run_in_background=true.\n" +
-    "- Returns the accumulated output from the killed process.",
-  ShellStatus:
-    "Check the status and output of a background shell process without killing it.\n\n" +
-    "Usage:\n" +
-    "- If shell_id is provided, returns status, elapsed time, and tail of output.\n" +
-    "- If shell_id is omitted, lists all active/completed shells.\n" +
-    "- Use tail_lines to control how many lines of output to retrieve (default 50).\n" +
-    "- Use this to monitor long-running commands before deciding to KillShell.",
+  Exec: buildExecToolDescription([]),
+  Wait: WAIT_TOOL_DESCRIPTION,
   AskUserQuestion:
-    "Ask the user to choose between options via a UI prompt.\n\n" +
-    "Usage:\n" +
-    "- Present 1-4 questions, each with 2-4 options.\n" +
-    '- The user can always select "Other" to provide free-form text input.\n' +
-    "- Use multiSelect=true when choices aren't mutually exclusive.\n" +
-    "- Use when you need user decisions on implementation choices, preferences, or clarifications.",
+    "Ask the user to choose between options via a UI prompt. Use for clarifications, decisions, or preferences.",
   RequestCredential:
-    "Request an API key or secret from the user via a secure UI prompt.\n\n" +
-    "Usage:\n" +
-    "- Displays a secure input dialog where the user enters a credential.\n" +
-    "- Returns a secretId handle (not the raw value) for use with other Stella tools or integrations.\n" +
-    "- The secret is stored encrypted in the user's vault.\n" +
-    '- Use provider as a unique key (e.g. "openweather_api_key"). Same provider reuses existing secret.',
-  Schedule:
-    "Handle local scheduling requests in plain language.\n\n" +
-    "Usage:\n" +
-    "- Provide a natural-language prompt describing the cron jobs and/or heartbeat behavior you want.\n" +
-    "- This tool uses a one-off scheduling specialist behind the scenes.\n" +
-    "- Use this instead of calling the low-level cron and heartbeat tools directly.",
-  WebSearch:
-    "Search the web via Exa for current information.\n\n" +
-    "Use natural language queries, not keywords (e.g. 'Tesla current stock performance' not 'TSLA stock price').\n" +
-    "Returns up to 6 results with title, URL, and highlighted excerpts.\n" +
-    "Returns text results. Use Display to present them visually when appropriate.\n\n" +
-    "WHEN TO SEARCH: current events, recent news, facts/stats that change over time, " +
-    "product/company info, prices, people's current roles, documentation, comparisons between evolving products.\n" +
-    "WHEN NOT TO SEARCH: general knowledge, coding help, creative writing, opinions, well-established historical facts, definitions.\n" +
-    "PARTIAL SEARCH: If a query mixes static knowledge with time-sensitive info, only search the time-sensitive parts.\n\n" +
-    "CATEGORIES — use sparingly, most queries should omit:\n" +
-    "- 'company': only for 'what does X company do' style company research.\n" +
-    "- 'people': only for non-public figures (e.g. finding a professional's profile). Never for public figures, quotes, or news about someone.\n" +
-    "- 'research paper': only for academic papers or arxiv.\n" +
-    "For news, sports, general facts — do NOT set a category.\n\n" +
-    "FOLLOW-UPS: In multi-turn conversations, expand referential language — " +
-    "'competitors' should include the specific company being discussed, 'how do I set it up' should include what 'it' refers to.",
-  Display:
-    "Show visual content — SVG graphics, diagrams, charts, or interactive HTML widgets — on the canvas panel. " +
-    "Use for flowcharts, dashboards, forms, calculators, data tables, games, illustrations, or any visual content. " +
-    "The content is rendered with full CSS/JS support including Canvas and CDN libraries. " +
-    "IMPORTANT: Call DisplayGuidelines once before your first Display call.",
-  DisplayGuidelines:
-    "Returns design guidelines for Display (CSS patterns, colors, typography, layout rules, examples). " +
-    "Call once before your first Display call. Do NOT mention this call to the user — it is an internal setup step.",
-  HeartbeatGet:
-    "Get the current heartbeat configuration for this conversation.\n\n" +
-    "Returns the full local heartbeat config or null if none exists.",
-  HeartbeatUpsert:
-    "Create or update the local heartbeat configuration for this conversation.\n\n" +
-    "Usage:\n" +
-    "- One heartbeat per conversation.\n" +
-    "- intervalMs controls how often the local check runs (minimum 60000ms).\n" +
-    "- checklist should be written as instructions Stella will follow on each run.\n" +
-    "- activeHours can restrict runs to a local time window.\n" +
-    "- deliver=false runs silently without posting back into the conversation.",
-  HeartbeatRun:
-    "Trigger the local heartbeat immediately without waiting for the next interval.",
-  CronList:
-    "List all local cron jobs for this device.\n\n" +
-    "Returns the current local schedule state, newest first.",
-  CronAdd:
-    "Create a new local cron job.\n\n" +
-    "Usage:\n" +
-    '- Schedule types: { kind: "at", atMs }, { kind: "every", everyMs, anchorMs? }, or { kind: "cron", expr, tz? }.\n' +
-    '- Payload types: { kind: "systemEvent", text } or { kind: "agentTurn", message }.\n' +
-    '- sessionTarget="main" requires systemEvent payload. sessionTarget="isolated" requires agentTurn payload.\n' +
-    "- deleteAfterRun=true removes successful one-shot jobs after they run.",
-  CronUpdate:
-    "Update an existing local cron job.\n\n" +
-    "Only include the fields you want to change; omitted fields are preserved.",
-  CronRemove: "Permanently delete a local cron job.",
-  CronRun:
-    "Trigger a local cron job immediately, ignoring its next scheduled time.",
-  TaskCreate:
-    "Create a background task executed by the general subagent.\n\n" +
-    "Usage:\n" +
-    "- description: short summary shown in the task list.\n" +
-    "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, the goal, and the expected output.\n" +
-    "- Starts background work and immediately returns a structured status object with a durable thread_id plus other resumable threads and their last-used timing.\n" +
-    "- IMPORTANT: The return value means the task has STARTED, not that it has finished. The work is still in progress. Do NOT tell the user the task is done or describe its outcome based on the TaskCreate return alone. Wait for the completion/failure event before reporting results.\n" +
-    "- Use this only for genuinely new work. Do not use it to continue, resume, retry, or revise an existing thread.\n" +
-    "- After calling it, do not create another task for the same work.\n" +
-    "- Wait for the completion/failure event; in the meantime you may acknowledge the request is underway but never claim it is finished.\n" +
-    "- Use the returned thread_id for TaskOutput, TaskUpdate, and TaskPause.",
-  TaskOutput:
-    "Check the status and output of a task thread.\n\n" +
-    "Usage:\n" +
-    "- thread_id: the durable thread ID returned by TaskCreate.\n" +
-    "- Returns a structured status object (running/completed/error/canceled) with timing and any available result or error text.",
-  TaskPause:
-    "Pause a running task.\n\n" +
-    "Usage:\n" +
-    "- thread_id: the durable thread ID to pause.\n" +
-    "- Pause stops the current attempt only; the same thread can still be continued later with TaskUpdate.",
-  TaskUpdate:
-    "Continue or update a task thread.\n\n" +
-    "Usage:\n" +
-    "- thread_id: the durable thread ID to continue.\n" +
-    "- message: the new instruction to deliver.\n" +
-    "- Use this for follow-ups that continue the same work, including resume, continue, retry, or revised instructions.\n" +
-    "- If the task is currently running, interrupts the subagent and redelivers the update immediately on the next attempt.\n" +
-    "- If the task is not running, starts a new attempt on the same persisted thread.\n" +
-    "- Prefer this over TaskCreate whenever the user is referring to an existing thread, even if that thread was canceled.\n" +
-    "- Returns a small structured acknowledgment object when the update is accepted.",
-  WebFetch:
-    "Fetch and read content from a URL.\n\n" +
-    "Usage:\n" +
-    "- Fetches the page, strips HTML tags, and returns plain text.\n" +
-    "- HTTP URLs are auto-upgraded to HTTPS.\n" +
-    "- prompt describes what information you want to extract.\n" +
-    "- Content is truncated to ~30,000 characters.",
+    "Request an API key or secret via a secure UI prompt. Returns a `secretId` handle that can be passed to other tools/integrations.",
+  // Internal-only descriptors (Explore subagent uses Read/Grep; memory-review
+  // uses Memory). These are not part of the model-facing tool catalog for
+  // top-level agents.
+  Read: "Read a file from the filesystem (internal).",
+  Grep: "Search file contents using ripgrep (internal).",
   Memory:
-    "Manage durable memory entries that survive across sessions. Two stores:\n\n" +
-    "- target=\"user\": who the user is - persistent preferences, communication style, identity, expectations.\n" +
-    "- target=\"memory\": your own notes - cross-session patterns, recurring decisions, persistent observations.\n\n" +
-    "Both stores appear at the top of every conversation as a frozen block, so you don't need a tool to read them. Mutations land immediately on disk and appear in the next session.\n\n" +
-    "Actions:\n" +
-    "- add: append a new entry. content is required.\n" +
-    "- replace: update an existing entry by substring match. oldText (a short unique substring) and content (the new entry text) are both required. Ambiguous match returns previews so you can be more specific.\n" +
-    "- remove: delete an entry by substring match. oldText is required.\n\n" +
-    "Save proactively when the user reveals identity facts or persistent expectations. Do NOT save task content (notes already capture that) or environment / tool / skill facts (those belong in state/skills/ or state/knowledge/, written by the General agent).",
-  NoResponse:
-    "Signal that you have nothing to say right now.\n\n" +
-    "Call this instead of generating a message when a system event, task result, or heartbeat check " +
-    "does not warrant a visible response. Do NOT call this for user messages — always reply to users.",
-  Explore:
-    "Run a quick scout pass over state/ to find paths relevant to a focused question. " +
-    "Returns a wrapped <explore_findings>{relevant, maybe, nothing_found_for}</explore_findings> " +
-    "block with paths and short reasons - no summaries, just pointers. " +
-    "Use this when the initial findings injected with your task are insufficient or when you want to look in a different area.",
+    "Manage durable memory entries (internal — used by the memory-review pass).",
 };
-
-// ─── JSON Schema Map (for LLM tool definitions) ────────────────────────────
 
 export const TOOL_JSON_SCHEMAS: Record<string, object> = {
-  Read: ReadJsonSchema,
-  Write: WriteJsonSchema,
-  Edit: EditJsonSchema,
-  Grep: GrepJsonSchema,
-  ExecuteTypescript: EXECUTE_TYPESCRIPT_JSON_SCHEMA,
-  Bash: BashJsonSchema,
-  KillShell: KillShellJsonSchema,
-  ShellStatus: ShellStatusJsonSchema,
+  Exec: EXEC_JSON_SCHEMA,
+  Wait: WAIT_JSON_SCHEMA,
   AskUserQuestion: AskUserQuestionJsonSchema,
   RequestCredential: RequestCredentialJsonSchema,
-  Schedule: ScheduleJsonSchema,
-  WebSearch: WebSearchJsonSchema,
-  Display: DisplayJsonSchema,
-  DisplayGuidelines: DisplayGuidelinesJsonSchema,
-  TaskCreate: TaskCreateJsonSchema,
-  TaskOutput: TaskOutputJsonSchema,
-  TaskPause: TaskPauseJsonSchema,
-  TaskUpdate: TaskUpdateJsonSchema,
-  WebFetch: WebFetchJsonSchema,
+  Read: ReadJsonSchema,
+  Grep: GrepJsonSchema,
   Memory: MemoryJsonSchema,
-  NoResponse: NoResponseJsonSchema,
-  Explore: ExploreJsonSchema,
 };

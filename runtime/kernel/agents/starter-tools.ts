@@ -1,9 +1,5 @@
 export const GENERAL_STARTER_TOOLS = [
-  "Read",
-  "Grep",
-  "Write",
-  "Edit",
-  "ExecuteTypescript",
+  "Exec",
+  "Wait",
   "RequestCredential",
-  "Explore",
 ] as const;
