@@ -15,6 +15,13 @@ import type {
 } from "./runner/types.js";
 
 export type { StellaHostRunnerOptions } from "./runner/types.js";
+export {
+  getConvexErrorCode,
+  isConvexUnauthenticatedError,
+  REMOTE_TURN_AUTH_GRACE_MS,
+  REMOTE_TURN_MAX_TRANSIENT_UNAUTHENTICATED_ERRORS,
+  shouldStopRemoteTurnForAuthFailure,
+} from "./runner/remote-turn-auth.js";
 
 import type { ToolResult } from "./tools/types.js";
 
