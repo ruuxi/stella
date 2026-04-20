@@ -62,6 +62,8 @@ describe("state tools", () => {
         created: true,
         running_in_background: true,
         follow_up_on_completion: true,
+        note:
+          "Task has started but is NOT finished yet. Wait for the completion event before telling the user it is done.",
         other_threads: [
           {
             thread_id: "thread-0",

@@ -9,6 +9,28 @@ type ActiveRunSnapshot = {
   uiVisibility?: "visible" | "hidden";
 } | null;
 
+export const shouldRetainResumedStreamingState = (args: {
+  resumedRunId: string | null;
+  resumedConversationId: string | null;
+  replayEventCount: number;
+  replayExhausted: boolean;
+  currentActiveRun: Pick<NonNullable<ActiveRunSnapshot>, "runId" | "conversationId"> | null;
+}): boolean => {
+  if (!args.resumedRunId || !args.resumedConversationId) {
+    return false;
+  }
+  if (args.replayEventCount > 0) {
+    return true;
+  }
+  if (!args.replayExhausted) {
+    return true;
+  }
+  return (
+    args.currentActiveRun?.runId === args.resumedRunId &&
+    args.currentActiveRun?.conversationId === args.resumedConversationId
+  );
+};
+
 type TaskSnapshot = {
   runId: string;
   taskId: string;

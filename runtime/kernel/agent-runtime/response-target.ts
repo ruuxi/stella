@@ -99,7 +99,7 @@ export const createOrchestratorResponseTargetTracker = (
       recordTaskId(getTaskIdFromArgsLike(args));
     },
     noteToolEnd: (toolName, details) => {
-      if (!TASK_TOOL_NAMES.has(toolName) || toolName === "TaskCreate") {
+      if (!TASK_TOOL_NAMES.has(toolName)) {
         return;
       }
       recordTaskId(getTaskIdFromToolDetails(toolName, details));

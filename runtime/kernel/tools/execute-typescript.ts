@@ -1,5 +1,9 @@
 import { fork } from "child_process";
+import { existsSync, promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { transform } from "esbuild";
 import {
   EXECUTE_TYPESCRIPT_TOOL_NAME,
 } from "./execute-typescript-contract.js";
@@ -21,9 +25,16 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 120_000;
 const MAX_LOGS = 200;
 const MAX_CALLS = 400;
-const EXECUTE_TYPESCRIPT_RUNNER_PATH = fileURLToPath(
+const EXECUTE_TYPESCRIPT_RUNNER_JS_PATH = fileURLToPath(
   new URL("./execute-typescript-runner.js", import.meta.url),
 );
+const EXECUTE_TYPESCRIPT_RUNNER_TS_PATH = fileURLToPath(
+  new URL("./execute-typescript-runner.ts", import.meta.url),
+);
+const EXECUTE_TYPESCRIPT_RUNNER_NODE_PATH_ENTRIES = [
+  fileURLToPath(new URL("../../../node_modules", import.meta.url)),
+  fileURLToPath(new URL("../../../desktop/node_modules", import.meta.url)),
+].filter((entry, index, entries) => existsSync(entry) && entries.indexOf(entry) === index);
 
 type ExecutionPhase = "compile" | "execute" | "binding" | "skill";
 
@@ -151,6 +162,60 @@ class ExecuteTypescriptError extends Error {
     this.phase = phase;
   }
 }
+
+const buildTranspiledRunnerPath = (sourceMtimeMs: number): string =>
+  path.join(
+    os.tmpdir(),
+    "stella-execute-typescript",
+    `execute-typescript-runner-${Math.floor(sourceMtimeMs).toString(36)}.cjs`,
+  );
+
+const resolveExecuteTypescriptRunnerPath = async (): Promise<string> => {
+  if (existsSync(EXECUTE_TYPESCRIPT_RUNNER_JS_PATH)) {
+    return EXECUTE_TYPESCRIPT_RUNNER_JS_PATH;
+  }
+
+  if (!existsSync(EXECUTE_TYPESCRIPT_RUNNER_TS_PATH)) {
+    throw new ExecuteTypescriptError(
+      "ExecuteTypescript runner source is missing.",
+      "compile",
+    );
+  }
+
+  const sourceStat = await fs.stat(EXECUTE_TYPESCRIPT_RUNNER_TS_PATH);
+  const transpiledRunnerPath = buildTranspiledRunnerPath(sourceStat.mtimeMs);
+  if (existsSync(transpiledRunnerPath)) {
+    return transpiledRunnerPath;
+  }
+
+  const source = await fs.readFile(EXECUTE_TYPESCRIPT_RUNNER_TS_PATH, "utf8");
+  const transformed = await transform(source, {
+    loader: "ts",
+    format: "cjs",
+    platform: "node",
+    target: "node22",
+    sourcemap: "inline",
+  });
+  await fs.mkdir(path.dirname(transpiledRunnerPath), { recursive: true });
+  await fs.writeFile(transpiledRunnerPath, transformed.code, "utf8");
+  return transpiledRunnerPath;
+};
+
+const buildExecuteTypescriptRunnerEnv = (): NodeJS.ProcessEnv => {
+  if (EXECUTE_TYPESCRIPT_RUNNER_NODE_PATH_ENTRIES.length === 0) {
+    return process.env;
+  }
+  const existingNodePathEntries = (process.env.NODE_PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean);
+  return {
+    ...process.env,
+    NODE_PATH: [
+      ...EXECUTE_TYPESCRIPT_RUNNER_NODE_PATH_ENTRIES,
+      ...existingNodePathEntries,
+    ].join(path.delimiter),
+  };
+};
 
 const previewUnknown = (value: unknown, max = 240): string => {
   if (typeof value === "string") {
@@ -421,14 +486,15 @@ const executeProgram = async (args: {
   input?: unknown;
 }): Promise<unknown> => {
   args.env.timer.assertAlive("compile");
+  const runnerPath = await resolveExecuteTypescriptRunnerPath();
 
   const workspaceRoot =
     args.env.context.stellaRoot ?? args.env.options.stellaRoot ?? process.cwd();
 
   return await new Promise<unknown>((resolve, reject) => {
-    const child = fork(EXECUTE_TYPESCRIPT_RUNNER_PATH, [], {
+    const child = fork(runnerPath, [], {
       cwd: workspaceRoot,
-      env: process.env,
+      env: buildExecuteTypescriptRunnerEnv(),
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
 

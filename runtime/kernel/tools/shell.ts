@@ -23,6 +23,13 @@ export type ShellState = {
   stellaComputerCliPath?: string;
 };
 
+type ShellStateOptions = {
+  stellaBrowserBinPath?: string;
+  stellaOfficeBinPath?: string;
+  stellaUiCliPath?: string;
+  stellaComputerCliPath?: string;
+};
+
 const OFFICE_PREVIEW_REF_MARKER = "__STELLA_OFFICE_PREVIEW_REF__";
 
 export const extractOfficePreviewRef = (
@@ -64,22 +71,48 @@ export const extractOfficePreviewRef = (
   };
 };
 
-export const createShellState = (
+export function createShellState(
   secretStateRoot: string,
-  options?: {
-    stellaBrowserBinPath?: string;
-    stellaOfficeBinPath?: string;
-    stellaUiCliPath?: string;
-    stellaComputerCliPath?: string;
-  },
-): ShellState => ({
-  shells: new Map(),
-  secretStateRoot,
-  stellaBrowserBinPath: options?.stellaBrowserBinPath,
-  stellaOfficeBinPath: options?.stellaOfficeBinPath,
-  stellaUiCliPath: options?.stellaUiCliPath,
-  stellaComputerCliPath: options?.stellaComputerCliPath,
-});
+  options?: ShellStateOptions,
+): ShellState;
+export function createShellState(
+  _legacyIgnoredArg: unknown,
+  secretStateRoot: string,
+  options?: ShellStateOptions,
+): ShellState;
+export function createShellState(
+  secretStateRootOrLegacyArg: string | unknown,
+  secretStateRootOrOptions?: string | ShellStateOptions,
+  maybeOptions?: ShellStateOptions,
+): ShellState {
+  // Keep supporting the older createShellState(_, secretStateRoot, options)
+  // shape that some tests and helper callers still use.
+  const secretStateRoot =
+    typeof secretStateRootOrLegacyArg === "string"
+      ? secretStateRootOrLegacyArg
+      : typeof secretStateRootOrOptions === "string"
+        ? secretStateRootOrOptions
+        : null;
+  const options =
+    typeof secretStateRootOrLegacyArg === "string"
+      ? typeof secretStateRootOrOptions === "string"
+        ? undefined
+        : secretStateRootOrOptions
+      : maybeOptions;
+
+  if (!secretStateRoot) {
+    throw new Error("createShellState requires a secretStateRoot.");
+  }
+
+  return {
+    shells: new Map(),
+    secretStateRoot,
+    stellaBrowserBinPath: options?.stellaBrowserBinPath,
+    stellaOfficeBinPath: options?.stellaOfficeBinPath,
+    stellaUiCliPath: options?.stellaUiCliPath,
+    stellaComputerCliPath: options?.stellaComputerCliPath,
+  };
+}
 
 const deferredDeleteHelperPath = (() => {
   try {
