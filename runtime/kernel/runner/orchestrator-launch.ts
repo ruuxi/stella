@@ -10,6 +10,7 @@ import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
 } from "../../protocol/index.js";
+import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 
 type BuildAgentContext = (args: {
   conversationId: string;
@@ -39,6 +40,12 @@ export type PreparedOrchestratorRun = {
   resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
   abortController: AbortController;
   replayInterruptedTurn: () => void;
+  /**
+   * Memory-review user-turn counter AFTER incrementing for this run.
+   * Only set when the run is a real user turn (Orchestrator + uiVisibility !== "hidden").
+   * Consumed by finalizeOrchestratorSuccess to decide whether to spawn the review.
+   */
+  userTurnsSinceMemoryReview?: number;
 };
 
 export const prepareOrchestratorRun = async (args: {
@@ -81,6 +88,24 @@ export const prepareOrchestratorRun = async (args: {
     }
   };
 
+  // Increment the memory-review user-turn counter only on real user-driven
+  // Orchestrator turns. Synthetic task-callback turns (uiVisibility === "hidden")
+  // do not count - they would inflate the counter without representing user input.
+  let userTurnsSinceMemoryReview: number | undefined;
+  if (
+    args.agentType === AGENT_IDS.ORCHESTRATOR
+    && args.uiVisibility !== "hidden"
+  ) {
+    try {
+      userTurnsSinceMemoryReview =
+        args.context.runtimeStore.incrementUserTurnsSinceMemoryReview(
+          args.conversationId,
+        );
+    } catch {
+      // Memory review is best-effort. Counter failure must not block the turn.
+    }
+  }
+
   return {
     runId: args.runId,
     conversationId: args.conversationId,
@@ -94,6 +119,9 @@ export const prepareOrchestratorRun = async (args: {
     resolvedLlm,
     abortController,
     replayInterruptedTurn,
+    ...(userTurnsSinceMemoryReview != null
+      ? { userTurnsSinceMemoryReview }
+      : {}),
   };
 };
 
@@ -153,6 +181,9 @@ export const launchPreparedOrchestratorRun = (args: {
     hookEmitter: context.hookEmitter,
     displayHtml: context.displayHtml,
     onExecutionSessionCreated: args.onExecutionSessionCreated,
+    ...(prepared.userTurnsSinceMemoryReview != null
+      ? { userTurnsSinceMemoryReview: prepared.userTurnsSinceMemoryReview }
+      : {}),
   }).catch((error) => {
     if (isReportedOrchestratorError(error)) {
       return;

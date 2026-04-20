@@ -7,14 +7,11 @@ import type { SqliteDatabase } from "./shared.js";
 import {
   DEFAULT_CONVERSATION_SETTING_KEY,
   MAX_EVENTS_PER_CONVERSATION,
-  MAX_RECALL_RESULTS,
-  SQLITE_MEMORY_SCAN_LIMIT,
   type LocalChatAppendEventArgs,
   type LocalChatEventRecord,
   type LocalChatEventRow,
   type LocalChatSyncMessage,
   type PersistedRuntimeThreadPayload,
-  type RuntimeMemory,
   type RuntimeRunEvent,
   RUNTIME_THREAD_SESSION_VERSION,
   type RuntimeThreadCompactionEntry,
@@ -24,14 +21,11 @@ import {
   asFiniteNumber,
   asObject,
   asTrimmedString,
-  escapeSqlLike,
   eventTextFromPayload,
   generateLocalId,
   parseJsonRecord,
   parseRuntimeThreadPayload,
-  scoreMemoryMatches,
   toJsonString,
-  toJsonTags,
   toJsonValueString,
 } from "./shared.js";
 import {
@@ -39,6 +33,7 @@ import {
   sliceEventsByVisibleMessageWindow,
   type LocalChatEventWindowMode,
 } from "../../chat-event-visibility.js";
+import { MemoryStore } from "../memory/memory-store.js";
 
 type SessionRow = {
   id: string;
@@ -59,12 +54,6 @@ type ThreadSessionEntryRow = {
   timestampIso: string;
   createdAt: number;
   dataJson: string | null;
-};
-
-type MemoryRow = {
-  timestamp: number;
-  conversationId: string;
-  payloadJson: string | null;
 };
 
 export type PersistedTaskRecord = {
@@ -572,7 +561,21 @@ const buildThreadMessagesFromEntries = (
 };
 
 export class SessionStore {
+  private memoryStoreInstance: MemoryStore | null = null;
+
   constructor(private readonly db: SqliteDatabase) {}
+
+  /**
+   * Lazily-constructed singleton MemoryStore wrapping this store's database.
+   * Snapshot capture is intentionally NOT performed here; callers decide when
+   * to freeze a snapshot boundary for their own run/session.
+   */
+  get memoryStore(): MemoryStore {
+    if (!this.memoryStoreInstance) {
+      this.memoryStoreInstance = new MemoryStore(this.db);
+    }
+    return this.memoryStoreInstance;
+  }
 
   private withTransaction(work: () => void): void {
     this.db.exec("BEGIN TRANSACTION;");
@@ -1344,105 +1347,6 @@ export class SessionStore {
     });
   }
 
-  saveMemory(args: { conversationId: string; content: string; tags?: string[] }): void {
-    const content = args.content.trim();
-    if (!content) return;
-    const tags = args.tags?.map((tag) => tag.trim()).filter((tag) => tag.length > 0);
-    const timestamp = Date.now();
-    const messageId = `memory:${generateLocalId()}`;
-    this.withTransaction(() => {
-      this.upsertSession(args.conversationId, timestamp);
-      this.db.prepare(`
-        INSERT INTO message (
-          id,
-          session_id,
-          thread_key,
-          run_id,
-          role,
-          type,
-          request_id,
-          device_id,
-          target_device_id,
-          agent_type,
-          data_json,
-          created_at,
-          updated_at
-        )
-        VALUES (?, ?, NULL, NULL, 'system', 'memory', NULL, NULL, NULL, NULL, ?, ?, ?)
-      `).run(
-        messageId,
-        args.conversationId,
-        toJsonTags(tags),
-        timestamp,
-        timestamp,
-      );
-      this.replaceMessageParts(messageId, args.conversationId, [
-        {
-          type: "memory",
-          data: {
-            content,
-            ...(tags && tags.length > 0 ? { tags } : {}),
-          },
-          createdAt: timestamp,
-        },
-      ]);
-    });
-  }
-
-  recallMemories(args: { query: string; limit?: number }): RuntimeMemory[] {
-    const query = args.query.trim().toLowerCase();
-    if (!query) return [];
-    const limit = Math.max(1, Math.min(MAX_RECALL_RESULTS, args.limit ?? MAX_RECALL_RESULTS));
-    const queryTokens = Array.from(new Set(query.split(/\s+/).filter((token) => token.length > 0)));
-    const terms = [query, ...queryTokens];
-    const whereClauses = terms.map(() => "lower(payload_search) LIKE ? ESCAPE '\\'");
-    const params = terms.map((term) => `%${escapeSqlLike(term)}%`);
-    const sql = `
-      SELECT
-        base.created_at AS timestamp,
-        base.session_id AS conversationId,
-        base.payloadJson AS payloadJson
-      FROM (
-        SELECT
-          message.created_at,
-          message.session_id,
-          part.data_json AS payloadJson,
-          lower(
-            coalesce(json_extract(part.data_json, '$.content'), '')
-            || ' '
-            || coalesce(message.data_json, '')
-          ) AS payload_search
-        FROM message
-        LEFT JOIN part
-          ON part.message_id = message.id
-         AND part.ord = 0
-        WHERE message.type = 'memory'
-      ) base
-      ${whereClauses.length > 0 ? `WHERE ${whereClauses.join(" OR ")}` : ""}
-      ORDER BY base.created_at DESC
-      LIMIT ?
-    `;
-    const rows = this.db.prepare(sql).all(
-      ...params,
-      SQLITE_MEMORY_SCAN_LIMIT,
-    ) as MemoryRow[];
-    if (rows.length === 0) return [];
-    const normalizedRows: RuntimeMemory[] = rows.map((row) => {
-      const payload = parseJsonValue<{ content?: unknown; tags?: unknown }>(row.payloadJson);
-      const tags = Array.isArray(payload?.tags)
-        ? payload?.tags.filter((entry): entry is string => typeof entry === "string")
-        : undefined;
-      return {
-        timestamp: row.timestamp,
-        conversationId: row.conversationId,
-        content: typeof payload?.content === "string" ? payload.content : "",
-        ...(tags && tags.length > 0 ? { tags } : {}),
-      };
-    }).filter((row) => row.content.trim().length > 0);
-    const scored = scoreMemoryMatches(query, normalizedRows);
-    return scored.slice(0, limit).map((entry) => entry.row);
-  }
-
   private deserializeRuntimeThread(row: {
     threadId: string;
     conversationId: string;
@@ -1898,5 +1802,55 @@ export class SessionStore {
         reminder_tokens_since_last_injection = excluded.reminder_tokens_since_last_injection,
         force_reminder_on_next_turn = 1
     `).run(conversationId, reminderTokensSinceLastInjection);
+  }
+
+  /**
+   * Increment the memory-review user-turn counter for the given conversation
+   * and return the new value. Caller is responsible for gating on
+   * `uiVisibility !== "hidden"` so that synthetic task-callback turns do not
+   * inflate the count.
+   */
+  incrementUserTurnsSinceMemoryReview(conversationId: string): number {
+    const row = this.db.prepare(`
+      SELECT user_turns_since_review AS userTurnsSinceReview
+      FROM runtime_memory_review_state
+      WHERE conversation_id = ?
+      LIMIT 1
+    `).get(conversationId) as { userTurnsSinceReview?: unknown } | undefined;
+    const current = typeof row?.userTurnsSinceReview === "number"
+      ? Math.max(0, Math.floor(row.userTurnsSinceReview))
+      : 0;
+    const next = current + 1;
+    this.db.prepare(`
+      INSERT INTO runtime_memory_review_state (
+        conversation_id,
+        user_turns_since_review,
+        last_review_at
+      )
+      VALUES (?, ?, NULL)
+      ON CONFLICT(conversation_id) DO UPDATE SET
+        user_turns_since_review = excluded.user_turns_since_review
+    `).run(conversationId, next);
+    return next;
+  }
+
+  /**
+   * Reset the memory-review user-turn counter to zero and stamp the time of
+   * the review. Call after a memory review fires so a quick second turn does
+   * not double-trigger.
+   */
+  resetUserTurnsSinceMemoryReview(conversationId: string): void {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO runtime_memory_review_state (
+        conversation_id,
+        user_turns_since_review,
+        last_review_at
+      )
+      VALUES (?, 0, ?)
+      ON CONFLICT(conversation_id) DO UPDATE SET
+        user_turns_since_review = 0,
+        last_review_at = excluded.last_review_at
+    `).run(conversationId, now);
   }
 }

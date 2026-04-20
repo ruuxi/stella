@@ -5,6 +5,5 @@ export const GENERAL_STARTER_TOOLS = [
   "Edit",
   "ExecuteTypescript",
   "RequestCredential",
-  "SaveMemory",
-  "RecallMemories",
+  "Explore",
 ] as const;

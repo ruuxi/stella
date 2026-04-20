@@ -498,6 +498,22 @@ export const buildAgentContext = async (
     dynamicContextSections.push(EXECUTE_TYPESCRIPT_PROMPT_GUIDANCE);
   }
 
+  let memorySnapshot: { memory?: string; user?: string } | undefined;
+  if (args.agentType === AGENT_IDS.ORCHESTRATOR) {
+    const memoryStore = context.runtimeStore.memoryStore;
+    // Freeze a fresh snapshot for this run so new writes appear on the next
+    // turn without changing the current run's prefix.
+    memoryStore.loadSnapshot();
+    const memoryBlock = memoryStore.formatForSystemPrompt("memory");
+    const userBlock = memoryStore.formatForSystemPrompt("user");
+    if (memoryBlock || userBlock) {
+      memorySnapshot = {
+        ...(memoryBlock ? { memory: memoryBlock } : {}),
+        ...(userBlock ? { user: userBlock } : {}),
+      };
+    }
+  }
+
   return {
     systemPrompt:
       agent?.systemPrompt || defaultPromptForAgentType(args.agentType),
@@ -509,6 +525,7 @@ export const buildAgentContext = async (
     model,
     maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
     coreMemory: readCoreMemory(context.stellaRoot),
+    ...(memorySnapshot ? { memorySnapshot } : {}),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine:

@@ -4,6 +4,7 @@ import { resolveLlmRoute } from "../model-routing.js";
 import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
 import { createTaskLifecycleResponseTarget } from "../agent-runtime/response-target.js";
+import { runExplore } from "../agent-runtime/explore.js";
 import { LocalTaskManager } from "../tasks/local-task-manager.js";
 import type { TaskToolRequest, ToolContext, ToolResult } from "../tools/types.js";
 import type {
@@ -443,6 +444,44 @@ export const createTaskOrchestration = (
           }),
         );
       }
+      // Per-task Explore: run the cheap-model scout over state/ before the
+      // General agent starts. The findings are inlined into the General
+      // agent's first user message so it can read them without a tool call.
+      // For non-General agents (e.g. SCHEDULE), skip the scout entirely.
+      let exploreFindingsBlock = "";
+      if (agentType === AGENT_IDS.GENERAL) {
+        exploreFindingsBlock = await runExplore({
+          context,
+          conversationId,
+          taskDescription,
+          taskPrompt,
+          signal: abortSignal,
+        });
+      }
+
+      const composedUserPrompt = exploreFindingsBlock
+        ? `${exploreFindingsBlock}\n\n${taskDescription}\n\n${taskPrompt}`
+        : `${taskDescription}\n\n${taskPrompt}`;
+
+      // Allow the General agent to invoke Explore again mid-task with a
+      // narrower question. Closes over `context` so the handler has access
+      // to the same toolHost / model routing as the initial scout.
+      const exploreHandler =
+        agentType === AGENT_IDS.GENERAL
+          ? (handlerArgs: {
+              conversationId: string;
+              question: string;
+              signal?: AbortSignal;
+            }) =>
+              runExplore({
+                context,
+                conversationId: handlerArgs.conversationId,
+                taskDescription: "",
+                taskPrompt: handlerArgs.question,
+                signal: handlerArgs.signal ?? abortSignal,
+              })
+          : undefined;
+
       let subagentSucceeded = false;
       try {
         const result = await runSubagentTask({
@@ -452,7 +491,7 @@ export const createTaskOrchestration = (
           taskId,
           rootRunId,
           agentType,
-          userPrompt: `${taskDescription}\n\n${taskPrompt}`,
+          userPrompt: composedUserPrompt,
           selfModMetadata: effectiveSelfModMetadata,
           agentContext,
           toolCatalog: context.toolHost.getToolCatalog(),
@@ -486,6 +525,7 @@ export const createTaskOrchestration = (
               }
             : undefined,
           webSearch: deps.webSearch,
+          ...(exploreHandler ? { explore: exploreHandler } : {}),
           hookEmitter: context.hookEmitter,
         });
         subagentSucceeded = !result.error;

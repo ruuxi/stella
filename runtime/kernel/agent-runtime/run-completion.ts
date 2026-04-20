@@ -9,6 +9,10 @@ import {
   compactRuntimeThreadHistory,
   updateOrchestratorReminderState,
 } from "./thread-memory.js";
+import {
+  MEMORY_REVIEW_TURN_THRESHOLD,
+  spawnMemoryReview,
+} from "./memory-review.js";
 import type {
   OrchestratorRunOptions,
   SelfModAppliedPayload,
@@ -219,6 +223,24 @@ export const finalizeOrchestratorSuccess = async (args: {
       args.opts.agentContext.shouldInjectDynamicReminder,
     finalText: args.finalText,
   });
+
+  // Background memory review - fires AFTER onEnd so the user already sees the
+  // final text before we spawn any extra work. Only triggers when:
+  //   - this is the Orchestrator (memory is exclusively the Orchestrator's domain)
+  //   - the run was a real user turn (uiVisibility !== "hidden")
+  //   - the user-turn counter from prepareOrchestratorRun has reached threshold
+  if (
+    args.opts.agentType === AGENT_IDS.ORCHESTRATOR
+    && args.opts.userTurnsSinceMemoryReview != null
+    && args.opts.userTurnsSinceMemoryReview >= MEMORY_REVIEW_TURN_THRESHOLD
+  ) {
+    spawnMemoryReview({
+      conversationId: args.opts.conversationId,
+      messagesSnapshot: [...args.agent.state.messages],
+      resolvedLlm: args.opts.resolvedLlm,
+      store: args.opts.store,
+    });
+  }
 };
 
 export const finalizeOrchestratorError = (args: {

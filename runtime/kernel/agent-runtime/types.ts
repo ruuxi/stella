@@ -9,6 +9,7 @@ import type {
   ToolResult,
   ToolUpdateCallback,
 } from "../tools/types.js";
+import type { LocalExploreHandler } from "../tools/local-tool-dispatch.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import type {
   RuntimeAttachmentRef,
@@ -178,6 +179,12 @@ export type BaseRunOptions = {
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
+  /**
+   * Optional Explore handler. When present, the runtime exposes the
+   * `Explore` tool as a local-dispatched tool. The handler returns the
+   * wrapped `<explore_findings>...</explore_findings>` block as text.
+   */
+  explore?: LocalExploreHandler;
   hookEmitter?: HookEmitter;
   displayHtml?: (html: string) => void;
   responseTarget?: RuntimeAgentEventPayload["responseTarget"];
@@ -188,6 +195,13 @@ export type OrchestratorRunOptions = BaseRunOptions & {
   onExecutionSessionCreated?: (
     session: RuntimeExecutionSessionHandle,
   ) => void;
+  /**
+   * Memory-review user-turn counter AFTER incrementing for this run, threaded
+   * from prepareOrchestratorRun. Consumed by finalizeOrchestratorSuccess to
+   * decide whether to fire the background memory review.
+   * Undefined for synthetic (uiVisibility=hidden) turns.
+   */
+  userTurnsSinceMemoryReview?: number;
 };
 
 export type SubagentRunOptions = BaseRunOptions & {

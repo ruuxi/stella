@@ -26,6 +26,7 @@ type SessionOptions = Pick<
   | "store"
   | "toolExecutor"
   | "webSearch"
+  | "explore"
   | "hookEmitter"
   | "resolvedLlm"
   | "responseTarget"
@@ -77,6 +78,7 @@ export const createRuntimeExecutionSession = (
     store: opts.store,
     toolExecutor: opts.toolExecutor,
     webSearch: opts.webSearch,
+    ...(opts.explore ? { explore: opts.explore } : {}),
     hookEmitter: opts.hookEmitter,
   });
 

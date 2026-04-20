@@ -139,6 +139,22 @@ export const getMaxAgentConcurrency = (
   return loadLocalPreferences(stellaHome).maxAgentConcurrency;
 };
 
+/**
+ * Resolve the model name for the Explore agent. Prefers an explicit override
+ * (modelOverrides["explore"]), then a backend-supplied default
+ * (defaultModels["explore"]), then returns undefined to let resolveLlmRoute
+ * fall back to STELLA_DEFAULT_MODEL.
+ *
+ * Explore is meant to be a fast cheap pass over state/. Users who want to
+ * spend more should set modelOverrides["explore"] explicitly.
+ */
+export const getExploreModel = (
+  stellaHome: string,
+): string | undefined => {
+  const prefs = loadLocalPreferences(stellaHome);
+  return prefs.modelOverrides["explore"] ?? prefs.defaultModels["explore"];
+};
+
 export const getSyncMode = (
   stellaHome: string,
 ): "on" | "off" => {
