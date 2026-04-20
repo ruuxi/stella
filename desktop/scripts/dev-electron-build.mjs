@@ -5,9 +5,11 @@ import {
   watch as watchFs,
 } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const projectDir = process.cwd();
-const repoRootDir = path.resolve(projectDir, "..");
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const desktopDir = path.resolve(scriptDir, "..");
+const repoRootDir = path.resolve(desktopDir, "..");
 const outdir = "dist-electron";
 const nodeTarget = `node${process.versions.node.split(".")[0]}`;
 const graphWatchRoots = [
@@ -191,7 +193,7 @@ const startRootWatchers = () => {
 };
 
 const cleanOutdir = async () => {
-  await fsPromises.rm(path.join(projectDir, outdir), {
+  await fsPromises.rm(path.join(desktopDir, outdir), {
     force: true,
     recursive: true,
   });
