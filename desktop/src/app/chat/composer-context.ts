@@ -28,6 +28,22 @@ type ComposerPlaceholderOptions = {
 };
 
 /**
+ * Hard cap for chip label characters. Window titles, file names, and
+ * selected text snippets can run on for dozens of characters and blow out
+ * the chip strip width — the chip's button `title` attribute still carries
+ * the full text for hover.
+ */
+export const CHIP_LABEL_MAX_CHARS = 12;
+
+export const truncateChipLabel = (
+  text: string,
+  max: number = CHIP_LABEL_MAX_CHARS,
+): string => {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).trimEnd()}…`;
+};
+
+/**
  * Returns true when there is at least one attached chip to render (window,
  * file, screenshot, selected text, or a pending capture). Callers can use
  * this to skip rendering the chip strip container entirely so it doesn't

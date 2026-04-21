@@ -21,6 +21,7 @@ import {
   STELLA_PIN_SUGGESTION_EVENT,
   type StellaPinSuggestionDetail,
 } from "@/shared/lib/stella-suggestions";
+import { truncateChipLabel } from "./composer-context";
 
 // ---------------------------------------------------------------------------
 // Attached chips — context the user has committed to sending. Lives INSIDE
@@ -284,10 +285,12 @@ function AppSuggestionChip({
       <span className="composer-context-suggestion__plus" aria-hidden="true">
         +
       </span>
-      <span className="composer-context-suggestion__label">{app.name}</span>
+      <span className="composer-context-suggestion__label">
+        {truncateChipLabel(app.name)}
+      </span>
       {app.windowTitle && (
         <span className="composer-context-suggestion__meta">
-          {app.windowTitle}
+          {truncateChipLabel(app.windowTitle)}
         </span>
       )}
     </button>
@@ -318,9 +321,11 @@ function TabSuggestionChip({
       <span className="composer-context-suggestion__plus" aria-hidden="true">
         +
       </span>
-      <span className="composer-context-suggestion__label">{tab.host}</span>
+      <span className="composer-context-suggestion__label">
+        {truncateChipLabel(tab.host)}
+      </span>
       <span className="composer-context-suggestion__meta">
-        in {tab.browser}
+        in {truncateChipLabel(tab.browser)}
       </span>
     </button>
   );
