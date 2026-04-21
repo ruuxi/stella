@@ -39,7 +39,7 @@ const SHELL_SCHEMA = {
     command: {
       type: "string",
       description:
-        "Shell command to execute (required for op='run'). Stella CLIs (stella-browser, stella-office, stella-ui, stella-computer) are auto-injected into PATH.",
+        "Shell command to execute (required for op='run'). Stella CLIs (stella-browser, stella-office, stella-computer) are auto-injected into PATH.",
     },
     description: {
       type: "string",
@@ -103,7 +103,7 @@ export const createShellBuiltins = (
     description:
       "Run shell commands and manage backgrounded shells.\n\n" +
       "When to use:\n" +
-      "- Always for Stella CLIs (stella-browser, stella-office, stella-ui, stella-computer) — `tools.shell` injects them into PATH and wires per-task session ids/env.\n" +
+      "- Always for Stella CLIs (stella-browser, stella-office, stella-computer) — `tools.shell` injects them into PATH and wires per-task session ids/env.\n" +
       "- For long-running processes that should survive across Exec cells (e.g. dev servers): pass `background: true`, capture the returned `shell_id`, and check on it later via `op: 'status'` / `op: 'kill'`.\n" +
       "- For a one-shot command without Stella-CLI wiring or background needs, you can also just use `require(\"node:child_process\")` inside the Exec program — `tools.shell` is not required.\n\n" +
       "Operations:\n" +
