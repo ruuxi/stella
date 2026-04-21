@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ChatColumn } from "@/app/chat/ChatColumn";
-import { useChatRuntime } from "@/context/chat-runtime";
+import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { Route } from "@/routes/chat";
 

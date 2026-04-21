@@ -14,7 +14,8 @@ import {
   useState,
 } from "react";
 import { z } from "zod";
-import { ChatRuntimeProvider, useChatRuntime } from "@/context/chat-runtime";
+import { ChatRuntimeProvider } from "@/context/chat-runtime";
+import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { useDisplayAutoRoute } from "@/app/chat/use-display-auto-route";
