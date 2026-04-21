@@ -18,16 +18,24 @@ const ensureDir = async (dirPath: string) => {
   await ensurePrivateDir(dirPath);
 };
 
-export const resolveStellaRoot = (app?: App): string =>
-  app
+export const resolveStellaRoot = (app?: App, explicitRoot?: string): string => {
+  const normalizedExplicitRoot = explicitRoot?.trim();
+  if (normalizedExplicitRoot) {
+    return normalizedExplicitRoot;
+  }
+  return app
     ? path.resolve(app.getAppPath(), "..")
     : path.resolve(__dirname, "..", "..", "..");
+};
 
-export const resolveRuntimeStatePath = (app?: App): string =>
-  path.join(resolveStellaRoot(app), "state");
+export const resolveRuntimeStatePath = (app?: App, explicitRoot?: string): string =>
+  path.join(resolveStellaRoot(app, explicitRoot), "state");
 
-export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
-  const stellaRoot = resolveStellaRoot(app);
+export const resolveStellaHome = async (
+  app: App,
+  explicitRoot?: string,
+): Promise<StellaHome> => {
+  const stellaRoot = resolveStellaRoot(app, explicitRoot);
   const runtimeRoot = path.join(stellaRoot, "runtime");
   const workspacePath = path.join(stellaRoot, "workspace");
 

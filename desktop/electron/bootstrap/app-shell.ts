@@ -16,7 +16,7 @@ import { startDeferredStartup } from "./deferred-startup.js";
 
 const initializeBootstrapLocalState = async (context: BootstrapContext) => {
   const { config, lifecycle, services, state } = context;
-  const stellaHome = await resolveStellaHome(app);
+  const stellaHome = await resolveStellaHome(app, config.stellaRoot);
 
   lifecycle.setStellaRoot(stellaHome.stellaRoot);
   state.stellaRoot = stellaHome.stellaRoot;
