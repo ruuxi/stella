@@ -220,6 +220,51 @@ const extractBashPath = (command: string): string | undefined => {
   return match?.[1] ?? match?.[2] ?? match?.[3];
 };
 
+const READ_ONLY_EXEC_TOOLS = new Set([
+  "read_file",
+  "search",
+  "glob",
+  "web_fetch",
+  "web_search",
+  "task_output",
+  "heartbeat_get",
+  "cron_list",
+  "describe",
+]);
+
+const EXEC_MUTATION_PATTERNS: RegExp[] = [
+  /\btools\s*\.\s*write_file\s*\(/,
+  /\btools\s*\.\s*apply_patch\s*\(/,
+  /\btools\s*\.\s*shell\s*\(/,
+  /\btools\s*\.\s*display\s*\(/,
+  /\btools\s*\.\s*memory\s*\(/,
+  /\btools\s*\.\s*task_(?:create|update|pause)\s*\(/,
+  /\btools\s*\.\s*cron_(?:add|update|remove|run)\s*\(/,
+  /\btools\s*\.\s*heartbeat_(?:upsert|run)\s*\(/,
+  /\btools\s*\.\s*schedule\s*\(/,
+  /\bfs(?:\.promises)?\.(?:writeFile|appendFile|cp|copyFile|rename|rm|rmdir|unlink|mkdir|mkdtemp|truncate|chmod|chown|utimes)\s*\(/,
+  /\bchild_process\s*\.\s*(?:exec|execFile|spawn|fork)\s*\(/,
+  /\bprocess\s*\.\s*chdir\s*\(/,
+];
+
+const isClearlyReadOnlyExecProgram = (source: string): boolean => {
+  for (const pattern of EXEC_MUTATION_PATTERNS) {
+    if (pattern.test(source)) {
+      return false;
+    }
+  }
+
+  const toolCalls = source.matchAll(/\btools\s*\.\s*(\w+)\s*\(/g);
+  for (const match of toolCalls) {
+    const method = match[1];
+    if (!method || !READ_ONLY_EXEC_TOOLS.has(method)) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 const getFsLockKey = (
   toolName: string,
   args: Record<string, unknown>,
@@ -242,6 +287,11 @@ const getFsLockKey = (
       pathFromCommand,
         normalizeString(args.working_directory ?? args.cwd ?? context?.stellaRoot),
     );
+  }
+  if (toolName === "Exec") {
+    const source = normalizeString(args.source ?? args.code);
+    if (!source) return "*";
+    return isClearlyReadOnlyExecProgram(source) ? null : "*";
   }
   return null;
 };
