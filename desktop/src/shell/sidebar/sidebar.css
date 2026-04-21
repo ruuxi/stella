@@ -24,21 +24,37 @@
   -webkit-backdrop-filter: var(--glass-blur);
 }
 
-/* Reserve space for native window controls (macOS traffic lights / custom controls) */
-.sidebar-header {
-  height: 28px;
+/* ── Title-bar row ──────────────────────────────────────────────
+   On Windows/Linux this hosts the custom window controls (close,
+   minimize, maximize). On macOS the OS-rendered traffic lights
+   live in this same strip — we just reserve enough vertical space.
+   The whole row is a drag region; interactive children opt back out
+   via `-webkit-app-region: no-drag`. Theme + Settings used to live
+   here; both have moved into the avatar dropdown at the bottom of
+   the sidebar. */
+.sidebar-titlebar {
+  height: 32px;
   flex-shrink: 0;
   -webkit-app-region: drag;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 0 8px;
+  gap: 4px;
+  padding: 0 6px 0 8px;
 }
 
-/* macOS: no custom window controls — minimal strip so traffic lights sit in title bar */
-.sidebar-header--mac {
+/* macOS: leave a wider safe area on the left so the OS traffic lights
+   don't overlap any sidebar content. Theme stays right-aligned. */
+.sidebar-titlebar--mac {
+  padding-left: 80px;
+}
+
+/* Compact / mini-window collapsed: drop interactive children, but keep
+   a thin spacer so the macOS traffic lights still have a drag region. */
+.sidebar-titlebar--compact {
   height: 16px;
   padding: 0;
+  gap: 0;
 }
 
 /* ── Custom window controls (Windows / Linux) ── */
@@ -87,13 +103,20 @@
   flex-shrink: 0;
 }
 
+.sidebar-titlebar .sidebar-window-controls {
+  -webkit-app-region: no-drag;
+}
+
+/* Brand row: logo + "Stella" text, sitting just under the title bar.
+   Naturally flowed (no absolute positioning) so the logo and text hug
+   each other and the row's height is purely a function of its content
+   plus a small vertical pad. */
 .sidebar-brand {
-  position: relative;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  min-height: 108px;
-  padding: 0 14px 0;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 12px 8px;
   background: none;
   border: none;
   cursor: pointer;
@@ -106,16 +129,13 @@
 }
 
 .sidebar-brand-logo {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(calc(-50% - 42px), -50%);
-  width: 48px;
-  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.5;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  opacity: 0.55;
   pointer-events: none;
 }
 
@@ -125,15 +145,18 @@
   display: block;
 }
 
+/* Match the chat hero ("What can I do for you today?") — italic display
+   serif. The original tracked-out caps treatment is gone; the brand now
+   reads as a name, not a label. */
 .sidebar-brand-text {
-  position: relative;
-  color: var(--text-weaker);
-  font-size: 16px;
-  font-weight: 500;
-  letter-spacing: 0.2em;
+  color: var(--text-weak);
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 22px;
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.02em;
   line-height: 1;
-  text-transform: uppercase;
-  transform: translateX(-6px);
+  text-transform: none;
 }
 
 .sidebar-nav {
@@ -308,7 +331,7 @@
   opacity: 0.72;
 }
 
-/* Footer — pinned to bottom for theme + auth */
+/* Footer — pinned to bottom for global apps + account */
 .sidebar-footer {
   display: flex;
   flex-direction: column;
@@ -320,27 +343,6 @@
 .sidebar-footer-item {
   display: flex;
   align-items: center;
-}
-
-.sidebar-footer-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* Palette + Settings: each icon centered in half the row */
-.sidebar-footer-row--theme {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  justify-items: center;
-  align-items: center;
-  width: 100%;
-  column-gap: 8px;
-}
-
-.sidebar-footer-row .sidebar-nav-item {
-  flex: 1;
-  min-width: 0;
 }
 
 .sidebar-icon-button {
@@ -365,6 +367,239 @@
 
 .sidebar-icon-button:active {
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+/* ── Account row: avatar (initials) + Upgrade / current-plan pill ── */
+.sidebar-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 4px 4px;
+  /* Positioning context for the hidden ThemePicker trigger
+     (`.sidebar-account-theme-anchor`), which anchors the popover near the
+     avatar when the user picks "Theme" from the avatar dropdown. */
+  position: relative;
+}
+
+/* Invisible button rendered inside the account row so the ThemePicker
+   popover anchors over the avatar instead of the viewport's top-left.
+   Width/height match the avatar so popover side="top" lands sensibly. */
+.sidebar-account-theme-anchor {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 32px;
+  height: 32px;
+  opacity: 0;
+  pointer-events: none;
+  background: transparent;
+  border: none;
+}
+
+.sidebar-account-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-weak);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-account-avatar:hover {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-color: var(--border-strong);
+}
+
+.sidebar-account-pill {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-base);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    transform 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-account-pill--upgrade {
+  color: var(--interactive);
+  background: color-mix(in oklch, var(--interactive) 12%, transparent);
+  border-color: color-mix(in oklch, var(--interactive) 35%, transparent);
+}
+
+.sidebar-account-pill--upgrade:hover {
+  background: color-mix(in oklch, var(--interactive) 22%, transparent);
+}
+
+.sidebar-account-pill--plan {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  border-color: var(--border-weak);
+}
+
+.sidebar-account-pill--plan:hover {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.sidebar-account-signin {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--text-base);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+  text-align: left;
+}
+
+.sidebar-account-signin:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.sidebar-account-signin-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--text-weak);
+}
+
+.sidebar-account-signin:hover .sidebar-account-signin-icon {
+  color: var(--text-strong);
+}
+
+.sidebar-account-signin-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Sign-out confirmation dialog ────────────────────────────────
+   Reuses the global Dialog primitive (portaled). Action row sits at
+   the bottom of the dialog with a ghost cancel + a destructive-tone
+   primary "Sign out" button. */
+.sidebar-confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 4px 24px 20px;
+  align-self: stretch;
+}
+
+.sidebar-confirm-actions [data-component="button"][data-tone="destructive"] {
+  background-color: #ef4444;
+  border-color: color-mix(in oklch, #ef4444 80%, var(--foreground));
+  color: #fff;
+}
+
+.sidebar-confirm-actions [data-component="button"][data-tone="destructive"]:hover:not(:disabled) {
+  background-color: color-mix(in oklch, #ef4444 92%, #000);
+  opacity: 1;
+}
+
+.sidebar-confirm-actions [data-component="button"][data-tone="destructive"]:active:not(:disabled) {
+  background-color: color-mix(in oklch, #ef4444 80%, #000);
+  opacity: 1;
+}
+
+/* ── Rail mode: user-toggled icon-only collapse ──────────────────
+   Mirrors the compact-window media query so a click on the brand
+   collapses the same way an under-600px window would. */
+.sidebar.sidebar--rail {
+  width: 64px;
+}
+
+.sidebar.sidebar--rail .sidebar-brand {
+  padding: 8px 0;
+  gap: 0;
+}
+
+.sidebar.sidebar--rail .sidebar-brand-logo {
+  opacity: 0.85;
+}
+
+.sidebar.sidebar--rail .sidebar-brand-text {
+  display: none;
+}
+
+.sidebar.sidebar--rail .sidebar-nav,
+.sidebar.sidebar--rail .sidebar-footer {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.sidebar.sidebar--rail .sidebar-nav-item {
+  justify-content: center;
+  padding: 10px 0;
+  gap: 0;
+}
+
+.sidebar.sidebar--rail .sidebar-nav-label {
+  display: none;
+}
+
+.sidebar.sidebar--rail .sidebar-account {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.sidebar.sidebar--rail .sidebar-account-avatar {
+  align-self: center;
+}
+
+.sidebar.sidebar--rail .sidebar-account-pill {
+  height: 24px;
+  padding: 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sidebar.sidebar--rail .sidebar-account-signin {
+  justify-content: center;
+  padding: 10px 0;
+  gap: 0;
+}
+
+.sidebar.sidebar--rail .sidebar-account-signin-label {
+  display: none;
 }
 
 /* ============================================

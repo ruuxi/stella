@@ -1,6 +1,7 @@
 ---
 
 ## name: stella-desktop
+
 description: How Stella's own Electron desktop app is structured — processes, routing, sidebar apps, dialogs, UI state — so the agent can self-modify it without guessing.
 
 # Modifying Stella Desktop

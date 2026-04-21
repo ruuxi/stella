@@ -16,6 +16,7 @@ import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { PdfViewerCard } from "@/app/chat/PdfViewerCard";
 import { applyMorphdomHtml } from "./apply-morphdom-html";
 import { ShiftingGradient } from "./background/ShiftingGradient";
+import { MediaPreviewCard } from "./MediaPreviewCard";
 import "./display-sidebar.css";
 
 export interface DisplaySidebarHandle {
@@ -146,6 +147,16 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarPro
               <PdfViewerCard
                 filePath={payload.filePath}
                 {...(payload.title ? { title: payload.title } : {})}
+              />
+            </div>
+          )}
+
+          {payload?.kind === "media" && (
+            <div className="display-sidebar__rich display-sidebar__rich--media">
+              <MediaPreviewCard
+                asset={payload.asset}
+                {...(payload.prompt ? { prompt: payload.prompt } : {})}
+                {...(payload.capability ? { capability: payload.capability } : {})}
               />
             </div>
           )}

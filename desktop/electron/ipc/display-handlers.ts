@@ -10,13 +10,38 @@ type DisplayHandlersOptions = {
   ) => boolean;
 };
 
-const MAX_DISPLAY_FILE_BYTES = 50 * 1024 * 1024;
-
-const ALLOWED_EXTENSIONS = new Set([".pdf"]);
+const MAX_DISPLAY_FILE_BYTES = 200 * 1024 * 1024;
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".pdf": "application/pdf",
+  // Images
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".avif": "image/avif",
+  // Audio
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".m4a": "audio/mp4",
+  ".flac": "audio/flac",
+  // Video
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".m4v": "video/mp4",
+  // 3D / generic
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
+  ".obj": "text/plain",
+  ".stl": "application/sla",
+  ".bin": "application/octet-stream",
 };
+
+const ALLOWED_EXTENSIONS = new Set(Object.keys(MIME_BY_EXTENSION));
 
 export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
   ipcMain.handle(

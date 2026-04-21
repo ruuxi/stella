@@ -1,5 +1,4 @@
 export {
-  managedMediaDocsUrlFromConvexSiteUrl,
   readConfiguredStellaSiteUrl,
   readConfiguredConvexSiteUrl,
   readConfiguredConvexUrl,

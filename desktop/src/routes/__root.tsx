@@ -19,6 +19,7 @@ import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { useDisplayAutoRoute } from "@/app/chat/use-display-auto-route";
+import { useMediaMaterializer } from "@/app/media/use-media-materializer";
 import {
   ChatSidebar,
   type ChatSidebarHandle,
@@ -34,6 +35,7 @@ import {
   type DisplayPayload,
   normalizeDisplayPayload,
 } from "@/shared/contracts/display-payload";
+import { hasBillingCheckoutCompletionMarker } from "@/global/settings/lib/billing-checkout";
 import {
   readPersistedLastLocation,
   writePersistedLastLocation,
@@ -84,10 +86,22 @@ function RootLayout() {
   // from `localStorage` (no async hydration race) and only navigate if the
   // pathname matches a registered route in this router. Anything else falls
   // through to the memory-history default (`/chat`).
+  //
+  // Special case: a Stripe checkout return URL carries the
+  // `?billingCheckout=complete` marker on `window.location`. When we see it,
+  // we skip the persisted restore and go straight to `/billing` — the
+  // BillingScreen consumes the marker (see
+  // `consumeBillingCheckoutCompletionMarker`) so reloading later doesn't
+  // bounce the user back here.
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
+
+    if (hasBillingCheckoutCompletionMarker()) {
+      void router.navigate({ to: "/billing" });
+      return;
+    }
 
     const target = readPersistedLastLocation();
     if (!target || target === "/chat" || target === "/") return;
@@ -241,14 +255,24 @@ function RootChrome() {
     handlePendingAskStellaHandled(pendingAskStellaRequest.id);
   }, [handlePendingAskStellaHandled, pendingAskStellaRequest]);
 
-  // Push payloads into the Display sidebar. On the chat home pane the first
-  // payload also opens the sidebar; everywhere else we hot-update so we
-  // don't steal focus.
+  // Push payloads into the Display sidebar.
+  //
+  // - `media` payloads always open the sidebar (a generated image/video/audio
+  //   is the user's main goal in that moment; surfacing it is non-negotiable).
+  //   Producers running on the active surface itself (e.g. a future
+  //   `MediaStudio` page) should pass `suppress` to the materializer.
+  // - For everything else (html / office / pdf), keep the existing behavior:
+  //   open on the chat home pane, hot-update elsewhere so we don't steal
+  //   focus mid-conversation.
   const routeDisplayPayload = useCallback(
     (payload: DisplayPayload) => {
       latestDisplayPayloadRef.current = payload;
       const ds = displaySidebarRef.current;
       if (!ds) return;
+      if (payload.kind === "media") {
+        ds.open(payload);
+        return;
+      }
       if (chat.showHomeContent && isOnChatRoute) {
         ds.open(payload);
       } else {
@@ -270,6 +294,11 @@ function RootChrome() {
   // Renderer-side auto-routing: chat tool results that produce visual
   // payloads (office preview, PDF read) surface in the Display sidebar.
   useDisplayAutoRoute(chat.conversation.events, routeDisplayPayload);
+
+  // Owner-scoped materializer: any media job (this conversation, another
+  // device, the agent, the studio, …) gets downloaded into
+  // `state/media/outputs/` and surfaced in the Display sidebar.
+  useMediaMaterializer({ onMaterialized: routeDisplayPayload });
 
   // Cmd+right-click → "Open chat" on a window dispatches a context chip.
   useEffect(() => {

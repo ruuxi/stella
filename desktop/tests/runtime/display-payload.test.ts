@@ -44,6 +44,29 @@ describe("normalizeDisplayPayload", () => {
     expect(normalizeDisplayPayload(payload)).toBe(payload);
   });
 
+  it("passes through valid media payloads", () => {
+    const image: DisplayPayload = {
+      kind: "media",
+      asset: {
+        kind: "image",
+        filePaths: ["/state/media/outputs/job_0.png"],
+      },
+      jobId: "job-1",
+      capability: "text_to_image",
+      prompt: "a cat",
+      createdAt: 123,
+    };
+    expect(normalizeDisplayPayload(image)).toBe(image);
+
+    const video: DisplayPayload = {
+      kind: "media",
+      asset: { kind: "video", filePath: "/state/media/outputs/job_0.mp4" },
+      jobId: "job-2",
+      createdAt: 456,
+    };
+    expect(normalizeDisplayPayload(video)).toBe(video);
+  });
+
   it("rejects malformed payloads", () => {
     expect(normalizeDisplayPayload(null)).toBeNull();
     expect(normalizeDisplayPayload(undefined)).toBeNull();
@@ -51,6 +74,19 @@ describe("normalizeDisplayPayload", () => {
     expect(normalizeDisplayPayload({ kind: "html" })).toBeNull();
     expect(normalizeDisplayPayload({ kind: "office", previewRef: {} })).toBeNull();
     expect(normalizeDisplayPayload({ kind: "pdf" })).toBeNull();
+    expect(
+      normalizeDisplayPayload({
+        kind: "media",
+        asset: { kind: "image" }, // missing filePaths
+        createdAt: 1,
+      }),
+    ).toBeNull();
+    expect(
+      normalizeDisplayPayload({
+        kind: "media",
+        asset: { kind: "image", filePaths: [] }, // ok shape, but no createdAt
+      }),
+    ).toBeNull();
     expect(normalizeDisplayPayload({ kind: "unknown" })).toBeNull();
   });
 
@@ -84,5 +120,32 @@ describe("normalizeDisplayPayload", () => {
         title: "Q4 invoice",
       }),
     ).toBe("Q4 invoice");
+
+    expect(
+      getDisplayPayloadTitle({
+        kind: "media",
+        asset: { kind: "image", filePaths: ["/a/b/c.png"] },
+        prompt: "a serene lake at dawn",
+        capability: "text_to_image",
+        createdAt: 1,
+      }),
+    ).toBe("a serene lake at dawn");
+
+    expect(
+      getDisplayPayloadTitle({
+        kind: "media",
+        asset: { kind: "video", filePath: "/a/b/c.mp4" },
+        capability: "text_to_video",
+        createdAt: 1,
+      }),
+    ).toBe("text to video");
+
+    expect(
+      getDisplayPayloadTitle({
+        kind: "media",
+        asset: { kind: "audio", filePath: "/a/b/c.mp3" },
+        createdAt: 1,
+      }),
+    ).toBe("Generated audio");
   });
 });

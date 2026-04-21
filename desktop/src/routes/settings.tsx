@@ -6,9 +6,7 @@ import { SettingsApp } from "@/apps/settings/App";
  * `?tab=<id>` deep-links to a specific settings tab.
  */
 const SettingsSearch = z.object({
-  tab: z
-    .enum(["basic", "models", "audio", "billing", "connections"])
-    .optional(),
+  tab: z.enum(["basic", "models", "audio", "connections"]).optional(),
 });
 
 export const Route = createFileRoute("/settings")({

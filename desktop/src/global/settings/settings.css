@@ -29,6 +29,18 @@
   padding-top: 32px;
 }
 
+/* Single-column variant: no left tab rail. Used by /billing, which lives
+   on its own route and is reachable from the sidebar account pill. */
+.settings-layout--single {
+  padding-top: 32px;
+  justify-content: center;
+}
+
+.settings-layout--single .settings-panel-wrap {
+  width: 100%;
+  max-width: 1080px;
+}
+
 /* ---- Sidebar Tabs ---- */
 
 .settings-sidebar {

@@ -35,6 +35,13 @@ export type AppMetadata = {
   /** Sort order within the slot (lower first). Defaults to 100. */
   order?: number;
   /**
+   * When true, the sidebar omits this app from its rendered list. The route
+   * itself remains reachable (`routes/<id>.tsx` is unaffected) — useful for
+   * apps that should be navigable via deep link / dropdown but not occupy a
+   * permanent slot in the rail. Defaults to `false`.
+   */
+  hideFromSidebar?: boolean;
+  /**
    * Optional handler invoked when the user clicks the sidebar entry while it
    * is *already* the active route. Use this to implement "scroll to top",
    * "show home", or other re-entry behaviors. When provided, the click also

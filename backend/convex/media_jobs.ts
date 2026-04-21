@@ -240,6 +240,46 @@ export const getByJobId = query({
   },
 });
 
+/**
+ * Reactive feed of every succeeded media job for the current viewer that
+ * completed at-or-after `since`. The desktop renderer subscribes to this on
+ * boot so the Display sidebar can surface any media output regardless of who
+ * started the job (MediaStudio, the agent's `MediaGenerate` tool, a CLI…).
+ *
+ * `since` is a `completedAt` lower bound (millis). Pass `Date.now()` on first
+ * subscribe to get only jobs that finish after the app launches, or pass a
+ * smaller value (e.g., last-seen timestamp from local storage) to also
+ * back-fill recently missed completions.
+ */
+export const listSucceededSince = query({
+  args: {
+    since: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(mediaJobResponseValidator),
+  handler: async (ctx, args) => {
+    const ownerId = await toViewerOwnerId(ctx);
+    const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
+    const rows = await ctx.db
+      .query("media_jobs")
+      .withIndex("by_ownerId_and_createdAt", (q) =>
+        q.eq("ownerId", ownerId).gte("createdAt", args.since),
+      )
+      .order("desc")
+      .take(limit * 2);
+
+    return rows
+      .filter(
+        (row) =>
+          row.status === "succeeded" &&
+          row.output !== undefined &&
+          (row.completedAt ?? row.updatedAt) >= args.since,
+      )
+      .slice(0, limit)
+      .map(toStoredMediaJobResponse);
+  },
+});
+
 export const getWebhookJob = internalQuery({
   args: {
     jobId: v.string(),

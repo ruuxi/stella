@@ -518,9 +518,10 @@
   }
 
   /* The mini window is frameless and has no traffic lights / custom
-     window controls, so the header strip + brand row reserve dead space
-     at the top of the rail. Collapse them. */
-  .full-body > .sidebar .sidebar-header {
+     window controls — there's nothing for the title-bar row to host,
+     so collapse it. The brand row also turns into dead space; hide it
+     entirely so the rail starts directly with the nav icons. */
+  .full-body > .sidebar .sidebar-titlebar {
     display: none;
   }
 
@@ -546,9 +547,35 @@
     padding: 8px 6px;
   }
 
-  .full-body > .sidebar .sidebar-footer-row--theme {
-    grid-template-columns: 1fr;
-    row-gap: 4px;
+  /* Account row collapses to the avatar over a tiny pill, matching the
+     user-toggled rail mode. */
+  .full-body > .sidebar .sidebar-account {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 4px 0;
+  }
+
+  .full-body > .sidebar .sidebar-account-avatar {
+    align-self: center;
+  }
+
+  .full-body > .sidebar .sidebar-account-pill {
+    height: 24px;
+    padding: 0 6px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .full-body > .sidebar .sidebar-account-signin {
+    justify-content: center;
+    padding: 10px 0;
+    gap: 0;
+  }
+
+  .full-body > .sidebar .sidebar-account-signin-label {
+    display: none;
   }
 
   .full-body > .sidebar-drawer-scrim {

@@ -19,6 +19,14 @@ import { hasMacPermission, requestMacPermission } from "../utils/macos-permissio
 
 type ChronicleConfig = {
   enabled?: boolean;
+  /**
+   * The user toggled Live Memory on during onboarding but isn't signed in
+   * yet, so we recorded the *intent* without spawning the daemon. Cleared
+   * once the user either signs in (we promote it to `enabled: true` and
+   * call `start()`) or cancels (we clear it). Treated as opt-out by every
+   * lifecycle path until promoted.
+   */
+  pendingEnable?: boolean;
   intervalMs?: number;
   maxStrings?: number;
 };
@@ -117,7 +125,10 @@ export class ChronicleController {
    */
   async start(): Promise<{ started: boolean; reason?: string }> {
     const config = await readConfig(this.stellaHome);
-    if (config.enabled === false) {
+    // Live Memory is opt-in: only start when the user has explicitly
+    // enabled it. Missing config or `pendingEnable` (waiting on sign-in)
+    // both keep the daemon dormant.
+    if (config.enabled !== true) {
       return { started: false, reason: "disabled" };
     }
     if (process.platform !== "darwin") {
@@ -193,7 +204,34 @@ export class ChronicleController {
 
   async isEnabled(): Promise<boolean> {
     const config = await readConfig(this.stellaHome);
-    return config.enabled !== false;
+    return config.enabled === true;
+  }
+
+  /**
+   * Returns true if the user opted in during onboarding but we haven't
+   * promoted Live Memory to `enabled` yet because they aren't signed in.
+   * Used by the renderer to render a "Sign in to start Live Memory" banner.
+   */
+  async isPendingEnable(): Promise<boolean> {
+    const config = await readConfig(this.stellaHome);
+    return config.enabled !== true && config.pendingEnable === true;
+  }
+
+  /**
+   * Stage the user's intent to enable Live Memory without actually
+   * spawning the daemon. Used during onboarding when the user toggles
+   * Live Memory on but isn't signed in. Once the user signs in, the
+   * post-onboarding chrome promotes this to a real `setEnabled(true)`.
+   */
+  async setPendingEnable(pending: boolean): Promise<void> {
+    if (pending) {
+      await writeConfigPatch(this.stellaHome, {
+        enabled: false,
+        pendingEnable: true,
+      });
+    } else {
+      await writeConfigPatch(this.stellaHome, { pendingEnable: false });
+    }
   }
 
   async status(): Promise<unknown | null> {
@@ -245,7 +283,11 @@ export class ChronicleController {
     reason?: string;
   }> {
     if (!enabled) {
-      await writeConfigPatch(this.stellaHome, { enabled: false });
+      // Explicit disable: also clear any staged "pending sign-in" intent.
+      await writeConfigPatch(this.stellaHome, {
+        enabled: false,
+        pendingEnable: false,
+      });
       await this.stop();
       return {
         ok: true,
@@ -255,7 +297,10 @@ export class ChronicleController {
       };
     }
     if (process.platform !== "darwin") {
-      await writeConfigPatch(this.stellaHome, { enabled: false });
+      await writeConfigPatch(this.stellaHome, {
+        enabled: false,
+        pendingEnable: false,
+      });
       return {
         ok: false,
         enabled: false,
@@ -267,7 +312,10 @@ export class ChronicleController {
     if (process.platform === "darwin" && !hasMacPermission("screen", false)) {
       const result = await requestMacPermission("screen");
       if (!result.granted) {
-        await writeConfigPatch(this.stellaHome, { enabled: false });
+        await writeConfigPatch(this.stellaHome, {
+          enabled: false,
+          pendingEnable: false,
+        });
         return {
           ok: false,
           enabled: false,
@@ -277,10 +325,17 @@ export class ChronicleController {
         };
       }
     }
-    await writeConfigPatch(this.stellaHome, { enabled: true });
+    // Promote: clear pending intent and mark enabled.
+    await writeConfigPatch(this.stellaHome, {
+      enabled: true,
+      pendingEnable: false,
+    });
     const startResult = await this.start();
     if (!startResult.started) {
-      await writeConfigPatch(this.stellaHome, { enabled: false });
+      await writeConfigPatch(this.stellaHome, {
+        enabled: false,
+        pendingEnable: false,
+      });
       return {
         ok: false,
         enabled: false,

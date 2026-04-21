@@ -36,6 +36,11 @@ interface ThemePickerProps {
   trigger?: ReactElement;
   /** Used only when `trigger` is omitted. */
   triggerLabel?: string;
+  /** Which side of the trigger the popover opens on. Defaults to `top`
+   * (legacy: footer-anchored dropup). The title-bar variant uses `bottom`. */
+  side?: "top" | "bottom";
+  /** Alignment of the popover relative to the trigger. Defaults to `end`. */
+  align?: "start" | "center" | "end";
 }
 
 export function ThemePicker({
@@ -45,6 +50,8 @@ export function ThemePicker({
   onThemeSelect,
   trigger,
   triggerLabel = "Theme",
+  side = "top",
+  align = "end",
 }: ThemePickerProps) {
   const { themeId, themes, colorMode, gradientMode, gradientColor } = useTheme();
   const {
@@ -119,7 +126,12 @@ export function ThemePicker({
           </Button>
         )}
       </PopoverTrigger>
-      <PopoverContent side="top" align="end" collisionPadding={8} data-theme-picker="true">
+      <PopoverContent
+        side={side}
+        align={align}
+        collisionPadding={8}
+        data-theme-picker="true"
+      >
         <PopoverBody>
           <div data-slot="theme-picker-sections" onMouseLeave={() => cancelPreview()}>
             <div data-slot="theme-picker-section" data-bordered>
