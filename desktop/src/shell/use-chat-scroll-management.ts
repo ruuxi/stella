@@ -73,7 +73,9 @@ export function useChatScrollManagement({
   const thumbFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const pauseResizeFollowRef = useRef(pauseResizeFollow)
-  pauseResizeFollowRef.current = pauseResizeFollow
+  useEffect(() => {
+    pauseResizeFollowRef.current = pauseResizeFollow
+  }, [pauseResizeFollow])
 
   const [pinnedToTurn, setPinnedToTurnState] = useState(false)
   const pinnedToTurnRef = useRef(false)
@@ -290,6 +292,7 @@ export function useChatScrollManagement({
     isWithinGrace,
     updateThumb,
     setUserScrolled,
+    setPinnedToTurn,
     stopSpring,
     hasOlderEvents,
     isLoadingOlder,
