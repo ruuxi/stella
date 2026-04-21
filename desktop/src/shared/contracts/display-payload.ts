@@ -9,6 +9,9 @@ import { isOfficePreviewRef } from "./office-preview";
  * - `office` — docx/xlsx/pptx live-preview produced by `stella-office preview`.
  *              Renders the existing OfficePreviewCard (iframe + auto-refresh).
  * - `pdf`    — local PDF file rendered with react-pdf in the renderer.
+ * - `media`  — generated media (image/video/audio/3d/text) materialized to
+ *              `state/media/outputs/`. Emitted by the media materializer when
+ *              any media job for the current owner succeeds.
  *
  * The IPC channel `display:update` carries either a raw HTML `string`
  * (legacy compatibility for the runtime worker's existing `displayHtml(html)`
@@ -17,10 +20,54 @@ import { isOfficePreviewRef } from "./office-preview";
 export type DisplayPayload =
   | { kind: "html"; html: string }
   | { kind: "office"; previewRef: OfficePreviewRef; title?: string }
-  | { kind: "pdf"; filePath: string; title?: string };
+  | { kind: "pdf"; filePath: string; title?: string }
+  | {
+      kind: "media";
+      asset: MediaAsset;
+      jobId?: string;
+      capability?: string;
+      prompt?: string;
+      createdAt: number;
+    };
+
+/**
+ * What was generated. Mirrors the shape of `OutputMedia` in
+ * `desktop/src/app/media/media-store.ts` but uses local file paths instead of
+ * remote URLs so we don't depend on time-bounded provider URLs at view time.
+ */
+export type MediaAsset =
+  | { kind: "image"; filePaths: string[] }
+  | { kind: "video"; filePath: string }
+  | { kind: "audio"; filePath: string }
+  | { kind: "model3d"; filePath: string; label?: string }
+  | { kind: "download"; filePath: string; label: string }
+  | { kind: "text"; text: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object";
+
+const isMediaAsset = (value: unknown): value is MediaAsset => {
+  if (!isRecord(value)) return false;
+  switch (value.kind) {
+    case "image":
+      return (
+        Array.isArray((value as { filePaths?: unknown }).filePaths) &&
+        (value as { filePaths: unknown[] }).filePaths.every(
+          (p) => typeof p === "string",
+        )
+      );
+    case "video":
+    case "audio":
+      return typeof (value as { filePath?: unknown }).filePath === "string";
+    case "model3d":
+    case "download":
+      return typeof (value as { filePath?: unknown }).filePath === "string";
+    case "text":
+      return typeof (value as { text?: unknown }).text === "string";
+    default:
+      return false;
+  }
+};
 
 export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
   if (!isRecord(value)) return false;
@@ -32,6 +79,12 @@ export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
   }
   if (value.kind === "pdf") {
     return typeof (value as { filePath?: unknown }).filePath === "string";
+  }
+  if (value.kind === "media") {
+    return (
+      isMediaAsset((value as { asset?: unknown }).asset) &&
+      typeof (value as { createdAt?: unknown }).createdAt === "number"
+    );
   }
   return false;
 };
@@ -56,5 +109,24 @@ export const getDisplayPayloadTitle = (payload: DisplayPayload): string => {
   if (payload.kind === "office") {
     return payload.title ?? payload.previewRef.title;
   }
-  return payload.title ?? payload.filePath.split("/").pop() ?? "Document";
+  if (payload.kind === "pdf") {
+    return payload.title ?? payload.filePath.split("/").pop() ?? "Document";
+  }
+  // payload.kind === "media"
+  if (payload.prompt) return payload.prompt;
+  if (payload.capability) return payload.capability.replace(/_/g, " ");
+  switch (payload.asset.kind) {
+    case "image":
+      return payload.asset.filePaths.length > 1 ? "Generated images" : "Generated image";
+    case "video":
+      return "Generated video";
+    case "audio":
+      return "Generated audio";
+    case "model3d":
+      return payload.asset.label ?? "Generated 3D model";
+    case "download":
+      return payload.asset.label;
+    case "text":
+      return "Generated text";
+  }
 };

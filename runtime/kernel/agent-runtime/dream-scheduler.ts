@@ -129,7 +129,12 @@ const readDreamConfig = (stellaHome: string): DreamConfig => {
     const parsed = JSON.parse(raw) as { dream?: Partial<DreamConfig> };
     const dream = parsed.dream ?? {};
     return {
-      enabled: dream.enabled !== false,
+      // Dream is opt-in: only run when the user has explicitly turned on
+      // Live Memory during onboarding (or via Settings). The onboarding
+      // toggle writes `dream.enabled: true` to `state/config.json`; until
+      // then we no-op so the background scheduler never tries to resolve
+      // a model route that isn't there.
+      enabled: dream.enabled === true,
       triggerRowCount:
         typeof dream.triggerRowCount === "number" && dream.triggerRowCount > 0
           ? Math.floor(dream.triggerRowCount)
@@ -141,7 +146,7 @@ const readDreamConfig = (stellaHome: string): DreamConfig => {
     };
   } catch {
     return {
-      enabled: true,
+      enabled: false,
       triggerRowCount: DEFAULT_TRIGGER_ROW_COUNT,
       idleTriggerMs: DEFAULT_IDLE_TRIGGER_MS,
     };

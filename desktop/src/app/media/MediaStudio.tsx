@@ -16,6 +16,7 @@ import {
   saveOutputToStella,
   updateHistoryEntry,
 } from "./media-store"
+import { markMediaJobMaterialized } from "./use-media-materializer"
 import "./media-studio.css"
 
 function FolderIcon() {
@@ -446,6 +447,13 @@ export default function MediaStudio() {
         output: null,
         status: "pending",
       }
+
+      // Tell the global materializer to skip this job — MediaStudio will
+      // present the result inline. Without this the Display sidebar would
+      // pop open over the studio when the job completes. We mark up-front
+      // (not on success) to avoid a race where the materializer's
+      // subscription fires first.
+      markMediaJobMaterialized(result.jobId)
 
       startTransition(() => {
         setActiveJobId(result.jobId)

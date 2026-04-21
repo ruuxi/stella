@@ -38,10 +38,8 @@ import {
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import { NativeSelect } from "@/ui/native-select";
-import { BillingTab } from "@/global/settings/BillingTab";
 import { AudioTab } from "@/global/settings/AudioTab";
 import { ConnectionsTab } from "@/global/settings/ConnectionsTab";
-import { hasBillingCheckoutCompletionMarker } from "@/global/settings/lib/billing-checkout";
 import "@/global/settings/settings.css";
 
 const LegalDialog = lazy(() =>
@@ -54,7 +52,7 @@ const LegalDialog = lazy(() =>
 // Types
 // ---------------------------------------------------------------------------
 
-type SettingsTab = "basic" | "models" | "audio" | "billing" | "connections";
+type SettingsTab = "basic" | "models" | "audio" | "connections";
 
 type BasicTabPermissionStatus = {
   accessibility: boolean;
@@ -109,7 +107,6 @@ const TABS: { key: SettingsTab; label: string }[] = [
   { key: "models", label: "Models" },
   { key: "audio", label: "Audio" },
   { key: "connections", label: "Connections" },
-  { key: "billing", label: "Billing" },
 ];
 
 function getSettingsErrorMessage(error: unknown, fallback: string) {
@@ -1976,7 +1973,13 @@ function ModelsTab() {
 // Settings Panel (scroll container with bottom fade)
 // ---------------------------------------------------------------------------
 
-function SettingsPanel({ children }: { children: React.ReactNode }) {
+/**
+ * Reusable scroll-and-fade chrome that wraps any panel with the same
+ * standalone visual treatment as the settings tabs. Exported so peer
+ * route-mounted screens (e.g. `/billing`) can match the look without
+ * duplicating CSS.
+ */
+export function SettingsPanel({ children }: { children: React.ReactNode }) {
   return (
     <div className="settings-panel-wrap">
       <div className="settings-panel">{children}</div>
@@ -2009,22 +2012,12 @@ export const SettingsScreen = ({
   onActiveTabChange,
   onSignOut,
 }: SettingsScreenProps) => {
-  const [selectedTab, setSelectedTab] = useState<SettingsTab>(() =>
-    hasBillingCheckoutCompletionMarker() ? "billing" : "basic",
-  );
+  const [selectedTab, setSelectedTab] = useState<SettingsTab>("basic");
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(
     null,
   );
 
-  // An explicit `?tab=...` deep link wins over the billing-checkout marker:
-  // the user is actively asking for a specific tab. Only when the caller
-  // hasn't passed a tab (uncontrolled mount) do we let a fresh checkout
-  // completion bias the initial tab to "billing".
-  const billingCheckoutOverride =
-    activeTabProp === undefined && hasBillingCheckoutCompletionMarker();
-  const activeTab = billingCheckoutOverride
-    ? "billing"
-    : (activeTabProp ?? selectedTab);
+  const activeTab = activeTabProp ?? selectedTab;
 
   const handleTabClick = useCallback(
     (next: SettingsTab) => {
@@ -2062,10 +2055,8 @@ export const SettingsScreen = ({
               <ModelsTab />
             ) : activeTab === "audio" ? (
               <AudioTab />
-            ) : activeTab === "connections" ? (
-              <ConnectionsTab />
             ) : (
-              <BillingTab />
+              <ConnectionsTab />
             )}
           </SettingsPanel>
         </div>

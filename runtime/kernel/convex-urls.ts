@@ -33,10 +33,3 @@ export const stellaApiBaseUrlFromConvexSiteUrl = (convexSiteUrl: string): string
   stellaApiBaseUrlFromSiteUrl(readConfiguredStellaSiteUrl(convexSiteUrl)!);
 
 export const stellaBaseUrlFromConvexSiteUrl = stellaApiBaseUrlFromConvexSiteUrl;
-
-export const managedMediaDocsUrlFromConvexSiteUrl = (
-  convexSiteUrl: string,
-): string => {
-  const siteUrl = readConfiguredStellaSiteUrl(convexSiteUrl)!;
-  return `${siteUrl}/api/media/v1/docs`;
-};
