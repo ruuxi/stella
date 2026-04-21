@@ -9,6 +9,7 @@
  */
 
 import {
+  isExecToolAvailableToAgent,
   renderJsonSchemaAsTypescript,
   type ExecToolDefinition,
   type ExecToolRegistry,
@@ -59,12 +60,7 @@ export const createDescribeBuiltin = (
 
     // Apply the same agentTypes filter the prompt uses so `describe` can't
     // be a backdoor for tools an agent isn't allowed to call.
-    const agentType = context.agentType;
-    if (
-      tool.agentTypes &&
-      agentType &&
-      !tool.agentTypes.includes(agentType)
-    ) {
+    if (!isExecToolAvailableToAgent(tool, context.agentType)) {
       throw new Error(`Tool '${name}' is not available to this agent.`);
     }
 

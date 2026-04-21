@@ -138,8 +138,7 @@ export type ToolHostOptions = {
     options?: { category?: string },
   ) => Promise<{ text: string }>;
   /**
-   * Optional MemoryStore wired to the orchestrator. When provided,
-   * `tools.memory` is registered (orchestrator-only).
+   * Optional MemoryStore wired to the orchestrator's memory surface.
    */
   memoryStore?: import("../memory/memory-store.js").MemoryStore;
   requestCredential?: (payload: {

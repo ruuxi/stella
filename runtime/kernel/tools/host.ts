@@ -1,15 +1,12 @@
 /**
  * Tool host factory.
  *
- * Builds the tool execution environment for a Stella session. The model-facing
- * surface is intentionally tiny:
+ * Builds the tool execution environment for a Stella session.
  *
- *   - Exec  / Wait              -> long-lived V8 runtime in `runtime/kernel/exec/`
+ * Model-facing surface:
+ *   - Orchestrator direct tools  -> coordination tools like TaskCreate, Display, WebSearch, Memory
+ *   - Exec / Wait                -> code-mode runtime used by General and Schedule
  *   - AskUserQuestion / RequestCredential -> chat UI round-trips
- *
- * Every other capability (file ops, shell, browser, office, web,
- * display, scheduling, tasks, memory) is registered with the
- * `ExecToolRegistry` and reachable inside a program as `tools.<name>(...)`.
  *
  * Internal subagents (Explore) reach `Read` / `Grep` directly through
  * `executeTool`; those handlers are registered without exposing them in the
@@ -17,6 +14,7 @@
  */
 
 import path from "node:path";
+import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 
 import type {
   ToolContext,
@@ -39,8 +37,13 @@ import {
 } from "./state.js";
 import { type UserToolsConfig } from "./user.js";
 import {
+  createDisplayToolHandlers,
   createInternalExploreHandlers,
+  createMemoryToolHandlers,
+  createScheduleToolHandlers,
+  createTaskToolHandlers,
   createUserToolHandlers,
+  createWebToolHandlers,
   mergeToolHandlers,
   registerExtensionToolHandlers,
 } from "./registry.js";
@@ -67,6 +70,19 @@ import type { ToolDefinition } from "../extensions/types.js";
 export type { ToolContext, ToolHandlerExtras, ToolResult };
 
 export type ToolHost = ReturnType<typeof createToolHost>;
+
+const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
+  "Display",
+  "DisplayGuidelines",
+  "WebSearch",
+  "WebFetch",
+  "Schedule",
+  "TaskCreate",
+  "TaskOutput",
+  "TaskPause",
+  "TaskUpdate",
+  "Memory",
+]);
 
 export const createToolHost = ({
   stellaRoot,
@@ -142,6 +158,11 @@ export const createToolHost = ({
 
   let handlers: Record<string, ToolHandler> = mergeToolHandlers(
     createInternalExploreHandlers(),
+    createDisplayToolHandlers({ displayHtml }),
+    createWebToolHandlers({ webSearch }),
+    createTaskToolHandlers(stateContext),
+    createScheduleToolHandlers({ taskApi, scheduleApi }),
+    ...(memoryStore ? [createMemoryToolHandlers({ memoryStore })] : []),
     createUserToolHandlers(userConfig),
     createExecToolHandlers(execHost),
   );
@@ -238,9 +259,29 @@ export const createToolHost = ({
     }
   };
 
+  const getToolCatalog = (agentType?: string) =>
+    Array.from(toolCatalog.values())
+      .filter(
+        (tool) =>
+          agentType === AGENT_IDS.ORCHESTRATOR ||
+          !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
+      )
+      .map((tool) =>
+        tool.name === EXEC_TOOL_NAME
+          ? {
+              ...tool,
+              description: buildExecToolDescription(
+                registry.list(
+                  agentType ? { agentType } : undefined,
+                ),
+              ),
+            }
+          : tool,
+      );
+
   return {
     executeTool,
-    getToolCatalog: () => Array.from(toolCatalog.values()),
+    getToolCatalog,
     getHandlerNames: () => Object.keys(handlers),
     getShells: () => Array.from(shellState.shells.values()),
     killAllShells,

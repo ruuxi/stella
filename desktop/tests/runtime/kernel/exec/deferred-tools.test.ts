@@ -169,4 +169,35 @@ describe("deferred tools", () => {
       await host.shutdown();
     }
   });
+
+  it("rejects direct calls to tools the agent isn't allowed to use", async () => {
+    const restricted: ExecToolDefinition = {
+      name: "orchestrator_only",
+      description: "Orchestrator-scoped helper.",
+      agentTypes: ["orchestrator"],
+      inputSchema: { type: "object", properties: {} },
+      handler: async () => "secret",
+    };
+    const registry = createExecToolRegistry([tier1Tool, restricted]);
+    registerDescribeBuiltin(registry);
+    const host = createExecHost({ registry });
+    try {
+      const result = await host.execute({
+        summary: "call restricted as general",
+        source: `
+          try {
+            return await tools.orchestrator_only({});
+          } catch (error) {
+            return String(error.message);
+          }
+        `,
+        context: { ...ctx, agentType: "general" },
+      });
+      expect(result.kind).toBe("completed");
+      if (result.kind !== "completed") return;
+      expect(String(result.value)).toContain("is not a function");
+    } finally {
+      await host.shutdown();
+    }
+  });
 });
