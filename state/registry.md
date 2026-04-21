@@ -5,7 +5,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 ## Entry Points
 
 - [Skills Index](state/skills/index.md) — all skills (manuals, workflows, and any frozen executable programs)
-- [Notes](state/notes/) — daily task summaries (append-only)
+- [Memories](state/memories/MEMORY.md) — Dream-curated task ledger and active focus (consumed by the Orchestrator)
 - [Outputs](state/outputs/) — reusable generated artifacts
 - [Raw](state/raw/) — unprocessed source material
 
@@ -28,7 +28,8 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 ## Memory Structure
 
 - `skills/<name>/SKILL.md` — how things work, when to use them, decision logic. Mutable. Update when reality changes. Optionally ships a `scripts/program.ts` for deterministic execution when a skill instructs a future agent to run it via shell.
-- `notes/` — what happened, what was tried, what's open. Append-only. Never modify a past day's entry.
+- `memories/MEMORY.md` — Dream-curated task ledger. Each block is a related cluster of past General agent work. Consumed by the Orchestrator on first turn.
+- `memories/memory_summary.md` — short rolling "what is the user actively working on right now" view. Consumed by the Orchestrator every turn.
 - `raw/` — unprocessed source material. Immutable after capture. Synthesize into `skills/` when useful.
 - `outputs/` — generated artifacts worth keeping. Only file if likely to matter again.
 

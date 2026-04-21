@@ -54,7 +54,7 @@ const MEMORY_REVIEW_SYSTEM_PROMPT = [
   "Use action=\"replace\" or action=\"remove\" if existing entries are now wrong or stale.",
   "",
   "Do NOT save:",
-  "  - Specific task content (lives in state/notes/).",
+  "  - Specific task content (the Dream agent folds that into state/memories/MEMORY.md).",
   "  - One-off requests.",
   "  - Environment, tool, or skill facts (the General agent writes those to state/skills/ or state/knowledge/).",
   "",

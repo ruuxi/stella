@@ -77,9 +77,9 @@ export class ThreadSummariesStore {
   /**
    * Insert or replace a summary for (thread_id, run_id).
    *
-   * `rolloutSummary` should be the agent's final output (i.e. the same text
-   * `appendLifeNote` used to write to disk). `rawMemory` is reserved for the
-   * Dream agent to fill in later if useful.
+   * `rolloutSummary` is the General agent's final output text — the rollout
+   * summary that Dream consolidates into `state/memories/MEMORY.md`.
+   * `rawMemory` is reserved for the Dream agent to fill in later if useful.
    */
   record(args: RecordArgs): void {
     const summary = args.rolloutSummary.trim();

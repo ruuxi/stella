@@ -50,13 +50,12 @@ jobs:
         shell: bash
         run: |
           rm -rf release-root
-          mkdir -p release-root/state/notes release-root/state/outputs
+          mkdir -p release-root/state/outputs
 
           cp package.json bun.lock release-root/
           cp -R desktop runtime release-root/
           cp state/DREAM.md state/registry.md release-root/state/
           cp -R state/skills release-root/state/
-          cp state/notes/README.md release-root/state/notes/README.md
           cp state/outputs/README.md release-root/state/outputs/README.md
 
           tar --zstd -cf "stella-desktop-${{ matrix.platform }}.tar.zst" -C release-root .
