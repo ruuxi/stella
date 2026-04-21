@@ -23,6 +23,7 @@ import type { RuntimeSocialSessionStatus } from "../../../runtime/protocol/index
 import { isRuntimeUnavailableError } from "../../../runtime/protocol/rpc-peer.js";
 import {
   IPC_APP_QUIT_FOR_RESTART,
+  IPC_AUTH_CONSUME_PENDING_CALLBACK,
   IPC_AUTH_RUNTIME_REFRESH_COMPLETE,
   IPC_BACKUP_GET_STATUS,
   IPC_BACKUP_LIST,
@@ -424,6 +425,16 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       return { ok: true };
     },
   );
+
+  // Renderer-pull for the cold-boot deep-link OTT (`stella://auth/callback`).
+  // Main captures the URL from argv before any window exists; previously it
+  // rebroadcast on `did-finish-load`, but that fires before React's
+  // `useEffect`s flush, so the renderer-side `auth:callback` listener was
+  // racy. The renderer now pulls explicitly from `AuthDeepLinkHandler` once
+  // its subscription is live.
+  ipcMain.handle(IPC_AUTH_CONSUME_PENDING_CALLBACK, () => {
+    return options.authService.consumePendingAuthCallback();
+  });
 
   ipcMain.handle(
     IPC_AUTH_RUNTIME_REFRESH_COMPLETE,

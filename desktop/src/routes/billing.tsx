@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
+import { RouteFallback } from "@/shared/components/RouteFallback";
 
 const BillingScreen = lazy(() =>
   import("@/global/billing/BillingScreen").then((m) => ({
@@ -9,7 +10,7 @@ const BillingScreen = lazy(() =>
 
 function BillingRouteComponent() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteFallback />}>
       <BillingScreen />
     </Suspense>
   );

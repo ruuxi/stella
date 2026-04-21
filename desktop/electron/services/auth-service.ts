@@ -143,10 +143,18 @@ export class AuthService {
       console.warn('[security] Rejected untrusted auth callback URL.')
       return
     }
+    // Always buffer the URL. The renderer-side `AuthDeepLinkHandler` is the
+    // single source of truth for consumption: it pulls via
+    // `auth:consumePendingCallback` on mount, which clears the buffer. We
+    // additionally fire the live `auth:callback` broadcast as a best-effort
+    // realtime notification for already-mounted handlers — but we no longer
+    // clear the buffer on broadcast, because the broadcast is a no-op if it
+    // races a window-creation gap (e.g. an `open-url` between `whenReady` and
+    // `createInitialWindows`), and the OTT would silently disappear.
+    // Server-side OTTs are single-use so a duplicate consume is harmless.
     this.pendingAuthCallback = url
     if (app.isReady()) {
       this.options.onAuthCallback(url)
-      this.pendingAuthCallback = null
     }
   }
 

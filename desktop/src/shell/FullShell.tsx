@@ -71,9 +71,17 @@ export const FullShell = () => {
     }, 400);
   }, []);
 
-  // Main-process "app ready" gates global integrations. It must not wait on
-  // the local kernel worker: that can stay "preparing" or fail while the shell
-  // and system integrations should still work once onboarding is complete.
+  // The IPC `app:setReady` signal and the local `appReady` (router-mount)
+  // gate are intentionally asymmetric:
+  //   * Main-process `setAppReady(onboardingDone)` fires as soon as the user
+  //     finishes onboarding, even if the kernel worker is still preparing or
+  //     failed. This unblocks system integrations (window controls, voice,
+  //     hotkeys) that don't depend on the runtime.
+  //   * `appReady` below additionally requires `runtimeStatus === "ready"`
+  //     before mounting `<RouterProvider>`, because routes like `/chat` and
+  //     `/social` invoke runtime hooks that would crash on a "preparing"
+  //     runtime. The onboarding view shows runtime preparing/error state in
+  //     the meantime.
   useEffect(() => {
     window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone);
   }, [onboarding.onboardingDone]);

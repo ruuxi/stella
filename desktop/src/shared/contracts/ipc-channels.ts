@@ -125,6 +125,8 @@ export const IPC_HOST_CONFIGURE_RUNTIME = "host:configurePiRuntime" as const;
 export const IPC_AUTH_SET_STATE = "auth:setState" as const;
 export const IPC_HOST_SET_CLOUD_SYNC = "host:setCloudSyncEnabled" as const;
 export const IPC_AUTH_CALLBACK = "auth:callback" as const;
+export const IPC_AUTH_CONSUME_PENDING_CALLBACK =
+  "auth:consumePendingCallback" as const;
 export const IPC_AUTH_RUNTIME_REFRESH_REQUESTED =
   "auth:runtimeRefreshRequested" as const;
 export const IPC_AUTH_RUNTIME_REFRESH_COMPLETE =

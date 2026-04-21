@@ -30,6 +30,7 @@ import type {
 import type { DiscoveryKnowledgeSeedPayload } from "../src/shared/contracts/discovery.js";
 import {
   IPC_APP_QUIT_FOR_RESTART,
+  IPC_AUTH_CONSUME_PENDING_CALLBACK,
   IPC_AUTH_RUNTIME_REFRESH_COMPLETE,
   IPC_AUTH_RUNTIME_REFRESH_REQUESTED,
   IPC_BACKUP_GET_STATUS,
@@ -287,8 +288,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     morphDone: (transitionId: string) =>
       ipcRenderer.send("overlay:morphDone", { transitionId }),
   },
-
-  mini: {},
 
   theme: {
     onChange: onIpcWithEvent<{ key: string; value: string }>("theme:change"),
@@ -580,6 +579,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setCloudSyncEnabled: (payload: { enabled: boolean }) =>
       ipcRenderer.invoke("host:setCloudSyncEnabled", payload),
     onAuthCallback: onIpc<{ url: string }>("auth:callback"),
+    consumePendingAuthCallback: () =>
+      ipcRenderer.invoke(IPC_AUTH_CONSUME_PENDING_CALLBACK) as Promise<
+        string | null
+      >,
     onRuntimeAuthRefreshRequested: onIpc<{
       requestId: string;
       source: "heartbeat" | "subscription" | "register";
@@ -819,6 +822,39 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
     getStellaMediaDir: () =>
       ipcRenderer.invoke("media:getStellaMediaDir") as Promise<string | null>,
+  },
+
+  memory: {
+    status: () =>
+      ipcRenderer.invoke("memory:status") as Promise<{
+        available: boolean;
+        status: {
+          enabled: boolean;
+          pending: boolean;
+          running: boolean;
+          permission: boolean;
+        };
+      }>,
+    setEnabled: (enabled: boolean, options?: { pending?: boolean }) =>
+      ipcRenderer.invoke("memory:setEnabled", {
+        enabled,
+        pending: options?.pending ?? false,
+      }) as Promise<{
+        ok: boolean;
+        reason?: string;
+        status: {
+          enabled: boolean;
+          pending: boolean;
+          running: boolean;
+          permission: boolean;
+        };
+      }>,
+    promotePending: () =>
+      ipcRenderer.invoke("memory:promotePending") as Promise<{
+        ok: boolean;
+        promoted: boolean;
+        reason?: string;
+      }>,
   },
 
   chronicle: {
