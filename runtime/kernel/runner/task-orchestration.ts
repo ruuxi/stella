@@ -472,7 +472,7 @@ export const createTaskOrchestration = (
           userPrompt: composedUserPrompt,
           selfModMetadata: effectiveSelfModMetadata,
           agentContext,
-          toolCatalog: context.toolHost.getToolCatalog(),
+          toolCatalog: context.toolHost.getToolCatalog(agentType),
           toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,
           stellaHome: context.stellaRoot,

@@ -122,7 +122,7 @@ export type StellaHostRunnerOptions = {
     options?: { category?: string },
   ) => Promise<{ text: string }>;
   /**
-   * Optional MemoryStore wired to the orchestrator's `tools.memory` builtin.
+   * Optional MemoryStore wired to the orchestrator's memory surface.
    * Defaults to `runtimeStore.memoryStore` when not provided.
    */
   memoryStore?: import("../memory/memory-store.js").MemoryStore;
@@ -282,7 +282,7 @@ export type RunnerContext = {
   ensureGoogleWorkspaceToolsLoaded: () => Promise<void>;
   hookEmitter: HookEmitter;
   toolHost: {
-    getToolCatalog: () => ToolMetadata[];
+    getToolCatalog: (agentType?: string) => ToolMetadata[];
     executeTool: (
       toolName: string,
       toolArgs: Record<string, unknown>,

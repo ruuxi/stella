@@ -71,6 +71,13 @@ export type ExecToolRegistry = {
   list(filter?: { agentType?: string }): ExecToolDefinition[];
 };
 
+export const isExecToolAvailableToAgent = (
+  tool: ExecToolDefinition,
+  agentType?: string,
+): boolean =>
+  !tool.agentTypes ||
+  (typeof agentType === "string" && tool.agentTypes.includes(agentType));
+
 export const createExecToolRegistry = (
   initialTools: readonly ExecToolDefinition[] = [],
 ): ExecToolRegistry => {
@@ -117,11 +124,7 @@ export const createExecToolRegistry = (
       const agentType = filter?.agentType;
       const tools: ExecToolDefinition[] = [];
       for (const tool of byName.values()) {
-        if (
-          tool.agentTypes &&
-          agentType &&
-          !tool.agentTypes.includes(agentType)
-        ) {
+        if (!isExecToolAvailableToAgent(tool, agentType)) {
           continue;
         }
         tools.push(tool);

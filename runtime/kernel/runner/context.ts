@@ -505,6 +505,11 @@ export const buildAgentContext = async (
     const registry = context.toolHost.getExecRegistry();
     const enabledTools = registry.list({ agentType: args.agentType });
     dynamicContextSections.push(buildExecPromptGuidance(enabledTools));
+  }
+  if (
+    args.agentType === AGENT_IDS.ORCHESTRATOR ||
+    toolsAllowlist?.includes(EXEC_TOOL_NAME)
+  ) {
     dynamicContextSections.push(await renderSkillCatalogBlock(context.stellaRoot));
   }
 

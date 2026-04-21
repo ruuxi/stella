@@ -45,6 +45,25 @@ describe("orchestrator response target tracking", () => {
       type: "user_turn",
     });
   });
+
+  it("tracks task ids surfaced through nested Exec calls", () => {
+    const tracker = createOrchestratorResponseTargetTracker();
+
+    tracker.noteToolEnd("Exec", {
+      calls: [
+        {
+          toolName: "task_create",
+          args: { description: "run nested task" },
+          result: { thread_id: "task-from-exec" },
+        },
+      ],
+    });
+
+    expect(tracker.resolve()).toEqual({
+      type: "task_turn",
+      taskId: "task-from-exec",
+    });
+  });
 });
 
 describe("task lifecycle response targets", () => {
