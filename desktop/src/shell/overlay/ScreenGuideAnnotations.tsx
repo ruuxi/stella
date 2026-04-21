@@ -30,7 +30,9 @@ export function ScreenGuideAnnotations({
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cursorTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onDismissRef = useRef(onDismiss);
-  onDismissRef.current = onDismiss;
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
 
   const clearTimers = useCallback(() => {
     if (dismissTimerRef.current) {
@@ -47,6 +49,7 @@ export function ScreenGuideAnnotations({
     }
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- syncs transient animation state (showDom/exiting/cursorIndex) with the visible prop; setState calls are reset operations for a new animation cycle, not derived state */
   useEffect(() => {
     if (visible && annotations.length > 0) {
       clearTimers();
@@ -82,6 +85,7 @@ export function ScreenGuideAnnotations({
       }, EXIT_DURATION_MS);
     }
   }, [visible, annotations.length, showDom, clearTimers]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => clearTimers, [clearTimers]);
 
