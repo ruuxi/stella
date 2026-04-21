@@ -193,15 +193,22 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       anchorTurnId: event.userMessageId ?? current?.anchorTurnId,
       parentTaskId: event.parentTaskId ?? current?.parentTaskId,
       status: current?.status ?? "running",
-      statusText: event.statusText ?? current?.statusText,
+      statusText: current?.statusText,
       reasoningText: current?.reasoningText,
-      result: event.result ?? current?.result,
-      error: event.error ?? current?.error,
+      result: current?.result,
+      error: current?.error,
     };
 
     if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED) {
       base.status = "running";
+      base.statusText = undefined;
+      base.reasoningText = "";
+      base.result = undefined;
+      base.error = undefined;
     } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_REASONING) {
+      base.status = "running";
+      base.result = undefined;
+      base.error = undefined;
       base.reasoningText = `${current?.reasoningText ?? ""}${event.chunk ?? ""}`;
       if (
         typeof base.reasoningText === "string"
@@ -211,12 +218,24 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       }
     } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS) {
       base.status = "running";
+      base.statusText = event.statusText;
+      base.result = undefined;
+      base.error = undefined;
     } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED) {
       base.status = "completed";
+      base.statusText = undefined;
+      base.result = event.result;
+      base.error = undefined;
     } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_FAILED) {
       base.status = "error";
+      base.statusText = undefined;
+      base.result = undefined;
+      base.error = event.error;
     } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_CANCELED) {
       base.status = "canceled";
+      base.statusText = undefined;
+      base.result = undefined;
+      base.error = event.error;
     }
 
     runTasks.set(event.taskId, base);

@@ -224,9 +224,14 @@ function streamStoreReducer(
         ...action.task,
         anchorTurnId: action.task.anchorTurnId ?? existing?.anchorTurnId,
         startedAtMs: existing?.startedAtMs ?? action.task.startedAtMs,
-        statusText: action.task.statusText ?? existing?.statusText,
-        reasoningText: action.task.reasoningText ?? existing?.reasoningText,
-        outputPreview: action.task.outputPreview ?? existing?.outputPreview,
+        statusText:
+          action.task.status === "running" ? action.task.statusText : undefined,
+        reasoningText:
+          typeof action.task.reasoningText === "string"
+            ? action.task.reasoningText
+            : existing?.reasoningText,
+        outputPreview:
+          action.task.status === "running" ? undefined : action.task.outputPreview,
       };
       return {
         ...state,
