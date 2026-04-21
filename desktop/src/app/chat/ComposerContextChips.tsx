@@ -8,6 +8,7 @@ import {
   clearComposerWindowContext,
   removeComposerFileContext,
   removeComposerScreenshotContext,
+  truncateChipLabel,
 } from "./composer-context";
 
 type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
@@ -41,6 +42,7 @@ export function WindowContextChip({
   const baseLabel = textFormatter
     ? textFormatter(chatWindow)
     : `${chatWindow.app}${chatWindow.title ? ` - ${chatWindow.title}` : ""}`;
+  const displayLabel = truncateChipLabel(baseLabel);
   const hasScreenshot = Boolean(chatWindowScreenshot?.dataUrl);
   const { triggerRef, open } = useHoverPreview<HTMLDivElement>();
 
@@ -56,15 +58,15 @@ export function WindowContextChip({
         className={cn(toggleClassName)}
         title={
           capturePending
-            ? "Capturing window… click to remove"
-            : "Click to remove window context"
+            ? `${baseLabel} — capturing window… click to remove`
+            : `${baseLabel} — click to remove`
         }
         onClick={(event) => {
           clearComposerWindowContext(setChatContext);
           event.currentTarget.blur();
         }}
       >
-        <span className={cn(textClassName)}>{baseLabel}</span>
+        <span className={cn(textClassName)}>{displayLabel}</span>
       </button>
       {hasScreenshot && (
         <ChipPreviewPortal
@@ -98,17 +100,18 @@ export function SelectedTextChip({
   className,
   textClassName,
 }: SelectedTextChipProps) {
+  const displayText = truncateChipLabel(selectedText);
   return (
     <button
       type="button"
       className={cn(className)}
-      title="Click to remove selected text"
+      title={`"${selectedText}" — click to remove selected text`}
       onClick={(event) => {
         clearComposerSelectedTextContext(setSelectedText, setChatContext);
         event.currentTarget.blur();
       }}
     >
-      <span className={cn(textClassName)}>&quot;{selectedText}&quot;</span>
+      <span className={cn(textClassName)}>&quot;{displayText}&quot;</span>
     </button>
   );
 }
@@ -237,6 +240,23 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const FILE_NAME_MAX_CHARS = 12;
+
+// Truncate to FILE_NAME_MAX_CHARS but keep the extension visible when it
+// fits — losing the extension drops a lot of context for short caps.
+function truncateFileName(name: string, max: number = FILE_NAME_MAX_CHARS): string {
+  if (name.length <= max) return name;
+  const dotIdx = name.lastIndexOf(".");
+  if (dotIdx > 0 && dotIdx >= name.length - 6) {
+    const ext = name.slice(dotIdx);
+    const stemBudget = max - ext.length - 1;
+    if (stemBudget >= 1) {
+      return `${name.slice(0, stemBudget)}…${ext}`;
+    }
+  }
+  return `${name.slice(0, max)}…`;
+}
+
 type FileContextChipsProps = {
   files: ChatContextFile[];
   setChatContext: SetChatContext;
@@ -267,7 +287,7 @@ export function FileContextChips({
               <FileIcon category={category} />
             </div>
             <div className="chat-composer-file-info">
-              <span className="chat-composer-file-name">{file.name}</span>
+              <span className="chat-composer-file-name">{truncateFileName(file.name)}</span>
               <span className="chat-composer-file-size">{formatFileSize(file.size)}</span>
             </div>
           </button>
