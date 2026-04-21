@@ -136,7 +136,6 @@ pub async fn get_installer_state(
 
     setup::check_all(&mut installer, ctx, &app).await;
 
-
     let _ = app.emit(
         "installer-state-update",
         serde_json::json!({ "state": &*installer }),
@@ -158,7 +157,7 @@ pub async fn browse_install_location(
 
     let current_path = {
         let installer = state.installer.lock().await;
-        installer.install_path.clone()
+        setup::browse_directory_for_install_path(&installer.install_path)
     };
 
     let selected = app
@@ -172,7 +171,7 @@ pub async fn browse_install_location(
         let mut installer = state.installer.lock().await;
         setup::set_install_path(&mut installer, &state.context, &path_str).await;
         setup::check_all(&mut installer, &state.context, &app).await;
-    
+
         let _ = app.emit(
             "installer-state-update",
             serde_json::json!({ "state": &*installer }),
@@ -225,10 +224,7 @@ pub async fn set_run_after_install(
 }
 
 #[tauri::command]
-pub async fn start_install(
-    state: State<'_, AppState>,
-    app: AppHandle,
-) -> Result<OkResult, String> {
+pub async fn start_install(state: State<'_, AppState>, app: AppHandle) -> Result<OkResult, String> {
     let mut installer = state.installer.lock().await;
     if state.context.dev_mode {
         setup::check_all(&mut installer, &state.context, &app).await;
@@ -242,9 +238,7 @@ pub async fn start_install(
         }
     }
 
-    Ok(OkResult {
-        ok: result.is_ok(),
-    })
+    Ok(OkResult { ok: result.is_ok() })
 }
 
 #[tauri::command]
@@ -320,7 +314,5 @@ pub async fn uninstall_stella(
         serde_json::json!({ "state": &*installer }),
     );
 
-    Ok(OkResult {
-        ok: result.is_ok(),
-    })
+    Ok(OkResult { ok: result.is_ok() })
 }

@@ -27,6 +27,7 @@ const DEFAULT_EMOTE_RELEASE_MANIFEST_URL: &str =
 const EMOTE_INSTALL_STATE_FILE: &str = "stella-emotes-install.json";
 const EMOTE_INSTALL_STATUS_INSTALLED: &str = "installed";
 const EMOTE_INSTALL_STATUS_SKIPPED: &str = "skipped";
+const INSTALL_DIR_NAME: &str = "stella";
 
 fn release_tarball_name() -> &'static str {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
@@ -136,6 +137,55 @@ fn norm(p: &str) -> String {
             }
         }
     }
+}
+
+fn install_dir_name_matches(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value.eq_ignore_ascii_case(INSTALL_DIR_NAME))
+        .unwrap_or(false)
+}
+
+fn resolve_install_path(input: &str) -> String {
+    let normalized = norm(input);
+    let normalized_path = Path::new(&normalized);
+    if install_dir_name_matches(normalized_path) || looks_like_stella_install_dir(normalized_path) {
+        normalized
+    } else {
+        norm(
+            &PathBuf::from(&normalized)
+                .join(INSTALL_DIR_NAME)
+                .to_string_lossy(),
+        )
+    }
+}
+
+pub fn browse_directory_for_install_path(install_path: &str) -> String {
+    let path = PathBuf::from(install_path);
+    if install_dir_name_matches(&path) {
+        if let Some(parent) = path.parent() {
+            return parent.to_string_lossy().to_string();
+        }
+    }
+    install_path.to_string()
+}
+
+fn looks_like_stella_install_dir(path: &Path) -> bool {
+    path.join(INSTALL_MANIFEST).is_file()
+        || (path.join("package.json").is_file()
+            && path.join("desktop").join("package.json").is_file())
+}
+
+fn is_directory_empty(path: &Path) -> bool {
+    match std::fs::read_dir(path) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(_) => false,
+    }
+}
+
+pub fn is_uninstallable_install_path(install_path: &str) -> bool {
+    let path = Path::new(install_path);
+    path.is_dir() && looks_like_stella_install_dir(path)
 }
 
 fn manifest_of(d: &str) -> PathBuf {
@@ -298,6 +348,16 @@ fn location_error(p: &str) -> Option<String> {
     let pb = PathBuf::from(trimmed);
     if !pb.is_absolute() {
         return Some("Install location must be an absolute path.".into());
+    }
+    if let Ok(metadata) = std::fs::metadata(&pb) {
+        if !metadata.is_dir() {
+            return Some("Install location must be a folder.".into());
+        }
+        if !looks_like_stella_install_dir(&pb) && !is_directory_empty(&pb) {
+            return Some(format!(
+                "Stella needs its own `{INSTALL_DIR_NAME}` folder. Choose a parent folder or an existing Stella install."
+            ));
+        }
     }
     None
 }
@@ -489,16 +549,30 @@ async fn write_registry(manifest: &Manifest) {
     }
 
     let size_kb = (ESTIMATED_INSTALL_BYTES / 1024).to_string();
-    let entries: &[(&str, &str, &str)] = &[
-        ("DisplayName", "REG_SZ", "Stella"),
-        ("DisplayVersion", "REG_SZ", &manifest.version),
-        ("Publisher", "REG_SZ", "Stella"),
-        ("InstallLocation", "REG_SZ", &manifest.install_path),
-        ("DisplayIcon", "REG_SZ", &manifest.launch_script),
-        ("UninstallString", "REG_SZ", &manifest.launch_script),
-        ("NoModify", "REG_DWORD", "1"),
-        ("NoRepair", "REG_DWORD", "1"),
-        ("EstimatedSize", "REG_DWORD", &size_kb),
+    let launcher_exe = std::env::current_exe().ok();
+    let display_icon = launcher_exe
+        .as_ref()
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|| manifest.launch_script.clone());
+    let uninstall_string = launcher_exe
+        .as_ref()
+        .map(|path| {
+            crate::bootstrap::windows_uninstall_command(
+                path,
+                Some(Path::new(&manifest.install_path)),
+            )
+        })
+        .unwrap_or_else(|| manifest.launch_script.clone());
+    let entries = vec![
+        ("DisplayName", "REG_SZ", "Stella".to_string()),
+        ("DisplayVersion", "REG_SZ", manifest.version.clone()),
+        ("Publisher", "REG_SZ", "Stella".to_string()),
+        ("InstallLocation", "REG_SZ", manifest.install_path.clone()),
+        ("DisplayIcon", "REG_SZ", display_icon),
+        ("UninstallString", "REG_SZ", uninstall_string),
+        ("NoModify", "REG_DWORD", "1".to_string()),
+        ("NoRepair", "REG_DWORD", "1".to_string()),
+        ("EstimatedSize", "REG_DWORD", size_kb),
     ];
 
     for (name, reg_type, data) in entries {
@@ -512,7 +586,7 @@ async fn write_registry(manifest: &Manifest) {
                 "/t",
                 reg_type,
                 "/d",
-                data,
+                &data,
                 "/f",
             ],
             None,
@@ -1042,10 +1116,14 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
                 true
             } else {
                 match read_emote_install_state(dir).await {
-                    Some(install_state) if install_state.status == EMOTE_INSTALL_STATUS_INSTALLED => {
+                    Some(install_state)
+                        if install_state.status == EMOTE_INSTALL_STATUS_INSTALLED =>
+                    {
                         path_exists(&emotes_manifest_of(dir)).await
                     }
-                    Some(install_state) if install_state.status == EMOTE_INSTALL_STATUS_SKIPPED => true,
+                    Some(install_state) if install_state.status == EMOTE_INSTALL_STATUS_SKIPPED => {
+                        true
+                    }
                     _ => false,
                 }
             }
@@ -1179,8 +1257,7 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
     let has_pkg = path_exists(&package_json_of(&state.install_path)).await;
     let has_node_modules = path_exists(&node_modules_of(&state.install_path)).await;
     let has_desktop_pkg = path_exists(&desktop_package_json_of(&state.install_path)).await;
-    let has_desktop_node_modules =
-        path_exists(&desktop_node_modules_of(&state.install_path)).await;
+    let has_desktop_node_modules = path_exists(&desktop_node_modules_of(&state.install_path)).await;
     state.can_launch = if state.dev_mode {
         has_pkg && has_node_modules && has_desktop_pkg && has_desktop_node_modules
     } else {
@@ -1232,7 +1309,7 @@ pub async fn create_initial_state(ctx: &InstallerContext) -> InstallerState {
     let install_path = if ctx.dev_mode {
         norm(&ctx.default_install_path)
     } else {
-        norm(
+        resolve_install_path(
             settings
                 .install_path
                 .as_deref()
@@ -1277,7 +1354,7 @@ pub async fn set_install_path(
         state.warning_message = None;
         return;
     }
-    state.install_path = norm(install_path);
+    state.install_path = resolve_install_path(install_path);
     state.error_message = None;
     state.warning_message = None;
     write_settings(ctx, state).await;
@@ -1415,7 +1492,8 @@ pub async fn install_all(
 
 pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {
     let dir = &state.install_path;
-    if !path_exists(&package_json_of(dir)).await || !path_exists(&desktop_package_json_of(dir)).await
+    if !path_exists(&package_json_of(dir)).await
+        || !path_exists(&desktop_package_json_of(dir)).await
     {
         return None;
     }
@@ -1428,13 +1506,19 @@ pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {
 }
 
 pub async fn uninstall(state: &mut InstallerState) -> Result<(), String> {
-    remove_registry().await;
-
     if path_exists_str(&state.install_path).await {
+        if !is_uninstallable_install_path(&state.install_path) {
+            return Err(
+                "Refusing to remove a folder that does not look like a Stella install.".into(),
+            );
+        }
         fs::remove_dir_all(&state.install_path)
             .await
             .map_err(|e| e.to_string())?;
     }
+
+    remove_registry().await;
+    crate::bootstrap::refresh_launcher_uninstall_registration();
 
     state.installed = false;
     state.phase = InstallerPhase::Ready;
@@ -1443,4 +1527,88 @@ pub async fn uninstall(state: &mut InstallerState) -> Result<(), String> {
     sync_step_list(state);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(label: &str) -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("stella-launcher-{label}-{unique}"));
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn write_install_shape(path: &Path) {
+        fs::create_dir_all(path.join("desktop")).expect("create desktop dir");
+        fs::write(path.join("package.json"), "{}\n").expect("write package");
+        fs::write(path.join("desktop").join("package.json"), "{}\n")
+            .expect("write desktop package");
+    }
+
+    #[test]
+    fn resolve_install_path_adds_stella_folder_for_parent_paths() {
+        let dir = TestDir::new("parent");
+        let resolved = resolve_install_path(&dir.path.to_string_lossy());
+        let resolved_path = PathBuf::from(&resolved);
+        assert_eq!(
+            resolved_path.file_name().and_then(|value| value.to_str()),
+            Some(INSTALL_DIR_NAME)
+        );
+        assert_eq!(
+            norm(
+                &resolved_path
+                    .parent()
+                    .unwrap_or(Path::new(""))
+                    .to_string_lossy()
+            ),
+            norm(&dir.path.to_string_lossy())
+        );
+    }
+
+    #[test]
+    fn resolve_install_path_preserves_existing_install_dirs() {
+        let dir = TestDir::new("existing-install");
+        write_install_shape(&dir.path);
+
+        let resolved = resolve_install_path(&dir.path.to_string_lossy());
+        assert_eq!(resolved, norm(&dir.path.to_string_lossy()));
+    }
+
+    #[test]
+    fn location_error_rejects_nonempty_unmanaged_dirs() {
+        let dir = TestDir::new("unmanaged");
+        fs::write(dir.path.join("notes.txt"), "hello\n").expect("write unmanaged file");
+
+        let error = location_error(&dir.path.to_string_lossy()).expect("expected location error");
+        assert!(error.contains("own"));
+        assert!(error.contains(INSTALL_DIR_NAME));
+    }
+
+    #[test]
+    fn uninstallable_install_path_requires_stella_shape() {
+        let dir = TestDir::new("uninstallable");
+        assert!(!is_uninstallable_install_path(&dir.path.to_string_lossy()));
+
+        write_install_shape(&dir.path);
+        assert!(is_uninstallable_install_path(&dir.path.to_string_lossy()));
+    }
 }

@@ -126,10 +126,14 @@ function App() {
   }, []);
 
   const handleUninstall = useCallback(async () => {
-    if (!window.confirm("This will remove Stella and its data. Continue?"))
+    if (
+      !window.confirm(
+        `This will remove Stella and its data from:\n\n${state?.installPath ?? ""}\n\nContinue?`,
+      )
+    )
       return;
     await invoke("uninstall_stella");
-  }, []);
+  }, [state?.installPath]);
 
   /* ── Derived ─────────────────────────────────────────────────── */
 
@@ -218,11 +222,11 @@ function App() {
             <p className="status-text">
               {state.devMode
                 ? "Using local Stella desktop checkout"
-                : "Choose where to install Stella"}
+                : "Choose where Stella should live"}
             </p>
 
             <div className="field-group">
-              <label className="field-label">Location</label>
+              <label className="field-label">Folder</label>
               <div className="path-row">
                 <input
                   className="path-input"
@@ -255,7 +259,7 @@ function App() {
                   <span className="field-hint">
                     {state.devMode
                       ? "Dev mode is using the path from STELLA_LAUNCHER_DEV or STELLA_LAUNCHER_DEV_PATH."
-                      : `${formatBytes(state.disk.requiredBytes)} needed \u00b7 ${formatBytes(state.disk.availableBytes)} available`}
+                      : `Stella uses its own "stella" folder here \u00b7 ${formatBytes(state.disk.requiredBytes)} needed \u00b7 ${formatBytes(state.disk.availableBytes)} available`}
                   </span>
                 )}
                 {!state.installPathLocked && (
