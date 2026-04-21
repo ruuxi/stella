@@ -1,5 +1,4 @@
 import type { HttpRouter } from "convex/server";
-import { ConvexError } from "convex/values";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
@@ -19,11 +18,8 @@ import {
   type MediaCapability,
 } from "../media_catalog";
 import {
-  MEDIA_JOB_STATUS_VALUES,
   createMediaGenerateAcceptedResponse,
-  createMediaGenerateRequestExample,
   createMediaJobError,
-  createMediaJobResponse,
   type MediaJobStatus,
   parseMediaGenerateRequest,
 } from "../media_contract";
@@ -49,24 +45,64 @@ import {
   checkManagedUsageLimit,
 } from "../lib/managed_billing";
 import { dollarsToMicroCents } from "../lib/billing_money";
-import {
-  MEDIA_REALTIME_ENDPOINT_ID,
-  MEDIA_REALTIME_HEARTBEAT_TIMEOUT_MS,
-} from "../media_realtime_sessions";
 
 const MEDIA_API_BASE_PATH = "/api/media/v1";
-const MEDIA_DOCS_PATH = `${MEDIA_API_BASE_PATH}/docs`;
 const MEDIA_CAPABILITIES_PATH = `${MEDIA_API_BASE_PATH}/capabilities`;
 const MEDIA_GENERATE_PATH = `${MEDIA_API_BASE_PATH}/generate`;
-const MEDIA_REALTIME_SESSION_PATH = `${MEDIA_API_BASE_PATH}/realtime/session`;
 const MEDIA_FAL_WEBHOOK_PATH = `${MEDIA_API_BASE_PATH}/webhooks/fal`;
 const MEDIA_SUBSCRIPTION_QUERY = "api.media_jobs.getByJobId";
+
+/**
+ * Public agent-facing docs are served from the marketing site, not from the
+ * backend. The backend just points callers at the right URL.
+ *
+ * Pages live at /docs/media (overview) and /docs/media/{images,video,audio,3d}.
+ * See `stella-website/src/lib/media-docs.ts` for the source content.
+ */
+const MEDIA_DOCS_URL = "https://stella.sh/docs/media";
 
 const MEDIA_RATE_LIMIT = 20;
 const MEDIA_RATE_WINDOW_MS = 5 * 60_000;
 const MEDIA_DENY_BUFFER_MICRO_CENTS = dollarsToMicroCents(0.8);
-const MEDIA_REALTIME_EVENT_RATE_LIMIT = 1_200;
-const MEDIA_REALTIME_EVENT_WINDOW_MS = 15 * 60_000;
+
+const MEDIA_AUTH_REQUIRED_MESSAGE =
+  "Sign in to Stella to use media generation.";
+const MEDIA_AUTH_REQUIRED_ACTION =
+  "Ask the user to open the Stella desktop app and finish signing in (Settings → Account, or the welcome screen on first launch). Once they're signed in, retry the same request — no payload changes needed.";
+
+/**
+ * Structured 401 used by the auth-gated media endpoint. Designed for *agent*
+ * consumers as much as for browsers:
+ *
+ * - `code` is a stable machine-readable identifier (`auth_required`) so the
+ *   caller can branch without parsing the human message.
+ * - `action` is a short instruction the agent can surface to the user
+ *   verbatim. Without this, the previous bare "Unauthorized" body left the
+ *   agent guessing what to do (and silently dead-ending the user).
+ * - `docsUrl` lets the agent recover by re-reading the contract.
+ * - The standard `WWW-Authenticate` header is set so non-agent HTTP clients
+ *   handle the response correctly.
+ */
+const mediaUnauthorizedResponse = (
+  _request: Request,
+  origin: string | null,
+): Response => {
+  const response = jsonResponse(
+    {
+      error: MEDIA_AUTH_REQUIRED_MESSAGE,
+      code: "auth_required",
+      action: MEDIA_AUTH_REQUIRED_ACTION,
+      docsUrl: MEDIA_DOCS_URL,
+    },
+    401,
+    origin,
+  );
+  response.headers.set(
+    "WWW-Authenticate",
+    'Bearer realm="stella-media", error="invalid_token", error_description="Sign in to Stella to use media generation."',
+  );
+  return response;
+};
 
 type FalWebhookPayload = {
   request_id?: unknown;
@@ -77,46 +113,39 @@ type FalWebhookPayload = {
   error?: unknown;
 };
 
-type MediaRealtimeSessionRequest = {
-  sessionId?: unknown;
-  event?: unknown;
-  endpointId?: unknown;
-};
-
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
 const asTrimmedString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 
-const parseMediaRealtimeSessionRequest = (
-  value: unknown,
-): {
-  sessionId: string;
-  event: "start" | "heartbeat" | "stop";
-  endpointId?: string;
-} | null => {
-  if (!isRecord(value)) {
-    return null;
-  }
-  const sessionId = asTrimmedString(value.sessionId);
-  const endpointId = asTrimmedString(value.endpointId);
-  const event =
-    value.event === "start" || value.event === "heartbeat" || value.event === "stop"
-      ? value.event
-      : null;
-  if (!sessionId || !event) {
-    return null;
-  }
-  return {
-    sessionId,
-    event,
-    ...(endpointId ? { endpointId } : {}),
-  };
-};
-
 const hasAspectRatioSupport = (capability: MediaCapability): boolean =>
   capability.supportsAspectRatio === true;
+
+/**
+ * Maps a Stella-style aspect ratio (e.g. "16:9") to a {width, height} pair
+ * sized to satisfy the GPT Image 2 input constraints:
+ *   - width and height are multiples of 16
+ *   - max edge ≤ 3840
+ *   - 655,360 ≤ width × height ≤ 8,294,400
+ *   - longest edge ≤ 3× shortest edge
+ *
+ * Anything we don't recognize maps to undefined so the upstream default
+ * (`landscape_4_3`) kicks in instead of us hard-failing the request.
+ */
+const GPT_IMAGE_2_ASPECT_PRESETS: Record<string, { width: number; height: number }> = {
+  "1:1": { width: 1024, height: 1024 },
+  "4:3": { width: 1024, height: 768 },
+  "3:4": { width: 768, height: 1024 },
+  "3:2": { width: 1152, height: 768 },
+  "2:3": { width: 768, height: 1152 },
+  "16:9": { width: 1280, height: 720 },
+  "9:16": { width: 720, height: 1280 },
+  "21:9": { width: 1344, height: 576 },
+};
+
+const isGptImage2Endpoint = (endpointId: string): boolean =>
+  endpointId === "openai/gpt-image-2" || endpointId === "openai/gpt-image-2/edit";
 
 const applyCapabilityDefaults = (args: {
   capability: MediaCapability;
@@ -125,6 +154,33 @@ const applyCapabilityDefaults = (args: {
   const normalized = { ...args.input };
   if (args.capability.id === "icon") {
     normalized.image_size = { width: 512, height: 512 };
+  }
+  return normalized;
+};
+
+/**
+ * Endpoint-specific final pass after all the convenience-field merging is
+ * done. This is where we translate from the gateway's neutral schema (e.g.
+ * `aspect_ratio`) into whatever shape a particular upstream model expects
+ * (e.g. GPT Image 2's `image_size`). Keeping this separate from
+ * `applyCapabilityDefaults` means it sees the *final* merged input.
+ */
+const applyEndpointTransforms = (args: {
+  capability: MediaCapability;
+  input: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const normalized = { ...args.input };
+  const targetsGptImage2 = args.capability.profiles.some((p) =>
+    isGptImage2Endpoint(p.endpointId),
+  );
+  if (targetsGptImage2 && typeof normalized.aspect_ratio === "string") {
+    if (normalized.image_size === undefined) {
+      const mapped = GPT_IMAGE_2_ASPECT_PRESETS[normalized.aspect_ratio.trim()];
+      if (mapped) {
+        normalized.image_size = mapped;
+      }
+    }
+    delete normalized.aspect_ratio;
   }
   return normalized;
 };
@@ -261,7 +317,7 @@ export const applyConvenienceInput = (args: {
       }
     }
   }
-  return normalized;
+  return applyEndpointTransforms({ capability: args.capability, input: normalized });
 };
 
 const requireCapabilityInputs = (args: {
@@ -338,139 +394,8 @@ const requireCapabilityInputs = (args: {
   return null;
 };
 
-const renderMediaDocs = (request: Request): string => {
-  const url = new URL(request.url);
-  const stellaBaseUrl = `${url.origin}/api/stella/v1`;
-  const musicStreamUrl = `${url.origin}/api/music/stream`;
-  return [
-    "# Stella Media SDK",
-    "",
-    "Stable backend-managed media API for Stella app builders.",
-    "",
-    "Rules:",
-    "- Use capability IDs for queued backend-managed media jobs.",
-    `- Flux Klein realtime stays backend-owned: track session activity through \`${MEDIA_REALTIME_SESSION_PATH}\` instead of using a direct provider websocket from the client.`,
-    "- Submit with HTTP, then subscribe to the Convex job query.",
-    "- Stella stores job metadata/status/output metadata in Convex, not raw media bytes.",
-    "- The `icon` capability is locked to fixed square generation on the backend.",
-    "",
-    "HTTP endpoints:",
-    `- GET ${MEDIA_DOCS_PATH}`,
-    `- GET ${MEDIA_CAPABILITIES_PATH}`,
-    `- POST ${MEDIA_GENERATE_PATH}`,
-    `- POST ${MEDIA_REALTIME_SESSION_PATH}`,
-    "",
-    "Convex subscription:",
-    `- \`${MEDIA_SUBSCRIPTION_QUERY}\` with \`{ jobId }\``,
-    "- React: `useQuery(api.media_jobs.getByJobId, { jobId })`",
-    "- Imperative: `client.onUpdate(api.media_jobs.getByJobId, { jobId }, onUpdate)`",
-    "",
-    "Auth:",
-    "- Docs and capabilities are public.",
-    "- Generation requires `Authorization: Bearer <session-token>`.",
-    `- Realtime session tracking also requires auth and currently only supports \`${MEDIA_REALTIME_ENDPOINT_ID}\`.`,
-    `- Heartbeats must keep arriving within ${Math.floor(MEDIA_REALTIME_HEARTBEAT_TIMEOUT_MS / 1000)} seconds or the session expires and a new sessionId is required.`,
-    "- Convex subscriptions use the normal authenticated Stella client session.",
-    "",
-    "Request body fields:",
-    "- `capability` required",
-    "- `profile` optional",
-    "- `prompt` optional convenience field — mapped to the capability's prompt key (e.g. `prompt`, `text`)",
-    "- `aspectRatio` optional convenience field for image/video capabilities — mapped to `aspect_ratio`",
-    "- `sourceUrl`, `source`, and `sources` for media inputs — mapped to the capability's source key",
-    "- `input` for provider-specific controls — merged with convenience fields above",
-    "- Prefer `data:` URIs for local files (base64-encoded)",
-    "",
-    "Source handling:",
-    "- `source` accepts a `data:` URI string or an `{ base64, mimeType }` object.",
-    "- The backend maps `source` to the capability's source field automatically.",
-    "- For capabilities whose source key ends in `_urls` (e.g. `image_urls` for image_edit), the value is wrapped in an array automatically.",
-    "- `sources` is a `Record<string, source>` for capabilities that need multiple named inputs (e.g. `{ video: \"data:...\", audio: \"data:...\" }`).",
-    "",
-    "Error responses:",
-    "- All errors return `{ \"error\": \"human-readable message\" }`.",
-    "- Upstream provider errors (content policy violations, validation failures, etc.) are parsed and forwarded as readable messages.",
-    "- Parse the `error` field from the JSON body for display to users.",
-    "",
-    "Example request:",
-    "```json",
-    JSON.stringify(
-      createMediaGenerateRequestExample({
-        capability: "image_to_video",
-        profile: "motion",
-        prompt: "animate this product photo with a slow cinematic push-in",
-        aspectRatio: "16:9",
-        source: "data:image/png;base64,<base64>",
-        input: { duration: 5 },
-      }),
-      null,
-      2,
-    ),
-    "```",
-    "",
-    "Example response:",
-    "```json",
-    JSON.stringify(
-      createMediaGenerateAcceptedResponse({
-        jobId: "job_123",
-        capability: "text_to_image",
-        profile: "best",
-        status: "queued",
-        upstreamStatus: "IN_QUEUE",
-        subscription: {
-          query: MEDIA_SUBSCRIPTION_QUERY,
-          args: { jobId: "job_123" },
-        },
-      }),
-      null,
-      2,
-    ),
-    "```",
-    "",
-    "Realtime session heartbeat request:",
-    "```json",
-    JSON.stringify(
-      {
-        sessionId: "media_rt_123",
-        event: "heartbeat",
-        endpointId: MEDIA_REALTIME_ENDPOINT_ID,
-      },
-      null,
-      2,
-    ),
-    "```",
-    "",
-    "Example subscribed job snapshot:",
-    "```json",
-    JSON.stringify(
-      createMediaJobResponse({
-        jobId: "job_123",
-        capability: "text_to_image",
-        profile: "best",
-        request: {
-          prompt: "cinematic rainy Tokyo alley at night",
-          aspectRatio: "9:16",
-          input: { negative_prompt: "blurry" },
-        },
-        status: "succeeded",
-        upstreamStatus: "OK",
-        queuePosition: null,
-        output: { images: [{ url: "https://example.com/generated-image.png" }] },
-        createdAt: 1_742_000_000_000,
-        updatedAt: 1_742_000_010_000,
-        completedAt: 1_742_000_010_000,
-      }),
-      null,
-      2,
-    ),
-    "```",
-    "",
-    `Other Stella-managed services: ${stellaBaseUrl}/chat/completions, ${stellaBaseUrl}/models, ${musicStreamUrl}`,
-  ].join("\n");
-};
-
 export const registerMediaRoutes = (http: HttpRouter) => {
-  for (const path of [MEDIA_DOCS_PATH, MEDIA_CAPABILITIES_PATH, MEDIA_GENERATE_PATH, MEDIA_REALTIME_SESSION_PATH, MEDIA_FAL_WEBHOOK_PATH]) {
+  for (const path of [MEDIA_CAPABILITIES_PATH, MEDIA_GENERATE_PATH, MEDIA_FAL_WEBHOOK_PATH]) {
     http.route({
       path,
       method: "OPTIONS",
@@ -479,106 +404,12 @@ export const registerMediaRoutes = (http: HttpRouter) => {
   }
 
   http.route({
-    path: MEDIA_DOCS_PATH,
-    method: "GET",
-    handler: httpAction(async (_ctx, request) =>
-      handleCorsRequest(request, async (origin) =>
-        withCors(new Response(renderMediaDocs(request), {
-          status: 200,
-          headers: { "Content-Type": "text/markdown; charset=utf-8" },
-        }), origin),
-      )),
-  });
-
-  http.route({
     path: MEDIA_CAPABILITIES_PATH,
     method: "GET",
     handler: httpAction(async (_ctx, request) =>
       handleCorsRequest(request, async (origin) =>
-        jsonResponse({ data: listMediaCapabilities(), docsUrl: new URL(MEDIA_DOCS_PATH, request.url).toString() }, 200, origin),
+        jsonResponse({ data: listMediaCapabilities(), docsUrl: MEDIA_DOCS_URL }, 200, origin),
       )),
-  });
-
-  http.route({
-    path: MEDIA_REALTIME_SESSION_PATH,
-    method: "POST",
-    handler: httpAction(async (ctx, request) =>
-      handleCorsRequest(request, async (origin) => {
-        const identity = await ctx.auth.getUserIdentity();
-        const ownerId = identity?.tokenIdentifier ?? (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
-        if (!ownerId) return errorResponse(401, "Unauthorized", origin);
-        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
-          scope: "media_realtime_session",
-          key: ownerId,
-          limit: MEDIA_REALTIME_EVENT_RATE_LIMIT,
-          windowMs: MEDIA_REALTIME_EVENT_WINDOW_MS,
-          blockMs: MEDIA_REALTIME_EVENT_WINDOW_MS,
-        });
-        if (!rateLimit.allowed) return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
-
-        let requestBody: MediaRealtimeSessionRequest | null = null;
-        try {
-          requestBody = (await request.json()) as MediaRealtimeSessionRequest;
-        } catch {
-          requestBody = null;
-        }
-        const body = parseMediaRealtimeSessionRequest(requestBody);
-        if (!body) {
-          return errorResponse(400, "Invalid realtime session JSON body", origin);
-        }
-        const endpointId = body.endpointId ?? MEDIA_REALTIME_ENDPOINT_ID;
-        if (endpointId !== MEDIA_REALTIME_ENDPOINT_ID) {
-          return errorResponse(400, `Unsupported realtime endpoint. Only ${MEDIA_REALTIME_ENDPOINT_ID} is allowed.`, origin);
-        }
-        let preStartLimit: { allowed: boolean; message: string } | null = null;
-        if (body.event === "start") {
-          preStartLimit = await checkManagedUsageLimit(ctx, ownerId, {
-            minimumRemainingMicroCents: MEDIA_DENY_BUFFER_MICRO_CENTS,
-          });
-          if (!preStartLimit.allowed) return errorResponse(429, preStartLimit.message, origin);
-        }
-        let activity;
-        try {
-          activity = await ctx.runMutation(internal.media_realtime_sessions.syncSessionActivity, {
-            ownerId,
-            sessionId: body.sessionId,
-            event: body.event,
-            endpointId,
-          });
-        } catch (error) {
-          if (error instanceof ConvexError) {
-            const code = typeof error.data?.code === "string" ? error.data.code : undefined;
-            const message =
-              typeof error.data?.message === "string"
-                ? error.data.message
-                : "Invalid realtime media session request.";
-            const status =
-              code === "NOT_FOUND" ? 404
-                : code === "CONFLICT" ? 409
-                  : 400;
-            return errorResponse(status, message, origin);
-          }
-          throw error;
-        }
-        const postHeartbeatLimit =
-          body.event === "stop"
-            ? { allowed: true, message: "" }
-            : preStartLimit ?? await checkManagedUsageLimit(ctx, ownerId, {
-              minimumRemainingMicroCents: MEDIA_DENY_BUFFER_MICRO_CENTS,
-            });
-        if (activity.expired && body.event !== "stop") {
-          return jsonResponse({
-            ...activity,
-            shouldStop: true,
-            stopReason: `Realtime media session expired after ${Math.floor(MEDIA_REALTIME_HEARTBEAT_TIMEOUT_MS / 1000)} seconds without a heartbeat. Start a new session.`,
-          }, 409, origin);
-        }
-        return jsonResponse({
-          ...activity,
-          shouldStop: !postHeartbeatLimit.allowed,
-          ...(postHeartbeatLimit.allowed ? {} : { stopReason: postHeartbeatLimit.message }),
-        }, 200, origin);
-      })),
   });
 
   http.route({
@@ -588,7 +419,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
       handleCorsRequest(request, async (origin) => {
         const identity = await ctx.auth.getUserIdentity();
         const ownerId = identity?.tokenIdentifier ?? (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
-        if (!ownerId) return errorResponse(401, "Unauthorized", origin);
+        if (!ownerId) return mediaUnauthorizedResponse(request, origin);
         const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId, {
           minimumRemainingMicroCents: MEDIA_DENY_BUFFER_MICRO_CENTS,
         });
@@ -612,7 +443,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           const body = parseMediaGenerateRequest(requestBody);
           if (!body) return errorResponse(400, "Invalid media generation JSON body", origin);
           const resolved = resolveMediaProfile(body.capability, body.profile);
-          if (!resolved) return errorResponse(400, "Unknown capability or profile. See /api/media/v1/capabilities.", origin);
+          if (!resolved) return errorResponse(400, `Unknown capability or profile. See ${MEDIA_DOCS_URL}.`, origin);
           const validationError = requireCapabilityInputs({
             capability: resolved.capability,
             prompt: body.prompt,
@@ -623,13 +454,6 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             input: body.input,
           });
           if (validationError) return errorResponse(400, validationError, origin);
-          if (resolved.profile.endpointId === MEDIA_REALTIME_ENDPOINT_ID) {
-            return errorResponse(
-              409,
-              `Realtime media uses the backend session wrapper. Use ${MEDIA_REALTIME_SESSION_PATH} to start, heartbeat, and stop active realtime usage.`,
-              origin,
-            );
-          }
           const submissionInput = applyConvenienceInput({
             capability: resolved.capability,
             input: body.input,
@@ -830,7 +654,7 @@ export const validateCapabilityRequest = (args: {
   input?: Record<string, unknown>;
 }) => {
   const resolved = resolveMediaProfile(args.capabilityId);
-  if (!resolved) return "Unknown capability or profile. See /api/media/v1/capabilities.";
+  if (!resolved) return `Unknown capability or profile. See ${MEDIA_DOCS_URL}.`;
   return requireCapabilityInputs({
     capability: resolved.capability,
     prompt: args.prompt,
@@ -845,10 +669,9 @@ export const validateCapabilityRequest = (args: {
 export {
   MEDIA_API_BASE_PATH,
   MEDIA_CAPABILITIES_PATH,
-  MEDIA_DOCS_PATH,
+  MEDIA_DOCS_URL,
   MEDIA_FAL_WEBHOOK_PATH,
   MEDIA_GENERATE_PATH,
-  MEDIA_REALTIME_SESSION_PATH,
 };
 
 

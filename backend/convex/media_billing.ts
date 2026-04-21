@@ -150,8 +150,6 @@ export const getMediaBillingAdmissionIssue = (args: {
   request: MediaRequestSummary;
 }): string | null => {
   switch (args.endpointId) {
-    case "fal-ai/flux-2/klein/realtime":
-      return "Realtime billing requires live usage metering and is not supported yet.";
     case "fal-ai/elevenlabs/sound-effects/v2":
       if (getInputNumber(args.request, "duration_seconds") === null) {
         return "This endpoint needs duration_seconds so Stella can bill from the actual requested duration.";
@@ -162,12 +160,79 @@ export const getMediaBillingAdmissionIssue = (args: {
   }
 };
 
+/**
+ * Estimate the per-image price for OpenAI's GPT Image 2 family on fal.
+ *
+ * fal publishes a band ($0.01 low @ 1024×768 → $0.41 high @ 4K) but no
+ * per-resolution price table. We approximate with quality-tier × megapixels,
+ * calibrated to the documented endpoints of the band:
+ *   - low @ 1024×768  (~0.79 MP): 0.012 × 0.79 ≈ $0.01  ✓
+ *   - high @ 1024×1024 (~1.05 MP): 0.18 × 1.05 ≈ $0.19  (close to OpenAI parent)
+ *   - high @ 3840×2160 (~8.29 MP): 0.18 × 8.29 ≈ $1.49 → clamped to $0.41 below
+ *
+ * If fal exposes a real per-canonical-size table later, swap this function
+ * for an explicit lookup. The note attached to the record marks the rate as
+ * an estimate so audit trails stay honest.
+ */
+const GPT_IMAGE_2_MIN_PRICE_USD = 0.01;
+const GPT_IMAGE_2_MAX_PRICE_USD = 0.41;
+
+const estimateGptImage2PricePerImage = (
+  request: MediaRequestSummary,
+): { unitPriceUsd: number; megapixels: number; quality: string } => {
+  const input = getInput(request);
+  const quality = (
+    getInputString(request, "quality") ?? "high"
+  ).toLowerCase();
+  const perMp =
+    quality === "low"
+      ? 0.012
+      : quality === "medium"
+        ? 0.045
+        : 0.18; // "high" is the documented default
+
+  // Default `landscape_4_3` ≈ 1024×768 (0.79 MP). Without an explicit size,
+  // round up slightly so we don't undercharge.
+  let megapixels = 0.85;
+  const imageSize = input.image_size;
+  if (isRecord(imageSize)) {
+    const width = asNumber(imageSize.width);
+    const height = asNumber(imageSize.height);
+    if (width !== null && height !== null) {
+      megapixels = Math.max(0.65, (width * height) / 1_000_000);
+    }
+  }
+  const raw = perMp * megapixels;
+  const clamped = Math.min(
+    GPT_IMAGE_2_MAX_PRICE_USD,
+    Math.max(GPT_IMAGE_2_MIN_PRICE_USD, raw),
+  );
+  return { unitPriceUsd: clamped, megapixels, quality };
+};
+
 export const meterCompletedMediaJob = (args: {
   endpointId: string;
   request: MediaRequestSummary;
   output: unknown;
 }): MediaBillingRecord | UnsupportedMediaBilling => {
   switch (args.endpointId) {
+    case "openai/gpt-image-2":
+    case "openai/gpt-image-2/edit": {
+      const numImages = Math.max(
+        1,
+        Math.round(getInputNumber(args.request, "num_images") ?? 1),
+      );
+      const { unitPriceUsd, megapixels, quality } =
+        estimateGptImage2PricePerImage(args.request);
+      return buildBillingRecord({
+        endpointId: args.endpointId,
+        billingUnit: "image",
+        quantity: numImages,
+        unitPriceUsd,
+        meteredFrom: "request",
+        note: `Estimated from quality=${quality}, megapixels=${megapixels.toFixed(2)}; fal does not yet expose a per-size price table.`,
+      });
+    }
     case "fal-ai/bytedance/seedream/v5/lite/text-to-image": {
       const imageCount =
         getInputNumber(args.request, "num_images") ?? 1;
@@ -353,11 +418,6 @@ export const meterCompletedMediaJob = (args: {
         meteredFrom: "output",
       });
     }
-    case "fal-ai/flux-2/klein/realtime":
-      return {
-        supported: false,
-        reason: "Realtime image billing requires live compute-second usage metering.",
-      };
     default:
       return {
         supported: false,
