@@ -1,8 +1,11 @@
 import { lazy, Suspense } from 'react'
 
-export type DialogType = 'auth' | 'connect' | 'settings' | null
+/**
+ * Auth and Connect render as URL-driven dialogs (`?dialog=auth|connect`).
+ * Settings is a top-level route (`/settings`), not a dialog.
+ */
+export type DialogType = 'auth' | 'connect' | null
 
-const SettingsDialog = lazy(() => import('@/global/settings/SettingsView'))
 const AuthDialog = lazy(() =>
   import('@/global/auth/AuthDialog').then((module) => ({
     default: module.AuthDialog,
@@ -17,13 +20,11 @@ const ConnectDialog = lazy(() =>
 type FullShellDialogsProps = {
   activeDialog: DialogType
   onDialogOpenChange: (open: boolean) => void
-  onSignOut: () => void
 }
 
 export function FullShellDialogs({
   activeDialog,
   onDialogOpenChange,
-  onSignOut,
 }: FullShellDialogsProps) {
   return (
     <>
@@ -37,16 +38,6 @@ export function FullShellDialogs({
           <ConnectDialog open onOpenChange={onDialogOpenChange} />
         </Suspense>
       )}
-      {activeDialog === 'settings' && (
-        <Suspense fallback={null}>
-          <SettingsDialog
-            open
-            onOpenChange={onDialogOpenChange}
-            onSignOut={onSignOut}
-          />
-        </Suspense>
-      )}
     </>
   )
 }
-

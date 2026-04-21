@@ -437,16 +437,16 @@ function BasicTab({
         <h3 className="settings-card-title">Shortcuts</h3>
         <p className="settings-card-desc">
           {platform === "darwin"
-            ? "Hold ⌘ (Command) and right-click anywhere on screen to open the Stella quick menu."
-            : "Hold Ctrl and right-click anywhere on screen to open the Stella quick menu."}
+            ? "Hold ⌘ and right-click anywhere on your screen to open Stella."
+            : "Hold Ctrl and right-click anywhere on your screen to open Stella."}
         </p>
       </div>
       {platform === "darwin" ? (
         <div className="settings-card">
           <h3 className="settings-card-title">Permissions</h3>
           <p className="settings-card-desc">
-            Stella can prompt for permissions when you use a feature, and you
-            can also fix them here anytime.
+            Stella will ask for these when you first use a feature. You can
+            also turn them on here.
           </p>
           {permissionsError ? (
             <p
@@ -460,7 +460,8 @@ function BasicTab({
             <div className="settings-row-info">
               <div className="settings-row-label">Accessibility</div>
               <div className="settings-row-sublabel">
-                Required for the global ⌘+right-click shortcut and selected text.
+                Lets Stella read selected text and open from the ⌘+right-click
+                shortcut anywhere on your Mac.
               </div>
             </div>
             <div className="settings-row-control">
@@ -487,10 +488,9 @@ function BasicTab({
             <div className="settings-row-info">
               <div className="settings-row-label">Screen Capture</div>
               <div className="settings-row-sublabel">
-                Required for screenshot capture and vision features.
-              </div>
-              <div className="settings-row-sublabel">
-                macOS may require Stella to close and reopen after you allow it.
+                Lets Stella see your screen so it can help with what you're
+                looking at. You may need to quit and reopen Stella after
+                turning this on.
               </div>
             </div>
             <div className="settings-row-control">
@@ -518,8 +518,8 @@ function BasicTab({
               <div className="settings-row-info">
                 <div className="settings-row-label">Restart Stella</div>
                 <div className="settings-row-sublabel">
-                  Screen Capture was enabled while Stella was running. Reopen it
-                  from the launcher to apply the change.
+                  Screen capture was just turned on. Quit and reopen Stella
+                  to finish setting it up.
                 </div>
               </div>
               <div className="settings-row-control">
@@ -538,28 +538,28 @@ function BasicTab({
         </div>
       ) : null}
       <div className="settings-card">
+        <h3 className="settings-card-title">Backups</h3>
+        <p className="settings-card-desc">
+          Your data is encrypted on this device before it's uploaded.
+          Restoring a backup replaces your current Stella data and restarts
+          the app.
+        </p>
+        {backupError ? (
+          <p
+            className="settings-card-desc settings-card-desc--error"
+            role="alert"
+          >
+            {backupError}
+          </p>
+        ) : null}
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Backups</div>
+            <div className="settings-row-label">Automatic backups</div>
             <div className="settings-row-sublabel">
-              Backups are encrypted on this device before upload.
+              Last local backup: {formatBackupTimestamp(backupStatus?.lastSuccessAt)}
             </div>
             <div className="settings-row-sublabel">
-              Restore replaces local Stella files from the selected backup and restarts the app.
-            </div>
-            {backupError ? (
-              <div
-                className="settings-row-sublabel settings-card-desc--error"
-                role="alert"
-              >
-                {backupError}
-              </div>
-            ) : null}
-            <div className="settings-row-sublabel">
-              Local backups: {formatBackupTimestamp(backupStatus?.lastSuccessAt)}
-            </div>
-            <div className="settings-row-sublabel">
-              Remote backups: {formatBackupTimestamp(backupStatus?.lastRemoteSuccessAt)}
+              Last remote backup: {formatBackupTimestamp(backupStatus?.lastRemoteSuccessAt)}
             </div>
             {backupStatus?.lastRemoteError ? (
               <div className="settings-row-sublabel">
@@ -581,9 +581,10 @@ function BasicTab({
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Back Up Now</div>
+            <div className="settings-row-label">Back up now</div>
             <div className="settings-row-sublabel">
-              Creates a fresh local snapshot and uploads it when your account is connected.
+              Save a backup right now. It uploads automatically when you're
+              signed in.
             </div>
           </div>
           <div className="settings-row-control">
@@ -600,11 +601,11 @@ function BasicTab({
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Remote Backups</div>
+            <div className="settings-row-label">Saved backups</div>
             <div className="settings-row-sublabel">
               {hasConnectedAccount
-                ? "Choose a backup to restore on this device."
-                : "Sign in to upload and restore remote backups."}
+                ? "Pick a backup to restore on this device."
+                : "Sign in to save backups online and restore them on any device."}
             </div>
           </div>
         </div>
@@ -626,10 +627,10 @@ function BasicTab({
                     {backup.isLatest ? " (Latest)" : ""}
                   </div>
                   <div className="settings-row-sublabel">
-                    {backup.objectCount} objects, {backup.entryCount} files
+                    {backup.entryCount} files
                   </div>
                   <div className="settings-row-sublabel">
-                    Source device: {backup.sourceHostname || backup.sourceDeviceId}
+                    From: {backup.sourceHostname || backup.sourceDeviceId}
                   </div>
                 </div>
                 <div className="settings-row-control">
@@ -650,11 +651,18 @@ function BasicTab({
               </div>
             ))
           : null}
+      </div>
+      <ChronicleSettingsCard />
+      <div className="settings-card">
+        <h3 className="settings-card-title">Account</h3>
+        <p className="settings-card-desc">
+          Manage your Stella account.
+        </p>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Sign Out</div>
+            <div className="settings-row-label">Sign out</div>
             <div className="settings-row-sublabel">
-              Sign out of your account
+              Sign out of Stella on this device.
             </div>
           </div>
           <div className="settings-row-control">
@@ -670,12 +678,9 @@ function BasicTab({
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Delete Data</div>
+            <div className="settings-row-label">Delete data</div>
             <div className="settings-row-sublabel">
-              Erase all conversations and memories.
-            </div>
-            <div className="settings-row-sublabel">
-              This action is not available in the desktop app yet.
+              Erase every conversation and memory Stella has. Coming soon.
             </div>
           </div>
           <div className="settings-row-control">
@@ -691,12 +696,9 @@ function BasicTab({
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Delete Account</div>
+            <div className="settings-row-label">Delete account</div>
             <div className="settings-row-sublabel">
-              Permanently remove your account and all data.
-            </div>
-            <div className="settings-row-sublabel">
-              This action is not available in the desktop app yet.
+              Permanently delete your account and everything in it. Coming soon.
             </div>
           </div>
           <div className="settings-row-control">
@@ -711,7 +713,6 @@ function BasicTab({
           </div>
         </div>
       </div>
-      <ChronicleSettingsCard />
       <div className="settings-card">
         <h3 className="settings-card-title">Legal</h3>
         <div className="settings-row">
@@ -937,7 +938,7 @@ function ChronicleSettingsCard() {
   const handleWipe = async () => {
     if (!chronicleApi?.wipeMemories) return;
     const confirmed = window.confirm(
-      "Wipe all Stella memories, Chronicle captures, and extension feeds? This cannot be undone.",
+      "Erase everything Stella has remembered? This cannot be undone.",
     );
     if (!confirmed) return;
     setBusy("wipe");
@@ -977,13 +978,17 @@ function ChronicleSettingsCard() {
 
   return (
     <div className="settings-card">
-      <h3 className="settings-card-title">Memory & Chronicle</h3>
+      <h3 className="settings-card-title">Memory</h3>
+      <p className="settings-card-desc">
+        Stella can remember what you've been working on so it can be more
+        helpful over time. Everything stays on your computer.
+      </p>
       <div className="settings-row">
         <div className="settings-row-info">
-          <div className="settings-row-label">Chronicle screen capture</div>
-          <div className="settings-row-help">
-            Periodically OCRs your screen and feeds the Dream protocol so Stella
-            remembers what you worked on. Stays entirely on this device.
+          <div className="settings-row-label">Screen memory</div>
+          <div className="settings-row-sublabel">
+            Lets Stella glance at your screen now and then so it can remember
+            what you were doing.
           </div>
         </div>
         <div className="settings-row-control">
@@ -1005,7 +1010,7 @@ function ChronicleSettingsCard() {
       <div className="settings-row">
         <div className="settings-row-info">
           <div className="settings-row-label">Status</div>
-          <div className="settings-row-help">
+          <div className="settings-row-sublabel">
             {loading
               ? "Loading…"
               : enabled
@@ -1022,10 +1027,9 @@ function ChronicleSettingsCard() {
       </div>
       <div className="settings-row">
         <div className="settings-row-info">
-          <div className="settings-row-label">Memories folder</div>
-          <div className="settings-row-help">
-            Open the on-disk markdown layout (MEMORY.md, memory_summary.md,
-            raw_memories.md) the Dream agent edits.
+          <div className="settings-row-label">Memory folder</div>
+          <div className="settings-row-sublabel">
+            Open the folder on your computer where Stella keeps its memories.
           </div>
         </div>
         <div className="settings-row-control">
@@ -1042,10 +1046,10 @@ function ChronicleSettingsCard() {
       </div>
       <div className="settings-row">
         <div className="settings-row-info">
-          <div className="settings-row-label">Trigger Dream now</div>
-          <div className="settings-row-help">
-            Manually run the Dream consolidation pass over any unprocessed
-            thread summaries and capture-layer feeds.
+          <div className="settings-row-label">Update memory now</div>
+          <div className="settings-row-sublabel">
+            Have Stella review recent activity and save what it learned. This
+            usually happens on its own.
           </div>
         </div>
         <div className="settings-row-control">
@@ -1062,10 +1066,10 @@ function ChronicleSettingsCard() {
       </div>
       <div className="settings-row">
         <div className="settings-row-info">
-          <div className="settings-row-label">Wipe memories</div>
-          <div className="settings-row-help">
-            Erase Dream-managed memory files, Chronicle captures, and extension
-            feeds. The orchestrator memory_entries table is preserved.
+          <div className="settings-row-label">Erase memory</div>
+          <div className="settings-row-sublabel">
+            Delete everything Stella has remembered, including saved screen
+            activity. This can't be undone.
           </div>
         </div>
         <div className="settings-row-control">
@@ -1083,7 +1087,7 @@ function ChronicleSettingsCard() {
       {error ? (
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-help" style={{ color: "var(--color-danger, #c0392b)" }}>
+            <div className="settings-row-sublabel settings-card-desc--error">
               {error}
             </div>
           </div>
@@ -1462,13 +1466,13 @@ function ModelConfigSection() {
   return (
     <>
       <div className="settings-card">
-        <h3 className="settings-card-title">Agent Runtime</h3>
+        <h3 className="settings-card-title">Agents</h3>
         <p className="settings-card-desc">
-          Choose how the Orchestrator, General, and Self Mod agents run on this device.
+          Choose how Stella runs background tasks on your computer.
         </p>
         {!hasConnectedAccount ? (
           <p className="settings-card-desc">
-            Sign in to manage runtime settings.
+            Sign in to change these settings.
           </p>
         ) : null}
         {runtimeError ? (
@@ -1483,8 +1487,8 @@ function ModelConfigSection() {
           <div className="settings-row-info">
             <div className="settings-row-label">Engine</div>
             <div className="settings-row-sublabel">
-              Orchestrator and General agents. Local CLI mode requires the corresponding{" "}
-              <code>claude</code> CLI.
+              Powers Stella's main assistant. Choosing Claude Code requires
+              the <code>claude</code> command installed on your computer.
             </div>
           </div>
           <div className="settings-row-control">
@@ -1520,10 +1524,9 @@ function ModelConfigSection() {
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Max Agent Concurrency</div>
+            <div className="settings-row-label">Max running tasks</div>
             <div className="settings-row-sublabel">
-              Maximum number of local agent tasks running at once across
-              General, Self Mod, and Claude Code.
+              How many background tasks Stella can run at the same time.
             </div>
           </div>
           <div className="settings-row-control">
@@ -1561,7 +1564,7 @@ function ModelConfigSection() {
 
       <div className="settings-card">
         <div className="settings-card-header">
-          <h3 className="settings-card-title">Model Configuration</h3>
+          <h3 className="settings-card-title">Models</h3>
           <Button
             type="button"
             variant="ghost"
@@ -1574,11 +1577,12 @@ function ModelConfigSection() {
           </Button>
         </div>
         <p className="settings-card-desc">
-          Override the default model for each agent type.
+          Pick which AI model Stella uses for each kind of task. Leave on
+          Default for our recommendation.
         </p>
         {!hasConnectedAccount ? (
           <p className="settings-card-desc">
-            Sign in to manage model settings.
+            Sign in to change model settings.
           </p>
         ) : null}
         {modelConfigError ? (
@@ -1590,7 +1594,7 @@ function ModelConfigSection() {
           </p>
         ) : null}
         {hasConnectedAccount && !modelPreferencesLoaded ? (
-          <p className="settings-card-desc">Loading saved model settings...</p>
+          <p className="settings-card-desc">Loading saved settings...</p>
         ) : null}
         {modelPreferencesLoaded &&
           configurableAgents.map((agent) => {
@@ -1851,11 +1855,10 @@ function ApiKeysSection() {
 
   return (
     <div className="settings-card">
-      <h3 className="settings-card-title">Provider Credentials</h3>
+      <h3 className="settings-card-title">API keys</h3>
       <p className="settings-card-desc">
-        Credentials stay on this device. If Stella has matching local provider
-        credentials it calls that provider directly. Otherwise it uses your
-        Stella provider access.
+        Add your own API keys to talk to a model provider directly. Keys stay
+        on this device. If you don't add one, Stella uses its built-in access.
       </p>
       {credentialsError ? (
         <p className="settings-card-desc">{credentialsError}</p>
@@ -1937,7 +1940,7 @@ function ApiKeysSection() {
                     }}
                     disabled={isSavingKey || Boolean(removingProvider)}
                   >
-                    {credential ? "Update Credential" : "Add Credential"}
+                    {credential ? "Update key" : "Add key"}
                   </Button>
                   {credential && (
                     <Button
@@ -1974,98 +1977,99 @@ function ModelsTab() {
 // ---------------------------------------------------------------------------
 
 function SettingsPanel({ children }: { children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [atBottom, setAtBottom] = useState(true);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const check = () => {
-      const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 2;
-      setAtBottom(isAtBottom);
-    };
-
-    check();
-    el.addEventListener("scroll", check, { passive: true });
-    const observer = new ResizeObserver(check);
-    observer.observe(el);
-    return () => {
-      el.removeEventListener("scroll", check);
-      observer.disconnect();
-    };
-  }, []);
-
   return (
-    <div className="settings-panel-wrap" data-at-bottom={atBottom || undefined}>
-      <div className="settings-panel" ref={ref}>
-        {children}
-      </div>
+    <div className="settings-panel-wrap">
+      <div className="settings-panel">{children}</div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// SettingsDialog
+// SettingsScreen (route-mounted, no Dialog wrapper)
 // ---------------------------------------------------------------------------
 
-export const SettingsDialog = ({
-  open,
-  onOpenChange,
+export type { SettingsTab };
+
+export interface SettingsScreenProps {
+  /** Tab currently in view. When omitted, defaults to "basic" / billing. */
+  activeTab?: SettingsTab;
+  /** Called when the user clicks a different tab in the sidebar. */
+  onActiveTabChange?: (tab: SettingsTab) => void;
+  /** Called when the user signs out from the Basic tab. */
+  onSignOut?: () => void;
+}
+
+/**
+ * The settings UI rendered inline (no Dialog wrapper). Mounted by the
+ * `/settings` route. Tab state can be controlled (via `?tab=...`) or
+ * uncontrolled.
+ */
+export const SettingsScreen = ({
+  activeTab: activeTabProp,
+  onActiveTabChange,
   onSignOut,
-}: SettingsDialogProps) => {
+}: SettingsScreenProps) => {
   const [selectedTab, setSelectedTab] = useState<SettingsTab>(() =>
     hasBillingCheckoutCompletionMarker() ? "billing" : "basic",
   );
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(
     null,
   );
-  const activeTab = hasBillingCheckoutCompletionMarker()
+
+  // An explicit `?tab=...` deep link wins over the billing-checkout marker:
+  // the user is actively asking for a specific tab. Only when the caller
+  // hasn't passed a tab (uncontrolled mount) do we let a fresh checkout
+  // completion bias the initial tab to "billing".
+  const billingCheckoutOverride =
+    activeTabProp === undefined && hasBillingCheckoutCompletionMarker();
+  const activeTab = billingCheckoutOverride
     ? "billing"
-    : selectedTab;
+    : (activeTabProp ?? selectedTab);
+
+  const handleTabClick = useCallback(
+    (next: SettingsTab) => {
+      if (activeTabProp === undefined) {
+        setSelectedTab(next);
+      }
+      onActiveTabChange?.(next);
+    },
+    [activeTabProp, onActiveTabChange],
+  );
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="lg" className="settings-dialog">
-          <DialogHeader>
-            <DialogTitle>Settings</DialogTitle>
-            <DialogCloseButton />
-          </DialogHeader>
-          <DialogBody>
-            <div className="settings-layout">
-              <nav className="settings-sidebar">
-                {TABS.map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    className={`settings-sidebar-tab${activeTab === tab.key ? " settings-sidebar-tab--active" : ""}`}
-                    onClick={() => setSelectedTab(tab.key)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </nav>
-              <SettingsPanel>
-                {activeTab === "basic" ? (
-                  <BasicTab
-                    onSignOut={onSignOut}
-                    onOpenLegal={setActiveLegalDoc}
-                  />
-                ) : activeTab === "models" ? (
-                  <ModelsTab />
-                ) : activeTab === "audio" ? (
-                  <AudioTab />
-                ) : activeTab === "connections" ? (
-                  <ConnectionsTab />
-                ) : (
-                  <BillingTab />
-                )}
-              </SettingsPanel>
-            </div>
-          </DialogBody>
-        </DialogContent>
-      </Dialog>
+      <div className="settings-screen">
+        <div className="settings-layout settings-layout--standalone">
+          <nav className="settings-sidebar">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                className={`settings-sidebar-tab${activeTab === tab.key ? " settings-sidebar-tab--active" : ""}`}
+                onClick={() => handleTabClick(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+          <SettingsPanel>
+            {activeTab === "basic" ? (
+              <BasicTab
+                onSignOut={onSignOut}
+                onOpenLegal={setActiveLegalDoc}
+              />
+            ) : activeTab === "models" ? (
+              <ModelsTab />
+            ) : activeTab === "audio" ? (
+              <AudioTab />
+            ) : activeTab === "connections" ? (
+              <ConnectionsTab />
+            ) : (
+              <BillingTab />
+            )}
+          </SettingsPanel>
+        </div>
+      </div>
       <Suspense fallback={null}>
         <LegalDialog
           document={activeLegalDoc}
@@ -2075,6 +2079,30 @@ export const SettingsDialog = ({
         />
       </Suspense>
     </>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// SettingsDialog (legacy — wraps SettingsScreen in a Dialog shell)
+// ---------------------------------------------------------------------------
+
+export const SettingsDialog = ({
+  open,
+  onOpenChange,
+  onSignOut,
+}: SettingsDialogProps) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="lg" className="settings-dialog">
+        <DialogHeader>
+          <DialogTitle>Settings</DialogTitle>
+          <DialogCloseButton />
+        </DialogHeader>
+        <DialogBody>
+          <SettingsScreen onSignOut={onSignOut} />
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 };
 

@@ -1,6 +1,6 @@
 import type { ChatContext } from "@/shared/types/electron";
 
-/** Set when onboarding finishes; FullShellRuntime consumes to open the sidebar chat once. */
+/** Set when onboarding finishes; the root chrome consumes to open the sidebar chat once. */
 const OPEN_ORB_AFTER_ONBOARDING_KEY = "stella-open-orb-after-onboarding";
 
 export function markOpenOrbAfterOnboarding(): void {

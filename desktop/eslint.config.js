@@ -18,6 +18,7 @@ export default defineConfig([
     '.eslint-focus.json',
     '.eslint-packages.json',
     '.eslint-report.json',
+    'src/routeTree.gen.ts',
   ]),
   {
     files: ['**/*.{ts,tsx}'],

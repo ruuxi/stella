@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { getOrCreateLocalConversationId } from '@/app/chat/services/local-chat-store'
 import { useUiState } from '@/context/ui-state'
 import { configurePiRuntime, getOrCreateDeviceId } from '@/platform/electron/device'
+import { router } from '@/router'
 import { useBootstrapState } from './bootstrap-state'
 
 const CONVERSATION_BOOTSTRAP_TIMEOUT_MS = 45_000
@@ -47,7 +48,24 @@ export const useConversationBootstrap = () => {
               return
             }
 
+            // Promote the bootstrapped conversation into the chat route's
+            // `?c=<id>` search param. UiState still mirrors it for callers
+            // that haven't migrated to the router yet (Phase 7 cleanup).
             setConversationId(localConversationId)
+            try {
+              await router.navigate({
+                to: '/chat',
+                search: (prev: { c?: string } | undefined) => ({
+                  ...(prev ?? {}),
+                  c: localConversationId,
+                }),
+                replace: true,
+              })
+            } catch {
+              // Router isn't mounted until onboarding completes. UiState
+              // still carries the id, so the chat route picks it up via
+              // the bootstrap-effect when it later mounts.
+            }
             markReady()
             return
           } catch (error) {
@@ -75,5 +93,7 @@ export const useConversationBootstrap = () => {
     return () => {
       cancelled = true
     }
+    // `router` is a stable module-level singleton, so it is intentionally
+    // omitted from the dependency array.
   }, [bootstrapAttempt, markFailed, markPreparing, markReady, setConversationId])
 }
