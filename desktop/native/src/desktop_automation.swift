@@ -346,6 +346,14 @@ let safeFallbackChildRoles: Set<String> = [
     "AXList",
     "AXMenu",
     "AXMenuBar",
+    // Menu bar items expose their AXMenu child via kAXChildren even before
+    // the menu is opened, but only if the walker actually falls through to
+    // kAXChildren. That's how we surface Spotify > Playback > Play (and the
+    // equivalent for any other app) so background AXPress targeting works
+    // without raising the window.
+    "AXMenuBarItem",
+    "AXMenuItem",
+    "AXMenuButton",
     "AXOutline",
     "AXRow",
     "AXScrollArea",
@@ -1255,6 +1263,15 @@ func snapshotRoots(for app: AXUIElement) -> [AXUIElement] {
     )
     appendUniqueElement(
         axElementValue(app, kAXFocusedUIElementAttribute as String),
+        into: &roots,
+        excluding: app
+    )
+    // Menu bar lives off the app element, not under any window. Including it
+    // is what lets us drive apps in the background even when the window AX
+    // tree is shallow (e.g. Spotify): every app exposes File/Edit/Playback/etc.
+    // as menu bar items, and `AXPress` on a menu item works without focus.
+    appendUniqueElement(
+        axElementValue(app, kAXMenuBarAttribute as String),
         into: &roots,
         excluding: app
     )
@@ -4971,6 +4988,14 @@ func allWindowRoots(for app: AXUIElement) -> [AXUIElement] {
     )
     appendUniqueElements(
         axElementArrayValue(app, kAXWindowsAttribute as String),
+        into: &roots,
+        excluding: app
+    )
+    // Same reason as snapshotRoots: surface the menu bar so background AX
+    // actions (e.g. Playback > Play in Spotify) can be driven without raising
+    // the target window.
+    appendUniqueElement(
+        axElementValue(app, kAXMenuBarAttribute as String),
         into: &roots,
         excluding: app
     )
