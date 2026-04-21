@@ -42,7 +42,10 @@ export function WorkingIndicator({
     displayStatus = status;
   } else if (tasks && tasks.length > 0) {
     const task = tasks[0];
-    const taskText = task.statusText ?? task.description;
+    const taskText =
+      task.status === "running"
+        ? (task.statusText ?? task.description)
+        : task.description;
     if (task.status === "completed") {
       displayStatus = taskText ? `Task complete \u00b7 ${taskText}` : "Task complete";
     } else {
