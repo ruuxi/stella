@@ -5,18 +5,20 @@ import { AppBootstrap } from "./systems/boot/AppBootstrap";
 import { ModelPreferencesBridge } from "@/global/settings/ModelPreferencesBridge";
 import { ChatStoreProvider } from "@/context/chat-store";
 import { CredentialRequestLayer } from "./global/auth/CredentialRequestLayer";
+import { GoogleWorkspaceAuthListener } from "./global/integrations/GoogleWorkspaceAuthListener";
 import { FullShell } from "./shell/FullShell";
 
 const AUTO_REPAIR_SIGNATURE_KEY = "stella:auto-repair:last-signature";
 
-// Everything below mounts eagerly. CredentialRequestLayer in particular MUST
-// be in the tree before the agent runtime can fire `RequestCredential`:
-// `webContents.send('credential:request', …)` is fire-and-forget on the main
-// side, so a lazy boundary here would silently drop credential prompts during
-// the boot/post-reload window and stall the agent on its 5-minute timeout
-// (see `desktop/electron/services/credential-service.ts`). The actual chunk
-// savings were ~5 KB because every dep (`Dialog`, `Button`, `TextField`,
-// `useMutation`) is already pulled in by the eager bundle.
+// Every passive IPC listener below mounts eagerly because main fires the
+// matching channels fire-and-forget — if the renderer isn't subscribed at the
+// moment of `webContents.send(...)`, the event is silently dropped:
+//   * CredentialRequestLayer  → `credential:request` (agent stalls 5 min on
+//     timeout, see `desktop/electron/services/credential-service.ts`)
+//   * GoogleWorkspaceAuthListener → `googleWorkspace:authRequired` (connect
+//     card never surfaces, agent's google-workspace tool quietly fails)
+// Bundle savings from lazy-loading these were negligible (every dep is in the
+// eager chunk anyway), and the cost of missing the event is high.
 function App() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -34,6 +36,7 @@ function App() {
           <ModelPreferencesBridge />
           <PhoneAccessBridge />
           <CredentialRequestLayer />
+          <GoogleWorkspaceAuthListener />
           <FullShell />
         </ChatStoreProvider>
       </div>

@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { secureSignOut } from "@/global/auth/services/auth";
 import type { SettingsTab } from "@/global/settings/SettingsView";
+import { RouteFallback } from "@/shared/components/RouteFallback";
 
 const SettingsScreen = lazy(() =>
   import("@/global/settings/SettingsView").then((m) => ({
@@ -30,7 +31,7 @@ export function SettingsApp() {
   );
 
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteFallback />}>
       <SettingsScreen
         activeTab={search.tab}
         onActiveTabChange={handleActiveTabChange}

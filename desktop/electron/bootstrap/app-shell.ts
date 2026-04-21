@@ -8,7 +8,6 @@ import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
 import {
   type BootstrapContext,
-  broadcastAuthCallback,
   getAllWindows,
   getMobileBroadcast,
 } from "./context.js";
@@ -91,14 +90,14 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
 
   state.windowManager!.createInitialWindows();
 
-  const pendingAuthCallback = services.authService.consumePendingAuthCallback();
   const fullWindow = state.windowManager!.getFullWindow();
 
-  if (pendingAuthCallback && fullWindow) {
-    fullWindow.webContents.once("did-finish-load", () => {
-      broadcastAuthCallback(context, pendingAuthCallback);
-    });
-  }
+  // The cold-boot deep-link OTT (`stella://auth/callback?ott=…`) sits in
+  // `authService.pendingAuthCallback` waiting for the renderer to pull it via
+  // `auth:consumePendingCallback`. We deliberately don't rebroadcast on
+  // `did-finish-load` — that fires before React commits its first effects,
+  // so the renderer-side `auth:callback` listener wasn't necessarily mounted.
+  // The renderer pulls explicitly from `AuthDeepLinkHandler` once subscribed.
 
   if (fullWindow) {
     fullWindow.webContents.once("did-finish-load", () => {

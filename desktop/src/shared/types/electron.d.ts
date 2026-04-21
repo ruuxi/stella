@@ -15,13 +15,6 @@ import type {
   ChatContext as SharedChatContext,
   ChatContextFile as SharedChatContextFile,
   ChatContextUpdate as SharedChatContextUpdate,
-  MiniBridgeEventRecord as SharedMiniBridgeEventRecord,
-  MiniBridgeSnapshot as SharedMiniBridgeSnapshot,
-  MiniBridgeRequest as SharedMiniBridgeRequest,
-  MiniBridgeResponse as SharedMiniBridgeResponse,
-  MiniBridgeRequestEnvelope as SharedMiniBridgeRequestEnvelope,
-  MiniBridgeResponseEnvelope as SharedMiniBridgeResponseEnvelope,
-  MiniBridgeUpdate as SharedMiniBridgeUpdate,
   BrowserType as SharedBrowserType,
   DomainVisit as SharedDomainVisit,
   DomainDetail as SharedDomainDetail,
@@ -80,13 +73,6 @@ import type {
 export type ChatContext = SharedChatContext;
 export type ChatContextFile = SharedChatContextFile;
 export type ChatContextUpdate = SharedChatContextUpdate;
-export type MiniBridgeEventRecord = SharedMiniBridgeEventRecord;
-export type MiniBridgeSnapshot = SharedMiniBridgeSnapshot;
-export type MiniBridgeRequest = SharedMiniBridgeRequest;
-export type MiniBridgeResponse = SharedMiniBridgeResponse;
-export type MiniBridgeRequestEnvelope = SharedMiniBridgeRequestEnvelope;
-export type MiniBridgeResponseEnvelope = SharedMiniBridgeResponseEnvelope;
-export type MiniBridgeUpdate = SharedMiniBridgeUpdate;
 export type BrowserType = SharedBrowserType;
 export type DomainVisit = SharedDomainVisit;
 export type DomainDetail = SharedDomainDetail;
@@ -242,11 +228,6 @@ export type ElectronOverlayApi = {
       } | null,
     ) => void,
   ) => () => void;
-  onShowMini: (
-    callback: (data: { x: number; y: number }) => void,
-  ) => () => void;
-  onHideMini: (callback: () => void) => () => void;
-  onRestoreMini?: (callback: () => void) => () => void;
   onShowVoice: (
     callback: (data: { x: number; y: number; mode: "realtime" }) => void,
   ) => () => void;
@@ -307,19 +288,6 @@ export type ElectronOverlayApi = {
   ) => () => void;
   morphReady: (transitionId: string) => void;
   morphDone: (transitionId: string) => void;
-};
-
-export type ElectronMiniApi = {
-  onVisibility: (callback: (visible: boolean) => void) => () => void;
-  onDismissPreview: (callback: () => void) => () => void;
-  request: (request: MiniBridgeRequest) => Promise<MiniBridgeResponse>;
-  onUpdate: (callback: (update: MiniBridgeUpdate) => void) => () => void;
-  onRequest: (
-    callback: (envelope: MiniBridgeRequestEnvelope) => void,
-  ) => () => void;
-  respond: (envelope: MiniBridgeResponseEnvelope) => void;
-  ready: () => void;
-  pushUpdate: (update: MiniBridgeUpdate) => void;
 };
 
 export type ElectronThemeApi = {
@@ -439,6 +407,7 @@ export type ElectronSystemApi = {
     enabled: boolean;
   }) => Promise<{ ok: boolean }>;
   onAuthCallback: (callback: (data: { url: string }) => void) => () => void;
+  consumePendingAuthCallback: () => Promise<string | null>;
   onRuntimeAuthRefreshRequested: (
     callback: (data: {
       requestId: string;
@@ -831,7 +800,6 @@ export type ElectronApi = {
   capture: ElectronCaptureApi;
   overlay: ElectronOverlayApi;
   screenGuide: ElectronScreenGuideApi;
-  mini: ElectronMiniApi;
   theme: ElectronThemeApi;
   voice: ElectronVoiceApi;
   agent: ElectronAgentApi;
@@ -845,6 +813,35 @@ export type ElectronApi = {
       fileName: string,
     ) => Promise<{ ok: boolean; path?: string; error?: string }>;
     getStellaMediaDir: () => Promise<string | null>;
+  };
+  memory: {
+    status: () => Promise<{
+      available: boolean;
+      status: {
+        enabled: boolean;
+        pending: boolean;
+        running: boolean;
+        permission: boolean;
+      };
+    }>;
+    setEnabled: (
+      enabled: boolean,
+      options?: { pending?: boolean },
+    ) => Promise<{
+      ok: boolean;
+      reason?: string;
+      status: {
+        enabled: boolean;
+        pending: boolean;
+        running: boolean;
+        permission: boolean;
+      };
+    }>;
+    promotePending: () => Promise<{
+      ok: boolean;
+      promoted: boolean;
+      reason?: string;
+    }>;
   };
   chronicle: {
     status: () => Promise<{

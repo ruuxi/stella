@@ -60,6 +60,18 @@ const handleBrowserAuthCallback = () => {
   window.location.href = `${STELLA_PROTOCOL}://auth/callback?ott=${encodeURIComponent(ott)}`;
 };
 
+const processAuthCallbackUrl = async (url: string) => {
+  try {
+    const token = extractTrustedOtt(url);
+    if (!token) {
+      return;
+    }
+    await verifyOneTimeToken(token);
+  } catch (error) {
+    console.error("Failed to handle auth callback", error);
+  }
+};
+
 export const AuthDeepLinkHandler = () => {
   useEffect(() => {
     handleBrowserAuthCallback();
@@ -68,18 +80,29 @@ export const AuthDeepLinkHandler = () => {
     if (!api?.system.onAuthCallback) {
       return;
     }
-    const unsubscribe = api.system.onAuthCallback(async ({ url }) => {
-      try {
-        const token = extractTrustedOtt(url);
-        if (!token) {
-          return;
-        }
-        await verifyOneTimeToken(token);
-      } catch (error) {
-        console.error("Failed to handle auth callback", error);
-      }
+
+    let cancelled = false;
+
+    // Cold-boot pull: any deep-link captured from argv before the renderer
+    // existed sits in the main-side `pendingAuthCallback` buffer. Subscribing
+    // to `auth:callback` alone isn't enough — `did-finish-load` (the only
+    // pre-fix broadcast trigger) fires before React commits its first
+    // effects, so the live broadcast could land before this listener was
+    // attached. We pull explicitly here, which is the single source of
+    // consumption; the buffer is cleared on the main side once read.
+    void api.system.consumePendingAuthCallback?.().then((url) => {
+      if (cancelled || !url) return;
+      void processAuthCallbackUrl(url);
     });
-    return unsubscribe;
+
+    const unsubscribe = api.system.onAuthCallback(({ url }) => {
+      void processAuthCallbackUrl(url);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   return null;

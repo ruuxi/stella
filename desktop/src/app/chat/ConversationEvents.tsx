@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useEffect, useCallback } from "react";
+import { memo, useMemo, useCallback, useSyncExternalStore } from "react";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import type { Attachment } from "@/app/chat/lib/event-transforms";
 import {
@@ -10,6 +10,11 @@ import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCar
 import { GrowIn } from "@/app/chat/GrowIn";
 import { useTurnViewModels } from "./use-turn-view-models";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
+import {
+  acknowledgeGoogleWorkspaceAuthRequired,
+  getGoogleWorkspaceAuthRequired,
+  subscribeGoogleWorkspaceAuthRequired,
+} from "@/global/integrations/google-workspace-auth-state";
 
 type Props = {
   events: EventRecord[];
@@ -131,17 +136,17 @@ export const ConversationEvents = memo(function ConversationEvents({
   isLoadingHistory,
   onOpenAttachment,
 }: Props) {
-  const [showGwsConnect, setShowGwsConnect] = useState(false);
-
-  useEffect(() => {
-    const unsub = window.electronAPI?.googleWorkspace.onAuthRequired(() => {
-      setShowGwsConnect(true);
-    });
-    return () => { unsub?.(); };
-  }, []);
+  // Subscribe to the app-level sticky `googleWorkspace:authRequired` store
+  // (see `GoogleWorkspaceAuthListener`). This lets the connect card surface
+  // even if the IPC fired while the user was on a non-chat route.
+  const showGwsConnect = useSyncExternalStore(
+    subscribeGoogleWorkspaceAuthRequired,
+    getGoogleWorkspaceAuthRequired,
+    getGoogleWorkspaceAuthRequired,
+  );
 
   const handleGwsConnected = useCallback(() => {
-    setShowGwsConnect(false);
+    acknowledgeGoogleWorkspaceAuthRequired();
   }, []);
 
   const {
