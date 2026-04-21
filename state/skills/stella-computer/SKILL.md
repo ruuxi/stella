@@ -8,7 +8,7 @@ description: macOS desktop automation for arbitrary apps through Accessibility-f
 
 Use `stella-computer` for arbitrary macOS apps outside Stella itself (Finder, Notes, Calendar, Mail, Messages, Safari, third-party apps, etc.). It talks to macOS Accessibility first, so `click`, `fill`, `focus`, `secondary-action`, and `scroll` work without taking over the user's physical cursor.
 
-For Stella's own running UI use `stella-ui` instead. For browser content use `stella-browser` (DOM-level access via the extension bridge). Use `stella-computer` for everything else on the desktop.
+For browser content use `stella-browser` (DOM-level access via the extension bridge). Use `stella-computer` for everything else on the desktop.
 
 ## Code mode usage
 
