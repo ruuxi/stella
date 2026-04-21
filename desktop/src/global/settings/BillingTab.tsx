@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useAction, useQuery } from "convex/react";
 import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
@@ -55,6 +56,20 @@ type BillingPortalSessionPayload = {
 };
 
 const PLAN_ORDER: BillingPlan[] = ["free", "go", "pro", "plus", "ultra"];
+
+// Public-facing display catalog. Mirrors backend/convex/lib/billing_plans.ts so
+// the Plans grid is always renderable even if the live subscription-status
+// query hasn't resolved yet (e.g. while Convex's auth handshake is still in
+// flight). Stripe Checkout uses the backend's STRIPE_PRICE_* IDs as the actual
+// source of pricing, so any drift here would be a visible bug rather than a
+// silent overcharge.
+const STATIC_PLAN_DISPLAY: Record<BillingPlan, { label: string; monthlyPriceCents: number }> = {
+  free: { label: "Free", monthlyPriceCents: 0 },
+  go: { label: "Go", monthlyPriceCents: 2_000 },
+  pro: { label: "Pro", monthlyPriceCents: 6_000 },
+  plus: { label: "Plus", monthlyPriceCents: 10_000 },
+  ultra: { label: "Ultra", monthlyPriceCents: 20_000 },
+};
 
 const PLAN_DESCRIPTIONS: Record<BillingPlan, { tagline: string; features: string[] }> = {
   free: {
@@ -148,18 +163,28 @@ const toUsagePercent = (usedUsd: number, limitUsd: number) => {
 
 export function BillingTab() {
   const { hasConnectedAccount } = useAuthSessionState();
+  const navigate = useNavigate();
   const [billingNowMs, setBillingNowMs] = useState(() => Date.now());
-  const billingQueryArgs = hasConnectedAccount
-    ? { now: billingNowMs }
-    : "skip";
   useEffect(() => {
     const id = window.setInterval(() => setBillingNowMs(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, []);
+  // The catalog (and the user's free-tier defaults) is safe to read without a
+  // connected account; the backend handles both the unauthenticated and
+  // anonymous-identity paths and returns the plan list either way. Skipping
+  // the query when signed-out used to leave the Plans grid blank, which read
+  // as "you must sign in to see the plans" — exactly what we don't want.
   const billingStatus = useQuery(
     api.billing.getSubscriptionStatus,
-    billingQueryArgs,
+    { now: billingNowMs },
   ) as BillingStatus | undefined;
+
+  const openAuthDialog = useCallback(() => {
+    void navigate({
+      to: ".",
+      search: (prev) => ({ ...prev, dialog: "auth" as const }),
+    });
+  }, [navigate]);
   const createEmbeddedCheckoutSession = useAction(
     api.billing.createEmbeddedCheckoutSession,
   );
@@ -178,6 +203,18 @@ export function BillingTab() {
   const currentPlan = billingStatus?.plan ?? "free";
   const usage = billingStatus?.usage;
   const isLoadingStatus = billingStatus === undefined;
+
+  // Resolve display info per plan: prefer the live catalog when it's loaded
+  // (so backend overrides like custom labels propagate), otherwise fall back
+  // to the static display catalog. This guarantees the grid never blanks.
+  const getPlanDisplay = (plan: BillingPlan) => {
+    const live = planCatalog?.[plan];
+    const fallback = STATIC_PLAN_DISPLAY[plan];
+    return {
+      label: live?.label ?? fallback.label,
+      monthlyPriceCents: live?.monthlyPriceCents ?? fallback.monthlyPriceCents,
+    };
+  };
 
   const openExternal = useCallback((url: string) => {
     if (window.electronAPI?.system.openExternal) {
@@ -205,7 +242,10 @@ export function BillingTab() {
   const handleStartCheckout = useCallback(
     async (plan: PaidBillingPlan) => {
       if (!hasConnectedAccount) {
-        setBillingError("Sign in with an account before subscribing.");
+        // Plans are visible to everyone, but subscribing requires a real
+        // account. Take the user straight to the sign-in dialog instead of
+        // showing an inline error they can't act on.
+        openAuthDialog();
         return;
       }
 
@@ -240,7 +280,7 @@ export function BillingTab() {
         setIsStartingCheckoutPlan(null);
       }
     },
-    [createEmbeddedCheckoutSession, hasConnectedAccount],
+    [createEmbeddedCheckoutSession, hasConnectedAccount, openAuthDialog],
   );
 
   const handleOpenBillingPortal = useCallback(async () => {
@@ -306,7 +346,7 @@ export function BillingTab() {
         </div>
         {!hasConnectedAccount ? (
           <p className="settings-card-desc">
-            Sign in with an account to subscribe or manage payment methods.
+            Browse the plans below. Sign in with an account when you're ready to subscribe or manage payment methods.
           </p>
         ) : null}
         {billingError ? (
@@ -325,14 +365,14 @@ export function BillingTab() {
           <div className="settings-row-info">
             <div className="settings-row-label">Current plan</div>
             <div className="settings-row-sublabel">
-              {isLoadingStatus || !planCatalog
+              {isLoadingStatus
                 ? "Loading billing status..."
-                : `${planCatalog[currentPlan].label} plan`}
+                : `${getPlanDisplay(currentPlan).label} plan`}
             </div>
           </div>
           <div className="settings-row-control">
             <span className="settings-billing-current-plan-pill">
-              {planCatalog?.[currentPlan]?.label ?? "..."}
+              {getPlanDisplay(currentPlan).label}
             </span>
           </div>
         </div>
@@ -360,62 +400,58 @@ export function BillingTab() {
       <div className="settings-card">
         <h3 className="settings-card-title">Plans</h3>
 
-        {planCatalog ? (
-          <div className="settings-billing-plan-grid">
-            {PLAN_ORDER.map((plan) => {
-              const config = planCatalog[plan];
-              if (!config) return null;
-              const isCurrentPlan = plan === currentPlan;
-              const isPaidPlan = plan !== "free";
-              const isStartingThisPlan = isStartingCheckoutPlan === plan;
-              const desc = PLAN_DESCRIPTIONS[plan];
+        <div className="settings-billing-plan-grid">
+          {PLAN_ORDER.map((plan) => {
+            const display = getPlanDisplay(plan);
+            const isCurrentPlan = plan === currentPlan;
+            const isPaidPlan = plan !== "free";
+            const isStartingThisPlan = isStartingCheckoutPlan === plan;
+            const desc = PLAN_DESCRIPTIONS[plan];
 
-              return (
-                <div
-                  key={plan}
-                  className="settings-billing-plan-card"
-                  data-active={isCurrentPlan || undefined}
-                >
-                  <div className="settings-billing-plan-name">{config.label}</div>
-                  <div className="settings-billing-plan-price">
-                    {config.monthlyPriceCents <= 0
-                      ? "Free"
-                      : `${priceFormatter.format(config.monthlyPriceCents / 100)}/mo`}
-                  </div>
-                  <div className="settings-billing-plan-tagline">{desc.tagline}</div>
-                  <ul className="settings-billing-plan-features">
-                    {desc.features.map((f) => (
-                      <li key={f}>{f}</li>
-                    ))}
-                  </ul>
-                  {isPaidPlan ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="settings-btn settings-btn--primary settings-billing-plan-cta"
-                      onClick={() => void handleStartCheckout(plan as PaidBillingPlan)}
-                      disabled={
-                        isCurrentPlan
-                        || !hasConnectedAccount
-                        || isStartingCheckoutPlan !== null
-                      }
-                    >
-                      {isCurrentPlan
-                        ? "Current Plan"
-                        : isStartingThisPlan
-                          ? "Opening Checkout..."
-                          : `Choose ${config.label}`}
-                    </Button>
-                  ) : (
-                    <div className="settings-billing-plan-included">Included</div>
-                  )}
+            return (
+              <div
+                key={plan}
+                className="settings-billing-plan-card"
+                data-active={isCurrentPlan || undefined}
+              >
+                <div className="settings-billing-plan-name">{display.label}</div>
+                <div className="settings-billing-plan-price">
+                  {display.monthlyPriceCents <= 0
+                    ? "Free"
+                    : `${priceFormatter.format(display.monthlyPriceCents / 100)}/mo`}
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="settings-card-desc">Loading plan options...</p>
-        )}
+                <div className="settings-billing-plan-tagline">{desc.tagline}</div>
+                <ul className="settings-billing-plan-features">
+                  {desc.features.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+                {isPaidPlan ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="settings-btn settings-btn--primary settings-billing-plan-cta"
+                    onClick={() => void handleStartCheckout(plan as PaidBillingPlan)}
+                    disabled={
+                      isCurrentPlan
+                      || isStartingCheckoutPlan !== null
+                    }
+                  >
+                    {isCurrentPlan
+                      ? "Current Plan"
+                      : isStartingThisPlan
+                        ? "Opening Checkout..."
+                        : !hasConnectedAccount
+                          ? `Sign in to choose ${display.label}`
+                          : `Choose ${display.label}`}
+                  </Button>
+                ) : (
+                  <div className="settings-billing-plan-included">Included</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {checkoutSession && checkoutOptions ? (

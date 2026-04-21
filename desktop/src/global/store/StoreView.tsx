@@ -102,6 +102,28 @@ function useStoreApi() {
   return window.electronAPI?.store ?? null
 }
 
+// The Store catalog calls reach Convex through the Electron runtime. When the
+// renderer hasn't connected an account yet (or the runtime simply doesn't have
+// a Convex deployment URL set), those calls reject with messages like
+// "Authentication required" or "Not connected to Convex. Sign in or set
+// STELLA_CONVEX_URL.". Surfacing the raw text reads as "you must log in to
+// browse the Store", which we explicitly want to avoid — fall back to the
+// empty-state instead.
+function isAuthOrConnectivityErrorMessage(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes("authentication required") ||
+    normalized.includes("unauthenticated") ||
+    normalized.includes("not connected to convex") ||
+    normalized.includes("sign in")
+  )
+}
+
+function isAuthOrConnectivityError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  return isAuthOrConnectivityErrorMessage(err.message)
+}
+
 function useStorePackages() {
   const api = useStoreApi()
   const [packages, setPackages] = useState<StorePackageRecord[]>([])
@@ -123,7 +145,13 @@ function useStorePackages() {
       setInstalled(mods)
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong")
+      if (isAuthOrConnectivityError(err)) {
+        setPackages([])
+        setInstalled([])
+        setError(null)
+      } else {
+        setError(err instanceof Error ? err.message : "Something went wrong")
+      }
     } finally {
       setLoading(false)
     }
@@ -209,7 +237,13 @@ function usePackageDetail(packageId: string | null) {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Something went wrong")
+          if (isAuthOrConnectivityError(err)) {
+            setPkg(null)
+            setReleases([])
+            setError(null)
+          } else {
+            setError(err instanceof Error ? err.message : "Something went wrong")
+          }
         }
       } finally {
         if (!cancelled) setLoading(false)
