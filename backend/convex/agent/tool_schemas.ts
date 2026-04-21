@@ -93,7 +93,7 @@ export const RequestCredentialSchema = z.object({
 
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
   Exec:
-    "Run an async TypeScript program in Stella's persistent V8 runtime. Capabilities are exposed as `tools.<name>(...)` entries; built-in globals (`text`, `image`, `store`, `load`, `notify`, `yield_control`, `exit`) stay tiny and stable. Use `apply_patch` for edits, `// @exec: yield_after_ms=...` to background long-running work.",
+    "Run an async TypeScript program in a fresh V8 context (Codex-style isolation per call). Capabilities are exposed as `tools.<name>(...)` entries; built-in globals (`text`, `image`, `store`, `load`, `notify`, `yield_control`, `exit`) stay tiny and stable. Cell globals do not survive across calls — use `store`/`load` for cross-cell state. Use `apply_patch` for edits, `// @exec: yield_after_ms=...` to background long-running work.",
   Wait:
     "Resume a yielded `Exec` cell by `cell_id`. Used after a program backgrounded itself with `// @exec:` or called `yield_control()`.",
   AskUserQuestion:

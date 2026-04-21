@@ -26,6 +26,7 @@ const formatToolResult = (
     cellId: result.cellId,
     durationMs: result.durationMs,
     content: result.content,
+    calls: result.calls,
   };
 
   switch (result.kind) {

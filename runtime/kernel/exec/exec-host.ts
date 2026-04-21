@@ -1,24 +1,21 @@
 /**
  * Host for the Codex-style Exec runtime.
  *
- * Owns one long-lived Node `worker_thread` per session that hosts the V8
- * context. Each `Exec` call:
- *   - assigns a unique `cellId`
- *   - posts an `execute` message to the worker with the program source and a
- *     fresh snapshot of the registry's tool definitions
- *   - waits for `tool_call` messages to round-trip into the `ExecToolRegistry`
- *     and posts the results back
- *   - collects `text` / `image` `notify` updates into a content array
- *   - resolves to either `Result` (cell finished) or `Yielded` (cell suspended
- *     and is waiting for `Wait({ cell_id })`).
+ * Each active Exec cell gets its own worker thread. That lets yielded cells
+ * keep running independently, lets `Wait({ terminate: true })` kill exactly
+ * the targeted cell, and keeps runaway sync loops from poisoning unrelated
+ * Exec calls.
+ *
+ * The host owns the durable per-conversation `store`/`load` snapshot. Each
+ * worker gets a seeded copy when its cell starts and streams `store(...)`
+ * updates back to the host as they happen, so state survives worker kills and
+ * respawns.
  */
 
 import { existsSync, promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
-import { transform } from "esbuild";
 
 import type { ToolContext, ToolHandlerExtras } from "../tools/types.js";
 import {
@@ -33,12 +30,22 @@ const EXEC_WORKER_TS_PATH = fileURLToPath(
 const EXEC_WORKER_JS_PATH = fileURLToPath(
   new URL("./exec-worker.js", import.meta.url),
 );
-const NODE_PATH_ENTRIES = [
-  fileURLToPath(new URL("../../../node_modules", import.meta.url)),
-  fileURLToPath(new URL("../../../desktop/node_modules", import.meta.url)),
-].filter((entry, index, entries) => existsSync(entry) && entries.indexOf(entry) === index);
+const EXEC_WORKER_CACHE_DIR = fileURLToPath(
+  new URL("./.exec-worker-cache/", import.meta.url),
+);
+
+const isBunRuntime =
+  typeof (process.versions as Record<string, string | undefined>).bun ===
+  "string";
 
 export type ExecCellPhase = "compile" | "execute" | "tool" | "host";
+
+export type ExecToolCallRecord = {
+  toolName: string;
+  args: unknown;
+  result?: unknown;
+  error?: string;
+};
 
 export type ExecCellResult =
   | {
@@ -46,6 +53,7 @@ export type ExecCellResult =
       cellId: string;
       value: unknown;
       content: ExecContentItem[];
+      calls: ExecToolCallRecord[];
       durationMs: number;
     }
   | {
@@ -54,6 +62,7 @@ export type ExecCellResult =
       phase: ExecCellPhase;
       message: string;
       content: ExecContentItem[];
+      calls: ExecToolCallRecord[];
       durationMs: number;
     }
   | {
@@ -61,6 +70,7 @@ export type ExecCellResult =
       cellId: string;
       reason: "yield_control" | "pragma" | "wait_request";
       content: ExecContentItem[];
+      calls: ExecToolCallRecord[];
       durationMs: number;
     };
 
@@ -96,6 +106,7 @@ type WorkerToHostMessage =
       item: ExecContentItem;
     }
   | { type: "notify"; cellId: string; text: string }
+  | { type: "state_set"; cellId: string; key: string; value: unknown }
   | { type: "yield"; cellId: string; requestId: string }
   | {
       type: "result";
@@ -107,20 +118,27 @@ type WorkerToHostMessage =
       stack?: string;
     };
 
+type CellWaiter = {
+  resolve: (result: ExecCellResult) => void;
+};
+
 type CellState = {
   cellId: string;
   startedAt: number;
-  resolve: (result: ExecCellResult) => void;
-  reject: (error: Error) => void;
+  worker: Worker | null;
   context: ToolContext;
   toolHandlerExtras?: ToolHandlerExtras;
-  enabledTools: ExecToolDefinition[];
+  enabledToolsByName: Map<string, ExecToolDefinition>;
   content: ExecContentItem[];
+  toolCalls: ExecToolCallRecord[];
+  waiter?: CellWaiter;
   yieldRequestId?: string;
   yieldedReason?: "yield_control" | "pragma" | "wait_request";
-  yieldDeadline?: number;
   yieldTimer?: NodeJS.Timeout;
-  resolved: boolean;
+  softTimeoutTimer?: NodeJS.Timeout;
+  hardEscalationTimer?: NodeJS.Timeout;
+  parkedResult?: ExecCellResult;
+  timedOut?: boolean;
 };
 
 export type ExecHostOptions = {
@@ -128,6 +146,13 @@ export type ExecHostOptions = {
   agentType?: string;
   defaultTimeoutMs?: number;
   defaultYieldAfterMs?: number;
+  /**
+   * When a cell exceeds its soft timeout, the current `Exec` promise fails
+   * immediately. If the worker is still alive after this grace window
+   * (typically because the cell is stuck in a synchronous loop), that worker is
+   * forcibly terminated.
+   */
+  defaultHardTerminationGraceMs?: number;
   onUpdate?: (event: ExecHostEvent) => void;
 };
 
@@ -177,15 +202,15 @@ export type ExecHostEvent =
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 120_000;
 const DEFAULT_YIELD_AFTER_MS = 10_000;
+const DEFAULT_HARD_TERMINATION_GRACE_MS = 2_000;
 
 const PRAGMA_RE = /^[\t ]*\/\/\s*@exec:\s*([^\r\n]+)/m;
 
 const parsePragma = (
   source: string,
 ): { yieldAfterMs?: number } => {
-  // Look at the first non-empty line. The pragma is meaningful only when it
-  // is the first directive of the cell, before any executable code.
-  const firstNonEmpty = source.split(/\r?\n/u).find((line) => line.trim().length > 0) ?? "";
+  const firstNonEmpty =
+    source.split(/\r?\n/u).find((line) => line.trim().length > 0) ?? "";
   const match = firstNonEmpty.match(PRAGMA_RE);
   if (!match) return {};
   const directives: { yieldAfterMs?: number } = {};
@@ -227,25 +252,20 @@ const ensureJsonSerializable = (value: unknown): unknown => {
   return JSON.parse(JSON.stringify(value));
 };
 
-const buildWorkerEnv = (): NodeJS.ProcessEnv => {
-  if (NODE_PATH_ENTRIES.length === 0) return process.env;
-  const existing = (process.env.NODE_PATH ?? "")
-    .split(path.delimiter)
-    .filter(Boolean);
-  return {
-    ...process.env,
-    NODE_PATH: [...NODE_PATH_ENTRIES, ...existing].join(path.delimiter),
-  };
-};
-
-const buildTranspiledWorkerPath = (mtimeMs: number): string =>
-  path.join(
-    os.tmpdir(),
-    "stella-exec",
-    `exec-worker-${Math.floor(mtimeMs).toString(36)}.cjs`,
-  );
+const snapshotToolCalls = (calls: ExecToolCallRecord[]): ExecToolCallRecord[] =>
+  calls.map((call) => ({
+    toolName: call.toolName,
+    args: ensureJsonSerializable(call.args),
+    ...(call.error ? { error: call.error } : {}),
+    ...("result" in call
+      ? { result: ensureJsonSerializable(call.result) }
+      : {}),
+  }));
 
 const resolveWorkerScriptPath = async (): Promise<string> => {
+  if (isBunRuntime && existsSync(EXEC_WORKER_TS_PATH)) {
+    return EXEC_WORKER_TS_PATH;
+  }
   if (existsSync(EXEC_WORKER_JS_PATH)) {
     return EXEC_WORKER_JS_PATH;
   }
@@ -253,10 +273,12 @@ const resolveWorkerScriptPath = async (): Promise<string> => {
     throw new Error("Exec worker source is missing.");
   }
   const stat = await fs.stat(EXEC_WORKER_TS_PATH);
-  const transpiled = buildTranspiledWorkerPath(stat.mtimeMs);
-  if (existsSync(transpiled)) {
-    return transpiled;
-  }
+  const cachePath = path.join(
+    EXEC_WORKER_CACHE_DIR,
+    `exec-worker.${Math.floor(stat.mtimeMs).toString(36)}.cjs`,
+  );
+  if (existsSync(cachePath)) return cachePath;
+  const { transform } = await import("esbuild");
   const source = await fs.readFile(EXEC_WORKER_TS_PATH, "utf8");
   const result = await transform(source, {
     loader: "ts",
@@ -265,16 +287,19 @@ const resolveWorkerScriptPath = async (): Promise<string> => {
     target: "node22",
     sourcemap: "inline",
   });
-  await fs.mkdir(path.dirname(transpiled), { recursive: true });
-  await fs.writeFile(transpiled, result.code, "utf8");
-  return transpiled;
+  await fs.mkdir(EXEC_WORKER_CACHE_DIR, { recursive: true });
+  await fs.writeFile(cachePath, result.code, "utf8");
+  return cachePath;
 };
 
 export const createExecHost = (options: ExecHostOptions) => {
   const cells = new Map<string, CellState>();
+  const workerToCellId = new Map<Worker, string>();
+  const activeWorkers = new Set<Worker>();
+  const storeByConversation = new Map<string, Map<string, unknown>>();
+  const hardTerminationGraceMs =
+    options.defaultHardTerminationGraceMs ?? DEFAULT_HARD_TERMINATION_GRACE_MS;
 
-  let worker: Worker | undefined;
-  let workerReady: Promise<Worker> | undefined;
   let nextCellId = 1;
 
   const newCellId = () => `cell-${(nextCellId++).toString(36)}`;
@@ -283,127 +308,316 @@ export const createExecHost = (options: ExecHostOptions) => {
     options.onUpdate?.(event);
   };
 
-  const ensureWorker = async (): Promise<Worker> => {
-    if (worker) return worker;
-    if (workerReady) return workerReady;
-
-    workerReady = (async () => {
-      const scriptPath = await resolveWorkerScriptPath();
-      const w = new Worker(scriptPath, {
-        env: buildWorkerEnv(),
-        workerData: {
-          nodeModulePaths: NODE_PATH_ENTRIES,
-        },
-        stdout: false,
-        stderr: false,
-      });
-      await new Promise<void>((resolve, reject) => {
-        const onMessage = (message: unknown) => {
-          if (
-            message &&
-            typeof message === "object" &&
-            (message as { type?: string }).type === "ready"
-          ) {
-            w.off("message", onMessage);
-            w.off("error", onError);
-            resolve();
-          }
-        };
-        const onError = (error: Error) => {
-          w.off("message", onMessage);
-          w.off("error", onError);
-          reject(error);
-        };
-        w.on("message", onMessage);
-        w.on("error", onError);
-      });
-      w.on("message", (message: WorkerToHostMessage) => {
-        handleWorkerMessage(message);
-      });
-      w.on("error", (error) => {
-        for (const cell of cells.values()) {
-          if (cell.resolved) continue;
-          cell.resolved = true;
-          cell.resolve({
-            kind: "failed",
-            cellId: cell.cellId,
-            phase: "host",
-            message: `Worker error: ${error.message}`,
-            content: cell.content,
-            durationMs: Date.now() - cell.startedAt,
-          });
-        }
-        cells.clear();
-        worker = undefined;
-        workerReady = undefined;
-      });
-      worker = w;
-      return w;
-    })();
-    return workerReady;
+  const getConversationStore = (conversationId: string) => {
+    const existing = storeByConversation.get(conversationId);
+    if (existing) return existing;
+    const created = new Map<string, unknown>();
+    storeByConversation.set(conversationId, created);
+    return created;
   };
 
-  const handleWorkerMessage = async (message: WorkerToHostMessage) => {
-    if (!message || typeof message !== "object") return;
-    switch (message.type) {
-      case "tool_call":
-        await handleToolCall(message);
-        break;
-      case "content":
-        handleContent(message);
-        break;
-      case "notify":
-        handleNotify(message);
-        break;
-      case "yield":
-        handleYield(message);
-        break;
-      case "result":
-        handleResult(message);
-        break;
-      default:
-        break;
+  const snapshotConversationStore = (
+    context: ToolContext,
+  ): Array<[string, unknown]> =>
+    Array.from(getConversationStore(context.conversationId).entries()).map(
+      ([key, value]) => [key, ensureJsonSerializable(value)],
+    );
+
+  const clearYieldTimer = (cell: CellState) => {
+    if (cell.yieldTimer) {
+      clearTimeout(cell.yieldTimer);
+      cell.yieldTimer = undefined;
     }
   };
 
-  const handleToolCall = async (message: {
-    requestId: string;
-    cellId: string;
-    toolName: string;
-    args: unknown;
-  }) => {
+  const clearSoftTimeoutTimer = (cell: CellState) => {
+    if (cell.softTimeoutTimer) {
+      clearTimeout(cell.softTimeoutTimer);
+      cell.softTimeoutTimer = undefined;
+    }
+  };
+
+  const clearHardEscalationTimer = (cell: CellState) => {
+    if (cell.hardEscalationTimer) {
+      clearTimeout(cell.hardEscalationTimer);
+      cell.hardEscalationTimer = undefined;
+    }
+  };
+
+  const buildCompletedResult = (
+    cell: CellState,
+    value: unknown,
+  ): ExecCellResult => ({
+    kind: "completed",
+    cellId: cell.cellId,
+    value,
+    content: cell.content,
+    calls: snapshotToolCalls(cell.toolCalls),
+    durationMs: Date.now() - cell.startedAt,
+  });
+
+  const buildFailedResult = (
+    cell: CellState,
+    phase: ExecCellPhase,
+    message: string,
+  ): ExecCellResult => ({
+    kind: "failed",
+    cellId: cell.cellId,
+    phase,
+    message,
+    content: cell.content,
+    calls: snapshotToolCalls(cell.toolCalls),
+    durationMs: Date.now() - cell.startedAt,
+  });
+
+  const buildYieldedResult = (
+    cell: CellState,
+    reason: "yield_control" | "pragma" | "wait_request",
+  ): ExecCellResult => ({
+    kind: "yielded",
+    cellId: cell.cellId,
+    reason,
+    content: cell.content,
+    calls: snapshotToolCalls(cell.toolCalls),
+    durationMs: Date.now() - cell.startedAt,
+  });
+
+  const stopWorker = async (worker: Worker | null) => {
+    if (!worker) return;
+    workerToCellId.delete(worker);
+    activeWorkers.delete(worker);
+    try {
+      await worker.terminate();
+    } catch {
+      // Best-effort cleanup.
+    }
+  };
+
+  const cleanupCell = (cell: CellState) => {
+    cells.delete(cell.cellId);
+    clearYieldTimer(cell);
+    clearSoftTimeoutTimer(cell);
+    clearHardEscalationTimer(cell);
+  };
+
+  const parkOrDeliverTerminalResult = (
+    cell: CellState,
+    result: ExecCellResult,
+  ) => {
+    clearYieldTimer(cell);
+    clearSoftTimeoutTimer(cell);
+    clearHardEscalationTimer(cell);
+    if (result.kind !== "yielded") {
+      emit({
+        type: "cell_finished",
+        cellId: cell.cellId,
+        success: result.kind === "completed",
+        durationMs: result.durationMs,
+      });
+    }
+
+    if (cell.timedOut) {
+      cleanupCell(cell);
+      const worker = cell.worker;
+      cell.worker = null;
+      void stopWorker(worker);
+      return;
+    }
+
+    if (cell.waiter) {
+      const waiter = cell.waiter;
+      cell.waiter = undefined;
+      waiter.resolve(result);
+      if (result.kind !== "yielded") {
+        cleanupCell(cell);
+        const worker = cell.worker;
+        cell.worker = null;
+        void stopWorker(worker);
+      }
+      return;
+    }
+
+    if (result.kind === "yielded") {
+      return;
+    }
+
+    cell.parkedResult = result;
+    const worker = cell.worker;
+    cell.worker = null;
+    void stopWorker(worker);
+  };
+
+  const finalizeYield = (cell: CellState) => {
+    if (!cell.waiter) return;
+    clearYieldTimer(cell);
+    clearSoftTimeoutTimer(cell);
+    clearHardEscalationTimer(cell);
+    const reason = cell.yieldedReason ?? "yield_control";
+    const result = buildYieldedResult(cell, reason);
+    const waiter = cell.waiter;
+    cell.waiter = undefined;
+    waiter.resolve(result);
+    emit({
+      type: "cell_yielded",
+      cellId: cell.cellId,
+      reason,
+      durationMs: result.durationMs,
+    });
+  };
+
+  const armYieldTimer = (cell: CellState, ms: number) => {
+    clearYieldTimer(cell);
+    cell.yieldTimer = setTimeout(() => {
+      if (!cells.has(cell.cellId) || !cell.waiter) return;
+      cell.yieldedReason = cell.yieldedReason ?? "pragma";
+      finalizeYield(cell);
+    }, ms);
+    cell.yieldTimer.unref?.();
+  };
+
+  const armSoftTimeout = (cell: CellState, timeoutMs: number) => {
+    cell.softTimeoutTimer = setTimeout(() => {
+      if (!cells.has(cell.cellId) || cell.timedOut) return;
+      cell.softTimeoutTimer = undefined;
+      cell.timedOut = true;
+      const result = buildFailedResult(
+        cell,
+        "execute",
+        `Exec timed out after ${timeoutMs}ms.`,
+      );
+      const waiter = cell.waiter;
+      cell.waiter = undefined;
+      if (waiter) {
+        waiter.resolve(result);
+        emit({
+          type: "cell_finished",
+          cellId: cell.cellId,
+          success: false,
+          durationMs: result.durationMs,
+        });
+      }
+      cell.hardEscalationTimer = setTimeout(() => {
+        if (!cells.has(cell.cellId)) return;
+        cleanupCell(cell);
+        const worker = cell.worker;
+        cell.worker = null;
+        void stopWorker(worker);
+      }, hardTerminationGraceMs);
+      cell.hardEscalationTimer.unref?.();
+    }, timeoutMs);
+    cell.softTimeoutTimer.unref?.();
+  };
+
+  const handleWorkerCrash = (worker: Worker, reason: string) => {
+    const cellId = workerToCellId.get(worker);
+    if (!cellId) return;
+    const cell = cells.get(cellId);
+    workerToCellId.delete(worker);
+    activeWorkers.delete(worker);
+    if (!cell) return;
+    cell.worker = null;
+    parkOrDeliverTerminalResult(cell, buildFailedResult(cell, "host", reason));
+  };
+
+  const spawnWorker = async (): Promise<Worker> => {
+    const scriptPath = await resolveWorkerScriptPath();
+    const worker = new Worker(scriptPath, {
+      stdout: false,
+      stderr: false,
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const onMessage = (message: unknown) => {
+        if (
+          message &&
+          typeof message === "object" &&
+          (message as { type?: string }).type === "ready"
+        ) {
+          worker.off("message", onMessage);
+          worker.off("error", onError);
+          resolve();
+        }
+      };
+      const onError = (error: Error) => {
+        worker.off("message", onMessage);
+        worker.off("error", onError);
+        reject(error);
+      };
+      worker.on("message", onMessage);
+      worker.on("error", onError);
+    });
+
+    activeWorkers.add(worker);
+    worker.on("message", (message: WorkerToHostMessage) => {
+      void handleWorkerMessage(worker, message);
+    });
+    worker.on("error", (error) => {
+      handleWorkerCrash(worker, `Worker error: ${error.message}`);
+    });
+    worker.on("exit", (code) => {
+      if (!workerToCellId.has(worker)) {
+        activeWorkers.delete(worker);
+        return;
+      }
+      handleWorkerCrash(
+        worker,
+        code === 0
+          ? "Worker exited unexpectedly."
+          : `Worker exited with code ${code}.`,
+      );
+    });
+    return worker;
+  };
+
+  const handleToolCall = async (
+    sourceWorker: Worker,
+    message: {
+      requestId: string;
+      cellId: string;
+      toolName: string;
+      args: unknown;
+    },
+  ) => {
     const cell = cells.get(message.cellId);
-    if (!cell || cell.resolved) {
-      worker?.postMessage({
+    if (!cell || cell.worker !== sourceWorker) {
+      sourceWorker.postMessage({
         type: "tool_result",
         requestId: message.requestId,
         error: `Cell ${message.cellId} is no longer active.`,
       });
       return;
     }
-    const tool = options.registry.get(message.toolName);
+
+    const tool = cell.enabledToolsByName.get(message.toolName);
     if (!tool) {
-      worker?.postMessage({
+      sourceWorker.postMessage({
         type: "tool_result",
         requestId: message.requestId,
-        error: `Unknown tool: ${message.toolName}`,
+        error: `Tool '${message.toolName}' is not available to this agent.`,
       });
       emit({
         type: "tool_result",
         cellId: cell.cellId,
         toolName: message.toolName,
         durationMs: 0,
-        error: `Unknown tool: ${message.toolName}`,
+        error: `Tool '${message.toolName}' is not available to this agent.`,
       });
       return;
     }
-    const argsPreview = previewUnknown(message.args);
+
+    const callRecord: ExecToolCallRecord = {
+      toolName: tool.name,
+      args: ensureJsonSerializable(message.args),
+    };
+    cell.toolCalls.push(callRecord);
+
     emit({
       type: "tool_call",
       cellId: cell.cellId,
       toolName: tool.name,
-      argsPreview,
+      argsPreview: previewUnknown(message.args),
     });
+
     const startedAt = Date.now();
     try {
       const value = await tool.handler(message.args, cell.context, {
@@ -414,7 +628,8 @@ export const createExecHost = (options: ExecHostOptions) => {
       });
       const durationMs = Date.now() - startedAt;
       const serialized = ensureJsonSerializable(value);
-      worker?.postMessage({
+      callRecord.result = serialized;
+      sourceWorker.postMessage({
         type: "tool_result",
         requestId: message.requestId,
         value: serialized,
@@ -430,7 +645,8 @@ export const createExecHost = (options: ExecHostOptions) => {
       const durationMs = Date.now() - startedAt;
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      worker?.postMessage({
+      callRecord.error = errorMessage;
+      sourceWorker.postMessage({
         type: "tool_result",
         requestId: message.requestId,
         error: errorMessage,
@@ -445,12 +661,12 @@ export const createExecHost = (options: ExecHostOptions) => {
     }
   };
 
-  const handleContent = (message: {
-    cellId: string;
-    item: ExecContentItem;
-  }) => {
+  const handleContent = (
+    sourceWorker: Worker,
+    message: { cellId: string; item: ExecContentItem },
+  ) => {
     const cell = cells.get(message.cellId);
-    if (!cell) return;
+    if (!cell || cell.worker !== sourceWorker) return;
     cell.content.push(message.item);
     emit({
       type: "content",
@@ -459,9 +675,12 @@ export const createExecHost = (options: ExecHostOptions) => {
     });
   };
 
-  const handleNotify = (message: { cellId: string; text: string }) => {
+  const handleNotify = (
+    sourceWorker: Worker,
+    message: { cellId: string; text: string },
+  ) => {
     const cell = cells.get(message.cellId);
-    if (!cell) return;
+    if (!cell || cell.worker !== sourceWorker) return;
     emit({
       type: "notify",
       cellId: cell.cellId,
@@ -469,169 +688,136 @@ export const createExecHost = (options: ExecHostOptions) => {
     });
   };
 
-  const handleYield = (message: { cellId: string; requestId: string }) => {
+  const handleStateSet = (
+    sourceWorker: Worker,
+    message: { cellId: string; key: string; value: unknown },
+  ) => {
     const cell = cells.get(message.cellId);
-    if (!cell || cell.resolved) return;
+    if (!cell || cell.worker !== sourceWorker) return;
+    getConversationStore(cell.context.conversationId).set(
+      message.key,
+      ensureJsonSerializable(message.value),
+    );
+  };
+
+  const handleYield = (
+    sourceWorker: Worker,
+    message: { cellId: string; requestId: string },
+  ) => {
+    const cell = cells.get(message.cellId);
+    if (!cell || cell.worker !== sourceWorker) return;
     cell.yieldRequestId = message.requestId;
     cell.yieldedReason = cell.yieldedReason ?? "yield_control";
     finalizeYield(cell);
   };
 
-  const handleResult = (message: {
-    cellId: string;
-    success: boolean;
-    value?: unknown;
-    message?: string;
-    phase?: ExecCellPhase;
-  }) => {
+  const handleResult = (
+    sourceWorker: Worker,
+    message: {
+      cellId: string;
+      success: boolean;
+      value?: unknown;
+      message?: string;
+      phase?: ExecCellPhase;
+    },
+  ) => {
     const cell = cells.get(message.cellId);
-    if (!cell || cell.resolved) return;
-    if (cell.yieldTimer) {
-      clearTimeout(cell.yieldTimer);
-    }
-    cell.resolved = true;
-    const durationMs = Date.now() - cell.startedAt;
-    if (message.success) {
-      cell.resolve({
-        kind: "completed",
-        cellId: cell.cellId,
-        value: message.value,
-        content: cell.content,
-        durationMs,
-      });
-      emit({
-        type: "cell_finished",
-        cellId: cell.cellId,
-        success: true,
-        durationMs,
-      });
-    } else {
-      cell.resolve({
-        kind: "failed",
-        cellId: cell.cellId,
-        phase: message.phase ?? "execute",
-        message: message.message ?? "Unknown error",
-        content: cell.content,
-        durationMs,
-      });
-      emit({
-        type: "cell_finished",
-        cellId: cell.cellId,
-        success: false,
-        durationMs,
-      });
-    }
-    cells.delete(cell.cellId);
+    if (!cell || cell.worker !== sourceWorker) return;
+    const result = message.success
+      ? buildCompletedResult(cell, message.value)
+      : buildFailedResult(
+          cell,
+          message.phase ?? "execute",
+          message.message ?? "Unknown error",
+        );
+    parkOrDeliverTerminalResult(cell, result);
   };
 
-  const finalizeYield = (cell: CellState) => {
-    if (cell.resolved) return;
-    cell.resolved = true;
-    if (cell.yieldTimer) {
-      clearTimeout(cell.yieldTimer);
+  const handleWorkerMessage = async (
+    sourceWorker: Worker,
+    message: WorkerToHostMessage,
+  ) => {
+    if (!message || typeof message !== "object") return;
+    switch (message.type) {
+      case "tool_call":
+        await handleToolCall(sourceWorker, message);
+        break;
+      case "content":
+        handleContent(sourceWorker, message);
+        break;
+      case "notify":
+        handleNotify(sourceWorker, message);
+        break;
+      case "state_set":
+        handleStateSet(sourceWorker, message);
+        break;
+      case "yield":
+        handleYield(sourceWorker, message);
+        break;
+      case "result":
+        handleResult(sourceWorker, message);
+        break;
+      default:
+        break;
     }
-    const durationMs = Date.now() - cell.startedAt;
-    const result: ExecCellResult = {
-      kind: "yielded",
-      cellId: cell.cellId,
-      reason: cell.yieldedReason ?? "yield_control",
-      content: cell.content,
-      durationMs,
-    };
-    cell.resolve(result);
-    emit({
-      type: "cell_yielded",
-      cellId: cell.cellId,
-      reason: result.reason,
-      durationMs,
-    });
-    // Cell stays in `cells` (with resolved=true reset to false for the next
-    // resume) until `Wait` either resumes or terminates it. We mark it as
-    // unresolved again so the next Result message can land.
-    cell.resolved = false;
-    cell.yieldDeadline = undefined;
-    cell.yieldTimer = undefined;
-  };
-
-  const armPragmaTimer = (cell: CellState, ms: number) => {
-    if (cell.yieldTimer) clearTimeout(cell.yieldTimer);
-    cell.yieldDeadline = Date.now() + ms;
-    cell.yieldTimer = setTimeout(() => {
-      if (cell.resolved) return;
-      cell.yieldedReason = "pragma";
-      finalizeYield(cell);
-    }, ms);
-    cell.yieldTimer.unref?.();
   };
 
   const execute = async (
     request: ExecuteRequest,
   ): Promise<ExecCellResult> => {
     const cellId = request.cellId ?? newCellId();
+    const agentType =
+      request.context.agentType ?? request.agentType ?? options.agentType;
     const enabledTools = options.registry.list(
-      options.agentType
-        ? { agentType: options.agentType }
-        : request.agentType
-          ? { agentType: request.agentType }
-          : undefined,
+      agentType ? { agentType } : undefined,
     );
+    const worker = await spawnWorker();
+
     emit({
       type: "cell_started",
       cellId,
       summary: request.summary,
     });
 
-    const w = await ensureWorker();
+    const cell: CellState = {
+      cellId,
+      startedAt: Date.now(),
+      worker,
+      waiter: undefined,
+      context: request.context,
+      ...(request.toolHandlerExtras
+        ? { toolHandlerExtras: request.toolHandlerExtras }
+        : {}),
+      enabledToolsByName: new Map(enabledTools.map((tool) => [tool.name, tool])),
+      content: [],
+      toolCalls: [],
+    };
+    cells.set(cellId, cell);
+    workerToCellId.set(worker, cellId);
 
-    const promise = new Promise<ExecCellResult>((resolve, reject) => {
-      const cell: CellState = {
-        cellId,
-        startedAt: Date.now(),
-        resolve,
-        reject,
-        context: request.context,
-        ...(request.toolHandlerExtras
-          ? { toolHandlerExtras: request.toolHandlerExtras }
-          : {}),
-        enabledTools,
-        content: [],
-        resolved: false,
-      };
-      cells.set(cellId, cell);
+    const pragma = parsePragma(request.source);
+    const yieldAfterMs =
+      request.yieldAfterMs ??
+      pragma.yieldAfterMs ??
+      options.defaultYieldAfterMs;
+    if (typeof yieldAfterMs === "number" && yieldAfterMs > 0) {
+      armYieldTimer(cell, yieldAfterMs);
+    }
 
-      const pragma = parsePragma(request.source);
-      const yieldAfterMs =
-        request.yieldAfterMs ??
-        pragma.yieldAfterMs ??
-        options.defaultYieldAfterMs;
-      if (typeof yieldAfterMs === "number" && yieldAfterMs > 0) {
-        armPragmaTimer(cell, yieldAfterMs);
-      }
+    const timeoutMs = Math.max(
+      1_000,
+      Math.min(
+        request.timeoutMs ?? options.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS,
+        MAX_TIMEOUT_MS,
+      ),
+    );
+    armSoftTimeout(cell, timeoutMs);
 
-      const timeoutMs = Math.max(
-        1_000,
-        Math.min(
-          request.timeoutMs ?? options.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS,
-          MAX_TIMEOUT_MS,
-        ),
-      );
-      const timeoutTimer = setTimeout(() => {
-        if (cell.resolved) return;
-        cell.resolved = true;
-        cell.resolve({
-          kind: "failed",
-          cellId,
-          phase: "execute",
-          message: `Exec timed out after ${timeoutMs}ms.`,
-          content: cell.content,
-          durationMs: Date.now() - cell.startedAt,
-        });
-        cells.delete(cellId);
-      }, timeoutMs);
-      timeoutTimer.unref?.();
+    const resultPromise = new Promise<ExecCellResult>((resolve) => {
+      cell.waiter = { resolve };
     });
 
-    w.postMessage({
+    worker.postMessage({
       type: "execute",
       cellId,
       source: request.source,
@@ -639,9 +825,10 @@ export const createExecHost = (options: ExecHostOptions) => {
         name: tool.name,
         description: tool.description,
       })),
+      storeEntries: snapshotConversationStore(request.context),
     });
 
-    return promise;
+    return resultPromise;
   };
 
   const wait = async (request: WaitRequest): Promise<ExecCellResult> => {
@@ -649,61 +836,76 @@ export const createExecHost = (options: ExecHostOptions) => {
     if (!cell) {
       throw new Error(`No active Exec cell with id ${request.cellId}.`);
     }
+    if (cell.parkedResult) {
+      const parked = cell.parkedResult;
+      cleanupCell(cell);
+      return parked;
+    }
     if (request.terminate) {
-      if (cell.yieldRequestId) {
-        worker?.postMessage({
-          type: "resume",
-          requestId: cell.yieldRequestId,
-          value: { terminated: true },
-        });
-        cell.yieldRequestId = undefined;
-      }
-      cell.resolved = true;
-      cells.delete(cell.cellId);
-      const durationMs = Date.now() - cell.startedAt;
-      const result: ExecCellResult = {
-        kind: "failed",
+      const result = buildFailedResult(
+        cell,
+        "execute",
+        "Cell terminated by Wait({ terminate: true }).",
+      );
+      cleanupCell(cell);
+      const worker = cell.worker;
+      cell.worker = null;
+      void stopWorker(worker);
+      emit({
+        type: "cell_finished",
         cellId: cell.cellId,
-        phase: "execute",
-        message: "Cell terminated by Wait({ terminate: true }).",
-        content: cell.content,
-        durationMs,
-      };
-      cell.resolve(result);
+        success: false,
+        durationMs: result.durationMs,
+      });
       return result;
     }
+    if (cell.waiter) {
+      throw new Error(`Exec cell ${request.cellId} is already waiting on Wait().`);
+    }
+    if (!cell.worker) {
+      throw new Error(`Exec cell ${request.cellId} is no longer running.`);
+    }
 
-    return new Promise<ExecCellResult>((resolve) => {
-      cell.resolve = resolve;
-      cell.startedAt = Date.now();
-      cell.resolved = false;
-      cell.yieldedReason = "wait_request";
+    const yieldAfterMs = request.yieldAfterMs ?? DEFAULT_YIELD_AFTER_MS;
+    if (yieldAfterMs > 0) {
+      armYieldTimer(cell, yieldAfterMs);
+    }
+    cell.startedAt = Date.now();
+    cell.yieldedReason = "wait_request";
 
-      const yieldAfterMs = request.yieldAfterMs ?? DEFAULT_YIELD_AFTER_MS;
-      armPragmaTimer(cell, yieldAfterMs);
-
-      if (cell.yieldRequestId) {
-        worker?.postMessage({
-          type: "resume",
-          requestId: cell.yieldRequestId,
-          value: undefined,
-        });
-        cell.yieldRequestId = undefined;
-      }
+    const promise = new Promise<ExecCellResult>((resolve) => {
+      cell.waiter = { resolve };
     });
+
+    if (cell.yieldRequestId) {
+      cell.worker.postMessage({
+        type: "resume",
+        requestId: cell.yieldRequestId,
+        value: undefined,
+      });
+      cell.yieldRequestId = undefined;
+    }
+
+    return promise;
   };
 
   const shutdown = async () => {
-    if (worker) {
-      try {
-        worker.postMessage({ type: "shutdown" });
-        await worker.terminate();
-      } catch {
-        // Best-effort shutdown.
+    const workers = Array.from(activeWorkers);
+    for (const cell of cells.values()) {
+      clearYieldTimer(cell);
+      clearHardEscalationTimer(cell);
+      if (cell.waiter) {
+        cell.waiter.resolve(
+          buildFailedResult(cell, "host", "Exec host shut down."),
+        );
       }
-      worker = undefined;
-      workerReady = undefined;
+      cell.waiter = undefined;
+      cell.worker = null;
+      cell.parkedResult = undefined;
     }
+    cells.clear();
+
+    await Promise.allSettled(workers.map((worker) => stopWorker(worker)));
   };
 
   return {
