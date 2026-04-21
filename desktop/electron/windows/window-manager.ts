@@ -22,6 +22,44 @@ type Bounds = { x: number; y: number; width: number; height: number }
 type ShellWindowMode = 'full' | 'mini'
 type ShellWindowRef = { mode: ShellWindowMode; window: BrowserWindow }
 
+/**
+ * Chromium net error codes for failures that are usually transient — most
+ * commonly seen in dev when Vite is briefly cycling (HMR config change,
+ * dev runner restart) right as the renderer attempts to reload. Recovering
+ * to the static recovery surface for these is wrong: the dev server will
+ * be back in a few hundred ms and a simple reload of the original URL is
+ * the right move.
+ *
+ * Codes:
+ *   -3   ABORTED            (intentional navigation cancellation)
+ *   -7   TIMED_OUT
+ *   -21  NETWORK_CHANGED
+ *   -100 CONNECTION_CLOSED
+ *   -101 CONNECTION_RESET
+ *   -102 CONNECTION_REFUSED
+ *   -103 CONNECTION_ABORTED
+ *   -104 CONNECTION_FAILED
+ *   -105 NAME_NOT_RESOLVED
+ *   -106 INTERNET_DISCONNECTED
+ *   -118 CONNECTION_TIMED_OUT
+ */
+const TRANSIENT_NET_ERROR_CODES = new Set([
+  -3,
+  -7,
+  -21,
+  -100,
+  -101,
+  -102,
+  -103,
+  -104,
+  -105,
+  -106,
+  -118,
+])
+
+const isTransientNetError = (errorCode: number) =>
+  TRANSIENT_NET_ERROR_CODES.has(errorCode)
+
 const shouldRecoverFromDidFailLoad = (
   details: {
     errorCode: number
@@ -30,12 +68,31 @@ const shouldRecoverFromDidFailLoad = (
   },
 ) => {
   if (!details.isMainFrame) return false
-  // Ignore intentional navigation cancellation.
-  if (details.errorCode === -3) return false
   // Avoid recovery loops if recovery.html itself fails to load.
   if (details.validatedURL.includes('recovery.html')) return false
+  // Transient failures are handled separately via bounded reload retries —
+  // recovery is for genuinely broken renderers (crashed processes, missing
+  // bundles), not for "Vite restarted while you held Cmd+Shift+R".
+  if (isTransientNetError(details.errorCode)) return false
   return true
 }
+
+/**
+ * Tracks bounded reload retries per window so a flaky dev server can't
+ * either (a) leave the window stranded after one transient failure, or
+ * (b) trap us in a tight reload loop if Vite is genuinely down. We retry
+ * with linear backoff and surface the recovery page after the cap.
+ */
+const TRANSIENT_RELOAD_MAX_ATTEMPTS = 4
+const TRANSIENT_RELOAD_BASE_DELAY_MS = 350
+
+type TransientReloadState = {
+  attempts: number
+  lastFailureAtMs: number
+  scheduledTimer: ReturnType<typeof setTimeout> | null
+}
+
+const RELOAD_RETRY_RESET_MS = 5_000
 
 export class WindowManager {
   private readonly fullWindowController: FullWindowController
@@ -44,6 +101,10 @@ export class WindowManager {
   private lastActiveWindowMode: ShellWindowMode = 'full'
   private miniWindowBounds: Bounds | null = null
   private miniShouldRestoreExternalApp = false
+  private readonly transientReloadStateByMode = new Map<
+    ShellWindowMode,
+    TransientReloadState
+  >()
 
   constructor(private readonly options: WindowManagerOptions) {
     this.fullWindowController = new FullWindowController({
@@ -54,12 +115,17 @@ export class WindowManager {
       getDevServerUrl: options.getDevServerUrl,
       setupExternalLinkHandlers: (window) =>
         options.externalLinkService.setupExternalLinkHandlers(window),
-      onDidStartLoading: () => {},
+      onDidStartLoading: () => {
+        this.resetTransientReloadStateOnSuccess('full')
+      },
       onRenderProcessGone: (details) => {
         console.error('Renderer process gone:', details.reason)
         this.fullWindowController.loadRecoveryPage()
       },
       onDidFailLoad: (details) => {
+        if (this.handleTransientReload('full', details)) {
+          return
+        }
         if (!shouldRecoverFromDidFailLoad(details)) {
           return
         }
@@ -72,6 +138,7 @@ export class WindowManager {
         this.fullWindowController.loadRecoveryPage()
       },
       onClosed: () => {
+        this.cancelTransientReload('full')
         this.syncLastActiveWindowMode()
       },
     })
@@ -83,12 +150,17 @@ export class WindowManager {
       getDevServerUrl: options.getDevServerUrl,
       setupExternalLinkHandlers: (window) =>
         options.externalLinkService.setupExternalLinkHandlers(window),
-      onDidStartLoading: () => {},
+      onDidStartLoading: () => {
+        this.resetTransientReloadStateOnSuccess('mini')
+      },
       onRenderProcessGone: (details) => {
         console.error('Mini renderer process gone:', details.reason)
         this.miniWindowController.loadRecoveryPage()
       },
       onDidFailLoad: (details) => {
+        if (this.handleTransientReload('mini', details)) {
+          return
+        }
         if (!shouldRecoverFromDidFailLoad(details)) {
           return
         }
@@ -101,9 +173,102 @@ export class WindowManager {
         this.miniWindowController.loadRecoveryPage()
       },
       onClosed: () => {
+        this.cancelTransientReload('mini')
         this.syncLastActiveWindowMode()
       },
     })
+  }
+
+  /**
+   * Returns `true` when the failure was a transient connection blip that we
+   * absorbed via a delayed reload — caller should bail out of the recovery
+   * fall-through path. Returns `false` for terminal failures (e.g. missing
+   * bundle, JS parse error in main frame).
+   *
+   * Bounded by `TRANSIENT_RELOAD_MAX_ATTEMPTS`; each attempt waits a little
+   * longer than the previous so we don't hammer a still-restarting Vite.
+   */
+  private handleTransientReload(
+    mode: ShellWindowMode,
+    details: { errorCode: number; validatedURL: string; isMainFrame: boolean },
+  ): boolean {
+    if (!details.isMainFrame) return false
+    if (!isTransientNetError(details.errorCode)) return false
+    // Recovery loops itself isn't reachable here (already filtered upstream),
+    // but be conservative.
+    if (details.validatedURL.includes('recovery.html')) return false
+    // -3 (ABORTED) is silent on purpose. It usually means the user/system
+    // initiated a fresh navigation, so a reload would race or even cancel
+    // the new navigation. Just swallow it.
+    if (details.errorCode === -3) return true
+
+    const now = Date.now()
+    const previous = this.transientReloadStateByMode.get(mode)
+    const attemptsSoFar =
+      previous && now - previous.lastFailureAtMs < RELOAD_RETRY_RESET_MS
+        ? previous.attempts
+        : 0
+    const nextAttempt = attemptsSoFar + 1
+
+    if (nextAttempt > TRANSIENT_RELOAD_MAX_ATTEMPTS) {
+      // Give up on retries; let the caller fall through to recovery.
+      this.cancelTransientReload(mode)
+      return false
+    }
+
+    if (previous?.scheduledTimer) {
+      clearTimeout(previous.scheduledTimer)
+    }
+
+    const delayMs = TRANSIENT_RELOAD_BASE_DELAY_MS * nextAttempt
+    console.warn(
+      `[reload] ${mode} transient ${details.errorCode} on ${details.validatedURL}; retry ${nextAttempt}/${TRANSIENT_RELOAD_MAX_ATTEMPTS} in ${delayMs}ms`,
+    )
+
+    const scheduledTimer = setTimeout(() => {
+      const state = this.transientReloadStateByMode.get(mode)
+      if (state) {
+        state.scheduledTimer = null
+      }
+      if (mode === 'full') {
+        this.fullWindowController.reloadMainWindow()
+      } else {
+        this.miniWindowController.reloadMainWindow()
+      }
+    }, delayMs)
+
+    this.transientReloadStateByMode.set(mode, {
+      attempts: nextAttempt,
+      lastFailureAtMs: now,
+      scheduledTimer,
+    })
+    return true
+  }
+
+  /**
+   * `did-start-loading` fires both on the failed attempt AND on the
+   * subsequent retry attempt; we only want to clear the budget when a
+   * load actually progresses past the initial connect. Realistically,
+   * once any new load has begun we can safely consider the previous
+   * window of failures resolved — the next failure within the reset
+   * window will rebuild the counter.
+   */
+  private resetTransientReloadStateOnSuccess(mode: ShellWindowMode) {
+    const state = this.transientReloadStateByMode.get(mode)
+    if (!state) return
+    // Don't clear if we're mid-retry (the timer is scheduled but hasn't
+    // fired yet) — the start-loading we're observing is the previous
+    // attempt's, not the retry's.
+    if (state.scheduledTimer) return
+    this.transientReloadStateByMode.delete(mode)
+  }
+
+  private cancelTransientReload(mode: ShellWindowMode) {
+    const state = this.transientReloadStateByMode.get(mode)
+    if (state?.scheduledTimer) {
+      clearTimeout(state.scheduledTimer)
+    }
+    this.transientReloadStateByMode.delete(mode)
   }
 
   createFullWindow() {
