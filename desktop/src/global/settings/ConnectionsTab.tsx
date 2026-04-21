@@ -80,7 +80,7 @@ function GoogleWorkspaceCard() {
     <div className="settings-card">
       <h3 className="settings-card-title">Google Workspace</h3>
       <p className="settings-card-desc">
-        Connect your Google account to let Stella help with Gmail, Calendar,
+        Connect your Google account so Stella can help with Gmail, Calendar,
         Drive, and Docs.
       </p>
 
@@ -88,7 +88,7 @@ function GoogleWorkspaceCard() {
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-sublabel">
-              Google Workspace integration is not available.
+              Google Workspace isn't available right now.
             </div>
           </div>
         </div>

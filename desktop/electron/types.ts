@@ -3,11 +3,10 @@ import type { ChatContext } from '../src/shared/contracts/boundary.js'
 import type {
   UiMode,
   WindowMode,
-  ViewType,
   UiState,
 } from '../src/shared/contracts/ui.js'
 
-export type { UiMode, WindowMode, ViewType, UiState }
+export type { UiMode, WindowMode, UiState }
 
 export type ScreenshotCapture = {
   dataUrl: string

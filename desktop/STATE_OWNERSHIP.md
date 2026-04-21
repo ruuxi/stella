@@ -25,19 +25,34 @@ initial sync.
 | -------------------------------------------- | ----------------------- | --------------------------------------------------------------- | ---------------------------------------------------- |
 | `mode` (`chat` | `voice`)                    | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()`          | Renderer context, Main (overlay logic)               |
 | `window` (`full` | `mini`)                   | Main (`UiStateService`) | Renderer via `setState` + `window:show`, Main via IPC handler   | Renderer context, WindowManager                      |
-| `view` (`app` | `chat` | `store` | `social`) | Main (`UiStateService`) | Renderer via `setState`                                         | Renderer context (navigation)                        |
 | `conversationId`                             | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()`          | Renderer context, VoiceRuntimeRoot                    |
 | `isVoiceRtcActive`                           | Main (`UiStateService`) | Main only — via `activateVoiceRtc()` / `deactivateVoiceModes()` | Renderer context, overlay sync                        |
+
+> **Note (TanStack Router migration)**: The active *view* (which app is on
+> screen) used to live in `UiState.view`. It now lives in the router. The
+> router uses `createMemoryHistory()`. The full-shell renderer persists its
+> last router location to `localStorage` (key `stella:lastLocation`) so it
+> can restore on the next launch — *not* through `UiState`/IPC, because no
+> other window cares. See `desktop/src/shared/lib/last-location.ts` and
+> the restore/persist effects in `desktop/src/routes/__root.tsx`. Adding a
+> new sidebar app is "drop a folder under `desktop/src/apps/<id>/`" — see
+> `state/skills/stella-desktop/SKILL.md`.
 
 
 ### conversationId — detailed flow
 
 This is the most complex piece of state because two subsystems interact:
 
-1. **Normal flow**: Renderer calls `setConversationId()` → Main updates →
-  Main broadcasts → all windows receive.
-2. **Voice runtime**: `VoiceRuntimeRoot` reads `state.conversationId` from
-  context and forwards it to the voice session manager. It does NOT write
+1. **Canonical source**: the chat route's `?c=<id>` search param
+   (`/chat?c=<id>`). The chat App (`apps/chat/App.tsx`) reads the param via
+   `useSearch({ from: '/chat' })`.
+2. **Cross-window mirror**: `useConversationBootstrap` writes the
+   bootstrapped id into `UiState.conversationId` so the **voice overlay
+   window** (which has no router) can read it. The chat route also keeps
+   `UiState.conversationId` in sync via `setConversationId(...)` whenever
+   `?c=<id>` changes.
+3. **Voice runtime**: `VoiceRuntimeRoot` reads `state.conversationId` from
+   context and forwards it to the voice session manager. It does NOT write
    back to UiState — it is a consumer, not an owner. It has a local
    `bootConversationId` used only to resolve the ID before the first render
    via `localChat.getOrCreateDefaultConversationId()`.

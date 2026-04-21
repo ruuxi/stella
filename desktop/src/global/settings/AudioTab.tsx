@@ -179,15 +179,15 @@ export function AudioTab() {
     ? "Recover microphone access"
     : "Manage microphone access";
   const microphoneRecoveryDescription = microphoneDenied
-    ? "macOS will not prompt Stella again automatically after a prior denial. Reset the permission, then reopen Stella from the launcher."
-    : "If microphone permission ever gets stuck or you want macOS to ask again, you can reset it and reopen Stella from the launcher.";
+    ? "Once you've said no, macOS won't ask again on its own. Reset the permission, then quit and reopen Stella."
+    : "If the microphone permission ever gets stuck, you can reset it and ask macOS to prompt again.";
 
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
         <h3 className="settings-card-title">Microphone</h3>
         <p className="settings-card-desc">
-          Allow Stella to use your microphone for voice conversations.
+          Let Stella hear you so you can talk instead of type.
         </p>
         {permissionError ? (
           <p className="settings-card-desc settings-card-desc--error" role="alert">
@@ -198,7 +198,7 @@ export function AudioTab() {
           <div className="settings-row-info">
             <div className="settings-row-label">Enable microphone</div>
             <div className="settings-row-sublabel">
-              Voice features require microphone access.
+              Required for talking to Stella.
             </div>
           </div>
           <div className="settings-row-control">
@@ -244,9 +244,9 @@ export function AudioTab() {
         {micEnabled && audioInputDevices.length > 0 ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">Input device</div>
+              <div className="settings-row-label">Microphone</div>
               <div className="settings-row-sublabel">
-                Choose which microphone Stella listens on.
+                Which mic should Stella listen to?
               </div>
             </div>
             <div className="settings-row-control">
@@ -270,14 +270,14 @@ export function AudioTab() {
       <div className="settings-card">
         <h3 className="settings-card-title">Speaker</h3>
         <p className="settings-card-desc">
-          Choose which speaker Stella uses for voice responses.
+          Where should Stella's voice come out?
         </p>
         {audioOutputDevices.length > 0 ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">Output device</div>
+              <div className="settings-row-label">Speaker</div>
               <div className="settings-row-sublabel">
-                Audio output for voice conversations.
+                Pick the speaker or headphones to use.
               </div>
             </div>
             <div className="settings-row-control">
@@ -300,8 +300,8 @@ export function AudioTab() {
             <div className="settings-row-info">
               <div className="settings-row-sublabel">
                 {micEnabled
-                  ? "No output devices found."
-                  : "Enable the microphone to see available audio devices."}
+                  ? "No speakers found."
+                  : "Turn on the microphone to see your speakers."}
               </div>
             </div>
           </div>

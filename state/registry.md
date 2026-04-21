@@ -15,6 +15,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 - Office documents: [stella-office](state/skills/stella-office/SKILL.md)
 - Desktop app automation: [stella-computer](state/skills/stella-computer/SKILL.md)
 - Electron app control: [electron](state/skills/electron/SKILL.md)
+- Modify Stella's own desktop app: [stella-desktop](state/skills/stella-desktop/SKILL.md)
 - Managed media API docs: [managed-media-sdk](state/skills/managed-media-sdk/SKILL.md)
 - Feature packaging and sharing: [blueprint-management](state/skills/blueprint-management/SKILL.md)
 - User profile and context: [user-profile](state/skills/user-profile/SKILL.md)

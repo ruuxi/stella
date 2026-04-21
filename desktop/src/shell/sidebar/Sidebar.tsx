@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { AppMetadata } from "@/apps/_shared/app-metadata";
 import { useTheme } from "@/context/theme-context";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import { getPlatform } from "@/platform/electron/platform";
-import type { ViewType } from "@/shared/contracts/ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,34 +14,41 @@ import {
 } from "@/ui/dropdown-menu";
 import { ShiftingGradient } from "../background/ShiftingGradient";
 import {
-  CustomArrowLeft as ArrowLeft,
-  CustomHouse as House,
   CustomDevice as Device,
   CustomLogIn as LogIn,
   CustomPalette as Palette,
   CustomPlusSquare as PlusSquare,
-  CustomSettings as Settings,
-  CustomStore as Store,
   CustomUser as User,
-  CustomUsers as Users,
 } from "./SidebarIcons";
 import "./sidebar.css";
 
+/**
+ * App discovery: every `desktop/src/apps/<id>/metadata.ts` is loaded eagerly
+ * by Vite at build time, sorted by `order`, and split into top / bottom slots.
+ *
+ * Add a new app by dropping a `metadata.ts` into `desktop/src/apps/<id>/`.
+ * No edits to this file are needed.
+ */
+const APP_MODULES = import.meta.glob<{ default: AppMetadata }>(
+  "../../apps/*/metadata.ts",
+  { eager: true },
+);
+
+const ALL_APPS: AppMetadata[] = Object.values(APP_MODULES)
+  .map((m) => m.default)
+  .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+
+const TOP_APPS = ALL_APPS.filter((a) => a.slot === "top");
+const BOTTOM_APPS = ALL_APPS.filter((a) => a.slot === "bottom");
+
 interface SidebarProps {
   className?: string;
-  activeView?: ViewType;
-  isShowingHomeContent?: boolean;
   hideThemePicker?: boolean;
   themePickerOpen?: boolean;
   onThemePickerOpenChange?: (open: boolean) => void;
   onThemeSelect?: () => void;
   onSignIn?: () => void;
   onConnect?: () => void;
-  onSettings?: () => void;
-  onStore?: () => void;
-
-  onChat?: () => void;
-  onSocial?: () => void;
   onNewApp?: () => void;
   onNewAppAskStella?: () => void;
 }
@@ -133,26 +141,69 @@ const AuthButton = ({
   );
 };
 
+interface AppNavItemProps {
+  app: AppMetadata;
+}
+
+const AppNavItem = ({ app }: AppNavItemProps) => {
+  const matchRoute = useMatchRoute();
+  const isActive = Boolean(matchRoute({ to: app.route }));
+  const Icon = app.icon;
+
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (isActive && app.onActiveClick) {
+        event.preventDefault();
+        app.onActiveClick();
+      }
+    },
+    [isActive, app],
+  );
+
+  return (
+    <Link
+      to={app.route}
+      className={`sidebar-nav-item${isActive ? " sidebar-nav-item--active" : ""}`}
+      onClick={handleClick}
+    >
+      <span className="sidebar-nav-icon">
+        <Icon size={18} />
+      </span>
+      <span className="sidebar-nav-label">{app.label}</span>
+    </Link>
+  );
+};
+
 export const Sidebar = ({
   className,
-  activeView,
-  isShowingHomeContent,
   hideThemePicker,
   themePickerOpen,
   onThemePickerOpenChange,
   onThemeSelect,
   onSignIn,
   onConnect,
-  onSettings,
-  onStore,
-  onChat,
-  onSocial,
   onNewApp,
   onNewAppAskStella,
 }: SidebarProps) => {
   const { gradientMode, gradientColor } = useTheme();
   const isMac = getPlatform() === "darwin";
   const handleAskStella = onNewAppAskStella ?? onNewApp;
+  const matchRoute = useMatchRoute();
+  const navigate = useNavigate();
+  const isOnChatRoute = Boolean(matchRoute({ to: "/chat" }));
+
+  const homeApp = useMemo(
+    () => ALL_APPS.find((app) => app.id === "chat"),
+    [],
+  );
+
+  const handleBrandClick = useCallback(() => {
+    if (isOnChatRoute) {
+      homeApp?.onActiveClick?.();
+      return;
+    }
+    void navigate({ to: "/chat" });
+  }, [isOnChatRoute, homeApp, navigate]);
 
   return (
     <aside className={`sidebar${className ? ` ${className}` : ""}`}>
@@ -170,7 +221,7 @@ export const Sidebar = ({
       <button
         type="button"
         className="sidebar-brand"
-        onClick={onChat}
+        onClick={handleBrandClick}
       >
         <div className="sidebar-brand-logo" aria-hidden="true">
           <img src="stella-logo.svg" alt="" className="sidebar-brand-logo-art" />
@@ -178,32 +229,9 @@ export const Sidebar = ({
         <span className="sidebar-brand-text">Stella</span>
       </button>
       <nav className="sidebar-nav">
-        <button
-          type="button"
-          className={`sidebar-nav-item ${activeView === "chat" ? "sidebar-nav-item--active" : ""}`}
-          onClick={onChat}
-        >
-          <span className="sidebar-nav-icon">
-            {activeView === "chat" && !isShowingHomeContent ? (
-              <ArrowLeft size={18} />
-            ) : (
-              <House size={18} />
-            )}
-          </span>
-          <span className="sidebar-nav-label">
-            {activeView === "chat" && !isShowingHomeContent ? "Back" : "Home"}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`sidebar-nav-item ${activeView === "social" ? "sidebar-nav-item--active" : ""}`}
-          onClick={onSocial}
-        >
-          <span className="sidebar-nav-icon">
-            <Users size={18} />
-          </span>
-          <span className="sidebar-nav-label">Social</span>
-        </button>
+        {TOP_APPS.map((app) => (
+          <AppNavItem key={app.id} app={app} />
+        ))}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="sidebar-nav-item">
@@ -236,25 +264,10 @@ export const Sidebar = ({
               </button>
             }
           />
-          <button
-            type="button"
-            className="sidebar-icon-button"
-            onClick={onSettings}
-            title="Settings"
-          >
-            <Settings size={18} />
-          </button>
         </div>
-        <button
-          type="button"
-          className={`sidebar-nav-item ${activeView === "store" ? "sidebar-nav-item--active" : ""}`}
-          onClick={onStore}
-        >
-          <span className="sidebar-nav-icon">
-            <Store size={18} />
-          </span>
-          <span className="sidebar-nav-label">Store</span>
-        </button>
+        {BOTTOM_APPS.map((app) => (
+          <AppNavItem key={app.id} app={app} />
+        ))}
         <button type="button" className="sidebar-nav-item" onClick={onConnect}>
           <span className="sidebar-nav-icon">
             <Device size={18} />

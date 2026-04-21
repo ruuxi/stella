@@ -1,6 +1,7 @@
 import fs from "fs"
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
+import { TanStackRouterVite } from "@tanstack/router-plugin/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, searchForWorkspaceRoot, type ModuleNode, type Plugin } from "vite"
 import { getSelfModHmrFlushMode } from "../runtime/kernel/self-mod/flush-mode.js"
@@ -438,6 +439,12 @@ function selfModHmrControl(): Plugin {
 
 export default defineConfig({
   plugins: [
+    TanStackRouterVite({
+      target: 'react',
+      autoCodeSplitting: true,
+      routesDirectory: './src/routes',
+      generatedRouteTree: './src/routeTree.gen.ts',
+    }),
     react(),
     tailwindcss(),
     devServerUrl(),

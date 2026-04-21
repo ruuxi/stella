@@ -7,6 +7,16 @@
   height: 100%;
 }
 
+/* ---- Standalone (route-mounted) shell ---- */
+
+.settings-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: transparent;
+}
+
 /* ---- Layout: sidebar + panel ---- */
 
 .settings-layout {
@@ -15,14 +25,18 @@
   min-height: 0;
 }
 
+.settings-layout--standalone {
+  padding-top: 32px;
+}
+
 /* ---- Sidebar Tabs ---- */
 
 .settings-sidebar {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 0 16px 16px;
-  width: 120px;
+  padding: 4px 16px 16px 16px;
+  width: 140px;
   flex-shrink: 0;
   border-right: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
 }
@@ -63,28 +77,11 @@
   position: relative;
 }
 
-.settings-panel-wrap::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 40px;
-  background: linear-gradient(to bottom, transparent, var(--background));
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-  border-radius: 0 0 var(--radius-xl, 10px) 0;
-}
-
-.settings-panel-wrap[data-at-bottom]::after {
-  opacity: 0;
-}
-
 .settings-panel {
   height: 100%;
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 4px 20px 16px;
+  padding: 8px 28px 32px;
 }
 
 .settings-panel::-webkit-scrollbar {
@@ -94,7 +91,8 @@
 .settings-tab-content {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 28px;
+  max-width: 720px;
 }
 
 /* ---- Section Card ---- */
@@ -103,27 +101,41 @@
   background: none;
   border: none;
   border-radius: 0;
-  padding: 0;
+  padding: 0 0 28px;
+}
+
+.settings-tab-content > .settings-card:not(:last-child) {
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.settings-tab-content > .settings-card:last-child {
+  padding-bottom: 0;
 }
 
 .settings-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .settings-card-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-strong);
-  margin: 0;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+}
+
+.settings-card-header .settings-card-title {
+  margin-bottom: 0;
 }
 
 .settings-card-desc {
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--text-weak);
-  margin: 0 0 12px;
+  margin: 0 0 16px;
 }
 
 .settings-card-desc--error {
@@ -135,12 +147,20 @@
 .settings-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 0;
+  gap: 16px;
+  padding: 12px 0;
 }
 
 .settings-row + .settings-row {
-  border-top: 1px solid color-mix(in oklch, var(--foreground) 5%, transparent);
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.settings-card > .settings-row:first-of-type {
+  padding-top: 4px;
+}
+
+.settings-card > .settings-row:last-child {
+  padding-bottom: 0;
 }
 
 .settings-row-info {
@@ -155,9 +175,10 @@
 }
 
 .settings-row-sublabel {
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--text-weak);
-  margin-top: 1px;
+  margin-top: 3px;
 }
 
 .settings-row-control {

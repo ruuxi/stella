@@ -41,6 +41,11 @@ export default defineConfig({
           environment: 'node',
           include: ['tests/runtime/**/*.{test,spec}.{ts,tsx}'],
         },
+        resolve: {
+          alias: [
+            { find: /^@\//, replacement: `${path.resolve(__dirname, './src')}/` },
+          ],
+        },
       },
     ],
   },

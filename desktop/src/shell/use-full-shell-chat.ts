@@ -45,13 +45,14 @@ const resetChatScroll = (
 
 type UseFullShellChatOptions = {
   activeConversationId: string | null
-  activeView: import('@/shared/contracts/ui').ViewType
+  /** True when the user is currently on the `/chat` route. */
+  isOnChatRoute: boolean
   isDev: boolean
 }
 
 export function useFullShellChat({
   activeConversationId,
-  activeView,
+  isOnChatRoute,
   isDev,
 }: UseFullShellChatOptions) {
   const [message, setMessage] = useState('')
@@ -61,7 +62,7 @@ export function useFullShellChat({
   })
   const [hasInteractedWithChatThisSession, setHasInteractedWithChatThisSession] =
     useState(false)
-  const prevViewRef = useRef(activeView)
+  const prevOnChatRouteRef = useRef(isOnChatRoute)
   const { chatContext, setChatContext, selectedText, setSelectedText } =
     useChatContextSync()
 
@@ -139,7 +140,7 @@ export function useFullShellChat({
     isStreaming,
   })
 
-  const firstStintOnChat = !leftChatOnce && activeView === 'chat'
+  const firstStintOnChat = !leftChatOnce && isOnChatRoute
   const showHomeContent = firstStintOnChat
     ? !hasMessages ||
       !hasInteractedWithChatThisSession ||
@@ -147,18 +148,16 @@ export function useFullShellChat({
     : idleBasedHome
 
   useEffect(() => {
-    if (prevViewRef.current === 'chat' && activeView !== 'chat') {
+    if (prevOnChatRouteRef.current && !isOnChatRoute) {
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.setItem(SESSION_LEFT_CHAT_KEY, '1')
       }
-      // Defer to escape this effect's render cycle — preventing the
-      // cascading-renders lint warning while preserving identical behavior.
       queueMicrotask(() => {
         setLeftChatOnce(true)
       })
     }
-    prevViewRef.current = activeView
-  }, [activeView])
+    prevOnChatRouteRef.current = isOnChatRoute
+  }, [isOnChatRoute])
 
   const onSuggestionClick = useCallback((prompt: string) => {
     resetIdleTimer()
@@ -206,11 +205,10 @@ export function useFullShellChat({
     return resetChatScroll(resetScrollState, scrollToBottom)
   }, [activeConversationId, resetScrollState, scrollToBottom])
 
-  // Reset scroll when switching to chat view
   useLayoutEffect(() => {
-    if (activeView !== 'chat') return
+    if (!isOnChatRoute) return
     return resetChatScroll(resetScrollState, scrollToBottom)
-  }, [activeView, resetScrollState, scrollToBottom])
+  }, [isOnChatRoute, resetScrollState, scrollToBottom])
 
   const handleSend = useCallback(() => {
     markHomeSessionInteraction()

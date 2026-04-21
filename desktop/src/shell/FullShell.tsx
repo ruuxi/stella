@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { RouterProvider } from "@tanstack/react-router";
 import { useTheme } from "@/context/theme-context";
 import { useUiState } from "@/context/ui-state";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
@@ -15,6 +16,7 @@ import {
   useOnboardingOverlay,
 } from "@/global/onboarding/OnboardingOverlay";
 import { useBootstrapState } from "@/systems/boot/bootstrap-state";
+import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./full-shell.layout.css";
 import "./mobile.css";
@@ -22,11 +24,6 @@ import "./mobile.css";
 const OnboardingCanvas = lazy(() =>
   import("@/global/onboarding/OnboardingCanvas").then((module) => ({
     default: module.OnboardingCanvas,
-  })),
-);
-const FullShellReadySurface = lazy(() =>
-  import("./FullShellReadySurface").then((module) => ({
-    default: module.FullShellReadySurface,
   })),
 );
 
@@ -108,11 +105,7 @@ export const FullShell = () => {
 
       <div className="full-body">
         {appReady ? (
-          <Suspense fallback={null}>
-            <FullShellReadySurface
-              onboardingExiting={onboarding.onboardingExiting}
-            />
-          </Suspense>
+          <RouterProvider router={router} />
         ) : (
           <div
             className="onboarding-layout"

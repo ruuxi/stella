@@ -171,25 +171,27 @@ export type ElectronCaptureApi = {
     width: number;
     height: number;
   } | null>;
-  visionScreenshots: (point?: { x: number; y: number }) => Promise<Array<{
-    dataUrl: string;
-    width: number;
-    height: number;
-    displayId: number;
-    screenNumber: number;
-    label: string;
-    isPrimaryFocus: boolean;
-    coordinateSpace: {
-      x: number;
-      y: number;
-      logicalWidth: number;
-      logicalHeight: number;
-      sourceWidth: number;
-      sourceHeight: number;
-      targetWidth: number;
-      targetHeight: number;
-    };
-  }>>;
+  visionScreenshots: (point?: { x: number; y: number }) => Promise<
+    Array<{
+      dataUrl: string;
+      width: number;
+      height: number;
+      displayId: number;
+      screenNumber: number;
+      label: string;
+      isPrimaryFocus: boolean;
+      coordinateSpace: {
+        x: number;
+        y: number;
+        logicalWidth: number;
+        logicalHeight: number;
+        sourceWidth: number;
+        sourceHeight: number;
+        targetWidth: number;
+        targetHeight: number;
+      };
+    }>
+  >;
   removeScreenshot: (index: number) => void;
   submitRegionSelection: (payload: {
     x: number;
@@ -515,6 +517,8 @@ export type ElectronOnboardingApi = {
   synthesizeCoreMemory: (
     payload: OnboardingSynthesisRequest,
   ) => Promise<OnboardingSynthesisResponse>;
+  complete: () => Promise<{ ok: boolean }>;
+  reset: () => Promise<{ ok: boolean }>;
 };
 
 export type ElectronDiscoveryApi = {
@@ -779,12 +783,14 @@ export type ElectronHomeApi = {
 };
 
 export type ElectronScreenGuideApi = {
-  show: (annotations: Array<{
-    id: string;
-    label: string;
-    x: number;
-    y: number;
-  }>) => void;
+  show: (
+    annotations: Array<{
+      id: string;
+      label: string;
+      x: number;
+      y: number;
+    }>,
+  ) => void;
   hide: () => void;
 };
 
@@ -852,9 +858,7 @@ export type ElectronApi = {
         lastCaptureAt?: number | null;
       };
     }>;
-    setEnabled: (
-      enabled: boolean,
-    ) => Promise<{
+    setEnabled: (enabled: boolean) => Promise<{
       ok: boolean;
       enabled?: boolean;
       running?: boolean;
