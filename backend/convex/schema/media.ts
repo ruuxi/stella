@@ -16,11 +16,6 @@ export const mediaJobStatusValidator = v.union(
   v.literal("canceled"),
 );
 
-export const mediaRealtimeSessionStatusValidator = v.union(
-  v.literal("active"),
-  v.literal("ended"),
-);
-
 export const mediaJobErrorValidator = v.object({
   message: v.string(),
   code: v.optional(v.string()),
@@ -123,21 +118,6 @@ export const mediaSchema = {
     .index("by_ownerId_and_jobId", ["ownerId", "jobId"])
     .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
     .index("by_provider_and_providerRequestId", ["provider", "providerRequestId"]),
-
-  media_realtime_sessions: defineTable({
-    ownerId: v.string(),
-    sessionId: v.string(),
-    endpointId: v.string(),
-    status: mediaRealtimeSessionStatusValidator,
-    startedAt: v.number(),
-    lastSeenAt: v.number(),
-    billedSeconds: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    endedAt: v.optional(v.number()),
-  })
-    .index("by_ownerId_and_sessionId", ["ownerId", "sessionId"])
-    .index("by_ownerId_and_status", ["ownerId", "status"]),
 };
 
 
