@@ -295,4 +295,28 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     CREATE INDEX IF NOT EXISTS idx_social_session_files_session
     ON social_session_files(session_id, updated_at);
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS thread_summaries (
+      thread_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      agent_type TEXT NOT NULL,
+      rollout_summary TEXT NOT NULL,
+      raw_memory TEXT,
+      source_updated_at INTEGER NOT NULL,
+      processed_by_dream_at INTEGER,
+      dream_watermark INTEGER,
+      usage_count INTEGER NOT NULL DEFAULT 0,
+      last_usage INTEGER,
+      PRIMARY KEY (thread_id, run_id)
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_thread_summaries_unprocessed
+    ON thread_summaries(processed_by_dream_at, source_updated_at);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_thread_summaries_source_updated
+    ON thread_summaries(source_updated_at);
+  `);
 };

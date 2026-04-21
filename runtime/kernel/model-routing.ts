@@ -20,6 +20,18 @@ export type ResolvedLlmRoute = {
   getApiKey: () => string | undefined;
 };
 
+export const getResolvedLlmApiKey = (
+  resolved: ResolvedLlmRoute,
+): string | undefined => {
+  const apiKey = resolved.getApiKey()?.trim();
+  return apiKey ? apiKey : undefined;
+};
+
+export const resolvedLlmSupportsCredentiallessCalls = (
+  resolved: ResolvedLlmRoute,
+): boolean =>
+  resolved.route === "direct-provider" && resolved.model.baseUrl.trim().length > 0;
+
 const getCredential = (
   stellaRoot: string,
   providerId: string,

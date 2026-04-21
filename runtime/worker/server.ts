@@ -1902,6 +1902,32 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     },
   );
 
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_DREAM_TRIGGER_NOW,
+    async (params) => {
+      const trigger =
+        (
+          params as {
+            trigger?:
+              | "manual"
+              | "subagent_finalize"
+              | "chronicle_summary"
+              | "startup_catchup";
+          } | undefined
+        )?.trigger ?? "manual";
+      return await ensureRunner().triggerDreamNow(trigger);
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_CHRONICLE_SUMMARY_TICK,
+    async (params) => {
+      const window =
+        (params as { window?: "10m" | "6h" } | undefined)?.window ?? "10m";
+      return await ensureRunner().runChronicleSummaryTick(window);
+    },
+  );
+
   peer.registerRequestHandler(METHOD_NAMES.RUNTIME_HEALTH, async () => {
     return {
       ready: Boolean(state.runner?.agentHealthCheck().ready),

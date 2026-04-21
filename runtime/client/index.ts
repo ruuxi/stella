@@ -1517,6 +1517,81 @@ export class StellaRuntimeClient {
     );
   }
 
+  async triggerDreamNow(
+    trigger:
+      | "manual"
+      | "subagent_finalize"
+      | "chronicle_summary"
+      | "startup_catchup" = "manual",
+  ): Promise<{
+    scheduled: boolean;
+    reason:
+      | "scheduled"
+      | "disabled"
+      | "in_flight"
+      | "count_failed"
+      | "no_inputs"
+      | "below_threshold"
+      | "lock_busy"
+      | "no_api_key"
+      | "unavailable";
+    pendingThreadSummaries: number;
+    pendingExtensions: number;
+    detail?: string;
+  }> {
+    return await this.requestWorker<{
+      scheduled: boolean;
+      reason:
+        | "scheduled"
+        | "disabled"
+        | "in_flight"
+        | "count_failed"
+        | "no_inputs"
+        | "below_threshold"
+        | "lock_busy"
+        | "no_api_key"
+        | "unavailable";
+      pendingThreadSummaries: number;
+      pendingExtensions: number;
+      detail?: string;
+    }>(
+      METHOD_NAMES.INTERNAL_WORKER_DREAM_TRIGGER_NOW,
+      { trigger },
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
+  async runChronicleSummaryTick(window: "10m" | "6h"): Promise<
+    | {
+        wrote: true;
+        window: "10m" | "6h";
+        uniqueLines: number;
+        outPath: string;
+      }
+    | {
+        wrote: false;
+        window: "10m" | "6h";
+        reason:
+          | "disabled"
+          | "lock_busy"
+          | "no_api_key"
+          | "no_captures"
+          | "below_threshold"
+          | "unchanged"
+          | "no_signal"
+          | "llm_failed"
+          | "write_failed";
+        uniqueLines: number;
+        detail?: string;
+      }
+  > {
+    return await this.requestWorker(
+      METHOD_NAMES.INTERNAL_WORKER_CHRONICLE_SUMMARY_TICK,
+      { window },
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
   private buildWorkerInitializationState(): WorkerInitializationState {
     return {
       stellaRoot: this.options.initializeParams.stellaRoot,

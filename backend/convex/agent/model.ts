@@ -274,6 +274,14 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   search_html: "fast",
   store_security_review: "best",
   store_image_safety_review: "media",
+
+  // Memory pipeline (mirrors Codex's split: cheap extract / strong consolidate).
+  // Stage 1 thread "extraction" is implicit today (General's final response is
+  // the rollout summary). Stage 2 = Dream consolidation, run on the strongest
+  // tier so it can faithfully merge weeks of context. Chronicle's recursive
+  // summarizer ticks every minute, so it must stay cheap.
+  dream: "best",
+  chronicle: "synthesis",
 };
 
 const buildResolvedModeConfig = (

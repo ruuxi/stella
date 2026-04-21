@@ -264,6 +264,56 @@ const buildStartupDocMessage = (
   ].join("\n");
 };
 
+const buildMemoryFileMessage = (
+  displayPath: string,
+  content: string,
+): string => {
+  return [
+    `<memory_file path="${displayPath}">`,
+    content,
+    "</memory_file>",
+  ].join("\n");
+};
+
+const DREAM_MEMORY_DISPLAY_PATH = "state/memories/MEMORY.md";
+const DREAM_MEMORY_SUMMARY_DISPLAY_PATH = "state/memories/memory_summary.md";
+
+const injectDreamMemoryFiles = async (args: {
+  messages: RuntimePromptMessage[];
+  context: LocalTaskManagerAgentContext;
+  stellaHome?: string;
+  stellaRoot?: string;
+  isFirstTurn: boolean;
+}): Promise<void> => {
+  const home = args.stellaHome?.trim() || args.stellaRoot?.trim();
+  if (!home) return;
+
+  const summaryPath = path.join(home, "state", "memories", "memory_summary.md");
+  const summary = await readOptionalTextFile(summaryPath);
+  if (summary) {
+    args.messages.push(
+      createInternalPromptMessage(
+        buildMemoryFileMessage(DREAM_MEMORY_SUMMARY_DISPLAY_PATH, summary),
+        "hidden",
+        "bootstrap.memory_file",
+      ),
+    );
+  }
+
+  if (!args.isFirstTurn) return;
+  const memoryPath = path.join(home, "state", "memories", "MEMORY.md");
+  const memory = await readOptionalTextFile(memoryPath);
+  if (memory) {
+    args.messages.push(
+      createInternalPromptMessage(
+        buildMemoryFileMessage(DREAM_MEMORY_DISPLAY_PATH, memory),
+        "hidden",
+        "bootstrap.memory_file",
+      ),
+    );
+  }
+};
+
 export type OrchestratorPromptMessage = RuntimePromptMessage;
 
 const createInternalPromptMessage = (
@@ -302,6 +352,7 @@ export const buildStartupPromptMessages = async (args: {
   context: LocalTaskManagerAgentContext;
   stellaHome?: string;
   stellaRoot?: string;
+  includeDreamMemoryFiles?: boolean;
 }): Promise<RuntimePromptMessage[]> => {
   const messages: RuntimePromptMessage[] = [];
   const shouldIncludeStartupDocs = !(args.context.threadHistory?.length);
@@ -331,6 +382,21 @@ export const buildStartupPromptMessages = async (args: {
         ),
       );
     }
+  }
+
+  if (args.includeDreamMemoryFiles) {
+    // Dream-managed memory files (state/memories/MEMORY.md and
+    // memory_summary.md) are injected into the ORCHESTRATOR only. MEMORY.md is
+    // bigger and more stable, so we only inject it on the first turn (when
+    // there is no thread history). memory_summary.md is small and dynamic, so
+    // we inject it on every orchestrator turn.
+    await injectDreamMemoryFiles({
+      messages,
+      context: args.context,
+      stellaHome: args.stellaHome,
+      stellaRoot: args.stellaRoot,
+      isFirstTurn: shouldIncludeStartupDocs,
+    });
   }
 
   // Frozen Memory + User Profile snapshot. Populated only for the Orchestrator
@@ -377,6 +443,7 @@ export const buildSubagentPromptMessages = async (args: {
     context: args.context,
     stellaHome: args.stellaHome,
     stellaRoot: args.stellaRoot,
+    includeDreamMemoryFiles: false,
   });
   if (args.promptMessages?.length) {
     messages.push(...args.promptMessages);
@@ -421,6 +488,7 @@ export const buildOrchestratorPromptMessages = async (args: {
       context: args.context,
       stellaHome: args.stellaHome,
       stellaRoot: args.stellaRoot,
+      includeDreamMemoryFiles: true,
     })),
   );
   if (args.promptMessages?.length) {

@@ -821,6 +821,46 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("media:getStellaMediaDir") as Promise<string | null>,
   },
 
+  chronicle: {
+    status: () =>
+      ipcRenderer.invoke("chronicle:status") as Promise<{
+        available: boolean;
+        status?: {
+          enabled: boolean;
+          running: boolean;
+          paused?: boolean;
+          fps?: number;
+          captures?: number;
+          lastCaptureAt?: number | null;
+        };
+      }>,
+    setEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke("chronicle:setEnabled", { enabled }) as Promise<{
+        ok: boolean;
+        enabled?: boolean;
+        running?: boolean;
+        permission?: boolean;
+        reason?: string;
+      }>,
+    openMemoriesFolder: () =>
+      ipcRenderer.invoke("chronicle:openMemoriesFolder") as Promise<{
+        ok: boolean;
+      }>,
+    dreamNow: () =>
+      ipcRenderer.invoke("chronicle:dreamNow") as Promise<{
+        ok: boolean;
+        reason?: string;
+        pendingThreadSummaries: number;
+        pendingExtensions: number;
+        detail?: string;
+      }>,
+    wipeMemories: () =>
+      ipcRenderer.invoke("chronicle:wipeMemories") as Promise<{
+        ok: boolean;
+        reason?: string;
+      }>,
+  },
+
   schedule: {
     listCronJobs: () => ipcRenderer.invoke("schedule:listCronJobs"),
     listHeartbeats: () => ipcRenderer.invoke("schedule:listHeartbeats"),

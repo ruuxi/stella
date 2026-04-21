@@ -295,6 +295,82 @@ const GrepJsonSchema = {
   required: ["pattern"],
 };
 
+const DreamJsonSchema = {
+  type: "object",
+  properties: {
+    action: {
+      type: "string",
+      enum: ["list", "markProcessed"],
+      description:
+        "list = fetch unprocessed thread_summaries + memories_extensions newer than the persisted Dream state. markProcessed = stamp rows + extension paths as consumed.",
+    },
+    sinceWatermark: {
+      type: "number",
+      description:
+        "Optional Unix epoch ms override for thread_summaries returned by list.",
+    },
+    limit: {
+      type: "number",
+      description: "Optional cap on rows returned by list (default 50, max 500).",
+    },
+    threadKeys: {
+      type: "array",
+      description:
+        "markProcessed: list of {threadId, runId} pairs to stamp as processed.",
+      items: {
+        type: "object",
+        properties: {
+          threadId: { type: "string" },
+          runId: { type: "string" },
+        },
+        required: ["threadId", "runId"],
+      },
+    },
+    threadIds: {
+      type: "array",
+      description:
+        "markProcessed: shortcut to mark every unprocessed run for these threadIds.",
+      items: { type: "string" },
+    },
+    extensionPaths: {
+      type: "array",
+      description:
+        "markProcessed: list of memories_extensions/* file paths the agent consumed.",
+      items: { type: "string" },
+    },
+    watermark: {
+      type: "number",
+      description:
+        "markProcessed: explicit watermark to persist. Defaults to now.",
+    },
+  },
+  required: ["action"],
+};
+
+const StrReplaceJsonSchema = {
+  type: "object",
+  properties: {
+    file_path: {
+      type: "string",
+      description: "Absolute file path to mutate. The file must already exist.",
+    },
+    old_string: {
+      type: "string",
+      description:
+        "Exact text to replace. Must be unique within the file unless replace_all is true.",
+    },
+    new_string: {
+      type: "string",
+      description: "Replacement text. May be empty to delete.",
+    },
+    replace_all: {
+      type: "boolean",
+      description: "Replace every occurrence of old_string. Defaults to false.",
+    },
+  },
+  required: ["file_path", "old_string", "new_string"],
+};
+
 const MemoryJsonSchema = {
   type: "object",
   properties: {
@@ -349,6 +425,10 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Continue or revise an existing task thread by sending it a new message.",
   Memory:
     "Manage durable memory entries that survive across sessions (`target: \"user\"` or `target: \"memory\"`).",
+  Dream:
+    "Background memory consolidator IO. action=\"list\" returns unprocessed thread_summaries + pending memories_extensions paths; action=\"markProcessed\" advances the Dream watermark data.",
+  StrReplace:
+    "Surgically replace exact text inside an existing file. old_string must uniquely identify the target unless replace_all is true.",
   // Internal-only descriptors (Explore subagent uses Read/Grep).
   Read: "Read a file from the filesystem (internal).",
   Grep: "Search file contents using ripgrep (internal).",
@@ -369,6 +449,8 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   TaskPause: TaskPauseJsonSchema,
   TaskUpdate: TaskUpdateJsonSchema,
   Memory: MemoryJsonSchema,
+  Dream: DreamJsonSchema,
+  StrReplace: StrReplaceJsonSchema,
   Read: ReadJsonSchema,
   Grep: GrepJsonSchema,
 };

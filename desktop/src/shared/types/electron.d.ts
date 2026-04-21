@@ -840,6 +840,37 @@ export type ElectronApi = {
     ) => Promise<{ ok: boolean; path?: string; error?: string }>;
     getStellaMediaDir: () => Promise<string | null>;
   };
+  chronicle: {
+    status: () => Promise<{
+      available: boolean;
+      status?: {
+        enabled: boolean;
+        running: boolean;
+        paused?: boolean;
+        fps?: number;
+        captures?: number;
+        lastCaptureAt?: number | null;
+      };
+    }>;
+    setEnabled: (
+      enabled: boolean,
+    ) => Promise<{
+      ok: boolean;
+      enabled?: boolean;
+      running?: boolean;
+      permission?: boolean;
+      reason?: string;
+    }>;
+    openMemoriesFolder: () => Promise<{ ok: boolean }>;
+    dreamNow: () => Promise<{
+      ok: boolean;
+      reason?: string;
+      pendingThreadSummaries: number;
+      pendingExtensions: number;
+      detail?: string;
+    }>;
+    wipeMemories: () => Promise<{ ok: boolean; reason?: string }>;
+  };
   schedule: ElectronScheduleApi;
   store: ElectronStoreApi;
   socialSessions: ElectronSocialSessionsApi;

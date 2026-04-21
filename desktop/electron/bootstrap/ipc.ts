@@ -3,6 +3,7 @@ import { registerBrowserHandlers } from "../ipc/browser-handlers.js";
 import { registerDiscoveryHandlers } from "../ipc/discovery-handlers.js";
 import { registerGoogleWorkspaceHandlers } from "../ipc/google-workspace-handlers.js";
 import { registerCaptureHandlers } from "../ipc/capture-handlers.js";
+import { registerChronicleHandlers } from "../ipc/chronicle-handlers.js";
 import { registerDisplayHandlers } from "../ipc/display-handlers.js";
 import { registerHomeHandlers } from "../ipc/home-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
@@ -57,6 +58,48 @@ export const registerBootstrapIpcHandlers = (
   registerHomeHandlers({
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerChronicleHandlers({
+    getStellaRoot: lifecycle.getStellaRoot,
+    getController: () => state.chronicleController,
+    setController: (controller) => {
+      state.chronicleController = controller;
+    },
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+    triggerDreamNow: async () => {
+      const stellaRoot = lifecycle.getStellaRoot();
+      if (!stellaRoot) {
+        return {
+          ok: false,
+          reason: "no-stella-root",
+          pendingThreadSummaries: 0,
+          pendingExtensions: 0,
+        };
+      }
+      const runner = lifecycle.getRunner();
+      if (!runner) {
+        return {
+          ok: false,
+          reason: "no-runner",
+          pendingThreadSummaries: 0,
+          pendingExtensions: 0,
+        };
+      }
+      try {
+        const result = await runner.triggerDreamNow("manual");
+        return { ok: result.scheduled, ...result };
+      } catch (error) {
+        return {
+          ok: false,
+          reason: "unavailable",
+          pendingThreadSummaries: 0,
+          pendingExtensions: 0,
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
   });
 
   registerSystemHandlers({

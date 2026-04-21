@@ -28,4 +28,8 @@ export const registerBootstrapProcessCleanups = (
     context.state.officePreviewBridgeStop?.();
     context.state.officePreviewBridgeStop = null;
   });
+  processRuntime.registerCleanup("before-quit", "chronicle-daemon", async () => {
+    await context.state.chronicleController?.stop();
+    context.state.chronicleController = null;
+  });
 };

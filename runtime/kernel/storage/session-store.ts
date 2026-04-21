@@ -34,6 +34,7 @@ import {
   type LocalChatEventWindowMode,
 } from "../../chat-event-visibility.js";
 import { MemoryStore } from "../memory/memory-store.js";
+import { ThreadSummariesStore } from "../memory/thread-summaries-store.js";
 
 type SessionRow = {
   id: string;
@@ -562,6 +563,7 @@ const buildThreadMessagesFromEntries = (
 
 export class SessionStore {
   private memoryStoreInstance: MemoryStore | null = null;
+  private threadSummariesStoreInstance: ThreadSummariesStore | null = null;
 
   constructor(private readonly db: SqliteDatabase) {}
 
@@ -575,6 +577,18 @@ export class SessionStore {
       this.memoryStoreInstance = new MemoryStore(this.db);
     }
     return this.memoryStoreInstance;
+  }
+
+  /**
+   * Lazily-constructed singleton ThreadSummariesStore. Stage 1 of the
+   * Chronicle/Dream memory pipeline — receives one row per finalized
+   * subagent run (see {@link finalizeSubagentSuccess}).
+   */
+  get threadSummariesStore(): ThreadSummariesStore {
+    if (!this.threadSummariesStoreInstance) {
+      this.threadSummariesStoreInstance = new ThreadSummariesStore(this.db);
+    }
+    return this.threadSummariesStoreInstance;
   }
 
   private withTransaction(work: () => void): void {

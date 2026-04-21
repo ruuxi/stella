@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron";
 import { OverlayWindowController } from "../windows/overlay-window.js";
+import type { ChronicleController } from "../services/chronicle-controller.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
 import type { CaptureService } from "../services/capture-service.js";
@@ -44,6 +45,7 @@ export type BootstrapState = {
   isQuitting: boolean;
   localChatUpdateUnsubscribe: (() => void) | null;
   overlayController: OverlayWindowController | null;
+  chronicleController: ChronicleController | null;
   processRuntime: ProcessRuntime;
   scheduleUpdateUnsubscribe: (() => void) | null;
   googleWorkspaceAuthRequiredUnsubscribe: (() => void) | null;
@@ -161,6 +163,7 @@ export const createBootstrapContext = (
     isQuitting: false,
     localChatUpdateUnsubscribe: null,
     overlayController: null,
+    chronicleController: null,
     processRuntime,
     scheduleUpdateUnsubscribe: null,
     googleWorkspaceAuthRequiredUnsubscribe: null,

@@ -97,6 +97,8 @@ export const createToolHost = ({
   displayHtml,
   webSearch,
   memoryStore,
+  threadSummariesStore,
+  stellaHome,
 }: ToolHostOptions) => {
   const stateRoot = path.join(stellaRoot, "state");
   const toolCatalog = new Map<string, ToolMetadata>(
@@ -144,6 +146,8 @@ export const createToolHost = ({
     ...(displayHtml ? { displayHtml } : {}),
     ...(webSearch ? { webSearch } : {}),
     ...(memoryStore ? { memoryStore } : {}),
+    ...(threadSummariesStore ? { threadSummariesStore } : {}),
+    ...(stellaHome ? { stellaHome } : {}),
   };
   registry.registerMany(createAllBuiltins(builtinsOptions));
   registerDescribeBuiltin(registry);
