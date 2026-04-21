@@ -209,4 +209,73 @@ describe("Exec runtime", () => {
       await host.shutdown();
     }
   });
+
+  it("returns the completed result even if the cell finishes before Wait is called", async () => {
+    const registry = createExecToolRegistry();
+    const host = createExecHost({ registry });
+    try {
+      const yielded = await host.execute({
+        summary: "finish before wait",
+        source: `
+          // @exec: yield_after_ms=25
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          return "done-before-wait";
+        `,
+        context: ctx,
+      });
+      expect(yielded.kind).toBe("yielded");
+      if (yielded.kind !== "yielded") return;
+
+      await new Promise((resolve) => setTimeout(resolve, 120));
+
+      const resumed = await host.wait({
+        cellId: yielded.cellId,
+      });
+      expect(resumed.kind).toBe("completed");
+      if (resumed.kind !== "completed") return;
+      expect(resumed.value).toBe("done-before-wait");
+    } finally {
+      await host.shutdown();
+    }
+  });
+
+  it("terminates a yielded background cell so it cannot keep mutating store state", async () => {
+    const registry = createExecToolRegistry();
+    const host = createExecHost({ registry });
+    try {
+      const yielded = await host.execute({
+        summary: "terminate checkpointed cell",
+        source: `
+          // @exec: yield_after_ms=25
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          store("afterTerminate", "should-not-land");
+          return "late";
+        `,
+        context: ctx,
+      });
+      expect(yielded.kind).toBe("yielded");
+      if (yielded.kind !== "yielded") return;
+
+      const terminated = await host.wait({
+        cellId: yielded.cellId,
+        terminate: true,
+      });
+      expect(terminated.kind).toBe("failed");
+      if (terminated.kind !== "failed") return;
+      expect(terminated.message).toContain("Cell terminated");
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      const probe = await host.execute({
+        summary: "probe store after terminate",
+        source: `return load("afterTerminate") ?? "missing";`,
+        context: ctx,
+      });
+      expect(probe.kind).toBe("completed");
+      if (probe.kind !== "completed") return;
+      expect(probe.value).toBe("missing");
+    } finally {
+      await host.shutdown();
+    }
+  });
 });

@@ -1,72 +1,112 @@
-// @ts-nocheck
 /**
- * Exec runtime worker. Runs inside a Node `worker_thread` and owns a single
- * V8 context that persists for the whole session.
+ * Exec runtime worker. Runs inside a worker thread (Bun's `node:worker_threads`
+ * shim in production, Node's worker_threads in tests). Each cell evaluates
+ * inside its OWN fresh `vm.createContext` so cells can't pollute each other's
+ * globals (Codex-style isolation per call).
+ *
+ * What persists while this worker is alive:
+ *   - `stored`: the per-cell `Map` backing `store(k,v)` / `load(k)`, seeded
+ *     from the host's conversation-scoped snapshot when the cell starts.
+ *     Every `store(...)` also emits a `state_set` message so the host can
+ *     persist the latest JSON-serializable value outside the worker.
+ *   - `pending`: in-flight tool-call promise resolvers, keyed by requestId.
+ *     A single requestId only ever belongs to one cell, so this is safe.
+ *   - `nextRequestId`: monotonic counter (no semantic per-cell meaning).
+ *
+ * What does NOT persist across cells:
+ *   - The cell's `globalThis`. Each cell gets a brand-new sandbox with the
+ *     same Node-global surface (Buffer, process, fetch, require, ...) but a
+ *     fresh global object. Mutations to globalThis from one cell do not leak
+ *     into the next.
  *
  * Each `Exec` request:
- *   1. compiles the program body with esbuild (TS -> async-IIFE wrapped CJS),
- *   2. installs / refreshes the `tools` global from the snapshot the host
- *      sent so newly registered tools appear without restarting the worker,
- *   3. runs the program inside the persistent context,
- *   4. ferries `tools.*` calls back to the host over `parentPort`.
+ *   1. builds a fresh sandbox + `vm.createContext` for this cell,
+ *   2. installs the `tools.*` global (rebuilt every call from the host's
+ *      snapshot so newly registered tools appear without restarting the
+ *      worker) plus the standard `text` / `image` / `store` / `load` /
+ *      `notify` / `yield_control` / `exit` / `ALL_TOOLS` globals,
+ *   3. compiles the program body with esbuild (TS -> async-IIFE wrapped CJS),
+ *   4. runs the program inside the per-cell context,
+ *   5. ferries `tools.*` calls back to the host via `parentPort.postMessage`.
  *
- * The worker is intentionally untyped (`@ts-nocheck`) so it can be loaded as a
- * single CommonJS bundle with the kernel's Node runtime — no extra TS build
- * step required at boot. Typed bridge code lives alongside in `exec-host.ts`.
+ * The worker is loaded as a normal in-tree TS module under Bun (no esbuild
+ * bootstrap). Under Node — only used by vitest — the host transpiles this
+ * file to an in-tree CJS cache so module resolution still picks up esbuild
+ * from `runtime/node_modules`. No tmpdir, no `Module.globalPaths` patching.
  */
 
-const vm = require("node:vm");
-const fs = require("node:fs/promises");
-const path = require("node:path");
-const Module = require("node:module");
-const { parentPort, workerData } = require("node:worker_threads");
+import vm from "node:vm";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { Buffer } from "node:buffer";
+import { parentPort } from "node:worker_threads";
+import { transform } from "esbuild";
 
 if (!parentPort) {
-  throw new Error("exec-worker.ts must be loaded as a worker_thread.");
+  throw new Error("exec-worker.ts must be loaded as a worker thread.");
 }
 
-// When the worker file lives outside the kernel's node_modules tree (the host
-// transpiles it into the OS tmpdir on first launch), `require("esbuild")` won't
-// resolve against the project. Push the host-known module paths into the
-// shared `globalPaths` list so the worker can find them.
-const nodeModulePaths: string[] = Array.isArray(workerData?.nodeModulePaths)
-  ? (workerData.nodeModulePaths as string[])
-  : [];
-for (const entry of nodeModulePaths) {
-  if (!Module.globalPaths.includes(entry)) {
-    Module.globalPaths.push(entry);
-  }
-}
+const port = parentPort;
 
-const requireFromKernel = (moduleId: string): unknown => {
-  for (const candidateRoot of nodeModulePaths) {
-    try {
-      const created = Module.createRequire(path.join(candidateRoot, "noop.js"));
-      return created(moduleId);
-    } catch {
-      // try the next root
+type ToolDefinitionLike = { name: string; description?: string };
+
+type ContentItem =
+  | { type: "text"; text: string }
+  | { type: "image"; mimeType: string; data: string };
+
+type WorkerInbound =
+  | {
+      type: "execute";
+      cellId: string;
+      source?: string;
+      enabledTools?: ToolDefinitionLike[];
+      storeEntries?: Array<[string, unknown]>;
     }
-  }
-  return require(moduleId);
-};
+  | { type: "tool_result"; requestId: string; value?: unknown; error?: string }
+  | { type: "resume"; requestId: string; value?: unknown }
+  | { type: "shutdown" };
 
-const esbuild = requireFromKernel("esbuild") as typeof import("esbuild");
+type WorkerOutbound =
+  | { type: "ready" }
+  | {
+      type: "tool_call";
+      requestId: string;
+      cellId: string;
+      toolName: string;
+      args: unknown;
+    }
+  | { type: "content"; cellId: string; item: ContentItem }
+  | { type: "notify"; cellId: string; text: string }
+  | { type: "state_set"; cellId: string; key: string; value: unknown }
+  | { type: "yield"; cellId: string; requestId: string }
+  | {
+      type: "result";
+      cellId: string;
+      success: boolean;
+      value?: unknown;
+      message?: string;
+      phase?: "compile" | "execute";
+      stack?: string;
+    };
 
-const sandbox = createSandbox();
-const vmContext = vm.createContext(sandbox, {
-  name: "stella-exec",
-  codeGeneration: { strings: true, wasm: false },
-});
+type StellaExitError = Error & { __stellaExit: true; value: unknown };
 
-const stored = new Map();
-const pending = new Map();
+let stored = new Map<string, unknown>();
+const pending = new Map<
+  string,
+  { resolve: (value: unknown) => void; reject: (reason: unknown) => void }
+>();
 
 let nextRequestId = 1;
 const newRequestId = () => `req-${nextRequestId++}`;
 
-function createSandbox() {
-  const base = Object.create(null);
-  const exposed = {
+const sendToHost = (message: WorkerOutbound) => {
+  port.postMessage(message);
+};
+
+const createSandbox = (): Record<string, unknown> => {
+  const base: Record<string, unknown> = Object.create(null);
+  const exposed: Record<string, unknown> = {
     Buffer,
     process,
     setTimeout,
@@ -95,14 +135,18 @@ function createSandbox() {
   base.global = base;
   base.globalThis = base;
   return base;
-}
-
-const sendToHost = (message) => {
-  parentPort.postMessage(message);
 };
 
-const mimeForPath = (filePath) => {
-  const lower = String(filePath).toLowerCase();
+const createCellContext = (cellId: string): vm.Context => {
+  const sandbox = createSandbox();
+  return vm.createContext(sandbox, {
+    name: `stella-exec-${cellId}`,
+    codeGeneration: { strings: true, wasm: false },
+  });
+};
+
+const mimeForPath = (filePath: string): string => {
+  const lower = filePath.toLowerCase();
   if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
   if (lower.endsWith(".gif")) return "image/gif";
   if (lower.endsWith(".webp")) return "image/webp";
@@ -111,7 +155,7 @@ const mimeForPath = (filePath) => {
   return "image/png";
 };
 
-const stringifyText = (value) => {
+const stringifyText = (value: unknown): string => {
   if (typeof value === "string") return value;
   if (value === undefined || value === null) return String(value);
   try {
@@ -121,12 +165,18 @@ const stringifyText = (value) => {
   }
 };
 
-const installGlobals = (toolDefinitions, cellId) => {
-  const tools = Object.create(null);
+const installGlobals = (
+  vmContext: vm.Context,
+  toolDefinitions: ToolDefinitionLike[],
+  cellId: string,
+) => {
+  const ctx = vmContext as Record<string, unknown>;
+  const tools: Record<string, (args?: unknown) => Promise<unknown>> =
+    Object.create(null);
   for (const tool of toolDefinitions) {
     const toolName = tool.name;
-    tools[toolName] = (args) =>
-      new Promise((resolve, reject) => {
+    tools[toolName] = (args?: unknown) =>
+      new Promise<unknown>((resolve, reject) => {
         const requestId = newRequestId();
         pending.set(requestId, { resolve, reject });
         sendToHost({
@@ -139,15 +189,15 @@ const installGlobals = (toolDefinitions, cellId) => {
       });
   }
   Object.freeze(tools);
-  vmContext.tools = tools;
+  ctx.tools = tools;
 
-  vmContext.ALL_TOOLS = Object.freeze(
+  ctx.ALL_TOOLS = Object.freeze(
     toolDefinitions.map((tool) =>
       Object.freeze({ name: tool.name, description: tool.description }),
     ),
   );
 
-  vmContext.text = (value) => {
+  ctx.text = (value: unknown) => {
     sendToHost({
       type: "content",
       cellId,
@@ -155,18 +205,22 @@ const installGlobals = (toolDefinitions, cellId) => {
     });
   };
 
-  vmContext.image = async (pathOrBuffer, options = {}) => {
-    let buffer;
+  ctx.image = async (
+    pathOrBuffer: unknown,
+    options: { mime?: string } = {},
+  ) => {
+    let buffer: Buffer;
     let mime = options?.mime;
     if (Buffer.isBuffer(pathOrBuffer)) {
       buffer = pathOrBuffer;
     } else if (
       pathOrBuffer &&
       typeof pathOrBuffer === "object" &&
-      typeof pathOrBuffer.path === "string"
+      typeof (pathOrBuffer as { path?: unknown }).path === "string"
     ) {
-      buffer = await fs.readFile(pathOrBuffer.path);
-      mime = mime ?? mimeForPath(pathOrBuffer.path);
+      const p = (pathOrBuffer as { path: string }).path;
+      buffer = await fs.readFile(p);
+      mime = mime ?? mimeForPath(p);
     } else if (typeof pathOrBuffer === "string") {
       const resolved = path.isAbsolute(pathOrBuffer)
         ? pathOrBuffer
@@ -189,22 +243,28 @@ const installGlobals = (toolDefinitions, cellId) => {
     });
   };
 
-  vmContext.store = (key, value) => {
+  ctx.store = (key: unknown, value: unknown) => {
     if (typeof key !== "string" || key.length === 0) {
       throw new Error("store(key, value) requires a non-empty string key.");
     }
     stored.set(key, value);
+    sendToHost({
+      type: "state_set",
+      cellId,
+      key,
+      value: serialize(value),
+    });
     return value;
   };
 
-  vmContext.load = (key) => {
+  ctx.load = (key: unknown) => {
     if (typeof key !== "string" || key.length === 0) {
       throw new Error("load(key) requires a non-empty string key.");
     }
     return stored.get(key);
   };
 
-  vmContext.notify = (text) => {
+  ctx.notify = (text: unknown) => {
     sendToHost({
       type: "notify",
       cellId,
@@ -212,15 +272,15 @@ const installGlobals = (toolDefinitions, cellId) => {
     });
   };
 
-  vmContext.yield_control = () =>
-    new Promise((resolve) => {
+  ctx.yield_control = () =>
+    new Promise<unknown>((resolve) => {
       const requestId = newRequestId();
       pending.set(requestId, { resolve, reject: resolve });
       sendToHost({ type: "yield", cellId, requestId });
     });
 
-  vmContext.exit = (value) => {
-    const error = new Error("__stella_exec_exit__");
+  ctx.exit = (value: unknown) => {
+    const error = new Error("__stella_exec_exit__") as StellaExitError;
     error.__stellaExit = true;
     error.value = value;
     throw error;
@@ -229,7 +289,7 @@ const installGlobals = (toolDefinitions, cellId) => {
 
 const STATIC_IMPORT_RE = /^[\t ]*(import|export)\s/m;
 
-const compileProgram = async (source) => {
+const compileProgram = async (source: string): Promise<vm.Script> => {
   if (STATIC_IMPORT_RE.test(source)) {
     throw new Error(
       "Static import/export are not supported in Exec. Use require() or await import() instead.",
@@ -238,12 +298,12 @@ const compileProgram = async (source) => {
   // Wrap the body in an async IIFE so top-level await + return are legal.
   // We escape `*/` inside the body so the closing comment in the wrapper
   // can't be ended early.
-  const safeBody = String(source).replace(/\*\//g, "*\\/");
+  const safeBody = source.replace(/\*\//g, "*\\/");
   const wrappedSource =
     `module.exports = (async function __stella_exec_cell__() {\n` +
     `${safeBody}\n` +
     `})();`;
-  const transformed = await esbuild.transform(wrappedSource, {
+  const transformed = await transform(wrappedSource, {
     loader: "ts",
     format: "cjs",
     target: "node22",
@@ -253,7 +313,7 @@ const compileProgram = async (source) => {
   return new vm.Script(transformed.code, { filename: "exec-cell.js" });
 };
 
-const serialize = (value) => {
+const serialize = (value: unknown): unknown => {
   if (value === undefined) return undefined;
   try {
     return JSON.parse(JSON.stringify(value));
@@ -262,10 +322,24 @@ const serialize = (value) => {
   }
 };
 
-const handleExecute = async (request) => {
-  installGlobals(request.enabledTools ?? [], request.cellId);
+const isStellaExit = (error: unknown): error is StellaExitError =>
+  Boolean(
+    error &&
+      typeof error === "object" &&
+      (error as { __stellaExit?: unknown }).__stellaExit === true,
+  );
 
-  let script;
+const handleExecute = async (
+  request: Extract<WorkerInbound, { type: "execute" }>,
+) => {
+  stored = new Map(Array.isArray(request.storeEntries) ? request.storeEntries : []);
+  // Fresh sandbox + V8 context per cell. No globals, prototype mutations, or
+  // module-level state from a previous cell can leak in here. Tool calls and
+  // store/load still work because they go through worker-scoped state.
+  const vmContext = createCellContext(request.cellId);
+  installGlobals(vmContext, request.enabledTools ?? [], request.cellId);
+
+  let script: vm.Script;
   try {
     script = await compileProgram(String(request.source ?? ""));
   } catch (error) {
@@ -274,19 +348,19 @@ const handleExecute = async (request) => {
       cellId: request.cellId,
       success: false,
       phase: "compile",
-      message: error?.message ?? String(error),
+      message: error instanceof Error ? error.message : String(error),
     });
     return;
   }
 
-  // Each cell gets its own `module.exports` slot so we can read back the
-  // promise the wrapped IIFE returns. The vm context is shared across cells
-  // (so `store`/`load` persists), but `module` is reset each run.
-  vmContext.module = { exports: undefined };
+  // The wrapped IIFE assigns its result promise into `module.exports`; we
+  // read it back after the script runs synchronously.
+  (vmContext as Record<string, unknown>).module = { exports: undefined };
 
   try {
     script.runInContext(vmContext);
-    const cellPromise = vmContext.module.exports;
+    const cellPromise = (vmContext as { module: { exports: unknown } }).module
+      .exports;
     const value = await Promise.resolve(cellPromise);
     sendToHost({
       type: "result",
@@ -295,27 +369,30 @@ const handleExecute = async (request) => {
       value: serialize(value),
     });
   } catch (error) {
-    if (error?.__stellaExit) {
+    if (isStellaExit(error)) {
       sendToHost({
         type: "result",
         cellId: request.cellId,
         success: true,
         value: serialize(error.value),
       });
-    } else {
-      sendToHost({
-        type: "result",
-        cellId: request.cellId,
-        success: false,
-        phase: "execute",
-        message: error?.message ?? String(error),
-        stack: error?.stack ? String(error.stack) : undefined,
-      });
+      return;
     }
+    sendToHost({
+      type: "result",
+      cellId: request.cellId,
+      success: false,
+      phase: "execute",
+      message: error instanceof Error ? error.message : String(error),
+      stack:
+        error instanceof Error && error.stack ? String(error.stack) : undefined,
+    });
   }
 };
 
-const handleToolResult = (message) => {
+const handleToolResult = (
+  message: Extract<WorkerInbound, { type: "tool_result" }>,
+) => {
   const entry = pending.get(message.requestId);
   if (!entry) return;
   pending.delete(message.requestId);
@@ -326,14 +403,14 @@ const handleToolResult = (message) => {
   entry.resolve(message.value);
 };
 
-const handleResume = (message) => {
+const handleResume = (message: Extract<WorkerInbound, { type: "resume" }>) => {
   const entry = pending.get(message.requestId);
   if (!entry) return;
   pending.delete(message.requestId);
   entry.resolve(message.value ?? undefined);
 };
 
-parentPort.on("message", (message) => {
+port.on("message", (message: WorkerInbound) => {
   if (!message || typeof message !== "object") return;
   switch (message.type) {
     case "execute":
@@ -353,4 +430,4 @@ parentPort.on("message", (message) => {
   }
 });
 
-sendToHost({ type: "ready", workerData });
+sendToHost({ type: "ready" });

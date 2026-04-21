@@ -3,11 +3,14 @@
  *
  * Stella's agents see exactly two top-level entries for general work:
  *
- *   - `Exec`  — run an async TypeScript program in a long-lived V8 context.
- *               Capabilities are exposed as `tools.<name>` entries built from
- *               the registry; built-in globals (`text`, `image`, `store`,
- *               `load`, `notify`, `yield_control`, `exit`) stay tiny and
- *               stable.
+ *   - `Exec`  — run an async TypeScript program in a fresh V8 context per
+ *               call (Codex-style isolation). Capabilities are exposed as
+ *               `tools.<name>` entries built from the registry; built-in
+ *               globals (`text`, `image`, `store`, `load`, `notify`,
+ *               `yield_control`, `exit`) stay tiny and stable. Cross-cell
+ *               state lives in `store(k,v)` / `load(k)` which is worker-local
+ *               and survives across cells in the same conversation, but is
+ *               wiped if the host terminates the worker after a runaway cell.
  *
  *   - `Wait`  — resume a yielded `Exec` cell that backgrounded itself with
  *               `// @exec: yield_after_ms=…`.
@@ -35,7 +38,7 @@ export const EXEC_JSON_SCHEMA = {
     source: {
       type: "string",
       description:
-        "Async TypeScript program body. Top-level await and return are allowed. Use `tools.<name>(...)` for capabilities, `text(...)` / `image(...)` to return rich content, `store(...)` / `load(...)` for cross-call state, and `// @exec: yield_after_ms=…` to yield control to `Wait`.",
+        "Async TypeScript program body. Top-level await and return are allowed. Use `tools.<name>(...)` for capabilities, `text(...)` / `image(...)` to return rich content, `store(...)` / `load(...)` for cross-call state, and `// @exec: yield_after_ms=…` to checkpoint long-running work back to `Wait`.",
     },
     timeoutMs: {
       type: "number",
@@ -61,29 +64,31 @@ export const WAIT_JSON_SCHEMA = {
     },
     terminate: {
       type: "boolean",
-      description: "When true, terminates the running cell instead of resuming it.",
+      description: "When true, terminates the worker backing that cell instead of resuming it.",
     },
   },
   required: ["cell_id"],
 } as const;
 
-const EXEC_BASE_DESCRIPTION = `Run an async TypeScript program in Stella's persistent V8 runtime.
+const EXEC_BASE_DESCRIPTION = `Run an async TypeScript program in a fresh V8 context.
 
 Use Exec for everything that isn't a direct UI prompt (AskUserQuestion / RequestCredential): file reads/writes, edits, shell commands, browser/desktop automation, office documents, web fetches, scheduling, task delegation, display rendering, memory mutations, skill usage, and arbitrary code logic.
 
 Programming model:
 - Write a program body, not a full module. Top-level await and return are allowed.
-- The runtime is a long-lived V8 context with full Node globals (Buffer, fetch, process). Static \`import\`/\`export\` are not supported — use \`require()\` or \`await import()\`.
-- All capabilities live on the global \`tools\` object: \`await tools.read_file({ path })\`, \`await tools.shell({ command })\`, etc.
+- Each \`Exec\` call evaluates inside its OWN fresh V8 context (Codex-style isolation). Module-level variables, prototype changes, and \`globalThis\` mutations do NOT leak into the next call. Use \`store(key, value)\` / \`load(key)\` for any state you want to share across cells.
+- The cell still has full Node globals (Buffer, fetch, process, require) and can reach the disk, shell, and network through them — only the JS \`globalThis\` is reset per call. Static \`import\`/\`export\` are not supported; use \`require()\` or \`await import()\`.
+- All registered capabilities live on the global \`tools\` object: \`await tools.read_file({ path })\`, \`await tools.shell({ command })\`, etc.
 - Some tools' full typed signatures are omitted from this description to save tokens. Every callable tool is listed in \`ALL_TOOLS\` (an array of \`{ name, description }\`). Filter \`ALL_TOOLS\` by name/description to discover tools you don't already know about; never print the entire array. To see a deferred tool's argument schema, call \`await tools.describe({ name: "<tool>" })\`.
 - Return any JSON-serializable value, OR call \`text(...)\` / \`image(...)\` to send rich content items back to the model.
 
 Built-in globals:
 - \`text(value)\` — append a text content item. Useful when you want the model to see prose alongside structured data.
 - \`image(pathOrBuffer, { mime? })\` — append an image content item from an absolute path or a Buffer. Mirrors how stella-computer attaches screenshots.
-- \`store(key, value)\` / \`load(key)\` — persist values across Exec calls within the same session (a key/value scratchpad that survives until the conversation ends).
+- \`store(key, value)\` / \`load(key)\` — the ONLY way to share state across Exec calls. Backed by a host-side key/value map scoped to the conversation, so already-persisted values survive worker restarts or forced termination. Cell globals do not survive on their own.
 - \`notify(text)\` — stream a status line back to the user without ending the program.
-- \`yield_control()\` — yield immediately so the agent can call \`Wait\` and continue later. The header pragma \`// @exec: yield_after_ms=2000\` does the same after a delay.
+- \`yield_control()\` — cooperatively pause immediately so the agent can call \`Wait\` and continue later.
+- \`// @exec: yield_after_ms=2000\` — checkpoint long-running work back to the agent after a delay. Unlike \`yield_control()\`, the worker may keep running in the background until \`Wait\` polls it again or terminates it.
 - \`exit(value?)\` — finish the program early with an explicit return value.
 
 Editing files:
@@ -100,7 +105,7 @@ Editing files:
 
 Long-running work:
 - Background a shell with \`tools.shell({ command, background: true })\` to get back a \`shell_id\` immediately, then poll with \`tools.shell({ op: 'status', shell_id })\` or stop with \`tools.shell({ op: 'kill', shell_id })\`.
-- For long-running programs, add \`// @exec: yield_after_ms=2000\` to the very first line of the source. The cell yields back to the agent; resume it with \`Wait({ cell_id })\` from the next turn.
+- For long-running programs, add \`// @exec: yield_after_ms=2000\` to the very first line of the source. The host checkpoints the cell back to the agent; use \`Wait({ cell_id })\` to poll for completion or \`Wait({ cell_id, terminate: true })\` to stop it.
 
 Paths:
 - Absolute paths are required. There is no implicit workspace restriction — \`tools.read_file({ path })\` and \`tools.write_file({ path })\` operate anywhere on the filesystem.
@@ -167,7 +172,7 @@ Use Wait when a previous Exec invocation yielded back (either because the progra
 
 - \`cell_id\`: the id returned by the previous \`Exec\` result.
 - \`yield_after_ms\`: how long to keep waiting for new output before yielding again. Defaults to 10000.
-- \`terminate\`: set true to forcibly stop the running cell instead of resuming it.
+- \`terminate\`: set true to forcibly stop the worker backing that cell instead of resuming it.
 
 The result mirrors \`Exec\`'s output (return value plus any \`text(...)\` / \`image(...)\` content items). The same \`cell_id\` may be resumed multiple times until the program returns or terminates.`;
 

@@ -13,6 +13,9 @@ docs/
 /runtime/node_modules/
 /.stella-runtime-reload-state.json
 
+# Exec worker fallback CJS cache (Node-test runtime only; Bun loads .ts directly).
+runtime/kernel/exec/.exec-worker-cache/
+
 # Stella runtime state (mutable, user-specific, never commit).
 # Seed content under state/ stays tracked via the allowlist below.
 state/*
