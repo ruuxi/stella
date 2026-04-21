@@ -66,6 +66,10 @@ fn dev_path_override() -> Option<String> {
 }
 
 fn main() {
+    if bootstrap::maybe_handle_uninstall() {
+        return;
+    }
+
     let dev_install_path = dev_path_override();
 
     // Discord-style self-install: on first run from a non-installed location,
@@ -96,9 +100,10 @@ fn main() {
                 .clone()
                 .unwrap_or_else(|| home.join("stella").to_string_lossy().to_string());
 
-            let app_data = app.path().app_data_dir().unwrap_or_else(|_| {
-                home.join(".stella-launcher")
-            });
+            let app_data = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| home.join(".stella-launcher"));
             let settings_file = if dev_install_path.is_some() {
                 app_data.join("installer-settings.dev.json")
             } else {
@@ -111,8 +116,7 @@ fn main() {
                 settings_file,
                 dev_install_path.is_some(),
             );
-            let initial_state =
-                tauri::async_runtime::block_on(setup::create_initial_state(&ctx));
+            let initial_state = tauri::async_runtime::block_on(setup::create_initial_state(&ctx));
 
             let app_state = AppState {
                 installer: Mutex::new(initial_state),
@@ -130,16 +134,14 @@ fn main() {
             TrayIconBuilder::new()
                 .menu(&menu)
                 .tooltip("Stella")
-                .on_menu_event(move |app, event| {
-                    match event.id().as_ref() {
-                        "open" => {
-                            commands::show_main_window(app);
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "open" => {
+                        commands::show_main_window(app);
                     }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
                 })
                 .build(app)?;
 

@@ -7,7 +7,6 @@ import {
   renameSync,
   writeFileSync,
   watch,
-  statSync,
 } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,6 +27,13 @@ let electronBinary = require('electron')
 const watchedDir = path.join(desktopDir, 'dist-electron')
 const runtimeReloadStateFile = path.join(repoRootDir, '.stella-runtime-reload-state.json')
 const devRuntimeRoot = path.join(desktopDir, DEV_MACOS_RUNTIME_DIR_NAME)
+const prebuiltDisclaimBinary = path.join(
+  desktopDir,
+  'native',
+  'out',
+  'darwin',
+  'disclaim-spawn',
+)
 const legacyRuntimeElectronBinary = path.join(
   devRuntimeRoot,
   'Stella.app',
@@ -195,23 +201,23 @@ let disclaimBinary = null
 
 if (process.platform === 'darwin') {
   const disclaimSource = resolve(scriptDir, 'disclaim-spawn.c')
-  disclaimBinary = resolve(devRuntimeRoot, 'disclaim-spawn')
+  const fallbackDisclaimBinary = resolve(devRuntimeRoot, 'disclaim-spawn')
 
-  if (existsSync(disclaimSource)) {
-    const needsBuild = !existsSync(disclaimBinary) ||
-      statSync(disclaimSource).mtimeMs > statSync(disclaimBinary).mtimeMs
-
-    if (needsBuild) {
-      try {
-        mkdirSync(devRuntimeRoot, { recursive: true })
-        execFileSync('clang', ['-O2', '-o', disclaimBinary, disclaimSource], {
-          stdio: 'ignore',
-          timeout: 15_000,
-        })
-      } catch {
-        console.warn('[electron-main] Failed to compile disclaim-spawn; macOS TCC prompts may not appear.')
-        disclaimBinary = null
-      }
+  // Launcher-installed users should use a shipped helper so first launch does
+  // not depend on Xcode Command Line Tools being present.
+  if (existsSync(prebuiltDisclaimBinary)) {
+    disclaimBinary = prebuiltDisclaimBinary
+  } else if (existsSync(disclaimSource)) {
+    disclaimBinary = fallbackDisclaimBinary
+    try {
+      mkdirSync(devRuntimeRoot, { recursive: true })
+      execFileSync('clang', ['-O2', '-o', disclaimBinary, disclaimSource], {
+        stdio: 'ignore',
+        timeout: 15_000,
+      })
+    } catch {
+      console.warn('[electron-main] Failed to compile disclaim-spawn; macOS TCC prompts may not appear.')
+      disclaimBinary = null
     }
   } else {
     disclaimBinary = null

@@ -8,10 +8,17 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[cfg(target_os = "windows")]
+use crate::{commands, setup};
+
+#[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+#[cfg(target_os = "windows")]
+const UNINSTALL_FLAG: &str = "--uninstall";
+#[cfg(target_os = "windows")]
+const INSTALL_ROOT_FLAG: &str = "--install-root";
 
 /// Spawn a command with console window hidden on Windows.
 #[cfg(target_os = "windows")]
@@ -49,6 +56,29 @@ fn installed_exe_path() -> PathBuf {
     install_dir().join(name)
 }
 
+#[cfg(target_os = "windows")]
+fn quoted_windows_arg(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\\\""))
+}
+
+#[cfg(target_os = "windows")]
+pub fn windows_uninstall_command(exe_path: &Path, install_root: Option<&Path>) -> String {
+    let mut parts = vec![
+        quoted_windows_arg(&exe_path.to_string_lossy()),
+        UNINSTALL_FLAG.to_string(),
+    ];
+    if let Some(root) = install_root {
+        parts.push(INSTALL_ROOT_FLAG.to_string());
+        parts.push(quoted_windows_arg(&root.to_string_lossy()));
+    }
+    parts.join(" ")
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn windows_uninstall_command(_exe_path: &Path, _install_root: Option<&Path>) -> String {
+    String::new()
+}
+
 fn is_running_from_install_dir() -> bool {
     let current_exe = match std::env::current_exe() {
         Ok(p) => p,
@@ -61,6 +91,135 @@ fn is_running_from_install_dir() -> bool {
     let target = std::fs::canonicalize(&target).unwrap_or(target);
 
     current == target
+}
+
+#[cfg(target_os = "windows")]
+fn uninstall_request() -> Option<Option<PathBuf>> {
+    let mut requested = false;
+    let mut install_root = None;
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            UNINSTALL_FLAG => requested = true,
+            INSTALL_ROOT_FLAG => {
+                if let Some(value) = args.next() {
+                    let trimmed = value.trim();
+                    if !trimmed.is_empty() {
+                        install_root = Some(PathBuf::from(trimmed));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if requested {
+        Some(install_root)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn remove_shortcuts() {
+    let home = dirs::home_dir().unwrap_or_default();
+    let desktop_lnk = home.join("Desktop").join("Stella.lnk");
+    let _ = std::fs::remove_file(desktop_lnk);
+
+    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| {
+        home.join("AppData")
+            .join("Roaming")
+            .to_string_lossy()
+            .to_string()
+    });
+    let start_menu_lnk = PathBuf::from(&appdata)
+        .join("Microsoft")
+        .join("Windows")
+        .join("Start Menu")
+        .join("Programs")
+        .join("Stella.lnk");
+    let _ = std::fs::remove_file(start_menu_lnk);
+}
+
+#[cfg(target_os = "windows")]
+fn remove_registry_entry() {
+    let reg_key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Stella";
+    let _ = silent_cmd("reg").args(["delete", reg_key, "/f"]).output();
+}
+
+#[cfg(target_os = "windows")]
+fn schedule_self_delete() -> Result<(), String> {
+    if !is_running_from_install_dir() {
+        return Ok(());
+    }
+
+    let current_exe =
+        std::env::current_exe().map_err(|e| format!("Could not determine launcher path: {e}"))?;
+    let launcher_dir = install_dir();
+    let cleanup = format!(
+        "ping 127.0.0.1 -n 2 > nul & del /f /q {} > nul 2>&1 & rmdir /s /q {} > nul 2>&1",
+        quoted_windows_arg(&current_exe.to_string_lossy()),
+        quoted_windows_arg(&launcher_dir.to_string_lossy()),
+    );
+    silent_cmd("cmd")
+        .args(["/C", &cleanup])
+        .spawn()
+        .map_err(|e| format!("Could not schedule launcher cleanup: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn perform_windows_uninstall(install_root: Option<&Path>) -> Result<(), String> {
+    if let Some(root) = install_root {
+        if root.exists() {
+            let install_root_str = root.to_string_lossy().to_string();
+            if !setup::is_uninstallable_install_path(&install_root_str) {
+                return Err(
+                    "Refusing to remove a folder that does not look like a Stella install."
+                        .to_string(),
+                );
+            }
+            commands::stop_desktop_by_path(&install_root_str);
+            std::fs::remove_dir_all(root)
+                .map_err(|e| format!("Failed to remove Stella install: {e}"))?;
+        }
+    }
+
+    remove_shortcuts();
+    remove_registry_entry();
+    schedule_self_delete()?;
+    Ok(())
+}
+
+pub fn maybe_handle_uninstall() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let Some(install_root) = uninstall_request() else {
+            return false;
+        };
+        if let Err(err) = perform_windows_uninstall(install_root.as_deref()) {
+            eprintln!("Stella uninstall failed: {err}");
+            std::process::exit(1);
+        }
+        return true;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+pub fn refresh_launcher_uninstall_registration() {
+    #[cfg(target_os = "windows")]
+    {
+        let Ok(current_exe) = std::env::current_exe() else {
+            return;
+        };
+        let Some(current_dir) = current_exe.parent() else {
+            return;
+        };
+        register_uninstall(&current_exe, current_dir);
+    }
 }
 
 /// Check if we need to self-install. If so, install and re-launch.
@@ -202,7 +361,10 @@ fn create_shortcuts(exe_path: &Path, _working_dir: &Path) {
         create_win_lnk(&desktop_lnk, &exe_str);
 
         let appdata = std::env::var("APPDATA").unwrap_or_else(|_| {
-            home.join("AppData").join("Roaming").to_string_lossy().to_string()
+            home.join("AppData")
+                .join("Roaming")
+                .to_string_lossy()
+                .to_string()
         });
         let start_menu_dir = PathBuf::from(&appdata)
             .join("Microsoft")
@@ -243,16 +405,17 @@ fn register_uninstall(exe_path: &Path, install_dir: &Path) {
         let reg_key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Stella";
         let exe_str = exe_path.to_string_lossy().to_string();
         let dir_str = install_dir.to_string_lossy().to_string();
+        let uninstall_cmd = windows_uninstall_command(exe_path, None);
 
-        let entries: &[(&str, &str, &str)] = &[
-            ("DisplayName", "REG_SZ", "Stella"),
-            ("DisplayVersion", "REG_SZ", "0.0.1"),
-            ("Publisher", "REG_SZ", "Stella"),
-            ("InstallLocation", "REG_SZ", &dir_str),
-            ("DisplayIcon", "REG_SZ", &exe_str),
-            ("UninstallString", "REG_SZ", &exe_str),
-            ("NoModify", "REG_DWORD", "1"),
-            ("NoRepair", "REG_DWORD", "1"),
+        let entries = vec![
+            ("DisplayName", "REG_SZ", "Stella".to_string()),
+            ("DisplayVersion", "REG_SZ", "0.0.1".to_string()),
+            ("Publisher", "REG_SZ", "Stella".to_string()),
+            ("InstallLocation", "REG_SZ", dir_str),
+            ("DisplayIcon", "REG_SZ", exe_str),
+            ("UninstallString", "REG_SZ", uninstall_cmd),
+            ("NoModify", "REG_DWORD", "1".to_string()),
+            ("NoRepair", "REG_DWORD", "1".to_string()),
         ];
 
         for (name, reg_type, data) in entries {

@@ -53,3 +53,7 @@ swiftc -O -o "$OUTPUT_DIR/home_capture" src/home_capture.swift \
   -framework Foundation \
   -framework ScreenCaptureKit
 echo "Build successful: $OUTPUT_DIR/home_capture"
+
+echo "Building disclaim-spawn (macOS)..."
+clang -O2 -o "$OUTPUT_DIR/disclaim-spawn" ../scripts/disclaim-spawn.c
+echo "Build successful: $OUTPUT_DIR/disclaim-spawn"
