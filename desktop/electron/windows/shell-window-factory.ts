@@ -1,4 +1,5 @@
 import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
+import fs from 'fs'
 import path from 'path'
 import { loadWindow, type WindowLoadMode } from './window-load.js'
 
@@ -104,6 +105,45 @@ export const reloadShellMainWindow = (
   loadShellMainWindow(window, options)
 }
 
+/**
+ * Resolves a readable path to `recovery.html` from the running main process.
+ *
+ * `tsc` does not copy static assets into `dist-electron/`, so the historical
+ * `loadFile(path.join(electronDir, 'recovery.html'))` always pointed at a
+ * non-existent file. We instead resolve from the source tree at runtime:
+ *
+ *   - In dev, `electronDir` is `desktop/dist-electron/desktop/electron`, so
+ *     `../../../electron/recovery.html` walks back to the source file.
+ *   - In packaged builds, `electron-builder` ships the entire `desktop/`
+ *     source tree (the `files` glob is `dist-electron/**`, but ASAR resolves
+ *     relative paths within the bundle and we register the source layout via
+ *     `extraFiles` below). We probe both the compiled-adjacent path and the
+ *     dev fallback so packaging changes can't silently re-break recovery.
+ */
+const resolveRecoveryHtmlPath = (electronDir: string): string | null => {
+  const candidates = [
+    path.join(electronDir, 'recovery.html'),
+    path.resolve(electronDir, '../../../electron/recovery.html'),
+    path.resolve(electronDir, '../../../../electron/recovery.html'),
+  ]
+  for (const candidate of candidates) {
+    try {
+      if (fs.statSync(candidate).isFile()) {
+        return candidate
+      }
+    } catch {
+      /* try next */
+    }
+  }
+  return null
+}
+
+/**
+ * Loads the recovery surface into a window. Reads `recovery.html` from disk
+ * and serves it via a `data:` URL so we never have to do a `file://`
+ * navigation from an `http://` (dev) origin — Chromium blocks that as
+ * "Not allowed to load local resource", which used to leave the window blank.
+ */
 export const loadShellRecoveryPage = (
   window: BrowserWindow | null,
   electronDir: string,
@@ -112,5 +152,20 @@ export const loadShellRecoveryPage = (
     return
   }
 
-  window.loadFile(path.join(electronDir, 'recovery.html'))
+  const recoveryPath = resolveRecoveryHtmlPath(electronDir)
+  if (!recoveryPath) {
+    console.error(
+      '[recovery] Could not locate recovery.html relative to',
+      electronDir,
+    )
+    return
+  }
+
+  try {
+    const html = fs.readFileSync(recoveryPath, 'utf-8')
+    const dataUrl = `data:text/html;charset=utf-8;base64,${Buffer.from(html, 'utf-8').toString('base64')}`
+    void window.loadURL(dataUrl)
+  } catch (error) {
+    console.error('[recovery] Failed to load recovery surface:', error)
+  }
 }
