@@ -405,4 +405,64 @@ export type RunnerPublicApi = {
     name?: string;
   }>;
   googleWorkspaceDisconnect: () => Promise<{ ok: boolean }>;
+  /**
+   * Ask the Dream scheduler to run now. Trigger names are advisory and used
+   * for diagnostics; eligibility gates apply to non-`manual` triggers.
+   */
+  triggerDreamNow: (
+    trigger?:
+      | "manual"
+      | "subagent_finalize"
+      | "chronicle_summary"
+      | "startup_catchup",
+  ) => Promise<{
+    scheduled: boolean;
+    reason:
+      | "scheduled"
+      | "disabled"
+      | "in_flight"
+      | "count_failed"
+      | "no_inputs"
+      | "below_threshold"
+      | "lock_busy"
+      | "no_api_key"
+      | "unavailable";
+    pendingThreadSummaries: number;
+    pendingExtensions: number;
+    detail?: string;
+  }>;
+  /**
+   * Run one Chronicle rolling-summary pass for the given window. Reads the
+   * tail of `state/chronicle/captures.jsonl`, calls a single cheap LLM
+   * completion, and atomically rewrites
+   * `state/memories_extensions/chronicle/{window}-current.md`. Designed to
+   * be called by Electron on a fixed cadence (every 1 minute for "10m",
+   * every 1 hour for "6h").
+   */
+  runChronicleSummaryTick: (
+    window: "10m" | "6h",
+  ) => Promise<
+    | {
+        wrote: true;
+        window: "10m" | "6h";
+        uniqueLines: number;
+        outPath: string;
+      }
+    | {
+        wrote: false;
+        window: "10m" | "6h";
+        reason:
+          | "disabled"
+          | "lock_busy"
+          | "no_api_key"
+          | "no_captures"
+          | "below_threshold"
+          | "unchanged"
+          | "no_signal"
+          | "llm_failed"
+          | "write_failed";
+        uniqueLines: number;
+        detail?: string;
+      }
+  >;
 };

@@ -255,5 +255,88 @@ export const createStellaHostRunner = (
       }
       return { ok };
     },
+
+    triggerDreamNow: async (trigger = "manual") => {
+      try {
+        const { countPendingDreamExtensions } = await import(
+          "./memory/dream-core.js"
+        );
+        const { maybeSpawnDreamRun } = await import(
+          "./agent-runtime/dream-scheduler.js"
+        );
+        const { resolveRunnerLlmRoute } = await import(
+          "./runner/model-selection.js"
+        );
+        const { AGENT_IDS } = await import(
+          "../../desktop/src/shared/contracts/agent-runtime.js"
+        );
+        const pendingThreadSummaries =
+          context.runtimeStore.threadSummariesStore.countUnprocessed();
+        const pendingExtensions = await countPendingDreamExtensions(
+          context.stellaRoot,
+        );
+        if (pendingThreadSummaries + pendingExtensions === 0) {
+          return {
+            scheduled: false,
+            reason: "no_inputs" as const,
+            pendingThreadSummaries,
+            pendingExtensions,
+          };
+        }
+        const resolvedLlm = resolveRunnerLlmRoute(
+          context,
+          AGENT_IDS.DREAM,
+          undefined,
+        );
+        return await maybeSpawnDreamRun({
+          stellaHome: context.stellaRoot,
+          store: context.runtimeStore,
+          resolvedLlm,
+          trigger,
+        });
+      } catch (error) {
+        console.warn("[runner] triggerDreamNow failed", error);
+        return {
+          scheduled: false,
+          reason: "unavailable" as const,
+          pendingThreadSummaries: 0,
+          pendingExtensions: 0,
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+
+    runChronicleSummaryTick: async (window) => {
+      try {
+        const { runChronicleSummary } = await import(
+          "./memory/chronicle-summarizer.js"
+        );
+        const { resolveRunnerLlmRoute } = await import(
+          "./runner/model-selection.js"
+        );
+        const { AGENT_IDS } = await import(
+          "../../desktop/src/shared/contracts/agent-runtime.js"
+        );
+        const resolvedLlm = resolveRunnerLlmRoute(
+          context,
+          AGENT_IDS.CHRONICLE,
+          undefined,
+        );
+        return await runChronicleSummary({
+          stellaHome: context.stellaRoot,
+          window,
+          resolvedLlm,
+        });
+      } catch (error) {
+        console.warn("[runner] runChronicleSummaryTick failed", error);
+        return {
+          wrote: false,
+          window,
+          reason: "llm_failed" as const,
+          uniqueLines: 0,
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
   };
 };

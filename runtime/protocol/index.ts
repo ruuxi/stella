@@ -225,6 +225,9 @@ export const METHOD_NAMES = {
     "internal.worker.projects.registerDirectory",
   INTERNAL_WORKER_PROJECTS_START: "internal.worker.projects.start",
   INTERNAL_WORKER_PROJECTS_STOP: "internal.worker.projects.stop",
+  INTERNAL_WORKER_DREAM_TRIGGER_NOW: "internal.worker.dream.triggerNow",
+  INTERNAL_WORKER_CHRONICLE_SUMMARY_TICK:
+    "internal.worker.chronicle.summaryTick",
   INTERNAL_WORKER_SELF_MOD_REVERT: "internal.worker.selfMod.revert",
   INTERNAL_WORKER_SELF_MOD_LAST_FEATURE: "internal.worker.selfMod.lastFeature",
   INTERNAL_WORKER_SELF_MOD_RECENT_FEATURES:

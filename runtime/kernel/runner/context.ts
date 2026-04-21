@@ -297,6 +297,10 @@ export const createRunnerContext = ({
     ...(memoryStore ?? runtimeStore?.memoryStore
       ? { memoryStore: memoryStore ?? runtimeStore.memoryStore }
       : {}),
+    ...(runtimeStore?.threadSummariesStore
+      ? { threadSummariesStore: runtimeStore.threadSummariesStore }
+      : {}),
+    stellaHome: stellaRoot,
     taskApi: {
       createTask: async (request) => {
         if (!context.state.localTaskManager) {

@@ -4,6 +4,8 @@ export const AGENT_IDS = {
   GENERAL: "general",
   OFFLINE_RESPONDER: "offline_responder",
   EXPLORE: "explore",
+  DREAM: "dream",
+  CHRONICLE: "chronicle",
 } as const;
 
 export type AgentId = (typeof AGENT_IDS)[keyof typeof AGENT_IDS];
@@ -121,6 +123,40 @@ const BUILTIN_AGENT_DEFINITIONS = [
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
     agentEnginePreference: "general",
+    modelSettings: null,
+  },
+  {
+    id: AGENT_IDS.DREAM,
+    name: "Dream",
+    description:
+      "Background memory consolidator. Reads thread_summaries + memories_extensions and surgically updates state/memories/ markdown files.",
+    activityLabel: "Dreaming",
+    bundledCore: true,
+    taskSubagent: false,
+    includeInAgentRoster: false,
+    usesLocalCliRuntime: false,
+    promptRole: "subagent",
+    includesStellaDocumentation: false,
+    controlsSelfModHmr: false,
+    localCliWorkingDirectory: null,
+    agentEnginePreference: "general",
+    modelSettings: null,
+  },
+  {
+    id: AGENT_IDS.CHRONICLE,
+    name: "Chronicle",
+    description:
+      "Cheap recursive summarizer for the Chronicle OCR sidecar. Distills 10m and 6h windows of screen activity into short markdown blocks consumed by Dream.",
+    activityLabel: "Chronicling",
+    bundledCore: false,
+    taskSubagent: false,
+    includeInAgentRoster: false,
+    usesLocalCliRuntime: false,
+    promptRole: "subagent",
+    includesStellaDocumentation: false,
+    controlsSelfModHmr: false,
+    localCliWorkingDirectory: null,
+    agentEnginePreference: null,
     modelSettings: null,
   },
 ] as const satisfies readonly AgentDefinition[];
@@ -254,6 +290,9 @@ export const TOOL_IDS = {
   WEB_FETCH: "WebFetch",
   NO_RESPONSE: "NoResponse",
   MEMORY: "Memory",
+  DREAM: "Dream",
+  READ: "Read",
+  STR_REPLACE: "StrReplace",
 } as const;
 
 export type ToolId = (typeof TOOL_IDS)[keyof typeof TOOL_IDS];

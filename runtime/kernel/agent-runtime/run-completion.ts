@@ -272,7 +272,45 @@ export const finalizeSubagentSuccess = async (args: {
   result: string;
 }): Promise<SubagentRunResult> => {
   if (shouldAppendLifeNote(args.opts.agentType)) {
+    // Stage 1 SQLite store: durable, queryable rollout summary feed for the
+    // Dream protocol. Best-effort — never block the subagent finalize path.
+    try {
+      args.opts.store.threadSummariesStore.record({
+        threadId: args.threadKey,
+        runId: args.runId,
+        agentType: args.opts.agentType,
+        rolloutSummary: args.result,
+      });
+    } catch (error) {
+      logger.debug("thread-summaries.record-failed", {
+        threadKey: args.threadKey,
+        runId: args.runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    // Keep the dated markdown note as a human-readable mirror of the
+    // SQLite row. Useful for inspection; not consumed by the runtime.
     await appendLifeNote(args.opts.stellaHome, args.runId, args.result);
+
+    // Notify the Dream scheduler that there is fresh material. Lazy import
+    // to avoid a cycle with run-completion <-> dream-scheduler types.
+    try {
+      const { maybeSpawnDreamRun } = await import("./dream-scheduler.js");
+      void maybeSpawnDreamRun({
+        stellaHome: args.opts.stellaHome,
+        store: args.opts.store,
+        resolvedLlm: args.opts.resolvedLlm,
+        trigger: "subagent_finalize",
+      }).catch((error) => {
+        logger.debug("dream-scheduler.notify-failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    } catch (error) {
+      logger.debug("dream-scheduler.notify-failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
   if (args.result.trim()) {
     await compactRuntimeThreadHistory({

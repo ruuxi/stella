@@ -5,6 +5,7 @@
  */
 
 import type { MemoryStore } from "../../../memory/memory-store.js";
+import type { ThreadSummariesStore } from "../../../memory/thread-summaries-store.js";
 import type { StateContext } from "../../state.js";
 import type {
   ScheduleToolApi,
@@ -18,6 +19,8 @@ import type {
 import { createApplyPatchBuiltin } from "./apply-patch.js";
 import { createDescribeBuiltin } from "./describe.js";
 import { createDisplayBuiltins } from "./display.js";
+import { createDreamInputsBuiltin } from "./dream-inputs.js";
+import { createDreamWatermarkBuiltin } from "./dream-watermark.js";
 import { createFileBuiltins } from "./file.js";
 import { createMemoryBuiltins } from "./memory.js";
 import { createScheduleBuiltins } from "./schedule.js";
@@ -30,6 +33,7 @@ const ORCHESTRATOR_AND_SCHEDULE_TOOL_AGENT_TYPES = [
   "orchestrator",
   "schedule",
 ] as const;
+const DREAM_TOOL_AGENT_TYPES = ["dream"] as const;
 
 export type CreateBuiltinsOptions = {
   shellState: ShellState;
@@ -37,6 +41,8 @@ export type CreateBuiltinsOptions = {
   scheduleApi?: ScheduleToolApi;
   taskApi?: TaskToolApi;
   memoryStore?: MemoryStore;
+  threadSummariesStore?: ThreadSummariesStore;
+  stellaHome?: string;
   displayHtml?: (html: string) => void;
   webSearch?: WebSearchHandler;
 };
@@ -83,6 +89,22 @@ export const createAllBuiltins = (
       }),
     );
   }
+  if (options.threadSummariesStore && options.stellaHome) {
+    tools.push(
+      createDreamInputsBuiltin({
+        stellaHome: options.stellaHome,
+        threadSummariesStore: options.threadSummariesStore,
+        agentTypes: DREAM_TOOL_AGENT_TYPES,
+      }),
+    );
+    tools.push(
+      createDreamWatermarkBuiltin({
+        stellaHome: options.stellaHome,
+        threadSummariesStore: options.threadSummariesStore,
+        agentTypes: DREAM_TOOL_AGENT_TYPES,
+      }),
+    );
+  }
   return tools;
 };
 
@@ -101,6 +123,8 @@ export {
   createApplyPatchBuiltin,
   createDescribeBuiltin,
   createDisplayBuiltins,
+  createDreamInputsBuiltin,
+  createDreamWatermarkBuiltin,
   createFileBuiltins,
   createMemoryBuiltins,
   createScheduleBuiltins,

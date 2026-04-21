@@ -141,6 +141,12 @@ export type ToolHostOptions = {
    * Optional MemoryStore wired to the orchestrator's memory surface.
    */
   memoryStore?: import("../memory/memory-store.js").MemoryStore;
+  /**
+   * Optional ThreadSummariesStore + stellaHome wired to the Dream agent's
+   * `dream.listUnprocessed` / `dream.markProcessed` builtins.
+   */
+  threadSummariesStore?: import("../memory/thread-summaries-store.js").ThreadSummariesStore;
+  stellaHome?: string;
   requestCredential?: (payload: {
     provider: string;
     label?: string;

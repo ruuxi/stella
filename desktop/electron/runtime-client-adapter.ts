@@ -992,4 +992,18 @@ export class RuntimeClientAdapter {
   googleWorkspaceDisconnect() {
     return this.client.googleWorkspaceDisconnect();
   }
+
+  triggerDreamNow(
+    trigger?:
+      | "manual"
+      | "subagent_finalize"
+      | "chronicle_summary"
+      | "startup_catchup",
+  ) {
+    return this.client.triggerDreamNow(trigger);
+  }
+
+  runChronicleSummaryTick(window: "10m" | "6h") {
+    return this.client.runChronicleSummaryTick(window);
+  }
 }
