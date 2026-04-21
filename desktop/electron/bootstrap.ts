@@ -14,10 +14,9 @@ import {
   initializeBootstrapSingleInstance,
   registerBootstrapLifecycle,
 } from "./bootstrap/lifecycle.js";
-import { resolveRuntimeStatePath } from "../../runtime/kernel/home/stella-home.js";
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const stellaRoot = path.resolve(__dirname, "..", "..", "..", "..");
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -40,10 +39,7 @@ const configureDevUserDataPath = () => {
     return;
   }
 
-  const devUserDataPath = path.join(
-    resolveRuntimeStatePath(app),
-    "electron-user-data",
-  );
+  const devUserDataPath = path.join(stellaRoot, "state", "electron-user-data");
   app.setPath("userData", devUserDataPath);
   app.setPath("sessionData", path.join(devUserDataPath, "session-data"));
 };
@@ -59,7 +55,7 @@ export const bootstrapMainProcess = () => {
   const context = createBootstrapContext({
     authProtocol: AUTH_PROTOCOL,
     electronDir: __dirname,
-    stellaRoot: path.resolve(__dirname, "..", "..", "..", ".."),
+    stellaRoot,
     hardResetMutableHomePaths: HARD_RESET_MUTABLE_HOME_PATHS,
     isDev,
     sessionPartition: STELLA_SESSION_PARTITION,
