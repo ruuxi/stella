@@ -1,19 +1,18 @@
-# Dream — Memory Consolidation Protocol
+# Dream — Manual Skill Consolidation Protocol
 
-Run this protocol periodically or on demand to consolidate scattered session signals into durable skills and review skill health.
+Run this protocol periodically or on demand to review skill health and prune stale entries. This is a *manual* protocol the General agent can execute on request — it is separate from the background Dream agent that consolidates `thread_summaries` into `state/memories/MEMORY.md` automatically.
 
 ## When to Dream
 
-- After a stretch of varied tasks (5+ notes entries without consolidation)
-- When notes/ is growing but skills/ feels stale
-- When skills/ has entries that may be outdated, duplicated, or unused
+- When `skills/` has entries that may be outdated, duplicated, or unused
+- After a long stretch of work where `state/memories/MEMORY.md` shows recurring patterns that should be promoted into a skill
 - On explicit request
 
 ## Protocol
 
 ### 1. Orient
 
-Read the full memory layer: `skills/index.md`, every `skills/<name>/SKILL.md`, recent `notes/` entries. Form hypotheses about what feels stale or missing. No searching yet.
+Read the full skill layer: `skills/index.md`, every `skills/<name>/SKILL.md`. Skim `state/memories/MEMORY.md` for recent task patterns that may indicate drift. Form hypotheses about what feels stale or missing. No searching yet.
 
 ### 2. Signal
 
@@ -24,7 +23,7 @@ Gather narrow, targeted evidence confirming suspected drift. Only check things y
 Merge findings into the skills layer:
 
 - **Correct contradictions at source.** If a `SKILL.md` says X but reality is Y, fix the file. Reality wins.
-- **Promote durable insights from notes.** If a pattern appears across multiple task summaries, it belongs in a skill.
+- **Promote durable insights from `MEMORY.md`.** If a pattern appears across multiple task blocks, it belongs in a skill.
 - **Normalize dates.** Replace relative references ("last week") with absolutes.
 - **Compress without destroying.** Test: would deletion cause worse future decisions? If no, cut it.
 - **Prefer under-writing to overfitting.** One-off events and low-signal observations don't get promoted.
@@ -52,7 +51,8 @@ Tighten memory for the next cold start:
 
 ## Boundaries
 
-- Dream touches `skills/`, `skills/index.md`, and `registry.md`
-- Never modify `notes/` or `raw/` — they are immutable records
+- This protocol touches `skills/`, `skills/index.md`, and `registry.md`
+- Never modify `state/memories/` — that's owned by the background Dream agent
+- Never modify `raw/` — it is an immutable record
 - Never touch project code, tests, or config
-- Log what was consolidated in the current day's notes entry
+- Your final assistant message should briefly summarize what skills you consolidated, merged, pruned, or promoted

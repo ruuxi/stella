@@ -1,6 +1,3 @@
-import { appendFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-
 import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import type { Agent } from "../agent-core/agent.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -104,28 +101,7 @@ const emitAgentEndHook = async (
     .catch(() => undefined);
 };
 
-const appendLifeNote = async (
-  stellaHome: string,
-  runId: string,
-  finalText: string,
-): Promise<void> => {
-  if (!finalText.trim()) return;
-
-  const notesDir = join(stellaHome, "state", "notes");
-  const today = new Date().toISOString().slice(0, 10);
-  const notesFile = join(notesDir, `${today}.md`);
-  const timestamp = new Date().toISOString().slice(11, 19);
-  const entry = `\n## ${timestamp}\n\nrun: \`${runId}\`\n\n${finalText.trim()}\n`;
-
-  try {
-    await mkdir(notesDir, { recursive: true });
-    await appendFile(notesFile, entry, "utf-8");
-  } catch {
-    logger.debug("life-notes.append-failed", { notesFile });
-  }
-};
-
-const shouldAppendLifeNote = (agentType: string): boolean =>
+const shouldRecordThreadSummary = (agentType: string): boolean =>
   agentType === AGENT_IDS.GENERAL;
 
 const detectSelfModApplied = async (
@@ -271,7 +247,7 @@ export const finalizeSubagentSuccess = async (args: {
   threadKey: string;
   result: string;
 }): Promise<SubagentRunResult> => {
-  if (shouldAppendLifeNote(args.opts.agentType)) {
+  if (shouldRecordThreadSummary(args.opts.agentType)) {
     // Stage 1 SQLite store: durable, queryable rollout summary feed for the
     // Dream protocol. Best-effort — never block the subagent finalize path.
     try {
@@ -288,9 +264,6 @@ export const finalizeSubagentSuccess = async (args: {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    // Keep the dated markdown note as a human-readable mirror of the
-    // SQLite row. Useful for inspection; not consumed by the runtime.
-    await appendLifeNote(args.opts.stellaHome, args.runId, args.result);
 
     // Notify the Dream scheduler that there is fresh material. Lazy import
     // to avoid a cycle with run-completion <-> dream-scheduler types.

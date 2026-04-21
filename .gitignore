@@ -25,9 +25,7 @@ state/electron-user-data/
 !state/skills/
 state/stella-computer/sessions/
 state/skills/user-profile/
-!state/notes/
-state/notes/*
-!state/notes/README.md
+state/notes/
 !state/outputs/
 state/outputs/*
 !state/outputs/README.md
