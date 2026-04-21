@@ -64,7 +64,8 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  animation: momentFadeIn var(--onboarding-duration-enter) var(--onboarding-ease-standard) forwards;
+  animation: momentFadeIn var(--onboarding-duration-enter)
+    var(--onboarding-ease-standard) forwards;
 }
 
 /* Stack above .onboarding-stella-animation (z-index 5) so Start / auth hit the real controls (cursor: pointer, clicks) */
@@ -122,7 +123,9 @@
   color: var(--foreground);
   opacity: 0.45;
   cursor: pointer;
-  transition: opacity 0.2s ease, transform 0.15s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.15s ease;
   font-family: inherit;
   text-decoration: underline;
   text-decoration-color: oklch(from var(--foreground) l c h / 0.2);
@@ -141,8 +144,13 @@
 }
 
 @keyframes startButtonFade {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 0.65; }
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.65;
+  }
 }
 
 .onboarding-legal-footer {
@@ -169,7 +177,8 @@
   z-index: 6;
   pointer-events: auto;
   /* Own keyframes: momentFadeIn overwrites transform (breaks centering) and forces opacity: 1 */
-  animation: onboardingLegalFooterFadeIn var(--onboarding-duration-enter) var(--onboarding-ease-standard) forwards;
+  animation: onboardingLegalFooterFadeIn var(--onboarding-duration-enter)
+    var(--onboarding-ease-standard) forwards;
 }
 
 @keyframes onboardingLegalFooterFadeIn {
@@ -449,7 +458,8 @@
   max-width: 680px;
   min-height: min(520px, calc(100vh - 220px));
   flex-shrink: 0;
-  animation: splitStageIn var(--onboarding-duration-enter) var(--onboarding-ease-standard) both;
+  animation: splitStageIn var(--onboarding-duration-enter)
+    var(--onboarding-ease-standard) both;
 }
 
 @keyframes splitStageIn {
@@ -715,7 +725,8 @@
 .onboarding-theme-reveal {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--onboarding-duration-enter) var(--onboarding-ease-soft);
+  transition: grid-template-rows var(--onboarding-duration-enter)
+    var(--onboarding-ease-soft);
 }
 
 .onboarding-theme-reveal[data-visible] {
@@ -1578,7 +1589,8 @@
 .onboarding-browser-reveal {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--onboarding-duration-enter) var(--onboarding-ease-soft);
+  transition: grid-template-rows var(--onboarding-duration-enter)
+    var(--onboarding-ease-soft);
 }
 
 .onboarding-browser-reveal[data-visible] {
@@ -1631,7 +1643,8 @@
 .onboarding-mic-reveal {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--onboarding-duration-enter) var(--onboarding-ease-soft);
+  transition: grid-template-rows var(--onboarding-duration-enter)
+    var(--onboarding-ease-soft);
 }
 
 .onboarding-mic-reveal[data-visible] {
@@ -1668,8 +1681,7 @@
   font-weight: 400;
   letter-spacing: 0.02em;
   cursor: pointer;
-  transition:
-    border-color 0.25s ease;
+  transition: border-color 0.25s ease;
 }
 
 .onboarding-mic-trigger:hover {
@@ -1700,7 +1712,8 @@
 .onboarding-warning-reveal {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--onboarding-duration-enter) var(--onboarding-ease-soft);
+  transition: grid-template-rows var(--onboarding-duration-enter)
+    var(--onboarding-ease-soft);
 }
 
 .onboarding-warning-reveal[data-visible] {
@@ -1757,7 +1770,9 @@
 }
 
 /* Browser step: stagger the main heading + browser row + category rows (not reveal-on-click content) */
-.onboarding-dialogue[data-phase="browser"] .onboarding-step-content > .onboarding-step-label {
+.onboarding-dialogue[data-phase="browser"]
+  .onboarding-step-content
+  > .onboarding-step-label {
   animation: onboardingBrowserListIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: 0.05s;
 }
@@ -2120,7 +2135,6 @@
   position: relative;
 }
 
-
 /*
  * Onboarding-only CSS fallback when native morph IPC is unavailable.
  * Duration comes from OnboardingCanvas (`ONBOARDING_MORPH_CSS_DURATION_MS`); easing matches
@@ -2399,10 +2413,13 @@
   margin-left: auto;
   opacity: 0;
   transform: scale(0);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 
-.onboarding-showcase-card[data-active="true"] .onboarding-showcase-card-indicator {
+.onboarding-showcase-card[data-active="true"]
+  .onboarding-showcase-card-indicator {
   opacity: 1;
   transform: scale(1);
   animation: showcaseDotPulse 2s ease-in-out infinite;
@@ -2441,7 +2458,8 @@
 .onboarding-showcase-card[data-active="true"] {
   border-color: color-mix(in oklch, var(--showcase-accent) 30%, transparent);
   background: color-mix(in oklch, var(--showcase-accent) 5%, transparent);
-  box-shadow: 0 0 20px color-mix(in oklch, var(--showcase-accent) 8%, transparent);
+  box-shadow: 0 0 20px
+    color-mix(in oklch, var(--showcase-accent) 8%, transparent);
 }
 
 .onboarding-showcase-card[data-active="true"] .onboarding-showcase-card-title {
@@ -2453,15 +2471,27 @@
 }
 
 /* ── Staggered entrance ── */
-.onboarding-showcase-card:nth-child(1) { animation-delay: 0.06s; }
-.onboarding-showcase-card:nth-child(2) { animation-delay: 0.12s; }
-.onboarding-showcase-card:nth-child(3) { animation-delay: 0.18s; }
-.onboarding-showcase-card:nth-child(4) { animation-delay: 0.24s; }
-.onboarding-showcase-card:nth-child(5) { animation-delay: 0.30s; }
+.onboarding-showcase-card:nth-child(1) {
+  animation-delay: 0.06s;
+}
+.onboarding-showcase-card:nth-child(2) {
+  animation-delay: 0.12s;
+}
+.onboarding-showcase-card:nth-child(3) {
+  animation-delay: 0.18s;
+}
+.onboarding-showcase-card:nth-child(4) {
+  animation-delay: 0.24s;
+}
+.onboarding-showcase-card:nth-child(5) {
+  animation-delay: 0.3s;
+}
 
 /* First card attention pulse */
 .onboarding-showcase-card:first-child {
-  animation: showcaseCardIn 0.45s ease-out forwards, showcaseAttention 2.5s ease-in-out 0.8s 2;
+  animation:
+    showcaseCardIn 0.45s ease-out forwards,
+    showcaseAttention 2.5s ease-in-out 0.8s 2;
 }
 
 @keyframes showcaseCardIn {
@@ -2476,7 +2506,8 @@
 }
 
 @keyframes showcaseAttention {
-  0%, 100% {
+  0%,
+  100% {
     border-color: color-mix(in oklch, var(--foreground) 8%, transparent);
   }
   50% {
@@ -2485,10 +2516,16 @@
 }
 
 @keyframes showcaseDotPulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--showcase-accent) 30%, transparent); }
-  50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--showcase-accent) 0%, transparent); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0
+      color-mix(in oklch, var(--showcase-accent) 30%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px
+      color-mix(in oklch, var(--showcase-accent) 0%, transparent);
+  }
 }
-
 
 /* ═══ Phase navigation chevrons (bottom-right) ═══ */
 
@@ -2591,12 +2628,11 @@
   font-weight: 500;
   line-height: 1.6;
   color: var(--foreground);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--foreground) 8%, transparent) 0%,
-      color-mix(in oklch, var(--foreground) 4%, transparent) 100%
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 0%,
+    color-mix(in oklch, var(--foreground) 4%, transparent) 100%
+  );
   border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
   border-bottom-width: 2px;
   border-radius: 6px;
@@ -2620,8 +2656,16 @@
   border-radius: 20px;
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   background:
-    radial-gradient(circle at 18% 18%, color-mix(in oklch, var(--foreground) 8%, transparent) 0, transparent 22%),
-    linear-gradient(180deg, color-mix(in oklch, var(--background) 88%, white 12%), color-mix(in oklch, var(--background) 94%, black 6%));
+    radial-gradient(
+      circle at 18% 18%,
+      color-mix(in oklch, var(--foreground) 8%, transparent) 0,
+      transparent 22%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--background) 88%, white 12%),
+      color-mix(in oklch, var(--background) 94%, black 6%)
+    );
   box-shadow:
     inset 0 1px 0 color-mix(in oklch, white 45%, transparent),
     0 24px 60px color-mix(in oklch, black 10%, transparent);
@@ -2673,17 +2717,26 @@
 }
 
 @keyframes hintPulse {
-  0%, 100% { opacity: 0.8; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 @keyframes surfacePulse {
-  0%, 100% { border-color: color-mix(in oklch, var(--foreground) 12%, transparent); }
-  50% { border-color: color-mix(in oklch, var(--foreground) 28%, transparent); }
+  0%,
+  100% {
+    border-color: color-mix(in oklch, var(--foreground) 12%, transparent);
+  }
+  50% {
+    border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+  }
 }
 
-.onboarding-shortcut-scene,
-.onboarding-shortcut-app {
+.onboarding-shortcut-scene {
   position: absolute;
   inset: 0;
 }
@@ -2712,10 +2765,18 @@
   background: color-mix(in oklch, var(--foreground) 12%, transparent);
 }
 
-.onboarding-shortcut-taskbar span:nth-child(1) { background: oklch(0.72 0.12 235 / 0.5); }
-.onboarding-shortcut-taskbar span:nth-child(2) { background: oklch(0.72 0.12 150 / 0.5); }
-.onboarding-shortcut-taskbar span:nth-child(3) { background: oklch(0.72 0.12 310 / 0.5); }
-.onboarding-shortcut-taskbar span:nth-child(4) { background: oklch(0.72 0.12 50 / 0.5); }
+.onboarding-shortcut-taskbar span:nth-child(1) {
+  background: oklch(0.72 0.12 235 / 0.5);
+}
+.onboarding-shortcut-taskbar span:nth-child(2) {
+  background: oklch(0.72 0.12 150 / 0.5);
+}
+.onboarding-shortcut-taskbar span:nth-child(3) {
+  background: oklch(0.72 0.12 310 / 0.5);
+}
+.onboarding-shortcut-taskbar span:nth-child(4) {
+  background: oklch(0.72 0.12 50 / 0.5);
+}
 
 /* ── Mock windows ── */
 
@@ -2726,7 +2787,9 @@
   background: color-mix(in oklch, white 92%, var(--background));
   border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
   box-shadow: 0 18px 40px color-mix(in oklch, black 8%, transparent);
-  transition: transform 0.5s ease, opacity 0.5s ease;
+  transition:
+    transform 0.5s ease,
+    opacity 0.5s ease;
 }
 
 .onboarding-shortcut-window--main {
@@ -2738,9 +2801,9 @@
   top: 32px;
   left: 14px;
   right: 60%;
-  height: 120px;
+  height: 150px;
   z-index: 1;
-  opacity: 0.5;
+  opacity: 0.55;
   box-shadow: 0 8px 20px color-mix(in oklch, black 5%, transparent);
 }
 
@@ -2750,7 +2813,8 @@
   gap: 6px;
   padding: 10px 12px;
   background: color-mix(in oklch, var(--background) 92%, white 8%);
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground) 6%, transparent);
   font-size: 11px;
 }
 
@@ -2761,9 +2825,15 @@
   background: color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 
-.onboarding-shortcut-window__bar span:nth-child(1) { background: oklch(0.74 0.16 75); }
-.onboarding-shortcut-window__bar span:nth-child(2) { background: oklch(0.74 0.16 240); }
-.onboarding-shortcut-window__bar span:nth-child(3) { background: oklch(0.78 0.16 150); }
+.onboarding-shortcut-window__bar span:nth-child(1) {
+  background: oklch(0.74 0.16 75);
+}
+.onboarding-shortcut-window__bar span:nth-child(2) {
+  background: oklch(0.74 0.16 240);
+}
+.onboarding-shortcut-window__bar span:nth-child(3) {
+  background: oklch(0.78 0.16 150);
+}
 
 .onboarding-shortcut-window__bar strong {
   margin-left: 4px;
@@ -2800,7 +2870,6 @@
 .onboarding-shortcut-text-line--short {
   width: 58%;
 }
-
 
 /* ── Mock report content ── */
 
@@ -2863,8 +2932,11 @@
   gap: 6px;
   padding: 10px;
   border-radius: 12px;
-  background:
-    linear-gradient(140deg, color-mix(in oklch, oklch(0.76 0.12 225) 14%, white), color-mix(in oklch, oklch(0.82 0.08 185) 12%, white));
+  background: linear-gradient(
+    140deg,
+    color-mix(in oklch, oklch(0.76 0.12 225) 14%, white),
+    color-mix(in oklch, oklch(0.82 0.08 185) 12%, white)
+  );
   border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
 }
 
@@ -2903,6 +2975,39 @@
   font-weight: 700;
   opacity: 0.75;
   font-size: 11px;
+}
+
+/* ── Mock notes (bg window content for global menu demo) ── */
+
+.onboarding-shortcut-window__body--bg {
+  padding: 10px 12px;
+}
+
+.mock-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mock-notes__title {
+  height: 8px;
+  width: 50%;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 28%, transparent);
+}
+
+.mock-notes__line {
+  height: 5px;
+  width: 100%;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.mock-notes__line--med {
+  width: 78%;
+}
+.mock-notes__line--short {
+  width: 52%;
 }
 
 /* ── Visual effect overlays ── */
@@ -2972,8 +3077,14 @@
 }
 
 @keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .scene-effect__capture-selection {
@@ -2986,8 +3097,10 @@
 }
 
 /* Hide the dim layer when selection is active (selection's box-shadow handles dimming) */
-.scene-effect--capture:has(.scene-effect__capture-selection) .scene-effect__capture-dim,
-.scene-effect--capture:has(.scene-effect__capture-vacuum) .scene-effect__capture-dim {
+.scene-effect--capture:has(.scene-effect__capture-selection)
+  .scene-effect__capture-dim,
+.scene-effect--capture:has(.scene-effect__capture-vacuum)
+  .scene-effect__capture-dim {
   opacity: 0;
 }
 
@@ -3040,8 +3153,11 @@
   gap: 8px;
   padding: 10px;
   border-radius: 10px;
-  background:
-    linear-gradient(135deg, color-mix(in oklch, oklch(0.72 0.12 235) 12%, var(--background)), color-mix(in oklch, oklch(0.78 0.08 260) 10%, var(--background)));
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklch, oklch(0.72 0.12 235) 12%, var(--background)),
+    color-mix(in oklch, oklch(0.78 0.08 260) 10%, var(--background))
+  );
   border: 1px solid color-mix(in oklch, oklch(0.62 0.18 235) 15%, transparent);
   font-size: 10px;
   font-weight: 500;
@@ -3074,8 +3190,16 @@
 }
 
 @keyframes miniShellMaterialize {
-  from { opacity: 0; transform: scale(0.55); filter: blur(14px); }
-  to { opacity: 1; transform: scale(1); filter: blur(0px); }
+  from {
+    opacity: 0;
+    transform: scale(0.55);
+    filter: blur(14px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
 }
 
 .scene-effect__mini-shell-bar {
@@ -3083,7 +3207,8 @@
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground) 6%, transparent);
   font-size: 11px;
   font-weight: 600;
   color: var(--foreground);
@@ -3105,7 +3230,13 @@
   flex: 1;
   overflow: hidden;
   justify-content: flex-end;
-  mask-image: linear-gradient(to bottom, transparent, black 16px, black calc(100% - 16px), transparent);
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 16px,
+    black calc(100% - 16px),
+    transparent
+  );
 }
 
 .scene-effect__mini-shell-msg {
@@ -3119,7 +3250,11 @@
 .scene-effect__mini-shell-msg--user {
   align-self: flex-end;
   max-width: 80%;
-  background: color-mix(in oklch, var(--primary, oklch(0.62 0.18 235)) 12%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--primary, oklch(0.62 0.18 235)) 12%,
+    transparent
+  );
   border-radius: 12px 12px 4px 12px;
 }
 
@@ -3163,8 +3298,16 @@
 }
 
 @keyframes workspaceIn {
-  from { opacity: 0; transform: scale(0.55); filter: blur(10px); }
-  to { opacity: 1; transform: scale(1); filter: blur(0px); }
+  from {
+    opacity: 0;
+    transform: scale(0.55);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
 }
 
 .scene-effect__workspace-sidebar {
@@ -3241,7 +3384,11 @@
 
 .scene-effect__workspace-msg--user {
   align-self: flex-end;
-  background: color-mix(in oklch, var(--primary, oklch(0.62 0.18 235)) 12%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--primary, oklch(0.62 0.18 235)) 12%,
+    transparent
+  );
   border-radius: 12px 12px 4px 12px;
 }
 
@@ -3282,10 +3429,12 @@
   color: white;
   font-size: 13px;
   font-weight: 500;
-  box-shadow: 0 8px 24px color-mix(in oklch, oklch(0.62 0.18 235) 35%, transparent);
+  box-shadow: 0 8px 24px
+    color-mix(in oklch, oklch(0.62 0.18 235) 35%, transparent);
 }
 
-.onboarding-shortcut-surface[data-result="add"] .onboarding-shortcut-window__body {
+.onboarding-shortcut-surface[data-result="add"]
+  .onboarding-shortcut-window__body {
   filter: brightness(0.98);
 }
 
@@ -3299,7 +3448,8 @@
   gap: 12px;
 }
 
-.onboarding-shortcut-surface[data-result="voice"] .onboarding-shortcut-window__body {
+.onboarding-shortcut-surface[data-result="voice"]
+  .onboarding-shortcut-window__body {
   filter: saturate(0.5) brightness(0.97);
 }
 
@@ -3317,12 +3467,22 @@
   animation: voicePulse 2s ease-out infinite;
 }
 
-.scene-effect__voice-ring:nth-child(2) { animation-delay: 0.4s; }
-.scene-effect__voice-ring:nth-child(3) { animation-delay: 0.8s; }
+.scene-effect__voice-ring:nth-child(2) {
+  animation-delay: 0.4s;
+}
+.scene-effect__voice-ring:nth-child(3) {
+  animation-delay: 0.8s;
+}
 
 @keyframes voicePulse {
-  from { transform: scale(0.5); opacity: 0.8; }
-  to { transform: scale(1.6); opacity: 0; }
+  from {
+    transform: scale(0.5);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
 }
 
 .scene-effect__voice-mic {
@@ -3362,8 +3522,14 @@
 }
 
 @keyframes miniShellClose {
-  from { opacity: 1; transform: scale(1); }
-  to { opacity: 0; transform: scale(0.82); }
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.82);
+  }
 }
 
 .onboarding-shortcut-context-menu {
@@ -3385,8 +3551,14 @@
 }
 
 @keyframes onboardingMenuPop {
-  from { opacity: 0; transform: translateY(-2px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .onboarding-shortcut-context-menu__item {
@@ -3430,7 +3602,9 @@
   margin: 0 auto;
   opacity: 0;
   transform: translateY(6px);
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s ease;
   min-height: 5.5em;
 }
 
@@ -3453,141 +3627,6 @@
   font-weight: 300;
   color: var(--foreground);
   opacity: 0.6;
-}
-
-.onboarding-shortcut-app {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  height: 100%;
-}
-
-.onboarding-shortcut-app__sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 6px;
-  border-right: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  background: var(--background);
-}
-
-.onboarding-shortcut-app__sidebar-logo {
-  width: 100%;
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--foreground);
-  opacity: 0.5;
-  margin-bottom: 6px;
-}
-
-.onboarding-shortcut-app__sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.onboarding-shortcut-app__sidebar-nav > div {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-  border-radius: 8px;
-  color: var(--foreground);
-  opacity: 0.35;
-}
-
-.onboarding-shortcut-app__sidebar-nav > div[data-active] {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  opacity: 0.75;
-}
-
-.onboarding-shortcut-app__content {
-  display: grid;
-  align-content: start;
-  gap: 14px;
-  padding: 18px;
-  border-top-left-radius: 12px;
-  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-}
-
-.onboarding-shortcut-app__header {
-  display: grid;
-  gap: 4px;
-}
-
-.onboarding-shortcut-app__header strong {
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--foreground);
-  opacity: 0.9;
-}
-
-.onboarding-shortcut-context-card {
-  display: grid;
-  gap: 8px;
-  padding: 16px;
-  border-radius: 14px;
-  background: color-mix(in oklch, white 88%, var(--background));
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  box-shadow: 0 8px 20px color-mix(in oklch, black 5%, transparent);
-  transition: box-shadow 140ms ease, border-color 140ms ease, transform 140ms ease;
-}
-
-.onboarding-shortcut-context-card--secondary {
-  opacity: 0.6;
-}
-
-.onboarding-shortcut-context-card[data-highlighted="true"] {
-  border-color: color-mix(in oklch, oklch(0.68 0.16 235) 30%, transparent);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklch, oklch(0.68 0.16 235) 18%, transparent),
-    0 0 0 8px color-mix(in oklch, oklch(0.68 0.16 235) 6%, transparent),
-    0 20px 36px color-mix(in oklch, black 8%, transparent);
-  transform: translateY(-1px);
-}
-
-.onboarding-shortcut-context-card__eyebrow {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: oklch(0.58 0.16 235);
-}
-
-.onboarding-shortcut-context-card__title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--foreground);
-  opacity: 0.85;
-  line-height: 1.3;
-}
-
-.onboarding-shortcut-context-card__text {
-  margin: 0;
-  font-size: 10px;
-  line-height: 1.55;
-  color: var(--foreground);
-  opacity: 0.5;
-}
-
-.onboarding-shortcut-context-card__tags {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-
-.onboarding-shortcut-context-card__tags span {
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  font-size: 9px;
-  font-weight: 500;
-  color: var(--foreground);
-  opacity: 0.5;
 }
 
 .onboarding-shortcut-menu {
@@ -3613,7 +3652,10 @@
   border-radius: 12px;
   color: var(--foreground);
   opacity: 0.72;
-  transition: background 120ms ease, color 120ms ease, opacity 120ms ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
 }
 
 .onboarding-shortcut-menu__item[data-hovered="true"] {
@@ -3637,39 +3679,123 @@
   letter-spacing: -0.01em;
 }
 
-/* ── Sidebar demo (local mode right-click tutorial) ── */
+/* ── Sidebar demo (local mode right-click tutorial) ──
+ * The local-mode shortcut surface embeds the real `<StellaAppMock />`
+ * underneath, so this sidebar slides in over a faithful mock of the
+ * actual desktop app. The chrome below mirrors Stella's chat/composer
+ * styling (rounded panel + pill composer + soft drop shadow). */
+
+.onboarding-shortcut-stella-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 19px;
+  overflow: hidden;
+  isolation: isolate;
+  pointer-events: none;
+  transition:
+    filter 0.35s ease,
+    opacity 0.35s ease;
+}
+
+/* Subtly dim the underlying app while the chat panel is open so the
+ * sidebar reads as the focused surface. */
+.onboarding-shortcut-stella-frame[data-sidebar-open] {
+  filter: brightness(0.92) saturate(0.9);
+}
+
+/* The embedded mock injects its own chrome (border + shadow + radius);
+ * the parent surface already provides those, so flatten the inner mock
+ * to avoid a doubled border. */
+.onboarding-shortcut-stella-frame .sam-root {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  width: 100%;
+  height: 100%;
+}
 
 .onboarding-shortcut-sidebar-demo {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 42%;
+  top: 6px;
+  right: 6px;
+  bottom: 6px;
+  width: 44%;
   display: flex;
   flex-direction: column;
-  background: var(--background);
-  border-left: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  border-top-right-radius: 20px;
-  border-bottom-right-radius: 20px;
-  animation: sidebarSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  background: color-mix(in oklch, var(--background) 96%, white 4%);
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 16px;
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 60%, transparent) inset,
+    -8px 0 24px color-mix(in oklch, black 14%, transparent),
+    0 18px 32px color-mix(in oklch, black 12%, transparent);
+  backdrop-filter: blur(14px);
+  animation: sidebarSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
   z-index: 4;
+  overflow: hidden;
 }
 
 @keyframes sidebarSlideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(8%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .onboarding-shortcut-sidebar-demo__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   padding: 10px 12px;
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  font-size: 11px;
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.onboarding-shortcut-sidebar-demo__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 18%, transparent);
+  color: oklch(0.55 0.18 235);
+  flex-shrink: 0;
+}
+
+.onboarding-shortcut-sidebar-demo__title {
+  flex: 1;
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--foreground);
-  opacity: 0.8;
+  opacity: 0.85;
+}
+
+.onboarding-shortcut-sidebar-demo__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: var(--foreground);
+  opacity: 0.5;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    opacity 120ms ease;
+}
+
+.onboarding-shortcut-sidebar-demo__close:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  opacity: 0.85;
 }
 
 .onboarding-shortcut-sidebar-demo__messages {
@@ -3677,16 +3803,57 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 8px;
+  padding: 12px 10px;
   overflow: hidden;
 }
 
 .onboarding-shortcut-sidebar-demo__composer {
-  padding: 10px 12px;
-  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  font-size: 10px;
-  color: var(--foreground);
-  opacity: 0.35;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 10px 12px;
+  padding: 5px 6px 5px 8px;
+  border-radius: 999px;
+  background: var(--background);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  box-shadow: 0 4px 12px color-mix(in oklch, black 6%, transparent);
+}
+
+.onboarding-shortcut-sidebar-demo__composer-add,
+.onboarding-shortcut-sidebar-demo__composer-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.onboarding-shortcut-sidebar-demo__composer-add {
+  border: 1.4px solid color-mix(in oklch, var(--foreground) 55%, transparent);
+  color: color-mix(in oklch, var(--foreground) 70%, transparent);
+}
+
+.onboarding-shortcut-sidebar-demo__composer-input {
+  flex: 1;
+  font-size: 11px;
+  color: color-mix(in oklch, var(--foreground) 38%, transparent);
+  letter-spacing: -0.01em;
+}
+
+.onboarding-shortcut-sidebar-demo__composer-submit {
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 22%, transparent);
+  color: color-mix(in oklch, oklch(0.55 0.18 235) 80%, var(--foreground));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-shortcut-sidebar-demo {
+    animation: none;
+  }
+  .onboarding-shortcut-stella-frame {
+    transition: none;
+  }
 }
 
 /* ── Menu visual effects (local mode) ── */
@@ -3708,8 +3875,10 @@
   transition: opacity 0.35s ease;
 }
 
-.onboarding-shortcut-surface[data-menu-result="ask-anything"] .menu-effect--ask-anything,
-.onboarding-shortcut-surface[data-menu-result="ask-about-this"] .menu-effect--ask-about-this,
+.onboarding-shortcut-surface[data-menu-result="ask-anything"]
+  .menu-effect--ask-anything,
+.onboarding-shortcut-surface[data-menu-result="ask-about-this"]
+  .menu-effect--ask-about-this,
 .onboarding-shortcut-surface[data-menu-result="close"] .menu-effect--close {
   opacity: 1;
 }
@@ -3763,8 +3932,14 @@
 }
 
 @keyframes dismissPop {
-  from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
-  to { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+  from {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.6;
+  }
 }
 
 @media (max-width: 1024px) {
@@ -3789,7 +3964,6 @@
     grid-template-rows: auto auto;
   }
 }
-
 
 .onboarding-phase-nav {
   position: fixed;
@@ -3862,7 +4036,9 @@
     transform: none;
   }
 
-  .onboarding-dialogue[data-phase="browser"] .onboarding-step-content > .onboarding-step-label,
+  .onboarding-dialogue[data-phase="browser"]
+    .onboarding-step-content
+    > .onboarding-step-label,
   .onboarding-dialogue[data-phase="browser"]
     .onboarding-step-content
     > button.onboarding-discovery-row,
@@ -3920,11 +4096,21 @@
   animation: onboardingBrowserListIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.onboarding-permission-card:nth-child(1) { animation-delay: 0.1s; }
-.onboarding-permission-card:nth-child(2) { animation-delay: 0.2s; }
-.onboarding-permission-card:nth-child(3) { animation-delay: 0.3s; }
-.onboarding-permission-card:nth-child(4) { animation-delay: 0.4s; }
-.onboarding-permission-card:nth-child(5) { animation-delay: 0.5s; }
+.onboarding-permission-card:nth-child(1) {
+  animation-delay: 0.1s;
+}
+.onboarding-permission-card:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.onboarding-permission-card:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.onboarding-permission-card:nth-child(4) {
+  animation-delay: 0.4s;
+}
+.onboarding-permission-card:nth-child(5) {
+  animation-delay: 0.5s;
+}
 
 .onboarding-permission-card[data-granted] {
   opacity: 0.9;
