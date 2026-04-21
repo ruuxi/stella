@@ -668,7 +668,17 @@ async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
     let dir = Some(Path::new(install_dir));
     let result = run(&["bun", "install", "--frozen-lockfile"], dir).await;
     if result.ok {
-        ensure_mac_screen_capture_permissions_built(install_dir).await?;
+        // This addon is optional at runtime: the desktop app already falls back to
+        // Electron/native-helper permission checks when the native module is missing.
+        if let Err(err) = ensure_mac_screen_capture_permissions_built(install_dir).await {
+            log_install(
+                install_dir,
+                &format!(
+                    "Optional mac-screen-capture-permissions build failed; continuing with fallbacks: {err}"
+                ),
+            )
+            .await;
+        }
         Ok(())
     } else {
         let mut output_sections = Vec::new();
