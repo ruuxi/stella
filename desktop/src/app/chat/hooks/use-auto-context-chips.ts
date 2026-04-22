@@ -34,6 +34,8 @@ export type RecentAppChip = {
   isActive: boolean
   /** Topmost on-screen window title for this app, when available. */
   windowTitle?: string
+  /** Base64 PNG data URL for the app's icon (macOS); undefined elsewhere. */
+  iconDataUrl?: string
 }
 
 export type BrowserTabChip = {
@@ -45,6 +47,8 @@ export type BrowserTabChip = {
   title?: string
   /** Hostname for compact label rendering ("github.com"). */
   host: string
+  /** Browser app's icon, when known (resolved from the recent-apps snapshot). */
+  iconDataUrl?: string
 }
 
 export type SuggestionChip = RecentAppChip | BrowserTabChip
@@ -381,6 +385,7 @@ const fetchSnapshot = async (): Promise<FetchSnapshotResult> => {
       bundleId: app.bundleId,
       isActive: app.isActive,
       windowTitle: app.windowTitle,
+      iconDataUrl: app.iconDataUrl,
     }))
   } catch {
     apps = []
@@ -399,13 +404,21 @@ const fetchSnapshot = async (): Promise<FetchSnapshotResult> => {
         } catch {
           host = next.url
         }
+        const tabBundleId = next.bundleId ?? activeBrowser.bundleId
+        // Reuse the icon from the matching app in the snapshot when we have
+        // it — the active browser is always present in `apps`, so a second
+        // round-trip just for an icon would be wasteful.
+        const browserIcon = apps.find(
+          (app) => app.bundleId === tabBundleId,
+        )?.iconDataUrl
         tab = {
           kind: "tab",
           browser: next.browser,
-          bundleId: next.bundleId ?? activeBrowser.bundleId,
+          bundleId: tabBundleId,
           url: next.url,
           title: next.title,
           host,
+          iconDataUrl: browserIcon,
         }
       }
     } catch {

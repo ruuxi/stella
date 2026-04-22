@@ -687,6 +687,7 @@ export type ElectronHomeApi = {
       pid: number;
       isActive: boolean;
       windowTitle?: string;
+      iconDataUrl?: string;
     }>;
   }>;
   /**
@@ -738,6 +739,7 @@ export type ElectronHomeApi = {
             bundleId?: string;
             isActive: boolean;
             windowTitle?: string;
+            iconDataUrl?: string;
           }
         | {
             kind: "tab";
@@ -746,6 +748,7 @@ export type ElectronHomeApi = {
             url: string;
             title?: string;
             host: string;
+            iconDataUrl?: string;
           };
     }) => void,
   ) => () => void;

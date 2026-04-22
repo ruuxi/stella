@@ -48,6 +48,10 @@ struct ListedAppPayload: Codable {
     let pid: Int32
     let isActive: Bool
     let windowTitle: String
+    /// Base64-encoded PNG data URL of the app's Dock icon, downsized to 32×32.
+    /// `nil` when the app exposes no icon (rare) or encoding failed. The
+    /// renderer falls back to the app name when missing.
+    let iconDataUrl: String?
 }
 
 struct ListAppsPayload: Codable {
@@ -65,6 +69,59 @@ func emitJson<T: Encodable>(_ value: T) {
     } else {
         print("{\"ok\":false,\"apps\":[],\"warnings\":[\"encode failed\"]}")
     }
+}
+
+// ---------------------------------------------------------------------------
+// App icon → base64 PNG data URL
+//
+// `NSRunningApplication.icon` returns a multi-representation NSImage; we
+// downsize to 32×32 and PNG-encode so the renderer can paint a crisp 16px
+// chip on retina without paying for a full-size icon (~256×256, 30+ KB).
+// Encoded payload is ~1–3 KB per app, base64 included.
+//
+// We deliberately avoid `NSImage.lockFocus()` / `tiffRepresentation` here:
+// they need a live NSApplication run loop and noisily fail with
+// `CGImageDestinationFinalize failed` when run from a CLI helper. The
+// CGContext path below is fully Core Graphics and works headless.
+// ---------------------------------------------------------------------------
+
+func encodeAppIconAsBase64(_ icon: NSImage?) -> String? {
+    guard let icon, icon.size.width > 0, icon.size.height > 0 else { return nil }
+
+    let targetSize = CGSize(width: 32, height: 32)
+    var proposedRect = NSRect(origin: .zero, size: targetSize)
+    guard let sourceCGImage = icon.cgImage(
+        forProposedRect: &proposedRect,
+        context: nil,
+        hints: nil
+    ) else {
+        return nil
+    }
+
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+    guard let context = CGContext(
+        data: nil,
+        width: Int(targetSize.width),
+        height: Int(targetSize.height),
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: colorSpace,
+        bitmapInfo: bitmapInfo.rawValue
+    ) else {
+        return nil
+    }
+    context.interpolationQuality = .high
+    context.draw(sourceCGImage, in: CGRect(origin: .zero, size: targetSize))
+
+    guard let resizedCGImage = context.makeImage() else { return nil }
+
+    let bitmap = NSBitmapImageRep(cgImage: resizedCGImage)
+    guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
+        return nil
+    }
+    let base64 = pngData.base64EncodedString()
+    return "data:image/png;base64,\(base64)"
 }
 
 // ---------------------------------------------------------------------------
@@ -260,7 +317,7 @@ func runListCommand() {
     let mruRank = mruRankByPid()
     let unrankedSentinel = Int.max
 
-    let apps = runningApps
+    let sorted = runningApps
         .sorted { lhs, rhs in
             // Strict MRU: front-to-back window stack order. Frontmost is
             // marked separately via `isActive` but doesn't get pinned to
@@ -283,15 +340,24 @@ func runListCommand() {
             }
             return lhs.processIdentifier < rhs.processIdentifier
         }
-        .map { app in
-            ListedAppPayload(
-                name: app.localizedName ?? app.bundleIdentifier ?? "pid \(app.processIdentifier)",
-                bundleId: app.bundleIdentifier,
-                pid: app.processIdentifier,
-                isActive: app.processIdentifier == frontmostPid,
-                windowTitle: titlesByPid[app.processIdentifier] ?? ""
-            )
-        }
+
+    // The renderer only ever surfaces the top handful of apps as chips,
+    // but we emit the full sorted list so the JS-side noise filters can
+    // run before slicing. Icon encoding (~5ms per app) is by far the
+    // hottest cost in this binary, so cap it to the first N entries the
+    // renderer could plausibly show.
+    let iconBudget = 12
+    let apps = sorted.enumerated().map { (index, app) -> ListedAppPayload in
+        let iconDataUrl = index < iconBudget ? encodeAppIconAsBase64(app.icon) : nil
+        return ListedAppPayload(
+            name: app.localizedName ?? app.bundleIdentifier ?? "pid \(app.processIdentifier)",
+            bundleId: app.bundleIdentifier,
+            pid: app.processIdentifier,
+            isActive: app.processIdentifier == frontmostPid,
+            windowTitle: titlesByPid[app.processIdentifier] ?? "",
+            iconDataUrl: iconDataUrl
+        )
+    }
 
     let diagnostics = [
         "titles: cg=\(collected.cgFilledCount) ax=\(collected.axFilledCount) needsAx=\(collected.needsAxCount) axTrusted=\(collected.axTrusted)",

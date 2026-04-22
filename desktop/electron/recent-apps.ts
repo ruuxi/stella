@@ -14,6 +14,7 @@ type RawListedApp = {
   pid?: number
   isActive?: boolean
   windowTitle?: string
+  iconDataUrl?: string | null
 }
 
 type RawListAppsPayload = {
@@ -180,12 +181,17 @@ const listRecentAppsMac = async (limit: number): Promise<RecentApp[] | null> => 
     seenPids.add(raw.pid)
 
     const windowTitle = typeof raw.windowTitle === 'string' ? raw.windowTitle.trim() : ''
+    const iconDataUrl =
+      typeof raw.iconDataUrl === 'string' && raw.iconDataUrl.startsWith('data:image/')
+        ? raw.iconDataUrl
+        : undefined
     cleaned.push({
       name: raw.name,
       bundleId: raw.bundleId ?? undefined,
       pid: raw.pid,
       isActive: Boolean(raw.isActive),
       windowTitle: windowTitle || undefined,
+      iconDataUrl,
     })
   }
 
