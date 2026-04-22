@@ -1,0 +1,52 @@
+/**
+ * `image_gen` tool — generate a still image through Stella's managed media
+ * gateway. The result is saved under `state/media/outputs/` and surfaced in
+ * the sidebar; the model should not download or open it itself.
+ */
+
+import { createMediaToolHandlers } from "../media.js";
+import type { ToolDefinition, ToolHandler } from "../types.js";
+
+export type ImageGenToolOptions = {
+  getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
+  queryConvex?: (
+    ref: unknown,
+    args: Record<string, unknown>,
+  ) => Promise<unknown>;
+};
+
+export const createImageGenTool = (
+  options: ImageGenToolOptions,
+): ToolDefinition => {
+  const handlers = createMediaToolHandlers(options);
+  const handler = handlers.image_gen as ToolHandler;
+  return {
+    name: "image_gen",
+    description:
+      "Generate a still image through Stella's managed media gateway. The result is saved under state/media/outputs/ and shown in the sidebar; do not download or open it yourself. Required: prompt.",
+    promptSnippet: "Generate a still image via Stella's managed media gateway",
+    parameters: {
+      type: "object",
+      properties: {
+        prompt: {
+          type: "string",
+          description:
+            "Description of the image to generate. Be specific about subject, style, framing, color, lighting, and any text overlays.",
+        },
+        aspectRatio: {
+          type: "string",
+          description:
+            "Optional aspect ratio (e.g. '1:1', '16:9', '9:16', '4:3'). Defaults to the gateway's recommended ratio.",
+        },
+        referenceImagePaths: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional local image paths to use as references (style/character/scene continuity).",
+        },
+      },
+      required: ["prompt"],
+    },
+    execute: handler,
+  };
+};

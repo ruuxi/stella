@@ -197,3 +197,35 @@ export type ToolHandler = (
   context: ToolContext,
   extras?: ToolHandlerExtras,
 ) => Promise<ToolResult>;
+
+/**
+ * Self-contained tool definition. One file per tool under
+ * `runtime/kernel/tools/defs/` exports either a `ToolDefinition` directly (for
+ * stateless tools) or a `createXxxTool(options)` factory that returns one (for
+ * tools that need wired dependencies like `webSearch`, `taskApi`, etc.).
+ *
+ * The host imports every def and builds a single Map<name, ToolDefinition>
+ * that drives both:
+ *   - the catalog the model sees (name, description, parameters, promptSnippet)
+ *   - the handler the runtime dispatches (execute)
+ *
+ * No central description/schema map. No name-string lookup with placeholder
+ * fallback. If a tool isn't in the registry, the agent loop simply doesn't
+ * see it.
+ */
+export type ToolDefinition = {
+  /** Tool name surfaced to the model (e.g. `web`, `exec_command`, `computer_click`). */
+  name: string;
+  /** Description string shown in the model's tool list. */
+  description: string;
+  /** JSON Schema for tool arguments. */
+  parameters: Record<string, unknown>;
+  /**
+   * Optional one-line snippet for an auto-generated "Available tools" block in
+   * the agent's system prompt. Tools omit this when their use is so context-
+   * specific that an unconditional snippet would be misleading.
+   */
+  promptSnippet?: string;
+  /** Handler invoked when the model calls the tool. */
+  execute: ToolHandler;
+};

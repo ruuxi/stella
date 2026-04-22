@@ -26,9 +26,10 @@ import type {
   ToolResultMessage,
 } from "../../ai/types.js";
 import type { AgentMessage } from "../agent-core/types.js";
+import type { MemoryStore } from "../memory/memory-store.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
-import { TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "../tools/schemas.js";
+import { createMemoryTool } from "../tools/defs/memory.js";
 import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
 import { TOOL_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -94,19 +95,16 @@ export const buildMemoryReviewSystemPrompt = (store: RuntimeStore): string => {
   ].join("\n\n");
 };
 
-const buildMemoryTool = (): Tool => {
-  const schema = TOOL_JSON_SCHEMAS[TOOL_IDS.MEMORY];
-  if (!schema) {
-    throw new Error(`No JSON schema registered for tool ${TOOL_IDS.MEMORY}.`);
-  }
+const buildMemoryTool = (memoryStore: MemoryStore): Tool => {
+  // The MemoryStore is required to construct the def, but we only need its
+  // metadata here — execution is routed through `dispatchLocalTool` separately.
+  const def = createMemoryTool({ memoryStore });
   return {
-    name: TOOL_IDS.MEMORY,
-    description: TOOL_DESCRIPTIONS[TOOL_IDS.MEMORY] ?? "Manage durable memory entries.",
-    // The Tool.parameters slot is a TSchema in the type system but the runtime
-    // only requires JSON-Schema-shaped data. The other call sites (notably
-    // agent-runtime/tool-adapters.ts:registerTool) cast TOOL_JSON_SCHEMAS in
-    // the same way - see resolveToolMetadata at lines 44-46.
-    parameters: schema as Tool["parameters"],
+    name: def.name,
+    description: def.description,
+    // The Tool.parameters slot is a TSchema in the type system; the runtime
+    // only needs JSON-Schema-shaped data, matching how tool-adapters.ts casts.
+    parameters: def.parameters as Tool["parameters"],
   };
 };
 
@@ -177,7 +175,7 @@ const runReview = async (args: {
   }
 
   const reviewSystemPrompt = buildMemoryReviewSystemPrompt(args.store);
-  const memoryTool = buildMemoryTool();
+  const memoryTool = buildMemoryTool(args.store.memoryStore);
   const messages: Message[] = [
     {
       role: "user",

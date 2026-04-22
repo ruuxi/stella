@@ -28,7 +28,8 @@ import type {
   ToolResultMessage,
 } from "../../ai/types.js";
 import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
-import { TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "../tools/schemas.js";
+import { grepTool } from "../tools/defs/grep.js";
+import { readTool } from "../tools/defs/read.js";
 import { resolveLlmRoute } from "../model-routing.js";
 import { resolveAgent } from "../runner/context.js";
 import { createRunnerSiteConfig } from "../runner/model-selection.js";
@@ -50,16 +51,15 @@ export const FALLBACK_FINDINGS = `<explore_findings status="unavailable">
 const wrapFindings = (json: string): string =>
   `<explore_findings>\n${json}\n</explore_findings>`;
 
+const EXPLORE_TOOL_DEFS = { Read: readTool, Grep: grepTool } as const;
+
 const buildExploreTools = (): Tool[] =>
   EXPLORE_TOOL_NAMES.map((name) => {
-    const schema = TOOL_JSON_SCHEMAS[name];
-    if (!schema) {
-      throw new Error(`No JSON schema registered for tool ${name}.`);
-    }
+    const def = EXPLORE_TOOL_DEFS[name];
     return {
-      name,
-      description: TOOL_DESCRIPTIONS[name] ?? `${name} tool`,
-      parameters: schema as Tool["parameters"],
+      name: def.name,
+      description: def.description,
+      parameters: def.parameters as Tool["parameters"],
     };
   });
 
