@@ -44,31 +44,83 @@ export const buildRunThreadKey = ({
     threadId,
   });
 
+// Vision tool results (computer_get_app_state, view_image, etc.) carry a
+// base64-encoded image content block on every snapshot. Each PNG is roughly
+// 700KB raw → ~1MB base64 → another ~1MB after JSON encoding when sent to
+// the model. After a handful of turns the conversation history balloons
+// past the upstream LLM proxy's per-request memory cap (Convex throws
+// "JavaScript execution ran out of memory (maximum 64 MB)").
+//
+// The model only needs to *see* the most recent screenshot to act; older
+// screenshots have already informed the actions that followed them and
+// just bloat the prompt. So before sending history to the model we keep
+// image content blocks ONLY in the most recent N tool results, replacing
+// older image blocks with a tiny text breadcrumb that preserves provenance
+// (the screenshot file path is still on disk if anything ever needs it).
+const KEEP_RECENT_IMAGES_IN_HISTORY = 1;
+
+const stripStaleImageBlocks = (messages: Message[]): Message[] => {
+  let imagesKept = 0;
+  const out: Message[] = [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "toolResult") {
+      out.push(message);
+      continue;
+    }
+    const hasImage = message.content.some((block) => block.type === "image");
+    if (!hasImage) {
+      out.push(message);
+      continue;
+    }
+    if (imagesKept < KEEP_RECENT_IMAGES_IN_HISTORY) {
+      imagesKept += 1;
+      out.push(message);
+      continue;
+    }
+    const compactContent = message.content.map((block) => {
+      if (block.type !== "image") {
+        return block;
+      }
+      const sizeKb = Math.round(((block.data?.length ?? 0) * 0.75) / 1024);
+      return {
+        type: "text" as const,
+        text: `[Older ${block.mimeType ?? "image/png"} screenshot omitted from history (~${sizeKb}KB). Re-run the tool to see it again.]`,
+      };
+    });
+    out.push({ ...message, content: compactContent });
+  }
+  return out.reverse();
+};
+
 export const buildHistorySource = (
   context: LocalTaskManagerAgentContext,
-): Message[] =>
-  context.threadHistory
-    ?.map((entry) => {
-      if (entry.payload) {
-        return toRuntimeMessage(entry.payload);
-      }
-      if (entry.role === "user" && typeof entry.content === "string") {
-        return {
-          role: "user",
-          content: entry.content,
-          timestamp: now(),
-        } satisfies UserMessage;
-      }
-      if (entry.role === "assistant" && typeof entry.content === "string") {
-        const trimmed = entry.content.trim();
-        if (!trimmed) return null;
-        return createHistoryAssistantMessage([
-          { type: "text", text: trimmed } satisfies TextContent,
-        ]);
-      }
-      return null;
-    })
-    .filter((entry): entry is Message => entry !== null) ?? [];
+): Message[] => {
+  const messages =
+    context.threadHistory
+      ?.map((entry) => {
+        if (entry.payload) {
+          return toRuntimeMessage(entry.payload);
+        }
+        if (entry.role === "user" && typeof entry.content === "string") {
+          return {
+            role: "user",
+            content: entry.content,
+            timestamp: now(),
+          } satisfies UserMessage;
+        }
+        if (entry.role === "assistant" && typeof entry.content === "string") {
+          const trimmed = entry.content.trim();
+          if (!trimmed) return null;
+          return createHistoryAssistantMessage([
+            { type: "text", text: trimmed } satisfies TextContent,
+          ]);
+        }
+        return null;
+      })
+      .filter((entry): entry is Message => entry !== null) ?? [];
+  return stripStaleImageBlocks(messages);
+};
 
 const createHistoryAssistantMessage = (
   content: (TextContent | ThinkingContent | ToolCall)[],

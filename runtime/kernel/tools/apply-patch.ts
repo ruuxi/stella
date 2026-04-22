@@ -1,37 +1,19 @@
-/**
- * `apply_patch` — Codex-style text-based diff applier.
- *
- * Format (parser/applier ported from
- * `../projects/codex/codex-rs/apply-patch/apply_patch_tool_instructions.md`):
- *
- *   *** Begin Patch
- *   *** Add File: <abs path>
- *   +<line>
- *   *** Update File: <abs path>
- *   *** Move to: <abs path>
- *   @@ optional context header
- *    context line
- *   -removed line
- *   +added line
- *   *** Delete File: <abs path>
- *   *** End Patch
- *
- * Stella uses absolute paths everywhere. There is no workspace restriction.
- */
-
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { isBlockedPath } from "../../command-safety.js";
-import { expandHomePath } from "../../utils.js";
-import type { ExecToolDefinition } from "../registry.js";
 
-const APPLY_PATCH_SCHEMA = {
+import { isBlockedPath } from "./command-safety.js";
+import type { ToolResult } from "./types.js";
+import { expandHomePath } from "./utils.js";
+
+export const APPLY_PATCH_TOOL_NAME = "apply_patch";
+
+export const APPLY_PATCH_JSON_SCHEMA = {
   type: "object",
   properties: {
     patch: {
       type: "string",
       description:
-        "Patch envelope starting with `*** Begin Patch` and ending with `*** End Patch`. See the Exec description for the grammar.",
+        "Patch envelope starting with `*** Begin Patch` and ending with `*** End Patch`.",
     },
   },
   required: ["patch"],
@@ -162,7 +144,6 @@ const parsePatch = (input: string): FileOp[] => {
           hunks.push(hunk);
           continue;
         }
-        // tolerate stray blank lines between operations
         if (next.trim() === "") {
           i++;
           continue;
@@ -248,17 +229,20 @@ const applyHunkAt = (
 const applyUpdate = async (op: Extract<FileOp, { kind: "update" }>) => {
   const block = isBlockedPath(op.path);
   if (block) throw new Error(block);
+
   let original: string;
   try {
     original = await fs.readFile(op.path, "utf-8");
   } catch {
     throw new Error(`apply_patch: file not found for Update: ${op.path}`);
   }
+
   let fileLines = original.split("\n");
   const trailingNewline = original.endsWith("\n");
   if (trailingNewline) {
     fileLines = fileLines.slice(0, -1);
   }
+
   let cursor = 0;
   for (const hunk of op.hunks) {
     const anchor = findHunkAnchor(fileLines, hunk, cursor);
@@ -273,8 +257,10 @@ const applyUpdate = async (op: Extract<FileOp, { kind: "update" }>) => {
     fileLines = newLines;
     cursor = anchor + consumed;
   }
+
   let newContent = fileLines.join("\n");
   if (trailingNewline) newContent += "\n";
+
   const targetPath = op.moveTo ?? op.path;
   if (op.moveTo) {
     const moveBlock = isBlockedPath(op.moveTo);
@@ -287,7 +273,13 @@ const applyUpdate = async (op: Extract<FileOp, { kind: "update" }>) => {
   } else {
     await fs.writeFile(op.path, newContent, "utf-8");
   }
-  return { kind: "update" as const, path: op.path, movedTo: op.moveTo, written: targetPath };
+
+  return {
+    kind: "update" as const,
+    path: op.path,
+    ...(op.moveTo ? { movedTo: op.moveTo } : {}),
+    written: targetPath,
+  };
 };
 
 const applyAdd = async (op: Extract<FileOp, { kind: "add" }>) => {
@@ -306,15 +298,23 @@ const applyDelete = async (op: Extract<FileOp, { kind: "delete" }>) => {
   return { kind: "delete" as const, path: op.path };
 };
 
-export const createApplyPatchBuiltin = (): ExecToolDefinition => ({
-  name: "apply_patch",
-  description:
-    "Apply a Codex-style text-based patch envelope to one or more files. Supports `*** Add File:`, `*** Update File:` (with optional `*** Move to:`), and `*** Delete File:`. All paths must be absolute.",
-  inputSchema: APPLY_PATCH_SCHEMA,
-  handler: async (rawArgs) => {
-    const args = (rawArgs ?? {}) as Record<string, unknown>;
-    const patch = String(args.patch ?? "").trim();
-    if (!patch) throw new Error("apply_patch requires a patch envelope.");
+export const extractApplyPatchTargetPaths = (patch: string): string[] =>
+  parsePatch(patch).flatMap((op) => {
+    if (op.kind === "add" || op.kind === "delete") {
+      return [op.path];
+    }
+    return op.moveTo ? [op.path, op.moveTo] : [op.path];
+  });
+
+export const handleApplyPatch = async (
+  args: Record<string, unknown>,
+): Promise<ToolResult> => {
+  const patch = String(args.patch ?? "").trim();
+  if (!patch) {
+    return { error: "apply_patch requires a patch envelope." };
+  }
+
+  try {
     const ops = parsePatch(patch);
     const results: Array<{ kind: string; path: string; movedTo?: string }> = [];
     for (const op of ops) {
@@ -332,6 +332,8 @@ export const createApplyPatchBuiltin = (): ExecToolDefinition => ({
           break;
       }
     }
-    return { results };
-  },
-});
+    return { result: { results }, details: { results } };
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+};

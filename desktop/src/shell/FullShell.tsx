@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { RouterProvider } from "@tanstack/react-router";
+import { PageSidebarProvider } from "@/context/page-sidebar";
 import { useTheme } from "@/context/theme-context";
 import { useUiState } from "@/context/ui-state";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
@@ -113,7 +114,9 @@ export const FullShell = () => {
 
       <div className="full-body">
         {appReady ? (
-          <RouterProvider router={router} />
+          <PageSidebarProvider>
+            <RouterProvider router={router} />
+          </PageSidebarProvider>
         ) : (
           <div
             className="onboarding-layout"

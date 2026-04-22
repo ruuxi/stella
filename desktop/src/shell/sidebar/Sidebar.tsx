@@ -1,6 +1,11 @@
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { LogOut, Palette, Settings as SettingsIcon } from "lucide-react";
+import {
+  ArrowLeft,
+  LogOut,
+  Palette,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -11,6 +16,10 @@ import {
 } from "react";
 import type { AppMetadata } from "@/apps/_shared/app-metadata";
 import { api } from "@/convex/api";
+import {
+  useDefaultPageSidebarBack,
+  usePageSidebarOverride,
+} from "@/context/page-sidebar";
 import { useTheme } from "@/context/theme-context";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
@@ -436,6 +445,8 @@ export const Sidebar = ({
   const isMac = getPlatform() === "darwin";
   const handleAskStella = onNewAppAskStella ?? onNewApp;
   const navigate = useNavigate();
+  const pageOverride = usePageSidebarOverride();
+  const defaultBack = useDefaultPageSidebarBack();
 
   // User-toggled rail (icon-only) collapse. Persisted in localStorage so the
   // preference survives reloads. The window-mode "mini" mode is a separate
@@ -497,45 +508,76 @@ export const Sidebar = ({
           onOpenSettings={handleOpenSettings}
         />
         {brandRow}
-        <nav className="sidebar-nav">
-          {TOP_APPS.map((app) => (
-            <AppNavItem key={app.id} app={app} />
-          ))}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+        {pageOverride ? (
+          // Page-sidebar override mode: a route (e.g. /settings) has
+          // registered its own nav via <PageSidebar>. We swap out the
+          // default top-nav + footer for the override content, prepended
+          // with a Back button. Account row stays hidden in this mode so
+          // the page nav has the full vertical canvas — Back returns to
+          // the previous route which restores it.
+          <nav className="sidebar-nav sidebar-nav--page-override">
+            <button
+              type="button"
+              className="sidebar-page-back"
+              onClick={defaultBack}
+              title="Back"
+            >
+              <span className="sidebar-nav-icon">
+                <ArrowLeft size={18} />
+              </span>
+              <span className="sidebar-nav-label">
+                {pageOverride.title ?? "Back"}
+              </span>
+            </button>
+            <div className="sidebar-page-override-content">
+              {pageOverride.content}
+            </div>
+          </nav>
+        ) : (
+          <>
+            <nav className="sidebar-nav">
+              {TOP_APPS.map((app) => (
+                <AppNavItem key={app.id} app={app} />
+              ))}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="sidebar-nav-item"
+                    title="New App"
+                  >
+                    <span className="sidebar-nav-icon">
+                      <PlusSquare size={18} />
+                    </span>
+                    <span className="sidebar-nav-label">New App</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="start">
+                  <DropdownMenuItem onClick={handleAskStella}>
+                    Ask Stella
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </nav>
+            <div className="sidebar-footer">
+              {BOTTOM_APPS.map((app) => (
+                <AppNavItem key={app.id} app={app} />
+              ))}
               <button
                 type="button"
                 className="sidebar-nav-item"
-                title="New App"
+                onClick={onConnect}
+                title="Connect"
               >
                 <span className="sidebar-nav-icon">
-                  <PlusSquare size={18} />
+                  <Device size={18} />
                 </span>
-                <span className="sidebar-nav-label">New App</span>
+                <span className="sidebar-nav-label">Connect</span>
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="right" align="start">
-              <DropdownMenuItem onClick={handleAskStella}>Ask Stella</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </nav>
-        <div className="sidebar-footer">
-          {BOTTOM_APPS.map((app) => (
-            <AppNavItem key={app.id} app={app} />
-          ))}
-          <button
-            type="button"
-            className="sidebar-nav-item"
-            onClick={onConnect}
-            title="Connect"
-          >
-            <span className="sidebar-nav-icon">
-              <Device size={18} />
-            </span>
-            <span className="sidebar-nav-label">Connect</span>
-          </button>
-          <AccountRow onSignIn={onSignIn} onUpgrade={handleUpgrade} />
-        </div>
+              <AccountRow onSignIn={onSignIn} onUpgrade={handleUpgrade} />
+            </div>
+          </>
+        )}
       </div>
     </aside>
   );

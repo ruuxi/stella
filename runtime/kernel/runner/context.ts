@@ -12,6 +12,7 @@ import {
   type LocalContextEvent,
   buildLocalHistoryFromEvents,
 } from "../local-history.js";
+import { ConvexClient } from "convex/browser";
 import {
   formatDateTimeReminder,
   THIRTY_MINUTES_MS,
@@ -26,11 +27,7 @@ import {
 } from "../runtime-threads.js";
 import { anyApi } from "convex/server";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
-import {
-  EXEC_TOOL_NAME,
-  buildExecPromptGuidance,
-} from "../exec/exec-contract.js";
-import { renderSkillCatalogBlock } from "../exec/skill-catalog.js";
+import { renderSkillCatalogBlock } from "../shared/skill-catalog.js";
 import type {
   RunnerContext,
   ParsedAgentLike,
@@ -294,6 +291,42 @@ export const createRunnerContext = ({
     displayHtml,
     scheduleApi,
     ...(webSearch ? { webSearch } : {}),
+    getStellaSiteAuth: () => {
+      const baseUrl = sanitizeStellaBase(context.state?.convexSiteUrl ?? envProxyBaseUrl);
+      const authToken = (context.state?.authToken ?? envAuthToken ?? "").trim();
+      return baseUrl && authToken ? { baseUrl, authToken } : null;
+    },
+    queryConvex: async (ref, args) => {
+      const deploymentUrl = sanitizeConvexDeploymentUrl(
+        context.state?.convexDeploymentUrl ?? envConvexDeploymentUrl,
+      );
+      const authToken = (context.state?.authToken ?? envAuthToken ?? "").trim();
+      if (!deploymentUrl || !authToken) {
+        throw new Error("Convex connection and auth are required.");
+      }
+
+      const existingClient = context.state?.convexClient;
+      if (existingClient && context.state?.convexClientUrl === deploymentUrl) {
+        return await (existingClient as { query: (tool: unknown, params: unknown) => Promise<unknown> }).query(
+          ref,
+          args,
+        );
+      }
+
+      const client = new ConvexClient(deploymentUrl, {
+        logger: false,
+        unsavedChangesWarning: false,
+      });
+      client.setAuth(async () => authToken);
+      try {
+        return await (client as { query: (tool: unknown, params: unknown) => Promise<unknown> }).query(
+          ref,
+          args,
+        );
+      } finally {
+        void client.close().catch(() => undefined);
+      }
+    },
     ...(memoryStore ?? runtimeStore?.memoryStore
       ? { memoryStore: memoryStore ?? runtimeStore.memoryStore }
       : {}),
@@ -505,14 +538,9 @@ export const buildAgentContext = async (
   const enginePref = getAgentEnginePreference(args.agentType);
 
   const toolsAllowlist = agent?.toolsAllowlist;
-  if (toolsAllowlist?.includes(EXEC_TOOL_NAME)) {
-    const registry = context.toolHost.getExecRegistry();
-    const enabledTools = registry.list({ agentType: args.agentType });
-    dynamicContextSections.push(buildExecPromptGuidance(enabledTools));
-  }
   if (
     args.agentType === AGENT_IDS.ORCHESTRATOR ||
-    toolsAllowlist?.includes(EXEC_TOOL_NAME)
+    args.agentType === AGENT_IDS.GENERAL
   ) {
     dynamicContextSections.push(await renderSkillCatalogBlock(context.stellaRoot));
   }

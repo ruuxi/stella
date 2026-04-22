@@ -13,10 +13,10 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 - Browser automation: [stella-browser](state/skills/stella-browser/SKILL.md)
 - Office documents: [stella-office](state/skills/stella-office/SKILL.md)
-- Desktop app automation: [stella-computer](state/skills/stella-computer/SKILL.md)
+- macOS desktop app automation: typed `computer_*` tools (no skill — schemas are self-documenting)
 - Electron app control: [electron](state/skills/electron/SKILL.md)
 - Modify Stella's own desktop app: [stella-desktop](state/skills/stella-desktop/SKILL.md)
-- Managed media API docs: <https://stella.sh/docs/media> (curl from inside Exec; the General agent prompt covers usage)
+- Managed media API docs: [https://stella.sh/docs/media](https://stella.sh/docs/media) (the General agent prompt covers `image_gen` usage and when to read the docs)
 - Feature packaging and sharing: [blueprint-management](state/skills/blueprint-management/SKILL.md)
 - User profile and context: [user-profile](state/skills/user-profile/SKILL.md)
 
@@ -33,9 +33,9 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 - `raw/` — unprocessed source material. Immutable after capture. Synthesize into `skills/` when useful.
 - `outputs/` — generated artifacts worth keeping. Only file if likely to matter again.
 
-## Code Mode
+## Tools
 
-The General agent runs everything through `Exec` (Codex-style code mode). Capabilities live on the global `tools` object inside each program: `tools.read_file`, `tools.write_file`, `tools.apply_patch`, `tools.shell`, `tools.glob`, `tools.search`, `tools.web_*`, plus agent-specific tools like tasks, scheduling, display, and memory when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large. Built-in helpers: `text(value)`, `image(absolutePath)`, `store(key, value)` / `load(key)`, `notify(text)`, `yield_control()`, `exit(value?)`, plus `// @exec: yield_after_ms=…` for long-running cells resumed by `Wait({ cell_id })`.
+The General agent now uses a codex-style tool pack: `exec_command`, `write_stdin`, `apply_patch`, `web`, `RequestCredential`, `multi_tool_use.parallel`, `view_image`, and `image_gen`. Internal specialist agents still use narrower tools like `Read`, `Grep`, `Dream`, and the scheduling surfaces when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large.
 
 ## Dream
 

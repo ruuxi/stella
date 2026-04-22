@@ -227,6 +227,52 @@
   display: none;
 }
 
+/* ── Page-sidebar override ──────────────────────────────────────────
+   When a route registers `<PageSidebar>`, the default top-nav and
+   footer are replaced with a Back button + the page's nav content.
+   The override fills the sidebar's vertical canvas and the account
+   row is hidden in this mode (returning via Back restores it). */
+.sidebar-nav--page-override {
+  gap: 8px;
+}
+
+.sidebar-page-back {
+  /* Inherit the visual treatment of `.sidebar-nav-item` so Back feels
+     like part of the same nav family — same icon column, same hover. */
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--text-weak);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.sidebar-page-back:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.sidebar-page-back:hover .sidebar-nav-icon {
+  color: var(--text-strong);
+}
+
+.sidebar-page-override-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-height: 0;
+}
+
 .sidebar-nav-item {
   display: flex;
   align-items: center;

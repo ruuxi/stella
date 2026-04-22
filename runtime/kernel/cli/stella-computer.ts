@@ -209,6 +209,7 @@ Notes:
   - snapshots are also cached per target under sessions/<session>/targets/<target>/last-snapshot.json so one session can retain multiple apps
   - snapshot captures a window screenshot by default; pass --no-screenshot to skip it
   - --all-windows enumerates every accessibility window the app advertises (default: focused only)
+  - menu bar items render as compact name-only entries; submenu contents are intentionally omitted to keep the snapshot small (drive visible UI via screenshot pixels with click-screenshot instead)
   - successful actions refresh the numbered snapshot state and the attached screenshot automatically
   - screenshots are auto-attached inline (base64 PNG); pass --no-inline-screenshot to keep only the file path
   - the agent runtime detects "[stella-attach-image]" markers in output and attaches the image as vision input on the next turn
@@ -707,12 +708,37 @@ const annotationSegment = (node: SnapshotNode) => {
   return flags.length > 0 ? ` (${flags.join(", ")})` : "";
 };
 
+// Internal AppKit selector identifiers (e.g. `_NS:355`, `_recentItemRequested:`)
+// are pure noise to the agent: not stable across builds, never useful for
+// targeting (the numeric ID already addresses the element). Hide them.
+const isInternalAppKitIdentifier = (identifier: string) =>
+  /^_[A-Za-z0-9_]+:?$/.test(identifier);
+
+// Cancel/Pick are present on every menu/menu-item via the AX API. They're
+// universal noise — surfacing them on every menu line would balloon the
+// snapshot without giving the agent any new affordance.
+const filterMenuActions = (actions: string[], role: string) =>
+  role === "AXMenuItem" || role === "AXMenuBarItem" || role === "AXMenu"
+    ? actions.filter((action) => action !== "AXCancel" && action !== "AXPick")
+    : actions;
+
 const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
   const indent = "\t".repeat(depth);
   const id =
     typeof node.index === "number" && Number.isFinite(node.index)
       ? String(node.index)
       : (node.ref ?? "_");
+
+  // Compact menu-bar item rendering: name-only, no recursion into the menu
+  // tree. The full submenu structure (Apple > Recent Items, every File
+  // submenu, every Help search entry) balloons snapshots into the megabytes
+  // for zero benefit — the visible UI is always reachable via the inline
+  // screenshot's pixel coordinates with `click-screenshot`.
+  if (node.role === "AXMenuBarItem") {
+    const label = choosePrimaryLabel(node);
+    return [`${indent}${id}${annotationSegment(node)}${label ? ` ${truncate(label, 120)}` : ""}`];
+  }
+
   const role = humanRole(node);
   const primaryLabel = choosePrimaryLabel(node);
   const extras: string[] = [];
@@ -742,7 +768,8 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
     node.identifier &&
     node.identifier !== primaryLabel &&
     node.identifier !== node.description &&
-    node.identifier !== node.value
+    node.identifier !== node.value &&
+    !isInternalAppKitIdentifier(node.identifier)
   ) {
     extras.push(`ID: ${truncate(node.identifier, 120)}`);
   }
@@ -756,7 +783,7 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
     }
   }
 
-  const actions = secondaryActions(node.actions ?? []);
+  const actions = secondaryActions(filterMenuActions(node.actions ?? [], node.role));
   if (actions.length > 0) {
     extras.push(`Secondary Actions: ${actions.join(", ")}`);
   }

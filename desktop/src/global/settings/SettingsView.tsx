@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
+import { PageSidebar } from "@/context/page-sidebar";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
@@ -2036,20 +2037,24 @@ export const SettingsScreen = ({
 
   return (
     <>
+      {/* The Settings tabs live in the *main* sidebar via <PageSidebar>:
+          while /settings is mounted, the shell swaps its default nav for
+          this tab list (and prepends a Back button automatically). The
+          screen body itself is single-column. */}
+      <PageSidebar title="Settings">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            className={`sidebar-nav-item${activeTab === tab.key ? " sidebar-nav-item--active" : ""}`}
+            onClick={() => handleTabClick(tab.key)}
+          >
+            <span className="sidebar-nav-label">{tab.label}</span>
+          </button>
+        ))}
+      </PageSidebar>
       <div className="settings-screen">
-        <div className="settings-layout settings-layout--standalone">
-          <nav className="settings-sidebar">
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                className={`settings-sidebar-tab${activeTab === tab.key ? " settings-sidebar-tab--active" : ""}`}
-                onClick={() => handleTabClick(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
+        <div className="settings-layout settings-layout--single">
           <SettingsPanel>
             {activeTab === "basic" ? (
               <BasicTab

@@ -77,7 +77,7 @@ const MICROCOMPACT_ATTACHMENT_TOKENS = 2_000;
 const MICROCOMPACT_SENTINEL_OPEN = "<microcompact_trimmed>";
 const MICROCOMPACT_SENTINEL_CLOSE = "</microcompact_trimmed>";
 const MICROCOMPACT_SENTINEL_TEXT =
-  "Tool result compacted to save context. Re-run the tool (for example Read) if you need the full output.";
+  "Tool result compacted to save context. Re-run the tool if you need the full output.";
 const MICROCOMPACT_TRIMMED_RESULT_TOKENS = Math.max(
   8,
   Math.ceil(
@@ -86,6 +86,13 @@ const MICROCOMPACT_TRIMMED_RESULT_TOKENS = Math.max(
 );
 
 const MICROCOMPACT_ELIGIBLE_TOOLS = new Set([
+  "exec_command",
+  "write_stdin",
+  "apply_patch",
+  "web",
+  "RequestCredential",
+  "view_image",
+  "image_gen",
   "Read",
   "Grep",
   "Bash",

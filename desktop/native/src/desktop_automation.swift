@@ -4,6 +4,7 @@ import Carbon.HIToolbox
 import CoreGraphics
 import Darwin
 import Foundation
+import ImageIO
 import OSAKit
 import QuartzCore
 import ScreenCaptureKit
@@ -180,8 +181,6 @@ struct ActionOptions {
     let raise: Bool
     let inlineScreenshot: Bool
     let showOverlay: Bool
-
-    var noRaise: Bool { !raise }
 }
 
 struct AppTarget {
@@ -243,6 +242,44 @@ struct ResolvedCandidate {
     let candidate: CandidateNode
     let score: Int
     let warnings: [String]
+}
+
+struct PreparedTextMatch {
+    let normalized: String
+    let tokens: Set<String>
+}
+
+struct PreparedRefEntry {
+    let role: String
+    let subrole: PreparedTextMatch
+    let primaryLabel: PreparedTextMatch
+    let title: PreparedTextMatch
+    let description: PreparedTextMatch
+    let value: PreparedTextMatch
+    let identifier: PreparedTextMatch
+    let url: PreparedTextMatch
+    let windowTitle: PreparedTextMatch
+    let childPath: [Int]
+    let ancestry: [String]
+    let occurrence: Int
+    let enabled: Bool?
+    let focused: Bool?
+    let selected: Bool?
+    let frame: Rect?
+    let actionsSet: Set<String>
+}
+
+struct PreparedCandidateNode {
+    let candidate: CandidateNode
+    let subrole: PreparedTextMatch
+    let primaryLabel: PreparedTextMatch
+    let title: PreparedTextMatch
+    let description: PreparedTextMatch
+    let value: PreparedTextMatch
+    let identifier: PreparedTextMatch
+    let url: PreparedTextMatch
+    let windowTitle: PreparedTextMatch
+    let actionsSet: Set<String>
 }
 
 struct DesktopAutomationFailure: Error {
@@ -505,6 +542,7 @@ let daemonScopedEnvironmentKeys: [String] = [
     "STELLA_COMPUTER_NO_INLINE_SCREENSHOT",
     "STELLA_COMPUTER_NO_OVERLAY",
     "STELLA_COMPUTER_NO_RAISE",
+    "STELLA_COMPUTER_RAISE",
     "STELLA_COMPUTER_SESSION",
     "STELLA_COMPUTER_TRACE",
 ]
@@ -755,14 +793,34 @@ func truncateValue(_ value: String?, limit: Int = 160) -> String? {
     return String(value[..<index]) + "..."
 }
 
-func normalizedTokens(_ value: String?) -> Set<String> {
-    guard let value = trimmed(value) else { return [] }
+func tokenSet(fromNormalized value: String) -> Set<String> {
+    guard !value.isEmpty else { return [] }
     let separators = CharacterSet.alphanumerics.inverted
     let tokens = value
-        .lowercased()
         .components(separatedBy: separators)
         .filter { !$0.isEmpty }
     return Set(tokens)
+}
+
+func normalizedTokens(_ value: String?) -> Set<String> {
+    tokenSet(fromNormalized: normalized(value))
+}
+
+func preparedText(_ value: String?) -> PreparedTextMatch {
+    let normalizedValue = normalized(value)
+    return PreparedTextMatch(
+        normalized: normalizedValue,
+        tokens: tokenSet(fromNormalized: normalizedValue)
+    )
+}
+
+func tokenSimilarityScore(_ lhs: PreparedTextMatch, _ rhs: PreparedTextMatch, maxScore: Int) -> Int {
+    guard !lhs.tokens.isEmpty, !rhs.tokens.isEmpty else { return 0 }
+    let overlap = lhs.tokens.intersection(rhs.tokens).count
+    guard overlap > 0 else { return 0 }
+    let union = lhs.tokens.union(rhs.tokens).count
+    let similarity = Double(overlap) / Double(max(union, 1))
+    return Int((Double(maxScore) * similarity).rounded())
 }
 
 func tokenSimilarityScore(_ lhs: String?, _ rhs: String?, maxScore: Int) -> Int {
@@ -774,6 +832,11 @@ func tokenSimilarityScore(_ lhs: String?, _ rhs: String?, maxScore: Int) -> Int 
     let union = lhsTokens.union(rhsTokens).count
     let similarity = Double(overlap) / Double(max(union, 1))
     return Int((Double(maxScore) * similarity).rounded())
+}
+
+func containsNormalizedString(_ lhs: PreparedTextMatch, _ rhs: PreparedTextMatch) -> Bool {
+    guard !lhs.normalized.isEmpty, !rhs.normalized.isEmpty else { return false }
+    return lhs.normalized.contains(rhs.normalized) || rhs.normalized.contains(lhs.normalized)
 }
 
 func containsNormalizedString(_ lhs: String?, _ rhs: String?) -> Bool {
@@ -1071,28 +1134,12 @@ func axSizeValue(_ element: AXUIElement, _ attribute: String) -> CGSize? {
 }
 
 func axElementValue(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
-    guard let rawValue = axAttributeValue(element, attribute) else {
-        return nil
-    }
-    return unsafeBitCast(rawValue, to: AXUIElement.self)
+    coerceElement(axAttributeValue(element, attribute))
 }
 
 func axElementArrayValue(_ element: AXUIElement, _ attribute: String) -> [AXUIElement] {
-    guard let rawValue = axAttributeValue(element, attribute) else {
-        return []
-    }
-    guard CFGetTypeID(rawValue) == CFArrayGetTypeID() else {
-        return []
-    }
-    let arrayValue = unsafeBitCast(rawValue, to: CFArray.self)
-    let count = CFArrayGetCount(arrayValue)
-    trace("attr:array id=\(elementHash(element)) name=\(attribute) count=\(count)")
-    var results: [AXUIElement] = []
-    results.reserveCapacity(count)
-    for index in 0..<count {
-        let pointer = CFArrayGetValueAtIndex(arrayValue, index)
-        results.append(unsafeBitCast(pointer, to: AXUIElement.self))
-    }
+    let results = coerceElementArray(axAttributeValue(element, attribute))
+    trace("attr:array id=\(elementHash(element)) name=\(attribute) count=\(results.count)")
     return results
 }
 
@@ -1127,31 +1174,37 @@ func appendUniqueElements(
 
 func axChildren(_ element: AXUIElement, role: String? = nil) -> [AXUIElement] {
     var results: [AXUIElement] = []
-    appendUniqueElements(
-        axElementArrayValue(element, "AXVisibleChildren"),
-        into: &results,
-        excluding: element
-    )
+    var seenHashes: Set<Int> = []
 
-    if let contents = axElementValue(element, "AXContents") {
-        appendUniqueElement(contents, into: &results, excluding: element)
+    func appendResult(_ candidate: AXUIElement?) {
+        guard let candidate else { return }
+        if CFEqual(candidate, element) {
+            return
+        }
+        let candidateHash = elementHash(candidate)
+        if seenHashes.contains(candidateHash) {
+            return
+        }
+        seenHashes.insert(candidateHash)
+        results.append(candidate)
     }
+
+    func appendResults(_ candidates: [AXUIElement]) {
+        for candidate in candidates {
+            appendResult(candidate)
+        }
+    }
+
+    appendResults(axElementArrayValue(element, "AXVisibleChildren"))
+    appendResult(axElementValue(element, "AXContents"))
 
     if let role {
         for attribute in roleSpecificArrayChildAttributes[role] ?? [] {
-            appendUniqueElements(
-                axElementArrayValue(element, attribute),
-                into: &results,
-                excluding: element
-            )
+            appendResults(axElementArrayValue(element, attribute))
         }
 
         for attribute in roleSpecificSingleChildAttributes[role] ?? [] {
-            appendUniqueElement(
-                axElementValue(element, attribute),
-                into: &results,
-                excluding: element
-            )
+            appendResult(axElementValue(element, attribute))
         }
 
         if !results.isEmpty {
@@ -1200,6 +1253,26 @@ func coerceBool(_ raw: AnyObject?) -> Bool? {
     if let b = raw as? Bool { return b }
     if let n = raw as? NSNumber { return n.boolValue }
     return nil
+}
+
+func coerceElement(_ raw: AnyObject?) -> AXUIElement? {
+    guard let raw else { return nil }
+    guard CFGetTypeID(raw) == AXUIElementGetTypeID() else { return nil }
+    return unsafeBitCast(raw, to: AXUIElement.self)
+}
+
+func coerceElementArray(_ raw: AnyObject?) -> [AXUIElement] {
+    guard let raw else { return [] }
+    guard CFGetTypeID(raw) == CFArrayGetTypeID() else { return [] }
+    let arrayValue = unsafeBitCast(raw, to: CFArray.self)
+    let count = CFArrayGetCount(arrayValue)
+    var results: [AXUIElement] = []
+    results.reserveCapacity(count)
+    for index in 0..<count {
+        let pointer = CFArrayGetValueAtIndex(arrayValue, index)
+        results.append(unsafeBitCast(pointer, to: AXUIElement.self))
+    }
+    return results
 }
 
 func coercePoint(_ raw: AnyObject?) -> CGPoint? {
@@ -1258,19 +1331,28 @@ func valueTypeName(_ raw: AnyObject?) -> String? {
 
 func snapshotRoots(for app: AXUIElement) -> [AXUIElement] {
     var roots: [AXUIElement] = []
+    let rootBatch = axBatchedAttributes(
+        app,
+        [
+            kAXFocusedWindowAttribute as String,
+            kAXMainWindowAttribute as String,
+            kAXFocusedUIElementAttribute as String,
+            kAXMenuBarAttribute as String,
+        ]
+    )
 
     appendUniqueElement(
-        axElementValue(app, kAXFocusedWindowAttribute as String),
+        coerceElement(rootBatch[kAXFocusedWindowAttribute as String]),
         into: &roots,
         excluding: app
     )
     appendUniqueElement(
-        axElementValue(app, kAXMainWindowAttribute as String),
+        coerceElement(rootBatch[kAXMainWindowAttribute as String]),
         into: &roots,
         excluding: app
     )
     appendUniqueElement(
-        axElementValue(app, kAXFocusedUIElementAttribute as String),
+        coerceElement(rootBatch[kAXFocusedUIElementAttribute as String]),
         into: &roots,
         excluding: app
     )
@@ -1279,7 +1361,7 @@ func snapshotRoots(for app: AXUIElement) -> [AXUIElement] {
     // tree is shallow (e.g. Spotify): every app exposes File/Edit/Playback/etc.
     // as menu bar items, and `AXPress` on a menu item works without focus.
     appendUniqueElement(
-        axElementValue(app, kAXMenuBarAttribute as String),
+        coerceElement(rootBatch[kAXMenuBarAttribute as String]),
         into: &roots,
         excluding: app
     )
@@ -1348,7 +1430,13 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
     let url = truncateValue(urlRaw)
     let rawValue = firstBatch[kAXValueAttribute as String]
     let valueType = valueTypeName(rawValue)
-    let settable = axAttributeSettable(element, kAXValueAttribute as String)
+    let shouldInspectValueAttribute =
+        rawValue != nil ||
+        valueBearingRoles.contains(role) ||
+        likelyActionable
+    let settable = shouldInspectValueAttribute
+        ? axAttributeSettable(element, kAXValueAttribute as String)
+        : nil
 
     // Second batched read: the deeper attribute set, only if the node is
     // potentially actionable. This avoids paying ~6 round-trips on every
@@ -3378,6 +3466,30 @@ func withUnifiedActionOverlay<T>(
     )
 }
 
+// PNG encoder mirroring Codex Computer Use's path:
+// `SCScreenshotManager.captureImage(...)` → `CGImageDestination` writing the
+// PNG with `UTType.png` to a CFMutableData. No downscaling, no format
+// conversion, no quality knob — the screenshot ships at the native pixel
+// scale that ScreenCaptureKit produces. CGImageDestination is preferred over
+// NSBitmapImageRep here because it accepts ImageIO compression hints and
+// produces a slightly tighter PNG for typical UI content.
+func encodePNGViaImageIO(_ image: CGImage) -> Data? {
+    let data = NSMutableData()
+    guard let destination = CGImageDestinationCreateWithData(
+        data as CFMutableData,
+        "public.png" as CFString,
+        1,
+        nil
+    ) else {
+        return nil
+    }
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else {
+        return nil
+    }
+    return data as Data
+}
+
 // ScreenCaptureKit-backed window capture. Falls back to /usr/sbin/screencapture
 // when SCK is unavailable, or when an SCK call fails (which can happen if
 // the user has not granted the bundle screen recording permission).
@@ -3453,9 +3565,8 @@ func captureScreenshot(
 
 // Read a PNG that was just written by /usr/sbin/screencapture and turn it
 // into a Screenshot value. Failure here is non-fatal: callers fall back to
-// returning a Screenshot with only the path populated (so consumers that
-// rely on file paths still work). `nil` is returned only if the file
-// genuinely cannot be opened.
+// returning a Screenshot with only the path populated. `nil` is returned
+// only if the file genuinely cannot be opened.
 func screenshotFromOnDiskPNG(path: String, includeBase64: Bool) -> Screenshot? {
     guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
         return Screenshot(
@@ -3470,9 +3581,9 @@ func screenshotFromOnDiskPNG(path: String, includeBase64: Bool) -> Screenshot? {
     var widthPx: Int? = nil
     var heightPx: Int? = nil
     if let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
-       let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) {
-        widthPx = cgImage.width
-        heightPx = cgImage.height
+       let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any] {
+        widthPx = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue
+        heightPx = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue
     }
     return Screenshot(
         mimeType: "image/png",
@@ -3508,22 +3619,33 @@ private func captureViaScreenCaptureKit(
             return
         }
         // Pick the largest on-screen window owned by the target pid.
-        let candidates = content.windows
+        let window = content.windows
+            .lazy
             .filter { $0.owningApplication?.processID == pid && $0.isOnScreen }
-            .sorted { (lhs, rhs) -> Bool in
+            .max { lhs, rhs in
                 let la = lhs.frame.width * lhs.frame.height
                 let ra = rhs.frame.width * rhs.frame.height
-                return la > ra
+                return la < ra
             }
-        guard let window = candidates.first else {
+        guard let window else {
             captureError = "no on-screen window for pid \(pid)"
             return
         }
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let cfg = SCStreamConfiguration()
         let scale = CGFloat(filter.pointPixelScale)
-        cfg.width = Int(window.frame.width * scale)
-        cfg.height = Int(window.frame.height * scale)
+        let pixelWidth = Int(window.frame.width * scale)
+        let pixelHeight = Int(window.frame.height * scale)
+        cfg.width = pixelWidth
+        cfg.height = pixelHeight
+        // Mirror Codex Computer Use's `SCStreamConfiguration` setup:
+        // explicitly set `sourceRect` to the window's full content (no
+        // cropping) and pin the pixel format to BGRA. Both are no-ops
+        // relative to ScreenCaptureKit's defaults for a windowed
+        // capture, but they make the intent explicit and match the
+        // reverse-engineered Codex SkyComputerUseService path.
+        cfg.sourceRect = CGRect(origin: .zero, size: window.frame.size)
+        cfg.pixelFormat = kCVPixelFormatType_32BGRA
         cfg.showsCursor = false
         cfg.scalesToFit = false
 
@@ -3550,14 +3672,16 @@ private func captureViaScreenCaptureKit(
         return (nil, "captureImage returned no image")
     }
 
-    // Encode to PNG and write atomically.
-    let bitmap = NSBitmapImageRep(cgImage: cgImage)
-    guard let png = bitmap.representation(using: .png, properties: [:]) else {
+    // Encode to PNG via CGImageDestination (ImageIO) — same encoder Codex
+    // Computer Use's SkyComputerUseService uses. No downscaling, no format
+    // conversion: the screenshot ships at the native pixel scale that
+    // ScreenCaptureKit produces.
+    guard let png = encodePNGViaImageIO(cgImage) else {
         return (nil, "PNG encoding failed")
     }
     do {
         try png.write(to: URL(fileURLWithPath: outputPath), options: .atomic)
-        trace("screenshot:sck wrote \(png.count) bytes to \(outputPath)")
+        trace("screenshot:sck wrote \(png.count) bytes to \(outputPath) (\(cgImage.width)x\(cgImage.height))")
         let screenshot = Screenshot(
             mimeType: "image/png",
             data: includeBase64 ? png.base64EncodedString() : "",
@@ -3574,14 +3698,13 @@ private func captureViaScreenCaptureKit(
 
 func writeSnapshotState(_ document: SnapshotDocument, statePath: String) throws {
     let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let data = try encoder.encode(document)
     let url = URL(fileURLWithPath: statePath)
     try FileManager.default.createDirectory(
         at: url.deletingLastPathComponent(),
         withIntermediateDirectories: true
     )
-    try data.write(to: url)
+    try data.write(to: url, options: .atomic)
 }
 
 func loadSnapshotState(from statePath: String) throws -> SnapshotDocument {
@@ -3682,23 +3805,58 @@ func frameScore(expected: Rect?, actual: Rect?) -> Int {
     return max(0, score)
 }
 
-func exactStringScore(_ lhs: String?, _ rhs: String?, exactWeight: Int, containsWeight: Int) -> Int {
-    let left = normalized(lhs)
-    let right = normalized(rhs)
-    guard !left.isEmpty, !right.isEmpty else { return 0 }
-    if left == right {
+func exactStringScore(_ lhs: PreparedTextMatch, _ rhs: PreparedTextMatch, exactWeight: Int, containsWeight: Int) -> Int {
+    guard !lhs.normalized.isEmpty, !rhs.normalized.isEmpty else { return 0 }
+    if lhs.normalized == rhs.normalized {
         return exactWeight
     }
-    if left.contains(right) || right.contains(left) {
+    if lhs.normalized.contains(rhs.normalized) || rhs.normalized.contains(lhs.normalized) {
         return containsWeight
     }
     return 0
 }
 
-func scoreCandidate(entry: RefEntry, candidate: CandidateNode) -> Int {
+func prepareRefEntry(_ entry: RefEntry) -> PreparedRefEntry {
+    PreparedRefEntry(
+        role: entry.role,
+        subrole: preparedText(entry.subrole),
+        primaryLabel: preparedText(entry.primaryLabel),
+        title: preparedText(entry.title),
+        description: preparedText(entry.description),
+        value: preparedText(entry.value),
+        identifier: preparedText(entry.identifier),
+        url: preparedText(entry.url),
+        windowTitle: preparedText(entry.windowTitle),
+        childPath: entry.childPath,
+        ancestry: entry.ancestry,
+        occurrence: entry.occurrence,
+        enabled: entry.enabled,
+        focused: entry.focused,
+        selected: entry.selected,
+        frame: entry.frame,
+        actionsSet: Set(entry.actions)
+    )
+}
+
+func prepareCandidateNode(_ candidate: CandidateNode) -> PreparedCandidateNode {
+    PreparedCandidateNode(
+        candidate: candidate,
+        subrole: preparedText(candidate.subrole),
+        primaryLabel: preparedText(candidate.primaryLabel),
+        title: preparedText(candidate.title),
+        description: preparedText(candidate.description),
+        value: preparedText(candidate.value),
+        identifier: preparedText(candidate.identifier),
+        url: preparedText(candidate.url),
+        windowTitle: preparedText(candidate.windowTitle),
+        actionsSet: Set(candidate.actions)
+    )
+}
+
+func scoreCandidate(entry: PreparedRefEntry, candidate: PreparedCandidateNode) -> Int {
     var score = 0
 
-    if entry.role == candidate.role {
+    if entry.role == candidate.candidate.role {
         score += 50
     } else {
         return Int.min
@@ -3719,41 +3877,43 @@ func scoreCandidate(entry: RefEntry, candidate: CandidateNode) -> Int {
     score += exactStringScore(entry.value, candidate.value, exactWeight: 18, containsWeight: 8)
     score += tokenSimilarityScore(entry.value, candidate.value, maxScore: 8)
 
-    if normalized(entry.subrole) != "",
-       normalized(entry.subrole) == normalized(candidate.subrole) {
+    if !entry.subrole.normalized.isEmpty,
+       entry.subrole.normalized == candidate.subrole.normalized {
         score += 18
     }
 
     score += exactStringScore(entry.windowTitle, candidate.windowTitle, exactWeight: 24, containsWeight: 10)
     score += tokenSimilarityScore(entry.windowTitle, candidate.windowTitle, maxScore: 8)
 
-    let prefix = commonPrefixLength(entry.childPath, candidate.childPath)
+    let prefix = commonPrefixLength(entry.childPath, candidate.candidate.childPath)
     score += prefix * 14
-    if entry.childPath == candidate.childPath {
+    if entry.childPath == candidate.candidate.childPath {
         score += 72
     } else {
-        score -= abs(entry.childPath.count - candidate.childPath.count) * 4
+        score -= abs(entry.childPath.count - candidate.candidate.childPath.count) * 4
     }
 
-    if entry.occurrence == candidate.occurrence {
+    if entry.occurrence == candidate.candidate.occurrence {
         score += 12
     }
 
-    let ancestryPrefix = commonPrefixLength(entry.ancestry, candidate.ancestry)
+    let ancestryPrefix = commonPrefixLength(entry.ancestry, candidate.candidate.ancestry)
     score += ancestryPrefix * 4
-    score += frameScore(expected: entry.frame, actual: candidate.frame)
+    score += frameScore(expected: entry.frame, actual: candidate.candidate.frame)
 
-    if entry.actions.contains(where: { candidate.actions.contains($0) }) {
+    if !entry.actionsSet.isEmpty,
+       !candidate.actionsSet.isEmpty,
+       !entry.actionsSet.isDisjoint(with: candidate.actionsSet) {
         score += 10
     }
 
-    if entry.enabled == candidate.enabled, entry.enabled != nil {
+    if entry.enabled == candidate.candidate.enabled, entry.enabled != nil {
         score += 6
     }
-    if entry.focused == candidate.focused, entry.focused != nil {
+    if entry.focused == candidate.candidate.focused, entry.focused != nil {
         score += 6
     }
-    if entry.selected == candidate.selected, entry.selected != nil {
+    if entry.selected == candidate.candidate.selected, entry.selected != nil {
         score += 6
     }
 
@@ -3761,10 +3921,10 @@ func scoreCandidate(entry: RefEntry, candidate: CandidateNode) -> Int {
         score += 10
     }
 
-    if normalized(entry.identifier) != "",
-       normalized(entry.identifier) == normalized(candidate.identifier),
-       normalized(entry.primaryLabel) != "",
-       normalized(entry.primaryLabel) == normalized(candidate.primaryLabel) {
+    if !entry.identifier.normalized.isEmpty,
+       entry.identifier.normalized == candidate.identifier.normalized,
+       !entry.primaryLabel.normalized.isEmpty,
+       entry.primaryLabel.normalized == candidate.primaryLabel.normalized {
         score += 60
     }
 
@@ -3877,31 +4037,31 @@ func collectCandidates(
 // into a confidence ratio so thresholds scale with how identifying the
 // stored ref actually is. (A ref with no identifier/title/value can never
 // score very high; a ref with all of them can score ~600+.)
-func maxPossibleScore(for entry: RefEntry) -> Int {
+func maxPossibleScore(for entry: PreparedRefEntry) -> Int {
     var max = 50 // role match (gate; without it the candidate is rejected)
 
-    if normalized(entry.identifier) != "" {
+    if !entry.identifier.normalized.isEmpty {
         max += 150 + 24
     }
-    if normalized(entry.primaryLabel) != "" {
+    if !entry.primaryLabel.normalized.isEmpty {
         max += 95 + 34 + 10 // exact + token-similarity + contains-bonus
     }
-    if normalized(entry.title) != "" {
+    if !entry.title.normalized.isEmpty {
         max += 42 + 16
     }
-    if normalized(entry.description) != "" {
+    if !entry.description.normalized.isEmpty {
         max += 26 + 10
     }
-    if normalized(entry.value) != "" {
+    if !entry.value.normalized.isEmpty {
         max += 18 + 8
     }
-    if normalized(entry.subrole) != "" {
+    if !entry.subrole.normalized.isEmpty {
         max += 18
     }
-    if normalized(entry.windowTitle) != "" {
+    if !entry.windowTitle.normalized.isEmpty {
         max += 24 + 8
     }
-    if normalized(entry.identifier) != "" && normalized(entry.primaryLabel) != "" {
+    if !entry.identifier.normalized.isEmpty && !entry.primaryLabel.normalized.isEmpty {
         max += 60 // identifier+label super-bonus
     }
     // Path: full match (72) + per-prefix (14*N), where N is path length.
@@ -3909,36 +4069,66 @@ func maxPossibleScore(for entry: RefEntry) -> Int {
     max += 4 * Swift.max(entry.ancestry.count, 1)
     max += 12 // occurrence
     if entry.frame != nil { max += 30 } // best-case frameScore
-    if !entry.actions.isEmpty { max += 10 }
+    if !entry.actionsSet.isEmpty { max += 10 }
     if entry.enabled != nil { max += 6 }
     if entry.focused != nil { max += 6 }
     if entry.selected != nil { max += 6 }
     return max
 }
 
+func maxPossibleScore(for entry: RefEntry) -> Int {
+    maxPossibleScore(for: prepareRefEntry(entry))
+}
+
+func rankedCandidatePrecedes(_ lhs: RankedCandidate, _ rhs: RankedCandidate) -> Bool {
+    if lhs.score == rhs.score {
+        return lhs.candidate.childPath.count < rhs.candidate.childPath.count
+    }
+    return lhs.score > rhs.score
+}
+
+func insertRankedCandidate(_ ranked: RankedCandidate, into top: inout [RankedCandidate], limit: Int) {
+    guard limit > 0 else { return }
+    for (index, existing) in top.enumerated() {
+        if rankedCandidatePrecedes(ranked, existing) {
+            top.insert(ranked, at: index)
+            if top.count > limit {
+                top.removeLast()
+            }
+            return
+        }
+    }
+    if top.count < limit {
+        top.append(ranked)
+    }
+}
+
 func rankedCandidates(
     for entry: RefEntry,
-    in candidates: [CandidateNode]
+    in candidates: [CandidateNode],
+    limit: Int = 2
 ) -> [RankedCandidate] {
-    let cap = maxPossibleScore(for: entry)
+    let preparedEntry = prepareRefEntry(entry)
+    let cap = maxPossibleScore(for: preparedEntry)
     // Cheap pre-filter: candidates that can't even reach 12% of the cap
     // aren't worth keeping in the tail. Floor at 50 so very thin entries
     // (no identifier/label) aren't pruned away entirely.
     let absoluteFloor = Swift.max(50, cap / 8)
-    return candidates
-        .map { candidate in
-            RankedCandidate(
-                candidate: candidate,
-                score: scoreCandidate(entry: entry, candidate: candidate)
-            )
+    var top: [RankedCandidate] = []
+    top.reserveCapacity(Swift.max(limit, 0))
+    for candidate in candidates {
+        let preparedCandidate = prepareCandidateNode(candidate)
+        let score = scoreCandidate(entry: preparedEntry, candidate: preparedCandidate)
+        if score < absoluteFloor {
+            continue
         }
-        .filter { $0.score >= absoluteFloor }
-        .sorted { lhs, rhs in
-            if lhs.score == rhs.score {
-                return lhs.candidate.childPath.count < rhs.candidate.childPath.count
-            }
-            return lhs.score > rhs.score
-        }
+        insertRankedCandidate(
+            RankedCandidate(candidate: candidate, score: score),
+            into: &top,
+            limit: limit
+        )
+    }
+    return top
 }
 
 // Tunables for percentile-based gating. Override at runtime via env if a
@@ -3967,27 +4157,29 @@ let stellaMinGapRatio: Double = {
 
 func bestCandidate(
     for entry: RefEntry,
-    in candidates: [CandidateNode]
+    ranked: [RankedCandidate]
 ) -> ResolvedCandidate? {
-    let ranked = rankedCandidates(for: entry, in: candidates)
     guard let best = ranked.first else {
         return nil
     }
 
-    let exactIdentifier = normalized(entry.identifier) != "" &&
-        normalized(entry.identifier) == normalized(best.candidate.identifier)
-    let exactPrimaryLabel = normalized(entry.primaryLabel) != "" &&
-        normalized(entry.primaryLabel) == normalized(best.candidate.primaryLabel)
-    let exactPath = entry.childPath == best.candidate.childPath
-    let frameAligned = frameScore(expected: entry.frame, actual: best.candidate.frame) >= 20
-    let exactURL = normalized(entry.url) != "" &&
-        normalized(entry.url) == normalized(best.candidate.url)
+    let preparedEntry = prepareRefEntry(entry)
+    let preparedBest = prepareCandidateNode(best.candidate)
+
+    let exactIdentifier = !preparedEntry.identifier.normalized.isEmpty &&
+        preparedEntry.identifier.normalized == preparedBest.identifier.normalized
+    let exactPrimaryLabel = !preparedEntry.primaryLabel.normalized.isEmpty &&
+        preparedEntry.primaryLabel.normalized == preparedBest.primaryLabel.normalized
+    let exactPath = preparedEntry.childPath == best.candidate.childPath
+    let frameAligned = frameScore(expected: preparedEntry.frame, actual: best.candidate.frame) >= 20
+    let exactURL = !preparedEntry.url.normalized.isEmpty &&
+        preparedEntry.url.normalized == preparedBest.url.normalized
     let stableExactMatch = exactIdentifier
         || exactURL
         || (exactPrimaryLabel && exactPath)
         || (exactPrimaryLabel && frameAligned)
 
-    let cap = Swift.max(maxPossibleScore(for: entry), 1)
+    let cap = Swift.max(maxPossibleScore(for: preparedEntry), 1)
     let confidence = Double(best.score) / Double(cap)
 
     // Gap test: if a runner-up is too close, declare ambiguous.
@@ -4997,13 +5189,21 @@ func focusedUrlNode(in nodes: [SnapshotNode]) -> String? {
 // the model can't reliably target.
 func allWindowRoots(for app: AXUIElement) -> [AXUIElement] {
     var roots: [AXUIElement] = []
+    let rootBatch = axBatchedAttributes(
+        app,
+        [
+            kAXFocusedWindowAttribute as String,
+            kAXWindowsAttribute as String,
+            kAXMenuBarAttribute as String,
+        ]
+    )
     appendUniqueElement(
-        axElementValue(app, kAXFocusedWindowAttribute as String),
+        coerceElement(rootBatch[kAXFocusedWindowAttribute as String]),
         into: &roots,
         excluding: app
     )
     appendUniqueElements(
-        axElementArrayValue(app, kAXWindowsAttribute as String),
+        coerceElementArray(rootBatch[kAXWindowsAttribute as String]),
         into: &roots,
         excluding: app
     )
@@ -5011,7 +5211,7 @@ func allWindowRoots(for app: AXUIElement) -> [AXUIElement] {
     // actions (e.g. Playback > Play in Spotify) can be driven without raising
     // the target window.
     appendUniqueElement(
-        axElementValue(app, kAXMenuBarAttribute as String),
+        coerceElement(rootBatch[kAXMenuBarAttribute as String]),
         into: &roots,
         excluding: app
     )
@@ -5071,7 +5271,7 @@ func actionCandidate(
     let lookupNodes = max((snapshot.maxNodes ?? 1500) * 2, 3000)
     let candidates = collectCandidates(target: target, maxDepth: lookupDepth, maxNodes: lookupNodes)
     let ranked = rankedCandidates(for: entry, in: candidates)
-    guard var candidate = bestCandidate(for: entry, in: candidates) else {
+    guard var candidate = bestCandidate(for: entry, ranked: ranked) else {
         if ranked.count > 1 {
             let best = ranked[0]
             let second = ranked[1]
@@ -5349,7 +5549,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 candidate: resolved.candidate,
                 target: target,
                 coordinateFallback: options.coordinateFallback && options.allowHid,
-                raise: !options.noRaise
+                raise: options.raise
             )
         }
         guard clicked else {
@@ -5407,7 +5607,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 candidate: resolved.candidate,
                 text: text,
                 target: target,
-                raise: !options.noRaise
+                raise: options.raise
             )
         }
         guard filled else {
@@ -5650,7 +5850,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             cursorPoint: point,
             interactionKind: "click-point"
         ) {
-            postLeftClick(at: point, target: target, raise: !options.noRaise)
+            postLeftClick(at: point, target: target, raise: options.raise)
         }
         guard clicked else {
             throw failureWithScreenshot(
@@ -5899,7 +6099,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let target else {
             throw failure("type requires a valid target app context.")
         }
-        guard postUnicodeText(text, target: target, raise: !options.noRaise) else {
+        guard postUnicodeText(text, target: target, raise: options.raise) else {
             throw failureWithScreenshot(
                 "Failed to type text.",
                 statePath: options.statePath,
@@ -5944,7 +6144,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let target else {
             throw failure("press requires a valid target app context.")
         }
-        guard postKeyChord(keySpec, target: target, raise: !options.noRaise) else {
+        guard postKeyChord(keySpec, target: target, raise: options.raise) else {
             throw failureWithScreenshot(
                 "Failed to send key press.",
                 statePath: options.statePath,

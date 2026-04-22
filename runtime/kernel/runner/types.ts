@@ -114,13 +114,16 @@ export type StellaHostRunnerOptions = {
   displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
   /**
-   * Optional handler that powers the Exec registry's `tools.web_search`
-   * builtin. Wire this when an Exa client is configured.
+   * Optional handler that powers Stella's search-backed web tools (`web` and
+   * the legacy `WebSearch` alias). Wire this when an Exa client is configured.
    */
   webSearch?: (
     query: string,
     options?: { category?: string },
-  ) => Promise<{ text: string }>;
+  ) => Promise<{
+    text: string;
+    results?: Array<{ title: string; url: string; snippet: string }>;
+  }>;
   /**
    * Optional MemoryStore wired to the orchestrator's memory surface.
    * Defaults to `runtimeStore.memoryStore` when not provided.
@@ -293,13 +296,6 @@ export type RunnerContext = {
     registerExtensionTools: (tools: ToolDefinition[]) => void;
     killAllShells: () => void;
     killShellsByPort: (port: number) => void;
-    getExecRegistry: () => import("../tools/registry/registry.js").ExecToolRegistry;
-    getExecHost: () => import("../exec/exec-host.js").ExecHost;
-    registerExecTool: (
-      tool: Parameters<
-        import("../tools/registry/registry.js").ExecToolRegistry["register"]
-      >[0],
-    ) => void;
     shutdown: () => Promise<void>;
   };
 };

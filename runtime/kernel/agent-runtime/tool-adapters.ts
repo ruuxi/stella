@@ -1,5 +1,6 @@
 import type { AgentTool } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
+import type { TextContent } from "../../ai/types.js";
 import {
   DEVICE_TOOL_NAMES,
   TOOL_DESCRIPTIONS,
@@ -11,7 +12,6 @@ import type {
   ToolResult,
   ToolUpdateCallback,
 } from "../tools/types.js";
-import type { ExecContentItem } from "../tools/registry/registry.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { TOOL_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import { AnyToolArgsSchema, textFromUnknown } from "./shared.js";
@@ -80,7 +80,7 @@ const formatToolResult = (
 };
 
 // Inline-image attach contract used by stella-computer (and any other CLI we
-// wire up the same way): when tool output contains a line of the form
+// wire up the same way): when tool output contains a substring of the form
 //
 //     [stella-attach-image][ <WxH>][ <N>KB][ inline=image/png] <PATH>
 //
@@ -88,15 +88,18 @@ const formatToolResult = (
 // alongside the text result, so the model sees the screenshot on its very
 // next turn without having to call a separate Read.
 //
-// The marker line is stripped from the text we forward to the model so the
+// The marker is stripped from the text we forward to the model so the
 // model doesn't waste tokens describing a path it doesn't need to see.
 //
 // We intentionally do NOT trust the model to emit these markers itself —
-// only output that flowed through `shell.exec` (the only surface that runs
-// stella-computer) goes through this transform. If a future CLI wants to
-// opt in, just emit the marker on stdout.
+// only output that flowed through a runtime tool (e.g. `exec_command`)
+// goes through this transform. The marker can appear anywhere in the
+// tool result text, including inside a JSON-stringified `output` field
+// where real newlines are escaped as `\n` — that's why this regex is
+// position-agnostic and excludes `"` and `\` from the path so we never
+// grab past a JSON string boundary.
 const STELLA_ATTACH_IMAGE_RE =
-  /^\[stella-attach-image\][^\n]*?\s(\/[^\s\n]+\.(?:png|jpg|jpeg|gif|webp))\s*$/gm;
+  /\[stella-attach-image\][^\n"\\]*?\s(\/[^\s\n"\\]+\.(?:png|jpg|jpeg|gif|webp))/g;
 
 type ImageBlock = { type: "image"; mimeType: string; data: string };
 
@@ -149,38 +152,6 @@ export const extractAttachImageBlocks = async (
   return { text: stripped, images };
 };
 
-/**
- * `Exec` and `Wait` return their `text(...)` / `image(...)` content items in
- * `details.content`. This lifts them into proper content blocks so the model
- * sees images on the very next turn (mirroring `[stella-attach-image]` for
- * legacy CLIs).
- */
-const extractExecContentBlocks = (
-  details: unknown,
-): { text: string[]; images: ImageBlock[] } => {
-  const out = { text: [] as string[], images: [] as ImageBlock[] };
-  if (!details || typeof details !== "object") return out;
-  const record = details as { content?: ExecContentItem[] };
-  if (!Array.isArray(record.content)) return out;
-  for (const item of record.content) {
-    if (!item || typeof item !== "object") continue;
-    if (item.type === "text" && typeof item.text === "string" && item.text.trim()) {
-      out.text.push(item.text);
-    } else if (
-      item.type === "image" &&
-      typeof item.mimeType === "string" &&
-      typeof item.data === "string"
-    ) {
-      out.images.push({
-        type: "image",
-        mimeType: item.mimeType,
-        data: item.data,
-      });
-    }
-  }
-  return out;
-};
-
 type RuntimeToolContextArgs = {
   toolCallId: string;
   runId: string;
@@ -192,6 +163,7 @@ type RuntimeToolContextArgs = {
   stellaRoot?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
+  allowedToolNames?: string[];
 };
 
 export const buildRuntimeToolContext = (
@@ -209,6 +181,9 @@ export const buildRuntimeToolContext = (
   ...(typeof args.taskDepth === "number" ? { taskDepth: args.taskDepth } : {}),
   ...(typeof args.maxTaskDepth === "number"
     ? { maxTaskDepth: args.maxTaskDepth }
+    : {}),
+  ...(Array.isArray(args.allowedToolNames) && args.allowedToolNames.length > 0
+    ? { allowedToolNames: args.allowedToolNames }
     : {}),
 });
 
@@ -240,17 +215,19 @@ type RuntimeToolExecutionArgs = RuntimeToolContextArgs & {
 export const executeRuntimeToolCall = async (
   args: RuntimeToolExecutionArgs,
 ): Promise<ToolResult> => {
-  const localResult = await dispatchLocalTool(args.toolName, args.args, {
-    conversationId: args.conversationId,
-    webSearch: args.webSearch,
-    store: args.store,
-    ...(args.signal ? { signal: args.signal } : {}),
-  });
-  if (localResult.handled) {
-    return {
-      result: localResult.text,
-      details: { text: localResult.text },
-    };
+  if (args.toolName === TOOL_IDS.NO_RESPONSE) {
+    const localResult = await dispatchLocalTool(args.toolName, args.args, {
+      conversationId: args.conversationId,
+      webSearch: args.webSearch,
+      store: args.store,
+      ...(args.signal ? { signal: args.signal } : {}),
+    });
+    if (localResult.handled) {
+      return {
+        result: localResult.text,
+        details: { text: localResult.text },
+      };
+    }
   }
 
   const context = buildRuntimeToolContext(args);
@@ -356,6 +333,7 @@ export const createPiTools = (opts: {
           stellaRoot: opts.stellaRoot,
           taskDepth: opts.taskDepth,
           maxTaskDepth: opts.maxTaskDepth,
+          allowedToolNames: requested,
           store: opts.store,
           toolExecutor: opts.toolExecutor,
           webSearch: opts.webSearch,
@@ -378,19 +356,13 @@ export const createPiTools = (opts: {
         // sees the image on the very next turn with no extra Read step.
         const { text: forwardedText, images: legacyImages } =
           await extractAttachImageBlocks(formatted.text);
-        // `Exec` / `Wait` results carry text(...) / image(...) content
-        // explicitly; surface them as proper content blocks so vision
-        // round-trips work without going through the legacy marker.
-        const execExtras = extractExecContentBlocks(toolResult.details);
-        const combinedText = [forwardedText, ...execExtras.text]
-          .filter((entry) => entry && entry.trim().length > 0)
-          .join("\n\n");
+        const content: Array<TextContent | ImageBlock> = [];
+        if (forwardedText || legacyImages.length === 0) {
+          content.push({ type: "text" as const, text: forwardedText });
+        }
+        content.push(...legacyImages);
         return {
-          content: [
-            { type: "text" as const, text: combinedText },
-            ...legacyImages,
-            ...execExtras.images,
-          ],
+          content,
           details: formatted.details,
         };
       },

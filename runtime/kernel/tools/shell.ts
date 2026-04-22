@@ -1,5 +1,5 @@
 /**
- * Shell tools: Bash, KillShell handlers.
+ * Shell tools: Bash plus Codex-style exec_command/write_stdin handlers.
  */
 
 import { spawn } from "child_process";
@@ -15,7 +15,7 @@ import { getStellaComputerSessionId } from "./stella-computer-session.js";
 import type { OfficePreviewRef } from "../../../desktop/src/shared/contracts/office-preview.js";
 
 export type ShellState = {
-  shells: Map<string, ShellRecord>;
+  shells: Map<string, ManagedShellRecord>;
   secretStateRoot: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
@@ -29,6 +29,18 @@ type ShellStateOptions = {
   stellaUiCliPath?: string;
   stellaComputerCliPath?: string;
 };
+
+type ManagedShellRecord = ShellRecord & {
+  unreadOutput: string;
+  outputVersion: number;
+  waiters: Set<() => void>;
+  child?: SpawnedShell;
+  stdinOpen: boolean;
+};
+
+const DEFAULT_EXEC_YIELD_MS = 1_000;
+const MAX_EXEC_YIELD_MS = 30_000;
+const DEFAULT_EXEC_OUTPUT_TOKENS = 4_000;
 
 const OFFICE_PREVIEW_REF_MARKER = "__STELLA_OFFICE_PREVIEW_REF__";
 
@@ -332,13 +344,31 @@ const resolveWindowsBash = (): string | null => {
   return null;
 };
 
+// macOS ships /bin/bash on every install. Linux's FHS guarantees /bin/bash
+// for any system that has bash at all. Some Stella launch contexts (notably
+// the Electron app launched via Finder/Dock with a stripped GUI environment)
+// hand the runtime a `process.env` whose PATH does not include /bin, so
+// spawning bare "bash" fails with `ENOENT: posix_spawn 'bash'`. Probe for
+// /bin/bash first; fall back to PATH-resolved "bash" only if it isn't there
+// (e.g. a stripped-down BSD jail), which keeps test environments working.
+const UNIX_BASH_CANDIDATES = ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash"];
+
+const resolveUnixBash = (): string => {
+  for (const candidate of UNIX_BASH_CANDIDATES) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return "bash";
+};
+
 const resolveShellLaunch = (
   command: string,
 ):
   | { shell: string; args: string[] }
   | { error: string } => {
   if (process.platform !== "win32") {
-    return { shell: "bash", args: ["-lc", command] };
+    return { shell: resolveUnixBash(), args: ["-lc", command] };
   }
 
   const bashPath = resolveWindowsBash();
@@ -354,6 +384,90 @@ const resolveShellLaunch = (
 
 type SpawnedShell = ReturnType<typeof spawn>;
 
+const outputCharBudgetFromTokens = (value: unknown): number => {
+  const tokens =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.max(256, Math.floor(value))
+      : DEFAULT_EXEC_OUTPUT_TOKENS;
+  return Math.max(1_024, Math.min(tokens * 4, 200_000));
+};
+
+const truncateRecent = (value: string, max: number): string =>
+  value.length > max ? `${value.slice(0, max)}\n\n... (truncated)` : value;
+
+const notifyShellActivity = (record: ManagedShellRecord) => {
+  record.outputVersion += 1;
+  const waiters = [...record.waiters];
+  record.waiters.clear();
+  for (const waiter of waiters) {
+    waiter();
+  }
+};
+
+const waitForShellActivity = async (
+  record: ManagedShellRecord,
+  observedVersion: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+) => {
+  if (!record.running || record.outputVersion !== observedVersion) {
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const finish = () => {
+      cleanup();
+      resolve();
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(signal?.reason ?? new Error("Aborted"));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      record.waiters.delete(finish);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    record.waiters.add(finish);
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+};
+
+const takeUnreadOutput = (
+  record: ManagedShellRecord,
+  maxChars: number,
+): string => {
+  const unread = record.unreadOutput;
+  record.unreadOutput = "";
+  return truncateRecent(unread, maxChars);
+};
+
+const settleCompletedShell = async (
+  record: ManagedShellRecord,
+  signal?: AbortSignal,
+) => {
+  const deadline = Date.now() + 250;
+  while (record.running && Date.now() < deadline) {
+    const observedVersion = record.outputVersion;
+    try {
+      await waitForShellActivity(
+        record,
+        observedVersion,
+        Math.min(25, Math.max(1, deadline - Date.now())),
+        signal,
+      );
+    } catch {
+      return;
+    }
+  }
+};
+
 const spawnShellProcess = (
   shell: string,
   args: string[],
@@ -363,7 +477,7 @@ const spawnShellProcess = (
   spawn(shell, args, {
     cwd,
     env,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
     // On Unix, make the shell the leader of its own process group so timeouts
     // and manual kills can terminate the entire command tree.
@@ -453,7 +567,7 @@ export const startShell = (
   const launch = resolveShellLaunch(protectedCommand);
 
   if ("error" in launch) {
-    const record: ShellRecord = {
+    const record: ManagedShellRecord = {
       id,
       command,
       cwd,
@@ -462,6 +576,10 @@ export const startShell = (
       exitCode: 127,
       startedAt: Date.now(),
       completedAt: Date.now(),
+      unreadOutput: launch.error,
+      outputVersion: 1,
+      waiters: new Set(),
+      stdinOpen: false,
       kill: () => {},
     };
     state.shells.set(id, record);
@@ -470,7 +588,7 @@ export const startShell = (
 
   const child = spawnShellProcess(launch.shell, launch.args, cwd, buildShellEnv(envOverrides, state));
 
-  const record: ShellRecord = {
+  const record: ManagedShellRecord = {
     id,
     command,
     cwd,
@@ -479,21 +597,50 @@ export const startShell = (
     exitCode: null,
     startedAt: Date.now(),
     completedAt: null,
+    child,
+    unreadOutput: "",
+    outputVersion: 0,
+    waiters: new Set(),
+    stdinOpen: Boolean(child.stdin),
     kill: () => {
       terminateShellProcess(child);
     },
   };
 
   const append = (data: Buffer) => {
-    record.output = truncate(`${record.output}${data.toString()}`);
+    const chunk = data.toString();
+    record.output = truncate(`${record.output}${chunk}`);
+    record.unreadOutput = truncate(`${record.unreadOutput}${chunk}`, 200_000);
+    notifyShellActivity(record);
   };
 
   child.stdout.on("data", append);
   child.stderr.on("data", append);
+  child.stdin?.on("close", () => {
+    record.stdinOpen = false;
+    notifyShellActivity(record);
+  });
+  child.on("error", (error) => {
+    record.output = truncate(`${record.output}${error.message}`);
+    record.unreadOutput = truncate(
+      `${record.unreadOutput}${error.message}`,
+      200_000,
+    );
+    record.running = false;
+    record.exitCode = record.exitCode ?? 1;
+    record.completedAt = Date.now();
+    record.stdinOpen = false;
+    notifyShellActivity(record);
+    if (onClose) {
+      onClose();
+    }
+  });
   child.on("close", (code) => {
     record.running = false;
     record.exitCode = code ?? null;
     record.completedAt = Date.now();
+    record.stdinOpen = false;
+    notifyShellActivity(record);
     if (onClose) {
       onClose();
     }
@@ -559,32 +706,23 @@ export const runShell = async (
   });
 };
 
-export const handleBash = async (
-  state: ShellState,
+const resolveManagedShellCommand = (
   args: Record<string, unknown>,
   context?: ToolContext,
-  _signal?: AbortSignal,
-): Promise<ToolResult> => {
-  let command = String(args.command ?? "");
-
-  // Safety check: reject dangerous commands
-  const dangerReason = isDangerousCommand(command);
-  if (dangerReason) {
-    return {
-      error: `Command blocked: this operation is potentially destructive and has been denied for safety. (${dangerReason})`,
-    };
-  }
-
-  const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
-  const cwd = String(args.working_directory ?? context?.stellaRoot ?? process.cwd());
-  const runInBackground = Boolean(args.run_in_background ?? false);
+): {
+  command: string;
+  cwd: string;
+  envOverrides: Record<string, string>;
+} => {
+  let command = String(args.cmd ?? args.command ?? "");
+  const cwd = String(
+    args.workdir ?? args.working_directory ?? context?.stellaRoot ?? process.cwd(),
+  );
   const envOverrides: Record<string, string> = {};
   const browserOwnerId = context?.taskId ?? context?.runId ?? context?.rootRunId;
   const stellaComputerSessionId = getStellaComputerSessionId(context);
 
   if (shouldUseStellaBrowserBridge(command)) {
-    // Browser automation uses one shared Stella browser bridge.
-    // Runs should not fork ad-hoc sessions that bypass the app-owned bridge lifecycle.
     command = normalizeComputerAgentShellCommand(command);
     Object.assign(envOverrides, getStellaBrowserBridgeEnv());
     if (browserOwnerId) {
@@ -595,6 +733,158 @@ export const handleBash = async (
   if (shouldUseStellaComputer(command) && stellaComputerSessionId) {
     envOverrides.STELLA_COMPUTER_SESSION = stellaComputerSessionId;
   }
+
+  return { command, cwd, envOverrides };
+};
+
+const resolveExecYieldTime = (value: unknown): number => {
+  const raw =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.floor(value)
+      : DEFAULT_EXEC_YIELD_MS;
+  return Math.max(0, Math.min(raw, MAX_EXEC_YIELD_MS));
+};
+
+const buildExecToolPayload = (
+  record: ManagedShellRecord,
+  output: string,
+): Record<string, unknown> => ({
+  session_id: record.running ? record.id : null,
+  running: record.running,
+  exit_code: record.running ? null : record.exitCode,
+  output,
+  cwd: record.cwd,
+  command: record.command,
+});
+
+const writeToShellStdin = async (
+  record: ManagedShellRecord,
+  chars: string,
+): Promise<void> => {
+  if (!chars) return;
+  const stdin = record.child?.stdin;
+  if (!stdin || !record.stdinOpen || stdin.destroyed || !stdin.writable) {
+    throw new Error(`stdin is not available for session ${record.id}.`);
+  }
+  await new Promise<void>((resolve, reject) => {
+    stdin.write(chars, (error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+};
+
+export const handleExecCommand = async (
+  state: ShellState,
+  args: Record<string, unknown>,
+  context?: ToolContext,
+  signal?: AbortSignal,
+): Promise<ToolResult> => {
+  const prepared = resolveManagedShellCommand(args, context);
+  const dangerReason = isDangerousCommand(prepared.command);
+  if (dangerReason) {
+    return {
+      error: `Command blocked: this operation is potentially destructive and has been denied for safety. (${dangerReason})`,
+    };
+  }
+  if (!prepared.command.trim()) {
+    return { error: "cmd is required." };
+  }
+
+  const record = startShell(
+    state,
+    prepared.command,
+    prepared.cwd,
+    prepared.envOverrides,
+  );
+  const observedVersion = record.outputVersion;
+  try {
+    await waitForShellActivity(
+      record,
+      observedVersion,
+      resolveExecYieldTime(args.yield_time_ms),
+      signal,
+    );
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+  await settleCompletedShell(record, signal);
+
+  const payload = buildExecToolPayload(
+    record,
+    takeUnreadOutput(record, outputCharBudgetFromTokens(args.max_output_tokens)),
+  );
+  return { result: payload, details: payload };
+};
+
+export const handleWriteStdin = async (
+  state: ShellState,
+  args: Record<string, unknown>,
+  _context?: ToolContext,
+  signal?: AbortSignal,
+): Promise<ToolResult> => {
+  const sessionId = String(args.session_id ?? "").trim();
+  if (!sessionId) {
+    return { error: "session_id is required." };
+  }
+  const record = state.shells.get(sessionId);
+  if (!record) {
+    return { error: `Session not found: ${sessionId}` };
+  }
+
+  const chars = typeof args.chars === "string" ? args.chars : "";
+  const observedVersion = record.outputVersion;
+  try {
+    await writeToShellStdin(record, chars);
+  } catch (error) {
+    if (record.running) {
+      return { error: (error as Error).message };
+    }
+  }
+
+  try {
+    await waitForShellActivity(
+      record,
+      observedVersion,
+      resolveExecYieldTime(args.yield_time_ms),
+      signal,
+    );
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+  await settleCompletedShell(record, signal);
+
+  const payload = buildExecToolPayload(
+    record,
+    takeUnreadOutput(record, outputCharBudgetFromTokens(args.max_output_tokens)),
+  );
+  return { result: payload, details: payload };
+};
+
+export const handleBash = async (
+  state: ShellState,
+  args: Record<string, unknown>,
+  context?: ToolContext,
+  _signal?: AbortSignal,
+): Promise<ToolResult> => {
+  const prepared = resolveManagedShellCommand(args, context);
+  let command = prepared.command;
+
+  // Safety check: reject dangerous commands
+  const dangerReason = isDangerousCommand(command);
+  if (dangerReason) {
+    return {
+      error: `Command blocked: this operation is potentially destructive and has been denied for safety. (${dangerReason})`,
+    };
+  }
+
+  const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
+  const cwd = prepared.cwd;
+  const runInBackground = Boolean(args.run_in_background ?? false);
+  const envOverrides = prepared.envOverrides;
 
   if (runInBackground) {
     const record = startShell(state, command, cwd, envOverrides);
