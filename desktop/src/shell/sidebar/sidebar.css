@@ -108,15 +108,18 @@
 }
 
 /* Brand row: logo + "Stella" text, sitting just under the title bar.
-   Naturally flowed (no absolute positioning) so the logo and text hug
-   each other and the row's height is purely a function of its content
-   plus a small vertical pad. */
+   Aligned to match the nav items below (`.sidebar-nav-item`) so the
+   logo and "Stella" text occupy the same icon-column and label-column
+   as Home, Settings, etc. Top pad stays larger than nav padding to
+   give breathing room against the title bar / macOS traffic lights. */
 .sidebar-brand {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 6px 12px 8px;
+  justify-content: flex-start;
+  gap: 12px;
+  /* Left pad = `.sidebar-nav` pad (12px) + `.sidebar-nav-item` pad (16px)
+     so the logo sits in the same column as the nav icons below. */
+  padding: 16px 16px 10px 28px;
   background: none;
   border: none;
   cursor: pointer;
@@ -132,8 +135,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   opacity: 0.55;
   pointer-events: none;
@@ -545,11 +548,14 @@
 }
 
 .sidebar.sidebar--rail .sidebar-brand {
-  padding: 8px 0;
+  justify-content: center;
+  padding: 12px 0 8px;
   gap: 0;
 }
 
 .sidebar.sidebar--rail .sidebar-brand-logo {
+  width: 28px;
+  height: 28px;
   opacity: 0.85;
 }
 
