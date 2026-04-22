@@ -13,6 +13,7 @@ import { selectRecentByTokenBudget } from "../local-history.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { estimateRuntimeTokens } from "../runtime-threads.js";
 import { getLocalCliWorkingDirectory } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { stripStaleImageBlocks } from "./thread-memory.js";
 
 const MAX_RESULT_PREVIEW = 200;
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
@@ -238,15 +239,22 @@ export const buildDefaultTransformContext = (
     if (signal?.aborted) {
       throw new Error("Aborted");
     }
-    const totalTokens = messages.reduce(
+    // Strip on every per-turn call. `buildHistorySource` already runs this
+    // once at run start, but the agent loop appends fresh tool results
+    // (each carrying a base64 PNG) into the live messages array between
+    // LLM calls. Without re-stripping, all those screenshots stack up in
+    // the prompt every subsequent turn, and a 4-step computer-use task
+    // overflows the managed runtime's payload budget.
+    const stripped = stripStaleImageBlocks(messages);
+    const totalTokens = stripped.reduce(
       (sum, message) => sum + estimateAgentMessageTokens(message),
       0,
     );
     if (totalTokens <= maxTokens) {
-      return messages;
+      return stripped;
     }
     const selected = selectRecentByTokenBudget({
-      itemsNewestFirst: [...messages].reverse(),
+      itemsNewestFirst: [...stripped].reverse(),
       maxTokens,
       estimateTokens: estimateAgentMessageTokens,
     });
