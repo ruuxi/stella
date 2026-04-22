@@ -4,7 +4,10 @@ import {
   DialogContent,
   DialogBody,
   DialogCloseButton,
+  DialogTitle,
+  DialogDescription,
 } from "@/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { listLocalEvents } from "@/app/chat/services/local-chat-store";
 import { Compass, Smartphone } from "lucide-react";
 import "./welcome-dialog.css";
@@ -81,6 +84,15 @@ export function WelcomeDialog({
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent fit size="md" className="welcome-dialog-content">
+        <VisuallyHidden asChild>
+          <DialogTitle>Welcome to Stella</DialogTitle>
+        </VisuallyHidden>
+        <VisuallyHidden asChild>
+          <DialogDescription>
+            Get started with personalized suggestions and pair your phone to
+            message Stella anywhere.
+          </DialogDescription>
+        </VisuallyHidden>
         <DialogCloseButton className="welcome-dialog-close" />
         <DialogBody className="welcome-dialog-body">
           <p className="welcome-dialog-message">

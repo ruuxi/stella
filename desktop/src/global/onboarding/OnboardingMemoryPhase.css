@@ -1,0 +1,539 @@
+/* Onboarding "Live Memory" phase.
+ *
+ * Layout:
+ *   - lede paragraph
+ *   - 2-column grid of comparison mocks (collapses to 1 column on narrow)
+ *   - controls row: pill toggle + helper copy + sign-in notice
+ *   - Continue button (uses shared .onboarding-confirm)
+ *
+ * The mocks reuse the design language of the other onboarding panels
+ * (window chrome with traffic-light dots, neutral surface, soft border)
+ * but are scoped to this phase so we don't bloat StellaAppMock.
+ */
+
+.onboarding-dialogue[data-phase="memory"] .onboarding-split-right {
+  width: 100%;
+  min-width: 100%;
+  margin-left: 0;
+  padding: clamp(48px, 7vh, 84px) 32px 40px;
+  align-items: center;
+}
+
+.onboarding-dialogue[data-phase="memory"] .onboarding-split-stage {
+  align-items: center;
+  max-width: 1080px;
+  width: 100%;
+  /* Override the base 520px min-height so the stage can fill the right
+   * pane vertically — the mocks below expand into that space via flex. */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.onboarding-dialogue[data-phase="memory"] .onboarding-split-title {
+  text-align: center;
+}
+
+.onboarding-memory-step {
+  align-items: center;
+  gap: 22px;
+  max-width: none;
+  width: 100%;
+  /* Fill the parent stage so the children can distribute themselves
+   * top → middle → bottom (lede, mocks, controls). */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.onboarding-memory-step__lede {
+  text-align: center;
+  max-width: 560px;
+  margin: 0 auto;
+  flex-shrink: 0;
+}
+
+.onboarding-memory-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  width: 100%;
+  max-width: 1024px;
+  align-items: stretch;
+  /* Grow into the available vertical space so the two mock windows feel
+   * like real app windows instead of compact previews. */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (max-width: 760px) {
+  .onboarding-memory-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.onboarding-memory-mock {
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  /* Match the other onboarding mocks (`.sam-root`, `.onboarding-shortcut-window`):
+   * opaque background with a subtle radial tint so it reads as "the real app
+   * window" sitting in front of the onboarding gradient, not a glass overlay. */
+  background-color: var(--background);
+  background-image: radial-gradient(
+      120% 90% at 80% 0%,
+      color-mix(in oklch, var(--primary, var(--foreground)) 8%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      90% 80% at 0% 100%,
+      color-mix(
+        in oklch,
+        var(--accent, var(--primary, var(--foreground))) 6%,
+        transparent
+      ),
+      transparent 55%
+    );
+  box-shadow: 0 18px 40px color-mix(in oklch, black 8%, transparent);
+  overflow: hidden;
+  /* Let the surrounding grid drive the height so the mock stretches with
+   * the available space. We still guarantee a usable minimum on small
+   * windows where the grid can't grow. */
+  min-height: 280px;
+  position: relative;
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.onboarding-memory-mock[data-variant="on"] {
+  border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+  box-shadow: 0 22px 50px color-mix(in oklch, black 12%, transparent);
+}
+
+.onboarding-memory-mock__chrome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: color-mix(in oklch, var(--background) 92%, white 8%);
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.onboarding-memory-mock__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 18%, transparent);
+  display: inline-block;
+}
+
+/* Subtle traffic-light tinting; we keep it neutral so we don't compete
+ * with the toggle for color attention. */
+.onboarding-memory-mock__dot[data-color="r"] {
+  background: color-mix(in oklch, oklch(0.65 0.16 25) 75%, transparent);
+}
+.onboarding-memory-mock__dot[data-color="y"] {
+  background: color-mix(in oklch, oklch(0.78 0.12 75) 70%, transparent);
+}
+.onboarding-memory-mock__dot[data-color="g"] {
+  background: color-mix(in oklch, oklch(0.72 0.16 145) 70%, transparent);
+}
+
+.onboarding-memory-mock__title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-left: 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--foreground);
+  opacity: 0.75;
+}
+
+.onboarding-memory-mock__title-label {
+  font-weight: 500;
+}
+
+.onboarding-memory-mock__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 100px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+  opacity: 0.85;
+}
+
+.onboarding-memory-mock__pill--muted {
+  opacity: 0.45;
+}
+
+.onboarding-memory-mock__pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: oklch(0.72 0.16 145);
+  box-shadow: 0 0 6px oklch(0.72 0.16 145 / 0.7);
+  animation: memoryPillPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes memoryPillPulse {
+  0%, 100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+}
+
+.onboarding-memory-mock__body {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+.onboarding-memory-mock__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 8px;
+  border-right: 1px solid
+    color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--background) 88%, var(--foreground) 4%);
+}
+
+.onboarding-memory-mock__rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--foreground);
+  opacity: 0.7;
+}
+
+.onboarding-memory-mock__rail-glyph {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--foreground) 30%, transparent);
+}
+
+.onboarding-memory-mock__rail-item {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--foreground);
+  opacity: 0.45;
+  padding: 6px 8px;
+  border-radius: 5px;
+}
+
+.onboarding-memory-mock__rail-item.is-active {
+  opacity: 0.95;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.onboarding-memory-mock__rail-spacer {
+  flex: 1;
+}
+
+.onboarding-memory-mock__chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.onboarding-memory-mock__chat-scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  overflow: hidden;
+}
+
+.onboarding-memory-mock__line {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0;
+  transform: translateY(4px);
+  animation: memoryLineIn 360ms
+    cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  max-width: 92%;
+}
+
+.onboarding-memory-mock__line[data-from="user"] {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.onboarding-memory-mock__line[data-from="assistant"] {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+@keyframes memoryLineIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.onboarding-memory-mock__bubble {
+  font-size: 11.5px;
+  line-height: 1.45;
+  padding: 7px 11px;
+  border-radius: 10px;
+  letter-spacing: 0.01em;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+  opacity: 0;
+  animation: memoryBubbleIn 280ms
+    cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.onboarding-memory-mock__line[data-from="user"]
+  .onboarding-memory-mock__bubble {
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+
+@keyframes memoryBubbleIn {
+  to {
+    opacity: 0.92;
+  }
+}
+
+/* Three-dot typing indicator that fades out once the assistant bubble
+ * appears. We use the same animation-delay so it lines up with the
+ * scripted timing in the component. */
+.onboarding-memory-mock__typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  width: fit-content;
+  opacity: 0;
+  animation-name: memoryTypingPulse;
+  animation-timing-function: linear;
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+.onboarding-memory-mock__typing span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--foreground);
+  opacity: 0.55;
+  animation: memoryTypingDot 1s ease-in-out infinite;
+}
+
+.onboarding-memory-mock__typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.onboarding-memory-mock__typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes memoryTypingPulse {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin: 0;
+  }
+}
+
+@keyframes memoryTypingDot {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(-3px);
+    opacity: 0.95;
+  }
+}
+
+.onboarding-memory-mock__composer {
+  margin: 0 12px 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+}
+
+.onboarding-memory-mock__composer-placeholder {
+  font-size: 11px;
+  color: var(--foreground);
+  opacity: 0.4;
+  letter-spacing: 0.02em;
+}
+
+.onboarding-memory-mock__caption {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.6;
+  padding: 8px 12px 12px;
+  border-top: 1px solid
+    color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--background) 92%, white 8%);
+}
+
+.onboarding-memory-mock[data-variant="on"] .onboarding-memory-mock__caption {
+  opacity: 0.85;
+  font-weight: 500;
+}
+
+/* ─── Controls row ─────────────────────────────────────────────────── */
+
+.onboarding-memory-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 540px;
+  flex-shrink: 0;
+}
+
+.onboarding-memory-step > .onboarding-confirm {
+  flex-shrink: 0;
+}
+
+.onboarding-memory-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 18px 8px 10px;
+  border-radius: 100px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--foreground);
+  transition: border-color 0.25s ease, background 0.25s ease,
+    transform 0.15s ease;
+}
+
+.onboarding-memory-toggle:hover {
+  border-color: color-mix(in oklch, var(--foreground) 32%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.onboarding-memory-toggle:active {
+  transform: scale(0.98);
+}
+
+.onboarding-memory-toggle[aria-checked="true"] {
+  border-color: color-mix(in oklch, var(--foreground) 40%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.onboarding-memory-toggle__track {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+  border-radius: 100px;
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+  transition: background 0.25s ease;
+  flex-shrink: 0;
+}
+
+.onboarding-memory-toggle[aria-checked="true"] .onboarding-memory-toggle__track {
+  background: color-mix(in oklch, var(--foreground) 50%, transparent);
+}
+
+.onboarding-memory-toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--background, white);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.onboarding-memory-toggle[aria-checked="true"] .onboarding-memory-toggle__thumb {
+  transform: translateX(14px);
+}
+
+.onboarding-memory-controls__hint {
+  text-align: center;
+  margin: 0;
+  max-width: 480px;
+}
+
+.onboarding-memory-signin-notice {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  color: var(--foreground);
+  opacity: 0;
+  text-align: center;
+  max-width: 480px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  transform: translateY(-4px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+
+.onboarding-memory-signin-notice[data-visible="true"] {
+  opacity: 0.85;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-memory-mock__line,
+  .onboarding-memory-mock__bubble,
+  .onboarding-memory-mock__typing,
+  .onboarding-memory-mock__pill-dot,
+  .onboarding-memory-toggle,
+  .onboarding-memory-toggle__thumb {
+    animation: none;
+    transition: none;
+  }
+  .onboarding-memory-mock__line,
+  .onboarding-memory-mock__bubble {
+    opacity: 0.92;
+    transform: none;
+  }
+  .onboarding-memory-mock__typing {
+    display: none;
+  }
+}
