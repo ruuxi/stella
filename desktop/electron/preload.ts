@@ -756,6 +756,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           pid: number;
           isActive: boolean;
           windowTitle?: string;
+          iconDataUrl?: string;
         }>;
       }>,
     getActiveBrowserTab: (bundleId: string) =>
@@ -801,6 +802,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
             bundleId?: string;
             isActive: boolean;
             windowTitle?: string;
+            iconDataUrl?: string;
           }
         | {
             kind: "tab";
@@ -809,6 +811,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
             url: string;
             title?: string;
             host: string;
+            iconDataUrl?: string;
           };
     }>(IPC_HOME_PIN_SUGGESTION),
   },

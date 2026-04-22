@@ -285,9 +285,10 @@ function AppSuggestionChip({
       <span className="composer-context-suggestion__plus" aria-hidden="true">
         +
       </span>
-      <span className="composer-context-suggestion__label">
-        {truncateChipLabel(app.name)}
-      </span>
+      <ChipAppGlyph
+        iconDataUrl={app.iconDataUrl}
+        fallbackLabel={app.name}
+      />
       {app.windowTitle && (
         <span className="composer-context-suggestion__meta">
           {truncateChipLabel(app.windowTitle)}
@@ -321,12 +322,44 @@ function TabSuggestionChip({
       <span className="composer-context-suggestion__plus" aria-hidden="true">
         +
       </span>
-      <span className="composer-context-suggestion__label">
+      <ChipAppGlyph
+        iconDataUrl={tab.iconDataUrl}
+        fallbackLabel={tab.browser}
+      />
+      <span className="composer-context-suggestion__meta">
         {truncateChipLabel(tab.host)}
       </span>
-      <span className="composer-context-suggestion__meta">
-        in {truncateChipLabel(tab.browser)}
-      </span>
     </button>
+  );
+}
+
+/**
+ * Show the app/browser icon when we have one; otherwise fall back to the
+ * truncated display name. Keeping the markup uniform across both branches
+ * means the chip layout doesn't shift when icons load asynchronously or
+ * fail to encode for a given app.
+ */
+function ChipAppGlyph({
+  iconDataUrl,
+  fallbackLabel,
+}: {
+  iconDataUrl?: string;
+  fallbackLabel: string;
+}) {
+  if (iconDataUrl) {
+    return (
+      <img
+        src={iconDataUrl}
+        alt=""
+        aria-hidden="true"
+        className="composer-context-suggestion__icon"
+        draggable={false}
+      />
+    );
+  }
+  return (
+    <span className="composer-context-suggestion__label">
+      {truncateChipLabel(fallbackLabel)}
+    </span>
   );
 }

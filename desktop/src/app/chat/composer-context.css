@@ -84,6 +84,20 @@
   text-overflow: ellipsis;
 }
 
+/* App / browser icon glyph rendered in place of the text label when we
+ * have a base64 PNG from the native helper. Square, slight radius, sized
+ * to match the chip's text height so the chip pill stays the same height
+ * whether icon or fallback label is rendered. */
+.composer-context-suggestion__icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
 .composer-context-suggestion__meta {
   margin-left: 2px;
   color: var(--text-weak);
