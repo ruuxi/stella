@@ -13,6 +13,7 @@ import {
   formatRuntimeThreadAge,
   type RuntimeThreadRecord,
 } from "../runtime-threads.js";
+import { TASK_PAUSE_CANCEL_REASON } from "../tasks/local-task-manager.js";
 import { truncate } from "./utils.js";
 import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 
@@ -141,9 +142,16 @@ export const handleTask = async (
   const explicitThreadId = toOptionalString(args.thread_id ?? args.threadId ?? args.id);
 
   if ((action === "cancel" || action === "stop") && explicitThreadId) {
+    // Pin the cancel reason to a sentinel so the runner can recognize
+    // orchestrator-initiated TaskPause and skip the hidden `[Task canceled]`
+    // follow-up turn — that follow-up was clobbering the user-facing reply
+    // because it produced an empty assistant message that overwrote the
+    // orchestrator's actual response to the pause request.
     if (ctx.taskApi) {
-      const reason = toOptionalString(args.reason);
-      const canceled = await ctx.taskApi.cancelTask(explicitThreadId, reason);
+      const canceled = await ctx.taskApi.cancelTask(
+        explicitThreadId,
+        TASK_PAUSE_CANCEL_REASON,
+      );
       if (!canceled.canceled) {
         return { error: `Thread not found: ${explicitThreadId}` };
       }
@@ -158,7 +166,7 @@ export const handleTask = async (
     const localRecord = ctx.tasks.get(explicitThreadId);
     if (!localRecord) return { error: `Thread not found: ${explicitThreadId}` };
     localRecord.status = "error";
-    localRecord.error = "Canceled";
+    localRecord.error = TASK_PAUSE_CANCEL_REASON;
     localRecord.completedAt = Date.now();
     return {
       result: {

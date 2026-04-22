@@ -10,7 +10,6 @@ import {
 import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
 import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
-import { sanitizeAssistantText } from "../../../../runtime/kernel/internal-tool-transcript.js";
 import {
   type TurnViewModel,
   getDisplayMessageText,
@@ -240,21 +239,8 @@ export function useTurnViewModels(opts: {
     return hasAppliedSelfMod ? nextTurns : baseTurns;
   }, [baseTurns, selfModMap]);
 
-  const processedStreamingText = useMemo(
-    () =>
-      streamingText
-        ? sanitizeAssistantText(streamingText)
-        : streamingText,
-    [streamingText],
-  );
-
-  const processedReasoningText = useMemo(
-    () =>
-      reasoningText
-        ? reasoningText
-        : reasoningText,
-    [reasoningText],
-  );
+  const processedStreamingText = streamingText;
+  const processedReasoningText = reasoningText;
 
   const runningTool = useMemo(() => getCurrentRunningTool(events), [events]);
   const runningTasks = useMemo(

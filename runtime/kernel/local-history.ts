@@ -1,8 +1,20 @@
 import { formatTimestampForHistory, TEN_MINUTES_MS } from "./message-timestamp.js";
-import {
-  isInternalTaskToolName,
-  sanitizeAssistantText,
-} from "./internal-tool-transcript.js";
+
+// Internal task-management tool names. Tool calls/results for these are
+// hidden from the orchestrator's local history because they're already
+// reflected by the dedicated `task_*` lifecycle events.
+const INTERNAL_TASK_TOOL_NAMES = new Set([
+  "TaskCreate",
+  "TaskUpdate",
+  "TaskPause",
+  "TaskCancel",
+  "TaskOutput",
+  "task_create",
+  "task_update",
+  "task_pause",
+  "task_cancel",
+  "task_output",
+]);
 
 export type LocalContextEvent = {
   _id: string;
@@ -212,7 +224,7 @@ const normalizeToolName = (
 };
 
 const shouldHideToolFromHistory = (toolName: string): boolean =>
-  isInternalTaskToolName(toolName);
+  INTERNAL_TASK_TOOL_NAMES.has(toolName);
 
 const formatTaskEvent = (
   eventType: string,
@@ -506,11 +518,8 @@ const formatTextEvent = (
 ): LocalHistoryMessage | null => {
   const payload = asObject(event.payload);
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
+  if (!text) return null;
   const isAssistant = event.type === "assistant_message";
-  const effectiveText = isAssistant
-    ? sanitizeAssistantText(text)
-    : text;
-  if (!effectiveText) return null;
   const skipTs = !isAssistant &&
     tsState.prevUserTs != null &&
     event.timestamp - tsState.prevUserTs < TEN_MINUTES_MS;
@@ -521,7 +530,7 @@ const formatTextEvent = (
     tsState.timezone,
   );
   tsState.prevDate = dateStr;
-  const body = truncateWithSuffix(effectiveText, MAX_TEXT_CHARS);
+  const body = truncateWithSuffix(text, MAX_TEXT_CHARS);
   if (isAssistant) {
     return { role: "assistant", content: body };
   }

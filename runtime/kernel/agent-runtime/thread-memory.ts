@@ -21,7 +21,6 @@ import {
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { wrapSystemReminder } from "../message-timestamp.js";
 import { now } from "./shared.js";
-import { sanitizeAssistantText } from "../internal-tool-transcript.js";
 
 const logger = createRuntimeLogger("agent-runtime.thread-memory");
 const LIFE_REGISTRY_DISPLAY_PATH = "state/registry.md";
@@ -61,10 +60,10 @@ export const buildHistorySource = (
         } satisfies UserMessage;
       }
       if (entry.role === "assistant" && typeof entry.content === "string") {
-        const sanitized = sanitizeAssistantText(entry.content);
-        if (!sanitized) return null;
+        const trimmed = entry.content.trim();
+        if (!trimmed) return null;
         return createHistoryAssistantMessage([
-          { type: "text", text: sanitized } satisfies TextContent,
+          { type: "text", text: trimmed } satisfies TextContent,
         ]);
       }
       return null;
@@ -106,20 +105,20 @@ const toRuntimeMessage = (
     return payload;
   }
   if (payload.role === "assistant") {
-    const sanitizedContent: (TextContent | ThinkingContent | ToolCall)[] = [];
+    const trimmedContent: (TextContent | ThinkingContent | ToolCall)[] = [];
     for (const block of payload.content) {
       if (block.type !== "text") {
-        sanitizedContent.push(block);
+        trimmedContent.push(block);
         continue;
       }
-      const sanitized = sanitizeAssistantText(block.text);
-      if (sanitized) {
-        sanitizedContent.push({ ...block, text: sanitized });
+      const trimmed = block.text.trim();
+      if (trimmed) {
+        trimmedContent.push({ ...block, text: trimmed });
       }
     }
     return {
       ...payload,
-      content: sanitizedContent,
+      content: trimmedContent,
     };
   }
   return payload;
@@ -157,8 +156,8 @@ export const buildThreadMessagePreview = (
     return payload.content
       .flatMap((block) => {
         if (block.type === "text") {
-          const sanitized = sanitizeAssistantText(block.text);
-          return sanitized ? [sanitized] : [];
+          const trimmed = block.text.trim();
+          return trimmed ? [trimmed] : [];
         }
         if (block.type === "toolCall") {
           return [

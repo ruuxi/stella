@@ -14,9 +14,6 @@ import {
   now,
 } from "./shared.js";
 import type { RuntimeRunCallbacks } from "./types.js";
-import {
-  sanitizeAssistantText,
-} from "../internal-tool-transcript.js";
 import { persistThreadPayloadMessage } from "./thread-memory.js";
 
 type RuntimeExecutableAgent = {
@@ -115,7 +112,7 @@ export const executeRuntimeAgentPrompt = async (args: {
 
     return {
       ...completion,
-      finalText: sanitizeAssistantText(completion.finalText),
+      finalText: completion.finalText.trim(),
     };
   } finally {
     try {
