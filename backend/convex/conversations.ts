@@ -2,6 +2,7 @@ import {
   mutation,
   internalQuery,
   internalMutation,
+  type MutationCtx,
 } from "./_generated/server";
 import { components, internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
@@ -13,6 +14,36 @@ import {
 
 const rateLimiter = new RateLimiter(components.rateLimiter);
 
+/**
+ * Adjust the denormalized `conversationCount` counter for an owner by `delta`.
+ * Lazily creates the counter row when missing. Counters never go negative.
+ */
+const adjustConversationCount = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  delta: number,
+) => {
+  const now = Date.now();
+  const existing = await ctx.db
+    .query("user_counters")
+    .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+    .unique();
+  if (!existing) {
+    await ctx.db.insert("user_counters", {
+      ownerId,
+      conversationCount: Math.max(0, delta),
+      updatedAt: now,
+    });
+    return Math.max(0, delta);
+  }
+  const next = Math.max(0, (existing.conversationCount ?? 0) + delta);
+  await ctx.db.patch(existing._id, {
+    conversationCount: next,
+    updatedAt: now,
+  });
+  return next;
+};
+
 const conversationDocValidator = v.union(v.null(), v.object({
   _id: v.id("conversations"),
   _creationTime: v.number(),
@@ -22,6 +53,7 @@ const conversationDocValidator = v.union(v.null(), v.object({
   activeThreadId: v.optional(v.id("threads")),
   activeTargetDeviceId: v.optional(v.string()),
   pendingDeviceSelection: v.optional(pendingDeviceSelectionValidator),
+  eventCount: v.optional(v.number()),
   createdAt: v.number(),
   updatedAt: v.number(),
 }));
@@ -92,6 +124,7 @@ export const getOrCreateDefaultConversation = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await adjustConversationCount(ctx, ownerId, 1);
 
     const { threadId } = await ctx.runMutation(internal.data.threads.createThread, {
       ownerId,
@@ -134,11 +167,15 @@ export const createConversation = mutation({
       });
     }
 
-    const existingConversations = await ctx.db
-      .query("conversations")
-      .withIndex("by_ownerId_and_isDefault", (q) => q.eq("ownerId", ownerId))
-      .take(MAX_CONVERSATIONS_PER_USER);
-    if (existingConversations.length >= MAX_CONVERSATIONS_PER_USER) {
+    // O(1) quota check via the denormalized `user_counters` row maintained
+    // by every conversation insert/delete, instead of scanning up to
+    // `MAX_CONVERSATIONS_PER_USER` rows of the conversations table.
+    const counter = await ctx.db
+      .query("user_counters")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+      .unique();
+    const currentCount = counter?.conversationCount ?? 0;
+    if (currentCount >= MAX_CONVERSATIONS_PER_USER) {
       throw new ConvexError({
         code: "LIMIT_EXCEEDED",
         message: `You have reached the maximum of ${MAX_CONVERSATIONS_PER_USER} conversations. Please delete some before creating new ones.`,
@@ -153,6 +190,7 @@ export const createConversation = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await adjustConversationCount(ctx, ownerId, 1);
 
     const { threadId } = await ctx.runMutation(internal.data.threads.createThread, {
       ownerId,

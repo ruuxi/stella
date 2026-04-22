@@ -271,10 +271,14 @@ const getAgentConfigHandler = async (
     (agent) => agent.id === args.agentType,
   );
   if (builtin) {
-    return toAgentConfig({
-      ...builtin,
-      updatedAt: Date.now(),
-    });
+    // Use the static `updatedAt` from the in-memory definition rather than
+    // `Date.now()` here. Calling `Date.now()` from a query handler defeats
+    // Convex's deterministic-result caching for `useQuery` subscribers — the
+    // result would invalidate on every read even though nothing has actually
+    // changed. The mutation that *writes* a builtin row (`ensureBuiltins`)
+    // still stamps `Date.now()`; queries should read whatever value is on
+    // the row.
+    return toAgentConfig(builtin);
   }
 
   throw new ConvexError(`Unknown agent type: "${args.agentType}"`);

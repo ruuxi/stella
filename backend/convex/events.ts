@@ -64,12 +64,41 @@ const sanitizeEventForRead = <T extends { type: string; payload: Value } | null>
   } as T;
 };
 
+/**
+ * Returns the number of events in a conversation. Reads the denormalized
+ * `eventCount` counter on the conversation doc maintained by
+ * `appendEventCore`. For legacy rows created before the counter existed, this
+ * returns 0; backfill via `internal.events.backfillEventCount` if needed.
+ */
 export const countByConversation = internalQuery({
   args: { conversationId: v.id("conversations") },
+  returns: v.number(),
   handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    return conversation?.eventCount ?? 0;
+  },
+});
+
+/**
+ * One-shot backfill mutation for the denormalized `eventCount` field on a
+ * single conversation. Idempotent: rewrites the counter from a paginated walk
+ * of the events table. Intended to be invoked from the dashboard or a
+ * scheduler for legacy conversations without a `eventCount`.
+ */
+export const backfillEventCount = internalMutation({
+  args: { conversationId: v.id("conversations") },
+  returns: v.object({
+    eventCount: v.number(),
+    updated: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) {
+      return { eventCount: 0, updated: false };
+    }
+
     let total = 0;
     let cursor: string | null = null;
-
     while (true) {
       const page = await ctx.db
         .query("events")
@@ -78,13 +107,16 @@ export const countByConversation = internalQuery({
         )
         .paginate({ cursor, numItems: PAGINATION_PAGE_SIZE });
       total += page.page.length;
-      if (page.isDone) {
-        break;
-      }
+      if (page.isDone) break;
       cursor = page.continueCursor;
     }
 
-    return total;
+    const previous = conversation.eventCount;
+    if (previous !== total) {
+      await ctx.db.patch(args.conversationId, { eventCount: total });
+      return { eventCount: total, updated: true };
+    }
+    return { eventCount: total, updated: false };
   },
 });
 
@@ -498,7 +530,14 @@ const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
     channelEnvelope: args.channelEnvelope,
   });
 
-  await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
+  // Maintain denormalized event counter so `countByConversation` can serve in
+  // O(1) without paginating the events table.
+  const conversation = await ctx.db.get(args.conversationId);
+  const currentCount = conversation?.eventCount ?? 0;
+  await ctx.db.patch(args.conversationId, {
+    updatedAt: timestamp,
+    eventCount: currentCount + 1,
+  });
   return sanitizeEventForRead(await ctx.db.get(eventId));
 };
 

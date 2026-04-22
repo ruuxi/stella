@@ -105,6 +105,11 @@ export const mediaSchema = {
     status: mediaJobStatusValidator,
     upstreamStatus: v.string(),
     queuePosition: v.union(v.number(), v.null()),
+    /**
+     * Legacy inline log array. New webhooks append to `media_job_logs`
+     * instead so the job document doesn't grow unbounded; this field is kept
+     * optional only for back-compat with rows written before that split.
+     */
     logs: v.optional(v.array(jsonValueValidator)),
     output: optionalJsonValueValidator,
     error: v.optional(mediaJobErrorValidator),
@@ -118,6 +123,22 @@ export const mediaSchema = {
     .index("by_ownerId_and_jobId", ["ownerId", "jobId"])
     .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
     .index("by_provider_and_providerRequestId", ["provider", "providerRequestId"]),
+
+  /**
+   * Per-job webhook log entries split out from `media_jobs.logs`. Each fal
+   * webhook delivery appends one row per log entry, so a long-running media
+   * generation can accumulate many entries without rewriting the job
+   * document or hitting the 1MB document size limit.
+   */
+  media_job_logs: defineTable({
+    ownerId: v.string(),
+    jobId: v.string(),
+    ordinal: v.number(),
+    receivedAt: v.number(),
+    entry: jsonValueValidator,
+  })
+    .index("by_jobId_and_ordinal", ["jobId", "ordinal"])
+    .index("by_ownerId_and_jobId", ["ownerId", "jobId"]),
 };
 
 

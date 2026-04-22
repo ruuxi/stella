@@ -118,37 +118,69 @@ export const summarizeMediaRequestForStorage = (
   };
 };
 
-const toStoredMediaJobResponse = (job: {
-  jobId: string;
-  capability: string;
-  profile: string;
-  request: StoredMediaRequestSummary;
-  status: MediaJobStatus;
-  upstreamStatus: string;
-  queuePosition: number | null;
-  logs?: Value[];
-  output?: Value;
-  error?: { message: string; code?: string; details?: Value };
-  createdAt: number;
-  updatedAt: number;
-  startedAt?: number;
-  completedAt?: number;
-}) => ({
-  jobId: job.jobId,
-  capability: job.capability,
-  profile: job.profile,
-  request: job.request,
-  status: job.status,
-  upstreamStatus: job.upstreamStatus,
-  queuePosition: job.queuePosition,
-  ...(job.logs ? { logs: job.logs } : {}),
-  ...(job.output !== undefined ? { output: job.output } : {}),
-  ...(job.error ? { error: job.error } : {}),
-  createdAt: job.createdAt,
-  updatedAt: job.updatedAt,
-  ...(job.startedAt !== undefined ? { startedAt: job.startedAt } : {}),
-  ...(job.completedAt !== undefined ? { completedAt: job.completedAt } : {}),
-});
+/**
+ * Hard cap on how many child-table log entries we hydrate per job response.
+ * Long-running jobs may accumulate many webhook entries; clients only need
+ * the most recent few for display.
+ */
+const MAX_JOB_LOGS_RETURNED = 100;
+
+const toStoredMediaJobResponse = (
+  job: {
+    jobId: string;
+    capability: string;
+    profile: string;
+    request: StoredMediaRequestSummary;
+    status: MediaJobStatus;
+    upstreamStatus: string;
+    queuePosition: number | null;
+    logs?: Value[];
+    output?: Value;
+    error?: { message: string; code?: string; details?: Value };
+    createdAt: number;
+    updatedAt: number;
+    startedAt?: number;
+    completedAt?: number;
+  },
+  childLogs?: Value[],
+) => {
+  const mergedLogs = childLogs && childLogs.length > 0
+    ? childLogs
+    : job.logs;
+  return {
+    jobId: job.jobId,
+    capability: job.capability,
+    profile: job.profile,
+    request: job.request,
+    status: job.status,
+    upstreamStatus: job.upstreamStatus,
+    queuePosition: job.queuePosition,
+    ...(mergedLogs && mergedLogs.length > 0 ? { logs: mergedLogs } : {}),
+    ...(job.output !== undefined ? { output: job.output } : {}),
+    ...(job.error ? { error: job.error } : {}),
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    ...(job.startedAt !== undefined ? { startedAt: job.startedAt } : {}),
+    ...(job.completedAt !== undefined ? { completedAt: job.completedAt } : {}),
+  };
+};
+
+/**
+ * Load the most recent webhook log entries for a job from the child
+ * `media_job_logs` table. Returns chronologically-ordered entries (oldest
+ * first) so callers can render them top-to-bottom.
+ */
+const loadJobLogs = async (
+  ctx: Pick<QueryCtx, "db">,
+  jobId: string,
+): Promise<Value[]> => {
+  const rows = await ctx.db
+    .query("media_job_logs")
+    .withIndex("by_jobId_and_ordinal", (q) => q.eq("jobId", jobId))
+    .order("desc")
+    .take(MAX_JOB_LOGS_RETURNED);
+  return rows.reverse().map((row) => row.entry);
+};
 
 const toViewerOwnerId = async (ctx: QueryCtx): Promise<string> => {
   const identity = await ctx.auth.getUserIdentity();
@@ -236,7 +268,8 @@ export const getByJobId = query({
       return null;
     }
 
-    return toStoredMediaJobResponse(job);
+    const childLogs = await loadJobLogs(ctx, job.jobId);
+    return toStoredMediaJobResponse(job, childLogs);
   },
 });
 
@@ -268,15 +301,17 @@ export const listSucceededSince = query({
       .order("desc")
       .take(limit * 2);
 
-    return rows
+    const succeeded = rows
       .filter(
         (row) =>
           row.status === "succeeded" &&
           row.output !== undefined &&
           (row.completedAt ?? row.updatedAt) >= args.since,
       )
-      .slice(0, limit)
-      .map(toStoredMediaJobResponse);
+      .slice(0, limit);
+    // Hydrate logs in parallel for the page we're returning.
+    const logs = await Promise.all(succeeded.map((row) => loadJobLogs(ctx, row.jobId)));
+    return succeeded.map((row, index) => toStoredMediaJobResponse(row, logs[index]));
   },
 });
 
@@ -452,6 +487,29 @@ export const applyFalWebhook = internalMutation({
       return { updated: false };
     }
 
+    // Append log entries to the child `media_job_logs` table instead of
+    // mutating an inline array on the job document. This keeps the job doc
+    // small (and within the 1MB limit) regardless of how many webhook
+    // deliveries arrive over the lifetime of a long-running generation.
+    if (args.logs && args.logs.length > 0) {
+      const existingLogCount = await ctx.db
+        .query("media_job_logs")
+        .withIndex("by_jobId_and_ordinal", (q) => q.eq("jobId", job.jobId))
+        .order("desc")
+        .take(1);
+      let nextOrdinal = (existingLogCount[0]?.ordinal ?? -1) + 1;
+      for (const entry of args.logs) {
+        await ctx.db.insert("media_job_logs", {
+          ownerId: job.ownerId,
+          jobId: job.jobId,
+          ordinal: nextOrdinal,
+          receivedAt: args.receivedAt,
+          entry: sanitizeJsonValue(entry),
+        });
+        nextOrdinal += 1;
+      }
+    }
+
     await ctx.db.patch(job._id, {
       status: toWebhookMediaJobStatus(args.upstreamStatus),
       upstreamStatus: args.upstreamStatus,
@@ -460,7 +518,6 @@ export const applyFalWebhook = internalMutation({
       ...(args.providerGatewayRequestId
         ? { providerGatewayRequestId: args.providerGatewayRequestId }
         : {}),
-      ...(args.logs ? { logs: sanitizeJsonValue(args.logs) as Value[] } : {}),
       ...(args.output !== undefined
         ? { output: sanitizeJsonValue(args.output) }
         : {}),
