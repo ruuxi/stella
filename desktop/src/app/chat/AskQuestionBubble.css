@@ -4,14 +4,11 @@
   margin: 8px 0 4px;
   border: 1px solid var(--border-base);
   border-radius: 14px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--card) 96%, transparent),
-    color-mix(in srgb, var(--card) 86%, transparent)
-  );
+  background: var(--surface-raised);
   box-shadow: var(--shadow-xs-border);
   overflow: hidden;
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  color: var(--text-base);
 }
 
 .ask-question-bubble__header {
@@ -55,7 +52,7 @@
 }
 
 .ask-question-bubble__nav:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
   color: var(--text-strong);
 }
 
@@ -90,11 +87,11 @@
 
 .ask-question-bubble__step:not([data-active="true"]) {
   cursor: pointer;
-  opacity: 0.5;
+  opacity: 0.55;
 }
 
 .ask-question-bubble__step:not([data-active="true"]):hover {
-  opacity: 0.72;
+  opacity: 0.78;
 }
 
 .ask-question-bubble__step-prompt {
@@ -128,19 +125,19 @@
   color: inherit;
   text-align: left;
   cursor: pointer;
-  font-family: var(--font-family-sans);
+  font-family: inherit;
   transition:
     background 140ms ease,
     border-color 140ms ease;
 }
 
 .ask-question-bubble__option:hover:not([disabled]) {
-  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 .ask-question-bubble__option[data-selected="true"] {
-  background: color-mix(in srgb, #f3c746 22%, var(--background));
-  border-color: color-mix(in srgb, #b88300 38%, transparent);
+  background: color-mix(in oklch, var(--primary) 14%, transparent);
+  border-color: color-mix(in oklch, var(--primary) 45%, transparent);
 }
 
 .ask-question-bubble__option[disabled] {
@@ -154,11 +151,16 @@
   width: 20px;
   height: 20px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
   font-size: 11px;
   font-weight: 600;
   color: var(--text-weak);
   flex: 0 0 auto;
+}
+
+.ask-question-bubble__option[data-selected="true"] .ask-question-bubble__badge {
+  background: color-mix(in oklch, var(--primary) 22%, transparent);
+  color: var(--text-strong);
 }
 
 .ask-question-bubble__option-label {
@@ -172,6 +174,35 @@
 }
 
 .ask-question-bubble__option-label[data-placeholder="true"] {
+  color: var(--text-weaker);
+}
+
+.ask-question-bubble__option--editing {
+  align-items: stretch;
+  padding: 4px 8px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-color: color-mix(in oklch, var(--primary) 45%, transparent);
+  cursor: text;
+}
+
+.ask-question-bubble__option--editing:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.ask-question-bubble__option-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.3;
+  padding: 0;
+}
+
+.ask-question-bubble__option-input::placeholder {
   color: var(--text-weaker);
 }
 
@@ -193,12 +224,11 @@
   border: 1px solid transparent;
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 500;
-  font-family: var(--font-family-sans);
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  font-family: inherit;
   cursor: pointer;
   transition:
     background 140ms ease,
-    transform 140ms ease,
     opacity 140ms ease;
 }
 
@@ -209,30 +239,30 @@
 
 .ask-question-bubble__button[data-variant="text"]:hover {
   color: var(--text-strong);
-  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 .ask-question-bubble__button[data-variant="primary"] {
-  background: linear-gradient(180deg, #f1bc3a, #d99a16);
-  color: #2d2000;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    0 6px 14px rgba(214, 164, 24, 0.18);
-  padding: 0 13px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 0 14px;
 }
 
 .ask-question-bubble__button[data-variant="primary"]:hover:not(:disabled) {
-  transform: translateY(-1px);
+  opacity: 0.9;
+}
+
+.ask-question-bubble__button[data-variant="primary"]:active:not(:disabled) {
+  opacity: 0.8;
 }
 
 .ask-question-bubble__button[data-variant="primary"]:disabled {
   opacity: 0.5;
   cursor: default;
-  transform: none;
 }
 
 .ask-question-bubble__shortcut {
   font-size: 11px;
-  color: rgba(45, 32, 0, 0.7);
+  opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
