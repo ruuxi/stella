@@ -4,68 +4,248 @@
  * When an anonymous user signs in with a real identity, all owner-scoped
  * data must be transferred to the new ownerId. This module performs that
  * migration in batches to stay within Convex mutation limits.
+ *
+ * Each per-table migration is its own typed `internalMutation` so we keep the
+ * `ctx.db.query` builder fully typed (no `as any` / `_id: any`). The
+ * orchestrator action below walks the table list and re-invokes each batch
+ * mutation until it returns `hasMore: false`.
  */
 
 import { v } from "convex/values";
-import { internalAction, internalMutation } from "./_generated/server";
+import {
+  internalAction,
+  internalMutation,
+  type ActionCtx,
+  type MutationCtx,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { FunctionReference } from "convex/server";
 
 const BATCH_SIZE = 500;
 
-/**
- * All tables with an `ownerId` field that need migration.
- * Each entry maps to the index used for querying by ownerId.
- */
-const OWNER_TABLES: Array<{
-  table: string;
-  index: string;
-}> = [
-  { table: "conversations", index: "by_ownerId_and_updatedAt" },
-  { table: "user_preferences", index: "by_ownerId_and_key" },
-  { table: "auth_session_policies", index: "by_ownerId" },
-  { table: "secrets", index: "by_ownerId_and_updatedAt" },
-  { table: "secret_access_audit", index: "by_ownerId_and_createdAt" },
-  { table: "user_integrations", index: "by_ownerId_and_updatedAt" },
-  { table: "usage_logs", index: "by_ownerId_and_createdAt" },
-  // channel_connections is migrated atomically with devices — see migrateDevicesForAccountLink
-  { table: "transient_channel_events", index: "by_ownerId_and_createdAt" },
-  { table: "transient_cleanup_failures", index: "by_ownerId_and_createdAt" },
-  { table: "agents", index: "by_ownerId_and_updatedAt" },
-  { table: "media_jobs", index: "by_ownerId_and_createdAt" },
-  { table: "media_job_logs", index: "by_ownerId_and_jobId" },
-  { table: "user_counters", index: "by_ownerId" },
-];
+const ownerArgs = { fromOwnerId: v.string(), toOwnerId: v.string() } as const;
+const hasMoreReturn = v.object({ hasMore: v.boolean() });
 
-/**
- * Migrate a batch of records in a single table from one ownerId to another.
- * Returns true if there are more records to migrate.
- */
-export const migrateTableBatch = internalMutation({
-  args: {
-    table: v.string(),
-    index: v.string(),
-    fromOwnerId: v.string(),
-    toOwnerId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    // Dynamic table/index names require casting the typed query builder.
-    const db = ctx.db as unknown as {
-      query(table: string): {
-        withIndex(
-          name: string,
-          pred: (q: { eq: (field: string, value: string) => unknown }) => unknown,
-        ): { take(n: number): Promise<Array<{ _id: any; ownerId: string }>> };
-      };
-    };
-    const rows = await db
-      .query(args.table)
-      .withIndex(args.index, (q) => q.eq("ownerId", args.fromOwnerId))
+const isFullPage = (rows: readonly unknown[]) => rows.length === BATCH_SIZE;
+
+// ---------------------------------------------------------------------------
+// Per-table batch mutations.
+//
+// Each one stays inside the schema's strong typing for `ctx.db.patch` so we
+// don't need a `db.patch as unknown as ...` widening — the compiler proves
+// that `{ ownerId }` is a valid partial patch for each table.
+// ---------------------------------------------------------------------------
+
+export const migrateConversationsBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("conversations")
+      .withIndex("by_ownerId_and_updatedAt", (q) =>
+        q.eq("ownerId", args.fromOwnerId),
+      )
       .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
 
-    const promises = rows.map((row) => ctx.db.patch(row._id as any, { ownerId: args.toOwnerId }));
-    await Promise.all(promises);
+export const migrateUserPreferencesBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.fromOwnerId))
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
 
-    return rows.length === BATCH_SIZE;
+export const migrateAuthSessionPoliciesBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("auth_session_policies")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.fromOwnerId))
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
+
+export const migrateSecretsBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("secrets")
+      .withIndex("by_ownerId_and_updatedAt", (q) =>
+        q.eq("ownerId", args.fromOwnerId),
+      )
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
+
+export const migrateSecretAccessAuditBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("secret_access_audit")
+      .withIndex("by_ownerId_and_createdAt", (q) =>
+        q.eq("ownerId", args.fromOwnerId),
+      )
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
+
+export const migrateUserIntegrationsBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("user_integrations")
+      .withIndex("by_ownerId_and_updatedAt", (q) =>
+        q.eq("ownerId", args.fromOwnerId),
+      )
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
+
+export const migrateUsageLogsBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("usage_logs")
+      .withIndex("by_ownerId_and_createdAt", (q) =>
+        q.eq("ownerId", args.fromOwnerId),
+      )
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
+
+export const migrateTransientChannelEventsBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("transient_channel_events")
+      .withIndex("by_ownerId_and_createdAt", (q) =>
+        q.eq("ownerId", args.fromOwnerId),
+      )
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
+
+export const migrateTransientCleanupFailuresBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("transient_cleanup_failures")
+      .withIndex("by_ownerId_and_createdAt", (q) =>
+        q.eq("ownerId", args.fromOwnerId),
+      )
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
+
+export const migrateAgentsBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("agents")
+      .withIndex("by_ownerId_and_updatedAt", (q) =>
+        q.eq("ownerId", args.fromOwnerId),
+      )
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
+
+export const migrateMediaJobsBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("media_jobs")
+      .withIndex("by_ownerId_and_createdAt", (q) =>
+        q.eq("ownerId", args.fromOwnerId),
+      )
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
+
+export const migrateMediaJobLogsBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("media_job_logs")
+      .withIndex("by_ownerId_and_jobId", (q) => q.eq("ownerId", args.fromOwnerId))
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
+  },
+});
+
+export const migrateUserCountersBatch = internalMutation({
+  args: ownerArgs,
+  returns: hasMoreReturn,
+  handler: async (ctx: MutationCtx, args) => {
+    const rows = await ctx.db
+      .query("user_counters")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.fromOwnerId))
+      .take(BATCH_SIZE);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
+    return { hasMore: isFullPage(rows) };
   },
 });
 
@@ -81,6 +261,7 @@ export const deduplicateDefaultConversation = internalMutation({
   args: {
     toOwnerId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const defaults = await ctx.db
       .query("conversations")
@@ -110,6 +291,7 @@ export const deduplicateDefaultConversation = internalMutation({
  */
 export const deduplicateUserCounters = internalMutation({
   args: { toOwnerId: v.string() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const rows = await ctx.db
       .query("user_counters")
@@ -134,15 +316,71 @@ export const deduplicateUserCounters = internalMutation({
 });
 
 /**
- * Orchestrate the full ownership migration across all tables.
- * Called asynchronously via scheduler when an anonymous user links to a real
+ * Tables whose batches are independent of every other table — drainable in
+ * parallel from the orchestrator. `devices` / `device_presence` /
+ * `channel_connections` are NOT here: they go through
+ * `migrateDevicesForAccountLink` because that mutation enforces the
+ * devices→presence→connections write order to keep partial migrations
+ * consistent.
+ */
+const PARALLEL_TABLE_MUTATIONS = [
+  internal.auth_migration.migrateConversationsBatch,
+  internal.auth_migration.migrateUserPreferencesBatch,
+  internal.auth_migration.migrateAuthSessionPoliciesBatch,
+  internal.auth_migration.migrateSecretsBatch,
+  internal.auth_migration.migrateSecretAccessAuditBatch,
+  internal.auth_migration.migrateUserIntegrationsBatch,
+  internal.auth_migration.migrateUsageLogsBatch,
+  internal.auth_migration.migrateTransientChannelEventsBatch,
+  internal.auth_migration.migrateTransientCleanupFailuresBatch,
+  internal.auth_migration.migrateAgentsBatch,
+  internal.auth_migration.migrateMediaJobsBatch,
+  internal.auth_migration.migrateMediaJobLogsBatch,
+  internal.auth_migration.migrateUserCountersBatch,
+  internal.auth_migration.migratePersistChunksBatch,
+] as const;
+
+type OwnerBatchMutation = FunctionReference<
+  "mutation",
+  "internal",
+  { fromOwnerId: string; toOwnerId: string },
+  { hasMore: boolean }
+>;
+
+/**
+ * Drain a single per-table batch mutation by repeatedly invoking it until
+ * `hasMore: false`. Each invocation is its own Convex transaction so the
+ * mutation stays inside the per-mutation read/write limits.
+ */
+async function drainTableMutation(
+  ctx: ActionCtx,
+  mutation: OwnerBatchMutation,
+  args: { fromOwnerId: string; toOwnerId: string },
+): Promise<void> {
+  let hasMore = true;
+  while (hasMore) {
+    const result = await ctx.runMutation(mutation, args);
+    hasMore = result.hasMore;
+  }
+}
+
+/**
+ * Orchestrate the full ownership migration across all tables. Called
+ * asynchronously via scheduler when an anonymous user links to a real
  * account.
+ *
+ * Tables whose drain is independent run concurrently (`Promise.all`) so a
+ * tenant with data in many tables doesn't pay the sum of every per-table
+ * round-trip. The devices/presence/connections migration runs first and
+ * sequentially because `migrateDevicesForAccountLink` enforces a strict
+ * order across those three tables.
  */
 export const migrateOwnership = internalAction({
   args: {
     fromOwnerId: v.string(),
     toOwnerId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     if (args.fromOwnerId === args.toOwnerId) return null;
 
@@ -158,41 +396,26 @@ export const migrateOwnership = internalAction({
       deviceMigrationHasMore = result.hasMore;
     }
 
-    for (const { table, index } of OWNER_TABLES) {
-      let hasMore = true;
-      while (hasMore) {
-        hasMore = await ctx.runMutation(
-          internal.auth_migration.migrateTableBatch,
-          {
-            table,
-            index,
-            fromOwnerId: args.fromOwnerId,
-            toOwnerId: args.toOwnerId,
-          },
-        );
-      }
-    }
-
-    // Handle persist_chunks separately (uses by_chunkKey, not by_ownerId)
-    let hasMore = true;
-    while (hasMore) {
-      hasMore = await ctx.runMutation(
-        internal.auth_migration.migratePersistChunksBatch,
-        {
+    await Promise.all(
+      PARALLEL_TABLE_MUTATIONS.map((mutation) =>
+        drainTableMutation(ctx, mutation as OwnerBatchMutation, {
           fromOwnerId: args.fromOwnerId,
           toOwnerId: args.toOwnerId,
-        },
-      );
-    }
+        }),
+      ),
+    );
 
     // Deduplicate default conversations and per-owner counters that may now
-    // have collided with the destination owner's pre-existing rows.
-    await ctx.runMutation(internal.auth_migration.deduplicateDefaultConversation, {
-      toOwnerId: args.toOwnerId,
-    });
-    await ctx.runMutation(internal.auth_migration.deduplicateUserCounters, {
-      toOwnerId: args.toOwnerId,
-    });
+    // have collided with the destination owner's pre-existing rows. These
+    // depend on the per-table migrations finishing first.
+    await Promise.all([
+      ctx.runMutation(internal.auth_migration.deduplicateDefaultConversation, {
+        toOwnerId: args.toOwnerId,
+      }),
+      ctx.runMutation(internal.auth_migration.deduplicateUserCounters, {
+        toOwnerId: args.toOwnerId,
+      }),
+    ]);
 
     console.log(
       `[auth_migration] Completed ownership migration from ${args.fromOwnerId} to ${args.toOwnerId}`,
@@ -285,24 +508,25 @@ export const migrateDevicesForAccountLink = internalMutation({
 });
 
 /**
- * Migrate persist_chunks which doesn't have a standard ownerId index.
+ * Migrate persist_chunks which uses `by_ownerId` rather than the standard
+ * `by_ownerId_and_updatedAt` shape.
  */
 export const migratePersistChunksBatch = internalMutation({
   args: {
     fromOwnerId: v.string(),
     toOwnerId: v.string(),
   },
+  returns: v.object({ hasMore: v.boolean() }),
   handler: async (ctx, args) => {
     const rows = await ctx.db
       .query("persist_chunks")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.fromOwnerId))
       .take(BATCH_SIZE);
 
-    const promises = rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId }));
-    await Promise.all(promises);
+    await Promise.all(
+      rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId })),
+    );
 
-    return rows.length === BATCH_SIZE;
+    return { hasMore: rows.length === BATCH_SIZE };
   },
 });
-
-

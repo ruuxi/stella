@@ -134,7 +134,6 @@ const toStoredMediaJobResponse = (
     status: MediaJobStatus;
     upstreamStatus: string;
     queuePosition: number | null;
-    logs?: Value[];
     output?: Value;
     error?: { message: string; code?: string; details?: Value };
     createdAt: number;
@@ -144,9 +143,6 @@ const toStoredMediaJobResponse = (
   },
   childLogs?: Value[],
 ) => {
-  const mergedLogs = childLogs && childLogs.length > 0
-    ? childLogs
-    : job.logs;
   return {
     jobId: job.jobId,
     capability: job.capability,
@@ -155,7 +151,7 @@ const toStoredMediaJobResponse = (
     status: job.status,
     upstreamStatus: job.upstreamStatus,
     queuePosition: job.queuePosition,
-    ...(mergedLogs && mergedLogs.length > 0 ? { logs: mergedLogs } : {}),
+    ...(childLogs && childLogs.length > 0 ? { logs: childLogs } : {}),
     ...(job.output !== undefined ? { output: job.output } : {}),
     ...(job.error ? { error: job.error } : {}),
     createdAt: job.createdAt,
@@ -288,29 +284,35 @@ export const listSucceededSince = query({
   args: {
     since: v.number(),
     limit: v.optional(v.number()),
+    /**
+     * When `true`, hydrate the per-job webhook log entries from
+     * `media_job_logs`. Defaults to `false` because the desktop materializer
+     * (the primary subscriber) only consumes `output`/`status`/`request` and
+     * doesn't need the noisy log array.
+     */
+    includeLogs: v.optional(v.boolean()),
   },
   returns: v.array(mediaJobResponseValidator),
   handler: async (ctx, args) => {
     const ownerId = await toViewerOwnerId(ctx);
     const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
-    const rows = await ctx.db
+    // Indexed on `(ownerId, status, completedAt)` so we read only succeeded
+    // rows in completion order — no JS-side status filter and no over-fetch.
+    const succeeded = await ctx.db
       .query("media_jobs")
-      .withIndex("by_ownerId_and_createdAt", (q) =>
-        q.eq("ownerId", ownerId).gte("createdAt", args.since),
+      .withIndex("by_ownerId_and_status_and_completedAt", (q) =>
+        q
+          .eq("ownerId", ownerId)
+          .eq("status", "succeeded")
+          .gte("completedAt", args.since),
       )
       .order("desc")
-      .take(limit * 2);
+      .take(limit);
 
-    const succeeded = rows
-      .filter(
-        (row) =>
-          row.status === "succeeded" &&
-          row.output !== undefined &&
-          (row.completedAt ?? row.updatedAt) >= args.since,
-      )
-      .slice(0, limit);
-    // Hydrate logs in parallel for the page we're returning.
-    const logs = await Promise.all(succeeded.map((row) => loadJobLogs(ctx, row.jobId)));
+    const wantsLogs = args.includeLogs === true;
+    const logs = wantsLogs
+      ? await Promise.all(succeeded.map((row) => loadJobLogs(ctx, row.jobId)))
+      : succeeded.map(() => undefined);
     return succeeded.map((row, index) => toStoredMediaJobResponse(row, logs[index]));
   },
 });
@@ -543,5 +545,3 @@ export const applyFalWebhook = internalMutation({
     return { updated: true, jobId: job.jobId };
   },
 });
-
-

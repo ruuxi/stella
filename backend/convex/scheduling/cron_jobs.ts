@@ -52,29 +52,15 @@ async function completeCronTurnResultCore(
     });
   }
 
-  const fulfilled = await ctx.db
-    .query("events")
-    .withIndex("by_requestId", (q) => q.eq("requestId", `fulfilled:${args.requestId}`))
-    .first();
-  if (fulfilled) {
+  if (request.requestState === "fulfilled") {
     return;
   }
 
-  const claimed = await ctx.db
-    .query("events")
-    .withIndex("by_requestId", (q) => q.eq("requestId", `claimed:${args.requestId}`))
-    .first();
-  if (!claimed) {
-    await ctx.db.insert("events", {
-      conversationId: args.conversationId,
-      timestamp: Date.now(),
-      type: "remote_turn_claimed",
-      requestId: `claimed:${args.requestId}`,
-      payload: {
-        requestId: args.requestId,
-        source: "cron",
-        rescuedByWatchdog: args.rescuedByWatchdog === true,
-      },
+  const now = Date.now();
+  if (request.requestState !== "claimed") {
+    await ctx.db.patch(request._id, {
+      requestState: "claimed",
+      claimedAt: now,
     });
   }
 
@@ -87,7 +73,7 @@ async function completeCronTurnResultCore(
   ) {
     await ctx.db.insert("events", {
       conversationId: args.conversationId,
-      timestamp: Date.now(),
+      timestamp: now,
       type: "assistant_message",
       payload: {
         text: trimmedText,
@@ -99,19 +85,27 @@ async function completeCronTurnResultCore(
     });
   }
 
-  await ctx.db.insert("events", {
-    conversationId: args.conversationId,
-    timestamp: Date.now(),
-    type: "remote_turn_fulfilled",
-    requestId: `fulfilled:${args.requestId}`,
-    payload: {
-      requestId: args.requestId,
-      source: "cron",
-      status,
-      rescuedByWatchdog: args.rescuedByWatchdog === true,
-      ...(status === "error" && args.error ? { error: args.error } : {}),
-    },
+  await ctx.db.patch(request._id, {
+    requestState: "fulfilled",
+    fulfilledAt: now,
   });
+
+  if (status === "error" && args.error) {
+    // Persist the error inline on the request payload so callers can
+    // surface it without poking at separate event rows.
+    const nextPayload = {
+      ...(requestPayload as Record<string, unknown>),
+      lastError: args.error,
+      ...(args.rescuedByWatchdog ? { rescuedByWatchdog: true } : {}),
+    };
+    await ctx.db.patch(request._id, { payload: nextPayload });
+  } else if (args.rescuedByWatchdog) {
+    const nextPayload = {
+      ...(requestPayload as Record<string, unknown>),
+      rescuedByWatchdog: true,
+    };
+    await ctx.db.patch(request._id, { payload: nextPayload });
+  }
 }
 
 export const completeCronTurnResult = mutation({

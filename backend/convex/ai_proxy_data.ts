@@ -42,9 +42,15 @@ async function hashDeviceId(
   return `sha256:${hashHex}`;
 }
 
+/**
+ * `nowMs` is supplied by the caller so the staleness check is deterministic
+ * — calling `Date.now()` inside a query handler would invalidate Convex's
+ * reactive cache on every read.
+ */
 export const getDeviceUsage = internalQuery({
   args: {
     deviceId: v.string(),
+    nowMs: v.number(),
     clientAddressKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -54,7 +60,7 @@ export const getDeviceUsage = internalQuery({
       .withIndex("by_deviceId", (q) => q.eq("deviceId", deviceHash))
       .unique();
     if (!row) return null;
-    if (Date.now() - row.lastRequestAt > DEVICE_USAGE_RETENTION_MS) {
+    if (args.nowMs - row.lastRequestAt > DEVICE_USAGE_RETENTION_MS) {
       return null;
     }
     return {

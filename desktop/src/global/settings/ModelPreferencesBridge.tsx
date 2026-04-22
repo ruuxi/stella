@@ -16,28 +16,26 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 function parseModelOverrides(
-  overridesJson: string | undefined,
+  overrides: Record<string, string> | undefined,
   defaultModels: Record<string, string>,
 ) {
-  if (!overridesJson) {
+  if (!overrides) {
     return {};
   }
-
-  const parsed = JSON.parse(overridesJson);
   assert(
-    parsed !== null && typeof parsed === "object" && !Array.isArray(parsed),
+    overrides !== null && typeof overrides === "object" && !Array.isArray(overrides),
     "Model overrides must be an object",
   );
-  return normalizeModelOverrides(parsed as Record<string, string>, defaultModels);
+  return normalizeModelOverrides(overrides, defaultModels);
 }
 
 export const ModelPreferencesBridge = () => {
   const { hasConnectedAccount } = useAuthSessionState();
   const shouldQueryPreferences = hasConnectedAccount ? {} : "skip";
-  const overridesJson = useQuery(
+  const serverOverrides = useQuery(
     api.data.preferences.getModelOverrides,
     shouldQueryPreferences,
-  ) as string | undefined;
+  ) as Record<string, string> | undefined;
   const modelDefaults = useQuery(
     api.data.preferences.getModelDefaults,
     shouldQueryPreferences,
@@ -65,8 +63,8 @@ export const ModelPreferencesBridge = () => {
   );
 
   const modelOverrides = useMemo(
-    () => parseModelOverrides(overridesJson, defaultModels),
-    [defaultModels, overridesJson],
+    () => parseModelOverrides(serverOverrides, defaultModels),
+    [defaultModels, serverOverrides],
   );
 
   useEffect(() => {
@@ -74,7 +72,7 @@ export const ModelPreferencesBridge = () => {
     if (!systemApi?.syncLocalModelPreferences || !hasConnectedAccount) return;
     if (
       modelDefaults === undefined ||
-      overridesJson === undefined ||
+      serverOverrides === undefined ||
       generalAgentEngine === undefined ||
       selfModAgentEngine === undefined ||
       maxAgentConcurrency === undefined
@@ -97,7 +95,7 @@ export const ModelPreferencesBridge = () => {
     maxAgentConcurrency,
     modelDefaults,
     modelOverrides,
-    overridesJson,
+    serverOverrides,
     resolvedDefaultModels,
     selfModAgentEngine,
   ]);

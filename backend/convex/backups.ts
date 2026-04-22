@@ -18,6 +18,13 @@ const MAX_SNAPSHOT_ID_LENGTH = 200;
 const MAX_OBJECT_BATCH_SIZE = 10_000;
 const MAX_LIST_LIMIT = 100;
 const DOWNLOAD_URL_EXPIRES_IN_SECONDS = 60 * 60;
+/**
+ * Cap on the number of "isLatest=true" manifest rows we'll consider when
+ * recording a new latest snapshot. By invariant this is 0 or 1; the cap is a
+ * safety bound so a previously-corrupted state with multiple "latest" rows
+ * can still be repaired without scanning the table unbounded.
+ */
+const MAX_LATEST_MANIFEST_REPAIR_BATCH = 32;
 
 const sha256HexPattern = /^[a-f0-9]{64}$/;
 
@@ -581,12 +588,16 @@ export const finalizeUploadInternal = internalMutation({
 
     const shouldMarkLatest = args.markLatest ?? true;
     if (shouldMarkLatest) {
+      // Bounded read: by invariant only the most recent snapshot carries
+      // `isLatest=true`, but we cap the read so a corrupted state with
+      // multiple "latest" rows can still be repaired without blowing the
+      // mutation transaction limits.
       const currentLatest = await ctx.db
         .query("backup_manifests")
         .withIndex("by_ownerId_and_isLatest", (q) =>
           q.eq("ownerId", ownerId).eq("isLatest", true),
         )
-        .collect();
+        .take(MAX_LATEST_MANIFEST_REPAIR_BATCH);
       await Promise.all(
         currentLatest.map(async (row) => {
           if (row.snapshotId !== snapshotId) {

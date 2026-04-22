@@ -14,6 +14,8 @@ import {
   internalQuery,
   mutation,
   type ActionCtx,
+  type MutationCtx,
+  type QueryCtx,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v, ConvexError } from "convex/values";
@@ -39,30 +41,42 @@ import {
 const BACKEND_FALLBACK_AGENT_TYPE = "offline_responder";
 const EMPTY_RESPONSE_TEXT = "(Stella had nothing to say.)";
 
+/**
+ * Look up the original `remote_turn_request` event by `requestId`. The
+ * lifecycle (`pending` / `claimed` / `fulfilled`) lives directly on this
+ * row — there are no longer any separate `remote_turn_claimed` /
+ * `remote_turn_fulfilled` event rows to chase.
+ */
+const findRemoteTurnRequest = async (
+  ctx: QueryCtx | MutationCtx,
+  requestId: string,
+) =>
+  await ctx.db
+    .query("events")
+    .withIndex("by_requestId", (q) => q.eq("requestId", requestId))
+    .first();
+
 // ─── Public Mutation (called by local device via HTTP) ──────────────────────
 export const claimRemoteTurn = mutation({
   args: {
     requestId: v.string(),
     conversationId: v.id("conversations"),
+    deviceId: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
 
-    const existing = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) =>
-        q.eq("requestId", `claimed:${args.requestId}`),
-      )
-      .first();
-    if (existing) return null;
+    const request = await findRemoteTurnRequest(ctx, args.requestId);
+    if (!request || request.type !== "remote_turn_request") return null;
+    if (request.requestState === "claimed" || request.requestState === "fulfilled") {
+      return null;
+    }
 
-    await ctx.db.insert("events", {
-      conversationId: args.conversationId,
-      timestamp: Date.now(),
-      type: "remote_turn_claimed",
-      requestId: `claimed:${args.requestId}`,
-      payload: { requestId: args.requestId },
+    await ctx.db.patch(request._id, {
+      requestState: "claimed",
+      claimedAt: Date.now(),
+      ...(args.deviceId ? { claimedByDeviceId: args.deviceId } : {}),
     });
 
     return null;
@@ -74,51 +88,39 @@ export const completeRemoteTurn = mutation({
     requestId: v.string(),
     text: v.string(),
     conversationId: v.id("conversations"),
+    deviceId: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
 
-    // Idempotency: skip if already fulfilled
-    const fulfilled = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) =>
-        q.eq("requestId", `fulfilled:${args.requestId}`),
-      )
-      .first();
-    if (fulfilled) return null;
-
     // Read routing metadata from the original remote_turn_request event
     // (never trust caller-provided routing data)
-    const request = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
-      .first();
+    const request = await findRemoteTurnRequest(ctx, args.requestId);
     if (!request || request.type !== "remote_turn_request") {
-      throw new ConvexError({ code: "INVALID_ARGUMENT", message: "Invalid or missing remote_turn_request" });
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "Invalid or missing remote_turn_request",
+      });
     }
+    if (request.requestState === "fulfilled") return null;
+
     const reqPayload = request.payload as Record<string, unknown>;
     const provider = reqPayload.provider as string;
     const deliveryMeta = reqPayload.deliveryMeta as Record<string, unknown>;
 
-    // Insert claimed marker if not already claimed (by claimRemoteTurn)
-    const existingClaim = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) =>
-        q.eq("requestId", `claimed:${args.requestId}`),
-      )
-      .first();
-    if (!existingClaim) {
-      await ctx.db.insert("events", {
-        conversationId: args.conversationId,
-        timestamp: Date.now(),
-        type: "remote_turn_claimed",
-        requestId: `claimed:${args.requestId}`,
-        payload: { requestId: args.requestId },
+    // Mark as claimed so subsequent reads see consistent state. The
+    // delivery action will flip it to `fulfilled` after the connector POST
+    // succeeds.
+    if (request.requestState !== "claimed") {
+      await ctx.db.patch(request._id, {
+        requestState: "claimed",
+        claimedAt: Date.now(),
+        ...(args.deviceId ? { claimedByDeviceId: args.deviceId } : {}),
       });
     }
 
-    // Schedule async delivery — fulfilled marker is inserted by
+    // Schedule async delivery — fulfilled marker is set by
     // deliverToConnector AFTER successful delivery
     await ctx.scheduler.runAfter(
       0,
@@ -183,13 +185,12 @@ async function deliverToConnectorCore(
         });
     }
 
-    // Mark fulfilled AFTER successful delivery
-    await ctx.runMutation(internal.events.appendInternalEvent, {
-      conversationId: args.conversationId,
-      type: "remote_turn_fulfilled",
-      requestId: `fulfilled:${args.requestId}`,
-      payload: { requestId: args.requestId },
-    });
+    // Mark fulfilled AFTER successful delivery — patches the original
+    // `remote_turn_request` row in place.
+    await ctx.runMutation(
+      internal.channels.connector_delivery.markRemoteTurnFulfilled,
+      { requestId: args.requestId },
+    );
   } catch (error) {
     // NOT marking fulfilled — watchdog will retry delivery
     console.error(
@@ -301,21 +302,18 @@ export const rescueSingleTurn = internalAction({
     userMessageId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Check if desktop already claimed or fulfilled this request
-    const [fulfilled, claimedEvent] = (await Promise.all([
-      ctx.runQuery(internal.events.getRemoteTurnFulfilled, {
-        requestId: args.requestId,
-      }),
-      ctx.runQuery(
-        internal.channels.connector_delivery.findClaimedEvent,
-        { requestId: args.requestId },
-      ),
-    ])) as [boolean, unknown];
+    // Check if desktop already claimed or fulfilled this request — both
+    // states live on the original `remote_turn_request` row now, so a
+    // single read is enough.
+    const requestState = (await ctx.runQuery(
+      internal.channels.connector_delivery.getRemoteTurnState,
+      { requestId: args.requestId },
+    )) as "pending" | "claimed" | "fulfilled" | null;
 
     console.log(
-      `[rescue:trace] requestId=${args.requestId}, fulfilled=${fulfilled}, claimed=${!!claimedEvent}`,
+      `[rescue:trace] requestId=${args.requestId}, state=${requestState ?? "missing"}`,
     );
-    if (fulfilled || claimedEvent) return null;
+    if (requestState === "claimed" || requestState === "fulfilled") return null;
 
     if (!shouldUseOfflineResponderForProvider(args.provider)) {
       console.log(
@@ -687,15 +685,43 @@ export const scheduleRescue = internalMutation({
   },
 });
 
-export const findClaimedEvent = internalQuery({
+/**
+ * Returns the lifecycle state of a remote turn — `null` if the request
+ * itself doesn't exist. Replaces the previous pair of `findClaimedEvent` /
+ * `getRemoteTurnFulfilled` lookups, each of which hit the `by_requestId`
+ * index separately.
+ */
+export const getRemoteTurnState = internalQuery({
   args: { requestId: v.string() },
+  returns: v.union(
+    v.null(),
+    v.literal("pending"),
+    v.literal("claimed"),
+    v.literal("fulfilled"),
+  ),
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) =>
-        q.eq("requestId", `claimed:${args.requestId}`),
-      )
-      .first();
+    const request = await findRemoteTurnRequest(ctx, args.requestId);
+    if (!request || request.type !== "remote_turn_request") return null;
+    return request.requestState ?? "pending";
+  },
+});
+
+/**
+ * Patch a `remote_turn_request` row to `fulfilled` after successful
+ * delivery. Idempotent: a second call is a no-op.
+ */
+export const markRemoteTurnFulfilled = internalMutation({
+  args: { requestId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const request = await findRemoteTurnRequest(ctx, args.requestId);
+    if (!request || request.type !== "remote_turn_request") return null;
+    if (request.requestState === "fulfilled") return null;
+    await ctx.db.patch(request._id, {
+      requestState: "fulfilled",
+      fulfilledAt: Date.now(),
+    });
+    return null;
   },
 });
 
@@ -737,41 +763,23 @@ export const findOrphanedTurnRequests = internalQuery({
         )
         .take(20);
 
-      const eventPromises = events.map(async (event) => {
-        if (event.type !== "remote_turn_request") return null;
-        if (!event.requestId) return null;
-
-        const [fulfilled, claimed] = await Promise.all([
-          ctx.db
-            .query("events")
-            .withIndex("by_requestId", (q) =>
-              q.eq("requestId", `fulfilled:${event.requestId}`),
-            )
-            .first(),
-          ctx.db
-            .query("events")
-            .withIndex("by_requestId", (q) =>
-              q.eq("requestId", `claimed:${event.requestId}`),
-            )
-            .first()
-        ]);
-
-        if (fulfilled) return null;
+      // Lifecycle state lives on the request row itself, so we can decide
+      // every event from the rows we already have — no per-event extra
+      // index lookups.
+      for (const event of events) {
+        if (event.type !== "remote_turn_request") continue;
+        if (!event.requestId) continue;
+        if (event.requestState === "fulfilled") continue;
 
         const p = event.payload as Record<string, unknown>;
-        return {
+        orphansForDevice.push({
           eventId: event._id,
           requestId: event.requestId,
           conversationId: event.conversationId,
           targetDeviceId: event.targetDeviceId!,
           payload: JSON.parse(JSON.stringify(p)),
-          claimed: claimed !== null,
-        };
-      });
-
-      const processedEvents = await Promise.all(eventPromises);
-      for (const res of processedEvents) {
-        if (res) orphansForDevice.push(res);
+          claimed: event.requestState === "claimed",
+        });
       }
       return orphansForDevice;
     });
@@ -956,16 +964,10 @@ export const rescueOrphanedTurns = internalAction({
 
         // Mark as fulfilled to prevent infinite retries
         try {
-          await ctx.runMutation(internal.events.appendInternalEvent, {
-            conversationId,
-            type: "remote_turn_fulfilled",
-            requestId: `fulfilled:${orphan.requestId}`,
-            payload: {
-              requestId: orphan.requestId,
-              rescuedByWatchdog: true,
-              error: String(error),
-            },
-          });
+          await ctx.runMutation(
+            internal.channels.connector_delivery.markRemoteTurnFulfilled,
+            { requestId: orphan.requestId },
+          );
         } catch {
           // Best effort — if this fails too, the orphan will age out after 10 min
         }

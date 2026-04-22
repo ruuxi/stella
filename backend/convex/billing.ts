@@ -1264,9 +1264,20 @@ export const syncManagedModelPricesFromModelsDev = internalAction({
   },
 });
 
+/**
+ * Public subscription/usage snapshot.
+ *
+ * `now` is optional. When omitted (e.g. callers that only need the plan
+ * label), the query returns the usage figures **as stored** on the
+ * `billing_usage_windows` row without recomputing window expiration. When
+ * supplied, callers MUST bucket the value (e.g. floor to a minute) so
+ * `useQuery` subscribers don't invalidate on every render — see
+ * `desktop/src/global/settings/BillingTab.tsx` for the canonical pattern
+ * (60-second `setInterval`).
+ */
 export const getSubscriptionStatus = query({
   args: {
-    now: v.number(),
+    now: v.optional(v.number()),
   },
   returns: subscriptionStatusReturnValidator,
   handler: async (ctx, args) => {
@@ -1310,16 +1321,40 @@ export const getSubscriptionStatus = query({
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .unique();
 
-    const fallbackNow = args.now;
+    // Use the stored `updatedAt` as a deterministic fallback when the caller
+    // doesn't pass `now`. This keeps the query reactive on data changes
+    // while avoiding per-render `Date.now()` cache invalidation.
+    const fallbackNow = args.now ?? usage?.updatedAt ?? profile?.updatedAt ?? 0;
     const normalizedProfile = profile ?? createDefaultProfile(ownerId, fallbackNow);
     const normalizedUsage = usage ?? createDefaultUsage(ownerId, fallbackNow);
     const plan = normalizedProfile.activePlan as SubscriptionPlan;
-    const snapshot = buildUsageSnapshot({
-      profile: normalizedProfile,
-      usage: normalizedUsage,
-      plan,
-      now: args.now,
-    });
+    const planConfig = getPlanConfig(plan);
+
+    const usageSection = args.now !== undefined
+      ? (() => {
+        const snapshot = buildUsageSnapshot({
+          profile: normalizedProfile,
+          usage: normalizedUsage,
+          plan,
+          now: args.now!,
+        });
+        return {
+          rollingUsedUsd: toCurrencyAmount(snapshot.rolling.used),
+          rollingLimitUsd: toCurrencyAmount(snapshot.rolling.limit),
+          weeklyUsedUsd: toCurrencyAmount(snapshot.weekly.used),
+          weeklyLimitUsd: toCurrencyAmount(snapshot.weekly.limit),
+          monthlyUsedUsd: toCurrencyAmount(snapshot.monthly.used),
+          monthlyLimitUsd: toCurrencyAmount(snapshot.monthly.limit),
+        };
+      })()
+      : {
+        rollingUsedUsd: toCurrencyAmount(normalizedUsage.rollingUsageMicroCents),
+        rollingLimitUsd: toCurrencyAmount(dollarsToMicroCents(planConfig.rollingLimitUsd)),
+        weeklyUsedUsd: toCurrencyAmount(normalizedUsage.weeklyUsageMicroCents),
+        weeklyLimitUsd: toCurrencyAmount(dollarsToMicroCents(planConfig.weeklyLimitUsd)),
+        monthlyUsedUsd: toCurrencyAmount(normalizedUsage.monthlyUsageMicroCents),
+        monthlyLimitUsd: toCurrencyAmount(dollarsToMicroCents(planConfig.monthlyLimitUsd)),
+      };
 
     return {
       authenticated: true,
@@ -1328,14 +1363,7 @@ export const getSubscriptionStatus = query({
       subscriptionStatus: normalizedProfile.subscriptionStatus,
       cancelAtPeriodEnd: normalizedProfile.cancelAtPeriodEnd,
       currentPeriodEnd: normalizedProfile.currentPeriodEnd > 0 ? normalizedProfile.currentPeriodEnd : null,
-      usage: {
-        rollingUsedUsd: toCurrencyAmount(snapshot.rolling.used),
-        rollingLimitUsd: toCurrencyAmount(snapshot.rolling.limit),
-        weeklyUsedUsd: toCurrencyAmount(snapshot.weekly.used),
-        weeklyLimitUsd: toCurrencyAmount(snapshot.weekly.limit),
-        monthlyUsedUsd: toCurrencyAmount(snapshot.monthly.used),
-        monthlyLimitUsd: toCurrencyAmount(snapshot.monthly.limit),
-      },
+      usage: usageSection,
       plans,
     };
   },
@@ -1346,6 +1374,11 @@ export const createEmbeddedCheckoutSession = action({
     plan: paidPlanValidator,
     returnUrl: v.string(),
   },
+  returns: v.object({
+    publishableKey: v.string(),
+    clientSecret: v.string(),
+    sessionId: v.string(),
+  }),
   handler: async (ctx, args): Promise<{ publishableKey: string; clientSecret: string; sessionId: string }> => {
     const identity = await requireSensitiveUserIdentityAction(ctx);
     if (isAnonymousIdentity(identity)) {
@@ -1442,6 +1475,7 @@ export const createBillingPortalSession = action({
   args: {
     returnUrl: v.string(),
   },
+  returns: v.object({ url: v.string() }),
   handler: async (ctx, args): Promise<{ url: string }> => {
     const identity = await requireSensitiveUserIdentityAction(ctx);
     if (isAnonymousIdentity(identity)) {

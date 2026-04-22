@@ -24,9 +24,15 @@ export const createPendingLinkRequest = internalMutation({
   },
 });
 
+/**
+ * `nowMs` comes from the caller (the polling httpAction) so the expiry check
+ * is deterministic — calling `Date.now()` in a query handler would
+ * invalidate Convex's reactive cache for every subscriber on every read.
+ */
 export const getLinkRequestStatus = internalQuery({
   args: {
     requestId: v.string(),
+    nowMs: v.number(),
   },
   handler: async (ctx, args) => {
     if (!REQUEST_ID_PATTERN.test(args.requestId)) {
@@ -39,7 +45,7 @@ export const getLinkRequestStatus = internalQuery({
     if (!record) {
       return null;
     }
-    if (Date.now() > record.expiresAt) {
+    if (args.nowMs > record.expiresAt) {
       return { status: "expired" as const };
     }
     if (record.status === "completed" && record.ott) {

@@ -300,7 +300,7 @@ const MAX_MODEL_OVERRIDES = 200;
 
 export const getModelOverrides = query({
   args: {},
-  returns: v.string(),
+  returns: v.record(v.string(), v.string()),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     // Use a key range scan over the `by_ownerId_and_key` index so we touch
@@ -326,7 +326,7 @@ export const getModelOverrides = query({
       }
       overrides[agentType] = record.value;
     }
-    return JSON.stringify(overrides);
+    return overrides;
   },
 });
 
