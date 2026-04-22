@@ -20,6 +20,10 @@ import { ConvexError, v } from "convex/values";
 import betterAuthSchema from "./betterAuth/schema";
 import { buildMagicLinkEmail } from "./lib/email_templates";
 import { appReviewAuth } from "./lib/app_review_auth";
+import {
+  enforceMutationRateLimit,
+  RATE_SENSITIVE,
+} from "./lib/rate_limits";
 
 const getRequiredEnv = (name: string) => {
   const value = process.env[name];
@@ -440,6 +444,15 @@ export const revokeActiveSessions = mutation({
   returns: sessionPolicyValidator,
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
+    // Sensitive op: invalidates JWTs for the whole account. A hijacked
+    // session shouldn't be able to churn this either.
+    await enforceMutationRateLimit(
+      ctx,
+      "auth_revoke_active_sessions",
+      ownerId,
+      RATE_SENSITIVE,
+      "Too many session revocation requests. Please wait a minute and try again.",
+    );
     const minIssuedAtSec = Math.floor(Date.now() / 1000);
     return await upsertSessionPolicy(ctx, ownerId, { minIssuedAtSec });
   },
@@ -450,6 +463,13 @@ export const bumpSessionVersion = mutation({
   returns: sessionPolicyValidator,
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "auth_bump_session_version",
+      ownerId,
+      RATE_SENSITIVE,
+      "Too many session version bumps. Please wait a minute and try again.",
+    );
     const existing = await getSessionPolicyFromDb(ctx, ownerId);
     const nextVersion = (existing?.sessionVersion ?? DEFAULT_SESSION_VERSION) + 1;
     const minIssuedAtSec = Math.floor(Date.now() / 1000);

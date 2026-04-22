@@ -15,7 +15,12 @@ import {
   errorResponse,
   handleCorsRequest,
   jsonResponse,
+  withCors,
 } from "../http_shared/cors";
+import {
+  consumeWebhookRateLimit,
+  rateLimitResponse,
+} from "../http_shared/webhook_controls";
 import {
   getAnonDeviceId,
   isAnonDeviceHashSaltMissingError,
@@ -55,8 +60,20 @@ type SynthesizeResponse = {
 
 const DEFAULT_WELCOME_MESSAGE =
   "Hey! I'm Stella, your AI assistant. What can I help you with today?";
-/** Local/testing: effectively unlimited; re-tighten before production. */
-const MAX_ANON_SYNTHESIS_REQUESTS = Number.MAX_SAFE_INTEGER;
+/**
+ * Per-anonymous-device cap. Synthesis fans out into multiple LLM calls
+ * (per-category analyses + core memory + welcome + suggestions), so this
+ * is intentionally low: anyone running the flow more than a handful of
+ * times in a day is almost certainly abusing it.
+ */
+const MAX_ANON_SYNTHESIS_REQUESTS = 20;
+/**
+ * Per-authenticated-owner cap on the same endpoint. Same rationale —
+ * synthesis is one of the most expensive LLM endpoints in the stack, so
+ * even a paid user shouldn't be able to fire dozens of jobs in a minute.
+ */
+const SYNTHESIS_OWNER_RATE_LIMIT = 10;
+const SYNTHESIS_OWNER_RATE_WINDOW_MS = 60_000;
 
 export const getHomeSuggestionsText = (
   result: { result: Parameters<typeof assistantText>[0] } | null | undefined,
@@ -147,6 +164,22 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           }
 
           const ownerId = identity?.tokenIdentifier;
+          // Per-owner rate limit on the most expensive LLM endpoint.
+          // Anonymous traffic is already gated above by
+          // `consumeDeviceAllowance`, so we only apply this for
+          // authenticated callers.
+          if (ownerId) {
+            const rateLimit = await consumeWebhookRateLimit(ctx, {
+              scope: "synthesize_owner",
+              key: ownerId,
+              limit: SYNTHESIS_OWNER_RATE_LIMIT,
+              windowMs: SYNTHESIS_OWNER_RATE_WINDOW_MS,
+              blockMs: SYNTHESIS_OWNER_RATE_WINDOW_MS,
+            });
+            if (!rateLimit.allowed) {
+              return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+            }
+          }
           const modelAccess = ownerId
             ? await resolveManagedModelAccess(ctx, ownerId, {
               isAnonymous: (identity as Record<string, unknown> | null)?.isAnonymous === true,

@@ -18,6 +18,11 @@ import {
 import {
   requireConnectedUserId,
 } from "../auth";
+import {
+  enforceMutationRateLimit,
+  RATE_SETTINGS,
+  RATE_STANDARD,
+} from "../lib/rate_limits";
 
 const optionalProfileValidator = v.union(v.null(), socialProfileValidator);
 
@@ -58,6 +63,12 @@ export const ensureProfile = mutation({
   returns: socialProfileValidator,
   handler: async (ctx) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "social_ensure_profile",
+      ownerId,
+      RATE_STANDARD,
+    );
     return await ensureSocialProfileDoc(ctx, ownerId);
   },
 });
@@ -106,6 +117,13 @@ export const updateMyProfile = mutation({
   returns: socialProfileValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "social_update_my_profile",
+      ownerId,
+      RATE_SETTINGS,
+      "Too many profile updates. Please wait a moment and try again.",
+    );
     const profile = await ensureSocialProfileDoc(ctx, ownerId);
 
     const patch: {

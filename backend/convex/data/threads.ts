@@ -12,6 +12,10 @@ import {
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireUserId, tryLoadOwnedConversation } from "../auth";
+import {
+  enforceMutationRateLimit,
+  RATE_STANDARD,
+} from "../lib/rate_limits";
 import { resolveModelConfig, type ResolvedModelConfig } from "../agent/model_resolver";
 import {
   ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS,
@@ -909,6 +913,12 @@ export const applyCompactionForRuntime = mutation({
     // Verify ownership via the conversation (silent null for missing/unauthorized)
     const conversation = await tryLoadOwnedConversation(ctx, thread.conversationId);
     if (!conversation) return null;
+    await enforceMutationRateLimit(
+      ctx,
+      "thread_apply_compaction",
+      conversation.ownerId,
+      RATE_STANDARD,
+    );
 
     // Delegate to the existing internal finalization
     await ctx.runMutation(internal.data.threads.finalizeThreadCompaction, {

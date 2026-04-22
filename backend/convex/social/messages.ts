@@ -14,6 +14,10 @@ import {
 import {
   requireConnectedUserId,
 } from "../auth";
+import {
+  enforceMutationRateLimit,
+  RATE_STANDARD,
+} from "../lib/rate_limits";
 
 export const listRoomMessages = query({
   args: {
@@ -48,6 +52,15 @@ export const sendRoomMessage = mutation({
   returns: socialMessageValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    // Standard chat rate: enough for normal typing, low enough that a
+    // misbehaving client can't firehose a shared room.
+    await enforceMutationRateLimit(
+      ctx,
+      "social_send_room_message",
+      ownerId,
+      RATE_STANDARD,
+      "You're sending messages too fast. Please slow down.",
+    );
     const membership = await requireRoomMembership(ctx, args.roomId, ownerId);
 
     const body = args.body.trim();

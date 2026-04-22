@@ -2,6 +2,10 @@ import { mutation, internalMutation, type MutationCtx } from "../_generated/serv
 import { v, ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwner } from "../auth";
+import {
+  enforceMutationRateLimit,
+  RATE_HOT_PATH,
+} from "../lib/rate_limits";
 
 /**
  * Backend cron scheduling was removed. The remaining responsibility here is
@@ -116,7 +120,13 @@ export const completeCronTurnResult = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireConversationOwner(ctx, args.conversationId);
+    const conversation = await requireConversationOwner(ctx, args.conversationId);
+    await enforceMutationRateLimit(
+      ctx,
+      "cron_complete_turn_result",
+      conversation.ownerId,
+      RATE_HOT_PATH,
+    );
     await completeCronTurnResultCore(ctx, {
       requestId: args.requestId,
       text: args.text,

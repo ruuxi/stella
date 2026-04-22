@@ -93,6 +93,7 @@ import type * as lib_owner_ids from "../lib/owner_ids.js";
 import type * as lib_provider_keys from "../lib/provider_keys.js";
 import type * as lib_provider_redaction from "../lib/provider_redaction.js";
 import type * as lib_providers from "../lib/providers.js";
+import type * as lib_rate_limits from "../lib/rate_limits.js";
 import type * as lib_redaction from "../lib/redaction.js";
 import type * as lib_retry_fetch from "../lib/retry_fetch.js";
 import type * as lib_store_release_reviews from "../lib/store_release_reviews.js";
@@ -257,6 +258,7 @@ declare const fullApi: ApiFromModules<{
   "lib/provider_keys": typeof lib_provider_keys;
   "lib/provider_redaction": typeof lib_provider_redaction;
   "lib/providers": typeof lib_providers;
+  "lib/rate_limits": typeof lib_rate_limits;
   "lib/redaction": typeof lib_redaction;
   "lib/retry_fetch": typeof lib_retry_fetch;
   "lib/store_release_reviews": typeof lib_store_release_reviews;

@@ -11,6 +11,10 @@ import {
   type DmPolicy,
 } from "./routing_flow";
 import { upsertPreferenceRecord } from "../data/preferences";
+import {
+  enforceMutationRateLimit,
+  RATE_STANDARD,
+} from "../lib/rate_limits";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -277,6 +281,12 @@ export const deleteConnection = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "channels_delete_connection",
+      ownerId,
+      RATE_STANDARD,
+    );
     const conn = await ctx.db
       .query("channel_connections")
       .withIndex("by_ownerId_and_provider", (q) =>

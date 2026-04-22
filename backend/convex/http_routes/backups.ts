@@ -8,7 +8,19 @@ import {
   errorResponse,
   handleCorsRequest,
   jsonResponse,
+  withCors,
 } from "../http_shared/cors";
+import {
+  consumeWebhookRateLimit,
+  rateLimitResponse,
+} from "../http_shared/webhook_controls";
+
+// Per-owner cap shared by every /api/backups/* endpoint. Backups are
+// chunky (storage writes + manifest mutations + R2 plan generation), so
+// even legitimate clients should not exceed a few dozen calls per
+// minute. A misbehaving client gets locked out of the whole surface.
+const BACKUP_RATE_LIMIT = 60;
+const BACKUP_RATE_WINDOW_MS = 60_000;
 
 const BACKUP_KEY_PATH = "/api/backups/key";
 const BACKUP_LIST_PATH = "/api/backups/list";
@@ -42,6 +54,31 @@ const getOwnerIdFromRequest = async (
     });
   }
   return identity.tokenIdentifier;
+};
+
+/**
+ * Resolve the owner and consume one slot from the shared backup rate
+ * limit. Returns either the owner id (allowed) or a 429 response that the
+ * caller should return verbatim. Centralized here so every backup
+ * endpoint shares a single per-owner budget rather than each one running
+ * its own quota.
+ */
+const requireBackupOwner = async (
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  origin: string | null,
+): Promise<{ ownerId: string } | { response: Response }> => {
+  const ownerId = await getOwnerIdFromRequest(ctx);
+  const rateLimit = await consumeWebhookRateLimit(ctx, {
+    scope: "backups_owner",
+    key: ownerId,
+    limit: BACKUP_RATE_LIMIT,
+    windowMs: BACKUP_RATE_WINDOW_MS,
+    blockMs: BACKUP_RATE_WINDOW_MS,
+  });
+  if (!rateLimit.allowed) {
+    return { response: withCors(rateLimitResponse(rateLimit.retryAfterMs), origin) };
+  }
+  return { ownerId };
 };
 
 const getRequiredDeviceId = (request: Request) => {
@@ -100,7 +137,9 @@ export const registerBackupRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         try {
-          const ownerId = await getOwnerIdFromRequest(ctx);
+          const owner = await requireBackupOwner(ctx, origin);
+          if ("response" in owner) return owner.response;
+          const ownerId = owner.ownerId;
           const deviceId = getRequiredDeviceId(request);
           await ctx.runQuery(internal.backups.assertDeviceOwnedInternal, {
             ownerId,
@@ -122,7 +161,9 @@ export const registerBackupRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         try {
-          const ownerId = await getOwnerIdFromRequest(ctx);
+          const owner = await requireBackupOwner(ctx, origin);
+          if ("response" in owner) return owner.response;
+          const ownerId = owner.ownerId;
           const sourceDeviceId = getRequiredDeviceId(request);
           const body = await parseRouteJson<{
             keyBase64Url?: string;
@@ -150,7 +191,9 @@ export const registerBackupRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         try {
-          const ownerId = await getOwnerIdFromRequest(ctx);
+          const owner = await requireBackupOwner(ctx, origin);
+          if ("response" in owner) return owner.response;
+          const ownerId = owner.ownerId;
           const deviceId = getRequiredDeviceId(request);
           await ctx.runQuery(internal.backups.assertDeviceOwnedInternal, {
             ownerId,
@@ -181,7 +224,9 @@ export const registerBackupRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         try {
-          const ownerId = await getOwnerIdFromRequest(ctx);
+          const owner = await requireBackupOwner(ctx, origin);
+          if ("response" in owner) return owner.response;
+          const ownerId = owner.ownerId;
           const sourceDeviceId = getRequiredDeviceId(request);
           const body = await parseRouteJson<{
             snapshotId?: string;
@@ -225,7 +270,9 @@ export const registerBackupRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         try {
-          const ownerId = await getOwnerIdFromRequest(ctx);
+          const owner = await requireBackupOwner(ctx, origin);
+          if ("response" in owner) return owner.response;
+          const ownerId = owner.ownerId;
           const sourceDeviceId = getRequiredDeviceId(request);
           const body = await parseRouteJson<{
             snapshotId?: string;
@@ -293,7 +340,9 @@ export const registerBackupRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         try {
-          const ownerId = await getOwnerIdFromRequest(ctx);
+          const owner = await requireBackupOwner(ctx, origin);
+          if ("response" in owner) return owner.response;
+          const ownerId = owner.ownerId;
           const deviceId = getRequiredDeviceId(request);
           const body = await parseRouteJson<{ snapshotId?: string }>(request);
           if (!body?.snapshotId) {
@@ -320,7 +369,9 @@ export const registerBackupRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         try {
-          const ownerId = await getOwnerIdFromRequest(ctx);
+          const owner = await requireBackupOwner(ctx, origin);
+          if ("response" in owner) return owner.response;
+          const ownerId = owner.ownerId;
           const deviceId = getRequiredDeviceId(request);
           const body = await parseRouteJson<{ objectIds?: string[] }>(request);
           if (!body?.objectIds || !Array.isArray(body.objectIds)) {

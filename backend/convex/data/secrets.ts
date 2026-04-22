@@ -2,6 +2,10 @@ import { mutation, query, internalQuery, internalMutation } from "../_generated/
 import { v, ConvexError } from "convex/values";
 import { decryptSecret, encryptSecret } from "./secrets_crypto";
 import { requireSensitiveUserId } from "../auth";
+import {
+  enforceMutationRateLimit,
+  RATE_SENSITIVE,
+} from "../lib/rate_limits";
 import { optionalJsonValueValidator, requireBoundedString } from "../shared_validators";
 
 const MAX_SECRET_PLAINTEXT_CHARS = 2000;
@@ -26,6 +30,15 @@ export const createSecret = mutation({
     requireBoundedString(args.plaintext, "plaintext", MAX_SECRET_PLAINTEXT_CHARS);
 
     const ownerId = await requireSensitiveUserId(ctx);
+    // Each call runs WebCrypto AES + a row insert. Cap so a hijacked
+    // session can't churn secret rows.
+    await enforceMutationRateLimit(
+      ctx,
+      "secrets_create",
+      ownerId,
+      RATE_SENSITIVE,
+      "Too many secret writes. Please wait a minute and try again.",
+    );
     const now = Date.now();
     const encryptedPayload = await encryptSecret(args.plaintext);
     const encryptedValue = JSON.stringify(encryptedPayload);
@@ -206,6 +219,13 @@ export const deleteSecret = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "secrets_delete",
+      ownerId,
+      RATE_SENSITIVE,
+      "Too many secret deletions. Please wait a minute and try again.",
+    );
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== ownerId) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });

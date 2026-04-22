@@ -22,7 +22,11 @@ import {
   handleCorsRequest,
   corsPreflightHandler,
 } from "../http_shared/cors";
-import { rateLimitResponse } from "../http_shared/webhook_controls";
+import {
+  consumeWebhookRateLimit,
+  rateLimitResponse,
+} from "../http_shared/webhook_controls";
+import { getClientAddressKey } from "../lib/http_utils";
 import {
   resolveManagedModelAccess,
   scheduleManagedUsage,
@@ -55,6 +59,19 @@ const MAX_OFFLINE_MESSAGE_CHARS = 12_000;
 const MAX_OFFLINE_IMAGES = 5;
 /** ~6M chars base64 ≈ ~4.5MB decoded — guardrail per image */
 const MAX_IMAGE_BASE64_CHARS = 6_000_000;
+
+/** Per-owner cap for the desktop bridge endpoints (cheap reads/writes). */
+const MOBILE_BRIDGE_RATE_LIMIT = 60;
+const MOBILE_BRIDGE_RATE_WINDOW_MS = 60_000;
+/** Tighter cap for the Cloudflare-Tunnel-provisioning endpoint. */
+const MOBILE_TUNNEL_TOKEN_RATE_LIMIT = 12;
+const MOBILE_TUNNEL_TOKEN_RATE_WINDOW_MS = 60_000;
+/** Per-request-id cap for the magic-link status poll. */
+const MAGIC_LINK_STATUS_RATE_LIMIT = 60;
+const MAGIC_LINK_STATUS_RATE_WINDOW_MS = 60_000;
+/** Per-IP cap on `/api/mobile/pairing/complete` so brute-force is bounded. */
+const MOBILE_PAIRING_COMPLETE_RATE_LIMIT = 30;
+const MOBILE_PAIRING_COMPLETE_RATE_WINDOW_MS = 60_000;
 
 const EMPTY_USAGE: Usage = {
   input: 0,
@@ -926,6 +943,16 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         if ("response" in owner) {
           return owner.response;
         }
+        const rateLimit = await consumeWebhookRateLimit(ctx, {
+          scope: "mobile_desktop_bridge_get",
+          key: owner.ownerId,
+          limit: MOBILE_BRIDGE_RATE_LIMIT,
+          windowMs: MOBILE_BRIDGE_RATE_WINDOW_MS,
+          blockMs: MOBILE_BRIDGE_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+        }
 
         const url = new URL(request.url);
         const requestedDesktopDeviceId = normalizeDeviceId(
@@ -980,6 +1007,31 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         const owner = await requireMobileAccountOwner(ctx, origin);
         if ("response" in owner) {
           return owner.response;
+        }
+        // Pairing-code brute-force protection: also gate per-IP so an
+        // attacker can't drive code guesses from many fake owner ids.
+        const clientAddress = getClientAddressKey(request);
+        const ownerLimit = await consumeWebhookRateLimit(ctx, {
+          scope: "mobile_pairing_complete_owner",
+          key: owner.ownerId,
+          limit: MOBILE_PAIRING_COMPLETE_RATE_LIMIT,
+          windowMs: MOBILE_PAIRING_COMPLETE_RATE_WINDOW_MS,
+          blockMs: MOBILE_PAIRING_COMPLETE_RATE_WINDOW_MS,
+        });
+        if (!ownerLimit.allowed) {
+          return withCors(rateLimitResponse(ownerLimit.retryAfterMs), origin);
+        }
+        if (clientAddress) {
+          const ipLimit = await consumeWebhookRateLimit(ctx, {
+            scope: "mobile_pairing_complete_ip",
+            key: clientAddress,
+            limit: MOBILE_PAIRING_COMPLETE_RATE_LIMIT,
+            windowMs: MOBILE_PAIRING_COMPLETE_RATE_WINDOW_MS,
+            blockMs: MOBILE_PAIRING_COMPLETE_RATE_WINDOW_MS,
+          });
+          if (!ipLimit.allowed) {
+            return withCors(rateLimitResponse(ipLimit.retryAfterMs), origin);
+          }
         }
 
         let body: {
@@ -1050,6 +1102,16 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         if ("response" in owner) {
           return owner.response;
         }
+        const rateLimit = await consumeWebhookRateLimit(ctx, {
+          scope: "mobile_desktop_bridge_register",
+          key: owner.ownerId,
+          limit: MOBILE_BRIDGE_RATE_LIMIT,
+          windowMs: MOBILE_BRIDGE_RATE_WINDOW_MS,
+          blockMs: MOBILE_BRIDGE_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+        }
 
         let body: {
           deviceId?: unknown;
@@ -1108,6 +1170,16 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         if ("response" in owner) {
           return owner.response;
         }
+        const rateLimit = await consumeWebhookRateLimit(ctx, {
+          scope: "mobile_desktop_bridge_clear",
+          key: owner.ownerId,
+          limit: MOBILE_BRIDGE_RATE_LIMIT,
+          windowMs: MOBILE_BRIDGE_RATE_WINDOW_MS,
+          blockMs: MOBILE_BRIDGE_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+        }
 
         let body: { deviceId?: unknown } | null = null;
         try {
@@ -1138,6 +1210,16 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         const owner = await requireMobileAccountOwner(ctx, origin);
         if ("response" in owner) {
           return owner.response;
+        }
+        const rateLimit = await consumeWebhookRateLimit(ctx, {
+          scope: "mobile_desktop_bridge_request",
+          key: owner.ownerId,
+          limit: MOBILE_BRIDGE_RATE_LIMIT,
+          windowMs: MOBILE_BRIDGE_RATE_WINDOW_MS,
+          blockMs: MOBILE_BRIDGE_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
         }
 
         let body: {
@@ -1185,6 +1267,16 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         const owner = await requireMobileAccountOwner(ctx, origin);
         if ("response" in owner) {
           return owner.response;
+        }
+        const rateLimit = await consumeWebhookRateLimit(ctx, {
+          scope: "mobile_desktop_bridge_authorize",
+          key: owner.ownerId,
+          limit: MOBILE_BRIDGE_RATE_LIMIT,
+          windowMs: MOBILE_BRIDGE_RATE_WINDOW_MS,
+          blockMs: MOBILE_BRIDGE_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
         }
 
         let body: { deviceId?: unknown } | null = null;
@@ -1240,6 +1332,18 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         const owner = await requireMobileAccountOwner(ctx, origin);
         if ("response" in owner) {
           return owner.response;
+        }
+        // Tunnel-token provisioning hits the Cloudflare API; tighter cap
+        // than the rest of the bridge surface.
+        const rateLimit = await consumeWebhookRateLimit(ctx, {
+          scope: "mobile_desktop_bridge_tunnel_token",
+          key: owner.ownerId,
+          limit: MOBILE_TUNNEL_TOKEN_RATE_LIMIT,
+          windowMs: MOBILE_TUNNEL_TOKEN_RATE_WINDOW_MS,
+          blockMs: MOBILE_TUNNEL_TOKEN_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
         }
 
         let body: { deviceId?: unknown } | null = null;
@@ -1407,6 +1511,19 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         const requestId = url.searchParams.get("requestId") ?? "";
         if (!requestId) {
           return errorResponse(400, "requestId is required", origin);
+        }
+        // Cap polls per requestId so a misbehaving client can't spin a
+        // tight poll loop. The mobile client polls every ~1 s, so 60/min
+        // is comfortably above legitimate usage.
+        const rateLimit = await consumeWebhookRateLimit(ctx, {
+          scope: "mobile_auth_link_status",
+          key: requestId,
+          limit: MAGIC_LINK_STATUS_RATE_LIMIT,
+          windowMs: MAGIC_LINK_STATUS_RATE_WINDOW_MS,
+          blockMs: MAGIC_LINK_STATUS_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
         }
 
         const result = await ctx.runQuery(

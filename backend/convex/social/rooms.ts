@@ -25,6 +25,12 @@ import {
 import {
   requireConnectedUserId,
 } from "../auth";
+import {
+  enforceMutationRateLimit,
+  RATE_HOT_PATH,
+  RATE_STANDARD,
+  RATE_VERY_EXPENSIVE,
+} from "../lib/rate_limits";
 
 const roomSummaryValidator = v.object({
   room: socialRoomValidator,
@@ -173,6 +179,13 @@ export const getOrCreateDmRoom = mutation({
   returns: socialRoomValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "social_get_or_create_dm_room",
+      ownerId,
+      RATE_STANDARD,
+      "Too many room requests. Please slow down and try again.",
+    );
     await ensureSocialProfileDoc(ctx, ownerId);
     await ensureSocialProfileDoc(ctx, args.otherOwnerId);
     if (ownerId === args.otherOwnerId) {
@@ -225,6 +238,15 @@ export const createGroupRoom = mutation({
   returns: socialRoomValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    // Each call writes N membership rows; cap so we can't be used to spawn
+    // unbounded room/membership churn.
+    await enforceMutationRateLimit(
+      ctx,
+      "social_create_group_room",
+      ownerId,
+      RATE_VERY_EXPENSIVE,
+      "Too many group rooms created. Please wait a minute and try again.",
+    );
     const title = args.title.trim();
     if (!title) {
       throw new ConvexError({
@@ -290,6 +312,13 @@ export const addGroupMembers = mutation({
   returns: socialRoomValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "social_add_group_members",
+      ownerId,
+      RATE_STANDARD,
+      "Too many group membership changes. Please slow down and try again.",
+    );
     const membership = await requireRoomMembership(ctx, args.roomId, ownerId);
     assertRoomOwnerRole(membership);
     const room = await ctx.db.get(args.roomId);
@@ -353,6 +382,15 @@ export const markRoomRead = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    // Hot path (called on every focus / scroll), so use the loose hot-path
+    // budget — but still cap it so it can't be looped at runtime to churn
+    // the membership row.
+    await enforceMutationRateLimit(
+      ctx,
+      "social_mark_room_read",
+      ownerId,
+      RATE_HOT_PATH,
+    );
     const membership = await requireRoomMembership(ctx, args.roomId, ownerId);
     await ctx.db.patch(membership._id, {
       ...(args.messageId ? { lastReadMessageId: args.messageId } : {}),

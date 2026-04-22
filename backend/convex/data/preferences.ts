@@ -3,6 +3,17 @@ import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
 import { hasModelConfig, resolveManagedModelAudience } from "../agent/model";
 import { listStellaDefaultSelections } from "../stella_models";
+import {
+  enforceMutationRateLimit,
+  RATE_SETTINGS,
+} from "../lib/rate_limits";
+
+/**
+ * Shared per-owner cap for every settings mutation in this file. Settings
+ * toggles aren't a hot path, so we want any single user to be unable to
+ * churn more than ~one update per second.
+ */
+const PREFERENCE_RATE_SCOPE = "user_preferences_set";
 
 const accountModeValidator = v.union(v.literal("private_local"), v.literal("connected"));
 const ACCOUNT_MODE_KEY = "account_mode";
@@ -138,6 +149,7 @@ export const setAccountMode = mutation({
   returns: accountModeValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
     await upsertPreferenceRecord(ctx, ownerId, ACCOUNT_MODE_KEY, args.mode);
     return args.mode;
   },
@@ -165,6 +177,7 @@ export const setSyncMode = mutation({
   returns: syncModeValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
     await upsertPreferenceRecord(ctx, ownerId, SYNC_MODE_KEY, args.mode);
     return args.mode;
   },
@@ -177,6 +190,7 @@ export const setPreferredBrowser = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
     await upsertPreferenceRecord(ctx, ownerId, PREFERRED_BROWSER_KEY, args.browser);
 
     return null;
@@ -229,6 +243,7 @@ export const setGeneralAgentEngine = mutation({
   returns: generalAgentEngineValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
     await upsertPreferenceRecord(ctx, ownerId, GENERAL_AGENT_ENGINE_KEY, args.engine);
     return args.engine;
   },
@@ -256,6 +271,7 @@ export const setSelfModAgentEngine = mutation({
   returns: generalAgentEngineValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
     await upsertPreferenceRecord(ctx, ownerId, SELF_MOD_AGENT_ENGINE_KEY, args.engine);
     return args.engine;
   },
@@ -283,6 +299,7 @@ export const setMaxAgentConcurrency = mutation({
   returns: v.number(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
     const normalized = normalizeMaxAgentConcurrency(String(args.value));
     await upsertPreferenceRecord(ctx, ownerId, MAX_AGENT_CONCURRENCY_KEY, String(normalized));
     return normalized;
@@ -381,6 +398,7 @@ export const setModelOverride = mutation({
       });
     }
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
     const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
     await upsertPreferenceRecord(ctx, ownerId, key, args.model);
     return null;
@@ -394,6 +412,7 @@ export const clearModelOverride = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
     const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
     const existing = await ctx.db
       .query("user_preferences")
@@ -416,6 +435,7 @@ export const setExpressionStyle = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
     await upsertPreferenceRecord(ctx, ownerId, EXPRESSION_STYLE_KEY, args.style);
     return null;
   },

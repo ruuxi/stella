@@ -20,6 +20,10 @@ import {
   store_release_manifest_validator,
 } from "../schema/store";
 import { enforceStoreReleaseReviewOrThrow } from "../lib/store_release_reviews";
+import {
+  enforceActionRateLimit,
+  RATE_VERY_EXPENSIVE,
+} from "../lib/rate_limits";
 
 type StorePublishResult = Infer<typeof store_publish_result_validator>;
 
@@ -544,6 +548,15 @@ export const createFirstRelease = action({
   returns: store_publish_result_validator,
   handler: async (ctx, args): Promise<StorePublishResult> => {
     const ownerId = await requireSensitiveUserIdAction(ctx);
+    // Each release writes an artifact blob to _storage and runs an LLM
+    // review action. Tight cap so a runaway client can't fill storage.
+    await enforceActionRateLimit(
+      ctx,
+      "store_package_create_first_release",
+      ownerId,
+      RATE_VERY_EXPENSIVE,
+      "Too many store package releases. Please wait before publishing again.",
+    );
     const packageId = normalizePackageId(args.packageId);
     const displayName = normalizeRequiredText(args.displayName, "displayName", 120);
     const description = normalizeRequiredText(args.description, "description", 4000);
@@ -590,6 +603,13 @@ export const createUpdateRelease = action({
   returns: store_publish_result_validator,
   handler: async (ctx, args): Promise<StorePublishResult> => {
     const ownerId = await requireSensitiveUserIdAction(ctx);
+    await enforceActionRateLimit(
+      ctx,
+      "store_package_create_update_release",
+      ownerId,
+      RATE_VERY_EXPENSIVE,
+      "Too many store package releases. Please wait before publishing again.",
+    );
     const packageId = normalizePackageId(args.packageId);
     const releaseNotes = normalizeOptionalText(
       args.releaseNotes,

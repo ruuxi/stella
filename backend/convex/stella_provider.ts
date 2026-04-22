@@ -51,8 +51,16 @@ import {
 } from "./stella_models";
 import { resolveManagedModelAccess } from "./lib/managed_billing";
 
-/** Local/testing: effectively unlimited; re-tighten before production. */
-const MAX_ANON_REQUESTS = Number.MAX_SAFE_INTEGER;
+/**
+ * Per-anonymous-device cap on the Stella provider endpoint. Each call
+ * runs a managed-LLM completion that we pay for, so we want anonymous
+ * users to hit the wall well before they cost real money. The desktop is
+ * user-modifiable, so this MUST be enforced server-side.
+ */
+const MAX_ANON_REQUESTS = 60;
+/** Per-IP cap on the unauthenticated `models` listing endpoint. */
+const STELLA_MODELS_PER_IP_LIMIT = 60;
+const STELLA_MODELS_PER_IP_WINDOW_MS = 60_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
 const SSE_HEARTBEAT_INTERVAL_MS = 45_000;
 const SSE_STREAM_OPEN_COMMENT = new TextEncoder().encode(": stella-stream-open\n\n");
@@ -1384,7 +1392,32 @@ async function createNativeRuntimeResponse(args: {
 
 export const stellaProviderModels = httpAction(async (ctx, request) =>
   handleCorsRequest(request, async (origin) => {
+    // No-auth surface: gate on caller IP so an unauthenticated flood
+    // can't be used as a free DB-query amplifier
+    // (`resolveManagedModelAccess` reads `billing_profiles`).
     const identity = await ctx.auth.getUserIdentity();
+    const rateKey = identity?.tokenIdentifier
+      ?? getClientAddressKey(request)
+      ?? "anon";
+    const rateLimit = await ctx.runMutation(
+      internal.rate_limits.consumeWebhookRateLimit,
+      {
+        scope: "stella_models",
+        key: rateKey,
+        limit: STELLA_MODELS_PER_IP_LIMIT,
+        windowMs: STELLA_MODELS_PER_IP_WINDOW_MS,
+        blockMs: STELLA_MODELS_PER_IP_WINDOW_MS,
+      },
+    );
+    if (!rateLimit.allowed) {
+      const response = stellaProviderErrorResponse(429, "Rate limit exceeded", request);
+      response.headers.set(
+        "Retry-After",
+        String(Math.ceil(rateLimit.retryAfterMs / 1000)),
+      );
+      return response;
+    }
+
     let audience: ManagedModelAudience = identity
       ? ((identity as Record<string, unknown>).isAnonymous === true ? "anonymous" : "free")
       : "anonymous";
