@@ -111,19 +111,41 @@ export function convertResponsesMessages<TApi extends Api>(
     } satisfies ResponseInputImage;
   };
 
-  const normalizeToolCallId = (id: string): string => {
-    if (!allowedToolCallProviders.has(model.provider) || !id.includes("|")) {
-      return id;
+  const normalizeIdPart = (part: string): string => {
+    const sanitized = part.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const truncated = sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
+    return truncated.replace(/_+$/, "");
+  };
+
+  const buildForeignResponsesItemId = (itemId: string): string => {
+    const normalized = `fc_${shortHash(itemId)}`;
+    return normalized.length > 64 ? normalized.slice(0, 64) : normalized;
+  };
+
+  const normalizeToolCallId = (
+    id: string,
+    _targetModel: Model<TApi>,
+    source: AssistantMessage,
+  ): string => {
+    if (!allowedToolCallProviders.has(model.provider)) {
+      return normalizeIdPart(id);
+    }
+    if (!id.includes("|")) {
+      return normalizeIdPart(id);
     }
     const [callId, itemId] = id.split("|");
-    const sanitizedCallId = callId.replace(/[^a-zA-Z0-9_-]/g, "_");
-    let sanitizedItemId = itemId.replace(/[^a-zA-Z0-9_-]/g, "_");
-    if (!sanitizedItemId.startsWith("fc")) {
-      sanitizedItemId = `fc_${sanitizedItemId}`;
+    const normalizedCallId = normalizeIdPart(callId);
+    // Foreign tool-calls (different provider OR api) get hashed item ids so OpenAI
+    // doesn't reject the replayed fc_xxx because it never paired with a known rs_xxx.
+    const isForeignToolCall =
+      source.provider !== model.provider || source.api !== model.api;
+    let normalizedItemId = isForeignToolCall
+      ? buildForeignResponsesItemId(itemId)
+      : normalizeIdPart(itemId);
+    if (!normalizedItemId.startsWith("fc_")) {
+      normalizedItemId = normalizeIdPart(`fc_${normalizedItemId}`);
     }
-    return `${sanitizedCallId.slice(0, 64).replace(/_+$/, "")}|${sanitizedItemId
-      .slice(0, 64)
-      .replace(/_+$/, "")}`;
+    return `${normalizedCallId}|${normalizedItemId}`;
   };
 
   const transformedMessages = transformMessages(
@@ -317,6 +339,11 @@ export async function processResponsesStream<TApi extends Api>(
   const contentIndex = () => output.content.length - 1;
 
   for await (const event of openaiStream) {
+    if (event.type === "response.created") {
+      output.responseId = event.response.id;
+      continue;
+    }
+
     if (event.type === "response.output_item.added") {
       if (event.item.type === "reasoning") {
         currentItem = event.item;
@@ -398,8 +425,23 @@ export async function processResponsesStream<TApi extends Api>(
 
     if (event.type === "response.function_call_arguments.done") {
       if (currentItem?.type === "function_call" && currentBlock?.type === "toolCall") {
+        const previousPartialJson = currentBlock.partialJson;
         currentBlock.partialJson = event.arguments;
         currentBlock.arguments = parseStreamingJson(currentBlock.partialJson);
+
+        // Some upstreams emit no `function_call_arguments.delta` events and only deliver
+        // the final arguments here. Emit the missing suffix so consumers see a complete delta stream.
+        if (event.arguments.startsWith(previousPartialJson)) {
+          const delta = event.arguments.slice(previousPartialJson.length);
+          if (delta.length > 0) {
+            stream.push({
+              type: "toolcall_delta",
+              contentIndex: contentIndex(),
+              delta,
+              partial: output,
+            });
+          }
+        }
       }
       continue;
     }
@@ -461,11 +503,15 @@ export async function processResponsesStream<TApi extends Api>(
 
     if (event.type === "response.completed") {
       const response = event.response;
+      if (response?.id) {
+        output.responseId = response.id;
+      }
       if (response?.usage) {
         const cachedTokens = response.usage.input_tokens_details?.cached_tokens || 0;
         const reasoningTokens = response.usage.output_tokens_details?.reasoning_tokens || 0;
         output.usage = {
-          input: response.usage.input_tokens || 0,
+          // OpenAI includes cached tokens in input_tokens, so subtract to get non-cached input
+          input: (response.usage.input_tokens || 0) - cachedTokens,
           output: response.usage.output_tokens || 0,
           cacheRead: cachedTokens,
           cacheWrite: 0,
@@ -488,9 +534,13 @@ export async function processResponsesStream<TApi extends Api>(
 
     if (event.type === "response.failed") {
       const error = event.response?.error;
-      throw new Error(
-        error ? `${error.code || "unknown"}: ${error.message || "no message"}` : "Unknown error",
-      );
+      const details = event.response?.incomplete_details;
+      const message = error
+        ? `${error.code || "unknown"}: ${error.message || "no message"}`
+        : details?.reason
+          ? `incomplete: ${details.reason}`
+          : "Unknown error (no error details in response)";
+      throw new Error(message);
     }
 
     if (event.type === "error") {

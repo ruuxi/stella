@@ -114,8 +114,11 @@ export const streamOpenAIResponses: StreamFunction<
       if (options?.signal?.aborted) {
         throw new Error("Request was aborted");
       }
-      if (output.stopReason === "aborted" || output.stopReason === "error") {
-        throw new Error("An unknown error occurred");
+      if (output.stopReason === "aborted") {
+        throw new Error("Request was aborted");
+      }
+      if (output.stopReason === "error") {
+        throw new Error(output.errorMessage || "Provider returned an error stop reason");
       }
 
       stream.push({ type: "done", reason: output.stopReason, message: output });

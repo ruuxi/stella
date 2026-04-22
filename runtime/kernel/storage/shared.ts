@@ -404,6 +404,9 @@ export const parseRuntimeThreadPayload = (
         usage: record.usage,
         stopReason: record.stopReason,
         timestamp: record.timestamp,
+        ...(typeof record.responseId === "string" && record.responseId.trim()
+          ? { responseId: record.responseId }
+          : {}),
         ...(typeof record.errorMessage === "string" && record.errorMessage.trim()
           ? { errorMessage: record.errorMessage }
           : {}),

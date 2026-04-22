@@ -6,6 +6,7 @@
  */
 
 import type { Server } from "node:http";
+import { oauthErrorHtml, oauthSuccessHtml } from "./oauth-page.js";
 import { generatePKCE } from "./pkce.js";
 import type { OAuthCredentials, OAuthLoginCallbacks, OAuthPrompt, OAuthProviderInterface } from "./types.js";
 
@@ -27,25 +28,12 @@ const decode = (s: string) => atob(s);
 const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");
 const AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
 const TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
-const MANUAL_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
 const CALLBACK_HOST = "127.0.0.1";
 const CALLBACK_PORT = 53692;
 const CALLBACK_PATH = "/callback";
 const REDIRECT_URI = `http://localhost:${CALLBACK_PORT}${CALLBACK_PATH}`;
 const SCOPES =
 	"org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
-const SUCCESS_HTML = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Authentication successful</title>
-</head>
-<body>
-  <p>Authentication successful. Return to your terminal to continue.</p>
-</body>
-</html>`;
-
 async function getNodeApis(): Promise<NodeApis> {
 	if (nodeApis) return nodeApis;
 	if (!nodeApisPromise) {
@@ -111,15 +99,22 @@ async function startCallbackServer(expectedState: string): Promise<CallbackServe
 	const { createServer } = await getNodeApis();
 
 	return new Promise((resolve, reject) => {
-		let result: { code: string; state: string } | null = null;
-		let cancelled = false;
+		let settleWait: ((value: { code: string; state: string } | null) => void) | undefined;
+		const waitForCodePromise = new Promise<{ code: string; state: string } | null>((resolveWait) => {
+			let settled = false;
+			settleWait = (value) => {
+				if (settled) return;
+				settled = true;
+				resolveWait(value);
+			};
+		});
 
 		const server = createServer((req, res) => {
 			try {
 				const url = new URL(req.url || "", "http://localhost");
 				if (url.pathname !== CALLBACK_PATH) {
-					res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-					res.end("Not found");
+					res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
+					res.end(oauthErrorHtml("Callback route not found."));
 					return;
 				}
 
@@ -129,27 +124,25 @@ async function startCallbackServer(expectedState: string): Promise<CallbackServe
 
 				if (error) {
 					res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-					res.end(`<html><body><h1>Authentication Failed</h1><p>Error: ${error}</p></body></html>`);
+					res.end(oauthErrorHtml("Anthropic authentication did not complete.", `Error: ${error}`));
 					return;
 				}
 
 				if (!code || !state) {
 					res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-					res.end(
-						`<html><body><h1>Authentication Failed</h1><p>Missing code or state parameter.</p></body></html>`,
-					);
+					res.end(oauthErrorHtml("Missing code or state parameter."));
 					return;
 				}
 
 				if (state !== expectedState) {
 					res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-					res.end(`<html><body><h1>Authentication Failed</h1><p>State mismatch.</p></body></html>`);
+					res.end(oauthErrorHtml("State mismatch."));
 					return;
 				}
 
 				res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-				res.end(SUCCESS_HTML);
-				result = { code, state };
+				res.end(oauthSuccessHtml("Anthropic authentication completed. You can close this window."));
+				settleWait?.({ code, state });
 			} catch {
 				res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
 				res.end("Internal error");
@@ -165,15 +158,9 @@ async function startCallbackServer(expectedState: string): Promise<CallbackServe
 				server,
 				redirectUri: REDIRECT_URI,
 				cancelWait: () => {
-					cancelled = true;
+					settleWait?.(null);
 				},
-				waitForCode: async () => {
-					const sleep = () => new Promise((r) => setTimeout(r, 100));
-					while (!result && !cancelled) {
-						await sleep();
-					}
-					return result;
-				},
+				waitForCode: () => waitForCodePromise,
 			});
 		});
 	});
@@ -302,7 +289,6 @@ export async function loginAnthropic(options: {
 				}
 				code = parsed.code;
 				state = parsed.state ?? verifier;
-				redirectUriForExchange = MANUAL_REDIRECT_URI;
 			}
 
 			if (!code) {
@@ -317,7 +303,6 @@ export async function loginAnthropic(options: {
 					}
 					code = parsed.code;
 					state = parsed.state ?? verifier;
-					redirectUriForExchange = MANUAL_REDIRECT_URI;
 				}
 			}
 		} else {
@@ -332,7 +317,7 @@ export async function loginAnthropic(options: {
 		if (!code) {
 			const input = await options.onPrompt({
 				message: "Paste the authorization code or full redirect URL:",
-				placeholder: MANUAL_REDIRECT_URI,
+				placeholder: REDIRECT_URI,
 			});
 			const parsed = parseAuthorizationInput(input);
 			if (parsed.state && parsed.state !== verifier) {
@@ -340,7 +325,6 @@ export async function loginAnthropic(options: {
 			}
 			code = parsed.code;
 			state = parsed.state ?? verifier;
-			redirectUriForExchange = MANUAL_REDIRECT_URI;
 		}
 
 		if (!code) {
@@ -368,7 +352,6 @@ export async function refreshAnthropicToken(refreshToken: string): Promise<OAuth
 			grant_type: "refresh_token",
 			client_id: CLIENT_ID,
 			refresh_token: refreshToken,
-			scope: SCOPES,
 		});
 	} catch (error) {
 		throw new Error(`Anthropic token refresh request failed. url=${TOKEN_URL}; details=${formatErrorDetails(error)}`);

@@ -9,6 +9,7 @@ import { streamOpenAICodexResponses, streamSimpleOpenAICodexResponses } from "./
 import { streamOpenAICompletions, streamSimpleOpenAICompletions } from "./openai-completions.js";
 import { streamOpenAIResponses, streamSimpleOpenAIResponses } from "./openai-responses.js";
 import { streamSimpleStella, streamStella } from "./stella.js";
+
 export function registerBuiltInApiProviders(): void {
 	registerApiProvider({
 		api: "stella",

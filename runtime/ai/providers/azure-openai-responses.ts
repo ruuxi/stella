@@ -88,7 +88,7 @@ export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"
 			let params = buildParams(model, context, options, deploymentName);
 			const nextParams = await options?.onPayload?.(params, model);
 			if (nextParams !== undefined) {
-				params = nextParams as typeof params;
+				params = nextParams as ResponseCreateParamsStreaming;
 			}
 			const openaiStream = await client.responses.create(
 				params,
@@ -132,15 +132,10 @@ export const streamSimpleAzureOpenAIResponses: StreamFunction<"azure-openai-resp
 
 	const base = buildBaseOptions(model, options, apiKey);
 	const reasoningEffort = supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);
-	const reasoningSummary =
-		reasoningEffort
-			? ((options as AzureOpenAIResponsesOptions | undefined)?.reasoningSummary ?? "detailed")
-			: (options as AzureOpenAIResponsesOptions | undefined)?.reasoningSummary;
 
 	return streamAzureOpenAIResponses(model, context, {
 		...base,
 		reasoningEffort,
-		reasoningSummary,
 	} satisfies AzureOpenAIResponsesOptions);
 };
 
@@ -245,18 +240,7 @@ function buildParams(
 			};
 			params.include = ["reasoning.encrypted_content"];
 		} else {
-			if (model.name.toLowerCase().startsWith("gpt-5")) {
-				// Jesus Christ, see https://community.openai.com/t/need-reasoning-false-option-for-gpt-5/1351588/7
-				messages.push({
-					role: "developer",
-					content: [
-						{
-							type: "input_text",
-							text: "# Juice: 0 !important",
-						},
-					],
-				});
-			}
+			params.reasoning = { effort: "none" };
 		}
 	}
 

@@ -38,6 +38,7 @@ export type KnownProvider =
 	| "minimax-cn"
 	| "huggingface"
 	| "opencode"
+	| "opencode-go"
 	| "kimi-coding";
 export type Provider = KnownProvider | string;
 
@@ -61,6 +62,10 @@ export interface StreamOptions {
 	maxTokens?: number;
 	signal?: AbortSignal;
 	apiKey?: string;
+	/**
+	 * Provider-specific extra body fields forwarded by the Stella runtime
+	 * proxy provider. Other providers ignore this.
+	 */
 	extraBody?: Record<string, unknown>;
 	/**
 	 * Preferred transport for providers that support multiple transports.
@@ -114,7 +119,14 @@ export interface SimpleStreamOptions extends StreamOptions {
 	thinkingBudgets?: ThinkingBudgets;
 }
 
-// Generic StreamFunction with typed options
+// Generic StreamFunction with typed options.
+//
+// Contract:
+// - Must return an AssistantMessageEventStream.
+// - Once invoked, request/model/runtime failures should be encoded in the
+//   returned stream, not thrown.
+// - Error termination must produce an AssistantMessage with stopReason
+//   "error" or "aborted" and errorMessage, emitted via the stream protocol.
 export type StreamFunction<TApi extends Api = Api, TOptions extends StreamOptions = StreamOptions> = (
 	model: Model<TApi>,
 	context: Context,
@@ -153,7 +165,7 @@ export interface ToolCall {
 	type: "toolCall";
 	id: string;
 	name: string;
-	arguments: Record<string, unknown>;
+	arguments: Record<string, any>;
 	thoughtSignature?: string; // Google-specific: opaque signature for reusing thought context
 }
 
@@ -186,13 +198,14 @@ export interface AssistantMessage {
 	api: Api;
 	provider: Provider;
 	model: string;
+	responseId?: string; // Provider-specific response/message identifier when the upstream API exposes one
 	usage: Usage;
 	stopReason: StopReason;
 	errorMessage?: string;
 	timestamp: number; // Unix timestamp in milliseconds
 }
 
-export interface ToolResultMessage<TDetails = unknown> {
+export interface ToolResultMessage<TDetails = any> {
 	role: "toolResult";
 	toolCallId: string;
 	toolName: string;
@@ -218,6 +231,14 @@ export interface Context {
 	tools?: Tool[];
 }
 
+/**
+ * Event protocol for AssistantMessageEventStream.
+ *
+ * Streams should emit `start` before partial updates, then terminate with either:
+ * - `done` carrying the final successful AssistantMessage, or
+ * - `error` carrying the final AssistantMessage with stopReason "error" or "aborted"
+ *   and errorMessage.
+ */
 export type AssistantMessageEvent =
 	| { type: "start"; partial: AssistantMessage }
 	| { type: "text_start"; contentIndex: number; partial: AssistantMessage }
@@ -243,6 +264,8 @@ export interface OpenAICompletionsCompat {
 	supportsDeveloperRole?: boolean;
 	/** Whether the provider supports `reasoning_effort`. Default: auto-detected from URL. */
 	supportsReasoningEffort?: boolean;
+	/** Optional mapping from pi-ai reasoning levels to provider/model-specific `reasoning_effort` values. */
+	reasoningEffortMap?: Partial<Record<ThinkingLevel, string>>;
 	/** Whether the provider supports `stream_options: { include_usage: true }` for token usage in streaming responses. Default: true. */
 	supportsUsageInStreaming?: boolean;
 	/** Which field to use for max tokens. Default: auto-detected from URL. */
@@ -255,18 +278,19 @@ export interface OpenAICompletionsCompat {
 	requiresThinkingAsText?: boolean;
 	/** Whether tool call IDs must be normalized to Mistral format (exactly 9 alphanumeric chars). Default: auto-detected from URL. */
 	requiresMistralToolIds?: boolean;
-	/** Format for reasoning/thinking parameter. "openai" uses reasoning_effort, "zai" uses thinking: { type: "enabled" }, "qwen" uses enable_thinking: boolean. Default: "openai". */
-	thinkingFormat?: "openai" | "zai" | "qwen";
+	/** Format for reasoning/thinking parameter. "openai" uses reasoning_effort, "openrouter" uses reasoning: { effort }, "zai" uses top-level enable_thinking: boolean, "qwen" uses top-level enable_thinking: boolean, and "qwen-chat-template" uses chat_template_kwargs.enable_thinking. Default: "openai". */
+	thinkingFormat?: "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template";
 	/** OpenRouter-specific routing preferences. Only used when baseUrl points to OpenRouter. */
 	openRouterRouting?: OpenRouterRouting;
 	/** Vercel AI Gateway routing preferences. Only used when baseUrl points to Vercel AI Gateway. */
 	vercelGatewayRouting?: VercelGatewayRouting;
+	/** Whether z.ai supports top-level `tool_stream: true` for streaming tool call deltas. Default: false. */
+	zaiToolStream?: boolean;
 	/** Whether the provider supports the `strict` field in tool definitions. Default: true. */
 	supportsStrictMode?: boolean;
 }
 
 /** Compatibility settings for OpenAI Responses APIs. */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface OpenAIResponsesCompat {
 	// Reserved for future use
 }
@@ -274,13 +298,76 @@ export interface OpenAIResponsesCompat {
 /**
  * OpenRouter provider routing preferences.
  * Controls which upstream providers OpenRouter routes requests to.
- * @see https://openrouter.ai/docs/provider-routing
+ * Sent as the `provider` field in the OpenRouter API request body.
+ * @see https://openrouter.ai/docs/guides/routing/provider-selection
  */
 export interface OpenRouterRouting {
-	/** List of provider slugs to exclusively use for this request (e.g., ["amazon-bedrock", "anthropic"]). */
-	only?: string[];
-	/** List of provider slugs to try in order (e.g., ["anthropic", "openai"]). */
+	/** Whether to allow backup providers to serve requests. Default: true. */
+	allow_fallbacks?: boolean;
+	/** Whether to filter providers to only those that support all parameters in the request. Default: false. */
+	require_parameters?: boolean;
+	/** Data collection setting. "allow" (default): allow providers that may store/train on data. "deny": only use providers that don't collect user data. */
+	data_collection?: "deny" | "allow";
+	/** Whether to restrict routing to only ZDR (Zero Data Retention) endpoints. */
+	zdr?: boolean;
+	/** Whether to restrict routing to only models that allow text distillation. */
+	enforce_distillable_text?: boolean;
+	/** An ordered list of provider names/slugs to try in sequence, falling back to the next if unavailable. */
 	order?: string[];
+	/** List of provider names/slugs to exclusively allow for this request. */
+	only?: string[];
+	/** List of provider names/slugs to skip for this request. */
+	ignore?: string[];
+	/** A list of quantization levels to filter providers by (e.g., ["fp16", "bf16", "fp8", "fp6", "int8", "int4", "fp4", "fp32"]). */
+	quantizations?: string[];
+	/** Sorting strategy. Can be a string (e.g., "price", "throughput", "latency") or an object with `by` and `partition`. */
+	sort?:
+		| string
+		| {
+				/** The sorting metric: "price", "throughput", "latency". */
+				by?: string;
+				/** Partitioning strategy: "model" (default) or "none". */
+				partition?: string | null;
+		  };
+	/** Maximum price per million tokens (USD). */
+	max_price?: {
+		/** Price per million prompt tokens. */
+		prompt?: number | string;
+		/** Price per million completion tokens. */
+		completion?: number | string;
+		/** Price per image. */
+		image?: number | string;
+		/** Price per audio unit. */
+		audio?: number | string;
+		/** Price per request. */
+		request?: number | string;
+	};
+	/** Preferred minimum throughput (tokens/second). Can be a number (applies to p50) or an object with percentile-specific cutoffs. */
+	preferred_min_throughput?:
+		| number
+		| {
+				/** Minimum tokens/second at the 50th percentile. */
+				p50?: number;
+				/** Minimum tokens/second at the 75th percentile. */
+				p75?: number;
+				/** Minimum tokens/second at the 90th percentile. */
+				p90?: number;
+				/** Minimum tokens/second at the 99th percentile. */
+				p99?: number;
+		  };
+	/** Preferred maximum latency (seconds). Can be a number (applies to p50) or an object with percentile-specific cutoffs. */
+	preferred_max_latency?:
+		| number
+		| {
+				/** Maximum latency in seconds at the 50th percentile. */
+				p50?: number;
+				/** Maximum latency in seconds at the 75th percentile. */
+				p75?: number;
+				/** Maximum latency in seconds at the 90th percentile. */
+				p90?: number;
+				/** Maximum latency in seconds at the 99th percentile. */
+				p99?: number;
+		  };
 }
 
 /**

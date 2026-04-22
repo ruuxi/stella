@@ -28,6 +28,7 @@ import type {
 	Usage,
 } from "../types.js";
 import type { AssistantMessageEventStream } from "../utils/event-stream.js";
+import { shortHash } from "../utils/hash.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { transformMessages } from "./transform-messages.js";
@@ -35,20 +36,6 @@ import { transformMessages } from "./transform-messages.js";
 // =============================================================================
 // Utilities
 // =============================================================================
-
-/** Fast deterministic hash to shorten long strings */
-function shortHash(str: string): string {
-	let h1 = 0xdeadbeef;
-	let h2 = 0x41c6ce57;
-	for (let i = 0; i < str.length; i++) {
-		const ch = str.charCodeAt(i);
-		h1 = Math.imul(h1 ^ ch, 2654435761);
-		h2 = Math.imul(h2 ^ ch, 1597334677);
-	}
-	h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-	h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-	return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
-}
 
 function encodeTextSignatureV1(id: string, phase?: TextSignatureV1["phase"]): string {
 	const payload: TextSignatureV1 = { v: 1, id };
@@ -92,8 +79,6 @@ export interface ConvertResponsesToolsOptions {
 	strict?: boolean | null;
 }
 
-type ResponseToolParameters = Record<string, unknown>;
-
 // =============================================================================
 // Message conversion
 // =============================================================================
@@ -106,21 +91,28 @@ export function convertResponsesMessages<TApi extends Api>(
 ): ResponseInput {
 	const messages: ResponseInput = [];
 
-	const normalizeToolCallId = (id: string): string => {
-		if (!allowedToolCallProviders.has(model.provider)) return id;
-		if (!id.includes("|")) return id;
+	const normalizeIdPart = (part: string): string => {
+		const sanitized = part.replace(/[^a-zA-Z0-9_-]/g, "_");
+		const normalized = sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
+		return normalized.replace(/_+$/, "");
+	};
+
+	const buildForeignResponsesItemId = (itemId: string): string => {
+		const normalized = `fc_${shortHash(itemId)}`;
+		return normalized.length > 64 ? normalized.slice(0, 64) : normalized;
+	};
+
+	const normalizeToolCallId = (id: string, _targetModel: Model<TApi>, source: AssistantMessage): string => {
+		if (!allowedToolCallProviders.has(model.provider)) return normalizeIdPart(id);
+		if (!id.includes("|")) return normalizeIdPart(id);
 		const [callId, itemId] = id.split("|");
-		const sanitizedCallId = callId.replace(/[^a-zA-Z0-9_-]/g, "_");
-		let sanitizedItemId = itemId.replace(/[^a-zA-Z0-9_-]/g, "_");
+		const normalizedCallId = normalizeIdPart(callId);
+		const isForeignToolCall = source.provider !== model.provider || source.api !== model.api;
+		let normalizedItemId = isForeignToolCall ? buildForeignResponsesItemId(itemId) : normalizeIdPart(itemId);
 		// OpenAI Responses API requires item id to start with "fc"
-		if (!sanitizedItemId.startsWith("fc")) {
-			sanitizedItemId = `fc_${sanitizedItemId}`;
+		if (!normalizedItemId.startsWith("fc_")) {
+			normalizedItemId = normalizeIdPart(`fc_${normalizedItemId}`);
 		}
-		// Truncate to 64 chars and strip trailing underscores (OpenAI Codex rejects them)
-		let normalizedCallId = sanitizedCallId.length > 64 ? sanitizedCallId.slice(0, 64) : sanitizedCallId;
-		let normalizedItemId = sanitizedItemId.length > 64 ? sanitizedItemId.slice(0, 64) : sanitizedItemId;
-		normalizedCallId = normalizedCallId.replace(/_+$/, "");
-		normalizedItemId = normalizedItemId.replace(/_+$/, "");
 		return `${normalizedCallId}|${normalizedItemId}`;
 	};
 
@@ -190,17 +182,14 @@ export function convertResponsesMessages<TApi extends Api>(
 					} else if (msgId.length > 64) {
 						msgId = `msg_${shortHash(msgId)}`;
 					}
-					const responseMessage = {
+					output.push({
 						type: "message",
 						role: "assistant",
 						content: [{ type: "output_text", text: sanitizeSurrogates(textBlock.text), annotations: [] }],
 						status: "completed",
 						id: msgId,
-					} as ResponseOutputMessage & { phase?: TextSignatureV1["phase"] };
-					if (parsedSignature?.phase) {
-						responseMessage.phase = parsedSignature.phase;
-					}
-					output.push(responseMessage);
+						phase: parsedSignature?.phase,
+					} as ResponseOutputMessage);
 				} else if (block.type === "toolCall") {
 					const toolCall = block as ToolCall;
 					const [callId, itemIdRaw] = toolCall.id.split("|");
@@ -253,6 +242,7 @@ export function convertResponsesMessages<TApi extends Api>(
 						});
 					}
 				}
+
 				output = contentParts;
 			} else {
 				output = sanitizeSurrogates(hasText ? textResult : "(see attached image)");
@@ -280,7 +270,7 @@ export function convertResponsesTools(tools: Tool[], options?: ConvertResponsesT
 		type: "function",
 		name: tool.name,
 		description: tool.description,
-		parameters: tool.parameters as ResponseToolParameters, // TypeBox already generates JSON Schema
+		parameters: tool.parameters as any, // TypeBox already generates JSON Schema
 		strict,
 	}));
 }
@@ -302,7 +292,9 @@ export async function processResponsesStream<TApi extends Api>(
 	const blockIndex = () => blocks.length - 1;
 
 	for await (const event of openaiStream) {
-		if (event.type === "response.output_item.added") {
+		if (event.type === "response.created") {
+			output.responseId = event.response.id;
+		} else if (event.type === "response.output_item.added") {
 			const item = event.item;
 			if (item.type === "reasoning") {
 				currentItem = item;
@@ -346,16 +338,6 @@ export async function processResponsesStream<TApi extends Api>(
 					});
 				}
 			}
-		} else if (event.type === "response.reasoning_text.delta") {
-			if (currentItem?.type === "reasoning" && currentBlock?.type === "thinking") {
-				currentBlock.thinking += event.delta;
-				stream.push({
-					type: "thinking_delta",
-					contentIndex: blockIndex(),
-					delta: event.delta,
-					partial: output,
-				});
-			}
 		} else if (event.type === "response.reasoning_summary_part.done") {
 			if (currentItem?.type === "reasoning" && currentBlock?.type === "thinking") {
 				currentItem.summary = currentItem.summary || [];
@@ -370,13 +352,6 @@ export async function processResponsesStream<TApi extends Api>(
 						partial: output,
 					});
 				}
-			}
-		} else if (
-			event.type === "response.reasoning_summary_text.done"
-			|| event.type === "response.reasoning_text.done"
-		) {
-			if (currentItem?.type === "reasoning" && currentBlock?.type === "thinking") {
-				currentBlock.thinking = event.text || currentBlock.thinking;
 			}
 		} else if (event.type === "response.content_part.added") {
 			if (currentItem?.type === "message") {
@@ -433,22 +408,27 @@ export async function processResponsesStream<TApi extends Api>(
 			}
 		} else if (event.type === "response.function_call_arguments.done") {
 			if (currentItem?.type === "function_call" && currentBlock?.type === "toolCall") {
+				const previousPartialJson = currentBlock.partialJson;
 				currentBlock.partialJson = event.arguments;
 				currentBlock.arguments = parseStreamingJson(currentBlock.partialJson);
+
+				if (event.arguments.startsWith(previousPartialJson)) {
+					const delta = event.arguments.slice(previousPartialJson.length);
+					if (delta.length > 0) {
+						stream.push({
+							type: "toolcall_delta",
+							contentIndex: blockIndex(),
+							delta,
+							partial: output,
+						});
+					}
+				}
 			}
 		} else if (event.type === "response.output_item.done") {
 			const item = event.item;
 
 			if (item.type === "reasoning" && currentBlock?.type === "thinking") {
-				const directReasoningText = item.content
-					?.filter((part): part is { type: "reasoning_text"; text: string } =>
-						part.type === "reasoning_text" && typeof part.text === "string")
-					.map((part) => part.text)
-					.join("\n\n");
-				currentBlock.thinking =
-					item.summary?.map((s) => s.text).join("\n\n")
-					|| directReasoningText
-					|| currentBlock.thinking;
+				currentBlock.thinking = item.summary?.map((s) => s.text).join("\n\n") || "";
 				currentBlock.thinkingSignature = JSON.stringify(item);
 				stream.push({
 					type: "thinking_end",
@@ -459,10 +439,7 @@ export async function processResponsesStream<TApi extends Api>(
 				currentBlock = null;
 			} else if (item.type === "message" && currentBlock?.type === "text") {
 				currentBlock.text = item.content.map((c) => (c.type === "output_text" ? c.text : c.refusal)).join("");
-				currentBlock.textSignature = encodeTextSignatureV1(
-					item.id,
-					(item as ResponseOutputMessage & { phase?: TextSignatureV1["phase"] }).phase ?? undefined,
-				);
+				currentBlock.textSignature = encodeTextSignatureV1(item.id, (item as { phase?: TextSignatureV1["phase"] }).phase ?? undefined);
 				stream.push({
 					type: "text_end",
 					contentIndex: blockIndex(),
@@ -487,6 +464,9 @@ export async function processResponsesStream<TApi extends Api>(
 			}
 		} else if (event.type === "response.completed") {
 			const response = event.response;
+			if (response?.id) {
+				output.responseId = response.id;
+			}
 			if (response?.usage) {
 				const cachedTokens = response.usage.input_tokens_details?.cached_tokens || 0;
 				output.usage = {
@@ -510,17 +490,16 @@ export async function processResponsesStream<TApi extends Api>(
 				output.stopReason = "toolUse";
 			}
 		} else if (event.type === "error") {
-			const message = event.message ? `Error Code ${event.code}: ${event.message}` : "Unknown error";
-			throw new Error(message);
+			throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
 		} else if (event.type === "response.failed") {
 			const error = event.response?.error;
 			const details = event.response?.incomplete_details;
-			const message = error
+			const msg = error
 				? `${error.code || "unknown"}: ${error.message || "no message"}`
 				: details?.reason
 					? `incomplete: ${details.reason}`
 					: "Unknown error (no error details in response)";
-			throw new Error(message);
+			throw new Error(msg);
 		}
 	}
 }
