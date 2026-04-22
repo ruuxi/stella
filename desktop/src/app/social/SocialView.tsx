@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect } from "react";
-import MessageSquare from "lucide-react/dist/esm/icons/message-square";
 import { CollaborationIllustration } from "./CollaborationIllustration";
 import Users from "lucide-react/dist/esm/icons/users";
 import SquarePen from "lucide-react/dist/esm/icons/square-pen";
