@@ -156,13 +156,13 @@ type RuntimeToolContextArgs = {
   toolCallId: string;
   runId: string;
   rootRunId?: string;
-  taskId?: string;
+  agentId?: string;
   conversationId: string;
   agentType: string;
   deviceId: string;
   stellaRoot?: string;
-  taskDepth?: number;
-  maxTaskDepth?: number;
+  agentDepth?: number;
+  maxAgentDepth?: number;
   allowedToolNames?: string[];
 };
 
@@ -177,10 +177,10 @@ export const buildRuntimeToolContext = (
   agentType: args.agentType,
   ...(args.stellaRoot ? { stellaRoot: args.stellaRoot } : {}),
   storageMode: "local",
-  ...(args.taskId ? { taskId: args.taskId } : {}),
-  ...(typeof args.taskDepth === "number" ? { taskDepth: args.taskDepth } : {}),
-  ...(typeof args.maxTaskDepth === "number"
-    ? { maxTaskDepth: args.maxTaskDepth }
+  ...(args.agentId ? { agentId: args.agentId } : {}),
+  ...(typeof args.agentDepth === "number" ? { agentDepth: args.agentDepth } : {}),
+  ...(typeof args.maxAgentDepth === "number"
+    ? { maxAgentDepth: args.maxAgentDepth }
     : {}),
   ...(Array.isArray(args.allowedToolNames) && args.allowedToolNames.length > 0
     ? { allowedToolNames: args.allowedToolNames }
@@ -278,13 +278,13 @@ export const executeRuntimeToolCall = async (
 export const createPiTools = (opts: {
   runId: string;
   rootRunId?: string;
-  taskId?: string;
+  agentId?: string;
   conversationId: string;
   agentType: string;
   deviceId: string;
   stellaRoot?: string;
-  taskDepth?: number;
-  maxTaskDepth?: number;
+  agentDepth?: number;
+  maxAgentDepth?: number;
   toolsAllowlist?: string[];
   toolCatalog?: ToolMetadata[];
   store: RuntimeStore;
@@ -333,13 +333,13 @@ export const createPiTools = (opts: {
           args,
           runId: opts.runId,
           rootRunId: opts.rootRunId,
-          taskId: opts.taskId,
+          agentId: opts.agentId,
           conversationId: opts.conversationId,
           agentType: opts.agentType,
           deviceId: opts.deviceId,
           stellaRoot: opts.stellaRoot,
-          taskDepth: opts.taskDepth,
-          maxTaskDepth: opts.maxTaskDepth,
+          agentDepth: opts.agentDepth,
+          maxAgentDepth: opts.maxAgentDepth,
           allowedToolNames: requested,
           store: opts.store,
           toolExecutor: opts.toolExecutor,

@@ -59,7 +59,7 @@ describe("session-store", () => {
       type: "tool_request",
       timestamp: 1_001,
       requestId: "tool-1",
-      payload: { toolName: "WebSearch", args: { query: "weather" } },
+      payload: { toolName: "web", args: { query: "weather" } },
     });
     const assistantEvent = store.appendEvent({
       conversationId,

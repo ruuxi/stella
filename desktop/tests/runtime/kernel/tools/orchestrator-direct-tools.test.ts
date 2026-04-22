@@ -40,8 +40,8 @@ const createTestHost = async (): Promise<TestHostContext> => {
 
   const host = createToolHost({
     stellaRoot: rootPath,
-    taskApi: {
-      createTask: async (request) => {
+    agentApi: {
+      createAgent: async (request) => {
         createdTasks.push({
           description: request.description,
           prompt: request.prompt,
@@ -49,8 +49,8 @@ const createTestHost = async (): Promise<TestHostContext> => {
         });
         return { threadId: `thread-${createdTasks.length}` };
       },
-      getTask: async () => null,
-      cancelTask: async () => ({ canceled: false }),
+      getAgent: async () => null,
+      cancelAgent: async () => ({ canceled: false }),
     },
     displayHtml: (html) => {
       displayCalls.push(html);
@@ -94,15 +94,16 @@ describe("orchestrator direct tool surface", () => {
     const orchestratorTools = new Set(
       host.getToolCatalog("orchestrator").map((tool) => tool.name),
     );
-    expect(orchestratorTools.has("TaskCreate")).toBe(true);
-    expect(orchestratorTools.has("TaskUpdate")).toBe(true);
+    expect(orchestratorTools.has("spawn_agent")).toBe(true);
+    expect(orchestratorTools.has("send_input")).toBe(true);
+    expect(orchestratorTools.has("pause_agent")).toBe(true);
     expect(orchestratorTools.has("Display")).toBe(true);
-    expect(orchestratorTools.has("WebSearch")).toBe(true);
+    expect(orchestratorTools.has("web")).toBe(true);
     expect(orchestratorTools.has("Memory")).toBe(true);
     expect(orchestratorTools.has("askQuestion")).toBe(true);
 
     const generalTools = new Set(host.getToolCatalog("general").map((tool) => tool.name));
-    expect(generalTools.has("TaskCreate")).toBe(false);
+    expect(generalTools.has("spawn_agent")).toBe(false);
     expect(generalTools.has("Display")).toBe(false);
     expect(generalTools.has("Memory")).toBe(false);
     expect(generalTools.has("askQuestion")).toBe(false);
@@ -162,11 +163,11 @@ describe("orchestrator direct tool surface", () => {
     expect(missingResult.error).toContain("questions array is required");
   });
 
-  it("executes TaskCreate directly for the orchestrator and rejects other agents", async () => {
+  it("executes spawn_agent directly for the orchestrator and rejects other agents", async () => {
     const { host, createdTasks } = await createTestHost();
 
     const orchestratorResult = await host.executeTool(
-      "TaskCreate",
+      "spawn_agent",
       {
         description: "Add a notes page",
         prompt: "Build the requested notes experience.",
@@ -189,7 +190,7 @@ describe("orchestrator direct tool surface", () => {
     ]);
 
     const generalResult = await host.executeTool(
-      "TaskCreate",
+      "spawn_agent",
       {
         description: "Should fail",
         prompt: "This agent should not have direct task creation.",

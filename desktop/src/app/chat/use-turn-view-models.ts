@@ -32,18 +32,18 @@ const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   return event.payload as MessagePayload;
 };
 
-const getAssistantTaskId = (event?: EventRecord): string | undefined => {
+const getAssistantAgentId = (event?: EventRecord): string | undefined => {
   const payload = getMessagePayload(event);
   const rt = (payload?.metadata as Record<string, unknown> | undefined)
     ?.runtime as Record<string, unknown> | undefined;
   const target = rt?.responseTarget as
-    | { type: string; taskId?: string; terminalState?: string }
+    | { type: string; agentId?: string; terminalState?: string }
     | undefined;
   if (
-    (target?.type === "task_turn" || target?.type === "task_terminal_notice")
-    && typeof target.taskId === "string"
+    (target?.type === "agent_turn" || target?.type === "agent_terminal_notice")
+    && typeof target.agentId === "string"
   ) {
-    return target.taskId;
+    return target.agentId;
   }
   return undefined;
 };
@@ -70,7 +70,7 @@ const getWebSearchBadgeHtml = (events: EventRecord[]): string | undefined => {
       continue;
     }
 
-    if (payload.toolName.toLowerCase() !== "websearch") {
+    if (payload.toolName.toLowerCase() !== "web") {
       continue;
     }
 
@@ -174,13 +174,13 @@ export function useTurnViewModels(opts: {
       if (event.type !== "assistant_message") {
         continue;
       }
-      const taskId = getAssistantTaskId(event);
-      if (!taskId) {
+      const agentId = getAssistantAgentId(event);
+      if (!agentId) {
         continue;
       }
       const turnId = getAssistantUserMessageId(event) ?? event._id;
       if (!map.has(turnId)) {
-        map.set(turnId, taskId);
+        map.set(turnId, agentId);
       }
     }
     return map;
@@ -225,8 +225,8 @@ export function useTurnViewModels(opts: {
       const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
         getMessagePayload(turn.assistantMessage),
       );
-      const taskId =
-        getAssistantTaskId(turn.assistantMessage)
+      const agentId =
+        getAssistantAgentId(turn.assistantMessage)
         ?? stickyTaskIdByTurnId.get(turn.id);
 
       const askQuestionPayload = getAskQuestionPayload(turn.toolEvents);
@@ -248,7 +248,7 @@ export function useTurnViewModels(opts: {
         webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
         officePreviewRef: getOfficePreviewRef(turn.toolEvents),
         ...(askQuestionPayload ? { askQuestion: askQuestionPayload } : {}),
-        ...(taskId ? { taskId } : {}),
+        ...(agentId ? { agentId } : {}),
       };
     });
   }, [slicedTurns, stickyTaskIdByTurnId]);
