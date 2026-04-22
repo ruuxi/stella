@@ -26,7 +26,7 @@ type AgentDefinition = {
   description: string;
   activityLabel: string | null;
   bundledCore: boolean;
-  taskSubagent: boolean;
+  runsAsSubagent: boolean;
   /** When false, omitted from the orchestrator-visible agent roster (internal flows only). */
   includeInAgentRoster?: boolean;
   usesLocalCliRuntime: boolean;
@@ -46,7 +46,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
       "Coordinates work across agents, talks to the user, manages memory and scheduling.",
     activityLabel: "Coordinating",
     bundledCore: true,
-    taskSubagent: false,
+    runsAsSubagent: false,
     usesLocalCliRuntime: true,
     promptRole: "orchestrator",
     includesStellaDocumentation: false,
@@ -65,7 +65,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
       "Applies local cron and heartbeat changes from plain-language scheduling requests.",
     activityLabel: "Scheduling",
     bundledCore: true,
-    taskSubagent: false,
+    runsAsSubagent: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
     includesStellaDocumentation: false,
@@ -81,7 +81,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
       "Executes delegated work with a fixed base tool pack, Stella's life environment, and bundled native CLIs.",
     activityLabel: "Working",
     bundledCore: true,
-    taskSubagent: true,
+    runsAsSubagent: true,
     usesLocalCliRuntime: true,
     promptRole: "subagent",
     includesStellaDocumentation: false,
@@ -99,7 +99,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     description: "Handles offline fallback responses.",
     activityLabel: "Responding",
     bundledCore: false,
-    taskSubagent: false,
+    runsAsSubagent: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
     includesStellaDocumentation: false,
@@ -115,7 +115,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
       "Stateless one-shot helper. Reads state/ to surface relevant paths for an upcoming General task.",
     activityLabel: "Exploring",
     bundledCore: true,
-    taskSubagent: false,
+    runsAsSubagent: false,
     includeInAgentRoster: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
@@ -132,7 +132,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
       "Background memory consolidator. Reads thread_summaries + memories_extensions and surgically updates state/memories/ markdown files.",
     activityLabel: "Dreaming",
     bundledCore: true,
-    taskSubagent: false,
+    runsAsSubagent: false,
     includeInAgentRoster: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
@@ -149,7 +149,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
       "Cheap recursive summarizer for the Chronicle OCR sidecar. Distills 10m and 6h windows of screen activity into short markdown blocks consumed by Dream.",
     activityLabel: "Chronicling",
     bundledCore: false,
-    taskSubagent: false,
+    runsAsSubagent: false,
     includeInAgentRoster: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
@@ -164,7 +164,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
 type BuiltInAgentDefinition = (typeof BUILTIN_AGENT_DEFINITIONS)[number];
 export type DesktopSubagentId = Extract<
   BuiltInAgentDefinition,
-  { taskSubagent: true }
+  { runsAsSubagent: true }
 >["id"];
 export type LocalCliAgentId = Extract<
   BuiltInAgentDefinition,
@@ -182,7 +182,7 @@ export const BUILTIN_AGENT_DEFINITION_BY_ID = Object.freeze(
 );
 
 export const DESKTOP_SUBAGENT_IDS = Object.freeze(
-  BUILTIN_AGENT_DEFINITIONS.filter((entry) => entry.taskSubagent).map(
+  BUILTIN_AGENT_DEFINITIONS.filter((entry) => entry.runsAsSubagent).map(
     (entry) => entry.id,
   ) as DesktopSubagentId[],
 );

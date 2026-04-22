@@ -93,9 +93,9 @@ export const METHOD_NAMES = {
   RUN_CANCEL: "run.cancel",
   RUN_RESUME_EVENTS: "run.resumeEvents",
   RUN_AUTOMATION: "run.automation",
-  TASK_RUN_BLOCKING: "task.runBlocking",
-  TASK_CREATE_BACKGROUND: "task.createBackground",
-  TASK_GET_SNAPSHOT: "task.getSnapshot",
+  AGENT_RUN_BLOCKING: "agent.runBlocking",
+  AGENT_CREATE_BACKGROUND: "agent.createBackground",
+  AGENT_GET_SNAPSHOT: "agent.getSnapshot",
   SEARCH_WEB: "search.web",
   VOICE_PERSIST_TRANSCRIPT: "voice.persistTranscript",
   VOICE_ORCHESTRATOR_CHAT: "voice.orchestratorChat",
@@ -162,8 +162,8 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_START_CHAT: "internal.worker.startChat",
   INTERNAL_WORKER_CANCEL: "internal.worker.cancel",
   INTERNAL_WORKER_RUN_AUTOMATION: "internal.worker.runAutomation",
-  INTERNAL_WORKER_RUN_BLOCKING_TASK: "internal.worker.runBlockingTask",
-  INTERNAL_WORKER_CREATE_BACKGROUND_TASK: "internal.worker.createBackgroundTask",
+  INTERNAL_WORKER_RUN_BLOCKING_AGENT: "internal.worker.runBlockingAgent",
+  INTERNAL_WORKER_CREATE_BACKGROUND_AGENT: "internal.worker.createBackgroundAgent",
   INTERNAL_WORKER_GET_AGENT_SNAPSHOT: "internal.worker.getAgentSnapshot",
   INTERNAL_WORKER_APPEND_THREAD_MESSAGE: "internal.worker.appendThreadMessage",
   INTERNAL_WORKER_WEB_SEARCH: "internal.worker.webSearch",
@@ -324,7 +324,7 @@ export type RuntimeHealthSnapshot = {
   workerGeneration: number;
   deviceId: string | null;
   activeRunId: string | null;
-  activeTaskCount: number;
+  activeAgentCount: number;
 };
 
 export type RuntimeAttachmentRef = {
@@ -394,7 +394,7 @@ export type RuntimeSelfModRevertResult = {
   message: string;
 };
 
-export type RuntimeTaskRequest = {
+export type RuntimeLocalAgentRequest = {
   conversationId: string;
   description: string;
   prompt: string;
@@ -409,7 +409,7 @@ export type RuntimeTaskRequest = {
   };
 };
 
-export type RuntimeTaskSnapshot = {
+export type RuntimeLocalAgentSnapshot = {
   id: string;
   status: "running" | "completed" | "error" | "canceled";
   description: string;

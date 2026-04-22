@@ -182,9 +182,10 @@ export const createStellaHostRunner = (
     sendMessage: orchestratorController.sendMessage,
     sendUserMessage: orchestratorController.sendUserMessage,
     runAutomationTurn: orchestratorController.runAutomationTurn,
-    runBlockingLocalTask: taskOrchestration.runBlockingLocalTask,
-    createBackgroundTask: taskOrchestration.createBackgroundTask,
-    getActiveTaskCount: () => context.state.localAgentManager?.getTaskCount() ?? 0,
+    runBlockingLocalAgent: taskOrchestration.runBlockingLocalAgent,
+    createBackgroundAgent: taskOrchestration.createBackgroundAgent,
+    getActiveAgentCount: () =>
+      context.state.localAgentManager?.getActiveAgentCount() ?? 0,
     getLocalAgentSnapshot: async (agentId: string) => {
       const manager = context.state.localAgentManager;
       if (!manager) {

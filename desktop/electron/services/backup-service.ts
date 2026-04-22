@@ -815,7 +815,7 @@ export class BackupService {
       return false;
     }
 
-    return Boolean(health?.activeRunId) || (health?.activeTaskCount ?? 0) > 0;
+    return Boolean(health?.activeRunId) || (health?.activeAgentCount ?? 0) > 0;
   }
 
   private async performBackup(
