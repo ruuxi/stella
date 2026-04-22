@@ -105,12 +105,6 @@ export const mediaSchema = {
     status: mediaJobStatusValidator,
     upstreamStatus: v.string(),
     queuePosition: v.union(v.number(), v.null()),
-    /**
-     * Legacy inline log array. New webhooks append to `media_job_logs`
-     * instead so the job document doesn't grow unbounded; this field is kept
-     * optional only for back-compat with rows written before that split.
-     */
-    logs: v.optional(v.array(jsonValueValidator)),
     output: optionalJsonValueValidator,
     error: v.optional(mediaJobErrorValidator),
     createdAt: v.number(),
@@ -122,6 +116,12 @@ export const mediaSchema = {
     .index("by_jobId", ["jobId"])
     .index("by_ownerId_and_jobId", ["ownerId", "jobId"])
     .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
+    // The desktop materializer subscribes via `listSucceededSince`, which
+    // wants succeeded jobs in completion order. Adding `(status, completedAt)`
+    // as a compound index lets that query return only succeeded rows
+    // directly, rather than over-fetching `(ownerId, createdAt)` and JS
+    // filtering by `status === "succeeded"`.
+    .index("by_ownerId_and_status_and_completedAt", ["ownerId", "status", "completedAt"])
     .index("by_provider_and_providerRequestId", ["provider", "providerRequestId"]),
 
   /**

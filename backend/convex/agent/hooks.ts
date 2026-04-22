@@ -237,16 +237,20 @@ export const logProxyUsage = internalMutation({
 
 /**
  * Get aggregated usage for an owner over a recent time window.
- * Defaults to the last 24 hours.
+ *
+ * `nowMs` must be supplied by the caller (typically `Date.now()` from an
+ * action / httpAction). Computing it inside the query handler would defeat
+ * Convex's reactive cache — every subscriber would re-run on every read.
  */
 export const getOwnerUsage = internalQuery({
   args: {
     ownerId: v.string(),
+    nowMs: v.number(),
     windowMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const windowMs = args.windowMs ?? 24 * 60 * 60 * 1000; // 24h default
-    const since = Date.now() - windowMs;
+    const since = args.nowMs - windowMs;
 
     const logs = await ctx.db
       .query("usage_logs")

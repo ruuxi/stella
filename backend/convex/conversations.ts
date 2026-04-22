@@ -3,9 +3,11 @@ import {
   internalQuery,
   internalMutation,
   type MutationCtx,
+  type QueryCtx,
 } from "./_generated/server";
 import { components, internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireUserId } from "./auth";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import {
@@ -52,8 +54,8 @@ const conversationDocValidator = v.union(v.null(), v.object({
   isDefault: v.boolean(),
   activeThreadId: v.optional(v.id("threads")),
   activeTargetDeviceId: v.optional(v.string()),
-  pendingDeviceSelection: v.optional(pendingDeviceSelectionValidator),
-  eventCount: v.optional(v.number()),
+  pendingSelectionId: v.optional(v.id("pending_device_selections")),
+  eventCount: v.number(),
   createdAt: v.number(),
   updatedAt: v.number(),
 }));
@@ -62,6 +64,24 @@ const conversationRoutingStateValidator = v.object({
   activeTargetDeviceId: v.union(v.string(), v.null()),
   pendingDeviceSelection: v.union(v.null(), pendingDeviceSelectionValidator),
 });
+
+const loadPendingDeviceSelection = async (
+  ctx: QueryCtx | MutationCtx,
+  conversation: Doc<"conversations"> | null,
+) => {
+  if (!conversation?.pendingSelectionId) return null;
+  const child = await ctx.db.get(conversation.pendingSelectionId);
+  return child?.selection ?? null;
+};
+
+const findPendingSelectionRow = async (
+  ctx: MutationCtx,
+  conversationId: Id<"conversations">,
+) =>
+  await ctx.db
+    .query("pending_device_selections")
+    .withIndex("by_conversationId", (q) => q.eq("conversationId", conversationId))
+    .unique();
 
 export const getById = internalQuery({
   args: { id: v.id("conversations") },
@@ -121,6 +141,7 @@ export const getOrCreateDefaultConversation = mutation({
       ownerId,
       title: args.title ?? "Default",
       isDefault: true,
+      eventCount: 0,
       createdAt: now,
       updatedAt: now,
     });
@@ -187,6 +208,7 @@ export const createConversation = mutation({
       ownerId,
       title: args.title ?? "New conversation",
       isDefault: false,
+      eventCount: 0,
       createdAt: now,
       updatedAt: now,
     });
@@ -222,9 +244,10 @@ export const getRoutingState = internalQuery({
   returns: conversationRoutingStateValidator,
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
+    const pendingDeviceSelection = await loadPendingDeviceSelection(ctx, conversation);
     return {
       activeTargetDeviceId: conversation?.activeTargetDeviceId ?? null,
-      pendingDeviceSelection: conversation?.pendingDeviceSelection ?? null,
+      pendingDeviceSelection,
     };
   },
 });
@@ -265,9 +288,25 @@ export const setPendingDeviceSelection = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await findPendingSelectionRow(ctx, args.conversationId);
+    let pendingSelectionId: Id<"pending_device_selections">;
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        selection: args.selection,
+        updatedAt: now,
+      });
+      pendingSelectionId = existing._id;
+    } else {
+      pendingSelectionId = await ctx.db.insert("pending_device_selections", {
+        conversationId: args.conversationId,
+        selection: args.selection,
+        updatedAt: now,
+      });
+    }
     await ctx.db.patch(args.conversationId, {
-      pendingDeviceSelection: args.selection,
-      updatedAt: Date.now(),
+      pendingSelectionId,
+      updatedAt: now,
     });
     return null;
   },
@@ -279,8 +318,12 @@ export const clearPendingDeviceSelection = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const existing = await findPendingSelectionRow(ctx, args.conversationId);
+    if (existing) {
+      await ctx.db.delete(existing._id);
+    }
     await ctx.db.patch(args.conversationId, {
-      pendingDeviceSelection: undefined,
+      pendingSelectionId: undefined,
       updatedAt: Date.now(),
     });
     return null;

@@ -1107,10 +1107,10 @@ function ChronicleSettingsCard() {
 function ModelConfigSection() {
   const { hasConnectedAccount } = useAuthSessionState();
   const shouldQueryPreferences = hasConnectedAccount ? {} : "skip";
-  const overridesJson = useQuery(
+  const remoteOverrides = useQuery(
     api.data.preferences.getModelOverrides,
     shouldQueryPreferences,
-  ) as string | undefined;
+  ) as Record<string, string> | undefined;
   const modelDefaults = useQuery(
     api.data.preferences.getModelDefaults,
     shouldQueryPreferences,
@@ -1160,19 +1160,11 @@ function ModelConfigSection() {
   );
 
   const serverOverrides = useMemo<Record<string, string>>(() => {
-    if (!overridesJson) {
+    if (!remoteOverrides) {
       return {};
     }
-
-    try {
-      return normalizeModelOverrides(
-        JSON.parse(overridesJson) as Record<string, string>,
-        defaultModelMap,
-      );
-    } catch {
-      return {};
-    }
-  }, [defaultModelMap, overridesJson]);
+    return normalizeModelOverrides(remoteOverrides, defaultModelMap);
+  }, [defaultModelMap, remoteOverrides]);
   const [localOverrides, setLocalOverrides] = useState<
     Record<string, string | null>
   >({});
@@ -1200,7 +1192,7 @@ function ModelConfigSection() {
   const modelPreferencesLoaded =
     hasConnectedAccount &&
     modelDefaults !== undefined &&
-    overridesJson !== undefined;
+    remoteOverrides !== undefined;
 
   const pendingLocalOverrides = useMemo(() => {
     const next: Record<string, string | null> = {};

@@ -1,5 +1,5 @@
-import type { ActionCtx } from "../_generated/server";
-import { action, internalAction } from "../_generated/server";
+import type { ActionCtx, QueryCtx } from "../_generated/server";
+import { action, internalAction, internalQuery } from "../_generated/server";
 import { Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -13,6 +13,7 @@ import {
 import { AGENT_IDS } from "../lib/agent_constants";
 import { getPlatformSystemGuidance } from "../prompts/index";
 import { STELLA_DEFAULT_MODEL } from "../stella_models";
+import { resolveAgentConfig } from "./agents";
 
 export type PromptBuildResult = {
   systemPrompt: string;
@@ -137,92 +138,177 @@ const fetchLocalAgentContextRuntimeArgs = {
   timezone: v.optional(v.string()),
 };
 
+/**
+ * Cap on thread-history rows returned by `agentRuntimeContext`. Stays well
+ * below the array-return limit so a busy thread doesn't fail the bundled
+ * read; the `prompt_builder` callers only ever slice the tail anyway.
+ */
+const AGENT_CONTEXT_THREAD_HISTORY_CAP = 200;
+
+const lookupOwnerPreference = async (
+  ctx: QueryCtx,
+  ownerId: string,
+  key: string,
+) => {
+  const record = await ctx.db
+    .query("user_preferences")
+    .withIndex("by_ownerId_and_key", (q) =>
+      q.eq("ownerId", ownerId).eq("key", key),
+    )
+    .unique();
+  return record?.value ?? null;
+};
+
+const agentRuntimeContextResultValidator = v.object({
+  agent: v.object({
+    systemPrompt: v.string(),
+    toolsAllowlist: v.optional(v.array(v.string())),
+    maxTaskDepth: v.optional(v.number()),
+  }),
+  modelOverride: v.union(v.null(), v.string()),
+  agentEngine: v.union(
+    v.null(),
+    v.literal("default"),
+    v.literal("codex_local"),
+    v.literal("claude_code_local"),
+  ),
+  maxAgentConcurrency: v.union(v.null(), v.number()),
+  resolvedThreadId: v.union(v.null(), v.id("threads")),
+  threadMessages: v.array(
+    v.object({
+      role: v.string(),
+      content: v.string(),
+      toolCallId: v.optional(v.string()),
+    }),
+  ),
+});
+type AgentRuntimeContextResult = Infer<typeof agentRuntimeContextResultValidator>;
+
+/**
+ * Bundled context read for the agent runtime. Replaces the previous fan-out
+ * of 3–5 separate `ctx.runQuery` round-trips (agent config + per-key
+ * preference lookups + active-thread id + thread messages), which gave
+ * inconsistent snapshots when a write interleaved between the calls. A
+ * single `internalQuery` is one transaction, so the bundle is internally
+ * consistent.
+ */
+export const agentRuntimeContext = internalQuery({
+  args: {
+    ownerId: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+    agentType: v.string(),
+    threadId: v.optional(v.id("threads")),
+    maxHistoryMessages: v.optional(v.number()),
+  },
+  returns: agentRuntimeContextResultValidator,
+  handler: async (ctx, args): Promise<AgentRuntimeContextResult> => {
+    const agent = await resolveAgentConfig(ctx, {
+      agentType: args.agentType,
+      ownerId: args.ownerId,
+    });
+
+    const modelOverrideRaw = await lookupOwnerPreference(
+      ctx,
+      args.ownerId,
+      `model_config:${args.agentType}`,
+    );
+    const modelOverride =
+      typeof modelOverrideRaw === "string" && modelOverrideRaw.trim().length > 0
+        ? modelOverrideRaw.trim()
+        : null;
+
+    let agentEngine: AgentRuntimeContextResult["agentEngine"] = null;
+    let maxAgentConcurrency: AgentRuntimeContextResult["maxAgentConcurrency"] = null;
+    if (args.agentType === AGENT_IDS.GENERAL) {
+      const [enginePref, concurrencyPref] = await Promise.all([
+        lookupOwnerPreference(ctx, args.ownerId, GENERAL_AGENT_ENGINE_KEY),
+        lookupOwnerPreference(ctx, args.ownerId, MAX_AGENT_CONCURRENCY_KEY),
+      ]);
+      agentEngine = normalizeGeneralAgentEngine(enginePref);
+      maxAgentConcurrency = normalizeMaxAgentConcurrency(concurrencyPref);
+    }
+
+    let resolvedThreadId: Id<"threads"> | null = args.threadId ?? null;
+    if (!resolvedThreadId && args.conversationId) {
+      const conversation = await ctx.db.get(args.conversationId);
+      resolvedThreadId = conversation?.activeThreadId ?? null;
+    }
+
+    let threadMessages: AgentRuntimeContextResult["threadMessages"] = [];
+    if (resolvedThreadId) {
+      const cap = Math.min(
+        Math.max(Math.floor(args.maxHistoryMessages ?? 50), 1),
+        AGENT_CONTEXT_THREAD_HISTORY_CAP,
+      );
+      // Read newest-first and reverse so we always return the most recent
+      // `cap` messages without scanning a long thread end-to-end.
+      const recent = await ctx.db
+        .query("thread_messages")
+        .withIndex("by_threadId_and_ordinal", (q) =>
+          q.eq("threadId", resolvedThreadId!),
+        )
+        .order("desc")
+        .take(cap);
+      threadMessages = recent.reverse().map((m) => ({
+        role: m.role,
+        content: m.content,
+        ...(m.toolCallId ? { toolCallId: m.toolCallId } : {}),
+      }));
+    }
+
+    return {
+      agent: {
+        systemPrompt: agent.systemPrompt,
+        toolsAllowlist: agent.toolsAllowlist,
+        maxTaskDepth: agent.maxTaskDepth,
+      },
+      modelOverride,
+      agentEngine,
+      maxAgentConcurrency,
+      resolvedThreadId,
+      threadMessages,
+    };
+  },
+});
+
 const fetchAgentContextForOwner = async (
   ctx: ActionCtx,
   args: FetchAgentContextSharedArgs,
 ): Promise<AgentContextResult> => {
-  // 1. Build system prompt (includes skills, threads, platform, timezone)
-  const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
-    ownerId: args.ownerId,
-    conversationId: args.conversationId,
-    platform: args.platform,
-    timezone: args.timezone,
-  });
-
-  // 2. Resolve primary/fallback models for the runtime.
-  let model = STELLA_DEFAULT_MODEL;
-  const override = await ctx.runQuery(
-    internal.data.preferences.getPreferenceForOwner,
-    { ownerId: args.ownerId, key: `model_config:${args.agentType}` },
-  );
-  if (typeof override === "string" && override.trim().length > 0) {
-    model = override.trim();
-  }
-
-  let agentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
-  let maxAgentConcurrency: number | undefined;
-  if (args.agentType === AGENT_IDS.GENERAL) {
-    const engineKey = GENERAL_AGENT_ENGINE_KEY;
-    agentEngine = "default";
-    maxAgentConcurrency = 24;
-    const enginePreference = await ctx.runQuery(
-      internal.data.preferences.getPreferenceForOwner,
-      { ownerId: args.ownerId, key: engineKey },
-    );
-    agentEngine = normalizeGeneralAgentEngine(enginePreference);
-    const concurrencyPreference = await ctx.runQuery(
-      internal.data.preferences.getPreferenceForOwner,
-      { ownerId: args.ownerId, key: MAX_AGENT_CONCURRENCY_KEY },
-    );
-    maxAgentConcurrency = normalizeMaxAgentConcurrency(concurrencyPreference);
-  }
-
-  // 3. Get thread history if we have an active thread
-  let threadHistory:
-    | Array<{ role: string; content: string; toolCallId?: string }>
-    | undefined;
-  let activeThreadId: string | undefined;
-
-  const resolvedThreadId =
-    args.threadId ??
-    (await ctx.runQuery(internal.conversations.getActiveThreadId, {
+  const bundle: AgentRuntimeContextResult = await ctx.runQuery(
+    internal.agent.prompt_builder.agentRuntimeContext,
+    {
+      ownerId: args.ownerId,
       conversationId: args.conversationId,
-    }));
+      agentType: args.agentType,
+      threadId: args.threadId,
+      maxHistoryMessages: args.maxHistoryMessages,
+    },
+  );
 
-  if (resolvedThreadId) {
-    activeThreadId = resolvedThreadId;
-    try {
-      const messages = await ctx.runQuery(
-        internal.data.threads.loadThreadMessages,
-        {
-          threadId: resolvedThreadId as Id<"threads">,
-        },
-      );
-      const recent = messages.slice(-(args.maxHistoryMessages ?? 50));
-      if (recent.length > 0) {
-        threadHistory = recent.map(
-          (m: { role: string; content: string; toolCallId?: string }) => ({
-            role: m.role,
-            content: m.content,
-            toolCallId: m.toolCallId,
-          }),
-        );
-      }
-    } catch {
-      // Thread messages unavailable
+  const systemParts = [bundle.agent.systemPrompt];
+  if (args.platform) {
+    const guidance = getPlatformSystemGuidance(args.platform);
+    if (guidance) {
+      systemParts.push(guidance);
     }
   }
+  const maxTaskDepthValue = Number(bundle.agent.maxTaskDepth);
+  const maxTaskDepth =
+    Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
+      ? Math.floor(maxTaskDepthValue)
+      : 2;
 
   return {
-    systemPrompt: promptBuild.systemPrompt,
-    dynamicContext: promptBuild.dynamicContext,
-    toolsAllowlist: promptBuild.toolsAllowlist,
-    model,
-    maxTaskDepth: promptBuild.maxTaskDepth,
-    threadHistory,
-    activeThreadId,
-    agentEngine,
-    maxAgentConcurrency,
+    systemPrompt: systemParts.join("\n\n").trim(),
+    dynamicContext: "",
+    toolsAllowlist: bundle.agent.toolsAllowlist,
+    model: bundle.modelOverride ?? STELLA_DEFAULT_MODEL,
+    maxTaskDepth,
+    threadHistory: bundle.threadMessages.length > 0 ? bundle.threadMessages : undefined,
+    activeThreadId: bundle.resolvedThreadId ?? undefined,
+    agentEngine: bundle.agentEngine ?? undefined,
+    maxAgentConcurrency: bundle.maxAgentConcurrency ?? undefined,
   };
 };
 
@@ -260,66 +346,37 @@ export const fetchLocalAgentContextForRuntime = action({
   handler: async (ctx, args): Promise<AgentContextResult> => {
     const ownerId = await requireUserId(ctx);
 
-    const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
-      ownerId,
-      platform: args.platform,
-      timezone: args.timezone,
-    });
-    let model = STELLA_DEFAULT_MODEL;
-    try {
-      const override = await ctx.runQuery(
-        internal.data.preferences.getPreferenceForOwner,
-        { ownerId, key: `model_config:${args.agentType}` },
-      );
-      if (typeof override === "string" && override.trim().length > 0) {
-        model = override.trim();
-      }
-    } catch {
-      // Ignore model override lookup errors for local bootstrap.
-    }
+    const bundle: AgentRuntimeContextResult = await ctx.runQuery(
+      internal.agent.prompt_builder.agentRuntimeContext,
+      {
+        ownerId,
+        agentType: args.agentType,
+      },
+    );
 
-    let agentEngine:
-      | "default"
-      | "codex_local"
-      | "claude_code_local"
-      | undefined;
-    let maxAgentConcurrency: number | undefined;
-    if (args.agentType === AGENT_IDS.GENERAL) {
-      const engineKey = GENERAL_AGENT_ENGINE_KEY;
-      agentEngine = "default";
-      maxAgentConcurrency = 24;
-      try {
-        const enginePreference = await ctx.runQuery(
-          internal.data.preferences.getPreferenceForOwner,
-          { ownerId, key: engineKey },
-        );
-        agentEngine = normalizeGeneralAgentEngine(enginePreference);
-      } catch {
-        // Ignore preference lookup errors; defaults remain valid.
-      }
-      try {
-        const concurrencyPreference = await ctx.runQuery(
-          internal.data.preferences.getPreferenceForOwner,
-          { ownerId, key: MAX_AGENT_CONCURRENCY_KEY },
-        );
-        maxAgentConcurrency = normalizeMaxAgentConcurrency(
-          concurrencyPreference,
-        );
-      } catch {
-        // Ignore preference lookup errors; defaults remain valid.
+    const systemParts = [bundle.agent.systemPrompt];
+    if (args.platform) {
+      const guidance = getPlatformSystemGuidance(args.platform);
+      if (guidance) {
+        systemParts.push(guidance);
       }
     }
+    const maxTaskDepthValue = Number(bundle.agent.maxTaskDepth);
+    const maxTaskDepth =
+      Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
+        ? Math.floor(maxTaskDepthValue)
+        : 2;
 
     return {
-      systemPrompt: promptBuild.systemPrompt,
-      dynamicContext: promptBuild.dynamicContext,
-      toolsAllowlist: promptBuild.toolsAllowlist,
-      model,
-      maxTaskDepth: promptBuild.maxTaskDepth,
+      systemPrompt: systemParts.join("\n\n").trim(),
+      dynamicContext: "",
+      toolsAllowlist: bundle.agent.toolsAllowlist,
+      model: bundle.modelOverride ?? STELLA_DEFAULT_MODEL,
+      maxTaskDepth,
       threadHistory: undefined,
       activeThreadId: undefined,
-      agentEngine,
-      maxAgentConcurrency,
+      agentEngine: bundle.agentEngine ?? undefined,
+      maxAgentConcurrency: bundle.maxAgentConcurrency ?? undefined,
     };
   },
 });

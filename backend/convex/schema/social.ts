@@ -195,7 +195,15 @@ export const socialSchema = {
     updatedAt: v.number(),
   })
     .index("by_sessionId_and_relativePath", ["sessionId", "relativePath"])
-    .index("by_sessionId_and_updatedAt", ["sessionId", "updatedAt"]),
+    .index("by_sessionId_and_updatedAt", ["sessionId", "updatedAt"])
+    // Lets `listWorkspaceFiles` page over only live (non-tombstoned) files
+    // ordered by path, so a session with many soft-deleted entries doesn't
+    // cause us to read every row just to filter most of them out.
+    .index("by_sessionId_and_deleted_and_relativePath", [
+      "sessionId",
+      "deleted",
+      "relativePath",
+    ]),
 
   stella_session_file_ops: defineTable({
     sessionId: v.id("stella_sessions"),

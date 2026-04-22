@@ -36,7 +36,6 @@ const MAX_FILE_BYTES = 700_000;
 const MAX_SESSIONS_PER_ROOM_COLLECT = 100;
 const MAX_ROOM_MEMBERS_COLLECT = 500;
 const MAX_SESSION_TURNS_COLLECT = 500;
-const MAX_SESSION_FILES_COLLECT = 5_000;
 const MAX_BASE64_LENGTH = 950_000;
 const MAX_SESSION_TURN_PROMPT_LENGTH = 20_000;
 const MAX_SESSION_RESULT_LENGTH = 100_000;
@@ -196,13 +195,22 @@ const createSessionMembers = async (
   );
 };
 
+/**
+ * Build a `roomSummaryValidator`-shaped response for a session.
+ *
+ * Callers must have already proven the viewer is a session member (e.g. the
+ * `listSessions` map iterates `stella_session_members` rows, and `getSession`
+ * does an explicit membership lookup). We therefore only need to fetch the
+ * room doc and the room-level role here — re-querying session membership
+ * inside this helper would be N×M reads against the same index data the
+ * caller already saw.
+ */
 const createSessionSummary = async (
   ctx: QueryCtx,
   session: Doc<"stella_sessions">,
   ownerId: string,
 ) => {
   const room = await getRoomDoc(ctx, session.roomId);
-  await requireSessionMembership(ctx, session._id, ownerId);
   const roomMembership = await requireRoomMembership(ctx, room._id, ownerId);
   return {
     room,
@@ -559,9 +567,11 @@ export const queueTurn = mutation({
     requireBoundedString(prompt, "prompt", MAX_SESSION_TURN_PROMPT_LENGTH);
 
     const clientTurnId = args.clientTurnId?.trim();
-    if (clientTurnId) {
+    const requestId = clientTurnId
+      ? `${session._id}:${ownerId}:${clientTurnId}`
+      : undefined;
+    if (clientTurnId && requestId) {
       requireBoundedString(clientTurnId, "clientTurnId", MAX_REQUEST_ID_LENGTH);
-      const requestId = `${session._id}:${ownerId}:${clientTurnId}`;
       const existing = await ctx.db
         .query("stella_session_turns")
         .withIndex("by_requestId", (q) => q.eq("requestId", requestId))
@@ -573,7 +583,6 @@ export const queueTurn = mutation({
 
     const nextOrdinal = session.latestTurnOrdinal + 1;
     const now = Date.now();
-    const requestId = clientTurnId ? `${session._id}:${ownerId}:${clientTurnId}` : undefined;
     const turnId = await ctx.db.insert("stella_session_turns", {
       sessionId: session._id,
       ordinal: nextOrdinal,
@@ -844,21 +853,51 @@ export const releaseTurn = mutation({
   },
 });
 
+/**
+ * Per-page cap for `listWorkspaceFiles`. Stays well below the array-return
+ * limit so a session with many active files paginates instead of failing.
+ */
+const WORKSPACE_FILES_PAGE_SIZE = 200;
+
 export const listWorkspaceFiles = query({
   args: {
     sessionId: v.id("stella_sessions"),
+    /**
+     * Optional cursor returned by a previous page. When omitted, the query
+     * starts at the first page of live files.
+     */
+    cursor: v.optional(v.union(v.string(), v.null())),
+    /**
+     * Sign storage URLs server-side. Off by default because the URLs expire
+     * and signing every entry on every refetch makes the query slow and
+     * defeats reactive caching. Callers that need a download URL should
+     * fetch it on demand via a separate mutation.
+     */
+    includeDownloadUrls: v.optional(v.boolean()),
   },
-  returns: v.array(sessionFileSummaryValidator),
+  returns: v.object({
+    page: v.array(sessionFileSummaryValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+  }),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
     await requireSessionMembership(ctx, args.sessionId, ownerId);
-    const files = await ctx.db
+    // Index keyed on (sessionId, deleted, relativePath) lets us skip
+    // tombstoned rows entirely instead of scanning + JS-filtering.
+    const page = await ctx.db
       .query("stella_session_files")
-      .withIndex("by_sessionId_and_relativePath", (q) => q.eq("sessionId", args.sessionId))
-      .take(MAX_SESSION_FILES_COLLECT);
-    const activeFiles = files.filter((file) => file.deleted === false);
-    return await Promise.all(
-      activeFiles.map(async (file) => ({
+      .withIndex("by_sessionId_and_deleted_and_relativePath", (q) =>
+        q.eq("sessionId", args.sessionId).eq("deleted", false),
+      )
+      .paginate({
+        cursor: args.cursor ?? null,
+        numItems: WORKSPACE_FILES_PAGE_SIZE,
+      });
+
+    const wantsUrls = args.includeDownloadUrls === true;
+    const summaries = await Promise.all(
+      page.page.map(async (file) => ({
         relativePath: file.relativePath,
         kind: (file.contentHash || file.storageId ? "file" : "directory") as
           | "file"
@@ -867,9 +906,18 @@ export const listWorkspaceFiles = query({
         sizeBytes: file.sizeBytes,
         contentType: file.contentType,
         updatedAt: file.updatedAt,
-        downloadUrl: file.storageId ? await ctx.storage.getUrl(file.storageId) ?? undefined : undefined,
+        downloadUrl:
+          wantsUrls && file.storageId
+            ? (await ctx.storage.getUrl(file.storageId)) ?? undefined
+            : undefined,
       })),
     );
+
+    return {
+      page: summaries,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
   },
 });
 

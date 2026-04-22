@@ -211,6 +211,7 @@ export const getOrCreateConversationForOwner = internalMutation({
       ownerId: args.ownerId,
       title: args.title ?? "Chat",
       isDefault: true,
+      eventCount: 0,
       createdAt: now,
       updatedAt: now,
     });
@@ -228,6 +229,7 @@ export const createGroupConversation = internalMutation({
       ownerId: args.ownerId,
       title: args.title ?? "Group",
       isDefault: false,
+      eventCount: 0,
       createdAt: now,
       updatedAt: now,
     });

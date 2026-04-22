@@ -39,8 +39,15 @@ import {
 } from "../runtime_ai/managed";
 
 const MAX_THREADS_PER_CONVERSATION = 16;
-/** Upper bound for thread_messages reads (compaction / load); guards unbounded collect. */
-const MAX_THREAD_MESSAGES_PER_QUERY = 10_000;
+/**
+ * Upper bound for thread_messages reads (compaction / load).
+ *
+ * Keep this comfortably below Convex's 8192 array-return limit so a runaway
+ * thread can't blow the response-size cap. Callers receive `truncated: true`
+ * when this limit is hit, which signals them to compact and retry rather than
+ * relying on a complete view.
+ */
+const MAX_THREAD_MESSAGES_PER_QUERY = 4_000;
 const MAX_CONTENT_LENGTH = 500_000;
 const MIN_MESSAGES_FOR_COMPACTION = 6;
 const THREAD_SWEEP_BATCH_SIZE = 200;
@@ -444,25 +451,32 @@ export const saveThreadMessages = internalMutation({
       .order("desc")
       .first();
 
-    let nextOrdinal = (lastMessage?.ordinal ?? -1) + 1;
-    let addedTokens = 0;
+    const baseOrdinal = (lastMessage?.ordinal ?? -1) + 1;
     const now = Date.now();
 
-    for (const msg of args.messages) {
+    // Pre-compute everything synchronously, then issue inserts in parallel.
+    // Each `await ctx.db.insert` round-trip is independent — running them
+    // serially blocked the mutation on N sequential RTTs for large batches.
+    const prepared = args.messages.map((msg, index) => {
       const safeContent = truncateContent(msg.content);
       const estimate = msg.tokenEstimate ?? Math.ceil(safeContent.length / 4);
-      addedTokens += estimate;
-
-      await ctx.db.insert("thread_messages", {
-        threadId: args.threadId,
-        ordinal: nextOrdinal++,
-        role: msg.role,
-        content: safeContent,
-        toolCallId: msg.toolCallId,
+      return {
+        record: {
+          threadId: args.threadId,
+          ordinal: baseOrdinal + index,
+          role: msg.role,
+          content: safeContent,
+          toolCallId: msg.toolCallId,
+          tokenEstimate: estimate,
+          createdAt: now,
+        },
         tokenEstimate: estimate,
-        createdAt: now,
-      });
-    }
+      };
+    });
+    const addedTokens = prepared.reduce((sum, p) => sum + p.tokenEstimate, 0);
+    await Promise.all(
+      prepared.map(({ record }) => ctx.db.insert("thread_messages", record)),
+    );
 
     // Update thread counters
     await ctx.db.patch(args.threadId, {
@@ -651,12 +665,21 @@ export const finalizeThreadCompaction = internalMutation({
       return null;
     }
 
-    const allMessages = await ctx.db
+    // Read only the rows we'll keep — using the ordinal range filter rather
+    // than reading every message and JS-filtering keeps us inside the array
+    // return limit even for very long threads.
+    const retained = await ctx.db
       .query("thread_messages")
-      .withIndex("by_threadId_and_ordinal", (q) => q.eq("threadId", args.threadId))
+      .withIndex("by_threadId_and_ordinal", (q) =>
+        q.eq("threadId", args.threadId).gte("ordinal", args.keepFromOrdinal),
+      )
       .take(MAX_THREAD_MESSAGES_PER_QUERY);
-    const dropped = allMessages.filter((msg) => msg.ordinal < args.keepFromOrdinal);
-    const retained = allMessages.filter((msg) => msg.ordinal >= args.keepFromOrdinal);
+    const dropped = await ctx.db
+      .query("thread_messages")
+      .withIndex("by_threadId_and_ordinal", (q) =>
+        q.eq("threadId", args.threadId).lt("ordinal", args.keepFromOrdinal),
+      )
+      .take(MAX_THREAD_MESSAGES_PER_QUERY);
     await Promise.all(dropped.map((msg) => ctx.db.delete(msg._id)));
 
     const remainingTokens = retained.reduce(

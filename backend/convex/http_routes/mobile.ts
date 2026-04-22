@@ -1411,7 +1411,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
 
         const result = await ctx.runQuery(
           internal.mobile_auth.getLinkRequestStatus,
-          { requestId },
+          { requestId, nowMs: Date.now() },
         );
         if (!result) {
           return errorResponse(404, "Request not found", origin);

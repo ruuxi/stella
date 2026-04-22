@@ -221,6 +221,14 @@ export const ensureBuiltins = internalMutation({
   },
 });
 
+/**
+ * Hard cap on how many agents may be imported per call. Each upsert reads
+ * an existing-row probe and writes the new payload, so an unbounded array
+ * could blow the mutation transaction limits. 64 is generous given that
+ * users typically configure under a dozen agents.
+ */
+const MAX_AGENT_IMPORT_BATCH = 64;
+
 export const upsertMany = mutation({
   args: {
     agents: v.array(agentImportValidator),
@@ -229,10 +237,16 @@ export const upsertMany = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const items = Array.isArray(args.agents) ? args.agents : [];
+    if (items.length > MAX_AGENT_IMPORT_BATCH) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: `Agent import is limited to ${MAX_AGENT_IMPORT_BATCH} agents per call (received ${items.length}).`,
+      });
+    }
     const validAgents = items.map(normalizeAgent).filter((a): a is AgentRecord => a !== null);
-    
-    await Promise.all(validAgents.map(agent => upsertAgent(ctx, ownerId, agent)));
-    
+
+    await Promise.all(validAgents.map((agent) => upsertAgent(ctx, ownerId, agent)));
+
     return { upserted: validAgents.length };
   },
 });
@@ -283,6 +297,17 @@ const getAgentConfigHandler = async (
 
   throw new ConvexError(`Unknown agent type: "${args.agentType}"`);
 };
+
+/**
+ * Helper export for callers that want to resolve agent config inside their
+ * own query handler — e.g. the bundled `agentRuntimeContext` reader in
+ * `prompt_builder.ts` — without paying the round-trip cost of an extra
+ * `ctx.runQuery(internal.agent.agents.getAgentConfigInternal, ...)`.
+ */
+export const resolveAgentConfig = (
+  ctx: QueryCtx,
+  args: { agentType: string; ownerId?: string },
+) => getAgentConfigHandler(ctx, args);
 
 export const getAgentConfig = internalQuery({
   args: {
