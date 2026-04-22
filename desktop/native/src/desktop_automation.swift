@@ -4832,7 +4832,14 @@ func simulateLeftClick(at point: CGPoint) -> Bool {
 }
 
 func postLeftClick(at point: CGPoint, target: AppTarget, raise: Bool = true) -> Bool {
-    if !alwaysSimulateInput(),
+    // System Events `click at {x, y}` only delivers reliably when the
+    // target process is frontmost. Computer-use is supposed to drive the
+    // app in the background (Codex's CUA never raises either), so when
+    // raise=false we skip the AppleScript path entirely and post a real
+    // HID mouse-down/mouse-up — that hits whatever window is at the
+    // screen point regardless of focus, which is what we want.
+    if raise,
+       !alwaysSimulateInput(),
        runSystemEventsOnTarget(
            target,
            bodyLines: ["click at {\(Int(point.x)), \(Int(point.y))}"],
@@ -5152,7 +5159,11 @@ func chunkText(_ text: String, size: Int) -> [String] {
 }
 
 func postUnicodeText(_ text: String, target: AppTarget, raise: Bool = true) -> Bool {
-    if !alwaysSimulateInput() {
+    // Same reasoning as postLeftClick: System Events `keystroke` only
+    // delivers reliably when the target process is frontmost. Drop to
+    // CGEvent-level Unicode injection whenever raise=false so the
+    // background app can still receive typed text without focus theft.
+    if raise, !alwaysSimulateInput() {
         let chunks = chunkText(text, size: unicodeChunkSize)
         for chunk in chunks {
             let ok = runSystemEventsOnTarget(
@@ -5220,7 +5231,11 @@ func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = true) -> B
     }
 
     let modifiers = Array(rawParts.dropLast())
-    if !alwaysSimulateInput(), let keyCode = keyCode(for: keyToken) {
+    // Same raise-gating as postLeftClick / postUnicodeText: System Events
+    // `key code` only fires reliably when the process is frontmost, so
+    // skip it when raise=false and let the CGEvent path handle the chord
+    // against whatever's currently focused.
+    if raise, !alwaysSimulateInput(), let keyCode = keyCode(for: keyToken) {
         var command = "key code \(keyCode)"
         if let modifierList = systemEventsModifierList(modifiers) {
             command += " using \(modifierList)"
@@ -5229,7 +5244,7 @@ func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = true) -> B
             trace("input:key path=system-events key=\(keySpec)")
             return true
         }
-    } else if !alwaysSimulateInput(), rawParts.count == 1 {
+    } else if raise, !alwaysSimulateInput(), rawParts.count == 1 {
         if postUnicodeText(keySpec, target: target, raise: raise) {
             return true
         }
