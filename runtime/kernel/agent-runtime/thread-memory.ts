@@ -59,16 +59,26 @@ export const buildRunThreadKey = ({
 // (the screenshot file path is still on disk if anything ever needs it).
 const KEEP_RECENT_IMAGES_IN_HISTORY = 1;
 
-const stripStaleImageBlocks = (messages: Message[]): Message[] => {
+// Generic over the message union: works for both Message[] (history we just
+// reconstituted from SQLite) and AgentMessage[] (the live agent's running
+// state, which may include `runtimeInternal` entries that we leave alone).
+// Only `toolResult` messages with image content blocks are ever rewritten.
+export const stripStaleImageBlocks = <T extends { role: string }>(
+  messages: T[],
+): T[] => {
   let imagesKept = 0;
-  const out: Message[] = [];
+  let rewroteAny = false;
+  const out: T[] = [];
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.role !== "toolResult") {
       out.push(message);
       continue;
     }
-    const hasImage = message.content.some((block) => block.type === "image");
+    const toolResult = message as unknown as {
+      content: Array<{ type: string; data?: string; mimeType?: string }>;
+    };
+    const hasImage = toolResult.content.some((block) => block.type === "image");
     if (!hasImage) {
       out.push(message);
       continue;
@@ -78,19 +88,26 @@ const stripStaleImageBlocks = (messages: Message[]): Message[] => {
       out.push(message);
       continue;
     }
-    const compactContent = message.content.map((block) => {
+    const compactContent = toolResult.content.map((block) => {
       if (block.type !== "image") {
         return block;
       }
       const sizeKb = Math.round(((block.data?.length ?? 0) * 0.75) / 1024);
       return {
-        type: "text" as const,
+        type: "text",
         text: `[Older ${block.mimeType ?? "image/png"} screenshot omitted from history (~${sizeKb}KB). Re-run the tool to see it again.]`,
       };
     });
-    out.push({ ...message, content: compactContent });
+    rewroteAny = true;
+    out.push({
+      ...(message as object),
+      content: compactContent,
+    } as unknown as T);
   }
-  return out.reverse();
+  // Allocating a new array only matters when we actually rewrote something;
+  // keep the input identity stable when no rewrite happened so downstream
+  // callers can fast-path on referential equality.
+  return rewroteAny ? out.reverse() : messages;
 };
 
 export const buildHistorySource = (
