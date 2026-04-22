@@ -3,16 +3,23 @@ let _existsSync: typeof import("node:fs").existsSync | null = null;
 let _homedir: typeof import("node:os").homedir | null = null;
 let _join: typeof import("node:path").join | null = null;
 
+type DynamicImport = (specifier: string) => Promise<unknown>;
+
+const dynamicImport: DynamicImport = (specifier) => import(specifier);
+const NODE_FS_SPECIFIER = "node:" + "fs";
+const NODE_OS_SPECIFIER = "node:" + "os";
+const NODE_PATH_SPECIFIER = "node:" + "path";
+
 // Eagerly load in Node.js/Bun environment only
 if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
-	import("node:fs").then((m) => {
-		_existsSync = m.existsSync;
+	dynamicImport(NODE_FS_SPECIFIER).then((m) => {
+		_existsSync = (m as typeof import("node:fs")).existsSync;
 	});
-	import("node:os").then((m) => {
-		_homedir = m.homedir;
+	dynamicImport(NODE_OS_SPECIFIER).then((m) => {
+		_homedir = (m as typeof import("node:os")).homedir;
 	});
-	import("node:path").then((m) => {
-		_join = m.join;
+	dynamicImport(NODE_PATH_SPECIFIER).then((m) => {
+		_join = (m as typeof import("node:path")).join;
 	});
 }
 
@@ -55,7 +62,7 @@ function hasVertexAdcCredentials(): boolean {
  */
 export function getEnvApiKey(provider: KnownProvider): string | undefined;
 export function getEnvApiKey(provider: string): string | undefined;
-export function getEnvApiKey(provider: string): string | undefined {
+export function getEnvApiKey(provider: any): string | undefined {
 	// Fall back to environment variables
 	if (provider === "github-copilot") {
 		return process.env.COPILOT_GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
@@ -66,8 +73,8 @@ export function getEnvApiKey(provider: string): string | undefined {
 		return process.env.ANTHROPIC_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY;
 	}
 
-	// Vertex AI supports either an explicit API key or Application Default Credentials.
-	// Auth is configured via `gcloud auth application-default login`.
+	// Vertex AI supports either an explicit API key or Application Default Credentials
+	// Auth is configured via `gcloud auth application-default login`
 	if (provider === "google-vertex") {
 		if (process.env.GOOGLE_CLOUD_API_KEY) {
 			return process.env.GOOGLE_CLOUD_API_KEY;
@@ -117,6 +124,7 @@ export function getEnvApiKey(provider: string): string | undefined {
 		"minimax-cn": "MINIMAX_CN_API_KEY",
 		huggingface: "HF_TOKEN",
 		opencode: "OPENCODE_API_KEY",
+		"opencode-go": "OPENCODE_API_KEY",
 		"kimi-coding": "KIMI_API_KEY",
 	};
 

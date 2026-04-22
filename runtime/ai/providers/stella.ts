@@ -16,7 +16,7 @@ import { stellaRuntimeUrlFromSiteUrl } from "../../../desktop/src/shared/stella-
 type StreamingToolCall = ToolCall & { partialJson?: string };
 
 type StellaAssistantMessageEvent =
-  | { type: "start"; api?: Api; provider?: string; model?: string }
+  | { type: "start"; api?: Api; provider?: string; model?: string; responseId?: string }
   | { type: "text_start"; contentIndex: number }
   | { type: "text_delta"; contentIndex: number; delta: string }
   | { type: "text_end"; contentIndex: number; contentSignature?: string }
@@ -76,6 +76,9 @@ function processStellaProxyEvent(
       }
       if (proxyEvent.model) {
         partial.model = proxyEvent.model;
+      }
+      if (proxyEvent.responseId) {
+        partial.responseId = proxyEvent.responseId;
       }
       return { type: "start", partial };
 
@@ -224,6 +227,8 @@ function buildRequestPayload(
       cacheRetention: options?.cacheRetention,
       sessionId: options?.sessionId,
       metadata: options?.metadata,
+      headers: options?.headers,
+      maxRetryDelayMs: options?.maxRetryDelayMs,
     },
   };
 }

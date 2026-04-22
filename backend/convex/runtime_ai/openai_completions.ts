@@ -195,29 +195,35 @@ export const streamOpenAICompletions: StreamFunction<
       };
 
       for await (const chunk of openaiStream) {
+        if (!chunk || typeof chunk !== "object") continue;
+
+        // OpenAI documents ChatCompletionChunk.id as the unique chat completion identifier,
+        // and each chunk in a streamed completion carries the same id.
+        output.responseId ||= chunk.id;
+
         if (chunk.usage) {
-          const cachedTokens = chunk.usage.prompt_tokens_details?.cached_tokens || 0;
-          const input = chunk.usage.prompt_tokens || 0;
-          const outputTokens = chunk.usage.completion_tokens || 0;
-          const reasoningTokens = chunk.usage.completion_tokens_details?.reasoning_tokens || 0;
-          output.usage = {
-            input,
-            output: outputTokens,
-            cacheRead: cachedTokens,
-            cacheWrite: 0,
-            reasoningTokens,
-            totalTokens: input + outputTokens,
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-          };
-          calculateCost(model, output.usage);
+          output.usage = parseChunkUsage(chunk.usage, model);
         }
 
         const choice = chunk.choices?.[0];
         if (!choice) {
           continue;
         }
+
+        // Fallback: some providers (e.g., Moonshot) return usage in choice.usage
+        if (!chunk.usage && "usage" in choice && choice.usage) {
+          output.usage = parseChunkUsage(
+            choice.usage as Parameters<typeof parseChunkUsage>[0],
+            model,
+          );
+        }
+
         if (choice.finish_reason) {
-          output.stopReason = mapStopReason(choice.finish_reason);
+          const finishReasonResult = mapStopReasonDetailed(choice.finish_reason);
+          output.stopReason = finishReasonResult.stopReason;
+          if (finishReasonResult.errorMessage) {
+            output.errorMessage = finishReasonResult.errorMessage;
+          }
         }
         if (!choice.delta) {
           continue;
@@ -348,8 +354,11 @@ export const streamOpenAICompletions: StreamFunction<
       if (options?.signal?.aborted) {
         throw new Error("Request was aborted");
       }
-      if (output.stopReason === "aborted" || output.stopReason === "error") {
-        throw new Error("An unknown error occurred");
+      if (output.stopReason === "aborted") {
+        throw new Error("Request was aborted");
+      }
+      if (output.stopReason === "error") {
+        throw new Error(output.errorMessage || "Provider returned an error stop reason");
       }
 
       stream.push({ type: "done", reason: output.stopReason, message: output });
@@ -439,6 +448,9 @@ export function buildOpenAICompletionsParams(
   }
   if (context.tools) {
     params.tools = convertTools(context.tools, compat);
+    if (compat.zaiToolStream) {
+      params.tool_stream = true;
+    }
   } else if (hasToolHistory(context.messages)) {
     params.tools = [];
   }
@@ -450,14 +462,26 @@ export function buildOpenAICompletionsParams(
     params.response_format = options.responseFormat;
   }
 
-  if ((compat.thinkingFormat === "zai" || compat.thinkingFormat === "qwen") && model.reasoning) {
+  if (compat.thinkingFormat === "zai" && model.reasoning) {
     params.enable_thinking = !!options?.reasoningEffort;
-  } else if (options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
-    if (model.baseUrl.includes("openrouter.ai")) {
-      params.reasoning = { effort: options.reasoningEffort };
+  } else if (compat.thinkingFormat === "qwen" && model.reasoning) {
+    params.enable_thinking = !!options?.reasoningEffort;
+  } else if (compat.thinkingFormat === "qwen-chat-template" && model.reasoning) {
+    params.chat_template_kwargs = { enable_thinking: !!options?.reasoningEffort };
+  } else if (compat.thinkingFormat === "openrouter" && model.reasoning) {
+    // OpenRouter normalizes reasoning across providers via a nested reasoning object.
+    if (options?.reasoningEffort) {
+      params.reasoning = {
+        effort: mapReasoningEffort(options.reasoningEffort, compat.reasoningEffortMap),
+      };
     } else {
-      params.reasoning_effort = options.reasoningEffort;
+      params.reasoning = { effort: "none" };
     }
+  } else if (options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
+    params.reasoning_effort = mapReasoningEffort(
+      options.reasoningEffort,
+      compat.reasoningEffortMap,
+    );
   }
 
   if (model.baseUrl.includes("openrouter.ai") && model.compat?.openRouterRouting) {
@@ -481,6 +505,13 @@ export function buildOpenAICompletionsParams(
   }
 
   return params;
+}
+
+function mapReasoningEffort(
+  effort: NonNullable<OpenAICompletionsOptions["reasoningEffort"]>,
+  reasoningEffortMap: Partial<Record<NonNullable<OpenAICompletionsOptions["reasoningEffort"]>, string>>,
+): string {
+  return reasoningEffortMap[effort] ?? effort;
 }
 
 function maybeAddOpenRouterAnthropicCacheControl(
@@ -755,21 +786,78 @@ export function convertTools(
 }
 
 export function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | string): StopReason {
+  return mapStopReasonDetailed(reason).stopReason;
+}
+
+function mapStopReasonDetailed(
+  reason: ChatCompletionChunk.Choice["finish_reason"] | string,
+): { stopReason: StopReason; errorMessage?: string } {
+  if (reason === null) return { stopReason: "stop" };
   switch (reason) {
-    case null:
     case "stop":
     case "end":
-      return "stop";
+      return { stopReason: "stop" };
     case "length":
-      return "length";
+      return { stopReason: "length" };
     case "function_call":
     case "tool_calls":
-      return "toolUse";
+      return { stopReason: "toolUse" };
     case "content_filter":
-      return "stop";
+      return { stopReason: "error", errorMessage: "Provider finish_reason: content_filter" };
+    case "network_error":
+      return { stopReason: "error", errorMessage: "Provider finish_reason: network_error" };
     default:
-      return "error";
+      return {
+        stopReason: "error",
+        errorMessage: `Provider finish_reason: ${reason}`,
+      };
   }
+}
+
+function parseChunkUsage(
+  rawUsage: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+    completion_tokens_details?: { reasoning_tokens?: number };
+  },
+  model: Model<"openai-completions">,
+): AssistantMessage["usage"] {
+  const promptTokens = rawUsage.prompt_tokens || 0;
+  const reportedCachedTokens = rawUsage.prompt_tokens_details?.cached_tokens || 0;
+  const cacheWriteTokens = rawUsage.prompt_tokens_details?.cache_write_tokens || 0;
+  const reasoningTokens = rawUsage.completion_tokens_details?.reasoning_tokens || 0;
+
+  // Normalize to pi-ai semantics:
+  // - cacheRead: hits from cache created by previous requests only
+  // - cacheWrite: tokens written to cache in this request
+  // Some OpenAI-compatible providers (observed on OpenRouter) report cached_tokens
+  // as (previous hits + current writes). In that case, remove cacheWrite from cacheRead.
+  const cacheReadTokens =
+    cacheWriteTokens > 0
+      ? Math.max(0, reportedCachedTokens - cacheWriteTokens)
+      : reportedCachedTokens;
+
+  const input = Math.max(0, promptTokens - cacheReadTokens - cacheWriteTokens);
+  // Stella backend billing semantics:
+  //   output = total completion tokens (already includes reasoning, per OpenAI semantics)
+  //   reasoningTokens = reasoning subset
+  // computeUsageCostMicroCents() subtracts reasoning from output to get text tokens,
+  // bills text at outputPrice and reasoning at reasoningPrice separately. Adding
+  // reasoning to output here (pi-ai's convention for Groq compat) would double-bill
+  // reasoning for OpenAI/Fireworks/OpenRouter, which is the bulk of managed traffic.
+  const outputTokens = rawUsage.completion_tokens || 0;
+  const usage: AssistantMessage["usage"] = {
+    input,
+    output: outputTokens,
+    cacheRead: cacheReadTokens,
+    cacheWrite: cacheWriteTokens,
+    reasoningTokens,
+    totalTokens: input + outputTokens + cacheReadTokens + cacheWriteTokens,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+  calculateCost(model, usage);
+  return usage;
 }
 
 function detectCompat(
@@ -791,10 +879,23 @@ function detectCompat(
     || provider === "opencode"
     || baseUrl.includes("opencode.ai");
 
+  const isGroq = provider === "groq" || baseUrl.includes("groq.com");
+  const reasoningEffortMap =
+    isGroq && model.id === "qwen/qwen3-32b"
+      ? {
+          minimal: "default",
+          low: "default",
+          medium: "default",
+          high: "default",
+          xhigh: "default",
+        }
+      : {};
+
   return {
     supportsStore: !isNonStandard,
     supportsDeveloperRole: !isNonStandard,
     supportsReasoningEffort: provider !== "xai" && !isZai,
+    reasoningEffortMap,
     supportsUsageInStreaming: true,
     maxTokensField:
       isMistral || baseUrl.includes("chutes.ai")
@@ -804,9 +905,14 @@ function detectCompat(
     requiresAssistantAfterToolResult: false,
     requiresThinkingAsText: isMistral,
     requiresMistralToolIds: isMistral,
-    thinkingFormat: isZai ? "zai" : "openai",
+    thinkingFormat: isZai
+      ? "zai"
+      : provider === "openrouter" || baseUrl.includes("openrouter.ai")
+        ? "openrouter"
+        : "openai",
     openRouterRouting: {},
     vercelGatewayRouting: {},
+    zaiToolStream: false,
     supportsStrictMode: true,
   };
 }
@@ -824,6 +930,8 @@ function getCompat(
       model.compat.supportsDeveloperRole ?? detected.supportsDeveloperRole,
     supportsReasoningEffort:
       model.compat.supportsReasoningEffort ?? detected.supportsReasoningEffort,
+    reasoningEffortMap:
+      model.compat.reasoningEffortMap ?? detected.reasoningEffortMap,
     supportsUsageInStreaming:
       model.compat.supportsUsageInStreaming ?? detected.supportsUsageInStreaming,
     maxTokensField: model.compat.maxTokensField ?? detected.maxTokensField,
@@ -840,6 +948,7 @@ function getCompat(
     openRouterRouting: model.compat.openRouterRouting ?? detected.openRouterRouting,
     vercelGatewayRouting:
       model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
+    zaiToolStream: model.compat.zaiToolStream ?? detected.zaiToolStream,
     supportsStrictMode:
       model.compat.supportsStrictMode ?? detected.supportsStrictMode,
   };

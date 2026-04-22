@@ -20,7 +20,7 @@
     "google-auth-library": "^9.15.1",
     "googleapis": "^146.0.0",
     "googleapis-common": "^7.2.0",
-    "openai": "6.10.0",
+    "openai": "6.26.0",
     "partial-json": "^0.1.7",
     "picomatch": "^4.0.2",
     "proxy-agent": "^6.5.0",

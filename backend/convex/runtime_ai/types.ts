@@ -100,6 +100,7 @@ export interface AssistantMessage {
   api: Api;
   provider: Provider;
   model: string;
+  responseId?: string;
   usage: Usage;
   stopReason: StopReason;
   errorMessage?: string;
@@ -146,8 +147,34 @@ export type AssistantMessageEvent =
   | { type: "error"; reason: Extract<StopReason, "aborted" | "error">; error: AssistantMessage };
 
 export interface OpenRouterRouting {
-  only?: string[];
+  allow_fallbacks?: boolean;
+  require_parameters?: boolean;
+  data_collection?: "deny" | "allow";
+  zdr?: boolean;
+  enforce_distillable_text?: boolean;
   order?: string[];
+  only?: string[];
+  ignore?: string[];
+  quantizations?: string[];
+  sort?:
+    | string
+    | {
+        by?: string;
+        partition?: string | null;
+      };
+  max_price?: {
+    prompt?: number | string;
+    completion?: number | string;
+    image?: number | string;
+    audio?: number | string;
+    request?: number | string;
+  };
+  preferred_min_throughput?:
+    | number
+    | { p50?: number; p75?: number; p90?: number; p99?: number };
+  preferred_max_latency?:
+    | number
+    | { p50?: number; p75?: number; p90?: number; p99?: number };
 }
 
 export interface VercelGatewayRouting {
@@ -159,15 +186,17 @@ export interface OpenAICompletionsCompat {
   supportsStore?: boolean;
   supportsDeveloperRole?: boolean;
   supportsReasoningEffort?: boolean;
+  reasoningEffortMap?: Partial<Record<ThinkingLevel, string>>;
   supportsUsageInStreaming?: boolean;
   maxTokensField?: "max_completion_tokens" | "max_tokens";
   requiresToolResultName?: boolean;
   requiresAssistantAfterToolResult?: boolean;
   requiresThinkingAsText?: boolean;
   requiresMistralToolIds?: boolean;
-  thinkingFormat?: "openai" | "zai" | "qwen";
+  thinkingFormat?: "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template";
   openRouterRouting?: OpenRouterRouting;
   vercelGatewayRouting?: VercelGatewayRouting;
+  zaiToolStream?: boolean;
   supportsStrictMode?: boolean;
 }
 

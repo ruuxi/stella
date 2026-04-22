@@ -77,7 +77,7 @@ export const streamGoogle: StreamFunction<"google-generative-ai", GoogleOptions>
 			let params = buildParams(model, context, options);
 			const nextParams = await options?.onPayload?.(params, model);
 			if (nextParams !== undefined) {
-				params = nextParams as typeof params;
+				params = nextParams as GenerateContentParameters;
 			}
 			const googleStream = await client.models.generateContentStream(params);
 
@@ -86,6 +86,9 @@ export const streamGoogle: StreamFunction<"google-generative-ai", GoogleOptions>
 			const blocks = output.content;
 			const blockIndex = () => blocks.length - 1;
 			for await (const chunk of googleStream) {
+				// @google/genai documents GenerateContentResponse.responseId as an output-only field
+				// used to identify each response. Keep the first non-empty one from the stream.
+				output.responseId ||= chunk.responseId;
 				const candidate = chunk.candidates?.[0];
 				if (candidate?.content?.parts) {
 					for (const part of candidate.content.parts) {
@@ -182,7 +185,7 @@ export const streamGoogle: StreamFunction<"google-generative-ai", GoogleOptions>
 								type: "toolCall",
 								id: toolCallId,
 								name: part.functionCall.name || "",
-								arguments: (part.functionCall.args as Record<string, unknown>) ?? {},
+								arguments: (part.functionCall.args as Record<string, any>) ?? {},
 								...(part.thoughtSignature && { thoughtSignature: part.thoughtSignature }),
 							};
 
@@ -207,13 +210,12 @@ export const streamGoogle: StreamFunction<"google-generative-ai", GoogleOptions>
 				}
 
 				if (chunk.usageMetadata) {
-					const promptTokens = chunk.usageMetadata.promptTokenCount || 0;
-					const cacheReadTokens = chunk.usageMetadata.cachedContentTokenCount || 0;
 					output.usage = {
-						input: promptTokens - cacheReadTokens,
+						input:
+							(chunk.usageMetadata.promptTokenCount || 0) - (chunk.usageMetadata.cachedContentTokenCount || 0),
 						output:
 							(chunk.usageMetadata.candidatesTokenCount || 0) + (chunk.usageMetadata.thoughtsTokenCount || 0),
-						cacheRead: cacheReadTokens,
+						cacheRead: chunk.usageMetadata.cachedContentTokenCount || 0,
 						cacheWrite: 0,
 						totalTokens: chunk.usageMetadata.totalTokenCount || 0,
 						cost: {
@@ -291,12 +293,12 @@ export const streamSimpleGoogle: StreamFunction<"google-generative-ai", SimpleSt
 	const effort = clampReasoning(options.reasoning)!;
 	const googleModel = model as Model<"google-generative-ai">;
 
-	if (isGemini3ProModel(googleModel) || isGemini3FlashModel(googleModel)) {
+	if (isGemini3ProModel(googleModel) || isGemini3FlashModel(googleModel) || isGemma4Model(googleModel)) {
 		return streamGoogle(model, context, {
 			...base,
 			thinking: {
 				enabled: true,
-				level: getGemini3ThinkingLevel(effort, googleModel),
+				level: getThinkingLevel(effort, googleModel),
 			},
 		} satisfies GoogleOptions);
 	}
@@ -364,11 +366,14 @@ function buildParams(
 	if (options.thinking?.enabled && model.reasoning) {
 		const thinkingConfig: ThinkingConfig = { includeThoughts: true };
 		if (options.thinking.level !== undefined) {
-			thinkingConfig.thinkingLevel = options.thinking.level as NonNullable<ThinkingConfig["thinkingLevel"]>;
+			// Cast to any since our GoogleThinkingLevel mirrors Google's ThinkingLevel enum values
+			thinkingConfig.thinkingLevel = options.thinking.level as any;
 		} else if (options.thinking.budgetTokens !== undefined) {
 			thinkingConfig.thinkingBudget = options.thinking.budgetTokens;
 		}
 		config.thinkingConfig = thinkingConfig;
+	} else if (model.reasoning && options.thinking && !options.thinking.enabled) {
+		config.thinkingConfig = getDisabledThinkingConfig(model);
 	}
 
 	if (options.signal) {
@@ -389,6 +394,10 @@ function buildParams(
 
 type ClampedThinkingLevel = Exclude<ThinkingLevel, "xhigh">;
 
+function isGemma4Model(model: Model<"google-generative-ai">): boolean {
+	return /gemma-?4/.test(model.id.toLowerCase());
+}
+
 function isGemini3ProModel(model: Model<"google-generative-ai">): boolean {
 	return /gemini-3(?:\.\d+)?-pro/.test(model.id.toLowerCase());
 }
@@ -397,15 +406,40 @@ function isGemini3FlashModel(model: Model<"google-generative-ai">): boolean {
 	return /gemini-3(?:\.\d+)?-flash/.test(model.id.toLowerCase());
 }
 
-function getGemini3ThinkingLevel(
-	effort: ClampedThinkingLevel,
-	model: Model<"google-generative-ai">,
-): GoogleThinkingLevel {
+function getDisabledThinkingConfig(model: Model<"google-generative-ai">): ThinkingConfig {
+	// Google docs: Gemini 3.1 Pro cannot disable thinking, and Gemini 3 Flash / Flash-Lite
+	// do not support full thinking-off either. For Gemini 3 models, use the lowest supported
+	// thinkingLevel without includeThoughts so hidden thinking remains invisible to pi.
+	if (isGemini3ProModel(model)) {
+		return { thinkingLevel: "LOW" as any };
+	}
+	if (isGemini3FlashModel(model)) {
+		return { thinkingLevel: "MINIMAL" as any };
+	}
+	if (isGemma4Model(model)) {
+		return { thinkingLevel: "MINIMAL" as any };
+	}
+
+	// Gemini 2.x supports disabling via thinkingBudget = 0.
+	return { thinkingBudget: 0 };
+}
+
+function getThinkingLevel(effort: ClampedThinkingLevel, model: Model<"google-generative-ai">): GoogleThinkingLevel {
 	if (isGemini3ProModel(model)) {
 		switch (effort) {
 			case "minimal":
 			case "low":
 				return "LOW";
+			case "medium":
+			case "high":
+				return "HIGH";
+		}
+	}
+	if (isGemma4Model(model)) {
+		switch (effort) {
+			case "minimal":
+			case "low":
+				return "MINIMAL";
 			case "medium":
 			case "high":
 				return "HIGH";
@@ -438,6 +472,16 @@ function getGoogleBudget(
 			low: 2048,
 			medium: 8192,
 			high: 32768,
+		};
+		return budgets[effort];
+	}
+
+	if (model.id.includes("2.5-flash-lite")) {
+		const budgets: Record<ClampedThinkingLevel, number> = {
+			minimal: 512,
+			low: 2048,
+			medium: 8192,
+			high: 24576,
 		};
 		return budgets[effort];
 	}

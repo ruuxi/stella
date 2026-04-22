@@ -32,7 +32,12 @@ interface ApiProviderInternal {
 	streamSimple: ApiStreamSimpleFunction;
 }
 
-const apiProviderRegistry = new Map<string, ApiProviderInternal>();
+type RegisteredApiProvider = {
+	provider: ApiProviderInternal;
+	sourceId?: string;
+};
+
+const apiProviderRegistry = new Map<string, RegisteredApiProvider>();
 
 function wrapStream<TApi extends Api, TOptions extends StreamOptions>(
 	api: TApi,
@@ -60,16 +65,32 @@ function wrapStreamSimple<TApi extends Api>(
 
 export function registerApiProvider<TApi extends Api, TOptions extends StreamOptions>(
 	provider: ApiProvider<TApi, TOptions>,
+	sourceId?: string,
 ): void {
 	apiProviderRegistry.set(provider.api, {
-		api: provider.api,
-		stream: wrapStream(provider.api, provider.stream),
-		streamSimple: wrapStreamSimple(provider.api, provider.streamSimple),
+		provider: {
+			api: provider.api,
+			stream: wrapStream(provider.api, provider.stream),
+			streamSimple: wrapStreamSimple(provider.api, provider.streamSimple),
+		},
+		sourceId,
 	});
 }
 
 export function getApiProvider(api: Api): ApiProviderInternal | undefined {
-	return apiProviderRegistry.get(api);
+	return apiProviderRegistry.get(api)?.provider;
+}
+
+export function getApiProviders(): ApiProviderInternal[] {
+	return Array.from(apiProviderRegistry.values(), (entry) => entry.provider);
+}
+
+export function unregisterApiProviders(sourceId: string): void {
+	for (const [api, entry] of apiProviderRegistry.entries()) {
+		if (entry.sourceId === sourceId) {
+			apiProviderRegistry.delete(api);
+		}
+	}
 }
 
 export function clearApiProviders(): void {

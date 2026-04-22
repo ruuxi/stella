@@ -1,13 +1,17 @@
-import type { Tool as OpenAITool, ResponseInput, ResponseStreamEvent } from "openai/resources/responses/responses.js";
 import type * as NodeOs from "node:os";
+import type {
+	Tool as OpenAITool,
+	ResponseCreateParamsStreaming,
+	ResponseInput,
+	ResponseStreamEvent,
+} from "openai/resources/responses/responses.js";
 
 // NEVER convert to top-level runtime imports - breaks browser/Vite builds (web-ui)
 let _os: typeof NodeOs | null = null;
 
 type DynamicImport = (specifier: string) => Promise<unknown>;
 
-const dynamicImport: DynamicImport = (specifier) =>
-	import(/* @vite-ignore */ specifier);
+const dynamicImport: DynamicImport = (specifier) => import(specifier);
 const NODE_OS_SPECIFIER = "node:" + "os";
 
 if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
@@ -15,6 +19,7 @@ if (typeof process !== "undefined" && (process.versions?.node || process.version
 		_os = m as typeof NodeOs;
 	});
 }
+
 import { getEnvApiKey } from "../env-api-keys.js";
 import { supportsXhigh } from "../models.js";
 import type {
@@ -25,6 +30,7 @@ import type {
 	SimpleStreamOptions,
 	StreamFunction,
 	StreamOptions,
+	Usage,
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.js";
@@ -56,6 +62,7 @@ const CODEX_RESPONSE_STATUSES = new Set<CodexResponseStatus>([
 export interface OpenAICodexResponsesOptions extends StreamOptions {
 	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 	reasoningSummary?: "auto" | "concise" | "detailed" | "off" | "on" | null;
+	serviceTier?: ResponseCreateParamsStreaming["service_tier"];
 	textVerbosity?: "low" | "medium" | "high";
 }
 
@@ -72,6 +79,7 @@ interface RequestBody {
 	parallel_tool_calls?: boolean;
 	temperature?: number;
 	reasoning?: { effort?: string; summary?: string };
+	service_tier?: ResponseCreateParamsStreaming["service_tier"];
 	text?: { verbosity?: string };
 	include?: string[];
 	prompt_cache_key?: string;
@@ -251,7 +259,7 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 			}
 
 			stream.push({ type: "start", partial: output });
-			await processStream(response, output, stream, model);
+			await processStream(response, output, stream, model, options);
 
 			if (options?.signal?.aborted) {
 				throw new Error("Request was aborted");
@@ -282,15 +290,10 @@ export const streamSimpleOpenAICodexResponses: StreamFunction<"openai-codex-resp
 
 	const base = buildBaseOptions(model, options, apiKey);
 	const reasoningEffort = supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);
-	const reasoningSummary =
-		reasoningEffort
-			? ((options as OpenAICodexResponsesOptions | undefined)?.reasoningSummary ?? "detailed")
-			: (options as OpenAICodexResponsesOptions | undefined)?.reasoningSummary;
 
 	return streamOpenAICodexResponses(model, context, {
 		...base,
 		reasoningEffort,
-		reasoningSummary,
 	} satisfies OpenAICodexResponsesOptions);
 };
 
@@ -324,6 +327,10 @@ function buildRequestBody(
 		body.temperature = options.temperature;
 	}
 
+	if (options?.serviceTier !== undefined) {
+		body.service_tier = options.serviceTier;
+	}
+
 	if (context.tools) {
 		body.tools = convertResponsesTools(context.tools, { strict: null });
 	}
@@ -345,6 +352,28 @@ function clampReasoningEffort(modelId: string, effort: string): string {
 	if (id === "gpt-5.1" && effort === "xhigh") return "high";
 	if (id === "gpt-5.1-codex-mini") return effort === "high" || effort === "xhigh" ? "high" : "medium";
 	return effort;
+}
+
+function getServiceTierCostMultiplier(serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined): number {
+	switch (serviceTier) {
+		case "flex":
+			return 0.5;
+		case "priority":
+			return 2;
+		default:
+			return 1;
+	}
+}
+
+function applyServiceTierPricing(usage: Usage, serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined) {
+	const multiplier = getServiceTierCostMultiplier(serviceTier);
+	if (multiplier === 1) return;
+
+	usage.cost.input *= multiplier;
+	usage.cost.output *= multiplier;
+	usage.cost.cacheRead *= multiplier;
+	usage.cost.cacheWrite *= multiplier;
+	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 }
 
 function resolveCodexUrl(baseUrl?: string): string {
@@ -371,8 +400,12 @@ async function processStream(
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 	model: Model<"openai-codex-responses">,
+	options?: OpenAICodexResponsesOptions,
 ): Promise<void> {
-	await processResponsesStream(mapCodexEvents(parseSSE(response)), output, stream, model);
+	await processResponsesStream(mapCodexEvents(parseSSE(response)), output, stream, model, {
+		serviceTier: options?.serviceTier,
+		applyServiceTierPricing,
+	});
 }
 
 async function* mapCodexEvents(events: AsyncIterable<Record<string, unknown>>): AsyncGenerator<ResponseStreamEvent> {
@@ -811,7 +844,10 @@ async function processWebSocketStream(
 		socket.send(JSON.stringify({ type: "response.create", ...body }));
 		onStart();
 		stream.push({ type: "start", partial: output });
-		await processResponsesStream(mapCodexEvents(parseWebSocket(socket, options?.signal)), output, stream, model);
+		await processResponsesStream(mapCodexEvents(parseWebSocket(socket, options?.signal)), output, stream, model, {
+			serviceTier: options?.serviceTier,
+			applyServiceTierPricing,
+		});
 		if (options?.signal?.aborted) {
 			keepConnection = false;
 		}

@@ -53,8 +53,6 @@ export interface OpenAIResponsesOptions extends StreamOptions {
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
 	reasoningSummary?: "auto" | "detailed" | "concise" | null;
 	serviceTier?: ResponseCreateParamsStreaming["service_tier"];
-	toolChoice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
-	responseFormat?: unknown;
 }
 
 /**
@@ -94,7 +92,7 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 			let params = buildParams(model, context, options);
 			const nextParams = await options?.onPayload?.(params, model);
 			if (nextParams !== undefined) {
-				params = nextParams as typeof params;
+				params = nextParams as ResponseCreateParamsStreaming;
 			}
 			const openaiStream = await client.responses.create(
 				params,
@@ -141,19 +139,10 @@ export const streamSimpleOpenAIResponses: StreamFunction<"openai-responses", Sim
 
 	const base = buildBaseOptions(model, options, apiKey);
 	const reasoningEffort = supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);
-	const toolChoice = (options as OpenAIResponsesOptions | undefined)?.toolChoice;
-	const responseFormat = (options as OpenAIResponsesOptions | undefined)?.responseFormat;
-	const reasoningSummary =
-		reasoningEffort
-			? ((options as OpenAIResponsesOptions | undefined)?.reasoningSummary ?? "detailed")
-			: (options as OpenAIResponsesOptions | undefined)?.reasoningSummary;
 
 	return streamOpenAIResponses(model, context, {
 		...base,
 		reasoningEffort,
-		reasoningSummary,
-		toolChoice,
-		responseFormat,
 	} satisfies OpenAIResponsesOptions);
 };
 
@@ -231,33 +220,9 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
 				summary: options?.reasoningSummary || "auto",
 			};
 			params.include = ["reasoning.encrypted_content"];
-		} else {
-			if (model.name.startsWith("gpt-5")) {
-				// Jesus Christ, see https://community.openai.com/t/need-reasoning-false-option-for-gpt-5/1351588/7
-				messages.push({
-					role: "developer",
-					content: [
-						{
-							type: "input_text",
-							text: "# Juice: 0 !important",
-						},
-					],
-				});
-			}
+		} else if (model.provider !== "github-copilot") {
+			params.reasoning = { effort: "none" };
 		}
-	}
-
-	Object.assign(
-		params as unknown as Record<string, unknown>,
-		options?.extraBody ?? {},
-	);
-
-	if (options?.toolChoice !== undefined) {
-		(params as unknown as Record<string, unknown>).tool_choice = options.toolChoice;
-	}
-
-	if (options?.responseFormat !== undefined) {
-		(params as unknown as Record<string, unknown>).response_format = options.responseFormat;
 	}
 
 	return params;
