@@ -5,19 +5,24 @@
  * injected `webSearch` capability; fetch always uses the local readable-text
  * extractor (`localWebFetch`).
  *
+ * The orchestrator's search results render as inline cards in chat
+ * (`displayResults: true`). Subagent searches stay quiet — their output flows
+ * back to the orchestrator, which decides what to surface.
+ *
  * One file owns everything for this tool: name, description, parameters,
  * prompt snippet, and the executable handler. Agents don't reach for tool
  * names through a central catalog — the host imports this file and the
  * registry exposes the resulting `ToolDefinition` directly.
  */
 
+import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtime.js";
 import { localWebFetch } from "../local-tool-overrides.js";
 import type { ToolDefinition } from "../types.js";
 
 export type WebToolOptions = {
   webSearch?: (
     query: string,
-    options?: { category?: string },
+    options?: { category?: string; displayResults?: boolean },
   ) => Promise<{
     text: string;
     results?: Array<{ title: string; url: string; snippet: string }>;
@@ -58,7 +63,7 @@ export const createWebTool = (options: WebToolOptions = {}): ToolDefinition => (
     "Search the live web (provide query) or fetch a known URL (provide url). Pass exactly one of query or url. Use this for facts that change over time, recent news, current documentation, or any specific page you need to read.",
   promptSnippet: "Search the web or fetch a URL",
   parameters: WEB_TOOL_PARAMETERS,
-  execute: async (args) => {
+  execute: async (args, context) => {
     const query = typeof args.query === "string" ? args.query.trim() : "";
     const url = typeof args.url === "string" ? args.url.trim() : "";
     const prompt =
@@ -81,11 +86,12 @@ export const createWebTool = (options: WebToolOptions = {}): ToolDefinition => (
         typeof args.category === "string"
           ? args.category.trim() || undefined
           : undefined;
+      const displayResults = context.agentType === AGENT_IDS.ORCHESTRATOR;
       try {
-        const result = await options.webSearch(
-          query,
-          category ? { category } : undefined,
-        );
+        const result = await options.webSearch(query, {
+          ...(category ? { category } : {}),
+          ...(displayResults ? { displayResults: true } : {}),
+        });
         return {
           result: result.text || "No results found.",
           details: {

@@ -20,10 +20,10 @@ export type ToolContext = {
   agentType?: string;
   stellaRoot?: string;
   storageMode?: "cloud" | "local";
-  taskId?: string;
-  cloudTaskId?: string;
-  taskDepth?: number;
-  maxTaskDepth?: number;
+  agentId?: string;
+  cloudAgentId?: string;
+  agentDepth?: number;
+  maxAgentDepth?: number;
   allowedToolNames?: string[];
 };
 
@@ -58,7 +58,7 @@ export type ShellRecord = {
   kill: () => void;
 };
 
-export type TaskRecord = {
+export type AgentRecord = {
   id: string;
   description: string;
   status: "running" | "completed" | "error";
@@ -68,15 +68,15 @@ export type TaskRecord = {
   completedAt: number | null;
 };
 
-export type TaskToolRequest = {
+export type AgentToolRequest = {
   conversationId: string;
   description: string;
   prompt: string;
   agentType: string;
   rootRunId?: string;
-  taskDepth?: number;
-  maxTaskDepth?: number;
-  parentTaskId?: string;
+  agentDepth?: number;
+  maxAgentDepth?: number;
+  parentAgentId?: string;
   threadId?: string;
   toolsAllowlistOverride?: string[];
   storageMode: "cloud" | "local";
@@ -90,7 +90,7 @@ export type TaskToolRequest = {
   };
 };
 
-export type TaskToolSnapshot = {
+export type AgentToolSnapshot = {
   id: string;
   status: "running" | "completed" | "error" | "canceled";
   description: string;
@@ -102,19 +102,20 @@ export type TaskToolSnapshot = {
   messages?: Array<{ from: "orchestrator" | "subagent"; text: string; timestamp: number }>;
 };
 
-export type TaskToolApi = {
-  createTask: (request: TaskToolRequest) => Promise<{
+export type AgentToolApi = {
+  createAgent: (request: AgentToolRequest) => Promise<{
     threadId: string;
     activeThreads?: RuntimeThreadRecord[];
   }>;
-  getTask: (threadId: string) => Promise<TaskToolSnapshot | null>;
-  cancelTask: (threadId: string, reason?: string) => Promise<{ canceled: boolean }>;
-  sendTaskMessage?: (
+  getAgent: (threadId: string) => Promise<AgentToolSnapshot | null>;
+  cancelAgent: (threadId: string, reason?: string) => Promise<{ canceled: boolean }>;
+  sendAgentMessage?: (
     threadId: string,
     message: string,
     from: "orchestrator" | "subagent",
+    options?: { interrupt?: boolean },
   ) => Promise<{ delivered: boolean }>;
-  drainTaskMessages?: (
+  drainAgentMessages?: (
     threadId: string,
     recipient: "orchestrator" | "subagent",
   ) => Promise<string[]>;
@@ -126,17 +127,18 @@ export type ToolHostOptions = {
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;
   stellaComputerCliPath?: string;
-  taskApi?: TaskToolApi;
+  agentApi?: AgentToolApi;
   scheduleApi?: ScheduleToolApi;
   extensionTools?: import("../extensions/types.js").ToolDefinition[];
   displayHtml?: (html: string) => void;
   /**
-   * Optional handler for Stella's search-backed web tools (`web` and the
-   * legacy `WebSearch` alias). When omitted, search mode is unavailable.
+   * Optional handler for Stella's search-backed `web` tool. When omitted,
+   * search mode is unavailable. `displayResults` asks the implementation to
+   * surface result cards in chat (orchestrator only).
    */
   webSearch?: (
     query: string,
-    options?: { category?: string },
+    options?: { category?: string; displayResults?: boolean },
   ) => Promise<{
     text: string;
     results?: Array<{ title: string; url: string; snippet: string }>;
@@ -202,7 +204,7 @@ export type ToolHandler = (
  * Self-contained tool definition. One file per tool under
  * `runtime/kernel/tools/defs/` exports either a `ToolDefinition` directly (for
  * stateless tools) or a `createXxxTool(options)` factory that returns one (for
- * tools that need wired dependencies like `webSearch`, `taskApi`, etc.).
+ * tools that need wired dependencies like `webSearch`, `agentApi`, etc.).
  *
  * The host imports every def and builds a single Map<name, ToolDefinition>
  * that drives both:
