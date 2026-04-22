@@ -73,7 +73,6 @@ type RuntimeAgentRecord = {
   /** Resolves when the cloud task record has been created (or rejected). */
   cloudCreatePromise?: Promise<void>;
   parentAgentId?: string;
-  toolsAllowlistOverride?: string[];
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
   recentActivity: string[];
   progressBuffer: string;
@@ -113,7 +112,6 @@ export type AgentLifecycleEvent = {
 type LocalAgentManagerOpts = {
   maxConcurrent?: number;
   getMaxConcurrent?: () => number;
-  getStarterTools?: (agentType: string) => string[];
   resolveTaskThread?: (args: {
     conversationId: string;
     agentType: string;
@@ -183,20 +181,6 @@ const normalizeString = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
-};
-
-const mergeToolNames = (...lists: Array<string[] | undefined>): string[] => {
-  const merged: string[] = [];
-  const seen = new Set<string>();
-  for (const list of lists) {
-    for (const value of list ?? []) {
-      const toolName = normalizeString(value);
-      if (!toolName || seen.has(toolName)) continue;
-      seen.add(toolName);
-      merged.push(toolName);
-    }
-  }
-  return merged;
 };
 
 const normalizeFsPathKey = (candidate: string, cwd?: string): string => {
@@ -381,9 +365,6 @@ export class LocalAgentManager implements AgentToolApi {
         ? { maxAgentDepth: task.maxAgentDepth }
         : {}),
       ...(task.parentAgentId ? { parentAgentId: task.parentAgentId } : {}),
-      ...(task.toolsAllowlistOverride
-        ? { toolsAllowlistOverride: task.toolsAllowlistOverride }
-        : {}),
       ...(task.selfModMetadata ? { selfModMetadata: task.selfModMetadata } : {}),
       status: this.toPersistedStatus(task.status),
       startedAt: task.startedAt,
@@ -439,16 +420,6 @@ export class LocalAgentManager implements AgentToolApi {
     task.terminalEventEmitted = false;
   }
 
-  private async buildInitialToolsAllowlist(
-    request: AgentToolRequest,
-  ): Promise<string[] | undefined> {
-    const starterTools = mergeToolNames(
-      this.opts.getStarterTools?.(request.agentType),
-      request.toolsAllowlistOverride,
-    );
-    return starterTools.length > 0 ? starterTools : undefined;
-  }
-
   private hydrateTaskFromRecord(
     record: PersistedAgentRecord,
     prompt: string,
@@ -467,7 +438,6 @@ export class LocalAgentManager implements AgentToolApi {
       controller: new AbortController(),
       storageMode: "local",
       parentAgentId: record.parentAgentId,
-      toolsAllowlistOverride: record.toolsAllowlistOverride,
       selfModMetadata: record.selfModMetadata,
       recentActivity: [`Continuing thread: ${truncate(prompt, 200)}`],
       progressBuffer: "",
@@ -578,10 +548,6 @@ export class LocalAgentManager implements AgentToolApi {
           ? Math.min(context.maxAgentDepth, task.maxAgentDepth)
           : context.maxAgentDepth;
       context.agentDepth = task.agentDepth;
-
-      if (task.toolsAllowlistOverride) {
-        context.toolsAllowlist = task.toolsAllowlistOverride;
-      }
 
       const taskPrompt = this.buildTaskPrompt(task);
       task.attemptCount += 1;
@@ -751,7 +717,6 @@ export class LocalAgentManager implements AgentToolApi {
     activeThreads?: RuntimeThreadRecord[];
   }> {
     const controller = new AbortController();
-    const initialToolsAllowlist = await this.buildInitialToolsAllowlist(request);
     const resolvedThread = this.opts.resolveTaskThread?.({
       conversationId: request.conversationId,
       agentType: request.agentType,
@@ -780,7 +745,6 @@ export class LocalAgentManager implements AgentToolApi {
       controller,
       storageMode: request.storageMode,
       parentAgentId: request.parentAgentId,
-      toolsAllowlistOverride: initialToolsAllowlist,
       selfModMetadata: request.selfModMetadata,
       recentActivity: [],
       progressBuffer: "",
