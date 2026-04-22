@@ -79,13 +79,6 @@ export const createRuntimeExecutionSession = (
     webSearch: opts.webSearch,
     hookEmitter: opts.hookEmitter,
   });
-  // [diagnostic] one-line dump of every tool the model is being shown for this
-  // run. Routed through console.log so it ignores the runtime log level.
-  console.log(
-    `[diagnostic] tools advertised to model | agent=${opts.agentType} | runId=${runId} | count=${tools.length} | names=${tools
-      .map((t) => t.name)
-      .join(",")}`,
-  );
 
   const historySource = buildHistorySource(opts.agentContext);
   const agent = createRuntimeAgent({
