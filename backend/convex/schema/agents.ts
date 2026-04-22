@@ -18,16 +18,4 @@ export const agentsSchema = {
   })
     .index("by_ownerId_and_id", ["ownerId", "id"])
     .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
-
-  commands: defineTable({
-    commandId: v.string(),
-    name: v.string(),
-    description: v.string(),
-    pluginName: v.string(),
-    content: v.string(),
-    enabled: v.boolean(),
-    updatedAt: v.number(),
-  })
-    .index("by_commandId", ["commandId"])
-    .index("by_enabled_and_updatedAt", ["enabled", "updatedAt"]),
 };

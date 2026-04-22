@@ -9,7 +9,11 @@ export const integrationsSchema = {
     enabled: v.boolean(),
     usagePolicy: v.string(),
     updatedAt: v.number(),
-  }).index("by_integration_id", ["id"]),
+  })
+    .index("by_integrationId", ["id"])
+    // Lets `listPublicIntegrations` page over the catalog by recency without
+    // a table scan (and gives us a natural ordering for clients).
+    .index("by_updatedAt", ["updatedAt"]),
 
   user_integrations: defineTable({
     ownerId: v.string(),
@@ -97,5 +101,24 @@ export const integrationsSchema = {
   })
     .index("by_stateHash", ["stateHash"])
     .index("by_ownerId_and_expiresAt", ["ownerId", "expiresAt"])
+    .index("by_expiresAt", ["expiresAt"]),
+
+  /**
+   * Short-lived link codes used by channel connectors (Linq, Slack, Discord,
+   * Telegram, etc.) to bind a connector account to an existing Stella owner.
+   * `codeHash` is a deterministic namespaced SHA-256 of `(provider, code)` so
+   * that the consume path is a single indexed `.unique()` lookup instead of a
+   * global scan over `user_preferences`. Codes carry a 5-minute TTL and are
+   * rate-limited at the API surface; a sweeper cron purges expired rows.
+   */
+  link_codes: defineTable({
+    ownerId: v.string(),
+    provider: v.string(),
+    codeHash: v.string(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_provider_and_codeHash", ["provider", "codeHash"])
+    .index("by_ownerId_and_provider", ["ownerId", "provider"])
     .index("by_expiresAt", ["expiresAt"]),
 };

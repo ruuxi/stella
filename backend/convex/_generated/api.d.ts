@@ -49,7 +49,6 @@ import type * as cloudflare_tunnels from "../cloudflare_tunnels.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as data_attachments from "../data/attachments.js";
-import type * as data_commands from "../data/commands.js";
 import type * as data_integrations from "../data/integrations.js";
 import type * as data_preferences from "../data/preferences.js";
 import type * as data_secrets from "../data/secrets.js";
@@ -214,7 +213,6 @@ declare const fullApi: ApiFromModules<{
   conversations: typeof conversations;
   crons: typeof crons;
   "data/attachments": typeof data_attachments;
-  "data/commands": typeof data_commands;
   "data/integrations": typeof data_integrations;
   "data/preferences": typeof data_preferences;
   "data/secrets": typeof data_secrets;

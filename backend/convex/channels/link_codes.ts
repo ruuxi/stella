@@ -5,7 +5,7 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v, ConvexError } from "convex/values";
-import type { ActionCtx } from "../_generated/server";
+import type { ActionCtx, MutationCtx } from "../_generated/server";
 import { hashSha256Hex } from "../lib/crypto_utils";
 import {
   SIGN_IN_REQUIRED_ERROR,
@@ -17,6 +17,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export const LINK_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const LINK_CODE_TTL_MS = 5 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,73 +29,55 @@ const generateSecureLinkCode = (length = 6): string => {
   return Array.from(bytes, (byte) => LINK_CODE_ALPHABET[byte % LINK_CODE_ALPHABET.length]).join("");
 };
 
-const linkCodeSalt = () => generateSecureLinkCode(16);
+const normalizeLinkCode = (code: string): string => code.trim().toUpperCase();
 
-const hashLinkCode = async (code: string, salt: string) =>
-  hashSha256Hex(`${salt}:${code}`);
-
-const parseLinkCodeValue = (
-  value: string,
-): {
-  codeHash?: string;
-  codeSalt?: string;
-  expiresAt?: number;
-} | null => {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object") return null;
-    return parsed as {
-      codeHash?: string;
-      codeSalt?: string;
-      expiresAt?: number;
-    };
-  } catch {
-    return null;
-  }
-};
+/**
+ * Deterministic, namespaced hash used as the lookup key on `link_codes`.
+ *
+ * The `link_code:v1` prefix scopes the hash to this purpose so the same code
+ * value cannot collide with other hashes stored elsewhere, and lets us
+ * version the scheme if we ever swap to an HMAC with a server pepper. We use
+ * a plain SHA-256 (no per-row salt, no pepper) because:
+ *   - codes carry a 5-minute TTL and are issued exactly once per owner
+ *   - the public API surface is rate limited
+ *   - the realistic threat (DB-read attacker recovering a code) requires
+ *     cross-channel access on the *foreign* provider within the TTL window
+ * If that threat model changes, swap this for HMAC-SHA256 keyed off a new
+ * `STELLA_LINK_CODE_HASH_PEPPER` env var and bump the version prefix.
+ */
+const hashLinkCodeForLookup = async (
+  provider: string,
+  code: string,
+): Promise<string> => hashSha256Hex(`link_code:v1:${provider}:${normalizeLinkCode(code)}`);
 
 // ---------------------------------------------------------------------------
 // Internal Queries
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve a link code to its issuing owner without consuming it. Callers must
+ * pass `nowMs` (queries cannot read `Date.now()` deterministically) so the
+ * expiry check stays cache-stable.
+ */
 export const peekLinkCodeOwner = internalQuery({
   args: {
     provider: v.string(),
     code: v.string(),
+    nowMs: v.number(),
   },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
-    const key = `${args.provider}_link_code`;
-    const prefs = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_key", (q) => q.eq("key", key))
-      .take(500);
-    const now = Date.now();
-
-    const promises = prefs.map(async (pref) => {
-      const parsed = parseLinkCodeValue(pref.value);
-      if (!parsed) return null;
-      if (
-        !parsed.codeHash ||
-        !parsed.codeSalt ||
-        typeof parsed.expiresAt !== "number" ||
-        parsed.expiresAt <= now
-      ) {
-        return null;
-      }
-      const candidateHash = await hashLinkCode(args.code, parsed.codeSalt);
-      if (candidateHash === parsed.codeHash) {
-        return pref;
-      }
+    const codeHash = await hashLinkCodeForLookup(args.provider, args.code);
+    const row = await ctx.db
+      .query("link_codes")
+      .withIndex("by_provider_and_codeHash", (q) =>
+        q.eq("provider", args.provider).eq("codeHash", codeHash),
+      )
+      .unique();
+    if (!row || row.expiresAt <= args.nowMs) {
       return null;
-    });
-
-    const results = await Promise.all(promises);
-    const matched = results.find((r) => r !== null);
-    if (matched) {
-      return matched.ownerId;
     }
-
-    return null;
+    return row.ownerId;
   },
 });
 
@@ -102,38 +85,50 @@ export const peekLinkCodeOwner = internalQuery({
 // Internal Mutations
 // ---------------------------------------------------------------------------
 
+/**
+ * Insert (or replace) the active link code for `(ownerId, provider)`. There
+ * is at most one active code per owner+provider; regenerating the code
+ * overwrites the previous row so it cannot be claimed twice.
+ */
+const writeLinkCodeRow = async (
+  ctx: Pick<MutationCtx, "db">,
+  args: { ownerId: string; provider: string; code: string; nowMs: number },
+) => {
+  const codeHash = await hashLinkCodeForLookup(args.provider, args.code);
+  const existing = await ctx.db
+    .query("link_codes")
+    .withIndex("by_ownerId_and_provider", (q) =>
+      q.eq("ownerId", args.ownerId).eq("provider", args.provider),
+    )
+    .unique();
+
+  const patch = {
+    codeHash,
+    expiresAt: args.nowMs + LINK_CODE_TTL_MS,
+  };
+
+  if (existing) {
+    await ctx.db.patch(existing._id, patch);
+  } else {
+    await ctx.db.insert("link_codes", {
+      ownerId: args.ownerId,
+      provider: args.provider,
+      codeHash,
+      expiresAt: args.nowMs + LINK_CODE_TTL_MS,
+      createdAt: args.nowMs,
+    });
+  }
+};
+
 export const storeLinkCode = internalMutation({
   args: {
     ownerId: v.string(),
     provider: v.string(),
     code: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
-    const key = `${args.provider}_link_code`;
-    const now = Date.now();
-    const salt = linkCodeSalt();
-    const codeHash = await hashLinkCode(args.code, salt);
-    const value = JSON.stringify({
-      codeHash,
-      codeSalt: salt,
-      expiresAt: now + 5 * 60 * 1000,
-    });
-
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", key))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, { value, updatedAt: now });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId: args.ownerId,
-        key,
-        value,
-        updatedAt: now,
-      });
-    }
+    await writeLinkCodeRow(ctx, { ...args, nowMs: Date.now() });
     return null;
   },
 });
@@ -143,39 +138,22 @@ export const consumeLinkCode = internalMutation({
     provider: v.string(),
     code: v.string(),
   },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
-    const key = `${args.provider}_link_code`;
-    const prefs = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_key", (q) => q.eq("key", key))
-      .take(500);
-    const now = Date.now();
-
-    const promises = prefs.map(async (pref) => {
-      const parsed = parseLinkCodeValue(pref.value);
-      if (!parsed) return null;
-      if (
-        !parsed.codeHash ||
-        !parsed.codeSalt ||
-        typeof parsed.expiresAt !== "number" ||
-        parsed.expiresAt <= now
-      ) {
-        return null;
-      }
-      const candidateHash = await hashLinkCode(args.code, parsed.codeSalt);
-      if (candidateHash === parsed.codeHash) {
-        return pref;
-      }
+    const codeHash = await hashLinkCodeForLookup(args.provider, args.code);
+    const row = await ctx.db
+      .query("link_codes")
+      .withIndex("by_provider_and_codeHash", (q) =>
+        q.eq("provider", args.provider).eq("codeHash", codeHash),
+      )
+      .unique();
+    if (!row) return null;
+    if (row.expiresAt <= Date.now()) {
+      await ctx.db.delete(row._id);
       return null;
-    });
-
-    const results = await Promise.all(promises);
-    const matched = results.find((r) => r !== null);
-    if (matched) {
-      await ctx.db.delete(matched._id);
-      return matched.ownerId;
     }
-    return null;
+    await ctx.db.delete(row._id);
+    return row.ownerId;
   },
 });
 
@@ -186,34 +164,36 @@ export const generateAndStoreLinkCode = internalMutation({
   },
   returns: v.object({ code: v.string() }),
   handler: async (ctx, args) => {
-    const key = `${args.provider}_link_code`;
-    const now = Date.now();
     const code = generateSecureLinkCode(6);
-    const salt = linkCodeSalt();
-    const codeHash = await hashLinkCode(code, salt);
-    const value = JSON.stringify({
-      codeHash,
-      codeSalt: salt,
-      expiresAt: now + 5 * 60 * 1000,
+    await writeLinkCodeRow(ctx, {
+      ownerId: args.ownerId,
+      provider: args.provider,
+      code,
+      nowMs: Date.now(),
     });
-
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", key))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, { value, updatedAt: now });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId: args.ownerId,
-        key,
-        value,
-        updatedAt: now,
-      });
-    }
-
     return { code };
+  },
+});
+
+/**
+ * Periodic cleanup for expired link code rows. Bounded per-call so the
+ * sweeper cron stays inside transaction limits even if a backlog accumulates;
+ * self-reschedules through the cron tick rather than chaining `runAfter`.
+ */
+export const purgeExpiredLinkCodes = internalMutation({
+  args: {
+    batchSize: v.optional(v.number()),
+  },
+  returns: v.object({ deleted: v.number(), hasMore: v.boolean() }),
+  handler: async (ctx, args) => {
+    const batchSize = Math.min(Math.max(Math.floor(args.batchSize ?? 200), 1), 1000);
+    const now = Date.now();
+    const expired = await ctx.db
+      .query("link_codes")
+      .withIndex("by_expiresAt", (q) => q.lt("expiresAt", now))
+      .take(batchSize);
+    await Promise.all(expired.map((row) => ctx.db.delete(row._id)));
+    return { deleted: expired.length, hasMore: expired.length === batchSize };
   },
 });
 
@@ -265,11 +245,11 @@ export const verifyLinqLinkCode = mutation({
       throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
     }
     const ownerId = identity.tokenIdentifier;
-    const code = args.code.toUpperCase();
+    const code = normalizeLinkCode(args.code);
 
     const codeOwner = await ctx.runQuery(
       internal.channels.link_codes.peekLinkCodeOwner,
-      { provider: "linq", code },
+      { provider: "linq", code, nowMs: Date.now() },
     );
     if (!codeOwner) return { result: "invalid_code" as const };
     if (codeOwner !== ownerId) return { result: "owner_mismatch" as const };
@@ -319,7 +299,7 @@ export async function processLinkCode(args: {
 
   const ownerId = await args.ctx.runQuery(
     internal.channels.link_codes.peekLinkCodeOwner,
-    { provider: args.provider, code: args.code },
+    { provider: args.provider, code: args.code, nowMs: Date.now() },
   );
   if (!ownerId) return "invalid_code";
 
