@@ -1,26 +1,24 @@
 /**
- * State tools: TaskCreate/TaskPause, TaskUpdate, and TaskOutput handlers.
+ * State tools: spawn_agent / pause_agent and send_input handlers.
  */
 
 import type {
   ToolContext,
   ToolResult,
-  TaskRecord,
-  TaskToolApi,
-  TaskToolSnapshot,
+  AgentRecord,
+  AgentToolApi,
 } from "./types.js";
 import {
   formatRuntimeThreadAge,
   type RuntimeThreadRecord,
 } from "../runtime-threads.js";
-import { TASK_PAUSE_CANCEL_REASON } from "../tasks/local-task-manager.js";
-import { truncate } from "./utils.js";
+import { AGENT_PAUSE_CANCEL_REASON } from "../agents/local-agent-manager.js";
 import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 
 export type StateContext = {
   stateRoot: string;
-  tasks: Map<string, TaskRecord>;
-  taskApi?: TaskToolApi;
+  tasks: Map<string, AgentRecord>;
+  agentApi?: AgentToolApi;
 };
 
 const toOptionalString = (value: unknown): string | undefined => {
@@ -42,85 +40,38 @@ const buildOtherThreadsResult = (
       ...(thread.description ? { description: thread.description } : {}),
     }));
 
-const buildTaskSnapshotResult = (snapshot: TaskToolSnapshot) => {
-  const duration = (snapshot.completedAt ?? Date.now()) - snapshot.startedAt;
-  const messages = snapshot.messages?.map((entry) => ({
-    from: entry.from,
-    text: truncate(entry.text, 240),
-    timestamp: entry.timestamp,
-  }));
-  if (snapshot.status === "completed") {
-    return {
-      thread_id: snapshot.id,
-      status: snapshot.status,
-      description: snapshot.description,
-      duration_ms: duration,
-      result: truncate(snapshot.result ?? ""),
-      ...(messages && messages.length > 0 ? { messages } : {}),
-    };
-  }
-  if (snapshot.status === "error" || snapshot.status === "canceled") {
-    return {
-      thread_id: snapshot.id,
-      status: snapshot.status,
-      description: snapshot.description,
-      duration_ms: duration,
-      error: truncate(snapshot.error ?? ""),
-      ...(messages && messages.length > 0 ? { messages } : {}),
-    };
-  }
-  const elapsed = Date.now() - snapshot.startedAt;
-  return {
-    thread_id: snapshot.id,
-    status: snapshot.status,
-    description: snapshot.description,
-    elapsed_ms: elapsed,
-    background: true,
-    follow_up_on_completion: true,
-    ...(snapshot.recentActivity && snapshot.recentActivity.length > 0
-      ? {
-          recent_activity: snapshot.recentActivity.map((line) =>
-            truncate(line, 300),
-          ),
-        }
-      : {}),
-    ...(messages && messages.length > 0 ? { messages } : {}),
-  };
-};
-
 export const createStateContext = (
   stateRoot: string,
-  taskApi?: TaskToolApi,
+  agentApi?: AgentToolApi,
 ): StateContext => ({
   stateRoot,
   tasks: new Map(),
-  taskApi,
+  agentApi,
 });
 
-export const handleTaskUpdate = async (
+export const handleSendInput = async (
   ctx: StateContext,
   args: Record<string, unknown>,
   context: ToolContext,
 ): Promise<ToolResult> => {
-  const explicitThreadId = toOptionalString(args.thread_id ?? args.threadId ?? args.id);
-  const contextThreadId = toOptionalString(context.taskId);
-  const threadId = explicitThreadId ?? contextThreadId;
+  const threadId =
+    toOptionalString(args.thread_id) ?? toOptionalString(context.agentId);
   const sender: "orchestrator" | "subagent" =
     context.agentType === "orchestrator" ? "orchestrator" : "subagent";
-  if (!ctx.taskApi?.sendTaskMessage) {
-    return { error: "Task updates are not configured on this device." };
+  if (!ctx.agentApi?.sendAgentMessage) {
+    return { error: "Agent input is not configured on this device." };
   }
   if (!threadId) {
     return { error: "thread_id is required" };
   }
-  const message =
-    toOptionalString(args.message) ??
-    toOptionalString(args.content) ??
-    toOptionalString(args.text);
+  const message = toOptionalString(args.message);
   if (!message) {
     return { error: "message is required" };
   }
-  const delivered = await ctx.taskApi.sendTaskMessage(threadId, message, sender);
+  const interrupt = typeof args.interrupt === "boolean" ? args.interrupt : true;
+  const delivered = await ctx.agentApi.sendAgentMessage(threadId, message, sender, {
+    interrupt,
+  });
   if (!delivered.delivered) {
     return { error: `Thread not found: ${threadId}` };
   }
@@ -129,28 +80,29 @@ export const handleTaskUpdate = async (
       thread_id: threadId,
       status: "updated",
       delivered: true,
+      interrupt,
     },
   };
 };
 
-export const handleTask = async (
+export const handleSpawnAgent = async (
   ctx: StateContext,
   args: Record<string, unknown>,
   context: ToolContext,
 ): Promise<ToolResult> => {
   const action = toOptionalString(args.action)?.toLowerCase();
-  const explicitThreadId = toOptionalString(args.thread_id ?? args.threadId ?? args.id);
+  const explicitThreadId = toOptionalString(args.thread_id);
 
   if ((action === "cancel" || action === "stop") && explicitThreadId) {
     // Pin the cancel reason to a sentinel so the runner can recognize
-    // orchestrator-initiated TaskPause and skip the hidden `[Task canceled]`
+    // orchestrator-initiated pause_agent and skip the hidden `[Task canceled]`
     // follow-up turn — that follow-up was clobbering the user-facing reply
     // because it produced an empty assistant message that overwrote the
     // orchestrator's actual response to the pause request.
-    if (ctx.taskApi) {
-      const canceled = await ctx.taskApi.cancelTask(
+    if (ctx.agentApi) {
+      const canceled = await ctx.agentApi.cancelAgent(
         explicitThreadId,
-        TASK_PAUSE_CANCEL_REASON,
+        AGENT_PAUSE_CANCEL_REASON,
       );
       if (!canceled.canceled) {
         return { error: `Thread not found: ${explicitThreadId}` };
@@ -166,7 +118,7 @@ export const handleTask = async (
     const localRecord = ctx.tasks.get(explicitThreadId);
     if (!localRecord) return { error: `Thread not found: ${explicitThreadId}` };
     localRecord.status = "error";
-    localRecord.error = TASK_PAUSE_CANCEL_REASON;
+    localRecord.error = AGENT_PAUSE_CANCEL_REASON;
     localRecord.completedAt = Date.now();
     return {
       result: {
@@ -178,14 +130,13 @@ export const handleTask = async (
   }
 
   const agentType = AGENT_IDS.GENERAL;
-  const parentTaskId =
-    toOptionalString(args.parentTaskId ?? args.parent_task_id) ??
-    toOptionalString(context.cloudTaskId) ??
-    toOptionalString(context.taskId);
+  const parentAgentId =
+    toOptionalString(context.cloudAgentId) ??
+    toOptionalString(context.agentId);
   const storageMode = context.storageMode ?? "local";
-  const parentTaskDepth = Math.max(0, context.taskDepth ?? 0);
-  const nextTaskDepth = parentTaskDepth + 1;
-  const maxTaskDepth = context.maxTaskDepth;
+  const parentAgentDepth = Math.max(0, context.agentDepth ?? 0);
+  const nextAgentDepth = parentAgentDepth + 1;
+  const maxAgentDepth = context.maxAgentDepth;
 
   if (context.agentType !== AGENT_IDS.ORCHESTRATOR) {
     return {
@@ -193,9 +144,9 @@ export const handleTask = async (
     };
   }
 
-  if (typeof maxTaskDepth === "number" && nextTaskDepth > maxTaskDepth) {
+  if (typeof maxAgentDepth === "number" && nextAgentDepth > maxAgentDepth) {
     return {
-      error: `Task depth limit reached (${maxTaskDepth}). Complete work in the current task instead of creating another subtask.`,
+      error: `Task depth limit reached (${maxAgentDepth}). Complete work in the current task instead of creating another subtask.`,
     };
   }
 
@@ -208,16 +159,16 @@ export const handleTask = async (
     return { error: "prompt is required" };
   }
 
-  if (ctx.taskApi) {
-    const created = await ctx.taskApi.createTask({
+  if (ctx.agentApi) {
+    const created = await ctx.agentApi.createAgent({
       conversationId: context.conversationId,
       description,
       prompt,
       agentType,
       rootRunId: context.rootRunId,
-      taskDepth: nextTaskDepth,
-      ...(typeof maxTaskDepth === "number" ? { maxTaskDepth } : {}),
-      parentTaskId,
+      agentDepth: nextAgentDepth,
+      ...(typeof maxAgentDepth === "number" ? { maxAgentDepth } : {}),
+      parentAgentId,
       storageMode,
     });
     const otherThreads = created.activeThreads
@@ -237,7 +188,7 @@ export const handleTask = async (
 
   // Fallback local in-memory task behavior (used only when no task manager is wired).
   const id = String(ctx.tasks.size + 1);
-  const record: TaskRecord = {
+  const record: AgentRecord = {
     id,
     description,
     status: "running",
@@ -263,58 +214,3 @@ export const handleTask = async (
   };
 };
 
-export const handleTaskOutput = async (
-  ctx: StateContext,
-  args: Record<string, unknown>,
-  _context: ToolContext,
-): Promise<ToolResult> => {
-  const threadId = toOptionalString(args.thread_id ?? args.threadId ?? args.id);
-  if (!threadId) {
-    return { error: "thread_id is required" };
-  }
-
-  if (ctx.taskApi) {
-    const snapshot = await ctx.taskApi.getTask(threadId);
-    if (!snapshot) {
-      return { error: `Thread not found: ${threadId}` };
-    }
-    return { result: buildTaskSnapshotResult(snapshot) };
-  }
-
-  const record = ctx.tasks.get(threadId);
-  if (!record) {
-    return { error: `Thread not found: ${threadId}` };
-  }
-  if (record.status === "completed") {
-    const duration = (record.completedAt ?? Date.now()) - record.startedAt;
-    return {
-      result: {
-        thread_id: threadId,
-        status: "completed",
-        duration_ms: duration,
-        result: truncate(record.result ?? ""),
-      },
-    };
-  }
-  if (record.status === "error") {
-    const duration = (record.completedAt ?? Date.now()) - record.startedAt;
-    return {
-      result: {
-        thread_id: threadId,
-        status: "error",
-        duration_ms: duration,
-        error: truncate(record.error ?? ""),
-      },
-    };
-  }
-  const elapsed = Date.now() - record.startedAt;
-  return {
-    result: {
-      thread_id: threadId,
-      status: "running",
-      background: true,
-      elapsed_ms: elapsed,
-      follow_up_on_completion: true,
-    },
-  };
-};

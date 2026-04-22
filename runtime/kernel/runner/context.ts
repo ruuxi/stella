@@ -26,7 +26,7 @@ import {
   estimateRuntimeTokens,
 } from "../runtime-threads.js";
 import { anyApi } from "convex/server";
-import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
+import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { renderSkillCatalogBlock } from "../shared/skill-catalog.js";
 import type {
   RunnerContext,
@@ -42,7 +42,7 @@ import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import {
   defaultPromptForAgentType,
-  DEFAULT_MAX_TASK_DEPTH,
+  DEFAULT_MAX_AGENT_DEPTH,
   LOCAL_CONTEXT_EVENT_TYPES,
   LOCAL_HISTORY_RESERVE_TOKENS,
   MIN_LOCAL_HISTORY_TOKENS,
@@ -140,10 +140,10 @@ export const shouldIncludeInOrchestratorLocalHistory = (
   // Task lifecycle updates are delivered back to the orchestrator as hidden
   // follow-up prompts. Keeping them in local-history context as well doubles
   // the same signal.
-  event.type !== "task_started" &&
-  event.type !== "task_completed" &&
-  event.type !== "task_failed" &&
-  event.type !== "task_canceled";
+  event.type !== "agent_started" &&
+  event.type !== "agent_completed" &&
+  event.type !== "agent_failed" &&
+  event.type !== "agent_canceled";
 
 const trimDuplicatedTransitionUserEvent = (
   events: LocalContextEvent[],
@@ -334,47 +334,48 @@ export const createRunnerContext = ({
       ? { threadSummariesStore: runtimeStore.threadSummariesStore }
       : {}),
     stellaHome: stellaRoot,
-    taskApi: {
-      createTask: async (request) => {
-        if (!context.state.localTaskManager) {
+    agentApi: {
+      createAgent: async (request) => {
+        if (!context.state.localAgentManager) {
           throw new Error("Local task manager not initialized");
         }
-        return await context.state.localTaskManager.createTask(request);
+        return await context.state.localAgentManager.createAgent(request);
       },
-      getTask: async (taskId) => {
-        if (!context.state.localTaskManager) {
+      getAgent: async (agentId) => {
+        if (!context.state.localAgentManager) {
           return null;
         }
-        return await context.state.localTaskManager.getTask(taskId);
+        return await context.state.localAgentManager.getAgent(agentId);
       },
-      cancelTask: async (taskId, reason) => {
-        if (!context.state.localTaskManager) {
+      cancelAgent: async (agentId, reason) => {
+        if (!context.state.localAgentManager) {
           return { canceled: false };
         }
-        return await context.state.localTaskManager.cancelTask(taskId, reason);
+        return await context.state.localAgentManager.cancelAgent(agentId, reason);
       },
-      sendTaskMessage: async (taskId, message, from) => {
+      sendAgentMessage: async (agentId, message, from, options) => {
         if (
-          !context.state.localTaskManager ||
-          typeof context.state.localTaskManager.sendTaskMessage !== "function"
+          !context.state.localAgentManager ||
+          typeof context.state.localAgentManager.sendAgentMessage !== "function"
         ) {
           return { delivered: false };
         }
-        return await context.state.localTaskManager.sendTaskMessage(
-          taskId,
+        return await context.state.localAgentManager.sendAgentMessage(
+          agentId,
           message,
           from,
+          options,
         );
       },
-      drainTaskMessages: async (taskId, recipient) => {
+      drainAgentMessages: async (agentId, recipient) => {
         if (
-          !context.state.localTaskManager ||
-          typeof context.state.localTaskManager.drainTaskMessages !== "function"
+          !context.state.localAgentManager ||
+          typeof context.state.localAgentManager.drainAgentMessages !== "function"
         ) {
           return [];
         }
-        return await context.state.localTaskManager.drainTaskMessages(
-          taskId,
+        return await context.state.localAgentManager.drainAgentMessages(
+          agentId,
           recipient,
         );
       },
@@ -414,7 +415,7 @@ export const createRunnerContext = ({
       isRunning: false,
       isInitialized: false,
       initializationPromise: null,
-      localTaskManager: null,
+      localAgentManager: null,
       activeOrchestratorRunId: null,
       activeOrchestratorConversationId: null,
       activeOrchestratorUiVisibility: "visible",
@@ -477,7 +478,7 @@ export const buildAgentContext = async (
       description?: string;
     };
   },
-): Promise<LocalTaskManagerAgentContext> => {
+): Promise<LocalAgentContext> => {
   const agent = resolveAgent(context, args.agentType);
   const model = getConfiguredModel(context, args.agentType, agent);
   const resolvedLlm = resolveRunnerLlmRoute(
@@ -570,7 +571,7 @@ export const buildAgentContext = async (
     staleUserReminderText,
     toolsAllowlist,
     model,
-    maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
+    maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
     coreMemory: readCoreMemory(context.stellaRoot),
     ...(memorySnapshot ? { memorySnapshot } : {}),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,

@@ -77,7 +77,7 @@ describe("stella-computer shell bootstrap", () => {
       deviceId: "device-test",
       requestId: "request-test",
       runId: "run-test",
-      taskId: "task-test",
+      agentId: "task-test",
       agentType: "general",
       stellaRoot: tempDir,
       storageMode: "local",

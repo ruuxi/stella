@@ -23,8 +23,8 @@ export const getStellaComputerSessionId = (
   context?: ToolContext,
 ): string | null => {
   const ownerSegment = sanitizeStellaComputerSessionId(
-    context?.taskId
-      ? `task-${context.taskId}`
+    context?.agentId
+      ? `task-${context.agentId}`
       : context?.runId
         ? `run-${context.runId}`
         : context?.rootRunId

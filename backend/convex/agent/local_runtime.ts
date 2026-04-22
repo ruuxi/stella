@@ -16,7 +16,7 @@ import {
 import { createBackendTools, executeWebSearch } from "../tools/backend";
 import { jsonValueValidator } from "../shared_validators";
 
-const DEFAULT_MAX_TASK_DEPTH = 2;
+const DEFAULT_MAX_AGENT_DEPTH = 2;
 const ALLOWED_LOCAL_RUNTIME_BACKEND_TOOLS = new Set<string>(
   LOCAL_RUNTIME_BACKEND_TOOL_NAMES,
 );
@@ -41,7 +41,7 @@ const executeBackendTool = async (
     ownerId: args.ownerId,
     conversationId: args.conversationId,
     agentType: args.agentType ?? AGENT_IDS.GENERAL,
-    maxTaskDepth: DEFAULT_MAX_TASK_DEPTH,
+    maxAgentDepth: DEFAULT_MAX_AGENT_DEPTH,
   }) as Record<
     string,
     { execute?: (input: Record<string, unknown>) => Promise<unknown> }

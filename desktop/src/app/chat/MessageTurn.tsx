@@ -33,7 +33,7 @@ export type TurnViewModel = {
   webSearchBadgeHtml?: string;
   officePreviewRef?: OfficePreviewRef;
   selfModApplied?: SelfModApplied;
-  taskId?: string;
+  agentId?: string;
   askQuestion?: AskQuestionPayload;
 };
 
@@ -44,9 +44,9 @@ export type StreamingTurnProps = {
   pendingUserMessageId?: string | null;
 };
 
-const TASK_REASONING_TICKER_CHARS_PER_SECOND = 4;
-const TASK_REASONING_TICKER_MIN_SECONDS = 18;
-const TASK_REASONING_TICKER_PADDING_CHARS = 32;
+const AGENT_REASONING_TICKER_CHARS_PER_SECOND = 4;
+const AGENT_REASONING_TICKER_MIN_SECONDS = 18;
+const AGENT_REASONING_TICKER_PADDING_CHARS = 32;
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const getAttachments = (event: EventRecord): Attachment[] => {
@@ -356,10 +356,10 @@ export const TurnItem = memo(function TurnItem({
   const normalizedTaskReasoningText = taskReasoningText?.trim().replace(/\s+/g, " ") ?? "";
   const taskReasoningTickerStyle = normalizedTaskReasoningText
     ? ({
-        "--task-reasoning-ticker-duration": `${Math.max(
-          TASK_REASONING_TICKER_MIN_SECONDS,
-          (normalizedTaskReasoningText.length + TASK_REASONING_TICKER_PADDING_CHARS)
-            / TASK_REASONING_TICKER_CHARS_PER_SECOND,
+        "--agent-reasoning-ticker-duration": `${Math.max(
+          AGENT_REASONING_TICKER_MIN_SECONDS,
+          (normalizedTaskReasoningText.length + AGENT_REASONING_TICKER_PADDING_CHARS)
+            / AGENT_REASONING_TICKER_CHARS_PER_SECOND,
         )}s`,
       } as CSSProperties)
     : undefined;
@@ -558,12 +558,12 @@ export const TurnItem = memo(function TurnItem({
 
       {normalizedTaskReasoningText.length > 0 && (
         <div
-          className="task-reasoning-ticker"
+          className="agent-reasoning-ticker"
           aria-live="off"
           style={taskReasoningTickerStyle}
         >
-          <div className="task-reasoning-ticker__track">
-            <span className="task-reasoning-ticker__text">
+          <div className="agent-reasoning-ticker__track">
+            <span className="agent-reasoning-ticker__text">
               {normalizedTaskReasoningText}
             </span>
           </div>

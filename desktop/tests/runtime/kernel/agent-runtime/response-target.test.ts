@@ -1,43 +1,43 @@
 import { describe, expect, it } from "vitest";
 import {
   createOrchestratorResponseTargetTracker,
-  createTaskLifecycleResponseTarget,
+  createAgentLifecycleResponseTarget,
 } from "../../../../../runtime/kernel/agent-runtime/response-target.js";
 
 describe("orchestrator response target tracking", () => {
-  it("classifies a TaskCreate reply as a task turn", () => {
+  it("classifies a spawn_agent reply as a task turn", () => {
     const tracker = createOrchestratorResponseTargetTracker();
 
-    tracker.noteToolEnd("TaskCreate", {
+    tracker.noteToolEnd("spawn_agent", {
       thread_id: "task-1",
     });
 
     expect(tracker.resolve()).toEqual({
-      type: "task_turn",
-      taskId: "task-1",
+      type: "agent_turn",
+      agentId: "task-1",
     });
   });
 
   it("classifies task follow-up tools by thread id", () => {
     const tracker = createOrchestratorResponseTargetTracker();
 
-    tracker.noteToolStart("TaskUpdate", {
+    tracker.noteToolStart("send_input", {
       thread_id: "task-1",
     });
 
     expect(tracker.resolve()).toEqual({
-      type: "task_turn",
-      taskId: "task-1",
+      type: "agent_turn",
+      agentId: "task-1",
     });
   });
 
   it("falls back to a normal user turn when multiple task ids are involved", () => {
     const tracker = createOrchestratorResponseTargetTracker();
 
-    tracker.noteToolEnd("TaskCreate", {
+    tracker.noteToolEnd("spawn_agent", {
       thread_id: "task-1",
     });
-    tracker.noteToolEnd("TaskCreate", {
+    tracker.noteToolEnd("spawn_agent", {
       thread_id: "task-2",
     });
 
@@ -52,7 +52,7 @@ describe("orchestrator response target tracking", () => {
     tracker.noteToolEnd("Bash", {
       calls: [
         {
-          toolName: "task_create",
+          toolName: "spawn_agent",
           args: { description: "run nested task" },
           result: { thread_id: "task-from-exec" },
         },
@@ -60,8 +60,8 @@ describe("orchestrator response target tracking", () => {
     });
 
     expect(tracker.resolve()).toEqual({
-      type: "task_turn",
-      taskId: "task-from-exec",
+      type: "agent_turn",
+      agentId: "task-from-exec",
     });
   });
 });
@@ -69,36 +69,36 @@ describe("orchestrator response target tracking", () => {
 describe("task lifecycle response targets", () => {
   it("keeps task completions as separate terminal notices", () => {
     expect(
-      createTaskLifecycleResponseTarget({
-        taskId: "task-1",
-        eventType: "task-completed",
+      createAgentLifecycleResponseTarget({
+        agentId: "task-1",
+        eventType: "agent-completed",
       }),
     ).toEqual({
-      type: "task_terminal_notice",
-      taskId: "task-1",
+      type: "agent_terminal_notice",
+      agentId: "task-1",
       terminalState: "completed",
     });
   });
 
   it("routes failed and canceled task follow-ups back into the task turn", () => {
     expect(
-      createTaskLifecycleResponseTarget({
-        taskId: "task-1",
-        eventType: "task-failed",
+      createAgentLifecycleResponseTarget({
+        agentId: "task-1",
+        eventType: "agent-failed",
       }),
     ).toEqual({
-      type: "task_turn",
-      taskId: "task-1",
+      type: "agent_turn",
+      agentId: "task-1",
     });
 
     expect(
-      createTaskLifecycleResponseTarget({
-        taskId: "task-1",
-        eventType: "task-canceled",
+      createAgentLifecycleResponseTarget({
+        agentId: "task-1",
+        eventType: "agent-canceled",
       }),
     ).toEqual({
-      type: "task_turn",
-      taskId: "task-1",
+      type: "agent_turn",
+      agentId: "task-1",
     });
   });
 });

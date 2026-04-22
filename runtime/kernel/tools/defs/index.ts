@@ -39,7 +39,7 @@ import { createRequestCredentialTool } from "./request-credential.js";
 import { createScheduleTool } from "./schedule.js";
 import { createScheduleControlTools } from "./schedule-control.js";
 import { strReplaceTool } from "./str-replace.js";
-import { createTaskTools } from "./task.js";
+import { createAgentTools } from "./task.js";
 import { viewImageTool } from "./view-image.js";
 import { createWebTool } from "./web.js";
 import { createWriteStdinTool } from "./write-stdin.js";
@@ -49,7 +49,7 @@ import type { StateContext } from "../state.js";
 export type BuildBuiltinToolsContext = ToolHostOptions & {
   /** Initialized PTY shell state shared by exec_command / write_stdin. */
   shellState: ShellState;
-  /** Initialized state context for the durable Task* tools. */
+  /** Initialized state context for the durable spawn_agent / send_input / pause_agent tools. */
   stateContext: StateContext;
   /**
    * Re-entrant tool dispatcher used by `multi_tool_use.parallel` to invoke
@@ -104,11 +104,11 @@ export const buildBuiltinTools = (
   tools.push(askUserQuestionTool);
   tools.push(
     createScheduleTool({
-      taskApi: options.taskApi,
+      agentApi: options.agentApi,
       scheduleApi: options.scheduleApi,
     }),
   );
-  tools.push(...createTaskTools(options.stateContext));
+  tools.push(...createAgentTools(options.stateContext));
   if (options.memoryStore) {
     tools.push(createMemoryTool({ memoryStore: options.memoryStore }));
   }

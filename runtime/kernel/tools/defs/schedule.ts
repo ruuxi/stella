@@ -9,14 +9,14 @@ import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtim
 import { handleSchedule } from "../schedule.js";
 import type {
   ScheduleToolApi,
-  TaskToolApi,
+  AgentToolApi,
   ToolContext,
   ToolDefinition,
   ToolResult,
 } from "../types.js";
 
 export type ScheduleToolOptions = {
-  taskApi?: TaskToolApi;
+  agentApi?: AgentToolApi;
   scheduleApi?: ScheduleToolApi;
 };
 
@@ -49,7 +49,7 @@ export const createScheduleTool = (
     const denied = requireOrchestrator("Schedule", context);
     if (denied) return denied;
     try {
-      return await handleSchedule(options.taskApi, args, context);
+      return await handleSchedule(options.agentApi, args, context);
     } catch (error) {
       return { error: (error as Error).message };
     }

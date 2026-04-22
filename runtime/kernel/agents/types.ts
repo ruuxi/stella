@@ -6,5 +6,5 @@ export type ParsedAgent = {
   agentTypes: string[];
   toolsAllowlist?: string[];
   model?: string;
-  maxTaskDepth?: number;
+  maxAgentDepth?: number;
 };

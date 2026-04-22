@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
 import {
-  TASK_PAUSE_CANCEL_REASON,
-  TASK_SHUTDOWN_CANCEL_REASON,
-  type TaskLifecycleEvent,
-} from "../tasks/local-task-manager.js";
+  AGENT_PAUSE_CANCEL_REASON,
+  AGENT_SHUTDOWN_CANCEL_REASON,
+  type AgentLifecycleEvent,
+} from "../agents/local-agent-manager.js";
 import { LOCAL_CONTEXT_EVENT_TYPES } from "../local-history.js";
 import {
   readConfiguredConvexUrl as sanitizeConvexDeploymentUrl,
@@ -13,7 +13,7 @@ import {
 import { isOrchestratorAgentType } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../contracts/index.js";
 
-export const DEFAULT_MAX_TASK_DEPTH = 8;
+export const DEFAULT_MAX_AGENT_DEPTH = 8;
 export const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
 export const MIN_LOCAL_HISTORY_TOKENS = 8_000;
 export const DEFAULT_ORCHESTRATOR_PROMPT =
@@ -62,39 +62,39 @@ export const readCoreMemory = (stellaHome: string): string | undefined => {
   return undefined;
 };
 
-export const buildTaskEventPrompt = (
-  event: TaskLifecycleEvent,
+export const buildAgentEventPrompt = (
+  event: AgentLifecycleEvent,
 ): string | null => {
   if (
-    event.type !== "task-completed" &&
-    event.type !== "task-failed" &&
-    event.type !== "task-canceled"
+    event.type !== "agent-completed" &&
+    event.type !== "agent-failed" &&
+    event.type !== "agent-canceled"
   ) {
     return null;
   }
 
   const lines =
-    event.type === "task-completed"
+    event.type === "agent-completed"
       ? ["[Task completed]"]
-      : event.type === "task-canceled"
+      : event.type === "agent-canceled"
         ? ["[Task canceled]"]
         : ["[Task failed]"];
 
-  if (event.taskId) lines.push(`thread_id: ${event.taskId}`);
+  if (event.agentId) lines.push(`thread_id: ${event.agentId}`);
   if (event.agentType) lines.push(`agent_type: ${event.agentType}`);
   if (event.description) lines.push(`description: ${event.description}`);
   if (
-    event.type === "task-canceled"
-    && (event.error === TASK_SHUTDOWN_CANCEL_REASON
-      || event.error === TASK_PAUSE_CANCEL_REASON)
+    event.type === "agent-canceled"
+    && (event.error === AGENT_SHUTDOWN_CANCEL_REASON
+      || event.error === AGENT_PAUSE_CANCEL_REASON)
   ) {
     return null;
   }
-  if (event.type === "task-completed" && event.result) {
+  if (event.type === "agent-completed" && event.result) {
     lines.push(`result: ${event.result}`);
   }
   if (
-    (event.type === "task-failed" || event.type === "task-canceled") &&
+    (event.type === "agent-failed" || event.type === "agent-canceled") &&
     event.error
   ) {
     lines.push(`error: ${event.error}`);

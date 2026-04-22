@@ -427,12 +427,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
             | "tool-end"
             | "error"
             | "end"
-            | "task-started"
-            | "task-reasoning"
-            | "task-completed"
-            | "task-failed"
-            | "task-canceled"
-            | "task-progress";
+            | "agent-started"
+            | "agent-reasoning"
+            | "agent-completed"
+            | "agent-failed"
+            | "agent-canceled"
+            | "agent-progress";
           runId: string;
           conversationId?: string;
           requestId?: string;
@@ -459,20 +459,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
             files: string[];
             batchIndex: number;
           };
-          taskId?: string;
+          agentId?: string;
           description?: string;
-          parentTaskId?: string;
+          parentAgentId?: string;
           result?: string;
           statusText?: string;
           reasoningText?: string;
         }>;
         tasks: Array<{
           runId: string;
-          taskId: string;
+          agentId: string;
           agentType?: string;
           description?: string;
           anchorTurnId?: string;
-          parentTaskId?: string;
+          parentAgentId?: string;
           status: "running" | "completed" | "error" | "canceled";
           statusText?: string;
           reasoningText?: string;
@@ -490,12 +490,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "tool-end"
         | "error"
         | "end"
-        | "task-started"
-        | "task-reasoning"
-        | "task-completed"
-        | "task-failed"
-        | "task-canceled"
-        | "task-progress";
+        | "agent-started"
+        | "agent-reasoning"
+        | "agent-completed"
+        | "agent-failed"
+        | "agent-canceled"
+        | "agent-progress";
       runId: string;
       conversationId?: string;
       requestId?: string;
@@ -523,9 +523,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
         files: string[];
         batchIndex: number;
       };
-      taskId?: string;
+      agentId?: string;
       description?: string;
-      parentTaskId?: string;
+      parentAgentId?: string;
       result?: string;
       statusText?: string;
       reasoningText?: string;

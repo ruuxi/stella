@@ -3,16 +3,16 @@ import type {
   ToolContext,
   ToolResult,
   ToolUpdateCallback,
-  TaskToolApi,
-  TaskToolRequest,
-  TaskToolSnapshot,
+  AgentToolApi,
+  AgentToolRequest,
+  AgentToolSnapshot,
 } from "../tools/types.js";
 import { truncate } from "../tools/utils.js";
-import type { PersistedTaskRecord } from "../storage/runtime-store.js";
+import type { PersistedAgentRecord } from "../storage/runtime-store.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import type { RuntimeThreadRecord } from "../runtime-threads.js";
 
-export type LocalTaskManagerAgentContext = {
+export type LocalAgentContext = {
   systemPrompt: string;
   dynamicContext: string;
   orchestratorReminderText?: string;
@@ -20,8 +20,8 @@ export type LocalTaskManagerAgentContext = {
   shouldInjectDynamicReminder?: boolean;
   toolsAllowlist?: string[];
   model?: string;
-  taskDepth?: number;
-  maxTaskDepth: number;
+  agentDepth?: number;
+  maxAgentDepth: number;
   coreMemory?: string;
   /**
    * Frozen MEMORY + USER PROFILE snapshot for the system prompt.
@@ -41,42 +41,45 @@ export type LocalTaskManagerAgentContext = {
   maxAgentConcurrency?: number;
 };
 
-export type LocalTaskManagerStatus = "pending" | "running" | "completed" | "error" | "canceled";
+export type LocalAgentStatus = "pending" | "running" | "completed" | "error" | "canceled";
 
-type TaskMessageEntry = {
+type MessageEntry = {
   from: "orchestrator" | "subagent";
   text: string;
   timestamp: number;
 };
 
-type RuntimeTaskRecord = {
-  id: string;
+type RuntimeAgentRecord = {
+  /**
+   * Durable thread id this agent execution is bound to. There is at most
+   * one in-flight agent per thread, so this doubles as the agent identity.
+   */
+  threadId: string;
   conversationId: string;
   rootRunId?: string;
   description: string;
   prompt: string;
   agentType: string;
-  taskDepth: number;
-  maxTaskDepth?: number;
-  status: LocalTaskManagerStatus;
+  agentDepth: number;
+  maxAgentDepth?: number;
+  status: LocalAgentStatus;
   startedAt: number;
   completedAt: number | null;
   result?: string;
   error?: string;
   controller: AbortController;
   storageMode: "cloud" | "local";
-  cloudTaskId?: string;
+  cloudAgentId?: string;
   /** Resolves when the cloud task record has been created (or rejected). */
   cloudCreatePromise?: Promise<void>;
-  parentTaskId?: string;
-  threadId?: string;
+  parentAgentId?: string;
   toolsAllowlistOverride?: string[];
-  selfModMetadata?: TaskToolRequest["selfModMetadata"];
+  selfModMetadata?: AgentToolRequest["selfModMetadata"];
   recentActivity: string[];
   progressBuffer: string;
   toSubagentQueue: string[];
   toOrchestratorQueue: string[];
-  messageLog: TaskMessageEntry[];
+  messageLog: MessageEntry[];
   attemptCount: number;
   restartRequested: boolean;
   terminalEventEmitted: boolean;
@@ -84,30 +87,30 @@ type RuntimeTaskRecord = {
 
 type FsLock = {
   id: string;
-  taskId: string;
+  threadId: string;
   key: string;
 };
 
-export type TaskLifecycleEvent = {
+export type AgentLifecycleEvent = {
   type:
-    | "task-started"
-    | "task-completed"
-    | "task-failed"
-    | "task-canceled"
-    | "task-progress";
+    | "agent-started"
+    | "agent-completed"
+    | "agent-failed"
+    | "agent-canceled"
+    | "agent-progress";
   conversationId: string;
   rootRunId?: string;
   userMessageId?: string;
-  taskId: string;
+  agentId: string;
   agentType: string;
   description?: string;
-  parentTaskId?: string;
+  parentAgentId?: string;
   result?: string;
   error?: string;
   statusText?: string;
 };
 
-type LocalTaskManagerOpts = {
+type LocalAgentManagerOpts = {
   maxConcurrent?: number;
   getMaxConcurrent?: () => number;
   getStarterTools?: (agentType: string) => string[];
@@ -116,27 +119,27 @@ type LocalTaskManagerOpts = {
     agentType: string;
     threadId?: string;
   }) => { threadId: string; reused: boolean } | null;
-  onTaskEvent?: (event: TaskLifecycleEvent) => void;
+  onAgentEvent?: (event: AgentLifecycleEvent) => void;
   fetchAgentContext: (args: {
     conversationId: string;
     agentType: string;
     runId: string;
     threadId?: string;
-    selfModMetadata?: TaskToolRequest["selfModMetadata"];
-  }) => Promise<LocalTaskManagerAgentContext>;
+    selfModMetadata?: AgentToolRequest["selfModMetadata"];
+  }) => Promise<LocalAgentContext>;
   runSubagent: (args: {
     conversationId: string;
     userMessageId: string;
     agentType: string;
-    taskId?: string;
+    agentId?: string;
     rootRunId?: string;
     taskDescription: string;
     taskPrompt: string;
-    agentContext: LocalTaskManagerAgentContext;
+    agentContext: LocalAgentContext;
     persistToConvex: boolean;
     enableRemoteTools: boolean;
     abortSignal: AbortSignal;
-    selfModMetadata?: TaskToolRequest["selfModMetadata"];
+    selfModMetadata?: AgentToolRequest["selfModMetadata"];
     onProgress?: (chunk: string) => void;
     onToolStart?: (event: { runId: string; seq: number; toolCallId: string; toolName: string }) => void;
     onToolEnd?: (event: { runId: string; seq: number; toolCallId: string; toolName: string; resultPreview: string; html?: string }) => void;
@@ -155,24 +158,24 @@ type LocalTaskManagerOpts = {
     signal?: AbortSignal,
     onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
-  createCloudTaskRecord: (args: {
+  createCloudAgentRecord: (args: {
     conversationId: string;
     description: string;
     prompt: string;
     agentType: string;
-    parentTaskId?: string;
-    maxTaskDepth?: number;
-  }) => Promise<{ taskId: string }>;
-  completeCloudTaskRecord: (args: {
-    taskId: string;
+    parentAgentId?: string;
+    maxAgentDepth?: number;
+  }) => Promise<{ agentId: string }>;
+  completeCloudAgentRecord: (args: {
+    agentId: string;
     status: "completed" | "error" | "canceled";
     result?: string;
     error?: string;
   }) => Promise<void>;
-  getCloudTaskRecord: (taskId: string) => Promise<TaskToolSnapshot | null>;
-  cancelCloudTaskRecord: (taskId: string, reason?: string) => Promise<{ canceled: boolean }>;
-  saveTaskRecord?: (record: PersistedTaskRecord) => void;
-  getTaskRecord?: (threadId: string) => PersistedTaskRecord | null;
+  getCloudAgentRecord: (agentId: string) => Promise<AgentToolSnapshot | null>;
+  cancelCloudAgentRecord: (agentId: string, reason?: string) => Promise<{ canceled: boolean }>;
+  saveAgentRecord?: (record: PersistedAgentRecord) => void;
+  getAgentRecord?: (threadId: string) => PersistedAgentRecord | null;
   listActiveThreads?: (conversationId: string) => RuntimeThreadRecord[];
 };
 
@@ -226,7 +229,6 @@ const READ_ONLY_EXEC_TOOLS = new Set([
   "glob",
   "web_fetch",
   "web_search",
-  "task_output",
   "heartbeat_get",
   "cron_list",
   "describe",
@@ -238,7 +240,9 @@ const EXEC_MUTATION_PATTERNS: RegExp[] = [
   /\btools\s*\.\s*shell\s*\(/,
   /\btools\s*\.\s*display\s*\(/,
   /\btools\s*\.\s*memory\s*\(/,
-  /\btools\s*\.\s*task_(?:create|update|pause)\s*\(/,
+  /\btools\s*\.\s*spawn_agent\s*\(/,
+  /\btools\s*\.\s*send_input\s*\(/,
+  /\btools\s*\.\s*pause_agent\s*\(/,
   /\btools\s*\.\s*cron_(?:add|update|remove|run)\s*\(/,
   /\btools\s*\.\s*heartbeat_(?:upsert|run)\s*\(/,
   /\btools\s*\.\s*schedule\s*\(/,
@@ -296,20 +300,19 @@ const getFsLockKey = (
   return null;
 };
 
-const isTaskCreateTool = (toolName: string): boolean =>
-  toolName === "TaskCreate" || toolName === "task_create";
+const isSpawnAgentTool = (toolName: string): boolean => toolName === "spawn_agent";
 
-const TASK_UPDATE_INTERRUPT_ERROR = "Interrupted by task update";
-export const TASK_SHUTDOWN_CANCEL_REASON = "Canceled because Stella closed or restarted.";
-// Sentinel set by the orchestrator's TaskPause/task_pause tools so the runner
+const AGENT_INPUT_INTERRUPT_ERROR = "Interrupted by agent input";
+export const AGENT_SHUTDOWN_CANCEL_REASON = "Canceled because Stella closed or restarted.";
+// Sentinel set by the orchestrator's pause_agent tool so the runner
 // can suppress the hidden `[Task canceled]` follow-up turn that would
 // otherwise replace the user-facing reply with an empty silence.
-export const TASK_PAUSE_CANCEL_REASON = "Paused by orchestrator.";
+export const AGENT_PAUSE_CANCEL_REASON = "Paused by orchestrator.";
 
-export class LocalTaskManager implements TaskToolApi {
+export class LocalAgentManager implements AgentToolApi {
   private readonly defaultMaxConcurrent: number;
-  private readonly opts: LocalTaskManagerOpts;
-  private readonly tasks = new Map<string, RuntimeTaskRecord>();
+  private readonly opts: LocalAgentManagerOpts;
+  private readonly tasks = new Map<string, RuntimeAgentRecord>();
   private readonly pendingQueue: string[] = [];
   private runningCount = 0;
   private readonly activeFsLocks: FsLock[] = [];
@@ -318,13 +321,13 @@ export class LocalTaskManager implements TaskToolApi {
   private static readonly MAX_LOG_MESSAGES = 80;
   private nextId = 0;
 
-  constructor(opts: LocalTaskManagerOpts) {
+  constructor(opts: LocalAgentManagerOpts) {
     this.opts = opts;
     this.defaultMaxConcurrent = Math.max(1, opts.maxConcurrent ?? 3);
   }
 
   private consumeTaskMessages(
-    task: RuntimeTaskRecord,
+    task: RuntimeAgentRecord,
     recipient: "orchestrator" | "subagent",
   ): string[] {
     const queue = recipient === "subagent" ? task.toSubagentQueue : task.toOrchestratorQueue;
@@ -334,7 +337,7 @@ export class LocalTaskManager implements TaskToolApi {
     return out;
   }
 
-  private buildTaskPrompt(task: RuntimeTaskRecord): string {
+  private buildTaskPrompt(task: RuntimeAgentRecord): string {
     const updates = this.consumeTaskMessages(task, "subagent");
     if (updates.length === 0) {
       return task.prompt;
@@ -357,27 +360,27 @@ export class LocalTaskManager implements TaskToolApi {
     ].join("\n\n");
   }
 
-  private shouldRestartTask(task: RuntimeTaskRecord): boolean {
+  private shouldRestartTask(task: RuntimeAgentRecord): boolean {
     return task.restartRequested && task.status !== "canceled";
   }
 
   private toPersistedStatus(
-    status: LocalTaskManagerStatus,
-  ): PersistedTaskRecord["status"] {
+    status: LocalAgentStatus,
+  ): PersistedAgentRecord["status"] {
     return status === "pending" ? "running" : status;
   }
 
-  private persistTask(task: RuntimeTaskRecord): void {
-    this.opts.saveTaskRecord?.({
-      threadId: task.id,
+  private persistTask(task: RuntimeAgentRecord): void {
+    this.opts.saveAgentRecord?.({
+      threadId: task.threadId,
       conversationId: task.conversationId,
       agentType: task.agentType,
       description: task.description,
-      taskDepth: task.taskDepth,
-      ...(typeof task.maxTaskDepth === "number"
-        ? { maxTaskDepth: task.maxTaskDepth }
+      agentDepth: task.agentDepth,
+      ...(typeof task.maxAgentDepth === "number"
+        ? { maxAgentDepth: task.maxAgentDepth }
         : {}),
-      ...(task.parentTaskId ? { parentTaskId: task.parentTaskId } : {}),
+      ...(task.parentAgentId ? { parentAgentId: task.parentAgentId } : {}),
       ...(task.toolsAllowlistOverride
         ? { toolsAllowlistOverride: task.toolsAllowlistOverride }
         : {}),
@@ -391,9 +394,9 @@ export class LocalTaskManager implements TaskToolApi {
     });
   }
 
-  private buildTaskSnapshot(task: RuntimeTaskRecord): TaskToolSnapshot {
+  private buildTaskSnapshot(task: RuntimeAgentRecord): AgentToolSnapshot {
     return {
-      id: task.id,
+      id: task.threadId,
       description: task.description,
       status: task.status === "pending" ? "running" : task.status,
       startedAt: task.startedAt,
@@ -408,7 +411,7 @@ export class LocalTaskManager implements TaskToolApi {
     };
   }
 
-  private buildPersistedSnapshot(record: PersistedTaskRecord): TaskToolSnapshot {
+  private buildPersistedSnapshot(record: PersistedAgentRecord): AgentToolSnapshot {
     return {
       id: record.threadId,
       description: record.description,
@@ -420,7 +423,7 @@ export class LocalTaskManager implements TaskToolApi {
     };
   }
 
-  private resetTaskForNextAttempt(task: RuntimeTaskRecord, prompt: string): void {
+  private resetTaskForNextAttempt(task: RuntimeAgentRecord, prompt: string): void {
     task.prompt = prompt;
     task.status = "pending";
     task.startedAt = Date.now();
@@ -437,7 +440,7 @@ export class LocalTaskManager implements TaskToolApi {
   }
 
   private async buildInitialToolsAllowlist(
-    request: TaskToolRequest,
+    request: AgentToolRequest,
   ): Promise<string[] | undefined> {
     const starterTools = mergeToolNames(
       this.opts.getStarterTools?.(request.agentType),
@@ -447,24 +450,23 @@ export class LocalTaskManager implements TaskToolApi {
   }
 
   private hydrateTaskFromRecord(
-    record: PersistedTaskRecord,
+    record: PersistedAgentRecord,
     prompt: string,
-  ): RuntimeTaskRecord {
+  ): RuntimeAgentRecord {
     return {
-      id: record.threadId,
+      threadId: record.threadId,
       conversationId: record.conversationId,
       description: record.description,
       prompt,
       agentType: record.agentType,
-      taskDepth: record.taskDepth,
-      maxTaskDepth: record.maxTaskDepth,
+      agentDepth: record.agentDepth,
+      maxAgentDepth: record.maxAgentDepth,
       status: "pending",
       startedAt: Date.now(),
       completedAt: null,
       controller: new AbortController(),
       storageMode: "local",
-      parentTaskId: record.parentTaskId,
-      threadId: record.threadId,
+      parentAgentId: record.parentAgentId,
       toolsAllowlistOverride: record.toolsAllowlistOverride,
       selfModMetadata: record.selfModMetadata,
       recentActivity: [`Continuing thread: ${truncate(prompt, 200)}`],
@@ -478,21 +480,21 @@ export class LocalTaskManager implements TaskToolApi {
     };
   }
 
-  private enqueueTask(task: RuntimeTaskRecord, prioritize = false): void {
-    this.tasks.set(task.id, task);
+  private enqueueTask(task: RuntimeAgentRecord, prioritize = false): void {
+    this.tasks.set(task.threadId, task);
     if (prioritize) {
-      this.pendingQueue.unshift(task.id);
+      this.pendingQueue.unshift(task.threadId);
     } else {
-      this.pendingQueue.push(task.id);
+      this.pendingQueue.push(task.threadId);
     }
     this.persistTask(task);
     this.tryStartNext();
   }
 
-  private requeueTaskForUpdate(task: RuntimeTaskRecord): void {
+  private requeueTaskForUpdate(task: RuntimeAgentRecord): void {
     this.resetTaskForNextAttempt(task, task.prompt);
     task.recentActivity = ["Applying task update from orchestrator."];
-    this.pendingQueue.unshift(task.id);
+    this.pendingQueue.unshift(task.threadId);
     this.persistTask(task);
   }
 
@@ -502,23 +504,23 @@ export class LocalTaskManager implements TaskToolApi {
       optsValueOrDefault(this.opts.getMaxConcurrent?.(), this.defaultMaxConcurrent),
     );
     while (this.runningCount < maxConcurrent && this.pendingQueue.length > 0) {
-      const taskId = this.pendingQueue.shift();
-      if (!taskId) break;
-      const task = this.tasks.get(taskId);
+      const threadId = this.pendingQueue.shift();
+      if (!threadId) break;
+      const task = this.tasks.get(threadId);
       if (!task || task.status !== "pending") {
         continue;
       }
       this.runningCount += 1;
       task.status = "running";
       this.persistTask(task);
-      this.opts.onTaskEvent?.({
-        type: "task-started",
+      this.opts.onAgentEvent?.({
+        type: "agent-started",
         conversationId: task.conversationId,
         rootRunId: task.rootRunId,
-        taskId: task.id,
+        agentId: task.threadId,
         agentType: task.agentType,
         description: task.description,
-        parentTaskId: task.parentTaskId,
+        parentAgentId: task.parentAgentId,
       });
       void this.executeTask(task)
         .catch(() => undefined)
@@ -529,19 +531,19 @@ export class LocalTaskManager implements TaskToolApi {
     }
   }
 
-  private acquireFsLock(taskId: string, key: string): Promise<() => void> {
+  private acquireFsLock(threadId: string, key: string): Promise<() => void> {
     return new Promise((resolve) => {
       const attempt = () => {
         const conflicting = this.activeFsLocks.some(
-          (lock) => lock.taskId !== taskId && pathsOverlap(lock.key, key),
+          (lock) => lock.threadId !== threadId && pathsOverlap(lock.key, key),
         );
         if (conflicting) {
           this.fsLockWaiters.push(attempt);
           return;
         }
         const lock: FsLock = {
-          id: `${taskId}:${++this.nextId}`,
-          taskId,
+          id: `${threadId}:${++this.nextId}`,
+          threadId,
           key,
         };
         this.activeFsLocks.push(lock);
@@ -560,9 +562,9 @@ export class LocalTaskManager implements TaskToolApi {
     });
   }
 
-  private async executeTask(task: RuntimeTaskRecord): Promise<void> {
+  private async executeTask(task: RuntimeAgentRecord): Promise<void> {
     try {
-      const runId = `run:${task.id}:${++this.nextId}`;
+      const runId = `run:${task.threadId}:${++this.nextId}`;
       const context = await this.opts.fetchAgentContext({
         conversationId: task.conversationId,
         agentType: task.agentType,
@@ -571,11 +573,11 @@ export class LocalTaskManager implements TaskToolApi {
         selfModMetadata: task.selfModMetadata,
       });
 
-      context.maxTaskDepth =
-        typeof task.maxTaskDepth === "number"
-          ? Math.min(context.maxTaskDepth, task.maxTaskDepth)
-          : context.maxTaskDepth;
-      context.taskDepth = task.taskDepth;
+      context.maxAgentDepth =
+        typeof task.maxAgentDepth === "number"
+          ? Math.min(context.maxAgentDepth, task.maxAgentDepth)
+          : context.maxAgentDepth;
+      context.agentDepth = task.agentDepth;
 
       if (task.toolsAllowlistOverride) {
         context.toolsAllowlist = task.toolsAllowlistOverride;
@@ -588,7 +590,7 @@ export class LocalTaskManager implements TaskToolApi {
         conversationId: task.conversationId,
         userMessageId: runId,
         agentType: task.agentType,
-        taskId: task.id,
+        agentId: task.threadId,
         rootRunId: task.rootRunId,
         taskDescription: task.description,
         taskPrompt,
@@ -609,39 +611,39 @@ export class LocalTaskManager implements TaskToolApi {
           task.recentActivity = [truncate(compact, 500)];
         },
         onToolStart: (ev) => {
-          // Once cancelTask has marked this task canceled, suppress any
+          // Once cancelAgent has marked this task canceled, suppress any
           // in-flight `tool_execution_start` events from the agent loop —
-          // those would otherwise leak `task-progress` lifecycle events
-          // after `task-canceled`, leaving a phantom "Working … Task" chip
+          // those would otherwise leak `agent-progress` lifecycle events
+          // after `agent-canceled`, leaving a phantom "Working … Task" chip
           // in the footer that re-adds the task to the live UI state.
           if (task.controller.signal.aborted || task.status === "canceled") {
             return;
           }
-          this.opts.onTaskEvent?.({
-            type: "task-progress",
+          this.opts.onAgentEvent?.({
+            type: "agent-progress",
             conversationId: task.conversationId,
             rootRunId: task.rootRunId,
-            taskId: task.id,
+            agentId: task.threadId,
             agentType: task.agentType,
             statusText: `Using ${ev.toolName}`,
           });
         },
         toolExecutor: async (toolName, toolArgs, toolContext, signal) => {
-          if (task.storageMode === "cloud" && isTaskCreateTool(toolName) && task.cloudCreatePromise) {
+          if (task.storageMode === "cloud" && isSpawnAgentTool(toolName) && task.cloudCreatePromise) {
             await task.cloudCreatePromise.catch(() => undefined);
           }
           const scopedContext: ToolContext = {
             ...toolContext,
-            taskId: task.id,
-            ...(task.cloudTaskId ? { cloudTaskId: task.cloudTaskId } : {}),
-            taskDepth: task.taskDepth,
-            maxTaskDepth: context.maxTaskDepth,
+            agentId: task.threadId,
+            ...(task.cloudAgentId ? { cloudAgentId: task.cloudAgentId } : {}),
+            agentDepth: task.agentDepth,
+            maxAgentDepth: context.maxAgentDepth,
           };
           const lockKey = getFsLockKey(toolName, toolArgs, scopedContext);
           if (!lockKey) {
             return await this.opts.toolExecutor(toolName, toolArgs, scopedContext, signal);
           }
-          const release = await this.acquireFsLock(task.id, lockKey);
+          const release = await this.acquireFsLock(task.threadId, lockKey);
           try {
             return await this.opts.toolExecutor(toolName, toolArgs, scopedContext, signal);
           } finally {
@@ -686,32 +688,32 @@ export class LocalTaskManager implements TaskToolApi {
     // Emit task lifecycle event
     if (!task.terminalEventEmitted) {
       if (task.status === "completed") {
-        this.opts.onTaskEvent?.({
-          type: "task-completed",
+        this.opts.onAgentEvent?.({
+          type: "agent-completed",
           conversationId: task.conversationId,
           rootRunId: task.rootRunId,
-          taskId: task.id,
+          agentId: task.threadId,
           agentType: task.agentType,
           result: task.result,
         });
       } else if (task.status === "error") {
-        this.opts.onTaskEvent?.({
-          type: "task-failed",
+        this.opts.onAgentEvent?.({
+          type: "agent-failed",
           conversationId: task.conversationId,
           rootRunId: task.rootRunId,
-          taskId: task.id,
+          agentId: task.threadId,
           agentType: task.agentType,
           error: task.error,
         });
       } else if (task.status === "canceled") {
-        this.opts.onTaskEvent?.({
-          type: "task-canceled",
+        this.opts.onAgentEvent?.({
+          type: "agent-canceled",
           conversationId: task.conversationId,
           rootRunId: task.rootRunId,
-          taskId: task.id,
+          agentId: task.threadId,
           agentType: task.agentType,
           description: task.description,
-          parentTaskId: task.parentTaskId,
+          parentAgentId: task.parentAgentId,
           error: task.error,
         });
       }
@@ -721,19 +723,19 @@ export class LocalTaskManager implements TaskToolApi {
     // Sync task completion to Convex in background (non-blocking)
     if (task.storageMode === "cloud") {
       void (async () => {
-        // Wait for cloud task creation to finish so we have the cloudTaskId
+        // Wait for cloud task creation to finish so we have the cloudAgentId
         if (task.cloudCreatePromise) {
           await task.cloudCreatePromise.catch(() => {});
         }
-        if (!task.cloudTaskId) return;
+        if (!task.cloudAgentId) return;
         const status =
           task.status === "completed"
             ? "completed"
             : task.status === "canceled"
               ? "canceled"
               : "error";
-        await this.opts.completeCloudTaskRecord({
-          taskId: task.cloudTaskId,
+        await this.opts.completeCloudAgentRecord({
+          agentId: task.cloudAgentId,
           status,
           result: task.result ? truncate(task.result, 30_000) : undefined,
           error: task.error ? truncate(task.error, 10_000) : undefined,
@@ -744,7 +746,7 @@ export class LocalTaskManager implements TaskToolApi {
     }
   }
 
-  async createTask(request: TaskToolRequest): Promise<{
+  async createAgent(request: AgentToolRequest): Promise<{
     threadId: string;
     activeThreads?: RuntimeThreadRecord[];
   }> {
@@ -755,30 +757,29 @@ export class LocalTaskManager implements TaskToolApi {
       agentType: request.agentType,
       threadId: request.threadId,
     }) ?? null;
-    const id =
+    const threadId =
       resolvedThread?.threadId ??
       request.threadId ??
-      `task-${++this.nextId}`;
+      `thread-${++this.nextId}`;
 
-    const task: RuntimeTaskRecord = {
-      id,
+    const task: RuntimeAgentRecord = {
+      threadId,
       conversationId: request.conversationId,
       rootRunId: request.rootRunId,
       description: request.description,
       prompt: request.prompt,
       agentType: request.agentType,
-      taskDepth: Math.max(1, request.taskDepth ?? 1),
-      maxTaskDepth:
-        typeof request.maxTaskDepth === "number"
-          ? Math.max(1, Math.floor(request.maxTaskDepth))
+      agentDepth: Math.max(1, request.agentDepth ?? 1),
+      maxAgentDepth:
+        typeof request.maxAgentDepth === "number"
+          ? Math.max(1, Math.floor(request.maxAgentDepth))
           : undefined,
       status: "pending",
       startedAt: Date.now(),
       completedAt: null,
       controller,
       storageMode: request.storageMode,
-      parentTaskId: request.parentTaskId,
-      threadId: id,
+      parentAgentId: request.parentAgentId,
       toolsAllowlistOverride: initialToolsAllowlist,
       selfModMetadata: request.selfModMetadata,
       recentActivity: [],
@@ -795,18 +796,18 @@ export class LocalTaskManager implements TaskToolApi {
     // Store the promise so completion can await it before syncing status.
     if (request.storageMode === "cloud") {
       const cloudParentTaskId =
-        request.parentTaskId && !this.tasks.has(request.parentTaskId)
-          ? request.parentTaskId
+        request.parentAgentId && !this.tasks.has(request.parentAgentId)
+          ? request.parentAgentId
           : undefined;
-      task.cloudCreatePromise = this.opts.createCloudTaskRecord({
+      task.cloudCreatePromise = this.opts.createCloudAgentRecord({
         conversationId: request.conversationId,
         description: request.description,
         prompt: request.prompt,
         agentType: request.agentType,
-        parentTaskId: cloudParentTaskId,
-        maxTaskDepth: task.maxTaskDepth,
+        parentAgentId: cloudParentTaskId,
+        maxAgentDepth: task.maxAgentDepth,
       }).then((created) => {
-        task.cloudTaskId = created.taskId;
+        task.cloudAgentId = created.agentId;
       }).catch(() => {
         // Cloud record creation failed — task runs locally only
       });
@@ -814,38 +815,38 @@ export class LocalTaskManager implements TaskToolApi {
 
     this.enqueueTask(task);
     return {
-      threadId: task.id,
+      threadId: task.threadId,
       activeThreads: this.opts.listActiveThreads?.(request.conversationId),
     };
   }
 
-  async getTask(taskId: string): Promise<TaskToolSnapshot | null> {
-    const local = this.tasks.get(taskId);
+  async getAgent(agentId: string): Promise<AgentToolSnapshot | null> {
+    const local = this.tasks.get(agentId);
     if (local) {
       return this.buildTaskSnapshot(local);
     }
-    const persisted = this.opts.getTaskRecord?.(taskId);
+    const persisted = this.opts.getAgentRecord?.(agentId);
     if (persisted) {
       return this.buildPersistedSnapshot(persisted);
     }
-    return await this.opts.getCloudTaskRecord(taskId);
+    return await this.opts.getCloudAgentRecord(agentId);
   }
 
   getTaskCount(): number {
     return this.tasks.size;
   }
 
-  shutdown(reason = TASK_SHUTDOWN_CANCEL_REASON): void {
+  shutdown(reason = AGENT_SHUTDOWN_CANCEL_REASON): void {
     for (const task of this.tasks.values()) {
       if (task.status !== "pending" && task.status !== "running") {
         continue;
       }
-      void this.cancelTask(task.id, reason);
+      void this.cancelAgent(task.threadId, reason);
     }
   }
 
-  async cancelTask(taskId: string, reason?: string): Promise<{ canceled: boolean }> {
-    const local = this.tasks.get(taskId);
+  async cancelAgent(agentId: string, reason?: string): Promise<{ canceled: boolean }> {
+    const local = this.tasks.get(agentId);
     if (local) {
       if (local.status === "completed" || local.status === "error" || local.status === "canceled") {
         return { canceled: true };
@@ -857,28 +858,28 @@ export class LocalTaskManager implements TaskToolApi {
       local.restartRequested = false;
       local.controller.abort(new Error(local.error));
       if (!local.terminalEventEmitted && (previousStatus === "pending" || previousStatus === "running")) {
-        this.opts.onTaskEvent?.({
-          type: "task-canceled",
+        this.opts.onAgentEvent?.({
+          type: "agent-canceled",
           conversationId: local.conversationId,
           rootRunId: local.rootRunId,
-          taskId: local.id,
+          agentId: local.threadId,
           agentType: local.agentType,
           description: local.description,
-          parentTaskId: local.parentTaskId,
+          parentAgentId: local.parentAgentId,
           error: local.error,
         });
         local.terminalEventEmitted = true;
       }
       this.persistTask(local);
-      if (local.storageMode === "cloud" && local.cloudTaskId) {
-        await this.opts.cancelCloudTaskRecord(local.cloudTaskId, local.error);
+      if (local.storageMode === "cloud" && local.cloudAgentId) {
+        await this.opts.cancelCloudAgentRecord(local.cloudAgentId, local.error);
       }
       return { canceled: true };
     }
-    const persisted = this.opts.getTaskRecord?.(taskId);
+    const persisted = this.opts.getAgentRecord?.(agentId);
     if (persisted) {
       if (persisted.status === "running") {
-        this.opts.saveTaskRecord?.({
+        this.opts.saveAgentRecord?.({
           ...persisted,
           status: "canceled",
           completedAt: Date.now(),
@@ -888,22 +889,28 @@ export class LocalTaskManager implements TaskToolApi {
       }
       return { canceled: true };
     }
-    return await this.opts.cancelCloudTaskRecord(taskId, reason);
+    return await this.opts.cancelCloudAgentRecord(agentId, reason);
   }
 
-  async sendTaskMessage(
-    taskId: string,
+  async sendAgentMessage(
+    agentId: string,
     message: string,
     from: "orchestrator" | "subagent",
+    options?: { interrupt?: boolean },
   ): Promise<{ delivered: boolean }> {
     const text = message.trim();
     if (!text) return { delivered: false };
-    const task = this.tasks.get(taskId);
+    // `interrupt` only applies when the orchestrator addresses a still-running
+    // agent; in every other path (subagent->orchestrator, paused/completed
+    // re-hydration, hydrating from persisted record) the message is the only
+    // thing in flight, so there is nothing to abort.
+    const interrupt = options?.interrupt !== false;
+    const task = this.tasks.get(agentId);
     if (!task) {
       if (from !== "orchestrator") {
         return { delivered: false };
       }
-      const persisted = this.opts.getTaskRecord?.(taskId);
+      const persisted = this.opts.getAgentRecord?.(agentId);
       if (!persisted) {
         return { delivered: false };
       }
@@ -921,16 +928,16 @@ export class LocalTaskManager implements TaskToolApi {
         return { delivered: false };
       }
       task.messageLog.push({ from, text: truncate(text, 500), timestamp: Date.now() });
-      if (task.messageLog.length > LocalTaskManager.MAX_LOG_MESSAGES) {
-        task.messageLog.splice(0, task.messageLog.length - LocalTaskManager.MAX_LOG_MESSAGES);
+      if (task.messageLog.length > LocalAgentManager.MAX_LOG_MESSAGES) {
+        task.messageLog.splice(0, task.messageLog.length - LocalAgentManager.MAX_LOG_MESSAGES);
       }
       this.resetTaskForNextAttempt(task, text);
       task.recentActivity = ["Applying task update from orchestrator."];
-      this.opts.onTaskEvent?.({
-        type: "task-progress",
+      this.opts.onAgentEvent?.({
+        type: "agent-progress",
         conversationId: task.conversationId,
         rootRunId: task.rootRunId,
-        taskId: task.id,
+        agentId: task.threadId,
         agentType: task.agentType,
         statusText: "Applying task update",
       });
@@ -940,30 +947,41 @@ export class LocalTaskManager implements TaskToolApi {
 
     const targetQueue = from === "orchestrator" ? task.toSubagentQueue : task.toOrchestratorQueue;
     targetQueue.push(text);
-    if (targetQueue.length > LocalTaskManager.MAX_QUEUE_MESSAGES) {
-      targetQueue.splice(0, targetQueue.length - LocalTaskManager.MAX_QUEUE_MESSAGES);
+    if (targetQueue.length > LocalAgentManager.MAX_QUEUE_MESSAGES) {
+      targetQueue.splice(0, targetQueue.length - LocalAgentManager.MAX_QUEUE_MESSAGES);
     }
 
     task.messageLog.push({ from, text: truncate(text, 500), timestamp: Date.now() });
-    if (task.messageLog.length > LocalTaskManager.MAX_LOG_MESSAGES) {
-      task.messageLog.splice(0, task.messageLog.length - LocalTaskManager.MAX_LOG_MESSAGES);
+    if (task.messageLog.length > LocalAgentManager.MAX_LOG_MESSAGES) {
+      task.messageLog.splice(0, task.messageLog.length - LocalAgentManager.MAX_LOG_MESSAGES);
     }
 
     if (from === "orchestrator") {
-      task.recentActivity = [`Task update received: ${truncate(text, 200)}`];
-      this.opts.onTaskEvent?.({
-        type: "task-progress",
+      const statusText = interrupt
+        ? "Applying agent input"
+        : "Queued agent input";
+      task.recentActivity = [
+        interrupt
+          ? `Agent input received: ${truncate(text, 200)}`
+          : `Agent input queued: ${truncate(text, 200)}`,
+      ];
+      this.opts.onAgentEvent?.({
+        type: "agent-progress",
         conversationId: task.conversationId,
         rootRunId: task.rootRunId,
-        taskId: task.id,
+        agentId: task.threadId,
         agentType: task.agentType,
-        statusText: "Applying task update",
+        statusText,
       });
 
-      if (task.status === "running" && !task.controller.signal.aborted) {
+      if (
+        interrupt &&
+        task.status === "running" &&
+        !task.controller.signal.aborted
+      ) {
         task.restartRequested = true;
         task.prompt = text;
-        task.controller.abort(new Error(TASK_UPDATE_INTERRUPT_ERROR));
+        task.controller.abort(new Error(AGENT_INPUT_INTERRUPT_ERROR));
       }
     }
 
@@ -971,11 +989,11 @@ export class LocalTaskManager implements TaskToolApi {
     return { delivered: true };
   }
 
-  async drainTaskMessages(
-    taskId: string,
+  async drainAgentMessages(
+    agentId: string,
     recipient: "orchestrator" | "subagent",
   ): Promise<string[]> {
-    const task = this.tasks.get(taskId);
+    const task = this.tasks.get(agentId);
     if (!task) return [];
     return this.consumeTaskMessages(task, recipient);
   }

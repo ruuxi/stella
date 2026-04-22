@@ -1,5 +1,5 @@
 import { runOrchestratorTurn, type RuntimeRunCallbacks } from "../agent-runtime.js";
-import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
+import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { resolveRunnerLlmRoute } from "./model-selection.js";
 import { isReportedOrchestratorError } from "../agent-runtime/run-completion.js";
 import type {
@@ -17,7 +17,7 @@ type BuildAgentContext = (args: {
   agentType: string;
   runId: string;
   threadId?: string;
-}) => Promise<LocalTaskManagerAgentContext>;
+}) => Promise<LocalAgentContext>;
 
 type WebSearch = (
   query: string,
@@ -36,7 +36,7 @@ export type PreparedOrchestratorRun = {
   promptMessages?: RuntimePromptMessage[];
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
-  agentContext: LocalTaskManagerAgentContext;
+  agentContext: LocalAgentContext;
   resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
   abortController: AbortController;
   replayInterruptedTurn: () => void;

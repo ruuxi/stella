@@ -70,7 +70,7 @@ export const invoke = internalAction({
       {
         agentType: args.agentType,
         toolsAllowlist: promptBuild.toolsAllowlist,
-        maxTaskDepth: Math.min(promptBuild.maxTaskDepth, 2),
+        maxAgentDepth: Math.min(promptBuild.maxAgentDepth, 2),
         ownerId,
         conversationId: args.conversationId,
         userMessageId: args.userMessageId,

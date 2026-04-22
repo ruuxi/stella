@@ -19,7 +19,7 @@ import type {
   RuntimeToolStartEvent,
 } from "../../kernel/agent-runtime.js";
 import { createSelfModHmrState } from "../../kernel/runner/shared.js";
-import type { TaskLifecycleEvent } from "../../kernel/tasks/local-task-manager.js";
+import type { AgentLifecycleEvent } from "../../kernel/agents/local-agent-manager.js";
 import type { SelfModHmrState } from "../../contracts/index.js";
 import type { ChatStore } from "../../kernel/storage/chat-store.js";
 
@@ -39,7 +39,7 @@ type VoiceRunner = {
       onToolEnd: (event: RuntimeToolEndEvent) => void;
       onError: (event: RuntimeErrorEvent) => void;
       onEnd: (event: RuntimeEndEvent) => void;
-      onTaskEvent?: (event: TaskLifecycleEvent) => void;
+      onAgentEvent?: (event: AgentLifecycleEvent) => void;
       onSelfModHmrState?: (state: SelfModHmrState) => void;
       onHmrResume?: (args: {
         runId: string;
@@ -257,17 +257,17 @@ export class VoiceRuntimeService {
               emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.TOOL_START),
             onToolEnd: (event) =>
               emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.TOOL_END),
-            onTaskEvent: (event) => {
+            onAgentEvent: (event) => {
               this.options.emitAgentEvent({
                 requestId: payload.requestId,
                 event: {
                   type: event.type,
                   runId: event.rootRunId ?? activeRunId ?? payload.conversationId,
                   seq: syntheticSeq++,
-                  taskId: event.taskId,
+                  agentId: event.agentId,
                   agentType: event.agentType,
                   description: event.description,
-                  parentTaskId: event.parentTaskId,
+                  parentAgentId: event.parentAgentId,
                   result: event.result,
                   error: event.error,
                   statusText: event.statusText,

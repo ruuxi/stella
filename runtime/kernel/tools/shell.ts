@@ -719,7 +719,7 @@ const resolveManagedShellCommand = (
     args.workdir ?? args.working_directory ?? context?.stellaRoot ?? process.cwd(),
   );
   const envOverrides: Record<string, string> = {};
-  const browserOwnerId = context?.taskId ?? context?.runId ?? context?.rootRunId;
+  const browserOwnerId = context?.agentId ?? context?.runId ?? context?.rootRunId;
   const stellaComputerSessionId = getStellaComputerSessionId(context);
 
   if (shouldUseStellaBrowserBridge(command)) {

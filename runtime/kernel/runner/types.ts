@@ -18,8 +18,8 @@ import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { LocalContextEvent } from "../local-history.js";
 import type {
   ScheduleToolApi,
-  TaskToolRequest,
-  TaskToolSnapshot,
+  AgentToolRequest,
+  AgentToolSnapshot,
   ToolContext,
   ToolUpdateCallback,
   ToolMetadata,
@@ -27,9 +27,9 @@ import type {
 } from "../tools/types.js";
 import type { ToolDefinition } from "../extensions/types.js";
 import type {
-  LocalTaskManager,
-  TaskLifecycleEvent,
-} from "../tasks/local-task-manager.js";
+  LocalAgentManager,
+  AgentLifecycleEvent,
+} from "../agents/local-agent-manager.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import type {
   StorePackageRecord,
@@ -183,7 +183,7 @@ export type AgentCallbacks = {
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
   onTaskReasoning?: (
-    event: RuntimeReasoningEvent & { taskId: string; rootRunId?: string },
+    event: RuntimeReasoningEvent & { agentId: string; rootRunId?: string },
   ) => void;
   onStatus?: (event: RuntimeStatusEvent) => void;
   onToolStart: (event: RuntimeToolStartEvent) => void;
@@ -197,7 +197,7 @@ export type AgentCallbacks = {
     uiVisibility?: "visible" | "hidden";
     reason: string;
   }) => void;
-  onTaskEvent?: (event: TaskLifecycleEvent) => void;
+  onAgentEvent?: (event: AgentLifecycleEvent) => void;
   onSelfModHmrState?: (event: SelfModHmrState) => void;
   onHmrResume?: (args: {
     runId: string;
@@ -222,7 +222,7 @@ export type ParsedAgentLike = {
   agentTypes: string[];
   toolsAllowlist?: string[];
   model?: string;
-  maxTaskDepth?: number;
+  maxAgentDepth?: number;
 };
 
 export type RunnerPaths = {
@@ -240,7 +240,7 @@ export type RunnerState = {
   isRunning: boolean;
   isInitialized: boolean;
   initializationPromise: Promise<void> | null;
-  localTaskManager: LocalTaskManager | null;
+  localAgentManager: LocalAgentManager | null;
   activeOrchestratorRunId: string | null;
   activeOrchestratorConversationId: string | null;
   activeOrchestratorUiVisibility: "visible" | "hidden";
@@ -366,16 +366,16 @@ export type RunnerPublicApi = {
     payload: RuntimeAutomationTurnRequest,
   ) => Promise<RuntimeAutomationTurnResult>;
   runBlockingLocalTask: (
-    request: Omit<TaskToolRequest, "storageMode">,
+    request: Omit<AgentToolRequest, "storageMode">,
   ) => Promise<
     | { status: "ok"; finalText: string; threadId: string }
     | { status: "error"; finalText: ""; error: string; threadId?: string }
   >;
   createBackgroundTask: (
-    request: Omit<TaskToolRequest, "storageMode">,
+    request: Omit<AgentToolRequest, "storageMode">,
   ) => Promise<{ threadId: string }>;
   getActiveTaskCount: () => number;
-  getLocalTaskSnapshot: (taskId: string) => Promise<TaskToolSnapshot | null>;
+  getLocalAgentSnapshot: (agentId: string) => Promise<AgentToolSnapshot | null>;
   cancelLocalChat: (runId: string) => void;
   getActiveOrchestratorRun: () => RuntimeActiveRun | null;
   resumeSelfModHmr: (

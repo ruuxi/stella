@@ -111,11 +111,11 @@ type AgentEventPayload = {
   finalText?: string;
   persisted?: boolean;
   selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
-  taskId?: string;
+  agentId?: string;
   agentType?: AgentIdLike;
   rootRunId?: string;
   description?: string;
-  parentTaskId?: string;
+  parentAgentId?: string;
   result?: string;
   statusText?: string;
   outcome?: AgentRunFinishOutcome;
@@ -390,9 +390,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       : undefined;
 
     const taskIdFromTarget =
-      args.responseTarget?.type === "task_turn" ||
-      args.responseTarget?.type === "task_terminal_notice"
-        ? (args.responseTarget as { taskId: string }).taskId
+      args.responseTarget?.type === "agent_turn" ||
+      args.responseTarget?.type === "agent_terminal_notice"
+        ? (args.responseTarget as { agentId: string }).agentId
         : undefined;
 
     if (taskIdFromTarget) {
@@ -1050,11 +1050,11 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               ...(ev.runId ? { rootRunId: ev.runId } : {}),
             });
           },
-          onTaskEvent: (ev) => {
+          onAgentEvent: (ev) => {
             if (!ev.rootRunId) {
               logger.warn("task-event-missing-root-run-id", {
                 conversationId: ev.conversationId,
-                taskId: ev.taskId,
+                agentId: ev.agentId,
                 type: ev.type,
               });
               return;
@@ -1066,29 +1066,29 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               conversationId: payload.conversationId,
               ...(requestId ? { requestId } : {}),
               userMessageId,
-              taskId: ev.taskId,
+              agentId: ev.agentId,
               rootRunId: ev.rootRunId,
               agentType: ev.agentType,
               description: ev.description,
-              parentTaskId: ev.parentTaskId,
+              parentAgentId: ev.parentAgentId,
               result: ev.result,
               error: ev.error,
               statusText: ev.statusText,
             });
           },
           onTaskReasoning: (ev) => {
-            if (!ev.taskId) {
+            if (!ev.agentId) {
               return;
             }
             const runId = ev.rootRunId ?? ev.runId;
             emitRunEvent({
-              type: AGENT_STREAM_EVENT_TYPES.TASK_REASONING,
+              type: AGENT_STREAM_EVENT_TYPES.AGENT_REASONING,
               runId,
               seq: syntheticSeq++,
               conversationId: payload.conversationId,
               ...(requestId ? { requestId } : {}),
               userMessageId,
-              taskId: ev.taskId,
+              agentId: ev.agentId,
               rootRunId: runId,
               agentType: ev.agentType,
               chunk: ev.chunk,
@@ -1111,11 +1111,11 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
                 responseTarget: ev.responseTarget,
               });
               if (
-                ev.responseTarget?.type === "task_turn" ||
-                ev.responseTarget?.type === "task_terminal_notice"
+                ev.responseTarget?.type === "agent_turn" ||
+                ev.responseTarget?.type === "agent_terminal_notice"
               ) {
                 getTaskTurnMessages(payload.conversationId).delete(
-                  (ev.responseTarget as { taskId: string }).taskId,
+                  (ev.responseTarget as { agentId: string }).agentId,
                 );
               }
             }
@@ -1240,10 +1240,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   );
 
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_GET_TASK_SNAPSHOT,
+    METHOD_NAMES.INTERNAL_WORKER_GET_AGENT_SNAPSHOT,
     async (params) => {
-      return await ensureRunner().getLocalTaskSnapshot(
-        (params as { taskId: string }).taskId,
+      return await ensureRunner().getLocalAgentSnapshot(
+        (params as { agentId: string }).agentId,
       );
     },
   );

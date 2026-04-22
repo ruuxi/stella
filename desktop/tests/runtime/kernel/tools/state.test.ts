@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
-import { createStateContext, handleTask } from "../../../../../runtime/kernel/tools/state.js";
-import { TASK_PAUSE_CANCEL_REASON } from "../../../../../runtime/kernel/tasks/local-task-manager.js";
-import type { TaskToolRequest } from "../../../../../runtime/kernel/tools/types.js";
+import { createStateContext, handleSpawnAgent } from "../../../../../runtime/kernel/tools/state.js";
+import { AGENT_PAUSE_CANCEL_REASON } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
+import type { AgentToolRequest } from "../../../../../runtime/kernel/tools/types.js";
 
 describe("state tools", () => {
   it("always creates general tasks from orchestrator requests", async () => {
     const now = Date.now();
-    let createdRequest: TaskToolRequest | null = null;
+    let createdRequest: AgentToolRequest | null = null;
     const ctx = createStateContext("/tmp", {
-      createTask: async (request) => {
+      createAgent: async (request) => {
         createdRequest = request;
         return {
           threadId: "thread-1",
@@ -37,11 +37,11 @@ describe("state tools", () => {
           ],
         };
       },
-      getTask: async () => null,
-      cancelTask: async () => ({ canceled: false }),
+      getAgent: async () => null,
+      cancelAgent: async () => ({ canceled: false }),
     });
 
-    const result = await handleTask(
+    const result = await handleSpawnAgent(
       ctx,
       {
         description: "Do work",
@@ -80,7 +80,7 @@ describe("state tools", () => {
   it("rejects task creation from non-orchestrator agents", async () => {
     const ctx = createStateContext("/tmp");
 
-    const result = await handleTask(
+    const result = await handleSpawnAgent(
       ctx,
       {
         description: "Do work",
@@ -99,18 +99,18 @@ describe("state tools", () => {
     });
   });
 
-  it("forwards TaskPause to cancelTask with the pause sentinel reason", async () => {
-    const cancelCalls: Array<{ taskId: string; reason: string | undefined }> = [];
+  it("forwards pause_agent to cancelAgent with the pause sentinel reason", async () => {
+    const cancelCalls: Array<{ agentId: string; reason: string | undefined }> = [];
     const ctx = createStateContext("/tmp", {
-      createTask: async () => ({ threadId: "thread-1" }),
-      getTask: async () => null,
-      cancelTask: async (taskId, reason) => {
-        cancelCalls.push({ taskId, reason });
+      createAgent: async () => ({ threadId: "thread-1" }),
+      getAgent: async () => null,
+      cancelAgent: async (agentId, reason) => {
+        cancelCalls.push({ agentId, reason });
         return { canceled: true };
       },
     });
 
-    const result = await handleTask(
+    const result = await handleSpawnAgent(
       ctx,
       { action: "cancel", thread_id: "thread-7", reason: "user changed their mind" },
       {
@@ -122,7 +122,7 @@ describe("state tools", () => {
     );
 
     expect(cancelCalls).toEqual([
-      { taskId: "thread-7", reason: TASK_PAUSE_CANCEL_REASON },
+      { agentId: "thread-7", reason: AGENT_PAUSE_CANCEL_REASON },
     ]);
     expect(result).toEqual({
       result: {
@@ -133,14 +133,14 @@ describe("state tools", () => {
     });
   });
 
-  it("returns thread-not-found when TaskPause targets an unknown thread", async () => {
+  it("returns thread-not-found when pause_agent targets an unknown thread", async () => {
     const ctx = createStateContext("/tmp", {
-      createTask: async () => ({ threadId: "thread-1" }),
-      getTask: async () => null,
-      cancelTask: async () => ({ canceled: false }),
+      createAgent: async () => ({ threadId: "thread-1" }),
+      getAgent: async () => null,
+      cancelAgent: async () => ({ canceled: false }),
     });
 
-    const result = await handleTask(
+    const result = await handleSpawnAgent(
       ctx,
       { action: "cancel", thread_id: "missing-thread" },
       {
@@ -158,7 +158,7 @@ describe("state tools", () => {
     const ctx = createStateContext("/tmp");
 
     await expect(
-      handleTask(
+      handleSpawnAgent(
         ctx,
         {
           prompt: "Run it",
@@ -175,7 +175,7 @@ describe("state tools", () => {
     });
 
     await expect(
-      handleTask(
+      handleSpawnAgent(
         ctx,
         {
           description: "Do work",

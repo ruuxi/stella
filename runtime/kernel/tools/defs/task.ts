@@ -1,18 +1,17 @@
 /**
- * Task management tools for the orchestrator.
+ * Sub-agent management tools for the orchestrator.
  *
- * Four sibling tools that all manipulate the durable task thread surface:
- * `TaskCreate` (start a thread), `TaskUpdate` (deliver a follow-up to a
- * running thread), `TaskPause` (cancel without losing the thread), and
- * `TaskOutput` (poll status / output of a thread). All four are
- * orchestrator-only.
+ * Three sibling tools that all manipulate the durable agent thread surface:
+ * `spawn_agent` (start a thread), `send_input` (deliver a follow-up to a
+ * running thread, transparently re-hydrating a paused/completed thread when
+ * needed), and `pause_agent` (cancel without losing the thread). All three
+ * are orchestrator-only.
  */
 
 import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtime.js";
 import {
-  handleTask,
-  handleTaskOutput,
-  handleTaskUpdate,
+  handleSendInput,
+  handleSpawnAgent,
   type StateContext,
 } from "../state.js";
 import type { ToolContext, ToolDefinition, ToolResult } from "../types.js";
@@ -25,13 +24,13 @@ const requireOrchestrator = (
     ? null
     : { error: `${toolName} is only available to the orchestrator.` };
 
-export const createTaskTools = (
+export const createAgentTools = (
   stateContext: StateContext,
 ): ToolDefinition[] => [
   {
-    name: "TaskCreate",
+    name: "spawn_agent",
     description:
-      "Create a background task executed by the General agent. Returns immediately with a durable `thread_id`; the task is NOT finished yet.",
+      "Spawn a sub-agent for a well-scoped background task. Returns immediately with a durable `thread_id`; the agent is NOT finished yet.",
     parameters: {
       type: "object",
       properties: {
@@ -42,21 +41,21 @@ export const createTaskTools = (
         prompt: {
           type: "string",
           description:
-            "Detailed instructions for the General agent. This is the agent's only context.",
+            "Detailed instructions for the sub-agent. This is the agent's only context.",
         },
       },
       required: ["description", "prompt"],
     },
     execute: async (args, context) => {
-      const denied = requireOrchestrator("TaskCreate", context);
+      const denied = requireOrchestrator("spawn_agent", context);
       if (denied) return denied;
-      return handleTask(stateContext, { ...args, action: "create" }, context);
+      return handleSpawnAgent(stateContext, args, context);
     },
   },
   {
-    name: "TaskUpdate",
+    name: "send_input",
     description:
-      "Continue or revise an existing task thread by sending it a new message.",
+      "Send a follow-up message to an existing sub-agent. By default (interrupt=true), the agent's current attempt is stopped and restarted with this message — use this to redirect work mid-flight. With interrupt=false, the message is queued and the agent finishes its current turn first. If the agent is paused or already completed, it is re-hydrated and resumed with this message.",
     parameters: {
       type: "object",
       properties: {
@@ -66,21 +65,26 @@ export const createTaskTools = (
         },
         message: {
           type: "string",
-          description: "Follow-up instruction to deliver to the task thread.",
+          description: "Follow-up instruction to deliver to the agent.",
+        },
+        interrupt: {
+          type: "boolean",
+          description:
+            "When true (default), stop the agent's current attempt and apply this message immediately. When false, queue the message; the agent will see it after its current turn completes.",
         },
       },
       required: ["thread_id", "message"],
     },
     execute: async (args, context) => {
-      const denied = requireOrchestrator("TaskUpdate", context);
+      const denied = requireOrchestrator("send_input", context);
       if (denied) return denied;
-      return handleTaskUpdate(stateContext, args, context);
+      return handleSendInput(stateContext, args, context);
     },
   },
   {
-    name: "TaskPause",
+    name: "pause_agent",
     description:
-      "Pause a running task thread. The same thread can be resumed later with TaskUpdate.",
+      "Pause a running sub-agent. The same thread can be resumed later by calling send_input with its thread_id.",
     parameters: {
       type: "object",
       properties: {
@@ -90,34 +94,15 @@ export const createTaskTools = (
         },
         reason: {
           type: "string",
-          description: "Optional explanation for why the task is being paused.",
+          description: "Optional explanation for why the agent is being paused.",
         },
       },
       required: ["thread_id"],
     },
     execute: async (args, context) => {
-      const denied = requireOrchestrator("TaskPause", context);
+      const denied = requireOrchestrator("pause_agent", context);
       if (denied) return denied;
-      return handleTask(stateContext, { ...args, action: "cancel" }, context);
-    },
-  },
-  {
-    name: "TaskOutput",
-    description: "Check the current status and output of a task thread.",
-    parameters: {
-      type: "object",
-      properties: {
-        thread_id: {
-          type: "string",
-          description: "Durable thread id returned by TaskCreate.",
-        },
-      },
-      required: ["thread_id"],
-    },
-    execute: async (args, context) => {
-      const denied = requireOrchestrator("TaskOutput", context);
-      if (denied) return denied;
-      return handleTaskOutput(stateContext, args, context);
+      return handleSpawnAgent(stateContext, { ...args, action: "cancel" }, context);
     },
   },
 ];

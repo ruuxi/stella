@@ -143,7 +143,7 @@ export const listMessagesInWindow = internalQuery({
       max: MAX_EVENTS_QUERY_LIMIT,
     });
 
-    const types = ["user_message", "assistant_message", "task_completed"] as const;
+    const types = ["user_message", "assistant_message", "agent_completed"] as const;
     const perType = await Promise.all(
       types.map((type) =>
         ctx.db
@@ -227,9 +227,9 @@ const MODEL_CONTEXT_EVENT_TYPES = new Set([
   "user_message",
   "assistant_message",
   "microcompact_boundary",
-  "task_started",
-  "task_completed",
-  "task_failed",
+  "agent_started",
+  "agent_completed",
+  "agent_failed",
 ]);
 
 const CHAT_CONTEXT_EVENT_TYPES = new Set([

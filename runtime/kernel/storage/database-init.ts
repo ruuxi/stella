@@ -98,6 +98,7 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec("DROP TABLE IF EXISTS runtime_thread_messages;");
   db.exec("DROP TABLE IF EXISTS runtime_run_events;");
   db.exec("DROP TABLE IF EXISTS runtime_memories;");
+  db.exec("DROP TABLE IF EXISTS runtime_tasks;");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_threads (
@@ -158,14 +159,14 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   `);
 
   db.exec(`
-    CREATE TABLE IF NOT EXISTS runtime_tasks (
+    CREATE TABLE IF NOT EXISTS runtime_agents (
       thread_id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
       agent_type TEXT NOT NULL,
       description TEXT NOT NULL,
-      task_depth INTEGER NOT NULL,
-      max_task_depth INTEGER,
-      parent_task_id TEXT,
+      agent_depth INTEGER NOT NULL,
+      max_agent_depth INTEGER,
+      parent_agent_id TEXT,
       tools_allowlist_override_json TEXT,
       self_mod_metadata_json TEXT,
       status TEXT NOT NULL,
@@ -177,8 +178,8 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     );
   `);
   db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_runtime_tasks_conversation_updated
-    ON runtime_tasks(conversation_id, updated_at, thread_id);
+    CREATE INDEX IF NOT EXISTS idx_runtime_agents_conversation_updated
+    ON runtime_agents(conversation_id, updated_at, thread_id);
   `);
 
   db.exec(`

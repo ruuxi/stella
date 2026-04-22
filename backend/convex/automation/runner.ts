@@ -103,7 +103,7 @@ export async function runAgentTurn({
     {
       agentType,
       toolsAllowlist: promptBuild.toolsAllowlist,
-      maxTaskDepth: promptBuild.maxTaskDepth,
+      maxAgentDepth: promptBuild.maxAgentDepth,
       ownerId: resolvedOwnerId,
       conversationId,
       userMessageId,

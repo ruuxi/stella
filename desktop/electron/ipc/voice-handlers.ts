@@ -226,15 +226,15 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         onToolEnd: (event) => {
           emitVoiceAgentEvent({ ...event, type: "tool-end" });
         },
-        onTaskEvent: (event) => {
+        onAgentEvent: (event) => {
           emitVoiceAgentEvent({
             type: event.type,
             runId: event.rootRunId ?? "voice",
             seq: nextTaskEventSeq(),
-            taskId: event.taskId,
+            agentId: event.agentId,
             agentType: event.agentType,
             description: event.description,
-            parentTaskId: event.parentTaskId,
+            parentAgentId: event.parentAgentId,
             result: event.result,
             error: event.error,
             statusText: event.statusText,

@@ -7,7 +7,7 @@ describe("buildStartupPromptMessages", () => {
       context: {
         systemPrompt: "system",
         dynamicContext: "",
-        maxTaskDepth: 1,
+        maxAgentDepth: 1,
         threadHistory: [
           {
             role: "assistant",

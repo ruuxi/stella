@@ -3,16 +3,16 @@ import path from "path";
 import { resolveLlmRoute } from "../model-routing.js";
 import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
-import { createTaskLifecycleResponseTarget } from "../agent-runtime/response-target.js";
+import { createAgentLifecycleResponseTarget } from "../agent-runtime/response-target.js";
 import { runExplore } from "../agent-runtime/explore.js";
 import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
-import { LocalTaskManager } from "../tasks/local-task-manager.js";
+import { LocalAgentManager } from "../agents/local-agent-manager.js";
 import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
-import type { TaskToolRequest, ToolContext, ToolResult } from "../tools/types.js";
+import type { AgentToolRequest, ToolContext, ToolResult } from "../tools/types.js";
 import type {
-  LocalTaskManagerAgentContext,
-  TaskLifecycleEvent,
-} from "../tasks/local-task-manager.js";
+  LocalAgentContext,
+  AgentLifecycleEvent,
+} from "../agents/local-agent-manager.js";
 import { GENERAL_STARTER_TOOLS } from "../agents/starter-tools.js";
 import {
   AGENT_IDS,
@@ -21,7 +21,7 @@ import {
 import type {
   RunnerContext,
 } from "./types.js";
-import { buildTaskEventPrompt, createSelfModHmrState } from "./shared.js";
+import { buildAgentEventPrompt, createSelfModHmrState } from "./shared.js";
 import type { SelfModHmrState } from "../../contracts/index.js";
 import { shouldRunSelfModHmrTransition } from "../self-mod/flush-mode.js";
 
@@ -62,8 +62,8 @@ const deriveConversationFeatureId = (conversationId: string): string => {
 const resolveSelfModMetadata = (args: {
   conversationId: string;
   agentType: string;
-  selfModMetadata?: TaskToolRequest["selfModMetadata"];
-}): TaskToolRequest["selfModMetadata"] | undefined => {
+  selfModMetadata?: AgentToolRequest["selfModMetadata"];
+}): AgentToolRequest["selfModMetadata"] | undefined => {
   if (args.selfModMetadata) {
     return {
       ...args.selfModMetadata,
@@ -196,77 +196,77 @@ export const isHmrPathUnderDirectory = (
   );
 };
 
-const appendTaskLifecycleChatEvent = (
+const appendAgentLifecycleChatEvent = (
   context: RunnerContext,
-  event: TaskLifecycleEvent,
+  event: AgentLifecycleEvent,
 ) => {
   if (!context.appendLocalChatEvent) {
     return;
   }
 
-  if (event.type === "task-started") {
+  if (event.type === "agent-started") {
     context.appendLocalChatEvent({
       conversationId: event.conversationId,
-      type: "task_started",
+      type: "agent_started",
       payload: {
-        taskId: event.taskId,
+        agentId: event.agentId,
         description: event.description,
         agentType: event.agentType,
-        ...(event.parentTaskId ? { parentTaskId: event.parentTaskId } : {}),
+        ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
       },
     });
     return;
   }
 
-  if (event.type === "task-completed") {
+  if (event.type === "agent-completed") {
     context.appendLocalChatEvent({
       conversationId: event.conversationId,
-      type: "task_completed",
+      type: "agent_completed",
       payload: {
-        taskId: event.taskId,
+        agentId: event.agentId,
         ...(event.result ? { result: event.result } : {}),
       },
     });
     return;
   }
 
-  if (event.type === "task-failed") {
+  if (event.type === "agent-failed") {
     context.appendLocalChatEvent({
       conversationId: event.conversationId,
-      type: "task_failed",
+      type: "agent_failed",
       payload: {
-        taskId: event.taskId,
+        agentId: event.agentId,
         ...(event.error ? { error: event.error } : {}),
       },
     });
     return;
   }
 
-  if (event.type === "task-canceled") {
+  if (event.type === "agent-canceled") {
     context.appendLocalChatEvent({
       conversationId: event.conversationId,
-      type: "task_canceled",
+      type: "agent_canceled",
       payload: {
-        taskId: event.taskId,
+        agentId: event.agentId,
         ...(event.error ? { error: event.error } : {}),
       },
     });
     return;
   }
 
-  if (event.type === "task-progress") {
+  if (event.type === "agent-progress") {
     context.appendLocalChatEvent({
       conversationId: event.conversationId,
-      type: "task_progress",
+      type: "agent_progress",
       payload: {
-        taskId: event.taskId,
+        agentId: event.agentId,
         statusText: event.statusText,
       },
     });
   }
 };
 
-export const createTaskOrchestration = (
+export const createAgentOrchestration = (
   context: RunnerContext,
   deps: {
     buildAgentContext: (args: {
@@ -274,8 +274,8 @@ export const createTaskOrchestration = (
       agentType: string;
       runId: string;
       threadId?: string;
-      selfModMetadata?: TaskToolRequest["selfModMetadata"];
-    }) => Promise<LocalTaskManagerAgentContext>;
+      selfModMetadata?: AgentToolRequest["selfModMetadata"];
+    }) => Promise<LocalAgentContext>;
     sendMessage: (input: {
       conversationId: string;
       text: string;
@@ -294,7 +294,7 @@ export const createTaskOrchestration = (
     }>;
   },
 ) => {
-  context.state.localTaskManager = new LocalTaskManager({
+  context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaRoot),
     getStarterTools: (agentType) =>
@@ -311,14 +311,14 @@ export const createTaskOrchestration = (
     },
     listActiveThreads: (conversationId) =>
       context.runtimeStore.listActiveThreads(conversationId),
-    onTaskEvent: (event) => {
-      appendTaskLifecycleChatEvent(context, event);
+    onAgentEvent: (event) => {
+      appendAgentLifecycleChatEvent(context, event);
       if (event.rootRunId) {
         context.state.runCallbacksByRunId
           .get(event.rootRunId)
-          ?.onTaskEvent?.(event);
+          ?.onAgentEvent?.(event);
       }
-      const userPrompt = buildTaskEventPrompt(event);
+      const userPrompt = buildAgentEventPrompt(event);
       if (!userPrompt) {
         return;
       }
@@ -329,8 +329,8 @@ export const createTaskOrchestration = (
         agentType: AGENT_IDS.ORCHESTRATOR,
         deliverAs: "followUp",
         callbackRunId: event.rootRunId,
-        responseTarget: createTaskLifecycleResponseTarget({
-          taskId: event.taskId,
+        responseTarget: createAgentLifecycleResponseTarget({
+          agentId: event.agentId,
           eventType: event.type,
         }),
       });
@@ -340,7 +340,7 @@ export const createTaskOrchestration = (
       conversationId,
       userMessageId,
       agentType,
-      taskId,
+      agentId,
       rootRunId,
       agentContext,
       taskDescription,
@@ -444,7 +444,7 @@ export const createTaskOrchestration = (
           conversationId,
           userMessageId,
           runId,
-          taskId,
+          agentId,
           rootRunId,
           agentType,
           userPrompt: composedUserPrompt,
@@ -464,12 +464,12 @@ export const createTaskOrchestration = (
             ? {
                 onStream: (event) => taskCallbacks.onStream(event),
                 onReasoning: (event) => {
-                  if (!taskId) {
+                  if (!agentId) {
                     return;
                   }
                   taskCallbacks.onTaskReasoning?.({
                     ...event,
-                    taskId,
+                    agentId,
                     ...(rootRunId ? { rootRunId } : {}),
                   });
                 },
@@ -567,35 +567,35 @@ export const createTaskOrchestration = (
         signal,
         onUpdate,
       ),
-    createCloudTaskRecord: async () => ({
-      taskId: `cloud-stub-${crypto.randomUUID().slice(0, 8)}`,
+    createCloudAgentRecord: async () => ({
+      agentId: `cloud-stub-${crypto.randomUUID().slice(0, 8)}`,
     }),
-    completeCloudTaskRecord: async () => {},
-    getCloudTaskRecord: async () => null,
-    cancelCloudTaskRecord: async () => ({ canceled: false }),
-    saveTaskRecord: (record) => context.runtimeStore.saveTaskRecord?.(record),
-    getTaskRecord: (threadId) => context.runtimeStore.getTaskRecord?.(threadId) ?? null,
+    completeCloudAgentRecord: async () => {},
+    getCloudAgentRecord: async () => null,
+    cancelCloudAgentRecord: async () => ({ canceled: false }),
+    saveAgentRecord: (record) => context.runtimeStore.saveAgentRecord?.(record),
+    getAgentRecord: (threadId) => context.runtimeStore.getAgentRecord?.(threadId) ?? null,
   });
 
   const runBlockingLocalTask = async (
-    request: Omit<TaskToolRequest, "storageMode">,
+    request: Omit<AgentToolRequest, "storageMode">,
   ): Promise<
     | { status: "ok"; finalText: string; threadId: string }
     | { status: "error"; finalText: ""; error: string; threadId?: string }
   > => {
-    if (!context.state.localTaskManager) {
+    if (!context.state.localAgentManager) {
       return {
         status: "error",
         finalText: "",
         error: "Task manager is unavailable.",
       };
     }
-    const { threadId } = await context.state.localTaskManager.createTask({
+    const { threadId } = await context.state.localAgentManager.createAgent({
       ...request,
       storageMode: "local",
     });
     while (true) {
-      const snapshot = await context.state.localTaskManager.getTask(threadId);
+      const snapshot = await context.state.localAgentManager.getAgent(threadId);
       if (!snapshot) {
         return {
           status: "error",
@@ -624,12 +624,12 @@ export const createTaskOrchestration = (
   };
 
   const createBackgroundTask = async (
-    request: Omit<TaskToolRequest, "storageMode">,
+    request: Omit<AgentToolRequest, "storageMode">,
   ): Promise<{ threadId: string }> => {
-    if (!context.state.localTaskManager) {
+    if (!context.state.localAgentManager) {
       throw new Error("Task manager is unavailable.");
     }
-    const { threadId } = await context.state.localTaskManager.createTask({
+    const { threadId } = await context.state.localAgentManager.createAgent({
       ...request,
       storageMode: "local",
     });
@@ -637,7 +637,7 @@ export const createTaskOrchestration = (
   };
 
   const shutdown = () => {
-    context.state.localTaskManager?.shutdown();
+    context.state.localAgentManager?.shutdown();
     shutdownSubagentRuntimes();
   };
 
