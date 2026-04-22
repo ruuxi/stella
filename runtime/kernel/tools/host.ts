@@ -3,11 +3,15 @@
  *
  * Builds the tool execution environment for a Stella session.
  *
- * Model-facing surface:
- *   - General codex-style tools  -> exec_command / write_stdin / apply_patch / etc.
- *   - macOS computer tools       -> computer_* (typed, mirror upstream computer-use MCP)
- *   - Coordination tools         -> TaskCreate, Display, Schedule, Memory
- *   - UI round-trips             -> AskUserQuestion / RequestCredential
+ * Every model-facing tool lives as a self-contained `ToolDefinition` under
+ * `runtime/kernel/tools/defs/`. `buildBuiltinTools()` returns the full set;
+ * the host indexes them by name into a single Map that drives both:
+ *
+ *   - the catalog the model sees (`getToolCatalog`)
+ *   - the handler dispatcher (`executeTool`)
+ *
+ * The legacy companion handlers (Bash / ShellStatus / KillShell, plus
+ * extension-injected ToolDefinitions) sit alongside in the same map.
  */
 
 import path from "node:path";
@@ -24,34 +28,15 @@ import type {
 
 import { log, logError, recoverStaleSecretFiles } from "./utils.js";
 import { setFileToolsConfig } from "./file.js";
+import { createShellState, type ShellState } from "./shell.js";
+import { createStateContext, type StateContext } from "./state.js";
 import {
-  createShellState,
-  type ShellState,
-} from "./shell.js";
-import {
-  createStateContext,
-  type StateContext,
-} from "./state.js";
-import { type UserToolsConfig } from "./user.js";
-import {
-  createAskQuestionToolHandlers,
-  createComputerHandlers,
-  createDisplayToolHandlers,
-  createFilesystemToolHandlers,
-  createImageToolHandlers,
-  createMemoryToolHandlers,
-  createParallelToolHandlers,
-  createPatchToolHandlers,
-  createScheduleControlToolHandlers,
-  createScheduleToolHandlers,
   createShellToolHandlers,
-  createTaskToolHandlers,
-  createUserToolHandlers,
-  createWebToolHandlers,
   mergeToolHandlers,
   registerExtensionToolHandlers,
 } from "./registry.js";
-import { TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "./schemas.js";
+import { buildBuiltinTools } from "./defs/index.js";
+import type { ToolDefinition as BuiltinToolDefinition } from "./types.js";
 
 import type { ToolDefinition } from "../extensions/types.js";
 
@@ -88,20 +73,10 @@ export const createToolHost = ({
   memoryStore,
 }: ToolHostOptions) => {
   const stateRoot = path.join(stellaRoot, "state");
-  const toolCatalog = new Map<string, ToolMetadata>(
-    Object.entries(TOOL_DESCRIPTIONS).map(([name, description]) => [
-      name,
-      {
-        name,
-        description,
-        parameters: (TOOL_JSON_SCHEMAS[name] ?? {}) as Record<string, unknown>,
-      },
-    ]),
-  );
+  const toolCatalog = new Map<string, ToolMetadata>();
 
   setFileToolsConfig({ stellaRoot });
 
-  const userConfig: UserToolsConfig = { requestCredential };
   const shellState: ShellState = createShellState(stateRoot, {
     stellaBrowserBinPath: _stellaBrowserBinPath,
     stellaOfficeBinPath: _stellaOfficeBinPath,
@@ -120,20 +95,11 @@ export const createToolHost = ({
       logError("Failed to recover stale secret mounts", error);
     });
 
-  let handlers: Record<string, ToolHandler> = mergeToolHandlers(
-    createFilesystemToolHandlers(),
+  // Legacy companion handlers (no schema in the catalog; reachable only by
+  // direct executeTool calls from non-model code paths). These predate the
+  // def-driven surface and stay until their callers are folded in.
+  const handlers: Record<string, ToolHandler> = mergeToolHandlers(
     createShellToolHandlers(shellState),
-    createPatchToolHandlers(),
-    createComputerHandlers({ stellaComputerCliPath }),
-    createImageToolHandlers({ getStellaSiteAuth, queryConvex }),
-    createDisplayToolHandlers({ displayHtml }),
-    createWebToolHandlers({ webSearch }),
-    createTaskToolHandlers(stateContext),
-    createScheduleToolHandlers({ taskApi, scheduleApi }),
-    createScheduleControlToolHandlers({ scheduleApi }),
-    createAskQuestionToolHandlers(),
-    ...(memoryStore ? [createMemoryToolHandlers({ memoryStore })] : []),
-    createUserToolHandlers(userConfig),
   );
 
   let executeTool: (
@@ -144,13 +110,38 @@ export const createToolHost = ({
     onUpdate?: ToolHandlerExtras["onUpdate"],
   ) => Promise<ToolResult>;
 
-  handlers = mergeToolHandlers(
-    handlers,
-    createParallelToolHandlers({
-      executeTool: (toolName, toolArgs, context, signal, onUpdate) =>
-        executeTool(toolName, toolArgs, context, signal, onUpdate),
-    }),
-  );
+  // Built-in def-driven tools. Each `defs/<name>.ts` owns its own schema +
+  // description + handler; they're the single source of truth for everything
+  // the model sees.
+  const builtinTools: BuiltinToolDefinition[] = buildBuiltinTools({
+    stellaRoot,
+    stellaBrowserBinPath: _stellaBrowserBinPath,
+    stellaOfficeBinPath: _stellaOfficeBinPath,
+    stellaUiCliPath: _stellaUiCliPath,
+    stellaComputerCliPath,
+    requestCredential,
+    taskApi,
+    scheduleApi,
+    extensionTools,
+    displayHtml,
+    webSearch,
+    getStellaSiteAuth,
+    queryConvex,
+    memoryStore,
+    shellState,
+    stateContext,
+    executeTool: (toolName, toolArgs, context, signal, onUpdate) =>
+      executeTool(toolName, toolArgs, context, signal, onUpdate),
+  });
+  for (const tool of builtinTools) {
+    toolCatalog.set(tool.name, {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    });
+    handlers[tool.name] = (args, context, extras) =>
+      tool.execute(args, context, extras);
+  }
 
   registerExtensionToolHandlers(handlers, extensionTools);
   for (const tool of extensionTools ?? []) {

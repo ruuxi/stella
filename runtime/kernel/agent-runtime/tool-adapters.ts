@@ -1,11 +1,7 @@
 import type { AgentTool } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { TextContent } from "../../ai/types.js";
-import {
-  DEVICE_TOOL_NAMES,
-  TOOL_DESCRIPTIONS,
-  TOOL_JSON_SCHEMAS,
-} from "../tools/schemas.js";
+import { DEVICE_TOOL_NAMES } from "../tools/schemas.js";
 import type {
   ToolContext,
   ToolMetadata,
@@ -22,25 +18,6 @@ export const STELLA_LOCAL_TOOLS = [
   TOOL_IDS.NO_RESPONSE,
 ] as const;
 
-const getToolMetadataIndex = (toolCatalog?: ToolMetadata[]) =>
-  new Map<string, ToolMetadata>(
-    (toolCatalog ?? []).map((tool) => [tool.name, tool]),
-  );
-
-const resolveToolMetadata = (
-  toolName: string,
-  toolMetadata: Map<string, ToolMetadata>,
-): ToolMetadata => ({
-  name: toolName,
-  description:
-    toolMetadata.get(toolName)?.description ??
-    TOOL_DESCRIPTIONS[toolName] ??
-    `${toolName} tool`,
-  parameters:
-    toolMetadata.get(toolName)?.parameters ??
-    ((TOOL_JSON_SCHEMAS[toolName] ?? AnyToolArgsSchema) as Record<string, unknown>),
-});
-
 export const getRequestedRuntimeToolNames = (
   toolsAllowlist?: string[],
 ): string[] =>
@@ -48,17 +25,40 @@ export const getRequestedRuntimeToolNames = (
     ? toolsAllowlist
     : [...STELLA_LOCAL_TOOLS];
 
+/**
+ * Resolve the agent's tool allowlist against the host's catalog.
+ *
+ * The catalog is the single source of truth for tool metadata — every tool
+ * lives as a self-contained `ToolDefinition` under
+ * `runtime/kernel/tools/defs/` and is registered into the catalog by the
+ * host. If a name in the allowlist isn't in the catalog, it's silently
+ * dropped and a warning is logged.
+ */
 export const getRuntimeToolMetadata = (opts: {
   toolsAllowlist?: string[];
   toolCatalog?: ToolMetadata[];
 }): ToolMetadata[] => {
-  const toolMetadata = getToolMetadataIndex(opts.toolCatalog);
+  const catalog = new Map<string, ToolMetadata>(
+    (opts.toolCatalog ?? []).map((tool) => [tool.name, tool]),
+  );
   const resolved: ToolMetadata[] = [];
   const seen = new Set<string>();
+  const missing: string[] = [];
   for (const toolName of getRequestedRuntimeToolNames(opts.toolsAllowlist)) {
     if (seen.has(toolName)) continue;
     seen.add(toolName);
-    resolved.push(resolveToolMetadata(toolName, toolMetadata));
+    const entry = catalog.get(toolName);
+    if (!entry) {
+      missing.push(toolName);
+      continue;
+    }
+    resolved.push(entry);
+  }
+  if (missing.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[tool-adapters] dropped unknown tools from allowlist: ${missing.join(", ")}`,
+    );
   }
   return resolved;
 };
@@ -307,12 +307,19 @@ export const createPiTools = (opts: {
   hookEmitter?: HookEmitter;
 }): AgentTool[] => {
   const requested = getRequestedRuntimeToolNames(opts.toolsAllowlist);
-  const toolMetadata = getToolMetadataIndex(opts.toolCatalog);
+  const catalog = new Map<string, ToolMetadata>(
+    (opts.toolCatalog ?? []).map((tool) => [tool.name, tool]),
+  );
   const activeTools: AgentTool[] = [];
   const activeToolNames = new Set<string>();
 
   const registerTool = (toolName: string): AgentTool => {
-    const metadata = resolveToolMetadata(toolName, toolMetadata);
+    const entry = catalog.get(toolName);
+    const metadata: ToolMetadata = entry ?? {
+      name: toolName,
+      description: `${toolName} tool`,
+      parameters: AnyToolArgsSchema as Record<string, unknown>,
+    };
     const tool: AgentTool = {
       name: toolName,
       label: toolName,

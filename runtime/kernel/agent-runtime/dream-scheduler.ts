@@ -49,7 +49,9 @@ import {
 } from "../model-routing.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
-import { TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "../tools/schemas.js";
+import { dreamTool } from "../tools/defs/dream.js";
+import { readTool } from "../tools/defs/read.js";
+import { strReplaceTool } from "../tools/defs/str-replace.js";
 import { createRuntimeLogger } from "../debug.js";
 
 const logger = createRuntimeLogger("agent-runtime.dream-scheduler");
@@ -176,20 +178,12 @@ const buildDreamSystemPrompt = (): string =>
     "Final message: a single line summarizing what you did, e.g. 'Folded 3 rollouts into Task Group X; archived 1 stale block.'",
   ].join("\n");
 
-const buildDreamTools = (): Tool[] => {
-  const names = [TOOL_IDS.DREAM, TOOL_IDS.READ, TOOL_IDS.STR_REPLACE] as const;
-  return names.map((name) => {
-    const schema = TOOL_JSON_SCHEMAS[name];
-    if (!schema) {
-      throw new Error(`No JSON schema registered for tool ${name}.`);
-    }
-    return {
-      name,
-      description: TOOL_DESCRIPTIONS[name] ?? "",
-      parameters: schema as Tool["parameters"],
-    };
-  });
-};
+const buildDreamTools = (): Tool[] =>
+  [dreamTool, readTool, strReplaceTool].map((def) => ({
+    name: def.name,
+    description: def.description,
+    parameters: def.parameters as Tool["parameters"],
+  }));
 
 const toToolResultMessage = (
   toolCall: ToolCall,
