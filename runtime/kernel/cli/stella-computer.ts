@@ -42,6 +42,8 @@ type SnapshotNode = {
   enabled?: boolean | null;
   focused?: boolean | null;
   selected?: boolean | null;
+  expanded?: boolean | null;
+  placeholder?: string | null;
   frame?: Rect | null;
   actions: string[];
   children: SnapshotNode[];
@@ -94,6 +96,11 @@ type ListedAppPayload = {
   pid: number;
   activationPolicy: string;
   isActive: boolean;
+  // Spotlight-tracked usage data populated by the desktop_automation
+  // daemon. Either or both can be null when the bundle isn't indexed
+  // (sandboxed apps without read perms, network-mounted bundles, etc.).
+  lastUsedDate?: string | null;
+  useCount?: number | null;
 };
 
 type ListAppsPayload = {
@@ -175,7 +182,12 @@ const defaultLockTimeoutMs = 30_000;
 const staleLockTimeoutMs = 90_000;
 const lockPollIntervalMs = 125;
 const automationDaemonStartupBudgetMs = 1_500;
-const automationDaemonRequestTimeoutMs = 15_000;
+// 30s covers heavy AppKit apps (Mail with thousands of messages, Notes with
+// large note bodies, Music with full library indexed) where the AX walk
+// reaches the maxNodes cap of 1500 before the daemon can return. Lighter
+// apps (Spotify, Notes empty) finish in 1–3s. Codex's MCP also runs ~10s
+// for a busy Mail snapshot and ~3s for everything else.
+const automationDaemonRequestTimeoutMs = 30_000;
 
 const usage = `stella-computer - control macOS apps through Accessibility, in the background
 
@@ -594,22 +606,47 @@ const ACTIONS_TO_HIDE = new Set([
   "AXScrollToVisible",
   "AXIncrement",
   "AXDecrement",
+  // AppKit table/outline rows expose Show Default UI / Show Alternate UI
+  // alongside the user-meaningful AX actions. They flip an internal styling
+  // pair and are not actuatable affordances; surface only the real actions
+  // (e.g. swipe-to-Read on Mail message rows).
+  "AXShowDefaultUI",
+  "AXShowAlternateUI",
 ]);
 
 const ROLES_WITH_VISIBLE_SETTABLE_STATE = new Set([
   "AXCell",
   "AXCheckBox",
   "AXComboBox",
+  "AXGenericElement",
+  "AXGroup",
   "AXPopUpButton",
   "AXRadioButton",
   "AXSearchField",
   "AXSecureTextField",
   "AXSlider",
+  "AXSplitGroup",
   "AXSplitter",
   "AXSwitch",
   "AXTextArea",
   "AXTextField",
+  "AXUnknown",
+  "AXWebArea",
 ]);
+
+// Subrole-aware names for buttons so the model can tell window controls apart
+// instead of seeing a row of identical "button" entries.
+// Mirrors the macOS computer-use MCP that Codex uses.
+const BUTTON_SUBROLE_LABELS: Record<string, string> = {
+  AXCloseButton: "close button",
+  AXMinimizeButton: "minimize button",
+  AXZoomButton: "full screen button",
+  AXFullScreenButton: "full screen button",
+  AXToolbarButton: "toolbar button",
+  AXSortButton: "sort button",
+  AXIncrementor: "incrementor button",
+  AXDecrementor: "decrementor button",
+};
 
 const formatUrlLike = (value: string) => value.replace(/^https?:\/\//, "");
 
@@ -635,6 +672,8 @@ const humanRole = (node: Pick<SnapshotNode, "role" | "subrole">): string => {
       return node.subrole === "AXSwitch" ? "switch" : "checkbox";
     case "AXList":
       return "list box";
+    case "AXButton":
+      return (node.subrole && BUTTON_SUBROLE_LABELS[node.subrole]) || "button";
     default: {
       const trimmed = node.role.startsWith("AX") ? node.role.slice(2) : node.role;
       return trimmed
@@ -686,10 +725,32 @@ const choosePrimaryLabel = (node: SnapshotNode) => {
       node.role === "AXGroup" ||
       node.role === "AXGenericElement" ||
       node.role === "AXHeading" ||
-      node.role === "AXList") &&
+      node.role === "AXList" ||
+      // Brave/Chrome/Safari toolbar dropdowns (Brave Shields, Wallet, VPN,
+      // Extensions, profile picker, address-bar lock icon) and AppKit
+      // window-resize splitters all carry their human-readable label on
+      // AXDescription. Without surfacing it, browser/window chrome reads
+      // as a row of unnamed `(settable, string)` placeholders.
+      node.role === "AXPopUpButton" ||
+      node.role === "AXMenuButton" ||
+      node.role === "AXSplitter" ||
+      node.role === "AXWebArea") &&
     node.description
   ) {
     return node.description;
+  }
+  // AppKit outline rows leave their description on a child AXCell. When the
+  // row has exactly one AXCell child whose description is the only label
+  // available, present that description as the row's own primary label so
+  // sidebars (Mail mailboxes, Finder source list, Notes accounts, etc.)
+  // surface readable names like "Inbox" / "Junk" instead of bare "row".
+  if (
+    node.role === "AXRow" &&
+    node.children.length === 1 &&
+    node.children[0]?.role === "AXCell" &&
+    node.children[0].description
+  ) {
+    return node.children[0].description;
   }
   if (!node.title && !node.description && node.value) return node.value;
   return null;
@@ -699,7 +760,18 @@ const annotationSegment = (node: SnapshotNode) => {
   const flags: string[] = [];
   if (node.enabled === false) flags.push("disabled");
   if (node.selected) flags.push("selected");
-  if (node.focused) flags.push("focused");
+  // AppKit's outline/table cells inherit the parent table's focus bit, so
+  // every cell in a focused table reports `focused=true`. That tells the
+  // model nothing useful about which element actually has keyboard focus.
+  // Suppress the flag for cells; meaningful focus on a cell's text field
+  // child still surfaces normally.
+  if (node.focused && node.role !== "AXCell") flags.push("focused");
+  // Outline rows + disclosure groups expose AXExpanded so the model can
+  // tell whether sidebars/sections (Mail Favorites/Smart Mailboxes,
+  // Finder source list, Notes accounts) are open or collapsed before
+  // deciding whether to actuate the disclosure triangle.
+  if (node.expanded === true) flags.push("expanded");
+  else if (node.expanded === false) flags.push("collapsed");
   if (shouldSurfaceSettable(node)) {
     flags.push("settable");
     const valueType = inferredValueType(node);
@@ -722,6 +794,17 @@ const filterMenuActions = (actions: string[], role: string) =>
     ? actions.filter((action) => action !== "AXCancel" && action !== "AXPick")
     : actions;
 
+// Container roles that may be skipped from the rendered tree when the node
+// adds no information of its own. Their children re-attach at the parent's
+// depth so the model sees one tight tree instead of a deep stack of empty
+// `container` lines (e.g. web-area wrapper chains).
+const COLLAPSIBLE_CONTAINER_ROLES = new Set([
+  "AXGroup",
+  "AXGenericElement",
+  "AXUnknown",
+  "AXSplitGroup",
+]);
+
 const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
   const indent = "\t".repeat(depth);
   const id =
@@ -736,6 +819,13 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
   // screenshot's pixel coordinates with `click-screenshot`.
   if (node.role === "AXMenuBarItem") {
     const label = choosePrimaryLabel(node);
+    // Hide the universal Apple menu (About This Mac, System Settings, Sleep,
+    // Restart, Shut Down, ...). It's identical across every macOS app and
+    // any user request that needs it would be expressed via system-level
+    // controls or shortcuts, not as a per-app target. Codex hides it too.
+    if (label === "Apple") {
+      return [];
+    }
     return [`${indent}${id}${annotationSegment(node)}${label ? ` ${truncate(label, 120)}` : ""}`];
   }
 
@@ -746,7 +836,18 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
   if (
     node.description &&
     node.description !== primaryLabel &&
-    (node.role === "AXLink" || node.role === "AXCheckBox" || node.subrole === "AXSwitch")
+    (node.role === "AXLink" ||
+      node.role === "AXCheckBox" ||
+      node.subrole === "AXSwitch" ||
+      // Browser/Mail/Notes address-bar style fields name themselves on
+      // AXDescription ("Address and search bar", "Search field", "To:",
+      // "Subject:"). The value attribute carries the typed text, so
+      // surface description as a separate prefix rather than collapsing
+      // it into the primary label.
+      node.role === "AXTextField" ||
+      node.role === "AXSearchField" ||
+      node.role === "AXSecureTextField" ||
+      node.role === "AXTextArea")
   ) {
     extras.push(`Description: ${truncate(node.description, 120)}`);
   }
@@ -783,19 +884,75 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
     }
   }
 
+  // Placeholder text for empty input fields (Brave's "Search Google or
+  // type a URL", Spotlight's "Spotlight Search", Mail's "To:" hint).
+  // Only meaningful for text-bearing roles, and only when the field
+  // doesn't already carry a typed value to display.
+  if (
+    node.placeholder &&
+    node.placeholder !== primaryLabel &&
+    node.placeholder !== node.description &&
+    node.placeholder !== renderedValue &&
+    (node.role === "AXTextField" ||
+      node.role === "AXSearchField" ||
+      node.role === "AXSecureTextField" ||
+      node.role === "AXTextArea" ||
+      node.role === "AXComboBox")
+  ) {
+    extras.push(`Placeholder: ${truncate(node.placeholder, 120)}`);
+  }
+
   const actions = secondaryActions(filterMenuActions(node.actions ?? [], node.role));
   if (actions.length > 0) {
     extras.push(`Secondary Actions: ${actions.join(", ")}`);
   }
 
-  let line = `${indent}${id} ${role}${annotationSegment(node)}`;
+  const annotation = annotationSegment(node);
+
+  // Collapse pass-through container chains: no label, no extras, exactly one
+  // child, and that child is itself a container. Most macOS web-wrapped apps
+  // (Spotify, Slack, Discord) produce 5–10 nested AXGroup wrappers around the
+  // actual UI. Folding chains keeps the inline annotation (`settable`) on the
+  // top-level container that *does* have a label/URL while dropping the
+  // anonymous wrappers below it.
+  const onlyChild = node.children.length === 1 ? node.children[0]! : null;
+  if (
+    COLLAPSIBLE_CONTAINER_ROLES.has(node.role) &&
+    !primaryLabel &&
+    extras.length === 0 &&
+    onlyChild &&
+    COLLAPSIBLE_CONTAINER_ROLES.has(onlyChild.role)
+  ) {
+    return formatNodeLinesCodex(onlyChild, depth);
+  }
+
+  let line = `${indent}${id} ${role}${annotation}`;
   if (primaryLabel) {
     line += ` ${truncate(primaryLabel, 120)}`;
+    if (extras.length > 0) {
+      line += `, ${extras.join(", ")}`;
+    }
+  } else if (extras.length > 0) {
+    // Match Codex's macOS computer-use MCP: when there's no primary label,
+    // extras hang directly off the role with a single space, no comma. The
+    // extras among themselves are still ", "-joined.
+    line += ` ${extras.join(", ")}`;
   }
-  if (extras.length > 0) {
-    line += `, ${extras.join(", ")}`;
-  }
-  return [line, ...node.children.flatMap((child) => formatNodeLinesCodex(child, depth + 1))];
+  // Skip rendering the lone AXCell child of an AXRow when its description
+  // was already folded up into the row's primary label (see
+  // `choosePrimaryLabel`). Otherwise sidebars duplicate every label as a
+  // child cell line right under the row.
+  const childrenToRender =
+    node.role === "AXRow" &&
+    node.children.length === 1 &&
+    node.children[0]?.role === "AXCell" &&
+    primaryLabel === node.children[0].description
+      ? []
+      : node.children;
+  return [
+    line,
+    ...childrenToRender.flatMap((child) => formatNodeLinesCodex(child, depth + 1)),
+  ];
 };
 
 const findFocusedElement = (
@@ -922,17 +1079,40 @@ const formatAction = (payload: ActionPayload, snapshot: SnapshotDocument | null)
   printWarnings(payload.warnings);
 };
 
+// Codex's macOS computer-use MCP returns only "regular" (user-launchable)
+// apps. macOS exposes ~30 accessory/background helper apps (Spotlight,
+// LoginWindow, WindowManager, every Cursor renderer helper) that pollute
+// the list and have no addressable UI for the agent. Hide them.
+const LISTED_ACTIVATION_POLICIES = new Set(["regular"]);
+
 const formatListApps = (payload: ListAppsPayload) => {
-  process.stdout.write(`[apps] ${payload.apps.length}\n`);
-  for (const app of payload.apps) {
-    const parts = [`pid ${app.pid}`, app.activationPolicy];
-    if (app.bundleId) {
-      parts.push(app.bundleId);
-    }
+  const visible = payload.apps.filter((app) =>
+    LISTED_ACTIVATION_POLICIES.has(app.activationPolicy),
+  );
+  // Match Codex's MCP order: most-used first, ties broken by name. Active
+  // app no longer needs to float — it's marked with `[running, active]`
+  // and the model can scan for it. Sorting by usage gives the model a
+  // useful prior for which app it should reach for.
+  visible.sort((a, b) => {
+    const usesA = a.useCount ?? -1;
+    const usesB = b.useCount ?? -1;
+    if (usesA !== usesB) return usesB - usesA;
+    return a.name.localeCompare(b.name);
+  });
+
+  for (const app of visible) {
+    const flags: string[] = ["running"];
     if (app.isActive) {
-      parts.push("active");
+      flags.push("active");
     }
-    process.stdout.write(`- ${app.name} [${parts.join("] [")}]\n`);
+    if (app.lastUsedDate) {
+      flags.push(`last-used=${app.lastUsedDate}`);
+    }
+    if (typeof app.useCount === "number" && Number.isFinite(app.useCount)) {
+      flags.push(`uses=${app.useCount}`);
+    }
+    const bundle = app.bundleId ? ` — ${app.bundleId}` : "";
+    process.stdout.write(`${app.name}${bundle} [${flags.join(", ")}]\n`);
   }
   printWarnings(payload.warnings);
 };

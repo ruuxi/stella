@@ -39,8 +39,32 @@ export interface OpenAIResponsesOptions extends StreamOptions {
   reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
   reasoningSummary?: "auto" | "detailed" | "concise" | null;
   serviceTier?: ResponseCreateParamsStreaming["service_tier"];
-  toolChoice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
+  toolChoice?:
+    | "auto"
+    | "none"
+    | "required"
+    | { type: "function"; name: string }
+    | { type: "function"; function: { name: string } };
   responseFormat?: unknown;
+}
+
+function normalizeResponsesToolChoice(
+  toolChoice: OpenAIResponsesOptions["toolChoice"],
+): "auto" | "none" | "required" | { type: "function"; name: string } | undefined {
+  if (!toolChoice || typeof toolChoice === "string") {
+    return toolChoice;
+  }
+  const record = toolChoice as Record<string, unknown>;
+  const directName = typeof record.name === "string" ? record.name : "";
+  if (directName.length > 0) {
+    return { type: "function", name: directName };
+  }
+  const nested = record.function as Record<string, unknown> | undefined;
+  const nestedName = nested && typeof nested.name === "string" ? nested.name : "";
+  if (nestedName.length > 0) {
+    return { type: "function", name: nestedName };
+  }
+  return undefined;
 }
 
 export const streamOpenAIResponses: StreamFunction<
@@ -206,8 +230,9 @@ function buildParams(
     options?.extraBody ?? {},
   );
 
-  if (options?.toolChoice !== undefined) {
-    (params as unknown as Record<string, unknown>).tool_choice = options.toolChoice;
+  const toolChoice = normalizeResponsesToolChoice(options?.toolChoice);
+  if (toolChoice !== undefined) {
+    (params as unknown as Record<string, unknown>).tool_choice = toolChoice;
   }
 
   if (options?.responseFormat !== undefined) {

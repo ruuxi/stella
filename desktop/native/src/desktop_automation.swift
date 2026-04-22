@@ -69,9 +69,11 @@ struct SnapshotNode: Codable {
     let help: String?
     let identifier: String?
     let url: String?
+    let placeholder: String?
     let enabled: Bool?
     let focused: Bool?
     let selected: Bool?
+    let expanded: Bool?
     let frame: Rect?
     let actions: [String]
     let children: [SnapshotNode]
@@ -120,6 +122,11 @@ struct ListedAppPayload: Codable {
     let pid: Int32
     let activationPolicy: String
     let isActive: Bool
+    // Spotlight-tracked usage signals so the wrapper can emit Codex-style
+    // `[running, last-used=YYYY-MM-DD, uses=N]` annotations. Both are nil
+    // when LaunchServices has no Spotlight metadata for the app bundle.
+    let lastUsedDate: String?
+    let useCount: Int?
 }
 
 struct ListAppsPayload: Codable {
@@ -205,9 +212,11 @@ struct NodeDetails {
     let help: String?
     let identifier: String?
     let url: String?
+    let placeholder: String?
     let enabled: Bool?
     let focused: Bool?
     let selected: Bool?
+    let expanded: Bool?
     let frame: Rect?
     let actions: [String]
 }
@@ -386,6 +395,12 @@ let roleSpecificSingleChildAttributes: [String: [String]] = [
 let safeFallbackChildRoles: Set<String> = [
     "AXApplication",
     "AXBrowser",
+    // Mail/Finder/Notes table cells contain the actual content nodes
+    // (AXUnknown view holders + AXText fields for sender/date/subject).
+    // Without this entry, every message row collapses to "row > cell"
+    // with no addressable content — the model can see there are messages
+    // but cannot read any of them.
+    "AXCell",
     "AXGenericElement",
     "AXGroup",
     "AXList",
@@ -407,6 +422,11 @@ let safeFallbackChildRoles: Set<String> = [
     "AXTable",
     "AXTabGroup",
     "AXToolbar",
+    // AppKit table cells often nest their content nodes under a custom
+    // AXUnknown view holder (e.g. `Mail.messageList.cell.view`). Walking
+    // through it surfaces the sender/date/subject text fields the model
+    // needs to summarize a message list.
+    "AXUnknown",
     "AXWebArea",
     "AXWindow",
 ]
@@ -1199,8 +1219,23 @@ func axChildren(_ element: AXUIElement, role: String? = nil) -> [AXUIElement] {
     appendResult(axElementValue(element, "AXContents"))
 
     if let role {
+        // For roles that expose both a "Visible*" and an all-* variant
+        // (AXTable: AXVisibleRows + AXRows; AXOutline: same; AXBrowser:
+        // AXVisibleColumns + AXColumns), prefer the visible variant when it
+        // returns anything. Mail's inbox table reports 5,032 rows via
+        // AXRows but only ~30 via AXVisibleRows; walking the union is what
+        // makes the snapshot blow past every node budget.
+        var consumed = false
         for attribute in roleSpecificArrayChildAttributes[role] ?? [] {
-            appendResults(axElementArrayValue(element, attribute))
+            if consumed && !attribute.hasPrefix("AXVisible") {
+                continue
+            }
+            let entries = axElementArrayValue(element, attribute)
+            guard !entries.isEmpty else { continue }
+            appendResults(entries)
+            if attribute.hasPrefix("AXVisible") {
+                consumed = true
+            }
         }
 
         for attribute in roleSpecificSingleChildAttributes[role] ?? [] {
@@ -1234,9 +1269,29 @@ func axActions(_ element: AXUIElement) -> [String] {
         trace("actions:end id=\(elementHash(element)) result=\(result.rawValue) count=0")
         return []
     }
-    let actions = (actionsRef as NSArray).compactMap { $0 as? String }
+    let actions = (actionsRef as NSArray)
+        .compactMap { $0 as? String }
+        .map { normalizeAxActionName($0) }
     trace("actions:end id=\(elementHash(element)) result=\(result.rawValue) count=\(actions.count)")
     return actions
+}
+
+// macOS Mail (and a handful of other AppKit apps) surfaces NSAccessibilityCustomAction
+// objects through `AXUIElementCopyActionNames` whose `description` is the multi-line
+// `Name:X\nTarget:0x0\nSelector:(null)` block instead of the bare action label.
+// Strip everything down to just the human-readable name so downstream consumers
+// can pattern-match on familiar tokens like "Read", "Remind Me", "Delete".
+private func normalizeAxActionName(_ raw: String) -> String {
+    guard raw.contains("Name:") else { return raw }
+    if let nameRange = raw.range(of: "Name:") {
+        let after = raw[nameRange.upperBound...]
+        let endIndex = after.firstIndex(where: { $0 == "\n" }) ?? after.endIndex
+        let extracted = after[..<endIndex].trimmingCharacters(in: .whitespaces)
+        if !extracted.isEmpty {
+            return extracted
+        }
+    }
+    return raw
 }
 
 // Helper that pulls a string value out of a heterogeneous AnyObject result,
@@ -1446,8 +1501,10 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
     var details: String? = nil
     var help: String? = nil
     var identifier: String? = nil
+    var placeholder: String? = nil
     var enabled: Bool? = nil
     var selected: Bool? = nil
+    var expanded: Bool? = nil
     var frame: Rect? = nil
     let shouldReadValue = valueBearingRoles.contains(role) || likelyActionable
     var value: String? = shouldReadValue
@@ -1464,6 +1521,8 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
                 kAXIdentifierAttribute as String,
                 kAXEnabledAttribute as String,
                 kAXSelectedAttribute as String,
+                kAXExpandedAttribute as String,
+                kAXPlaceholderValueAttribute as String,
                 kAXPositionAttribute as String,
                 kAXSizeAttribute as String,
                 "AXValueDescription",
@@ -1475,8 +1534,31 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
         details = truncateValue(coerceString(secondBatch["AXValueDescription"]))
         help = truncateValue(coerceString(secondBatch[kAXHelpAttribute as String]))
         identifier = truncateValue(coerceString(secondBatch[kAXIdentifierAttribute as String]))
+        // AXPlaceholderValue carries the empty-state hint of text/search
+        // fields (Brave's address bar, Spotlight search, Mail's To:/Subject
+        // fields). We only surface it on text-bearing roles to avoid
+        // padding every actionable node with empty placeholders.
+        placeholder = truncateValue(coerceString(secondBatch[kAXPlaceholderValueAttribute as String]))
         enabled = coerceBool(secondBatch[kAXEnabledAttribute as String])
         selected = coerceBool(secondBatch[kAXSelectedAttribute as String])
+        // AXExpanded is only meaningful on disclosable elements. Reading
+        // it on AXWebArea / AXButton / AXTextField / etc. returns false
+        // and would falsely render `(collapsed)` on every interactive
+        // element. Restrict to roles where expanded/collapsed actually
+        // describes user-visible state (outline rows for the Mail/Finder
+        // sidebars, disclosure triangles in Inspector-style panels).
+        let expandedRoles: Set<String> = [
+            "AXDisclosureTriangle",
+            "AXOutline",
+            "AXRow",
+        ]
+        let expandedSubroles: Set<String> = [
+            "AXOutlineRow",
+            "AXDisclosureTriangle",
+        ]
+        if expandedRoles.contains(role) || expandedSubroles.contains(subrole ?? "") {
+            expanded = coerceBool(secondBatch[kAXExpandedAttribute as String])
+        }
         frame = rectFrom(
             position: coercePoint(secondBatch[kAXPositionAttribute as String]),
             size: coerceSize(secondBatch[kAXSizeAttribute as String])
@@ -1503,9 +1585,11 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
         help: help,
         identifier: identifier,
         url: url,
+        placeholder: placeholder,
         enabled: enabled,
         focused: focused,
         selected: selected,
+        expanded: expanded,
         frame: frame,
         actions: actions
     )
@@ -1593,7 +1677,17 @@ final class SnapshotBuilder {
         occurrenceCounts[occurrenceKey] = occurrence
 
         var children: [SnapshotNode] = []
-        if depth < maxDepth {
+        // Don't recurse into menu bar items. Their submenu trees (Apple ▸
+        // Recent Items, every File submenu, every Help search entry) can
+        // double the snapshot's element count and consume hundreds of
+        // sequential IDs that the wrapper hides anyway. Renderers display
+        // menu bar items name-only; if the agent needs to actuate one it
+        // either uses computer_perform_secondary_action(AXPress) on the
+        // menu bar item or clicks via screenshot pixels. Suppressing the
+        // walk here keeps menu bar IDs compact and contiguous.
+        let descendsIntoChildren =
+            depth < maxDepth && details.role != "AXMenuBarItem"
+        if descendsIntoChildren {
             let rawChildren = axChildren(element, role: details.role)
             for (index, child) in rawChildren.enumerated() {
                 if let node = buildNode(
@@ -1606,7 +1700,7 @@ final class SnapshotBuilder {
                     children.append(node)
                 }
             }
-        } else if !warnedDepth {
+        } else if depth >= maxDepth && !warnedDepth {
             warnings.append("Snapshot reached the max depth and omitted deeper descendants.")
             warnedDepth = true
         }
@@ -1685,9 +1779,11 @@ final class SnapshotBuilder {
             help: details.help,
             identifier: details.identifier,
             url: details.url,
+            placeholder: details.placeholder,
             enabled: details.enabled,
             focused: details.focused,
             selected: details.selected,
+            expanded: details.expanded,
             frame: details.frame,
             actions: details.actions,
             children: children
@@ -4259,40 +4355,88 @@ func activationPolicyRank(_ policy: NSApplication.ActivationPolicy) -> Int {
     }
 }
 
+// Spotlight has tracked per-bundle usage since macOS 10.6. Reading these
+// keys via `MDItemCreateWithURL` is a synchronous, in-process lookup and
+// matches the data Apple's own "Recent Applications" UIs use. Falls back
+// to nil silently for unindexed bundles (network volumes, sandboxed apps
+// without permission, etc.) — callers must already tolerate missing data.
+private let spotlightDateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone.current
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter
+}()
+
+private func appUsageMetadata(
+    bundleURL: URL?
+) -> (lastUsedDate: String?, useCount: Int?) {
+    guard let bundleURL else { return (nil, nil) }
+    guard let mdItem = MDItemCreateWithURL(kCFAllocatorDefault, bundleURL as CFURL) else {
+        return (nil, nil)
+    }
+    // `kMDItemLastUsedDate` is public; `kMDItemUseCount` is documented but
+    // not exposed as a Swift constant in the macOS SDK headers. Falling
+    // back to the raw CFString literal — Spotlight has honored it since
+    // 10.6 and Apple ships the same key as part of the public metadata
+    // schema.
+    let lastUsedRaw = MDItemCopyAttribute(mdItem, kMDItemLastUsedDate)
+    let useCountRaw = MDItemCopyAttribute(mdItem, "kMDItemUseCount" as CFString)
+    let lastUsed = (lastUsedRaw as? Date).map { spotlightDateFormatter.string(from: $0) }
+    let useCount = (useCountRaw as? NSNumber)?.intValue
+    return (lastUsed, useCount)
+}
+
 func listAppsCommand() -> ListAppsPayload {
     let frontmostPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
     let apps = NSWorkspace.shared.runningApplications
         .filter { $0.activationPolicy != .prohibited && $0.processIdentifier > 0 }
-        .sorted { lhs, rhs in
-            let lhsActive = lhs.processIdentifier == frontmostPid
-            let rhsActive = rhs.processIdentifier == frontmostPid
-            if lhsActive != rhsActive {
-                return lhsActive && !rhsActive
-            }
-
-            let lhsRank = activationPolicyRank(lhs.activationPolicy)
-            let rhsRank = activationPolicyRank(rhs.activationPolicy)
-            if lhsRank != rhsRank {
-                return lhsRank < rhsRank
-            }
-
-            let lhsName = normalized(lhs.localizedName ?? lhs.bundleIdentifier ?? "")
-            let rhsName = normalized(rhs.localizedName ?? rhs.bundleIdentifier ?? "")
-            if lhsName != rhsName {
-                return lhsName < rhsName
-            }
-
-            return lhs.processIdentifier < rhs.processIdentifier
-        }
-        .map { app in
-            ListedAppPayload(
+        .map { app -> (NSRunningApplication, ListedAppPayload) in
+            let usage = appUsageMetadata(bundleURL: app.bundleURL)
+            let payload = ListedAppPayload(
                 name: app.localizedName ?? app.bundleIdentifier ?? "pid \(app.processIdentifier)",
                 bundleId: app.bundleIdentifier,
                 pid: app.processIdentifier,
                 activationPolicy: activationPolicyName(app.activationPolicy),
-                isActive: app.processIdentifier == frontmostPid
+                isActive: app.processIdentifier == frontmostPid,
+                lastUsedDate: usage.lastUsedDate,
+                useCount: usage.useCount
             )
+            return (app, payload)
         }
+        .sorted { lhs, rhs in
+            let lhsApp = lhs.0
+            let rhsApp = rhs.0
+            let lhsActive = lhsApp.processIdentifier == frontmostPid
+            let rhsActive = rhsApp.processIdentifier == frontmostPid
+            if lhsActive != rhsActive {
+                return lhsActive && !rhsActive
+            }
+
+            let lhsRank = activationPolicyRank(lhsApp.activationPolicy)
+            let rhsRank = activationPolicyRank(rhsApp.activationPolicy)
+            if lhsRank != rhsRank {
+                return lhsRank < rhsRank
+            }
+
+            // Within the same activation tier, prefer the more frequently
+            // used app so the agent sees the high-signal apps at the top
+            // of the list (matches Codex's MCP, which sorts by use count).
+            let lhsUses = lhs.1.useCount ?? -1
+            let rhsUses = rhs.1.useCount ?? -1
+            if lhsUses != rhsUses {
+                return lhsUses > rhsUses
+            }
+
+            let lhsName = normalized(lhsApp.localizedName ?? lhsApp.bundleIdentifier ?? "")
+            let rhsName = normalized(rhsApp.localizedName ?? rhsApp.bundleIdentifier ?? "")
+            if lhsName != rhsName {
+                return lhsName < rhsName
+            }
+
+            return lhsApp.processIdentifier < rhsApp.processIdentifier
+        }
+        .map { $0.1 }
 
     return ListAppsPayload(ok: true, apps: apps, warnings: [])
 }

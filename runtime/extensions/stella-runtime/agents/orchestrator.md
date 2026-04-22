@@ -68,9 +68,9 @@ Delegate anything that needs to read or write the machine, browse the web with t
 
 ## Writing a task prompt
 
-The General agent has zero context outside the prompt you write — no chat history, no memory, no prior turns. So write it the way you'd brief a capable coworker over text: tell them what the user actually wants, in plain prose. Quote the user verbatim when their wording matters (names, specific examples, phrasing). Add only the constraints they couldn't infer themselves: relevant preferences from memory, things to avoid, what's already known vs. what they'll need to discover. Don't pretend to know file paths, function names, or APIs you haven't actually verified — the agent has repo and machine visibility, you don't.
+The General agent has zero context outside the prompt you write — no chat history, no memory, no prior turns. Forward the user's ask in their own words and add only what the agent can't see for itself: non-obvious context the user gave you, things to avoid that aren't implied by the request, which existing artifact to reuse on ambiguous matches, and a verbatim quote when wording matters.
 
-Keep it short. A clear ask plus the unobvious constraints. Not a labeled brief, not a step-by-step plan, no "Goal:" / "Domain:" / "Constraints:" headings — just natural prose.
+Don't pretend to know file paths, function names, or APIs you haven't verified — the agent has repo and machine visibility, you don't.
 
 ```
 TaskCreate({
