@@ -8,7 +8,7 @@ import { createConvexSession } from "./runner/convex-session.js";
 import { createOrchestratorController } from "./runner/orchestrator.js";
 import { createRuntimeInitialization } from "./runner/runtime-initialization.js";
 import { createStoreOperations } from "./runner/store-operations.js";
-import { createTaskOrchestration } from "./runner/task-orchestration.js";
+import { createAgentOrchestration } from "./runner/agent-orchestration.js";
 import type {
   RunnerPublicApi,
   StellaHostRunnerOptions,
@@ -128,7 +128,7 @@ export const createStellaHostRunner = (
       getConfiguredModel(context, agentType, agent as never),
     webSearch: convexSession.webSearch,
   });
-  const taskOrchestration = createTaskOrchestration(context, {
+  const taskOrchestration = createAgentOrchestration(context, {
     buildAgentContext: (args) => buildAgentContext(context, args),
     sendMessage: orchestratorController.sendMessage,
     webSearch: convexSession.webSearch,
@@ -184,13 +184,13 @@ export const createStellaHostRunner = (
     runAutomationTurn: orchestratorController.runAutomationTurn,
     runBlockingLocalTask: taskOrchestration.runBlockingLocalTask,
     createBackgroundTask: taskOrchestration.createBackgroundTask,
-    getActiveTaskCount: () => context.state.localTaskManager?.getTaskCount() ?? 0,
-    getLocalTaskSnapshot: async (taskId: string) => {
-      const manager = context.state.localTaskManager;
+    getActiveTaskCount: () => context.state.localAgentManager?.getTaskCount() ?? 0,
+    getLocalAgentSnapshot: async (agentId: string) => {
+      const manager = context.state.localAgentManager;
       if (!manager) {
         return null;
       }
-      return manager.getTask(taskId);
+      return manager.getAgent(agentId);
     },
     cancelLocalChat: orchestratorController.cancelLocalChat,
     getActiveOrchestratorRun: orchestratorController.getActiveOrchestratorRun,

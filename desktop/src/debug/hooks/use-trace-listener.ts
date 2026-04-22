@@ -95,25 +95,25 @@ export function useTraceIpcListener(enabled: boolean) {
         case AGENT_STREAM_EVENT_TYPES.END:
           traceStreamEnd(event.runId, (event.finalText ?? "").slice(0, 200));
           break;
-        case AGENT_STREAM_EVENT_TYPES.TASK_STARTED:
+        case AGENT_STREAM_EVENT_TYPES.AGENT_STARTED:
           traceTaskStarted(
-            event.taskId ?? "unknown",
+            event.agentId ?? "unknown",
             event.agentType ?? "unknown",
             event.description ?? "",
-            event.parentTaskId,
+            event.parentAgentId,
           );
           break;
-        case AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED:
-          traceTaskCompleted(event.taskId ?? "unknown", event.result);
+        case AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED:
+          traceTaskCompleted(event.agentId ?? "unknown", event.result);
           break;
-        case AGENT_STREAM_EVENT_TYPES.TASK_CANCELED:
-          traceTaskCanceled(event.taskId ?? "unknown", event.error);
+        case AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED:
+          traceTaskCanceled(event.agentId ?? "unknown", event.error);
           break;
-        case AGENT_STREAM_EVENT_TYPES.TASK_FAILED:
-          traceTaskFailed(event.taskId ?? "unknown", event.error);
+        case AGENT_STREAM_EVENT_TYPES.AGENT_FAILED:
+          traceTaskFailed(event.agentId ?? "unknown", event.error);
           break;
-        case AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS:
-          traceTaskProgress(event.taskId ?? "unknown", event.statusText ?? "");
+        case AGENT_STREAM_EVENT_TYPES.AGENT_PROGRESS:
+          traceTaskProgress(event.agentId ?? "unknown", event.statusText ?? "");
           break;
         // "stream" events are high-frequency text deltas â€” skip for trace
       }
@@ -146,27 +146,27 @@ export function useTraceEventMonitor(enabled: boolean, events: EventRecord[]) {
 
       if (isTaskStarted(event)) {
         const p = event.payload;
-        traceTaskStarted(p.taskId, p.agentType, p.description, p.parentTaskId);
+        traceTaskStarted(p.agentId, p.agentType, p.description, p.parentAgentId);
         continue;
       }
 
       if (isTaskCompleted(event)) {
-        traceTaskCompleted(event.payload.taskId, event.payload.result);
+        traceTaskCompleted(event.payload.agentId, event.payload.result);
         continue;
       }
 
       if (isTaskFailed(event)) {
-        traceTaskFailed(event.payload.taskId, event.payload.error);
+        traceTaskFailed(event.payload.agentId, event.payload.error);
         continue;
       }
 
       if (isTaskCanceled(event)) {
-        traceTaskCanceled(event.payload.taskId, event.payload.error);
+        traceTaskCanceled(event.payload.agentId, event.payload.error);
         continue;
       }
 
       if (isTaskProgress(event)) {
-        traceTaskProgress(event.payload.taskId, event.payload.statusText);
+        traceTaskProgress(event.payload.agentId, event.payload.statusText);
         continue;
       }
 

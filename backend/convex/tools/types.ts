@@ -16,7 +16,7 @@ export type BackendToolSet = Record<string, BackendToolDefinition>;
 export type ToolOptions = {
   agentType: string;
   toolsAllowlist?: string[];
-  maxTaskDepth: number;
+  maxAgentDepth: number;
   ownerId?: string;
   conversationId?: Id<"conversations">;
   userMessageId?: Id<"events">;

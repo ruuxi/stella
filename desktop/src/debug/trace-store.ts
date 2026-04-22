@@ -23,7 +23,7 @@ export type TraceEntry = {
   event: string;
   agent?: string;
   runId?: string;
-  taskId?: string;
+  agentId?: string;
   toolName?: string;
   toolCallId?: string;
   summary: string;
@@ -62,7 +62,7 @@ export function addTrace(
       TraceEntry,
       | "agent"
       | "runId"
-      | "taskId"
+      | "agentId"
       | "toolName"
       | "toolCallId"
       | "data"
@@ -222,45 +222,45 @@ export function traceStreamEnd(runId?: string, finalTextPreview?: unknown) {
 }
 
 export function traceTaskStarted(
-  taskId: string,
+  agentId: string,
   agentType: AgentIdLike,
   description: string,
-  parentTaskId?: string,
+  parentAgentId?: string,
 ) {
-  addTrace("agent", "task-started", `[${agentType}] ${description}`, {
-    taskId,
+  addTrace("agent", "agent-started", `[${agentType}] ${description}`, {
+    agentId,
     agent: agentType,
-    data: { description, parentTaskId },
+    data: { description, parentAgentId },
   });
 }
 
-export function traceTaskCompleted(taskId: string, result?: unknown) {
-  addTrace("agent", "task-completed", formatTraceSnippet(result, 200) || "(done)", {
-    taskId,
+export function traceTaskCompleted(agentId: string, result?: unknown) {
+  addTrace("agent", "agent-completed", formatTraceSnippet(result, 200) || "(done)", {
+    agentId,
   });
 }
 
-export function traceTaskFailed(taskId: string, error?: unknown) {
+export function traceTaskFailed(agentId: string, error?: unknown) {
   addTrace(
     "error",
-    "task-failed",
+    "agent-failed",
     formatTraceSnippet(error, 300) || "(unknown error)",
-    { taskId },
+    { agentId },
   );
 }
 
-export function traceTaskCanceled(taskId: string, error?: unknown) {
+export function traceTaskCanceled(agentId: string, error?: unknown) {
   addTrace(
     "agent",
-    "task-canceled",
+    "agent-canceled",
     formatTraceSnippet(error, 300) || "(canceled)",
-    { taskId },
+    { agentId },
   );
 }
 
-export function traceTaskProgress(taskId: string, statusText: string) {
-  addTrace("agent", "task-progress", statusText.slice(0, 200), {
-    taskId,
+export function traceTaskProgress(agentId: string, statusText: string) {
+  addTrace("agent", "agent-progress", statusText.slice(0, 200), {
+    agentId,
   });
 }
 
@@ -308,9 +308,9 @@ export function formatTraceForClipboard(
     const dur = e.duration != null ? ` (${e.duration}ms)` : "";
     const tool = e.toolName ? ` ${e.toolName}` : "";
     const callId = e.toolCallId ? ` callId=${e.toolCallId}` : "";
-    const taskId = e.taskId ? ` taskId=${e.taskId}` : "";
+    const agentId = e.agentId ? ` agentId=${e.agentId}` : "";
 
-    let line = `[${ts}] [${e.cat}]${agent} ${e.event}${tool}${callId}${taskId}${dur}`;
+    let line = `[${ts}] [${e.cat}]${agent} ${e.event}${tool}${callId}${agentId}${dur}`;
     if (e.summary) {
       line += ` | ${e.summary}`;
     }

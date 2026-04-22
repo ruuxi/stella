@@ -48,10 +48,9 @@ const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
   "Display",
   "DisplayGuidelines",
   "Schedule",
-  "TaskCreate",
-  "TaskOutput",
-  "TaskPause",
-  "TaskUpdate",
+  "spawn_agent",
+  "send_input",
+  "pause_agent",
   "Memory",
   "askQuestion",
 ]);
@@ -63,7 +62,7 @@ export const createToolHost = ({
   stellaUiCliPath: _stellaUiCliPath,
   stellaComputerCliPath,
   requestCredential,
-  taskApi,
+  agentApi,
   scheduleApi,
   extensionTools,
   displayHtml,
@@ -83,7 +82,7 @@ export const createToolHost = ({
     stellaUiCliPath: _stellaUiCliPath,
     stellaComputerCliPath,
   });
-  const stateContext: StateContext = createStateContext(stateRoot, taskApi);
+  const stateContext: StateContext = createStateContext(stateRoot, agentApi);
 
   void recoverStaleSecretFiles(stateRoot)
     .then((result) => {
@@ -120,7 +119,7 @@ export const createToolHost = ({
     stellaUiCliPath: _stellaUiCliPath,
     stellaComputerCliPath,
     requestCredential,
-    taskApi,
+    agentApi,
     scheduleApi,
     extensionTools,
     displayHtml,

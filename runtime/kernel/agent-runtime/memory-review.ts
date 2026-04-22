@@ -6,7 +6,7 @@
  * The review is a one-shot, fire-and-forget completion that:
  *
  *   1. Sees the recent Orchestrator transcript verbatim.
- *   2. Has ONLY the `Memory` tool available (no Display, no TaskCreate, etc.).
+ *   2. Has ONLY the `Memory` tool available (no Display, no spawn_agent, etc.).
  *   3. Loops up to MAX_ITERATIONS turns, executing any returned Memory tool
  *      calls against the shared MemoryStore.
  *   4. Stops when the model emits no tool calls (typically after responding

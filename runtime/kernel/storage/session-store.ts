@@ -57,14 +57,14 @@ type ThreadSessionEntryRow = {
   dataJson: string | null;
 };
 
-export type PersistedTaskRecord = {
+export type PersistedAgentRecord = {
   threadId: string;
   conversationId: string;
   agentType: string;
   description: string;
-  taskDepth: number;
-  maxTaskDepth?: number;
-  parentTaskId?: string;
+  agentDepth: number;
+  maxAgentDepth?: number;
+  parentAgentId?: string;
   toolsAllowlistOverride?: string[];
   selfModMetadata?: {
     featureId?: string;
@@ -1425,10 +1425,10 @@ export class SessionStore {
         created_at AS createdAt,
         last_used_at AS lastUsedAt,
         runtime_threads.summary AS summary,
-        runtime_tasks.description AS description
+        runtime_agents.description AS description
       FROM runtime_threads
-      LEFT JOIN runtime_tasks
-        ON runtime_tasks.thread_id = runtime_threads.thread_key
+      LEFT JOIN runtime_agents
+        ON runtime_agents.thread_id = runtime_threads.thread_key
       WHERE runtime_threads.conversation_id = ?
         AND runtime_threads.status = 'active'
       ORDER BY runtime_threads.last_used_at DESC
@@ -1636,17 +1636,17 @@ export class SessionStore {
     return typeof row?.name === "string" && row.name.length > 0 ? row.name : undefined;
   }
 
-  saveTaskRecord(record: PersistedTaskRecord): void {
+  saveAgentRecord(record: PersistedAgentRecord): void {
     this.upsertSession(record.conversationId, record.updatedAt);
     this.db.prepare(`
-      INSERT INTO runtime_tasks (
+      INSERT INTO runtime_agents (
         thread_id,
         conversation_id,
         agent_type,
         description,
-        task_depth,
-        max_task_depth,
-        parent_task_id,
+        agent_depth,
+        max_agent_depth,
+        parent_agent_id,
         tools_allowlist_override_json,
         self_mod_metadata_json,
         status,
@@ -1661,9 +1661,9 @@ export class SessionStore {
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
         description = excluded.description,
-        task_depth = excluded.task_depth,
-        max_task_depth = excluded.max_task_depth,
-        parent_task_id = excluded.parent_task_id,
+        agent_depth = excluded.agent_depth,
+        max_agent_depth = excluded.max_agent_depth,
+        parent_agent_id = excluded.parent_agent_id,
         tools_allowlist_override_json = excluded.tools_allowlist_override_json,
         self_mod_metadata_json = excluded.self_mod_metadata_json,
         status = excluded.status,
@@ -1677,9 +1677,9 @@ export class SessionStore {
       record.conversationId,
       record.agentType,
       record.description,
-      record.taskDepth,
-      record.maxTaskDepth ?? null,
-      record.parentTaskId ?? null,
+      record.agentDepth,
+      record.maxAgentDepth ?? null,
+      record.parentAgentId ?? null,
       toJsonValueString(record.toolsAllowlistOverride) ?? null,
       toJsonValueString(record.selfModMetadata) ?? null,
       record.status,
@@ -1691,69 +1691,71 @@ export class SessionStore {
     );
   }
 
-  getTaskRecord(threadId: string): PersistedTaskRecord | null {
+  getAgentRecord(threadId: string): PersistedAgentRecord | null {
     const row = this.db.prepare(`
       SELECT
-        thread_id AS threadId,
-        conversation_id AS conversationId,
-        agent_type AS agentType,
+        thread_id,
+        conversation_id,
+        agent_type,
         description,
-        task_depth AS taskDepth,
-        max_task_depth AS maxTaskDepth,
-        parent_task_id AS parentTaskId,
-        tools_allowlist_override_json AS toolsAllowlistOverrideJson,
-        self_mod_metadata_json AS selfModMetadataJson,
+        agent_depth,
+        max_agent_depth,
+        parent_agent_id,
+        tools_allowlist_override_json,
+        self_mod_metadata_json,
         status,
-        started_at AS startedAt,
-        completed_at AS completedAt,
+        started_at,
+        completed_at,
         result,
         error,
-        updated_at AS updatedAt
-      FROM runtime_tasks
+        updated_at
+      FROM runtime_agents
       WHERE thread_id = ?
       LIMIT 1
     `).get(threadId) as
       | {
-          threadId: string;
-          conversationId: string;
-          agentType: string;
+          thread_id: string;
+          conversation_id: string;
+          agent_type: string;
           description: string;
-          taskDepth: number;
-          maxTaskDepth: number | null;
-          parentTaskId: string | null;
-          toolsAllowlistOverrideJson: string | null;
-          selfModMetadataJson: string | null;
-          status: PersistedTaskRecord["status"];
-          startedAt: number;
-          completedAt: number | null;
+          agent_depth: number;
+          max_agent_depth: number | null;
+          parent_agent_id: string | null;
+          tools_allowlist_override_json: string | null;
+          self_mod_metadata_json: string | null;
+          status: PersistedAgentRecord["status"];
+          started_at: number;
+          completed_at: number | null;
           result: string | null;
           error: string | null;
-          updatedAt: number;
+          updated_at: number;
         }
       | undefined;
     if (!row) {
       return null;
     }
+    const toolsAllowlistOverride = parseStringArray(
+      row.tools_allowlist_override_json,
+    );
+    const selfModMetadata = parseJsonValue<PersistedAgentRecord["selfModMetadata"]>(
+      row.self_mod_metadata_json,
+    );
     return {
-      threadId: row.threadId,
-      conversationId: row.conversationId,
-      agentType: row.agentType,
+      threadId: row.thread_id,
+      conversationId: row.conversation_id,
+      agentType: row.agent_type,
       description: row.description,
-      taskDepth: row.taskDepth,
-      ...(row.maxTaskDepth == null ? {} : { maxTaskDepth: row.maxTaskDepth }),
-      ...(row.parentTaskId ? { parentTaskId: row.parentTaskId } : {}),
-      ...(parseStringArray(row.toolsAllowlistOverrideJson)
-        ? { toolsAllowlistOverride: parseStringArray(row.toolsAllowlistOverrideJson)! }
-        : {}),
-      ...(parseJsonValue<PersistedTaskRecord["selfModMetadata"]>(row.selfModMetadataJson)
-        ? { selfModMetadata: parseJsonValue<PersistedTaskRecord["selfModMetadata"]>(row.selfModMetadataJson)! }
-        : {}),
+      agentDepth: row.agent_depth,
+      ...(row.max_agent_depth == null ? {} : { maxAgentDepth: row.max_agent_depth }),
+      ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
+      ...(toolsAllowlistOverride ? { toolsAllowlistOverride } : {}),
+      ...(selfModMetadata ? { selfModMetadata } : {}),
       status: row.status,
-      startedAt: row.startedAt,
-      completedAt: row.completedAt,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
       ...(row.result ? { result: row.result } : {}),
       ...(row.error ? { error: row.error } : {}),
-      updatedAt: row.updatedAt,
+      updatedAt: row.updated_at,
     };
   }
 

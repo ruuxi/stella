@@ -18,7 +18,7 @@ import {
   type StellaRuntimeClientOptions,
 } from "../../runtime/client/index.js";
 import { createRuntimeUnavailableError } from "../../runtime/protocol/rpc-peer.js";
-import type { TaskLifecycleEvent } from "../../runtime/kernel/tasks/local-task-manager.js";
+import type { AgentLifecycleEvent } from "../../runtime/kernel/agents/local-agent-manager.js";
 import { readConfiguredStellaSiteUrl } from "../../runtime/kernel/convex-urls.js";
 
 type AgentCallbacks = {
@@ -31,7 +31,7 @@ type AgentCallbacks = {
   onToolEnd: (event: RuntimeAgentEventPayload) => void;
   onError: (event: RuntimeAgentEventPayload) => void;
   onEnd: (event: RuntimeAgentEventPayload) => void;
-  onTaskEvent?: (event: TaskLifecycleEvent) => void;
+  onAgentEvent?: (event: AgentLifecycleEvent) => void;
   onSelfModHmrState?: (event: SelfModHmrState) => void;
   onHmrResume?: (args: {
     runId: string;
@@ -54,12 +54,12 @@ const isTerminalEvent = (type: string) =>
   || type === AGENT_STREAM_EVENT_TYPES.END
   || type === AGENT_STREAM_EVENT_TYPES.ERROR;
 
-const isTerminalTaskLifecycleEvent = (type: string) =>
-  type === "task-completed" || type === "task-failed" || type === "task-canceled";
+const isTerminalAgentLifecycleEvent = (type: string) =>
+  type === "agent-completed" || type === "agent-failed" || type === "agent-canceled";
 
-const isTaskLifecycleEvent = (type: string) =>
+const isAgentLifecycleEvent = (type: string) =>
   type !== AGENT_STREAM_EVENT_TYPES.STREAM &&
-  type !== AGENT_STREAM_EVENT_TYPES.TASK_REASONING &&
+  type !== AGENT_STREAM_EVENT_TYPES.AGENT_REASONING &&
   type !== AGENT_STREAM_EVENT_TYPES.STATUS &&
   type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
   type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
@@ -69,7 +69,7 @@ const isTaskLifecycleEvent = (type: string) =>
   type !== AGENT_STREAM_EVENT_TYPES.END;
 
 const isTaskScopedEvent = (type: string) =>
-  type === AGENT_STREAM_EVENT_TYPES.TASK_REASONING || isTaskLifecycleEvent(type);
+  type === AGENT_STREAM_EVENT_TYPES.AGENT_REASONING || isAgentLifecycleEvent(type);
 
 const LOCAL_CHAT_SESSION_IDLE_CLEANUP_MS = 30_000;
 
@@ -246,8 +246,8 @@ export class RuntimeClientAdapter {
     session.knownRunIds.add(event.runId);
 
     const taskKey =
-      event.taskId && (event.rootRunId ?? event.runId)
-        ? `${event.rootRunId ?? event.runId}:${event.taskId}`
+      event.agentId && (event.rootRunId ?? event.runId)
+        ? `${event.rootRunId ?? event.runId}:${event.agentId}`
         : null;
 
     if (event.type === AGENT_STREAM_EVENT_TYPES.RUN_STARTED) {
@@ -256,9 +256,9 @@ export class RuntimeClientAdapter {
       session.activeRunIds.delete(event.runId);
     }
 
-    if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED && taskKey) {
+    if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED && taskKey) {
       session.activeTaskIds.add(taskKey);
-    } else if (isTerminalTaskLifecycleEvent(event.type) && taskKey) {
+    } else if (isTerminalAgentLifecycleEvent(event.type) && taskKey) {
       session.activeTaskIds.delete(taskKey);
     }
 
@@ -269,7 +269,7 @@ export class RuntimeClientAdapter {
       case AGENT_STREAM_EVENT_TYPES.STREAM:
         session.callbacks.onStream(event);
         break;
-      case AGENT_STREAM_EVENT_TYPES.TASK_REASONING:
+      case AGENT_STREAM_EVENT_TYPES.AGENT_REASONING:
         session.callbacks.onTaskReasoning?.(event);
         break;
       case AGENT_STREAM_EVENT_TYPES.STATUS:
@@ -308,15 +308,15 @@ export class RuntimeClientAdapter {
         }
         break;
       default:
-        if (isTaskLifecycleEvent(event.type)) {
-          session.callbacks.onTaskEvent?.({
-            type: event.type as TaskLifecycleEvent["type"],
+        if (isAgentLifecycleEvent(event.type)) {
+          session.callbacks.onAgentEvent?.({
+            type: event.type as AgentLifecycleEvent["type"],
             conversationId: session.conversationId,
             rootRunId: event.rootRunId ?? event.runId,
-            taskId: event.taskId ?? "",
+            agentId: event.agentId ?? "",
             agentType: event.agentType ?? "",
             ...(event.description ? { description: event.description } : {}),
-            ...(event.parentTaskId ? { parentTaskId: event.parentTaskId } : {}),
+            ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
             ...(event.result ? { result: event.result } : {}),
             ...(event.error ? { error: event.error } : {}),
             ...(event.statusText ? { statusText: event.statusText } : {}),
@@ -674,8 +674,8 @@ export class RuntimeClientAdapter {
     return this.client.createBackgroundTask(payload);
   }
 
-  getLocalTaskSnapshot(taskId: string) {
-    return this.client.getLocalTaskSnapshot(taskId);
+  getLocalAgentSnapshot(agentId: string) {
+    return this.client.getLocalAgentSnapshot(agentId);
   }
 
   appendThreadMessage(args: {
@@ -718,7 +718,7 @@ export class RuntimeClientAdapter {
     };
 
     const dispatch = (event: RuntimeAgentEventPayload) => {
-      const taskLifecycleEvent = isTaskLifecycleEvent(event.type);
+      const taskLifecycleEvent = isAgentLifecycleEvent(event.type);
 
       if (taskLifecycleEvent) {
         if (event.seq <= lastTaskEventSeq) {
@@ -732,10 +732,10 @@ export class RuntimeClientAdapter {
         lastRunEventSeq = event.seq;
       }
 
-      if (event.type === "task-started" && event.taskId) {
-        activeTaskIds.add(event.taskId);
-      } else if (isTerminalTaskLifecycleEvent(event.type) && event.taskId) {
-        activeTaskIds.delete(event.taskId);
+      if (event.type === "agent-started" && event.agentId) {
+        activeTaskIds.add(event.agentId);
+      } else if (isTerminalAgentLifecycleEvent(event.type) && event.agentId) {
+        activeTaskIds.delete(event.agentId);
       }
 
       switch (event.type) {
@@ -758,14 +758,14 @@ export class RuntimeClientAdapter {
           callbacks.onEnd(event);
           break;
         default:
-          callbacks.onTaskEvent?.({
-            type: event.type as TaskLifecycleEvent["type"],
+          callbacks.onAgentEvent?.({
+            type: event.type as AgentLifecycleEvent["type"],
             conversationId: payload.conversationId,
             rootRunId: event.runId,
-            taskId: event.taskId ?? "",
+            agentId: event.agentId ?? "",
             agentType: event.agentType ?? "",
             ...(event.description ? { description: event.description } : {}),
-            ...(event.parentTaskId ? { parentTaskId: event.parentTaskId } : {}),
+            ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
             ...(event.result ? { result: event.result } : {}),
             ...(event.error ? { error: event.error } : {}),
             ...(event.statusText ? { statusText: event.statusText } : {}),

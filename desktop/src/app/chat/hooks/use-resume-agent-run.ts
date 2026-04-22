@@ -33,11 +33,11 @@ export const shouldRetainResumedStreamingState = (args: {
 
 type TaskSnapshot = {
   runId: string;
-  taskId: string;
+  agentId: string;
   agentType?: string;
   description?: string;
   anchorTurnId?: string;
-  parentTaskId?: string;
+  parentAgentId?: string;
   status: "running" | "completed" | "error" | "canceled";
   statusText?: string;
   reasoningText?: string;

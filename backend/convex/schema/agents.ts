@@ -11,7 +11,7 @@ export const agentsSchema = {
     agentTypes: v.array(v.string()),
     toolsAllowlist: v.optional(v.array(v.string())),
     model: v.optional(v.string()),
-    maxTaskDepth: v.optional(v.number()),
+    maxAgentDepth: v.optional(v.number()),
     version: v.number(),
     source: v.string(),
     updatedAt: v.number(),

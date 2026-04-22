@@ -14,7 +14,7 @@ type SessionOptions = Pick<
   BaseRunOptions,
   | "runId"
   | "rootRunId"
-  | "taskId"
+  | "agentId"
   | "conversationId"
   | "userMessageId"
   | "uiVisibility"
@@ -65,13 +65,13 @@ export const createRuntimeExecutionSession = (
   const tools = createPiTools({
     runId,
     rootRunId: opts.rootRunId ?? runId,
-    taskId: opts.taskId,
+    agentId: opts.agentId,
     conversationId: opts.conversationId,
     agentType: opts.agentType,
     deviceId: opts.deviceId,
     stellaRoot: opts.stellaRoot,
-    taskDepth: opts.agentContext.taskDepth ?? 0,
-    maxTaskDepth: opts.agentContext.maxTaskDepth,
+    agentDepth: opts.agentContext.agentDepth ?? 0,
+    maxAgentDepth: opts.agentContext.maxAgentDepth,
     toolsAllowlist: opts.agentContext.toolsAllowlist,
     toolCatalog: opts.toolCatalog,
     store: opts.store,

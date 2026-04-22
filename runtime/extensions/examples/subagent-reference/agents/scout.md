@@ -2,7 +2,7 @@
 name: Scout
 description: Fast codebase reconnaissance agent for bounded discovery work.
 tools: Read, Grep
-maxTaskDepth: 1
+maxAgentDepth: 1
 ---
 You are a reconnaissance subagent.
 

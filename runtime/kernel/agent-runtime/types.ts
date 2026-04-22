@@ -1,9 +1,9 @@
 import type { AgentMessage } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
-import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
+import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import type {
-  TaskToolRequest,
+  AgentToolRequest,
   ToolContext,
   ToolMetadata,
   ToolResult,
@@ -144,7 +144,7 @@ export type RuntimeRunCallbacks = {
 export type BaseRunOptions = {
   runId?: string;
   rootRunId?: string;
-  taskId?: string;
+  agentId?: string;
   conversationId: string;
   userMessageId: string;
   uiVisibility?: "visible" | "hidden";
@@ -152,8 +152,8 @@ export type BaseRunOptions = {
   userPrompt: string;
   promptMessages?: RuntimePromptMessage[];
   attachments?: RuntimeAttachmentRef[];
-  selfModMetadata?: TaskToolRequest["selfModMetadata"];
-  agentContext: LocalTaskManagerAgentContext;
+  selfModMetadata?: AgentToolRequest["selfModMetadata"];
+  agentContext: LocalAgentContext;
   toolCatalog?: ToolMetadata[];
   toolExecutor: (
     toolName: string,

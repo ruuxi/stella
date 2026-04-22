@@ -1,20 +1,14 @@
 import type { RuntimeAgentEventPayload } from "../../protocol/index.js";
 
-// Top-level task tool names plus a few historical aliases. Both surfaces share
-// the same task ids and `thread_id`-shaped payloads.
+// Sub-agent management tool names. These all share the same task ids and
+// `thread_id`-shaped payloads.
 const TASK_TOOL_NAMES = new Set([
-  "TaskCreate",
-  "TaskUpdate",
-  "TaskPause",
-  "TaskOutput",
-  "task_create",
-  "task_update",
-  "task_pause",
-  "task_output",
+  "spawn_agent",
+  "send_input",
+  "pause_agent",
 ]);
 
-const isTaskCreateName = (toolName: string): boolean =>
-  toolName === "TaskCreate" || toolName === "task_create";
+const isSpawnAgentName = (toolName: string): boolean => toolName === "spawn_agent";
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -47,7 +41,7 @@ const getTaskIdFromToolDetails = (
   toolName: string,
   details: unknown,
 ): string | undefined => {
-  if (isTaskCreateName(toolName)) {
+  if (isSpawnAgentName(toolName)) {
     const record = asRecord(details);
     if (!record) {
       return undefined;
@@ -117,26 +111,26 @@ export const createOrchestratorResponseTargetTracker = (
     };
   }
 
-  let taskId: string | null = null;
+  let agentId: string | null = null;
   let hasConflictingTaskIds = false;
 
   const recordTaskId = (candidate: string | undefined) => {
     if (!candidate || hasConflictingTaskIds) {
       return;
     }
-    if (!taskId) {
-      taskId = candidate;
+    if (!agentId) {
+      agentId = candidate;
       return;
     }
-    if (taskId !== candidate) {
-      taskId = null;
+    if (agentId !== candidate) {
+      agentId = null;
       hasConflictingTaskIds = true;
     }
   };
 
   return {
     noteToolStart: (toolName, args) => {
-      if (TASK_TOOL_NAMES.has(toolName) && !isTaskCreateName(toolName)) {
+      if (TASK_TOOL_NAMES.has(toolName) && !isSpawnAgentName(toolName)) {
         recordTaskId(getTaskIdFromArgsLike(args));
       }
     },
@@ -150,32 +144,32 @@ export const createOrchestratorResponseTargetTracker = (
       }
     },
     resolve: () =>
-      taskId
+      agentId
         ? {
-            type: "task_turn",
-            taskId,
+            type: "agent_turn",
+            agentId,
           }
         : { type: "user_turn" },
   };
 };
 
-export const createTaskLifecycleResponseTarget = (args: {
-  taskId?: string;
+export const createAgentLifecycleResponseTarget = (args: {
+  agentId?: string;
   eventType: string;
 }): RuntimeAgentEventPayload["responseTarget"] => {
-  const taskId = asTaskId(args.taskId);
-  if (!taskId) {
+  const agentId = asTaskId(args.agentId);
+  if (!agentId) {
     return { type: "user_turn" };
   }
-  if (args.eventType === "task-completed") {
+  if (args.eventType === "agent-completed") {
     return {
-      type: "task_terminal_notice",
-      taskId,
+      type: "agent_terminal_notice",
+      agentId,
       terminalState: "completed",
     };
   }
   return {
-    type: "task_turn",
-    taskId,
+    type: "agent_turn",
+    agentId,
   };
 };

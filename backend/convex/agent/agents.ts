@@ -29,7 +29,7 @@ const agentClientValidator = v.object({
   systemPrompt: v.string(),
   agentTypes: v.array(v.string()),
   toolsAllowlist: v.optional(v.array(v.string())),
-  maxTaskDepth: v.optional(v.number()),
+  maxAgentDepth: v.optional(v.number()),
   version: v.number(),
   source: v.string(),
   updatedAt: v.number(),
@@ -43,7 +43,7 @@ const agentConfigValidator = v.object({
   systemPrompt: v.string(),
   agentTypes: v.array(v.string()),
   toolsAllowlist: v.optional(v.array(v.string())),
-  maxTaskDepth: v.optional(v.number()),
+  maxAgentDepth: v.optional(v.number()),
   version: v.number(),
   source: v.string(),
   updatedAt: v.number(),
@@ -56,7 +56,7 @@ const agentImportValidator = v.object({
   systemPrompt: v.optional(v.string()),
   agentTypes: v.optional(v.union(v.array(v.string()), v.string())),
   toolsAllowlist: v.optional(v.union(v.array(v.string()), v.string())),
-  maxTaskDepth: v.optional(v.number()),
+  maxAgentDepth: v.optional(v.number()),
   version: v.optional(v.number()),
   source: v.optional(v.string()),
 });
@@ -73,7 +73,7 @@ type AgentRecord = {
   systemPrompt: string;
   agentTypes: string[];
   toolsAllowlist?: string[];
-  maxTaskDepth?: number;
+  maxAgentDepth?: number;
   version: number;
   source: string;
   updatedAt: number;
@@ -94,7 +94,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       BACKEND_TOOL_IDS.WEB_FETCH,
       BACKEND_TOOL_IDS.NO_RESPONSE,
     ],
-    maxTaskDepth: 0,
+    maxAgentDepth: 0,
     version: 1,
     source: "builtin",
     updatedAt: 0,
@@ -130,10 +130,10 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
       ? Math.floor(versionNumber)
       : 1;
 
-  const maxTaskDepthNumber = Number(record.maxTaskDepth);
-  const maxTaskDepth =
-    Number.isFinite(maxTaskDepthNumber) && maxTaskDepthNumber >= 0
-      ? Math.floor(maxTaskDepthNumber)
+  const maxAgentDepthNumber = Number(record.maxAgentDepth);
+  const maxAgentDepth =
+    Number.isFinite(maxAgentDepthNumber) && maxAgentDepthNumber >= 0
+      ? Math.floor(maxAgentDepthNumber)
       : undefined;
 
   return {
@@ -144,7 +144,7 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
     systemPrompt,
     agentTypes,
     toolsAllowlist: toolsAllowlist.length > 0 ? toolsAllowlist : undefined,
-    maxTaskDepth,
+    maxAgentDepth,
     version,
     source: typeof record.source === "string" ? record.source : "local",
     updatedAt: Date.now(),

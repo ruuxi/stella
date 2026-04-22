@@ -51,11 +51,11 @@ type AgentEventPayload = {
   finalText?: string;
   persisted?: boolean;
   selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
-  taskId?: string;
+  agentId?: string;
   agentType?: AgentIdLike;
   rootRunId?: string;
   description?: string;
-  parentTaskId?: string;
+  parentAgentId?: string;
   result?: string;
   statusText?: string;
   outcome?: AgentRunFinishOutcome;
@@ -73,11 +73,11 @@ type ActiveRunSnapshot = {
 
 type ConversationTaskSnapshot = {
   runId: string;
-  taskId: string;
+  agentId: string;
   agentType?: string;
   description?: string;
   anchorTurnId?: string;
-  parentTaskId?: string;
+  parentAgentId?: string;
   status: "running" | "completed" | "error" | "canceled";
   statusText?: string;
   reasoningText?: string;
@@ -85,7 +85,7 @@ type ConversationTaskSnapshot = {
   error?: string;
 };
 
-const MAX_TASK_REASONING_CHARS = 8_000;
+const MAX_AGENT_REASONING_CHARS = 8_000;
 
 type SelfModHmrStatePayload = SelfModHmrState;
 
@@ -171,27 +171,27 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   const upsertTaskSnapshot = (event: AgentEventPayload) => {
     if (
-      !event.taskId
-      || (event.type !== AGENT_STREAM_EVENT_TYPES.TASK_STARTED
-        && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_REASONING
-        && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS
-        && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
-        && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_FAILED
-        && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_CANCELED)
+      !event.agentId
+      || (event.type !== AGENT_STREAM_EVENT_TYPES.AGENT_STARTED
+        && event.type !== AGENT_STREAM_EVENT_TYPES.AGENT_REASONING
+        && event.type !== AGENT_STREAM_EVENT_TYPES.AGENT_PROGRESS
+        && event.type !== AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED
+        && event.type !== AGENT_STREAM_EVENT_TYPES.AGENT_FAILED
+        && event.type !== AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED)
     ) {
       return;
     }
 
     const runId = event.rootRunId ?? event.runId;
     const runTasks = tasksByRunId.get(runId) ?? new Map<string, ConversationTaskSnapshot>();
-    const current = runTasks.get(event.taskId);
+    const current = runTasks.get(event.agentId);
     const base: ConversationTaskSnapshot = {
       runId,
-      taskId: event.taskId,
+      agentId: event.agentId,
       agentType: event.agentType ?? current?.agentType,
       description: event.description ?? current?.description,
       anchorTurnId: event.userMessageId ?? current?.anchorTurnId,
-      parentTaskId: event.parentTaskId ?? current?.parentTaskId,
+      parentAgentId: event.parentAgentId ?? current?.parentAgentId,
       status: current?.status ?? "running",
       statusText: current?.statusText,
       reasoningText: current?.reasoningText,
@@ -199,46 +199,46 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       error: current?.error,
     };
 
-    if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED) {
+    if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED) {
       base.status = "running";
       base.statusText = undefined;
       base.reasoningText = "";
       base.result = undefined;
       base.error = undefined;
-    } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_REASONING) {
+    } else if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_REASONING) {
       base.status = "running";
       base.result = undefined;
       base.error = undefined;
       base.reasoningText = `${current?.reasoningText ?? ""}${event.chunk ?? ""}`;
       if (
         typeof base.reasoningText === "string"
-        && base.reasoningText.length > MAX_TASK_REASONING_CHARS
+        && base.reasoningText.length > MAX_AGENT_REASONING_CHARS
       ) {
-        base.reasoningText = base.reasoningText.slice(-MAX_TASK_REASONING_CHARS);
+        base.reasoningText = base.reasoningText.slice(-MAX_AGENT_REASONING_CHARS);
       }
-    } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS) {
+    } else if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_PROGRESS) {
       base.status = "running";
       base.statusText = event.statusText;
       base.result = undefined;
       base.error = undefined;
-    } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED) {
+    } else if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED) {
       base.status = "completed";
       base.statusText = undefined;
       base.result = event.result;
       base.error = undefined;
-    } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_FAILED) {
+    } else if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED) {
       base.status = "error";
       base.statusText = undefined;
       base.result = undefined;
       base.error = event.error;
-    } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_CANCELED) {
+    } else if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED) {
       base.status = "canceled";
       base.statusText = undefined;
       base.result = undefined;
       base.error = event.error;
     }
 
-    runTasks.set(event.taskId, base);
+    runTasks.set(event.agentId, base);
     tasksByRunId.set(runId, runTasks);
   };
 
@@ -583,12 +583,12 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                 persisted: ev.persisted,
                 selfModApplied: ev.selfModApplied,
               }),
-            onTaskEvent: (ev) => {
+            onAgentEvent: (ev) => {
               if (!ev.rootRunId) {
                 console.warn(
                   "[chat] Dropping task event without rootRunId:",
                   ev.type,
-                  ev.taskId,
+                  ev.agentId,
                 );
                 return;
               }
@@ -600,10 +600,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   conversationId: payload.conversationId,
                   requestId,
                   userMessageId: ev.userMessageId,
-                  taskId: ev.taskId,
+                  agentId: ev.agentId,
                   agentType: ev.agentType,
                   description: ev.description,
-                  parentTaskId: ev.parentTaskId,
+                  parentAgentId: ev.parentAgentId,
                   result: ev.result,
                   error: ev.error,
                   statusText: ev.statusText,
@@ -612,19 +612,19 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
               );
             },
             onTaskReasoning: (ev) => {
-              if (!ev.taskId) {
+              if (!ev.agentId) {
                 return;
               }
               const runId = ev.rootRunId ?? ev.runId;
               emitAgentEvent(
                 {
-                  type: AGENT_STREAM_EVENT_TYPES.TASK_REASONING,
+                  type: AGENT_STREAM_EVENT_TYPES.AGENT_REASONING,
                   runId,
                   rootRunId: runId,
                   conversationId: payload.conversationId,
                   requestId,
                   userMessageId: ev.userMessageId,
-                  taskId: ev.taskId,
+                  agentId: ev.agentId,
                   agentType: ev.agentType,
                   chunk: ev.chunk,
                 },

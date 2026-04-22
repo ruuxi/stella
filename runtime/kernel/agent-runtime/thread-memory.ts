@@ -11,7 +11,7 @@ import type {
 } from "../../ai/types.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
-import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
+import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RuntimePromptMessage } from "../../protocol/index.js";
 import {
@@ -94,7 +94,7 @@ const stripStaleImageBlocks = (messages: Message[]): Message[] => {
 };
 
 export const buildHistorySource = (
-  context: LocalTaskManagerAgentContext,
+  context: LocalAgentContext,
 ): Message[] => {
   const messages =
     context.threadHistory
@@ -258,7 +258,7 @@ const getPlatformShellPrompt = (): string | null => {
 };
 
 const hasShellToolGuidance = (
-  context: LocalTaskManagerAgentContext,
+  context: LocalAgentContext,
 ): boolean => {
   const toolsAllowlist = context.toolsAllowlist;
   if (!Array.isArray(toolsAllowlist) || toolsAllowlist.length === 0) {
@@ -268,7 +268,7 @@ const hasShellToolGuidance = (
 };
 
 export const buildSystemPrompt = (
-  context: LocalTaskManagerAgentContext,
+  context: LocalAgentContext,
 ): string => {
   const sections = [context.systemPrompt.trim()];
 
@@ -331,7 +331,7 @@ const DREAM_MEMORY_SUMMARY_DISPLAY_PATH = "state/memories/memory_summary.md";
 
 const injectDreamMemoryFiles = async (args: {
   messages: RuntimePromptMessage[];
-  context: LocalTaskManagerAgentContext;
+  context: LocalAgentContext;
   stellaHome?: string;
   stellaRoot?: string;
   isFirstTurn: boolean;
@@ -400,7 +400,7 @@ const readRegistryContent = async (args: {
 };
 
 export const buildStartupPromptMessages = async (args: {
-  context: LocalTaskManagerAgentContext;
+  context: LocalAgentContext;
   stellaHome?: string;
   stellaRoot?: string;
   includeDreamMemoryFiles?: boolean;
@@ -483,7 +483,7 @@ export const buildStartupPromptMessages = async (args: {
 };
 
 export const buildSubagentPromptMessages = async (args: {
-  context: LocalTaskManagerAgentContext;
+  context: LocalAgentContext;
   userPrompt: string;
   promptMessages?: RuntimePromptMessage[];
   stellaHome?: string;
@@ -506,7 +506,7 @@ export const buildSubagentPromptMessages = async (args: {
 };
 
 export const buildOrchestratorPromptMessages = async (args: {
-  context: LocalTaskManagerAgentContext;
+  context: LocalAgentContext;
   userPrompt: string;
   promptMessages?: OrchestratorPromptMessage[];
   stellaHome?: string;

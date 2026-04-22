@@ -1,35 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import { LocalTaskManager } from "../../../../../runtime/kernel/tasks/local-task-manager.js";
+import { LocalAgentManager } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type { ToolContext, ToolResult } from "../../../../../runtime/kernel/tools/types.js";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const waitForTaskCompletion = async (
-  manager: LocalTaskManager,
-  taskId: string,
+  manager: LocalAgentManager,
+  agentId: string,
 ): Promise<void> => {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const snapshot = await manager.getTask(taskId);
+    const snapshot = await manager.getAgent(agentId);
     if (snapshot && snapshot.status !== "running") {
       return;
     }
     await sleep(25);
   }
-  throw new Error(`Task ${taskId} did not finish in time.`);
+  throw new Error(`Task ${agentId} did not finish in time.`);
 };
 
-describe("LocalTaskManager Exec fs locking", () => {
+describe("LocalAgentManager Exec fs locking", () => {
   it("serializes mutating Exec calls across concurrent tasks", async () => {
     let activeCalls = 0;
     let maxConcurrentCalls = 0;
 
-    const manager = new LocalTaskManager({
+    const manager = new LocalAgentManager({
       maxConcurrent: 2,
       fetchAgentContext: async () => ({
         systemPrompt: "",
         dynamicContext: "",
-        maxTaskDepth: 3,
+        maxAgentDepth: 3,
       }),
       runSubagent: async (args) => {
         const toolContext: ToolContext = {
@@ -65,20 +65,20 @@ describe("LocalTaskManager Exec fs locking", () => {
         activeCalls -= 1;
         return { result: "ok" };
       },
-      createCloudTaskRecord: async () => ({ taskId: "cloud-unused" }),
-      completeCloudTaskRecord: async () => undefined,
-      getCloudTaskRecord: async () => null,
-      cancelCloudTaskRecord: async () => ({ canceled: false }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
     });
 
-    const first = await manager.createTask({
+    const first = await manager.createAgent({
       conversationId: "conv-1",
       description: "first",
       prompt: "first prompt",
       agentType: "general",
       storageMode: "local",
     });
-    const second = await manager.createTask({
+    const second = await manager.createAgent({
       conversationId: "conv-1",
       description: "second",
       prompt: "second prompt",

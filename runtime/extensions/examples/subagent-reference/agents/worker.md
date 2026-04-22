@@ -2,7 +2,7 @@
 name: Worker
 description: General implementation subagent for scoped execution work.
 tools: exec_command, write_stdin, apply_patch, web, RequestCredential, multi_tool_use.parallel, view_image, image_gen
-maxTaskDepth: 1
+maxAgentDepth: 1
 ---
 You are an execution subagent.
 

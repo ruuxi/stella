@@ -245,7 +245,7 @@ export const AGENT_STREAM_EVENT_TYPES = {
   RUN_STARTED: "run-started",
   STREAM: "stream",
   STATUS: "status",
-  TASK_REASONING: "task-reasoning",
+  AGENT_REASONING: "agent-reasoning",
   TOOL_START: "tool-start",
   TOOL_END: "tool-end",
   /** Legacy terminal event — prefer RUN_FINISHED. */
@@ -253,11 +253,11 @@ export const AGENT_STREAM_EVENT_TYPES = {
   /** Legacy terminal event — prefer RUN_FINISHED. */
   END: "end",
   RUN_FINISHED: "run-finished",
-  TASK_STARTED: "task-started",
-  TASK_COMPLETED: "task-completed",
-  TASK_FAILED: "task-failed",
-  TASK_CANCELED: "task-canceled",
-  TASK_PROGRESS: "task-progress",
+  AGENT_STARTED: "agent-started",
+  AGENT_COMPLETED: "agent-completed",
+  AGENT_FAILED: "agent-failed",
+  AGENT_CANCELED: "agent-canceled",
+  AGENT_PROGRESS: "agent-progress",
 } as const;
 
 export type AgentStreamEventType =

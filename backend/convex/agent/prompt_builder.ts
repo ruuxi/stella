@@ -19,7 +19,7 @@ export type PromptBuildResult = {
   systemPrompt: string;
   dynamicContext: string;
   toolsAllowlist?: string[];
-  maxTaskDepth: number;
+  maxAgentDepth: number;
   timezone: string;
 };
 
@@ -63,17 +63,17 @@ export const buildSystemPrompt = async (
 
   const dynamicParts: string[] = [];
 
-  const maxTaskDepthValue = Number(agent.maxTaskDepth);
-  const maxTaskDepth =
-    Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
-      ? Math.floor(maxTaskDepthValue)
+  const maxAgentDepthValue = Number(agent.maxAgentDepth);
+  const maxAgentDepth =
+    Number.isFinite(maxAgentDepthValue) && maxAgentDepthValue >= 0
+      ? Math.floor(maxAgentDepthValue)
       : 2;
 
   return {
     systemPrompt: systemParts.join("\n\n").trim(),
     dynamicContext: dynamicParts.join("\n\n").trim(),
     toolsAllowlist: agent.toolsAllowlist,
-    maxTaskDepth,
+    maxAgentDepth,
     timezone: options?.timezone ?? "UTC",
   };
 };
@@ -88,7 +88,7 @@ const agentContextResultValidator = v.object({
   dynamicContext: v.string(),
   toolsAllowlist: v.optional(v.array(v.string())),
   model: v.string(),
-  maxTaskDepth: v.number(),
+  maxAgentDepth: v.number(),
   threadHistory: v.optional(
     v.array(
       v.object({
@@ -163,7 +163,7 @@ const agentRuntimeContextResultValidator = v.object({
   agent: v.object({
     systemPrompt: v.string(),
     toolsAllowlist: v.optional(v.array(v.string())),
-    maxTaskDepth: v.optional(v.number()),
+    maxAgentDepth: v.optional(v.number()),
   }),
   modelOverride: v.union(v.null(), v.string()),
   agentEngine: v.union(
@@ -260,7 +260,7 @@ export const agentRuntimeContext = internalQuery({
       agent: {
         systemPrompt: agent.systemPrompt,
         toolsAllowlist: agent.toolsAllowlist,
-        maxTaskDepth: agent.maxTaskDepth,
+        maxAgentDepth: agent.maxAgentDepth,
       },
       modelOverride,
       agentEngine,
@@ -293,10 +293,10 @@ const fetchAgentContextForOwner = async (
       systemParts.push(guidance);
     }
   }
-  const maxTaskDepthValue = Number(bundle.agent.maxTaskDepth);
-  const maxTaskDepth =
-    Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
-      ? Math.floor(maxTaskDepthValue)
+  const maxAgentDepthValue = Number(bundle.agent.maxAgentDepth);
+  const maxAgentDepth =
+    Number.isFinite(maxAgentDepthValue) && maxAgentDepthValue >= 0
+      ? Math.floor(maxAgentDepthValue)
       : 2;
 
   return {
@@ -304,7 +304,7 @@ const fetchAgentContextForOwner = async (
     dynamicContext: "",
     toolsAllowlist: bundle.agent.toolsAllowlist,
     model: bundle.modelOverride ?? STELLA_DEFAULT_MODEL,
-    maxTaskDepth,
+    maxAgentDepth,
     threadHistory: bundle.threadMessages.length > 0 ? bundle.threadMessages : undefined,
     activeThreadId: bundle.resolvedThreadId ?? undefined,
     agentEngine: bundle.agentEngine ?? undefined,
@@ -361,10 +361,10 @@ export const fetchLocalAgentContextForRuntime = action({
         systemParts.push(guidance);
       }
     }
-    const maxTaskDepthValue = Number(bundle.agent.maxTaskDepth);
-    const maxTaskDepth =
-      Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
-        ? Math.floor(maxTaskDepthValue)
+    const maxAgentDepthValue = Number(bundle.agent.maxAgentDepth);
+    const maxAgentDepth =
+      Number.isFinite(maxAgentDepthValue) && maxAgentDepthValue >= 0
+        ? Math.floor(maxAgentDepthValue)
         : 2;
 
     return {
@@ -372,7 +372,7 @@ export const fetchLocalAgentContextForRuntime = action({
       dynamicContext: "",
       toolsAllowlist: bundle.agent.toolsAllowlist,
       model: bundle.modelOverride ?? STELLA_DEFAULT_MODEL,
-      maxTaskDepth,
+      maxAgentDepth,
       threadHistory: undefined,
       activeThreadId: undefined,
       agentEngine: bundle.agentEngine ?? undefined,

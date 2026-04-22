@@ -1,6 +1,6 @@
 import type {
   ScheduleToolApi,
-  TaskToolApi,
+  AgentToolApi,
   ToolContext,
   ToolResult,
 } from "./types.js";
@@ -27,11 +27,11 @@ const requireScheduleApi = (scheduleApi?: ScheduleToolApi): ScheduleToolApi => {
   return scheduleApi;
 };
 
-const requireTaskApi = (taskApi?: TaskToolApi): TaskToolApi => {
-  if (!taskApi) {
-    throw new Error("Task orchestration is not configured on this device.");
+const requireAgentApi = (agentApi?: AgentToolApi): AgentToolApi => {
+  if (!agentApi) {
+    throw new Error("Agent orchestration is not configured on this device.");
   }
-  return taskApi;
+  return agentApi;
 };
 
 const getSchedulePrompt = (args: Record<string, unknown>) => {
@@ -64,30 +64,30 @@ const sleep = (ms: number) =>
   });
 
 export const handleSchedule = async (
-  taskApi: TaskToolApi | undefined,
+  agentApi: AgentToolApi | undefined,
   args: Record<string, unknown>,
   context: ToolContext,
 ): Promise<ToolResult> => {
-  const api = requireTaskApi(taskApi);
+  const api = requireAgentApi(agentApi);
   const prompt = getSchedulePrompt(args);
-  const nextTaskDepth = Math.max(0, context.taskDepth ?? 0) + 1;
-  const created = await api.createTask({
+  const nextAgentDepth = Math.max(0, context.agentDepth ?? 0) + 1;
+  const created = await api.createAgent({
     conversationId: context.conversationId,
     description: "Apply local scheduling changes",
     prompt: buildScheduleTaskPrompt(prompt, context),
     agentType: "schedule",
     rootRunId: context.rootRunId,
-    taskDepth: nextTaskDepth,
-    ...(typeof context.maxTaskDepth === "number"
-      ? { maxTaskDepth: context.maxTaskDepth }
+    agentDepth: nextAgentDepth,
+    ...(typeof context.maxAgentDepth === "number"
+      ? { maxAgentDepth: context.maxAgentDepth }
       : {}),
-    parentTaskId: context.cloudTaskId ?? context.taskId,
+    parentAgentId: context.cloudAgentId ?? context.agentId,
     storageMode: context.storageMode ?? "local",
   });
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < SCHEDULE_TASK_TIMEOUT_MS) {
-    const snapshot = await api.getTask(created.threadId);
+    const snapshot = await api.getAgent(created.threadId);
     if (!snapshot) {
       throw new Error(`Schedule task not found: ${created.threadId}`);
     }
@@ -100,7 +100,7 @@ export const handleSchedule = async (
     await sleep(SCHEDULE_TASK_POLL_MS);
   }
 
-  await api.cancelTask(created.threadId, "Schedule tool timed out waiting for completion.");
+  await api.cancelAgent(created.threadId, "Schedule tool timed out waiting for completion.");
   throw new Error("Scheduling request timed out.");
 };
 

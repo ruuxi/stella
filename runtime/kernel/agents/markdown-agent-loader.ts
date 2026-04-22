@@ -51,18 +51,13 @@ const normalizeAgent = (
     return null;
   }
 
-  const agentTypes =
-    parseStringList(metadata.agentTypes ?? metadata.agent_types ?? metadata.aliases)
-    ?? [id];
-  const toolsAllowlist =
-    parseStringList(metadata.toolsAllowlist ?? metadata.tools_allowlist ?? metadata.tools);
+  const agentTypes = parseStringList(metadata.agentTypes) ?? [id];
+  const toolsAllowlist = parseStringList(metadata.tools);
   const model =
     typeof metadata.model === "string" && metadata.model.trim().length > 0
       ? metadata.model.trim()
       : undefined;
-  const maxTaskDepth = parseOptionalNumber(
-    metadata.maxTaskDepth ?? metadata.max_task_depth,
-  );
+  const maxAgentDepth = parseOptionalNumber(metadata.maxAgentDepth);
 
   return {
     id,
@@ -72,7 +67,7 @@ const normalizeAgent = (
     agentTypes,
     ...(toolsAllowlist ? { toolsAllowlist } : {}),
     ...(model ? { model } : {}),
-    ...(typeof maxTaskDepth === "number" ? { maxTaskDepth } : {}),
+    ...(typeof maxAgentDepth === "number" ? { maxAgentDepth } : {}),
   };
 };
 

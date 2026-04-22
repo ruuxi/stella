@@ -1,4 +1,4 @@
 export {
   SessionStore as RuntimeStore,
-  type PersistedTaskRecord,
+  type PersistedAgentRecord,
 } from "./session-store.js";

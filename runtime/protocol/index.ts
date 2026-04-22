@@ -164,7 +164,7 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_RUN_AUTOMATION: "internal.worker.runAutomation",
   INTERNAL_WORKER_RUN_BLOCKING_TASK: "internal.worker.runBlockingTask",
   INTERNAL_WORKER_CREATE_BACKGROUND_TASK: "internal.worker.createBackgroundTask",
-  INTERNAL_WORKER_GET_TASK_SNAPSHOT: "internal.worker.getTaskSnapshot",
+  INTERNAL_WORKER_GET_AGENT_SNAPSHOT: "internal.worker.getAgentSnapshot",
   INTERNAL_WORKER_APPEND_THREAD_MESSAGE: "internal.worker.appendThreadMessage",
   INTERNAL_WORKER_WEB_SEARCH: "internal.worker.webSearch",
   INTERNAL_WORKER_VOICE_PERSIST_TRANSCRIPT:
@@ -446,10 +446,10 @@ export type RuntimeAgentEventPayload = {
   finalText?: string;
   persisted?: boolean;
   selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
-  taskId?: string;
+  agentId?: string;
   agentType?: string;
   description?: string;
-  parentTaskId?: string;
+  parentAgentId?: string;
   result?: string;
   statusText?: string;
   outcome?: AgentRunFinishOutcome;
@@ -457,10 +457,10 @@ export type RuntimeAgentEventPayload = {
   replacedByRunId?: string;
   responseTarget?:
     | { type: "user_turn" }
-    | { type: "task_turn"; taskId: string }
+    | { type: "agent_turn"; agentId: string }
     | {
-        type: "task_terminal_notice";
-        taskId: string;
+        type: "agent_terminal_notice";
+        agentId: string;
         terminalState: "completed" | "failed" | "canceled";
       };
 };
@@ -491,10 +491,10 @@ export type RuntimeConversationActiveRunSnapshot = {
 
 export type RuntimeConversationTaskSnapshot = {
   runId: string;
-  taskId: string;
+  agentId: string;
   agentType?: string;
   description?: string;
-  parentTaskId?: string;
+  parentAgentId?: string;
   status: "running" | "completed" | "error" | "canceled";
   statusText?: string;
   result?: string;

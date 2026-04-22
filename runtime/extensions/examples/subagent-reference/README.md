@@ -14,7 +14,7 @@ Reference points:
 Important difference from Pi:
 
 - Pi does not provide fire-and-forget background execution by default.
-- Stella keeps that behavior in `runtime/kernel/tasks/local-task-manager.ts` and `runtime/kernel/runner/task-orchestration.ts`.
+- Stella keeps that behavior in `runtime/kernel/agents/local-agent-manager.ts` and `runtime/kernel/runner/agent-orchestration.ts`.
 - This example only covers agent registration and prompt layout, not task scheduling.
 
 ## Layout

@@ -18,10 +18,10 @@ export type SelfModAppliedData = {
 
 export type AgentResponseTarget =
   | { type: "user_turn" }
-  | { type: "task_turn"; taskId: string }
+  | { type: "agent_turn"; agentId: string }
   | {
-      type: "task_terminal_notice";
-      taskId: string;
+      type: "agent_terminal_notice";
+      agentId: string;
       terminalState: "completed" | "failed" | "canceled";
     };
 
@@ -46,10 +46,10 @@ export type AgentStreamEvent = {
   finalText?: string;
   persisted?: boolean;
   selfModApplied?: SelfModAppliedData;
-  taskId?: string;
+  agentId?: string;
   agentType?: AgentIdLike;
   description?: string;
-  parentTaskId?: string;
+  parentAgentId?: string;
   result?: string;
   statusText?: string;
   outcome?: AgentRunFinishOutcome;

@@ -4,7 +4,7 @@ import { createRuntimePromptAgentMessage } from "../agent-runtime/run-preparatio
 import { persistThreadPayloadMessage } from "../agent-runtime/thread-memory.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { AgentMessage } from "../agent-core/types.js";
-import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
+import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import type {
   ActiveOrchestratorSession,
   AgentCallbacks,
@@ -52,8 +52,8 @@ export const createOrchestratorController = (
       agentType: string;
       runId: string;
       threadId?: string;
-      selfModMetadata?: import("../tools/types.js").TaskToolRequest["selfModMetadata"];
-    }) => Promise<LocalTaskManagerAgentContext>;
+      selfModMetadata?: import("../tools/types.js").AgentToolRequest["selfModMetadata"];
+    }) => Promise<LocalAgentContext>;
     resolveAgent: (agentType: string) => unknown;
     getConfiguredModel: (
       agentType: string,

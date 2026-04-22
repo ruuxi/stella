@@ -68,11 +68,11 @@ type ActiveRunSnapshot = {
 
 type ResumeTaskSnapshot = {
   runId: string;
-  taskId: string;
+  agentId: string;
   agentType?: string;
   description?: string;
   anchorTurnId?: string;
-  parentTaskId?: string;
+  parentAgentId?: string;
   status: "running" | "completed" | "error" | "canceled";
   statusText?: string;
   reasoningText?: string;
@@ -108,17 +108,17 @@ type StreamStoreAction =
       task: TaskItem;
     }
   | {
-      type: "task-reasoning";
+      type: "agent-reasoning";
       runId: string;
       conversationId: string;
       userMessageId?: string;
-      taskId: string;
+      agentId: string;
       chunk: string;
     }
   | {
       type: "task-remove";
       runId: string;
-      taskId: string;
+      agentId: string;
     }
   | {
       type: "clear-run-tasks";
@@ -257,17 +257,17 @@ function streamStoreReducer(
         },
       };
     }
-    case "task-reasoning": {
+    case "agent-reasoning": {
       const runRecord = state.runsById[action.runId];
       const runTasks = state.tasksByRunId[action.runId] ?? {};
-      const existing = runTasks[action.taskId];
+      const existing = runTasks[action.agentId];
       if (!action.chunk) {
         return state;
       }
       const nextReasoningText = `${existing?.reasoningText ?? ""}${action.chunk}`;
       const storedReasoningText =
-        nextReasoningText.length > MAX_TASK_REASONING_CHARS
-          ? nextReasoningText.slice(-MAX_TASK_REASONING_CHARS)
+        nextReasoningText.length > MAX_AGENT_REASONING_CHARS
+          ? nextReasoningText.slice(-MAX_AGENT_REASONING_CHARS)
           : nextReasoningText;
       const nowMs = Date.now();
       return {
@@ -289,9 +289,9 @@ function streamStoreReducer(
           ...state.tasksByRunId,
           [action.runId]: {
             ...runTasks,
-            [action.taskId]: {
+            [action.agentId]: {
               ...(existing ?? {
-                id: action.taskId,
+                id: action.agentId,
                 description: "Task",
                 agentType: AGENT_IDS.GENERAL,
                 status: "running",
@@ -308,11 +308,11 @@ function streamStoreReducer(
     }
     case "task-remove": {
       const runTasks = state.tasksByRunId[action.runId];
-      if (!runTasks || !(action.taskId in runTasks)) {
+      if (!runTasks || !(action.agentId in runTasks)) {
         return state;
       }
       const nextRunTasks = { ...runTasks };
-      delete nextRunTasks[action.taskId];
+      delete nextRunTasks[action.agentId];
       return {
         ...state,
         tasksByRunId: {
@@ -419,8 +419,8 @@ function attachmentsForStartChat(
   return mapped.length ? mapped : undefined;
 }
 
-const toRunTaskId = (runId: string, taskId: string) => `${runId}:${taskId}`;
-const MAX_TASK_REASONING_CHARS = 8_000;
+const toRunTaskId = (runId: string, agentId: string) => `${runId}:${agentId}`;
+const MAX_AGENT_REASONING_CHARS = 8_000;
 
 const isTokenSyncIssue = (reason: string | null) =>
   Boolean(reason && reason.toLowerCase().match(/token|auth/));
@@ -429,7 +429,7 @@ const toTaskFromResumeSnapshot = (
   snapshot: ResumeTaskSnapshot,
   nowMs: number,
 ): TaskItem => ({
-  id: snapshot.taskId,
+  id: snapshot.agentId,
   runId: snapshot.runId,
   description: snapshot.description ?? "Task",
   agentType: snapshot.agentType || AGENT_IDS.GENERAL,
@@ -442,7 +442,7 @@ const toTaskFromResumeSnapshot = (
           ? "canceled"
           : "running",
   anchorTurnId: snapshot.anchorTurnId,
-  parentTaskId: snapshot.parentTaskId,
+  parentAgentId: snapshot.parentAgentId,
   statusText: snapshot.statusText,
   startedAtMs: nowMs,
   completedAtMs:
@@ -499,8 +499,8 @@ export function useLocalAgentStream({
     activeRunIdByConversationRef.current = storeState.activeRunIdByConversation;
   }, [storeState.activeRunIdByConversation]);
 
-  const clearScheduledTaskRemoval = useCallback((runId: string, taskId: string) => {
-    const key = toRunTaskId(runId, taskId);
+  const clearScheduledTaskRemoval = useCallback((runId: string, agentId: string) => {
+    const key = toRunTaskId(runId, agentId);
     const timeoutId = liveTaskRemovalTimeoutsRef.current.get(key);
     if (typeof timeoutId === "number") {
       window.clearTimeout(timeoutId);
@@ -509,15 +509,15 @@ export function useLocalAgentStream({
   }, []);
 
   const scheduleTaskRemoval = useCallback(
-    (runId: string, taskId: string, delayMs: number) => {
-      clearScheduledTaskRemoval(runId, taskId);
-      const key = toRunTaskId(runId, taskId);
+    (runId: string, agentId: string, delayMs: number) => {
+      clearScheduledTaskRemoval(runId, agentId);
+      const key = toRunTaskId(runId, agentId);
       const timeoutId = window.setTimeout(() => {
         liveTaskRemovalTimeoutsRef.current.delete(key);
         dispatch({
           type: "task-remove",
           runId,
-          taskId,
+          agentId,
         });
       }, delayMs);
       liveTaskRemovalTimeoutsRef.current.set(key, timeoutId);
@@ -686,45 +686,45 @@ export function useLocalAgentStream({
           });
           break;
         }
-        case AGENT_STREAM_EVENT_TYPES.TASK_STARTED:
-        case AGENT_STREAM_EVENT_TYPES.TASK_REASONING:
-        case AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS:
-        case AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED:
-        case AGENT_STREAM_EVENT_TYPES.TASK_FAILED:
-        case AGENT_STREAM_EVENT_TYPES.TASK_CANCELED: {
+        case AGENT_STREAM_EVENT_TYPES.AGENT_STARTED:
+        case AGENT_STREAM_EVENT_TYPES.AGENT_REASONING:
+        case AGENT_STREAM_EVENT_TYPES.AGENT_PROGRESS:
+        case AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED:
+        case AGENT_STREAM_EVENT_TYPES.AGENT_FAILED:
+        case AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED: {
           const runId = event.rootRunId ?? event.runId;
-          if (!runId || !event.taskId) {
+          if (!runId || !event.agentId) {
             return;
           }
-          if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_REASONING) {
+          if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_REASONING) {
             if (!event.chunk) {
               return;
             }
             dispatch({
-              type: "task-reasoning",
+              type: "agent-reasoning",
               runId,
               conversationId,
               userMessageId: event.userMessageId,
-              taskId: event.taskId,
+              agentId: event.agentId,
               chunk: event.chunk,
             });
             break;
           }
-          clearScheduledTaskRemoval(runId, event.taskId);
+          clearScheduledTaskRemoval(runId, event.agentId);
           const nowMs = Date.now();
-          if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_FAILED) {
+          if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED) {
             dispatch({
               type: "task-remove",
               runId,
-              taskId: event.taskId,
+              agentId: event.agentId,
             });
             return;
           }
-          if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_CANCELED) {
+          if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED) {
             dispatch({
               type: "task-remove",
               runId,
-              taskId: event.taskId,
+              agentId: event.agentId,
             });
             return;
           }
@@ -735,23 +735,23 @@ export function useLocalAgentStream({
             conversationId,
             userMessageId: event.userMessageId,
             task: {
-              id: event.taskId,
+              id: event.agentId,
               description: event.description ?? "Task",
               agentType: event.agentType || AGENT_IDS.GENERAL,
               status:
-                event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
+                event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED
                   ? "completed"
                   : "running",
               anchorTurnId: event.userMessageId,
-              parentTaskId: event.parentTaskId,
+              parentAgentId: event.parentAgentId,
               statusText: event.statusText,
               reasoningText:
-                event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED
+                event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED
                   ? ""
                   : undefined,
               startedAtMs: nowMs,
               completedAtMs:
-                event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
+                event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED
                   ? nowMs
                   : undefined,
               lastUpdatedAtMs: nowMs,
@@ -759,8 +759,8 @@ export function useLocalAgentStream({
             },
           });
 
-          if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED) {
-            scheduleTaskRemoval(runId, event.taskId, TASK_COMPLETION_INDICATOR_MS);
+          if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED) {
+            scheduleTaskRemoval(runId, event.agentId, TASK_COMPLETION_INDICATOR_MS);
           }
           break;
         }
@@ -836,7 +836,7 @@ export function useLocalAgentStream({
         if (task.status === "completed") {
           scheduleTaskRemoval(
             task.runId,
-            task.taskId,
+            task.agentId,
             TASK_COMPLETION_INDICATOR_MS,
           );
         }

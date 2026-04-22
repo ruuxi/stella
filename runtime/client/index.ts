@@ -952,8 +952,8 @@ export class StellaRuntimeClient {
 
   async runBlockingLocalTask(payload: RuntimeTaskRequest) {
     return await this.requestWorker<
-      | { status: "ok"; finalText: string; taskId: string }
-      | { status: "error"; finalText: ""; error: string; taskId?: string }
+      | { status: "ok"; finalText: string; agentId: string }
+      | { status: "error"; finalText: ""; error: string; agentId?: string }
     >(METHOD_NAMES.INTERNAL_WORKER_RUN_BLOCKING_TASK, payload, {
       ensureWorker: true,
       recordActivity: true,
@@ -961,7 +961,7 @@ export class StellaRuntimeClient {
   }
 
   async createBackgroundTask(payload: RuntimeTaskRequest) {
-    return await this.requestWorker<{ taskId: string }>(
+    return await this.requestWorker<{ agentId: string }>(
       METHOD_NAMES.INTERNAL_WORKER_CREATE_BACKGROUND_TASK,
       payload,
       {
@@ -971,10 +971,10 @@ export class StellaRuntimeClient {
     );
   }
 
-  async getLocalTaskSnapshot(taskId: string) {
+  async getLocalAgentSnapshot(agentId: string) {
     return await this.requestWorker<RuntimeTaskSnapshot | null>(
-      METHOD_NAMES.INTERNAL_WORKER_GET_TASK_SNAPSHOT,
-      { taskId },
+      METHOD_NAMES.INTERNAL_WORKER_GET_AGENT_SNAPSHOT,
+      { agentId },
       { ensureWorker: false, recordActivity: false },
     );
   }
