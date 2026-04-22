@@ -65,7 +65,6 @@ export type PersistedAgentRecord = {
   agentDepth: number;
   maxAgentDepth?: number;
   parentAgentId?: string;
-  toolsAllowlistOverride?: string[];
   selfModMetadata?: {
     featureId?: string;
     packageId?: string;
@@ -89,15 +88,6 @@ const parseJsonValue = <T>(value: string | null): T | undefined => {
   } catch {
     return undefined;
   }
-};
-
-const parseStringArray = (value: string | null): string[] | undefined => {
-  const parsed = parseJsonValue<unknown>(value);
-  if (!Array.isArray(parsed)) return undefined;
-  const strings = parsed.filter(
-    (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
-  );
-  return strings.length > 0 ? strings : undefined;
 };
 
 const eventRoleForType = (type: string): string => {
@@ -1647,7 +1637,6 @@ export class SessionStore {
         agent_depth,
         max_agent_depth,
         parent_agent_id,
-        tools_allowlist_override_json,
         self_mod_metadata_json,
         status,
         started_at,
@@ -1656,7 +1645,7 @@ export class SessionStore {
         error,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
@@ -1664,7 +1653,6 @@ export class SessionStore {
         agent_depth = excluded.agent_depth,
         max_agent_depth = excluded.max_agent_depth,
         parent_agent_id = excluded.parent_agent_id,
-        tools_allowlist_override_json = excluded.tools_allowlist_override_json,
         self_mod_metadata_json = excluded.self_mod_metadata_json,
         status = excluded.status,
         started_at = excluded.started_at,
@@ -1680,7 +1668,6 @@ export class SessionStore {
       record.agentDepth,
       record.maxAgentDepth ?? null,
       record.parentAgentId ?? null,
-      toJsonValueString(record.toolsAllowlistOverride) ?? null,
       toJsonValueString(record.selfModMetadata) ?? null,
       record.status,
       record.startedAt,
@@ -1701,7 +1688,6 @@ export class SessionStore {
         agent_depth,
         max_agent_depth,
         parent_agent_id,
-        tools_allowlist_override_json,
         self_mod_metadata_json,
         status,
         started_at,
@@ -1721,7 +1707,6 @@ export class SessionStore {
           agent_depth: number;
           max_agent_depth: number | null;
           parent_agent_id: string | null;
-          tools_allowlist_override_json: string | null;
           self_mod_metadata_json: string | null;
           status: PersistedAgentRecord["status"];
           started_at: number;
@@ -1734,9 +1719,6 @@ export class SessionStore {
     if (!row) {
       return null;
     }
-    const toolsAllowlistOverride = parseStringArray(
-      row.tools_allowlist_override_json,
-    );
     const selfModMetadata = parseJsonValue<PersistedAgentRecord["selfModMetadata"]>(
       row.self_mod_metadata_json,
     );
@@ -1748,7 +1730,6 @@ export class SessionStore {
       agentDepth: row.agent_depth,
       ...(row.max_agent_depth == null ? {} : { maxAgentDepth: row.max_agent_depth }),
       ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
-      ...(toolsAllowlistOverride ? { toolsAllowlistOverride } : {}),
       ...(selfModMetadata ? { selfModMetadata } : {}),
       status: row.status,
       startedAt: row.started_at,

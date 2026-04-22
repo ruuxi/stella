@@ -13,7 +13,6 @@ import type {
   LocalAgentContext,
   AgentLifecycleEvent,
 } from "../agents/local-agent-manager.js";
-import { GENERAL_STARTER_TOOLS } from "../agents/starter-tools.js";
 import {
   AGENT_IDS,
   isLocalCliAgentId,
@@ -297,8 +296,6 @@ export const createAgentOrchestration = (
   context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaRoot),
-    getStarterTools: (agentType) =>
-      agentType === AGENT_IDS.GENERAL ? [...GENERAL_STARTER_TOOLS] : [],
     resolveTaskThread: ({ conversationId, agentType, threadId }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;

@@ -167,7 +167,6 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       agent_depth INTEGER NOT NULL,
       max_agent_depth INTEGER,
       parent_agent_id TEXT,
-      tools_allowlist_override_json TEXT,
       self_mod_metadata_json TEXT,
       status TEXT NOT NULL,
       started_at INTEGER NOT NULL,

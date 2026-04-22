@@ -78,7 +78,6 @@ export type AgentToolRequest = {
   maxAgentDepth?: number;
   parentAgentId?: string;
   threadId?: string;
-  toolsAllowlistOverride?: string[];
   storageMode: "cloud" | "local";
   selfModMetadata?: {
     featureId?: string;
