@@ -121,31 +121,31 @@ export const getEventText = (event: EventRecord): string => {
 
 // Task event payload structures
 export type TaskStartedPayload = {
-  taskId: string;
+  agentId: string;
   description: string;
   agentType: string;
-  parentTaskId?: string;
-  taskDepth?: number;
-  maxTaskDepth?: number;
+  parentAgentId?: string;
+  agentDepth?: number;
+  maxAgentDepth?: number;
 };
 
 export type TaskCompletedPayload = {
-  taskId: string;
+  agentId: string;
   result?: string;
 };
 
 export type TaskFailedPayload = {
-  taskId: string;
+  agentId: string;
   error?: string;
 };
 
 export type TaskCanceledPayload = {
-  taskId: string;
+  agentId: string;
   error?: string;
 };
 
 export type TaskProgressPayload = {
-  taskId: string;
+  agentId: string;
   statusText: string;
 };
 
@@ -160,7 +160,7 @@ export type TaskItem = {
    *  Tasks reconstructed from local persisted events may not have it. */
   runId?: string;
   anchorTurnId?: string;
-  parentTaskId?: string;
+  parentAgentId?: string;
   statusText?: string;
   reasoningText?: string;
   startedAtMs: number;
@@ -202,28 +202,28 @@ export function isAssistantMessage(event: EventRecord): boolean {
 }
 
 export const isTaskStarted = createEventGuard<TaskStartedPayload>(
-  "task_started",
-  ["taskId"],
+  "agent_started",
+  ["agentId"],
 );
 
 export const isTaskCompleted = createEventGuard<TaskCompletedPayload>(
-  "task_completed",
-  ["taskId"],
+  "agent_completed",
+  ["agentId"],
 );
 
 export const isTaskFailed = createEventGuard<TaskFailedPayload>(
-  "task_failed",
-  ["taskId"],
+  "agent_failed",
+  ["agentId"],
 );
 
 export const isTaskCanceled = createEventGuard<TaskCanceledPayload>(
-  "task_canceled",
-  ["taskId"],
+  "agent_canceled",
+  ["agentId"],
 );
 
 export const isTaskProgress = createEventGuard<TaskProgressPayload>(
-  "task_progress",
-  ["taskId", "statusText"],
+  "agent_progress",
+  ["agentId", "statusText"],
 );
 
 export function extractToolTitle(event: EventRecord): string {
@@ -252,6 +252,15 @@ export function extractToolTitle(event: EventRecord): string {
         : "Running command";
     case "webfetch":
       return args?.url ? new URL(str(args.url)).hostname : "Fetching";
+    case "web":
+      if (args?.url) {
+        try {
+          return new URL(str(args.url)).hostname;
+        } catch {
+          return "Fetching";
+        }
+      }
+      return args?.query ? `"${str(args.query).slice(0, 40)}${str(args.query).length > 40 ? "…" : ""}"` : "Searching the web";
     case "task":
       return args?.description ? str(args.description).slice(0, 40) : "Delegating";
     default:
@@ -426,17 +435,17 @@ export function extractTasksFromEvents(
   const tasksById = new Map<string, TaskItem>();
 
   const ensureTask = (
-    taskId: string,
+    agentId: string,
     timestamp: number,
     overrides?: Partial<TaskItem>,
   ): TaskItem => {
-    const previous = tasksById.get(taskId);
+    const previous = tasksById.get(agentId);
     return {
-      id: taskId,
+      id: agentId,
       description: previous?.description ?? "Task",
       agentType: previous?.agentType ?? "general",
       status: previous?.status ?? "running",
-      parentTaskId: previous?.parentTaskId,
+      parentAgentId: previous?.parentAgentId,
       statusText: previous?.statusText,
       startedAtMs: previous?.startedAtMs ?? timestamp,
       completedAtMs: previous?.completedAtMs,
@@ -446,9 +455,9 @@ export function extractTasksFromEvents(
     };
   };
 
-  // Once a task reaches a terminal state, only a fresh `task_started`
-  // (TaskUpdate re-activation) may revive it. This guards against in-flight
-  // `task_progress` events that race with `task_canceled` and would
+  // Once a task reaches a terminal state, only a fresh `agent_started`
+  // (send_input re-activation) may revive it. This guards against in-flight
+  // `agent_progress` events that race with `agent_canceled` and would
   // otherwise flip the task back to "running" — the renderer treats that
   // resurrected task as live and pins a phantom "Working … Task" chip in
   // the footer.
@@ -456,28 +465,28 @@ export function extractTasksFromEvents(
 
   for (const event of events) {
     if (isTaskStarted(event)) {
-      tasksById.set(event.payload.taskId, {
-        id: event.payload.taskId,
+      tasksById.set(event.payload.agentId, {
+        id: event.payload.agentId,
         description: event.payload.description,
         agentType: event.payload.agentType,
         status: "running",
-        parentTaskId: event.payload.parentTaskId,
+        parentAgentId: event.payload.parentAgentId,
         startedAtMs: event.timestamp,
         completedAtMs: undefined,
         lastUpdatedAtMs: event.timestamp,
         outputPreview: undefined,
       });
-      terminalTaskIds.delete(event.payload.taskId);
+      terminalTaskIds.delete(event.payload.agentId);
       continue;
     }
 
     if (isTaskProgress(event)) {
-      if (terminalTaskIds.has(event.payload.taskId)) {
+      if (terminalTaskIds.has(event.payload.agentId)) {
         continue;
       }
       tasksById.set(
-        event.payload.taskId,
-        ensureTask(event.payload.taskId, event.timestamp, {
+        event.payload.agentId,
+        ensureTask(event.payload.agentId, event.timestamp, {
           status: "running",
           statusText: event.payload.statusText,
           completedAtMs: undefined,
@@ -490,8 +499,8 @@ export function extractTasksFromEvents(
 
     if (isTaskCompleted(event)) {
       tasksById.set(
-        event.payload.taskId,
-        ensureTask(event.payload.taskId, event.timestamp, {
+        event.payload.agentId,
+        ensureTask(event.payload.agentId, event.timestamp, {
           status: "completed",
           statusText: undefined,
           completedAtMs: event.timestamp,
@@ -499,14 +508,14 @@ export function extractTasksFromEvents(
           outputPreview: event.payload.result,
         }),
       );
-      terminalTaskIds.add(event.payload.taskId);
+      terminalTaskIds.add(event.payload.agentId);
       continue;
     }
 
     if (isTaskFailed(event)) {
       tasksById.set(
-        event.payload.taskId,
-        ensureTask(event.payload.taskId, event.timestamp, {
+        event.payload.agentId,
+        ensureTask(event.payload.agentId, event.timestamp, {
           status: "error",
           statusText: undefined,
           completedAtMs: event.timestamp,
@@ -514,14 +523,14 @@ export function extractTasksFromEvents(
           outputPreview: event.payload.error,
         }),
       );
-      terminalTaskIds.add(event.payload.taskId);
+      terminalTaskIds.add(event.payload.agentId);
       continue;
     }
 
     if (isTaskCanceled(event)) {
       tasksById.set(
-        event.payload.taskId,
-        ensureTask(event.payload.taskId, event.timestamp, {
+        event.payload.agentId,
+        ensureTask(event.payload.agentId, event.timestamp, {
           status: "canceled",
           statusText: undefined,
           completedAtMs: event.timestamp,
@@ -529,7 +538,7 @@ export function extractTasksFromEvents(
           outputPreview: event.payload.error ?? "Canceled",
         }),
       );
-      terminalTaskIds.add(event.payload.taskId);
+      terminalTaskIds.add(event.payload.agentId);
     }
   }
 
