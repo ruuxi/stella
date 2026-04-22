@@ -9,6 +9,8 @@
  * surface that mirrors upstream computer-use MCP shape.
  */
 
+import { MULTI_TOOL_USE_PARALLEL_JSON_SCHEMA } from "./parallel.js";
+
 export const DEVICE_TOOL_NAMES = [
   "AskUserQuestion",
   "RequestCredential",
@@ -717,6 +719,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Background memory consolidator IO. action=\"list\" returns unprocessed thread_summaries + pending memories_extensions paths; action=\"markProcessed\" advances the Dream watermark data.",
   StrReplace:
     "Surgically replace exact text inside an existing file. old_string must uniquely identify the target unless replace_all is true.",
+  "multi_tool_use.parallel":
+    "Run several independent tool calls concurrently. Pass `tool_uses` as an array of `{ recipient_name, parameters }` entries; each entry runs in parallel and the combined results are returned. Only batch calls that don't depend on each other (e.g. multiple file reads, or a snapshot per app), and stay within the same tool family — never mix `computer_*` with `exec_command`.",
   exec_command:
     "Run a shell command in a PTY. Returns immediate output, or a session_id if the process is still running so you can poll/interact via write_stdin. Required: cmd. Stella CLIs (stella-browser, stella-office, stella-ui, stella-computer) are auto-injected into PATH.",
   write_stdin:
@@ -768,6 +772,7 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   Memory: MemoryJsonSchema,
   Dream: DreamJsonSchema,
   StrReplace: StrReplaceJsonSchema,
+  "multi_tool_use.parallel": MULTI_TOOL_USE_PARALLEL_JSON_SCHEMA,
   exec_command: ExecCommandJsonSchema,
   write_stdin: WriteStdinJsonSchema,
   apply_patch: ApplyPatchJsonSchema,
