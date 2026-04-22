@@ -235,40 +235,6 @@ export const createWebToolHandlers = (options: {
       details: { mode: "fetch", url, ...(prompt ? { prompt } : {}) },
     };
   },
-  WebSearch: async (args, context) => {
-    const denied = requireOrchestrator("WebSearch", context);
-    if (denied) return denied;
-    if (!options.webSearch) {
-      return { error: "WebSearch is not available on this device." };
-    }
-    const query = typeof args.query === "string" ? args.query.trim() : "";
-    if (!query) {
-      return { error: "query is required." };
-    }
-    const category =
-      typeof args.category === "string" ? args.category.trim() || undefined : undefined;
-    try {
-      const result = await options.webSearch(
-        query,
-        category ? { category } : undefined,
-      );
-      return { result: result.text || "No results found." };
-    } catch (error) {
-      return { error: `WebSearch failed: ${(error as Error).message}` };
-    }
-  },
-  WebFetch: async (args, context) => {
-    const denied = requireOrchestrator("WebFetch", context);
-    if (denied) return denied;
-    const url = typeof args.url === "string" ? args.url.trim() : "";
-    if (!url) {
-      return { error: "url is required." };
-    }
-    const prompt =
-      typeof args.prompt === "string" ? args.prompt.trim() || undefined : undefined;
-    const text = await localWebFetch({ url, ...(prompt ? { prompt } : {}) });
-    return { result: text };
-  },
 });
 
 export const createAskQuestionToolHandlers = (): Record<string, ToolHandler> => ({
