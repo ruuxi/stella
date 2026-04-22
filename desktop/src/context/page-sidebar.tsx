@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   createContext,
   useCallback,
@@ -16,7 +17,8 @@ import {
  * with its own nav while it's mounted. The shell continues to render the
  * title bar, brand row, account row, etc. — only the middle nav region
  * swaps. The shell also auto-renders a "Back" button at the top of the
- * override which pops the router history.
+ * override; it navigates via TanStack’s memory `history` (not
+ * `window.history`).
  *
  * Why this pattern (vs. a fixed double-sidebar):
  *   * Most app routes only need a sidebar of their own occasionally; a
@@ -123,17 +125,20 @@ export function PageSidebar({ title, children }: PageSidebarProps) {
 }
 
 /**
- * Convenience hook: a stable callback that pops the router history once,
- * for use by the shell-rendered "Back" button. We can't use TanStack
- * Router's `useRouter()` here because this module needs to stay
- * router-agnostic; the shell wires up the back action itself.
- *
- * Exposed here so the shell and any future consumer can share the same
- * "what does Back mean" definition.
+ * Pops the **TanStack** history stack (memory history in Electron), not
+ * `window.history` — the latter is wrong for this app and no-ops the Back
+ * button. Falls back to `/chat` when there is no prior entry (e.g. user
+ * landed on `/settings` directly).
  */
 export function useDefaultPageSidebarBack() {
+  const router = useRouter();
+  const navigate = useNavigate();
+
   return useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.history.back();
-  }, []);
+    if (router.history.canGoBack()) {
+      router.history.back();
+    } else {
+      void navigate({ to: "/chat" });
+    }
+  }, [navigate, router.history]);
 }
