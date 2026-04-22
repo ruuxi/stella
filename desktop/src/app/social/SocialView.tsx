@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
+import { CollaborationIllustration } from "./CollaborationIllustration";
 import Users from "lucide-react/dist/esm/icons/users";
 import SquarePen from "lucide-react/dist/esm/icons/square-pen";
 import Copy from "lucide-react/dist/esm/icons/copy";
@@ -138,8 +139,8 @@ export function SocialView({ onSignIn }: SocialViewProps) {
     return (
       <div className="social-view">
         <div className="social-signin-gate">
-          <div className="social-empty-icon">
-            <MessageSquare size={24} />
+          <div style={{ width: 240, height: 180, marginBottom: -10 }}>
+            <CollaborationIllustration />
           </div>
           <div className="social-signin-title">Messages</div>
           <div className="social-signin-subtitle">
@@ -310,8 +311,8 @@ export function SocialView({ onSignIn }: SocialViewProps) {
       ) : (
         <div className="social-chat-pane">
           <div className="social-empty-state">
-            <div className="social-empty-icon">
-              <MessageSquare size={22} />
+            <div style={{ width: 200, height: 150, opacity: 0.8, marginBottom: -10 }}>
+              <CollaborationIllustration />
             </div>
             <div className="social-empty-title">Your messages</div>
             <div className="social-empty-subtitle">
