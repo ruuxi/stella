@@ -608,14 +608,24 @@ export class LocalTaskManager implements TaskToolApi {
           if (!compact) return;
           task.recentActivity = [truncate(compact, 500)];
         },
-        onToolStart: (ev) => this.opts.onTaskEvent?.({
-          type: "task-progress",
-          conversationId: task.conversationId,
-          rootRunId: task.rootRunId,
-          taskId: task.id,
-          agentType: task.agentType,
-          statusText: `Using ${ev.toolName}`,
-        }),
+        onToolStart: (ev) => {
+          // Once cancelTask has marked this task canceled, suppress any
+          // in-flight `tool_execution_start` events from the agent loop —
+          // those would otherwise leak `task-progress` lifecycle events
+          // after `task-canceled`, leaving a phantom "Working … Task" chip
+          // in the footer that re-adds the task to the live UI state.
+          if (task.controller.signal.aborted || task.status === "canceled") {
+            return;
+          }
+          this.opts.onTaskEvent?.({
+            type: "task-progress",
+            conversationId: task.conversationId,
+            rootRunId: task.rootRunId,
+            taskId: task.id,
+            agentType: task.agentType,
+            statusText: `Using ${ev.toolName}`,
+          });
+        },
         toolExecutor: async (toolName, toolArgs, toolContext, signal) => {
           if (task.storageMode === "cloud" && isTaskCreateTool(toolName) && task.cloudCreatePromise) {
             await task.cloudCreatePromise.catch(() => undefined);

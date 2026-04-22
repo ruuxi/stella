@@ -446,6 +446,14 @@ export function extractTasksFromEvents(
     };
   };
 
+  // Once a task reaches a terminal state, only a fresh `task_started`
+  // (TaskUpdate re-activation) may revive it. This guards against in-flight
+  // `task_progress` events that race with `task_canceled` and would
+  // otherwise flip the task back to "running" — the renderer treats that
+  // resurrected task as live and pins a phantom "Working … Task" chip in
+  // the footer.
+  const terminalTaskIds = new Set<string>();
+
   for (const event of events) {
     if (isTaskStarted(event)) {
       tasksById.set(event.payload.taskId, {
@@ -459,10 +467,14 @@ export function extractTasksFromEvents(
         lastUpdatedAtMs: event.timestamp,
         outputPreview: undefined,
       });
+      terminalTaskIds.delete(event.payload.taskId);
       continue;
     }
 
     if (isTaskProgress(event)) {
+      if (terminalTaskIds.has(event.payload.taskId)) {
+        continue;
+      }
       tasksById.set(
         event.payload.taskId,
         ensureTask(event.payload.taskId, event.timestamp, {
@@ -487,6 +499,7 @@ export function extractTasksFromEvents(
           outputPreview: event.payload.result,
         }),
       );
+      terminalTaskIds.add(event.payload.taskId);
       continue;
     }
 
@@ -501,6 +514,7 @@ export function extractTasksFromEvents(
           outputPreview: event.payload.error,
         }),
       );
+      terminalTaskIds.add(event.payload.taskId);
       continue;
     }
 
@@ -515,6 +529,7 @@ export function extractTasksFromEvents(
           outputPreview: event.payload.error ?? "Canceled",
         }),
       );
+      terminalTaskIds.add(event.payload.taskId);
     }
   }
 
