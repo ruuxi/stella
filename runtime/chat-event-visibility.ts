@@ -1,5 +1,3 @@
-import { isUiOnlyAssistantStatus } from "./kernel/internal-tool-transcript.js";
-
 export type LocalChatEventWindowMode = "events" | "visible_messages";
 
 type ChatEventLike = {
@@ -61,17 +59,7 @@ export const isUiDisplayableChatEvent = (
   if (!isMessageEvent(event)) {
     return true;
   }
-
-  const payload = getMessagePayload(event);
-  if (isUiHiddenChatMessagePayload(payload)) {
-    return false;
-  }
-  if (event.type !== "assistant_message") {
-    return true;
-  }
-  return !isUiOnlyAssistantStatus(
-    typeof payload?.text === "string" ? payload.text : "",
-  );
+  return !isUiHiddenChatMessagePayload(getMessagePayload(event));
 };
 
 export const isVisibleChatMessageEvent = (

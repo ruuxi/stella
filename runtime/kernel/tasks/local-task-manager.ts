@@ -301,6 +301,10 @@ const isTaskCreateTool = (toolName: string): boolean =>
 
 const TASK_UPDATE_INTERRUPT_ERROR = "Interrupted by task update";
 export const TASK_SHUTDOWN_CANCEL_REASON = "Canceled because Stella closed or restarted.";
+// Sentinel set by the orchestrator's TaskPause/task_pause tools so the runner
+// can suppress the hidden `[Task canceled]` follow-up turn that would
+// otherwise replace the user-facing reply with an empty silence.
+export const TASK_PAUSE_CANCEL_REASON = "Paused by orchestrator.";
 
 export class LocalTaskManager implements TaskToolApi {
   private readonly defaultMaxConcurrent: number;

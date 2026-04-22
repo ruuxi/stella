@@ -1,4 +1,3 @@
-import { sanitizeAssistantText } from "../../../../../runtime/kernel/internal-tool-transcript.js";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 
 export interface StepItem {
@@ -114,10 +113,9 @@ export type MessageMetadata = {
 export const getEventText = (event: EventRecord): string => {
   if (!event.payload || typeof event.payload !== "object") return "";
   const payload = event.payload as MessagePayload;
-  if (typeof payload.text === "string" && payload.text.trim().length > 0)
-    return event.type === "assistant_message"
-      ? sanitizeAssistantText(payload.text)
-      : payload.text;
+  if (typeof payload.text === "string" && payload.text.trim().length > 0) {
+    return payload.text;
+  }
   return "";
 };
 

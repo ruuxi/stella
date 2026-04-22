@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {
+  TASK_PAUSE_CANCEL_REASON,
   TASK_SHUTDOWN_CANCEL_REASON,
   type TaskLifecycleEvent,
 } from "../tasks/local-task-manager.js";
@@ -84,7 +85,8 @@ export const buildTaskEventPrompt = (
   if (event.description) lines.push(`description: ${event.description}`);
   if (
     event.type === "task-canceled"
-    && event.error === TASK_SHUTDOWN_CANCEL_REASON
+    && (event.error === TASK_SHUTDOWN_CANCEL_REASON
+      || event.error === TASK_PAUSE_CANCEL_REASON)
   ) {
     return null;
   }

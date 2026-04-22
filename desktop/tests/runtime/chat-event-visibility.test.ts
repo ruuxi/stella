@@ -25,7 +25,7 @@ const event = (
 });
 
 describe("chat-event-visibility", () => {
-  it("hides message events that should never render in the transcript", () => {
+  it("hides message events explicitly marked invisible by metadata", () => {
     expect(
       isUiDisplayableChatEvent(event("1", "user_message", 1, {
         text: "hidden",
@@ -41,12 +41,17 @@ describe("chat-event-visibility", () => {
         },
       })),
     ).toBe(false);
+  });
 
+  it("renders ordinary user and assistant messages", () => {
     expect(
-      isUiDisplayableChatEvent(event("3", "assistant_message", 3, {
-        text: "[TOOL CALL: Read]",
-      })),
-    ).toBe(false);
+      isUiDisplayableChatEvent(event("1", "user_message", 1, { text: "hi" })),
+    ).toBe(true);
+    expect(
+      isUiDisplayableChatEvent(
+        event("2", "assistant_message", 2, { text: "hello" }),
+      ),
+    ).toBe(true);
   });
 
   it("counts only visible chat messages", () => {
@@ -57,11 +62,11 @@ describe("chat-event-visibility", () => {
         text: "hidden",
         metadata: { ui: { visibility: "hidden" } },
       }),
-      event("4", "assistant_message", 4, { text: "[WEB SEARCH]" }),
+      event("4", "assistant_message", 4, { text: "another reply" }),
       event("5", "tool_result", 5, { toolName: "Read" }),
     ];
 
-    expect(countVisibleChatMessageEvents(events)).toBe(2);
+    expect(countVisibleChatMessageEvents(events)).toBe(3);
   });
 
   it("slices from the oldest visible message in the requested window", () => {
@@ -72,7 +77,7 @@ describe("chat-event-visibility", () => {
         text: "hidden follow-up",
         metadata: { ui: { visibility: "hidden" } },
       }),
-      event("4", "assistant_message", 4, { text: "[ORCHESTRATOR RESULT]" }),
+      event("4", "assistant_message", 4, { text: "follow-up reply" }),
       event("5", "user_message", 5, { text: "latest prompt" }),
       event("6", "tool_request", 6, { toolName: "Read" }),
       event("7", "assistant_message", 7, { text: "latest reply" }),

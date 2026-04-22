@@ -3,7 +3,6 @@ import type { AgentEvent, AgentMessage } from "../agent-core/types.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { HookEventMap } from "../extensions/types.js";
-import { sanitizeAssistantText } from "../internal-tool-transcript.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import {
@@ -448,23 +447,23 @@ const toPersistedThreadPayload = (
   message: AgentMessage,
 ): PersistedRuntimeThreadPayload | null => {
   if (message.role === "assistant") {
-    const sanitizedContent: PersistedAssistantContent = [];
+    const trimmedContent: PersistedAssistantContent = [];
     for (const block of message.content) {
       if (block.type !== "text") {
-        sanitizedContent.push(block);
+        trimmedContent.push(block);
         continue;
       }
-      const sanitized = sanitizeAssistantText(block.text);
-      if (sanitized) {
-        sanitizedContent.push({ ...block, text: sanitized });
+      const trimmed = block.text.trim();
+      if (trimmed) {
+        trimmedContent.push({ ...block, text: trimmed });
       }
     }
-    if (sanitizedContent.length === 0) {
+    if (trimmedContent.length === 0) {
       return null;
     }
     return {
       ...message,
-      content: sanitizedContent,
+      content: trimmedContent,
     };
   }
   if (message.role === "toolResult") {
