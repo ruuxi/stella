@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message";
 import "./AskQuestionBubble.css";
 
 const BADGE_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
@@ -70,6 +71,39 @@ export function parseAskQuestionArgs(
   return { questions };
 }
 
+function describeSelection(
+  question: AskQuestion,
+  selection: Selection | undefined,
+): string {
+  if (!selection) return "(skipped)";
+  if (selection.kind === "option") {
+    const match = selection.key.match(/-opt-(\d+)$/);
+    const optionIndex = match ? Number.parseInt(match[1], 10) : -1;
+    if (optionIndex >= 0 && optionIndex < question.options.length) {
+      return question.options[optionIndex].label;
+    }
+    return "(unknown)";
+  }
+  const text = selection.text.trim();
+  return text.length > 0 ? `Other: ${text}` : "(skipped)";
+}
+
+function buildAnswersMessage(
+  payload: AskQuestionPayload,
+  selections: Record<number, Selection>,
+): string {
+  const lines: string[] = [];
+  payload.questions.forEach((question, index) => {
+    const answer = describeSelection(question, selections[index]);
+    lines.push(`Q: ${question.question}`);
+    lines.push(`A: ${answer}`);
+    if (index < payload.questions.length - 1) {
+      lines.push("");
+    }
+  });
+  return lines.join("\n");
+}
+
 export const AskQuestionBubble = memo(function AskQuestionBubble({
   payload,
 }: {
@@ -79,6 +113,7 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
   const [activeIndex, setActiveIndex] = useState(0);
   const [selections, setSelections] = useState<Record<number, Selection>>({});
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   const safeIndex = Math.min(Math.max(activeIndex, 0), total - 1);
   const isFirst = safeIndex === 0;
@@ -91,19 +126,43 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
   );
 
   const goPrev = useCallback(() => {
-    if (isFirst) return;
+    if (isFirst || submitted) return;
     setEditingIndex(null);
     setActiveIndex((i) => Math.max(0, i - 1));
-  }, [isFirst]);
+  }, [isFirst, submitted]);
 
-  const goNext = useCallback(() => {
-    if (isLast) return;
+  const submitAnswers = useCallback(
+    (kind: "answers" | "skip") => {
+      if (submitted) return;
+      const text =
+        kind === "skip"
+          ? "(skipped questions)"
+          : buildAnswersMessage(payload, selections);
+      setSubmitted(true);
+      setEditingIndex(null);
+      dispatchStellaSendMessage({
+        text,
+        triggerKind: "ask_question_response",
+        triggerSource: "ask-question-bubble",
+      });
+    },
+    [payload, selections, submitted],
+  );
+
+  const goNextOrSubmit = useCallback(() => {
+    if (submitted) return;
+    if (!hasAnswer) return;
     setEditingIndex(null);
+    if (isLast) {
+      submitAnswers("answers");
+      return;
+    }
     setActiveIndex((i) => Math.min(total - 1, i + 1));
-  }, [isLast, total]);
+  }, [hasAnswer, isLast, submitAnswers, submitted, total]);
 
   const handlePickOption = useCallback(
     (questionIndex: number, optionKey: string) => {
+      if (submitted) return;
       setSelections((prev) => ({
         ...prev,
         [questionIndex]: { kind: "option", key: optionKey },
@@ -111,46 +170,67 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
       setActiveIndex(questionIndex);
       setEditingIndex(null);
     },
-    [],
+    [submitted],
   );
 
-  const handleStartOther = useCallback((questionIndex: number) => {
-    setActiveIndex(questionIndex);
-    setEditingIndex(questionIndex);
-    setSelections((prev) => {
-      const existing = prev[questionIndex];
-      if (existing && existing.kind === "other") return prev;
-      return {
-        ...prev,
-        [questionIndex]: { kind: "other", text: "" },
-      };
-    });
-  }, []);
+  const handleStartOther = useCallback(
+    (questionIndex: number) => {
+      if (submitted) return;
+      setActiveIndex(questionIndex);
+      setEditingIndex(questionIndex);
+      setSelections((prev) => {
+        const existing = prev[questionIndex];
+        if (existing && existing.kind === "other") return prev;
+        return {
+          ...prev,
+          [questionIndex]: { kind: "other", text: "" },
+        };
+      });
+    },
+    [submitted],
+  );
 
   const handleOtherChange = useCallback(
     (questionIndex: number, text: string) => {
+      if (submitted) return;
       setSelections((prev) => ({
         ...prev,
         [questionIndex]: { kind: "other", text },
       }));
     },
-    [],
+    [submitted],
   );
 
-  const handleStepActivate = useCallback((questionIndex: number) => {
-    setActiveIndex(questionIndex);
-    setEditingIndex(null);
-  }, []);
+  const handleOtherSubmit = useCallback(() => {
+    if (submitted || !hasAnswer) return;
+    goNextOrSubmit();
+  }, [goNextOrSubmit, hasAnswer, submitted]);
+
+  const handleStepActivate = useCallback(
+    (questionIndex: number) => {
+      if (submitted) return;
+      setActiveIndex(questionIndex);
+      setEditingIndex(null);
+    },
+    [submitted],
+  );
 
   return (
-    <div className="ask-question-bubble" tabIndex={-1}>
+    <div
+      className="ask-question-bubble"
+      tabIndex={-1}
+      data-submitted={submitted ? "true" : undefined}
+      aria-disabled={submitted ? "true" : undefined}
+    >
       <div className="ask-question-bubble__header">
-        <span className="ask-question-bubble__label">Questions</span>
+        <span className="ask-question-bubble__label">
+          {submitted ? "Answered" : "Questions"}
+        </span>
         <div className="ask-question-bubble__stepper">
           <button
             type="button"
             className="ask-question-bubble__nav"
-            disabled={isFirst}
+            disabled={isFirst || submitted}
             onClick={goPrev}
             aria-label="Previous question"
           >
@@ -162,8 +242,8 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
           <button
             type="button"
             className="ask-question-bubble__nav"
-            disabled={isLast}
-            onClick={goNext}
+            disabled={isLast || submitted}
+            onClick={goNextOrSubmit}
             aria-label="Next question"
           >
             <ChevronIcon direction="right" />
@@ -181,10 +261,12 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
               isActive={index === safeIndex}
               selection={selections[index]}
               isEditingOther={editingIndex === index}
+              disabled={submitted}
               onActivate={() => handleStepActivate(index)}
               onPickOption={(optionKey) => handlePickOption(index, optionKey)}
               onStartOther={() => handleStartOther(index)}
               onOtherChange={(text) => handleOtherChange(index, text)}
+              onOtherSubmit={handleOtherSubmit}
               onStopEditingOther={() => setEditingIndex(null)}
             />
           ))}
@@ -196,6 +278,8 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
           type="button"
           className="ask-question-bubble__button"
           data-variant="text"
+          disabled={submitted}
+          onClick={() => submitAnswers("skip")}
         >
           Skip
         </button>
@@ -203,10 +287,13 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
           type="button"
           className="ask-question-bubble__button"
           data-variant="primary"
-          disabled={!hasAnswer}
+          disabled={!hasAnswer || submitted}
+          onClick={goNextOrSubmit}
         >
-          <span>{isLast ? "Done" : "Next"}</span>
-          <span className="ask-question-bubble__shortcut">⏎</span>
+          <span>{submitted ? "Sent" : isLast ? "Done" : "Next"}</span>
+          {!submitted && (
+            <span className="ask-question-bubble__shortcut">⏎</span>
+          )}
         </button>
       </div>
     </div>
@@ -219,10 +306,12 @@ const QuestionStep = memo(function QuestionStep({
   isActive,
   selection,
   isEditingOther,
+  disabled,
   onActivate,
   onPickOption,
   onStartOther,
   onOtherChange,
+  onOtherSubmit,
   onStopEditingOther,
 }: {
   index: number;
@@ -230,21 +319,23 @@ const QuestionStep = memo(function QuestionStep({
   isActive: boolean;
   selection: Selection | undefined;
   isEditingOther: boolean;
+  disabled: boolean;
   onActivate: () => void;
   onPickOption: (optionKey: string) => void;
   onStartOther: () => void;
   onOtherChange: (text: string) => void;
+  onOtherSubmit: () => void;
   onStopEditingOther: () => void;
 }) {
   const handleStepKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (isActive) return;
+      if (isActive || disabled) return;
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         onActivate();
       }
     },
-    [isActive, onActivate],
+    [disabled, isActive, onActivate],
   );
 
   const optionEntries = useMemo(() => {
@@ -269,7 +360,7 @@ const QuestionStep = memo(function QuestionStep({
     <div
       className="ask-question-bubble__step"
       data-active={isActive ? "true" : "false"}
-      {...(isActive
+      {...(isActive || disabled
         ? {}
         : {
             role: "button",
@@ -292,8 +383,10 @@ const QuestionStep = memo(function QuestionStep({
                 isEditing={isEditingOther}
                 isSelected={isSelected}
                 value={otherText}
+                disabled={disabled}
                 onStartEditing={onStartOther}
                 onChange={onOtherChange}
+                onSubmit={onOtherSubmit}
                 onStopEditing={onStopEditingOther}
               />
             );
@@ -306,7 +399,8 @@ const QuestionStep = memo(function QuestionStep({
               type="button"
               className="ask-question-bubble__option"
               data-selected={isSelected ? "true" : undefined}
-              tabIndex={isActive ? 0 : -1}
+              tabIndex={isActive && !disabled ? 0 : -1}
+              disabled={disabled}
               onClick={(event) => {
                 event.stopPropagation();
                 onPickOption(entry.key);
@@ -330,8 +424,10 @@ function OtherOption({
   isEditing,
   isSelected,
   value,
+  disabled,
   onStartEditing,
   onChange,
+  onSubmit,
   onStopEditing,
 }: {
   letter: string;
@@ -339,19 +435,21 @@ function OtherOption({
   isEditing: boolean;
   isSelected: boolean;
   value: string;
+  disabled: boolean;
   onStartEditing: () => void;
   onChange: (text: string) => void;
+  onSubmit: () => void;
   onStopEditing: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isEditing) {
+    if (isEditing && !disabled) {
       inputRef.current?.focus();
     }
-  }, [isEditing]);
+  }, [disabled, isEditing]);
 
-  if (isEditing) {
+  if (isEditing && !disabled) {
     return (
       <div
         className="ask-question-bubble__option ask-question-bubble__option--editing"
@@ -368,13 +466,17 @@ function OtherOption({
           className="ask-question-bubble__option-input"
           placeholder="Type your answer..."
           value={value}
+          disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={(event) => {
+            event.stopPropagation();
             if (event.key === "Escape") {
               event.preventDefault();
               onStopEditing();
+            } else if (event.key === "Enter") {
+              event.preventDefault();
+              onSubmit();
             }
-            event.stopPropagation();
           }}
           onClick={(event) => event.stopPropagation()}
         />
@@ -387,7 +489,8 @@ function OtherOption({
       type="button"
       className="ask-question-bubble__option"
       data-selected={isSelected ? "true" : undefined}
-      tabIndex={isActive ? 0 : -1}
+      tabIndex={isActive && !disabled ? 0 : -1}
+      disabled={disabled}
       onClick={(event) => {
         event.stopPropagation();
         onStartEditing();
