@@ -611,7 +611,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                 senderWebContentsId,
               );
             },
-            onTaskReasoning: (ev) => {
+            onAgentReasoning: (ev) => {
               if (!ev.agentId) {
                 return;
               }

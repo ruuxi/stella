@@ -182,7 +182,7 @@ export type AgentCallbacks = {
   onRunStarted?: (event: RuntimeRunStartedEvent) => void;
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
-  onTaskReasoning?: (
+  onAgentReasoning?: (
     event: RuntimeReasoningEvent & { agentId: string; rootRunId?: string },
   ) => void;
   onStatus?: (event: RuntimeStatusEvent) => void;
@@ -365,16 +365,16 @@ export type RunnerPublicApi = {
   runAutomationTurn: (
     payload: RuntimeAutomationTurnRequest,
   ) => Promise<RuntimeAutomationTurnResult>;
-  runBlockingLocalTask: (
+  runBlockingLocalAgent: (
     request: Omit<AgentToolRequest, "storageMode">,
   ) => Promise<
     | { status: "ok"; finalText: string; threadId: string }
     | { status: "error"; finalText: ""; error: string; threadId?: string }
   >;
-  createBackgroundTask: (
+  createBackgroundAgent: (
     request: Omit<AgentToolRequest, "storageMode">,
   ) => Promise<{ threadId: string }>;
-  getActiveTaskCount: () => number;
+  getActiveAgentCount: () => number;
   getLocalAgentSnapshot: (agentId: string) => Promise<AgentToolSnapshot | null>;
   cancelLocalChat: (runId: string) => void;
   getActiveOrchestratorRun: () => RuntimeActiveRun | null;

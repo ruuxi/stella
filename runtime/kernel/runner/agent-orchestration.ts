@@ -365,14 +365,14 @@ export const createAgentOrchestration = (
           getAuthToken: () => context.state.authToken?.trim(),
         },
       });
-      const taskCallbacks =
+      const runnerCallbacks =
         (rootRunId
           ? context.state.runCallbacksByRunId.get(rootRunId)
           : null)
         ?? context.state.conversationCallbacks.get(conversationId)
         ?? null;
       const reportSelfModHmrState = (state: SelfModHmrState) => {
-        taskCallbacks?.onSelfModHmrState?.(state);
+        runnerCallbacks?.onSelfModHmrState?.(state);
       };
 
       let hmrPaused = false;
@@ -457,24 +457,24 @@ export const createAgentOrchestration = (
           stellaRoot: context.stellaRoot,
           selfModMonitor: context.selfModMonitor,
           onProgress,
-          callbacks: taskCallbacks
+          callbacks: runnerCallbacks
             ? {
-                onStream: (event) => taskCallbacks.onStream(event),
+                onStream: (event) => runnerCallbacks.onStream(event),
                 onReasoning: (event) => {
                   if (!agentId) {
                     return;
                   }
-                  taskCallbacks.onTaskReasoning?.({
+                  runnerCallbacks.onAgentReasoning?.({
                     ...event,
                     agentId,
                     ...(rootRunId ? { rootRunId } : {}),
                   });
                 },
-                onToolStart: (event) => taskCallbacks.onToolStart(event),
-                onToolEnd: (event) => taskCallbacks.onToolEnd(event),
-                onError: (event) => taskCallbacks.onError(event),
-                onInterrupted: (event) => taskCallbacks.onInterrupted?.(event),
-                onEnd: (event) => taskCallbacks.onEnd(event),
+                onToolStart: (event) => runnerCallbacks.onToolStart(event),
+                onToolEnd: (event) => runnerCallbacks.onToolEnd(event),
+                onError: (event) => runnerCallbacks.onError(event),
+                onInterrupted: (event) => runnerCallbacks.onInterrupted?.(event),
+                onEnd: (event) => runnerCallbacks.onEnd(event),
               }
             : undefined,
           webSearch: deps.webSearch,
@@ -518,8 +518,8 @@ export const createAgentOrchestration = (
           try {
             const hmrTransitionController =
               context.getHmrTransitionController?.() ?? null;
-            if (shouldMorph && taskCallbacks?.onHmrResume) {
-              await taskCallbacks.onHmrResume({
+            if (shouldMorph && runnerCallbacks?.onHmrResume) {
+              await runnerCallbacks.onHmrResume({
                 runId,
                 resumeHmr,
                 reportState: reportSelfModHmrState,
@@ -574,7 +574,7 @@ export const createAgentOrchestration = (
     getAgentRecord: (threadId) => context.runtimeStore.getAgentRecord?.(threadId) ?? null,
   });
 
-  const runBlockingLocalTask = async (
+  const runBlockingLocalAgent = async (
     request: Omit<AgentToolRequest, "storageMode">,
   ): Promise<
     | { status: "ok"; finalText: string; threadId: string }
@@ -584,7 +584,7 @@ export const createAgentOrchestration = (
       return {
         status: "error",
         finalText: "",
-        error: "Task manager is unavailable.",
+        error: "Local agent manager is unavailable.",
       };
     }
     const { threadId } = await context.state.localAgentManager.createAgent({
@@ -597,7 +597,7 @@ export const createAgentOrchestration = (
         return {
           status: "error",
           finalText: "",
-          error: "Task record disappeared before completion.",
+          error: "Agent record disappeared before completion.",
           threadId,
         };
       }
@@ -612,7 +612,7 @@ export const createAgentOrchestration = (
         return {
           status: "error",
           finalText: "",
-          error: snapshot.error ?? "Task failed",
+          error: snapshot.error ?? "Agent run failed",
           threadId,
         };
       }
@@ -620,11 +620,11 @@ export const createAgentOrchestration = (
     }
   };
 
-  const createBackgroundTask = async (
+  const createBackgroundAgent = async (
     request: Omit<AgentToolRequest, "storageMode">,
   ): Promise<{ threadId: string }> => {
     if (!context.state.localAgentManager) {
-      throw new Error("Task manager is unavailable.");
+      throw new Error("Local agent manager is unavailable.");
     }
     const { threadId } = await context.state.localAgentManager.createAgent({
       ...request,
@@ -639,8 +639,8 @@ export const createAgentOrchestration = (
   };
 
   return {
-    runBlockingLocalTask,
-    createBackgroundTask,
+    runBlockingLocalAgent,
+    createBackgroundAgent,
     shutdown,
   };
 };

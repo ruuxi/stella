@@ -796,7 +796,7 @@ export class LocalAgentManager implements AgentToolApi {
     return await this.opts.getCloudAgentRecord(agentId);
   }
 
-  getTaskCount(): number {
+  getActiveAgentCount(): number {
     return this.tasks.size;
   }
 

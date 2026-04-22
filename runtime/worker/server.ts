@@ -11,7 +11,7 @@ import {
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
   type StorePublishArgs,
-  type RuntimeTaskRequest,
+  type RuntimeLocalAgentRequest,
 } from "../protocol/index.js";
 import {
   AGENT_IDS,
@@ -752,7 +752,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     return {
       health,
       activeRun: state.runner?.getActiveOrchestratorRun() ?? null,
-      activeTaskCount: state.runner?.getActiveTaskCount() ?? 0,
+      activeAgentCount: state.runner?.getActiveAgentCount() ?? 0,
       pid: process.pid,
       deviceId: state.deviceId,
       voiceBusy: state.voiceService?.isBusy() ?? false,
@@ -1076,7 +1076,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               statusText: ev.statusText,
             });
           },
-          onTaskReasoning: (ev) => {
+          onAgentReasoning: (ev) => {
             if (!ev.agentId) {
               return;
             }
@@ -1218,10 +1218,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   );
 
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_RUN_BLOCKING_TASK,
+    METHOD_NAMES.INTERNAL_WORKER_RUN_BLOCKING_AGENT,
     async (params) => {
-      const payload = params as RuntimeTaskRequest;
-      return await ensureRunner().runBlockingLocalTask({
+      const payload = params as RuntimeLocalAgentRequest;
+      return await ensureRunner().runBlockingLocalAgent({
         ...payload,
         agentType: payload.agentType ?? "general",
       });
@@ -1229,10 +1229,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   );
 
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_CREATE_BACKGROUND_TASK,
+    METHOD_NAMES.INTERNAL_WORKER_CREATE_BACKGROUND_AGENT,
     async (params) => {
-      const payload = params as RuntimeTaskRequest;
-      return await ensureRunner().createBackgroundTask({
+      const payload = params as RuntimeLocalAgentRequest;
+      return await ensureRunner().createBackgroundAgent({
         ...payload,
         agentType: payload.agentType ?? "general",
       });
@@ -1457,7 +1457,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             releaseNumber: release.releaseNumber,
             artifact,
           });
-          const taskResult = await runner.runBlockingLocalTask({
+          const blockingAgentResult = await runner.runBlockingLocalAgent({
             conversationId: `store:${packageRecord.packageId}`,
             description: `${mode === "update" ? "Update" : "Install"} ${packageRecord.displayName} from store`,
             prompt: buildStoreInstallPrompt({
@@ -1476,8 +1476,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               description: packageRecord.description,
             },
           });
-          if (taskResult.status !== "ok") {
-            throw new Error(taskResult.error);
+          if (blockingAgentResult.status !== "ok") {
+            throw new Error(blockingAgentResult.error);
           }
         },
       });
@@ -1937,7 +1937,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       workerGeneration: 0,
       deviceId: state.deviceId,
       activeRunId: state.runner?.getActiveOrchestratorRun()?.runId ?? null,
-      activeTaskCount: state.runner?.getActiveTaskCount() ?? 0,
+      activeAgentCount: state.runner?.getActiveAgentCount() ?? 0,
     };
   });
 

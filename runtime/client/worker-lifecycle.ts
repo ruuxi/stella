@@ -23,7 +23,7 @@ export type WorkerLifecycleState = "idle" | "starting" | "running" | "stopping";
 export type WorkerHealthSnapshot = {
   health: AgentHealth;
   activeRun: RuntimeActiveRun | null;
-  activeTaskCount: number;
+  activeAgentCount: number;
   pid: number;
   deviceId: string | null;
   voiceBusy?: boolean;
@@ -112,7 +112,7 @@ const shouldKeepWorkerAlive = (health: WorkerHealthSnapshot) => {
 
   return Boolean(
     health.activeRun ||
-    health.activeTaskCount > 0 ||
+    health.activeAgentCount > 0 ||
     socialPinned ||
     voicePinned,
   );

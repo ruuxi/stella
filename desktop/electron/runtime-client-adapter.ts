@@ -25,7 +25,7 @@ type AgentCallbacks = {
   onRunStarted?: (event: RuntimeAgentEventPayload) => void;
   onRunFinished?: (event: RuntimeAgentEventPayload) => void;
   onStream: (event: RuntimeAgentEventPayload) => void;
-  onTaskReasoning?: (event: RuntimeAgentEventPayload) => void;
+  onAgentReasoning?: (event: RuntimeAgentEventPayload) => void;
   onStatus?: (event: RuntimeAgentEventPayload) => void;
   onToolStart: (event: RuntimeAgentEventPayload) => void;
   onToolEnd: (event: RuntimeAgentEventPayload) => void;
@@ -270,7 +270,7 @@ export class RuntimeClientAdapter {
         session.callbacks.onStream(event);
         break;
       case AGENT_STREAM_EVENT_TYPES.AGENT_REASONING:
-        session.callbacks.onTaskReasoning?.(event);
+        session.callbacks.onAgentReasoning?.(event);
         break;
       case AGENT_STREAM_EVENT_TYPES.STATUS:
         session.callbacks.onStatus?.(event);
@@ -640,7 +640,7 @@ export class RuntimeClientAdapter {
     return this.client.runAutomationTurn(payload);
   }
 
-  runBlockingLocalTask(payload: {
+  runBlockingLocalAgent(payload: {
     conversationId: string;
     description: string;
     prompt: string;
@@ -654,10 +654,10 @@ export class RuntimeClientAdapter {
       description?: string;
     };
   }) {
-    return this.client.runBlockingLocalTask(payload);
+    return this.client.runBlockingLocalAgent(payload);
   }
 
-  createBackgroundTask(payload: {
+  createBackgroundAgent(payload: {
     conversationId: string;
     description: string;
     prompt: string;
@@ -671,7 +671,7 @@ export class RuntimeClientAdapter {
       description?: string;
     };
   }) {
-    return this.client.createBackgroundTask(payload);
+    return this.client.createBackgroundAgent(payload);
   }
 
   getLocalAgentSnapshot(agentId: string) {

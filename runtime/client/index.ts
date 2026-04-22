@@ -42,8 +42,8 @@ import {
   type RuntimeHealthSnapshot,
   type RuntimeSocialSessionStatus,
   type RuntimeSelfModRevertResult,
-  type RuntimeTaskRequest,
-  type RuntimeTaskSnapshot,
+  type RuntimeLocalAgentRequest,
+  type RuntimeLocalAgentSnapshot,
   type RuntimeVoiceAgentEventPayload,
   type RuntimeVoiceChatPayload,
   type RuntimeVoiceHmrStatePayload,
@@ -950,19 +950,19 @@ export class StellaRuntimeClient {
     );
   }
 
-  async runBlockingLocalTask(payload: RuntimeTaskRequest) {
+  async runBlockingLocalAgent(payload: RuntimeLocalAgentRequest) {
     return await this.requestWorker<
       | { status: "ok"; finalText: string; agentId: string }
       | { status: "error"; finalText: ""; error: string; agentId?: string }
-    >(METHOD_NAMES.INTERNAL_WORKER_RUN_BLOCKING_TASK, payload, {
+    >(METHOD_NAMES.INTERNAL_WORKER_RUN_BLOCKING_AGENT, payload, {
       ensureWorker: true,
       recordActivity: true,
     });
   }
 
-  async createBackgroundTask(payload: RuntimeTaskRequest) {
+  async createBackgroundAgent(payload: RuntimeLocalAgentRequest) {
     return await this.requestWorker<{ agentId: string }>(
-      METHOD_NAMES.INTERNAL_WORKER_CREATE_BACKGROUND_TASK,
+      METHOD_NAMES.INTERNAL_WORKER_CREATE_BACKGROUND_AGENT,
       payload,
       {
         ensureWorker: true,
@@ -972,7 +972,7 @@ export class StellaRuntimeClient {
   }
 
   async getLocalAgentSnapshot(agentId: string) {
-    return await this.requestWorker<RuntimeTaskSnapshot | null>(
+    return await this.requestWorker<RuntimeLocalAgentSnapshot | null>(
       METHOD_NAMES.INTERNAL_WORKER_GET_AGENT_SNAPSHOT,
       { agentId },
       { ensureWorker: false, recordActivity: false },
@@ -1641,7 +1641,7 @@ export class StellaRuntimeClient {
       workerGeneration: this.workerGeneration,
       deviceId: workerHealth?.deviceId ?? this.deviceIdentity?.deviceId ?? null,
       activeRunId: workerHealth?.activeRun?.runId ?? null,
-      activeTaskCount: workerHealth?.activeTaskCount ?? 0,
+      activeAgentCount: workerHealth?.activeAgentCount ?? 0,
     };
   }
 
