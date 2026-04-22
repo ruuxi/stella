@@ -142,6 +142,7 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
       setEditingIndex(null);
       dispatchStellaSendMessage({
         text,
+        uiVisibility: "hidden",
         triggerKind: "ask_question_response",
         triggerSource: "ask-question-bubble",
       });
