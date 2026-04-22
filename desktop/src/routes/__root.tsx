@@ -48,11 +48,14 @@ import {
   type StellaOpenSidebarChatDetail,
 } from "@/shared/lib/stella-orb-chat";
 import {
+  clearRequestSignInAfterOnboarding,
+  consumeRequestSignInAfterOnboarding,
   dispatchCloseDisplaySidebar,
   dispatchCloseSidebarChat,
   dispatchOpenDisplaySidebar,
   dispatchOpenSidebarChat,
 } from "@/shared/lib/stella-orb-chat";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import {
   dispatchStellaSendMessage,
   WORKSPACE_CREATION_TRIGGER_KIND,
@@ -160,6 +163,14 @@ function RootChrome() {
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
   const latestDisplayPayloadRef = useRef<DisplayPayload | null>(null);
 
+  const { hasConnectedAccount, isLoading: isAuthLoading } =
+    useAuthSessionState();
+
+  // Set when the user opted into Live Memory during onboarding without
+  // being signed in. We hold the request across the auth roundtrip so
+  // we can call `memory.promotePending()` immediately after sign-in.
+  const memorySignInPendingRef = useRef(false);
+
   const isOnChatRoute = Boolean(matchRoute({ to: "/chat" }));
 
   const setDialogSearch = useCallback(
@@ -185,6 +196,39 @@ function RootChrome() {
   const closeDialog = useCallback(() => setDialogSearch(undefined), [
     setDialogSearch,
   ]);
+
+  // One-shot consumer for "user opted into Live Memory but isn't signed
+  // in yet" (set during onboarding). On first render after onboarding,
+  // we open the auth dialog and remember the intent in a ref so the
+  // auth-completion effect below can call `memory.promotePending()`.
+  // We deliberately wait for the auth session to finish loading before
+  // deciding — otherwise we'd flash the dialog on every refresh.
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (!consumeRequestSignInAfterOnboarding()) return;
+    if (hasConnectedAccount) {
+      // Already signed in (e.g. user signed in mid-onboarding). Just
+      // promote the pending intent — no dialog needed.
+      void window.electronAPI?.memory?.promotePending().catch(() => {
+        // Best-effort; user can re-toggle from Settings.
+      });
+      return;
+    }
+    memorySignInPendingRef.current = true;
+    showAuthDialog();
+  }, [hasConnectedAccount, isAuthLoading, showAuthDialog]);
+
+  // Once the user successfully signs in (after we opened the dialog for
+  // memory), promote Live Memory's pending intent into a real enable.
+  useEffect(() => {
+    if (!hasConnectedAccount) return;
+    if (!memorySignInPendingRef.current) return;
+    memorySignInPendingRef.current = false;
+    clearRequestSignInAfterOnboarding();
+    void window.electronAPI?.memory?.promotePending().catch(() => {
+      // Best-effort; user can re-toggle from Settings.
+    });
+  }, [hasConnectedAccount]);
 
   const handlePendingAskStellaHandled = useCallback((requestId: number) => {
     setPendingAskStellaRequest((current) =>
