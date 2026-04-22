@@ -7,6 +7,7 @@ import { registerChronicleHandlers } from "../ipc/chronicle-handlers.js";
 import { registerDisplayHandlers } from "../ipc/display-handlers.js";
 import { registerHomeHandlers } from "../ipc/home-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
+import { registerMemoryHandlers } from "../ipc/memory-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerOfficePreviewHandlers } from "../ipc/office-preview-handlers.js";
@@ -56,6 +57,16 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerHomeHandlers({
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerMemoryHandlers({
+    getStellaRoot: lifecycle.getStellaRoot,
+    getController: () => state.chronicleController,
+    setController: (controller) => {
+      state.chronicleController = controller;
+    },
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
