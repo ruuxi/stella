@@ -295,25 +295,36 @@ export const setMaxAgentConcurrency = mutation({
 
 const MODEL_CONFIG_PREFIX = "model_config:";
 
+/** Cap on the number of model override prefs returned in a single query. */
+const MAX_MODEL_OVERRIDES = 200;
+
 export const getModelOverrides = query({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
+    // Use a key range scan over the `by_ownerId_and_key` index so we touch
+    // only `model_config:*` rows instead of overfetching the user's full
+    // preference set and JS-filtering. `\uffff` is the highest unicode code
+    // point so `[prefix, prefix + "\uffff")` covers every key with that
+    // prefix.
     const records = await ctx.db
       .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId))
-      .take(500);
+      .withIndex("by_ownerId_and_key", (q) =>
+        q
+          .eq("ownerId", ownerId)
+          .gte("key", MODEL_CONFIG_PREFIX)
+          .lt("key", `${MODEL_CONFIG_PREFIX}\uffff`),
+      )
+      .take(MAX_MODEL_OVERRIDES);
 
     const overrides: Record<string, string> = {};
     for (const record of records) {
-      if (record.key.startsWith(MODEL_CONFIG_PREFIX)) {
-        const agentType = record.key.slice(MODEL_CONFIG_PREFIX.length);
-        if (!hasModelConfig(agentType)) {
-          continue;
-        }
-        overrides[agentType] = record.value;
+      const agentType = record.key.slice(MODEL_CONFIG_PREFIX.length);
+      if (!hasModelConfig(agentType)) {
+        continue;
       }
+      overrides[agentType] = record.value;
     }
     return JSON.stringify(overrides);
   },

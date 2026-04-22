@@ -132,6 +132,14 @@ export const socialSchema = {
   })
     .index("by_roomId", ["roomId"])
     .index("by_hostOwnerId_and_status", ["hostOwnerId", "status"])
+    // Lets `listPendingTurnsForHostDevice` look sessions up by the exact
+    // host owner + device + status without a JS-side `.filter` over a
+    // collected result set.
+    .index("by_hostOwnerId_and_hostDeviceId_and_status", [
+      "hostOwnerId",
+      "hostDeviceId",
+      "status",
+    ])
     .index("by_status_and_updatedAt", ["status", "updatedAt"]),
 
   stella_session_members: defineTable({

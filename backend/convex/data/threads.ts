@@ -205,13 +205,15 @@ export const createThread = internalMutation({
       });
     }
 
-    // Check active thread count and evict if at limit
+    // Check active thread count and evict if at limit. We bound the read at
+    // `MAX_THREADS_PER_CONVERSATION + 1` because that's all we need to detect
+    // the over-limit condition.
     const activeThreads = await ctx.db
       .query("threads")
       .withIndex("by_conversationId_and_status_and_lastUsedAt", (q) =>
         q.eq("conversationId", args.conversationId).eq("status", "active"),
       )
-      .collect();
+      .take(MAX_THREADS_PER_CONVERSATION + 1);
 
     let evictedThreadName: string | null = null;
     if (activeThreads.length >= MAX_THREADS_PER_CONVERSATION) {
@@ -264,12 +266,16 @@ export const getThreadByName = internalQuery({
       return null;
     }
 
+    // Cap on duplicate-name matches we'll consider. Names are scoped to a
+    // conversation and rarely duplicated; a tight bound keeps this O(1) even
+    // if a user accidentally creates many same-named threads.
+    const MAX_DUPLICATE_THREAD_NAMES = 32;
     const matches = await ctx.db
       .query("threads")
       .withIndex("by_conversationId_and_name", (q) =>
         q.eq("conversationId", args.conversationId).eq("name", args.name),
       )
-      .collect();
+      .take(MAX_DUPLICATE_THREAD_NAMES);
 
     if (matches.length === 0) {
       return null;
@@ -473,32 +479,37 @@ export const saveThreadMessages = internalMutation({
 // deleteMessagesBefore
 // ---------------------------------------------------------------------------
 
+/** Maximum messages to delete in a single transaction batch. */
+const DELETE_MESSAGES_BATCH_SIZE = 500;
+
 export const deleteMessagesBefore = internalMutation({
   args: {
     ownerId: v.string(),
     threadId: v.id("threads"),
     beforeOrdinal: v.number(),
   },
+  returns: v.object({
+    deleted: v.number(),
+    hasMore: v.boolean(),
+  }),
   handler: async (ctx, args) => {
     const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
-    if (!thread) return 0;
+    if (!thread) return { deleted: 0, hasMore: false };
 
+    // Bounded batch so a long thread doesn't blow the mutation transaction
+    // limit. Callers should re-invoke until `hasMore` is false.
     const messages = await ctx.db
       .query("thread_messages")
       .withIndex("by_threadId_and_ordinal", (q) =>
         q.eq("threadId", args.threadId).lt("ordinal", args.beforeOrdinal),
       )
-      .collect();
+      .take(DELETE_MESSAGES_BATCH_SIZE);
 
-    let deleted = 0;
-    const deletePromises = [];
-    for (const msg of messages) {
-      deletePromises.push(ctx.db.delete(msg._id));
-      deleted++;
-    }
-    await Promise.all(deletePromises);
-
-    return deleted;
+    await Promise.all(messages.map((msg) => ctx.db.delete(msg._id)));
+    return {
+      deleted: messages.length,
+      hasMore: messages.length === DELETE_MESSAGES_BATCH_SIZE,
+    };
   },
 });
 
@@ -794,7 +805,13 @@ export const sweepThreadLifecycle = internalMutation({
 // Public APIs for desktop-driven thread compaction
 // ---------------------------------------------------------------------------
 
-/** Load thread messages for local compaction — desktop calls this to get the data. */
+/**
+ * Load thread messages for local compaction — desktop calls this to get the
+ * data. Bounded by `MAX_THREAD_MESSAGES_PER_QUERY` so a runaway thread can't
+ * blow the response-size or transaction read limits; the `truncated` flag
+ * tells the caller it should compact and retry instead of relying on a
+ * complete view.
+ */
 export const loadThreadMessagesForRuntime = query({
   args: {
     threadId: v.id("threads"),
@@ -818,6 +835,7 @@ export const loadThreadMessagesForRuntime = query({
           tokenEstimate: v.optional(v.number()),
         }),
       ),
+      truncated: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
@@ -832,7 +850,7 @@ export const loadThreadMessagesForRuntime = query({
       .withIndex("by_threadId_and_ordinal", (q) =>
         q.eq("threadId", args.threadId),
       )
-      .collect();
+      .take(MAX_THREAD_MESSAGES_PER_QUERY);
 
     return {
       thread: {
@@ -849,6 +867,7 @@ export const loadThreadMessagesForRuntime = query({
         ordinal: m.ordinal,
         tokenEstimate: m.tokenEstimate,
       })),
+      truncated: messages.length === MAX_THREAD_MESSAGES_PER_QUERY,
     };
   },
 });

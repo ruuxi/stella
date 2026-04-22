@@ -48,4 +48,11 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "purge expired slack oauth states",
+  { hours: 1 },
+  internal.data.integrations.purgeExpiredSlackOAuthStates,
+  { batchSize: 200 },
+);
+
 export default crons;

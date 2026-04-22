@@ -607,14 +607,18 @@ export const listPendingTurnsForHostDevice = query({
   returns: v.array(hostTurnSummaryValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
-    const sessions = await ctx.db
+    const deviceId = args.deviceId.trim();
+    // Indexed lookup on the exact host owner + device + status — replaces a
+    // previous `.collect()` + JS filter over the owner's whole session list.
+    const matches = await ctx.db
       .query("stella_sessions")
-      .withIndex("by_hostOwnerId_and_status", (q) =>
-        q.eq("hostOwnerId", ownerId).eq("status", "active"),
+      .withIndex("by_hostOwnerId_and_hostDeviceId_and_status", (q) =>
+        q
+          .eq("hostOwnerId", ownerId)
+          .eq("hostDeviceId", deviceId)
+          .eq("status", "active"),
       )
-      .collect();
-
-    const matches = sessions.filter((session) => session.hostDeviceId === args.deviceId.trim());
+      .take(MAX_SESSIONS_PER_ROOM_COLLECT);
     const summaries = await Promise.all(
       matches.map(async (session) => {
         const room = await ctx.db.get(session.roomId);
@@ -636,7 +640,7 @@ export const listPendingTurnsForHostDevice = query({
             .take(MAX_SESSION_TURNS_COLLECT),
         ]);
         const resumableTurns = claimedTurns.filter(
-          (turn) => turn.claimedByDeviceId === args.deviceId.trim(),
+          (turn) => turn.claimedByDeviceId === deviceId,
         );
         return [...queuedTurns, ...resumableTurns].map((turn) => ({
           session,

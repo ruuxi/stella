@@ -79,4 +79,23 @@ export const integrationsSchema = {
   })
     .index("by_teamId", ["teamId"])
     .index("by_botTokenKeyVersion", ["botTokenKeyVersion"]),
+
+  /**
+   * Short-lived Slack OAuth state nonces. One row per outstanding `state`
+   * value created by `createSlackInstallUrl`; consumed (or expired) when the
+   * OAuth callback runs through `consumeSlackOAuthState`. `stateHash` is
+   * `sha256(state)` (the `state` value itself carries 192 bits of entropy so
+   * a plain hash is sufficient). Indexed by `stateHash` for O(1) lookup
+   * instead of the previous global scan over `user_preferences`.
+   */
+  slack_oauth_states: defineTable({
+    ownerId: v.string(),
+    stateHash: v.string(),
+    expiresAt: v.number(),
+    usedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_stateHash", ["stateHash"])
+    .index("by_ownerId_and_expiresAt", ["ownerId", "expiresAt"])
+    .index("by_expiresAt", ["expiresAt"]),
 };

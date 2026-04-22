@@ -103,10 +103,25 @@ export const _deleteConversationBatch = internalMutation({
       }
     }
 
-    // When all linked data is gone, delete the conversation itself
+    // When all linked data is gone, delete the conversation itself and
+    // decrement the owner's denormalized conversation counter so quota
+    // checks stay accurate after `resetAllUserData`.
     if (events.length === 0 && threads.length === 0) {
       const conv = await ctx.db.get(conversationId);
-      if (conv) await ctx.db.delete(conversationId);
+      if (conv) {
+        await ctx.db.delete(conversationId);
+        const counter = await ctx.db
+          .query("user_counters")
+          .withIndex("by_ownerId", (q) => q.eq("ownerId", conv.ownerId))
+          .unique();
+        if (counter) {
+          const next = Math.max(0, (counter.conversationCount ?? 0) - 1);
+          await ctx.db.patch(counter._id, {
+            conversationCount: next,
+            updatedAt: Date.now(),
+          });
+        }
+      }
       return false;
     }
 
@@ -162,6 +177,16 @@ export const _deleteOwnerBatch = internalMutation({
     await deleteBatch(
       await ctx.db.query("billing_profiles")
         .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+        .take(BATCH),
+    );
+    await deleteBatch(
+      await ctx.db.query("user_counters")
+        .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+        .take(BATCH),
+    );
+    await deleteBatch(
+      await ctx.db.query("slack_oauth_states")
+        .withIndex("by_ownerId_and_expiresAt", (q) => q.eq("ownerId", ownerId))
         .take(BATCH),
     );
 

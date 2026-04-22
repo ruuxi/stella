@@ -46,9 +46,13 @@ export const upsertPublicIntegration = internalMutation({
   },
 });
 
-const SLACK_OAUTH_STATE_KEY = "slack_oauth_state";
 const SLACK_OAUTH_SCOPE = "chat:write,im:history,im:read,im:write";
 const SLACK_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+/**
+ * On every state creation, opportunistically clean up at most this many of
+ * the caller's own expired states. Bounded so creation latency stays flat.
+ */
+const SLACK_OAUTH_EXPIRED_CLEANUP_BATCH = 16;
 
 const generateSecureState = (bytesLength = 24) => {
   const bytes = new Uint8Array(bytesLength);
@@ -61,33 +65,6 @@ const hashSha256Hex = async (value: string): Promise<string> => {
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-};
-
-const hashSlackOAuthState = async (state: string, salt: string) =>
-  hashSha256Hex(`${salt}:${state}`);
-
-const parseSlackState = (
-  value: string,
-): {
-  stateHash?: string;
-  stateSalt?: string;
-  expiresAt?: number;
-  usedAt?: number;
-  createdAt?: number;
-} | null => {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object") return null;
-    return parsed as {
-      stateHash?: string;
-      stateSalt?: string;
-      expiresAt?: number;
-      usedAt?: number;
-      createdAt?: number;
-    };
-  } catch {
-    return null;
-  }
 };
 
 export const createSlackInstallUrl = mutation({
@@ -104,36 +81,28 @@ export const createSlackInstallUrl = mutation({
 
     const now = Date.now();
     const expiresAt = now + SLACK_OAUTH_STATE_TTL_MS;
+    // 24 bytes (192 bits) of entropy — sufficient strength that we can store
+    // sha256(state) directly without an additional per-row salt.
     const state = generateSecureState();
-    const stateSalt = generateSecureState(16);
-    const stateHash = await hashSlackOAuthState(state, stateSalt);
-    const value = JSON.stringify({
+    const stateHash = await hashSha256Hex(state);
+
+    // Best-effort cleanup of this owner's expired state rows so the table
+    // doesn't accumulate dead nonces. Bounded; any leftovers get caught by
+    // the next call or the periodic `purgeExpiredSlackOAuthStates` mutation.
+    const expiredOwnRows = await ctx.db
+      .query("slack_oauth_states")
+      .withIndex("by_ownerId_and_expiresAt", (q) =>
+        q.eq("ownerId", ownerId).lt("expiresAt", now),
+      )
+      .take(SLACK_OAUTH_EXPIRED_CLEANUP_BATCH);
+    await Promise.all(expiredOwnRows.map((row) => ctx.db.delete(row._id)));
+
+    await ctx.db.insert("slack_oauth_states", {
+      ownerId,
       stateHash,
-      stateSalt,
       expiresAt,
       createdAt: now,
     });
-
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) =>
-        q.eq("ownerId", ownerId).eq("key", SLACK_OAUTH_STATE_KEY),
-      )
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        value,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId,
-        key: SLACK_OAUTH_STATE_KEY,
-        value,
-        updatedAt: now,
-      });
-    }
 
     const redirectUri = `${convexSiteUrl}/api/slack/oauth_callback`;
     const url =
@@ -151,49 +120,41 @@ export const consumeSlackOAuthState = internalMutation({
     state: v.string(),
   },
   handler: async (ctx, args) => {
-    const prefs = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_key", (q) => q.eq("key", SLACK_OAUTH_STATE_KEY))
-      .take(500);
-
     const now = Date.now();
-    for (const pref of prefs) {
-      const parsed = parseSlackState(pref.value);
-      if (
-        !parsed ||
-        !parsed.stateHash ||
-        !parsed.stateSalt
-      ) {
-        continue;
-      }
+    const stateHash = await hashSha256Hex(args.state);
+    const candidate = await ctx.db
+      .query("slack_oauth_states")
+      .withIndex("by_stateHash", (q) => q.eq("stateHash", stateHash))
+      .unique();
 
-      const candidateHash = await hashSlackOAuthState(args.state, parsed.stateSalt);
-      if (candidateHash !== parsed.stateHash) {
-        continue;
-      }
+    if (!candidate) return null;
+    if (candidate.usedAt !== undefined) return null;
+    if (candidate.expiresAt <= now) return null;
 
-      if (typeof parsed.usedAt === "number") {
-        return null;
-      }
+    await ctx.db.patch(candidate._id, { usedAt: now });
+    return { ownerId: candidate.ownerId };
+  },
+});
 
-      if (typeof parsed.expiresAt !== "number" || parsed.expiresAt <= now) {
-        return null;
-      }
-
-      await ctx.db.patch(pref._id, {
-        value: JSON.stringify({
-          stateHash: parsed.stateHash,
-          stateSalt: parsed.stateSalt,
-          expiresAt: parsed.expiresAt,
-          createdAt: parsed.createdAt,
-          usedAt: now,
-        }),
-        updatedAt: now,
-      });
-      return { ownerId: pref.ownerId };
-    }
-
-    return null;
+/**
+ * Periodic cleanup for expired Slack OAuth state nonces. Returns
+ * `hasMore: true` while there are more rows to delete so the caller can
+ * re-schedule itself to stay within mutation transaction limits.
+ */
+export const purgeExpiredSlackOAuthStates = internalMutation({
+  args: {
+    batchSize: v.optional(v.number()),
+  },
+  returns: v.object({ deleted: v.number(), hasMore: v.boolean() }),
+  handler: async (ctx, args) => {
+    const batchSize = Math.min(Math.max(Math.floor(args.batchSize ?? 200), 1), 1000);
+    const now = Date.now();
+    const expired = await ctx.db
+      .query("slack_oauth_states")
+      .withIndex("by_expiresAt", (q) => q.lt("expiresAt", now))
+      .take(batchSize);
+    await Promise.all(expired.map((row) => ctx.db.delete(row._id)));
+    return { deleted: expired.length, hasMore: expired.length === batchSize };
   },
 });
 

@@ -54,6 +54,14 @@ export const conversationsSchema = {
     activeThreadId: v.optional(v.id("threads")),
     activeTargetDeviceId: v.optional(v.string()),
     pendingDeviceSelection: v.optional(pendingDeviceSelectionValidator),
+    /**
+     * Denormalized count of `events` rows for this conversation. Maintained by
+     * `appendEventCore` and the reset flow so callers can read counts in O(1)
+     * without paginating the events table.
+     * Optional for back-compat with rows created before this field existed —
+     * treat `undefined` as "unknown / not yet backfilled".
+     */
+    eventCount: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

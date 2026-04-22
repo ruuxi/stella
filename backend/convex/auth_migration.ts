@@ -32,6 +32,8 @@ const OWNER_TABLES: Array<{
   { table: "transient_cleanup_failures", index: "by_ownerId_and_createdAt" },
   { table: "agents", index: "by_ownerId_and_updatedAt" },
   { table: "media_jobs", index: "by_ownerId_and_createdAt" },
+  { table: "media_job_logs", index: "by_ownerId_and_jobId" },
+  { table: "user_counters", index: "by_ownerId" },
 ];
 
 /**
@@ -67,6 +69,9 @@ export const migrateTableBatch = internalMutation({
   },
 });
 
+/** Bound on how many duplicate-default conversations we'll consider. */
+const DEDUPLICATE_DEFAULT_BATCH = 200;
+
 /**
  * Deduplicate default conversations after migration.
  * If the target user already has a default conversation, un-default the
@@ -82,11 +87,10 @@ export const deduplicateDefaultConversation = internalMutation({
       .withIndex("by_ownerId_and_isDefault", (q) =>
         q.eq("ownerId", args.toOwnerId).eq("isDefault", true),
       )
-      .collect();
+      .take(DEDUPLICATE_DEFAULT_BATCH);
 
     if (defaults.length <= 1) return null;
 
-    // Keep the oldest default, un-default the rest
     defaults.sort((a, b) => a.createdAt - b.createdAt);
     const promises = [];
     for (let i = 1; i < defaults.length; i++) {
@@ -94,6 +98,37 @@ export const deduplicateDefaultConversation = internalMutation({
     }
     await Promise.all(promises);
 
+    return null;
+  },
+});
+
+/**
+ * After ownership migration, both the source and destination owner may have
+ * a `user_counters` row. Collapse them by summing the conversation counts
+ * into the oldest row and deleting the duplicates so future quota lookups
+ * find a single row via `unique()`.
+ */
+export const deduplicateUserCounters = internalMutation({
+  args: { toOwnerId: v.string() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("user_counters")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.toOwnerId))
+      .take(64);
+
+    if (rows.length <= 1) return null;
+
+    rows.sort((a, b) => a._creationTime - b._creationTime);
+    const [primary, ...duplicates] = rows;
+    const totalCount = rows.reduce(
+      (sum, row) => sum + (row.conversationCount ?? 0),
+      0,
+    );
+    await ctx.db.patch(primary._id, {
+      conversationCount: totalCount,
+      updatedAt: Date.now(),
+    });
+    await Promise.all(duplicates.map((row) => ctx.db.delete(row._id)));
     return null;
   },
 });
@@ -111,10 +146,17 @@ export const migrateOwnership = internalAction({
   handler: async (ctx, args) => {
     if (args.fromOwnerId === args.toOwnerId) return null;
 
-    await ctx.runMutation(internal.auth_migration.migrateDevicesForAccountLink, {
-      fromOwnerId: args.fromOwnerId,
-      toOwnerId: args.toOwnerId,
-    });
+    let deviceMigrationHasMore = true;
+    while (deviceMigrationHasMore) {
+      const result: { hasMore: boolean } = await ctx.runMutation(
+        internal.auth_migration.migrateDevicesForAccountLink,
+        {
+          fromOwnerId: args.fromOwnerId,
+          toOwnerId: args.toOwnerId,
+        },
+      );
+      deviceMigrationHasMore = result.hasMore;
+    }
 
     for (const { table, index } of OWNER_TABLES) {
       let hasMore = true;
@@ -143,8 +185,12 @@ export const migrateOwnership = internalAction({
       );
     }
 
-    // Deduplicate default conversations
+    // Deduplicate default conversations and per-owner counters that may now
+    // have collided with the destination owner's pre-existing rows.
     await ctx.runMutation(internal.auth_migration.deduplicateDefaultConversation, {
+      toOwnerId: args.toOwnerId,
+    });
+    await ctx.runMutation(internal.auth_migration.deduplicateUserCounters, {
       toOwnerId: args.toOwnerId,
     });
 
@@ -156,57 +202,71 @@ export const migrateOwnership = internalAction({
 });
 
 /**
- * Atomically migrate `devices` and `channel_connections` when linking
- * anonymous → real account.  Both tables must move in the same transaction
- * so the pipeline never sees a connection pointing to the old ownerId while
- * devices have already moved (or vice-versa).
+ * Migrate devices, device_presence and channel_connections rows for an
+ * account-link in bounded batches. Each invocation processes at most
+ * `BATCH_SIZE` rows per table and returns `hasMore` so the caller
+ * (`migrateOwnership`) can re-invoke until all three tables are drained,
+ * staying within Convex mutation transaction limits even for owners with
+ * many devices/presence rows/connections.
+ *
+ * Migration order is preserved across batches: presence migrates after
+ * devices and connections after presence, so a partial migration never
+ * leaves the system with a connection that points to the old owner while
+ * devices have already moved.
  */
 export const migrateDevicesForAccountLink = internalMutation({
   args: {
     fromOwnerId: v.string(),
     toOwnerId: v.string(),
   },
+  returns: v.object({ hasMore: v.boolean() }),
   handler: async (ctx, args) => {
     // --- devices (stable profile rows) ---
     const deviceRows = await ctx.db
       .query("devices")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.fromOwnerId))
-      .collect();
+      .take(BATCH_SIZE);
 
-    for (const row of deviceRows) {
-      const existing = await ctx.db
-        .query("devices")
-        .withIndex("by_ownerId_and_deviceId", (q) =>
-          q.eq("ownerId", args.toOwnerId).eq("deviceId", row.deviceId),
-        )
-        .unique();
+    if (deviceRows.length > 0) {
+      for (const row of deviceRows) {
+        const existing = await ctx.db
+          .query("devices")
+          .withIndex("by_ownerId_and_deviceId", (q) =>
+            q.eq("ownerId", args.toOwnerId).eq("deviceId", row.deviceId),
+          )
+          .unique();
 
-      if (existing) {
-        await ctx.db.delete(row._id);
-      } else {
-        await ctx.db.patch(row._id, { ownerId: args.toOwnerId });
+        if (existing) {
+          await ctx.db.delete(row._id);
+        } else {
+          await ctx.db.patch(row._id, { ownerId: args.toOwnerId });
+        }
       }
+      return { hasMore: deviceRows.length === BATCH_SIZE };
     }
 
     // --- device_presence (high-churn) ---
     const presenceRows = await ctx.db
       .query("device_presence")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.fromOwnerId))
-      .collect();
+      .take(BATCH_SIZE);
 
-    for (const row of presenceRows) {
-      const existing = await ctx.db
-        .query("device_presence")
-        .withIndex("by_ownerId_and_deviceId", (q) =>
-          q.eq("ownerId", args.toOwnerId).eq("deviceId", row.deviceId),
-        )
-        .unique();
+    if (presenceRows.length > 0) {
+      for (const row of presenceRows) {
+        const existing = await ctx.db
+          .query("device_presence")
+          .withIndex("by_ownerId_and_deviceId", (q) =>
+            q.eq("ownerId", args.toOwnerId).eq("deviceId", row.deviceId),
+          )
+          .unique();
 
-      if (existing) {
-        await ctx.db.delete(row._id);
-      } else {
-        await ctx.db.patch(row._id, { ownerId: args.toOwnerId });
+        if (existing) {
+          await ctx.db.delete(row._id);
+        } else {
+          await ctx.db.patch(row._id, { ownerId: args.toOwnerId });
+        }
       }
+      return { hasMore: presenceRows.length === BATCH_SIZE };
     }
 
     // --- channel_connections ---
@@ -215,13 +275,12 @@ export const migrateDevicesForAccountLink = internalMutation({
       .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", args.fromOwnerId),
       )
-      .collect();
+      .take(BATCH_SIZE);
 
     for (const row of connectionRows) {
       await ctx.db.patch(row._id, { ownerId: args.toOwnerId });
     }
-
-    return null;
+    return { hasMore: connectionRows.length === BATCH_SIZE };
   },
 });
 
