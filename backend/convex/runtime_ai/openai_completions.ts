@@ -58,9 +58,33 @@ export function hasToolHistory(messages: Message[]): boolean {
 }
 
 export interface OpenAICompletionsOptions extends StreamOptions {
-  toolChoice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
+  toolChoice?:
+    | "auto"
+    | "none"
+    | "required"
+    | { type: "function"; function: { name: string } }
+    | { type: "function"; name: string };
   reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
   responseFormat?: unknown;
+}
+
+function normalizeChatToolChoice(
+  toolChoice: OpenAICompletionsOptions["toolChoice"],
+): "auto" | "none" | "required" | { type: "function"; function: { name: string } } | undefined {
+  if (!toolChoice || typeof toolChoice === "string") {
+    return toolChoice;
+  }
+  const record = toolChoice as Record<string, unknown>;
+  const nested = record.function as Record<string, unknown> | undefined;
+  const nestedName = nested && typeof nested.name === "string" ? nested.name : "";
+  if (nestedName.length > 0) {
+    return { type: "function", function: { name: nestedName } };
+  }
+  const directName = typeof record.name === "string" ? record.name : "";
+  if (directName.length > 0) {
+    return { type: "function", function: { name: directName } };
+  }
+  return undefined;
 }
 
 type ReasoningField = "reasoning_content" | "reasoning" | "reasoning_text";
@@ -418,8 +442,9 @@ export function buildOpenAICompletionsParams(
   } else if (hasToolHistory(context.messages)) {
     params.tools = [];
   }
-  if (options?.toolChoice) {
-    params.tool_choice = options.toolChoice;
+  const toolChoice = normalizeChatToolChoice(options?.toolChoice);
+  if (toolChoice) {
+    params.tool_choice = toolChoice;
   }
   if (options?.responseFormat !== undefined) {
     params.response_format = options.responseFormat;

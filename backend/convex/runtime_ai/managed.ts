@@ -42,7 +42,7 @@ type ManagedCompletionRequest = {
   temperature?: number;
   maxTokens?: number;
   reasoning?: ThinkingLevel;
-  toolChoice?: OpenAIChatToolChoice;
+  toolChoice?: ManagedToolChoice;
   responseFormat?: unknown;
   extraBody?: Record<string, unknown>;
   signal?: AbortSignal;
@@ -54,6 +54,10 @@ type OpenAIChatToolChoice =
   | "none"
   | "required"
   | { type: "function"; function: { name: string } };
+
+type ManagedToolChoice =
+  | OpenAIChatToolChoice
+  | { type: "function"; name: string };
 
 type ChatRequestMessage = {
   role?: unknown;
@@ -481,7 +485,7 @@ function buildSimpleOptions(args: {
   config: ManagedModelConfig;
   request?: ManagedCompletionRequest;
 }): SimpleStreamOptions & {
-  toolChoice?: OpenAIChatToolChoice;
+  toolChoice?: ManagedToolChoice;
   responseFormat?: unknown;
   extraBody?: Record<string, unknown>;
 } {
