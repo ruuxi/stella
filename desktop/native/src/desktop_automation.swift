@@ -171,7 +171,13 @@ struct ActionOptions {
     let coordinateFallback: Bool
     let allowHid: Bool
     let captureScreenshot: Bool
-    let noRaise: Bool
+    // Whether to bring the target app frontmost before dispatching this
+    // action. Default is false: stella-computer drives apps via Accessibility
+    // in the background and the user's active window must not be disturbed.
+    // Opt in with --raise (or STELLA_COMPUTER_RAISE=1) only when the action
+    // genuinely requires the app to be focused (e.g. global HID coordinate
+    // clicks). The legacy --no-raise flag is accepted as a no-op.
+    let raise: Bool
     let inlineScreenshot: Bool
     let showOverlay: Bool
 }
@@ -1649,12 +1655,17 @@ func resolveTarget(
         }
     }
 
-    if let frontmost = NSWorkspace.shared.frontmostApplication {
-        return try wrap(frontmost)
-    }
-
+    // No frontmost-app fallback. The whole point of stella-computer is to
+    // act on a specific app in the background without disturbing whatever
+    // the user is currently doing. Falling back to frontmost would routinely
+    // hijack the user's active window (and on this machine that's Stella
+    // itself, which is on the forbidden list anyway). Force the caller to
+    // name the target via --app, --bundle-id, or --pid.
     throw NSError(domain: "desktop_automation", code: 1, userInfo: [
-        NSLocalizedDescriptionKey: "No target app could be resolved."
+        NSLocalizedDescriptionKey:
+            "stella-computer requires a target app. Pass --app <name>, --bundle-id <id>, or --pid <pid>. "
+            + "Use 'stella-computer list-apps' to discover the target. The frontmost-app fallback was removed "
+            + "to keep stella-computer from interrupting the user's active window."
     ])
 }
 
@@ -4178,7 +4189,7 @@ func setValue(
     candidate: CandidateNode,
     text: String,
     target: AppTarget? = nil,
-    raise: Bool = true
+    raise: Bool = false
 ) -> (Bool, String?) {
     _ = setFocused(candidate.element)
 
@@ -4253,15 +4264,18 @@ func alwaysSimulateInput() -> Bool {
 func alwaysSimulateClick() -> Bool { alwaysSimulateInput() }
 
 // Toggle whether System Events should bring the target frontmost before
-// dispatching click/keystroke commands. Default: true (preserves old
-// behavior). Some flows want background automation; pass `--no-raise` or
-// set STELLA_COMPUTER_NO_RAISE=1.
+// dispatching click/keystroke commands. Default: false. stella-computer
+// drives apps via Accessibility in the background; raising would steal
+// focus from whatever the user is currently doing. Action commands flip
+// this on only when --raise (or STELLA_COMPUTER_RAISE=1) is passed
+// explicitly. The legacy --no-raise flag and STELLA_COMPUTER_NO_RAISE
+// env var are accepted as no-ops to keep older callers from breaking.
 func shouldRaiseTarget(_ argOverride: Bool? = nil) -> Bool {
-    if let argOverride { return !argOverride }
-    if envBool("STELLA_COMPUTER_NO_RAISE") {
-        return false
+    if let argOverride { return argOverride }
+    if envBool("STELLA_COMPUTER_RAISE") {
+        return true
     }
-    return true
+    return false
 }
 
 // Cached compiled NSAppleScript objects keyed by source. AppleScript
@@ -4381,7 +4395,7 @@ func runSystemEventsOnTarget(
     _ target: AppTarget,
     bodyLines: [String],
     arguments: [String] = [],
-    raise: Bool = true
+    raise: Bool = false
 ) -> Bool {
     var sourceLines: [String] = []
     let wantsArgs = !arguments.isEmpty
@@ -4424,7 +4438,7 @@ func simulateLeftClick(at point: CGPoint) -> Bool {
     return true
 }
 
-func postLeftClick(at point: CGPoint, target: AppTarget, raise: Bool = true) -> Bool {
+func postLeftClick(at point: CGPoint, target: AppTarget, raise: Bool = false) -> Bool {
     if !alwaysSimulateInput(),
        runSystemEventsOnTarget(
            target,
@@ -4744,7 +4758,7 @@ func chunkText(_ text: String, size: Int) -> [String] {
     return chunks
 }
 
-func postUnicodeText(_ text: String, target: AppTarget, raise: Bool = true) -> Bool {
+func postUnicodeText(_ text: String, target: AppTarget, raise: Bool = false) -> Bool {
     if !alwaysSimulateInput() {
         let chunks = chunkText(text, size: unicodeChunkSize)
         for chunk in chunks {
@@ -4806,7 +4820,7 @@ func simulateKeyChord(_ keySpec: String) -> Bool {
     return true
 }
 
-func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = true) -> Bool {
+func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = false) -> Bool {
     let rawParts = keySpec.split(separator: "+").map(String.init)
     guard let keyToken = rawParts.last else {
         return false
@@ -5173,12 +5187,15 @@ func actionOptions(from args: [String]) throws -> ActionOptions {
     // when chained-action latency matters more than visual feedback.
     let showOverlay = !hasFlag(args, key: "--no-overlay")
         && !envBool("STELLA_COMPUTER_NO_OVERLAY")
+    // Default is no-raise. Opt in via --raise or STELLA_COMPUTER_RAISE=1.
+    // --no-raise is accepted as a no-op for back-compat with older callers.
+    let raise = hasFlag(args, key: "--raise") || envBool("STELLA_COMPUTER_RAISE")
     return ActionOptions(
         statePath: statePath,
         coordinateFallback: hasFlag(args, key: "--coordinate-fallback"),
         allowHid: isHidAllowed(args),
         captureScreenshot: !hasFlag(args, key: "--no-screenshot"),
-        noRaise: hasFlag(args, key: "--no-raise") || envBool("STELLA_COMPUTER_NO_RAISE"),
+        raise: raise,
         inlineScreenshot: inlineScreenshot,
         showOverlay: showOverlay
     )
@@ -5330,7 +5347,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 candidate: resolved.candidate,
                 target: target,
                 coordinateFallback: options.coordinateFallback && options.allowHid,
-                raise: !options.noRaise
+                raise: options.raise
             )
         }
         guard clicked else {
@@ -5388,7 +5405,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 candidate: resolved.candidate,
                 text: text,
                 target: target,
-                raise: !options.noRaise
+                raise: options.raise
             )
         }
         guard filled else {
@@ -5631,7 +5648,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             cursorPoint: point,
             interactionKind: "click-point"
         ) {
-            postLeftClick(at: point, target: target, raise: !options.noRaise)
+            postLeftClick(at: point, target: target, raise: options.raise)
         }
         guard clicked else {
             throw failureWithScreenshot(
@@ -5880,7 +5897,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let target else {
             throw failure("type requires a valid target app context.")
         }
-        guard postUnicodeText(text, target: target, raise: !options.noRaise) else {
+        guard postUnicodeText(text, target: target, raise: options.raise) else {
             throw failureWithScreenshot(
                 "Failed to type text.",
                 statePath: options.statePath,
@@ -5925,7 +5942,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let target else {
             throw failure("press requires a valid target app context.")
         }
-        guard postKeyChord(keySpec, target: target, raise: !options.noRaise) else {
+        guard postKeyChord(keySpec, target: target, raise: options.raise) else {
             throw failureWithScreenshot(
                 "Failed to send key press.",
                 statePath: options.statePath,

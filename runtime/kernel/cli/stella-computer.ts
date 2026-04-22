@@ -177,24 +177,30 @@ const lockPollIntervalMs = 125;
 const automationDaemonStartupBudgetMs = 1_500;
 const automationDaemonRequestTimeoutMs = 15_000;
 
-const usage = `stella-computer - control macOS apps through Accessibility
+const usage = `stella-computer - control macOS apps through Accessibility, in the background
+
+Every command (except list-apps) requires an explicit target app via
+--app NAME, --bundle-id ID, or --pid PID. There is no frontmost-app
+fallback. Actions dispatch via Accessibility and never bring the target
+to the front, so the user can keep using their computer while Stella
+works.
 
 Usage:
   stella-computer list-apps
-  stella-computer [--session ID] snapshot [--app NAME|--bundle-id ID|--pid PID] [--all-windows] [--screenshot [PATH]|--no-screenshot] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
-  stella-computer [--session ID] get-state [--app NAME|--bundle-id ID|--pid PID] [--all-windows] [--screenshot [PATH]|--no-screenshot] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
-  stella-computer [--session ID] click <element> [--coordinate-fallback] [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise] [--no-overlay]
-  stella-computer [--session ID] fill <element> <text> [--no-screenshot] [--no-inline-screenshot] [--no-raise] [--no-overlay]
+  stella-computer [--session ID] snapshot (--app NAME|--bundle-id ID|--pid PID) [--all-windows] [--screenshot [PATH]|--no-screenshot] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
+  stella-computer [--session ID] get-state (--app NAME|--bundle-id ID|--pid PID) [--all-windows] [--screenshot [PATH]|--no-screenshot] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
+  stella-computer [--session ID] click <element> [--coordinate-fallback] [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] fill <element> <text> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] focus <element> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] secondary-action <element> <action> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] scroll <element> <up|down|left|right> [--pages N] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
-  stella-computer [--session ID] drag <from_x> <from_y> <to_x> <to_y> [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] drag <from_x> <from_y> <to_x> <to_y> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] drag-element <source-element> (<dest-element> | <to_x> <to_y> | --to-ref REF | --to-x N --to-y N) [--type file|url|text] [--operation copy|link|move|every] [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
-  stella-computer [--session ID] click-point <x> <y> [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise]
-  stella-computer [--session ID] click-screenshot <x_px> <y_px> [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise]
-  stella-computer [--session ID] drag-screenshot <from_x_px> <from_y_px> <to_x_px> <to_y_px> [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
-  stella-computer [--session ID] type <text> [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise]
-  stella-computer [--session ID] press <key> [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise]
+  stella-computer [--session ID] click-point <x> <y> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] click-screenshot <x_px> <y_px> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] drag-screenshot <from_x_px> <from_y_px> <to_x_px> <to_y_px> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] type <text> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] press <key> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
 
 Notes:
   - snapshot writes element state to ${defaultSessionStateExample}
@@ -211,7 +217,7 @@ Notes:
   - HID fallbacks require --allow-hid (or STELLA_COMPUTER_ALLOW_HID=1) because they can interfere with active user input
   - element actions accept the numbered IDs shown in snapshot output (and still accept legacy @d refs); macOS Accessibility is tried first so Stella avoids taking over the physical cursor
   - click-screenshot / drag-screenshot interpret coordinates in attached screenshot pixels, then map them back into screen space using the saved window frame
-  - --no-raise (or STELLA_COMPUTER_NO_RAISE=1) avoids bringing the target app frontmost during click/type/press
+  - --raise (or STELLA_COMPUTER_RAISE=1) is OFF by default; only opt in for HID coordinate clicks/keystrokes that genuinely need the target frontmost. The legacy --no-raise / STELLA_COMPUTER_NO_RAISE flags are accepted as no-ops.
   - actions keep a session overlay alive between targets so the software cursor visibly moves from action to action; pass --no-overlay (or STELLA_COMPUTER_NO_OVERLAY=1) to skip it
   - STELLA_COMPUTER_ALWAYS_SIMULATE_INPUT=1 forces CGEvent synthesis for click/type/press (CLICK alias kept for back-compat)
   - STELLA_COMPUTER_APP_INSTRUCTIONS_DIR=<dir> adds per-bundle markdown manuals (e.g. com.example.app.md)
