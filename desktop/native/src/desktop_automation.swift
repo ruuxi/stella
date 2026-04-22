@@ -3663,8 +3663,11 @@ func captureScreenshot(
 // into a Screenshot value. Failure here is non-fatal: callers fall back to
 // returning a Screenshot with only the path populated. `nil` is returned
 // only if the file genuinely cannot be opened.
+//
+// Apply the same SCREENSHOT_MAX_LONG_EDGE cap the SCK path uses so the
+// fallback shell-out doesn't ship a 5 MB retina PNG into the prompt.
 func screenshotFromOnDiskPNG(path: String, includeBase64: Bool) -> Screenshot? {
-    guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+    guard let originalData = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
         return Screenshot(
             mimeType: "image/png",
             data: "",
@@ -3674,20 +3677,33 @@ func screenshotFromOnDiskPNG(path: String, includeBase64: Bool) -> Screenshot? {
             byteCount: 0
         )
     }
+
+    var pngData = originalData
     var widthPx: Int? = nil
     var heightPx: Int? = nil
-    if let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
-       let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any] {
+    if let imageSource = CGImageSourceCreateWithData(originalData as CFData, nil),
+       let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) {
+        let resized = resizeCGImageIfLargerThan(cgImage, maxLongEdge: SCREENSHOT_MAX_LONG_EDGE)
+        if resized.width != cgImage.width || resized.height != cgImage.height {
+            if let encoded = encodePNGViaImageIO(resized) {
+                pngData = encoded
+                try? encoded.write(to: URL(fileURLWithPath: path), options: .atomic)
+            }
+        }
+        widthPx = resized.width
+        heightPx = resized.height
+    } else if let properties = CGImageSourceCreateWithData(originalData as CFData, nil)
+        .flatMap({ CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any] }) {
         widthPx = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue
         heightPx = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue
     }
     return Screenshot(
         mimeType: "image/png",
-        data: includeBase64 ? data.base64EncodedString() : "",
+        data: includeBase64 ? pngData.base64EncodedString() : "",
         path: path,
         widthPx: widthPx,
         heightPx: heightPx,
-        byteCount: data.count
+        byteCount: pngData.count
     )
 }
 
@@ -3768,28 +3784,67 @@ private func captureViaScreenCaptureKit(
         return (nil, "captureImage returned no image")
     }
 
-    // Encode to PNG via CGImageDestination (ImageIO) — same encoder Codex
-    // Computer Use's SkyComputerUseService uses. No downscaling, no format
-    // conversion: the screenshot ships at the native pixel scale that
-    // ScreenCaptureKit produces.
-    guard let png = encodePNGViaImageIO(cgImage) else {
+    // Cap screenshots at SCREENSHOT_MAX_LONG_EDGE on the longer side before
+    // PNG-encoding. ScreenCaptureKit hands us native retina pixels — a
+    // 1700x1000-point window comes back as 3400x2000, which encodes to 2-5
+    // MB and overflows downstream prompt budgets on multi-step tool runs.
+    // Codex offloads resize to OpenAI's CUA backend; we ship PNGs straight
+    // to the model so we resize in-process. 1024 is the same long-edge cap
+    // OpenAI's computer-use API uses internally.
+    let resized = resizeCGImageIfLargerThan(cgImage, maxLongEdge: SCREENSHOT_MAX_LONG_EDGE)
+    guard let png = encodePNGViaImageIO(resized) else {
         return (nil, "PNG encoding failed")
     }
     do {
         try png.write(to: URL(fileURLWithPath: outputPath), options: .atomic)
-        trace("screenshot:sck wrote \(png.count) bytes to \(outputPath) (\(cgImage.width)x\(cgImage.height))")
+        trace("screenshot:sck wrote \(png.count) bytes to \(outputPath) (\(resized.width)x\(resized.height))")
         let screenshot = Screenshot(
             mimeType: "image/png",
             data: includeBase64 ? png.base64EncodedString() : "",
             path: outputPath,
-            widthPx: cgImage.width,
-            heightPx: cgImage.height,
+            widthPx: resized.width,
+            heightPx: resized.height,
             byteCount: png.count
         )
         return (screenshot, nil)
     } catch {
         return (nil, "PNG write failed: \(error.localizedDescription)")
     }
+}
+
+private let SCREENSHOT_MAX_LONG_EDGE: Int = {
+    if let raw = ProcessInfo.processInfo.environment["STELLA_COMPUTER_SCREENSHOT_MAX_LONG_EDGE"],
+       let parsed = Int(raw),
+       parsed > 0 {
+        return parsed
+    }
+    return 1024
+}()
+
+private func resizeCGImageIfLargerThan(_ image: CGImage, maxLongEdge: Int) -> CGImage {
+    let longEdge = max(image.width, image.height)
+    if longEdge <= maxLongEdge {
+        return image
+    }
+    let scale = CGFloat(maxLongEdge) / CGFloat(longEdge)
+    let newWidth = max(1, Int((CGFloat(image.width) * scale).rounded()))
+    let newHeight = max(1, Int((CGFloat(image.height) * scale).rounded()))
+    let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+    let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
+    guard let context = CGContext(
+        data: nil,
+        width: newWidth,
+        height: newHeight,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: colorSpace,
+        bitmapInfo: bitmapInfo
+    ) else {
+        return image
+    }
+    context.interpolationQuality = .high
+    context.draw(image, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
+    return context.makeImage() ?? image
 }
 
 func writeSnapshotState(_ document: SnapshotDocument, statePath: String) throws {
