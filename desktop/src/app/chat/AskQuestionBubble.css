@@ -9,6 +9,17 @@
   overflow: hidden;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   color: var(--text-base);
+  transition: opacity 220ms ease;
+}
+
+.ask-question-bubble[data-submitted="true"] {
+  opacity: 0.72;
+}
+
+.ask-question-bubble[data-submitted="true"] .ask-question-bubble__option,
+.ask-question-bubble[data-submitted="true"] .ask-question-bubble__nav,
+.ask-question-bubble[data-submitted="true"] .ask-question-bubble__button {
+  cursor: default;
 }
 
 .ask-question-bubble__header {
