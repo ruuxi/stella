@@ -545,14 +545,17 @@ export class WindowManager {
       this.miniShouldRestoreExternalApp =
         process.platform === 'darwin' && this.getFocusedShellWindow() === null
 
-      // Hide the full window first so showing the mini doesn't accidentally
-      // also surface a previously-hidden full shell (macOS app.show()
-      // unhides every Stella window, and the full window otherwise stays
-      // raised behind the mini).
+      // The mini and full shells are independent windows; if the full
+      // shell happens to be on screen we want to leave it alone and just
+      // raise the mini on top. The one wrinkle is macOS: `focusAndRaise`
+      // calls `app.show()` to wake the app, and that side-effect un-hides
+      // every owned window — so a deliberately-hidden full shell would
+      // re-appear behind the mini. Snapshot its visibility before raising
+      // the mini and tuck it back down only if it was hidden going in.
       const fullWindow = this.getFullWindow()
-      if (fullWindow && !fullWindow.isDestroyed() && fullWindow.isVisible()) {
-        this.hideWindow(fullWindow, { preserveExternalFocus: true })
-      }
+      const fullWasHiddenBeforeRaise = Boolean(
+        fullWindow && !fullWindow.isDestroyed() && !fullWindow.isVisible(),
+      )
 
       if (miniWindow.isMinimized()) {
         miniWindow.restore()
@@ -560,6 +563,15 @@ export class WindowManager {
       miniWindow.setBounds(targetBounds)
       this.focusAndRaise(miniWindow, 'mini')
       this.setLastActiveWindowMode('mini')
+
+      if (
+        fullWasHiddenBeforeRaise &&
+        fullWindow &&
+        !fullWindow.isDestroyed() &&
+        fullWindow.isVisible()
+      ) {
+        this.hideWindow(fullWindow, { preserveExternalFocus: true })
+      }
       return
     }
 

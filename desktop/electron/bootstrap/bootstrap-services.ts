@@ -143,6 +143,19 @@ export const createBootstrapServices = (options: {
         window.webContents.send("home:pinSuggestion", { chip });
       }
     },
+    // Double-tap Option (macOS) / Alt (Windows / Linux) toggles the mini
+    // window: open it from anywhere when hidden, dismiss it when it's
+    // already focused. Mirrors the "Open chat" behavior of the cmd+rc
+    // quick menu so both summon paths feel consistent.
+    onDoubleTapModifier: () => {
+      const wm = state.windowManager;
+      if (!wm) return;
+      if (wm.isCompactMode() && wm.isWindowFocused()) {
+        wm.minimizeWindow();
+      } else {
+        wm.showWindow("mini");
+      }
+    },
   });
 
   return {
