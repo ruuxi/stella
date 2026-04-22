@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
 import { createStateContext, handleTask } from "../../../../../runtime/kernel/tools/state.js";
+import { TASK_PAUSE_CANCEL_REASON } from "../../../../../runtime/kernel/tasks/local-task-manager.js";
 import type { TaskToolRequest } from "../../../../../runtime/kernel/tools/types.js";
 
 describe("state tools", () => {
@@ -96,6 +97,61 @@ describe("state tools", () => {
     expect(result).toEqual({
       error: "Only the orchestrator can create tasks.",
     });
+  });
+
+  it("forwards TaskPause to cancelTask with the pause sentinel reason", async () => {
+    const cancelCalls: Array<{ taskId: string; reason: string | undefined }> = [];
+    const ctx = createStateContext("/tmp", {
+      createTask: async () => ({ threadId: "thread-1" }),
+      getTask: async () => null,
+      cancelTask: async (taskId, reason) => {
+        cancelCalls.push({ taskId, reason });
+        return { canceled: true };
+      },
+    });
+
+    const result = await handleTask(
+      ctx,
+      { action: "cancel", thread_id: "thread-7", reason: "user changed their mind" },
+      {
+        conversationId: "conversation-1",
+        deviceId: "device-1",
+        requestId: "request-1",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+      },
+    );
+
+    expect(cancelCalls).toEqual([
+      { taskId: "thread-7", reason: TASK_PAUSE_CANCEL_REASON },
+    ]);
+    expect(result).toEqual({
+      result: {
+        thread_id: "thread-7",
+        status: "canceled",
+        canceled: true,
+      },
+    });
+  });
+
+  it("returns thread-not-found when TaskPause targets an unknown thread", async () => {
+    const ctx = createStateContext("/tmp", {
+      createTask: async () => ({ threadId: "thread-1" }),
+      getTask: async () => null,
+      cancelTask: async () => ({ canceled: false }),
+    });
+
+    const result = await handleTask(
+      ctx,
+      { action: "cancel", thread_id: "missing-thread" },
+      {
+        conversationId: "conversation-1",
+        deviceId: "device-1",
+        requestId: "request-1",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+      },
+    );
+
+    expect(result).toEqual({ error: "Thread not found: missing-thread" });
   });
 
   it("requires description and prompt for task creation", async () => {
