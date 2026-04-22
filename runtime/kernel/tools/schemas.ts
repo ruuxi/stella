@@ -176,39 +176,6 @@ const ScheduleJsonSchema = {
   required: ["prompt"],
 };
 
-const WebSearchJsonSchema = {
-  type: "object",
-  properties: {
-    query: {
-      type: "string",
-      description:
-        "Natural-language search query. Write descriptively, not as keywords.",
-    },
-    category: {
-      type: "string",
-      enum: ["company", "people", "research paper"],
-      description:
-        "Optional category filter. Omit for news, sports, and general facts.",
-    },
-  },
-  required: ["query"],
-};
-
-const WebFetchJsonSchema = {
-  type: "object",
-  properties: {
-    url: {
-      type: "string",
-      description: "URL to fetch. HTTP URLs are upgraded to HTTPS when possible.",
-    },
-    prompt: {
-      type: "string",
-      description: "Optional context describing what information to extract.",
-    },
-  },
-  required: ["url"],
-};
-
 const DisplayJsonSchema = {
   type: "object",
   properties: {
@@ -574,6 +541,153 @@ const MemoryJsonSchema = {
   required: ["action", "target"],
 };
 
+// Codex-style shell schema. Mirrors the surface from
+// https://github.com/openai/codex/blob/main/codex-rs/tools/src/local_tool.rs
+// so models that already know Codex's contract transfer 1:1.
+const ExecCommandJsonSchema = {
+  type: "object",
+  properties: {
+    cmd: {
+      type: "string",
+      description: "Shell command to execute.",
+    },
+    workdir: {
+      type: "string",
+      description:
+        "Optional working directory to run the command in; defaults to the turn cwd.",
+    },
+    shell: {
+      type: "string",
+      description:
+        "Shell binary to launch. Defaults to the user's default shell.",
+    },
+    tty: {
+      type: "boolean",
+      description:
+        "Whether to allocate a TTY for the command. Defaults to false (plain pipes); set to true to open a PTY.",
+    },
+    yield_time_ms: {
+      type: "number",
+      description:
+        "How long to wait (in milliseconds) for output before yielding control back to you with a session_id.",
+    },
+    max_output_tokens: {
+      type: "number",
+      description: "Maximum number of tokens to return. Excess output is truncated.",
+    },
+    login: {
+      type: "boolean",
+      description:
+        "Whether to run the shell with -l/-i semantics. Defaults to true.",
+    },
+  },
+  required: ["cmd"],
+};
+
+const WriteStdinJsonSchema = {
+  type: "object",
+  properties: {
+    session_id: {
+      type: "number",
+      description: "Identifier of a still-running exec_command session.",
+    },
+    chars: {
+      type: "string",
+      description:
+        "Bytes to write to stdin. May be empty to poll for more output without sending input.",
+    },
+    yield_time_ms: {
+      type: "number",
+      description:
+        "How long to wait (in milliseconds) for output before yielding.",
+    },
+    max_output_tokens: {
+      type: "number",
+      description: "Maximum number of tokens to return. Excess output is truncated.",
+    },
+  },
+  required: ["session_id"],
+};
+
+// Codex's JSON variant of apply_patch. Single `input` string carrying a full
+// `*** Begin Patch` ... `*** End Patch` envelope. Works on every model the
+// freeform Lark grammar variant doesn't.
+const ApplyPatchJsonSchema = {
+  type: "object",
+  properties: {
+    input: {
+      type: "string",
+      description: "The entire contents of the apply_patch envelope.",
+    },
+  },
+  required: ["input"],
+};
+
+const ViewImageJsonSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "Local filesystem path to an image file.",
+    },
+  },
+  required: ["path"],
+};
+
+// Stella-specific. Codex offloads search and fetch to the OpenAI Responses
+// built-in tools; we route through Exa (search) + a local fetcher.
+const WebJsonSchema = {
+  type: "object",
+  description:
+    "Either search the live web (provide query) or fetch a known URL (provide url). Pass exactly one of query or url.",
+  properties: {
+    query: {
+      type: "string",
+      description:
+        "Web search query. Returns ranked results with title, URL, and snippet.",
+    },
+    url: {
+      type: "string",
+      description:
+        "URL to fetch. Returns the page rendered as readable text with HTML stripped.",
+    },
+    category: {
+      type: "string",
+      description:
+        "Optional Exa category hint when using query (e.g. 'news', 'company', 'research_paper').",
+    },
+    prompt: {
+      type: "string",
+      description:
+        "Optional follow-up prompt used by the local fetcher to extract just the relevant slice of a long page.",
+    },
+  },
+};
+
+// Stella-specific media gateway wrapper.
+const ImageGenJsonSchema = {
+  type: "object",
+  properties: {
+    prompt: {
+      type: "string",
+      description:
+        "Description of the image to generate. Be specific about subject, style, framing, color, lighting, and any text overlays.",
+    },
+    aspectRatio: {
+      type: "string",
+      description:
+        "Optional aspect ratio (e.g. '1:1', '16:9', '9:16', '4:3'). Defaults to the gateway's recommended ratio.",
+    },
+    referenceImagePaths: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional local image paths to use as references (style/character/scene continuity).",
+    },
+  },
+  required: ["prompt"],
+};
+
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
   AskUserQuestion:
     "Ask the user to choose between options via a UI prompt. Use for clarifications, decisions, or preferences.",
@@ -583,10 +697,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Request an API key or secret via a secure UI prompt. Returns a `secretId` handle that can be passed to other tools/integrations.",
   Schedule:
     "Handle local scheduling requests in plain language. Delegates to the schedule specialist and returns a short summary.",
-  WebSearch:
-    "Search the web for current information. Best for facts that change over time, recent news, and current documentation.",
-  WebFetch:
-    "Fetch a URL and return readable text content with HTML stripped.",
+  web:
+    "Search the live web (provide query) or fetch a known URL (provide url). Pass exactly one of query or url. Use this for facts that change over time, recent news, current documentation, or any specific page you need to read.",
   Display:
     "Render HTML or SVG on the canvas panel. Call DisplayGuidelines before the first Display call.",
   DisplayGuidelines:
@@ -605,6 +717,16 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Background memory consolidator IO. action=\"list\" returns unprocessed thread_summaries + pending memories_extensions paths; action=\"markProcessed\" advances the Dream watermark data.",
   StrReplace:
     "Surgically replace exact text inside an existing file. old_string must uniquely identify the target unless replace_all is true.",
+  exec_command:
+    "Run a shell command in a PTY. Returns immediate output, or a session_id if the process is still running so you can poll/interact via write_stdin. Required: cmd. Stella CLIs (stella-browser, stella-office, stella-ui, stella-computer) are auto-injected into PATH.",
+  write_stdin:
+    "Continue an existing exec_command session: write characters to its stdin and read recent output. Pass empty chars to poll without sending input. Required: session_id.",
+  apply_patch:
+    "Edit files via a *** Begin Patch / *** End Patch envelope. Supports Add File, Update File (with optional Move to), Delete File. Each Update File hunk is anchored by 3 lines of context above and below the change. Required: input (the full patch text).",
+  view_image:
+    "Read a local image file from the filesystem and attach it to the conversation as a vision input. Use only when the user gives you an explicit absolute file path. Required: path.",
+  image_gen:
+    "Generate a still image through Stella's managed media gateway. The result is saved under state/media/outputs/ and shown in the sidebar; do not download or open it yourself. Required: prompt.",
   // macOS computer-use surface. Drive any macOS app in the background through
   // Accessibility — never raises the target, never steals focus. Always pass
   // `app` as a name like "Spotify" or a bundle id like "com.apple.Notes".
@@ -636,8 +758,7 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   askQuestion: AskQuestionJsonSchema,
   RequestCredential: RequestCredentialJsonSchema,
   Schedule: ScheduleJsonSchema,
-  WebSearch: WebSearchJsonSchema,
-  WebFetch: WebFetchJsonSchema,
+  web: WebJsonSchema,
   Display: DisplayJsonSchema,
   DisplayGuidelines: DisplayGuidelinesJsonSchema,
   TaskCreate: TaskCreateJsonSchema,
@@ -647,6 +768,11 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   Memory: MemoryJsonSchema,
   Dream: DreamJsonSchema,
   StrReplace: StrReplaceJsonSchema,
+  exec_command: ExecCommandJsonSchema,
+  write_stdin: WriteStdinJsonSchema,
+  apply_patch: ApplyPatchJsonSchema,
+  view_image: ViewImageJsonSchema,
+  image_gen: ImageGenJsonSchema,
   computer_list_apps: ComputerListAppsJsonSchema,
   computer_get_app_state: ComputerGetAppStateJsonSchema,
   computer_click: ComputerClickJsonSchema,
