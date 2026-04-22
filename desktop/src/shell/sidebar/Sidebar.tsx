@@ -28,7 +28,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 import { ShiftingGradient } from "../background/ShiftingGradient";
@@ -231,10 +230,9 @@ const planLabel = (
 interface AccountRowProps {
   onSignIn?: () => void;
   onUpgrade: () => void;
-  onOpenSettings: () => void;
 }
 
-const AccountRow = ({ onSignIn, onUpgrade, onOpenSettings }: AccountRowProps) => {
+const AccountRow = ({ onSignIn, onUpgrade }: AccountRowProps) => {
   const { user, hasConnectedAccount } = useCurrentUser();
   // Plans + the user's current tier are public-readable via the same backend
   // query the standalone Billing page uses; running it here lets the pill
@@ -244,41 +242,22 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenSettings }: AccountRowProps) =>
     hasConnectedAccount ? {} : "skip",
   ) as BillingStatusLite | undefined;
 
-  // The Theme item in the avatar menu opens the existing ThemePicker popover.
-  // We render a hidden popover trigger inside this row so the popover anchors
-  // visually near the avatar; the dropdown closes on item-select and the
-  // popover takes over from there.
-  const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
 
-  // Tracks which menu item triggered the dropdown close, so the dropdown's
-  // `onCloseAutoFocus` handler can take over instead of letting focus race.
-  //
-  // Why this matters: Radix DropdownMenu restores focus to its trigger
-  // (the avatar) when it closes. If we open the ThemePicker popover during
-  // the item's onClick, Radix Popover mounts BEFORE that focus restoration,
-  // then immediately sees focus move "outside" its content and fires
-  // `onFocusOutside` → the popover closes again. Doing the open inside
-  // `onCloseAutoFocus` (and `event.preventDefault()`-ing the focus restore)
-  // sidesteps that race entirely. A `setTimeout` / `requestAnimationFrame`
-  // workaround does not help because the focus restoration is what closes
-  // the popover, not the timing of the open.
-  const pendingActionRef = useRef<null | "theme" | "signout">(null);
+  // Sign-out opens a confirm Dialog. Radix DropdownMenu restores focus to its
+  // trigger (the avatar) when it closes — if we mounted the Dialog during
+  // the item's onClick, the avatar would steal focus back from the Dialog.
+  // Deferring the open to `onCloseAutoFocus` (with `event.preventDefault()`)
+  // sidesteps that race; `pendingSignOutRef` flags that the close was
+  // intentional rather than a stray dismissal.
+  const pendingSignOutRef = useRef(false);
 
-  const handleDropdownCloseAutoFocus = useCallback(
-    (event: Event) => {
-      const next = pendingActionRef.current;
-      if (!next) return;
-      pendingActionRef.current = null;
-      event.preventDefault();
-      if (next === "theme") {
-        setThemePickerOpen(true);
-      } else if (next === "signout") {
-        setSignOutConfirmOpen(true);
-      }
-    },
-    [],
-  );
+  const handleDropdownCloseAutoFocus = useCallback((event: Event) => {
+    if (!pendingSignOutRef.current) return;
+    pendingSignOutRef.current = false;
+    event.preventDefault();
+    setSignOutConfirmOpen(true);
+  }, []);
 
   const handleConfirmSignOut = useCallback(() => {
     setSignOutConfirmOpen(false);
@@ -326,27 +305,10 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenSettings }: AccountRowProps) =>
           sideOffset={8}
           onCloseAutoFocus={handleDropdownCloseAutoFocus}
         >
-          <DropdownMenuItem onClick={onOpenSettings}>
-            <span data-slot="dropdown-menu-item-icon">
-              <SettingsIcon size={14} strokeWidth={1.75} />
-            </span>
-            Settings
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              pendingActionRef.current = "theme";
-            }}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <Palette size={14} strokeWidth={1.75} />
-            </span>
-            Theme
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem
             data-variant="destructive"
             onClick={() => {
-              pendingActionRef.current = "signout";
+              pendingSignOutRef.current = true;
             }}
           >
             <span data-slot="dropdown-menu-item-icon">
@@ -367,25 +329,6 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenSettings }: AccountRowProps) =>
       >
         {pillLabel}
       </button>
-      {/* Hidden trigger anchors the ThemePicker popover near the avatar. The
-          parent `.sidebar-account` is `position: relative`, so the absolutely
-          positioned hidden trigger sits over the avatar and the popover
-          opens on the `top` side of it. */}
-      <ThemePicker
-        hideTrigger
-        open={themePickerOpen}
-        onOpenChange={setThemePickerOpen}
-        onThemeSelect={() => setThemePickerOpen(false)}
-        side="top"
-        align="start"
-        trigger={
-          <button
-            type="button"
-            aria-label="Theme"
-            className="sidebar-account-theme-anchor"
-          />
-        }
-      />
       <Dialog open={signOutConfirmOpen} onOpenChange={setSignOutConfirmOpen}>
         <DialogContent fit aria-describedby={undefined}>
           <DialogHeader>
@@ -424,15 +367,60 @@ interface TitleBarRowProps {
   /** When true (compact / rail), the row collapses to a thin spacer so traffic
    * lights still have somewhere to live but the window controls hide. */
   compact: boolean;
+  onOpenSettings: () => void;
 }
 
-const TitleBarRow = ({ isMac, compact }: TitleBarRowProps) => (
+/**
+ * Settings + Theme buttons that live in the sidebar title bar.
+ *
+ * Positioning is handled by the parent: on macOS the row is left-aligned
+ * (these sit immediately to the right of the OS traffic lights), on
+ * Windows/Linux the row is right-aligned and these sit immediately to the
+ * left of the custom window controls.
+ *
+ * Icons are intentionally small (14px) — they're decorative chrome, not
+ * primary nav. Buttons opt out of the drag region so they're clickable.
+ */
+interface TitleBarChromeProps {
+  onOpenSettings: () => void;
+}
+
+const TitleBarChrome = ({ onOpenSettings }: TitleBarChromeProps) => (
+  <div className="sidebar-titlebar-chrome">
+    <button
+      type="button"
+      className="sidebar-titlebar-chrome-btn"
+      onClick={onOpenSettings}
+      aria-label="Settings"
+      title="Settings"
+    >
+      <SettingsIcon size={14} strokeWidth={1.75} />
+    </button>
+    <ThemePicker
+      side="bottom"
+      align="start"
+      trigger={
+        <button
+          type="button"
+          className="sidebar-titlebar-chrome-btn"
+          aria-label="Theme"
+          title="Theme"
+        >
+          <Palette size={14} strokeWidth={1.75} />
+        </button>
+      }
+    />
+  </div>
+);
+
+const TitleBarRow = ({ isMac, compact, onOpenSettings }: TitleBarRowProps) => (
   <div
     className={
       `sidebar-titlebar${isMac ? " sidebar-titlebar--mac" : ""}` +
       (compact ? " sidebar-titlebar--compact" : "")
     }
   >
+    {!compact && <TitleBarChrome onOpenSettings={onOpenSettings} />}
     {!compact && !isMac ? <WindowControls /> : null}
   </div>
 );
@@ -503,7 +491,11 @@ export const Sidebar = ({
         contained
       />
       <div className="sidebar-stack">
-        <TitleBarRow isMac={isMac} compact={railCollapsed} />
+        <TitleBarRow
+          isMac={isMac}
+          compact={railCollapsed}
+          onOpenSettings={handleOpenSettings}
+        />
         {brandRow}
         <nav className="sidebar-nav">
           {TOP_APPS.map((app) => (
@@ -542,11 +534,7 @@ export const Sidebar = ({
             </span>
             <span className="sidebar-nav-label">Connect</span>
           </button>
-          <AccountRow
-            onSignIn={onSignIn}
-            onUpgrade={handleUpgrade}
-            onOpenSettings={handleOpenSettings}
-          />
+          <AccountRow onSignIn={onSignIn} onUpgrade={handleUpgrade} />
         </div>
       </div>
     </aside>
