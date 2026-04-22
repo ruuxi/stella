@@ -18,6 +18,7 @@ import {
   AskQuestionBubble,
   type AskQuestionPayload,
 } from "@/app/chat/AskQuestionBubble";
+import { UserMessageBody } from "@/app/chat/UserMessageBody";
 
 export type TurnViewModel = {
   id: string;
@@ -463,9 +464,7 @@ export const TurnItem = memo(function TurnItem({
                 )}
               </div>
             )}
-            {userText.trim() && (
-              <div className="event-body">{userText}</div>
-            )}
+            {userText.trim() && <UserMessageBody text={userText} />}
           </>
           {userAttachments.length > 0 && (
             <div className="event-attachments">

@@ -118,6 +118,55 @@
   letter-spacing: 0.03em;
 }
 
+/* Long user-message truncation. Per-surface line counts are set via the
+   `--user-message-clamp-lines` variable; defaults below match the full chat
+   bubble. */
+.event-user-body {
+  --user-message-clamp-lines: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+.event-user-body[data-expanded="false"] > .event-body {
+  display: -webkit-box;
+  -webkit-line-clamp: var(--user-message-clamp-lines);
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* Allow wrapping of long unbroken strings so clamp engages predictably. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.event-user-toggle {
+  margin-top: 8px;
+  align-self: flex-end;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-weak);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.event-user-toggle:hover {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--surface-inset) 30%, transparent);
+}
+
+.event-user-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 30%, transparent);
+}
+
 .event-item.assistant .markdown {
   color: var(--text-strong);
   font-size: 17px;
