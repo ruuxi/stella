@@ -137,6 +137,58 @@ export const createWebToolHandlers = (options: {
   },
 });
 
+export const createAskQuestionToolHandlers = (): Record<string, ToolHandler> => ({
+  askQuestion: async (args, context) => {
+    const denied = requireOrchestrator("askQuestion", context);
+    if (denied) return denied;
+
+    const rawQuestions = Array.isArray(args.questions) ? args.questions : null;
+    if (!rawQuestions || rawQuestions.length === 0) {
+      return { error: "questions array is required (at least one question)." };
+    }
+
+    const summary = rawQuestions
+      .map((entry, qIndex) => {
+        if (!entry || typeof entry !== "object") {
+          return `Question ${qIndex + 1}: (invalid)`;
+        }
+        const record = entry as {
+          question?: unknown;
+          options?: unknown;
+          allowOther?: unknown;
+        };
+        const question =
+          typeof record.question === "string" ? record.question.trim() : "";
+        if (!question) {
+          return `Question ${qIndex + 1}: (missing question text)`;
+        }
+        const options = Array.isArray(record.options) ? record.options : [];
+        const renderedOptions = options
+          .map((option, oIndex) => {
+            const label =
+              option && typeof option === "object" &&
+                typeof (option as { label?: unknown }).label === "string"
+                ? ((option as { label: string }).label.trim() || "Option")
+                : "Option";
+            const letter = String.fromCharCode(65 + oIndex);
+            return `  ${letter}. ${label}`;
+          })
+          .join("\n");
+        const otherLine = record.allowOther
+          ? `\n  ${String.fromCharCode(65 + options.length)}. Other... (free text)`
+          : "";
+        return `Question ${qIndex + 1}: ${question}\n${renderedOptions}${otherLine}`;
+      })
+      .join("\n\n");
+
+    return {
+      result:
+        "Question tray rendered in chat. Wait for the user to answer before continuing.\n\n" +
+        summary,
+    };
+  },
+});
+
 export const createTaskToolHandlers = (
   stateContext: StateContext,
 ): Record<string, ToolHandler> => ({

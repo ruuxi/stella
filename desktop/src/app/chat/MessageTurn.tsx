@@ -14,6 +14,10 @@ import {
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import { GrowIn } from "@/app/chat/GrowIn";
+import {
+  AskQuestionBubble,
+  type AskQuestionPayload,
+} from "@/app/chat/AskQuestionBubble";
 
 export type TurnViewModel = {
   id: string;
@@ -29,6 +33,7 @@ export type TurnViewModel = {
   officePreviewRef?: OfficePreviewRef;
   selfModApplied?: SelfModApplied;
   taskId?: string;
+  askQuestion?: AskQuestionPayload;
 };
 
 export type StreamingTurnProps = {
@@ -237,6 +242,26 @@ const streamingPropsEqual = (
   );
 };
 
+const askQuestionPayloadEqual = (
+  a: AskQuestionPayload | undefined,
+  b: AskQuestionPayload | undefined,
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return a === b;
+  if (a.questions.length !== b.questions.length) return false;
+  for (let i = 0; i < a.questions.length; i += 1) {
+    const left = a.questions[i];
+    const right = b.questions[i];
+    if (left.question !== right.question) return false;
+    if (Boolean(left.allowOther) !== Boolean(right.allowOther)) return false;
+    if (left.options.length !== right.options.length) return false;
+    for (let j = 0; j < left.options.length; j += 1) {
+      if (left.options[j].label !== right.options[j].label) return false;
+    }
+  }
+  return true;
+};
+
 const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
   a.id === b.id &&
   a.userText === b.userText &&
@@ -250,6 +275,7 @@ const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
   (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
   (a.officePreviewRef?.sessionId ?? null) ===
     (b.officePreviewRef?.sessionId ?? null) &&
+  askQuestionPayloadEqual(a.askQuestion, b.askQuestion) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied)
 );
 
@@ -522,6 +548,12 @@ export const TurnItem = memo(function TurnItem({
               <SelfModUndoButton selfModApplied={turn.selfModApplied} />
             )}
           </div>
+        </GrowIn>
+      )}
+
+      {turn.askQuestion && (
+        <GrowIn animate={true} duration={420}>
+          <AskQuestionBubble payload={turn.askQuestion} />
         </GrowIn>
       )}
 

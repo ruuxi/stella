@@ -14,6 +14,7 @@ const TOOL_STATUS_BY_NAME: Record<string, string> = {
   edit: "Making edits",
   write: "Making edits",
   bash: "Running commands",
+  askquestion: "Preparing Questions",
 };
 
 export function computeStatus({

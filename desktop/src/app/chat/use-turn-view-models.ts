@@ -18,6 +18,10 @@ import {
   getChannelEnvelope,
 } from "./MessageTurn";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
+import {
+  parseAskQuestionArgs,
+  type AskQuestionPayload,
+} from "./AskQuestionBubble";
 
 type BaseTurnViewModel = Omit<TurnViewModel, "selfModApplied">;
 
@@ -79,6 +83,31 @@ const getWebSearchBadgeHtml = (events: EventRecord[]): string | undefined => {
     }
   }
 
+  return undefined;
+};
+
+const getAskQuestionPayload = (
+  events: EventRecord[],
+): AskQuestionPayload | undefined => {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type !== "tool_request") {
+      continue;
+    }
+    const payload = event.payload as
+      | { toolName?: string; args?: unknown }
+      | undefined;
+    if (!payload || typeof payload.toolName !== "string") {
+      continue;
+    }
+    if (payload.toolName !== "askQuestion") {
+      continue;
+    }
+    const parsed = parseAskQuestionArgs(payload.args);
+    if (parsed) {
+      return parsed;
+    }
+  }
   return undefined;
 };
 
@@ -200,6 +229,8 @@ export function useTurnViewModels(opts: {
         getAssistantTaskId(turn.assistantMessage)
         ?? stickyTaskIdByTurnId.get(turn.id);
 
+      const askQuestionPayload = getAskQuestionPayload(turn.toolEvents);
+
       return {
         id: turn.id,
         userText,
@@ -216,6 +247,7 @@ export function useTurnViewModels(opts: {
         assistantEmotesEnabled,
         webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
         officePreviewRef: getOfficePreviewRef(turn.toolEvents),
+        ...(askQuestionPayload ? { askQuestion: askQuestionPayload } : {}),
         ...(taskId ? { taskId } : {}),
       };
     });
