@@ -99,13 +99,62 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("Display")).toBe(true);
     expect(orchestratorTools.has("WebSearch")).toBe(true);
     expect(orchestratorTools.has("Memory")).toBe(true);
+    expect(orchestratorTools.has("askQuestion")).toBe(true);
 
     const generalTools = new Set(host.getToolCatalog("general").map((tool) => tool.name));
     expect(generalTools.has("TaskCreate")).toBe(false);
     expect(generalTools.has("Display")).toBe(false);
     expect(generalTools.has("WebSearch")).toBe(false);
     expect(generalTools.has("Memory")).toBe(false);
+    expect(generalTools.has("askQuestion")).toBe(false);
     expect(generalTools.has("Exec")).toBe(true);
+  });
+
+  it("executes askQuestion for the orchestrator and rejects other agents", async () => {
+    const { host } = await createTestHost();
+
+    const orchestratorResult = await host.executeTool(
+      "askQuestion",
+      {
+        questions: [
+          {
+            question: "Which option fits best?",
+            options: [{ label: "Option A" }, { label: "Option B" }],
+            allowOther: true,
+          },
+        ],
+      },
+      makeToolContext("orchestrator"),
+    );
+
+    expect(orchestratorResult.error).toBeUndefined();
+    expect(typeof orchestratorResult.result).toBe("string");
+    expect(orchestratorResult.result as string).toContain(
+      "Question tray rendered in chat",
+    );
+
+    const generalResult = await host.executeTool(
+      "askQuestion",
+      {
+        questions: [
+          {
+            question: "Should not be allowed",
+            options: [{ label: "Nope" }],
+          },
+        ],
+      },
+      makeToolContext("general"),
+    );
+
+    expect(generalResult.error).toContain("only available to the orchestrator");
+
+    const missingResult = await host.executeTool(
+      "askQuestion",
+      { questions: [] },
+      makeToolContext("orchestrator"),
+    );
+
+    expect(missingResult.error).toContain("questions array is required");
   });
 
   it("executes TaskCreate directly for the orchestrator and rejects other agents", async () => {

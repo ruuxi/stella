@@ -65,6 +65,49 @@ export function getDangerousCommandReason(command: string): string | null {
   return null;
 }
 
+const AskQuestionJsonSchema = {
+  type: "object",
+  description:
+    "Ask the user one or more multiple-choice questions inside the chat. Renders an inline tray bubble. Questions are presented one at a time; the user picks an option for each.",
+  properties: {
+    questions: {
+      type: "array",
+      description: "Ordered list of multiple-choice questions to present.",
+      items: {
+        type: "object",
+        properties: {
+          question: {
+            type: "string",
+            description: "The question to ask. End with a question mark.",
+          },
+          options: {
+            type: "array",
+            description:
+              "Up to 4 short options the user can choose between (1-5 words each).",
+            items: {
+              type: "object",
+              properties: {
+                label: {
+                  type: "string",
+                  description: "Option text shown next to the badge letter.",
+                },
+              },
+              required: ["label"],
+            },
+          },
+          allowOther: {
+            type: "boolean",
+            description:
+              "When true, append a free-text 'Other...' option so the user can type a custom answer.",
+          },
+        },
+        required: ["question", "options"],
+      },
+    },
+  },
+  required: ["questions"],
+};
+
 const AskUserQuestionJsonSchema = {
   type: "object",
   properties: {
@@ -403,6 +446,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   Wait: WAIT_TOOL_DESCRIPTION,
   AskUserQuestion:
     "Ask the user to choose between options via a UI prompt. Use for clarifications, decisions, or preferences.",
+  askQuestion:
+    "Ask the user one or more multiple-choice questions inline in the chat. Use when you need a quick decision the user can make by tapping an option. Renders a fade-in questions tray bubble.",
   RequestCredential:
     "Request an API key or secret via a secure UI prompt. Returns a `secretId` handle that can be passed to other tools/integrations.",
   Schedule:
@@ -438,6 +483,7 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   Exec: EXEC_JSON_SCHEMA,
   Wait: WAIT_JSON_SCHEMA,
   AskUserQuestion: AskUserQuestionJsonSchema,
+  askQuestion: AskQuestionJsonSchema,
   RequestCredential: RequestCredentialJsonSchema,
   Schedule: ScheduleJsonSchema,
   WebSearch: WebSearchJsonSchema,

@@ -37,6 +37,7 @@ import {
 } from "./state.js";
 import { type UserToolsConfig } from "./user.js";
 import {
+  createAskQuestionToolHandlers,
   createDisplayToolHandlers,
   createInternalExploreHandlers,
   createMemoryToolHandlers,
@@ -82,6 +83,7 @@ const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
   "TaskPause",
   "TaskUpdate",
   "Memory",
+  "askQuestion",
 ]);
 
 export const createToolHost = ({
@@ -166,6 +168,7 @@ export const createToolHost = ({
     createWebToolHandlers({ webSearch }),
     createTaskToolHandlers(stateContext),
     createScheduleToolHandlers({ taskApi, scheduleApi }),
+    createAskQuestionToolHandlers(),
     ...(memoryStore ? [createMemoryToolHandlers({ memoryStore })] : []),
     createUserToolHandlers(userConfig),
     createExecToolHandlers(execHost),
