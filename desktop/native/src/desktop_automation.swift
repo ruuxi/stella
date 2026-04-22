@@ -180,6 +180,8 @@ struct ActionOptions {
     let raise: Bool
     let inlineScreenshot: Bool
     let showOverlay: Bool
+
+    var noRaise: Bool { !raise }
 }
 
 struct AppTarget {
@@ -4189,7 +4191,7 @@ func setValue(
     candidate: CandidateNode,
     text: String,
     target: AppTarget? = nil,
-    raise: Bool = false
+    raise: Bool = true
 ) -> (Bool, String?) {
     _ = setFocused(candidate.element)
 
@@ -4395,7 +4397,7 @@ func runSystemEventsOnTarget(
     _ target: AppTarget,
     bodyLines: [String],
     arguments: [String] = [],
-    raise: Bool = false
+    raise: Bool = true
 ) -> Bool {
     var sourceLines: [String] = []
     let wantsArgs = !arguments.isEmpty
@@ -4438,7 +4440,7 @@ func simulateLeftClick(at point: CGPoint) -> Bool {
     return true
 }
 
-func postLeftClick(at point: CGPoint, target: AppTarget, raise: Bool = false) -> Bool {
+func postLeftClick(at point: CGPoint, target: AppTarget, raise: Bool = true) -> Bool {
     if !alwaysSimulateInput(),
        runSystemEventsOnTarget(
            target,
@@ -4758,7 +4760,7 @@ func chunkText(_ text: String, size: Int) -> [String] {
     return chunks
 }
 
-func postUnicodeText(_ text: String, target: AppTarget, raise: Bool = false) -> Bool {
+func postUnicodeText(_ text: String, target: AppTarget, raise: Bool = true) -> Bool {
     if !alwaysSimulateInput() {
         let chunks = chunkText(text, size: unicodeChunkSize)
         for chunk in chunks {
@@ -4820,7 +4822,7 @@ func simulateKeyChord(_ keySpec: String) -> Bool {
     return true
 }
 
-func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = false) -> Bool {
+func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = true) -> Bool {
     let rawParts = keySpec.split(separator: "+").map(String.init)
     guard let keyToken = rawParts.last else {
         return false
@@ -5347,7 +5349,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 candidate: resolved.candidate,
                 target: target,
                 coordinateFallback: options.coordinateFallback && options.allowHid,
-                raise: options.raise
+                raise: !options.noRaise
             )
         }
         guard clicked else {
@@ -5405,7 +5407,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 candidate: resolved.candidate,
                 text: text,
                 target: target,
-                raise: options.raise
+                raise: !options.noRaise
             )
         }
         guard filled else {
@@ -5648,7 +5650,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             cursorPoint: point,
             interactionKind: "click-point"
         ) {
-            postLeftClick(at: point, target: target, raise: options.raise)
+            postLeftClick(at: point, target: target, raise: !options.noRaise)
         }
         guard clicked else {
             throw failureWithScreenshot(
@@ -5897,7 +5899,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let target else {
             throw failure("type requires a valid target app context.")
         }
-        guard postUnicodeText(text, target: target, raise: options.raise) else {
+        guard postUnicodeText(text, target: target, raise: !options.noRaise) else {
             throw failureWithScreenshot(
                 "Failed to type text.",
                 statePath: options.statePath,
@@ -5942,7 +5944,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let target else {
             throw failure("press requires a valid target app context.")
         }
-        guard postKeyChord(keySpec, target: target, raise: options.raise) else {
+        guard postKeyChord(keySpec, target: target, raise: !options.noRaise) else {
             throw failureWithScreenshot(
                 "Failed to send key press.",
                 statePath: options.statePath,
