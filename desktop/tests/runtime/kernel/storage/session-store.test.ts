@@ -444,7 +444,10 @@ describe("session-store", () => {
       agentType: "general",
     });
 
-    const largeOutput = "A".repeat(2_000_000);
+    // Must exceed THREAD_ROW_MAX_BYTES (6 MB) to trigger the
+    // "too large to persist" placeholder path. Multi-MB rows under the cap
+    // are intentionally allowed (screenshot tool results land in this range).
+    const largeOutput = "A".repeat(8_000_000);
     store.appendThreadMessage({
       threadKey: threadId,
       timestamp: 6_000,
