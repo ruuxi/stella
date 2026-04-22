@@ -176,6 +176,12 @@
   opacity: var(--compact-chat-assistant-streaming-opacity);
 }
 
+/* Tighter clamp for compact surfaces (sidebar / orb / mini) where bubbles
+   are narrower and a smaller chunk reads better. */
+.chat-conversation-surface .event-user-body {
+  --user-message-clamp-lines: 8;
+}
+
 .chat-conversation-surface--sidebar {
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
