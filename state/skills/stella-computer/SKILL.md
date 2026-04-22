@@ -1,153 +1,165 @@
 ---
+name: stella-computer
+description: Drive macOS apps in the background through Accessibility, with compact numbered snapshots and auto-attached screenshots. Always targets a specific app and never disturbs the user's focus.
+---
 
-## name: stella-computer
+# stella-computer
 
-description: macOS desktop automation for arbitrary apps through Accessibility-first element IDs, with compact snapshots and auto-attached screenshots.
+`stella-computer` controls macOS apps for the user without taking over their screen. Every action dispatches via the Accessibility API to a **specific app** that you name explicitly. The user's active window, focus, clipboard, and physical cursor stay theirs. They can keep using their computer while you work.
 
-# Desktop Automation with stella-computer
+For browser DOM use `stella-browser`. For everything else on the desktop — Finder, Notes, Calendar, Mail, Messages, Safari, Spotify, third-party apps — use `stella-computer`.
 
-Use `stella-computer` for arbitrary macOS apps outside Stella itself (Finder, Notes, Calendar, Mail, Messages, Safari, third-party apps, etc.). It talks to macOS Accessibility first, so `click`, `fill`, `focus`, `secondary-action`, and `scroll` work without taking over the user's physical cursor.
+## Hard rules (read these before doing anything else)
 
-For browser content use `stella-browser` (DOM-level access via the extension bridge). Use `stella-computer` for everything else on the desktop.
+1. **Always pass a target on every command.** `--app <Name>`, `--bundle-id <id>`, or `--pid <pid>`. There is no frontmost-app fallback. `stella-computer snapshot` with no target will return an error telling you to name one.
+2. **Never raise the target.** Don't use `--raise`. Don't `open -a`, `osascript activate`, Spotlight, or any other "bring to front" trick. The tool drives the app via Accessibility — the app does not need to be focused, visible, or on top. Raising would steal the user's attention.
+3. **Snapshot first, every turn.** Before you act on an app in a new turn, run `stella-computer snapshot --app <Name>` to refresh the numbered element tree and screenshot. Element IDs are tied to the snapshot.
+4. **Prefer element IDs over pixel coordinates.** `click 12`, `secondary-action 165 AXPress`, `fill 9 "..."` — these are AX dispatches and work in the background. Pixel-coordinate commands (`click-point`, `click-screenshot`, `drag*`, `type`, `press`) require the app to actually be visible at that point or focused, so they're escape hatches, not the main path.
+5. **Never fall back to AppleScript / `osascript` / shell `open -a` to drive an app.** If `stella-computer` can't reach the target, stop and report what failed. Do not mix in another control method.
+6. **Ask before destructive or externally visible actions** — sending messages, deleting files, purchases, posting publicly, signing forms.
 
 ## Code mode usage
 
-From inside an `Exec` program, drive `stella-computer` through `tools.shell`. The CLI is auto-injected into the shell PATH and the session id is wired automatically per task.
+From inside an `Exec` program, drive `stella-computer` through `tools.shell`. The CLI is on `PATH` and the agent's session id is wired automatically.
 
 ```ts
 const apps = await tools.shell({ command: "stella-computer list-apps" });
 const snap = await tools.shell({
-  command: "stella-computer snapshot --app Finder",
+  command: "stella-computer snapshot --app Spotify",
 });
 text(snap.output);
 ```
 
-## Core Workflow
+## Core workflow
 
-Every desktop automation follows the same shape:
-
-1. **Discover** which app to target (only when you don't already know): `stella-computer list-apps`
-2. **Snapshot** the target to get the current numbered element tree: `stella-computer snapshot --app Finder`
-3. **Interact** through element IDs: `click`, `fill`, `focus`, `secondary-action`, `scroll`
-4. **Re-snapshot** is automatic — every successful action refreshes the numbered tree + screenshot
+1. **Discover** the target app (only when you don't already know it): `stella-computer list-apps`
+2. **Snapshot** the named app: `stella-computer snapshot --app <Name>` → returns a numbered element tree, an inline screenshot, and `<app_specific_instructions>` for that app if Stella has any.
+3. **Act** by element ID: `click <id>`, `fill <id> <text>`, `focus <id>`, `secondary-action <id> <action>`, `scroll <id> <dir>`.
+4. Each successful action **auto-refreshes** the snapshot and re-attaches a fresh screenshot.
 
 ```bash
 stella-computer list-apps
-stella-computer snapshot --app Finder
-stella-computer fill 9 "search text"
-stella-computer click 4
+stella-computer snapshot --app Spotify
+stella-computer secondary-action 165 AXPress       # Playback > Play (background)
 ```
 
-The snapshot screenshot is auto-attached as a vision content block on your next turn. **Do not call `tools.read_file` for the screenshot path** — the image is already in your context.
+The snapshot screenshot auto-attaches as a vision content block on your next turn. Don't `tools.read_file` for the screenshot path — it's already in your context.
 
 ## Reading a snapshot
 
-The snapshot output is a compact tree of actionable accessibility nodes:
-
 ```
 <app_specific_instructions>
-# Finder Computer Use
-- Sidebar entries are `AXRow` rows under an `AXOutline`; click to navigate.
+## Spotify Computer Use
+...
 </app_specific_instructions>
 <app_state>
-App=com.apple.finder (pid 504)
-Window: "Desktop", App: Finder.
-0 scroll area (disabled) desktop
-	1 group desktop
-		2 image Screenshot 2026-04-13 at 12.10.39 AM, Secondary Actions: Open
-4 menu bar
-	5 menu bar item Finder
-	6 menu bar item File
-	7 menu bar item (focused) Edit
-The focused UI element is 7 menu bar item.
+App=com.spotify.client (pid 464)
+Window: "Spotify Premium", App: Spotify.
+0 standard window Spotify Premium, Secondary Actions: AXRaise
+14 menu bar
+	15 menu bar item Apple
+	16 menu bar item Spotify
+	20 menu bar item Playback
+		164 menu
+			165 menu item Play
+			167 menu item Next
+			168 menu item Previous
+The focused UI element is 0 standard window.
 </app_state>
+[stella-attach-image] 2192x1688 ... /path/to/last-snapshot.png
 ```
 
 - One node per line, tab-indented.
 - `<id> <role> [(<state-flags>)] <label>[, Secondary Actions: a, b, c][, ID: ...][, URL: ...]`
-- AX role names are stripped of `AX` and lowercased.
+- Roles are stripped of `AX` and lowercased.
 - State flags only show when set: `disabled`, `selected`, `focused`, plus `settable` / value type when relevant.
-- `AXPress` (regular click) is implicit; only the *other* secondary actions are listed.
-- Use the leading numeric element ID for action commands. Legacy `@d<N>` refs still work, but new snapshots render plain numbers.
+- `AXPress` (regular click) is implicit on every clickable node and not listed under Secondary Actions; everything else is.
+- The menu bar (`<id> menu bar` and its `menu bar item` children) is included in every snapshot. For Electron-style apps with shallow window trees (Spotify, Discord, Slack, VS Code, Notion, web wrappers), driving the app's menu bar via `secondary-action <menu-item-id> AXPress` is the canonical path — it dispatches via AX without focus.
 
-Before the state block, look for an `<app_specific_instructions>` section. When you target Finder, Notes, Calendar, Messages, Safari, or Spotify, Stella emits per-app guidance there. Read it before acting; it documents app-specific gotchas (e.g. "do not call set-value on Finder filename rows unless the user explicitly asked to rename a file").
+If you see an `<app_specific_instructions>` block, read it before acting. Stella ships per-app guidance for Finder, Notes, Calendar, Messages, Safari, Spotify, and others; it covers app-specific gotchas.
 
-## Supported Commands
+## Commands
 
 ```bash
-# App discovery
+# Discovery
 stella-computer list-apps
 
-# Snapshot / get-state (element tree + screenshot + per-app instructions)
-stella-computer snapshot --app Finder
-stella-computer get-state --app Finder
+# Snapshot (target is REQUIRED)
+stella-computer snapshot --app Spotify
 stella-computer snapshot --bundle-id com.apple.Notes
 stella-computer snapshot --pid 504
 stella-computer snapshot --app Finder --all-windows
 stella-computer snapshot --app Finder --max-depth 6 --max-nodes 800
+stella-computer get-state --app Spotify             # alias for snapshot
 
-# Element-based interaction (Accessibility-first; no HID required)
+# Element-targeted actions (Accessibility — work in background)
 stella-computer click 4
 stella-computer fill 9 "search text"
 stella-computer focus 12
-stella-computer secondary-action 8 Show Menu
-stella-computer secondary-action 8 Raise
+stella-computer secondary-action 8 AXShowMenu
+stella-computer secondary-action 8 AXRaise          # raise a SPECIFIC window of the target
 stella-computer scroll 23 down
 stella-computer scroll 23 down --pages 3
 
-# Content drag-and-drop (NSDraggingSession; uses the source AX element's pasteboard payload)
+# Content drag-and-drop (uses source element's pasteboard payload)
 stella-computer drag-element 7 12 --allow-hid
 stella-computer drag-element 7 --to-x 600 --to-y 400 --type file --allow-hid
 
-# HID fallbacks (require --allow-hid; act on whatever has focus)
-stella-computer type "hello world" --allow-hid
-stella-computer press cmd+f --allow-hid
-stella-computer press return --allow-hid
-stella-computer click-point 500 300 --allow-hid
-stella-computer click-screenshot 840 612 --allow-hid
+# Pixel-coordinate / global HID (escape hatches; require --allow-hid)
+stella-computer click-screenshot 840 612 --allow-hid     # uses screenshot pixels, mapped to the captured window
+stella-computer click-point 500 300 --allow-hid          # global screen coords
 stella-computer drag 200 400 600 400 --allow-hid
 stella-computer drag-screenshot 840 612 1040 612 --allow-hid
-stella-computer click 4 --coordinate-fallback --allow-hid
+stella-computer type "hello world" --allow-hid           # types into whatever currently has keyboard focus
+stella-computer press cmd+f --allow-hid                  # sends key chord to whatever has focus
 
-# Session and output controls
-stella-computer --session my-task snapshot --app Finder
+# Output controls
 stella-computer snapshot --app Finder --no-screenshot
 stella-computer snapshot --app Finder --no-inline-screenshot   # keep file path, skip base64
-stella-computer click 4 --no-raise                              # don't bring app frontmost
 stella-computer click 4 --no-overlay                            # skip the visual cursor overlay
 ```
 
-## Visual overlay
+`--allow-hid` is required for global HID commands (`click-point`, `click-screenshot`, `drag*`, `type`, `press`) because they can interfere with active user input. They do **not** automatically raise the target — if the target isn't already in a state where the keystroke / coordinate would land on it (e.g. it has keyboard focus, or the screen pixel is inside its visible window), they will misfire. Prefer the AX commands.
 
-By default every element-targeted action (`click`, `fill`, `focus`, `secondary-action`, `scroll`) shows a brief software-cursor overlay around the target element so the user can see what Stella is acting on. The overlay fades in, holds for a beat while the action executes, then fades out. Pass `--no-overlay` (or set `STELLA_COMPUTER_NO_OVERLAY=1`) to skip it when chained-action latency matters more than visual feedback.
+## Common patterns
 
-## Common Patterns
-
-### Open an app, find a control, type into it
+### Background playback control of a media app (Spotify, Music)
 
 ```bash
-stella-computer list-apps                               # confirm Finder is running
-stella-computer snapshot --app Finder
-stella-computer press cmd+f --allow-hid                 # open the search field
-stella-computer get-state --app Finder                  # element IDs change after switching to search
-stella-computer fill 34 "annual report.pdf"             # 34 is the search text field in the new snapshot
+stella-computer snapshot --app Spotify
+# In the menu bar block, find: 20 menu bar item Playback → 164 menu → 165 menu item Play
+stella-computer secondary-action 165 AXPress
+stella-computer get-state --app Spotify           # verify (window title flips to track name; menu item flips Play → Pause)
 ```
 
-### Click a menu item via the menu bar
+The window stays where it is. The user's active app does not change.
+
+### Open a control in a normal app and type into it
 
 ```bash
-stella-computer snapshot --app Finder
-stella-computer click 6                                 # the "File" menu bar item
-stella-computer get-state --app Finder                  # menu items appear as new element IDs
-stella-computer click 44                                # "New Folder"
+stella-computer snapshot --app Notes
+# Find a settable AXTextArea or AXTextField in the snapshot
+stella-computer fill 34 "Note body"
 ```
 
-### Switch focus to a non-frontmost window
+Use `fill` (AX `set-value`) rather than `type` whenever the target element is settable — it's deterministic and doesn't depend on focus.
+
+### Walk a menu without raising
 
 ```bash
-stella-computer snapshot --app Finder --all-windows      # see every window, not just the focused one
-stella-computer secondary-action 18 Raise               # bring that specific window to front
+stella-computer snapshot --app <Name>
+# The menu bar root and every menu / menu item are already in the tree.
+stella-computer secondary-action <menu-item-id> AXPress
 ```
+
+### Switch to a non-frontmost window of the same app
+
+```bash
+stella-computer snapshot --app Finder --all-windows
+stella-computer secondary-action 18 AXRaise         # raises THAT specific window of Finder
+```
+
+`AXRaise` on a window element raises that window inside its app's z-order; it doesn't take focus from the user's other apps.
 
 ### Drag a file from one Finder window to another
 
@@ -157,75 +169,28 @@ stella-computer snapshot --app Finder --all-windows
 stella-computer drag-element 7 31 --type file --operation move --allow-hid
 ```
 
-### Set a slider / splitter value directly
-
-```bash
-stella-computer snapshot --app Finder
-stella-computer fill 22 "200"                           # 22 is the AXSplitter; numeric coercion happens automatically
-```
-
-### Select rows with the keyboard after focusing a list
-
-```bash
-stella-computer snapshot --app Finder
-stella-computer focus 34                                # row in the list view
-stella-computer press down --allow-hid                   # arrow-key navigation
-stella-computer press down --allow-hid
-```
-
 ## Sessions
 
-Agent and task runs get an isolated default session automatically (derived from `taskId`/`runId`/`agentType`), so parallel agents do not overwrite each other's element IDs. For manual CLI work or when you want explicit isolation, pass `--session <name>`:
+Agent runs get an isolated default session derived from `taskId` / `runId` / `agentType`, so parallel tasks don't overwrite each other's element IDs. For manual CLI work pass `--session <name>`. State lives at `state/stella-computer/sessions/<session>/`.
 
-```bash
-stella-computer --session research-1 snapshot --app Finder
-stella-computer --session research-1 click 4
-stella-computer --session research-2 snapshot --app Notes   # separate state file, separate element IDs
-```
+## Safety rails
 
-State lives at `state/stella-computer/sessions/<session>/last-snapshot.json` and `last-snapshot.png`.
+`stella-computer` refuses to control:
 
-## Safety Rails
-
-Stella refuses to control its own surfaces, system security UI, password managers, and identity-provider sign-in pages by default. The hardcoded denylist covers:
-
-- Stella's own bundles (`com.stella.desktop`, `com.stella.app`, `com.stella.runtime`)
+- Stella's own surfaces (`com.stella.desktop`, `com.stella.app`, `com.stella.runtime`)
 - System Settings, Keychain Access, SecurityAgent, LocalAuthentication UI
-- 1Password, LastPass, Bitwarden, Dashlane
-- Banking + identity-provider URL substrings (`appleid.apple.com`, `accounts.google.com/signin`, `chase.com/digital`, `paypal.com/signin`, `github.com/login`, etc.)
+- Password managers (1Password, LastPass, Bitwarden, Dashlane)
+- URLs containing banking / identity-provider substrings (`appleid.apple.com`, `accounts.google.com/signin`, `chase.com/digital`, `paypal.com/signin`, `github.com/login`, …)
 
-Extend the lists when needed:
+Extend per-process: `STELLA_COMPUTER_FORBIDDEN_BUNDLES=a,b,c` and `STELLA_COMPUTER_FORBIDDEN_URL_SUBSTRINGS=foo,bar`. After every action, Stella re-checks the resulting URL against the blocklist and surfaces a warning if it landed on a forbidden surface — treat that warning as a stop signal.
 
-```bash
-STELLA_COMPUTER_FORBIDDEN_BUNDLES=com.example.app stella-computer ...
-STELLA_COMPUTER_FORBIDDEN_URL_SUBSTRINGS=internal-finance.example.com stella-computer ...
-```
+## Known limits
 
-After every successful action Stella re-checks the resulting URL against the blocklist and surfaces a warning if it landed on a forbidden surface. Treat that warning as a stop signal; back out manually rather than continuing to act.
-
-## When to use which command
-
-Prefer element-based commands first — they use macOS Accessibility and don't move the user's cursor:
-
-- `click`, `fill`, `focus`, `secondary-action`, `scroll`, `drag-element`
-
-Use HID fallbacks (`--allow-hid` required) only when ref-based actions don't reach the target:
-
-- `type` / `press` — when text needs to land in whatever has focus, not in a specific ref
-- `click-screenshot` / `drag-screenshot` — when the screenshot clearly shows the target but the AX tree does not (Electron/CEF content, custom canvases, image-heavy UIs)
-- `click-point` / `drag` / `click --coordinate-fallback` — when you already know the global screen coordinates or a resolved ref frame is good enough
-
-If `secondary-action` reports "Action X is not available for N", read the available actions from the failure warning and pick one that's listed; the AX node only honors the actions it advertises.
-
-## Known Limits
-
-- `drag` is coordinate-only HID. For content-bearing drag-and-drop (file move, link drop, text drop), use `drag-element` — it extracts the right pasteboard type from the source AX element so the destination app sees a real drop.
-- `click-screenshot` / `drag-screenshot` use screenshot pixel coordinates from the auto-attached image, then map them back into the captured window's screen frame. If the snapshot was taken with `--no-screenshot`, take a fresh snapshot first.
-- `drag-element` requires the source element to expose a draggable payload (`AXURL` for Finder/browser items, `AXValue` for text fields). Splitters, sliders, and pure-visual elements have no payload — fall back to coordinate `drag`.
-- Browser tab content + Electron app content live in helper processes and may not surface in the AX tree (you'll see an "Some elements live in helper processes (OOP)" warning). For DOM-level access prefer `stella-browser`.
-- Some apps expose stale or incomplete AX data; if a ref fails to resolve with an "ambiguous match" or "could not find" warning, take a fresh snapshot and try again.
-- The CLI walks at `--max-depth 4` / `--max-nodes 320` by default. For dense apps (Mail message list, Numbers spreadsheets) you may need to bump these.
-- `stella-computer` is macOS-only.
+- Element IDs are valid only against the snapshot they came from. Re-snapshot before acting in a new turn.
+- HID coordinate commands and `type` / `press` go to whatever is currently visible at that pixel / has keyboard focus, respectively. They are NOT app-targeted in the AX sense and may misfire if the target isn't on top.
+- Browser tab content and parts of Electron app content can live in helper processes (OOP) and may not surface in the AX tree. Stella now exposes the menu bar of every app, which gives you a reliable background control surface even when the window AX tree is shallow.
+- Default snapshot walks `--max-depth 4` / `--max-nodes 320`. For dense apps (Mail message list, Numbers spreadsheets) bump them with `--max-depth N` / `--max-nodes N`.
+- macOS only.
 
 ## Backlinks
 
@@ -233,4 +198,3 @@ If `secondary-action` reports "Action X is not available for N", read the availa
 - [registry](state/registry.md)
 - [general-agent](runtime/extensions/stella-runtime/agents/general.md)
 - [implementation notes](docs/stella-computer.md)
-
