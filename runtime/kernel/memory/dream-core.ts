@@ -1,9 +1,8 @@
 /**
  * Shared core for the Dream protocol IO surface.
  *
- * Both the Exec builtins (`dream-inputs.ts`, `dream-watermark.ts`) and the
- * top-level `Dream` tool dispatched from the dream-scheduler completion loop
- * use these helpers so that behavior stays in one place.
+ * The Dream scheduler and local Dream tool dispatch both use these helpers so
+ * behavior stays in one place.
  */
 
 import { promises as fs } from "node:fs";

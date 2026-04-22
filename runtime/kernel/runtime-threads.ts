@@ -13,7 +13,9 @@ export type RuntimeThreadRecord = {
 };
 
 export const normalizeRuntimeThreadId = (value: string): string | undefined => {
-  const trimmed = value.trim().toLowerCase();
+  // Preserve case: conversation ids are case-sensitive and orchestrator thread
+  // keys are derived directly from them.
+  const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 };
 

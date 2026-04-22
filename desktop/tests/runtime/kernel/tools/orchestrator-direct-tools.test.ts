@@ -104,10 +104,15 @@ describe("orchestrator direct tool surface", () => {
     const generalTools = new Set(host.getToolCatalog("general").map((tool) => tool.name));
     expect(generalTools.has("TaskCreate")).toBe(false);
     expect(generalTools.has("Display")).toBe(false);
-    expect(generalTools.has("WebSearch")).toBe(false);
     expect(generalTools.has("Memory")).toBe(false);
     expect(generalTools.has("askQuestion")).toBe(false);
-    expect(generalTools.has("Exec")).toBe(true);
+    expect(generalTools.has("exec_command")).toBe(true);
+    expect(generalTools.has("write_stdin")).toBe(true);
+    expect(generalTools.has("apply_patch")).toBe(true);
+    expect(generalTools.has("web")).toBe(true);
+    expect(generalTools.has("RequestCredential")).toBe(true);
+    expect(generalTools.has("view_image")).toBe(true);
+    expect(generalTools.has("image_gen")).toBe(true);
   });
 
   it("executes askQuestion for the orchestrator and rejects other agents", async () => {

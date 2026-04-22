@@ -24,6 +24,7 @@ export type ToolContext = {
   cloudTaskId?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
+  allowedToolNames?: string[];
 };
 
 export type ToolResult = {
@@ -130,20 +131,36 @@ export type ToolHostOptions = {
   extensionTools?: import("../extensions/types.js").ToolDefinition[];
   displayHtml?: (html: string) => void;
   /**
-   * Optional handler for the Exec registry's `tools.web_search` builtin. When
-   * omitted, `tools.web_search` is not registered.
+   * Optional handler for Stella's search-backed web tools (`web` and the
+   * legacy `WebSearch` alias). When omitted, search mode is unavailable.
    */
   webSearch?: (
     query: string,
     options?: { category?: string },
-  ) => Promise<{ text: string }>;
+  ) => Promise<{
+    text: string;
+    results?: Array<{ title: string; url: string; snippet: string }>;
+  }>;
+  /**
+   * Optional authenticated Stella site access for tool surfaces like `image_gen`
+   * that call the managed media HTTP API.
+   */
+  getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
+  /**
+   * Optional authenticated Convex query bridge for polling backend-owned state
+   * such as media job completion.
+   */
+  queryConvex?: (
+    ref: unknown,
+    args: Record<string, unknown>,
+  ) => Promise<unknown>;
   /**
    * Optional MemoryStore wired to the orchestrator's memory surface.
    */
   memoryStore?: import("../memory/memory-store.js").MemoryStore;
   /**
-   * Optional ThreadSummariesStore + stellaHome wired to the Dream agent's
-   * `dream.listUnprocessed` / `dream.markProcessed` builtins.
+   * Optional ThreadSummariesStore + stellaHome used by the background Dream
+   * agent's consolidation pass.
    */
   threadSummariesStore?: import("../memory/thread-summaries-store.js").ThreadSummariesStore;
   stellaHome?: string;

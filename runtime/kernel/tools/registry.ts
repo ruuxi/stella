@@ -1,18 +1,45 @@
 /**
  * Top-level handler registry for the device tool surface.
  *
- * Stella uses a hybrid model:
- * - the Orchestrator keeps a small direct coordination surface
- * - the General agent stays Exec-first
- * - internal subagents (`Explore`) still reach `Read` / `Grep` directly
+ * Stella now uses a direct top-level tool surface:
+ * - general execution tools are codex-style (`exec_command`, `apply_patch`, etc.)
+ * - specialized/internal tools remain top-level for narrower agents
+ * - orchestrator-only coordination tools stay top-level as well
+ * - narrower specialist agents (Dream, Schedule) opt into dedicated tool
+ *   allowlists on top of the same host
  */
 
 import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import type { MemoryStore, MemoryTarget } from "../memory/memory-store.js";
-import { handleRead } from "./file.js";
+import { handleApplyPatch } from "./apply-patch.js";
+import {
+  createComputerToolHandlers,
+  type CreateComputerToolHandlersOptions,
+} from "./computer.js";
+import { handleEdit, handleRead, handleWrite } from "./file.js";
 import { localWebFetch } from "./local-tool-overrides.js";
+import { createMediaToolHandlers } from "./media.js";
+import { handleMultiToolUseParallel } from "./parallel.js";
 import { handleGrep } from "./search.js";
 import { handleSchedule } from "./schedule.js";
+import {
+  handleCronAdd,
+  handleCronList,
+  handleCronRemove,
+  handleCronRun,
+  handleCronUpdate,
+  handleHeartbeatGet,
+  handleHeartbeatRun,
+  handleHeartbeatUpsert,
+} from "./schedule.js";
+import {
+  handleBash,
+  handleExecCommand,
+  handleKillShell,
+  handleShellStatus,
+  handleWriteStdin,
+  type ShellState,
+} from "./shell.js";
 import {
   handleTask,
   handleTaskOutput,
@@ -25,12 +52,14 @@ import type {
   ToolContext,
   ToolHandler,
   ToolResult,
+  ToolUpdateCallback,
 } from "./types.js";
 import {
   handleAskUser,
   handleRequestCredential,
   type UserToolsConfig,
 } from "./user.js";
+import { handleViewImage } from "./view-image.js";
 import type { ToolDefinition } from "../extensions/types.js";
 
 export const mergeToolHandlers = (
@@ -43,6 +72,65 @@ export const createUserToolHandlers = (
   AskUserQuestion: (args, _context) => handleAskUser(args),
   RequestCredential: (args, _context) =>
     handleRequestCredential(userConfig, args),
+});
+
+export const createFilesystemToolHandlers = (): Record<string, ToolHandler> => ({
+  Read: (args, context) => handleRead(args, context),
+  Write: (args, context) => handleWrite(args, context),
+  Edit: (args, context) => handleEdit(args, context),
+  Grep: (args, context) => handleGrep(args, context),
+});
+
+export const createShellToolHandlers = (
+  shellState: ShellState,
+): Record<string, ToolHandler> => ({
+  exec_command: (args, context, extras) =>
+    handleExecCommand(shellState, args, context, extras?.signal),
+  write_stdin: (args, context, extras) =>
+    handleWriteStdin(shellState, args, context, extras?.signal),
+  Bash: (args, context, extras) =>
+    handleBash(shellState, args, context, extras?.signal),
+  ShellStatus: (args) => handleShellStatus(shellState, args),
+  KillShell: (args) => handleKillShell(shellState, args),
+});
+
+export const createPatchToolHandlers = (): Record<string, ToolHandler> => ({
+  apply_patch: (args) => handleApplyPatch(args),
+});
+
+export const createComputerHandlers = (
+  options: CreateComputerToolHandlersOptions,
+): Record<string, ToolHandler> => createComputerToolHandlers(options);
+
+export const createImageToolHandlers = (options: {
+  getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
+  queryConvex?: (
+    ref: unknown,
+    args: Record<string, unknown>,
+  ) => Promise<unknown>;
+}): Record<string, ToolHandler> => ({
+  view_image: (args, context) => handleViewImage(args, context),
+  ...createMediaToolHandlers(options),
+});
+
+export const createParallelToolHandlers = (deps: {
+  executeTool: (
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    context: ToolContext,
+    signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
+  ) => Promise<ToolResult>;
+}): Record<string, ToolHandler> => ({
+  "multi_tool_use.parallel": (args, context, extras) =>
+    handleMultiToolUseParallel(
+      {
+        executeTool: deps.executeTool,
+      },
+      args,
+      context,
+      extras,
+    ),
 });
 
 const requireOrchestrator = (
@@ -99,8 +187,54 @@ export const createWebToolHandlers = (options: {
   webSearch?: (
     query: string,
     options?: { category?: string },
-  ) => Promise<{ text: string }>;
+  ) => Promise<{
+    text: string;
+    results?: Array<{ title: string; url: string; snippet: string }>;
+  }>;
 }): Record<string, ToolHandler> => ({
+  web: async (args) => {
+    const query = typeof args.query === "string" ? args.query.trim() : "";
+    const url = typeof args.url === "string" ? args.url.trim() : "";
+    const prompt =
+      typeof args.prompt === "string" ? args.prompt.trim() || undefined : undefined;
+
+    if (!query && !url) {
+      return { error: "Either query or url is required." };
+    }
+    if (query && url) {
+      return { error: "Pass either query or url, not both." };
+    }
+
+    if (query) {
+      if (!options.webSearch) {
+        return { error: "web search is not available on this device." };
+      }
+      const category =
+        typeof args.category === "string" ? args.category.trim() || undefined : undefined;
+      try {
+        const result = await options.webSearch(
+          query,
+          category ? { category } : undefined,
+        );
+        return {
+          result: result.text || "No results found.",
+          details: {
+            mode: "search",
+            query,
+            ...(Array.isArray(result.results) ? { results: result.results } : {}),
+          },
+        };
+      } catch (error) {
+        return { error: `web search failed: ${(error as Error).message}` };
+      }
+    }
+
+    const text = await localWebFetch({ url, ...(prompt ? { prompt } : {}) });
+    return {
+      result: text,
+      details: { mode: "fetch", url, ...(prompt ? { prompt } : {}) },
+    };
+  },
   WebSearch: async (args, context) => {
     const denied = requireOrchestrator("WebSearch", context);
     if (denied) return denied;
@@ -229,6 +363,26 @@ export const createScheduleToolHandlers = (options: {
   },
 });
 
+export const createScheduleControlToolHandlers = (options: {
+  scheduleApi?: ScheduleToolApi;
+}): Record<string, ToolHandler> => ({
+  HeartbeatGet: async (args, context) =>
+    await handleHeartbeatGet(options.scheduleApi, args, context),
+  HeartbeatUpsert: async (args, context) =>
+    await handleHeartbeatUpsert(options.scheduleApi, args, context),
+  HeartbeatRun: async (args, context) =>
+    await handleHeartbeatRun(options.scheduleApi, args, context),
+  CronList: async () => await handleCronList(options.scheduleApi),
+  CronAdd: async (args, context) =>
+    await handleCronAdd(options.scheduleApi, args, context),
+  CronUpdate: async (args) =>
+    await handleCronUpdate(options.scheduleApi, args),
+  CronRemove: async (args) =>
+    await handleCronRemove(options.scheduleApi, args),
+  CronRun: async (args) =>
+    await handleCronRun(options.scheduleApi, args),
+});
+
 export const createMemoryToolHandlers = (options: {
   memoryStore: MemoryStore;
 }): Record<string, ToolHandler> => ({
@@ -254,15 +408,6 @@ export const createMemoryToolHandlers = (options: {
     }
     return { result: options.memoryStore.remove(target, oldText) };
   },
-});
-
-/**
- * Internal-only handlers used by the Explore subagent. These are not part of
- * the model-facing tool catalog; they're reachable via `executeTool` only.
- */
-export const createInternalExploreHandlers = (): Record<string, ToolHandler> => ({
-  Read: (args, context) => handleRead(args, context),
-  Grep: (args, context) => handleGrep(args, context),
 });
 
 export const registerExtensionToolHandlers = (

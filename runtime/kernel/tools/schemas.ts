@@ -1,25 +1,15 @@
 /**
  * Tool metadata + JSON schemas exposed to the LLM.
  *
- * Stella now uses a hybrid surface:
- * - the General agent stays Exec-first (`Exec` / `Wait`)
- * - the Orchestrator keeps a small direct coordination surface
- * - `RequestCredential` / `AskUserQuestion` remain top-level UI round-trips
- *
- * Internal helpers (`Read`, `Grep`) are retained for Explore only and are not
- * meant for ordinary agent prompts.
+ * Stella's General agent uses a codex-style direct tool pack
+ * (exec_command, apply_patch, web, computer_*, etc.) — those tools live
+ * in `registry.ts` and don't need entries here. This file declares the
+ * top-level model-facing catalog: orchestrator coordination tools,
+ * UI round-trips, and (for the General agent) the typed `computer_*`
+ * surface that mirrors upstream computer-use MCP shape.
  */
 
-import {
-  EXEC_JSON_SCHEMA,
-  WAIT_JSON_SCHEMA,
-  WAIT_TOOL_DESCRIPTION,
-  buildExecToolDescription,
-} from "../exec/exec-contract.js";
-
 export const DEVICE_TOOL_NAMES = [
-  "Exec",
-  "Wait",
   "AskUserQuestion",
   "RequestCredential",
 ] as const;
@@ -390,6 +380,149 @@ const DreamJsonSchema = {
   required: ["action"],
 };
 
+// ── computer_* shared shapes ─────────────────────────────────────────────
+// `app` accepts either an app display name ("Spotify") or a bundle id
+// ("com.spotify.client"). Always required.
+const COMPUTER_APP_PROPERTY = {
+  type: "string",
+  description:
+    'The target macOS app. Use the display name ("Spotify") or the bundle id ("com.spotify.client"). Required on every call.',
+};
+
+const ComputerListAppsJsonSchema = {
+  type: "object",
+  properties: {},
+};
+
+const ComputerGetAppStateJsonSchema = {
+  type: "object",
+  properties: { app: COMPUTER_APP_PROPERTY },
+  required: ["app"],
+};
+
+const ComputerClickJsonSchema = {
+  type: "object",
+  properties: {
+    app: COMPUTER_APP_PROPERTY,
+    element_index: {
+      type: "string",
+      description:
+        "Numeric ID of the element to click, taken from the most recent get_app_state output. Provide either element_index or x/y, not both.",
+    },
+    x: {
+      type: "number",
+      description:
+        "X pixel coordinate inside the most recent screenshot. Provide with y as an alternative to element_index.",
+    },
+    y: {
+      type: "number",
+      description:
+        "Y pixel coordinate inside the most recent screenshot. Provide with x as an alternative to element_index.",
+    },
+    click_count: {
+      type: "integer",
+      description: "Number of clicks. Default 1. Currently only 1 is supported.",
+    },
+    mouse_button: {
+      type: "string",
+      enum: ["left", "right", "middle"],
+      description: "Mouse button. Default 'left'. Currently only 'left' is supported.",
+    },
+  },
+  required: ["app"],
+};
+
+const ComputerDragJsonSchema = {
+  type: "object",
+  properties: {
+    app: COMPUTER_APP_PROPERTY,
+    from_x: { type: "number", description: "Start X pixel in the screenshot." },
+    from_y: { type: "number", description: "Start Y pixel in the screenshot." },
+    to_x: { type: "number", description: "End X pixel in the screenshot." },
+    to_y: { type: "number", description: "End Y pixel in the screenshot." },
+  },
+  required: ["app", "from_x", "from_y", "to_x", "to_y"],
+};
+
+const ComputerPerformSecondaryActionJsonSchema = {
+  type: "object",
+  properties: {
+    app: COMPUTER_APP_PROPERTY,
+    element_index: {
+      type: "string",
+      description:
+        "Numeric ID of the element from the most recent get_app_state output.",
+    },
+    action: {
+      type: "string",
+      description:
+        "AX action name to invoke (e.g. AXPress, AXRaise, AXShowMenu). The element's get_app_state line lists its supported Secondary Actions.",
+    },
+  },
+  required: ["app", "element_index", "action"],
+};
+
+const ComputerPressKeyJsonSchema = {
+  type: "object",
+  properties: {
+    app: COMPUTER_APP_PROPERTY,
+    key: {
+      type: "string",
+      description:
+        "Key or key combination (e.g. 'Return', 'Tab', 'cmd+f', 'cmd+shift+l').",
+    },
+  },
+  required: ["app", "key"],
+};
+
+const ComputerScrollJsonSchema = {
+  type: "object",
+  properties: {
+    app: COMPUTER_APP_PROPERTY,
+    element_index: {
+      type: "string",
+      description:
+        "Numeric ID of the scrollable element from the most recent get_app_state output.",
+    },
+    direction: {
+      type: "string",
+      enum: ["up", "down", "left", "right"],
+      description: "Scroll direction.",
+    },
+    pages: {
+      type: "number",
+      description: "Number of pages to scroll. Default 1.",
+    },
+  },
+  required: ["app", "element_index", "direction"],
+};
+
+const ComputerSetValueJsonSchema = {
+  type: "object",
+  properties: {
+    app: COMPUTER_APP_PROPERTY,
+    element_index: {
+      type: "string",
+      description:
+        "Numeric ID of the settable element (text field, search field, switch, slider).",
+    },
+    value: {
+      type: "string",
+      description: "New value to set. May be empty to clear the field.",
+    },
+  },
+  required: ["app", "element_index", "value"],
+};
+
+const ComputerTypeTextJsonSchema = {
+  type: "object",
+  properties: {
+    app: COMPUTER_APP_PROPERTY,
+    text: { type: "string", description: "Literal text to type." },
+  },
+  required: ["app", "text"],
+};
+
 const StrReplaceJsonSchema = {
   type: "object",
   properties: {
@@ -442,8 +575,6 @@ const MemoryJsonSchema = {
 };
 
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
-  Exec: buildExecToolDescription([]),
-  Wait: WAIT_TOOL_DESCRIPTION,
   AskUserQuestion:
     "Ask the user to choose between options via a UI prompt. Use for clarifications, decisions, or preferences.",
   askQuestion:
@@ -474,14 +605,33 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Background memory consolidator IO. action=\"list\" returns unprocessed thread_summaries + pending memories_extensions paths; action=\"markProcessed\" advances the Dream watermark data.",
   StrReplace:
     "Surgically replace exact text inside an existing file. old_string must uniquely identify the target unless replace_all is true.",
+  // macOS computer-use surface. Drive any macOS app in the background through
+  // Accessibility — never raises the target, never steals focus. Always pass
+  // `app` as a name like "Spotify" or a bundle id like "com.apple.Notes".
+  computer_list_apps:
+    "List the apps on this macOS device (running + recently used). Returns app name, bundle id, pid, last-used date, and active state.",
+  computer_get_app_state:
+    "Start a computer-use session for an app if needed, then return its current accessibility tree (compact numbered element list) and a screenshot of its key window. Call this once per turn before interacting with the app. Required: app.",
+  computer_click:
+    "Click an element of the target app. Provide either element_index (numeric ID from the latest get_app_state) for an Accessibility click, or x and y (screenshot pixels) for a coordinate click. Required: app.",
+  computer_drag:
+    "Drag from one screenshot pixel to another inside the target app's captured window. Required: app, from_x, from_y, to_x, to_y.",
+  computer_perform_secondary_action:
+    "Invoke a secondary Accessibility action (e.g. AXPress on a menu item, AXRaise on a window) exposed by an element. Required: app, element_index, action.",
+  computer_press_key:
+    "Press a key or key combination on the keyboard with the target app focused. Supports modifiers (cmd, shift, ctrl, alt) and named keys (Return, Tab, Up, Down, etc). Required: app, key.",
+  computer_scroll:
+    "Scroll an element of the target app in a direction by a number of pages. Required: app, element_index, direction (up|down|left|right).",
+  computer_set_value:
+    "Set the value of a settable Accessibility element (text field, search field, switch, slider). Deterministic — does not depend on focus. Required: app, element_index, value.",
+  computer_type_text:
+    "Type literal text via the keyboard into the target app. Required: app, text.",
   // Internal-only descriptors (Explore subagent uses Read/Grep).
   Read: "Read a file from the filesystem (internal).",
   Grep: "Search file contents using ripgrep (internal).",
 };
 
 export const TOOL_JSON_SCHEMAS: Record<string, object> = {
-  Exec: EXEC_JSON_SCHEMA,
-  Wait: WAIT_JSON_SCHEMA,
   AskUserQuestion: AskUserQuestionJsonSchema,
   askQuestion: AskQuestionJsonSchema,
   RequestCredential: RequestCredentialJsonSchema,
@@ -497,6 +647,15 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   Memory: MemoryJsonSchema,
   Dream: DreamJsonSchema,
   StrReplace: StrReplaceJsonSchema,
+  computer_list_apps: ComputerListAppsJsonSchema,
+  computer_get_app_state: ComputerGetAppStateJsonSchema,
+  computer_click: ComputerClickJsonSchema,
+  computer_drag: ComputerDragJsonSchema,
+  computer_perform_secondary_action: ComputerPerformSecondaryActionJsonSchema,
+  computer_press_key: ComputerPressKeyJsonSchema,
+  computer_scroll: ComputerScrollJsonSchema,
+  computer_set_value: ComputerSetValueJsonSchema,
+  computer_type_text: ComputerTypeTextJsonSchema,
   Read: ReadJsonSchema,
   Grep: GrepJsonSchema,
 };

@@ -4,13 +4,10 @@
  * Builds the tool execution environment for a Stella session.
  *
  * Model-facing surface:
- *   - Orchestrator direct tools  -> coordination tools like TaskCreate, Display, WebSearch, Memory
- *   - Exec / Wait                -> code-mode runtime used by General and Schedule
- *   - AskUserQuestion / RequestCredential -> chat UI round-trips
- *
- * Internal subagents (Explore) reach `Read` / `Grep` directly through
- * `executeTool`; those handlers are registered without exposing them in the
- * tool catalog the LLM sees.
+ *   - General codex-style tools  -> exec_command / write_stdin / apply_patch / etc.
+ *   - macOS computer tools       -> computer_* (typed, mirror upstream computer-use MCP)
+ *   - Coordination tools         -> TaskCreate, Display, Schedule, Memory
+ *   - UI round-trips             -> AskUserQuestion / RequestCredential
  */
 
 import path from "node:path";
@@ -38,10 +35,16 @@ import {
 import { type UserToolsConfig } from "./user.js";
 import {
   createAskQuestionToolHandlers,
+  createComputerHandlers,
   createDisplayToolHandlers,
-  createInternalExploreHandlers,
+  createFilesystemToolHandlers,
+  createImageToolHandlers,
   createMemoryToolHandlers,
+  createParallelToolHandlers,
+  createPatchToolHandlers,
+  createScheduleControlToolHandlers,
   createScheduleToolHandlers,
+  createShellToolHandlers,
   createTaskToolHandlers,
   createUserToolHandlers,
   createWebToolHandlers,
@@ -49,22 +52,6 @@ import {
   registerExtensionToolHandlers,
 } from "./registry.js";
 import { TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "./schemas.js";
-import {
-  createExecToolRegistry,
-  type ExecToolRegistry,
-} from "./registry/registry.js";
-import {
-  createAllBuiltins,
-  registerDescribeBuiltin,
-  type CreateBuiltinsOptions,
-} from "./registry/builtins/index.js";
-import { createExecHost, type ExecHost } from "../exec/exec-host.js";
-import { createExecToolHandlers } from "../exec/exec-tool.js";
-import {
-  EXEC_TOOL_NAME,
-  WAIT_TOOL_NAME,
-  buildExecToolDescription,
-} from "../exec/exec-contract.js";
 
 import type { ToolDefinition } from "../extensions/types.js";
 
@@ -75,8 +62,6 @@ export type ToolHost = ReturnType<typeof createToolHost>;
 const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
   "Display",
   "DisplayGuidelines",
-  "WebSearch",
-  "WebFetch",
   "Schedule",
   "TaskCreate",
   "TaskOutput",
@@ -91,29 +76,27 @@ export const createToolHost = ({
   stellaBrowserBinPath: _stellaBrowserBinPath,
   stellaOfficeBinPath: _stellaOfficeBinPath,
   stellaUiCliPath: _stellaUiCliPath,
-  stellaComputerCliPath: _stellaComputerCliPath,
+  stellaComputerCliPath,
   requestCredential,
   taskApi,
   scheduleApi,
   extensionTools,
   displayHtml,
   webSearch,
+  getStellaSiteAuth,
+  queryConvex,
   memoryStore,
-  threadSummariesStore,
-  stellaHome,
 }: ToolHostOptions) => {
   const stateRoot = path.join(stellaRoot, "state");
   const toolCatalog = new Map<string, ToolMetadata>(
-    Object.entries(TOOL_DESCRIPTIONS)
-      .filter(([name]) => name !== "Read" && name !== "Grep")
-      .map(([name, description]) => [
+    Object.entries(TOOL_DESCRIPTIONS).map(([name, description]) => [
+      name,
+      {
         name,
-        {
-          name,
-          description,
-          parameters: (TOOL_JSON_SCHEMAS[name] ?? {}) as Record<string, unknown>,
-        },
-      ]),
+        description,
+        parameters: (TOOL_JSON_SCHEMAS[name] ?? {}) as Record<string, unknown>,
+      },
+    ]),
   );
 
   setFileToolsConfig({ stellaRoot });
@@ -123,7 +106,7 @@ export const createToolHost = ({
     stellaBrowserBinPath: _stellaBrowserBinPath,
     stellaOfficeBinPath: _stellaOfficeBinPath,
     stellaUiCliPath: _stellaUiCliPath,
-    stellaComputerCliPath: _stellaComputerCliPath,
+    stellaComputerCliPath,
   });
   const stateContext: StateContext = createStateContext(stateRoot, taskApi);
 
@@ -137,41 +120,36 @@ export const createToolHost = ({
       logError("Failed to recover stale secret mounts", error);
     });
 
-  // Build the Exec registry + host for the global `tools.*` surface.
-  const registry: ExecToolRegistry = createExecToolRegistry();
-
-  const builtinsOptions: CreateBuiltinsOptions = {
-    shellState,
-    stateContext,
-    ...(scheduleApi ? { scheduleApi } : {}),
-    ...(taskApi ? { taskApi } : {}),
-    ...(displayHtml ? { displayHtml } : {}),
-    ...(webSearch ? { webSearch } : {}),
-    ...(memoryStore ? { memoryStore } : {}),
-    ...(threadSummariesStore ? { threadSummariesStore } : {}),
-    ...(stellaHome ? { stellaHome } : {}),
-  };
-  registry.registerMany(createAllBuiltins(builtinsOptions));
-  registerDescribeBuiltin(registry);
-
-  const execHost: ExecHost = createExecHost({ registry });
-  // Update the Exec catalog description to reflect the live tool list.
-  toolCatalog.set(EXEC_TOOL_NAME, {
-    name: EXEC_TOOL_NAME,
-    description: buildExecToolDescription(registry.list()),
-    parameters: TOOL_JSON_SCHEMAS[EXEC_TOOL_NAME] as Record<string, unknown>,
-  });
-
   let handlers: Record<string, ToolHandler> = mergeToolHandlers(
-    createInternalExploreHandlers(),
+    createFilesystemToolHandlers(),
+    createShellToolHandlers(shellState),
+    createPatchToolHandlers(),
+    createComputerHandlers({ stellaComputerCliPath }),
+    createImageToolHandlers({ getStellaSiteAuth, queryConvex }),
     createDisplayToolHandlers({ displayHtml }),
     createWebToolHandlers({ webSearch }),
     createTaskToolHandlers(stateContext),
     createScheduleToolHandlers({ taskApi, scheduleApi }),
+    createScheduleControlToolHandlers({ scheduleApi }),
     createAskQuestionToolHandlers(),
     ...(memoryStore ? [createMemoryToolHandlers({ memoryStore })] : []),
     createUserToolHandlers(userConfig),
-    createExecToolHandlers(execHost),
+  );
+
+  let executeTool: (
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    context: ToolContext,
+    signal?: AbortSignal,
+    onUpdate?: ToolHandlerExtras["onUpdate"],
+  ) => Promise<ToolResult>;
+
+  handlers = mergeToolHandlers(
+    handlers,
+    createParallelToolHandlers({
+      executeTool: (toolName, toolArgs, context, signal, onUpdate) =>
+        executeTool(toolName, toolArgs, context, signal, onUpdate),
+    }),
   );
 
   registerExtensionToolHandlers(handlers, extensionTools);
@@ -183,7 +161,7 @@ export const createToolHost = ({
     });
   }
 
-  const executeTool = async (
+  executeTool = async (
     toolName: string,
     toolArgs: Record<string, unknown>,
     context: ToolContext,
@@ -195,24 +173,7 @@ export const createToolHost = ({
       ...(onUpdate ? { onUpdate } : {}),
     };
     log(`Executing tool: ${toolName}`, {
-      args:
-        toolName === EXEC_TOOL_NAME
-          ? {
-              summary: toolArgs.summary,
-              sourcePreview:
-                typeof toolArgs.source === "string"
-                  ? toolArgs.source.slice(0, 200)
-                  : typeof toolArgs.code === "string"
-                    ? toolArgs.code.slice(0, 200)
-                    : undefined,
-              timeoutMs: toolArgs.timeoutMs,
-            }
-          : toolName === WAIT_TOOL_NAME
-            ? {
-                cell_id: toolArgs.cell_id,
-                yield_after_ms: toolArgs.yield_after_ms,
-              }
-            : toolArgs,
+      args: toolArgs,
       context,
     });
 
@@ -261,30 +222,14 @@ export const createToolHost = ({
 
   const shutdown = async () => {
     killAllShells();
-    if (execHost) {
-      await execHost.shutdown();
-    }
   };
 
   const getToolCatalog = (agentType?: string) =>
-    Array.from(toolCatalog.values())
-      .filter(
-        (tool) =>
-          agentType === AGENT_IDS.ORCHESTRATOR ||
-          !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
-      )
-      .map((tool) =>
-        tool.name === EXEC_TOOL_NAME
-          ? {
-              ...tool,
-              description: buildExecToolDescription(
-                registry.list(
-                  agentType ? { agentType } : undefined,
-                ),
-              ),
-            }
-          : tool,
-      );
+    Array.from(toolCatalog.values()).filter(
+      (tool) =>
+        agentType === AGENT_IDS.ORCHESTRATOR ||
+        !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
+    );
 
   return {
     executeTool,
@@ -304,20 +249,5 @@ export const createToolHost = ({
         });
       }
     },
-    /**
-     * Register an additional tool with the Exec registry. The new tool becomes
-     * available the next time an `Exec` cell starts (or immediately if the
-     * cell has not yet been launched).
-     */
-    registerExecTool: (tool: Parameters<ExecToolRegistry["register"]>[0]) => {
-      registry.register(tool);
-      toolCatalog.set(EXEC_TOOL_NAME, {
-        name: EXEC_TOOL_NAME,
-        description: buildExecToolDescription(registry.list()),
-        parameters: TOOL_JSON_SCHEMAS[EXEC_TOOL_NAME] as Record<string, unknown>,
-      });
-    },
-    getExecRegistry: () => registry,
-    getExecHost: () => execHost,
   };
 };

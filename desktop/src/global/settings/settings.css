@@ -41,46 +41,6 @@
   max-width: 1080px;
 }
 
-/* ---- Sidebar Tabs ---- */
-
-.settings-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px 16px 16px 16px;
-  width: 140px;
-  flex-shrink: 0;
-  border-right: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-}
-
-.settings-sidebar-tab {
-  display: flex;
-  align-items: center;
-  padding: 7px 12px;
-  border: none;
-  border-radius: var(--radius-md, 6px) 0 0 var(--radius-md, 6px);
-  background: transparent;
-  color: var(--text-weak);
-  font-size: 13px;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: default;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
-  text-align: left;
-}
-
-.settings-sidebar-tab:hover {
-  color: var(--text-base);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-}
-
-.settings-sidebar-tab--active {
-  color: var(--text-strong);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-}
-
 /* ---- Panel Content ---- */
 
 .settings-panel-wrap {

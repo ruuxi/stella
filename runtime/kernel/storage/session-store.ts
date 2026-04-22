@@ -226,7 +226,14 @@ const buildFallbackThreadPayload = (
 };
 
 const rowSizeTextEncoder = new TextEncoder();
-const THREAD_ROW_MAX_BYTES = 1_800_000;
+// Tool results that include a screenshot (vision content block) routinely
+// run 1–2 MB once the PNG is base64-encoded — that's a normal payload, not
+// pathological. The previous 1.8 MB cap was below that threshold, so every
+// `stella-computer snapshot` result with an inline screenshot got dropped
+// to a "too large to persist" placeholder, breaking the agent's context for
+// the very next turn. SQLite handles multi-MB rows fine; bump high enough
+// to fit a screenshot + element tree comfortably.
+const THREAD_ROW_MAX_BYTES = 6_000_000;
 const THREAD_ROW_MAX_TEXT_CHARS = 1_000;
 const THREAD_ROW_PREVIEW_CHARS = 500;
 
@@ -336,6 +343,28 @@ const enforceThreadPayloadRowSizeLimit = (
   if (payloadByteLength(compacted) <= THREAD_ROW_MAX_BYTES) {
     return compacted;
   }
+
+  // Still too big — almost always because an inline image (vision content
+  // block) ballooned the row. Drop the base64 payload of every image and
+  // leave a small text breadcrumb in its place so the rest of the result
+  // (and any other text blocks the model still needs) survives.
+  const withoutImageData: PersistedRuntimeThreadPayload = {
+    ...compacted,
+    content: compacted.content.map((block) => {
+      if (block.type !== "image") {
+        return block;
+      }
+      const sizeKb = Math.round((block.data?.length ?? 0) * 0.75 / 1024);
+      return {
+        type: "text" as const,
+        text: `[image content block stripped for storage: mime=${block.mimeType ?? "image/png"} approx_kb=${sizeKb}]`,
+      };
+    }),
+  };
+  if (payloadByteLength(withoutImageData) <= THREAD_ROW_MAX_BYTES) {
+    return withoutImageData;
+  }
+
   return {
     ...payload,
     content: [{ type: "text", text: truncateToolOutputForStorage(JSON.stringify(payload.content)) }],

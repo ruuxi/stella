@@ -189,6 +189,7 @@ const runClaudeHostedTurn = async (args: {
         stellaRoot: args.opts.stellaRoot,
         taskDepth: args.opts.agentContext.taskDepth ?? 0,
         maxTaskDepth: args.opts.agentContext.maxTaskDepth,
+        allowedToolNames: args.opts.agentContext.toolsAllowlist,
         store: args.opts.store,
         toolExecutor: args.opts.toolExecutor,
         webSearch: args.opts.webSearch,

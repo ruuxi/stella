@@ -92,4 +92,30 @@ App=com.apple.finder (pid 504)
     expect(result.images).toHaveLength(1);
     expect(result.images[0].mimeType).toBe("image/jpeg");
   });
+
+  it("extracts a marker embedded inside a JSON-stringified tool result", async () => {
+    // Mirrors the exec_command tool result shape: stdout is wrapped inside
+    // a JSON envelope where real newlines become escaped `\n` characters.
+    // Before the regex fix, the start-of-line anchor meant the marker was
+    // never matched in this shape and the model had to call view_image
+    // separately (which then failed for >2MB screenshots).
+    const tempDir = createTempDir();
+    const imgPath = writePng(tempDir);
+    const payload = {
+      session_id: null,
+      running: false,
+      exit_code: 0,
+      output:
+        "<app_state>\nApp=com.spotify.client (pid 465)\n0 standard window Spotify Premium\n14 menu bar\n</app_state>\n" +
+        `[stella-attach-image] 2192x1688 507KB inline=image/png ${imgPath}\n`,
+      cwd: "/Users/test/projects/stella",
+      command: "stella-computer snapshot --app Spotify",
+    };
+    const text = JSON.stringify(payload, null, 2);
+    const result = await extractAttachImageBlocks(text);
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0].mimeType).toBe("image/png");
+    expect(result.images[0].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
+    expect(result.text).not.toContain("[stella-attach-image]");
+  });
 });

@@ -46,10 +46,10 @@ describe("orchestrator response target tracking", () => {
     });
   });
 
-  it("tracks task ids surfaced through nested Exec calls", () => {
+  it("tracks task ids surfaced through nested tool details", () => {
     const tracker = createOrchestratorResponseTargetTracker();
 
-    tracker.noteToolEnd("Exec", {
+    tracker.noteToolEnd("Bash", {
       calls: [
         {
           toolName: "task_create",

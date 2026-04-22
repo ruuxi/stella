@@ -1,8 +1,7 @@
 import type { RuntimeAgentEventPayload } from "../../protocol/index.js";
 
-// Top-level legacy task tool names plus the matching `tools.*` entries the
-// model now calls from inside `Exec`. Both surfaces share the same task ids
-// and `thread_id`-shaped payloads.
+// Top-level task tool names plus a few historical aliases. Both surfaces share
+// the same task ids and `thread_id`-shaped payloads.
 const TASK_TOOL_NAMES = new Set([
   "TaskCreate",
   "TaskUpdate",
@@ -57,8 +56,8 @@ const getTaskIdFromToolDetails = (
       asTaskId(record.thread_id) ??
       getTaskIdFromArgsLike(record.result) ??
       getTaskIdFromArgsLike(record.details) ??
-      // task_create through Exec returns its result inline as the registry
-      // value; fall back to the raw record (already a thread snapshot).
+      // Some task surfaces return the snapshot inline; fall back to the raw
+      // record when that happens.
       asTaskId(record.threadId) ??
       asTaskId(record.id)
     );
@@ -146,12 +145,8 @@ export const createOrchestratorResponseTargetTracker = (
         recordTaskId(getTaskIdFromToolDetails(toolName, details));
         return;
       }
-      // Inspect Exec/Wait result envelopes for nested task tool calls so
-      // continuation/follow-up flows still bind to the same task thread.
-      if (toolName === "Exec" || toolName === "Wait") {
-        for (const id of collectTaskEventTaskIds(details)) {
-          recordTaskId(id);
-        }
+      for (const id of collectTaskEventTaskIds(details)) {
+        recordTaskId(id);
       }
     },
     resolve: () =>

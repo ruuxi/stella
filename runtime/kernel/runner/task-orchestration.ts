@@ -5,8 +5,9 @@ import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
 import { createTaskLifecycleResponseTarget } from "../agent-runtime/response-target.js";
 import { runExplore } from "../agent-runtime/explore.js";
-import { shouldUseAutomaticSkillExplore } from "../exec/skill-catalog.js";
+import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
 import { LocalTaskManager } from "../tasks/local-task-manager.js";
+import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
 import type { TaskToolRequest, ToolContext, ToolResult } from "../tools/types.js";
 import type {
   LocalTaskManagerAgentContext,
@@ -103,80 +104,33 @@ const resolveToolWorkingDirectory = (
   args: Record<string, unknown>,
   fallbackCwd?: string,
 ): string | undefined =>
-  normalizeString(args.working_directory ?? args.cwd) ?? normalizeString(fallbackCwd);
+  normalizeString(args.workdir ?? args.working_directory ?? args.cwd) ??
+  normalizeString(fallbackCwd);
 
-const READ_ONLY_EXEC_TOOLS = new Set([
-  "read_file",
-  "search",
-  "glob",
-  "web_fetch",
-  "web_search",
-  "task_output",
-  "heartbeat_get",
-  "cron_list",
-]);
-
-const EXEC_MUTATION_PATTERNS: RegExp[] = [
-  /\btools\s*\.\s*write_file\s*\(/,
-  /\btools\s*\.\s*apply_patch\s*\(/,
-  // `tools.shell` subsumes run/status/kill via op; treat any call as a
-  // potential mutator since op='run' may execute arbitrary commands.
-  /\btools\s*\.\s*shell\s*\(/,
-  /\btools\s*\.\s*display\s*\(/,
-  /\btools\s*\.\s*memory\s*\(/,
-  /\btools\s*\.\s*task_(?:create|update|pause)\s*\(/,
-  /\btools\s*\.\s*cron_(?:add|update|remove|run)\s*\(/,
-  /\btools\s*\.\s*heartbeat_(?:upsert|run)\s*\(/,
-  /\btools\s*\.\s*schedule\s*\(/,
-  /\bfs(?:\.promises)?\.(?:writeFile|appendFile|cp|copyFile|rename|rm|rmdir|unlink|mkdir|mkdtemp|truncate|chmod|chown|utimes)\s*\(/,
-  /\bchild_process\s*\.\s*(?:exec|execFile|spawn|fork)\s*\(/,
-  /\bprocess\s*\.\s*chdir\s*\(/,
-  /\b(?:require|import)\s*\(/,
-];
-
-const isClearlyReadOnlyExecuteTypescript = (
-  args: Record<string, unknown>,
-): boolean => {
-  const code =
-    normalizeString(args.source) ?? normalizeString(args.code);
-  if (!code) {
-    return false;
-  }
-
-  for (const pattern of EXEC_MUTATION_PATTERNS) {
-    if (pattern.test(code)) {
-      return false;
-    }
-  }
-
-  const toolCalls = code.matchAll(/\btools\s*\.\s*(\w+)\s*\(/g);
-  for (const match of toolCalls) {
-    const method = match[1];
-    if (!method || !READ_ONLY_EXEC_TOOLS.has(method)) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-export const resolveHmrToolTargetPath = (
+const resolveMutatingToolPath = (
   toolName: string,
   args: Record<string, unknown>,
   fallbackCwd?: string,
 ): string | null => {
   const workingDirectory = resolveToolWorkingDirectory(args, fallbackCwd);
-  // The legacy Write/Edit/Bash tool surface is gone; Exec is the only mutating
-  // surface that ever shows up in this hot path now. We keep the legacy names
-  // as no-ops so callers that still inspect tool ids defensively don't break.
   if (toolName === "Write" || toolName === "Edit") {
     const rawPath = normalizeString(
       args.file_path ?? args.path ?? args.target_path,
     );
     return rawPath ? resolvePath(rawPath, workingDirectory) : null;
   }
-  if (toolName === "Bash") {
-    const command = normalizeString(args.command);
+  if (toolName === "apply_patch") {
+    const patch = normalizeString(args.patch);
+    if (!patch) return null;
+    try {
+      const rawPath = extractApplyPatchTargetPaths(patch)[0];
+      return rawPath ? resolvePath(rawPath, workingDirectory) : null;
+    } catch {
+      return null;
+    }
+  }
+  if (toolName === "Bash" || toolName === "exec_command") {
+    const command = normalizeString(args.cmd ?? args.command);
     if (!command) return null;
     const rawPath = extractShellPath(command);
     if (rawPath) {
@@ -186,17 +140,41 @@ export const resolveHmrToolTargetPath = (
       ? resolvePath(workingDirectory, normalizeString(fallbackCwd))
       : null;
   }
-  if (toolName === "Exec" || toolName === "ExecuteTypescript") {
-    // Exec can write through `tools.write_file` / `apply_patch`, `tools.shell`,
-    // or direct Node filesystem APIs. Only skip the HMR pause for programs
-    // that are clearly read-only.
-    const basePath = normalizeString(fallbackCwd);
-    if (!basePath) {
-      return null;
-    }
-    return isClearlyReadOnlyExecuteTypescript(args) ? null : resolvePath(basePath);
-  }
   return null;
+};
+
+export const resolveHmrToolTargetPath = (
+  toolName: string,
+  args: Record<string, unknown>,
+  fallbackCwd?: string,
+): string | null => {
+  if (toolName === "multi_tool_use.parallel") {
+    const requested = Array.isArray(args.tool_uses) ? args.tool_uses : [];
+    for (const entry of requested) {
+      if (!entry || typeof entry !== "object") continue;
+      const record = entry as {
+        recipient_name?: unknown;
+        parameters?: unknown;
+      };
+      const nestedToolName = normalizeString(record.recipient_name)?.replace(
+        /^functions\./,
+        "",
+      );
+      const nestedArgs =
+        record.parameters && typeof record.parameters === "object"
+          ? (record.parameters as Record<string, unknown>)
+          : {};
+      if (!nestedToolName) continue;
+      const nestedPath = resolveMutatingToolPath(
+        nestedToolName,
+        nestedArgs,
+        fallbackCwd,
+      );
+      if (nestedPath) return nestedPath;
+    }
+    return null;
+  }
+  return resolveMutatingToolPath(toolName, args, fallbackCwd);
 };
 
 export const isHmrPathUnderDirectory = (
