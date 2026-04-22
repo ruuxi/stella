@@ -21,6 +21,21 @@ import {
 
 const optionalProfileValidator = v.union(v.null(), socialProfileValidator);
 
+/**
+ * Public DTO returned by friend-code lookups. Intentionally omits `ownerId`
+ * and `_id` so a caller who learns or guesses a friend code cannot use this
+ * endpoint to enumerate canonical owner identifiers; only display fields the
+ * profile owner has chosen to expose are returned.
+ */
+const publicProfileByFriendCodeValidator = v.union(
+  v.null(),
+  v.object({
+    nickname: v.string(),
+    friendCode: v.string(),
+    avatarUrl: v.optional(v.string()),
+  }),
+);
+
 export const ensureProfileInternal = internalMutation({
   args: {},
   returns: socialProfileValidator,
@@ -61,17 +76,25 @@ export const getMyProfile = query({
 
 export const getProfileByFriendCode = query({
   args: { friendCode: v.string() },
-  returns: optionalProfileValidator,
+  returns: publicProfileByFriendCodeValidator,
   handler: async (ctx, args) => {
     await requireConnectedUserId(ctx);
     const code = args.friendCode.trim().toUpperCase();
     if (!code) {
       return null;
     }
-    return await ctx.db
+    const profile = await ctx.db
       .query("social_profiles")
       .withIndex("by_friendCode", (q) => q.eq("friendCode", code))
       .unique();
+    if (!profile) {
+      return null;
+    }
+    return {
+      nickname: profile.nickname,
+      friendCode: profile.friendCode,
+      avatarUrl: profile.avatarUrl,
+    };
   },
 });
 

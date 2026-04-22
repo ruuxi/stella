@@ -25,6 +25,12 @@ const eventValidator = v.object({
   deviceId: v.optional(v.string()),
   requestId: v.optional(v.string()),
   targetDeviceId: v.optional(v.string()),
+  requestState: v.optional(
+    v.union(v.literal("pending"), v.literal("claimed"), v.literal("fulfilled")),
+  ),
+  claimedByDeviceId: v.optional(v.string()),
+  claimedAt: v.optional(v.number()),
+  fulfilledAt: v.optional(v.number()),
   payload: jsonValueValidator,
   channelEnvelope: optionalChannelEnvelopeValidator,
 });
@@ -43,7 +49,6 @@ const localSyncMessageValidator = v.object({
   deviceId: v.optional(v.string()),
 });
 
-const PAGINATION_PAGE_SIZE = 1000;
 const MAX_EVENTS_QUERY_LIMIT = 2000;
 const MAX_SYNC_EVENTS_QUERY_LIMIT = 1000;
 const MAX_CONTEXT_TOKENS = 120_000;
@@ -66,9 +71,9 @@ const sanitizeEventForRead = <T extends { type: string; payload: Value } | null>
 
 /**
  * Returns the number of events in a conversation. Reads the denormalized
- * `eventCount` counter on the conversation doc maintained by
- * `appendEventCore`. For legacy rows created before the counter existed, this
- * returns 0; backfill via `internal.events.backfillEventCount` if needed.
+ * `eventCount` counter on the conversation doc, which is initialised to 0
+ * on `createConversation`/`getOrCreateDefaultConversation` and bumped by
+ * `appendEventCore`.
  */
 export const countByConversation = internalQuery({
   args: { conversationId: v.id("conversations") },
@@ -76,47 +81,6 @@ export const countByConversation = internalQuery({
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
     return conversation?.eventCount ?? 0;
-  },
-});
-
-/**
- * One-shot backfill mutation for the denormalized `eventCount` field on a
- * single conversation. Idempotent: rewrites the counter from a paginated walk
- * of the events table. Intended to be invoked from the dashboard or a
- * scheduler for legacy conversations without a `eventCount`.
- */
-export const backfillEventCount = internalMutation({
-  args: { conversationId: v.id("conversations") },
-  returns: v.object({
-    eventCount: v.number(),
-    updated: v.boolean(),
-  }),
-  handler: async (ctx, args) => {
-    const conversation = await ctx.db.get(args.conversationId);
-    if (!conversation) {
-      return { eventCount: 0, updated: false };
-    }
-
-    let total = 0;
-    let cursor: string | null = null;
-    while (true) {
-      const page = await ctx.db
-        .query("events")
-        .withIndex("by_conversationId_and_timestamp", (q) =>
-          q.eq("conversationId", args.conversationId),
-        )
-        .paginate({ cursor, numItems: PAGINATION_PAGE_SIZE });
-      total += page.page.length;
-      if (page.isDone) break;
-      cursor = page.continueCursor;
-    }
-
-    const previous = conversation.eventCount;
-    if (previous !== total) {
-      await ctx.db.patch(args.conversationId, { eventCount: total });
-      return { eventCount: total, updated: true };
-    }
-    return { eventCount: total, updated: false };
   },
 });
 
@@ -289,13 +253,20 @@ const fetchRecentConversationEvents = async (
   ctx: QueryCtx,
   args: RecentConversationEventsArgs,
 ): Promise<ContextEvent[]> => {
-  const query = ctx.db.query("events").withIndex("by_conversationId_and_timestamp", (q) => {
-    const base = q.eq("conversationId", args.conversationId);
-    if (args.beforeTimestamp !== undefined) {
-      return base.lte("timestamp", args.beforeTimestamp);
-    }
-    return base;
-  });
+  // The two branches are kept explicit so the index hint doesn't depend on
+  // a runtime conditional; the typed query builder generates the right index
+  // range either way.
+  const base = ctx.db.query("events");
+  const query =
+    args.beforeTimestamp !== undefined
+      ? base.withIndex("by_conversationId_and_timestamp", (q) =>
+          q
+            .eq("conversationId", args.conversationId)
+            .lte("timestamp", args.beforeTimestamp!),
+        )
+      : base.withIndex("by_conversationId_and_timestamp", (q) =>
+          q.eq("conversationId", args.conversationId),
+        );
 
   let events = await query.order("desc").take(args.take);
   if (args.excludeEventId) {
@@ -356,6 +327,13 @@ export const listRecentContextEvents = internalQuery({
   },
 });
 
+/**
+ * Hard cap on session-context event reads. Stays comfortably below Convex's
+ * 8192 array-return limit so a session-restore query can't fail at runtime
+ * the moment a busy conversation grows past a few thousand events.
+ */
+const MAX_SESSION_CONTEXT_EVENTS = 4_000;
+
 export const listSessionContextEvents = internalQuery({
   args: {
     conversationId: v.id("conversations"),
@@ -367,9 +345,9 @@ export const listSessionContextEvents = internalQuery({
   handler: async (ctx, args) => {
     const limit = normalizeOptionalInt({
       value: args.limit,
-      defaultValue: 50_000,
+      defaultValue: MAX_SESSION_CONTEXT_EVENTS,
       min: 1,
-      max: 50_000,
+      max: MAX_SESSION_CONTEXT_EVENTS,
     });
     let events = await fetchRecentConversationEvents(ctx, {
       conversationId: args.conversationId,
@@ -482,6 +460,12 @@ type AppendEventArgs = {
   deviceId?: string;
   requestId?: string;
   targetDeviceId?: string;
+  /**
+   * Initial lifecycle state for `remote_turn_request` events. Defaults to
+   * `"pending"` if the caller doesn't provide one. Ignored for every other
+   * event type.
+   */
+  requestState?: "pending" | "claimed" | "fulfilled";
   payload: Value;
   channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
 };
@@ -519,6 +503,15 @@ const resolveAppendEventPayload = (args: AppendEventArgs) => {
 
 const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
   const { payload, targetDeviceId, timestamp } = resolveAppendEventPayload(args);
+
+  const conversation = await ctx.db.get(args.conversationId);
+  // Stamp `requestState: "pending"` on freshly-inserted remote-turn requests
+  // so the device subscription can filter unhandled rows at the index level
+  // without doing per-event extra reads.
+  const requestState =
+    args.type === "remote_turn_request"
+      ? (args.requestState ?? "pending")
+      : args.requestState;
   const eventId = await ctx.db.insert("events", {
     conversationId: args.conversationId,
     timestamp,
@@ -526,19 +519,19 @@ const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
     deviceId: args.deviceId,
     requestId: args.requestId,
     targetDeviceId,
+    ...(requestState !== undefined ? { requestState } : {}),
     payload,
     channelEnvelope: args.channelEnvelope,
   });
 
-  // Maintain denormalized event counter so `countByConversation` can serve in
-  // O(1) without paginating the events table.
-  const conversation = await ctx.db.get(args.conversationId);
-  const currentCount = conversation?.eventCount ?? 0;
+  // Maintain the denormalized event counter so `countByConversation` can
+  // serve in O(1) without paginating the events table.
   await ctx.db.patch(args.conversationId, {
     updatedAt: timestamp,
-    eventCount: currentCount + 1,
+    eventCount: (conversation?.eventCount ?? 0) + 1,
   });
-  return sanitizeEventForRead(await ctx.db.get(eventId));
+  const inserted = await ctx.db.get(eventId);
+  return sanitizeEventForRead(inserted);
 };
 
 export const appendEvent = mutation({
@@ -744,61 +737,42 @@ export const getConversationEventHead = internalQuery({
 
 
 
-/**
- * Factory for device-subscription query handlers.
- * All three subscribe-for-device queries share identical logic — they differ
- * only in the event-type filter string and the default/max limit values.
- */
-function deviceSubscriptionHandler(opts: {
-  eventType: string;
-  defaultLimit: number;
-  maxLimit: number;
-}) {
-  return async (
-    ctx: QueryCtx,
-    args: { deviceId: string; since: number; limit?: number },
-  ) => {
+export const subscribeRemoteTurnRequestsForDevice = query({
+  args: {
+    deviceId: v.string(),
+    since: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const maxItems = normalizeOptionalInt({
       value: args.limit,
-      defaultValue: opts.defaultLimit,
+      defaultValue: 10,
       min: 1,
-      max: opts.maxLimit,
+      max: 50,
     });
 
+    // Type-scoped index lets us read exactly the rows we need; ownership
+    // still has to be confirmed per row because the index is keyed on the
+    // device, not the conversation owner. The lifecycle filter is now an
+    // O(1) field read on each row instead of two extra index lookups.
     const events = await ctx.db
       .query("events")
-      .withIndex("by_targetDeviceId_and_timestamp", (q) =>
-        q.eq("targetDeviceId", args.deviceId).gte("timestamp", args.since),
+      .withIndex("by_targetDeviceId_and_type_and_timestamp", (q) =>
+        q
+          .eq("targetDeviceId", args.deviceId)
+          .eq("type", "remote_turn_request")
+          .gte("timestamp", args.since),
       )
       .order("desc")
-      .take(maxItems * 3); // Over-fetch to account for type/ownership filtering
+      .take(maxItems * 2);
 
     const ownershipCache = new Map<string, boolean>();
-    const remoteTurnStatusCache = new Map<string, boolean>();
     const filtered: Infer<typeof eventValidator>[] = [];
 
     for (const event of events) {
-      if (event.type !== opts.eventType) continue;
-
-      if (opts.eventType === "remote_turn_request" && event.requestId) {
-        let alreadyHandled = remoteTurnStatusCache.get(event.requestId);
-        if (alreadyHandled === undefined) {
-          const [claimed, fulfilled] = await Promise.all([
-            ctx.db
-              .query("events")
-              .withIndex("by_requestId", (q) => q.eq("requestId", `claimed:${event.requestId}`))
-              .first(),
-            ctx.db
-              .query("events")
-              .withIndex("by_requestId", (q) => q.eq("requestId", `fulfilled:${event.requestId}`))
-              .first(),
-          ]);
-          alreadyHandled = claimed !== null || fulfilled !== null;
-          remoteTurnStatusCache.set(event.requestId, alreadyHandled);
-        }
-        if (alreadyHandled) continue;
-      }
+      if (event.requestState && event.requestState !== "pending") continue;
 
       const key = String(event.conversationId);
       let owned = ownershipCache.get(key);
@@ -814,50 +788,39 @@ function deviceSubscriptionHandler(opts: {
     }
 
     return filtered;
-  };
-}
-
-const deviceSubscriptionArgs = {
-  deviceId: v.string(),
-  since: v.number(),
-  limit: v.optional(v.number()),
-};
-
-export const subscribeRemoteTurnRequestsForDevice = query({
-  args: deviceSubscriptionArgs,
-  returns: v.array(eventValidator),
-  handler: deviceSubscriptionHandler({
-    eventType: "remote_turn_request",
-    defaultLimit: 10,
-    maxLimit: 50,
-  }),
+  },
 });
 
-/** Public query — used by the local device runner for cross-restart dedup. */
+/** Look up the original `remote_turn_request` event by its requestId. */
+const findRemoteTurnRequest = async (
+  ctx: QueryCtx | MutationCtx,
+  requestId: string,
+) =>
+  await ctx.db
+    .query("events")
+    .withIndex("by_requestId", (q) => q.eq("requestId", requestId))
+    .first();
+
+/**
+ * Public query — used by the local device runner for cross-restart dedup.
+ *
+ * Scoped to the caller's own conversation so this can't double as an
+ * existence/state oracle for arbitrary `requestId` values: we treat any row
+ * the caller doesn't own as if it didn't exist (returning `false`).
+ */
 export const isRemoteTurnClaimed = query({
   args: {
     requestId: v.string(),
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    await requireUserId(ctx);
-    const event = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) => q.eq("requestId", `claimed:${args.requestId}`))
-      .first();
-    return event !== null;
-  },
-});
-
-export const getRemoteTurnFulfilled = internalQuery({
-  args: {
-    requestId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const event = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) => q.eq("requestId", `fulfilled:${args.requestId}`))
-      .first();
-    return event !== null;
+    const ownerId = await requireUserId(ctx);
+    const event = await findRemoteTurnRequest(ctx, args.requestId);
+    if (!event) return false;
+    const conversation = await ctx.db.get(event.conversationId);
+    if (!conversation || conversation.ownerId !== ownerId) {
+      return false;
+    }
+    return event.requestState === "claimed" || event.requestState === "fulfilled";
   },
 });

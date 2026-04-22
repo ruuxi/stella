@@ -3,12 +3,17 @@ import type { QueryCtx } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
 import { jsonObjectValidator } from "../shared_validators";
+import { internal } from "../_generated/api";
 
 
 export const listPublicIntegrations = internalQuery({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("integrations_public").take(200);
+    return await ctx.db
+      .query("integrations_public")
+      .withIndex("by_updatedAt")
+      .order("desc")
+      .take(200);
   },
 });
 
@@ -22,7 +27,7 @@ export const upsertPublicIntegration = internalMutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("integrations_public")
-      .withIndex("by_integration_id", (q) => q.eq("id", args.id))
+      .withIndex("by_integrationId", (q) => q.eq("id", args.id))
       .unique();
 
     if (existing) {
@@ -138,8 +143,10 @@ export const consumeSlackOAuthState = internalMutation({
 
 /**
  * Periodic cleanup for expired Slack OAuth state nonces. Returns
- * `hasMore: true` while there are more rows to delete so the caller can
- * re-schedule itself to stay within mutation transaction limits.
+ * `hasMore: true` while there are more rows to delete and self-schedules a
+ * follow-up via `ctx.scheduler.runAfter(0, ...)` so a single hourly cron tick
+ * can drain a large backlog without blowing the per-mutation transaction
+ * limits.
  */
 export const purgeExpiredSlackOAuthStates = internalMutation({
   args: {
@@ -154,14 +161,22 @@ export const purgeExpiredSlackOAuthStates = internalMutation({
       .withIndex("by_expiresAt", (q) => q.lt("expiresAt", now))
       .take(batchSize);
     await Promise.all(expired.map((row) => ctx.db.delete(row._id)));
-    return { deleted: expired.length, hasMore: expired.length === batchSize };
+    const hasMore = expired.length === batchSize;
+    if (hasMore) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.data.integrations.purgeExpiredSlackOAuthStates,
+        { batchSize },
+      );
+    }
+    return { deleted: expired.length, hasMore };
   },
 });
 
 const getPublicIntegrationByIdHandler = async (ctx: Pick<QueryCtx, "db">, args: { id: string }) => {
   const record = await ctx.db
     .query("integrations_public")
-    .withIndex("by_integration_id", (q) => q.eq("id", args.id))
+    .withIndex("by_integrationId", (q) => q.eq("id", args.id))
     .unique();
   if (!record || !record.enabled) {
     return null;
@@ -198,14 +213,18 @@ export const upsertUserIntegration = internalMutation({
     externalId: v.optional(v.string()),
     config: jsonObjectValidator,
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    // `(ownerId, provider)` is intended to be unique. `.unique()` throws if
+    // that invariant ever breaks, surfacing the bug instead of silently
+    // patching one of N duplicate rows.
     const existing = await ctx.db
       .query("user_integrations")
       .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
-      .first();
+      .unique();
 
     const now = Date.now();
     if (existing) {
