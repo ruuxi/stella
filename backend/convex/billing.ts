@@ -31,6 +31,10 @@ import {
 } from "./lib/billing_money";
 import { buildManagedModelPriceEntries, type ManagedModelPriceEntry, type ModelsDevApi } from "./lib/models_dev";
 import { listManagedModelIds, resolveManagedModelAudience } from "./agent/model";
+import {
+  enforceActionRateLimit,
+  RATE_EXPENSIVE,
+} from "./lib/rate_limits";
 
 const planValidator = v.union(
   v.literal("free"),
@@ -1389,6 +1393,15 @@ export const createEmbeddedCheckoutSession = action({
     }
 
     const ownerId = identity.tokenIdentifier;
+    // Each call hits the live Stripe API (customer.create / checkout.create);
+    // tight cap protects both Stripe rate limits and our cost.
+    await enforceActionRateLimit(
+      ctx,
+      "billing_create_checkout_session",
+      ownerId,
+      RATE_EXPENSIVE,
+      "Too many checkout requests. Please wait a moment and try again.",
+    );
     const normalizedReturnUrl = normalizeReturnUrl(args.returnUrl);
     const stripe = getStripeClient();
     const publishableKey = getStripePublishableKey();
@@ -1486,6 +1499,13 @@ export const createBillingPortalSession = action({
     }
 
     const ownerId = identity.tokenIdentifier;
+    await enforceActionRateLimit(
+      ctx,
+      "billing_create_portal_session",
+      ownerId,
+      RATE_EXPENSIVE,
+      "Too many billing portal requests. Please wait a moment and try again.",
+    );
     const billing: {
       ownerId: string;
       activePlan: string;

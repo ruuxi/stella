@@ -14,6 +14,10 @@ import { requireUserId } from "../auth";
 import { AGENT_IDS, BACKEND_TOOL_IDS } from "../lib/agent_constants";
 import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
 import { coerceStringArray } from "../lib/coerce";
+import {
+  enforceMutationRateLimit,
+  RATE_EXPENSIVE,
+} from "../lib/rate_limits";
 
 // Sanitized agent (without model field) for client responses
 const agentClientValidator = v.object({
@@ -236,6 +240,16 @@ export const upsertMany = mutation({
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    // Each call can import up to MAX_AGENT_IMPORT_BATCH (64) agents in one
+    // mutation. Cap call rate so a hijacked client can't loop the import
+    // endpoint to spam writes.
+    await enforceMutationRateLimit(
+      ctx,
+      "agent_upsert_many",
+      ownerId,
+      RATE_EXPENSIVE,
+      "Too many agent imports. Please wait a moment and try again.",
+    );
     const items = Array.isArray(args.agents) ? args.agents : [];
     if (items.length > MAX_AGENT_IMPORT_BATCH) {
       throw new ConvexError({

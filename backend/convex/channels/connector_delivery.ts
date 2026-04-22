@@ -22,6 +22,10 @@ import { v, ConvexError } from "convex/values";
 import { jsonValueValidator } from "../shared_validators";
 import { retryFetch } from "../lib/retry_fetch";
 import { requireConversationOwner } from "../auth";
+import {
+  enforceMutationRateLimit,
+  RATE_HOT_PATH,
+} from "../lib/rate_limits";
 import { runAgentTurn } from "../automation/runner";
 import type { Id } from "../_generated/dataModel";
 import {
@@ -65,7 +69,13 @@ export const claimRemoteTurn = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireConversationOwner(ctx, args.conversationId);
+    const conversation = await requireConversationOwner(ctx, args.conversationId);
+    await enforceMutationRateLimit(
+      ctx,
+      "connector_claim_remote_turn",
+      conversation.ownerId,
+      RATE_HOT_PATH,
+    );
 
     const request = await findRemoteTurnRequest(ctx, args.requestId);
     if (!request || request.type !== "remote_turn_request") return null;
@@ -92,7 +102,13 @@ export const completeRemoteTurn = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireConversationOwner(ctx, args.conversationId);
+    const conversation = await requireConversationOwner(ctx, args.conversationId);
+    await enforceMutationRateLimit(
+      ctx,
+      "connector_complete_remote_turn",
+      conversation.ownerId,
+      RATE_HOT_PATH,
+    );
 
     // Read routing metadata from the original remote_turn_request event
     // (never trust caller-provided routing data)

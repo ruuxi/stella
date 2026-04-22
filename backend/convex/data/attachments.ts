@@ -2,7 +2,11 @@ import { action, internalMutation, internalQuery } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { requireConversationOwnerAction } from "../auth";
+import { requireConversationOwnerAction, requireUserId } from "../auth";
+import {
+  enforceActionRateLimit,
+  RATE_EXPENSIVE,
+} from "../lib/rate_limits";
 
 const parseDataUrl = (dataUrl: string) => {
   const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
@@ -39,7 +43,20 @@ export const createFromDataUrl = action({
     mimeType: string;
     size: number;
   }> => {
+    const ownerId = await requireUserId(ctx);
     await requireConversationOwnerAction(ctx, args.conversationId);
+
+    // Each call decodes and stores up to 10 MB into _storage. Without this,
+    // a misbehaving client (or compromised desktop) can fill the storage
+    // bucket and inflate the user's bill in a very tight loop.
+    await enforceActionRateLimit(
+      ctx,
+      "attachment_create_from_data_url",
+      ownerId,
+      RATE_EXPENSIVE,
+      "Too many attachment uploads. Please wait a moment and try again.",
+    );
+
     const { mimeType, bytes } = parseDataUrl(args.dataUrl);
 
     const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MB

@@ -8,6 +8,11 @@ import { v, ConvexError } from "convex/values";
 import type { ActionCtx, MutationCtx } from "../_generated/server";
 import { hashSha256Hex } from "../lib/crypto_utils";
 import {
+  enforceMutationRateLimit,
+  RATE_SENSITIVE,
+  RATE_VERY_EXPENSIVE,
+} from "../lib/rate_limits";
+import {
   SIGN_IN_REQUIRED_ERROR,
   evaluateLinkingDmPolicy,
 } from "./routing_flow";
@@ -203,7 +208,7 @@ export const purgeExpiredLinkCodes = internalMutation({
 
 export const generateLinkCode = mutation({
   args: { provider: v.string() },
-  returns: v.object({ code: v.string() }),
+  returns: v.object({ code: v.string()  }),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
@@ -213,6 +218,14 @@ export const generateLinkCode = mutation({
       throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
     }
     const ownerId = identity.tokenIdentifier;
+
+    await enforceMutationRateLimit(
+      ctx,
+      "channel_generate_link_code",
+      ownerId,
+      RATE_VERY_EXPENSIVE,
+      "Too many link-code requests. Please wait a minute before generating another.",
+    );
 
     const code = generateSecureLinkCode(6);
 
@@ -245,6 +258,18 @@ export const verifyLinqLinkCode = mutation({
       throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
     }
     const ownerId = identity.tokenIdentifier;
+
+    // Tight per-owner cap: this is the brute-force surface for link codes,
+    // so we want even a hijacked session to burn through its window long
+    // before guessing a 6-char code (~2^31 search space).
+    await enforceMutationRateLimit(
+      ctx,
+      "channel_verify_linq_link_code",
+      ownerId,
+      RATE_SENSITIVE,
+      "Too many code attempts. Please wait a minute before trying again.",
+    );
+
     const code = normalizeLinkCode(args.code);
 
     const codeOwner = await ctx.runQuery(

@@ -16,6 +16,11 @@ import {
 import {
   requireConnectedUserId,
 } from "../auth";
+import {
+  enforceMutationRateLimit,
+  RATE_STANDARD,
+  RATE_VERY_EXPENSIVE,
+} from "../lib/rate_limits";
 
 const socialFriendSummaryValidator = v.object({
   relationship: socialRelationshipValidator,
@@ -100,6 +105,15 @@ export const sendFriendRequest = mutation({
   returns: socialRelationshipValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    // Friend-request spam vector: cap aggressively per owner so a malicious
+    // client can't enumerate friend codes or harass other users.
+    await enforceMutationRateLimit(
+      ctx,
+      "social_send_friend_request",
+      ownerId,
+      RATE_VERY_EXPENSIVE,
+      "Too many friend requests. Please wait a minute before trying again.",
+    );
     await ensureSocialProfileDoc(ctx, ownerId);
     const code = args.friendCode.trim().toUpperCase();
     if (!code) {
@@ -183,6 +197,13 @@ export const respondToFriendRequest = mutation({
   returns: socialRelationshipValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "social_respond_to_friend_request",
+      ownerId,
+      RATE_STANDARD,
+      "Too many requests. Please slow down and try again.",
+    );
     const relationship = await loadRelationship(ctx, ownerId, args.requesterOwnerId);
     if (!relationship || relationship.addresseeOwnerId !== ownerId) {
       throw new ConvexError({
@@ -220,6 +241,13 @@ export const removeFriend = mutation({
   returns: v.object({ removed: v.boolean() }),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "social_remove_friend",
+      ownerId,
+      RATE_STANDARD,
+      "Too many requests. Please slow down and try again.",
+    );
     const relationship = await loadRelationship(ctx, ownerId, args.otherOwnerId);
     if (!relationship) {
       return { removed: false };

@@ -2,8 +2,23 @@ import Stripe from "stripe";
 import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
+import {
+  consumeWebhookDedup,
+  consumeWebhookRateLimit,
+  rateLimitResponse,
+} from "../http_shared/webhook_controls";
+import { getClientAddressKey } from "../lib/http_utils";
 
 const STRIPE_API_VERSION = "2026-02-25.clover";
+
+// Caps used for the Stripe webhook surface. The dedup window catches
+// upstream replay (Stripe's own retry policy is ~3 days). The per-IP and
+// per-event limits stop a leaked endpoint from being used to exhaust
+// Convex transaction budget by spamming malformed payloads — note that
+// `event_id` only sets in once Stripe's signature verification passes,
+// so we also gate on the source IP first.
+const STRIPE_WEBHOOK_PER_IP_LIMIT = 120;
+const STRIPE_WEBHOOK_PER_IP_WINDOW_MS = 60_000;
 
 const toSafeString = (value: string | null | undefined) => value?.trim() ?? "";
 
@@ -80,6 +95,23 @@ export const registerStripeRoutes = (http: HttpRouter) => {
     path: "/api/stripe/webhook",
     method: "POST",
     handler: httpAction(async (ctx, request) => {
+      // Per-IP guard runs *before* signature verification so a leaked
+      // endpoint or random scanner can't drive unlimited Stripe SDK
+      // verification work.
+      const clientAddress = getClientAddressKey(request);
+      if (clientAddress) {
+        const ipRateLimit = await consumeWebhookRateLimit(ctx, {
+          scope: "stripe_webhook_ip",
+          key: clientAddress,
+          limit: STRIPE_WEBHOOK_PER_IP_LIMIT,
+          windowMs: STRIPE_WEBHOOK_PER_IP_WINDOW_MS,
+          blockMs: STRIPE_WEBHOOK_PER_IP_WINDOW_MS,
+        });
+        if (!ipRateLimit.allowed) {
+          return rateLimitResponse(ipRateLimit.retryAfterMs);
+        }
+      }
+
       let stripe: Stripe;
       let webhookSecret: string;
 
@@ -104,6 +136,21 @@ export const registerStripeRoutes = (http: HttpRouter) => {
       } catch (error) {
         console.error("[stripe-webhook] Signature verification failed", error);
         return new Response("Invalid Stripe signature", { status: 400 });
+      }
+
+      // Stripe's own retry policy can fire the same event id repeatedly;
+      // dedup matches the rest of the webhook surface (Slack, Telegram,
+      // Google, Teams, fal, Linq) so we don't process duplicates twice.
+      const dedupAccepted = await consumeWebhookDedup(
+        ctx,
+        "stripe_event",
+        event.id,
+      );
+      if (!dedupAccepted) {
+        return new Response(JSON.stringify({ received: true, duplicate: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
 
       const eventObject = event.data.object as unknown as Record<string, unknown>;

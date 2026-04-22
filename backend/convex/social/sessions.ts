@@ -27,6 +27,13 @@ import {
 } from "./shared";
 import { requireConnectedUserId } from "../auth";
 import { requireBoundedString } from "../shared_validators";
+import {
+  enforceActionRateLimit,
+  enforceMutationRateLimit,
+  RATE_EXPENSIVE,
+  RATE_HOT_PATH,
+  RATE_STANDARD,
+} from "../lib/rate_limits";
 
 const MAX_WORKSPACE_SLUG_LENGTH = 48;
 const MAX_WORKSPACE_FOLDER_NAME_LENGTH = 80;
@@ -425,6 +432,13 @@ export const createSession = mutation({
   returns: stellaSessionValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "session_create",
+      ownerId,
+      RATE_STANDARD,
+      "Too many session start attempts. Please wait a moment and try again.",
+    );
     await requireRoomMembership(ctx, args.roomId, ownerId);
     const room = await getRoomDoc(ctx, args.roomId);
 
@@ -503,6 +517,12 @@ export const updateSessionStatus = mutation({
   returns: stellaSessionValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "session_update_status",
+      ownerId,
+      RATE_STANDARD,
+    );
     const session = await requireSessionHost(ctx, args.sessionId, ownerId);
     const now = Date.now();
     await ctx.db.patch(session._id, {
@@ -555,6 +575,15 @@ export const queueTurn = mutation({
   returns: stellaSessionTurnValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    // Each queued turn schedules agent work on the host. Treat like a
+    // standard chat send.
+    await enforceMutationRateLimit(
+      ctx,
+      "session_queue_turn",
+      ownerId,
+      RATE_STANDARD,
+      "Too many turn requests. Please slow down and try again.",
+    );
     const session = await ensureActiveSessionForMember(ctx, args.sessionId, ownerId);
     const prompt = args.prompt.trim();
     if (!prompt) {
@@ -679,6 +708,13 @@ export const claimTurn = mutation({
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    // Hot path: host devices poll/claim turns. Use the loose hot-path tier.
+    await enforceMutationRateLimit(
+      ctx,
+      "session_claim_turn",
+      ownerId,
+      RATE_HOT_PATH,
+    );
     const session = await requireSessionHost(ctx, args.sessionId, ownerId);
     const deviceId = args.deviceId.trim();
     if (session.hostDeviceId !== deviceId) {
@@ -724,6 +760,12 @@ export const completeTurn = mutation({
   returns: stellaSessionTurnValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "session_complete_turn",
+      ownerId,
+      RATE_HOT_PATH,
+    );
     const session = await requireSessionHost(ctx, args.sessionId, ownerId);
     const deviceId = args.deviceId.trim();
     if (session.hostDeviceId !== deviceId) {
@@ -776,6 +818,12 @@ export const failTurn = mutation({
   returns: stellaSessionTurnValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "session_fail_turn",
+      ownerId,
+      RATE_HOT_PATH,
+    );
     const session = await requireSessionHost(ctx, args.sessionId, ownerId);
     const deviceId = args.deviceId.trim();
     if (session.hostDeviceId !== deviceId) {
@@ -821,6 +869,12 @@ export const releaseTurn = mutation({
   returns: stellaSessionTurnValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "session_release_turn",
+      ownerId,
+      RATE_HOT_PATH,
+    );
     const session = await requireSessionHost(ctx, args.sessionId, ownerId);
     const deviceId = args.deviceId.trim();
     if (session.hostDeviceId !== deviceId) {
@@ -929,6 +983,12 @@ export const markFileOpsApplied = mutation({
   returns: stellaSessionMemberValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "session_mark_file_ops_applied",
+      ownerId,
+      RATE_HOT_PATH,
+    );
     const membership = await requireSessionMembership(ctx, args.sessionId, ownerId);
     const session = await getSessionDoc(ctx, args.sessionId);
     const nextOrdinal = Math.max(0, Math.floor(args.lastAppliedFileOpOrdinal));
@@ -968,6 +1028,12 @@ export const createDirectory = mutation({
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "session_create_directory",
+      ownerId,
+      RATE_HOT_PATH,
+    );
     const session = await requireSessionHost(ctx, args.sessionId, ownerId);
     if (session.status === "ended") {
       throw new ConvexError({
@@ -1067,6 +1133,12 @@ export const markSnapshotCreated = mutation({
   returns: stellaSessionValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "session_mark_snapshot_created",
+      ownerId,
+      RATE_STANDARD,
+    );
     const session = await requireSessionHost(ctx, args.sessionId, ownerId);
     const now = Date.now();
     await ctx.db.patch(session._id, {
@@ -1095,6 +1167,12 @@ export const acknowledgeFileOps = mutation({
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "session_acknowledge_file_ops",
+      ownerId,
+      RATE_HOT_PATH,
+    );
     const membership = await requireSessionMembership(ctx, args.sessionId, ownerId);
     const session = await getSessionDoc(ctx, args.sessionId);
     const lastAppliedOrdinal = Math.max(
@@ -1126,6 +1204,12 @@ export const deleteFile = mutation({
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "session_delete_file",
+      ownerId,
+      RATE_HOT_PATH,
+    );
     const session = await requireSessionHost(ctx, args.sessionId, ownerId);
     if (session.status === "ended") {
       throw new ConvexError({
@@ -1194,6 +1278,15 @@ export const uploadFile = action({
     args,
   ): Promise<{ ordinal: number; noop: boolean }> => {
     const ownerId = await requireConnectedSocialUserIdAction(ctx);
+    // Each call writes bytes (up to ~700 KB) into Convex storage. Cap so a
+    // host device that's been compromised can't inflate the storage bill.
+    await enforceActionRateLimit(
+      ctx,
+      "session_upload_file",
+      ownerId,
+      RATE_EXPENSIVE,
+      "Too many file uploads. Please wait a moment and try again.",
+    );
     const session: Doc<"stella_sessions"> | null = await ctx.runQuery(
       internal.social.sessions.getSessionInternal,
       {

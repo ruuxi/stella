@@ -2,6 +2,10 @@ import { mutation, internalMutation, internalQuery } from "../_generated/server"
 import type { QueryCtx } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
+import {
+  enforceMutationRateLimit,
+  RATE_VERY_EXPENSIVE,
+} from "../lib/rate_limits";
 import { jsonObjectValidator } from "../shared_validators";
 import { internal } from "../_generated/api";
 
@@ -77,6 +81,17 @@ export const createSlackInstallUrl = mutation({
   returns: v.object({ url: v.string(), expiresAt: v.number() }),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
+
+    // Each call writes a `slack_oauth_states` row + crypto + cleanup work.
+    // No legitimate UI needs to ask for new install URLs in tight loops.
+    await enforceMutationRateLimit(
+      ctx,
+      "data_create_slack_install_url",
+      ownerId,
+      RATE_VERY_EXPENSIVE,
+      "Too many Slack install requests. Please wait before trying again.",
+    );
+
     const clientId = process.env.SLACK_CLIENT_ID;
     const convexSiteUrl = process.env.CONVEX_SITE_URL;
 

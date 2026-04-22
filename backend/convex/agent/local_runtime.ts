@@ -8,6 +8,11 @@ import {
   BACKEND_TOOL_IDS,
   LOCAL_RUNTIME_BACKEND_TOOL_NAMES,
 } from "../lib/agent_constants";
+import {
+  enforceActionRateLimit,
+  RATE_EXPENSIVE,
+  RATE_STANDARD,
+} from "../lib/rate_limits";
 import { createBackendTools, executeWebSearch } from "../tools/backend";
 import { jsonValueValidator } from "../shared_validators";
 
@@ -61,6 +66,13 @@ export const executeTool = action({
   returns: v.string(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceActionRateLimit(
+      ctx,
+      "agent_local_runtime_execute_tool",
+      ownerId,
+      RATE_STANDARD,
+      "Too many tool invocations. Please wait a moment and try again.",
+    );
     if (args.conversationId) {
       await requireConversationOwnerAction(ctx, args.conversationId);
     }
@@ -102,6 +114,15 @@ export const webSearch = action({
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    // Outbound HTTP on the user's behalf — without a cap, the backend
+    // becomes a free crawler.
+    await enforceActionRateLimit(
+      ctx,
+      "agent_local_runtime_web_search",
+      ownerId,
+      RATE_EXPENSIVE,
+      "Too many web searches. Please wait a moment and try again.",
+    );
     if (args.conversationId) {
       await requireConversationOwnerAction(ctx, args.conversationId);
     }
@@ -122,6 +143,13 @@ export const webFetch = action({
   returns: v.string(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceActionRateLimit(
+      ctx,
+      "agent_local_runtime_web_fetch",
+      ownerId,
+      RATE_EXPENSIVE,
+      "Too many web fetches. Please wait a moment and try again.",
+    );
     if (args.conversationId) {
       await requireConversationOwnerAction(ctx, args.conversationId);
     }

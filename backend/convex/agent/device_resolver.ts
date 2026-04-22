@@ -7,6 +7,11 @@ import {
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { requireSensitiveUserId, requireUserId } from "../auth";
+import {
+  enforceMutationRateLimit,
+  RATE_HOT_PATH,
+  RATE_STANDARD,
+} from "../lib/rate_limits";
 
 const HEARTBEAT_SIGNATURE_MAX_AGE_MS = 2 * 60_000;
 const DEVICE_FRESHNESS_MS = 90_000;
@@ -257,6 +262,15 @@ export const heartbeat = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
+    // Heartbeats are intentionally hot (~every 30s per device), but a
+    // misbehaving client can still spin and churn both device tables. Use
+    // the loose hot-path tier keyed by (owner, device).
+    await enforceMutationRateLimit(
+      ctx,
+      "device_heartbeat",
+      `${ownerId}:${args.deviceId}`,
+      RATE_HOT_PATH,
+    );
     const now = Date.now();
     if (Math.abs(now - args.signedAtMs) > HEARTBEAT_SIGNATURE_MAX_AGE_MS) {
       throw new ConvexError({
@@ -313,6 +327,12 @@ export const registerDevice = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "device_register",
+      ownerId,
+      RATE_STANDARD,
+    );
     const now = Date.now();
 
     await upsertDeviceProfile(ctx, ownerId, args.deviceId, {
@@ -337,6 +357,12 @@ export const goOffline = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "device_go_offline",
+      ownerId,
+      RATE_STANDARD,
+    );
     const presence = await loadDevicePresence(ctx, ownerId, args.deviceId);
     if (presence) {
       await ctx.db.patch(presence._id, {

@@ -8,6 +8,10 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { type Infer, v } from "convex/values";
 import { requireUserId } from "./auth";
+import {
+  enforceActionRateLimit,
+  RATE_SENSITIVE,
+} from "./lib/rate_limits";
 
 /**
  * Per-mutation deletion batch size. Conservative because each `reset.*` call
@@ -51,6 +55,17 @@ export const resetAllUserData = action({
   returns: v.null(),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
+
+    // Destructive: wipes the user's entire data set across many mutations.
+    // A hijacked session shouldn't be able to fire-and-forget this multiple
+    // times in parallel.
+    await enforceActionRateLimit(
+      ctx,
+      "reset_all_user_data",
+      ownerId,
+      RATE_SENSITIVE,
+      "Too many account reset attempts. Please wait a minute and try again.",
+    );
 
     // 1. Drain conversations one page at a time. We don't store all ids in
     //    memory because a long-lived account could have up to

@@ -11,6 +11,7 @@ import { processIncomingMessage } from "./message_pipeline";
 import { processLinkCode } from "./link_codes";
 import { SIGN_IN_REQUIRED_ERROR } from "./routing_flow";
 import { retryFetch } from "../lib/retry_fetch";
+import { enforceActionRateLimit, RATE_VERY_EXPENSIVE } from "../lib/rate_limits";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
 // ---------------------------------------------------------------------------
@@ -396,6 +397,25 @@ export const sendLinqLinkSms = action({
     if (!E164_REGEX.test(phone)) {
       throw new ConvexError("Please enter a valid phone number with country code (e.g. +1…).");
     }
+
+    // Each call dispatches a paid SMS via the Linq partner API. Throttle on
+    // *both* the caller and the destination number so a single account
+    // can't be used to SMS-pump a phone, and a leaked token can't be used
+    // to flood many numbers either.
+    await enforceActionRateLimit(
+      ctx,
+      "send_linq_link_sms_owner",
+      identity.tokenIdentifier,
+      RATE_VERY_EXPENSIVE,
+      "Too many link-code SMS requests. Please wait a minute and try again.",
+    );
+    await enforceActionRateLimit(
+      ctx,
+      "send_linq_link_sms_phone",
+      phone,
+      RATE_VERY_EXPENSIVE,
+      "Too many link-code SMS requests for this number. Please wait a minute and try again.",
+    );
 
     const fromNumber = process.env.LINQ_FROM_NUMBER;
     if (!fromNumber) throw new Error("Missing LINQ_FROM_NUMBER");

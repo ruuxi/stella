@@ -13,6 +13,12 @@ import {
   requireSensitiveUserId,
 } from "./auth";
 import { constantTimeEqual, hashSha256Hex } from "./lib/crypto_utils";
+import {
+  enforceMutationRateLimit,
+  RATE_HOT_PATH,
+  RATE_SENSITIVE,
+  RATE_VERY_EXPENSIVE,
+} from "./lib/rate_limits";
 
 const MOBILE_PAIRING_SESSION_TTL_MS = 10 * 60_000;
 const MOBILE_CONNECT_INTENT_TTL_MS = 90_000;
@@ -216,6 +222,15 @@ export const createPairingSession = mutation({
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
+    // Each pairing session writes a new row + cleanup work. Tight cap so a
+    // hijacked session can't churn pairing codes.
+    await enforceMutationRateLimit(
+      ctx,
+      "mobile_access_create_pairing_session",
+      ownerId,
+      RATE_VERY_EXPENSIVE,
+      "Too many pairing requests. Please wait a minute and try again.",
+    );
     const createdAt = Date.now();
     const existing = await loadMostRecentUnusedPairingSession(ctx, {
       ownerId,
@@ -269,6 +284,13 @@ export const revokePairedMobileDevice = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "mobile_access_revoke_paired_mobile_device",
+      ownerId,
+      RATE_SENSITIVE,
+      "Too many revocation requests. Please wait a minute and try again.",
+    );
     const record = await getPairedMobileDeviceRecord(ctx, {
       ownerId,
       desktopDeviceId: args.desktopDeviceId,
@@ -334,6 +356,12 @@ export const acknowledgeConnectIntent = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "mobile_access_acknowledge_connect_intent",
+      ownerId,
+      RATE_HOT_PATH,
+    );
     const intent = await ctx.db.get(args.intentId);
     if (!intent || intent.ownerId !== ownerId || intent.acknowledgedAt) {
       return null;
