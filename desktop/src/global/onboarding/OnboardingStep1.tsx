@@ -26,6 +26,7 @@ import {
 } from "./use-onboarding-state";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { getPlatform } from "@/platform/electron/platform";
+import { markRequestSignInAfterOnboarding } from "@/shared/lib/stella-orb-chat";
 import "./Onboarding.css";
 import "@/global/onboarding/selfmod-demo.css";
 
@@ -35,6 +36,7 @@ const loadCreationPhase = () => import("./OnboardingCreationPhase");
 const loadThemePhase = () => import("./OnboardingThemePhase");
 const loadPersonalityPhase = () => import("./OnboardingPersonalityPhase");
 const loadShortcutsPhase = () => import("./OnboardingShortcutsPhase");
+const loadMemoryPhase = () => import("./OnboardingMemoryPhase");
 const loadMockWindows = () => import("./OnboardingMockWindows");
 
 const OnboardingPermissions = lazy(() =>
@@ -67,6 +69,11 @@ const OnboardingShortcutsPhase = lazy(() =>
     default: module.OnboardingShortcutsPhase,
   })),
 );
+const OnboardingMemoryPhase = lazy(() =>
+  loadMemoryPhase().then((module) => ({
+    default: module.OnboardingMemoryPhase,
+  })),
+);
 const OnboardingMockWindows = lazy(() =>
   loadMockWindows().then((module) => ({
     default: module.OnboardingMockWindows,
@@ -84,6 +91,7 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
   personality: "How should I talk?",
   "shortcuts-global": "Anywhere on your desktop.",
   "shortcuts-local": "Inside Stella.",
+  memory: "Help me remember.",
 };
 
 type CategoryStates = Record<DiscoveryCategory, boolean>;
@@ -111,15 +119,17 @@ const getNextPhaseToPrefetch = (phase: Phase): Phase | null => {
     case "permissions":
       return "browser";
     case "browser":
-      return "creation";
-    case "creation":
       return "theme";
     case "theme":
       return "personality";
     case "personality":
+      return "creation";
+    case "creation":
       return "shortcuts-global";
     case "shortcuts-global":
       return "shortcuts-local";
+    case "shortcuts-local":
+      return "memory";
     default:
       return null;
   }
@@ -146,6 +156,9 @@ const prefetchPhaseModule = (phase: Phase | null) => {
     case "shortcuts-global":
     case "shortcuts-local":
       void loadShortcutsPhase();
+      break;
+    case "memory":
+      void loadMemoryPhase();
       break;
     default:
       break;
@@ -545,6 +558,37 @@ export const OnboardingStep1 = ({
     [isAuthenticated, saveExpressionStyle],
   );
 
+  const handleMemoryContinue = useCallback(
+    ({
+      memoryEnabled,
+      requestSignIn,
+    }: {
+      memoryEnabled: boolean;
+      requestSignIn: boolean;
+    }) => {
+      // Persist the user's choice via the unified memory IPC. The handler
+      // takes care of keeping Chronicle + Dream in lockstep, and stages
+      // a `pendingEnable` when we don't yet have an auth session — so
+      // nothing actually starts until the user signs in.
+      const api = window.electronAPI?.memory;
+      if (memoryEnabled) {
+        if (requestSignIn) {
+          markRequestSignInAfterOnboarding();
+        }
+        void api?.setEnabled(true, { pending: requestSignIn }).catch(() => {
+          // Best-effort: a failure here just means the daemon stays off.
+          // The user can re-toggle from Settings.
+        });
+      } else {
+        void api?.setEnabled(false).catch(() => {
+          // Best-effort.
+        });
+      }
+      nextSplitStep();
+    },
+    [nextSplitStep],
+  );
+
   if (phase === "done") {
     return null;
   }
@@ -645,6 +689,16 @@ export const OnboardingStep1 = ({
               mode="local"
               splitTransitionActive={leaving}
               onFinish={nextSplitStep}
+            />
+          </Suspense>
+        );
+      case "memory":
+        return (
+          <Suspense fallback={splitPhaseFallback}>
+            <OnboardingMemoryPhase
+              splitTransitionActive={leaving}
+              isAuthenticated={Boolean(isAuthenticated)}
+              onContinue={handleMemoryContinue}
             />
           </Suspense>
         );

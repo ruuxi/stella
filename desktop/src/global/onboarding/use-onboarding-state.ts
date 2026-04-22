@@ -23,12 +23,14 @@ export const CENTER_PHASES = new Set<Phase>(["start", "auth", "intro"]);
 
 /** Phases that use split layout */
 export const SPLIT_PHASES = new Set<Phase>([
-  "permissions", "browser", "creation", "theme", "personality", "shortcuts-global", "shortcuts-local",
+  "permissions", "browser", "theme", "personality", "creation", "shortcuts-global", "shortcuts-local", "memory",
 ]);
 
-/** Ordered split steps for navigation */
+/** Ordered split steps for navigation.
+ * `creation` sits right before the shortcuts demos so the "I can change myself"
+ * narrative leads directly into "How to use Stella on your computer". */
 export const SPLIT_STEP_ORDER: Phase[] = [
-  "permissions", "browser", "creation", "theme", "personality", "shortcuts-global", "shortcuts-local",
+  "permissions", "browser", "theme", "personality", "creation", "shortcuts-global", "shortcuts-local", "memory",
 ];
 
 export const DISCOVERY_CATEGORIES: {

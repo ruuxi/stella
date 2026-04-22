@@ -355,14 +355,21 @@
 .onboarding-split-right {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  /* Vertical-center the stage inside the right pane so non-mock phases
+   * (permissions, theme, browser, personality) read as balanced instead of
+   * floating near the top with empty space below. `safe center` keeps the
+   * stage scrollable from the top if its content ever exceeds the pane.
+   * Mock phases (memory, creation, shortcuts) override this further down. */
+  justify-content: safe center;
   align-items: flex-start;
   position: relative;
   width: min(50%, 560px);
   min-width: min(360px, 100%);
   margin-left: auto;
   height: 100%;
-  padding: clamp(92px, 13vh, 144px) 40px 56px;
+  /* Equal-ish top/bottom padding so centering reads as actually centered.
+   * Top keeps a small buffer above the macOS traffic lights area. */
+  padding: clamp(56px, 8vh, 96px) 40px clamp(56px, 8vh, 96px);
   overflow-y: auto;
   scrollbar-gutter: stable both-edges;
   opacity: 1;
@@ -453,6 +460,12 @@
 .onboarding-split-stage {
   display: flex;
   flex-direction: column;
+  /* Center the stage's own children vertically so a short step-content
+   * (e.g. permissions, theme, browser) sits in the middle of the 520px
+   * stage block rather than pinned to the top. Phases that need a
+   * top-aligned or distributed layout (creation: space-between,
+   * shortcuts/memory: flex children) override this further down. */
+  justify-content: center;
   gap: 24px;
   width: 100%;
   max-width: 680px;
@@ -2536,7 +2549,10 @@
   margin-left: 0;
   padding: 40px 40px 48px;
   align-items: center;
-  justify-content: center;
+  /* Was `justify-content: center` which left the stage at its content height
+   * surrounded by empty space. We now stack from the top and let the stage
+   * stretch via flex so the mock can fill the available middle. */
+  justify-content: flex-start;
 }
 
 .onboarding-dialogue[data-phase="shortcuts-global"] .onboarding-split-stage,
@@ -2544,8 +2560,10 @@
   max-width: min(1420px, calc(100vw - 80px));
   min-height: 0;
   align-items: center;
-  justify-content: center;
-  gap: 28px;
+  /* Stretch into the right pane so the demo/surface below can flex into
+   * the middle while the result text + Continue anchor at the bottom. */
+  flex: 1 1 auto;
+  gap: 24px;
 }
 
 .onboarding-dialogue[data-phase="shortcuts-global"] .onboarding-split-title,
@@ -2557,7 +2575,12 @@
   width: 100%;
   max-width: none;
   align-items: center;
-  gap: 28px;
+  gap: 24px;
+  /* Fill the parent stage so children distribute top → middle → bottom:
+   * copy label sticks at top, the surface flexes into the middle, the
+   * result text + Continue anchor at the bottom. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .onboarding-shortcuts-phase > .onboarding-step-desc {
@@ -2569,13 +2592,22 @@
   gap: 20px;
   width: 100%;
   align-items: stretch;
+  /* Let the grid grow into the middle so the surface inside can fill. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .onboarding-shortcut-demo {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: 18px;
+  /* Demo column fills the grid cell so the surface (last child) can flex. */
+  min-height: 0;
+}
+
+.onboarding-shortcut-demo__copy {
+  flex-shrink: 0;
 }
 
 .onboarding-shortcut-demo__copy {
@@ -2649,7 +2681,11 @@
 
 .onboarding-shortcut-surface {
   position: relative;
-  min-height: clamp(320px, 42vh, 560px);
+  /* Floor for very short windows; on roomy windows the parent demo column
+   * (now flex: 1) drives the height so the mock fills the middle instead
+   * of being capped at 560px. */
+  min-height: 280px;
+  flex: 1 1 auto;
   width: 100%;
   max-width: 800px;
   overflow: hidden;
@@ -3606,6 +3642,11 @@
     opacity 0.35s ease,
     transform 0.35s ease;
   min-height: 5.5em;
+  flex-shrink: 0;
+}
+
+.onboarding-shortcuts-phase > .onboarding-confirm {
+  flex-shrink: 0;
 }
 
 .onboarding-shortcut-result-description[data-visible="true"] {
