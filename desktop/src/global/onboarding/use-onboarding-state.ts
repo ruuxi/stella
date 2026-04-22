@@ -15,6 +15,7 @@ export type Phase =
   | "personality"
   | "shortcuts-global"
   | "shortcuts-local"
+  | "double-tap"
   | "complete"
   | "done";
 
@@ -23,14 +24,17 @@ export const CENTER_PHASES = new Set<Phase>(["start", "auth", "intro"]);
 
 /** Phases that use split layout */
 export const SPLIT_PHASES = new Set<Phase>([
-  "permissions", "browser", "theme", "personality", "creation", "shortcuts-global", "shortcuts-local", "memory",
+  "permissions", "browser", "theme", "personality", "creation", "shortcuts-global", "shortcuts-local", "double-tap", "memory",
 ]);
 
 /** Ordered split steps for navigation.
  * `creation` sits right before the shortcuts demos so the "I can change myself"
- * narrative leads directly into "How to use Stella on your computer". */
+ * narrative leads directly into "How to use Stella on your computer". The
+ * `double-tap` phase teaches the keyboard-only summon gesture and slots
+ * after the right-click shortcuts so all "summon Stella" lessons live
+ * together before we hand off to memory setup. */
 export const SPLIT_STEP_ORDER: Phase[] = [
-  "permissions", "browser", "theme", "personality", "creation", "shortcuts-global", "shortcuts-local", "memory",
+  "permissions", "browser", "theme", "personality", "creation", "shortcuts-global", "shortcuts-local", "double-tap", "memory",
 ];
 
 export const DISCOVERY_CATEGORIES: {

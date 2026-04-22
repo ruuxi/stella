@@ -437,6 +437,11 @@ function BasicTab({
             ? "Hold ⌘ and right-click anywhere on your screen to open Stella."
             : "Hold Ctrl and right-click anywhere on your screen to open Stella."}
         </p>
+        <p className="settings-card-desc">
+          {platform === "darwin"
+            ? "Or tap ⌥ Option twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."
+            : "Or tap Alt twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."}
+        </p>
       </div>
       {platform === "darwin" ? (
         <div className="settings-card">

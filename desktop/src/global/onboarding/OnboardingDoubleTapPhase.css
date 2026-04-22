@@ -1,0 +1,494 @@
+/* Onboarding "Double-tap to summon" phase.
+ *
+ * Layout mirrors `OnboardingMemoryPhase` (lede + interactive stage +
+ * Continue) but instead of a comparison grid we render a single
+ * desktop-background surface with a couple of faux app windows and an
+ * animated mini-window mock. A keycap row at the bottom pulses in time
+ * with the user's actual Option/Alt presses.
+ *
+ * The mini-window mock visually quotes the same "scene-effect__mini-shell"
+ * silhouette used in the shortcuts demo, but lives in its own scope so we
+ * can drive its enter/leave animation independently.
+ */
+
+.onboarding-dialogue[data-phase="double-tap"] .onboarding-split-right {
+  width: 100%;
+  min-width: 100%;
+  margin-left: 0;
+  padding: clamp(48px, 7vh, 84px) 32px 40px;
+  align-items: center;
+}
+
+.onboarding-dialogue[data-phase="double-tap"] .onboarding-split-stage {
+  align-items: center;
+  max-width: 1080px;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.onboarding-dialogue[data-phase="double-tap"] .onboarding-split-title {
+  text-align: center;
+}
+
+.onboarding-doubletap-step {
+  align-items: center;
+  gap: 22px;
+  max-width: none;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.onboarding-doubletap-step__lede {
+  text-align: center;
+  max-width: 580px;
+  margin: 0 auto;
+  flex-shrink: 0;
+}
+
+.onboarding-doubletap-inline-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+  border-bottom-width: 2px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--foreground);
+  vertical-align: -2px;
+}
+
+/* ─── Stage / desktop mock ─────────────────────────────────────────── */
+
+.onboarding-doubletap-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 920px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.onboarding-doubletap-desktop {
+  position: relative;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 280px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background-color: var(--background);
+  background-image:
+    radial-gradient(
+      120% 90% at 80% 0%,
+      color-mix(in oklch, var(--primary, var(--foreground)) 10%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      90% 80% at 0% 100%,
+      color-mix(
+        in oklch,
+        var(--accent, var(--primary, var(--foreground))) 8%,
+        transparent
+      ),
+      transparent 55%
+    );
+  box-shadow: 0 22px 50px color-mix(in oklch, black 12%, transparent);
+}
+
+/* Faux app windows that sit behind the mini shell to give the demo a
+ * "summoned over your work" feeling. Both are non-interactive. */
+.onboarding-doubletap-window {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--background) 92%, white 8%);
+  box-shadow: 0 12px 28px color-mix(in oklch, black 10%, transparent);
+}
+
+.onboarding-doubletap-window--bg {
+  top: 18px;
+  left: 22px;
+  width: 38%;
+  min-width: 200px;
+  max-width: 320px;
+  height: 56%;
+  opacity: 0.78;
+  transform: rotate(-1.4deg);
+}
+
+.onboarding-doubletap-window--front {
+  top: 36px;
+  left: 18%;
+  width: 52%;
+  min-width: 260px;
+  max-width: 440px;
+  height: 78%;
+}
+
+.onboarding-doubletap-window__bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground) 8%, transparent);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--foreground);
+  opacity: 0.6;
+}
+
+.onboarding-doubletap-window__bar span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+.onboarding-doubletap-window__bar span:nth-child(1) {
+  background: color-mix(in oklch, oklch(0.65 0.16 25) 70%, transparent);
+}
+.onboarding-doubletap-window__bar span:nth-child(2) {
+  background: color-mix(in oklch, oklch(0.78 0.12 75) 65%, transparent);
+}
+.onboarding-doubletap-window__bar span:nth-child(3) {
+  background: color-mix(in oklch, oklch(0.72 0.16 145) 65%, transparent);
+}
+
+.onboarding-doubletap-window__bar strong {
+  margin-left: 6px;
+  font-weight: 500;
+}
+
+.onboarding-doubletap-window__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.onboarding-doubletap-window__body--front {
+  gap: 8px;
+}
+
+.onboarding-doubletap-line {
+  height: 7px;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.onboarding-doubletap-line--title {
+  height: 11px;
+  width: 60%;
+  background: color-mix(in oklch, var(--foreground) 22%, transparent);
+}
+
+.onboarding-doubletap-line--med {
+  width: 80%;
+}
+
+.onboarding-doubletap-line--short {
+  width: 50%;
+}
+
+.onboarding-doubletap-eyebrow {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+
+.onboarding-doubletap-heading {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 2px 0 4px;
+  color: var(--foreground);
+}
+
+.onboarding-doubletap-paragraph {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--foreground);
+  opacity: 0.7;
+  margin: 0;
+}
+
+.onboarding-doubletap-paragraph--muted {
+  opacity: 0.5;
+}
+
+/* ─── Mini-window mock ─────────────────────────────────────────────── */
+
+.onboarding-doubletap-mini {
+  position: absolute;
+  top: 24px;
+  bottom: 18px;
+  right: 22px;
+  width: min(264px, 38%);
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--background);
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.18),
+    0 4px 14px rgba(0, 0, 0, 0.1);
+
+  /* Hidden by default until the user double-taps. We blur+scale in to
+   * mirror the `miniShellMaterialize` keyframes used elsewhere so the
+   * gesture feels like the same "summon" beat as the real product. */
+  opacity: 0;
+  transform: scale(0.6) translateY(12px);
+  filter: blur(14px);
+  transition:
+    opacity 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.onboarding-doubletap-mini[data-visible="true"] {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  filter: blur(0);
+}
+
+.onboarding-doubletap-mini__bar {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground) 6%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--foreground);
+  opacity: 0.85;
+}
+
+.onboarding-doubletap-mini__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.onboarding-doubletap-mini__brand svg {
+  opacity: 0.7;
+}
+
+.onboarding-doubletap-mini__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  opacity: 0.4;
+}
+
+.onboarding-doubletap-mini__messages {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 10px 6px;
+  flex: 1;
+  overflow: hidden;
+  justify-content: flex-end;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 16px,
+    black calc(100% - 16px),
+    transparent
+  );
+}
+
+.onboarding-doubletap-mini__msg {
+  padding: 7px 10px;
+  border-radius: 12px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--foreground);
+}
+
+.onboarding-doubletap-mini__msg--user {
+  align-self: flex-end;
+  max-width: 80%;
+  background: color-mix(
+    in oklch,
+    var(--primary, oklch(0.62 0.18 235)) 14%,
+    transparent
+  );
+  border-radius: 12px 12px 4px 12px;
+}
+
+.onboarding-doubletap-mini__msg--assistant {
+  align-self: flex-start;
+  max-width: 92%;
+  opacity: 0.82;
+}
+
+.onboarding-doubletap-mini__composer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  margin: 0 8px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  font-size: 10px;
+  color: var(--foreground);
+  opacity: 0.6;
+}
+
+.onboarding-doubletap-mini__composer-input {
+  flex: 1;
+  opacity: 0.7;
+}
+
+.onboarding-doubletap-mini__composer-add,
+.onboarding-doubletap-mini__composer-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  opacity: 0.7;
+}
+
+/* ─── Hint copy under the desktop ──────────────────────────────────── */
+
+.onboarding-doubletap-hint {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  opacity: 0.7;
+  text-align: center;
+  min-height: 18px;
+  flex-shrink: 0;
+}
+
+.onboarding-doubletap-stage[data-summoned="true"] .onboarding-doubletap-hint {
+  opacity: 0.85;
+}
+
+/* ─── Keycap row ───────────────────────────────────────────────────── */
+
+.onboarding-doubletap-keycaps {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 100px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: color-mix(in oklch, var(--background) 88%, white 4%);
+  flex-shrink: 0;
+}
+
+.onboarding-doubletap-keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  border-bottom-width: 2px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--foreground);
+  transition:
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.onboarding-doubletap-keycap[data-state="first"],
+.onboarding-doubletap-keycap[data-state="second"] {
+  background: color-mix(
+    in oklch,
+    var(--primary, oklch(0.62 0.18 235)) 16%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklch,
+    var(--primary, oklch(0.62 0.18 235)) 38%,
+    transparent
+  );
+  box-shadow:
+    0 0 0 4px
+      color-mix(
+        in oklch,
+        var(--primary, oklch(0.62 0.18 235)) 12%,
+        transparent
+      );
+  transform: translateY(1px) scale(0.97);
+}
+
+.onboarding-doubletap-keycap[data-state="second"] {
+  /* Slight extra emphasis on the second tap — that's the moment the
+   * gesture "lands" and the mini window appears. */
+  box-shadow:
+    0 0 0 6px
+      color-mix(
+        in oklch,
+        var(--primary, oklch(0.62 0.18 235)) 18%,
+        transparent
+      );
+}
+
+.onboarding-doubletap-keycap-sep {
+  font-size: 13px;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+
+.onboarding-doubletap-step > .onboarding-confirm {
+  flex-shrink: 0;
+}
+
+@media (max-width: 760px) {
+  .onboarding-doubletap-window--bg {
+    display: none;
+  }
+  .onboarding-doubletap-window--front {
+    left: 12px;
+    width: calc(100% - 220px);
+  }
+  .onboarding-doubletap-mini {
+    width: min(220px, 50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-doubletap-mini {
+    transition: opacity 0.2s ease;
+    transform: none;
+    filter: none;
+  }
+  .onboarding-doubletap-mini[data-visible="true"] {
+    transform: none;
+  }
+  .onboarding-doubletap-keycap {
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+}

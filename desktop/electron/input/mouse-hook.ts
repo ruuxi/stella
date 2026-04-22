@@ -13,6 +13,13 @@ const RIGHT_META = 3676
 const LEFT_CTRL = 29
 const RIGHT_CTRL = 3613
 
+// uIOhook keycodes for the Option/Alt key (left + right). On macOS this is
+// the Option key; on Windows/Linux it is the Alt key. Mapped from
+// `UiohookKey.Alt` (56) and `UiohookKey.AltRight` (3640).
+const LEFT_ALT = 56
+const RIGHT_ALT = 3640
+const ALT_KEYS: ReadonlySet<number> = new Set([LEFT_ALT, RIGHT_ALT])
+
 const MODIFIER_KEYS_BY_PLATFORM: Record<string, readonly number[]> = {
   darwin: [LEFT_META, RIGHT_META],
   win32: [LEFT_CTRL, RIGHT_CTRL],
@@ -21,6 +28,11 @@ const MODIFIER_KEYS_BY_PLATFORM: Record<string, readonly number[]> = {
 
 const RIGHT_MOUSE_BUTTON = 2
 
+// Max time (ms) between the first Alt keyup and the second Alt keydown for
+// the gesture to count as a "double-tap". 350ms matches the typical OS
+// double-click threshold and feels fast-but-not-twitchy in practice.
+const DOUBLE_TAP_WINDOW_MS = 350
+
 export type ContextMenuTriggerEvent = {
   x: number
   y: number
@@ -28,18 +40,84 @@ export type ContextMenuTriggerEvent = {
 
 type MouseHookEvents = {
   onContextMenuTrigger: (event: ContextMenuTriggerEvent) => void
+  /**
+   * Fired when the user taps the Option (macOS) / Alt (Windows / Linux) key
+   * twice in rapid succession with no other keys pressed in between. The
+   * gesture is purely keyboard, so no coordinates are supplied.
+   */
+  onDoubleTapModifier?: () => void
 }
 
 /**
- * Listens for the global "modifier + right-click" gesture and fires
- * `onContextMenuTrigger` when detected.
+ * Tiny state machine that fires once when the user double-taps the Option
+ * (macOS) / Alt (Windows / Linux) key. The gesture is "two solo taps within
+ * `DOUBLE_TAP_WINDOW_MS`" — any other key pressed in between cancels the
+ * sequence so we don't false-trigger while typing.
  *
- *   macOS  → CGEventTap helper drops the event before the OS can show its
+ * State transitions:
+ *   idle      → first Alt keydown  → first-down
+ *   first-down → Alt keyup         → first-up (record timestamp)
+ *   first-up  → Alt keydown (in window) → fire + idle
+ *   first-up  → Alt keydown (after window) → first-down (start over)
+ *   any       → non-Alt keydown    → idle (cancel)
+ *
+ * Auto-repeated keydowns from holding the key are suppressed by the caller
+ * (it only forwards transitions on `wasAlreadyDown=false`).
+ */
+class DoubleTapAltDetector {
+  private state: 'idle' | 'first-down' | 'first-up' = 'idle'
+  private firstTapUpAt = 0
+
+  constructor(private readonly fire: () => void) {}
+
+  notifyAltKeydown(now: number) {
+    if (this.state === 'first-up') {
+      if (now - this.firstTapUpAt <= DOUBLE_TAP_WINDOW_MS) {
+        this.reset()
+        this.fire()
+        return
+      }
+    }
+    this.state = 'first-down'
+  }
+
+  notifyAltKeyup(now: number) {
+    if (this.state === 'first-down') {
+      this.state = 'first-up'
+      this.firstTapUpAt = now
+    } else {
+      this.reset()
+    }
+  }
+
+  cancel() {
+    this.reset()
+  }
+
+  private reset() {
+    this.state = 'idle'
+    this.firstTapUpAt = 0
+  }
+}
+
+/**
+ * Listens for global input gestures and forwards them as semantic events.
+ * Currently surfaces:
+ *   - `onContextMenuTrigger` — modifier + right-click (Cmd on macOS,
+ *     Ctrl on Windows/Linux). The OS-level menu is suppressed by the
+ *     bundled native helper where available.
+ *   - `onDoubleTapModifier`  — two fast taps of Option / Alt in a row.
+ *
+ *   macOS  → CGEventTap helper drops the click before the OS can show its
  *             context menu, then fires the trigger.
- *   win32  → WH_MOUSE_LL helper drops the event before the OS can show its
+ *   win32  → WH_MOUSE_LL helper drops the click before the OS can show its
  *             context menu, then fires the trigger.
  *   linux  → Falls back to uIOhook observation (the OS context menu will
  *             still appear).
+ *
+ * The Option/Alt double-tap gesture is detected from raw uIOhook key events
+ * on every platform (no native blocking — the OS doesn't reserve Option-tap
+ * for anything by default, so we don't need to suppress it).
  */
 export class MouseHookManager {
   private events: MouseHookEvents
@@ -48,9 +126,13 @@ export class MouseHookManager {
   private uiohookStarted = false
   private pressedKeycodes = new Set<number>()
   private nativeBlockingActive = false
+  private readonly doubleTapDetector: DoubleTapAltDetector | null
 
   constructor(events: MouseHookEvents) {
     this.events = events
+    this.doubleTapDetector = events.onDoubleTapModifier
+      ? new DoubleTapAltDetector(events.onDoubleTapModifier)
+      : null
   }
 
   start() {
@@ -94,6 +176,7 @@ export class MouseHookManager {
     if (!this.started) return
     this.started = false
     this.pressedKeycodes.clear()
+    this.doubleTapDetector?.cancel()
 
     if (this.nativeBlockingActive) {
       stopMouseBlock()
@@ -127,11 +210,30 @@ export class MouseHookManager {
   }
 
   private readonly handleKeydown = (event: UiohookKeyboardEvent) => {
+    const wasAlreadyDown = this.pressedKeycodes.has(event.keycode)
     this.pressedKeycodes.add(event.keycode)
+
+    if (!this.doubleTapDetector) return
+
+    // Suppress auto-repeat (the OS resends keydown while a key is held).
+    if (wasAlreadyDown) return
+
+    if (ALT_KEYS.has(event.keycode)) {
+      this.doubleTapDetector.notifyAltKeydown(Date.now())
+    } else {
+      // Any other key pressed during the gesture cancels it — the user is
+      // clearly typing/triggering something else, not double-tapping Option.
+      this.doubleTapDetector.cancel()
+    }
   }
 
   private readonly handleKeyup = (event: UiohookKeyboardEvent) => {
     this.pressedKeycodes.delete(event.keycode)
+
+    if (!this.doubleTapDetector) return
+    if (ALT_KEYS.has(event.keycode)) {
+      this.doubleTapDetector.notifyAltKeyup(Date.now())
+    }
   }
 
   private readonly handleMousedown = (event: UiohookMouseEvent) => {

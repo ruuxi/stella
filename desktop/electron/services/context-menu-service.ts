@@ -63,6 +63,12 @@ type ContextMenuServiceDeps = {
   updateUiState: (partial: Record<string, unknown>) => void
   /** Send a one-shot suggestion to the renderer's chip strip. */
   pinSidebarSuggestion: (chip: SidebarSuggestionChip) => void
+  /**
+   * Optional handler for the global "double-tap Option/Alt" gesture. Wired
+   * through the same uIOhook lifecycle that powers the context-menu trigger
+   * so we don't double-start the input hook.
+   */
+  onDoubleTapModifier?: () => void
 }
 
 /**
@@ -161,6 +167,11 @@ export class ContextMenuService {
       onContextMenuTrigger: ({ x, y }) => {
         void this.handleTrigger({ x, y })
       },
+      onDoubleTapModifier: this.deps.onDoubleTapModifier
+        ? () => {
+            this.deps.onDoubleTapModifier?.()
+          }
+        : undefined,
     })
 
     this.mouseHook.start()

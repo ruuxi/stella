@@ -36,6 +36,7 @@ const loadCreationPhase = () => import("./OnboardingCreationPhase");
 const loadThemePhase = () => import("./OnboardingThemePhase");
 const loadPersonalityPhase = () => import("./OnboardingPersonalityPhase");
 const loadShortcutsPhase = () => import("./OnboardingShortcutsPhase");
+const loadDoubleTapPhase = () => import("./OnboardingDoubleTapPhase");
 const loadMemoryPhase = () => import("./OnboardingMemoryPhase");
 const loadMockWindows = () => import("./OnboardingMockWindows");
 
@@ -69,6 +70,11 @@ const OnboardingShortcutsPhase = lazy(() =>
     default: module.OnboardingShortcutsPhase,
   })),
 );
+const OnboardingDoubleTapPhase = lazy(() =>
+  loadDoubleTapPhase().then((module) => ({
+    default: module.OnboardingDoubleTapPhase,
+  })),
+);
 const OnboardingMemoryPhase = lazy(() =>
   loadMemoryPhase().then((module) => ({
     default: module.OnboardingMemoryPhase,
@@ -91,6 +97,7 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
   personality: "How should I talk?",
   "shortcuts-global": "Anywhere on your desktop.",
   "shortcuts-local": "Inside Stella.",
+  "double-tap": "Tap twice. Summon Stella.",
   memory: "Help me remember.",
 };
 
@@ -129,6 +136,8 @@ const getNextPhaseToPrefetch = (phase: Phase): Phase | null => {
     case "shortcuts-global":
       return "shortcuts-local";
     case "shortcuts-local":
+      return "double-tap";
+    case "double-tap":
       return "memory";
     default:
       return null;
@@ -156,6 +165,9 @@ const prefetchPhaseModule = (phase: Phase | null) => {
     case "shortcuts-global":
     case "shortcuts-local":
       void loadShortcutsPhase();
+      break;
+    case "double-tap":
+      void loadDoubleTapPhase();
       break;
     case "memory":
       void loadMemoryPhase();
@@ -689,6 +701,15 @@ export const OnboardingStep1 = ({
               mode="local"
               splitTransitionActive={leaving}
               onFinish={nextSplitStep}
+            />
+          </Suspense>
+        );
+      case "double-tap":
+        return (
+          <Suspense fallback={splitPhaseFallback}>
+            <OnboardingDoubleTapPhase
+              splitTransitionActive={leaving}
+              onContinue={nextSplitStep}
             />
           </Suspense>
         );
