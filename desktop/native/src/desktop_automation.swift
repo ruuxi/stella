@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 import CoreGraphics
+import CoreServices
 import Darwin
 import Foundation
 import ImageIO
@@ -96,6 +97,8 @@ struct SnapshotDocument: Codable {
     let screenshotPath: String?
     let screenshot: Screenshot?
     let appInstructions: String?
+    let selectedText: String?
+    let focusedSummary: String?
     let capturedAt: String?
     let maxDepth: Int?
     let maxNodes: Int?
@@ -121,6 +124,7 @@ struct ListedAppPayload: Codable {
     let bundleId: String?
     let pid: Int32
     let activationPolicy: String
+    let isRunning: Bool
     let isActive: Bool
     // Spotlight-tracked usage signals so the wrapper can emit Codex-style
     // `[running, last-used=YYYY-MM-DD, uses=N]` annotations. Both are nil
@@ -656,8 +660,21 @@ let bundledAppInstructions: [String: String] = [
 
         ### Playing media
 
-        The Spotify app doesn't immediately update after requesting playback, so the result from a
-        click might indicate paused media or outdated media. Instead of acting again, first: run
+        Spotify is web-view-backed. Synthesized coordinate clicks (especially `click_count >= 2`
+        on `x/y`) are silently dropped while Spotify is in the background, so do not try to
+        double-click a song row to play it — you will loop forever. Instead, find a labeled
+        action button in the AX tree and click it once by `element_index`:
+
+        - To play the currently shown view (e.g. Liked Songs after navigating there), click the
+          main green `Play` button (look for an `AXButton` whose label is exactly `Play`).
+        - To play a specific playlist or item from a list, click its inline action button —
+          they're labeled `Play <name>` (e.g. `Play Liked Songs`, `Play Founders`,
+          `Play Your Top Songs 2025`). One single `element_index` click is enough.
+        - To toggle play/pause without changing the queue, click the same `Play` (or `Pause`)
+          element_index in the player chrome.
+
+        Spotify doesn't immediately update after requesting playback, so the result from a click
+        might indicate paused media or outdated media. Instead of acting again, first: run
         `get-state` to confirm it didn't take. You may be pleasantly surprised. Do not sleep any
         time, it should be updated by the time you notice and request another `get-state`.
 
@@ -896,11 +913,18 @@ func rectToCGRect(_ rect: Rect) -> CGRect {
     CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
 }
 
-func resolveOnScreenWindowID(
+struct OnScreenWindowMatch {
+    let windowID: CGWindowID
+    let layer: Int
+    let frame: CGRect
+    let title: String?
+}
+
+func resolveOnScreenWindow(
     pid: Int32,
     expectedTitle: String?,
     expectedFrame: Rect?
-) -> CGWindowID? {
+) -> OnScreenWindowMatch? {
     let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
     guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
         return nil
@@ -908,7 +932,7 @@ func resolveOnScreenWindowID(
 
     let expectedTitleNormalized = normalized(expectedTitle)
     let expectedCGRect = expectedFrame.map(rectToCGRect)
-    var best: (windowID: CGWindowID, score: CGFloat)?
+    var best: (window: OnScreenWindowMatch, titleMatched: Bool, score: CGFloat)?
 
     for entry in raw {
         guard let entryPid = (entry[kCGWindowOwnerPID as String] as? Int).map(Int32.init),
@@ -929,29 +953,58 @@ func resolveOnScreenWindowID(
         )
         if frame.width <= 0 || frame.height <= 0 { continue }
 
-        var score: CGFloat
+        let entryTitle = entry[kCGWindowName as String] as? String
+        let entryTitleNormalized = normalized(entryTitle)
+        let titleMatched =
+            !expectedTitleNormalized.isEmpty &&
+            !entryTitleNormalized.isEmpty &&
+            entryTitleNormalized == expectedTitleNormalized
+
+        let score: CGFloat
         if let expectedCGRect {
             let intersection = frame.intersection(expectedCGRect)
             let overlapArea = intersection.isNull ? 0 : intersection.width * intersection.height
-            if overlapArea <= 0 { continue }
-            score = overlapArea
+            score = overlapArea > 0 ? overlapArea : frame.width * frame.height
         } else {
             score = frame.width * frame.height
         }
 
-        let entryTitleNormalized = normalized(entry[kCGWindowName as String] as? String)
-        if !expectedTitleNormalized.isEmpty,
-           !entryTitleNormalized.isEmpty,
-           entryTitleNormalized == expectedTitleNormalized {
-            score *= 4
-        }
-
-        if best == nil || score > best!.score {
-            best = (windowID: windowID, score: score)
+        let current = OnScreenWindowMatch(
+            windowID: windowID,
+            layer: layer,
+            frame: frame,
+            title: entryTitle
+        )
+        if let existingBest = best {
+            if titleMatched != existingBest.titleMatched {
+                if titleMatched {
+                    // title match wins over pure area when we have an AX hint
+                    // for which window the snapshot is about.
+                    best = (window: current, titleMatched: titleMatched, score: score)
+                }
+                continue
+            }
+            if score > existingBest.score {
+                best = (window: current, titleMatched: titleMatched, score: score)
+            }
+        } else {
+            best = (window: current, titleMatched: titleMatched, score: score)
         }
     }
 
-    return best?.windowID
+    return best?.window
+}
+
+func resolveOnScreenWindowID(
+    pid: Int32,
+    expectedTitle: String?,
+    expectedFrame: Rect?
+) -> CGWindowID? {
+    resolveOnScreenWindow(
+        pid: pid,
+        expectedTitle: expectedTitle,
+        expectedFrame: expectedFrame
+    )?.windowID
 }
 
 func frameCenter(_ rect: Rect) -> CGPoint {
@@ -1810,12 +1863,14 @@ func resolveTarget(
     appName: String?,
     bundleId: String?
 ) throws -> AppTarget {
-    let runningApps = NSWorkspace.shared.runningApplications
-        .filter { $0.activationPolicy != .prohibited }
-
     func wrap(_ app: NSRunningApplication) throws -> AppTarget {
         try ensureTargetAllowed(app)
         return AppTarget(app: app, axApp: AXUIElementCreateApplication(app.processIdentifier))
+    }
+
+    func runningApps() -> [NSRunningApplication] {
+        NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy != .prohibited && !$0.isTerminated }
     }
 
     if let pid,
@@ -1824,21 +1879,45 @@ func resolveTarget(
     }
 
     if let bundleId = trimmed(bundleId),
-       let app = runningApps.first(where: { $0.bundleIdentifier == bundleId }) {
+       let app = runningApps().first(where: { $0.bundleIdentifier == bundleId }) {
         return try wrap(app)
     }
 
     if let appName = trimmed(appName) {
         let needle = normalized(appName)
-        if let exact = runningApps.first(where: { normalized($0.localizedName) == needle }) {
+        if let exact = runningApps().first(where: { normalized($0.localizedName) == needle }) {
             return try wrap(exact)
         }
-        if let partial = runningApps.first(where: {
+        if let partial = runningApps().first(where: {
             normalized($0.localizedName).contains(needle) ||
                 normalized($0.bundleIdentifier).contains(needle)
         }) {
             return try wrap(partial)
         }
+    }
+
+    // Codex launches apps on demand if they are installed but not already
+    // running. Keep Stella's explicit target requirement, but once the
+    // caller has named an app, attempt launch before failing.
+    launchTargetIfPossible(appName: appName, bundleId: bundleId)
+    for _ in 0..<20 {
+        if let bundleId = trimmed(bundleId),
+           let app = runningApps().first(where: { $0.bundleIdentifier == bundleId }) {
+            return try wrap(app)
+        }
+        if let appName = trimmed(appName) {
+            let needle = normalized(appName)
+            if let exact = runningApps().first(where: { normalized($0.localizedName) == needle }) {
+                return try wrap(exact)
+            }
+            if let partial = runningApps().first(where: {
+                normalized($0.localizedName).contains(needle) ||
+                    normalized($0.bundleIdentifier).contains(needle)
+            }) {
+                return try wrap(partial)
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.25)
     }
 
     // No frontmost-app fallback. The whole point of stella-computer is to
@@ -3059,7 +3138,7 @@ final class PersistentOverlayController {
         lastTickAt = now
 
         let idleAngleOffset = loadingAngleOffset(at: now)
-        var clickScale = clickPulseScale(at: now)
+        let clickScale = clickPulseScale(at: now)
 
         guard let path = activePath else {
             applyCursorState(
@@ -3083,18 +3162,6 @@ final class PersistentOverlayController {
         let limited = max(-maxStep, min(maxStep, angleDelta))
         let newAngle = normalizeAngle(renderedAngle + limited)
 
-        if shouldTriggerClickPulse && !didTriggerClickPulseForMove {
-            let remainingDistance = hypot(path.end.x - nextPosition.x, path.end.y - nextPosition.y)
-            if progress >= overlayCursorClickCloseEnoughProgress
-                || remainingDistance <= overlayCursorClickCloseEnoughDistance {
-                didTriggerClickPulseForMove = true
-                startClickPulseIfNeeded(at: now)
-                clickScale = clickPulseScale(at: now)
-                let totalRemaining = max(0, animationFinishesAt - now)
-                writeBusyUntil(remainingSeconds: totalRemaining, actionReadyInSeconds: 0)
-            }
-        }
-
         currentPosition = nextPosition
         renderedAngle = newAngle
         applyCursorState(cursor, position: nextPosition, rotation: newAngle, scale: clickScale)
@@ -3102,13 +3169,20 @@ final class PersistentOverlayController {
 
         if progress >= 1 {
             lastArrivalTangent = normalized(path.tangent(at: 1))
-            if shouldTriggerClickPulse && !didTriggerClickPulseForMove {
-                didTriggerClickPulseForMove = true
-                startClickPulseIfNeeded(at: now)
-            }
             activePath = nil
             idleAnimationStartedAt = now
         }
+    }
+
+    func triggerClickPulse() {
+        guard window != nil, currentPosition != nil else { return }
+        let now = CACurrentMediaTime()
+        startClickPulseIfNeeded(at: now)
+        animationFinishesAt = max(animationFinishesAt, now + overlayCursorClickPulseDuration)
+        writeBusyUntil(
+            remainingSeconds: overlayCursorClickPulseDuration,
+            actionReadyInSeconds: overlayCursorClickPulseDuration
+        )
     }
 
     func hide() {
@@ -3220,20 +3294,17 @@ final class PersistentOverlayController {
             c1: overlayCursorTimingControl1,
             c2: overlayCursorTimingControl2
         )
-        shouldTriggerClickPulse = isClickLikeInteraction(currentInteractionKind)
+        shouldTriggerClickPulse = false
         didTriggerClickPulseForMove = false
         clickPulseStartedAt = nil
         idleAnimationStartedAt = nil
         activeStartTime = CACurrentMediaTime()
         let scaled = overlayCursorMoveDuration * Double(min(1.0, max(0.45, distance / 600.0)))
         activeDuration = scaled
-        let clickTail = shouldTriggerClickPulse ? overlayCursorClickPulseDuration : 0
+        let clickTail: TimeInterval = 0
         scheduleAnimationFinish(extraTail: clickTail)
-        let totalRemaining = activeDuration + clickTail + 0.06
-        let actionReady = shouldTriggerClickPulse
-            ? activeDuration * Double(overlayCursorClickCloseEnoughProgress)
-            : totalRemaining
-        writeBusyUntil(remainingSeconds: totalRemaining, actionReadyInSeconds: actionReady)
+        let totalRemaining = activeDuration + 0.06
+        writeBusyUntil(remainingSeconds: totalRemaining, actionReadyInSeconds: totalRemaining)
     }
 
     private func makeCursorLayer(at point: CGPoint, viewportFrame: CGRect, screen: NSScreen) -> CALayer {
@@ -3478,14 +3549,19 @@ final class UnifiedAutomationOverlayService {
             interactionKind: target.interactionKind
         )
 
-        if overlayInteractionIsClickLike(target.interactionKind) {
-            waitUntilActionReady()
-        }
-
-        defer {
+        let isClickLike = overlayInteractionIsClickLike(target.interactionKind)
+        if isClickLike {
             waitUntilIdle()
         }
-        return body()
+
+        let result = body()
+
+        if isClickLike {
+            controller.triggerClickPulse()
+        }
+
+        waitUntilIdle()
+        return result
     }
 
     func hide() {
@@ -3605,6 +3681,7 @@ func captureScreenshot(
     to outputPath: String,
     rect: Rect?,
     pid: Int32? = nil,
+    expectedTitle: String? = nil,
     includeBase64: Bool = true
 ) -> (Screenshot?, String?) {
     let url = URL(fileURLWithPath: outputPath)
@@ -3622,6 +3699,8 @@ func captureScreenshot(
         let (screenshot, warning) = captureViaScreenCaptureKit(
             pid: pid,
             outputPath: outputPath,
+            expectedTitle: expectedTitle,
+            expectedFrame: rect,
             includeBase64: includeBase64
         )
         if let screenshot {
@@ -3640,10 +3719,15 @@ func captureScreenshot(
     // user's real desktop. We only fall back to -R<rect> as a last
     // resort, and even then prefer to fail loudly: a screen-rect capture
     // would mislead the model about what it's clicking on.
-    if let pid, let windowID = pickLargestOnScreenWindowID(forPid: pid) {
+    if let pid,
+       let window = resolveOnScreenWindow(
+           pid: pid,
+           expectedTitle: expectedTitle,
+           expectedFrame: rect
+       ) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        process.arguments = ["-x", "-o", "-l", String(windowID), outputPath]
+        process.arguments = ["-x", "-o", "-l", String(window.windowID), outputPath]
         do {
             try process.run()
             process.waitUntilExit()
@@ -3653,7 +3737,7 @@ func captureScreenshot(
                     nil
                 )
             }
-            trace("screenshot:screencapture-l failed exit=\(process.terminationStatus) windowID=\(windowID)")
+            trace("screenshot:screencapture-l failed exit=\(process.terminationStatus) windowID=\(window.windowID)")
         } catch {
             trace("screenshot:screencapture-l threw \(error.localizedDescription)")
         }
@@ -3689,43 +3773,10 @@ func captureScreenshot(
     }
 }
 
-// Pick the largest on-screen window owned by `pid` and return its
-// CGWindowID. Mirrors the SCK path's "largest window for this app" rule
-// so the windowID-targeted screencapture fallback captures the same
-// surface the SCK path would have.
-private func pickLargestOnScreenWindowID(forPid pid: Int32) -> CGWindowID? {
-    guard let entries = CGWindowListCopyWindowInfo(
-        [.optionOnScreenOnly, .excludeDesktopElements],
-        kCGNullWindowID
-    ) as? [[String: Any]] else {
-        return nil
-    }
-
-    struct Candidate {
-        let windowID: CGWindowID
-        let area: CGFloat
-    }
-
-    var best: Candidate?
-    for entry in entries {
-        guard let ownerPid = entry[kCGWindowOwnerPID as String] as? pid_t,
-              ownerPid == pid,
-              let windowID = entry[kCGWindowNumber as String] as? CGWindowID,
-              let bounds = entry[kCGWindowBounds as String] as? [String: CGFloat],
-              let width = bounds["Width"],
-              let height = bounds["Height"],
-              width > 0,
-              height > 0 else {
-            continue
-        }
-        let area = width * height
-        if best == nil || area > best!.area {
-            best = Candidate(windowID: windowID, area: area)
-        }
-    }
-
-    return best?.windowID
-}
+// `resolveOnScreenWindow(...)` now owns Stella's window-selection policy for
+// both screenshot capture and overlay targeting: prefer an exact AX title
+// match when we have one, then maximize frame overlap with the expected AX
+// window frame, then fall back to largest area.
 
 // Read a PNG that was just written by /usr/sbin/screencapture and turn it
 // into a Screenshot value. Failure here is non-fatal: callers fall back to
@@ -3779,6 +3830,8 @@ func screenshotFromOnDiskPNG(path: String, includeBase64: Bool) -> Screenshot? {
 private func captureViaScreenCaptureKit(
     pid: Int32,
     outputPath: String,
+    expectedTitle: String?,
+    expectedFrame: Rect?,
     includeBase64: Bool
 ) -> (Screenshot?, String?) {
     let semaphore = DispatchSemaphore(value: 0)
@@ -3798,17 +3851,19 @@ private func captureViaScreenCaptureKit(
             captureError = "SCShareableContent returned no content"
             return
         }
-        // Pick the largest on-screen window owned by the target pid.
-        let window = content.windows
-            .lazy
-            .filter { $0.owningApplication?.processID == pid && $0.isOnScreen }
-            .max { lhs, rhs in
-                let la = lhs.frame.width * lhs.frame.height
-                let ra = rhs.frame.width * rhs.frame.height
-                return la < ra
-            }
-        guard let window else {
+        guard let preferredWindow = resolveOnScreenWindow(
+            pid: pid,
+            expectedTitle: expectedTitle,
+            expectedFrame: expectedFrame
+        ) else {
             captureError = "no on-screen window for pid \(pid)"
+            return
+        }
+        let window = content.windows.first {
+            $0.windowID == preferredWindow.windowID && $0.owningApplication?.processID == pid && $0.isOnScreen
+        }
+        guard let window else {
+            captureError = "ScreenCaptureKit could not find preferred window \(preferredWindow.windowID) for pid \(pid)"
             return
         }
         let filter = SCContentFilter(desktopIndependentWindow: window)
@@ -3828,6 +3883,7 @@ private func captureViaScreenCaptureKit(
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
         cfg.showsCursor = false
         cfg.scalesToFit = false
+        cfg.ignoreShadowsSingleWindow = true
 
         let inner = DispatchSemaphore(value: 0)
         SCScreenshotManager.captureImage(
@@ -3957,6 +4013,64 @@ func currentWindowFrame(for target: AppTarget) -> Rect? {
     return nil
 }
 
+func currentWindowTitle(for target: AppTarget) -> String? {
+    if let focusedWindow = axElementValue(target.axApp, kAXFocusedWindowAttribute as String) {
+        let details = nodeDetails(for: focusedWindow)
+        if let title = details.title, !title.isEmpty {
+            return title
+        }
+    }
+
+    if let mainWindow = axElementValue(target.axApp, kAXMainWindowAttribute as String) {
+        let details = nodeDetails(for: mainWindow)
+        if let title = details.title, !title.isEmpty {
+            return title
+        }
+    }
+
+    return target.app.localizedName
+}
+
+func selectedTextFromFocusedElement(for target: AppTarget) -> String? {
+    let focusedElement =
+        axElementValue(target.axApp, kAXFocusedUIElementAttribute as String)
+        ?? {
+            let systemWide = AXUIElementCreateSystemWide()
+            guard let focusedApp = axElementValue(systemWide, kAXFocusedApplicationAttribute as String) else {
+                return nil
+            }
+            var ownerPid: pid_t = 0
+            if AXUIElementGetPid(focusedApp, &ownerPid) == .success,
+               ownerPid == target.app.processIdentifier {
+                return axElementValue(systemWide, kAXFocusedUIElementAttribute as String)
+            }
+            return nil
+        }()
+
+    guard let focusedElement,
+          let selectedText = axStringValue(focusedElement, kAXSelectedTextAttribute as String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+          !selectedText.isEmpty else {
+        return nil
+    }
+    return truncateValue(selectedText)
+}
+
+func focusedSummary(in nodes: [SnapshotNode]) -> String? {
+    for node in nodes {
+        if node.focused == true {
+            if let index = node.index {
+                return "\(index) \(node.role)"
+            }
+            return node.role
+        }
+        if let nested = focusedSummary(in: node.children) {
+            return nested
+        }
+    }
+    return nil
+}
+
 func failure(
     _ message: String,
     warnings: [String] = [],
@@ -3986,11 +4100,13 @@ func failureWithScreenshot(
 
     let outputPath = derivedFailureScreenshotPath(for: statePath)
     let rect = candidate?.frame ?? target.flatMap { currentWindowFrame(for: $0) }
+    let expectedTitle = candidate?.windowTitle ?? target.flatMap { currentWindowTitle(for: $0) }
     let pid = target?.app.processIdentifier
     let (screenshot, screenshotWarning) = captureScreenshot(
         to: outputPath,
         rect: rect,
         pid: pid,
+        expectedTitle: expectedTitle,
         includeBase64: inlineScreenshot
     )
     if let screenshotWarning {
@@ -4510,56 +4626,253 @@ private func appUsageMetadata(
     return (lastUsed, useCount)
 }
 
+private struct RecentApplicationRecord {
+    let name: String
+    let bundleId: String
+    let lastUsedDate: String?
+    let useCount: Int?
+}
+
+private let recentApplicationSearchRoots: [String] = {
+    var roots = [
+        "/Applications",
+        "/System/Applications",
+        "/System/Library/CoreServices",
+    ]
+    let homeApplications = NSString(string: "~/Applications").expandingTildeInPath
+    if FileManager.default.fileExists(atPath: homeApplications) {
+        roots.append(homeApplications)
+    }
+    return roots
+}()
+
+private func stripAppSuffix(_ value: String) -> String {
+    value.hasSuffix(".app") ? String(value.dropLast(4)) : value
+}
+
+private func bundleDisplayName(_ bundle: Bundle?) -> String? {
+    guard let bundle else {
+        return nil
+    }
+    return (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+        ?? (bundle.object(forInfoDictionaryKey: kCFBundleNameKey as String) as? String)
+}
+
+private func recentUsageCutoff(referenceDate: Date = Date()) -> Date {
+    let calendar = Calendar(identifier: .gregorian)
+    let startOfToday = calendar.startOfDay(for: referenceDate)
+    return calendar.date(byAdding: .day, value: -13, to: startOfToday) ?? startOfToday
+}
+
+private func recentApplicationRecords(limit: Int = 10) -> [RecentApplicationRecord] {
+    let sortingAttributes = [
+        "kMDItemLastUsedDate_Ranking" as CFString,
+        "kMDItemUseCount" as CFString,
+    ] as CFArray
+
+    guard let query = MDQueryCreate(
+        kCFAllocatorDefault,
+        #"kMDItemContentType == "com.apple.application-bundle" && kMDItemFSName == "*.app""# as CFString,
+        nil,
+        sortingAttributes
+    ) else {
+        return []
+    }
+
+    MDQuerySetSearchScope(query, recentApplicationSearchRoots as CFArray, 0)
+    MDQuerySetSortOptionFlagsForAttribute(query, "kMDItemLastUsedDate_Ranking" as CFString, kMDQueryReverseSortOrderFlag.rawValue)
+    MDQuerySetSortOptionFlagsForAttribute(query, "kMDItemUseCount" as CFString, kMDQueryReverseSortOrderFlag.rawValue)
+    guard MDQueryExecute(query, CFOptionFlags(kMDQuerySynchronous.rawValue)) else {
+        return []
+    }
+
+    let cutoff = recentUsageCutoff()
+    var seen: Set<String> = []
+    var records: [RecentApplicationRecord] = []
+
+    for index in 0..<MDQueryGetResultCount(query) {
+        guard let rawResult = MDQueryGetResultAtIndex(query, index) else {
+            continue
+        }
+        let item = unsafeBitCast(rawResult, to: MDItem.self)
+        guard let bundleId = MDItemCopyAttribute(item, kMDItemCFBundleIdentifier) as? String,
+              !bundleId.isEmpty else {
+            continue
+        }
+        let key = bundleId.lowercased()
+        guard seen.insert(key).inserted else {
+            continue
+        }
+        guard let path = MDItemCopyAttribute(item, kMDItemPath) as? String else {
+            continue
+        }
+
+        let appURL = URL(fileURLWithPath: path)
+        let bundle = Bundle(url: appURL)
+        if bundle?.object(forInfoDictionaryKey: "LSBackgroundOnly") as? Bool == true {
+            continue
+        }
+        if bundle?.object(forInfoDictionaryKey: "LSUIElement") as? Bool == true {
+            continue
+        }
+
+        let lastUsedDate =
+            (MDItemCopyAttribute(item, "kMDItemLastUsedDate_Ranking" as CFString) as? Date)
+            ?? (MDItemCopyAttribute(item, kMDItemLastUsedDate) as? Date)
+        guard let lastUsedDate, lastUsedDate >= cutoff else {
+            continue
+        }
+
+        let useCount = (MDItemCopyAttribute(item, "kMDItemUseCount" as CFString) as? NSNumber)?.intValue
+        let displayName =
+            bundleDisplayName(bundle)
+            ?? ((MDItemCopyAttribute(item, kMDItemDisplayName) as? String).map(stripAppSuffix))
+            ?? stripAppSuffix(appURL.lastPathComponent)
+        records.append(
+            RecentApplicationRecord(
+                name: displayName,
+                bundleId: bundleId,
+                lastUsedDate: spotlightDateFormatter.string(from: lastUsedDate),
+                useCount: useCount
+            )
+        )
+        if records.count >= limit {
+            break
+        }
+    }
+
+    return records
+}
+
+private func applicationURL(named query: String) -> URL? {
+    let targetName = stripAppSuffix(query).trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !targetName.isEmpty else {
+        return nil
+    }
+
+    let fileManager = FileManager.default
+    var visitedPaths: Set<String> = []
+    for root in recentApplicationSearchRoots where fileManager.fileExists(atPath: root) {
+        guard let enumerator = fileManager.enumerator(
+            at: URL(fileURLWithPath: root, isDirectory: true),
+            includingPropertiesForKeys: [.isApplicationKey, .isDirectoryKey, .nameKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else {
+            continue
+        }
+        for case let candidateURL as URL in enumerator {
+            guard candidateURL.pathExtension.caseInsensitiveCompare("app") == .orderedSame else {
+                continue
+            }
+            let normalizedPath = candidateURL.standardizedFileURL.path.lowercased()
+            guard visitedPaths.insert(normalizedPath).inserted else {
+                continue
+            }
+            if stripAppSuffix(candidateURL.lastPathComponent).caseInsensitiveCompare(targetName) == .orderedSame {
+                return candidateURL
+            }
+        }
+    }
+    return nil
+}
+
+@discardableResult
+private func openApplication(at appURL: URL) -> Bool {
+    let configuration = NSWorkspace.OpenConfiguration()
+    let semaphore = DispatchSemaphore(value: 0)
+    var success = false
+    NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, error in
+        success = error == nil
+        semaphore.signal()
+    }
+    if Thread.isMainThread {
+        while semaphore.wait(timeout: .now()) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+        }
+    } else {
+        semaphore.wait()
+    }
+    return success
+}
+
+private func launchTargetIfPossible(appName: String?, bundleId: String?) {
+    if let bundleId = trimmed(bundleId) {
+        if forbiddenBundleIdentifiers().contains(bundleId) {
+            return
+        }
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            _ = openApplication(at: url)
+        }
+        return
+    }
+    if let appName = trimmed(appName),
+       let appURL = applicationURL(named: appName) {
+        if let bundleId = Bundle(url: appURL)?.bundleIdentifier,
+           forbiddenBundleIdentifiers().contains(bundleId) {
+            return
+        }
+        _ = openApplication(at: appURL)
+    }
+}
+
 func listAppsCommand() -> ListAppsPayload {
     let frontmostPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
-    let apps = NSWorkspace.shared.runningApplications
+    let runningApps = NSWorkspace.shared.runningApplications
         .filter { $0.activationPolicy != .prohibited && $0.processIdentifier > 0 }
-        .map { app -> (NSRunningApplication, ListedAppPayload) in
-            let usage = appUsageMetadata(bundleURL: app.bundleURL)
-            let payload = ListedAppPayload(
-                name: app.localizedName ?? app.bundleIdentifier ?? "pid \(app.processIdentifier)",
-                bundleId: app.bundleIdentifier,
-                pid: app.processIdentifier,
-                activationPolicy: activationPolicyName(app.activationPolicy),
-                isActive: app.processIdentifier == frontmostPid,
-                lastUsedDate: usage.lastUsedDate,
-                useCount: usage.useCount
-            )
-            return (app, payload)
+
+    var entriesByBundle: [String: ListedAppPayload] = [:]
+
+    for record in recentApplicationRecords() {
+        entriesByBundle[record.bundleId.lowercased()] = ListedAppPayload(
+            name: record.name,
+            bundleId: record.bundleId,
+            pid: 0,
+            activationPolicy: "regular",
+            isRunning: false,
+            isActive: false,
+            lastUsedDate: record.lastUsedDate,
+            useCount: record.useCount
+        )
+    }
+
+    for app in runningApps {
+        let usage = appUsageMetadata(bundleURL: app.bundleURL)
+        let bundleId = app.bundleIdentifier
+        let key = normalized(bundleId)
+        let existing = key.isEmpty ? nil : entriesByBundle[key]
+        let payload = ListedAppPayload(
+            name: app.localizedName ?? bundleId ?? "pid \(app.processIdentifier)",
+            bundleId: bundleId,
+            pid: app.processIdentifier,
+            activationPolicy: activationPolicyName(app.activationPolicy),
+            isRunning: true,
+            isActive: app.processIdentifier == frontmostPid,
+            lastUsedDate: existing?.lastUsedDate ?? usage.lastUsedDate,
+            useCount: existing?.useCount ?? usage.useCount
+        )
+        if key.isEmpty {
+            entriesByBundle["pid-\(app.processIdentifier)"] = payload
+        } else {
+            entriesByBundle[key] = payload
         }
-        .sorted { lhs, rhs in
-            let lhsApp = lhs.0
-            let rhsApp = rhs.0
-            let lhsActive = lhsApp.processIdentifier == frontmostPid
-            let rhsActive = rhsApp.processIdentifier == frontmostPid
-            if lhsActive != rhsActive {
-                return lhsActive && !rhsActive
-            }
+    }
 
-            let lhsRank = activationPolicyRank(lhsApp.activationPolicy)
-            let rhsRank = activationPolicyRank(rhsApp.activationPolicy)
-            if lhsRank != rhsRank {
-                return lhsRank < rhsRank
-            }
-
-            // Within the same activation tier, prefer the more frequently
-            // used app so the agent sees the high-signal apps at the top
-            // of the list (matches Codex's MCP, which sorts by use count).
-            let lhsUses = lhs.1.useCount ?? -1
-            let rhsUses = rhs.1.useCount ?? -1
-            if lhsUses != rhsUses {
-                return lhsUses > rhsUses
-            }
-
-            let lhsName = normalized(lhsApp.localizedName ?? lhsApp.bundleIdentifier ?? "")
-            let rhsName = normalized(rhsApp.localizedName ?? rhsApp.bundleIdentifier ?? "")
-            if lhsName != rhsName {
-                return lhsName < rhsName
-            }
-
-            return lhsApp.processIdentifier < rhsApp.processIdentifier
+    let apps = entriesByBundle.values.sorted { lhs, rhs in
+        if lhs.isRunning != rhs.isRunning {
+            return lhs.isRunning && !rhs.isRunning
         }
-        .map { $0.1 }
+        let lhsLastUsed = lhs.lastUsedDate ?? ""
+        let rhsLastUsed = rhs.lastUsedDate ?? ""
+        if lhsLastUsed != rhsLastUsed {
+            return lhsLastUsed > rhsLastUsed
+        }
+        let lhsUses = lhs.useCount ?? -1
+        let rhsUses = rhs.useCount ?? -1
+        if lhsUses != rhsUses {
+            return lhsUses > rhsUses
+        }
+        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+    }
 
     return ListAppsPayload(ok: true, apps: apps, warnings: [])
 }
@@ -4576,22 +4889,399 @@ func setFocused(_ element: AXUIElement) -> Bool {
     return axBoolValue(element, kAXFocusedAttribute as String) != false
 }
 
+func setBoolAttribute(_ element: AXUIElement, _ attribute: String) -> Bool {
+    AXUIElementSetAttributeValue(
+        element,
+        attribute as CFString,
+        kCFBooleanTrue
+    ) == .success
+}
+
+func candidateNodeForElement(
+    _ element: AXUIElement,
+    windowTitle: String? = nil,
+    childPath: [Int] = [],
+    ancestry: [String] = [],
+    occurrence: Int = 1
+) -> CandidateNode {
+    let details = nodeDetails(for: element)
+    let currentWindowTitle =
+        details.role == kAXWindowRole as String
+            ? details.title ?? windowTitle
+            : windowTitle
+    return CandidateNode(
+        element: element,
+        role: details.role,
+        subrole: details.subrole,
+        primaryLabel: primaryLabel(
+            title: details.title,
+            description: details.description,
+            value: details.value,
+            identifier: details.identifier
+        ),
+        title: details.title,
+        description: details.description,
+        value: details.value,
+        identifier: details.identifier,
+        url: details.url,
+        windowTitle: currentWindowTitle,
+        childPath: childPath,
+        ancestry: ancestry,
+        occurrence: occurrence,
+        enabled: details.enabled,
+        focused: details.focused,
+        selected: details.selected,
+        frame: details.frame,
+        actions: details.actions
+    )
+}
+
+func performAction(
+    named actionName: String,
+    on candidate: CandidateNode,
+    repeatCount: Int = 1
+) -> Bool {
+    guard candidate.actions.contains(where: { normalized($0) == normalized(actionName) }) else {
+        return false
+    }
+    let attempts = max(1, repeatCount)
+    for index in 0..<attempts {
+        let result = AXUIElementPerformAction(candidate.element, actionName as CFString)
+        switch result {
+        case .success:
+            if index < attempts - 1 {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        case .attributeUnsupported where normalized(actionName) == normalized("AXOpen"):
+            return true
+        case .failure, .actionUnsupported, .attributeUnsupported, .cannotComplete, .noValue, .invalidUIElement, .illegalArgument:
+            return false
+        default:
+            return false
+        }
+    }
+    return true
+}
+
+func preferredClickActionNames(for button: CGMouseButton) -> [String] {
+    switch button {
+    case .right:
+        return [kAXShowMenuAction as String]
+    case .left:
+        return [
+            kAXPressAction as String,
+            kAXConfirmAction as String,
+            "AXOpen",
+        ]
+    default:
+        return [kAXPressAction as String]
+    }
+}
+
+func performPreferredClick(
+    on candidate: CandidateNode,
+    button: CGMouseButton,
+    clickCount: Int
+) -> String? {
+    for actionName in preferredClickActionNames(for: button) {
+        if performAction(named: actionName, on: candidate, repeatCount: clickCount) {
+            return actionName
+        }
+    }
+    return nil
+}
+
+func candidateFrameArea(_ candidate: CandidateNode) -> CGFloat {
+    guard let frame = candidate.frame else {
+        return .greatestFiniteMagnitude
+    }
+    return CGFloat(frame.width * frame.height)
+}
+
+func clickPriority(for candidate: CandidateNode) -> Int {
+    if candidate.actions.contains(where: {
+        let action = normalized($0)
+        return action == normalized(kAXPressAction as String)
+            || action == normalized(kAXConfirmAction as String)
+            || action == normalized(kAXShowMenuAction as String)
+            || action == normalized(kAXRaiseAction as String)
+    }) {
+        return 0
+    }
+    if axAttributeSettable(candidate.element, kAXMainAttribute as String) == true
+        || axAttributeSettable(candidate.element, kAXFocusedAttribute as String) == true {
+        return 1
+    }
+    return 2
+}
+
+func descendantClickCandidates(
+    for candidate: CandidateNode,
+    maxDepth: Int = 3
+) -> [CandidateNode] {
+    func walk(
+        element: AXUIElement,
+        depth: Int,
+        windowTitle: String?
+    ) -> [CandidateNode] {
+        guard depth < maxDepth else { return [] }
+        var results: [CandidateNode] = []
+        for child in axChildren(element) {
+            let candidate = candidateNodeForElement(child, windowTitle: windowTitle)
+            results.append(candidate)
+            results.append(contentsOf: walk(element: child, depth: depth + 1, windowTitle: windowTitle))
+        }
+        return results
+    }
+
+    return walk(
+        element: candidate.element,
+        depth: 0,
+        windowTitle: candidate.windowTitle
+    ).sorted {
+        let lhsPriority = clickPriority(for: $0)
+        let rhsPriority = clickPriority(for: $1)
+        if lhsPriority != rhsPriority {
+            return lhsPriority < rhsPriority
+        }
+        return candidateFrameArea($0) < candidateFrameArea($1)
+    }
+}
+
+func clickActionPoints(for candidate: CandidateNode) -> [CGPoint] {
+    guard let frame = candidate.frame else {
+        return []
+    }
+    let center = frameCenter(frame)
+    let leading = CGPoint(
+        x: frame.x + min(max(frame.width * 0.3, 20), max(frame.width - 4, 20)),
+        y: frame.y + (frame.height / 2.0)
+    )
+    if abs(leading.x - center.x) < 1 {
+        return [center]
+    }
+    return [center, leading]
+}
+
+func hitTestCandidate(
+    at point: CGPoint,
+    target: AppTarget,
+    windowTitle: String?
+) -> CandidateNode? {
+    var hit: AXUIElement?
+    let result = AXUIElementCopyElementAtPosition(
+        target.axApp,
+        Float(point.x),
+        Float(point.y),
+        &hit
+    )
+    guard result == .success, let hit else {
+        trace("input:hit-test miss point=(\(point.x), \(point.y)) result=\(result.rawValue)")
+        return nil
+    }
+    var ownerPid: pid_t = 0
+    if AXUIElementGetPid(hit, &ownerPid) == .success,
+       ownerPid != target.app.processIdentifier {
+        trace("input:hit-test pid-mismatch point=(\(point.x), \(point.y)) expected=\(target.app.processIdentifier) got=\(ownerPid)")
+        return nil
+    }
+    let candidate = candidateNodeForElement(hit, windowTitle: windowTitle)
+    trace(
+        "input:hit-test hit point=(\(point.x), \(point.y)) role=\(candidate.role) label=\(candidate.primaryLabel ?? "-") actions=\(candidate.actions.joined(separator: ","))"
+    )
+    return candidate
+}
+
+func bestElement(
+    containing point: CGPoint,
+    in candidates: [CandidateNode]
+) -> CandidateNode? {
+    candidates
+        .filter { candidate in
+            guard let frame = candidate.frame else { return false }
+            let cgFrame = rectToCGRect(frame)
+            return cgFrame.contains(point)
+        }
+        .sorted { lhs, rhs in
+            let lhsPriority = clickPriority(for: lhs)
+            let rhsPriority = clickPriority(for: rhs)
+            if lhsPriority != rhsPriority {
+                return lhsPriority < rhsPriority
+            }
+            return candidateFrameArea(lhs) < candidateFrameArea(rhs)
+        }
+        .first
+}
+
+func activateClickTarget(_ candidate: CandidateNode) -> Bool {
+    var activated = false
+    if performAction(named: kAXRaiseAction as String, on: candidate) {
+        activated = true
+    }
+    if setBoolAttribute(candidate.element, kAXMainAttribute as String) {
+        activated = true
+    }
+    if setBoolAttribute(candidate.element, kAXFocusedAttribute as String) {
+        activated = true
+    }
+    return activated
+}
+
+func performAXClickSequence(
+    candidate: CandidateNode,
+    target: AppTarget,
+    button: CGMouseButton,
+    clickCount: Int,
+    includeNearbyHitTesting: Bool
+) -> (Bool, String?) {
+    if let actionName = performPreferredClick(on: candidate, button: button, clickCount: clickCount) {
+        Thread.sleep(forTimeInterval: 0.15)
+        return (true, actionName)
+    }
+
+    for descendant in descendantClickCandidates(for: candidate) {
+        if let actionName = performPreferredClick(on: descendant, button: button, clickCount: clickCount) {
+            Thread.sleep(forTimeInterval: 0.15)
+            return (true, actionName)
+        }
+    }
+
+    if includeNearbyHitTesting {
+        let candidatePool = collectCandidates(target: target, maxDepth: 12, maxNodes: 2000)
+        for point in clickActionPoints(for: candidate) {
+            if let hitCandidate = hitTestCandidate(at: point, target: target, windowTitle: candidate.windowTitle)
+                ?? bestElement(containing: point, in: candidatePool) {
+                if let actionName = performPreferredClick(on: hitCandidate, button: button, clickCount: clickCount) {
+                    Thread.sleep(forTimeInterval: 0.15)
+                    return (true, actionName)
+                }
+                for descendant in descendantClickCandidates(for: hitCandidate) {
+                    if let actionName = performPreferredClick(on: descendant, button: button, clickCount: clickCount) {
+                        Thread.sleep(forTimeInterval: 0.15)
+                        return (true, actionName)
+                    }
+                }
+            }
+        }
+    }
+
+    if button == .left, activateClickTarget(candidate) {
+        Thread.sleep(forTimeInterval: 0.15)
+        return (true, "activation-fallback")
+    }
+
+    return (false, nil)
+}
+
 func performClick(
     candidate: CandidateNode,
     target: AppTarget,
     coordinateFallback: Bool,
-    raise: Bool
+    raise: Bool,
+    clickCount: Int = 1,
+    button: CGMouseButton = .left
 ) -> (Bool, String?) {
-    if !alwaysSimulateInput(),
-       let actionName = preferredAction(for: candidate),
-       AXUIElementPerformAction(candidate.element, actionName as CFString) == .success {
-        return (true, actionName)
+    let count = max(1, clickCount)
+    let point = candidate.frame.map(frameCenter)
+    if !alwaysSimulateInput() {
+        let (clicked, usedAction) = performAXClickSequence(
+            candidate: candidate,
+            target: target,
+            button: button,
+            clickCount: count,
+            includeNearbyHitTesting: true
+        )
+        if clicked, usedAction != "activation-fallback" {
+            return (true, usedAction)
+        }
     }
 
+    // Codex falls back to a targeted per-pid pointer click for element
+    // clicks even when AX couldn't press the element. This path is *not*
+    // global HID injection and should not require Stella's explicit
+    // `--coordinate-fallback`/`--allow-hid` gate.
+    if let point,
+       simulateLeftClickToPid(
+           at: point,
+           pid: target.app.processIdentifier,
+           clickCount: count,
+           button: button
+       ) {
+        return (true, "targeted-coordinate-fallback")
+    }
+
+    // Only after the targeted fallback fails do we consider the legacy
+    // global/HID coordinate fallback, which remains explicitly gated.
     if coordinateFallback,
-       let frame = candidate.frame,
-       postLeftClick(at: frameCenter(frame), target: target, raise: raise) {
+       let point,
+       postLeftClick(
+           at: point,
+           target: target,
+           raise: raise,
+           clickCount: count,
+           button: button
+       ) {
         return (true, "coordinate-fallback")
+    }
+
+    return (false, nil)
+}
+
+func performPointClick(
+    at point: CGPoint,
+    snapshot: SnapshotDocument?,
+    target: AppTarget,
+    clickCount: Int,
+    button: CGMouseButton,
+    raise: Bool,
+    allowGlobalFallback: Bool
+) -> (Bool, String?) {
+    let lookupDepth = max(snapshot?.maxDepth ?? 32, 32)
+    let lookupNodes = max((snapshot?.maxNodes ?? 1500) * 2, 3000)
+    let candidates = collectCandidates(target: target, maxDepth: lookupDepth, maxNodes: lookupNodes)
+
+    if let candidate =
+        hitTestCandidate(at: point, target: target, windowTitle: currentWindowTitle(for: target))
+        ?? bestElement(containing: point, in: candidates) {
+        let (clicked, usedAction) = performAXClickSequence(
+            candidate: candidate,
+            target: target,
+            button: button,
+            clickCount: clickCount,
+            includeNearbyHitTesting: false
+        )
+        if clicked, usedAction != "activation-fallback" {
+            return (true, usedAction)
+        }
+    }
+
+    if simulateLeftClickToPid(
+        at: point,
+        pid: target.app.processIdentifier,
+        clickCount: clickCount,
+        button: button
+    ) {
+        return (true, "targeted-coordinate-fallback")
+    }
+
+    guard allowGlobalFallback else {
+        return (false, nil)
+    }
+
+    if raise,
+       !alwaysSimulateInput(),
+       button == .left,
+       clickCount == 1,
+       runSystemEventsOnTarget(
+           target,
+           bodyLines: ["click at {\(Int(point.x)), \(Int(point.y))}"],
+           raise: raise
+       ) {
+        return (true, "system-events")
+    }
+
+    if simulateLeftClick(at: point, clickCount: clickCount, button: button) {
+        return (true, "global-coordinate-fallback")
     }
 
     return (false, nil)
@@ -4625,22 +5315,50 @@ func scrollActionName(for direction: String) -> String? {
 func performScroll(
     candidate: CandidateNode,
     direction: String,
-    pages: Int
+    pages: Int,
+    target: AppTarget? = nil
 ) -> (String, [String])? {
     guard let actionName = scrollActionName(for: direction) else {
         return nil
     }
     var warnings: [String] = []
-    if !candidate.actions.contains(actionName) {
-        warnings.append("Element did not advertise \(actionName); Stella attempted the standard AX scroll action directly.")
-    }
-    _ = setFocused(candidate.element)
-    for _ in 0..<pages {
-        guard AXUIElementPerformAction(candidate.element, actionName as CFString) == .success else {
-            return nil
+    let advertised = candidate.actions.contains(actionName)
+    if advertised {
+        _ = setFocused(candidate.element)
+        var allOk = true
+        for _ in 0..<pages {
+            if AXUIElementPerformAction(candidate.element, actionName as CFString) != .success {
+                allOk = false
+                break
+            }
         }
+        if allOk {
+            return (actionName, warnings)
+        }
+        warnings.append("AX action \(actionName) failed mid-sequence; fell back to scroll-wheel CGEvent.")
+    } else {
+        warnings.append("Element did not advertise \(actionName); falling back to scroll-wheel CGEvent.")
     }
-    return (actionName, warnings)
+
+    // Fallback: synthesize a real scroll-wheel event posted to the
+    // target app's pid so the scroll handler in the hovered view fires.
+    // Mirrors Codex's `performScrollEvent` which falls through to
+    // `scrollTargeted` for elements without an AXScroll<dir>ByPage
+    // action.
+    guard let target,
+          let frame = candidate.frame else {
+        return nil
+    }
+    let point = frameCenter(frame)
+    guard simulateScrollToPid(
+        at: point,
+        direction: direction,
+        pages: Double(pages),
+        pid: target.app.processIdentifier
+    ) else {
+        return nil
+    }
+    return ("scroll-wheel", warnings)
 }
 
 // Returns (succeeded, usedAction) where usedAction is "AXValue" for the
@@ -4878,27 +5596,57 @@ func runSystemEventsOnTarget(
     return ok
 }
 
-func simulateLeftClick(at point: CGPoint) -> Bool {
-    guard let source = CGEventSource(stateID: .hidSystemState),
-          let mouseDown = CGEvent(
-              mouseEventSource: source,
-              mouseType: .leftMouseDown,
-              mouseCursorPosition: point,
-              mouseButton: .left
-          ),
-          let mouseUp = CGEvent(
-              mouseEventSource: source,
-              mouseType: .leftMouseUp,
-              mouseCursorPosition: point,
-              mouseButton: .left
-          ) else {
+// Global HID-tap left click. Last-resort fallback used only when the
+// per-pid path has failed. Mirrors Codex's `clickGlobally`: 3 events
+// (mouseMoved → down → up), `mouseEventClickState` set on each so the
+// receiver's click-state machine sees a coherent sequence, and a 30 ms
+// inter-event sleep so the run loop has time to dispatch each event.
+func simulateLeftClick(at point: CGPoint, clickCount: Int = 1, button: CGMouseButton = .left) -> Bool {
+    guard let source = CGEventSource(stateID: .hidSystemState) else {
         return false
     }
-    mouseDown.post(tap: .cghidEventTap)
-    mouseUp.post(tap: .cghidEventTap)
+    let count = max(1, clickCount)
+    let downType: CGEventType
+    let upType: CGEventType
+    switch button {
+    case .right:
+        downType = .rightMouseDown
+        upType = .rightMouseUp
+    case .left:
+        downType = .leftMouseDown
+        upType = .leftMouseUp
+    default:
+        downType = .otherMouseDown
+        upType = .otherMouseUp
+    }
+    func post(_ type: CGEventType) -> Bool {
+        guard let event = CGEvent(
+            mouseEventSource: source,
+            mouseType: type,
+            mouseCursorPosition: point,
+            mouseButton: button
+        ) else {
+            return false
+        }
+        event.setIntegerValueField(.mouseEventClickState, value: Int64(count))
+        event.post(tap: .cghidEventTap)
+        Thread.sleep(forTimeInterval: 0.03)
+        return true
+    }
+    for _ in 0..<count {
+        guard post(.mouseMoved), post(downType), post(upType) else {
+            return false
+        }
+    }
     return true
 }
 
+// Post a left-click directly to the target pid's event queue using
+// CGEventPostToPid. Bypasses the system event tap, so the event reaches
+// the target process even when another app's window is visually on top
+// at those screen coordinates. Required for clicking inside web-wrapped
+// app surfaces (Spotify, Slack, Discord, etc.) without raising.
+//
 // Post a left-click directly to the target pid's event queue using
 // CGEventPostToPid. Bypasses the system event tap, so the event reaches
 // the target process even when another app's window is visually on top
@@ -4915,17 +5663,35 @@ func simulateLeftClick(at point: CGPoint) -> Bool {
 //     receiver registers the click sequence properly.
 //   - 30 ms sleep between events so the receiver's run loop has time
 //     to dispatch each one before the next arrives.
-func simulateLeftClickToPid(at point: CGPoint, pid: pid_t, clickCount: Int = 1) -> Bool {
+func simulateLeftClickToPid(
+    at point: CGPoint,
+    pid: pid_t,
+    clickCount: Int = 1,
+    button: CGMouseButton = .left
+) -> Bool {
     guard let source = CGEventSource(stateID: .combinedSessionState) else {
         return false
     }
     let count = max(1, clickCount)
+    let downType: CGEventType
+    let upType: CGEventType
+    switch button {
+    case .right:
+        downType = .rightMouseDown
+        upType = .rightMouseUp
+    case .left:
+        downType = .leftMouseDown
+        upType = .leftMouseUp
+    default:
+        downType = .otherMouseDown
+        upType = .otherMouseUp
+    }
     func post(_ type: CGEventType) -> Bool {
         guard let event = CGEvent(
             mouseEventSource: source,
             mouseType: type,
             mouseCursorPosition: point,
-            mouseButton: .left
+            mouseButton: button
         ) else {
             return false
         }
@@ -4935,13 +5701,264 @@ func simulateLeftClickToPid(at point: CGPoint, pid: pid_t, clickCount: Int = 1) 
         return true
     }
     for _ in 0..<count {
-        guard post(.mouseMoved),
-              post(.leftMouseDown),
-              post(.leftMouseUp) else {
+        guard post(.mouseMoved), post(downType), post(upType) else {
             return false
         }
     }
     return true
+}
+
+// Per-pid Unicode typing. Mirrors Codex's `InputSimulation.typeText`:
+// one character at a time, each as a keyboardSetUnicodeString event
+// posted directly to the target pid. Background apps (web-views,
+// non-frontmost apps) drop bulk keystroke events; this delivery
+// pattern is what they actually receive reliably.
+func simulateUnicodeTextToPid(_ text: String, pid: pid_t) -> Bool {
+    for character in text.utf16 {
+        var mutableCharacter = character
+        guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
+              let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else {
+            return false
+        }
+        down.keyboardSetUnicodeString(stringLength: 1, unicodeString: &mutableCharacter)
+        up.keyboardSetUnicodeString(stringLength: 1, unicodeString: &mutableCharacter)
+        down.postToPid(pid)
+        up.postToPid(pid)
+        Thread.sleep(forTimeInterval: 0.02)
+    }
+    return true
+}
+
+// Per-pid key chord. Mirrors Codex's `InputSimulation.pressKey`:
+// modifier keyDown events first (with cumulative flag mask), then the
+// main key down/up with the full mask, then modifier keyUp in reverse.
+// Each event posted directly to the target pid so the chord lands
+// inside the targeted app even when it is not frontmost.
+func simulateKeyChordToPid(_ keySpec: String, pid: pid_t) -> Bool {
+    let parts = keySpec.split(separator: "+").map(String.init)
+    guard let keyToken = parts.last else {
+        return false
+    }
+    let modifiers = Array(parts.dropLast())
+
+    struct Modifier {
+        let code: CGKeyCode
+        let flag: CGEventFlags
+    }
+    let modifierTable: [String: Modifier] = [
+        "cmd": Modifier(code: 0x37, flag: .maskCommand),
+        "command": Modifier(code: 0x37, flag: .maskCommand),
+        "meta": Modifier(code: 0x37, flag: .maskCommand),
+        "ctrl": Modifier(code: 0x3B, flag: .maskControl),
+        "control": Modifier(code: 0x3B, flag: .maskControl),
+        "alt": Modifier(code: 0x3A, flag: .maskAlternate),
+        "option": Modifier(code: 0x3A, flag: .maskAlternate),
+        "shift": Modifier(code: 0x38, flag: .maskShift),
+    ]
+
+    let parsedModifiers: [Modifier] = modifiers.compactMap { modifierTable[normalized($0)] }
+    guard parsedModifiers.count == modifiers.count else {
+        return false
+    }
+
+    guard let mainKeyCode = keyCode(for: keyToken) else {
+        // Unknown key token: try Unicode-fallback only for single-char
+        // chords with no modifiers (e.g. press "?").
+        if parts.count == 1 {
+            return simulateUnicodeTextToPid(keySpec, pid: pid)
+        }
+        return false
+    }
+
+    var activeFlags: CGEventFlags = []
+    for modifier in parsedModifiers {
+        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: modifier.code, keyDown: true) else {
+            return false
+        }
+        activeFlags.insert(modifier.flag)
+        event.flags = activeFlags
+        event.postToPid(pid)
+    }
+
+    guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: mainKeyCode, keyDown: true),
+          let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: mainKeyCode, keyDown: false) else {
+        return false
+    }
+    keyDown.flags = activeFlags
+    keyUp.flags = activeFlags
+    keyDown.postToPid(pid)
+    keyUp.postToPid(pid)
+
+    for modifier in parsedModifiers.reversed() {
+        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: modifier.code, keyDown: false) else {
+            return false
+        }
+        event.flags = activeFlags
+        event.postToPid(pid)
+        activeFlags.remove(modifier.flag)
+    }
+
+    Thread.sleep(forTimeInterval: 0.05)
+    return true
+}
+
+// Per-pid drag. Mirrors Codex's `InputSimulation.dragTargeted`:
+// mouseMoved + mouseDown at the start, 10 leftMouseDragged steps along
+// the path (fixed step count is what AppKit's drag-tracking expects),
+// mouseUp at the end. Each event posted to the target pid with
+// click-state set so the receiver registers a contiguous drag gesture.
+func simulateDragToPid(from start: CGPoint, to end: CGPoint, pid: pid_t) -> Bool {
+    guard let source = CGEventSource(stateID: .combinedSessionState) else {
+        return false
+    }
+    func post(_ type: CGEventType, at point: CGPoint) -> Bool {
+        guard let event = CGEvent(
+            mouseEventSource: source,
+            mouseType: type,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ) else {
+            return false
+        }
+        event.setIntegerValueField(.mouseEventClickState, value: 1)
+        event.postToPid(pid)
+        Thread.sleep(forTimeInterval: 0.03)
+        return true
+    }
+    guard post(.mouseMoved, at: start),
+          post(.leftMouseDown, at: start) else {
+        return false
+    }
+    for step in 1...10 {
+        let progress = CGFloat(step) / 10
+        let point = CGPoint(
+            x: start.x + ((end.x - start.x) * progress),
+            y: start.y + ((end.y - start.y) * progress)
+        )
+        guard post(.leftMouseDragged, at: point) else {
+            return false
+        }
+    }
+    return post(.leftMouseUp, at: end)
+}
+
+// Per-pid scroll wheel. Mirrors Codex's `InputSimulation.scrollTargeted`.
+// Used when an element does not advertise an `AXScroll<dir>ByPage`
+// action; we fall back to synthesizing a real scroll-wheel event posted
+// to the target pid so the wheel handler in the focused view fires.
+func simulateScrollToPid(at point: CGPoint, direction: String, pages: Double, pid: pid_t) -> Bool {
+    let raw = max(1.0, (12.0 * pages).rounded(.toNearestOrAwayFromZero))
+    let delta = Int32(min(Double(Int32.max), raw))
+    let wheel1: Int32
+    let wheel2: Int32
+    switch normalized(direction) {
+    case "up":
+        wheel1 = delta
+        wheel2 = 0
+    case "down":
+        wheel1 = -delta
+        wheel2 = 0
+    case "left":
+        wheel1 = 0
+        wheel2 = delta
+    case "right":
+        wheel1 = 0
+        wheel2 = -delta
+    default:
+        return false
+    }
+    guard let event = CGEvent(
+        scrollWheelEvent2Source: nil,
+        units: .line,
+        wheelCount: 2,
+        wheel1: wheel1,
+        wheel2: wheel2,
+        wheel3: 0
+    ) else {
+        return false
+    }
+    event.location = point
+    event.postToPid(pid)
+    Thread.sleep(forTimeInterval: 0.1)
+    return true
+}
+
+// Try the preferred AX action sequence on `element`, repeating
+// `clickCount` times for double/triple clicks. Returns the action name
+// that fired, or nil if none of them succeeded.
+private func performPreferredAxAction(
+    on element: AXUIElement,
+    button: CGMouseButton,
+    clickCount: Int
+) -> String? {
+    let preferred: [String]
+    switch button {
+    case .right:
+        preferred = [kAXShowMenuAction as String]
+    case .left:
+        preferred = [
+            kAXPressAction as String,
+            "AXConfirm",
+            "AXOpen",
+        ]
+    default:
+        preferred = [kAXPressAction as String]
+    }
+    let count = max(1, clickCount)
+    for action in preferred {
+        var fired = false
+        for index in 0..<count {
+            if AXUIElementPerformAction(element, action as CFString) == .success {
+                fired = true
+                if index < count - 1 {
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+                continue
+            }
+            // First attempt failed: the element does not support this
+            // action; try the next preferred one.
+            if index == 0 {
+                fired = false
+                break
+            }
+            // Subsequent attempt failed mid-sequence: still treat as
+            // success — at least one click landed.
+            return action
+        }
+        if fired {
+            return action
+        }
+    }
+    return nil
+}
+
+// Walk a few levels of descendants looking for one that exposes a
+// pressable AX action. Codex does this when the leaf returned by
+// `AXUIElementCopyElementAtPosition` is a non-actionable container
+// (e.g. an `AXGroup` wrapping the real button); the model's coordinate
+// landed on the container's bounds rather than the button's.
+private func findPressableDescendant(
+    of element: AXUIElement,
+    depth: Int = 0,
+    maxDepth: Int = 3,
+    pressable: Set<String>
+) -> AXUIElement? {
+    guard depth < maxDepth else { return nil }
+    for child in axChildren(element) {
+        let actions = Set(axActions(child))
+        if !pressable.isDisjoint(with: actions) {
+            return child
+        }
+        if let nested = findPressableDescendant(
+            of: child,
+            depth: depth + 1,
+            maxDepth: maxDepth,
+            pressable: pressable
+        ) {
+            return nested
+        }
+    }
+    return nil
 }
 
 // Click an element of the target app at the given screen point WITHOUT
@@ -4950,7 +5967,12 @@ func simulateLeftClickToPid(at point: CGPoint, pid: pid_t, clickCount: Int = 1) 
 // tree even if another window is visually on top at that screen point.
 // Returns true only when an AX press action actually fired against an
 // element belonging to the target.
-func clickViaAxAtScreenPoint(target: AppTarget, point: CGPoint) -> Bool {
+func clickViaAxAtScreenPoint(
+    target: AppTarget,
+    point: CGPoint,
+    clickCount: Int = 1,
+    button: CGMouseButton = .left
+) -> Bool {
     var hit: AXUIElement?
     let result = AXUIElementCopyElementAtPosition(
         target.axApp,
@@ -4972,24 +5994,31 @@ func clickViaAxAtScreenPoint(target: AppTarget, point: CGPoint) -> Bool {
         return false
     }
 
-    // Try AXPress first (the canonical "click" action), then walk through
-    // the element's other supported actions for AXOpen / AXConfirm / etc.
-    let preferred: [String] = [
-        kAXPressAction as String,
-        "AXConfirm",
-        "AXOpen",
-        "AXShowMenu",
-    ]
-    for action in preferred {
-        if AXUIElementPerformAction(element, action as CFString) == .success {
-            trace("input:ax-click ok action=\(action) point=(\(point.x), \(point.y))")
-            return true
-        }
+    let candidate = candidateNodeForElement(
+        element,
+        windowTitle: currentWindowTitle(for: target)
+    )
+    let (clicked, usedAction) = performAXClickSequence(
+        candidate: candidate,
+        target: target,
+        button: button,
+        clickCount: clickCount,
+        includeNearbyHitTesting: false
+    )
+    if clicked {
+        trace("input:ax-click ok action=\(usedAction ?? "unknown") point=(\(point.x), \(point.y))")
+        return true
     }
     return false
 }
 
-func postLeftClick(at point: CGPoint, target: AppTarget, raise: Bool = true) -> Bool {
+func postLeftClick(
+    at point: CGPoint,
+    target: AppTarget,
+    raise: Bool = true,
+    clickCount: Int = 1,
+    button: CGMouseButton = .left
+) -> Bool {
     // System Events `click at {x, y}` and HID-tap CGEvent posts both
     // route to whatever window is on top at the screen point — useless
     // when the target app is backgrounded. When raise=false (the
@@ -5004,16 +6033,31 @@ func postLeftClick(at point: CGPoint, target: AppTarget, raise: Bool = true) -> 
     //   3) HID-tap CGEvent: last resort. May land on the wrong window if
     //      another app overlaps the screen point.
     if !raise {
-        if clickViaAxAtScreenPoint(target: target, point: point) {
+        if clickViaAxAtScreenPoint(
+            target: target,
+            point: point,
+            clickCount: clickCount,
+            button: button
+        ) {
             return true
         }
-        if simulateLeftClickToPid(at: point, pid: target.app.processIdentifier) {
+        if simulateLeftClickToPid(
+            at: point,
+            pid: target.app.processIdentifier,
+            clickCount: clickCount,
+            button: button
+        ) {
             trace("input:click path=cgevent-postToPid pid=\(target.app.processIdentifier)")
             return true
         }
     }
+    // System Events `click at` only supports left-click; for right /
+    // middle / multi-click in the raise path we drop straight to
+    // CGEvent with the appropriate button.
     if raise,
        !alwaysSimulateInput(),
+       button == .left,
+       clickCount == 1,
        runSystemEventsOnTarget(
            target,
            bodyLines: ["click at {\(Int(point.x)), \(Int(point.y))}"],
@@ -5023,49 +6067,64 @@ func postLeftClick(at point: CGPoint, target: AppTarget, raise: Bool = true) -> 
         return true
     }
     trace("input:click path=cgevent")
-    return simulateLeftClick(at: point)
+    return simulateLeftClick(at: point, clickCount: clickCount, button: button)
 }
 
+// Global HID-tap drag. Last-resort fallback; the per-pid path
+// (`simulateDragToPid`) is preferred. Mirrors Codex's `dragGlobally`:
+// mouseMoved + mouseDown at start, 10 fixed leftMouseDragged steps,
+// mouseUp at end. Click-state set on every event so the receiver
+// registers a contiguous gesture instead of stray button events.
 func simulateDrag(from start: CGPoint, to end: CGPoint) -> Bool {
-    guard let source = CGEventSource(stateID: .hidSystemState),
-          let mouseDown = CGEvent(
-              mouseEventSource: source,
-              mouseType: .leftMouseDown,
-              mouseCursorPosition: start,
-              mouseButton: .left
-          ),
-          let mouseUp = CGEvent(
-              mouseEventSource: source,
-              mouseType: .leftMouseUp,
-              mouseCursorPosition: end,
-              mouseButton: .left
-          ) else {
+    guard let source = CGEventSource(stateID: .hidSystemState) else {
         return false
     }
-
-    mouseDown.post(tap: .cghidEventTap)
-    let distance = hypot(end.x - start.x, end.y - start.y)
-    let stepCount = max(4, Int(distance / 36.0))
-    for step in 1...stepCount {
-        let progress = CGFloat(step) / CGFloat(stepCount)
-        let point = CGPoint(
-            x: start.x + ((end.x - start.x) * progress),
-            y: start.y + ((end.y - start.y) * progress)
-        )
-        guard let dragEvent = CGEvent(
+    func post(_ type: CGEventType, at point: CGPoint) -> Bool {
+        guard let event = CGEvent(
             mouseEventSource: source,
-            mouseType: .leftMouseDragged,
+            mouseType: type,
             mouseCursorPosition: point,
             mouseButton: .left
         ) else {
             return false
         }
-        dragEvent.post(tap: .cghidEventTap)
-        usleep(8_000)
+        event.setIntegerValueField(.mouseEventClickState, value: 1)
+        event.post(tap: .cghidEventTap)
+        Thread.sleep(forTimeInterval: 0.03)
+        return true
     }
-    mouseUp.post(tap: .cghidEventTap)
+    guard post(.mouseMoved, at: start),
+          post(.leftMouseDown, at: start) else {
+        return false
+    }
+    for step in 1...10 {
+        let progress = CGFloat(step) / 10
+        let point = CGPoint(
+            x: start.x + ((end.x - start.x) * progress),
+            y: start.y + ((end.y - start.y) * progress)
+        )
+        guard post(.leftMouseDragged, at: point) else {
+            return false
+        }
+    }
+    guard post(.leftMouseUp, at: end) else {
+        return false
+    }
     trace("input:drag path=cgevent")
     return true
+}
+
+// Background-friendly drag dispatch. Preferred path for `drag` /
+// `drag-screenshot` from computer-use: per-pid CGEvent injection so
+// the gesture lands in the targeted app even when not frontmost.
+// Falls back to the global HID-tap variant if per-pid posting fails.
+func postDrag(from start: CGPoint, to end: CGPoint, target: AppTarget, raise: Bool = false) -> Bool {
+    if !raise,
+       simulateDragToPid(from: start, to: end, pid: target.app.processIdentifier) {
+        trace("input:drag path=cgevent-postToPid pid=\(target.app.processIdentifier)")
+        return true
+    }
+    return simulateDrag(from: start, to: end)
 }
 
 // MARK: - NSDraggingSession content drag
@@ -5334,10 +6393,19 @@ func chunkText(_ text: String, size: Int) -> [String] {
 
 func postUnicodeText(_ text: String, target: AppTarget, raise: Bool = true) -> Bool {
     // Same reasoning as postLeftClick: System Events `keystroke` only
-    // delivers reliably when the target process is frontmost. Drop to
-    // CGEvent-level Unicode injection whenever raise=false so the
-    // background app can still receive typed text without focus theft.
-    if raise, !alwaysSimulateInput() {
+    // delivers reliably when the target process is frontmost. When
+    // raise=false drop straight to per-pid CGEvent Unicode injection so
+    // the background app receives the text without focus theft.
+    if !raise {
+        if simulateUnicodeTextToPid(text, pid: target.app.processIdentifier) {
+            trace("input:type path=cgevent-postToPid pid=\(target.app.processIdentifier) length=\(text.count)")
+            return true
+        }
+        trace("input:type path=cgevent (postToPid-failed) length=\(text.count)")
+        return simulateUnicodeText(text)
+    }
+
+    if !alwaysSimulateInput() {
         let chunks = chunkText(text, size: unicodeChunkSize)
         for chunk in chunks {
             let ok = runSystemEventsOnTarget(
@@ -5404,12 +6472,21 @@ func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = true) -> B
         return false
     }
 
+    // raise=false: drop straight to per-pid CGEvent so the chord lands
+    // inside the target app's event queue regardless of frontmost state.
+    if !raise {
+        if simulateKeyChordToPid(keySpec, pid: target.app.processIdentifier) {
+            trace("input:key path=cgevent-postToPid pid=\(target.app.processIdentifier) key=\(keySpec)")
+            return true
+        }
+        trace("input:key path=cgevent (postToPid-failed) key=\(keySpec)")
+        return simulateKeyChord(keySpec)
+    }
+
     let modifiers = Array(rawParts.dropLast())
-    // Same raise-gating as postLeftClick / postUnicodeText: System Events
-    // `key code` only fires reliably when the process is frontmost, so
-    // skip it when raise=false and let the CGEvent path handle the chord
-    // against whatever's currently focused.
-    if raise, !alwaysSimulateInput(), let keyCode = keyCode(for: keyToken) {
+    // System Events `key code` only fires reliably when the process is
+    // frontmost; we already short-circuited the !raise case above.
+    if !alwaysSimulateInput(), let keyCode = keyCode(for: keyToken) {
         var command = "key code \(keyCode)"
         if let modifierList = systemEventsModifierList(modifiers) {
             command += " using \(modifierList)"
@@ -5418,7 +6495,7 @@ func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = true) -> B
             trace("input:key path=system-events key=\(keySpec)")
             return true
         }
-    } else if raise, !alwaysSimulateInput(), rawParts.count == 1 {
+    } else if !alwaysSimulateInput(), rawParts.count == 1 {
         if postUnicodeText(keySpec, target: target, raise: raise) {
             return true
         }
@@ -5457,8 +6534,10 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
         )
     }
 
-    let windowTitle = nodes.first?.title
-    let windowFrame = nodes.first?.frame
+    let windowTitle = currentWindowTitle(for: target) ?? nodes.first?.title
+    let windowFrame = currentWindowFrame(for: target) ?? nodes.first?.frame
+    let selectedText = selectedTextFromFocusedElement(for: target)
+    let focusedElementSummary = focusedSummary(in: nodes)
     var warnings = builder.warnings
 
     var screenshot: Screenshot? = nil
@@ -5467,6 +6546,7 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
             to: screenshotPath,
             rect: windowFrame,
             pid: target.app.processIdentifier,
+            expectedTitle: windowTitle,
             includeBase64: options.inlineScreenshot
         )
         if let screenshotWarning {
@@ -5499,6 +6579,8 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
         screenshotPath: options.screenshotPath,
         screenshot: screenshot,
         appInstructions: appInstructions,
+        selectedText: selectedText,
+        focusedSummary: selectedText == nil ? focusedElementSummary : nil,
         capturedAt: isoTimestamp(),
         maxDepth: options.maxDepth,
         maxNodes: options.maxNodes,
@@ -5924,6 +7006,22 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                     "click --coordinate-fallback requires --allow-hid or STELLA_COMPUTER_ALLOW_HID=1."
             ])
         }
+        let clickCount = max(
+            1,
+            parseNamedOption(commandArgs, key: "--click-count").flatMap(Int.init) ?? 1
+        )
+        let buttonToken = parseNamedOption(commandArgs, key: "--mouse-button")?.lowercased() ?? "left"
+        let mouseButton: CGMouseButton
+        switch buttonToken {
+        case "right": mouseButton = .right
+        case "middle": mouseButton = .center
+        case "left", "": mouseButton = .left
+        default:
+            throw NSError(domain: "desktop_automation", code: 26, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "click --mouse-button must be left, right, or middle (got \(buttonToken))."
+            ])
+        }
         let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
         let (clicked, usedAction) = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
@@ -5937,7 +7035,9 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 candidate: resolved.candidate,
                 target: target,
                 coordinateFallback: options.coordinateFallback && options.allowHid,
-                raise: options.raise
+                raise: options.raise,
+                clickCount: clickCount,
+                button: mouseButton
             )
         }
         guard clicked else {
@@ -6170,7 +7270,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             performScroll(
                 candidate: resolved.candidate,
                 direction: direction,
-                pages: pages
+                pages: pages,
+                target: target
             )
         }
         guard let (usedAction, scrollWarnings) = scrollResult else {
@@ -6224,12 +7325,28 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 NSLocalizedDescriptionKey: "click-point requires x and y."
             ])
         }
+        let clickCount = max(
+            1,
+            parseNamedOption(commandArgs, key: "--click-count").flatMap(Int.init) ?? 1
+        )
+        let buttonToken = parseNamedOption(commandArgs, key: "--mouse-button")?.lowercased() ?? "left"
+        let mouseButton: CGMouseButton
+        switch buttonToken {
+        case "right": mouseButton = .right
+        case "middle": mouseButton = .center
+        case "left", "": mouseButton = .left
+        default:
+            throw NSError(domain: "desktop_automation", code: 25, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "click-point --mouse-button must be left, right, or middle (got \(buttonToken))."
+            ])
+        }
         let (snapshot, target) = stateContext(for: options.statePath)
         guard let target else {
             throw failure("click-point requires a valid target app context.")
         }
         let point = CGPoint(x: x, y: y)
-        let clicked = withUnifiedActionOverlay(
+        let (clicked, usedAction) = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
             snapshot: snapshot,
@@ -6238,18 +7355,31 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             cursorPoint: point,
             interactionKind: "click-point"
         ) {
-            postLeftClick(at: point, target: target, raise: options.raise)
+            performPointClick(
+                at: point,
+                snapshot: snapshot,
+                target: target,
+                clickCount: clickCount,
+                button: mouseButton,
+                raise: options.raise,
+                allowGlobalFallback: options.allowHid
+            )
         }
         guard clicked else {
             throw failureWithScreenshot(
                 "Failed to send pointer click.",
                 statePath: options.statePath,
                 target: target,
-                warnings: ["Global click injection can interfere with active user input."],
+                warnings: options.allowHid
+                    ? ["Global click injection can interfere with active user input."]
+                    : [],
                 captureDiagnosticScreenshot: options.captureScreenshot
             )
         }
-        var warnings = ["Global click injection can interfere with active user input."]
+        var warnings: [String] = []
+        if usedAction == "global-coordinate-fallback" || usedAction == "system-events" {
+            warnings.append("Global click injection can interfere with active user input.")
+        }
         let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
@@ -6263,7 +7393,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 ref: nil,
                 message: "Clicked point (\(x), \(y)).",
                 matchedRef: nil,
-                usedAction: "coordinate",
+                usedAction: usedAction ?? "coordinate",
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot
             )
@@ -6290,9 +7420,11 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let target else {
             throw failure("drag requires a valid target app context.")
         }
-        guard simulateDrag(
+        guard postDrag(
             from: CGPoint(x: fromX, y: fromY),
-            to: CGPoint(x: toX, y: toY)
+            to: CGPoint(x: toX, y: toY),
+            target: target,
+            raise: options.raise
         ) else {
             throw failureWithScreenshot(
                 "Failed to send pointer drag.",

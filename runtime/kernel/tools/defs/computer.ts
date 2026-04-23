@@ -197,7 +197,7 @@ export const createComputerTools = (
     {
       name: "computer_click",
       description:
-        "Click an element of the target app. Provide either element_index (numeric ID from the latest get_app_state) for an Accessibility click, or x and y (screenshot pixels) for a coordinate click. Required: app.",
+        "Click an element of the target app. Strongly prefer element_index (an Accessibility click on a numbered AX element from the latest get_app_state) — it works reliably while the target app stays in the background. Use x/y only as a last resort, when the visible UI you need is not in the AX tree at all. Required: app.",
       parameters: {
         type: "object",
         properties: {
@@ -205,28 +205,27 @@ export const createComputerTools = (
           element_index: {
             type: "string",
             description:
-              "Numeric ID of the element to click, taken from the most recent get_app_state output. Provide either element_index or x/y, not both.",
+              "Numeric ID of the element to click, taken from the most recent get_app_state output. This is the preferred form; it dispatches an Accessibility press on the element and works while the app is in the background. To activate something (play a song, open a folder, submit a form), look for a verb-named button such as 'Play <name>', 'Open <name>', 'Submit', 'Send' before falling back to a coordinate click. Provide either element_index or x/y, not both.",
           },
           x: {
             type: "number",
             description:
-              "X pixel coordinate inside the most recent screenshot. Provide with y as an alternative to element_index.",
+              "X pixel coordinate inside the most recent screenshot. Use only when nothing in the AX tree corresponds to what you need to click. Coordinate clicks (especially click_count >= 2) are not reliably accepted by web-view-backed apps such as Spotify, Slack, Discord, and Notion while those apps are in the background — prefer an element_index click on a labeled action button instead.",
           },
           y: {
             type: "number",
             description:
-              "Y pixel coordinate inside the most recent screenshot. Provide with x as an alternative to element_index.",
+              "Y pixel coordinate inside the most recent screenshot. Same caveats as x.",
           },
           click_count: {
             type: "integer",
             description:
-              "Number of clicks. Default 1. Currently only 1 is supported.",
+              "Number of clicks (1 = single click, 2 = double click, ...). Default 1. Do not use click_count >= 2 with x/y to activate things in web-view apps (Spotify rows, Slack list items, Discord channels, etc.) — synthesized double-clicks to a backgrounded webview are silently dropped. Find a verb-named button and click it once via element_index instead.",
           },
           mouse_button: {
             type: "string",
             enum: ["left", "right", "middle"],
-            description:
-              "Mouse button. Default 'left'. Currently only 'left' is supported.",
+            description: "Mouse button. Default 'left'.",
           },
         },
         required: ["app"],
@@ -254,25 +253,31 @@ export const createComputerTools = (
 
         const button =
           typeof args.mouse_button === "string" ? args.mouse_button : "left";
-        if (button !== "left") {
+        if (button !== "left" && button !== "right" && button !== "middle") {
           return {
-            error: `mouse_button=${button} is not yet supported (left only).`,
-          };
-        }
-        const clickCount =
-          typeof args.click_count === "number" ? args.click_count : 1;
-        if (clickCount !== 1) {
-          return {
-            error: `click_count=${clickCount} is not yet supported (1 only).`,
+            error: `mouse_button must be one of: left, right, middle (got ${button}).`,
           };
         }
 
+        const clickCountRaw = args.click_count;
+        const clickCount =
+          typeof clickCountRaw === "number" && Number.isFinite(clickCountRaw) && clickCountRaw >= 1
+            ? Math.trunc(clickCountRaw)
+            : 1;
+
         if (hasElement) {
-          return ["click", "--app", app.value, String(elementRaw).trim()];
+          // Element-targeted click goes through the AX `click` command
+          // which today wires straight into the AX press path; mouse
+          // button + click count modifiers attached as flags.
+          const argv = ["click", "--app", app.value, String(elementRaw).trim()];
+          if (button !== "left") argv.push("--mouse-button", button);
+          if (clickCount !== 1) argv.push("--click-count", String(clickCount));
+          return argv;
         }
         // Pixel-coordinate click: screenshot pixels remapped into the
-        // captured window's coordinate space by the CLI wrapper.
-        return [
+        // captured window's coordinate space by the CLI wrapper, then
+        // dispatched via the click-point pipeline.
+        const argv = [
           "click-screenshot",
           "--app",
           app.value,
@@ -280,6 +285,9 @@ export const createComputerTools = (
           String(yRaw),
           "--allow-hid",
         ];
+        if (button !== "left") argv.push("--mouse-button", button);
+        if (clickCount !== 1) argv.push("--click-count", String(clickCount));
+        return argv;
       }),
     },
     {
