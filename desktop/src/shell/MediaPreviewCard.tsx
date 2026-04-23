@@ -5,7 +5,7 @@
  * stream rather than living entirely in a base64 string.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { MediaAsset } from "@/shared/contracts/display-payload";
 
 type MediaPreviewCardProps = {
@@ -17,6 +17,7 @@ type MediaPreviewCardProps = {
 type LoadedFile = {
   url: string;
   mimeType: string;
+  blob: Blob;
 };
 
 const decodeBase64ToBlob = (base64: string, mimeType: string): Blob => {
@@ -73,7 +74,7 @@ const useFileBlobs = (filePaths: string[]) => {
             );
             const url = URL.createObjectURL(blob);
             createdUrls.push(url);
-            return { url, mimeType: result.mimeType };
+            return { url, mimeType: result.mimeType, blob };
           } catch (err) {
             if (!cancelled) {
               setError(
@@ -122,6 +123,79 @@ const PromptHeader = ({
   );
 };
 
+const MediaActions = ({
+  filePath,
+  copyText,
+  copyImage,
+  extraAction,
+}: {
+  filePath?: string;
+  copyText?: string;
+  copyImage?: LoadedFile | null;
+  extraAction?: ReactNode;
+}) => {
+  const [message, setMessage] = useState<string | null>(null);
+
+  const handleSave = useCallback(async () => {
+    if (!filePath) return;
+    const result = await window.electronAPI?.system?.saveFileAs?.(
+      filePath,
+      filenameOf(filePath),
+    );
+    if (!result || result.canceled) return;
+    setMessage(result.ok ? "Saved" : (result.error ?? "Could not save"));
+  }, [filePath]);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      if (copyImage) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            [copyImage.mimeType || "image/png"]: copyImage.blob,
+          }),
+        ]);
+        setMessage("Copied");
+        return;
+      }
+      if (copyText != null) {
+        await navigator.clipboard.writeText(copyText);
+        setMessage("Copied");
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not copy");
+    }
+  }, [copyImage, copyText]);
+
+  const canSave = Boolean(filePath && window.electronAPI?.system?.saveFileAs);
+  const canCopy = Boolean(copyText != null || copyImage);
+  if (!canSave && !canCopy && !extraAction) return null;
+
+  return (
+    <div className="display-media__actions">
+      {canSave && (
+        <button
+          type="button"
+          className="display-media__action-btn"
+          onClick={handleSave}
+        >
+          Save
+        </button>
+      )}
+      {canCopy && (
+        <button
+          type="button"
+          className="display-media__action-btn"
+          onClick={handleCopy}
+        >
+          Copy
+        </button>
+      )}
+      {extraAction}
+      {message && <span className="display-media__action-status">{message}</span>}
+    </div>
+  );
+};
+
 const ImageGallery = ({
   filePaths,
   prompt,
@@ -148,6 +222,7 @@ const ImageGallery = ({
     <div className="display-media display-media--image">
       <PromptHeader prompt={prompt} capability={capability} />
       {error && <p className="display-media__error">{error}</p>}
+      <MediaActions filePath={filePaths[safeIndex]} copyImage={active} />
       {active ? (
         <button
           type="button"
@@ -242,6 +317,7 @@ const VideoCard = ({
       ) : (
         !error && <div className="display-media__loading">Loading…</div>
       )}
+      <MediaActions filePath={filePath} copyText={filePath} />
       <div className="display-media__filename">{filenameOf(filePath)}</div>
     </div>
   );
@@ -278,6 +354,7 @@ const AudioCard = ({
           ) : (
             !error && <div className="display-media__loading">Loading…</div>
           )}
+          <MediaActions filePath={filePath} copyText={filePath} />
         </div>
       </div>
     </div>
@@ -315,13 +392,19 @@ const DownloadCard = ({
         <div className="display-media__download-body">
           <div className="display-media__download-label">{label}</div>
           <div className="display-media__filename">{filenameOf(filePath)}</div>
-          <button
-            type="button"
-            className="display-media__download-btn"
-            onClick={handleReveal}
-          >
-            Reveal in Finder
-          </button>
+          <MediaActions
+            filePath={filePath}
+            copyText={filePath}
+            extraAction={
+              <button
+                type="button"
+                className="display-media__action-btn"
+                onClick={handleReveal}
+              >
+                Reveal in Finder
+              </button>
+            }
+          />
         </div>
       </div>
     </div>
@@ -339,6 +422,7 @@ const TextCard = ({
 }) => (
   <div className="display-media display-media--text">
     <PromptHeader prompt={prompt} capability={capability} />
+    <MediaActions copyText={text} />
     <div className="display-media__text">{text}</div>
   </div>
 );

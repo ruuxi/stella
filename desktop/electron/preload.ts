@@ -47,6 +47,7 @@ import {
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_SYNC_MODELS,
+  IPC_SHELL_SAVE_FILE_AS,
   IPC_SOCIAL_SESSIONS_CREATE,
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
@@ -691,6 +692,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
     openExternal: (url: string) => ipcRenderer.send("shell:openExternal", url),
     showItemInFolder: (filePath: string) =>
       ipcRenderer.send("shell:showItemInFolder", filePath),
+    saveFileAs: (sourcePath: string, defaultName?: string) =>
+      ipcRenderer.invoke(IPC_SHELL_SAVE_FILE_AS, {
+        sourcePath,
+        defaultName,
+      }) as Promise<{
+        ok: boolean;
+        path?: string;
+        canceled?: boolean;
+        error?: string;
+      }>,
     shellKillByPort: (port: number) =>
       ipcRenderer.invoke("shell:killByPort", { port }),
     getLocalSyncMode: () =>
