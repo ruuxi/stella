@@ -71,7 +71,7 @@ const formatTaskEvent = (
   payload: Record<string, unknown>,
 ): HistoryMessage | null => {
   const agentId = typeof payload.agentId === "string" ? payload.agentId : undefined;
-  if (eventType === "agent_started") {
+  if (eventType === "agent-started") {
     const description =
       typeof payload.description === "string" ? payload.description : "Task started";
     const agentType =
@@ -80,7 +80,7 @@ const formatTaskEvent = (
     if (agentId) lines.push(`agent_id: ${agentId}`);
     return { role: "user", content: lines.join("\n") };
   }
-  if (eventType === "agent_completed") {
+  if (eventType === "agent-completed") {
     const lines = ["[Task completed]"];
     if (agentId) lines.push(`agent_id: ${agentId}`);
     if (payload.result !== undefined) {
@@ -88,7 +88,7 @@ const formatTaskEvent = (
     }
     return { role: "user", content: lines.join("\n") };
   }
-  if (eventType === "agent_failed") {
+  if (eventType === "agent-failed") {
     const lines = ["[Task failed]"];
     if (agentId) lines.push(`agent_id: ${agentId}`);
     if (payload.error !== undefined) {

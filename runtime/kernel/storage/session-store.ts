@@ -1,3 +1,4 @@
+import type { TaskLifecycleStatus } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import {
   MAX_ACTIVE_RUNTIME_THREADS,
   type RuntimeThreadRecord,
@@ -73,7 +74,7 @@ export type PersistedAgentRecord = {
     displayName?: string;
     description?: string;
   };
-  status: "running" | "completed" | "error" | "canceled";
+  status: TaskLifecycleStatus;
   startedAt: number;
   completedAt: number | null;
   result?: string;

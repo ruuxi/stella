@@ -8,6 +8,7 @@ import { runExplore } from "../agent-runtime/explore.js";
 import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
 import { LocalAgentManager } from "../agents/local-agent-manager.js";
 import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
+import { isKnownSafeCommand } from "../tools/safe-commands.js";
 import type { AgentToolRequest, ToolContext, ToolResult } from "../tools/types.js";
 import type {
   LocalAgentContext,
@@ -119,7 +120,7 @@ const resolveMutatingToolPath = (
     return rawPath ? resolvePath(rawPath, workingDirectory) : null;
   }
   if (toolName === "apply_patch") {
-    const patch = normalizeString(args.patch);
+    const patch = normalizeString(args.input ?? args.patch);
     if (!patch) return null;
     try {
       const rawPath = extractApplyPatchTargetPaths(patch)[0];
@@ -131,6 +132,9 @@ const resolveMutatingToolPath = (
   if (toolName === "Bash" || toolName === "exec_command") {
     const command = normalizeString(args.cmd ?? args.command);
     if (!command) return null;
+    // Read-only commands (`ls`, `git status`, `rg`, `cat`, etc.) cannot
+    // possibly write source, so they don't need to trigger speculative HMR.
+    if (isKnownSafeCommand(command)) return null;
     const rawPath = extractShellPath(command);
     if (rawPath) {
       return resolvePath(rawPath, workingDirectory);
@@ -195,6 +199,36 @@ export const isHmrPathUnderDirectory = (
   );
 };
 
+const buildLifecycleEventPayload = (
+  event: AgentLifecycleEvent,
+): Record<string, unknown> => {
+  switch (event.type) {
+    case "agent-started":
+      return {
+        agentId: event.agentId,
+        description: event.description,
+        agentType: event.agentType,
+        ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
+      };
+    case "agent-completed":
+      return {
+        agentId: event.agentId,
+        ...(event.result ? { result: event.result } : {}),
+      };
+    case "agent-failed":
+    case "agent-canceled":
+      return {
+        agentId: event.agentId,
+        ...(event.error ? { error: event.error } : {}),
+      };
+    case "agent-progress":
+      return {
+        agentId: event.agentId,
+        statusText: event.statusText,
+      };
+  }
+};
+
 const appendAgentLifecycleChatEvent = (
   context: RunnerContext,
   event: AgentLifecycleEvent,
@@ -202,67 +236,11 @@ const appendAgentLifecycleChatEvent = (
   if (!context.appendLocalChatEvent) {
     return;
   }
-
-  if (event.type === "agent-started") {
-    context.appendLocalChatEvent({
-      conversationId: event.conversationId,
-      type: "agent_started",
-      payload: {
-        agentId: event.agentId,
-        description: event.description,
-        agentType: event.agentType,
-        ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
-      },
-    });
-    return;
-  }
-
-  if (event.type === "agent-completed") {
-    context.appendLocalChatEvent({
-      conversationId: event.conversationId,
-      type: "agent_completed",
-      payload: {
-        agentId: event.agentId,
-        ...(event.result ? { result: event.result } : {}),
-      },
-    });
-    return;
-  }
-
-  if (event.type === "agent-failed") {
-    context.appendLocalChatEvent({
-      conversationId: event.conversationId,
-      type: "agent_failed",
-      payload: {
-        agentId: event.agentId,
-        ...(event.error ? { error: event.error } : {}),
-      },
-    });
-    return;
-  }
-
-  if (event.type === "agent-canceled") {
-    context.appendLocalChatEvent({
-      conversationId: event.conversationId,
-      type: "agent_canceled",
-      payload: {
-        agentId: event.agentId,
-        ...(event.error ? { error: event.error } : {}),
-      },
-    });
-    return;
-  }
-
-  if (event.type === "agent-progress") {
-    context.appendLocalChatEvent({
-      conversationId: event.conversationId,
-      type: "agent_progress",
-      payload: {
-        agentId: event.agentId,
-        statusText: event.statusText,
-      },
-    });
-  }
+  context.appendLocalChatEvent({
+    conversationId: event.conversationId,
+    type: event.type,
+    payload: buildLifecycleEventPayload(event),
+  });
 };
 
 export const createAgentOrchestration = (

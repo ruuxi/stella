@@ -1,5 +1,9 @@
 import path from "path";
 import type {
+  TaskLifecycleStatus,
+  TerminalTaskLifecycleStatus,
+} from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import type {
   ToolContext,
   ToolResult,
   ToolUpdateCallback,
@@ -41,7 +45,7 @@ export type LocalAgentContext = {
   maxAgentConcurrency?: number;
 };
 
-export type LocalAgentStatus = "pending" | "running" | "completed" | "error" | "canceled";
+export type LocalAgentStatus = "pending" | TaskLifecycleStatus;
 
 type MessageEntry = {
   from: "orchestrator" | "subagent";
@@ -166,7 +170,7 @@ type LocalAgentManagerOpts = {
   }) => Promise<{ agentId: string }>;
   completeCloudAgentRecord: (args: {
     agentId: string;
-    status: "completed" | "error" | "canceled";
+    status: TerminalTaskLifecycleStatus;
     result?: string;
     error?: string;
   }) => Promise<void>;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { shouldRetainResumedStreamingState } from "../../src/app/chat/hooks/use-resume-agent-run";
+import { reconcileTerminalTaskKeysFromResumeTasks } from "../../src/app/chat/streaming/use-local-agent-stream";
 
 describe("shouldRetainResumedStreamingState", () => {
   it("drops stale resumed state when replay is exhausted and the run is gone", () => {
@@ -66,5 +67,35 @@ describe("shouldRetainResumedStreamingState", () => {
         currentActiveRun: null,
       }),
     ).toBe(true);
+  });
+});
+
+describe("reconcileTerminalTaskKeysFromResumeTasks", () => {
+  it("adds resumed terminal tasks and clears restarted ones", () => {
+    const currentKeys = new Set([
+      "run-1:task-1",
+      "run-9:task-9",
+    ]);
+
+    const nextKeys = reconcileTerminalTaskKeysFromResumeTasks({
+      currentKeys,
+      tasks: [
+        { runId: "run-1", agentId: "task-1", status: "running" },
+        { runId: "run-2", agentId: "task-2", status: "completed" },
+        { runId: "run-3", agentId: "task-3", status: "error" },
+        { runId: "run-4", agentId: "task-4", status: "canceled" },
+      ],
+    });
+
+    expect([...nextKeys].sort()).toEqual([
+      "run-2:task-2",
+      "run-3:task-3",
+      "run-4:task-4",
+      "run-9:task-9",
+    ]);
+    expect([...currentKeys].sort()).toEqual([
+      "run-1:task-1",
+      "run-9:task-9",
+    ]);
   });
 });

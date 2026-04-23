@@ -1,4 +1,5 @@
 import { useEffect, type MutableRefObject } from "react";
+import type { TaskLifecycleStatus } from "@/shared/contracts/agent-runtime";
 import type { AgentStreamEvent } from "../streaming/streaming-types";
 
 type ActiveRunSnapshot = {
@@ -38,7 +39,7 @@ type TaskSnapshot = {
   description?: string;
   anchorTurnId?: string;
   parentAgentId?: string;
-  status: "running" | "completed" | "error" | "canceled";
+  status: TaskLifecycleStatus;
   statusText?: string;
   reasoningText?: string;
   result?: string;

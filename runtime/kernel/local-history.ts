@@ -1,8 +1,9 @@
+import { TASK_LIFECYCLE_EVENT_TYPES } from "../../desktop/src/shared/contracts/agent-runtime.js";
 import { formatTimestampForHistory, TEN_MINUTES_MS } from "./message-timestamp.js";
 
 // Internal sub-agent management tool names. Tool calls/results for these are
 // hidden from the orchestrator's local history because they're already
-// reflected by the dedicated `task_*` lifecycle events.
+// reflected by the dedicated `agent-*` lifecycle events.
 const INTERNAL_TASK_TOOL_NAMES = new Set([
   "spawn_agent",
   "send_input",
@@ -22,15 +23,12 @@ export type LocalHistoryMessage = {
   content: string;
 };
 
-export const LOCAL_CONTEXT_EVENT_TYPES = new Set([
+export const LOCAL_CONTEXT_EVENT_TYPES = new Set<string>([
   "user_message",
   "assistant_message",
   "tool_request",
   "tool_result",
-  "agent_started",
-  "agent_completed",
-  "agent_failed",
-  "agent_canceled",
+  ...TASK_LIFECYCLE_EVENT_TYPES.filter((type) => type !== "agent-progress"),
   "microcompact_boundary",
 ]);
 
@@ -190,10 +188,10 @@ const estimateContextEventTokens = (event: {
   }
 
   if (
-    event.type === "agent_started" ||
-    event.type === "agent_completed" ||
-    event.type === "agent_failed" ||
-    event.type === "agent_canceled"
+    event.type === "agent-started" ||
+    event.type === "agent-completed" ||
+    event.type === "agent-failed" ||
+    event.type === "agent-canceled"
   ) {
     return clampEventTokens(
       estimateTextTokens(payload.description) +
@@ -232,7 +230,7 @@ const formatTaskEvent = (
 ): LocalHistoryMessage | null => {
   const agentId = typeof payload.agentId === "string" ? payload.agentId : undefined;
   switch (eventType) {
-    case "agent_started": {
+    case "agent-started": {
       const description =
         typeof payload.description === "string" ? payload.description : "Task started";
       const agentType =
@@ -241,7 +239,7 @@ const formatTaskEvent = (
       if (agentId) lines.push(`thread_id: ${agentId}`);
       return { role: "user", content: lines.join("\n") };
     }
-    case "agent_completed": {
+    case "agent-completed": {
       const lines = ["[Task completed]"];
       if (agentId) lines.push(`thread_id: ${agentId}`);
       if (payload.result !== undefined) {
@@ -249,7 +247,7 @@ const formatTaskEvent = (
       }
       return { role: "user", content: lines.join("\n") };
     }
-    case "agent_failed": {
+    case "agent-failed": {
       const lines = ["[Task failed]"];
       if (agentId) lines.push(`thread_id: ${agentId}`);
       if (payload.error !== undefined) {
@@ -257,7 +255,7 @@ const formatTaskEvent = (
       }
       return { role: "user", content: lines.join("\n") };
     }
-    case "agent_canceled": {
+    case "agent-canceled": {
       const lines = ["[Task canceled]"];
       if (agentId) lines.push(`thread_id: ${agentId}`);
       if (payload.error !== undefined) {

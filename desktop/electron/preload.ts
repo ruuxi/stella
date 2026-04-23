@@ -4,6 +4,7 @@ import type {
   ChatContext,
   SelfModHmrState,
 } from "../src/shared/contracts/boundary.js";
+import type { TaskLifecycleStatus } from "../src/shared/contracts/agent-runtime.js";
 import type { OfficePreviewSnapshot } from "../src/shared/contracts/office-preview.js";
 import {
   IPC_BROWSER_FETCH_JSON,
@@ -20,6 +21,7 @@ import {
   IPC_DISCOVERY_LIST_BROWSER_PROFILES,
   IPC_DISCOVERY_WRITE_CORE_MEMORY,
   IPC_DISCOVERY_WRITE_KNOWLEDGE,
+  IPC_MORPH_RENDERER_PAINTED,
   IPC_OFFICE_PREVIEW_LIST,
   IPC_OFFICE_PREVIEW_UPDATE,
 } from "../src/shared/contracts/ipc-channels.js";
@@ -289,6 +291,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("overlay:morphDone", { transitionId }),
   },
 
+  morph: {
+    /** Signal that the main-window renderer has painted a frame after an
+     *  HMR update or reload. Used by the morph orchestration to know when
+     *  to capture the new state instead of waiting on a fixed setTimeout. */
+    rendererPainted: () => ipcRenderer.send(IPC_MORPH_RENDERER_PAINTED),
+  },
+
   theme: {
     onChange: onIpcWithEvent<{ key: string; value: string }>("theme:change"),
     broadcast: (key: string, value: string) =>
@@ -425,8 +434,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
             | "stream"
             | "tool-start"
             | "tool-end"
-            | "error"
-            | "end"
             | "agent-started"
             | "agent-reasoning"
             | "agent-completed"
@@ -473,7 +480,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           description?: string;
           anchorTurnId?: string;
           parentAgentId?: string;
-          status: "running" | "completed" | "error" | "canceled";
+          status: TaskLifecycleStatus;
           statusText?: string;
           reasoningText?: string;
           result?: string;
@@ -488,8 +495,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "stream"
         | "tool-start"
         | "tool-end"
-        | "error"
-        | "end"
         | "agent-started"
         | "agent-reasoning"
         | "agent-completed"
