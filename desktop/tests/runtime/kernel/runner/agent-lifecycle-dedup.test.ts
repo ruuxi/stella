@@ -33,6 +33,7 @@ describe("task lifecycle deduping", () => {
       rootRunId: "run-1",
       agentId: "task-1",
       agentType: "general",
+      description: "Open Spotify and play jazz",
       result: "Spotify is now open",
     });
     const failedPrompt = buildAgentEventPrompt({
@@ -52,7 +53,8 @@ describe("task lifecycle deduping", () => {
       error: "Canceled by user",
     });
 
-    expect(completedPrompt).toContain("[Task completed]");
+    expect(completedPrompt).toContain("[Agent completed]");
+    expect(completedPrompt).toContain("description: Open Spotify and play jazz");
     expect(completedPrompt).toContain("result: Spotify is now open");
     expect(failedPrompt).toContain("[Task failed]");
     expect(failedPrompt).toContain("error: Spotify failed to open");
