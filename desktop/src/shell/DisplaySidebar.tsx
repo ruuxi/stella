@@ -4,16 +4,16 @@ import {
   useEffect,
   useImperativeHandle,
   useRef,
+  useState,
+  type ReactNode,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { useTheme } from "@/context/theme-context";
 import {
   type DisplayPayload,
   normalizeDisplayPayload,
 } from "@/shared/contracts/display-payload";
-import { ShiftingGradient } from "./background/ShiftingGradient";
 import {
   DISPLAY_PANEL_MAX_RATIO,
   DISPLAY_PANEL_MAX_RESERVED_PX,
@@ -63,6 +63,19 @@ const computeMaxWidth = (): number => {
   return Math.max(DISPLAY_PANEL_MIN_WIDTH, Math.min(softCap, hardCap));
 };
 
+const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setReady(true));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  return ready ? render() : null;
+};
+
 /**
  * Display sidebar shell.
  *
@@ -74,7 +87,6 @@ const computeMaxWidth = (): number => {
  */
 export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarProps>(
   function DisplaySidebar({ onOpenChange }, ref) {
-    const { gradientMode, gradientColor } = useTheme();
     const { panelOpen, panelExpanded, panelWidth, tabs } = useDisplayTabs();
     const activeTab = useActiveDisplayTab();
     const asideRef = useRef<HTMLElement | null>(null);
@@ -214,11 +226,6 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarPro
         aria-hidden={!panelOpen}
         {...(widthStyle ? { style: widthStyle } : {})}
       >
-        <ShiftingGradient
-          mode={gradientMode}
-          colorMode={gradientColor}
-          contained
-        />
         {/* Left-edge drag handle. Hidden visually while expanded since
             the panel already fills the space. */}
         {!panelExpanded && (
@@ -302,7 +309,12 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarPro
           {tabs.length > 0 && <DisplayTabBar />}
 
           <div className="display-sidebar__active">
-            {activeTab ? activeTab.render() : null}
+            {panelOpen && activeTab ? (
+              <DeferredDisplayContent
+                key={activeTab.id}
+                render={activeTab.render}
+              />
+            ) : null}
           </div>
         </div>
       </aside>,
