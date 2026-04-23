@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   RealtimeVoiceSession,
   type VoiceSessionEvent,
@@ -13,6 +13,8 @@ interface UseRealtimeVoiceResult {
   sessionState: VoiceSessionState;
   micLevel: number;
   outputLevel: number;
+  micLevelRef: RefObject<number>;
+  outputLevelRef: RefObject<number>;
 }
 
 const SESSION_ROTATE_MS = 55 * 60 * 1000;
@@ -207,7 +209,6 @@ export class VoiceSessionManager {
         (err as Error).message,
       );
     }
-
   }
 
   private attachLiveSession(
@@ -379,6 +380,8 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
   const [runtimeState, setRuntimeState] = useState<VoiceRuntimeSnapshot>(
     DEFAULT_RUNTIME_STATE,
   );
+  const micLevelRef = useRef(DEFAULT_RUNTIME_STATE.micLevel);
+  const outputLevelRef = useRef(DEFAULT_RUNTIME_STATE.outputLevel);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -389,14 +392,30 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     void api.voice
       .getRuntimeState()
       .then((snapshot) => {
+        micLevelRef.current = snapshot.micLevel;
+        outputLevelRef.current = snapshot.outputLevel;
         setRuntimeState(snapshot);
       })
       .catch(() => {
+        micLevelRef.current = DEFAULT_RUNTIME_STATE.micLevel;
+        outputLevelRef.current = DEFAULT_RUNTIME_STATE.outputLevel;
         setRuntimeState(DEFAULT_RUNTIME_STATE);
       });
 
     const unsubscribe = api.voice.onRuntimeState((snapshot) => {
-      setRuntimeState(snapshot);
+      micLevelRef.current = snapshot.micLevel;
+      outputLevelRef.current = snapshot.outputLevel;
+      setRuntimeState((previous) => {
+        if (
+          previous.sessionState === snapshot.sessionState &&
+          previous.isConnected === snapshot.isConnected &&
+          previous.isSpeaking === snapshot.isSpeaking &&
+          previous.isUserSpeaking === snapshot.isUserSpeaking
+        ) {
+          return previous;
+        }
+        return snapshot;
+      });
     });
 
     return () => {
@@ -411,5 +430,7 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     sessionState: runtimeState.sessionState,
     micLevel: runtimeState.micLevel,
     outputLevel: runtimeState.outputLevel,
+    micLevelRef,
+    outputLevelRef,
   };
 }

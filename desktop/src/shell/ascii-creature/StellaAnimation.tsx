@@ -1,4 +1,4 @@
-import React, { useEffect, useImperativeHandle, useRef } from "react";
+import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
 import "./StellaAnimation.css";
 import {
   BIRTH_DURATION,
@@ -72,6 +72,8 @@ interface StellaAnimationProps {
   outputAnalyserRef?: React.RefObject<AnalyserNode | null>;
   micLevel?: number;
   outputLevel?: number;
+  micLevelRef?: React.RefObject<number | undefined>;
+  outputLevelRef?: React.RefObject<number | undefined>;
 }
 
 export const StellaAnimation = React.forwardRef<
@@ -79,7 +81,22 @@ export const StellaAnimation = React.forwardRef<
   StellaAnimationProps
 >(
   (
-    { width = 80, height = 40, initialBirthProgress = 1, paused = false, maxDpr, frameSkip = 0, voiceMode = "idle", isUserSpeaking = false, analyserRef: externalAnalyserRef, outputAnalyserRef: externalOutputAnalyserRef, micLevel: externalMicLevel, outputLevel: externalOutputLevel },
+    {
+      width = 80,
+      height = 40,
+      initialBirthProgress = 1,
+      paused = false,
+      maxDpr,
+      frameSkip = 0,
+      voiceMode = "idle",
+      isUserSpeaking = false,
+      analyserRef: externalAnalyserRef,
+      outputAnalyserRef: externalOutputAnalyserRef,
+      micLevel: externalMicLevel,
+      outputLevel: externalOutputLevel,
+      micLevelRef: externalMicLevelSourceRef,
+      outputLevelRef: externalOutputLevelSourceRef,
+    },
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -89,9 +106,13 @@ export const StellaAnimation = React.forwardRef<
     const mediumRef = useRef<HTMLSpanElement>(null);
     const brightRef = useRef<HTMLSpanElement>(null);
     const brightestRef = useRef<HTMLSpanElement>(null);
+    const [documentHidden, setDocumentHidden] = useState(() =>
+      typeof document === "undefined" ? false : document.hidden,
+    );
+    const effectivePaused = paused || documentHidden;
     const requestRef = useRef<number | undefined>(undefined);
     const animateRef = useRef<(() => void) | null>(null);
-    const pausedRef = useRef(paused);
+    const pausedRef = useRef(effectivePaused);
     const timeRef = useRef<number>(0);
     const lastFrameTimeRef = useRef<number>(0);
     const birthRef = useRef<number>(initialBirthProgress);
@@ -111,8 +132,12 @@ export const StellaAnimation = React.forwardRef<
     const noiseFloorRef = useRef(0);
     const voiceModeRef = useRef<VoiceMode>(voiceMode);
     const isUserSpeakingRef = useRef(isUserSpeaking);
-    const externalMicLevelRef = useRef<number | undefined>(externalMicLevel);
-    const externalOutputLevelRef = useRef<number | undefined>(externalOutputLevel);
+    const externalMicLevelValueRef = useRef<number | undefined>(
+      externalMicLevel,
+    );
+    const externalOutputLevelValueRef = useRef<number | undefined>(
+      externalOutputLevel,
+    );
 
     useImperativeHandle(
       ref,
@@ -157,19 +182,40 @@ export const StellaAnimation = React.forwardRef<
     }, [isUserSpeaking]);
 
     useEffect(() => {
-      externalMicLevelRef.current = externalMicLevel;
+      externalMicLevelValueRef.current = externalMicLevel;
     }, [externalMicLevel]);
 
     useEffect(() => {
-      externalOutputLevelRef.current = externalOutputLevel;
+      externalOutputLevelValueRef.current = externalOutputLevel;
     }, [externalOutputLevel]);
 
     useEffect(() => {
-      pausedRef.current = paused;
-      if (!paused && !requestRef.current && animateRef.current) {
+      const handleVisibilityChange = () => {
+        setDocumentHidden(document.hidden);
+      };
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      return () => {
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange,
+        );
+      };
+    }, []);
+
+    useEffect(() => {
+      pausedRef.current = effectivePaused;
+      if (effectivePaused) {
+        if (requestRef.current) {
+          cancelAnimationFrame(requestRef.current);
+          requestRef.current = undefined;
+        }
+        lastFrameTimeRef.current = 0;
+        return;
+      }
+      if (!requestRef.current && animateRef.current) {
         requestRef.current = requestAnimationFrame(animateRef.current);
       }
-    }, [paused]);
+    }, [effectivePaused]);
 
     useEffect(() => {
       const container = containerRef.current;
@@ -198,7 +244,10 @@ export const StellaAnimation = React.forwardRef<
       const glyphHeight = Math.max(1, Math.ceil(lineHeight));
 
       const cssWidth = Math.max(1, Math.floor(width * glyphWidth * EDGE_SCALE));
-      const cssHeight = Math.max(1, Math.floor(height * glyphHeight * EDGE_SCALE));
+      const cssHeight = Math.max(
+        1,
+        Math.floor(height * glyphHeight * EDGE_SCALE),
+      );
       const dpr = Math.min(window.devicePixelRatio || 1, maxDpr ?? Infinity);
 
       canvas.style.width = `${cssWidth}px`;
@@ -264,12 +313,14 @@ export const StellaAnimation = React.forwardRef<
       const animate = () => {
         if (pausedRef.current) {
           requestRef.current = undefined;
+          lastFrameTimeRef.current = 0;
           return;
         }
         const now = performance.now();
-        const dt = lastFrameTimeRef.current > 0
-          ? Math.min(now - lastFrameTimeRef.current, 100)
-          : 16.667;
+        const dt =
+          lastFrameTimeRef.current > 0
+            ? Math.min(now - lastFrameTimeRef.current, 100)
+            : 16.667;
         lastFrameTimeRef.current = now;
         timeRef.current += (dt / 1000) * TIME_RATE;
 
@@ -284,8 +335,7 @@ export const StellaAnimation = React.forwardRef<
           const t = Math.min(elapsed / birthAnimation.duration, 1);
           const eased = 1 - Math.pow(1 - t, 3);
           birthRef.current =
-            birthAnimation.startValue +
-            (1 - birthAnimation.startValue) * eased;
+            birthAnimation.startValue + (1 - birthAnimation.startValue) * eased;
           if (t >= 1) birthAnimationRef.current = null;
         }
 
@@ -303,16 +353,24 @@ export const StellaAnimation = React.forwardRef<
         // Read analyser refs directly from props (stable ref objects, .current changes)
         const outputAnalyser = externalOutputAnalyserRef?.current ?? null;
         const micAnalyser = externalAnalyserRef?.current ?? null;
-        const outputEnergy = typeof externalOutputLevelRef.current === "number"
-          ? externalOutputLevelRef.current
-          : outputAnalyser
-            ? computeEnergy(outputAnalyser)
-            : 0;
-        const micEnergy = typeof externalMicLevelRef.current === "number"
-          ? externalMicLevelRef.current
-          : micAnalyser
-            ? computeEnergy(micAnalyser)
-            : 0;
+        const outputLevelFromRef = externalOutputLevelSourceRef?.current;
+        const micLevelFromRef = externalMicLevelSourceRef?.current;
+        const outputEnergy =
+          typeof outputLevelFromRef === "number"
+            ? outputLevelFromRef
+            : typeof externalOutputLevelValueRef.current === "number"
+              ? externalOutputLevelValueRef.current
+              : outputAnalyser
+                ? computeEnergy(outputAnalyser)
+                : 0;
+        const micEnergy =
+          typeof micLevelFromRef === "number"
+            ? micLevelFromRef
+            : typeof externalMicLevelValueRef.current === "number"
+              ? externalMicLevelValueRef.current
+              : micAnalyser
+                ? computeEnergy(micAnalyser)
+                : 0;
 
         const isVoiceActive = voiceModeRef.current !== "idle";
 
@@ -324,10 +382,14 @@ export const StellaAnimation = React.forwardRef<
           const floor = noiseFloorRef.current;
           if (micEnergy <= floor || floor === 0) {
             // Fast adapt downward / initialize
-            noiseFloorRef.current = floor * (1 - NOISE_FLOOR_FAST_RATE) + micEnergy * NOISE_FLOOR_FAST_RATE;
+            noiseFloorRef.current =
+              floor * (1 - NOISE_FLOOR_FAST_RATE) +
+              micEnergy * NOISE_FLOOR_FAST_RATE;
           } else if (micEnergy < floor * NOISE_FLOOR_SPEECH_RATIO) {
             // Slow adapt upward (ambient drift, not speech)
-            noiseFloorRef.current = floor * (1 - NOISE_FLOOR_SLOW_RATE) + micEnergy * NOISE_FLOOR_SLOW_RATE;
+            noiseFloorRef.current =
+              floor * (1 - NOISE_FLOOR_SLOW_RATE) +
+              micEnergy * NOISE_FLOOR_SLOW_RATE;
           }
           // When micEnergy >= floor * SPEECH_RATIO, don't adapt — it's speech
         }
@@ -357,23 +419,30 @@ export const StellaAnimation = React.forwardRef<
           targetSpeaking > speakingRef.current
             ? SPEAKING_ATTACK_LERP
             : SPEAKING_RELEASE_LERP;
-        listeningRef.current += (targetListening - listeningRef.current) * listeningLerp;
-        speakingRef.current += (targetSpeaking - speakingRef.current) * speakingLerp;
+        listeningRef.current +=
+          (targetListening - listeningRef.current) * listeningLerp;
+        speakingRef.current +=
+          (targetSpeaking - speakingRef.current) * speakingLerp;
 
         // Voice energy: use output energy when speaking, mic energy when listening
         const rawEnergy = isSpeakingNow
           ? Math.min(outputEnergy * 2.5, 1)
           : Math.min(micEnergy * 2.5, 1);
-        const energyRate = rawEnergy > voiceEnergyRef.current
-          ? VOICE_ENERGY_ATTACK_RATE
-          : VOICE_ENERGY_RELEASE_RATE;
-        voiceEnergyRef.current += (rawEnergy - voiceEnergyRef.current) * energyRate;
+        const energyRate =
+          rawEnergy > voiceEnergyRef.current
+            ? VOICE_ENERGY_ATTACK_RATE
+            : VOICE_ENERGY_RELEASE_RATE;
+        voiceEnergyRef.current +=
+          (rawEnergy - voiceEnergyRef.current) * energyRate;
 
         // Snap tiny residuals to 0 so the shader's `> 0.01` short-circuits
         // skip the squeezed/expanded computePhases work entirely.
-        if (targetListening === 0 && listeningRef.current < 0.005) listeningRef.current = 0;
-        if (targetSpeaking === 0 && speakingRef.current < 0.005) speakingRef.current = 0;
-        if (rawEnergy === 0 && voiceEnergyRef.current < 0.005) voiceEnergyRef.current = 0;
+        if (targetListening === 0 && listeningRef.current < 0.005)
+          listeningRef.current = 0;
+        if (targetSpeaking === 0 && speakingRef.current < 0.005)
+          speakingRef.current = 0;
+        if (rawEnergy === 0 && voiceEnergyRef.current < 0.005)
+          voiceEnergyRef.current = 0;
 
         mainRenderer.render(
           timeRef.current,
@@ -388,7 +457,14 @@ export const StellaAnimation = React.forwardRef<
 
       animateRef.current = animate;
       // Always render one initial frame so paused mode shows the creature
-      mainRenderer.render(timeRef.current, birthRef.current, flashRef.current, 0, 0, 0);
+      mainRenderer.render(
+        timeRef.current,
+        birthRef.current,
+        flashRef.current,
+        0,
+        0,
+        0,
+      );
       if (!pausedRef.current) {
         requestRef.current = requestAnimationFrame(animate);
       }
@@ -412,10 +488,26 @@ export const StellaAnimation = React.forwardRef<
         window.removeEventListener("storage", handleVisualPrefsStorage);
         mainRenderer.destroy();
       };
-    }, [width, height, externalAnalyserRef, externalOutputAnalyserRef, frameSkip, maxDpr]);
+    }, [
+      width,
+      height,
+      externalAnalyserRef,
+      externalOutputAnalyserRef,
+      externalMicLevelSourceRef,
+      externalOutputLevelSourceRef,
+      frameSkip,
+      maxDpr,
+    ]);
 
     return (
-      <div ref={containerRef} className="stella-animation-container">
+      <div
+        ref={containerRef}
+        className={
+          effectivePaused
+            ? "stella-animation-container stella-animation-container--paused"
+            : "stella-animation-container"
+        }
+      >
         <canvas ref={canvasRef} className="ascii-canvas" />
         <span
           ref={darkRef}

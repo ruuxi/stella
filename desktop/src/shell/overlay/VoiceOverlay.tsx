@@ -19,10 +19,7 @@ interface VoiceOverlayProps {
   style?: CSSProperties;
 }
 
-export function VoiceOverlay({
-  visible,
-  style,
-}: VoiceOverlayProps) {
+export function VoiceOverlay({ visible, style }: VoiceOverlayProps) {
   const { state, updateState } = useUiState();
   const [showOverlay, setShowOverlay] = useState(false);
   const [exiting, setExiting] = useState(false);
@@ -38,13 +35,14 @@ export function VoiceOverlay({
   const {
     micLevel: rtcMicLevel,
     outputLevel: rtcOutputLevel,
+    micLevelRef: rtcMicLevelRef,
+    outputLevelRef: rtcOutputLevelRef,
     isConnected,
     isSpeaking,
     isUserSpeaking,
   } = useRealtimeVoice();
 
-  const isAnyVoiceActive =
-    isActiveWindow && state.isVoiceRtcActive;
+  const isAnyVoiceActive = isActiveWindow && state.isVoiceRtcActive;
   const shouldDisplayOverlay = isAnyVoiceActive || (visible && isActiveWindow);
   const isAudioReady = isConnected;
 
@@ -137,10 +135,11 @@ export function VoiceOverlay({
           voiceMode={voiceMode}
           isUserSpeaking={isUserSpeaking}
           micLevel={micLevel}
+          micLevelRef={rtcMicLevelRef}
           outputLevel={outputLevel}
+          outputLevelRef={rtcOutputLevelRef}
         />
       </div>
     </div>
   );
 }
-

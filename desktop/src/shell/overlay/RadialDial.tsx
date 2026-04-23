@@ -380,7 +380,14 @@ export function RadialDial({
             : 'opacity 0.15s ease-out',
         }}
       >
-        <StellaAnimation width={20} height={20} initialBirthProgress={1} maxDpr={1} frameSkip={1} />
+        <StellaAnimation
+          width={20}
+          height={20}
+          initialBirthProgress={1}
+          maxDpr={1}
+          frameSkip={1}
+          paused={!contentVisible}
+        />
       </div>
 
       <div

@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { useUiState } from "@/context/ui-state";
+import { useWindowFocus } from "@/shared/hooks/use-window-focus";
+import { useWindowType } from "@/shared/hooks/use-window-type";
 import { cn } from "@/shared/lib/utils";
 import { computeStatus } from "./status-utils";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
@@ -26,6 +29,11 @@ export function WorkingIndicator({
   duration,
   className,
 }: WorkingIndicatorProps) {
+  const { state } = useUiState();
+  const windowType = useWindowType();
+  const windowFocused = useWindowFocus();
+  const animationPaused = !windowFocused || state.window !== windowType;
+
   // Defer StellaAnimation mount so WebGL shader compilation doesn't block
   // the first streaming frames. The text status renders immediately.
   const [animReady, setAnimReady] = useState(false);
@@ -47,7 +55,9 @@ export function WorkingIndicator({
         ? (task.statusText ?? task.description)
         : task.description;
     if (task.status === "completed") {
-      displayStatus = taskText ? `Task complete \u00b7 ${taskText}` : "Task complete";
+      displayStatus = taskText
+        ? `Task complete \u00b7 ${taskText}`
+        : "Task complete";
     } else {
       const label = getAgentLabel(task.agentType);
       displayStatus = taskText ? `${label} \u00b7 ${taskText}` : label;
@@ -60,7 +70,15 @@ export function WorkingIndicator({
     <div className={cn("working-indicator", className)}>
       <div className="indicator-stella">
         <div className="indicator-stella-scale">
-          {animReady && <StellaAnimation width={20} height={20} maxDpr={1} frameSkip={2} />}
+          {animReady && (
+            <StellaAnimation
+              width={20}
+              height={20}
+              maxDpr={1}
+              frameSkip={2}
+              paused={animationPaused}
+            />
+          )}
         </div>
       </div>
       <TextShimmer
@@ -77,7 +95,3 @@ export function WorkingIndicator({
     </div>
   );
 }
-
-
-
-
