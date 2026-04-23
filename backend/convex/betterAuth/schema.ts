@@ -1,7 +1,8 @@
 /**
- * Better Auth component schema: mirrors @convex-dev/better-auth with an extra
- * compound index so `findMany` on anonymous + `updatedAt` uses an index
- * (see anon_cleanup + Convex query warnings).
+ * Better Auth component schema. Mirrors `@convex-dev/better-auth` with one
+ * app-specific delta: an `isAnonymous_updatedAt` index on `user` so
+ * `anon_cleanup` can scan anonymous users by `updatedAt` without a full table
+ * scan (see Convex query warnings).
  */
 import { defineSchema } from "convex/server";
 import { tables } from "./generatedTables";

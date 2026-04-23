@@ -3,7 +3,7 @@ import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
 import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { Resend } from "@convex-dev/resend";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
-import { anonymous, jwt, magicLink } from "better-auth/plugins";
+import { anonymous, magicLink } from "better-auth/plugins";
 import {
   internalAction,
   internalQuery,
@@ -90,15 +90,50 @@ const getMobileDeepLinkOrigins = () => {
   return [`${scheme}://auth`, `${scheme}://`, `${scheme}:///`];
 };
 
-const DEFAULT_SESSION_VERSION = 1;
-const JWT_EXPIRATION_TIME = process.env.STELLA_JWT_EXPIRATION?.trim() || "5m";
+const DEFAULT_JWT_EXPIRATION_SECONDS = 5 * 60;
+
+/**
+ * Parse a duration string like `"5m"`, `"300s"`, `"1h"`, or `"86400"` into
+ * seconds. Used so `STELLA_JWT_EXPIRATION` keeps its existing TimeString-style
+ * contract while we hand `expirationSeconds` (number) to the convex plugin.
+ */
+const parseExpirationSeconds = (raw: string | undefined): number => {
+  if (!raw) return DEFAULT_JWT_EXPIRATION_SECONDS;
+  const trimmed = raw.trim();
+  if (trimmed === "") return DEFAULT_JWT_EXPIRATION_SECONDS;
+  const match = /^(\d+)\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days)?$/i.exec(
+    trimmed,
+  );
+  if (!match) {
+    throw new Error(
+      `Invalid STELLA_JWT_EXPIRATION value: "${raw}". Use e.g. "5m", "300s", "1h".`,
+    );
+  }
+  const value = Number(match[1]);
+  const unit = (match[2] ?? "s").toLowerCase();
+  const multiplier =
+    unit.startsWith("d") ? 86400
+    : unit.startsWith("h") ? 3600
+    : unit.startsWith("m") ? 60
+    : 1;
+  return value * multiplier;
+};
+
+const JWT_EXPIRATION_SECONDS = parseExpirationSeconds(
+  process.env.STELLA_JWT_EXPIRATION,
+);
 
 const sessionPolicyValidator = v.object({
-  sessionVersion: v.number(),
-  minIssuedAtSec: v.optional(v.number()),
+  minIssuedAtSec: v.number(),
   updatedAt: v.number(),
 });
 
+/**
+ * Parse a numeric JWT claim (e.g. `iat`) off the `UserIdentity` object
+ * returned by `ctx.auth.getUserIdentity()`. Convex preserves claim values
+ * as-is from the JWT; depending on the claim and signer they can arrive as
+ * either `number` or numeric `string`, so we accept both.
+ */
 const parseNumericClaim = (
   identity: Awaited<ReturnType<QueryCtx["auth"]["getUserIdentity"]>>,
   claim: string,
@@ -129,6 +164,11 @@ export const authComponent = createClient<DataModel, typeof betterAuthSchema>(
 );
 const resend = new Resend(components.resend, { testMode: false });
 
+/**
+ * Read the session-revocation marker for an owner, if one has been written.
+ * Absence means "no revocations on file" — a JWT for this owner is allowed
+ * regardless of `iat`.
+ */
 const getSessionPolicyFromDb = async (
   ctx: QueryCtx | MutationCtx,
   ownerId: string,
@@ -141,37 +181,22 @@ const getSessionPolicyFromDb = async (
     return null;
   }
   return {
-    sessionVersion: policy.sessionVersion,
     minIssuedAtSec: policy.minIssuedAtSec,
     updatedAt: policy.updatedAt,
   };
 };
 
-const getSessionPolicyForOwnerAction = async (
-  ctx: ActionCtx,
-  ownerId: string,
+const enforceMinIssuedAt = (
+  identity: Awaited<ReturnType<QueryCtx["auth"]["getUserIdentity"]>>,
+  minIssuedAtSec: number,
 ) => {
-  return await ctx.runQuery(internal.auth.getSessionPolicyByOwnerInternal, {
-    ownerId,
-  });
-};
-
-const getSessionVersionForOwner = async (
-  ctx: QueryCtx | MutationCtx,
-  ownerId: string,
-): Promise<number> => {
-  const policy = await getSessionPolicyFromDb(ctx, ownerId);
-  return policy?.sessionVersion ?? DEFAULT_SESSION_VERSION;
-};
-
-const getSessionVersionForOwnerAction = async (
-  ctx: ActionCtx,
-  ownerId: string,
-): Promise<number> => {
-  const policy = await ctx.runQuery(internal.auth.getSessionPolicyByOwnerInternal, {
-    ownerId,
-  });
-  return policy?.sessionVersion ?? DEFAULT_SESSION_VERSION;
+  const issuedAtSec = parseNumericClaim(identity, "iat");
+  if (issuedAtSec === null || issuedAtSec < minIssuedAtSec) {
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Session has been revoked. Please sign in again.",
+    });
+  }
 };
 
 export const assertSensitiveSessionPolicy = async (
@@ -181,26 +206,7 @@ export const assertSensitiveSessionPolicy = async (
   if (!identity) return;
   const policy = await getSessionPolicyFromDb(ctx, identity.tokenIdentifier);
   if (!policy) return;
-
-  const tokenVersion =
-    parseNumericClaim(identity, "stellaSessionVersion") ??
-    DEFAULT_SESSION_VERSION;
-  if (tokenVersion < policy.sessionVersion) {
-    throw new ConvexError({
-      code: "UNAUTHENTICATED",
-      message: "Session version is outdated. Please sign in again.",
-    });
-  }
-
-  if (policy.minIssuedAtSec !== undefined) {
-    const issuedAtSec = parseNumericClaim(identity, "iat");
-    if (issuedAtSec === null || issuedAtSec < policy.minIssuedAtSec) {
-      throw new ConvexError({
-        code: "UNAUTHENTICATED",
-        message: "Session has been revoked. Please sign in again.",
-      });
-    }
-  }
+  enforceMinIssuedAt(identity, policy.minIssuedAtSec);
 };
 
 export const assertSensitiveSessionPolicyAction = async (
@@ -208,28 +214,12 @@ export const assertSensitiveSessionPolicyAction = async (
   identity: Awaited<ReturnType<QueryCtx["auth"]["getUserIdentity"]>>,
 ) => {
   if (!identity) return;
-  const policy = await getSessionPolicyForOwnerAction(ctx, identity.tokenIdentifier);
+  const policy = await ctx.runQuery(
+    internal.auth.getSessionPolicyByOwnerInternal,
+    { ownerId: identity.tokenIdentifier },
+  );
   if (!policy) return;
-
-  const tokenVersion =
-    parseNumericClaim(identity, "stellaSessionVersion") ??
-    DEFAULT_SESSION_VERSION;
-  if (tokenVersion < policy.sessionVersion) {
-    throw new ConvexError({
-      code: "UNAUTHENTICATED",
-      message: "Session version is outdated. Please sign in again.",
-    });
-  }
-
-  if (policy.minIssuedAtSec !== undefined) {
-    const issuedAtSec = parseNumericClaim(identity, "iat");
-    if (issuedAtSec === null || issuedAtSec < policy.minIssuedAtSec) {
-      throw new ConvexError({
-        code: "UNAUTHENTICATED",
-        message: "Session has been revoked. Please sign in again.",
-      });
-    }
-  }
+  enforceMinIssuedAt(identity, policy.minIssuedAtSec);
 };
 
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
@@ -294,34 +284,21 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         },
       }),
       appReviewAuth(),
-      jwt({
-        jwks: {
-          keyPairConfig: {
-            alg: "RS256",
-          },
-        },
+      // The `convex({...})` plugin owns the JWT subsystem we actually use:
+      // it issues `/convex/token` (consumed by desktop via `convex.token()`)
+      // and `/convex/jwks` (used by Convex to verify the bearer token), with
+      // a date-safe adapter override that hydrates the Convex-stored numeric
+      // `createdAt`/`expiresAt` back to `Date` for better-auth's JWT helpers.
+      // Do not also register `jwt({...})` here: that registers a parallel JWT
+      // plugin without the date adapter override, which crashes
+      // `/api/auth/get-session` with `r.createdAt.getTime is not a function`.
+      convex({
+        authConfig,
+        jwksRotateOnTokenGenerationError: true,
         jwt: {
-          expirationTime: JWT_EXPIRATION_TIME,
-          definePayload: async (session) => {
-            const ownerId = tokenIdentifierForBetterAuthUserId(session.user.id);
-            const sessionVersion =
-              "db" in ctx
-                ? await getSessionVersionForOwner(
-                    ctx as QueryCtx | MutationCtx,
-                    ownerId,
-                  )
-                : await getSessionVersionForOwnerAction(
-                    ctx as unknown as ActionCtx,
-                    ownerId,
-                  );
-            return {
-              ...session.user,
-              stellaSessionVersion: sessionVersion,
-            };
-          },
+          expirationSeconds: JWT_EXPIRATION_SECONDS,
         },
       }),
-      convex({ authConfig, jwksRotateOnTokenGenerationError: true }),
     ],
   } satisfies BetterAuthOptions;
 
@@ -374,6 +351,7 @@ export const rotateKeys = internalAction({
 
 export const getSessionPolicyByOwnerInternal = internalQuery({
   args: { ownerId: v.string() },
+  returns: v.union(v.null(), sessionPolicyValidator),
   handler: async (ctx, args) => {
     const policy = await ctx.db
       .query("auth_session_policies")
@@ -383,61 +361,11 @@ export const getSessionPolicyByOwnerInternal = internalQuery({
       return null;
     }
     return {
-      sessionVersion: policy.sessionVersion,
       minIssuedAtSec: policy.minIssuedAtSec,
       updatedAt: policy.updatedAt,
     };
   },
 });
-
-export const getSessionPolicy = query({
-  args: {},
-  returns: sessionPolicyValidator,
-  handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
-    const policy = await getSessionPolicyFromDb(ctx, ownerId);
-    return (
-      policy ?? {
-        sessionVersion: DEFAULT_SESSION_VERSION,
-        updatedAt: 0,
-      }
-    );
-  },
-});
-
-const upsertSessionPolicy = async (
-  ctx: MutationCtx,
-  ownerId: string,
-  patch: { sessionVersion?: number; minIssuedAtSec?: number },
-) => {
-  const now = Date.now();
-  const existing = await ctx.db
-    .query("auth_session_policies")
-    .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-    .unique();
-  if (existing) {
-    const next = {
-      sessionVersion: patch.sessionVersion ?? existing.sessionVersion,
-      minIssuedAtSec: patch.minIssuedAtSec ?? existing.minIssuedAtSec,
-      updatedAt: now,
-    };
-    await ctx.db.patch(existing._id, next);
-    return next;
-  }
-
-  const created = {
-    ownerId,
-    sessionVersion: patch.sessionVersion ?? DEFAULT_SESSION_VERSION,
-    minIssuedAtSec: patch.minIssuedAtSec,
-    updatedAt: now,
-  };
-  await ctx.db.insert("auth_session_policies", created);
-  return {
-    sessionVersion: created.sessionVersion,
-    minIssuedAtSec: created.minIssuedAtSec,
-    updatedAt: created.updatedAt,
-  };
-};
 
 export const revokeActiveSessions = mutation({
   args: {},
@@ -453,30 +381,23 @@ export const revokeActiveSessions = mutation({
       RATE_SENSITIVE,
       "Too many session revocation requests. Please wait a minute and try again.",
     );
-    const minIssuedAtSec = Math.floor(Date.now() / 1000);
-    return await upsertSessionPolicy(ctx, ownerId, { minIssuedAtSec });
-  },
-});
-
-export const bumpSessionVersion = mutation({
-  args: {},
-  returns: sessionPolicyValidator,
-  handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
-    await enforceMutationRateLimit(
-      ctx,
-      "auth_bump_session_version",
+    const now = Date.now();
+    const minIssuedAtSec = Math.floor(now / 1000);
+    const existing = await ctx.db
+      .query("auth_session_policies")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+      .unique();
+    if (existing) {
+      const next = { minIssuedAtSec, updatedAt: now };
+      await ctx.db.patch(existing._id, next);
+      return next;
+    }
+    await ctx.db.insert("auth_session_policies", {
       ownerId,
-      RATE_SENSITIVE,
-      "Too many session version bumps. Please wait a minute and try again.",
-    );
-    const existing = await getSessionPolicyFromDb(ctx, ownerId);
-    const nextVersion = (existing?.sessionVersion ?? DEFAULT_SESSION_VERSION) + 1;
-    const minIssuedAtSec = Math.floor(Date.now() / 1000);
-    return await upsertSessionPolicy(ctx, ownerId, {
-      sessionVersion: nextVersion,
       minIssuedAtSec,
+      updatedAt: now,
     });
+    return { minIssuedAtSec, updatedAt: now };
   },
 });
 
