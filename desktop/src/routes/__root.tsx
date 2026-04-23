@@ -7,6 +7,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import {
+  createElement,
   startTransition,
   useCallback,
   useEffect,
@@ -18,6 +19,7 @@ import { ChatRuntimeProvider } from "@/context/chat-runtime";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
+import { IdeasTabContent } from "@/app/home/IdeasTabContent";
 import { useDisplayAutoRoute } from "@/app/chat/use-display-auto-route";
 import { useMediaMaterializer } from "@/app/media/use-media-materializer";
 import {
@@ -67,6 +69,8 @@ import { DICTATION_TOGGLE_EVENT } from "@/features/dictation/hooks/use-dictation
 
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
+
+const DEFAULT_DISPLAY_TAB_ID = "ideas:default";
 
 type PendingAskStellaRequest = {
   id: number;
@@ -422,14 +426,22 @@ function RootChrome() {
     const handleOpenDisplay = () => {
       // Prefer reopening whatever tabs are already in the manager; only
       // fall back to re-routing the last payload when nothing has been
-      // opened yet this session (i.e. on a cold launch where the user
-      // hits the context-menu before the agent has emitted anything).
+      // opened yet this session. If there is no display payload yet, seed
+      // the panel with Ideas so the display sidebar is always openable.
       if (displayTabs.getSnapshot().tabs.length > 0) {
         displayTabs.setPanelOpen(true);
         return;
       }
       const payload = latestDisplayPayloadRef.current;
-      if (!payload) return;
+      if (!payload) {
+        displayTabs.openTab({
+          id: DEFAULT_DISPLAY_TAB_ID,
+          kind: "ideas",
+          title: "Ideas",
+          render: () => createElement(IdeasTabContent),
+        });
+        return;
+      }
       displaySidebarRef.current?.open(payload);
     };
 
