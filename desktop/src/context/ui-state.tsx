@@ -16,7 +16,7 @@ const defaultState: UiState = {
   window: 'full',
   conversationId: null,
   isVoiceRtcActive: false,
-  suppressNativeContextMenuDuringOnboarding: false,
+  suppressNativeRadialDuringOnboarding: false,
 }
 
 const UiStateContext = createContext<UiStateContextValue | null>(null)

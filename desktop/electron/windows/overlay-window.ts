@@ -4,6 +4,7 @@ import {
   screen,
   type RenderProcessGoneDetails,
 } from 'electron'
+import { RADIAL_SIZE } from '../layout-constants.js'
 import type { SelfModHmrState } from '../../src/shared/contracts/boundary.js'
 import { loadWindow } from './window-load.js'
 import { createSharedWebPreferences } from './shared-window-preferences.js'
@@ -331,6 +332,7 @@ export class OverlayWindowController {
   }
 
   // Active component tracking — overlay stays visible when any component is active.
+  private activeRadial = false
   private activeRegionCapture = false
   private activeVoice = false
   private activeScreenGuide = false
@@ -341,6 +343,15 @@ export class OverlayWindowController {
   private selectionChipClickHandler:
     | ((requestId: number) => void)
     | null = null
+
+  private readonly handleRadialAnimDone = () => {
+    if (this.radialHideTimeout) {
+      clearTimeout(this.radialHideTimeout)
+      this.radialHideTimeout = null
+    }
+    this.activeRadial = false
+    this.hideOverlayIfIdle()
+  }
 
   private readonly handleOverlaySetInteractive = (_event: unknown, interactive: boolean) => {
     this.overlayWindow.setIgnoreMouseEvents(!interactive)
@@ -408,6 +419,7 @@ export class OverlayWindowController {
       'overlay:selectionChipClicked',
       this.handleOverlaySelectionChipClicked,
     )
+    ipcMain.on('radial:animDone', this.handleRadialAnimDone)
   }
 
   setSelectionChipClickHandler(handler: ((requestId: number) => void) | null) {
@@ -423,7 +435,8 @@ export class OverlayWindowController {
   }
 
   private get isAnyActive() {
-    return this.activeRegionCapture ||
+    return this.activeRadial ||
+      this.activeRegionCapture ||
       this.activeVoice ||
       this.activeScreenGuide ||
       this.activeWindowHighlight ||
@@ -509,6 +522,88 @@ export class OverlayWindowController {
     }
     this.overlayWindow.send(options.channel, options.payload)
     this.hideOverlayIfIdle()
+  }
+
+  // ─── Radial Dial ──────────────────────────────────────────────────────
+
+  private radialBounds: { x: number; y: number } | null = null
+  private radialHideTimeout: ReturnType<typeof setTimeout> | null = null
+  private static readonly CLOSE_ANIM_FALLBACK = 350
+
+  showRadial(options?: { compactFocused?: boolean }) {
+    if (this.radialHideTimeout) {
+      clearTimeout(this.radialHideTimeout)
+      this.radialHideTimeout = null
+    }
+
+    this.activeRadial = true
+
+    if (!this.overlayWindow.getWindow()) return
+    this.overlayWindow.show({ inactive: true })
+
+    const cursorDip = screen.getCursorScreenPoint()
+    const screenDipX = Math.round(cursorDip.x - RADIAL_SIZE / 2)
+    const screenDipY = Math.round(cursorDip.y - RADIAL_SIZE / 2)
+    this.radialBounds = { x: screenDipX, y: screenDipY }
+
+    const relativeX = cursorDip.x - screenDipX
+    const relativeY = cursorDip.y - screenDipY
+    const origin = this.overlayWindow.getOverlayOrigin()
+    const localX = screenDipX - origin.x
+    const localY = screenDipY - origin.y
+
+    this.overlayWindow.setIgnoreMouseEvents(false)
+    const payload = {
+      x: relativeX,
+      y: relativeY,
+      centerX: RADIAL_SIZE / 2,
+      centerY: RADIAL_SIZE / 2,
+      screenX: localX,
+      screenY: localY,
+      compactFocused: options?.compactFocused ?? false,
+    }
+
+    this.overlayWindow.send('radial:show', payload)
+  }
+
+  hideRadial() {
+    if (!this.overlayWindow.getWindow()) return
+
+    this.overlayWindow.send('radial:hide')
+
+    if (!this.isAnyActive) {
+      this.overlayWindow.setIgnoreMouseEvents(true)
+    }
+    this.radialBounds = null
+
+    if (this.radialHideTimeout) clearTimeout(this.radialHideTimeout)
+    this.radialHideTimeout = setTimeout(() => {
+      this.radialHideTimeout = null
+      this.activeRadial = false
+      this.hideOverlayIfIdle()
+    }, OverlayWindowController.CLOSE_ANIM_FALLBACK)
+  }
+
+  updateRadialCursor() {
+    if (!this.radialBounds) return
+
+    const cursorDip = screen.getCursorScreenPoint()
+    const bounds = this.radialBounds
+    const payload = {
+      x: cursorDip.x - bounds.x,
+      y: cursorDip.y - bounds.y,
+      centerX: RADIAL_SIZE / 2,
+      centerY: RADIAL_SIZE / 2,
+    }
+
+    if (!this.overlayWindow.getWindow()) return
+    this.overlayWindow.send('radial:cursor', payload)
+  }
+
+  getRadialBounds() { return this.radialBounds }
+
+  setRadialInteractive(interactive: boolean) {
+    this.overlayWindow.setIgnoreMouseEvents(!interactive)
   }
 
   // ─── Region Capture ───────────────────────────────────────────────────
@@ -738,7 +833,12 @@ export class OverlayWindowController {
       'overlay:selectionChipClicked',
       this.handleOverlaySelectionChipClicked,
     )
+    ipcMain.removeListener('radial:animDone', this.handleRadialAnimDone)
     this.selectionChipClickHandler = null
+    if (this.radialHideTimeout) {
+      clearTimeout(this.radialHideTimeout)
+      this.radialHideTimeout = null
+    }
     this.overlayWindow.destroy()
   }
 }

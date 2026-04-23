@@ -44,7 +44,7 @@ export const registerBootstrapIpcHandlers = (
       state.appReady = ready;
     },
     deactivateVoiceModes: () => services.uiStateService.deactivateVoiceModes(),
-    syncNativeContextMenu: () => services.contextMenuService.start(),
+    syncNativeRadialGesture: () => services.radialGestureService.start(),
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     getBroadcastToMobile: lazyMobileBroadcast,
@@ -148,11 +148,14 @@ export const registerBootstrapIpcHandlers = (
     },
     onPermissionGranted: (kind) => {
       if (kind === "accessibility") {
-        services.contextMenuService.start();
+        services.radialGestureService.start();
       }
     },
-    ensureContextMenuOnMac: () => {
-      services.contextMenuService.start();
+    setRadialTriggerKey: (triggerKey) => {
+      services.radialGestureService.setRadialTriggerKey(triggerKey);
+    },
+    ensureRadialGestureOnMac: () => {
+      services.radialGestureService.start();
     },
   });
 

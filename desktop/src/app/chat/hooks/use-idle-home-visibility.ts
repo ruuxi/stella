@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const IDLE_THRESHOLD_MS = 60 * 60 * 1000 // 1 hour
 const CHECK_INTERVAL_MS = 30 * 1000 // check every 30s
@@ -30,16 +30,9 @@ export function useIdleHomeVisibility({
 }: UseIdleHomeVisibilityOptions) {
   const [isIdle, setIsIdle] = useState(false)
   const [isForcedHome, setIsForcedHome] = useState(false)
-  const lastActivityRef = useRef(0)
+  const lastActivityRef = useRef(Date.now())
 
-  // Seed the ref on first commit so the initial Date.now() call doesn't
-  // happen during render (which the react-hooks/purity rule rejects).
-  useLayoutEffect(() => {
-    if (lastActivityRef.current === 0) {
-      lastActivityRef.current = Date.now()
-    }
-  }, [])
-
+  // Only called explicitly on message send or suggestion click
   const resetIdleTimer = useCallback(() => {
     lastActivityRef.current = Date.now()
     setIsForcedHome(false)
@@ -51,6 +44,7 @@ export function useIdleHomeVisibility({
     setIsIdle(true)
   }, [])
 
+  // Periodic idle check
   useEffect(() => {
     if (!hasMessages || isStreaming || isIdle) return
 

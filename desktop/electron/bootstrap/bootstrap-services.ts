@@ -3,7 +3,7 @@ import path from "path";
 import { AuthService } from "../services/auth-service.js";
 import { BackupService } from "../services/backup-service.js";
 import { CaptureService } from "../services/capture-service.js";
-import { ContextMenuService } from "../services/context-menu-service.js";
+import { RadialGestureService } from "../services/radial-gesture-service.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
@@ -11,6 +11,8 @@ import { SelectionWatcherService } from "../services/selection-watcher-service.j
 import { UiStateService } from "../services/ui-state-service.js";
 import { getDevServerUrl } from "../dev-url.js";
 import { hasMacPermission } from "../utils/macos-permissions.js";
+import { loadLocalPreferences } from "../../../runtime/kernel/preferences/local-preferences.js";
+import { DEFAULT_RADIAL_TRIGGER_CODE } from "../../src/shared/lib/radial-trigger.js";
 import type { ChatContext } from "../../src/shared/contracts/boundary.js";
 import type {
   BootstrapConfig,
@@ -132,9 +134,14 @@ export const createBootstrapServices = (options: {
     capture: captureService,
   });
 
-  const contextMenuService = new ContextMenuService({
+  const radialGestureService = new RadialGestureService({
+    getRadialTriggerKey: () => {
+      const stellaRoot = state.stellaRoot;
+      if (!stellaRoot) return DEFAULT_RADIAL_TRIGGER_CODE;
+      return loadLocalPreferences(stellaRoot).radialTriggerKey;
+    },
     shouldEnable: () =>
-      !uiStateService.state.suppressNativeContextMenuDuringOnboarding &&
+      !uiStateService.state.suppressNativeRadialDuringOnboarding &&
       (process.platform !== "darwin" ||
         hasMacPermission("accessibility", false)),
     capture: {
@@ -152,12 +159,16 @@ export const createBootstrapServices = (options: {
       hasPendingRadialCapture: () => captureService.hasPendingRadialCapture(),
       captureRadialContext: (x, y, before) =>
         captureService.captureRadialContext(x, y, before),
-      waitForRadialContextSettled: () =>
-        captureService.waitForRadialContextSettled(),
-      getStagedRadialContext: () => captureService.getStagedRadialContext(),
       startRegionCapture: () => captureService.startRegionCapture(),
       emptyContext: () => captureService.emptyContext(),
       broadcastChatContext: () => captureService.broadcastChatContext(),
+    },
+    overlay: {
+      showRadial: (opts) => state.overlayController?.showRadial(opts),
+      hideRadial: () => state.overlayController?.hideRadial(),
+      updateRadialCursor: () => state.overlayController?.updateRadialCursor(),
+      getRadialBounds: () =>
+        state.overlayController?.getRadialBounds() ?? null,
     },
     window: {
       isCompactMode: () => state.windowManager?.isCompactMode() ?? false,
@@ -166,37 +177,14 @@ export const createBootstrapServices = (options: {
       isWindowFocused: () => state.windowManager?.isWindowFocused() ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),
       minimizeWindow: () => state.windowManager?.minimizeWindow(),
-      openChatSidebar: (target) => {
-        const wm = state.windowManager;
-        if (!wm) return;
-        const window =
-          target === "mini" ? wm.getMiniWindow() : wm.getFullWindow();
-        if (!window || window.isDestroyed()) return;
-        const send = () => {
-          if (!window.isDestroyed()) {
-            window.webContents.send("chat:openSidebar");
-          }
-        };
-        if (window.webContents.isLoading()) {
-          window.webContents.once("did-finish-load", send);
-        } else {
-          send();
-        }
-      },
     },
+    activateVoiceRtc: () =>
+      uiStateService.activateVoiceRtc(uiStateService.state.conversationId),
+    deactivateVoiceModes: () => uiStateService.deactivateVoiceModes(),
+    isVoiceActive: () => uiStateService.state.isVoiceRtcActive,
     updateUiState: (partial) => uiStateService.update(partial),
-    pinSidebarSuggestion: (chip) => {
-      const wm = state.windowManager;
-      if (!wm) return;
-      for (const window of wm.getAllWindows()) {
-        if (window.isDestroyed()) continue;
-        window.webContents.send("home:pinSuggestion", { chip });
-      }
-    },
     // Double-tap Option (macOS) / Alt (Windows / Linux) toggles the mini
-    // window: open it from anywhere when hidden, dismiss it when it's
-    // already focused. Mirrors the "Open chat" behavior of the cmd+rc
-    // quick menu so both summon paths feel consistent.
+    // window: open from anywhere when hidden, dismiss when already focused.
     onDoubleTapModifier: () => {
       const wm = state.windowManager;
       if (!wm) return;
@@ -217,7 +205,7 @@ export const createBootstrapServices = (options: {
     authService,
     backupService,
     captureService,
-    contextMenuService,
+    radialGestureService,
     credentialService,
     externalLinkService,
     securityPolicyService,
