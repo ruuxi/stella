@@ -25,7 +25,8 @@ export type DisplayTabKind =
   | "audio"
   | "model3d"
   | "download"
-  | "text";
+  | "text"
+  | "ideas";
 
 /**
  * Stable, dedup-able description of what a tab represents. Two specs with

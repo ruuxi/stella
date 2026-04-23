@@ -1,10 +1,8 @@
 .home-content {
   --home-scale-title: clamp(1.9rem, 4vw, 2.8rem);
-  --home-scale-pill-text: 15px;
-  --home-scale-pill-padding-y: 6px;
-  --home-scale-pill-padding-x: 24px;
-  --home-scale-option-text: 18px;
-  --home-scale-option-gap: 10px;
+  --home-scale-category-text: 14px;
+  --home-scale-option-text: 17px;
+  --home-scale-option-gap: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -31,8 +29,13 @@
 
 /* Fade-in for home content elements */
 .home-stella-title,
-.home-center-group {
+.home-view-messages-link,
+.home-ideas-footer {
   animation: homeContentFadeIn 300ms ease both;
+}
+
+.home-ideas-footer {
+  animation-delay: 80ms;
 }
 
 @keyframes homeContentFadeIn {
@@ -48,7 +51,8 @@
 
 /* Fade-out when leaving home → chat */
 .full-body-main--home-leaving .home-stella-title,
-.full-body-main--home-leaving .home-center-group,
+.full-body-main--home-leaving .home-view-messages-link,
+.full-body-main--home-leaving .home-ideas-footer,
 .full-body-main--home-leaving .composer-wrap {
   animation: homeContentFadeOut 280ms ease both;
 }
@@ -77,146 +81,101 @@
   width: 100%;
 }
 
-.home-center-group {
-  display: flex;
-  flex-direction: column;
+/* "Back to chat" — plain text link shown when home overlays existing chat */
+.home-view-messages-link {
+  display: inline-flex;
   align-items: center;
-  gap: 22px;
-  width: 100%;
-}
-
-/* Category row */
-.home-categories {
-  display: flex;
-  gap: 12px;
-}
-
-.home-category {
-  padding: var(--home-scale-pill-padding-y) var(--home-scale-pill-padding-x);
-  min-width: 100px;
-  text-align: center;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  color: var(--text-base);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: var(--home-scale-pill-text);
-  font-weight: 500;
-  cursor: default;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.home-category:hover,
-.home-category.active {
-  background: color-mix(in oklch, var(--foreground) 6%, var(--background));
-}
-
-/* Options reveal - grid-template-rows 0fr/1fr trick for smooth expand */
-.home-options-reveal {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 420ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.home-options-reveal[data-visible] {
-  grid-template-rows: 1fr;
-}
-
-.home-options-reveal__inner {
-  overflow: hidden;
-  min-height: 0;
-  opacity: 0;
-  transition: opacity 200ms ease;
-}
-
-.home-options-reveal[data-visible] .home-options-reveal__inner {
-  opacity: 1;
-  transition: opacity 260ms ease 80ms;
-}
-
-/* Options list */
-.home-options {
-  display: grid;
-  position: relative;
-}
-
-.home-options-group {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--home-scale-option-gap);
-  grid-area: 1 / 1;
-  visibility: hidden;
-}
-
-.home-options-group[data-active] {
-  visibility: visible;
-}
-
-.home-option {
-  padding: 10px 0;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 4px;
   background: transparent;
   border: none;
   color: var(--text-base);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: var(--home-scale-option-text);
-  font-weight: 500;
-  line-height: 1.45;
+  font-size: 16px;
+  font-weight: 400;
   letter-spacing: -0.01em;
   cursor: default;
-  transition: color 0.1s ease;
+  transition: color 0.15s ease;
 }
 
-/* First open: stagger fade-in */
-.home-options-reveal[data-visible]:not([data-entered]) .home-options-group[data-active] .home-option {
-  opacity: 0;
-  transform: translateY(8px);
-  animation: homeOptionIn 300ms ease forwards;
-  animation-delay: calc(120ms + var(--stagger) * 50ms);
+.home-view-messages-link__arrow {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
 }
 
-.home-option:hover {
+.home-view-messages-link:hover {
   color: var(--text-strong);
 }
 
-@keyframes homeOptionIn {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.home-view-messages-link:hover .home-view-messages-link__arrow {
+  transform: translateX(2px);
 }
 
-/* View messages button — shown when home overlays existing chat */
-.home-view-messages {
+/* ── Ideas footer ─────────────────────────────────────────────────────
+ * Single bottom-anchored entry point. Stella animation on the left,
+ * "Ideas" label on the right; clicking opens the Display sidebar's
+ * Ideas tab where the categories live.
+ */
+.home-ideas-footer {
   position: absolute;
-  bottom: 20px;
+  bottom: 24px;
+  left: 0;
+  right: 0;
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
+  pointer-events: none;
+}
+
+.home-ideas-footer > * {
+  pointer-events: auto;
+}
+
+.home-ideas-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
   background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border: none;
   color: var(--text-base);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 400;
+  letter-spacing: -0.01em;
   cursor: default;
-  transition: color 0.15s ease, border-color 0.15s ease;
-  animation: homeContentFadeIn 300ms ease both;
-  animation-delay: 200ms;
-  opacity: 0;
+  transition: color 0.15s ease;
 }
 
-.home-view-messages:hover {
+.home-ideas-button:hover {
   color: var(--text-strong);
-  border-color: var(--border-base);
 }
 
-.full-body-main--home-leaving .home-view-messages {
-  animation: homeContentFadeOut 280ms ease both;
+/* Same layout as `.indicator-stella` / `.indicator-stella-scale` in
+ * `indicators.css` (WorkingIndicator) — 22px circle, 20×20 canvas, 0.2 scale.
+ */
+.home-ideas-button__anim {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.home-ideas-button__anim-scale {
+  width: 200%;
+  height: 200%;
+  transform: scale(0.2);
+  transform-origin: center center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
 }
 
 /* ── Music Player Widget (kept; user may add via self-mod) ─────────── */
