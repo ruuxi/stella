@@ -61,12 +61,10 @@ type SynthesizeResponse = {
 const DEFAULT_WELCOME_MESSAGE =
   "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 /**
- * Per-anonymous-device cap. Synthesis fans out into multiple LLM calls
- * (per-category analyses + core memory + welcome + suggestions), so this
- * is intentionally low: anyone running the flow more than a handful of
- * times in a day is almost certainly abusing it.
+ * Per-anonymous-device cap. Set effectively unlimited while testing; tighten
+ * before shipping strict anon quotas.
  */
-const MAX_ANON_SYNTHESIS_REQUESTS = 20;
+const MAX_ANON_SYNTHESIS_REQUESTS = Number.MAX_SAFE_INTEGER;
 /**
  * Per-authenticated-owner cap on the same endpoint. Same rationale —
  * synthesis is one of the most expensive LLM endpoints in the stack, so
@@ -138,6 +136,15 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
         }
 
         try {
+          const ownerId = identity?.tokenIdentifier;
+          const isAnonymousIdentity =
+            (identity as Record<string, unknown> | null)?.isAnonymous === true;
+          const modelAccess = ownerId
+            ? await resolveManagedModelAccess(ctx, ownerId, {
+              isAnonymous: isAnonymousIdentity,
+            })
+            : undefined;
+
           if (!identity && anonDeviceId) {
             try {
               const usage = await ctx.runMutation(
@@ -163,12 +170,21 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             }
           }
 
-          const ownerId = identity?.tokenIdentifier;
-          // Per-owner rate limit on the most expensive LLM endpoint.
-          // Anonymous traffic is already gated above by
-          // `consumeDeviceAllowance`, so we only apply this for
-          // authenticated callers.
-          if (ownerId) {
+          const usageBlocked =
+            modelAccess
+            && !modelAccess.allowed
+            && modelAccess.plan !== "free"
+            && !isAnonymousIdentity;
+          if (usageBlocked) {
+            return errorResponse(429, modelAccess.message, origin);
+          }
+
+          if (
+            ownerId
+            && !isAnonymousIdentity
+            && modelAccess
+            && modelAccess.plan !== "free"
+          ) {
             const rateLimit = await consumeWebhookRateLimit(ctx, {
               scope: "synthesize_owner",
               key: ownerId,
@@ -179,14 +195,6 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             if (!rateLimit.allowed) {
               return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
             }
-          }
-          const modelAccess = ownerId
-            ? await resolveManagedModelAccess(ctx, ownerId, {
-              isAnonymous: (identity as Record<string, unknown> | null)?.isAnonymous === true,
-            })
-            : undefined;
-          if (modelAccess && !modelAccess.allowed) {
-            return errorResponse(429, modelAccess.message, origin);
           }
 
           const synthesisConfig = await resolveModelConfig(ctx, "synthesis", ownerId, {

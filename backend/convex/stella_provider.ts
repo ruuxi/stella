@@ -52,15 +52,13 @@ import {
 import { resolveManagedModelAccess } from "./lib/managed_billing";
 
 /**
- * Per-anonymous-device cap on the Stella provider endpoint. Each call
- * runs a managed-LLM completion that we pay for, so we want anonymous
- * users to hit the wall well before they cost real money. The desktop is
- * user-modifiable, so this MUST be enforced server-side.
+ * Per-anonymous-device cap on the Stella provider. Set effectively
+ * unlimited while iterating on the provider; tighten before wide release.
  */
-const MAX_ANON_REQUESTS = 60;
-/** Per-IP cap on the unauthenticated `models` listing endpoint. */
-const STELLA_MODELS_PER_IP_LIMIT = 60;
-const STELLA_MODELS_PER_IP_WINDOW_MS = 60_000;
+const MAX_ANON_REQUESTS = Number.MAX_SAFE_INTEGER;
+/** Per-IP (or per-owner) cap on the `models` listing endpoint — paid users only. */
+const STELLA_MODELS_RATE_LIMIT = 60;
+const STELLA_MODELS_RATE_WINDOW_MS = 60_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
 const SSE_HEARTBEAT_INTERVAL_MS = 45_000;
 const SSE_STREAM_OPEN_COMMENT = new TextEncoder().encode(": stella-stream-open\n\n");
@@ -680,7 +678,9 @@ async function authorizeStellaRequest(
     const subscriptionCheck = await resolveManagedModelAccess(ctx, ownerId);
     modelAudience = subscriptionCheck.modelAudience;
 
-    if (!subscriptionCheck.allowed) {
+    const usageBlocked =
+      !subscriptionCheck.allowed && subscriptionCheck.plan !== "free";
+    if (usageBlocked) {
       const response = stellaProviderErrorResponse(429, subscriptionCheck.message, request);
       response.headers.set(
         "Retry-After",
@@ -689,21 +689,23 @@ async function authorizeStellaRequest(
       return response;
     }
 
-    const rateCheck = await ctx.runMutation(
-      internal.ai_proxy_data.checkProxyRateLimit,
-      {
-        ownerId,
-        tokensPerMinuteLimit: subscriptionCheck.tokensPerMinute,
-      },
-    );
-
-    if (!rateCheck.allowed) {
-      const response = stellaProviderErrorResponse(429, "Rate limit exceeded", request);
-      response.headers.set(
-        "Retry-After",
-        String(Math.ceil((rateCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)),
+    if (subscriptionCheck.plan !== "free") {
+      const rateCheck = await ctx.runMutation(
+        internal.ai_proxy_data.checkProxyRateLimit,
+        {
+          ownerId,
+          tokensPerMinuteLimit: subscriptionCheck.tokensPerMinute,
+        },
       );
-      return response;
+
+      if (!rateCheck.allowed) {
+        const response = stellaProviderErrorResponse(429, "Rate limit exceeded", request);
+        response.headers.set(
+          "Retry-After",
+          String(Math.ceil((rateCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)),
+        );
+        return response;
+      }
     }
   }
 
@@ -1392,39 +1394,38 @@ async function createNativeRuntimeResponse(args: {
 
 export const stellaProviderModels = httpAction(async (ctx, request) =>
   handleCorsRequest(request, async (origin) => {
-    // No-auth surface: gate on caller IP so an unauthenticated flood
-    // can't be used as a free DB-query amplifier
-    // (`resolveManagedModelAccess` reads `billing_profiles`).
     const identity = await ctx.auth.getUserIdentity();
-    const rateKey = identity?.tokenIdentifier
-      ?? getClientAddressKey(request)
-      ?? "anon";
-    const rateLimit = await ctx.runMutation(
-      internal.rate_limits.consumeWebhookRateLimit,
-      {
-        scope: "stella_models",
-        key: rateKey,
-        limit: STELLA_MODELS_PER_IP_LIMIT,
-        windowMs: STELLA_MODELS_PER_IP_WINDOW_MS,
-        blockMs: STELLA_MODELS_PER_IP_WINDOW_MS,
-      },
-    );
-    if (!rateLimit.allowed) {
-      const response = stellaProviderErrorResponse(429, "Rate limit exceeded", request);
-      response.headers.set(
-        "Retry-After",
-        String(Math.ceil(rateLimit.retryAfterMs / 1000)),
-      );
-      return response;
-    }
 
     let audience: ManagedModelAudience = identity
       ? ((identity as Record<string, unknown>).isAnonymous === true ? "anonymous" : "free")
       : "anonymous";
 
+    let rateLimitPaidSubscriber = false;
     if (identity && (identity as Record<string, unknown>).isAnonymous !== true) {
       const access = await resolveManagedModelAccess(ctx, identity.tokenIdentifier);
       audience = access.modelAudience;
+      rateLimitPaidSubscriber = access.plan !== "free";
+    }
+
+    if (rateLimitPaidSubscriber) {
+      const rateLimit = await ctx.runMutation(
+        internal.rate_limits.consumeWebhookRateLimit,
+        {
+          scope: "stella_models",
+          key: identity!.tokenIdentifier,
+          limit: STELLA_MODELS_RATE_LIMIT,
+          windowMs: STELLA_MODELS_RATE_WINDOW_MS,
+          blockMs: STELLA_MODELS_RATE_WINDOW_MS,
+        },
+      );
+      if (!rateLimit.allowed) {
+        const response = stellaProviderErrorResponse(429, "Rate limit exceeded", request);
+        response.headers.set(
+          "Retry-After",
+          String(Math.ceil(rateLimit.retryAfterMs / 1000)),
+        );
+        return response;
+      }
     }
 
     return jsonResponse(
