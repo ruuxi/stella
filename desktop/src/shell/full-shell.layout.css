@@ -291,6 +291,43 @@
   flex-direction: column-reverse;
   overflow-y: auto;
   scrollbar-width: none;
+  /* Top fade always — older history tapers under the title-bar region.
+   * Bottom fade is also always present now: the viewport extends down
+   * behind the floating thinking-footer (working indicator + chips), and
+   * we want chat content to fade out cleanly beneath them rather than
+   * abut their pill backgrounds. */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 24px,
+    black calc(100% - 56px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 24px,
+    black calc(100% - 56px),
+    transparent 100%
+  );
+  transition: mask-image 160ms ease, -webkit-mask-image 160ms ease;
+}
+
+.session-content:not(.at-bottom) {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 24px,
+    black calc(100% - 56px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 24px,
+    black calc(100% - 56px),
+    transparent 100%
+  );
 }
 
 .session-content::-webkit-scrollbar {
@@ -304,7 +341,7 @@
   width: 100%;
   max-width: min(50rem, 100%);
   margin: 0 auto;
-  padding: 112px 24px 24px;
+  padding: 112px 24px 30px;
   min-height: 100%;
   display: flex;
   flex-direction: column;

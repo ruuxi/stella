@@ -286,6 +286,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
               className="chat-sidebar-messages"
               conversationClassName="chat-sidebar-conversation"
               variant="sidebar"
+              trackEdges
               events={events}
               streamingText={streamingText}
               reasoningText={reasoningText}

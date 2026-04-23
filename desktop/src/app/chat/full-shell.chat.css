@@ -4,6 +4,7 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  padding-top: 32px;
 }
 
 .event-list[data-empty="true"],
@@ -446,7 +447,7 @@
 /* Scroll to bottom button */
 .scroll-to-bottom {
   position: absolute;
-  bottom: 16px;
+  bottom: 76px;
   left: 50%;
   transform: translateX(-50%);
   width: 36px;
