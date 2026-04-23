@@ -225,6 +225,10 @@
 /* ---- Buttons ---- */
 
 .settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
   padding: 5px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
@@ -240,7 +244,21 @@
     border-color 0.15s ease;
 }
 
+.settings-btn[data-component="button"] {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-weak);
+  letter-spacing: 0;
+}
+
 .settings-btn:hover {
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.settings-btn[data-component="button"]:hover:not(:disabled) {
   color: var(--text-base);
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
@@ -250,12 +268,29 @@
   opacity: 0.45;
 }
 
+.settings-btn[data-component="button"]:disabled {
+  color: var(--text-weak);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .settings-btn:disabled:hover {
   color: var(--text-weak);
   background: transparent;
 }
 
+.settings-btn[data-component="button"]:disabled:hover {
+  color: var(--text-weak);
+  background: transparent;
+}
+
 .settings-btn--danger:hover {
+  color: var(--destructive);
+  border-color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 6%, transparent);
+}
+
+.settings-btn--danger[data-component="button"]:hover:not(:disabled) {
   color: var(--destructive);
   border-color: var(--destructive);
   background: color-mix(in oklch, var(--destructive) 6%, transparent);
@@ -267,7 +302,20 @@
   border-color: var(--interactive);
 }
 
+.settings-btn--primary[data-component="button"] {
+  background: var(--interactive);
+  color: var(--primary-foreground);
+  border-color: var(--interactive);
+}
+
 .settings-btn--primary:hover {
+  opacity: 0.9;
+}
+
+.settings-btn--primary[data-component="button"]:hover:not(:disabled) {
+  background: var(--interactive);
+  color: var(--primary-foreground);
+  border-color: var(--interactive);
   opacity: 0.9;
 }
 
@@ -279,7 +327,20 @@
   color: var(--text-weak);
 }
 
+.settings-btn--reset-all[data-component="button"] {
+  min-height: 0;
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-weak);
+}
+
 .settings-btn--reset-all:hover {
+  color: var(--destructive);
+  background: transparent;
+}
+
+.settings-btn--reset-all[data-component="button"]:hover:not(:disabled) {
   color: var(--destructive);
   background: transparent;
 }
