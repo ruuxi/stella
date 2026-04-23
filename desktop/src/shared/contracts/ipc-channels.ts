@@ -70,6 +70,12 @@ export const IPC_OVERLAY_MORPH_END = "overlay:morphEnd" as const;
 export const IPC_OVERLAY_MORPH_STATE = "overlay:morphState" as const;
 export const IPC_OVERLAY_MORPH_READY = "overlay:morphReady" as const;
 export const IPC_OVERLAY_MORPH_DONE = "overlay:morphDone" as const;
+/** Main-window renderer → main: a real frame has been painted after Vite's
+ *  `vite:afterUpdate` event (or after the renderer's initial mount, which
+ *  covers the post-full-reload case). Used by the HMR morph orchestration
+ *  to know when the new state is on screen and ready to capture for the
+ *  reverse crossfade — replaces a fixed `setTimeout` settle. */
+export const IPC_MORPH_RENDERER_PAINTED = "morph:rendererPainted" as const;
 export const IPC_OVERLAY_WINDOW_HIGHLIGHT = "overlay:windowHighlight" as const;
 export const IPC_OVERLAY_SHOW_WINDOW_HIGHLIGHT = "overlay:showWindowHighlight" as const;
 export const IPC_OVERLAY_HIDE_WINDOW_HIGHLIGHT = "overlay:hideWindowHighlight" as const;

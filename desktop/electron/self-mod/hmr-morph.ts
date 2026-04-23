@@ -13,11 +13,12 @@
 import { randomUUID } from "node:crypto";
 import { ipcMain, type BrowserWindow } from "electron";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
+import { IPC_MORPH_RENDERER_PAINTED } from "../../src/shared/contracts/ipc-channels.js";
 import {
-  MORPH_CAPTURE_SETTLE_MS,
   MORPH_DONE_TIMEOUT_MS,
+  MORPH_FULL_RELOAD_PAINT_FALLBACK_MS,
   MORPH_OVERLAY_READY_TIMEOUT_MS,
-  MORPH_POST_LOAD_CAPTURE_DELAY_MS,
+  MORPH_SOFT_HMR_PAINT_FALLBACK_MS,
 } from "../../src/shared/contracts/morph-timing.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 
@@ -100,27 +101,36 @@ export function createHmrTransitionController(deps: {
       MORPH_DONE_TIMEOUT_MS,
     );
 
-  const waitForWindowLoad = (win: BrowserWindow): Promise<void> => {
+  /**
+   * Wait for the main-window renderer to confirm a real paint after the most
+   * recent change. Replaces the old fixed `setTimeout` settle — the renderer
+   * subscribes to `vite:afterUpdate` and signals after a double-rAF, so we
+   * wait exactly as long as React + the browser actually need rather than
+   * guessing 200ms. The timeout is a fallback for the renderer being
+   * unreachable (production build, crashed, etc.).
+   *
+   * Must be called BEFORE the action that triggers the paint (e.g.
+   * `resumeHmr` or `reloadIgnoringCache`) so the listener doesn't miss a
+   * fast paint that fires before we attach.
+   */
+  const waitForRendererPainted = (timeoutMs: number): Promise<boolean> => {
+    const startedAt = performance.now();
     return new Promise((resolve) => {
-      const startedAt = performance.now();
-      let resolved = false;
-      const done = () => {
-        if (resolved) return;
-        resolved = true;
-        logMorphTiming("waitForWindowLoad", {
-          durationMs: Math.round(performance.now() - startedAt),
-        });
-        resolve();
-      };
-      const timer = setTimeout(() => {
-        win.webContents.removeListener("did-finish-load", onLoad);
-        done();
-      }, 5000);
-      const onLoad = () => {
+      let settled = false;
+      const settle = (signaled: boolean) => {
+        if (settled) return;
+        settled = true;
+        ipcMain.removeListener(IPC_MORPH_RENDERER_PAINTED, handler);
         clearTimeout(timer);
-        setTimeout(done, MORPH_POST_LOAD_CAPTURE_DELAY_MS);
+        logMorphTiming("rendererPainted", {
+          durationMs: Math.round(performance.now() - startedAt),
+          signaled,
+        });
+        resolve(signaled);
       };
-      win.webContents.once("did-finish-load", onLoad);
+      const handler = () => settle(true);
+      const timer = setTimeout(() => settle(false), timeoutMs);
+      ipcMain.on(IPC_MORPH_RENDERER_PAINTED, handler);
     });
   };
 
@@ -155,21 +165,17 @@ export function createHmrTransitionController(deps: {
       return;
     }
 
-    const overlayReadyForMorph = await overlayController.ensureReadyForMorph();
-    if (!overlayReadyForMorph) {
+    // Run overlay-readiness check + screenshot capture concurrently. Overlay
+    // is typically already warm so this just hides capture latency behind any
+    // readiness wait we'd have done anyway. (`emitState` would be a no-op for
+    // both branches here — the overlay controller's `setMorphState` gates on
+    // `activeMorphTransitionId`, which is only set in `startMorphForward`.)
+    const [overlayReadyForMorph, oldScreenshot] = await Promise.all([
+      overlayController.ensureReadyForMorph(),
+      captureWindow(fullWindow),
+    ]);
+    if (!overlayReadyForMorph || !oldScreenshot) {
       opts.reportState?.({
-        phase: opts.requiresFullReload ? "reloading" : "applying",
-        paused: false,
-        requiresFullReload: opts.requiresFullReload,
-      });
-      await opts.resumeHmr();
-      opts.reportState?.(IDLE_HMR_STATE);
-      return;
-    }
-
-    const oldScreenshot = await captureWindow(fullWindow);
-    if (!oldScreenshot) {
-      emitState({
         phase: opts.requiresFullReload ? "reloading" : "applying",
         paused: false,
         requiresFullReload: opts.requiresFullReload,
@@ -215,18 +221,17 @@ export function createHmrTransitionController(deps: {
           requiresFullReload: opts.requiresFullReload,
         });
 
-        const didStartLoading = new Promise<boolean>((resolve) => {
-          const startedAt = performance.now();
-          const timer = setTimeout(() => resolve(false), 2000);
-          fullWindow.webContents.once("did-start-loading", () => {
-            clearTimeout(timer);
-            logMorphTiming("didStartLoading", {
-              durationMs: Math.round(performance.now() - startedAt),
-              started: true,
-            });
-            resolve(true);
-          });
-        });
+        // Pre-register the paint listener BEFORE the action that triggers
+        // the paint, otherwise a fast soft-HMR can paint before we attach
+        // and we'd wait the full fallback for nothing. One listener covers
+        // both soft HMR (signaled via `vite:afterUpdate`) and full reload
+        // (signaled by the new renderer's initial-mount hook); whichever
+        // signal arrives first wins.
+        const paintedPromise = waitForRendererPainted(
+          opts.requiresFullReload
+            ? MORPH_FULL_RELOAD_PAINT_FALLBACK_MS
+            : MORPH_SOFT_HMR_PAINT_FALLBACK_MS,
+        );
 
         await opts.resumeHmr({
           suppressClientFullReload: opts.requiresFullReload,
@@ -239,31 +244,24 @@ export function createHmrTransitionController(deps: {
             requiresFullReload: true,
           });
           fullWindow.webContents.reloadIgnoringCache();
-          await waitForWindowLoad(fullWindow);
+          // `did-finish-load` is implied by the paint signal (the new
+          // renderer can't run JS until navigation completes), so we
+          // don't need a separate `waitForWindowLoad` here.
+          await paintedPromise;
           return true;
         }
 
-        const wasFullReload = await didStartLoading;
-        const requiresFullReload = wasFullReload;
-
-        if (wasFullReload) {
-          emitState({
-            phase: "reloading",
-            paused: false,
-            requiresFullReload: true,
-          });
-          await waitForWindowLoad(fullWindow);
-        } else {
-          const settleStartedAt = performance.now();
-          await new Promise((resolve) =>
-            setTimeout(resolve, MORPH_CAPTURE_SETTLE_MS),
-          );
-          logMorphTiming("softSettleWait", {
-            durationMs: Math.round(performance.now() - settleStartedAt),
-          });
-        }
-
-        return requiresFullReload;
+        // Soft HMR — `paintedPromise` covers both pure module reloads
+        // (signaled via `vite:afterUpdate`) AND Vite secretly upgrading
+        // a soft update to a full reload (signaled by the new renderer's
+        // initial-mount hook), so we don't need the old `did-start-loading`
+        // detector. The cost of dropping that detector is that we no
+        // longer flip the cover phase from "applying" to "reloading"
+        // when Vite stealth-reloads — input-blocking is the same in both
+        // and the only consumer of the distinction was a data-attribute
+        // for tests.
+        await paintedPromise;
+        return false;
       })();
 
       const requiresFullReload = await hmrDone;
