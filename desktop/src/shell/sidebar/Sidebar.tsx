@@ -20,7 +20,6 @@ import {
   useDefaultPageSidebarBack,
   usePageSidebarOverride,
 } from "@/context/page-sidebar";
-import { useTheme } from "@/context/theme-context";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
@@ -39,7 +38,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import { ShiftingGradient } from "../background/ShiftingGradient";
 import {
   CustomDevice as Device,
   CustomLogIn as LogIn,
@@ -441,7 +439,6 @@ export const Sidebar = ({
   onNewApp,
   onNewAppAskStella,
 }: SidebarProps) => {
-  const { gradientMode, gradientColor } = useTheme();
   const isMac = getPlatform() === "darwin";
   const handleAskStella = onNewAppAskStella ?? onNewApp;
   const navigate = useNavigate();
@@ -496,11 +493,6 @@ export const Sidebar = ({
 
   return (
     <aside className={sidebarClass}>
-      <ShiftingGradient
-        mode={gradientMode}
-        colorMode={gradientColor}
-        contained
-      />
       <div className="sidebar-stack">
         <TitleBarRow
           isMac={isMac}
