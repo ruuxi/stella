@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { cssToVec3 } from "@/shared/lib/color";
 import type { SelfModHmrState } from "../../shared/contracts/boundary";
 import {
   MORPH_COVER_RAMP_UP_MS,
@@ -57,10 +56,6 @@ uniform float u_alpha;
 uniform float u_time;
 uniform float u_aspect;
 uniform vec2 u_center;
-uniform vec3 u_color1;
-uniform vec3 u_color2;
-uniform vec3 u_color3;
-uniform vec3 u_color4;
 varying vec2 v_uv;
 
 void main() {
@@ -125,16 +120,6 @@ type GLContext = {
   mixLoc: WebGLUniformLocation | null;
   alphaLoc: WebGLUniformLocation | null;
 };
-
-function resolveThemeColor(
-  varName: string,
-  fallback: string,
-): [number, number, number] {
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue(varName)
-    .trim();
-  return cssToVec3(raw || fallback);
-}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -204,35 +189,6 @@ function initGL(canvas: HTMLCanvasElement, img: HTMLImageElement): GLContext | n
   gl.uniform2f(gl.getUniformLocation(prog, "u_center"), 0.5, 0.5);
   gl.uniform1f(gl.getUniformLocation(prog, "u_aspect"), img.width / img.height);
 
-  const color1 = resolveThemeColor("--spinner-color-1", "#7aa2f7");
-  const color2 = resolveThemeColor("--spinner-color-2", "#bb9af7");
-  const color3 = resolveThemeColor("--spinner-color-3", "#7dcfff");
-  const color4 = resolveThemeColor("--spinner-color-4", "#9ece6a");
-  gl.uniform3f(
-    gl.getUniformLocation(prog, "u_color1"),
-    color1[0],
-    color1[1],
-    color1[2],
-  );
-  gl.uniform3f(
-    gl.getUniformLocation(prog, "u_color2"),
-    color2[0],
-    color2[1],
-    color2[2],
-  );
-  gl.uniform3f(
-    gl.getUniformLocation(prog, "u_color3"),
-    color3[0],
-    color3[1],
-    color3[2],
-  );
-  gl.uniform3f(
-    gl.getUniformLocation(prog, "u_color4"),
-    color4[0],
-    color4[1],
-    color4[2],
-  );
-
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
@@ -280,15 +236,41 @@ function startRenderLoop(
   strengthRef: { current: number },
   mixRef: { current: number },
   alphaRef: { current: number },
+  activeTweensRef: { current: number },
   startTime: number,
   onFirstFrame?: () => void,
 ): () => void {
   let running = true;
   let firstFramePainted = false;
+  // When no tween is in flight the visual is the steady ripple cover. The
+  // ripple still advances via `u_time`, but humans don't notice a 30Hz cap on
+  // continuous concentric rings — so we halve GPU load by skipping every
+  // other frame. Tweens (forward ramp, reverse crossfade) snap back to 60Hz
+  // because that's where motion smoothness actually matters.
+  let skipNextFrame = false;
   const { gl, strengthLoc, timeLoc, mixLoc, alphaLoc } = ctx;
 
   const frame = (now: number) => {
     if (!running) return;
+
+    // Nothing visible — no point spending GPU cycles. Still need to paint the
+    // very first frame so `onFirstFrame` (= overlay:morphReady) fires.
+    if (firstFramePainted && alphaRef.current < 0.005) {
+      requestAnimationFrame(frame);
+      return;
+    }
+
+    if (activeTweensRef.current === 0 && firstFramePainted) {
+      if (skipNextFrame) {
+        skipNextFrame = false;
+        requestAnimationFrame(frame);
+        return;
+      }
+      skipNextFrame = true;
+    } else {
+      skipNextFrame = false;
+    }
+
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform1f(strengthLoc, strengthRef.current);
@@ -313,10 +295,12 @@ function tweenRef(
   ref: { current: number },
   to: number,
   duration: number,
+  activeTweensRef?: { current: number },
 ): Promise<void> {
   return new Promise((resolve) => {
     const from = ref.current;
     const start = performance.now();
+    if (activeTweensRef) activeTweensRef.current += 1;
     const step = () => {
       const t = Math.min((performance.now() - start) / duration, 1);
       const eased = 0.5 - 0.5 * Math.cos(Math.PI * t);
@@ -324,6 +308,7 @@ function tweenRef(
       if (t < 1) {
         requestAnimationFrame(step);
       } else {
+        if (activeTweensRef) activeTweensRef.current -= 1;
         resolve();
       }
     };
@@ -344,6 +329,7 @@ export function MorphTransition() {
   const loopStartTimeRef = useRef(0);
   const morphReadySentRef = useRef(false);
   const activeMorphFlavorRef = useRef<MorphFlavor>("hmr");
+  const activeTweensRef = useRef(0);
 
   useEffect(() => {
     const api = window.electronAPI?.overlay;
@@ -421,17 +407,19 @@ export function MorphTransition() {
           glCtxRef.current = ctx;
 
           loopStartTimeRef.current = performance.now();
+          activeTweensRef.current = 0;
           stopLoopRef.current = startRenderLoop(
             ctx,
             strengthRef,
             mixRef,
             alphaRef,
+            activeTweensRef,
             loopStartTimeRef.current,
             () => signalMorphReady(data.transitionId),
           );
 
           // Reach a stable covered state quickly, then hold there until reveal.
-          void tweenRef(strengthRef, steadyStrength, coverRampMs);
+          void tweenRef(strengthRef, steadyStrength, coverRampMs, activeTweensRef);
         });
       }),
     );
@@ -489,8 +477,8 @@ export function MorphTransition() {
             setState((prev) => ({ ...prev, phase: "crossfading" }));
 
             return Promise.all([
-              tweenRef(mixRef, 1.0, reverseMs),
-              tweenRef(strengthRef, 0, reverseMs),
+              tweenRef(mixRef, 1.0, reverseMs, activeTweensRef),
+              tweenRef(strengthRef, 0, reverseMs, activeTweensRef),
             ])
               .then(() => {
                 if (data.transitionId !== activeTransitionIdRef.current) {
