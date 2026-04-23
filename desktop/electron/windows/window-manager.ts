@@ -327,12 +327,22 @@ export class WindowManager {
       this.getVisibleShellWindow(this.lastActiveWindowMode) ??
       this.getVisibleShellWindow(this.getOtherWindowMode(this.lastActiveWindowMode))
 
-    if (target && !target.window.isDestroyed()) {
-      this.hideWindow(target.window, {
-        preserveExternalFocus: target.mode === 'mini',
-      })
-      this.syncLastActiveWindowMode()
+    if (!target || target.window.isDestroyed()) return
+
+    if (target.mode === 'mini') {
+      // Delegate to the dedicated mini-hide path so macOS gets the
+      // `app.hide()` call when the mini was popped from outside the
+      // app. Without that, hiding the mini just transfers focus to the
+      // next window in the stack — which surfaces the full window even
+      // when the user only ever interacted with the mini (the symptom
+      // was: option-option closed the mini and brought the main window
+      // forward).
+      this.hideMiniWindow(false)
+      return
     }
+
+    this.hideWindow(target.window)
+    this.syncLastActiveWindowMode()
   }
 
   isMiniShowing() {
@@ -343,9 +353,61 @@ export class WindowManager {
   hideMiniWindow(_animate: boolean) {
     const miniWindow = this.getMiniWindow()
     if (!miniWindow || miniWindow.isDestroyed()) return
+
+    const willRestoreExternalApp =
+      process.platform === 'darwin' && this.miniShouldRestoreExternalApp
+
+    const fullWindow = this.getFullWindow()
+    const fullIsOnScreen = Boolean(
+      fullWindow && !fullWindow.isDestroyed() && fullWindow.isVisible(),
+    )
+
+    // Case A: user popped the mini from outside Stella AND the full
+    // window is also visible (e.g., they had Stella full open in the
+    // background, then summoned mini from another app). When `mini.hide()`
+    // runs, macOS would normally pick the full window as the next key
+    // window — visually pulling it to the front. The user doesn't want
+    // that; they want focus to fall through to whatever app they were
+    // in, with the full window left exactly where it was.
+    //
+    // Trick: temporarily mark the full window unfocusable so macOS
+    // skips it during the post-hide stack walk. With nothing focusable
+    // in our process, Stella deactivates and focus returns to the
+    // previous external app. We do NOT touch the full window's
+    // visibility — its z-order and on-screen state are preserved.
+    //
+    // The restoration to `setFocusable(true)` is deferred via
+    // `setImmediate` so it runs AFTER the synchronous hide + focus
+    // transfer have completed; doing it inline races macOS's stack
+    // walk and the full window can still get pulled forward.
+    if (willRestoreExternalApp && fullIsOnScreen && fullWindow) {
+      fullWindow.setFocusable(false)
+      this.hideWindow(miniWindow, { preserveExternalFocus: true })
+      this.syncLastActiveWindowMode()
+      this.miniShouldRestoreExternalApp = false
+      setImmediate(() => {
+        if (fullWindow && !fullWindow.isDestroyed()) {
+          fullWindow.setFocusable(true)
+        }
+      })
+      return
+    }
+
     this.hideWindow(miniWindow, { preserveExternalFocus: true })
     this.syncLastActiveWindowMode()
-    if (process.platform === 'darwin' && this.miniShouldRestoreExternalApp) {
+
+    // Case B: user popped the mini from outside Stella AND the full
+    // window isn't on screen. `app.hide()` is safe here (nothing of
+    // ours for it to disturb) and is the cleanest way to return focus
+    // to the previous app.
+    //
+    // Case C (the remaining else): the mini was opened from inside
+    // Stella (the full window was focused at raise time, so
+    // `miniShouldRestoreExternalApp` was false). In that case the
+    // user's intent on close is to return to the full window — let
+    // macOS do its natural thing and promote full to key. No special
+    // handling needed.
+    if (willRestoreExternalApp) {
       this.miniShouldRestoreExternalApp = false
       app.hide()
     }
