@@ -1,10 +1,9 @@
 import { stopAllDesktopAutomationDaemons } from "../services/desktop-automation-cleanup.js";
+import { stopAllMouseBlockHelpers } from "../input/mouse-block.js";
 import { cleanupSelectedTextProcess } from "../selected-text.js";
 import type { BootstrapContext } from "./context.js";
 
-export const registerBootstrapProcessCleanups = (
-  context: BootstrapContext,
-) => {
+export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
   const { processRuntime } = context.state;
 
   processRuntime.registerCleanup("before-quit", "auth-refresh-loop", () => {
@@ -19,6 +18,13 @@ export const registerBootstrapProcessCleanups = (
   processRuntime.registerCleanup("before-quit", "selected-text", () => {
     cleanupSelectedTextProcess();
   });
+  processRuntime.registerCleanup(
+    "before-quit",
+    "mouse-block-helper",
+    async () => {
+      await stopAllMouseBlockHelpers();
+    },
+  );
   processRuntime.registerCleanup("before-quit", "selection-watcher", () => {
     context.services.selectionWatcherService.stop();
   });
@@ -32,10 +38,14 @@ export const registerBootstrapProcessCleanups = (
     context.state.officePreviewBridgeStop?.();
     context.state.officePreviewBridgeStop = null;
   });
-  processRuntime.registerCleanup("before-quit", "chronicle-daemon", async () => {
-    await context.state.chronicleController?.stop();
-    context.state.chronicleController = null;
-  });
+  processRuntime.registerCleanup(
+    "before-quit",
+    "chronicle-daemon",
+    async () => {
+      await context.state.chronicleController?.stop();
+      context.state.chronicleController = null;
+    },
+  );
   // The desktop_automation daemon is a long-lived child process spawned
   // on demand by stella-computer. macOS doesn't reload an executable
   // under a live process, so without killing it on quit a rebuilt

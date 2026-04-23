@@ -1,9 +1,5 @@
 import { context as createEsbuildContext } from "esbuild";
-import {
-  existsSync,
-  promises as fsPromises,
-  watch as watchFs,
-} from "node:fs";
+import { existsSync, promises as fsPromises, watch as watchFs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,8 +36,24 @@ let rebuildTimer = null;
 let rebuildChain = Promise.resolve();
 let shuttingDown = false;
 const rootWatchers = [];
+const runnerPid = Number.parseInt(
+  process.env.STELLA_ELECTRON_DEV_RUNNER_PID ?? "",
+  10,
+);
+const parentPidToWatch =
+  Number.isFinite(runnerPid) && runnerPid > 1 ? runnerPid : process.ppid;
+let parentWatchTimer = null;
 
 const normalizePath = (filePath) => filePath.split(path.sep).join("/");
+
+const isPidAlive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+};
 
 const isTsSourceFile = (filePath) =>
   filePath.endsWith(".ts") &&
@@ -207,6 +219,11 @@ const shutdown = async (exitCode) => {
 
   shuttingDown = true;
 
+  if (parentWatchTimer) {
+    clearInterval(parentWatchTimer);
+    parentWatchTimer = null;
+  }
+
   if (rebuildTimer) {
     clearTimeout(rebuildTimer);
     rebuildTimer = null;
@@ -232,5 +249,16 @@ process.once("SIGINT", () => {
 process.once("SIGTERM", () => {
   void shutdown(143);
 });
+
+process.once("SIGHUP", () => {
+  void shutdown(129);
+});
+
+parentWatchTimer = setInterval(() => {
+  if (parentPidToWatch > 1 && !isPidAlive(parentPidToWatch)) {
+    void shutdown(0);
+  }
+}, 1_000);
+parentWatchTimer.unref?.();
 
 await new Promise(() => {});
