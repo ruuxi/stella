@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { SelfModHmrState } from "../../shared/contracts/boundary";
 import {
-  MORPH_COVER_RAMP_UP_MS,
   MORPH_REVERSE_CROSSFADE_MS,
   MORPH_STEADY_STRENGTH,
 } from "../../shared/contracts/morph-timing";
@@ -63,8 +62,12 @@ void main() {
   d.x *= u_aspect;
   float dist = length(d);
 
-  // Concentric rings expanding outward from center
-  float phase = dist * 28.0 - u_time * 6.0;
+  // Concentric rings expanding outward from center. The temporal coefficient
+  // (u_time * N) controls ring expansion speed: higher = faster rings, more
+  // motion per unit time. Tuned for ~300ms holds — at this speed a ring
+  // takes ~2s to traverse the screen, so during a brief HMR cover the user
+  // perceives a single deliberate ring rather than a blur of fast ones.
+  float phase = dist * 28.0 - u_time * 2.5;
   float ripple = sin(phase);
 
   // Soft second harmonic for texture — same speed so rings stay concentric
@@ -121,16 +124,31 @@ type GLContext = {
   alphaLoc: WebGLUniformLocation | null;
 };
 
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
+/**
+ * Decode a screenshot data URL to an `ImageBitmap`. The PNG parse runs off
+ * the renderer main thread (browser dispatches `createImageBitmap` to an
+ * internal worker), which is meaningfully faster than the older `<img>`
+ * decode path on big captures.
+ *
+ * We can't `fetch(dataUrl)` here — the overlay window's CSP allows
+ * `data:` under `img-src` but not under `connect-src`, so the fetch is
+ * blocked with no visible error. Inline the base64 decode instead.
+ */
+async function loadImage(src: string): Promise<ImageBitmap> {
+  const commaIdx = src.indexOf(",");
+  if (commaIdx < 0) {
+    throw new Error("loadImage: invalid data URL");
+  }
+  const base64 = src.slice(commaIdx + 1);
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return createImageBitmap(new Blob([bytes], { type: "image/png" }));
 }
 
-function initGL(canvas: HTMLCanvasElement, img: HTMLImageElement): GLContext | null {
+function initGL(canvas: HTMLCanvasElement, img: ImageBitmap): GLContext | null {
   const gl = canvas.getContext("webgl", {
     alpha: true,
     premultipliedAlpha: false,
@@ -207,7 +225,7 @@ function initGL(canvas: HTMLCanvasElement, img: HTMLImageElement): GLContext | n
   };
 }
 
-function loadSecondTexture(ctx: GLContext, img: HTMLImageElement) {
+function loadSecondTexture(ctx: GLContext, img: ImageBitmap) {
   const { gl, tex2, prog } = ctx;
   gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_2D, tex2);
@@ -372,9 +390,6 @@ export function MorphTransition() {
         disposeMorph();
         activeTransitionIdRef.current = data.transitionId;
         morphReadySentRef.current = false;
-        strengthRef.current = 0;
-        mixRef.current = 0;
-        alphaRef.current = 1;
         const flavor: MorphFlavor =
           data.flavor === "onboarding" ? "onboarding" : "hmr";
         activeMorphFlavorRef.current = flavor;
@@ -382,10 +397,15 @@ export function MorphTransition() {
           flavor === "onboarding"
             ? ONBOARDING_MORPH_STEADY_STRENGTH
             : MORPH_STEADY_STRENGTH;
-        const coverRampMs =
-          flavor === "onboarding"
-            ? ONBOARDING_MORPH_COVER_RAMP_MS
-            : MORPH_COVER_RAMP_UP_MS;
+        // HMR flavor: snap straight to steady state — at the cover durations
+        // we now run (~300-500ms hold), the wind-up tween 0→steady is too
+        // brief to register as motion, just stutters the first frames.
+        // Onboarding still tweens (over `ONBOARDING_MORPH_COVER_RAMP_MS`)
+        // because the demo has time for the buildup to read.
+        strengthRef.current =
+          flavor === "onboarding" ? 0 : steadyStrength;
+        mixRef.current = 0;
+        alphaRef.current = 1;
         setHmrState(IDLE_HMR_STATE);
         setState({
           phase: "rippling",
@@ -418,8 +438,16 @@ export function MorphTransition() {
             () => signalMorphReady(data.transitionId),
           );
 
-          // Reach a stable covered state quickly, then hold there until reveal.
-          void tweenRef(strengthRef, steadyStrength, coverRampMs, activeTweensRef);
+          // HMR flavor already snapped to steady state above; only the
+          // onboarding flavor needs the deliberate wind-up tween.
+          if (flavor === "onboarding") {
+            void tweenRef(
+              strengthRef,
+              steadyStrength,
+              ONBOARDING_MORPH_COVER_RAMP_MS,
+              activeTweensRef,
+            );
+          }
         });
       }),
     );
