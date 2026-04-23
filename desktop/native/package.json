@@ -1,7 +1,7 @@
 {
-  "name": "mouse-block-native",
+  "name": "stella-native-helpers",
   "version": "1.0.0",
-  "description": "Native helper to block Ctrl+right-click events on Windows",
+  "description": "Native helper build scripts for Stella desktop",
   "scripts": {
     "build": "node build.mjs"
   }

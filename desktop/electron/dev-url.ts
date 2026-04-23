@@ -6,14 +6,10 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const DEV_URL_FILE = path.resolve(__dirname, '../.vite-dev-url')
-const FALLBACK_PORT = 57314
 export function getDevServerUrl(): string {
-  try {
-    const url = fs.readFileSync(DEV_URL_FILE, 'utf-8').trim()
-    if (url) return url
-  } catch {
-    // Fall back when the dev URL file is missing during startup.
+  const url = fs.readFileSync(DEV_URL_FILE, 'utf-8').trim()
+  if (!url) {
+    throw new Error(`Vite dev server URL file is empty: ${DEV_URL_FILE}`)
   }
-
-  return `http://localhost:${FALLBACK_PORT}`
+  return url
 }

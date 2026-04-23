@@ -23,10 +23,6 @@ echo "Building window_ocr (macOS)..."
 swiftc -O -o "$OUTPUT_DIR/window_ocr" src/window_ocr.swift -framework Vision -framework AppKit -framework Foundation
 echo "Build successful: $OUTPUT_DIR/window_ocr"
 
-echo "Building mouse_block (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/mouse_block" src/mouse_block.swift -framework CoreGraphics -framework AppKit -framework Foundation
-echo "Build successful: $OUTPUT_DIR/mouse_block"
-
 echo "Building desktop_automation (macOS)..."
 swiftc -O -o "$OUTPUT_DIR/desktop_automation" src/desktop_automation.swift \
   -framework ApplicationServices \

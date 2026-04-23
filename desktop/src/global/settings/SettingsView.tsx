@@ -359,14 +359,7 @@ function GeneralSettingsTab({
   const fetchPermissionStatus = useCallback(async () => {
     const systemApi = window.electronAPI?.system;
     if (!systemApi?.getPermissionStatus) {
-      const fallbackStatus: BasicTabPermissionStatus = {
-        accessibility: true,
-        screen: true,
-        microphone: true,
-        microphoneStatus: "granted",
-      };
-      setPermissionStatus(fallbackStatus);
-      return fallbackStatus;
+      throw new Error("Desktop permission status is unavailable in this window.");
     }
 
     const nextStatus = await systemApi.getPermissionStatus();
