@@ -1,5 +1,4 @@
 import { memo, useRef, useState, useEffect } from "react";
-import type { CSSProperties } from "react";
 import type { Attachment, ChannelEnvelope } from "@/app/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
@@ -43,10 +42,6 @@ export type StreamingTurnProps = {
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
 };
-
-const AGENT_REASONING_TICKER_CHARS_PER_SECOND = 4;
-const AGENT_REASONING_TICKER_MIN_SECONDS = 18;
-const AGENT_REASONING_TICKER_PADDING_CHARS = 32;
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const getAttachments = (event: EventRecord): Attachment[] => {
@@ -287,6 +282,7 @@ const areTurnItemPropsEqual = (
     onOpenAttachment?: (attachment: Attachment) => void;
     streaming?: StreamingTurnProps;
     taskReasoningText?: string;
+    taskReasoningDescription?: string;
   },
   next: {
     turn: TurnViewModel;
@@ -294,11 +290,13 @@ const areTurnItemPropsEqual = (
     onOpenAttachment?: (attachment: Attachment) => void;
     streaming?: StreamingTurnProps;
     taskReasoningText?: string;
+    taskReasoningDescription?: string;
   },
 ): boolean => (
   prev.onOpenAttachment === next.onOpenAttachment &&
   prev.isLastTurn === next.isLastTurn &&
   (prev.taskReasoningText ?? "") === (next.taskReasoningText ?? "") &&
+  (prev.taskReasoningDescription ?? "") === (next.taskReasoningDescription ?? "") &&
   turnViewModelEqual(prev.turn, next.turn) &&
   streamingPropsEqual(prev.streaming, next.streaming)
 );
@@ -310,6 +308,7 @@ export const TurnItem = memo(function TurnItem({
   onOpenAttachment,
   streaming,
   taskReasoningText,
+  taskReasoningDescription,
 }: {
   turn: TurnViewModel;
   /** Latest turn in the thread: keeps expanded reply region after streaming ends. */
@@ -317,6 +316,7 @@ export const TurnItem = memo(function TurnItem({
   onOpenAttachment?: (attachment: Attachment) => void;
   streaming?: StreamingTurnProps;
   taskReasoningText?: string;
+  taskReasoningDescription?: string;
 }) {
   const userText = turn.userText;
   const userWindowLabel = turn.userWindowLabel;
@@ -353,16 +353,8 @@ export const TurnItem = memo(function TurnItem({
     hasWebSearchBadge ||
     hasOfficePreview ||
     shouldShowStreamingAssistant;
-  const normalizedTaskReasoningText = taskReasoningText?.trim().replace(/\s+/g, " ") ?? "";
-  const taskReasoningTickerStyle = normalizedTaskReasoningText
-    ? ({
-        "--agent-reasoning-ticker-duration": `${Math.max(
-          AGENT_REASONING_TICKER_MIN_SECONDS,
-          (normalizedTaskReasoningText.length + AGENT_REASONING_TICKER_PADDING_CHARS)
-            / AGENT_REASONING_TICKER_CHARS_PER_SECOND,
-        )}s`,
-      } as CSSProperties)
-    : undefined;
+  const trimmedTaskReasoningText = taskReasoningText?.trim() ?? "";
+  const hasTaskReasoning = trimmedTaskReasoningText.length > 0;
 
   const MIN_DISPLAY_HOLD_MS = 3000;
   const shownSinceRef = useRef<number>(0);
@@ -556,17 +548,14 @@ export const TurnItem = memo(function TurnItem({
         </GrowIn>
       )}
 
-      {normalizedTaskReasoningText.length > 0 && (
-        <div
-          className="agent-reasoning-ticker"
-          aria-live="off"
-          style={taskReasoningTickerStyle}
-        >
-          <div className="agent-reasoning-ticker__track">
-            <span className="agent-reasoning-ticker__text">
-              {normalizedTaskReasoningText}
-            </span>
-          </div>
+      {hasTaskReasoning && (
+        <div className="subagent-reasoning-attach">
+          <ReasoningSection
+            className="reasoning-section--subagent"
+            content={trimmedTaskReasoningText}
+            headingLabel={taskReasoningDescription}
+            isStreaming
+          />
         </div>
       )}
 

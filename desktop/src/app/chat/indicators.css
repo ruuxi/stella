@@ -298,6 +298,121 @@
   color: var(--text-weaker);
 }
 
+/* Subagent reasoning variant — sits tight against the assistant bubble above
+   it (the parent .session-turn applies a 16px gap between siblings, so we
+   pull the wrapper up to negate most of that) and renders the streaming
+   reasoning body in a single dimmed color, italic, with a tall top fade so
+   older lines smoothly taper to transparent as new ones stream in. */
+.subagent-reasoning-attach {
+  margin-top: -12px;
+}
+
+.reasoning-section--subagent {
+  margin-top: 0;
+}
+
+.reasoning-section--subagent .reasoning-heading-stream {
+  padding: 0;
+}
+
+.reasoning-section--subagent .reasoning-body {
+  margin-top: 0;
+}
+
+.reasoning-section--subagent .reasoning-heading-text {
+  display: inline-block;
+  max-width: 100%;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 400;
+  font-style: normal;
+  color: var(--text-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+/* Quiet the shimmer gradient inside the subagent heading so it's a subtle
+   pulse around the heading's resting color instead of the high-contrast
+   strong↔weak sweep used for the orchestrator's "THINKING" label. */
+.reasoning-section--subagent .reasoning-heading-text.text-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--text-weak) 0%,
+    var(--text-weak) 35%,
+    var(--text-base) 50%,
+    var(--text-weak) 65%,
+    var(--text-weak) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.reasoning-section--subagent .reasoning-content {
+  font-style: italic;
+  opacity: 0.65;
+  color: var(--text-weak);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 6px,
+    black 32px,
+    black calc(100% - 6px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 6px,
+    black 32px,
+    black calc(100% - 6px),
+    transparent 100%
+  );
+}
+
+/* Force everything inside the subagent reasoning body to render in the same
+   color and weight, so markdown emphasis (headings, links, code, bold,
+   blockquotes, list markers, syntax-highlighted spans) doesn't break the
+   single-tone "stream of thought" look. */
+.reasoning-section--subagent .reasoning-content .markdown,
+.reasoning-section--subagent .reasoning-content .markdown :is(
+  p, span, a, strong, b, em, i, code, kbd, samp,
+  h1, h2, h3, h4, h5, h6,
+  ul, ol, li, blockquote, pre, table, th, td, hr
+) {
+  color: inherit;
+  background: transparent;
+  border-color: currentColor;
+  font-weight: inherit;
+}
+
+.reasoning-section--subagent .reasoning-content .markdown :is(pre, .shiki) {
+  border: none;
+  padding: 0;
+}
+
+.reasoning-section--subagent .reasoning-content .markdown :not(pre) > code {
+  padding: 0;
+  border-radius: 0;
+}
+
+.reasoning-section--subagent .reasoning-content .markdown li::marker {
+  color: inherit;
+}
+
+/* Shiki syntax-highlight spans set inline `color`/`background-color` on
+   each span; only an !important rule wins against an inline style. */
+.reasoning-section--subagent .reasoning-content .markdown .shiki,
+.reasoning-section--subagent .reasoning-content .markdown .shiki span {
+  color: inherit !important;
+  background-color: transparent !important;
+}
+
 /* Respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   .event-item.assistant.streaming,
@@ -318,53 +433,6 @@
     animation: none;
     -webkit-text-fill-color: currentColor;
     background: none;
-  }
-}
-
-/* Agent reasoning ticker — news-headline banner */
-.agent-reasoning-ticker {
-  overflow: hidden;
-  white-space: nowrap;
-  margin-top: 8px;
-  padding: 7px 0;
-  border-top: 1px solid color-mix(in srgb, var(--border-strong) 40%, transparent);
-  mask-image: linear-gradient(to right, transparent 0, black 48px, black calc(100% - 48px), transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, transparent 0, black 48px, black calc(100% - 48px), transparent 100%);
-  animation: stream-fade-in 0.3s ease-out both;
-}
-
-.agent-reasoning-ticker__track {
-  display: inline-block;
-  animation: ticker-scroll var(--agent-reasoning-ticker-duration, 18s) linear infinite;
-  padding-left: 100%;
-}
-
-.agent-reasoning-ticker__text {
-  display: inline-block;
-  font-size: 12.5px;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  color: var(--text-weak);
-  opacity: 0.75;
-  padding-right: 60px;
-}
-
-@keyframes ticker-scroll {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-100%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .agent-reasoning-ticker__track {
-    animation: none;
-    padding-left: 0;
-  }
-  .agent-reasoning-ticker {
-    text-overflow: ellipsis;
   }
 }
 

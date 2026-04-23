@@ -60,7 +60,10 @@ function MessageList({
 
   const taskReasoningByAnchorTurnId = useMemo(() => {
     if (!liveTasks?.length) return null;
-    const map = new Map<string, string>();
+    const map = new Map<
+      string,
+      { text: string; description: string }
+    >();
     for (const task of liveTasks) {
       const reasoningText = task.reasoningText?.trim();
       if (
@@ -69,7 +72,10 @@ function MessageList({
         && reasoningText
         && !map.has(task.anchorTurnId)
       ) {
-        map.set(task.anchorTurnId, reasoningText);
+        map.set(task.anchorTurnId, {
+          text: reasoningText,
+          description: task.description?.trim() ?? "",
+        });
       }
     }
     return map.size > 0 ? map : null;
@@ -95,7 +101,8 @@ function MessageList({
             turn={turn}
             isLastTurn={index === turns.length - 1}
             onOpenAttachment={onOpenAttachment}
-            taskReasoningText={taskReasoning}
+            taskReasoningText={taskReasoning?.text}
+            taskReasoningDescription={taskReasoning?.description}
             streaming={
               shouldAttachStreaming
                 ? {

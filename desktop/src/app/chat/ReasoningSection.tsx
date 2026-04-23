@@ -9,12 +9,19 @@ interface ReasoningSectionProps {
   content: string;
   isStreaming?: boolean;
   className?: string;
+  /**
+   * Label rendered in the streaming heading instead of the default "Thinking".
+   * Use the active task's description for subagent reasoning so each section is
+   * self-identifying.
+   */
+  headingLabel?: string;
 }
 
 export function ReasoningSection({
   content,
   isStreaming = false,
   className,
+  headingLabel,
 }: ReasoningSectionProps) {
   // Track if user has manually collapsed - if not, auto-expand when streaming
   const [userCollapsed, setUserCollapsed] = useState(false);
@@ -43,10 +50,14 @@ export function ReasoningSection({
         data-streaming={isStreaming}
         data-expanded={expanded}
       >
-        {/* Streaming: animated "Thinking" heading with full-phrase shimmer */}
+        {/* Streaming: animated heading with full-phrase shimmer */}
         {isStreaming && (
           <div className="reasoning-heading-stream">
-            <TextShimmer text="Thinking" active={isStreaming} className="reasoning-heading-text" />
+            <TextShimmer
+              text={headingLabel?.trim() || "Thinking"}
+              active={isStreaming}
+              className="reasoning-heading-text"
+            />
           </div>
         )}
 
