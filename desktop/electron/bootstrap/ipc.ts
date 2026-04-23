@@ -249,6 +249,8 @@ export const registerBootstrapIpcHandlers = (
 
   registerDictationHandlers({
     windowManager: state.windowManager!,
+    getOverlayController: () => state.overlayController ?? null,
+    getStellaRoot: lifecycle.getStellaRoot,
   });
 
   stopCapturing();

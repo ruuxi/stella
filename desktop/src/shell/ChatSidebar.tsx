@@ -140,7 +140,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     const dictation = useDictation({
       message: inputText,
       setMessage: setInputText,
-      disabled: isStreaming,
+      disabled: isStreaming || !isOpen,
     });
 
     useImperativeHandle(ref, () => ({

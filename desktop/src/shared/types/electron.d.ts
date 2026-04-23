@@ -266,6 +266,10 @@ export type ElectronOverlayApi = {
     callback: (data: { x: number; y: number; mode: "realtime" }) => void,
   ) => () => void;
   onHideVoice: (callback: () => void) => () => void;
+  onShowDictation: (
+    callback: (data: { x: number; y: number }) => void,
+  ) => () => void;
+  onHideDictation: (callback: () => void) => () => void;
   onShowScreenGuide: (
     callback: (data: {
       annotations: Array<{
@@ -379,7 +383,7 @@ export type ElectronDictationApi = {
    * `useDictation` hook listens to so the active composer toggles its
    * speech-to-text session.
    */
-  onToggle: (callback: () => void) => () => void;
+  onToggle: (callback: (data: { startId?: string }) => void) => () => void;
   /** Programmatically trigger the same toggle from the renderer. */
   trigger: () => Promise<{ ok: boolean }>;
   /** Returns the currently registered global shortcut accelerator. */
@@ -391,6 +395,11 @@ export type ElectronDictationApi = {
   setShortcut: (
     shortcut: string,
   ) => Promise<VoiceShortcutRegistrationResult>;
+  onOverlayStart: (callback: (data: { sessionId: string }) => void) => () => void;
+  onOverlayStop: (callback: (data: { sessionId: string }) => void) => () => void;
+  overlayCompleted: (payload: { sessionId: string; text: string }) => void;
+  overlayFailed: (payload: { sessionId: string; error?: string }) => void;
+  inAppStarted: (payload: { startId?: string }) => void;
 };
 
 export type ElectronAgentApi = {

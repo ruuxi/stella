@@ -39,6 +39,7 @@ import {
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import { NativeSelect } from "@/ui/native-select";
+import { Keybind } from "@/ui/keybind";
 import { AudioTab } from "@/global/settings/AudioTab";
 import { ConnectionsTab } from "@/global/settings/ConnectionsTab";
 import "@/global/settings/settings.css";
@@ -53,7 +54,16 @@ const LegalDialog = lazy(() =>
 // Types
 // ---------------------------------------------------------------------------
 
-type SettingsTab = "basic" | "models" | "audio" | "connections";
+type SettingsTab =
+  | "basic"
+  | "memory"
+  | "backup"
+  | "account"
+  | "models"
+  | "audio"
+  | "connections";
+
+type BasicSettingsSection = "basic" | "memory" | "backup" | "account";
 
 type BasicTabPermissionStatus = {
   accessibility: boolean;
@@ -105,6 +115,9 @@ const LLM_PROVIDERS = [
 
 const TABS: { key: SettingsTab; label: string }[] = [
   { key: "basic", label: "Basic" },
+  { key: "memory", label: "Memory" },
+  { key: "backup", label: "Backups" },
+  { key: "account", label: "Account & Legal" },
   { key: "models", label: "Models" },
   { key: "audio", label: "Audio" },
   { key: "connections", label: "Connections" },
@@ -125,14 +138,95 @@ function formatBackupTimestamp(timestamp?: number) {
   return new Date(timestamp).toLocaleString();
 }
 
+const MODIFIER_KEYS = new Set([
+  "Control",
+  "Shift",
+  "Alt",
+  "Meta",
+  "Command",
+]);
+
+function formatShortcutForDisplay(shortcut: string): string[] {
+  if (!shortcut) return ["Off"];
+  return shortcut
+    .split("+")
+    .filter(Boolean)
+    .map((part) => {
+      switch (part) {
+        case "CommandOrControl":
+          return window.electronAPI?.platform === "darwin" ? "⌘" : "Ctrl";
+        case "Command":
+        case "Meta":
+          return window.electronAPI?.platform === "darwin" ? "⌘" : "Meta";
+        case "Control":
+        case "Ctrl":
+          return "Ctrl";
+        case "Alt":
+          return window.electronAPI?.platform === "darwin" ? "⌥" : "Alt";
+        case "Shift":
+          return "Shift";
+        case "Space":
+          return "Space";
+        default:
+          return part.length === 1 ? part.toUpperCase() : part;
+      }
+    });
+}
+
+function keyToAcceleratorPart(event: KeyboardEvent): string | null {
+  if (MODIFIER_KEYS.has(event.key)) return null;
+  if (/^[a-z]$/i.test(event.key)) return event.key.toUpperCase();
+  if (/^[0-9]$/.test(event.key)) return event.key;
+
+  switch (event.key) {
+    case " ":
+    case "Spacebar":
+      return "Space";
+    case "Escape":
+      return "Escape";
+    case "Enter":
+      return "Enter";
+    case "Tab":
+      return "Tab";
+    case "Backspace":
+      return "Backspace";
+    case "Delete":
+      return "Delete";
+    case "ArrowUp":
+      return "Up";
+    case "ArrowDown":
+      return "Down";
+    case "ArrowLeft":
+      return "Left";
+    case "ArrowRight":
+      return "Right";
+    default:
+      return /^F\d{1,2}$/.test(event.key) ? event.key : null;
+  }
+}
+
+function keyboardEventToAccelerator(event: KeyboardEvent): string | null {
+  const key = keyToAcceleratorPart(event);
+  if (!key) return null;
+  const parts: string[] = [];
+  if (event.ctrlKey) parts.push("Control");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+  if (event.metaKey) parts.push("Command");
+  parts.push(key);
+  return parts.join("+");
+}
+
 // ---------------------------------------------------------------------------
-// Basic Tab
+// General Settings Sections
 // ---------------------------------------------------------------------------
 
-function BasicTab({
+function GeneralSettingsTab({
+  section,
   onSignOut,
   onOpenLegal,
 }: {
+  section: BasicSettingsSection;
   onSignOut?: () => void;
   onOpenLegal?: (doc: LegalDocument) => void;
 }) {
@@ -166,6 +260,15 @@ function BasicTab({
   const [isRestartingAfterPermissions, setIsRestartingAfterPermissions] =
     useState(false);
   const [screenRestartRecommended, setScreenRestartRecommended] = useState(false);
+  const [dictationShortcut, setDictationShortcut] = useState("Control+M");
+  const [dictationShortcutLoaded, setDictationShortcutLoaded] = useState(false);
+  const [isCapturingDictationShortcut, setIsCapturingDictationShortcut] =
+    useState(false);
+  const [isSavingDictationShortcut, setIsSavingDictationShortcut] =
+    useState(false);
+  const [dictationShortcutError, setDictationShortcutError] = useState<
+    string | null
+  >(null);
 
   const loadBackupState = useCallback(async () => {
     const systemApi = window.electronAPI?.system;
@@ -216,6 +319,42 @@ function BasicTab({
       cancelled = true;
     };
   }, [loadBackupState]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const dictationApi = window.electronAPI?.dictation;
+    if (!dictationApi?.getShortcut) {
+      setDictationShortcutLoaded(true);
+      return;
+    }
+    void dictationApi
+      .getShortcut()
+      .then((shortcut) => {
+        if (!cancelled) {
+          setDictationShortcut(shortcut);
+          setDictationShortcutError(null);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setDictationShortcutError(
+            getSettingsErrorMessage(
+              error,
+              "Failed to load dictation shortcut.",
+            ),
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDictationShortcutLoaded(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchPermissionStatus = useCallback(async () => {
     const systemApi = window.electronAPI?.system;
@@ -429,23 +568,137 @@ function BasicTab({
     }
   }, []);
 
+  const saveDictationShortcut = useCallback(async (shortcut: string) => {
+    const dictationApi = window.electronAPI?.dictation;
+    if (!dictationApi?.setShortcut) {
+      setDictationShortcutError("Dictation shortcuts are unavailable in this window.");
+      return;
+    }
+
+    setIsSavingDictationShortcut(true);
+    setDictationShortcutError(null);
+    try {
+      const result = await dictationApi.setShortcut(shortcut);
+      setDictationShortcut(result.activeShortcut);
+      if (!result.ok) {
+        setDictationShortcutError(result.error ?? "That shortcut is unavailable.");
+        showToast({
+          title: "Shortcut unavailable",
+          description: result.error ?? "That shortcut is already in use.",
+          variant: "error",
+        });
+        return;
+      }
+      showToast({
+        title: shortcut ? "Dictation shortcut updated" : "Dictation shortcut cleared",
+        description: shortcut
+          ? `Press ${formatShortcutForDisplay(shortcut).join(" + ")} to start dictation.`
+          : "Global dictation is disabled until you set a new shortcut.",
+      });
+    } catch (error) {
+      const message = getSettingsErrorMessage(
+        error,
+        "Failed to update dictation shortcut.",
+      );
+      setDictationShortcutError(message);
+      showToast({
+        title: "Shortcut update failed",
+        description: message,
+        variant: "error",
+      });
+    } finally {
+      setIsSavingDictationShortcut(false);
+      setIsCapturingDictationShortcut(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isCapturingDictationShortcut) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (event.key === "Escape") {
+        setIsCapturingDictationShortcut(false);
+        return;
+      }
+
+      const accelerator = keyboardEventToAccelerator(event);
+      if (!accelerator) return;
+      void saveDictationShortcut(accelerator);
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isCapturingDictationShortcut, saveDictationShortcut]);
+
   return (
     <div className="settings-tab-content">
-      <div className="settings-card">
-        <h3 className="settings-card-title">Shortcuts</h3>
-        <p className="settings-card-desc">
-          {platform === "darwin"
-            ? "Hold ⌘ and right-click anywhere on your screen to open Stella."
-            : "Hold Ctrl and right-click anywhere on your screen to open Stella."}
-        </p>
-        <p className="settings-card-desc">
-          {platform === "darwin"
-            ? "Or tap ⌥ Option twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."
-            : "Or tap Alt twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."}
-        </p>
-      </div>
-      {platform === "darwin" ? (
-        <div className="settings-card">
+      {section === "basic" ? (
+        <>
+          <div className="settings-card">
+            <h3 className="settings-card-title">Shortcuts</h3>
+            <p className="settings-card-desc">
+              {platform === "darwin"
+                ? "Hold ⌘ and right-click anywhere on your screen to open Stella."
+                : "Hold Ctrl and right-click anywhere on your screen to open Stella."}
+            </p>
+            <p className="settings-card-desc">
+              {platform === "darwin"
+                ? "Or tap ⌥ Option twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."
+                : "Or tap Alt twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."}
+            </p>
+            {dictationShortcutError ? (
+              <p
+                className="settings-card-desc settings-card-desc--error"
+                role="alert"
+              >
+                {dictationShortcutError}
+              </p>
+            ) : null}
+            <div className="settings-row">
+              <div className="settings-row-info">
+                <div className="settings-row-label">Dictation</div>
+                <div className="settings-row-sublabel">
+                  Starts in the active Stella composer, or opens OS-wide dictation
+                  when another app is focused.
+                </div>
+              </div>
+              <div className="settings-row-control">
+                <Keybind keys={formatShortcutForDisplay(dictationShortcut)} />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="settings-btn"
+                  disabled={
+                    !dictationShortcutLoaded ||
+                    isSavingDictationShortcut ||
+                    isCapturingDictationShortcut
+                  }
+                  onClick={() => setIsCapturingDictationShortcut(true)}
+                >
+                  {isCapturingDictationShortcut ? "Press keys..." : "Change"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="settings-btn"
+                  disabled={
+                    !dictationShortcutLoaded ||
+                    isSavingDictationShortcut ||
+                    isCapturingDictationShortcut ||
+                    !dictationShortcut
+                  }
+                  onClick={() => void saveDictationShortcut("")}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </div>
+          {platform === "darwin" ? (
+            <div className="settings-card">
           <h3 className="settings-card-title">Permissions</h3>
           <p className="settings-card-desc">
             Stella will ask for these when you first use a feature. You can
@@ -538,9 +791,12 @@ function BasicTab({
               </div>
             </div>
           ) : null}
-        </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
-      <div className="settings-card">
+      {section === "backup" ? (
+        <div className="settings-card">
         <h3 className="settings-card-title">Backups</h3>
         <p className="settings-card-desc">
           Your data is encrypted on this device before it's uploaded.
@@ -654,9 +910,12 @@ function BasicTab({
               </div>
             ))
           : null}
-      </div>
-      <ChronicleSettingsCard />
-      <div className="settings-card">
+        </div>
+      ) : null}
+      {section === "memory" ? <ChronicleSettingsCard /> : null}
+      {section === "account" ? (
+        <>
+          <div className="settings-card">
         <h3 className="settings-card-title">Account</h3>
         <p className="settings-card-desc">
           Manage your Stella account.
@@ -715,8 +974,8 @@ function BasicTab({
             </Button>
           </div>
         </div>
-      </div>
-      <div className="settings-card">
+          </div>
+          <div className="settings-card">
         <h3 className="settings-card-title">Legal</h3>
         <div className="settings-row">
           <div className="settings-row-info">
@@ -748,13 +1007,15 @@ function BasicTab({
             </Button>
           </div>
         </div>
-      </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Chronicle + Dream Memory Card (Basic tab)
+// Chronicle + Dream Memory Card
 // ---------------------------------------------------------------------------
 
 type ChronicleStatus = {
@@ -1992,7 +2253,7 @@ export function SettingsPanel({ children }: { children: React.ReactNode }) {
 export type { SettingsTab };
 
 export interface SettingsScreenProps {
-  /** Tab currently in view. When omitted, defaults to "basic" / billing. */
+  /** Tab currently in view. When omitted, defaults to basic. */
   activeTab?: SettingsTab;
   /** Called when the user clicks a different tab in the sidebar. */
   onActiveTabChange?: (tab: SettingsTab) => void;
@@ -2049,7 +2310,26 @@ export const SettingsScreen = ({
         <div className="settings-layout settings-layout--single">
           <SettingsPanel>
             {activeTab === "basic" ? (
-              <BasicTab
+              <GeneralSettingsTab
+                section="basic"
+                onSignOut={onSignOut}
+                onOpenLegal={setActiveLegalDoc}
+              />
+            ) : activeTab === "memory" ? (
+              <GeneralSettingsTab
+                section="memory"
+                onSignOut={onSignOut}
+                onOpenLegal={setActiveLegalDoc}
+              />
+            ) : activeTab === "backup" ? (
+              <GeneralSettingsTab
+                section="backup"
+                onSignOut={onSignOut}
+                onOpenLegal={setActiveLegalDoc}
+              />
+            ) : activeTab === "account" ? (
+              <GeneralSettingsTab
+                section="account"
                 onSignOut={onSignOut}
                 onOpenLegal={setActiveLegalDoc}
               />

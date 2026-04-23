@@ -186,10 +186,19 @@ export const useDictation = ({
   }, [start, stop]);
 
   useEffect(() => {
-    const handler = () => toggle();
+    const handler = (event: Event) => {
+      const startId = (event as CustomEvent<{ startId?: string }>).detail
+        ?.startId;
+      const current = stateRef.current;
+      const canHandle =
+        !disabled || current === "listening" || current === "transcribing";
+      if (!canHandle) return;
+      window.electronAPI?.dictation?.inAppStarted({ startId });
+      toggle();
+    };
     window.addEventListener(DICTATION_TOGGLE_EVENT, handler);
     return () => window.removeEventListener(DICTATION_TOGGLE_EVENT, handler);
-  }, [toggle]);
+  }, [disabled, toggle]);
 
   useEffect(() => {
     return () => {

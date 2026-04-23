@@ -377,8 +377,12 @@ function RootChrome() {
   // a window event so the active composer's `useDictation` hook can toggle
   // its STT session — this avoids each composer talking to IPC directly.
   useEffect(() => {
-    return window.electronAPI?.dictation?.onToggle(() => {
-      window.dispatchEvent(new CustomEvent(DICTATION_TOGGLE_EVENT));
+    return window.electronAPI?.dictation?.onToggle((payload) => {
+      window.dispatchEvent(
+        new CustomEvent(DICTATION_TOGGLE_EVENT, {
+          detail: payload,
+        }),
+      );
     });
   }, []);
 

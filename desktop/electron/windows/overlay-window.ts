@@ -335,6 +335,7 @@ export class OverlayWindowController {
   private activeRadial = false
   private activeRegionCapture = false
   private activeVoice = false
+  private activeDictation = false
   private activeScreenGuide = false
   private activeWindowHighlight = false
   private windowHighlightRequestId = 0
@@ -438,6 +439,7 @@ export class OverlayWindowController {
     return this.activeRadial ||
       this.activeRegionCapture ||
       this.activeVoice ||
+      this.activeDictation ||
       this.activeScreenGuide ||
       this.activeWindowHighlight ||
       this.activeSelectionChip ||
@@ -643,6 +645,28 @@ export class OverlayWindowController {
   hideVoice() {
     this.activeVoice = false
     this.overlayWindow.send('overlay:hideVoice')
+    this.hideOverlayIfIdle()
+  }
+
+  send(channel: string, ...args: unknown[]) {
+    this.overlayWindow.send(channel, ...args)
+  }
+
+  // ─── Dictation ─────────────────────────────────────────────────────────
+
+  showDictation(screenX: number, screenY: number) {
+    this.activeDictation = true
+    this.overlayWindow.show({ inactive: true })
+    const origin = this.overlayWindow.getOverlayOrigin()
+    this.overlayWindow.send('overlay:showDictation', {
+      x: screenX - origin.x,
+      y: screenY - origin.y,
+    })
+  }
+
+  hideDictation() {
+    this.activeDictation = false
+    this.overlayWindow.send('overlay:hideDictation')
     this.hideOverlayIfIdle()
   }
 

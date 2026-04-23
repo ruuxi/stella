@@ -169,3 +169,37 @@
 .radial-center-stella-animation .ascii-canvas {
   transform: translate(-50%, -50%) scale(0.5);
 }
+
+/* OS-wide dictation */
+.dictation-overlay {
+  position: absolute;
+  z-index: 4;
+  width: 360px;
+  min-height: 56px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid var(--border-base, var(--border));
+  background: var(--surface-overlay, var(--card));
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.18),
+    0 2px 10px rgba(0, 0, 0, 0.08);
+  pointer-events: auto;
+  backdrop-filter: blur(18px);
+  -webkit-app-region: no-drag;
+}
+
+.dictation-overlay .chat-composer-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.dictation-overlay .composer-dictation-waveform {
+  height: 30px;
+}
