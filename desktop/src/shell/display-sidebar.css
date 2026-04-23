@@ -124,6 +124,42 @@
   width: 100%;
 }
 
+html[data-stella-window="mini"] .display-sidebar--open {
+  width: 100%;
+  flex: 1;
+}
+
+html[data-stella-window="mini"] .display-sidebar,
+html[data-stella-window="mini"] .display-sidebar--open {
+  border-radius: 0;
+  margin-left: 0;
+  transition: none;
+}
+
+html[data-stella-window="mini"] .display-sidebar--open .display-sidebar-inner {
+  width: 100%;
+  border-left: none;
+  border-radius: 0;
+}
+
+@media (max-width: 600px) {
+  .display-sidebar--open .display-sidebar-inner {
+    width: 100%;
+    border-left: none;
+    border-radius: 0;
+  }
+}
+
+html[data-stella-window="mini"] .full-body:has(.display-sidebar--open) .content-area,
+html[data-stella-window="mini"] .full-body:has(.display-sidebar--open) .chat-sidebar {
+  display: none;
+}
+
+html[data-stella-window="mini"] .display-sidebar__resize-handle,
+html[data-stella-window="mini"] .display-sidebar__chrome-btn[aria-pressed] {
+  display: none;
+}
+
 /* ── Top-right chrome row (expand + close) ──────────────────────────── */
 
 .display-sidebar__chrome {
