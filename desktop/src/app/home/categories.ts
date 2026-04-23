@@ -71,8 +71,7 @@ function buildCategoriesFromSuggestions(
 /**
  * Read persisted onboarding-personalized suggestions for the conversation
  * and fall back to `DEFAULT_CATEGORIES` until they arrive (or if loading
- * fails). Used by both the home footer entry point and the Ideas display
- * tab so they always show the same set.
+ * fails). Used by the Ideas display tab.
  */
 export function usePersonalizedCategories(
   conversationId: string | null,

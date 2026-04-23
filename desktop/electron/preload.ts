@@ -25,6 +25,7 @@ import {
   IPC_MORPH_RENDERER_PAINTED,
   IPC_OFFICE_PREVIEW_LIST,
   IPC_OFFICE_PREVIEW_UPDATE,
+  IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE,
 } from "../src/shared/contracts/ipc-channels.js";
 import type {
   OnboardingSynthesisRequest,
@@ -131,6 +132,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     restoreSize: () => ipcRenderer.send("window:restoreSize"),
     isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
     show: (target: "mini" | "full") => ipcRenderer.send("window:show", target),
+    setNativeButtonsVisible: (visible: boolean) =>
+      ipcRenderer.send(IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE, visible),
   },
 
   display: {

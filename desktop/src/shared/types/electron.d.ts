@@ -136,6 +136,7 @@ export type ElectronWindowApi = {
   restoreSize: () => void;
   isMaximized: () => Promise<boolean>;
   show: (target: WindowMode) => void;
+  setNativeButtonsVisible: (visible: boolean) => void;
 };
 
 export type ElectronUiApi = {
