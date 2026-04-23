@@ -6,6 +6,21 @@ import type {
 
 export const MULTI_TOOL_USE_PARALLEL_TOOL_NAME = "multi_tool_use.parallel";
 
+/**
+ * Tools that mutate session state and must never be invoked concurrently
+ * inside a single `multi_tool_use.parallel` batch. Mirrors Codex's
+ * `supports_parallel_tool_calls: false` flag (e.g. `write_stdin` would race
+ * other writes against the same PTY session).
+ */
+const NON_PARALLEL_TOOL_NAMES = new Set<string>([
+  "write_stdin",
+  "ask_user_question",
+  "AskUserQuestion",
+  "askQuestion",
+  "request_credential",
+  "RequestCredential",
+]);
+
 export const MULTI_TOOL_USE_PARALLEL_JSON_SCHEMA = {
   type: "object",
   properties: {
@@ -77,18 +92,23 @@ export const handleMultiToolUseParallel = async (
     ? new Set(context.allowedToolNames)
     : null;
 
-  const results = await Promise.all(
-    requested.map(async (entry, index) => {
-      const record =
-        entry && typeof entry === "object"
-          ? (entry as { recipient_name?: unknown; parameters?: unknown })
-          : null;
-      const toolName = normalizeToolName(record?.recipient_name);
-      const parameters =
-        record?.parameters && typeof record.parameters === "object"
-          ? (record.parameters as Record<string, unknown>)
-          : {};
+  // Pre-compute normalized entries so we validate the whole batch before any
+  // tool runs.
+  const normalizedEntries = requested.map((entry, index) => {
+    const record =
+      entry && typeof entry === "object"
+        ? (entry as { recipient_name?: unknown; parameters?: unknown })
+        : null;
+    const toolName = normalizeToolName(record?.recipient_name);
+    const parameters =
+      record?.parameters && typeof record.parameters === "object"
+        ? (record.parameters as Record<string, unknown>)
+        : {};
+    return { index, toolName, parameters };
+  });
 
+  const results = await Promise.all(
+    normalizedEntries.map(async ({ index, toolName, parameters }) => {
       if (!toolName) {
         return {
           index,
@@ -101,6 +121,13 @@ export const handleMultiToolUseParallel = async (
           index,
           tool_name: toolName,
           error: "Nested multi_tool_use.parallel calls are not allowed.",
+        };
+      }
+      if (NON_PARALLEL_TOOL_NAMES.has(toolName)) {
+        return {
+          index,
+          tool_name: toolName,
+          error: `${toolName} is not safe to run inside multi_tool_use.parallel; call it directly.`,
         };
       }
       if (allowedToolNames && !allowedToolNames.has(toolName)) {

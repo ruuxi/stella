@@ -19,7 +19,9 @@ export const createWriteStdinTool = (
     type: "object",
     properties: {
       session_id: {
-        type: "number",
+        // Stella allocates UUID session ids; advertised as `string` so strict
+        // tool validators don't reject the value the model echoes back.
+        type: "string",
         description: "Identifier of a still-running exec_command session.",
       },
       chars: {
@@ -30,7 +32,7 @@ export const createWriteStdinTool = (
       yield_time_ms: {
         type: "number",
         description:
-          "How long to wait (in milliseconds) for output before yielding.",
+          "How long to wait (in milliseconds) for output before yielding. Defaults to 250.",
       },
       max_output_tokens: {
         type: "number",

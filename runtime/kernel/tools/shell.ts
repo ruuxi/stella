@@ -38,9 +38,23 @@ type ManagedShellRecord = ShellRecord & {
   stdinOpen: boolean;
 };
 
-const DEFAULT_EXEC_YIELD_MS = 1_000;
+// Codex defaults: 10s for exec_command, 250ms for write_stdin. Letting
+// short commands finish on the first call dramatically reduces the
+// "got a session_id, must call write_stdin to drain" round-trip the model
+// would otherwise need for every fast shell invocation.
+export const DEFAULT_EXEC_YIELD_MS = 10_000;
+export const DEFAULT_WRITE_STDIN_YIELD_MS = 250;
 const MAX_EXEC_YIELD_MS = 30_000;
 const DEFAULT_EXEC_OUTPUT_TOKENS = 4_000;
+
+const APPROX_BYTES_PER_TOKEN = 4;
+/**
+ * Cheap byte-count → token estimate matching Codex's
+ * `codex_utils_string::approx_token_count`. Off by a small constant from
+ * any real tokenizer, but stable enough for "did this output get truncated".
+ */
+export const approxTokenCount = (text: string): number =>
+  Math.ceil(text.length / APPROX_BYTES_PER_TOKEN);
 
 const OFFICE_PREVIEW_REF_MARKER = "__STELLA_OFFICE_PREVIEW_REF__";
 
@@ -395,6 +409,26 @@ const outputCharBudgetFromTokens = (value: unknown): number => {
 const truncateRecent = (value: string, max: number): string =>
   value.length > max ? `${value.slice(0, max)}\n\n... (truncated)` : value;
 
+type DrainedOutput = {
+  text: string;
+  originalLength: number;
+  truncated: boolean;
+};
+
+const drainUnreadOutput = (
+  record: ManagedShellRecord,
+  maxChars: number,
+): DrainedOutput => {
+  const unread = record.unreadOutput;
+  record.unreadOutput = "";
+  const text = truncateRecent(unread, maxChars);
+  return {
+    text,
+    originalLength: unread.length,
+    truncated: unread.length > maxChars,
+  };
+};
+
 const notifyShellActivity = (record: ManagedShellRecord) => {
   record.outputVersion += 1;
   const waiters = [...record.waiters];
@@ -442,11 +476,7 @@ const waitForShellActivity = async (
 const takeUnreadOutput = (
   record: ManagedShellRecord,
   maxChars: number,
-): string => {
-  const unread = record.unreadOutput;
-  record.unreadOutput = "";
-  return truncateRecent(unread, maxChars);
-};
+): string => drainUnreadOutput(record, maxChars).text;
 
 const settleCompletedShell = async (
   record: ManagedShellRecord,
@@ -737,25 +767,42 @@ const resolveManagedShellCommand = (
   return { command, cwd, envOverrides };
 };
 
-const resolveExecYieldTime = (value: unknown): number => {
+const resolveExecYieldTime = (
+  value: unknown,
+  defaultMs: number = DEFAULT_EXEC_YIELD_MS,
+): number => {
   const raw =
     typeof value === "number" && Number.isFinite(value)
       ? Math.floor(value)
-      : DEFAULT_EXEC_YIELD_MS;
+      : defaultMs;
   return Math.max(0, Math.min(raw, MAX_EXEC_YIELD_MS));
 };
 
 const buildExecToolPayload = (
   record: ManagedShellRecord,
-  output: string,
-): Record<string, unknown> => ({
-  session_id: record.running ? record.id : null,
-  running: record.running,
-  exit_code: record.running ? null : record.exitCode,
-  output,
-  cwd: record.cwd,
-  command: record.command,
-});
+  drained: DrainedOutput,
+  callStartedAt: number,
+): Record<string, unknown> => {
+  const wallTimeSeconds = (Date.now() - callStartedAt) / 1000;
+  // Mirrors Codex's unified-exec output schema: includes wall_time_seconds and
+  // (when truncation happened) original_token_count so the model can detect
+  // dropped output and react.
+  const payload: Record<string, unknown> = {
+    session_id: record.running ? record.id : null,
+    running: record.running,
+    exit_code: record.running ? null : record.exitCode,
+    output: drained.text,
+    wall_time_seconds: wallTimeSeconds,
+    // Mirrors Codex: always report the pre-truncation token estimate so callers
+    // can distinguish "small output" from "output omitted because it was huge".
+    original_token_count: Math.ceil(
+      drained.originalLength / APPROX_BYTES_PER_TOKEN,
+    ),
+    cwd: record.cwd,
+    command: record.command,
+  };
+  return payload;
+};
 
 const writeToShellStdin = async (
   record: ManagedShellRecord,
@@ -783,6 +830,7 @@ export const handleExecCommand = async (
   context?: ToolContext,
   signal?: AbortSignal,
 ): Promise<ToolResult> => {
+  const callStartedAt = Date.now();
   const prepared = resolveManagedShellCommand(args, context);
   const dangerReason = isDangerousCommand(prepared.command);
   if (dangerReason) {
@@ -805,7 +853,7 @@ export const handleExecCommand = async (
     await waitForShellActivity(
       record,
       observedVersion,
-      resolveExecYieldTime(args.yield_time_ms),
+      resolveExecYieldTime(args.yield_time_ms, DEFAULT_EXEC_YIELD_MS),
       signal,
     );
   } catch (error) {
@@ -813,10 +861,11 @@ export const handleExecCommand = async (
   }
   await settleCompletedShell(record, signal);
 
-  const payload = buildExecToolPayload(
+  const drained = drainUnreadOutput(
     record,
-    takeUnreadOutput(record, outputCharBudgetFromTokens(args.max_output_tokens)),
+    outputCharBudgetFromTokens(args.max_output_tokens),
   );
+  const payload = buildExecToolPayload(record, drained, callStartedAt);
   return { result: payload, details: payload };
 };
 
@@ -826,6 +875,7 @@ export const handleWriteStdin = async (
   _context?: ToolContext,
   signal?: AbortSignal,
 ): Promise<ToolResult> => {
+  const callStartedAt = Date.now();
   const sessionId = String(args.session_id ?? "").trim();
   if (!sessionId) {
     return { error: "session_id is required." };
@@ -849,7 +899,7 @@ export const handleWriteStdin = async (
     await waitForShellActivity(
       record,
       observedVersion,
-      resolveExecYieldTime(args.yield_time_ms),
+      resolveExecYieldTime(args.yield_time_ms, DEFAULT_WRITE_STDIN_YIELD_MS),
       signal,
     );
   } catch (error) {
@@ -857,10 +907,11 @@ export const handleWriteStdin = async (
   }
   await settleCompletedShell(record, signal);
 
-  const payload = buildExecToolPayload(
+  const drained = drainUnreadOutput(
     record,
-    takeUnreadOutput(record, outputCharBudgetFromTokens(args.max_output_tokens)),
+    outputCharBudgetFromTokens(args.max_output_tokens),
   );
+  const payload = buildExecToolPayload(record, drained, callStartedAt);
   return { result: payload, details: payload };
 };
 
