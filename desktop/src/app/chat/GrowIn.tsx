@@ -63,6 +63,7 @@ export function GrowIn({
       controlsRef.current?.stop();
       setSettled(false);
       entranceDoneRef.current = false;
+      outer.style.height = `${outer.getBoundingClientRect().height}px`;
       controlsRef.current = animate(
         outer,
         { height: "0px", opacity: 0 },
@@ -83,8 +84,8 @@ export function GrowIn({
     }
   }, [show, canAnimate, duration]);
 
-  // After the entrance animation period, remove overflow:clip and switch to
-  // snapping height. During streaming the ResizeObserver restarts the spring on
+  // After the entrance animation period, remove overflow:clip and return to
+  // natural height. During streaming the ResizeObserver restarts the spring on
   // every chunk, so onComplete never fires and overflow:clip persists — clipping
   // the bottom of the last assistant message. This timer guarantees the clip is
   // lifted after the entrance window regardless.
@@ -95,11 +96,10 @@ export function GrowIn({
     }
     const timer = setTimeout(() => {
       entranceDoneRef.current = true;
-      const inner = innerRef.current;
       const outer = outerRef.current;
-      if (inner && outer) {
+      if (outer) {
         controlsRef.current?.stop();
-        outer.style.height = `${inner.getBoundingClientRect().height}px`;
+        outer.style.height = "auto";
       }
       setSettled(true);
     }, duration);
@@ -117,11 +117,11 @@ export function GrowIn({
       if (!entry) return;
       const h = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
 
-      // After the entrance period, snap height immediately so content is
-      // never clipped by a lagging spring animation.
+      // After the entrance period, let normal layout own height so late
+      // markdown/font/resource reflows cannot paint outside a stale wrapper.
       if (entranceDoneRef.current) {
         controlsRef.current?.stop();
-        outer.style.height = `${h}px`;
+        outer.style.height = "auto";
         return;
       }
 
@@ -135,6 +135,7 @@ export function GrowIn({
           bounce: 0,
           onComplete: () => {
             entranceDoneRef.current = true;
+            outer.style.height = "auto";
             setSettled(true);
           },
         },
