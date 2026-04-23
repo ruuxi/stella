@@ -1,0 +1,41 @@
+/* Recording bar elements live as direct flex children of the composer
+   form, so they pick up its `align-items: center` automatically. */
+
+.composer-dictation-waveform {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  display: block;
+  /* Canvas inherits this `color` to draw the bars. */
+  color: color-mix(in oklch, var(--text-base) 70%, transparent);
+}
+
+.composer-dictation-timer {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklch, var(--text-base) 70%, transparent);
+  padding: 0 4px;
+  user-select: none;
+}
+
+.composer-dictation-control {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: none;
+  color: color-mix(in oklch, var(--text-base) 75%, transparent);
+}
+
+.composer-dictation-control:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
+.composer-dictation-control--confirm {
+  color: var(--text-strong);
+}
+
+.composer-dictation-control--confirm:hover:not(:disabled) {
+  color: var(--primary, var(--text-strong));
+}

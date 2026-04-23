@@ -63,6 +63,7 @@ import {
 } from "@/shared/lib/stella-send-message";
 import { dispatchStellaPinSuggestion } from "@/shared/lib/stella-suggestions";
 import type { SuggestionChip } from "@/app/chat/hooks/use-auto-context-chips";
+import { DICTATION_TOGGLE_EVENT } from "@/features/dictation/hooks/use-dictation";
 
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
@@ -370,6 +371,16 @@ function RootChrome() {
   // device, the agent, the studio, …) gets downloaded into
   // `state/media/outputs/` and surfaced in the Display sidebar.
   useMediaMaterializer({ onMaterialized: routeDisplayPayload });
+
+  // Global Cmd/Ctrl+Shift+M (or any dictation accelerator the user picks)
+  // arrives here as an IPC signal from the focused window. Re-dispatch as
+  // a window event so the active composer's `useDictation` hook can toggle
+  // its STT session — this avoids each composer talking to IPC directly.
+  useEffect(() => {
+    return window.electronAPI?.dictation?.onToggle(() => {
+      window.dispatchEvent(new CustomEvent(DICTATION_TOGGLE_EVENT));
+    });
+  }, []);
 
   // Cmd+right-click → "Open chat" on a window dispatches a context chip.
   useEffect(() => {

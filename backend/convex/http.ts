@@ -13,6 +13,7 @@ import { registerMusicRoutes } from "./http_routes/music";
 import { registerStripeRoutes } from "./http_routes/stripe";
 import { registerSynthesisRoutes } from "./http_routes/synthesis";
 import { registerVoiceRoutes } from "./http_routes/voice";
+import { registerDictationRoutes } from "./http_routes/dictation";
 
 // Stella provider endpoints
 import {
@@ -44,6 +45,7 @@ registerMusicRoutes(http);
 registerMediaRoutes(http);
 registerMobileRoutes(http);
 registerVoiceRoutes(http);
+registerDictationRoutes(http);
 
 registerStripeRoutes(http);
 

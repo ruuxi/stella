@@ -339,6 +339,27 @@ export type ElectronVoiceApi = {
   ) => Promise<VoiceShortcutRegistrationResult>;
 };
 
+export type ElectronDictationApi = {
+  /**
+   * Subscribe to global Cmd/Ctrl+Shift+M presses (or any other registered
+   * dictation shortcut). The renderer dispatches the in-window event the
+   * `useDictation` hook listens to so the active composer toggles its
+   * speech-to-text session.
+   */
+  onToggle: (callback: () => void) => () => void;
+  /** Programmatically trigger the same toggle from the renderer. */
+  trigger: () => Promise<{ ok: boolean }>;
+  /** Returns the currently registered global shortcut accelerator. */
+  getShortcut: () => Promise<string>;
+  /**
+   * Replace the global shortcut accelerator. Pass an empty string to
+   * disable the shortcut entirely.
+   */
+  setShortcut: (
+    shortcut: string,
+  ) => Promise<VoiceShortcutRegistrationResult>;
+};
+
 export type ElectronAgentApi = {
   healthCheck: () => Promise<AgentHealth | null>;
   getActiveRun: () => Promise<{
@@ -822,6 +843,7 @@ export type ElectronApi = {
   screenGuide: ElectronScreenGuideApi;
   theme: ElectronThemeApi;
   voice: ElectronVoiceApi;
+  dictation: ElectronDictationApi;
   agent: ElectronAgentApi;
   system: ElectronSystemApi;
   onboarding: ElectronOnboardingApi;

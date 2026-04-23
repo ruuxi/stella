@@ -16,6 +16,7 @@ import { registerStoreHandlers } from "../ipc/store-handlers.js";
 import { registerSystemHandlers } from "../ipc/system-handlers.js";
 import { registerUiHandlers } from "../ipc/ui-handlers.js";
 import { registerVoiceHandlers } from "../ipc/voice-handlers.js";
+import { registerDictationHandlers } from "../ipc/dictation-handlers.js";
 import { startCapturingHandlers } from "../services/mobile-bridge/handler-registry.js";
 import {
   type BootstrapContext,
@@ -241,6 +242,10 @@ export const registerBootstrapIpcHandlers = (
     getStellaHostRunner: lifecycle.getRunner,
     getBroadcastToMobile: lazyMobileBroadcast,
     getOverlayController: () => state.overlayController ?? null,
+  });
+
+  registerDictationHandlers({
+    windowManager: state.windowManager!,
   });
 
   stopCapturing();

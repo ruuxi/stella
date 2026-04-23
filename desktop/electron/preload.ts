@@ -389,6 +389,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
   },
 
+  dictation: {
+    onToggle: onIpcSignal("dictation:toggle"),
+    trigger: () =>
+      ipcRenderer.invoke("dictation:trigger") as Promise<{ ok: boolean }>,
+    getShortcut: () =>
+      ipcRenderer.invoke("dictation:getShortcut") as Promise<string>,
+    setShortcut: (shortcut: string) =>
+      ipcRenderer.invoke("dictation:setShortcut", shortcut) as Promise<{
+        ok: boolean;
+        requestedShortcut: string;
+        activeShortcut: string;
+        error?: string;
+      }>,
+  },
+
   agent: {
     healthCheck: () =>
       ipcRenderer.invoke("agent:healthCheck") as Promise<{

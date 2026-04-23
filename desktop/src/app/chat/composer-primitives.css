@@ -91,3 +91,43 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.chat-composer-icon-button--mic {
+  background: transparent;
+  border: none;
+  color: var(--text-strong);
+}
+
+.chat-composer-icon-button--mic:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.chat-composer-icon-button--mic:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-composer-icon-button--mic-transcribing {
+  color: var(--text-strong);
+  cursor: wait;
+}
+
+/* The spinner SVG itself rotates; the button stays put so the layout
+   doesn't jiggle. transform-origin: center keeps the rotation centered
+   inside the 16x16 viewBox. */
+.chat-composer-spinner-svg {
+  animation: stella-composer-spinner 0.85s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+@keyframes stella-composer-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-composer-spinner-svg {
+    animation: none;
+  }
+}

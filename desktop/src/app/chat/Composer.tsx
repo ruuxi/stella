@@ -9,6 +9,7 @@ import type { ChatContext } from "@/shared/types/electron";
 import { ComposerContextRow, ComposerSuggestionContextRow } from "./ComposerContextRow";
 import {
   ComposerAddButton,
+  ComposerMicButton,
   ComposerStopButton,
   ComposerSubmitButton,
   ComposerTextarea,
@@ -20,6 +21,8 @@ import {
 import { useFileDrop } from "./hooks/use-file-drop";
 import { DropOverlay } from "./DropOverlay";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "./ScreenshotPreview";
+import { useDictation } from "@/features/dictation/hooks/use-dictation";
+import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
 import "./full-shell.composer.css";
 
 type ComposerProps = {
@@ -61,6 +64,12 @@ export function Composer({
 
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext,
+    disabled: isStreaming,
+  });
+
+  const dictation = useDictation({
+    message,
+    setMessage,
     disabled: isStreaming,
   });
 
@@ -160,6 +169,7 @@ export function Composer({
             aria-busy={isStreaming}
             onSubmit={(event) => {
               event.preventDefault();
+              if (dictation.isRecording) return;
               onSend();
             }}
           >
@@ -169,65 +179,85 @@ export function Composer({
               onClick={onAdd}
             />
 
-            <ComposerTextarea
-              ref={textareaRef}
-              className="composer-input"
-              placeholder={placeholder}
-              value={message}
-              onChange={(event) => {
-                setMessage(event.target.value);
-                requestAnimationFrame(() => {
-                  const el = textareaRef.current;
-                  if (!el) return;
-                  const form = el.closest(".composer-form") as HTMLElement | null;
-                  if (!form) return;
-                  const isExpanded = form.classList.contains("expanded");
+            {dictation.isRecording ? (
+              <DictationRecordingBar
+                levels={dictation.levels}
+                elapsedMs={dictation.elapsedMs}
+                onCancel={dictation.cancel}
+                onConfirm={dictation.toggle}
+              />
+            ) : (
+              <>
+                <ComposerTextarea
+                  ref={textareaRef}
+                  className="composer-input"
+                  placeholder={placeholder}
+                  value={message}
+                  onChange={(event) => {
+                    setMessage(event.target.value);
+                    requestAnimationFrame(() => {
+                      const el = textareaRef.current;
+                      if (!el) return;
+                      const form = el.closest(".composer-form") as HTMLElement | null;
+                      if (!form) return;
+                      const isExpanded = form.classList.contains("expanded");
 
-                  if (!isExpanded) {
-                    if (el.scrollHeight > 44) setComposerExpanded(true);
-                  } else {
-                    form.classList.remove("expanded");
-                    const pillSh = el.scrollHeight;
-                    form.classList.add("expanded");
-                    if (pillSh <= 44) setComposerExpanded(false);
-                  }
-                });
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  onSend();
-                }
-              }}
-              disabled={!conversationId}
-              rows={1}
-            />
-
-            <div className="composer-toolbar">
-              <div className="composer-toolbar-left">
-                <ComposerAddButton
-                  className="composer-add-button composer-add-button--toolbar"
-                  title="Add"
-                  onClick={onAdd}
+                      if (!isExpanded) {
+                        if (el.scrollHeight > 44) setComposerExpanded(true);
+                      } else {
+                        form.classList.remove("expanded");
+                        const pillSh = el.scrollHeight;
+                        form.classList.add("expanded");
+                        if (pillSh <= 44) setComposerExpanded(false);
+                      }
+                    });
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      onSend();
+                    }
+                  }}
+                  disabled={!conversationId}
+                  rows={1}
                 />
-              </div>
 
-              <div className="composer-toolbar-right">
-                {isStreaming && (
-                  <ComposerStopButton
-                    className="composer-stop"
-                    onClick={onStop}
-                    title="Stop"
-                    aria-label="Stop"
-                  />
-                )}
-                <ComposerSubmitButton
-                  className="composer-submit"
-                  disabled={!canSubmit}
-                  animated
-                />
-              </div>
-            </div>
+                <div className="composer-toolbar">
+                  <div className="composer-toolbar-left">
+                    <ComposerAddButton
+                      className="composer-add-button composer-add-button--toolbar"
+                      title="Add"
+                      onClick={onAdd}
+                    />
+                  </div>
+
+                  <div className="composer-toolbar-right">
+                    <ComposerMicButton
+                      className="composer-mic"
+                      isTranscribing={dictation.isTranscribing}
+                      disabled={
+                        isStreaming || dictation.isTranscribing
+                      }
+                      onClick={dictation.toggle}
+                      title={dictation.error ? `Dictation: ${dictation.error}` : undefined}
+                    />
+                    {isStreaming && (
+                      <ComposerStopButton
+                        className="composer-stop"
+                        onClick={onStop}
+                        title="Stop"
+                        aria-label="Stop"
+                      />
+                    )}
+                    <ComposerSubmitButton
+                      className="composer-submit"
+                      disabled={!canSubmit}
+                      animated
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </form>
         </div>
       </div>
