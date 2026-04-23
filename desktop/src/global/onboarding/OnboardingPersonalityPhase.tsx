@@ -6,15 +6,23 @@ const EMOTE_PREVIEW_SRC = "/emotes/assets/7tv/Agreeing-6db2604d601b.webp";
 type PersonalityPhaseProps = {
   expressionStyle: ExpressionStyle;
   splitTransitionActive: boolean;
+  showEyes: boolean;
+  showMouth: boolean;
   onFinish: () => void;
   onSelectStyle: (style: Exclude<ExpressionStyle, null>) => void;
+  onToggleEyes: () => void;
+  onToggleMouth: () => void;
 };
 
 export function OnboardingPersonalityPhase({
   expressionStyle,
   splitTransitionActive,
+  showEyes,
+  showMouth,
   onFinish,
   onSelectStyle,
+  onToggleEyes,
+  onToggleMouth,
 }: PersonalityPhaseProps) {
   const [emotePreviewUnavailable, setEmotePreviewUnavailable] = useState(false);
   const handleSelectStyle = (style: Exclude<ExpressionStyle, null>) => {
@@ -62,6 +70,31 @@ export function OnboardingPersonalityPhase({
           "Got it! I'll get that done for you \uD83D\uDE0A"}
         {expressionStyle === "none" && "Got it. I'll get that done for you."}
       </p>
+
+      <div className="onboarding-look-section">
+        <div className="onboarding-step-label">How should I look?</div>
+        <div className="onboarding-pills onboarding-pill-stagger">
+          <button
+            type="button"
+            className="onboarding-pill"
+            data-active={showEyes}
+            aria-pressed={showEyes}
+            onClick={onToggleEyes}
+          >
+            Eyes
+          </button>
+          <button
+            type="button"
+            className="onboarding-pill"
+            data-active={showMouth}
+            aria-pressed={showMouth}
+            onClick={onToggleMouth}
+          >
+            Mouth
+          </button>
+        </div>
+      </div>
+
       <button
         className="onboarding-confirm"
         data-visible={expressionStyle !== null}

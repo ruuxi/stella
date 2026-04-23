@@ -42,6 +42,9 @@ export const createProgram = (
 };
 
 export const getFragmentShader = (): string => {
+  // CPU precomputes per-frame values that are constant across all pixels
+  // (phase weights, eye origin & blink, mouth pos/shape/anim, canvas aspect).
+  // This eliminates dozens of trig ops per pixel.
   const baseHeader = `
     precision mediump float;
     uniform vec2 u_canvasSize;
@@ -53,6 +56,15 @@ export const getFragmentShader = (): string => {
     uniform float u_listening;
     uniform float u_speaking;
     uniform float u_voiceEnergy;
+    uniform float u_aspect;
+    uniform vec3 u_phases;
+    uniform vec2 u_eyeOrigin;
+    uniform float u_eyeBlink;
+    uniform vec2 u_mouthPos;
+    uniform float u_mouthShape;
+    uniform float u_mouthAnim;
+    uniform float u_showEyes;
+    uniform float u_showMouth;
     uniform sampler2D u_glyph;
     uniform vec3 u_colors[5];
   `;
@@ -92,105 +104,42 @@ export const getFragmentShader = (): string => {
 
     gl_FragColor = vec4(color, glyphAlpha);
 
-    // Eyes — rectangular dots
+    // Eyes — origin and blink come from CPU
     float eyeGap = 5.0 / u_gridSize.x;
-    float eyeUp = 2.5 / u_gridSize.y;
-
-    // Eyes follow animation phases via w1/w2/w3
-    // Phase 1: orbital drift matching spiral rotation
-    float eyeAngle = -u_time * 2.5;
-    vec2 drift1 = vec2(cos(eyeAngle), sin(eyeAngle)) * 1.1;
-
-    // Phase 2: pull toward dominant pulsing ray
-    float et = u_time * 2.0;
-    float ep1 = sin(et) * 0.5 + 0.5;
-    float ep2 = sin(et + 2.094) * 0.5 + 0.5;
-    float ep3 = sin(et + 4.188) * 0.5 + 0.5;
-    float epSum = ep1 + ep2 + ep3;
-    vec2 drift2 = (vec2(1.0, 0.0) * ep1
-                 + vec2(-0.5, 0.866) * ep2
-                 + vec2(-0.5, -0.866) * ep3) / epSum * 1.8;
-
-    // Phase 3: breathing vertical shift
-    vec2 drift3 = vec2(0.0, -sin(u_time * 0.4)) * 0.9;
-
-    vec2 eyeDrift = drift1 * w1 + drift2 * w2 + drift3 * w3;
-    vec2 eyeOrigin = vec2(0.5 + eyeDrift.x / u_gridSize.x, 0.5 - eyeUp + eyeDrift.y / u_gridSize.y);
-
-    // Pseudo-random blink — hash each time slot for natural timing
-    float blinkSlot = floor(u_time / 0.8);
-    float blinkHash = fract(sin(blinkSlot * 91.7) * 43758.5453);
-    float blinkLocal = fract(u_time / 0.8);
-    float doBlink = step(0.65, blinkHash);
-
-    // Quick V-shaped close-open
-    float bt = clamp(blinkLocal / 0.1, 0.0, 1.0);
-    float blinkCurve = smoothstep(0.0, 1.0, abs(bt * 2.0 - 1.0));
-    float blink = mix(1.0, blinkCurve, doBlink);
-
-    // Occasional double-blink (~20% of blinks)
-    float dblHash = fract(sin(blinkSlot * 73.3) * 28461.7);
-    float doDouble = step(0.8, dblHash) * doBlink;
-    float bt2 = clamp((blinkLocal - 0.15) / 0.1, 0.0, 1.0);
-    float dblCurve = smoothstep(0.0, 1.0, abs(bt2 * 2.0 - 1.0));
-    blink *= mix(1.0, dblCurve, doDouble);
-
-    vec2 eyeHalf = vec2(1.0 / u_gridSize.x, 1.5 / u_gridSize.y * blink);
-    float leftEye = step(abs(uv.x - eyeOrigin.x + eyeGap), eyeHalf.x)
-                  * step(abs(uv.y - eyeOrigin.y), eyeHalf.y);
-    float rightEye = step(abs(uv.x - eyeOrigin.x - eyeGap), eyeHalf.x)
-                   * step(abs(uv.y - eyeOrigin.y), eyeHalf.y);
-    float eyeMask = max(leftEye, rightEye) * smoothstep(0.3, 0.6, u_birth);
+    vec2 eyeHalf = vec2(1.0 / u_gridSize.x, 1.5 / u_gridSize.y * u_eyeBlink);
+    float leftEye = step(abs(uv.x - u_eyeOrigin.x + eyeGap), eyeHalf.x)
+                  * step(abs(uv.y - u_eyeOrigin.y), eyeHalf.y);
+    float rightEye = step(abs(uv.x - u_eyeOrigin.x - eyeGap), eyeHalf.x)
+                   * step(abs(uv.y - u_eyeOrigin.y), eyeHalf.y);
+    float eyeMask = max(leftEye, rightEye) * smoothstep(0.3, 0.6, u_birth) * u_showEyes;
     gl_FragColor = mix(gl_FragColor, vec4(u_colors[4], 1.0), eyeMask);
 
-    // Mouth — expressive shapes that follow the face
-    vec2 mouthPos = vec2(eyeOrigin.x, eyeOrigin.y + 3.5 / u_gridSize.y);
-
-    // Pseudo-random timing and shape selection
-    float mouthSlot = floor(u_time / 2.5);
-    float mouthHash = fract(sin(mouthSlot * 47.3) * 31718.9);
-    float shapeHash = fract(sin(mouthSlot * 113.1) * 18734.3);
-    float mouthLocal = fract(u_time / 2.5);
-
-    float doOpen = step(0.70, mouthHash);
-
-    // Shape selection — equal 20% each via separate hash
-    float isO =     (1.0 - step(0.2, shapeHash));
-    float isSmile = step(0.2, shapeHash) * (1.0 - step(0.4, shapeHash));
-    float isFrown = step(0.4, shapeHash) * (1.0 - step(0.6, shapeHash));
-    float isSideV = step(0.6, shapeHash) * (1.0 - step(0.8, shapeHash));
-    float isDash =  step(0.8, shapeHash);
-
-    // Open/close animation — longer hold
-    float openUp = smoothstep(0.0, 0.08, mouthLocal);
-    float closeDown = 1.0 - smoothstep(0.6, 0.8, mouthLocal);
-    float mouthAnim = openUp * closeDown * doOpen;
-
-    vec2 md = (uv - mouthPos) * u_gridSize;
+    // Mouth — pos/shape/anim come from CPU; shape index is uniform across pixels
+    // so the if-else cascade is non-divergent on the GPU.
+    vec2 md = (uv - u_mouthPos) * u_gridSize;
     float lineW = 0.5;
 
-    // Compute only the active mouth shape
     float mouthShape = 0.0;
-    if (isO > 0.5) {
+    if (u_mouthShape < 0.5) {
       vec2 mdO = md;
-      mdO.y /= max(mouthAnim, 0.15);
+      mdO.y /= max(u_mouthAnim, 0.15);
       float oDist = length(mdO);
       mouthShape = smoothstep(1.8, 1.5, oDist) * smoothstep(0.5, 0.8, oDist);
-    } else if (isSmile > 0.5) {
+    } else if (u_mouthShape < 1.5) {
       float smileDist = abs(md.y - 0.6 + 0.7 * abs(md.x));
       mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, smileDist)) * step(abs(md.x), 1.8);
-    } else if (isFrown > 0.5) {
+    } else if (u_mouthShape < 2.5) {
       float frownDist = abs(md.y + 0.6 - 0.7 * abs(md.x));
       mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, frownDist)) * step(abs(md.x), 1.8);
-    } else if (isSideV > 0.5) {
+    } else if (u_mouthShape < 3.5) {
       float sideDist = abs(md.x - 0.8 + 0.6 * abs(md.y));
       mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, sideDist)) * step(abs(md.y), 1.2);
-    } else if (isDash > 0.5) {
+    } else {
       mouthShape = (1.0 - smoothstep(lineW * 0.3, lineW * 0.7, abs(md.y))) * step(abs(md.x), 1.5);
     }
-    mouthShape *= smoothstep(0.05, 0.2, mouthAnim);
+    mouthShape *= smoothstep(0.05, 0.2, u_mouthAnim);
 
-    float mouthMask = mouthShape * smoothstep(0.3, 0.6, u_birth);
+    float mouthMask = mouthShape * smoothstep(0.3, 0.6, u_birth) * u_showMouth;
     gl_FragColor = mix(gl_FragColor, vec4(u_colors[4], 1.0), mouthMask);
   `;
 
@@ -245,7 +194,7 @@ export const getFragmentShader = (): string => {
       // True circular distance using canvas pixel aspect ratio.
       // UV scale < EDGE_SCALE leaves room for expansion effects without clipping.
       vec2 c = (uv - 0.5) * 1.2;
-      c.x *= u_canvasSize.x / u_canvasSize.y;
+      c.x *= u_aspect;
       float dist = length(c) * 2.0;
 
       // Early discard — pixels far from center are always transparent
@@ -253,17 +202,17 @@ export const getFragmentShader = (): string => {
 
       float angle = atan(c.y, c.x);
 
-      float cycle = u_time * 0.15;
-      float phase = mod(cycle, 3.0);
+      float w1 = u_phases.x;
+      float w2 = u_phases.y;
+      float w3 = u_phases.z;
 
-      float w1 = max(0.0, 1.0 - abs(phase - 0.0)) + max(0.0, 1.0 - abs(phase - 3.0));
-      float w2 = max(0.0, 1.0 - abs(phase - 1.0));
-      float w3 = max(0.0, 1.0 - abs(phase - 2.0));
-      float total = w1 + w2 + w3;
-      w1 /= total; w2 /= total; w3 /= total;
-
-      // Base intensity from the 3 idle phases — always running
-      float intensity = computePhases(dist, angle, w1, w2, w3);
+      // Base intensity from the 3 idle phases. When listening or speaking is
+      // dominant the base contribution is mixed out by ~mix() to <1%, so skip
+      // the work entirely in that regime.
+      float intensity = 0.0;
+      if (max(u_listening, u_speaking) < 0.99) {
+        intensity = computePhases(dist, angle, w1, w2, w3);
+      }
 
       // Voice: Listening — contract inward, pulsing concentration
       if (u_listening > 0.01) {
