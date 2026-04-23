@@ -162,7 +162,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   smart: {
-    model: "accounts/fireworks/models/glm-5p1",
+    model: "accounts/fireworks/models/kimi-k2p6",
     fallbackMode: "fast",
     managedGatewayProvider: "fireworks",
     temperature: 1.0,
