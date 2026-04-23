@@ -1,10 +1,14 @@
 import {
   app,
+  BrowserWindow,
+  dialog,
   ipcMain,
   shell,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
+import { copyFile, stat } from "node:fs/promises";
+import path from "node:path";
 import {
   getSyncMode,
   loadLocalPreferences,
@@ -40,6 +44,7 @@ import {
   IPC_PERMISSIONS_OPEN_SETTINGS,
   IPC_PERMISSIONS_REQUEST,
   IPC_PERMISSIONS_RESET_MICROPHONE,
+  IPC_SHELL_SAVE_FILE_AS,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
@@ -595,6 +600,59 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       shell.showItemInFolder(filePath.trim());
     }
   });
+
+  ipcMain.handle(
+    IPC_SHELL_SAVE_FILE_AS,
+    async (
+      event,
+      payload: { sourcePath: string; defaultName?: string },
+    ): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_SHELL_SAVE_FILE_AS,
+        )
+      ) {
+        return { ok: false, error: "Blocked untrusted request." };
+      }
+
+      const sourcePath =
+        typeof payload?.sourcePath === "string" ? payload.sourcePath.trim() : "";
+      if (!sourcePath) {
+        return { ok: false, error: "Missing source file." };
+      }
+
+      try {
+        const sourceStat = await stat(sourcePath);
+        if (!sourceStat.isFile()) {
+          return { ok: false, error: "Only files can be saved." };
+        }
+
+        const defaultName =
+          typeof payload.defaultName === "string" && payload.defaultName.trim()
+            ? path.basename(payload.defaultName.trim())
+            : path.basename(sourcePath);
+        const owner = BrowserWindow.fromWebContents(event.sender);
+        const saveOptions = {
+          defaultPath: defaultName,
+        };
+        const result = owner
+          ? await dialog.showSaveDialog(owner, saveOptions)
+          : await dialog.showSaveDialog(saveOptions);
+        if (result.canceled || !result.filePath) {
+          return { ok: false, canceled: true };
+        }
+
+        await copyFile(sourcePath, result.filePath);
+        return { ok: true, path: result.filePath };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  );
 
   ipcMain.on("system:openFullDiskAccess", async (event) => {
     if (

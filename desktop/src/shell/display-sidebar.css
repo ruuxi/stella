@@ -637,7 +637,15 @@ html[data-stella-window="mini"] .display-sidebar__chrome-btn[aria-pressed] {
   font-weight: 500;
 }
 
-.display-media__download-btn {
+.display-media__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.display-media__action-btn {
   align-self: flex-start;
   appearance: none;
   background: var(--accent, var(--foreground));
@@ -650,8 +658,13 @@ html[data-stella-window="mini"] .display-sidebar__chrome-btn[aria-pressed] {
   font-family: inherit;
 }
 
-.display-media__download-btn:hover {
+.display-media__action-btn:hover {
   opacity: 0.9;
+}
+
+.display-media__action-status {
+  font-size: 12px;
+  color: var(--muted-foreground, var(--text-weak));
 }
 
 /* Text variant */

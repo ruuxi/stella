@@ -49,6 +49,34 @@
   font-variant-numeric: tabular-nums;
 }
 
+.pdf-viewer-card__actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pdf-viewer-card__action {
+  appearance: none;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: var(--accent, var(--foreground));
+  color: var(--accent-foreground, var(--background));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pdf-viewer-card__action:hover {
+  opacity: 0.9;
+}
+
+.pdf-viewer-card__action-status {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
 .pdf-viewer-card__scroll {
   flex: 1;
   min-height: 0;

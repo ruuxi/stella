@@ -50,6 +50,7 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageWidth, setPageWidth] = useState<number | null>(null);
+  const [actionStatus, setActionStatus] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const resizeTimerRef = useRef<number | null>(null);
   const lastWidthRef = useRef<number | null>(null);
@@ -57,6 +58,7 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
   // Load file bytes once per filePath.
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading state is intentionally reset when the external file path changes.
     setStatus("loading");
     setErrorMessage(null);
     setBytes(null);
@@ -178,6 +180,20 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
     filePath.split("/").pop()?.replace(/\.pdf$/i, "") ??
     "PDF";
 
+  const handleSave = useCallback(async () => {
+    const result = await window.electronAPI?.system?.saveFileAs?.(
+      filePath,
+      filePath.split(/[\\/]/).pop() ?? title ?? "document.pdf",
+    );
+    if (!result || result.canceled) return;
+    setActionStatus(result.ok ? "Saved" : (result.error ?? "Could not save"));
+  }, [filePath, title]);
+
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(filePath);
+    setActionStatus("Copied");
+  }, [filePath]);
+
   return (
     <section className="pdf-viewer-card">
       <header className="pdf-viewer-card__header">
@@ -192,6 +208,27 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
             {currentPage} / {numPages}
           </span>
         )}
+        <div className="pdf-viewer-card__actions">
+          <button
+            type="button"
+            className="pdf-viewer-card__action"
+            onClick={handleSave}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            className="pdf-viewer-card__action"
+            onClick={handleCopy}
+          >
+            Copy
+          </button>
+          {actionStatus && (
+            <span className="pdf-viewer-card__action-status">
+              {actionStatus}
+            </span>
+          )}
+        </div>
       </header>
 
       {status === "error" ? (

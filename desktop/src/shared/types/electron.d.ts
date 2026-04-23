@@ -516,6 +516,15 @@ export type ElectronSystemApi = {
   resetMicrophonePermission: () => Promise<{ ok: boolean }>;
   openExternal: (url: string) => void;
   showItemInFolder: (filePath: string) => void;
+  saveFileAs: (
+    sourcePath: string,
+    defaultName?: string,
+  ) => Promise<{
+    ok: boolean;
+    path?: string;
+    canceled?: boolean;
+    error?: string;
+  }>;
   shellKillByPort: (port: number) => Promise<void>;
   getLocalSyncMode: () => Promise<string>;
   setLocalSyncMode: (mode: string) => Promise<void>;

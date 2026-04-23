@@ -45,6 +45,34 @@
   color: var(--muted-foreground);
 }
 
+.office-preview-card__actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.office-preview-card__action {
+  appearance: none;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: var(--accent, var(--foreground));
+  color: var(--accent-foreground, var(--background));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.office-preview-card__action:hover {
+  opacity: 0.9;
+}
+
+.office-preview-card__action-status {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
 .office-preview-card__frame {
   display: block;
   width: 100%;
