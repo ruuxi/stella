@@ -1,11 +1,16 @@
 /**
  * Auto-detected context chip strip for the chat sidebar composer.
  *
- * Maintains 3 stable suggestion slots. The order doesn't churn just because
- * the underlying recent-apps list rotates — slots only change when their
+ * Maintains LANE_COUNT stable lanes. The order doesn't churn just because
+ * the underlying recent-apps list rotates — a lane only changes when its
  * pinned content actually disappears (app quit) or a brand-new candidate
- * appears that's not in any slot. This keeps the strip readable instead of
- * shuffling on every focus change.
+ * appears that's not in any lane.
+ *
+ * Each lane holds up to two occupants — `current` (the chip the user sees,
+ * either entering or stable) and `outgoing` (a previous occupant fading out).
+ * Rendering both at the same grid position lets us *crossfade* a lane from
+ * one chip to another without ever showing an empty strip — there is no
+ * "brand-new wipes the row" path anymore.
  *
  * Sources:
  *   - `electronAPI.home.listRecentApps` → list of recent app windows + titles.
@@ -14,8 +19,9 @@
  *
  * The strip refreshes every `POLL_INTERVAL_MS`; identity comparisons happen
  * inside the reducer so the visible state only flips when the *content* of
- * a slot changes (pid, URL, or window title). The list is intentionally
- * NOT push-driven — polling is cheap and the dedup keeps render churn low.
+ * a lane actually changes (pid, URL, or window title). The list is
+ * intentionally NOT push-driven — polling is cheap and the dedup keeps
+ * render churn low.
  */
 
 import { useCallback, useEffect, useReducer, useRef } from "react"
@@ -53,22 +59,34 @@ export type BrowserTabChip = {
 
 export type SuggestionChip = RecentAppChip | BrowserTabChip
 
-/** A slot's lifecycle state — drives the entering/leaving CSS transitions. */
+/** A lane occupant's lifecycle state — drives the entering/leaving CSS transitions. */
 export type SlotPhase = "stable" | "entering" | "leaving"
 
+/** A single chip occupant rendered inside a lane. */
 export type SuggestionSlot = {
-  /** Stable React key — preserves identity across re-renders inside one slot. */
+  /** Stable React key — preserves identity across re-renders. */
   key: string
   chip: SuggestionChip
   phase: SlotPhase
 }
 
-const SLOT_COUNT = 3
+/**
+ * A lane is one fixed position in the strip. It can render up to two chips
+ * simultaneously: the `current` occupant (entering/stable) and an `outgoing`
+ * occupant (leaving). Both are stacked in the same grid cell so swapping a
+ * chip looks like a smooth crossfade rather than a pop-out / pop-in.
+ */
+export type SuggestionLane = {
+  current: SuggestionSlot | null
+  outgoing: SuggestionSlot | null
+}
+
+const LANE_COUNT = 3
 const POLL_INTERVAL_MS = 5_000
 const FADE_OUT_MS = 220
 
 // Identity key — two chips with the same key are considered "the same
-// suggestion" for slot-replacement purposes. Tab key folds in URL because
+// suggestion" for content-refresh purposes. Tab key folds in URL because
 // "github.com" navigating to "google.com" is a real change. App key folds
 // in window title for the same reason (user switching Cursor windows).
 const chipIdentity = (chip: SuggestionChip): string => {
@@ -77,55 +95,60 @@ const chipIdentity = (chip: SuggestionChip): string => {
 }
 
 // Looser identity used to detect "this is the same underlying thing,
-// just a property changed" — used so the slot stays anchored across small
+// just a property changed" — used so a lane stays anchored across small
 // title/URL fluctuations. Today this is just the bundle/pid; we still
-// detect "real" changes via chipIdentity but a slot whose looseId still
-// matches a live candidate doesn't disappear in a fade-out, it gets
-// updated in place.
+// detect "real" content changes via chipIdentity but a chip whose
+// looseId still matches a live candidate doesn't disappear in a fade-out,
+// it gets updated in place.
 const chipLooseId = (chip: SuggestionChip): string => {
   if (chip.kind === "tab") return `tab:${chip.bundleId}`
   return `app:${chip.pid}`
 }
 
 // ---------------------------------------------------------------------------
-// Slot reducer
+// Lane reducer
 //
-// Given the previous slots and a fresh ordered list of live candidates, decide
-// which slots stay, which fade out, and which fade in. Rules:
-//   1. A slot whose chip's looseId matches a live candidate stays — its
-//      contents are updated to the live candidate (so isActive/title
-//      transitions stay smooth) but the slot does not flip phase.
-//   2. A slot whose chip's looseId is no longer in the live list flips to
-//      `leaving`. After FADE_OUT_MS it's removed; the next reducer pass can
-//      fill it.
-//   3. Empty (or post-leaving) slots accept the next live candidate that
-//      isn't already pinned, set to `entering`. The component clears
-//      `entering` to `stable` after a frame so CSS can transition.
+// Given the previous lanes and a fresh ordered list of live candidates, decide
+// which chips stay, which start fading out, and which fade in. Rules:
+//   1. We pick the top LANE_COUNT loose ids from the candidate list as the
+//      *desired* set. Anything below that rank doesn't get a lane — even
+//      if it's still alive in the recent-apps list.
+//   2. A lane whose current chip's looseId is in the desired set keeps
+//      its current — content is updated in place (so isActive/title
+//      transitions stay smooth) but the phase doesn't flip. Lanes do NOT
+//      reshuffle just because the candidate ordering changed; we anchor
+//      each chip to its existing lane for visual stability.
+//   3. A lane whose current chip's looseId is NOT in the desired set
+//      moves the current → outgoing as `leaving`. This is what handles
+//      "a brand-new app pushed an old one out of the top 3": the old
+//      chip starts fading out *and* the new chip fills the same lane as
+//      `entering` in the same reducer pass, so the two crossfade in place.
+//   4. Empty current slots are filled, in candidate priority order, from
+//      desired chips that aren't already pinned. Two-phase advance flips
+//      `entering` → `stable` on the next frame so CSS can transition.
+//
+// Critically there is no "bulk wipe the row when something brand new
+// appears" path. Every change is per-lane and overlapped, so the row
+// is never visually empty mid-swap.
 // ---------------------------------------------------------------------------
 
-type SlotsState = {
-  slots: (SuggestionSlot | null)[]
-  /** Loose ids of chips currently held by a live (stable/entering) slot. */
-  pinnedLooseIds: Set<string>
-  /**
-   * Loose ids of every candidate seen in the last reconcile pass. Used to
-   * detect "brand-new" candidates (apps that just launched, tabs that just
-   * opened) so we can fade-replace the whole strip instead of waiting for
-   * an existing slot to empty.
-   */
+type LanesState = {
+  lanes: SuggestionLane[]
+  /** Loose ids of every candidate seen in the last reconcile pass. */
   knownCandidateLooseIds: Set<string>
 }
 
-const emptySlots = (): SlotsState => ({
-  slots: new Array(SLOT_COUNT).fill(null),
-  pinnedLooseIds: new Set(),
+const emptyLane = (): SuggestionLane => ({ current: null, outgoing: null })
+
+const emptyLanes = (): LanesState => ({
+  lanes: Array.from({ length: LANE_COUNT }, emptyLane),
   knownCandidateLooseIds: new Set(),
 })
 
-const reconcileSlots = (
-  prev: SlotsState,
+const reconcileLanes = (
+  prev: LanesState,
   candidates: SuggestionChip[],
-): SlotsState => {
+): LanesState => {
   const candidatesByLoose = new Map<string, SuggestionChip>()
   const candidateLooseIdsInOrder: string[] = []
   for (const chip of candidates) {
@@ -135,101 +158,86 @@ const reconcileSlots = (
     candidateLooseIdsInOrder.push(loose)
   }
 
-  // "Brand new" = a candidate's loose id wasn't in the previous candidate
-  // set AND isn't currently pinned in a slot. The first reconcile pass
-  // (when prev.knownCandidateLooseIds is empty) is treated as bootstrap;
-  // we don't fade-replace there because there's nothing to replace.
+  // Bootstrap = first reconcile pass after mount. Fill lanes as `stable`
+  // (no fade-in) so the strip doesn't blink in on first render.
   const isBootstrap = prev.knownCandidateLooseIds.size === 0
-  const currentPinnedLoose = new Set<string>()
-  for (const slot of prev.slots) {
-    if (slot && slot.phase !== "leaving") {
-      currentPinnedLoose.add(chipLooseId(slot.chip))
-    }
-  }
-  const hasBrandNew =
-    !isBootstrap &&
-    candidateLooseIdsInOrder.some(
-      (loose) =>
-        !prev.knownCandidateLooseIds.has(loose) &&
-        !currentPinnedLoose.has(loose),
-    )
 
-  const nextKnown = new Set(candidateLooseIdsInOrder)
+  // The desired set = the top LANE_COUNT candidates by priority. Anything
+  // beyond that doesn't get a lane, even if it's still in the recent-apps
+  // list. This is what makes a brand-new top candidate *displace* an
+  // existing chip rather than silently sit in the polling result.
+  const desiredLooseIds = candidateLooseIdsInOrder.slice(0, LANE_COUNT)
+  const desiredSet = new Set(desiredLooseIds)
 
-  // Brand-new candidate while the strip is full → fade out the entire
-  // current strip in one coordinated batch. The next reconcile pass (after
-  // the leaving slots drain) will fill the empty slots with the freshest
-  // candidates from the live list.
-  if (hasBrandNew) {
-    const fadingSlots: (SuggestionSlot | null)[] = prev.slots.map((slot) => {
-      if (!slot) return null
-      if (slot.phase === "leaving") return slot
-      return { ...slot, phase: "leaving" as const }
-    })
-    return {
-      slots: fadingSlots,
-      pinnedLooseIds: new Set(),
-      knownCandidateLooseIds: nextKnown,
-    }
-  }
+  // Pass 1: keep lanes whose current chip is in the desired top-N; move
+  // currents that fell out of the desired set into `outgoing` (leaving)
+  // so they can fade out *while* their replacement fades in.
+  const stagedLanes: SuggestionLane[] = prev.lanes.map((lane) => {
+    const current = lane.current
+    if (!current) return { current: null, outgoing: lane.outgoing }
 
-  const nextSlots: (SuggestionSlot | null)[] = prev.slots.map((slot) => {
-    if (!slot) return null
-    if (slot.phase === "leaving") return slot
-
-    const looseId = chipLooseId(slot.chip)
-    const liveMatch = candidatesByLoose.get(looseId)
-    if (liveMatch) {
-      // Update content in place; keep phase + key.
+    const looseId = chipLooseId(current.chip)
+    if (desiredSet.has(looseId)) {
+      const liveMatch = candidatesByLoose.get(looseId)!
       const sameContent =
-        chipIdentity(liveMatch) === chipIdentity(slot.chip) &&
-        sameSurfaceFields(liveMatch, slot.chip)
-      if (sameContent) {
-        return slot.phase === "stable" ? slot : { ...slot, phase: "stable" }
-      }
-      return {
-        key: slot.key,
-        chip: liveMatch,
-        phase: "stable",
-      }
+        chipIdentity(liveMatch) === chipIdentity(current.chip) &&
+        sameSurfaceFields(liveMatch, current.chip)
+      const refreshed: SuggestionSlot = sameContent
+        ? current.phase === "stable"
+          ? current
+          : { ...current, phase: "stable" }
+        : { key: current.key, chip: liveMatch, phase: "stable" }
+      return { current: refreshed, outgoing: lane.outgoing }
     }
 
-    // Slot's chip is gone from the live list — fade it out.
-    return { ...slot, phase: "leaving" }
+    // Current chip is no longer in the desired top-N (either dropped out
+    // of candidates entirely, or got demoted by a higher-priority new
+    // arrival). If outgoing is already occupied the in-flight fade is
+    // overwritten — acceptable because both chips are leaving the same
+    // lane anyway.
+    return {
+      current: null,
+      outgoing: { ...current, phase: "leaving" },
+    }
   })
 
-  const pinnedLoose = new Set<string>()
-  for (const slot of nextSlots) {
-    if (slot && slot.phase !== "leaving") pinnedLoose.add(chipLooseId(slot.chip))
+  // Pass 2: which loose ids are now claimed by a current?
+  const occupied = new Set<string>()
+  for (const lane of stagedLanes) {
+    if (lane.current) occupied.add(chipLooseId(lane.current.chip))
   }
 
-  // Fill any non-leaving empty slots with new candidates, in order.
-  for (
-    let slotIndex = 0;
-    slotIndex < nextSlots.length;
-    slotIndex += 1
-  ) {
-    const current = nextSlots[slotIndex]
-    if (current !== null) continue
-
-    const fillerLooseId = candidateLooseIdsInOrder.find(
-      (loose) => !pinnedLoose.has(loose),
-    )
-    if (!fillerLooseId) break
-
-    const filler = candidatesByLoose.get(fillerLooseId)!
-    nextSlots[slotIndex] = {
-      key: makeSlotKey(filler),
-      chip: filler,
-      phase: "entering",
+  // Pass 3: fill empty lanes with desired candidates not yet pinned, in
+  // priority order. These are typically (a) chips that just appeared at
+  // the top and bumped a lower-ranked chip out, or (b) chips filling a
+  // freshly-vacated lane (e.g. an app quit).
+  const remaining = desiredLooseIds.filter((loose) => !occupied.has(loose))
+  let r = 0
+  const finalLanes: SuggestionLane[] = stagedLanes.map((lane) => {
+    if (lane.current) return lane
+    if (r >= remaining.length) return lane
+    const chip = candidatesByLoose.get(remaining[r++])
+    if (!chip) return lane
+    return {
+      current: {
+        key: makeSlotKey(chip),
+        chip,
+        phase: isBootstrap ? "stable" : "entering",
+      },
+      outgoing: lane.outgoing,
     }
-    pinnedLoose.add(fillerLooseId)
+  })
+
+  if (
+    lanesEqual(prev.lanes, finalLanes) &&
+    setsEqual(prev.knownCandidateLooseIds, new Set(candidateLooseIdsInOrder))
+  ) {
+    return prev
   }
 
   return {
-    slots: nextSlots,
-    pinnedLooseIds: pinnedLoose,
-    knownCandidateLooseIds: nextKnown,
+    lanes: finalLanes,
+    knownCandidateLooseIds: new Set(candidateLooseIdsInOrder),
   }
 }
 
@@ -249,108 +257,116 @@ const makeSlotKey = (chip: SuggestionChip): string => {
   return `slot-app-${chip.pid}-${Date.now()}`
 }
 
-type SlotsAction =
+type LanesAction =
   | { type: "reconcile"; candidates: SuggestionChip[] }
   | { type: "advancePhase"; slotKey: string; phase: SlotPhase }
-  | { type: "drop"; slotKey: string }
-  | { type: "clearChip"; chipKey: string }
+  | { type: "dropOutgoing"; slotKey: string }
+  | { type: "clearChip"; slotKey: string }
   | { type: "pin"; chip: SuggestionChip }
 
-const slotsReducer = (state: SlotsState, action: SlotsAction): SlotsState => {
+const lanesReducer = (state: LanesState, action: LanesAction): LanesState => {
   switch (action.type) {
     case "reconcile":
-      return reconcileSlots(state, action.candidates)
+      return reconcileLanes(state, action.candidates)
     case "advancePhase": {
-      const next = state.slots.map((slot) =>
-        slot && slot.key === action.slotKey
-          ? { ...slot, phase: action.phase }
-          : slot,
-      )
-      return refreshPinned(state, next)
+      let changed = false
+      const next = state.lanes.map((lane) => {
+        if (lane.current && lane.current.key === action.slotKey) {
+          if (lane.current.phase === action.phase) return lane
+          changed = true
+          return {
+            ...lane,
+            current: { ...lane.current, phase: action.phase },
+          }
+        }
+        return lane
+      })
+      if (!changed) return state
+      return { ...state, lanes: next }
     }
-    case "drop": {
-      const next = state.slots.map((slot) =>
-        slot && slot.key === action.slotKey ? null : slot,
-      )
-      return refreshPinned(state, next)
+    case "dropOutgoing": {
+      let changed = false
+      const next = state.lanes.map((lane) => {
+        if (lane.outgoing && lane.outgoing.key === action.slotKey) {
+          changed = true
+          return { ...lane, outgoing: null }
+        }
+        return lane
+      })
+      if (!changed) return state
+      return { ...state, lanes: next }
     }
     case "clearChip": {
-      const next: (SuggestionSlot | null)[] = state.slots.map((slot) => {
-        if (!slot) return null
-        if (slot.key !== action.chipKey) return slot
-        // Mark as leaving so the next reconcile can fill it. Phase clears
-        // to leaving immediately so CSS can run the fade-out.
-        return { ...slot, phase: "leaving" as const }
+      let changed = false
+      const next = state.lanes.map((lane) => {
+        if (lane.current && lane.current.key === action.slotKey) {
+          changed = true
+          return {
+            current: null,
+            outgoing: { ...lane.current, phase: "leaving" as const },
+          }
+        }
+        return lane
       })
-      return refreshPinned(state, next)
+      if (!changed) return state
+      return { ...state, lanes: next }
     }
     case "pin": {
       const looseId = chipLooseId(action.chip)
-      // If this chip's loose id is already in a slot, just refresh its
-      // content (no fade — it was already there in some form).
-      const updated = state.slots.map((slot) => {
-        if (!slot) return null
-        if (chipLooseId(slot.chip) !== looseId) return slot
-        return { key: slot.key, chip: action.chip, phase: "stable" as const }
-      })
-      const alreadyPinned = updated.some(
-        (slot) => slot && chipLooseId(slot.chip) === looseId,
-      )
-      if (alreadyPinned) return refreshPinned(state, updated)
-
-      // Otherwise drop into the first empty slot, or evict the last
-      // non-active app slot so the user-pinned chip wins. Browser tab
-      // chips live in slot 0 by convention; everything else goes after.
-      const targetIndex = updated.findIndex((slot) => slot === null)
-      if (targetIndex !== -1) {
-        updated[targetIndex] = {
-          key: makeSlotKey(action.chip),
-          chip: action.chip,
-          phase: "entering",
+      // Already current somewhere → just refresh in place.
+      const refreshed = state.lanes.map((lane) => {
+        if (lane.current && chipLooseId(lane.current.chip) === looseId) {
+          return {
+            ...lane,
+            current: {
+              key: lane.current.key,
+              chip: action.chip,
+              phase: "stable" as const,
+            },
+          }
         }
-        return refreshPinned(state, updated)
-      }
+        return lane
+      })
+      const alreadyPinned = refreshed.some(
+        (lane) =>
+          lane.current && chipLooseId(lane.current.chip) === looseId,
+      )
+      if (alreadyPinned) return { ...state, lanes: refreshed }
 
-      // No empty slot — evict the last slot to make room. The evicted
-      // chip's content will be re-fetched on the next reconcile if it's
-      // still live, but the pin takes precedence right now.
-      updated[updated.length - 1] = {
+      // Otherwise drop into the first empty current; if none, evict the
+      // last lane's current → outgoing so the user-pinned chip wins.
+      const emptyIndex = refreshed.findIndex((lane) => !lane.current)
+      const nextLanes: SuggestionLane[] = refreshed.slice()
+      const newSlot: SuggestionSlot = {
         key: makeSlotKey(action.chip),
         chip: action.chip,
         phase: "entering",
       }
-      return refreshPinned(state, updated)
+      if (emptyIndex !== -1) {
+        nextLanes[emptyIndex] = {
+          current: newSlot,
+          outgoing: nextLanes[emptyIndex].outgoing,
+        }
+      } else {
+        const evictIndex = nextLanes.length - 1
+        const evicted = nextLanes[evictIndex].current
+        nextLanes[evictIndex] = {
+          current: newSlot,
+          outgoing: evicted ? { ...evicted, phase: "leaving" } : nextLanes[evictIndex].outgoing,
+        }
+      }
+      return { ...state, lanes: nextLanes }
     }
     default:
       return state
   }
 }
 
-const refreshPinned = (
-  prev: SlotsState,
-  nextSlots: (SuggestionSlot | null)[],
-): SlotsState => {
-  const pinned = new Set<string>()
-  for (const slot of nextSlots) {
-    if (slot && slot.phase !== "leaving") pinned.add(chipLooseId(slot.chip))
-  }
-  if (slotsEqual(prev.slots, nextSlots) && setsEqual(prev.pinnedLooseIds, pinned)) {
-    return prev
-  }
-  return {
-    slots: nextSlots,
-    pinnedLooseIds: pinned,
-    knownCandidateLooseIds: prev.knownCandidateLooseIds,
-  }
-}
-
-const slotsEqual = (
-  a: (SuggestionSlot | null)[],
-  b: (SuggestionSlot | null)[],
-): boolean => {
+const lanesEqual = (a: SuggestionLane[], b: SuggestionLane[]): boolean => {
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) return false
+    if (a[i].current !== b[i].current) return false
+    if (a[i].outgoing !== b[i].outgoing) return false
   }
   return true
 }
@@ -429,13 +445,10 @@ const fetchSnapshot = async (): Promise<FetchSnapshotResult> => {
   return { apps, tab }
 }
 
-// Suggestion priority for filling slots: browser tab first (when present),
+// Suggestion priority for filling lanes: browser tab first (when present),
 // then the frontmost app, then the rest in recency order. The same browser
 // app gets dropped from the app list so we don't duplicate the browser tab.
-// Browser tab fills slot 0 when present (it's the most specific signal we
-// have). The rest of the apps come in the order the native helper gave us,
-// which is most-recent-used (front-to-back z-order). We don't re-sort by
-// `isActive` — focus changes shouldn't shuffle the strip.
+// We don't re-sort by `isActive` — focus changes shouldn't shuffle the strip.
 const orderCandidates = ({ apps, tab }: FetchSnapshotResult): SuggestionChip[] => {
   const out: SuggestionChip[] = []
   if (tab) out.push(tab)
@@ -454,8 +467,8 @@ const orderCandidates = ({ apps, tab }: FetchSnapshotResult): SuggestionChip[] =
 // ---------------------------------------------------------------------------
 
 export type AutoContextChipsApi = {
-  slots: (SuggestionSlot | null)[]
-  /** Mark the slot containing this chip key as leaving (fade-out). */
+  lanes: SuggestionLane[]
+  /** Mark the lane occupant with this slot key as leaving (fade-out). */
   dismissSlot: (slotKey: string) => void
   /** Inject an external suggestion (e.g. cmd+rc → Open chat). */
   pinSuggestion: (chip: SuggestionChip) => void
@@ -464,10 +477,10 @@ export type AutoContextChipsApi = {
 export function useAutoContextChips(
   active: boolean = true,
 ): AutoContextChipsApi {
-  const [state, dispatch] = useReducer(slotsReducer, undefined, emptySlots)
+  const [state, dispatch] = useReducer(lanesReducer, undefined, emptyLanes)
 
   // Polling — kept simple. The reducer absorbs identical payloads; the
-  // visible state only changes when slot identity actually shifts.
+  // visible state only changes when a lane actually shifts.
   const cancelledRef = useRef(false)
   useEffect(() => {
     cancelledRef.current = false
@@ -497,12 +510,12 @@ export function useAutoContextChips(
     }
   }, [active])
 
-  // Drive entering→stable on the next frame so CSS can transition, and
-  // leaving→removed after the fade-out timer.
+  // Drive entering→stable on the next frame so CSS can transition.
   useEffect(() => {
-    const enteringSlots = state.slots.filter(
-      (slot): slot is SuggestionSlot => slot?.phase === "entering",
-    )
+    const enteringSlots: SuggestionSlot[] = []
+    for (const lane of state.lanes) {
+      if (lane.current?.phase === "entering") enteringSlots.push(lane.current)
+    }
     if (enteringSlots.length === 0) return undefined
 
     const raf = window.requestAnimationFrame(() => {
@@ -511,26 +524,28 @@ export function useAutoContextChips(
       }
     })
     return () => window.cancelAnimationFrame(raf)
-  }, [state.slots])
+  }, [state.lanes])
 
+  // Drop outgoing chips after their fade-out timer.
   useEffect(() => {
-    const leavingSlots = state.slots.filter(
-      (slot): slot is SuggestionSlot => slot?.phase === "leaving",
-    )
-    if (leavingSlots.length === 0) return undefined
+    const outgoingSlots: SuggestionSlot[] = []
+    for (const lane of state.lanes) {
+      if (lane.outgoing) outgoingSlots.push(lane.outgoing)
+    }
+    if (outgoingSlots.length === 0) return undefined
 
-    const timers = leavingSlots.map((slot) =>
+    const timers = outgoingSlots.map((slot) =>
       window.setTimeout(() => {
-        dispatch({ type: "drop", slotKey: slot.key })
+        dispatch({ type: "dropOutgoing", slotKey: slot.key })
       }, FADE_OUT_MS),
     )
     return () => {
       for (const timer of timers) window.clearTimeout(timer)
     }
-  }, [state.slots])
+  }, [state.lanes])
 
   const dismissSlot = useCallback((slotKey: string) => {
-    dispatch({ type: "clearChip", chipKey: slotKey })
+    dispatch({ type: "clearChip", slotKey })
   }, [])
 
   const pinSuggestion = useCallback((chip: SuggestionChip) => {
@@ -538,7 +553,7 @@ export function useAutoContextChips(
   }, [])
 
   return {
-    slots: state.slots,
+    lanes: state.lanes,
     dismissSlot,
     pinSuggestion,
   }

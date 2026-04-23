@@ -8,9 +8,33 @@
 
 /* Floating suggestion row that sits ABOVE the composer shell (the chat
  * sidebar opts into this). Matches the chip strip's left padding so the
- * dashed chips align with the composer's left edge. */
+ * dashed chips align with the composer's left edge.
+ *
+ * `min-height` keeps the strip's vertical footprint reserved even when
+ * every lane is empty / hidden, so the composer doesn't pop up and down
+ * when chips appear or disappear. The reserved height matches one chip
+ * (~22px) plus the row's bottom padding. */
 .composer-context-actions--suggestions {
   padding: 0 4px 4px;
+  min-height: calc(22px + 4px);
+  align-items: center;
+}
+
+/* A lane = one fixed slot in the suggestion strip. Renders up to two
+ * occupants (current + outgoing) stacked in the same grid cell so a chip
+ * swap looks like a smooth crossfade rather than pop-out / pop-in. The
+ * cell auto-sizes to the wider of the two during the transition; once the
+ * outgoing chip is dropped the lane snaps back to the current chip's
+ * natural width. */
+.composer-context-suggestion-lane {
+  display: inline-grid;
+  grid-template-areas: "stack";
+  align-items: center;
+  justify-items: start;
+}
+
+.composer-context-suggestion-lane > * {
+  grid-area: stack;
 }
 
 /* Suggestion chips — auto-detected context Stella offers but hasn't yet
