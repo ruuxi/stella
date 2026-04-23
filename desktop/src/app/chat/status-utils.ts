@@ -21,11 +21,9 @@ const TOOL_STATUS_BY_NAME: Record<string, string> = {
 export function computeStatus({
   toolName,
   isReasoning,
-  isResponding,
 }: {
   toolName?: string;
   isReasoning?: boolean;
-  isResponding?: boolean;
 } = {}): string {
   if (toolName) {
     const normalizedToolName = toolName.toLowerCase();
@@ -33,7 +31,6 @@ export function computeStatus({
   }
 
   if (isReasoning) return "Thinking";
-  if (isResponding) return "Responding";
 
   return "Considering next steps";
 }

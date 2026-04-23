@@ -14,7 +14,6 @@ import {
   IPC_HOME_CAPTURE_APP_WINDOW,
   IPC_HOME_GET_ACTIVE_BROWSER_TAB,
   IPC_HOME_LIST_RECENT_APPS,
-  IPC_HOME_PIN_SUGGESTION,
   IPC_DISCOVERY_COLLECT_BROWSER_DATA,
   IPC_DISCOVERY_CORE_MEMORY_EXISTS,
   IPC_DISCOVERY_DETECT_PREFERRED_BROWSER,
@@ -130,7 +129,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     minimize: () => ipcRenderer.send("window:minimize"),
     maximize: () => ipcRenderer.send("window:maximize"),
     close: () => ipcRenderer.send("window:close"),
-    restoreSize: () => ipcRenderer.send("window:restoreSize"),
     isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
     show: (target: "mini" | "full") => ipcRenderer.send("window:show", target),
     setNativeButtonsVisible: (visible: boolean) =>
@@ -222,7 +220,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
     pageDataUrl: () =>
       ipcRenderer.invoke("capture:pageDataUrl") as Promise<string | null>,
-    onRegionReset: onIpcSignal("region:reset"),
   },
 
   radial: {
@@ -243,12 +240,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       centerX: number;
       centerY: number;
     }>("radial:cursor"),
-    onWindowBounds: onIpc<{
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    } | null>("radial:windowBounds"),
   },
 
   overlay: {
@@ -885,27 +876,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         } | null;
       }>;
     },
-    onPinSuggestion: onIpc<{
-      chip:
-        | {
-            kind: "app";
-            pid: number;
-            name: string;
-            bundleId?: string;
-            isActive: boolean;
-            windowTitle?: string;
-            iconDataUrl?: string;
-          }
-        | {
-            kind: "tab";
-            browser: string;
-            bundleId: string;
-            url: string;
-            title?: string;
-            host: string;
-            iconDataUrl?: string;
-          };
-    }>(IPC_HOME_PIN_SUGGESTION),
   },
 
   media: {

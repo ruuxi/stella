@@ -28,31 +28,6 @@ const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   return event.payload as MessagePayload
 }
 
-const getAssistantAgentId = (event?: EventRecord): string | undefined => {
-  const payload = getMessagePayload(event)
-  const rt = (payload?.metadata as Record<string, unknown> | undefined)
-    ?.runtime as Record<string, unknown> | undefined
-  const target = rt?.responseTarget as
-    | { type: string; agentId?: string; terminalState?: string }
-    | undefined
-  if (
-    (target?.type === 'agent_turn' ||
-      target?.type === 'agent_terminal_notice') &&
-    typeof target.agentId === 'string'
-  ) {
-    return target.agentId
-  }
-  return undefined
-}
-
-const getAssistantUserMessageId = (event?: EventRecord): string | undefined => {
-  const payload = getMessagePayload(event)
-  return typeof payload?.userMessageId === 'string' &&
-    payload.userMessageId.trim().length > 0
-    ? payload.userMessageId.trim()
-    : undefined
-}
-
 const getWebSearchBadgeHtml = (events: EventRecord[]): string | undefined => {
   for (const event of events) {
     if (event.type !== 'tool_result') {
@@ -203,24 +178,6 @@ export function useTurnViewModels(opts: {
     () => groupEventsIntoTurns(displayEvents),
     [displayEvents],
   )
-  const stickyTaskIdByTurnId = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const event of displayEvents) {
-      if (event.type !== 'assistant_message') {
-        continue
-      }
-      const agentId = getAssistantAgentId(event)
-      if (!agentId) {
-        continue
-      }
-      const turnId = getAssistantUserMessageId(event) ?? event._id
-      if (!map.has(turnId)) {
-        map.set(turnId, agentId)
-      }
-    }
-    return map
-  }, [displayEvents])
-
   const slicedTurns = useMemo(() => {
     if (maxTurns === null) return allTurns
     if (maxTurns <= 0) return []
@@ -259,10 +216,6 @@ export function useTurnViewModels(opts: {
       const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
         getMessagePayload(turn.assistantMessage),
       )
-      const agentId =
-        getAssistantAgentId(turn.assistantMessage) ??
-        stickyTaskIdByTurnId.get(turn.id)
-
       const askQuestionPayload = getAskQuestionPayload(turn.toolEvents)
       const resourcePayload = deriveTurnResource(
         turn.toolEvents,
@@ -289,10 +242,9 @@ export function useTurnViewModels(opts: {
         officePreviewRef: getOfficePreviewRef(turn.toolEvents),
         ...(resourcePayload ? { resourcePayload } : {}),
         ...(askQuestionPayload ? { askQuestion: askQuestionPayload } : {}),
-        ...(agentId ? { agentId } : {}),
       }
     })
-  }, [slicedTurns, stickyTaskIdByTurnId])
+  }, [slicedTurns])
 
   const turns = useMemo(() => {
     if (!selfModMap) {

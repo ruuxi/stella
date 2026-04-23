@@ -32,7 +32,6 @@ import { useTheme, useThemeControl } from "@/context/theme-context";
 import { getPlatform } from "@/platform/electron/platform";
 import { markRequestSignInAfterOnboarding } from "@/shared/lib/stella-orb-chat";
 import "./Onboarding.css";
-import "@/global/onboarding/selfmod-demo.css";
 
 const loadPermissionsPhase = () => import("./OnboardingPermissions");
 const loadBrowserPhase = () => import("./OnboardingBrowserPhase");

@@ -53,7 +53,6 @@ export const MOBILE_BRIDGE_REQUEST_CHANNELS = [
   "localChat:getOrCreateDefaultConversationId",
   "localChat:listEvents",
   "localChat:getEventCount",
-  "localChat:appendEvent",
   "localChat:listSyncMessages",
   "localChat:getSyncCheckpoint",
   "localChat:setSyncCheckpoint",

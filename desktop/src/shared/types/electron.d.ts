@@ -133,7 +133,6 @@ export type ElectronWindowApi = {
   minimize: () => void;
   maximize: () => void;
   close: () => void;
-  restoreSize: () => void;
   isMaximized: () => Promise<boolean>;
   show: (target: WindowMode) => void;
   setNativeButtonsVisible: (visible: boolean) => void;
@@ -204,7 +203,6 @@ export type ElectronCaptureApi = {
     scaleFactor: number;
   }>;
   cancelRegion: () => void;
-  onRegionReset: (callback: () => void) => () => void;
 };
 
 export type ElectronRadialApi = {
@@ -228,11 +226,6 @@ export type ElectronRadialApi = {
     callback: (
       event: unknown,
       data: { x: number; y: number; centerX: number; centerY: number },
-    ) => void,
-  ) => () => void;
-  onWindowBounds: (
-    callback: (
-      data: { x: number; y: number; width: number; height: number } | null,
     ) => void,
   ) => () => void;
 };
@@ -816,35 +809,6 @@ export type ElectronHomeApi = {
       title?: string;
     } | null;
   }>;
-  /**
-   * Subscribe to one-shot suggestion-pin events from the main process
-   * (e.g. cmd+right-click → "Open chat" surfaces the right-clicked window
-   * as a sidebar suggestion). The renderer's auto-context chip strip
-   * absorbs these into the next available slot.
-   */
-  onPinSuggestion: (
-    callback: (payload: {
-      chip:
-        | {
-            kind: "app";
-            pid: number;
-            name: string;
-            bundleId?: string;
-            isActive: boolean;
-            windowTitle?: string;
-            iconDataUrl?: string;
-          }
-        | {
-            kind: "tab";
-            browser: string;
-            bundleId: string;
-            url: string;
-            title?: string;
-            host: string;
-            iconDataUrl?: string;
-          };
-    }) => void,
-  ) => () => void;
 };
 
 export type ElectronScreenGuideApi = {

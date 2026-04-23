@@ -24,15 +24,6 @@
 
 /* Working status text — shimmer handled by TextShimmer component */
 
-.working-separator {
-  color: var(--text-weaker);
-}
-
-.working-duration {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-weak);
-}
-
 /* Footer wrapper — sits between the scroll viewport and the composer
    in normal flow so it never shifts the chat content. */
 .thinking-footer-overlay {

@@ -15,8 +15,6 @@ interface WorkingIndicatorProps {
   toolName?: string;
   tasks?: TaskItem[];
   isReasoning?: boolean;
-  isResponding?: boolean;
-  duration?: string;
   className?: string;
 }
 
@@ -25,8 +23,6 @@ export function WorkingIndicator({
   toolName,
   tasks,
   isReasoning,
-  isResponding,
-  duration,
   className,
 }: WorkingIndicatorProps) {
   const { state } = useUiState();
@@ -63,7 +59,7 @@ export function WorkingIndicator({
       displayStatus = taskText ? `${label} \u00b7 ${taskText}` : label;
     }
   } else {
-    displayStatus = computeStatus({ toolName, isReasoning, isResponding });
+    displayStatus = computeStatus({ toolName, isReasoning });
   }
 
   return (
@@ -86,12 +82,6 @@ export function WorkingIndicator({
         active={shimmerActive}
         className="working-status"
       />
-      {duration && (
-        <>
-          <span className="working-separator">{"\u00b7"}</span>
-          <span className="working-duration">{duration}</span>
-        </>
-      )}
     </div>
   );
 }

@@ -51,7 +51,6 @@ export const IPC_REGION_SELECT = "region:select" as const;
 export const IPC_REGION_CLICK = "region:click" as const;
 export const IPC_REGION_GET_WINDOW_CAPTURE = "region:getWindowCapture" as const;
 export const IPC_REGION_CANCEL = "region:cancel" as const;
-export const IPC_REGION_RESET = "region:reset" as const;
 export const IPC_CAPTURE_PAGE_DATA_URL = "capture:pageDataUrl" as const;
 
 // ── Radial ──────────────────────────────────────────────────────────────────
@@ -60,7 +59,6 @@ export const IPC_RADIAL_SHOW = "radial:show" as const;
 export const IPC_RADIAL_HIDE = "radial:hide" as const;
 export const IPC_RADIAL_ANIM_DONE = "radial:animDone" as const;
 export const IPC_RADIAL_CURSOR = "radial:cursor" as const;
-export const IPC_RADIAL_WINDOW_BOUNDS = "radial:windowBounds" as const;
 
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
@@ -217,7 +215,6 @@ export const IPC_HOME_LIST_RECENT_APPS = "home:listRecentApps" as const;
 export const IPC_HOME_GET_ACTIVE_BROWSER_TAB =
   "home:getActiveBrowserTab" as const;
 export const IPC_HOME_CAPTURE_APP_WINDOW = "home:captureAppWindow" as const;
-export const IPC_HOME_PIN_SUGGESTION = "home:pinSuggestion" as const;
 
 // ── Media ───────────────────────────────────────────────────────────────────
 

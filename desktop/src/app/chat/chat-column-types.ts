@@ -64,5 +64,4 @@ export type ChatColumnProps = {
   showHomeContent?: boolean
   onSuggestionClick?: (prompt: string) => void
   onDismissHome?: () => void
-  onShowHome?: () => void
 }

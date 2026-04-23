@@ -262,7 +262,6 @@ type LanesAction =
   | { type: "advancePhase"; slotKey: string; phase: SlotPhase }
   | { type: "dropOutgoing"; slotKey: string }
   | { type: "clearChip"; slotKey: string }
-  | { type: "pin"; chip: SuggestionChip }
 
 const lanesReducer = (state: LanesState, action: LanesAction): LanesState => {
   switch (action.type) {
@@ -310,52 +309,6 @@ const lanesReducer = (state: LanesState, action: LanesAction): LanesState => {
       })
       if (!changed) return state
       return { ...state, lanes: next }
-    }
-    case "pin": {
-      const looseId = chipLooseId(action.chip)
-      // Already current somewhere → just refresh in place.
-      const refreshed = state.lanes.map((lane) => {
-        if (lane.current && chipLooseId(lane.current.chip) === looseId) {
-          return {
-            ...lane,
-            current: {
-              key: lane.current.key,
-              chip: action.chip,
-              phase: "stable" as const,
-            },
-          }
-        }
-        return lane
-      })
-      const alreadyPinned = refreshed.some(
-        (lane) =>
-          lane.current && chipLooseId(lane.current.chip) === looseId,
-      )
-      if (alreadyPinned) return { ...state, lanes: refreshed }
-
-      // Otherwise drop into the first empty current; if none, evict the
-      // last lane's current → outgoing so the user-pinned chip wins.
-      const emptyIndex = refreshed.findIndex((lane) => !lane.current)
-      const nextLanes: SuggestionLane[] = refreshed.slice()
-      const newSlot: SuggestionSlot = {
-        key: makeSlotKey(action.chip),
-        chip: action.chip,
-        phase: "entering",
-      }
-      if (emptyIndex !== -1) {
-        nextLanes[emptyIndex] = {
-          current: newSlot,
-          outgoing: nextLanes[emptyIndex].outgoing,
-        }
-      } else {
-        const evictIndex = nextLanes.length - 1
-        const evicted = nextLanes[evictIndex].current
-        nextLanes[evictIndex] = {
-          current: newSlot,
-          outgoing: evicted ? { ...evicted, phase: "leaving" } : nextLanes[evictIndex].outgoing,
-        }
-      }
-      return { ...state, lanes: nextLanes }
     }
     default:
       return state
@@ -470,8 +423,6 @@ export type AutoContextChipsApi = {
   lanes: SuggestionLane[]
   /** Mark the lane occupant with this slot key as leaving (fade-out). */
   dismissSlot: (slotKey: string) => void
-  /** Inject an external suggestion (e.g. cmd+rc → Open chat). */
-  pinSuggestion: (chip: SuggestionChip) => void
 }
 
 export function useAutoContextChips(
@@ -548,14 +499,9 @@ export function useAutoContextChips(
     dispatch({ type: "clearChip", slotKey })
   }, [])
 
-  const pinSuggestion = useCallback((chip: SuggestionChip) => {
-    dispatch({ type: "pin", chip })
-  }, [])
-
   return {
     lanes: state.lanes,
     dismissSlot,
-    pinSuggestion,
   }
 }
 

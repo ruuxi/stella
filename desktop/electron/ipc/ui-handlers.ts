@@ -54,10 +54,6 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     win.close();
   });
 
-  ipcMain.on("window:restoreSize", () => {
-    options.windowManager.showWindow("full");
-  });
-
   ipcMain.handle("window:isMaximized", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     return win?.isMaximized() ?? false;

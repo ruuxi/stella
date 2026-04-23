@@ -79,17 +79,6 @@ export function RegionCapture() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [captureApi, clearSelection, clearWindowPreview]);
 
-  // Listen for reset from main process (e.g. global Escape shortcut swallows
-  // the keypress before the renderer's keydown handler fires).
-  useEffect(() => {
-    const cleanup = captureApi?.onRegionReset?.(() => {
-      clearWindowPreview();
-      clearSelection();
-      setVacuum(null);
-    });
-    return () => cleanup?.();
-  }, [captureApi, clearSelection, clearWindowPreview]);
-
   useEffect(() => clearWindowPreview, [clearWindowPreview]);
 
   useEffect(() => {
@@ -238,4 +227,3 @@ export function RegionCapture() {
     </div>
   );
 }
-

@@ -34,8 +34,6 @@ export type PromptTemplateValues = {
 
 export type PromptId = keyof PromptTemplateValues
 
-export type PromptOverrideMap = Partial<Record<PromptId, string>>
-
 export type PromptDefinition<TId extends PromptId = PromptId> = {
   id: TId
   module: string
