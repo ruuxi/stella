@@ -76,31 +76,27 @@ const runStellaBrowserJson = (
 const getBrowserCookieHeader = async (
   targetUrl: string,
 ): Promise<string | null> => {
-  try {
-    // Extension bridge (Chrome MV3), not CDP --auto-connect â€” see stella-browser `provider: extension`.
-    const extensionEnv: Record<string, string> = {
-      STELLA_BROWSER_AUTO_CONNECT: "false",
-      ...getStellaBrowserBridgeEnv(),
-    };
-    const response = await runStellaBrowserJson(
-      ["--json", "cookies", "get", "--url", targetUrl],
-      extensionEnv,
-    );
+  // Extension bridge (Chrome MV3), not CDP --auto-connect â€” see stella-browser `provider: extension`.
+  const extensionEnv: Record<string, string> = {
+    STELLA_BROWSER_AUTO_CONNECT: "false",
+    ...getStellaBrowserBridgeEnv(),
+  };
+  const response = await runStellaBrowserJson(
+    ["--json", "cookies", "get", "--url", targetUrl],
+    extensionEnv,
+  );
 
-    if (!response.success) {
-      return null;
-    }
+  if (!response.success) {
+    throw new Error(response.error || "Failed to read browser cookies.");
+  }
 
-    const data = response.data as { cookies?: BrowserCookie[] } | undefined;
-    const cookies = data?.cookies ?? [];
-    if (cookies.length === 0) {
-      return null;
-    }
-
-    return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
-  } catch {
+  const data = response.data as { cookies?: BrowserCookie[] } | undefined;
+  const cookies = data?.cookies ?? [];
+  if (cookies.length === 0) {
     return null;
   }
+
+  return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
 };
 
 const fetchWithBrowserSession = async (

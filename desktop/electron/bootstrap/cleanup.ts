@@ -1,5 +1,4 @@
 import { stopAllDesktopAutomationDaemons } from "../services/desktop-automation-cleanup.js";
-import { stopAllMouseBlockHelpers } from "../input/mouse-block.js";
 import { cleanupSelectedTextProcess } from "../selected-text.js";
 import type { BootstrapContext } from "./context.js";
 
@@ -18,13 +17,6 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
   processRuntime.registerCleanup("before-quit", "selected-text", () => {
     cleanupSelectedTextProcess();
   });
-  processRuntime.registerCleanup(
-    "before-quit",
-    "mouse-block-helper",
-    async () => {
-      await stopAllMouseBlockHelpers();
-    },
-  );
   processRuntime.registerCleanup("before-quit", "selection-watcher", () => {
     context.services.selectionWatcherService.stop();
   });

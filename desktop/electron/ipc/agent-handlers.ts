@@ -482,7 +482,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         scheduleRunCleanup(args.runId, requestId);
       };
 
-      void stellaHostRunner
+      await stellaHostRunner
         .handleLocalChat(
           {
             ...payload,
@@ -645,20 +645,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
             return;
           }
 
-          const syntheticRunId = `request:${requestId}`;
-          emitAgentEvent(
-            {
-              type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
-              runId: syntheticRunId,
-              conversationId: payload.conversationId,
-              requestId,
-              outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
-              error: message,
-              reason: message,
-            },
-            senderWebContentsId,
-          );
-          scheduleRunCleanup(syntheticRunId, requestId);
+          console.error("[chat] Local chat failed before runtime run start:", message);
+          requestOwners.delete(requestId);
+          throw error;
         });
 
       return { requestId };

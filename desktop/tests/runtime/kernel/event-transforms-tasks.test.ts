@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractStepsFromEvents,
   extractTasksFromEvents,
   getFooterTasksFromEvents,
+  mergeFooterTasks,
   type EventRecord,
 } from "@/app/chat/lib/event-transforms";
 
@@ -104,5 +106,58 @@ describe("extractTasksFromEvents", () => {
     const [task] = extractTasksFromEvents(events);
     expect(task.status).toBe("completed");
     expect(task.outputPreview).toBe("Done");
+  });
+});
+
+describe("extractStepsFromEvents", () => {
+  it("does not guess a tool result target when the result has no request id", () => {
+    const steps = extractStepsFromEvents([
+      event("1", 100, "tool_request", {
+        toolName: "exec_command",
+        requestId: "tool-1",
+      }),
+      event("2", 200, "tool_request", {
+        toolName: "exec_command",
+        requestId: "tool-2",
+      }),
+      event("3", 300, "tool_result", {
+        toolName: "exec_command",
+      }),
+    ]);
+
+    expect(steps.map((step) => step.status)).toEqual(["running", "running"]);
+  });
+});
+
+describe("mergeFooterTasks", () => {
+  it("does not let stale live state revive a terminal persisted task", () => {
+    const merged = mergeFooterTasks(
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "completed",
+          startedAtMs: 100,
+          completedAtMs: 200,
+          lastUpdatedAtMs: 200,
+          outputPreview: "Done",
+        },
+      ],
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "running",
+          startedAtMs: 100,
+          lastUpdatedAtMs: 250,
+          statusText: "Using Write",
+        },
+      ],
+    );
+
+    expect(merged[0]?.status).toBe("completed");
+    expect(merged[0]?.outputPreview).toBe("Done");
   });
 });

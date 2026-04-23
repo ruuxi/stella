@@ -1,5 +1,8 @@
 import type { OfficePreviewRef } from '@/shared/contracts/office-preview'
-import type { TaskLifecycleStatus } from '@/shared/contracts/agent-runtime'
+import {
+  isTerminalTaskLifecycleStatus,
+  type TaskLifecycleStatus,
+} from '@/shared/contracts/agent-runtime'
 
 export interface StepItem {
   id: string
@@ -323,7 +326,6 @@ function getRequestId(event: EventRecord): string | undefined {
 export function extractStepsFromEvents(events: EventRecord[]): StepItem[] {
   const steps: StepItem[] = []
   const stepIndexByRequestId = new Map<string, number>()
-  const pendingByTool = new Map<string, number[]>()
 
   for (const event of events) {
     if (isToolRequest(event)) {
@@ -337,13 +339,6 @@ export function extractStepsFromEvents(events: EventRecord[]): StepItem[] {
         status: 'running',
       })
       stepIndexByRequestId.set(requestId, stepIndex)
-
-      const queue = pendingByTool.get(toolName)
-      if (queue) {
-        queue.push(stepIndex)
-      } else {
-        pendingByTool.set(toolName, [stepIndex])
-      }
       continue
     }
 
@@ -351,7 +346,6 @@ export function extractStepsFromEvents(events: EventRecord[]): StepItem[] {
       continue
     }
 
-    const toolName = event.payload.toolName
     const status: StepItem['status'] = event.payload.error
       ? 'error'
       : 'completed'
@@ -365,23 +359,6 @@ export function extractStepsFromEvents(events: EventRecord[]): StepItem[] {
       ) {
         steps[directIndex] = { ...steps[directIndex], status }
         continue
-      }
-    }
-
-    const queue = pendingByTool.get(toolName)
-    if (!queue || queue.length === 0) {
-      continue
-    }
-
-    // Fallback for results without request IDs: consume the oldest pending step with the same tool.
-    while (queue.length > 0) {
-      const pendingIndex = queue.shift()
-      if (pendingIndex === undefined) {
-        break
-      }
-      if (steps[pendingIndex]?.status === 'running') {
-        steps[pendingIndex] = { ...steps[pendingIndex], status }
-        break
       }
     }
   }
@@ -722,10 +699,14 @@ export function mergeFooterTasks(
 
   for (const task of liveTasks) {
     const persistedTask = mergedById.get(task.id)
-    mergedById.set(
-      task.id,
-      persistedTask ? { ...persistedTask, ...task } : task,
-    )
+    if (
+      persistedTask &&
+      isTerminalTaskLifecycleStatus(persistedTask.status) &&
+      !isTerminalTaskLifecycleStatus(task.status)
+    ) {
+      continue
+    }
+    mergedById.set(task.id, persistedTask ? { ...persistedTask, ...task } : task)
   }
 
   return sortFooterTasks([...mergedById.values()])

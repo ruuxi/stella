@@ -8,16 +8,8 @@ const DEVICE_ID_KEY = "Stella.deviceId";
 
 let cachedDeviceId: string | null = null;
 
-const readLocalDeviceId = () => {
-  return window.localStorage.getItem(DEVICE_ID_KEY);
-};
-
 const writeLocalDeviceId = (deviceId: string) => {
   window.localStorage.setItem(DEVICE_ID_KEY, deviceId);
-};
-
-const generateFallbackDeviceId = () => {
-  return crypto.randomUUID();
 };
 
 export const configurePiRuntime = async () => {
@@ -48,29 +40,18 @@ export const getOrCreateDeviceId = async () => {
   }
 
   const api = getElectronApi();
-  if (api?.system?.getDeviceId) {
-    try {
-      const fromHost = await api.system.getDeviceId();
-      if (fromHost) {
-        cachedDeviceId = fromHost;
-        writeLocalDeviceId(fromHost);
-        return fromHost;
-      }
-    } catch (err) {
-      console.debug("[device] getDeviceId from host failed:", (err as Error).message);
-    }
+  if (!api?.system?.getDeviceId) {
+    throw new Error("Stella device identity is unavailable.");
   }
 
-  const existing = readLocalDeviceId();
-  if (existing) {
-    cachedDeviceId = existing;
-    return existing;
+  const fromHost = await api.system.getDeviceId();
+  if (!fromHost) {
+    throw new Error("Stella device identity is unavailable.");
   }
 
-  const created = generateFallbackDeviceId();
-  cachedDeviceId = created;
-  writeLocalDeviceId(created);
-  return created;
+  cachedDeviceId = fromHost;
+  writeLocalDeviceId(fromHost);
+  return fromHost;
 };
 
-export const getCachedDeviceId = () => cachedDeviceId ?? readLocalDeviceId();
+export const getCachedDeviceId = () => cachedDeviceId;

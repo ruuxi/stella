@@ -41,6 +41,164 @@ pub struct PendingConfirmation {
     pub cmd: Value,
 }
 
+fn is_known_action(action: &str) -> bool {
+    matches!(
+        action,
+        "" | "launch"
+            | "navigate"
+            | "url"
+            | "cdp_url"
+            | "inspect"
+            | "title"
+            | "content"
+            | "evaluate"
+            | "close"
+            | "snapshot"
+            | "screenshot"
+            | "click"
+            | "dblclick"
+            | "fill"
+            | "type"
+            | "press"
+            | "hover"
+            | "scroll"
+            | "select"
+            | "check"
+            | "uncheck"
+            | "wait"
+            | "gettext"
+            | "getattribute"
+            | "isvisible"
+            | "isenabled"
+            | "ischecked"
+            | "back"
+            | "forward"
+            | "reload"
+            | "cookies_get"
+            | "cookies_set"
+            | "cookies_clear"
+            | "storage_get"
+            | "storage_set"
+            | "storage_clear"
+            | "setcontent"
+            | "headers"
+            | "offline"
+            | "console"
+            | "errors"
+            | "state_save"
+            | "state_load"
+            | "state_list"
+            | "state_show"
+            | "state_clear"
+            | "state_clean"
+            | "state_rename"
+            | "trace_start"
+            | "trace_stop"
+            | "profiler_start"
+            | "profiler_stop"
+            | "recording_start"
+            | "recording_stop"
+            | "recording_restart"
+            | "pdf"
+            | "tab_list"
+            | "tab_new"
+            | "tab_switch"
+            | "tab_close"
+            | "viewport"
+            | "useragent"
+            | "user_agent"
+            | "set_media"
+            | "download"
+            | "diff_snapshot"
+            | "diff_url"
+            | "credentials_set"
+            | "credentials_get"
+            | "credentials_delete"
+            | "credentials_list"
+            | "mouse"
+            | "keyboard"
+            | "focus"
+            | "clear"
+            | "selectall"
+            | "scrollintoview"
+            | "dispatch"
+            | "highlight"
+            | "tap"
+            | "boundingbox"
+            | "innertext"
+            | "innerhtml"
+            | "inputvalue"
+            | "setvalue"
+            | "count"
+            | "styles"
+            | "bringtofront"
+            | "timezone"
+            | "locale"
+            | "geolocation"
+            | "permissions"
+            | "dialog"
+            | "upload"
+            | "addscript"
+            | "addinitscript"
+            | "addstyle"
+            | "clipboard"
+            | "wheel"
+            | "device"
+            | "screencast_start"
+            | "screencast_stop"
+            | "waitforurl"
+            | "waitforloadstate"
+            | "waitforfunction"
+            | "frame"
+            | "mainframe"
+            | "getbyrole"
+            | "getbytext"
+            | "getbylabel"
+            | "getbyplaceholder"
+            | "getbyalttext"
+            | "getbytitle"
+            | "getbytestid"
+            | "nth"
+            | "find"
+            | "evalhandle"
+            | "drag"
+            | "expose"
+            | "pause"
+            | "multiselect"
+            | "responsebody"
+            | "waitfordownload"
+            | "window_new"
+            | "diff_screenshot"
+            | "video_start"
+            | "video_stop"
+            | "har_start"
+            | "har_stop"
+            | "route"
+            | "unroute"
+            | "requests"
+            | "credentials"
+            | "emulatemedia"
+            | "auth_save"
+            | "auth_login"
+            | "auth_list"
+            | "auth_delete"
+            | "auth_show"
+            | "confirm"
+            | "deny"
+            | "swipe"
+            | "device_list"
+            | "input_mouse"
+            | "input_keyboard"
+            | "input_touch"
+            | "keydown"
+            | "keyup"
+            | "inserttext"
+            | "mousemove"
+            | "mousedown"
+            | "mouseup"
+    )
+}
+
 pub struct HarEntry {
     pub request_id: String,
     /// Seconds since Unix epoch (CDP `wallTime`), with sub-second precision.
@@ -571,6 +729,10 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
         .unwrap_or("")
         .to_string();
 
+    if !is_known_action(action) {
+        return error_response(&id, &format!("Not yet implemented: {}", action));
+    }
+
     // Drain pending CDP events (console, errors, screencast frames, target lifecycle, fetch)
     let (pending_acks, new_targets, destroyed_targets, fetch_paused) = state.drain_cdp_events();
     if !pending_acks.is_empty() {
@@ -964,10 +1126,15 @@ async fn connect_auto_with_fresh_tab() -> Result<BrowserManager, String> {
 }
 
 fn requested_provider(cmd: Option<&Value>) -> Option<String> {
-    cmd.and_then(|value| value.get("provider").and_then(|v| v.as_str()).map(str::to_string))
-        .or_else(|| env::var("STELLA_BROWSER_PROVIDER").ok())
-        .map(|provider| provider.trim().to_string())
-        .filter(|provider| !provider.is_empty())
+    cmd.and_then(|value| {
+        value
+            .get("provider")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    })
+    .or_else(|| env::var("STELLA_BROWSER_PROVIDER").ok())
+    .map(|provider| provider.trim().to_string())
+    .filter(|provider| !provider.is_empty())
 }
 
 async fn auto_launch(state: &mut DaemonState) -> Result<(), String> {
@@ -5946,10 +6113,11 @@ mod tests {
         assert_eq!(result["success"], false);
         let error_msg = result["error"].as_str().unwrap();
         assert!(
-            error_msg.contains("Not yet implemented") || error_msg.contains("Auto-launch failed"),
+            error_msg.contains("Not yet implemented"),
             "Unexpected error: {}",
             error_msg
         );
+        assert!(state.browser.is_none());
     }
 
     #[tokio::test]
