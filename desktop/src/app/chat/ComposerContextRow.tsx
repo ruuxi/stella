@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { getElectronApi } from "@/platform/electron/electron";
@@ -18,10 +18,6 @@ import {
   type SuggestionLane,
   type SuggestionSlot,
 } from "./hooks/use-auto-context-chips";
-import {
-  STELLA_PIN_SUGGESTION_EVENT,
-  type StellaPinSuggestionDetail,
-} from "@/shared/lib/stella-suggestions";
 import { truncateChipLabel } from "./composer-context";
 
 // ---------------------------------------------------------------------------
@@ -89,28 +85,11 @@ export function ComposerSuggestionContextRow({
   chatContext,
   setChatContext,
 }: ComposerSuggestionRowProps) {
-  const { lanes, dismissSlot, pinSuggestion } = useAutoContextChips(true);
+  const { lanes, dismissSlot } = useAutoContextChips(true);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const [hiddenLaneIndexes, setHiddenLaneIndexes] = useState<Set<number>>(
     () => new Set(),
   );
-
-  // Listen for externally-pinned suggestions (e.g. cmd+rc → "Open chat"
-  // surfaces the right-clicked window as a one-shot suggestion). We dispatch
-  // through a window event so the IPC handler doesn't need to know which
-  // sidebar is mounted.
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<StellaPinSuggestionDetail>).detail;
-      if (detail?.chip) {
-        pinSuggestion(detail.chip);
-      }
-    };
-    window.addEventListener(STELLA_PIN_SUGGESTION_EVENT, handler);
-    return () => {
-      window.removeEventListener(STELLA_PIN_SUGGESTION_EVENT, handler);
-    };
-  }, [pinSuggestion]);
 
   // Hide a chip whose contents match the currently-attached context (we
   // don't want "+ Brave – github.com" suggesting itself when it's already

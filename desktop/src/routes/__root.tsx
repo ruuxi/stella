@@ -63,8 +63,6 @@ import {
   dispatchStellaSendMessage,
   WORKSPACE_CREATION_TRIGGER_KIND,
 } from "@/shared/lib/stella-send-message";
-import { dispatchStellaPinSuggestion } from "@/shared/lib/stella-suggestions";
-import type { SuggestionChip } from "@/app/chat/hooks/use-auto-context-chips";
 import { DICTATION_TOGGLE_EVENT } from "@/features/dictation/hooks/use-dictation";
 
 const NEW_APP_ASK_STELLA_PROMPT =
@@ -387,17 +385,6 @@ function RootChrome() {
           detail: payload,
         }),
       );
-    });
-  }, []);
-
-  // Cmd+right-click → "Open chat" on a window dispatches a context chip.
-  useEffect(() => {
-    return window.electronAPI?.home.onPinSuggestion((payload) => {
-      if (payload?.chip) {
-        dispatchStellaPinSuggestion({
-          chip: payload.chip as SuggestionChip,
-        });
-      }
     });
   }, []);
 

@@ -41,7 +41,6 @@ export type TurnViewModel = {
    */
   resourcePayload?: DisplayPayload;
   selfModApplied?: SelfModApplied;
-  agentId?: string;
   askQuestion?: AskQuestionPayload;
 };
 
