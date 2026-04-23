@@ -20,16 +20,40 @@ export const DEFAULT_VISUAL_PREFS: VisualPrefs = {
   showMouth: false,
 };
 
+type VisualPrefsStorage = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+};
+
+type VisualPrefsWindow = {
+  localStorage?: VisualPrefsStorage;
+  dispatchEvent?: (event: Event) => boolean;
+  CustomEvent?: new <T>(type: string, eventInitDict?: { detail?: T }) => Event;
+};
+
 const isVisualPrefs = (value: unknown): value is VisualPrefs =>
   typeof value === "object" &&
   value !== null &&
   typeof (value as VisualPrefs).showEyes === "boolean" &&
   typeof (value as VisualPrefs).showMouth === "boolean";
 
+const getVisualPrefsWindow = (): VisualPrefsWindow | null => {
+  const candidate = globalThis as typeof globalThis & {
+    window?: VisualPrefsWindow;
+    CustomEvent?: VisualPrefsWindow["CustomEvent"];
+  };
+  if (!candidate.window) return null;
+  return {
+    ...candidate.window,
+    CustomEvent: candidate.window.CustomEvent ?? candidate.CustomEvent,
+  };
+};
+
 export const readVisualPrefs = (): VisualPrefs => {
-  if (typeof window === "undefined") return { ...DEFAULT_VISUAL_PREFS };
+  const browserWindow = getVisualPrefsWindow();
+  if (!browserWindow?.localStorage) return { ...DEFAULT_VISUAL_PREFS };
   try {
-    const raw = window.localStorage.getItem(VISUAL_PREFS_KEY);
+    const raw = browserWindow.localStorage.getItem(VISUAL_PREFS_KEY);
     if (!raw) return { ...DEFAULT_VISUAL_PREFS };
     const parsed = JSON.parse(raw) as unknown;
     if (!isVisualPrefs(parsed)) return { ...DEFAULT_VISUAL_PREFS };
@@ -40,11 +64,13 @@ export const readVisualPrefs = (): VisualPrefs => {
 };
 
 export const writeVisualPrefs = (prefs: VisualPrefs): void => {
-  if (typeof window === "undefined") return;
+  const browserWindow = getVisualPrefsWindow();
+  if (!browserWindow?.localStorage) return;
   try {
-    window.localStorage.setItem(VISUAL_PREFS_KEY, JSON.stringify(prefs));
-    window.dispatchEvent(
-      new CustomEvent<VisualPrefs>(VISUAL_PREFS_CHANGED_EVENT, {
+    browserWindow.localStorage.setItem(VISUAL_PREFS_KEY, JSON.stringify(prefs));
+    if (!browserWindow.dispatchEvent || !browserWindow.CustomEvent) return;
+    browserWindow.dispatchEvent(
+      new browserWindow.CustomEvent<VisualPrefs>(VISUAL_PREFS_CHANGED_EVENT, {
         detail: prefs,
       }),
     );
