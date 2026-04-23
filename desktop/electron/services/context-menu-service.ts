@@ -1,5 +1,5 @@
 import { BrowserWindow, Menu, screen } from 'electron'
-import { MouseHookManager } from '../input/mouse-hook.js'
+import { MouseHookManager, type LeftMouseUpEvent } from '../input/mouse-hook.js'
 import type { ChatContext } from '../../src/shared/contracts/boundary.js'
 
 const RADIAL_CONTEXT_CAPTURE_DELAY_MS = 0
@@ -69,6 +69,12 @@ type ContextMenuServiceDeps = {
    * so we don't double-start the input hook.
    */
   onDoubleTapModifier?: () => void
+  /**
+   * Optional handler for global left-mouse-up events. Wired through the
+   * same uIOhook lifecycle so the selection watcher doesn't have to start
+   * a second hook (which would clash with this one).
+   */
+  onLeftMouseUp?: (event: LeftMouseUpEvent) => void
 }
 
 /**
@@ -170,6 +176,11 @@ export class ContextMenuService {
       onDoubleTapModifier: this.deps.onDoubleTapModifier
         ? () => {
             this.deps.onDoubleTapModifier?.()
+          }
+        : undefined,
+      onLeftMouseUp: this.deps.onLeftMouseUp
+        ? (event) => {
+            this.deps.onLeftMouseUp?.(event)
           }
         : undefined,
     })

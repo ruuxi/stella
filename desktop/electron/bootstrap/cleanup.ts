@@ -19,6 +19,9 @@ export const registerBootstrapProcessCleanups = (
   processRuntime.registerCleanup("before-quit", "selected-text", () => {
     cleanupSelectedTextProcess();
   });
+  processRuntime.registerCleanup("before-quit", "selection-watcher", () => {
+    context.services.selectionWatcherService.stop();
+  });
   processRuntime.registerCleanup("before-quit", "overlay-window", () => {
     context.state.overlayController?.destroy();
   });

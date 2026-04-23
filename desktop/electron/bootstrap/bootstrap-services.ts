@@ -1,4 +1,4 @@
-import type { BrowserWindow } from "electron";
+import { BrowserWindow } from "electron";
 import path from "path";
 import { AuthService } from "../services/auth-service.js";
 import { BackupService } from "../services/backup-service.js";
@@ -7,9 +7,11 @@ import { ContextMenuService } from "../services/context-menu-service.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
+import { SelectionWatcherService } from "../services/selection-watcher-service.js";
 import { UiStateService } from "../services/ui-state-service.js";
 import { getDevServerUrl } from "../dev-url.js";
 import { hasMacPermission } from "../utils/macos-permissions.js";
+import type { ChatContext } from "../../src/shared/contracts/boundary.js";
 import type {
   BootstrapConfig,
   BootstrapServices,
@@ -80,6 +82,54 @@ export const createBootstrapServices = (options: {
     getConvexSiteUrl: () => authService.getConvexSiteUrl(),
     getDeviceId: () => state.deviceId,
     processRuntime: state.processRuntime,
+  });
+
+  const sendChatContextSelectedText = (text: string) => {
+    const baseEmpty: ChatContext = captureService.emptyContext();
+    captureService.setPendingChatContext({ ...baseEmpty, selectedText: text });
+    captureService.broadcastChatContext();
+  };
+
+  const focusSidebarChatTarget = () => {
+    const wm = state.windowManager;
+    if (!wm) return;
+    wm.showWindow("mini");
+    const window = wm.getMiniWindow();
+    if (!window || window.isDestroyed()) return;
+    const send = () => {
+      if (!window.isDestroyed()) {
+        window.webContents.send("chat:openSidebar");
+      }
+    };
+    if (window.webContents.isLoading()) {
+      window.webContents.once("did-finish-load", send);
+    } else {
+      send();
+    }
+  };
+
+  const selectionWatcherService = new SelectionWatcherService({
+    shouldEnable: () =>
+      process.platform !== "darwin" ||
+      hasMacPermission("accessibility", false),
+    overlay: {
+      showSelectionChip: (payload) => {
+        state.overlayController?.showSelectionChip(payload);
+      },
+      hideSelectionChip: (requestId) => {
+        state.overlayController?.hideSelectionChip(requestId);
+      },
+    },
+    window: {
+      isStellaFocused: () => Boolean(BrowserWindow.getFocusedWindow()),
+      isMiniWindowVisible: () =>
+        state.windowManager?.isMiniShowing() ?? false,
+      routeSelectionToSidebar: (text) => {
+        sendChatContextSelectedText(text);
+        focusSidebarChatTarget();
+      },
+    },
+    capture: captureService,
   });
 
   const contextMenuService = new ContextMenuService({
@@ -156,6 +206,11 @@ export const createBootstrapServices = (options: {
         wm.showWindow("mini");
       }
     },
+    // Forward every left-mouse-up to the SelectionWatcher so it can ask the
+    // native helper for the current selection and pop the "Ask Stella" pill.
+    onLeftMouseUp: (event) => {
+      selectionWatcherService.handleLeftMouseUp(event);
+    },
   });
 
   return {
@@ -166,6 +221,7 @@ export const createBootstrapServices = (options: {
     credentialService,
     externalLinkService,
     securityPolicyService,
+    selectionWatcherService,
     uiStateService,
   };
 };

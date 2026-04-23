@@ -12,7 +12,7 @@ swiftc -O -o "$OUTPUT_DIR/window_info" src/window_info.swift -framework CoreGrap
 echo "Build successful: $OUTPUT_DIR/window_info"
 
 echo "Building selected_text (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/selected_text" src/selected_text.swift -framework ApplicationServices -framework AppKit
+swiftc -O -o "$OUTPUT_DIR/selected_text" src/selected_text.swift -framework ApplicationServices -framework AppKit -framework Carbon
 echo "Build successful: $OUTPUT_DIR/selected_text"
 
 echo "Building screen_permission (macOS)..."

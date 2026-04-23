@@ -27,6 +27,7 @@ const MODIFIER_KEYS_BY_PLATFORM: Record<string, readonly number[]> = {
 }
 
 const RIGHT_MOUSE_BUTTON = 2
+const LEFT_MOUSE_BUTTON = 1
 
 // Max time (ms) between the first Alt keyup and the second Alt keydown for
 // the gesture to count as a "double-tap". 350ms matches the typical OS
@@ -38,6 +39,17 @@ export type ContextMenuTriggerEvent = {
   y: number
 }
 
+export type LeftMouseUpEvent = {
+  x: number
+  y: number
+  /**
+   * Manhattan distance between the matching left-mousedown coordinates
+   * and this mouseup. Consumers use this as a "did the user drag?" gate
+   * — a true click hovers near zero; a text selection drags > 4px.
+   */
+  dragDistance: number
+}
+
 type MouseHookEvents = {
   onContextMenuTrigger: (event: ContextMenuTriggerEvent) => void
   /**
@@ -46,6 +58,12 @@ type MouseHookEvents = {
    * gesture is purely keyboard, so no coordinates are supplied.
    */
   onDoubleTapModifier?: () => void
+  /**
+   * Fired on every global left-mouse-button release. Used by the selection
+   * watcher to trigger an "Ask Stella" pill above any text the user just
+   * finished selecting; only attached when a consumer actually needs it.
+   */
+  onLeftMouseUp?: (event: LeftMouseUpEvent) => void
 }
 
 /**
@@ -127,6 +145,7 @@ export class MouseHookManager {
   private pressedKeycodes = new Set<number>()
   private nativeBlockingActive = false
   private readonly doubleTapDetector: DoubleTapAltDetector | null
+  private lastLeftDownPoint: { x: number; y: number } | null = null
 
   constructor(events: MouseHookEvents) {
     this.events = events
@@ -207,6 +226,9 @@ export class MouseHookManager {
     uIOhook.on('keydown', this.handleKeydown)
     uIOhook.on('keyup', this.handleKeyup)
     uIOhook.on('mousedown', this.handleMousedown)
+    if (this.events.onLeftMouseUp) {
+      uIOhook.on('mouseup', this.handleMouseup)
+    }
   }
 
   private readonly handleKeydown = (event: UiohookKeyboardEvent) => {
@@ -237,13 +259,30 @@ export class MouseHookManager {
   }
 
   private readonly handleMousedown = (event: UiohookMouseEvent) => {
+    const button = typeof event.button === 'number' ? event.button : -1
+    if (button === LEFT_MOUSE_BUTTON) {
+      this.lastLeftDownPoint = { x: event.x, y: event.y }
+    }
+
     // The fallback trigger path: if the native helper isn't suppressing the
     // OS context menu we still need uIOhook to detect modifier+right-click
     // and forward the trigger to the service.
     if (this.nativeBlockingActive) return
-    const button = typeof event.button === 'number' ? event.button : -1
     if (button !== RIGHT_MOUSE_BUTTON) return
     if (!this.isModifierPressed()) return
     this.events.onContextMenuTrigger({ x: event.x, y: event.y })
+  }
+
+  private readonly handleMouseup = (event: UiohookMouseEvent) => {
+    const handler = this.events.onLeftMouseUp
+    if (!handler) return
+    const button = typeof event.button === 'number' ? event.button : -1
+    if (button !== LEFT_MOUSE_BUTTON) return
+    const downPoint = this.lastLeftDownPoint
+    this.lastLeftDownPoint = null
+    const dragDistance = downPoint
+      ? Math.abs(event.x - downPoint.x) + Math.abs(event.y - downPoint.y)
+      : 0
+    handler({ x: event.x, y: event.y, dragDistance })
   }
 }
