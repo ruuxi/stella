@@ -4904,24 +4904,43 @@ func simulateLeftClick(at point: CGPoint) -> Bool {
 // the target process even when another app's window is visually on top
 // at those screen coordinates. Required for clicking inside web-wrapped
 // app surfaces (Spotify, Slack, Discord, etc.) without raising.
-func simulateLeftClickToPid(at point: CGPoint, pid: pid_t) -> Bool {
-    guard let source = CGEventSource(stateID: .hidSystemState),
-          let mouseDown = CGEvent(
-              mouseEventSource: source,
-              mouseType: .leftMouseDown,
-              mouseCursorPosition: point,
-              mouseButton: .left
-          ),
-          let mouseUp = CGEvent(
-              mouseEventSource: source,
-              mouseType: .leftMouseUp,
-              mouseCursorPosition: point,
-              mouseButton: .left
-          ) else {
+//
+// Mirrors open-codex-computer-use's `clickTargeted`:
+//   - `.combinedSessionState` event source (NOT `.hidSystemState`;
+//     per-pid posting requires session-scoped events).
+//   - Three events in order: mouseMoved → mouseDown → mouseUp. The
+//     mouseMoved primes the cursor position in the target's coord frame;
+//     web views ignore the click without it.
+//   - `.mouseEventClickState = clickCount` set on every event so the
+//     receiver registers the click sequence properly.
+//   - 30 ms sleep between events so the receiver's run loop has time
+//     to dispatch each one before the next arrives.
+func simulateLeftClickToPid(at point: CGPoint, pid: pid_t, clickCount: Int = 1) -> Bool {
+    guard let source = CGEventSource(stateID: .combinedSessionState) else {
         return false
     }
-    mouseDown.postToPid(pid)
-    mouseUp.postToPid(pid)
+    let count = max(1, clickCount)
+    func post(_ type: CGEventType) -> Bool {
+        guard let event = CGEvent(
+            mouseEventSource: source,
+            mouseType: type,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ) else {
+            return false
+        }
+        event.setIntegerValueField(.mouseEventClickState, value: Int64(count))
+        event.postToPid(pid)
+        Thread.sleep(forTimeInterval: 0.03)
+        return true
+    }
+    for _ in 0..<count {
+        guard post(.mouseMoved),
+              post(.leftMouseDown),
+              post(.leftMouseUp) else {
+            return false
+        }
+    }
     return true
 }
 
