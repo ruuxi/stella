@@ -16,6 +16,10 @@ import {
   type DiscoveryCategory,
 } from "@/shared/contracts/discovery";
 import {
+  readVisualPrefs,
+  writeVisualPrefs,
+} from "@/shared/contracts/visual-prefs";
+import {
   BROWSERS,
   DISCOVERY_CATEGORIES,
   SPLIT_PHASES,
@@ -216,6 +220,7 @@ export const OnboardingStep1 = ({
   const [expressionStyle, setExpressionStyle] = useState<
     "emotes" | "emoji" | "none" | null
   >(null);
+  const [visualPrefs, setVisualPrefs] = useState(() => readVisualPrefs());
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const saveExpressionStyle = useMutation(
@@ -570,6 +575,22 @@ export const OnboardingStep1 = ({
     [isAuthenticated, saveExpressionStyle],
   );
 
+  const handleToggleEyes = useCallback(() => {
+    setVisualPrefs((current) => {
+      const next = { ...current, showEyes: !current.showEyes };
+      writeVisualPrefs(next);
+      return next;
+    });
+  }, []);
+
+  const handleToggleMouth = useCallback(() => {
+    setVisualPrefs((current) => {
+      const next = { ...current, showMouth: !current.showMouth };
+      writeVisualPrefs(next);
+      return next;
+    });
+  }, []);
+
   const handleMemoryContinue = useCallback(
     ({
       memoryEnabled,
@@ -679,8 +700,12 @@ export const OnboardingStep1 = ({
             <OnboardingPersonalityPhase
               expressionStyle={expressionStyle}
               splitTransitionActive={leaving}
+              showEyes={visualPrefs.showEyes}
+              showMouth={visualPrefs.showMouth}
               onFinish={nextSplitStep}
               onSelectStyle={handleExpressionStyleSelect}
+              onToggleEyes={handleToggleEyes}
+              onToggleMouth={handleToggleMouth}
             />
           </Suspense>
         );

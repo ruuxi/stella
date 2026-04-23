@@ -1542,6 +1542,16 @@
   text-align: center;
 }
 
+/* ═══ Look section (eyes/mouth toggles) ═══ */
+
+.onboarding-look-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+}
+
 /* ═══ Personality preview ═══ */
 
 .onboarding-personality-preview {
