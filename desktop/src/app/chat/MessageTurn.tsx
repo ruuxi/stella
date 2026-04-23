@@ -1,6 +1,7 @@
 import { memo, useRef, useState, useEffect } from "react";
 import type { Attachment, ChannelEnvelope } from "@/app/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
+import { EndResourceCard } from "@/app/chat/EndResourceCard";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ReasoningSection } from "@/app/chat/ReasoningSection";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
@@ -11,6 +12,7 @@ import {
   type MessagePayload,
 } from "@/app/chat/lib/event-transforms";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
+import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import { GrowIn } from "@/app/chat/GrowIn";
 import {
@@ -31,6 +33,13 @@ export type TurnViewModel = {
   assistantEmotesEnabled: boolean;
   webSearchBadgeHtml?: string;
   officePreviewRef?: OfficePreviewRef;
+  /**
+   * Primary artifact this turn produced (or read), if any. When set the
+   * UI renders an "end-resource" pill below the assistant content; click
+   * opens the matching Display sidebar tab. Mirrors Codex's per-turn
+   * artifact card.
+   */
+  resourcePayload?: DisplayPayload;
   selfModApplied?: SelfModApplied;
   agentId?: string;
   askQuestion?: AskQuestionPayload;
@@ -258,6 +267,40 @@ const askQuestionPayloadEqual = (
   return true;
 };
 
+const resourcePayloadEqual = (
+  a: DisplayPayload | undefined,
+  b: DisplayPayload | undefined,
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return a === b;
+  if (a.kind !== b.kind) return false;
+  switch (a.kind) {
+    case "html":
+      return a.html === (b as { html: string }).html;
+    case "office":
+      return (
+        a.previewRef.sourcePath ===
+        (b as { previewRef: OfficePreviewRef }).previewRef.sourcePath
+      );
+    case "pdf":
+      return a.filePath === (b as { filePath: string }).filePath;
+    case "media": {
+      const bb = b as Extract<DisplayPayload, { kind: "media" }>;
+      if (a.asset.kind !== bb.asset.kind) return false;
+      if (a.asset.kind === "image" && bb.asset.kind === "image") {
+        return a.asset.filePaths.join("|") === bb.asset.filePaths.join("|");
+      }
+      if (
+        (a.asset.kind === "video" || a.asset.kind === "audio")
+        && (bb.asset.kind === "video" || bb.asset.kind === "audio")
+      ) {
+        return a.asset.filePath === bb.asset.filePath;
+      }
+      return JSON.stringify(a.asset) === JSON.stringify(bb.asset);
+    }
+  }
+};
+
 const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
   a.id === b.id &&
   a.userText === b.userText &&
@@ -271,6 +314,7 @@ const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
   (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
   (a.officePreviewRef?.sessionId ?? null) ===
     (b.officePreviewRef?.sessionId ?? null) &&
+  resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
   askQuestionPayloadEqual(a.askQuestion, b.askQuestion) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied)
 );
@@ -534,6 +578,10 @@ export const TurnItem = memo(function TurnItem({
             )}
 
             {officePreviewRef && <OfficePreviewCard previewRef={officePreviewRef} />}
+
+            {turn.resourcePayload && !shouldShowStreamingAssistant && (
+              <EndResourceCard payload={turn.resourcePayload} />
+            )}
 
             {turn.selfModApplied && !shouldShowStreamingAssistant && (
               <SelfModUndoButton selfModApplied={turn.selfModApplied} />

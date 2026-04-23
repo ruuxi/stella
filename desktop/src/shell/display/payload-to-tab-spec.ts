@@ -1,0 +1,186 @@
+/**
+ * Bridge from the legacy `DisplayPayload` IPC contract (one-payload-at-a-
+ * time, used by the runtime worker's `displayHtml(...)` and the media
+ * materializer) to the new `DisplayTabSpec` model.
+ *
+ * Keeping the bridge isolated means the worker / IPC / Convex hooks don't
+ * have to learn about the tab manager — they keep speaking
+ * `DisplayPayload` and a single mapper turns each one into a tab spec at
+ * the renderer boundary.
+ */
+
+import { createElement } from "react";
+import type { DisplayPayload } from "@/shared/contracts/display-payload";
+import { getDisplayPayloadTitle } from "@/shared/contracts/display-payload";
+import {
+  HtmlTabContent,
+  ImageTabContent,
+  PdfTabContent,
+  OfficeTabContent,
+  VideoTabContent,
+  AudioTabContent,
+  Model3dTabContent,
+  DownloadTabContent,
+  TextTabContent,
+} from "./tab-content";
+import type { DisplayTabSpec } from "./types";
+import { basenameOf, kindForPath } from "./path-to-viewer";
+
+/**
+ * Singleton id for the runtime `displayHtml(...)` stream. The runtime
+ * worker only ever streams one HTML view at a time, so we intentionally
+ * collapse all of them into one tab that morphs in place.
+ */
+const HTML_STREAM_TAB_ID = "html:stream";
+
+/**
+ * Stable hash for a list of file paths (used as part of media-image tab
+ * ids). Sorted so that `[a, b]` and `[b, a]` collapse to the same tab.
+ */
+const stableJoin = (paths: string[]): string =>
+  [...paths].sort().join("|");
+
+export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
+  const title = getDisplayPayloadTitle(payload);
+
+  switch (payload.kind) {
+    case "html":
+      return {
+        id: HTML_STREAM_TAB_ID,
+        kind: "html",
+        title,
+        render: () => createElement(HtmlTabContent, { html: payload.html }),
+      };
+
+    case "office": {
+      const sourcePath = payload.previewRef.sourcePath;
+      const kind = kindForPath(sourcePath);
+      return {
+        id: `office:${sourcePath}`,
+        kind:
+          kind === "office-spreadsheet" || kind === "office-slides"
+            ? kind
+            : "office-document",
+        title,
+        tooltip: sourcePath,
+        metadata: { kind: "office", sourcePath },
+        render: () =>
+          createElement(OfficeTabContent, { previewRef: payload.previewRef }),
+      };
+    }
+
+    case "pdf":
+      return {
+        id: `pdf:${payload.filePath}`,
+        kind: "pdf",
+        title,
+        tooltip: payload.filePath,
+        metadata: { kind: "pdf", filePath: payload.filePath },
+        render: () =>
+          createElement(PdfTabContent, {
+            filePath: payload.filePath,
+            ...(payload.title ? { title: payload.title } : {}),
+          }),
+      };
+
+    case "media": {
+      const asset = payload.asset;
+      const baseMeta = {
+        ...(payload.jobId ? { jobId: payload.jobId } : {}),
+        ...(payload.capability ? { capability: payload.capability } : {}),
+        ...(payload.prompt ? { prompt: payload.prompt } : {}),
+      };
+      switch (asset.kind) {
+        case "image":
+          return {
+            id: `media:image:${stableJoin(asset.filePaths)}`,
+            kind: "image",
+            title,
+            tooltip: asset.filePaths.map(basenameOf).join(", "),
+            metadata: { kind: "image", filePaths: asset.filePaths, ...baseMeta },
+            render: () =>
+              createElement(ImageTabContent, {
+                filePaths: asset.filePaths,
+                ...(payload.prompt ? { prompt: payload.prompt } : {}),
+                ...(payload.capability ? { capability: payload.capability } : {}),
+              }),
+          };
+        case "video":
+          return {
+            id: `media:video:${asset.filePath}`,
+            kind: "video",
+            title,
+            tooltip: asset.filePath,
+            metadata: { kind: "video", filePath: asset.filePath, ...baseMeta },
+            render: () =>
+              createElement(VideoTabContent, {
+                filePath: asset.filePath,
+                ...(payload.prompt ? { prompt: payload.prompt } : {}),
+                ...(payload.capability ? { capability: payload.capability } : {}),
+              }),
+          };
+        case "audio":
+          return {
+            id: `media:audio:${asset.filePath}`,
+            kind: "audio",
+            title,
+            tooltip: asset.filePath,
+            metadata: { kind: "audio", filePath: asset.filePath, ...baseMeta },
+            render: () =>
+              createElement(AudioTabContent, {
+                filePath: asset.filePath,
+                ...(payload.prompt ? { prompt: payload.prompt } : {}),
+                ...(payload.capability ? { capability: payload.capability } : {}),
+              }),
+          };
+        case "model3d":
+          return {
+            id: `media:model3d:${asset.filePath}`,
+            kind: "model3d",
+            title,
+            tooltip: asset.filePath,
+            metadata: { kind: "model3d", filePath: asset.filePath, ...baseMeta },
+            render: () =>
+              createElement(Model3dTabContent, {
+                filePath: asset.filePath,
+                label: asset.label,
+                ...(payload.prompt ? { prompt: payload.prompt } : {}),
+                ...(payload.capability ? { capability: payload.capability } : {}),
+              }),
+          };
+        case "download":
+          return {
+            id: `media:download:${asset.filePath}`,
+            kind: "download",
+            title,
+            tooltip: asset.filePath,
+            metadata: { kind: "download", filePath: asset.filePath, ...baseMeta },
+            render: () =>
+              createElement(DownloadTabContent, {
+                filePath: asset.filePath,
+                label: asset.label,
+                ...(payload.prompt ? { prompt: payload.prompt } : {}),
+                ...(payload.capability ? { capability: payload.capability } : {}),
+              }),
+          };
+        case "text": {
+          // Text blobs don't have a path, so the id is keyed off the
+          // payload's `createdAt` — re-emitting the same blob within one ms
+          // would dedupe (which is fine: it's the same content).
+          return {
+            id: `media:text:${payload.createdAt}`,
+            kind: "text",
+            title,
+            metadata: { kind: "text", ...baseMeta },
+            render: () =>
+              createElement(TextTabContent, {
+                text: asset.text,
+                ...(payload.prompt ? { prompt: payload.prompt } : {}),
+                ...(payload.capability ? { capability: payload.capability } : {}),
+              }),
+          };
+        }
+      }
+    }
+  }
+};

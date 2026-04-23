@@ -63,19 +63,40 @@ export const getRuntimeToolMetadata = (opts: {
   return resolved;
 };
 
+const mergeFileChangesIntoDetails = (
+  details: unknown,
+  fileChanges: ToolResult["fileChanges"],
+): unknown => {
+  if (!fileChanges || fileChanges.length === 0) return details;
+  if (details && typeof details === "object" && !Array.isArray(details)) {
+    return { ...(details as Record<string, unknown>), fileChanges };
+  }
+  // Wrap non-object details so the spread in the worker server hoists
+  // `fileChanges` to the top level of the persisted event payload while
+  // still preserving the original details under `result`.
+  if (details === undefined || details === null) return { fileChanges };
+  return { result: details, fileChanges };
+};
+
 const formatToolResult = (
   toolResult: ToolResult,
 ): { text: string; details: unknown } => {
   if (toolResult.error) {
     return {
       text: `Error: ${toolResult.error}`,
-      details: toolResult.details ?? { error: toolResult.error },
+      details: mergeFileChangesIntoDetails(
+        toolResult.details ?? { error: toolResult.error },
+        toolResult.fileChanges,
+      ),
     };
   }
 
   return {
     text: textFromUnknown(toolResult.result),
-    details: toolResult.details ?? toolResult.result,
+    details: mergeFileChangesIntoDetails(
+      toolResult.details ?? toolResult.result,
+      toolResult.fileChanges,
+    ),
   };
 };
 

@@ -3,6 +3,7 @@
  */
 
 import type { TaskLifecycleStatus } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import type { FileChangeRecord } from "../../../desktop/src/shared/contracts/file-changes.js";
 import type {
   LocalCronJobCreateInput,
   LocalCronJobRecord,
@@ -32,6 +33,21 @@ export type ToolResult = {
   result?: unknown;
   details?: unknown;
   error?: string;
+  /**
+   * Normalized record of any filesystem mutations the tool performed.
+   *
+   * Mirrors Codex's `fileChange` items: the runtime worker hoists this
+   * field into the persisted `tool_result` event payload, and the chat
+   * surface walks the records to build a per-turn `editedFilePaths`
+   * list — without having to know which specific tool produced the
+   * change.
+   *
+   * Tools that don't mutate the filesystem leave this `undefined`.
+   * Tools that may mutate the filesystem but cannot enumerate the
+   * resulting paths (e.g. arbitrary `Bash` / `exec_command`) also leave
+   * this `undefined`, exactly like Codex does.
+   */
+  fileChanges?: FileChangeRecord[];
 };
 
 export type ToolUpdateCallback = (update: ToolResult) => void;

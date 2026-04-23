@@ -10,7 +10,7 @@ const event = (
 });
 
 describe("findLatestDisplayCandidate", () => {
-  it("returns null when there is nothing visual in the stream", () => {
+  it("returns null when there is nothing media-shaped in the stream", () => {
     expect(findLatestDisplayCandidate([])).toBeNull();
     expect(
       findLatestDisplayCandidate([
@@ -24,133 +24,124 @@ describe("findLatestDisplayCandidate", () => {
     ).toBeNull();
   });
 
-  it("routes office preview refs from tool results", () => {
+  it("does not auto-route Office previews any more (handled by the chat resource pill)", () => {
     const previewRef = {
       sessionId: "session-A",
       title: "deck.pptx",
       sourcePath: "/tmp/deck.pptx",
     };
 
+    expect(
+      findLatestDisplayCandidate([
+        event({
+          _id: "e1",
+          type: "tool_result",
+          timestamp: 1,
+          payload: {
+            toolName: "Bash",
+            result: "Started inline office preview.",
+            officePreviewRef: previewRef,
+          },
+        }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("does not auto-route PDF Read results any more", () => {
+    expect(
+      findLatestDisplayCandidate([
+        event({
+          _id: "req-1",
+          requestId: "req-1",
+          type: "tool_request",
+          timestamp: 1,
+          payload: {
+            toolName: "Read",
+            args: { path: "/tmp/invoice.pdf" },
+          },
+        }),
+        event({
+          _id: "res-1",
+          requestId: "req-1",
+          type: "tool_result",
+          timestamp: 2,
+          payload: { toolName: "Read", result: "PDF contents" },
+        }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("auto-routes image_gen results with local file paths", () => {
     const result = findLatestDisplayCandidate([
       event({
-        _id: "e1",
+        _id: "ig-1",
         type: "tool_result",
-        timestamp: 1,
+        timestamp: 42,
         payload: {
-          toolName: "Bash",
-          result: "Started inline office preview.",
-          officePreviewRef: previewRef,
+          toolName: "image_gen",
+          result: {
+            jobId: "job-abc",
+            capability: "text_to_image",
+            prompt: "A dog over Tokyo",
+            filePaths: ["/state/media/outputs/job-abc_0.png"],
+          },
         },
       }),
     ]);
 
     expect(result).not.toBeNull();
-    expect(result?.payload).toEqual({ kind: "office", previewRef });
-    expect(result?.sourceId).toBe("e1");
-  });
-
-  it("routes Read tool calls against .pdf paths once the result arrives", () => {
-    const events: EventRecord[] = [
-      event({
-        _id: "req-1",
-        requestId: "req-1",
-        type: "tool_request",
-        timestamp: 1,
-        payload: {
-          toolName: "Read",
-          args: { path: "/tmp/invoice.pdf" },
-        },
-      }),
-      event({
-        _id: "res-1",
-        requestId: "req-1",
-        type: "tool_result",
-        timestamp: 2,
-        payload: { toolName: "Read", result: "PDF contents" },
-      }),
-    ];
-
-    const result = findLatestDisplayCandidate(events);
+    expect(result?.sourceId).toBe("ig-1");
     expect(result?.payload).toEqual({
-      kind: "pdf",
-      filePath: "/tmp/invoice.pdf",
+      kind: "media",
+      asset: { kind: "image", filePaths: ["/state/media/outputs/job-abc_0.png"] },
+      jobId: "job-abc",
+      capability: "text_to_image",
+      prompt: "A dog over Tokyo",
+      createdAt: 42,
     });
   });
 
-  it("ignores Read calls against non-PDF paths", () => {
-    const events: EventRecord[] = [
-      event({
-        _id: "req-1",
-        requestId: "req-1",
-        type: "tool_request",
-        timestamp: 1,
-        payload: { toolName: "Read", args: { path: "/tmp/notes.md" } },
-      }),
-      event({
-        _id: "res-1",
-        requestId: "req-1",
-        type: "tool_result",
-        timestamp: 2,
-        payload: { toolName: "Read", result: "..." },
-      }),
-    ];
-
-    expect(findLatestDisplayCandidate(events)).toBeNull();
+  it("ignores image_gen results that errored", () => {
+    expect(
+      findLatestDisplayCandidate([
+        event({
+          _id: "ig-err",
+          type: "tool_result",
+          timestamp: 1,
+          payload: {
+            toolName: "image_gen",
+            error: "timeout",
+            result: {
+              jobId: "job-x",
+              filePaths: ["/state/media/outputs/x.png"],
+            },
+          },
+        }),
+      ]),
+    ).toBeNull();
   });
 
-  it("does not route a PDF Read whose result errored", () => {
-    const events: EventRecord[] = [
+  it("prefers the most recent image_gen candidate when several land in one tick", () => {
+    const result = findLatestDisplayCandidate([
       event({
-        _id: "req-1",
-        requestId: "req-1",
-        type: "tool_request",
-        timestamp: 1,
-        payload: { toolName: "Read", args: { path: "/tmp/missing.pdf" } },
-      }),
-      event({
-        _id: "res-1",
-        requestId: "req-1",
-        type: "tool_result",
-        timestamp: 2,
-        payload: { toolName: "Read", error: "ENOENT" },
-      }),
-    ];
-
-    expect(findLatestDisplayCandidate(events)).toBeNull();
-  });
-
-  it("prefers the most recent visual candidate", () => {
-    const previewRef = {
-      sessionId: "session-A",
-      title: "deck.pptx",
-      sourcePath: "/tmp/deck.pptx",
-    };
-
-    const events: EventRecord[] = [
-      event({
-        _id: "e1",
+        _id: "ig-1",
         type: "tool_result",
         timestamp: 10,
-        payload: { toolName: "Bash", officePreviewRef: previewRef },
+        payload: {
+          toolName: "image_gen",
+          result: { jobId: "j1", filePaths: ["/a.png"] },
+        },
       }),
       event({
-        _id: "req-2",
-        requestId: "req-2",
-        type: "tool_request",
-        timestamp: 20,
-        payload: { toolName: "Read", args: { path: "/tmp/q4.pdf" } },
-      }),
-      event({
-        _id: "res-2",
-        requestId: "req-2",
+        _id: "ig-2",
         type: "tool_result",
-        timestamp: 30,
-        payload: { toolName: "Read", result: "..." },
+        timestamp: 20,
+        payload: {
+          toolName: "image_gen",
+          result: { jobId: "j2", filePaths: ["/b.png"] },
+        },
       }),
-    ];
-
-    const result = findLatestDisplayCandidate(events);
-    expect(result?.payload).toEqual({ kind: "pdf", filePath: "/tmp/q4.pdf" });
-    expect(result?.sourceId).toBe("res-2");
+    ]);
+    expect(result?.sourceId).toBe("ig-2");
   });
 });

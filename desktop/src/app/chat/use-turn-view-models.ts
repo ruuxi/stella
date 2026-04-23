@@ -7,6 +7,7 @@ import {
   getCurrentRunningTool,
   getRunningTasks,
 } from "@/app/chat/lib/event-transforms";
+import { deriveTurnResource } from "@/app/chat/lib/derive-turn-resource";
 import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
 import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
@@ -106,6 +107,33 @@ const getAskQuestionPayload = (
     const parsed = parseAskQuestionArgs(payload.args);
     if (parsed) {
       return parsed;
+    }
+  }
+  return undefined;
+};
+
+const asNonEmptyString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+
+const getTurnCwd = (events: EventRecord[]): string | undefined => {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type !== "tool_request") {
+      continue;
+    }
+    const payload = event.payload as { args?: unknown } | undefined;
+    if (!payload?.args || typeof payload.args !== "object") {
+      continue;
+    }
+    const args = payload.args as Record<string, unknown>;
+    const cwd =
+      asNonEmptyString(args.working_directory)
+      ?? asNonEmptyString(args.workdir)
+      ?? asNonEmptyString(args.cwd);
+    if (cwd) {
+      return cwd;
     }
   }
   return undefined;
@@ -230,6 +258,11 @@ export function useTurnViewModels(opts: {
         ?? stickyTaskIdByTurnId.get(turn.id);
 
       const askQuestionPayload = getAskQuestionPayload(turn.toolEvents);
+      const resourcePayload = deriveTurnResource(
+        turn.toolEvents,
+        assistantText,
+        getTurnCwd(turn.toolEvents),
+      );
 
       return {
         id: turn.id,
@@ -247,6 +280,7 @@ export function useTurnViewModels(opts: {
         assistantEmotesEnabled,
         webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
         officePreviewRef: getOfficePreviewRef(turn.toolEvents),
+        ...(resourcePayload ? { resourcePayload } : {}),
         ...(askQuestionPayload ? { askQuestion: askQuestionPayload } : {}),
         ...(agentId ? { agentId } : {}),
       };

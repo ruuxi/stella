@@ -6,6 +6,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import type { ToolContext, ToolResult } from "./types.js";
+import { fileChange } from "../../../desktop/src/shared/contracts/file-changes.js";
 import {
   expandHomePath,
   readFileSafe,
@@ -194,6 +195,9 @@ export const handleWrite = async (
     );
     return {
       result: created ? `Created ${filePath}` : `Wrote ${filePath}`,
+      fileChanges: [
+        fileChange(filePath, { type: created ? "add" : "update" }),
+      ],
     };
   } catch (error) {
     return { error: `Error writing file: ${(error as Error).message}` };
@@ -214,7 +218,10 @@ export const handleEdit = async (
       },
       context,
     );
-    return { result: `Replaced ${replacements} occurrence(s) in ${filePath}` };
+    return {
+      result: `Replaced ${replacements} occurrence(s) in ${filePath}`,
+      fileChanges: [fileChange(filePath, { type: "update" })],
+    };
   } catch (error) {
     return { error: (error as Error).message };
   }
