@@ -41,7 +41,7 @@ export const createExecCommandTool = (
       yield_time_ms: {
         type: "number",
         description:
-          "How long to wait (in milliseconds) for output before yielding control back to you with a session_id.",
+          "How long to wait (in milliseconds) for output before yielding control back to you with a session_id. Defaults to 10000.",
       },
       max_output_tokens: {
         type: "number",

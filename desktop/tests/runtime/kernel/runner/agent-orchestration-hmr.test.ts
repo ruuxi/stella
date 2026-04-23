@@ -37,6 +37,19 @@ describe("task-orchestration HMR target resolution", () => {
     expect(targetPath && isHmrPathUnderDirectory(targetPath, stellaRoot)).toBe(false);
   });
 
+  it("ignores safe read-only exec_command calls", () => {
+    const targetPath = resolveHmrToolTargetPath(
+      "exec_command",
+      {
+        cmd: "git status",
+        workdir: stellaRoot,
+      },
+      stellaRoot,
+    );
+
+    expect(targetPath).toBeNull();
+  });
+
   it("infers apply_patch target paths directly", () => {
     const expandedTmpRoot = path.resolve(os.tmpdir(), "stella-root");
     const targetPath = resolveHmrToolTargetPath(
