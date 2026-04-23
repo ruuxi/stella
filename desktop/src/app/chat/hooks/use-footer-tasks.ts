@@ -1,69 +1,75 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from 'react'
 import {
   extractTasksFromEvents,
-  getFooterTasksFromEvents,
+  getFooterTasksFromTasks,
   mergeFooterTasks,
   TASK_COMPLETION_INDICATOR_MS,
   type EventRecord,
   type TaskItem,
-} from "@/app/chat/lib/event-transforms";
+} from '@/app/chat/lib/event-transforms'
 
 type UseFooterTasksArgs = {
-  events: EventRecord[];
-  liveTasks?: TaskItem[];
-  appSessionStartedAtMs?: number | null;
-};
+  events: EventRecord[]
+  liveTasks?: TaskItem[]
+  appSessionStartedAtMs?: number | null
+}
 
 export function useFooterTasks({
   events,
   liveTasks,
   appSessionStartedAtMs,
 }: UseFooterTasksArgs): TaskItem[] {
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const latestEventTimestamp = events.at(-1)?.timestamp ?? 0;
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  const latestEventTimestamp = events.at(-1)?.timestamp ?? 0
 
   useEffect(() => {
-    setNowMs(Date.now());
-  }, [appSessionStartedAtMs, latestEventTimestamp]);
+    setNowMs(Date.now())
+  }, [appSessionStartedAtMs, latestEventTimestamp])
 
   const extractedTasks = useMemo(
     () => extractTasksFromEvents(events, { appSessionStartedAtMs }),
     [appSessionStartedAtMs, events],
-  );
+  )
 
   useEffect(() => {
-    const nextExpiryAt = extractedTasks.reduce<number | null>((current, task) => {
-      if (task.status !== "completed" || typeof task.completedAtMs !== "number") {
-        return current;
-      }
-      const expiryAt = task.completedAtMs + TASK_COMPLETION_INDICATOR_MS;
-      if (expiryAt <= nowMs) {
-        return current;
-      }
-      return current === null ? expiryAt : Math.min(current, expiryAt);
-    }, null);
+    const nextExpiryAt = extractedTasks.reduce<number | null>(
+      (current, task) => {
+        if (
+          task.status !== 'completed' ||
+          typeof task.completedAtMs !== 'number'
+        ) {
+          return current
+        }
+        const expiryAt = task.completedAtMs + TASK_COMPLETION_INDICATOR_MS
+        if (expiryAt <= nowMs) {
+          return current
+        }
+        return current === null ? expiryAt : Math.min(current, expiryAt)
+      },
+      null,
+    )
 
     if (nextExpiryAt === null) {
-      return;
+      return
     }
 
-    const delayMs = Math.max(0, nextExpiryAt - Date.now());
+    const delayMs = Math.max(0, nextExpiryAt - Date.now())
     const timeoutId = window.setTimeout(() => {
-      setNowMs(Date.now());
-    }, delayMs);
+      setNowMs(Date.now())
+    }, delayMs)
 
     return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [extractedTasks, nowMs]);
+      window.clearTimeout(timeoutId)
+    }
+  }, [extractedTasks, nowMs])
 
   const persistedFooterTasks = useMemo(
-    () => getFooterTasksFromEvents(events, { appSessionStartedAtMs, nowMs }),
-    [appSessionStartedAtMs, events, nowMs],
-  );
+    () => getFooterTasksFromTasks(extractedTasks, { nowMs }),
+    [extractedTasks, nowMs],
+  )
 
   return useMemo(
     () => mergeFooterTasks(persistedFooterTasks, liveTasks),
     [liveTasks, persistedFooterTasks],
-  );
+  )
 }

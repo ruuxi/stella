@@ -7,6 +7,7 @@ import type { RecentApp } from '../src/shared/contracts/home.js'
 // renderer-UI concerns: MRU sort, AX title fallback, regular-apps-only
 // scope, per-element AX timeouts, diagnostics in warnings).
 const HELPER_NAME = 'home_apps'
+const RECENT_APPS_CACHE_MS = 2_500
 
 type RawListedApp = {
   name?: string
@@ -22,6 +23,14 @@ type RawListAppsPayload = {
   apps?: RawListedApp[]
   warnings?: string[]
 }
+
+type RecentAppsCacheEntry = {
+  expiresAt: number
+  value: RecentApp[] | null
+}
+
+const recentAppsCache = new Map<string, RecentAppsCacheEntry>()
+const recentAppsInFlight = new Map<string, Promise<RecentApp[] | null>>()
 
 /**
  * Apps that are part of the OS chrome / always-on infra. Filtered before
@@ -143,7 +152,9 @@ const isNoiseBundleId = (bundleId: string | undefined | null): boolean => {
 // each app's topmost-window title attached.
 // ---------------------------------------------------------------------------
 
-const listRecentAppsMac = async (limit: number): Promise<RecentApp[] | null> => {
+const listRecentAppsMac = async (
+  limit: number,
+): Promise<RecentApp[] | null> => {
   // Generous timeout because the helper's AX-title fallback can stall for
   // ~0.5s per pid when an app is unresponsive. The UI polls infrequently
   // enough that 8s is invisible.
@@ -180,9 +191,11 @@ const listRecentAppsMac = async (limit: number): Promise<RecentApp[] | null> => 
     if (seenPids.has(raw.pid)) continue
     seenPids.add(raw.pid)
 
-    const windowTitle = typeof raw.windowTitle === 'string' ? raw.windowTitle.trim() : ''
+    const windowTitle =
+      typeof raw.windowTitle === 'string' ? raw.windowTitle.trim() : ''
     const iconDataUrl =
-      typeof raw.iconDataUrl === 'string' && raw.iconDataUrl.startsWith('data:image/')
+      typeof raw.iconDataUrl === 'string' &&
+      raw.iconDataUrl.startsWith('data:image/')
         ? raw.iconDataUrl
         : undefined
     cleaned.push({
@@ -320,8 +333,39 @@ $procs | ConvertTo-Json -Compress
  * Returns `null` when the platform is unsupported or the underlying snapshot
  * call failed (treat as "no signal" — render nothing).
  */
-export const listRecentApps = async (limit = 6): Promise<RecentApp[] | null> => {
-  if (process.platform === 'darwin') return listRecentAppsMac(limit)
-  if (process.platform === 'win32') return listRecentAppsWindows(limit)
-  return null
+export const listRecentApps = async (
+  limit = 6,
+): Promise<RecentApp[] | null> => {
+  const normalizedLimit = Math.max(0, Math.floor(limit))
+  const cacheKey = `${process.platform}:${normalizedLimit}`
+  const now = Date.now()
+  const cached = recentAppsCache.get(cacheKey)
+  if (cached && cached.expiresAt > now) {
+    return cached.value
+  }
+
+  const inFlight = recentAppsInFlight.get(cacheKey)
+  if (inFlight) {
+    return await inFlight
+  }
+
+  const promise = (async () => {
+    if (process.platform === 'darwin')
+      return await listRecentAppsMac(normalizedLimit)
+    if (process.platform === 'win32')
+      return await listRecentAppsWindows(normalizedLimit)
+    return null
+  })()
+
+  recentAppsInFlight.set(cacheKey, promise)
+  try {
+    const value = await promise
+    recentAppsCache.set(cacheKey, {
+      expiresAt: Date.now() + RECENT_APPS_CACHE_MS,
+      value,
+    })
+    return value
+  } finally {
+    recentAppsInFlight.delete(cacheKey)
+  }
 }

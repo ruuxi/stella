@@ -1,168 +1,167 @@
-import { useMemo } from "react";
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import type { MessagePayload } from "@/app/chat/lib/event-transforms";
-import { isOfficePreviewRef } from "@/shared/contracts/office-preview";
-import {
-  groupEventsIntoTurns,
-  getCurrentRunningTool,
-  getRunningTasks,
-} from "@/app/chat/lib/event-transforms";
-import { deriveTurnResource } from "@/app/chat/lib/derive-turn-resource";
-import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
-import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
-import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
+import { useMemo } from 'react'
+import type { EventRecord } from '@/app/chat/lib/event-transforms'
+import type { MessagePayload } from '@/app/chat/lib/event-transforms'
+import { isOfficePreviewRef } from '@/shared/contracts/office-preview'
+import { groupEventsIntoTurns } from '@/app/chat/lib/event-transforms'
+import { deriveTurnResource } from '@/app/chat/lib/derive-turn-resource'
+import { filterEventsForUiDisplay } from '@/app/chat/lib/message-display'
+import { isOrchestratorChatMessagePayload } from '@/app/chat/emotes/message-source'
 import {
   type TurnViewModel,
   getDisplayMessageText,
   getDisplayUserText,
   getAttachments,
   getChannelEnvelope,
-} from "./MessageTurn";
-import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
+} from './MessageTurn'
+import type { SelfModAppliedData } from '@/app/chat/streaming/streaming-types'
 import {
   parseAskQuestionArgs,
   type AskQuestionPayload,
-} from "./AskQuestionBubble";
+} from './AskQuestionBubble'
 
-type BaseTurnViewModel = Omit<TurnViewModel, "selfModApplied">;
+type BaseTurnViewModel = Omit<TurnViewModel, 'selfModApplied'>
 
 const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
-  if (!event?.payload || typeof event.payload !== "object") {
-    return null;
+  if (!event?.payload || typeof event.payload !== 'object') {
+    return null
   }
-  return event.payload as MessagePayload;
-};
+  return event.payload as MessagePayload
+}
 
 const getAssistantAgentId = (event?: EventRecord): string | undefined => {
-  const payload = getMessagePayload(event);
+  const payload = getMessagePayload(event)
   const rt = (payload?.metadata as Record<string, unknown> | undefined)
-    ?.runtime as Record<string, unknown> | undefined;
+    ?.runtime as Record<string, unknown> | undefined
   const target = rt?.responseTarget as
     | { type: string; agentId?: string; terminalState?: string }
-    | undefined;
+    | undefined
   if (
-    (target?.type === "agent_turn" || target?.type === "agent_terminal_notice")
-    && typeof target.agentId === "string"
+    (target?.type === 'agent_turn' ||
+      target?.type === 'agent_terminal_notice') &&
+    typeof target.agentId === 'string'
   ) {
-    return target.agentId;
+    return target.agentId
   }
-  return undefined;
-};
+  return undefined
+}
 
 const getAssistantUserMessageId = (event?: EventRecord): string | undefined => {
-  const payload = getMessagePayload(event);
-  return typeof payload?.userMessageId === "string" && payload.userMessageId.trim().length > 0
+  const payload = getMessagePayload(event)
+  return typeof payload?.userMessageId === 'string' &&
+    payload.userMessageId.trim().length > 0
     ? payload.userMessageId.trim()
-    : undefined;
-};
+    : undefined
+}
 
 const getWebSearchBadgeHtml = (events: EventRecord[]): string | undefined => {
   for (const event of events) {
-    if (event.type !== "tool_result") {
-      continue;
+    if (event.type !== 'tool_result') {
+      continue
     }
 
-    const payload = event.payload as {
-      toolName?: string;
-      html?: unknown;
-      result?: unknown;
-    } | undefined;
-    if (!payload || typeof payload.toolName !== "string") {
-      continue;
+    const payload = event.payload as
+      | {
+          toolName?: string
+          html?: unknown
+          result?: unknown
+        }
+      | undefined
+    if (!payload || typeof payload.toolName !== 'string') {
+      continue
     }
 
-    if (payload.toolName.toLowerCase() !== "web") {
-      continue;
+    if (payload.toolName.toLowerCase() !== 'web') {
+      continue
     }
 
-    if (typeof payload.html === "string" && payload.html.trim()) {
-      return payload.html;
+    if (typeof payload.html === 'string' && payload.html.trim()) {
+      return payload.html
     }
 
-    if (typeof payload.result === "string" && payload.result.trim()) {
-      return payload.result;
+    if (typeof payload.result === 'string' && payload.result.trim()) {
+      return payload.result
     }
   }
 
-  return undefined;
-};
+  return undefined
+}
 
 const getAskQuestionPayload = (
   events: EventRecord[],
 ): AskQuestionPayload | undefined => {
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (event.type !== "tool_request") {
-      continue;
+    const event = events[index]
+    if (event.type !== 'tool_request') {
+      continue
     }
     const payload = event.payload as
       | { toolName?: string; args?: unknown }
-      | undefined;
-    if (!payload || typeof payload.toolName !== "string") {
-      continue;
+      | undefined
+    if (!payload || typeof payload.toolName !== 'string') {
+      continue
     }
-    if (payload.toolName !== "askQuestion") {
-      continue;
+    if (payload.toolName !== 'askQuestion') {
+      continue
     }
-    const parsed = parseAskQuestionArgs(payload.args);
+    const parsed = parseAskQuestionArgs(payload.args)
     if (parsed) {
-      return parsed;
+      return parsed
     }
   }
-  return undefined;
-};
+  return undefined
+}
 
 const asNonEmptyString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim().length > 0
+  typeof value === 'string' && value.trim().length > 0
     ? value.trim()
-    : undefined;
+    : undefined
 
 const getTurnCwd = (events: EventRecord[]): string | undefined => {
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (event.type !== "tool_request") {
-      continue;
+    const event = events[index]
+    if (event.type !== 'tool_request') {
+      continue
     }
-    const payload = event.payload as { args?: unknown } | undefined;
-    if (!payload?.args || typeof payload.args !== "object") {
-      continue;
+    const payload = event.payload as { args?: unknown } | undefined
+    if (!payload?.args || typeof payload.args !== 'object') {
+      continue
     }
-    const args = payload.args as Record<string, unknown>;
+    const args = payload.args as Record<string, unknown>
     const cwd =
-      asNonEmptyString(args.working_directory)
-      ?? asNonEmptyString(args.workdir)
-      ?? asNonEmptyString(args.cwd);
+      asNonEmptyString(args.working_directory) ??
+      asNonEmptyString(args.workdir) ??
+      asNonEmptyString(args.cwd)
     if (cwd) {
-      return cwd;
+      return cwd
     }
   }
-  return undefined;
-};
+  return undefined
+}
 
 const getOfficePreviewRef = (events: EventRecord[]) => {
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (event.type !== "tool_result") {
-      continue;
+    const event = events[index]
+    if (event.type !== 'tool_result') {
+      continue
     }
 
-    const payload = event.payload as { officePreviewRef?: unknown } | undefined;
+    const payload = event.payload as { officePreviewRef?: unknown } | undefined
     if (isOfficePreviewRef(payload?.officePreviewRef)) {
-      return payload.officePreviewRef;
+      return payload.officePreviewRef
     }
   }
 
-  return undefined;
-};
+  return undefined
+}
 
 export function useTurnViewModels(opts: {
-  events: EventRecord[];
-  maxItems?: number;
-  streamingText?: string;
-  reasoningText?: string;
-  isStreaming?: boolean;
-  pendingUserMessageId?: string | null;
-  selfModMap?: Record<string, SelfModAppliedData>;
+  events: EventRecord[]
+  maxItems?: number
+  streamingText?: string
+  reasoningText?: string
+  isStreaming?: boolean
+  pendingUserMessageId?: string | null
+  selfModMap?: Record<string, SelfModAppliedData>
 }) {
   const {
     events,
@@ -172,7 +171,7 @@ export function useTurnViewModels(opts: {
     isStreaming,
     pendingUserMessageId,
     selfModMap,
-  } = opts;
+  } = opts
 
   // Check if the pending user message already has an assistant reply
   const hasAssistantReply = useMemo(
@@ -181,96 +180,104 @@ export function useTurnViewModels(opts: {
         pendingUserMessageId &&
           events.some(
             (event) =>
-              event.type === "assistant_message" &&
+              event.type === 'assistant_message' &&
               (event.payload as { userMessageId?: string } | null)
                 ?.userMessageId === pendingUserMessageId,
           ),
       ),
     [events, pendingUserMessageId],
-  );
+  )
 
-  const showStreaming = Boolean(!hasAssistantReply && (isStreaming || streamingText));
+  const showStreaming = Boolean(
+    !hasAssistantReply && (isStreaming || streamingText),
+  )
 
   const maxTurns =
-    typeof maxItems === "number" ? Math.max(0, Math.floor(maxItems)) : null;
+    typeof maxItems === 'number' ? Math.max(0, Math.floor(maxItems)) : null
 
-  const displayEvents = useMemo(() => filterEventsForUiDisplay(events), [events]);
-  const allTurns = useMemo(() => groupEventsIntoTurns(displayEvents), [displayEvents]);
+  const displayEvents = useMemo(
+    () => filterEventsForUiDisplay(events),
+    [events],
+  )
+  const allTurns = useMemo(
+    () => groupEventsIntoTurns(displayEvents),
+    [displayEvents],
+  )
   const stickyTaskIdByTurnId = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, string>()
     for (const event of displayEvents) {
-      if (event.type !== "assistant_message") {
-        continue;
+      if (event.type !== 'assistant_message') {
+        continue
       }
-      const agentId = getAssistantAgentId(event);
+      const agentId = getAssistantAgentId(event)
       if (!agentId) {
-        continue;
+        continue
       }
-      const turnId = getAssistantUserMessageId(event) ?? event._id;
+      const turnId = getAssistantUserMessageId(event) ?? event._id
       if (!map.has(turnId)) {
-        map.set(turnId, agentId);
+        map.set(turnId, agentId)
       }
     }
-    return map;
-  }, [displayEvents]);
+    return map
+  }, [displayEvents])
 
   const slicedTurns = useMemo(() => {
-    if (maxTurns === null) return allTurns;
-    if (maxTurns <= 0) return [];
+    if (maxTurns === null) return allTurns
+    if (maxTurns <= 0) return []
 
-    const baseStart = Math.max(0, allTurns.length - maxTurns);
+    const baseStart = Math.max(0, allTurns.length - maxTurns)
     if (!showStreaming || !pendingUserMessageId) {
-      return allTurns.slice(baseStart);
+      return allTurns.slice(baseStart)
     }
 
     const pendingIndex = allTurns.findIndex(
       (turn) => turn.id === pendingUserMessageId,
-    );
+    )
 
     if (pendingIndex !== -1 && pendingIndex < baseStart) {
-      const windowEnd = pendingIndex + 1;
-      const windowStart = Math.max(0, windowEnd - maxTurns);
-      return allTurns.slice(windowStart, windowEnd);
+      const windowEnd = pendingIndex + 1
+      const windowStart = Math.max(0, windowEnd - maxTurns)
+      return allTurns.slice(windowStart, windowEnd)
     }
 
-    return allTurns.slice(baseStart);
-  }, [allTurns, maxTurns, pendingUserMessageId, showStreaming]);
-
-  const appSessionStartedAtMs = useAgentSessionStartedAt();
+    return allTurns.slice(baseStart)
+  }, [allTurns, maxTurns, pendingUserMessageId, showStreaming])
 
   const baseTurns = useMemo(() => {
     return slicedTurns.map((turn): BaseTurnViewModel => {
-      const userText = getDisplayUserText(turn.userMessage);
-      const contextMetadata = getMessagePayload(turn.userMessage)?.metadata?.context;
-      const userWindowLabel = contextMetadata?.windowLabel;
-      const userWindowPreviewImageUrl = contextMetadata?.windowPreviewImageUrl;
-      const userAttachments = getAttachments(turn.userMessage);
-      const userChannelEnvelope = getChannelEnvelope(turn.userMessage);
+      const userText = getDisplayUserText(turn.userMessage)
+      const contextMetadata = getMessagePayload(turn.userMessage)?.metadata
+        ?.context
+      const userWindowLabel = contextMetadata?.windowLabel
+      const userWindowPreviewImageUrl = contextMetadata?.windowPreviewImageUrl
+      const userAttachments = getAttachments(turn.userMessage)
+      const userChannelEnvelope = getChannelEnvelope(turn.userMessage)
       const assistantText = turn.assistantMessage
         ? getDisplayMessageText(turn.assistantMessage)
-        : "";
-      const assistantMessageId = turn.assistantMessage?._id ?? null;
+        : ''
+      const assistantMessageId = turn.assistantMessage?._id ?? null
       const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
         getMessagePayload(turn.assistantMessage),
-      );
+      )
       const agentId =
-        getAssistantAgentId(turn.assistantMessage)
-        ?? stickyTaskIdByTurnId.get(turn.id);
+        getAssistantAgentId(turn.assistantMessage) ??
+        stickyTaskIdByTurnId.get(turn.id)
 
-      const askQuestionPayload = getAskQuestionPayload(turn.toolEvents);
+      const askQuestionPayload = getAskQuestionPayload(turn.toolEvents)
       const resourcePayload = deriveTurnResource(
         turn.toolEvents,
         assistantText,
         getTurnCwd(turn.toolEvents),
-      );
+      )
 
       return {
         id: turn.id,
         userText,
-        ...(typeof userWindowLabel === "string" && userWindowLabel.trim()
+        ...(typeof userWindowLabel === 'string' && userWindowLabel.trim()
           ? { userWindowLabel: userWindowLabel.trim() }
           : {}),
-        ...(typeof userWindowPreviewImageUrl === "string" && userWindowPreviewImageUrl.trim()
+        ...(typeof userWindowPreviewImageUrl === 'string' &&
+        userWindowPreviewImageUrl.trim()
           ? { userWindowPreviewImageUrl: userWindowPreviewImageUrl.trim() }
           : {}),
         userAttachments,
@@ -283,36 +290,30 @@ export function useTurnViewModels(opts: {
         ...(resourcePayload ? { resourcePayload } : {}),
         ...(askQuestionPayload ? { askQuestion: askQuestionPayload } : {}),
         ...(agentId ? { agentId } : {}),
-      };
-    });
-  }, [slicedTurns, stickyTaskIdByTurnId]);
+      }
+    })
+  }, [slicedTurns, stickyTaskIdByTurnId])
 
   const turns = useMemo(() => {
     if (!selfModMap) {
-      return baseTurns;
+      return baseTurns
     }
 
-    let hasAppliedSelfMod = false;
+    let hasAppliedSelfMod = false
     const nextTurns = baseTurns.map((turn): TurnViewModel => {
-      const selfModApplied = selfModMap[turn.id];
+      const selfModApplied = selfModMap[turn.id]
       if (!selfModApplied) {
-        return turn;
+        return turn
       }
-      hasAppliedSelfMod = true;
-      return { ...turn, selfModApplied };
-    });
+      hasAppliedSelfMod = true
+      return { ...turn, selfModApplied }
+    })
 
-    return hasAppliedSelfMod ? nextTurns : baseTurns;
-  }, [baseTurns, selfModMap]);
+    return hasAppliedSelfMod ? nextTurns : baseTurns
+  }, [baseTurns, selfModMap])
 
-  const processedStreamingText = streamingText;
-  const processedReasoningText = reasoningText;
-
-  const runningTool = useMemo(() => getCurrentRunningTool(events), [events]);
-  const runningTasks = useMemo(
-    () => getRunningTasks(events, { appSessionStartedAtMs }),
-    [appSessionStartedAtMs, events],
-  );
+  const processedStreamingText = streamingText
+  const processedReasoningText = reasoningText
 
   const hasPendingTurn = useMemo(
     () =>
@@ -321,11 +322,11 @@ export function useTurnViewModels(opts: {
           turns.some((turn) => turn.id === pendingUserMessageId),
       ),
     [turns, pendingUserMessageId],
-  );
+  )
 
   const showStandaloneStreaming = Boolean(
     showStreaming && pendingUserMessageId && !hasPendingTurn,
-  );
+  )
 
   return {
     turns,
@@ -333,8 +334,5 @@ export function useTurnViewModels(opts: {
     showStandaloneStreaming,
     processedStreamingText,
     processedReasoningText,
-    runningTool,
-    runningTasks,
-  };
+  }
 }
-
