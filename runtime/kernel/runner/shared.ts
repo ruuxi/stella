@@ -73,16 +73,23 @@ export const buildAgentEventPrompt = (
     return null;
   }
 
-  const lines =
-    event.type === "agent-completed"
-      ? ["[Task completed]"]
-      : event.type === "agent-canceled"
-        ? ["[Task canceled]"]
-        : ["[Task failed]"];
+  const lines: string[] = [];
+  if (event.type === "agent-completed") {
+    lines.push("[Agent completed]");
+    if (event.description) {
+      lines.push(`description: ${event.description}`);
+    }
+  } else if (event.type === "agent-canceled") {
+    lines.push("[Task canceled]");
+  } else {
+    lines.push("[Task failed]");
+  }
 
   if (event.agentId) lines.push(`thread_id: ${event.agentId}`);
   if (event.agentType) lines.push(`agent_type: ${event.agentType}`);
-  if (event.description) lines.push(`description: ${event.description}`);
+  if (event.type !== "agent-completed" && event.description) {
+    lines.push(`description: ${event.description}`);
+  }
   if (
     event.type === "agent-canceled"
     && (event.error === AGENT_SHUTDOWN_CANCEL_REASON
@@ -102,10 +109,11 @@ export const buildAgentEventPrompt = (
 
   return [
     "<system_reminder>",
-    "This task lifecycle update is hidden from the user.",
-    "Do not narrate background coordination or ask follow-up questions in chat text.",
-    "If more background work is needed, use task tools quietly without narrating the coordination.",
-    "Only send a normal assistant reply when you are ready to say something to the user.",
+    "A subagent you delegated to has reached a terminal state. The block below is",
+    "an internal coordination signal — the user did not see it and is not waiting",
+    "on you to acknowledge it.",
+    "",
+    "Decide what to do next: delegate further or reply to the user.",
     "</system_reminder>",
     "",
     ...lines,

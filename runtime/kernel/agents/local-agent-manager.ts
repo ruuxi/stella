@@ -660,6 +660,7 @@ export class LocalAgentManager implements AgentToolApi {
           rootRunId: task.rootRunId,
           agentId: task.threadId,
           agentType: task.agentType,
+          description: task.description,
           result: task.result,
         });
       } else if (task.status === "error") {
