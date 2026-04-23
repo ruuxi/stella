@@ -23,12 +23,81 @@ type TabStoreSnapshot = {
   tabs: DisplayTab[];
   activeTabId: string | null;
   panelOpen: boolean;
+  /**
+   * When true, the panel takes over the entire content area beside the
+   * left rail. Persists across reloads but resets on `displayTabs.reset`.
+   */
+  panelExpanded: boolean;
+  /**
+   * User-resized width in CSS pixels. `null` means "use the default
+   * `clamp()` width baked into the stylesheet". Persisted to localStorage
+   * so the choice survives reloads.
+   */
+  panelWidth: number | null;
+};
+
+/**
+ * Width clamp applied to the user's resize gesture.
+ *
+ * `DISPLAY_PANEL_MAX_RATIO` is the soft cap on wide windows — the panel
+ * can never grow past 60% of the viewport, so dragging always leaves a
+ * usable chat column. `DISPLAY_PANEL_MAX_RESERVED_PX` is the absolute
+ * floor: on narrow windows where 70% would still feel too wide, we make
+ * sure at least this many pixels remain for the rail + chat. The
+ * effective max is `min(width * ratio, width - reserved)`. Use the
+ * expand toggle for the "fully take over" case.
+ */
+export const DISPLAY_PANEL_MIN_WIDTH = 320;
+export const DISPLAY_PANEL_MAX_RATIO = 0.6;
+export const DISPLAY_PANEL_MAX_RESERVED_PX = 240;
+
+const STORAGE_KEY_WIDTH = "stella.displayPanel.width";
+const STORAGE_KEY_EXPANDED = "stella.displayPanel.expanded";
+
+const safeStorage = (): Storage | null => {
+  try {
+    return typeof window !== "undefined" ? window.localStorage : null;
+  } catch {
+    return null;
+  }
+};
+
+const readPersistedWidth = (): number | null => {
+  const storage = safeStorage();
+  if (!storage) return null;
+  const raw = storage.getItem(STORAGE_KEY_WIDTH);
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+};
+
+const readPersistedExpanded = (): boolean => {
+  const storage = safeStorage();
+  if (!storage) return false;
+  return storage.getItem(STORAGE_KEY_EXPANDED) === "1";
+};
+
+const writePersistedWidth = (width: number | null): void => {
+  const storage = safeStorage();
+  if (!storage) return;
+  if (width == null) storage.removeItem(STORAGE_KEY_WIDTH);
+  else storage.setItem(STORAGE_KEY_WIDTH, String(Math.round(width)));
+};
+
+const writePersistedExpanded = (expanded: boolean): void => {
+  const storage = safeStorage();
+  if (!storage) return;
+  if (expanded) storage.setItem(STORAGE_KEY_EXPANDED, "1");
+  else storage.removeItem(STORAGE_KEY_EXPANDED);
 };
 
 const EMPTY_SNAPSHOT: TabStoreSnapshot = {
   tabs: [],
   activeTabId: null,
   panelOpen: false,
+  panelExpanded: readPersistedExpanded(),
+  panelWidth: readPersistedWidth(),
 };
 
 let state: TabStoreSnapshot = EMPTY_SNAPSHOT;
@@ -83,6 +152,7 @@ export const displayTabs = {
     }
 
     emit({
+      ...state,
       tabs: nextTabs,
       activeTabId: activate ? spec.id : (state.activeTabId ?? spec.id),
       panelOpen: openPanel,
@@ -107,7 +177,7 @@ export const displayTabs = {
     if (idx === -1) return;
     const remaining = state.tabs.filter((tab) => tab.id !== tabId);
     if (remaining.length === 0) {
-      emit({ tabs: [], activeTabId: null, panelOpen: false });
+      emit({ ...state, tabs: [], activeTabId: null, panelOpen: false });
       return;
     }
     let nextActive = state.activeTabId;
@@ -115,7 +185,7 @@ export const displayTabs = {
       const fallback = remaining[idx - 1] ?? remaining[idx] ?? remaining[0];
       nextActive = fallback?.id ?? null;
     }
-    emit({ tabs: remaining, activeTabId: nextActive, panelOpen: state.panelOpen });
+    emit({ ...state, tabs: remaining, activeTabId: nextActive });
   },
   closeActiveTab(): void {
     if (state.activeTabId == null) return;
@@ -145,12 +215,43 @@ export const displayTabs = {
     emit({ ...state, panelOpen: open });
   },
   /**
+   * Toggle / set the "expand to fill" mode. While expanded, the panel
+   * occupies the entire content area to the right of the rail; the chat
+   * outlet is hidden via `:has(.display-sidebar--expanded)` in CSS.
+   */
+  setPanelExpanded(expanded: boolean): void {
+    if (state.panelExpanded === expanded) return;
+    writePersistedExpanded(expanded);
+    emit({ ...state, panelExpanded: expanded });
+  },
+  togglePanelExpanded(): void {
+    this.setPanelExpanded(!state.panelExpanded);
+  },
+  /**
+   * Persist the user-chosen width (in CSS pixels). `null` reverts to the
+   * stylesheet default. Callers are responsible for clamping to the
+   * `DISPLAY_PANEL_MIN_WIDTH` / window-derived max before invoking this.
+   */
+  setPanelWidth(width: number | null): void {
+    if (state.panelWidth === width) return;
+    writePersistedWidth(width);
+    emit({ ...state, panelWidth: width });
+  },
+  /**
    * Drop everything. Currently only used by hard-reset / sign-out flows
    * (and tests).
    */
   reset(): void {
     nextOrd = 1;
-    emit(EMPTY_SNAPSHOT);
+    writePersistedWidth(null);
+    writePersistedExpanded(false);
+    emit({
+      tabs: [],
+      activeTabId: null,
+      panelOpen: false,
+      panelExpanded: false,
+      panelWidth: null,
+    });
   },
 };
 

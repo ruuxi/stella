@@ -85,6 +85,14 @@ interface ChatSidebarProps {
   ) => void;
   onAdd?: () => void;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Right-click handler for the panel surface. In the mini window the
+   * chat sidebar covers the entire content area, so the root-level
+   * `StellaContextMenu` (which only wraps `.content-area`) is hidden
+   * behind it; wiring `onContextMenu` here gives the user the same
+   * right-click toggle on the visible surface.
+   */
+  onContextMenu?: (event: React.MouseEvent) => void;
 }
 
 export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
@@ -104,6 +112,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       onSend,
       onAdd,
       onOpenChange,
+      onContextMenu,
     },
     ref,
   ) {
@@ -264,6 +273,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       <aside
         className={`chat-sidebar${isOpen ? " chat-sidebar--open" : ""}`}
         aria-hidden={!isOpen}
+        {...(onContextMenu ? { onContextMenu } : {})}
       >
         <div className="chat-sidebar-inner">
           <ShiftingGradient

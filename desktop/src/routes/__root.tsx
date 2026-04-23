@@ -282,6 +282,23 @@ function RootChrome() {
     ? isDisplaySidebarOpen
     : isSidebarChatOpen;
 
+  // In the mini window the chat sidebar covers `.content-area`, so the
+  // root-level `StellaContextMenu` is unreachable. Forward right-clicks
+  // on the chat sidebar surface to the same display-sidebar toggle the
+  // context menu uses on the full window.
+  const handleChatSidebarContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      if (state.window !== "mini") return;
+      event.preventDefault();
+      if (isDisplaySidebarOpen) {
+        dispatchCloseDisplaySidebar();
+      } else {
+        dispatchOpenDisplaySidebar();
+      }
+    },
+    [isDisplaySidebarOpen, state.window],
+  );
+
   // Forward pending ask-Stella requests into the right-side ChatSidebar.
   // We deliberately clear the queued request from this effect — the state
   // here is acting as a one-shot mailbox, not derived state. The cascade is
@@ -309,11 +326,20 @@ function RootChrome() {
   // - For everything else (html / office / pdf), keep the existing behavior:
   //   open on the chat home pane, hot-update elsewhere so we don't steal
   //   focus mid-conversation.
+  // - In the mini window the chat is the entire surface, so opening the
+  //   display panel would cover everything. We register every payload
+  //   passively (`ds.update`) and let the user summon the panel via the
+  //   right-click context menu — same gesture as the full window.
+  const isMiniWindow = state.window === "mini";
   const routeDisplayPayload = useCallback(
     (payload: DisplayPayload) => {
       latestDisplayPayloadRef.current = payload;
       const ds = displaySidebarRef.current;
       if (!ds) return;
+      if (isMiniWindow) {
+        ds.update(payload);
+        return;
+      }
       if (payload.kind === "media") {
         ds.open(payload);
         return;
@@ -324,7 +350,7 @@ function RootChrome() {
         ds.update(payload);
       }
     },
-    [chat.showHomeContent, isOnChatRoute],
+    [chat.showHomeContent, isMiniWindow, isOnChatRoute],
   );
 
   // Runtime-side `Display` tool / structured payloads from main process.
@@ -507,6 +533,7 @@ function RootChrome() {
         onAdd={chat.composer.onAdd}
         onSend={chat.conversation.sendMessageWithContext}
         onOpenChange={setIsSidebarChatOpen}
+        onContextMenu={handleChatSidebarContextMenu}
       />
 
       <DisplaySidebar
