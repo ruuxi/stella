@@ -13,10 +13,11 @@ export const captureChatContext = async (
 ): Promise<ChatContext> => {
   const excludePids = options?.excludeCurrentProcessWindows ? [process.pid] : undefined
 
-  const [selectedText, windowInfo] = await Promise.all([
+  const [selectedTextResult, windowInfo] = await Promise.all([
     getSelectedText(),
     getWindowInfoAtPoint(point.x, point.y, { excludePids }),
   ])
+  const selectedText = selectedTextResult?.text ?? null
 
   let windowScreenshot: ChatContext['windowScreenshot'] = null
   let capturedWindowInfo = windowInfo

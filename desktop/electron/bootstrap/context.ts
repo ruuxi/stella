@@ -9,6 +9,7 @@ import type { CredentialService } from "../services/credential-service.js";
 import type { ContextMenuService } from "../services/context-menu-service.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
 import type { SecurityPolicyService } from "../services/security-policy-service.js";
+import type { SelectionWatcherService } from "../services/selection-watcher-service.js";
 import type { UiStateService } from "../services/ui-state-service.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
@@ -66,6 +67,7 @@ export type BootstrapServices = {
   credentialService: CredentialService;
   externalLinkService: ExternalLinkService;
   securityPolicyService: SecurityPolicyService;
+  selectionWatcherService: SelectionWatcherService;
   uiStateService: UiStateService;
 };
 

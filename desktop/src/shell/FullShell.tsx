@@ -20,6 +20,7 @@ import { useBootstrapState } from "@/systems/boot/bootstrap-state";
 import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import { MorphInputAbsorber } from "./MorphInputAbsorber";
+import { AskStellaSelectionChip } from "./selection/AskStellaSelectionChip";
 import "./full-shell.layout.css";
 import "./mobile.css";
 
@@ -118,6 +119,7 @@ export const FullShell = () => {
         {appReady ? (
           <PageSidebarProvider>
             <RouterProvider router={router} />
+            <AskStellaSelectionChip />
           </PageSidebarProvider>
         ) : (
           <div

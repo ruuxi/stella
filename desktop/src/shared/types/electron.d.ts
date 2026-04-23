@@ -244,6 +244,17 @@ export type ElectronOverlayApi = {
     }) => void,
   ) => () => void;
   onHideScreenGuide: (callback: () => void) => () => void;
+  onShowSelectionChip: (
+    callback: (data: {
+      requestId: number;
+      text: string;
+      rect: { x: number; y: number; width: number; height: number };
+    }) => void,
+  ) => () => void;
+  onHideSelectionChip: (
+    callback: (data: { requestId?: number } | null) => void,
+  ) => () => void;
+  selectionChipClicked: (requestId: number) => void;
   onDisplayChange: (
     callback: (data: {
       origin: { x: number; y: number };

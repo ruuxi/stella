@@ -315,6 +315,12 @@ class OverlayWindow {
  */
 export type MorphTransitionFlavor = 'hmr' | 'onboarding'
 
+export type SelectionChipPayload = {
+  text: string
+  rect: { x: number; y: number; width: number; height: number }
+  requestId: number
+}
+
 export class OverlayWindowController {
   private readonly overlayWindow: OverlayWindow
   private morphTrackedWindow: BrowserWindow | null = null
@@ -330,6 +336,11 @@ export class OverlayWindowController {
   private activeScreenGuide = false
   private activeWindowHighlight = false
   private windowHighlightRequestId = 0
+  private activeSelectionChip = false
+  private currentSelectionChipRequestId: number | null = null
+  private selectionChipClickHandler:
+    | ((requestId: number) => void)
+    | null = null
 
   private readonly handleOverlaySetInteractive = (_event: unknown, interactive: boolean) => {
     this.overlayWindow.setIgnoreMouseEvents(!interactive)
@@ -376,6 +387,14 @@ export class OverlayWindowController {
       this.setWindowHighlight(info?.bounds ?? null, 'default')
     })
   }
+  private readonly handleOverlaySelectionChipClicked = (
+    _event: unknown,
+    payload: { requestId: number } | null,
+  ) => {
+    const requestId = payload?.requestId
+    if (typeof requestId !== 'number') return
+    this.selectionChipClickHandler?.(requestId)
+  }
   constructor(options: OverlayWindowControllerOptions) {
     this.overlayWindow = new OverlayWindow(options)
     ipcMain.on('overlay:setInteractive', this.handleOverlaySetInteractive)
@@ -385,6 +404,14 @@ export class OverlayWindowController {
       'overlay:previewWindowHighlightAtPoint',
       this.handleOverlayPreviewWindowHighlightAtPoint,
     )
+    ipcMain.on(
+      'overlay:selectionChipClicked',
+      this.handleOverlaySelectionChipClicked,
+    )
+  }
+
+  setSelectionChipClickHandler(handler: ((requestId: number) => void) | null) {
+    this.selectionChipClickHandler = handler
   }
 
   getWindow() { return this.overlayWindow.getWindow() }
@@ -400,6 +427,7 @@ export class OverlayWindowController {
       this.activeVoice ||
       this.activeScreenGuide ||
       this.activeWindowHighlight ||
+      this.activeSelectionChip ||
       this.activeMorph
   }
 
@@ -548,6 +576,40 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
+  // ─── Selection Chip ("Ask Stella" pill above text selection) ──────────
+
+  showSelectionChip(payload: SelectionChipPayload) {
+    this.activeSelectionChip = true
+    this.currentSelectionChipRequestId = payload.requestId
+    this.overlayWindow.show({ inactive: true })
+    const origin = this.overlayWindow.getOverlayOrigin()
+    this.overlayWindow.send('overlay:showSelectionChip', {
+      requestId: payload.requestId,
+      text: payload.text,
+      rect: {
+        x: payload.rect.x - origin.x,
+        y: payload.rect.y - origin.y,
+        width: payload.rect.width,
+        height: payload.rect.height,
+      },
+    })
+  }
+
+  hideSelectionChip(requestId?: number) {
+    if (
+      typeof requestId === 'number' &&
+      this.currentSelectionChipRequestId !== null &&
+      this.currentSelectionChipRequestId !== requestId
+    ) {
+      // Stale hide for a chip we already replaced; ignore.
+      return
+    }
+    this.activeSelectionChip = false
+    this.currentSelectionChipRequestId = null
+    this.overlayWindow.send('overlay:hideSelectionChip', { requestId })
+    this.hideOverlayIfIdle()
+  }
+
   // ─── Morph Transition (HMR Resume) ───────────────────────────────────
 
   private activeMorph = false
@@ -672,6 +734,11 @@ export class OverlayWindowController {
       'overlay:previewWindowHighlightAtPoint',
       this.handleOverlayPreviewWindowHighlightAtPoint,
     )
+    ipcMain.removeListener(
+      'overlay:selectionChipClicked',
+      this.handleOverlaySelectionChipClicked,
+    )
+    this.selectionChipClickHandler = null
     this.overlayWindow.destroy()
   }
 }

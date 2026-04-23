@@ -255,6 +255,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>;
     }>("overlay:showScreenGuide"),
     onHideScreenGuide: onIpcSignal("overlay:hideScreenGuide"),
+    onShowSelectionChip: onIpc<{
+      requestId: number;
+      text: string;
+      rect: { x: number; y: number; width: number; height: number };
+    }>("overlay:showSelectionChip"),
+    onHideSelectionChip: onIpc<{ requestId?: number } | null>(
+      "overlay:hideSelectionChip",
+    ),
+    selectionChipClicked: (requestId: number) =>
+      ipcRenderer.send("overlay:selectionChipClicked", { requestId }),
     onDisplayChange: onIpc<{
       origin: { x: number; y: number };
       bounds: { x: number; y: number; width: number; height: number };

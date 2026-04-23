@@ -3,12 +3,17 @@ import {
   useEffect,
   useReducer,
   useRef,
+  useState,
   type Dispatch,
 } from "react";
 import { RegionCapture } from "./RegionCapture";
 import { VoiceOverlay } from "@/shell/overlay/VoiceOverlay";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
 import { ScreenGuideAnnotations, type ScreenGuideAnnotation } from "@/shell/overlay/ScreenGuideAnnotations";
+import {
+  SelectionChipOverlay,
+  type SelectionChipState,
+} from "@/shell/overlay/SelectionChipOverlay";
 import "./overlays.css";
 
 /**
@@ -35,6 +40,7 @@ type OverlayState = {
   voicePosition: { x: number; y: number } | null;
   screenGuideVisible: boolean;
   screenGuideAnnotations: ScreenGuideAnnotation[];
+  selectionChip: SelectionChipState | null;
 };
 
 type OverlayAction =
@@ -47,7 +53,9 @@ type OverlayAction =
   | { type: "voice:show"; position: { x: number; y: number } }
   | { type: "voice:hide" }
   | { type: "screenGuide:show"; annotations: ScreenGuideAnnotation[] }
-  | { type: "screenGuide:hide" };
+  | { type: "screenGuide:hide" }
+  | { type: "selectionChip:show"; chip: SelectionChipState }
+  | { type: "selectionChip:hide"; requestId?: number };
 
 function isSamePosition(
   a: { x: number; y: number } | null,
@@ -64,6 +72,7 @@ const initialState: OverlayState = {
   voicePosition: null,
   screenGuideVisible: false,
   screenGuideAnnotations: [],
+  selectionChip: null,
 };
 
 function overlayReducer(
@@ -97,6 +106,17 @@ function overlayReducer(
       return state.screenGuideVisible
         ? { ...state, screenGuideVisible: false, screenGuideAnnotations: [] }
         : state;
+    case "selectionChip:show":
+      return { ...state, selectionChip: action.chip };
+    case "selectionChip:hide":
+      if (!state.selectionChip) return state;
+      if (
+        typeof action.requestId === "number" &&
+        state.selectionChip.requestId !== action.requestId
+      ) {
+        return state;
+      }
+      return { ...state, selectionChip: null };
     default:
       return state;
   }
@@ -192,6 +212,33 @@ function useOverlayIPC(
       cleanupHide?.();
     };
   }, [dispatch]);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanupShow = api.overlay.onShowSelectionChip?.((data) => {
+      dispatch({
+        type: "selectionChip:show",
+        chip: {
+          requestId: data.requestId,
+          text: data.text,
+          rect: data.rect,
+        },
+      });
+    });
+    const cleanupHide = api.overlay.onHideSelectionChip?.((data) => {
+      dispatch({
+        type: "selectionChip:hide",
+        requestId: data?.requestId,
+      });
+    });
+
+    return () => {
+      cleanupShow?.();
+      cleanupHide?.();
+    };
+  }, [dispatch]);
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +249,12 @@ function useOverlayIPC(
 // ---------------------------------------------------------------------------
 function useOverlayHitTesting(
   state: OverlayState,
+  selectionChipBounds: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null,
   updateInteractive: (shouldBeInteractive: boolean) => void,
 ) {
   const {
@@ -209,9 +262,15 @@ function useOverlayHitTesting(
     voiceVisible,
     voicePosition,
     screenGuideVisible,
+    selectionChip,
   } = state;
   const voiceX = voicePosition?.x ?? null;
   const voiceY = voicePosition?.y ?? null;
+  const selectionChipActive = Boolean(selectionChip);
+  const chipLeft = selectionChipBounds?.left ?? null;
+  const chipTop = selectionChipBounds?.top ?? null;
+  const chipWidth = selectionChipBounds?.width ?? null;
+  const chipHeight = selectionChipBounds?.height ?? null;
 
   useEffect(() => {
     if (regionCaptureActive) {
@@ -219,7 +278,7 @@ function useOverlayHitTesting(
       return;
     }
 
-    if (!voiceVisible) {
+    if (!voiceVisible && !selectionChipActive) {
       updateInteractive(false);
       return;
     }
@@ -238,7 +297,22 @@ function useOverlayHitTesting(
           e.clientY <= top + VOICE_CREATURE_SIZE.height;
       }
 
-      updateInteractive(isOverVoice);
+      let isOverChip = false;
+      if (
+        selectionChipActive &&
+        chipLeft !== null &&
+        chipTop !== null &&
+        chipWidth !== null &&
+        chipHeight !== null
+      ) {
+        isOverChip =
+          e.clientX >= chipLeft &&
+          e.clientX <= chipLeft + chipWidth &&
+          e.clientY >= chipTop &&
+          e.clientY <= chipTop + chipHeight;
+      }
+
+      updateInteractive(isOverVoice || isOverChip);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -248,6 +322,11 @@ function useOverlayHitTesting(
     voiceVisible,
     voiceX,
     voiceY,
+    selectionChipActive,
+    chipLeft,
+    chipTop,
+    chipWidth,
+    chipHeight,
     updateInteractive,
   ]);
 
@@ -255,7 +334,8 @@ function useOverlayHitTesting(
     const anythingActive =
       regionCaptureActive ||
       voiceVisible ||
-      screenGuideVisible;
+      screenGuideVisible ||
+      selectionChipActive;
 
     if (!anythingActive) {
       updateInteractive(false);
@@ -264,6 +344,7 @@ function useOverlayHitTesting(
     regionCaptureActive,
     voiceVisible,
     screenGuideVisible,
+    selectionChipActive,
     updateInteractive,
   ]);
 }
@@ -275,6 +356,12 @@ function useOverlayHitTesting(
 export function OverlayRoot() {
   const [state, dispatch] = useReducer(overlayReducer, initialState);
   const interactiveRef = useRef<boolean | null>(null);
+  const [selectionChipBounds, setSelectionChipBounds] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   useOverlayIPC(dispatch);
 
@@ -295,9 +382,14 @@ export function OverlayRoot() {
     state.regionCaptureActive,
     state.voiceVisible,
     state.screenGuideVisible,
+    state.selectionChip,
   ]);
 
-  useOverlayHitTesting(state, updateInteractive);
+  useOverlayHitTesting(state, selectionChipBounds, updateInteractive);
+
+  const handleSelectionChipClick = useCallback((requestId: number) => {
+    window.electronAPI?.overlay?.selectionChipClicked?.(requestId);
+  }, []);
 
   return (
     <div
@@ -363,6 +455,12 @@ export function OverlayRoot() {
       />
 
       <MorphTransition />
+
+      <SelectionChipOverlay
+        chip={state.selectionChip}
+        onChipBoundsChange={setSelectionChipBounds}
+        onClick={handleSelectionChipClick}
+      />
     </div>
   );
 }

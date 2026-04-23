@@ -50,6 +50,9 @@ const initializeWindowShell = (context: BootstrapContext) => {
     isDev: config.isDev,
     getDevServerUrl,
   });
+  state.overlayController.setSelectionChipClickHandler((requestId) => {
+    services.selectionWatcherService.resolveClick(requestId);
+  });
 
   lifecycle.setWindowManager(
     new WindowManager({
@@ -90,6 +93,17 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
 
   state.windowManager!.createInitialWindows();
 
+  // The global "Ask Stella" selection pill is gated on the mini window
+  // being visible. Snap the chip away the moment the mini hides so a
+  // chip popped just before the user closed the overlay doesn't linger
+  // until the 10s auto-hide.
+  const miniWindow = state.windowManager!.getMiniWindow();
+  if (miniWindow && !miniWindow.isDestroyed()) {
+    miniWindow.on("hide", () => {
+      services.selectionWatcherService.hideChip();
+    });
+  }
+
   const fullWindow = state.windowManager!.getFullWindow();
 
   // The cold-boot deep-link OTT (`stella://auth/callback?ott=…`) sits in
@@ -118,6 +132,7 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
         return;
       }
       services.contextMenuService.start();
+      services.selectionWatcherService.start();
     });
   }
 };

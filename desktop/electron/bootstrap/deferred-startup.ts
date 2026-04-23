@@ -81,6 +81,7 @@ const createDeferredStartupTasks = (
           return;
         }
         services.contextMenuService.start();
+        services.selectionWatcherService.start();
       },
     },
     {
