@@ -1,10 +1,7 @@
 import {
   forwardRef,
-  useCallback,
   useEffect,
   useImperativeHandle,
-  useRef,
-  useState,
 } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "@/context/theme-context";
@@ -12,18 +9,28 @@ import {
   type DisplayPayload,
   normalizeDisplayPayload,
 } from "@/shared/contracts/display-payload";
-import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
-import { PdfViewerCard } from "@/app/chat/PdfViewerCard";
-import { applyMorphdomHtml } from "./apply-morphdom-html";
 import { ShiftingGradient } from "./background/ShiftingGradient";
-import { MediaPreviewCard } from "./MediaPreviewCard";
+import { displayTabs, useActiveDisplayTab, useDisplayTabs } from "./display/tab-store";
+import { payloadToTabSpec } from "./display/payload-to-tab-spec";
+import { DisplayTabBar } from "./display/DisplayTabBar";
 import "./display-sidebar.css";
 
 export interface DisplaySidebarHandle {
-  /** Open the sidebar with the given payload (legacy: bare HTML string). */
+  /**
+   * Open (or refresh) a tab for the given payload and activate it. The
+   * panel auto-opens as a side effect of `displayTabs.openTab`. Strings
+   * are accepted for legacy compatibility with the runtime worker's
+   * `displayHtml(...)` IPC, which still streams raw HTML.
+   */
   open(payload: DisplayPayload | string): void;
-  /** Update the visible payload without changing open state. */
+  /**
+   * Refresh a tab's content without forcing the panel open or stealing
+   * focus from another active tab. Used by `useDisplayAutoRoute` when the
+   * user is not on the chat home — we want to update the existing surface
+   * but not pop the sidebar over their work.
+   */
   update(payload: DisplayPayload | string): void;
+  /** Close the panel; tabs are kept in memory for the next open. */
   close(): void;
 }
 
@@ -31,27 +38,20 @@ type DisplaySidebarProps = {
   onOpenChange?: (open: boolean) => void;
 };
 
+/**
+ * Display sidebar shell.
+ *
+ * Stateful tab list lives in the singleton `displayTabs` store so that
+ * non-React surfaces (Convex materializer, IPC handlers, chat resource
+ * pills) can register tabs with a single `displayTabs.openTab(spec)`
+ * call. This component just observes the store and renders the active
+ * tab's `render()`.
+ */
 export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarProps>(
   function DisplaySidebar({ onOpenChange }, ref) {
     const { gradientMode, gradientColor } = useTheme();
-    const [isOpen, setIsOpen] = useState(false);
-    const [payload, setPayload] = useState<DisplayPayload | null>(null);
-    const htmlContainerRef = useRef<HTMLDivElement>(null);
-
-    const applyPayload = useCallback((next: DisplayPayload) => {
-      setPayload(next);
-      if (next.kind === "html") {
-        // Defer until the html container exists in the DOM (it's gated on
-        // `payload.kind === "html"` below).
-        requestAnimationFrame(() => {
-          const container = htmlContainerRef.current;
-          if (!container) return;
-          applyMorphdomHtml(container, "display-sidebar__content", next.html, {
-            executeScripts: true,
-          });
-        });
-      }
-    }, []);
+    const { panelOpen, tabs } = useDisplayTabs();
+    const activeTab = useActiveDisplayTab();
 
     useImperativeHandle(
       ref,
@@ -59,57 +59,52 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarPro
         open(rawPayload) {
           const next = normalizeDisplayPayload(rawPayload);
           if (!next) return;
-          setIsOpen(true);
-          applyPayload(next);
+          displayTabs.openTab(payloadToTabSpec(next));
         },
         update(rawPayload) {
           const next = normalizeDisplayPayload(rawPayload);
           if (!next) return;
-          applyPayload(next);
+          const spec = payloadToTabSpec(next);
+          const { panelOpen } = displayTabs.getSnapshot();
+          // Refresh the underlying tab without activating / opening the
+          // panel. If the panel is already open and this tab happens to be
+          // active, the new render() takes effect immediately. If the panel is
+          // closed, make the updated tab the next active tab without reopening
+          // the UI; the next explicit open will land on the freshest payload.
+          displayTabs.openTab(
+            spec,
+            panelOpen
+              ? { activate: false }
+              : { activate: true, openPanel: false },
+          );
         },
         close() {
-          setIsOpen(false);
+          displayTabs.setPanelOpen(false);
         },
       }),
-      [applyPayload],
+      [],
     );
 
     useEffect(() => {
-      if (!isOpen) return;
+      if (!panelOpen) return;
       const onKey = (e: KeyboardEvent) => {
-        if (e.key === "Escape") setIsOpen(false);
+        if (e.key === "Escape") displayTabs.setPanelOpen(false);
       };
       document.addEventListener("keydown", onKey);
       return () => document.removeEventListener("keydown", onKey);
-    }, [isOpen]);
+    }, [panelOpen]);
 
     useEffect(() => {
-      onOpenChange?.(isOpen);
-    }, [isOpen, onOpenChange]);
-
-    const handleHtmlClick = useCallback((e: React.MouseEvent) => {
-      const el = (e.target as HTMLElement).closest(
-        "[data-action]",
-      ) as HTMLElement | null;
-      if (!el) return;
-      const action = el.getAttribute("data-action");
-      if (action === "send-message") {
-        const prompt = el.getAttribute("data-prompt");
-        if (prompt) {
-          window.dispatchEvent(
-            new CustomEvent("stella:send-message", { detail: { text: prompt } }),
-          );
-        }
-      }
-    }, []);
+      onOpenChange?.(panelOpen);
+    }, [panelOpen, onOpenChange]);
 
     const portalTarget =
       document.querySelector(".full-body") ?? document.body;
 
     return createPortal(
       <aside
-        className={`display-sidebar${isOpen ? " display-sidebar--open" : ""}`}
-        aria-hidden={!isOpen}
+        className={`display-sidebar${panelOpen ? " display-sidebar--open" : ""}`}
+        aria-hidden={!panelOpen}
       >
         <ShiftingGradient
           mode={gradientMode}
@@ -119,7 +114,7 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarPro
         <div className="display-sidebar-inner">
           <button
             className="display-sidebar__close"
-            onClick={() => setIsOpen(false)}
+            onClick={() => displayTabs.setPanelOpen(false)}
             aria-label="Close"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -128,38 +123,11 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarPro
             </svg>
           </button>
 
-          {payload?.kind === "html" && (
-            <div
-              ref={htmlContainerRef}
-              className="display-sidebar__content"
-              onClick={handleHtmlClick}
-            />
-          )}
+          {tabs.length > 0 && <DisplayTabBar />}
 
-          {payload?.kind === "office" && (
-            <div className="display-sidebar__rich">
-              <OfficePreviewCard previewRef={payload.previewRef} />
-            </div>
-          )}
-
-          {payload?.kind === "pdf" && (
-            <div className="display-sidebar__rich display-sidebar__rich--pdf">
-              <PdfViewerCard
-                filePath={payload.filePath}
-                {...(payload.title ? { title: payload.title } : {})}
-              />
-            </div>
-          )}
-
-          {payload?.kind === "media" && (
-            <div className="display-sidebar__rich display-sidebar__rich--media">
-              <MediaPreviewCard
-                asset={payload.asset}
-                {...(payload.prompt ? { prompt: payload.prompt } : {})}
-                {...(payload.capability ? { capability: payload.capability } : {})}
-              />
-            </div>
-          )}
+          <div className="display-sidebar__active">
+            {activeTab ? activeTab.render() : null}
+          </div>
         </div>
       </aside>,
       portalTarget,

@@ -1,23 +1,21 @@
 import { useEffect, useRef } from "react";
 import type { EventRecord } from "./lib/event-transforms";
-import { isOfficePreviewRef } from "../../shared/contracts/office-preview";
 import type { DisplayPayload } from "../../shared/contracts/display-payload";
+import { markMediaJobMaterialized } from "@/app/media/use-media-materializer";
 
 /**
- * Watches the conversation event stream and routes "visual" tool outputs
- * into the Display sidebar.
+ * Watches the conversation event stream for tool outputs whose result is
+ * the user's *explicit goal* (generated media) and pops them open in the
+ * Display sidebar automatically.
  *
- * Auto-routes:
- *   - Office previews (`stella-office preview`) — any `tool_result` carrying
- *     a `payload.officePreviewRef`.
- *   - PDF reads — any `tool_request` for the `Read` tool with a `.pdf` path,
- *     once its matching `tool_result` arrives without an error.
+ * Office previews and PDF reads are deliberately **not** auto-routed any
+ * more — they get a clickable end-of-turn resource pill in the chat
+ * (`EndResourceCard`) so we don't steal focus from the user mid-thread.
+ * That mirrors the Codex desktop pattern where the side panel only
+ * opens on explicit user action for read/edit artifacts.
  *
- * HTML payloads from the agent's `Display` tool flow through a separate
- * channel (`window.electronAPI.display.onUpdate`) and are not handled here.
- *
- * The hook fires `onPayload(payload)` exactly once per new candidate, using
- * the source event id as a dedup key so re-renders of the same chat list
+ * The hook fires `onPayload(payload)` exactly once per new candidate,
+ * keyed on the source event id so re-renders of the same chat list
  * don't cause repeated routing.
  */
 export const useDisplayAutoRoute = (
@@ -36,6 +34,11 @@ export const useDisplayAutoRoute = (
 
     if (lastSourceIdRef.current === candidate.sourceId) return;
     lastSourceIdRef.current = candidate.sourceId;
+
+    if (candidate.payload.kind === "media" && candidate.payload.jobId) {
+      markMediaJobMaterialized(candidate.payload.jobId);
+    }
+
     onPayloadRef.current(candidate.payload);
   }, [events]);
 };
@@ -47,18 +50,49 @@ export type DisplayCandidate = {
   payload: DisplayPayload;
 };
 
-const PDF_PATH_PATTERN = /\.pdf(?:[?#].*)?$/i;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object";
+
+const imageGenResultToMediaPayload = (
+  event: EventRecord,
+  result: unknown,
+): DisplayCandidate | null => {
+  if (!isRecord(result)) return null;
+  const rawPaths = result.filePaths;
+  if (!Array.isArray(rawPaths) || rawPaths.length === 0) return null;
+  const filePaths = rawPaths.filter((p): p is string => typeof p === "string");
+  if (filePaths.length === 0) return null;
+
+  const jobId = typeof result.jobId === "string" ? result.jobId : undefined;
+  const capability =
+    typeof result.capability === "string" ? result.capability : undefined;
+  const prompt = typeof result.prompt === "string" ? result.prompt : undefined;
+
+  return {
+    sourceId: event._id,
+    timestamp: event.timestamp,
+    payload: {
+      kind: "media",
+      asset: { kind: "image", filePaths },
+      createdAt: event.timestamp,
+      ...(jobId ? { jobId } : {}),
+      ...(capability ? { capability } : {}),
+      ...(prompt ? { prompt } : {}),
+    },
+  };
+};
 
 /**
  * Pure routing logic for `useDisplayAutoRoute`. Exported separately so the
  * rules can be unit-tested without mounting React.
+ *
+ * Returns the latest auto-openable candidate (currently media-only:
+ * `image_gen`). Office previews and PDF reads are not surfaced here —
+ * they ride the in-chat `EndResourceCard` instead.
  */
 export const findLatestDisplayCandidate = (
   events: EventRecord[],
 ): DisplayCandidate | null => {
-  // Build a quick map of pending Read requests so we can pair them up with
-  // their tool_result event.
-  const pendingPdfReads = new Map<string, { path: string; timestamp: number }>();
   let best: DisplayCandidate | null = null;
 
   const consider = (next: DisplayCandidate) => {
@@ -68,64 +102,22 @@ export const findLatestDisplayCandidate = (
   };
 
   for (const event of events) {
-    if (event.type === "tool_request") {
-      const payload = event.payload as
-        | { toolName?: unknown; args?: Record<string, unknown> }
-        | undefined;
-      if (
-        payload &&
-        typeof payload.toolName === "string" &&
-        payload.toolName === "Read"
-      ) {
-        const argPath = payload.args?.path;
-        if (typeof argPath === "string" && PDF_PATH_PATTERN.test(argPath)) {
-          const requestId =
-            (event.requestId && event.requestId.trim()) || event._id;
-          pendingPdfReads.set(requestId, {
-            path: argPath,
-            timestamp: event.timestamp,
-          });
-        }
-      }
-      continue;
-    }
-
     if (event.type !== "tool_result") continue;
 
     const payload = event.payload as
       | {
           toolName?: unknown;
-          officePreviewRef?: unknown;
           error?: unknown;
+          result?: unknown;
         }
       | undefined;
     if (!payload) continue;
 
-    if (isOfficePreviewRef(payload.officePreviewRef)) {
-      consider({
-        sourceId: event._id,
-        timestamp: event.timestamp,
-        payload: {
-          kind: "office",
-          previewRef: payload.officePreviewRef,
-        },
-      });
-      continue;
-    }
-
-    const requestId =
-      (event.requestId && event.requestId.trim()) || event._id;
-    const pending = pendingPdfReads.get(requestId);
-    if (pending && !payload.error) {
-      consider({
-        sourceId: event._id,
-        timestamp: event.timestamp,
-        payload: {
-          kind: "pdf",
-          filePath: pending.path,
-        },
-      });
-      pendingPdfReads.delete(requestId);
+    if (payload.toolName === "image_gen" && !payload.error) {
+      const fromResult = imageGenResultToMediaPayload(event, payload.result);
+      if (fromResult) {
+        consider(fromResult);
+      }
     }
   }
 

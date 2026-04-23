@@ -28,6 +28,7 @@ import {
   DisplaySidebar,
   type DisplaySidebarHandle,
 } from "@/shell/DisplaySidebar";
+import { displayTabs } from "@/shell/display/tab-store";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
@@ -378,6 +379,14 @@ function RootChrome() {
     const handleClose = () => sidebarRef.current?.close();
 
     const handleOpenDisplay = () => {
+      // Prefer reopening whatever tabs are already in the manager; only
+      // fall back to re-routing the last payload when nothing has been
+      // opened yet this session (i.e. on a cold launch where the user
+      // hits the context-menu before the agent has emitted anything).
+      if (displayTabs.getSnapshot().tabs.length > 0) {
+        displayTabs.setPanelOpen(true);
+        return;
+      }
       const payload = latestDisplayPayloadRef.current;
       if (!payload) return;
       displaySidebarRef.current?.open(payload);

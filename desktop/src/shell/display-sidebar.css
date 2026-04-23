@@ -63,12 +63,116 @@
   border-color: color-mix(in oklch, var(--foreground, #0f1728) 30%, transparent);
 }
 
+/* ── Tab strip ──────────────────────────────────────────────────── */
+
+.display-sidebar__tabbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 56px 0 12px; /* leave room for the floating close button */
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent) transparent;
+}
+
+.display-sidebar__tabbar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.display-sidebar__tabbar::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent);
+  border-radius: 2px;
+}
+
+.display-sidebar__tab {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  padding: 4px 4px 4px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: color-mix(in oklch, var(--foreground, #0f1728) 70%, transparent);
+  border: 1px solid transparent;
+  background: transparent;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.display-sidebar__tab:hover {
+  background: color-mix(in oklch, var(--foreground, #0f1728) 6%, transparent);
+  color: var(--foreground, #0f1728);
+}
+
+.display-sidebar__tab--active {
+  background: color-mix(in oklch, var(--background, #edf3fb) 75%, transparent);
+  color: var(--foreground, #0f1728);
+  border-color: color-mix(in oklch, var(--foreground, #0f1728) 12%, transparent);
+}
+
+.display-sidebar__tab-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+}
+
+.display-sidebar__tab-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.display-sidebar__tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.55;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.display-sidebar__tab-close:hover {
+  opacity: 1;
+  background: color-mix(in oklch, var(--foreground, #0f1728) 10%, transparent);
+}
+
+.display-sidebar__active {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.display-sidebar__active > * {
+  flex: 1;
+  min-height: 0;
+}
+
 .display-sidebar__content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   padding: clamp(1.5rem, 3vw, 2.5rem);
-  padding-top: 48px;
+  padding-top: 16px;
   scrollbar-width: thin;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   color: var(--foreground);
@@ -90,7 +194,7 @@
   display: flex;
   flex-direction: column;
   padding: clamp(1rem, 2vw, 1.5rem);
-  padding-top: 48px;
+  padding-top: 12px;
   overflow: hidden;
 }
 
@@ -100,11 +204,11 @@
 }
 
 .display-sidebar__rich--pdf {
-  padding: 48px 12px 12px;
+  padding: 12px;
 }
 
 .display-sidebar__rich--media {
-  padding: 48px 12px 16px;
+  padding: 12px 12px 16px;
   gap: 12px;
 }
 

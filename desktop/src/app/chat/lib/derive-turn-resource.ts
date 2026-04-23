@@ -1,0 +1,355 @@
+/**
+ * Per-turn primary-resource derivation — Codex-style.
+ *
+ * Mirrors Codex's `ga(turn)` + `vde(...)` pipeline in
+ * `send-app-server-request-BTldVjKF.js` and `index-CxBol07n.js`:
+ *
+ *   1. Walk every `tool_result` in the turn and collect normalized
+ *      `fileChanges` records (the runtime-emitted `{ path, kind }`
+ *      shape mirroring Codex's `fileChange` items). This becomes the
+ *      `editedFilePaths` pool — independent of which specific tool
+ *      produced the change.
+ *   2. Collect `referencedFilePaths` from
+ *        - office preview refs (which are "look at this file" signals,
+ *          not edits, so they belong with referenced files)
+ *        - markdown links in the assistant message text
+ *   3. Combine both pools (deduped by absolute path) and feed into
+ *      `pickPrimaryEditedPath` (our equivalent of Codex's `vde`):
+ *      a single office/PDF/media artifact wins; otherwise we only
+ *      surface a pill if the entire turn touched exactly one
+ *      previewable file.
+ *
+ * The runtime is the source of truth for what was edited. The chat
+ * surface no longer sniffs tool names like `Write`, `Edit`, or
+ * `apply_patch` — any new file-mutating tool that emits structured
+ * `fileChanges` automatically participates in the resource pill.
+ */
+
+import { isOfficePreviewRef } from "@/shared/contracts/office-preview";
+import {
+  type FileChangeRecord,
+  isFileChangeRecordArray,
+} from "@/shared/contracts/file-changes";
+import type { DisplayPayload } from "@/shared/contracts/display-payload";
+import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
+import {
+  kindForPath,
+  pickPrimaryEditedPath,
+} from "@/shell/display/path-to-viewer";
+import type { EventRecord } from "./event-transforms";
+import { isToolResult } from "./event-transforms";
+
+const asNonEmptyString = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+type PayloadByPath = Map<string, DisplayPayload>;
+
+type ResolvedFileChange = {
+  path: string;
+  kind: FileChangeRecord["kind"]["type"];
+  timestamp: number;
+};
+
+const normalizePosixPath = (candidate: string): string => {
+  const trimmed = candidate.trim();
+  if (!trimmed) return trimmed;
+  const leadingSlash = trimmed.startsWith("/");
+  const segments: string[] = [];
+  for (const part of trimmed.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (segments.length > 0) segments.pop();
+      continue;
+    }
+    segments.push(part);
+  }
+  return `${leadingSlash ? "/" : ""}${segments.join("/")}`;
+};
+
+const resolvePathAgainstCwd = (
+  candidate: string,
+  cwd: string | undefined,
+): string | null => {
+  const trimmed = asNonEmptyString(candidate);
+  const base = asNonEmptyString(cwd);
+  if (!trimmed || !base || !base.startsWith("/")) return null;
+  if (trimmed.startsWith("/")) return normalizePosixPath(trimmed);
+  return normalizePosixPath(`${base.replace(/\/+$/g, "")}/${trimmed}`);
+};
+
+const resolveRelativePathFromKnownAbsolute = (
+  candidate: string,
+  absoluteCandidates: string[],
+): string | null => {
+  const trimmed = asNonEmptyString(candidate);
+  if (!trimmed || trimmed.startsWith("/")) return null;
+  // Without a turn cwd we can still dedupe common `./foo/bar.pdf` links by
+  // matching them against the absolute edited / referenced paths we already
+  // collected for this turn.
+  if (trimmed.startsWith("../")) return null;
+  const suffix = normalizePosixPath(trimmed).replace(/^\/+/, "");
+  if (!suffix) return null;
+  const matches = absoluteCandidates.filter(
+    (existing) => existing === suffix || existing.endsWith(`/${suffix}`),
+  );
+  return matches.length === 1 ? matches[0]! : null;
+};
+
+const fileChangesForResult = (event: EventRecord): FileChangeRecord[] => {
+  if (!isToolResult(event)) return [];
+  const candidate = (event.payload as { fileChanges?: unknown }).fileChanges;
+  return isFileChangeRecordArray(candidate) ? candidate : [];
+};
+
+const officeRefForResult = (event: EventRecord): OfficePreviewRef | null => {
+  if (!isToolResult(event)) return null;
+  const ref = (event.payload as { officePreviewRef?: unknown }).officePreviewRef;
+  return isOfficePreviewRef(ref) ? ref : null;
+};
+
+/**
+ * Resolve a fileChange record into the canonical post-mutation path,
+ * exactly like Codex's `pa`:
+ *   - `update` with `move_path` → use the new location
+ *   - `update` without `move_path` / `add` → use `path`
+ *   - `delete` → produces no edited path; deleted files can't be
+ *     previewed.
+ */
+const resolveFileChange = (
+  record: FileChangeRecord,
+  timestamp: number,
+): ResolvedFileChange | null => {
+  const kindType = record.kind.type;
+  if (kindType === "delete") return null;
+  const path =
+    kindType === "update" && record.kind.move_path
+      ? record.kind.move_path
+      : record.path;
+  const trimmed = asNonEmptyString(path);
+  if (!trimmed) return null;
+  return { path: trimmed, kind: kindType, timestamp };
+};
+
+/**
+ * Pull `image_gen` rich metadata (jobId / prompt / capability) out of a
+ * tool_result so the in-sidebar viewer keeps its prompt context. We
+ * still rely on the tool's `fileChanges` for path collection, but the
+ * rich metadata lives in `details` and isn't part of the `fileChange`
+ * contract.
+ */
+const imageGenPayloadsByPath = (
+  toolEvents: EventRecord[],
+): Map<string, DisplayPayload> => {
+  const byPath = new Map<string, DisplayPayload>();
+
+  for (const event of toolEvents) {
+    if (!isToolResult(event)) continue;
+    if (event.payload.toolName !== "image_gen" || event.payload.error) continue;
+    const result = event.payload.result;
+    if (!result || typeof result !== "object") continue;
+    const record = result as Record<string, unknown>;
+    const rawPaths = record.filePaths;
+    if (!Array.isArray(rawPaths)) continue;
+    const filePaths = rawPaths.filter(
+      (filePath): filePath is string =>
+        typeof filePath === "string" && filePath.trim().length > 0,
+    );
+    if (filePaths.length === 0) continue;
+    const payload: DisplayPayload = {
+      kind: "media",
+      asset: { kind: "image", filePaths },
+      createdAt: event.timestamp,
+      ...(typeof record.jobId === "string" ? { jobId: record.jobId } : {}),
+      ...(typeof record.capability === "string"
+        ? { capability: record.capability }
+        : {}),
+      ...(typeof record.prompt === "string" ? { prompt: record.prompt } : {}),
+    };
+    for (const filePath of filePaths) {
+      if (!byPath.has(filePath)) byPath.set(filePath, payload);
+    }
+  }
+
+  return byPath;
+};
+
+const buildPayloadFromBarePath = (
+  filePath: string,
+  createdAt: number,
+): DisplayPayload | null => {
+  switch (kindForPath(filePath)) {
+    case "pdf":
+      return { kind: "pdf", filePath };
+    case "image":
+      return {
+        kind: "media",
+        asset: { kind: "image", filePaths: [filePath] },
+        createdAt,
+      };
+    case "video":
+      return { kind: "media", asset: { kind: "video", filePath }, createdAt };
+    case "audio":
+      return { kind: "media", asset: { kind: "audio", filePath }, createdAt };
+    case "model3d":
+      return {
+        kind: "media",
+        asset: { kind: "model3d", filePath },
+        createdAt,
+      };
+    default:
+      // Office files opened from bare paths still require a preview
+      // session ref. Markdown / text fallbacks are unsupported by the
+      // viewers today, so we deliberately skip them rather than render
+      // an end-resource pill that does nothing.
+      return null;
+  }
+};
+
+/**
+ * Extract local file paths referenced via markdown links in the
+ * assistant message text. Mirrors Codex's `yde` + `bde` pair: walk the
+ * markdown for link nodes, decode the url, and discard anything that
+ * looks like an http(s) / mailto link or otherwise isn't a local path.
+ *
+ * Uses a regex instead of a full markdown AST walk because we don't
+ * already have the parsed tree on hand and the rules are simple.
+ * Handles both `[text](url)` and `[text](<url>)` forms.
+ */
+// Two forms, matched in one pass:
+//   - `[text](<url with spaces>)` → group 1 captures the angle-bracket
+//     payload, which is allowed to contain whitespace
+//   - `[text](url-without-spaces)` → group 2 captures the bare payload
+const MARKDOWN_LINK_RE = /\[[^\]]*?\]\(\s*(?:<([^>]+)>|([^()<>\s]+))\s*\)/g;
+const NON_FILE_URL_RE = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+
+export const extractMarkdownLinkPaths = (assistantText: string): string[] => {
+  if (!assistantText) return [];
+  const out: string[] = [];
+  for (const match of assistantText.matchAll(MARKDOWN_LINK_RE)) {
+    const raw = match[1] ?? match[2];
+    if (!raw) continue;
+    let decoded: string;
+    try {
+      decoded = decodeURI(raw);
+    } catch {
+      decoded = raw;
+    }
+    const trimmed = decoded.trim();
+    if (!trimmed) continue;
+    if (NON_FILE_URL_RE.test(trimmed)) continue;
+    out.push(trimmed);
+  }
+  return out;
+};
+
+const resolveReferencedMarkdownPath = (
+  rawLinkPath: string,
+  turnCwd: string | undefined,
+  absoluteCandidates: string[],
+): string | null => {
+  const trimmed = asNonEmptyString(rawLinkPath);
+  if (!trimmed) return null;
+  if (trimmed.startsWith("/")) return normalizePosixPath(trimmed);
+  return (
+    resolvePathAgainstCwd(trimmed, turnCwd)
+    ?? resolveRelativePathFromKnownAbsolute(trimmed, absoluteCandidates)
+    ?? trimmed
+  );
+};
+
+/**
+ * Derive the primary `DisplayPayload` for a turn, or `null` if no
+ * eligible artifact was touched.
+ */
+export const deriveTurnResource = (
+  toolEvents: EventRecord[],
+  assistantText: string = "",
+  turnCwd?: string,
+): DisplayPayload | null => {
+  if (toolEvents.length === 0 && !assistantText) return null;
+
+  // Build payloadByPath using rich signals (office previews + image_gen
+  // metadata) so the chosen path resolves to a previewer that keeps
+  // session ids / prompts / capability context.
+  const payloadByPath: PayloadByPath = new Map();
+  const imagePayloads = imageGenPayloadsByPath(toolEvents);
+
+  for (const [filePath, payload] of imagePayloads) {
+    if (!payloadByPath.has(filePath)) {
+      payloadByPath.set(filePath, payload);
+    }
+  }
+
+  const referencedFromOffice = new Map<string, OfficePreviewRef>();
+
+  for (const event of toolEvents) {
+    const office = officeRefForResult(event);
+    if (!office) continue;
+    const path = office.sourcePath;
+    if (!referencedFromOffice.has(path)) {
+      referencedFromOffice.set(path, office);
+    }
+    if (!payloadByPath.has(path)) {
+      payloadByPath.set(path, { kind: "office", previewRef: office });
+    }
+  }
+
+  // Codex's "edited" pool = paths from fileChange items.
+  const editedPaths: string[] = [];
+  const editedSeen = new Set<string>();
+  for (const event of toolEvents) {
+    if (!isToolResult(event)) continue;
+    const records = fileChangesForResult(event);
+    for (const record of records) {
+      const resolved = resolveFileChange(record, event.timestamp);
+      if (!resolved) continue;
+      if (editedSeen.has(resolved.path)) continue;
+      editedSeen.add(resolved.path);
+      editedPaths.push(resolved.path);
+      if (!payloadByPath.has(resolved.path)) {
+        const inferred = buildPayloadFromBarePath(
+          resolved.path,
+          resolved.timestamp,
+        );
+        if (inferred) {
+          payloadByPath.set(resolved.path, inferred);
+        }
+      }
+    }
+  }
+
+  // Codex's "referenced" pool = office preview ref source paths +
+  // markdown links in the assistant message text.
+  const referencedPaths: string[] = [];
+  const referencedSeen = new Set<string>();
+  const absoluteCandidates = [...editedPaths, ...referencedFromOffice.keys()]
+    .filter((candidate) => candidate.startsWith("/"))
+    .map(normalizePosixPath);
+  const pushReferenced = (path: string | null) => {
+    if (!path || referencedSeen.has(path) || editedSeen.has(path)) return;
+    referencedSeen.add(path);
+    referencedPaths.push(path);
+  };
+  for (const sourcePath of referencedFromOffice.keys()) pushReferenced(sourcePath);
+  for (const linkPath of extractMarkdownLinkPaths(assistantText)) {
+    pushReferenced(
+      resolveReferencedMarkdownPath(linkPath, turnCwd, absoluteCandidates),
+    );
+  }
+
+  const candidatePaths = [...editedPaths, ...referencedPaths];
+  if (candidatePaths.length === 0) return null;
+
+  const primary = pickPrimaryEditedPath(candidatePaths);
+  if (!primary) return null;
+
+  const directPayload = payloadByPath.get(primary);
+  if (directPayload) return directPayload;
+
+  const fallbackTimestamp =
+    toolEvents[toolEvents.length - 1]?.timestamp ?? Date.now();
+  return buildPayloadFromBarePath(primary, fallbackTimestamp);
+};

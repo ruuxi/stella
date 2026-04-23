@@ -8,6 +8,7 @@ import type {
   ToolHandlerExtras,
   ToolResult,
 } from "./types.js";
+import { fileChange } from "../../../desktop/src/shared/contracts/file-changes.js";
 
 export const IMAGE_GEN_TOOL_NAME = "image_gen";
 
@@ -357,6 +358,9 @@ const createImageGenHandler = (
       return {
         result: `${summary}\n${markers}`,
         details,
+        fileChanges: downloads.map(({ filePath }) =>
+          fileChange(filePath, { type: "add" }),
+        ),
       };
     }
 
