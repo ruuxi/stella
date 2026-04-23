@@ -137,13 +137,7 @@ const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1_000;
 const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = ".stella-runtime-reload-state.json";
 const DEVICE_HEARTBEAT_INTERVAL_MS = 30_000;
 
-type RuntimeReloadAction = "worker";
 type RemoteTurnAuthSource = HostRuntimeAuthRefreshParams["source"];
-
-const mergeRuntimeReloadAction = (
-  _current: RuntimeReloadAction | null,
-  _next: RuntimeReloadAction,
-): RuntimeReloadAction => "worker";
 
 const parseDisplayUpdateParams = (params: unknown): string => {
   if (typeof params === "string") return params;
@@ -197,8 +191,8 @@ export class StellaRuntimeClient {
   private schedulerSubscription: (() => void) | null = null;
   private watcher: FSWatcher | null = null;
   private reloadTimer: NodeJS.Timeout | null = null;
-  private scheduledRuntimeReloadAction: RuntimeReloadAction | null = null;
-  private deferredRuntimeReloadAction: RuntimeReloadAction | null = null;
+  private scheduledRuntimeReload = false;
+  private deferredRuntimeReload = false;
   private readonly pausedRuntimeReloadRuns = new Set<string>();
   private reloadQueue = Promise.resolve();
   private configCache: RuntimeConfigureParams = {};
@@ -308,46 +302,36 @@ export class StellaRuntimeClient {
     if (this.pausedRuntimeReloadRuns.size > 0) {
       return;
     }
-    const deferredAction = this.deferredRuntimeReloadAction;
-    this.deferredRuntimeReloadAction = null;
-    if (!deferredAction) {
+    const hadDeferredReload = this.deferredRuntimeReload;
+    this.deferredRuntimeReload = false;
+    if (!hadDeferredReload) {
       return;
     }
     setTimeout(() => {
-      void this.scheduleRuntimeReload(deferredAction);
+      void this.scheduleRuntimeReload();
     }, 0);
   }
 
-  private async applyRuntimeReload(_action: RuntimeReloadAction) {
-    await this.restartWorker();
-  }
-
-  private async scheduleRuntimeReload(action: RuntimeReloadAction) {
+  private async scheduleRuntimeReload() {
     if (this.pausedRuntimeReloadRuns.size > 0) {
-      this.deferredRuntimeReloadAction = mergeRuntimeReloadAction(
-        this.deferredRuntimeReloadAction,
-        action,
-      );
+      this.deferredRuntimeReload = true;
       return;
     }
-    this.scheduledRuntimeReloadAction = mergeRuntimeReloadAction(
-      this.scheduledRuntimeReloadAction,
-      action,
-    );
+    this.scheduledRuntimeReload = true;
     if (this.reloadTimer) {
       clearTimeout(this.reloadTimer);
     }
     this.reloadTimer = setTimeout(() => {
-      const scheduledAction = this.scheduledRuntimeReloadAction;
+      const shouldReload = this.scheduledRuntimeReload;
       this.reloadTimer = null;
-      this.scheduledRuntimeReloadAction = null;
-      if (!scheduledAction) {
+      this.scheduledRuntimeReload = false;
+      if (!shouldReload) {
         return;
       }
       this.reloadQueue = this.reloadQueue
         .catch(() => undefined)
         .then(async () => {
-          await this.applyRuntimeReload(scheduledAction);
+          await this.restartWorker();
         });
     }, 150);
   }
@@ -858,8 +842,8 @@ export class StellaRuntimeClient {
     this.workerGeneration = 0;
     this.agentEventBuffers.clear();
     this.pausedRuntimeReloadRuns.clear();
-    this.deferredRuntimeReloadAction = null;
-    this.scheduledRuntimeReloadAction = null;
+    this.deferredRuntimeReload = false;
+    this.scheduledRuntimeReload = false;
     if (this.reloadTimer) clearTimeout(this.reloadTimer);
     this.reloadTimer = null;
     this.watcher?.close();
@@ -1854,9 +1838,8 @@ export class StellaRuntimeClient {
     );
     this.watcher = watch(distElectronRoot, { recursive: true }, (_eventType, filename) => {
       if (typeof filename !== "string" || !filename.endsWith(".js")) return;
-      const action = classifyRuntimeReload(filename.replace(/\\/g, "/"));
-      if (!action) return;
-      void this.scheduleRuntimeReload(action);
+      if (!shouldReloadRuntime(filename.replace(/\\/g, "/"))) return;
+      void this.scheduleRuntimeReload();
     });
   }
 }
@@ -1870,9 +1853,7 @@ const resolveDefaultWorkerEntryPath = (options: StellaRuntimeClientOptions) =>
     "entry.js",
   );
 
-const classifyRuntimeReload = (
-  normalizedFilename: string,
-): "worker" | null => {
+const shouldReloadRuntime = (normalizedFilename: string): boolean => {
   const hostOwnedRuntimeKernelPrefixes = [
     "runtime/kernel/convex-urls",
     "runtime/kernel/dev-projects/",
@@ -1888,7 +1869,7 @@ const classifyRuntimeReload = (
     normalizedFilename.startsWith("runtime/discovery/") &&
     !normalizedFilename.startsWith("runtime/discovery/browser-data")
   ) {
-    return "worker";
+    return true;
   }
   if (
     normalizedFilename.startsWith("runtime/kernel/") &&
@@ -1896,14 +1877,14 @@ const classifyRuntimeReload = (
       normalizedFilename.startsWith(prefix),
     )
   ) {
-    return "worker";
+    return true;
   }
   if (
     normalizedFilename.startsWith("runtime/ai/") ||
     normalizedFilename.startsWith("runtime/worker/") ||
     normalizedFilename.startsWith("runtime/protocol/jsonl")
   ) {
-    return "worker";
+    return true;
   }
-  return null;
+  return false;
 };

@@ -1,8 +1,8 @@
 import type { Api, Model } from "../ai/types.js";
 import { AGENT_IDS } from "../../desktop/src/shared/contracts/agent-runtime.js";
+import { getModels } from "../ai/models.js";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
-import { STELLA_DEFAULT_MODEL } from "./stella-provider.js";
-import { getDirectProviderCandidates } from "./model-routing-direct.js";
+import { STELLA_DEFAULT_MODEL } from "../../desktop/src/shared/stella-api.js";
 import {
   findRegistryModel,
   parseModelReference,
@@ -39,6 +39,62 @@ const getCredential = (
 
 const getGatewayCredential = (stellaRoot: string): string | null =>
   getCredential(stellaRoot, "vercel-ai-gateway");
+
+const getDirectProviderCandidates = (
+  provider: string,
+  modelId: string,
+): {
+  credentialProvider: string;
+  registryProvider: string;
+  candidates: string[];
+  allowBaseUrlWithoutCredential?: boolean;
+} | null => {
+  switch (provider) {
+    case "anthropic":
+      return {
+        credentialProvider: "anthropic",
+        registryProvider: "anthropic",
+        candidates: uniqueModelCandidates([modelId, modelId.replace(/\./g, "-")]),
+      };
+    case "moonshotai":
+      return {
+        credentialProvider: "kimi-coding",
+        registryProvider: "kimi-coding",
+        candidates: uniqueModelCandidates([
+          modelId,
+          modelId.replace(/\./g, "-"),
+          modelId === "kimi-k2.5" ? "k2p5" : "",
+          modelId === "kimi-k2" ? "kimi-k2" : "",
+        ]),
+      };
+    case "openai":
+    case "openai-codex":
+    case "google":
+    case "groq":
+    case "mistral":
+    case "opencode":
+    case "cerebras":
+    case "xai":
+    case "zai":
+      return {
+        credentialProvider: provider,
+        registryProvider: provider,
+        candidates: uniqueModelCandidates([modelId, modelId.replace(/\./g, "-")]),
+      };
+    default: {
+      const extensionModels = getModels(provider as never) as Model<Api>[];
+      if (extensionModels.length > 0) {
+        return {
+          credentialProvider: provider,
+          registryProvider: provider,
+          allowBaseUrlWithoutCredential: true,
+          candidates: uniqueModelCandidates([modelId, modelId.replace(/\./g, "-")]),
+        };
+      }
+      return null;
+    }
+  }
+};
 
 const resolveDirectProviderRoute = (args: {
   stellaRoot: string;

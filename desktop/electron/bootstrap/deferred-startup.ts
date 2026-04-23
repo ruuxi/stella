@@ -1,4 +1,4 @@
-import { getSelectedText, initSelectedTextProcess } from "../selected-text.js";
+import { getSelectedText } from "../selected-text.js";
 import { ChronicleController } from "../services/chronicle-controller.js";
 import { hasMacPermission } from "../utils/macos-permissions.js";
 import { type BootstrapContext } from "./context.js";
@@ -65,7 +65,6 @@ const createDeferredStartupTasks = (
       label: "selected-text",
       delayMs: config.startupStageDelayMs,
       run: () => {
-        initSelectedTextProcess();
         if (process.platform === "win32") {
           context.state.processRuntime.setManagedTimeout(() => {
             void getSelectedText();

@@ -34,7 +34,7 @@ const createTempDir = () => {
 };
 
 const createOfficeShellState = () =>
-  createShellState(async () => null, os.tmpdir(), {
+  createShellState(os.tmpdir(), {
     stellaOfficeBinPath: officeWrapperPath,
   });
 

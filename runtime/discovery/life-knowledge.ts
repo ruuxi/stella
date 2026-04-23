@@ -105,9 +105,6 @@ const buildKnowledgePage = (
   return lines.join("\n");
 };
 
-const bulletIf = (condition: boolean, line: string): string | null =>
-  condition ? `- ${line}` : null;
-
 const buildSkillFile = (
   availableKnowledgePages: KnowledgePageDef[],
   availableRawPages: RawSignalPage[],

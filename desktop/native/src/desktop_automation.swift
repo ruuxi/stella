@@ -5439,9 +5439,6 @@ func alwaysSimulateInput() -> Bool {
         envBool("STELLA_COMPUTER_ALWAYS_SIMULATE_CLICK")
 }
 
-@inline(__always)
-func alwaysSimulateClick() -> Bool { alwaysSimulateInput() }
-
 // Toggle whether System Events should bring the target frontmost before
 // dispatching click/keystroke commands. Default: false. stella-computer
 // drives apps via Accessibility in the background; raising would steal

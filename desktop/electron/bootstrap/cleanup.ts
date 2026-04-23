@@ -1,5 +1,4 @@
 import { stopAllDesktopAutomationDaemons } from "../services/desktop-automation-cleanup.js";
-import { cleanupSelectedTextProcess } from "../selected-text.js";
 import type { BootstrapContext } from "./context.js";
 
 export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
@@ -13,9 +12,6 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
   });
   processRuntime.registerCleanup("before-quit", "browser-bridge", async () => {
     await context.state.stellaBrowserBridgeService?.stop();
-  });
-  processRuntime.registerCleanup("before-quit", "selected-text", () => {
-    cleanupSelectedTextProcess();
   });
   processRuntime.registerCleanup("before-quit", "selection-watcher", () => {
     context.services.selectionWatcherService.stop();

@@ -23,7 +23,6 @@ export function useStreamingChat({
   const {
     isLocalStorage,
     storageMode,
-    uploadAttachments: chatStoreUploadAttachments,
   } = useChatStore()
 
   const {
@@ -84,17 +83,7 @@ export function useStreamingChat({
       const deviceId = await getOrCreateDeviceId()
       const attachments = isLocalStorage && hasAttachments
         ? buildAllLocalAttachments(options.chatContext)
-        : await chatStoreUploadAttachments({
-            screenshots: options.chatContext?.regionScreenshots,
-            conversationId: resolvedConversationId,
-            deviceId,
-          }).then((uploaded) =>
-            uploaded.map((attachment) => ({
-              id: attachment.id,
-              url: attachment.url,
-              mimeType: attachment.mimeType,
-            })),
-          )
+        : []
 
       const platform = getPlatform()
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -147,7 +136,6 @@ export function useStreamingChat({
     },
     [
       activeConversationId,
-      chatStoreUploadAttachments,
       events,
       isLocalStorage,
       isStreaming,

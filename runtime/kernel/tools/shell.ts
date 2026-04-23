@@ -3,9 +3,9 @@
  */
 
 import { spawn } from "child_process";
-import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { existsSync } from "fs";
 import { resolveGitDir, setupEnvironment } from "dugite";
 import type { ToolContext, ToolResult, ShellRecord } from "./types.js";
 import { truncate } from "./utils.js";
@@ -100,33 +100,8 @@ export const extractOfficePreviewRef = (
 export function createShellState(
   secretStateRoot: string,
   options?: ShellStateOptions,
-): ShellState;
-export function createShellState(
-  _legacyIgnoredArg: unknown,
-  secretStateRoot: string,
-  options?: ShellStateOptions,
-): ShellState;
-export function createShellState(
-  secretStateRootOrLegacyArg: string | unknown,
-  secretStateRootOrOptions?: string | ShellStateOptions,
-  maybeOptions?: ShellStateOptions,
 ): ShellState {
-  // Keep supporting the older createShellState(_, secretStateRoot, options)
-  // shape that some tests and helper callers still use.
-  const secretStateRoot =
-    typeof secretStateRootOrLegacyArg === "string"
-      ? secretStateRootOrLegacyArg
-      : typeof secretStateRootOrOptions === "string"
-        ? secretStateRootOrOptions
-        : null;
-  const options =
-    typeof secretStateRootOrLegacyArg === "string"
-      ? typeof secretStateRootOrOptions === "string"
-        ? undefined
-        : secretStateRootOrOptions
-      : maybeOptions;
-
-  if (!secretStateRoot) {
+  if (!secretStateRoot.trim()) {
     throw new Error("createShellState requires a secretStateRoot.");
   }
 
@@ -141,17 +116,13 @@ export function createShellState(
 }
 
 const deferredDeleteHelperPath = (() => {
-  try {
-    const jsPath = fileURLToPath(new URL("./deferred-delete-cli.js", import.meta.url));
-    if (existsSync(jsPath)) {
-      return jsPath;
-    }
-    const tsPath = fileURLToPath(new URL("./deferred-delete-cli.ts", import.meta.url));
-    if (existsSync(tsPath)) {
-      return tsPath;
-    }
-  } catch {
-    // import.meta.url may not be a file:// URL in non-Node environments (e.g. Vite renderer)
+  const jsPath = fileURLToPath(new URL("./deferred-delete-cli.js", import.meta.url));
+  if (existsSync(jsPath)) {
+    return jsPath;
+  }
+  const tsPath = fileURLToPath(new URL("./deferred-delete-cli.ts", import.meta.url));
+  if (existsSync(tsPath)) {
+    return tsPath;
   }
   return "";
 })();

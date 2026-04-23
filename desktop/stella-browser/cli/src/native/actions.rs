@@ -5672,7 +5672,7 @@ async fn handle_auth_login(cmd: &Value, state: &mut DaemonState) -> Result<Value
 }
 
 // ---------------------------------------------------------------------------
-// Confirmation handlers (stub)
+// Confirmation handlers
 // ---------------------------------------------------------------------------
 
 async fn handle_confirm(_cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
@@ -5701,7 +5701,7 @@ async fn handle_deny(_cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
 }
 
 // ---------------------------------------------------------------------------
-// iOS handlers (stub)
+// iOS handlers
 // ---------------------------------------------------------------------------
 
 async fn handle_swipe(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {

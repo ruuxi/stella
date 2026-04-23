@@ -12,15 +12,6 @@ use std::time::Duration;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
 
-#[derive(Serialize)]
-#[allow(dead_code)]
-pub struct Request {
-    pub id: String,
-    pub action: String,
-    #[serde(flatten)]
-    pub extra: Value,
-}
-
 #[derive(Deserialize, Serialize, Default)]
 pub struct Response {
     pub success: bool,

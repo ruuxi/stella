@@ -16,7 +16,7 @@ const officeWrapperPath = path.resolve(
 
 describe("stella-office shell bootstrap", () => {
   it("injects the stella-office command into Bash", async () => {
-    const state = createShellState(async () => null, os.tmpdir(), {
+    const state = createShellState(os.tmpdir(), {
       stellaOfficeBinPath: officeWrapperPath,
     });
     const command = "stella-office --version";
