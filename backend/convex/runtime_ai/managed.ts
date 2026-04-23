@@ -155,6 +155,20 @@ function providerFromBaseUrl(baseUrl: string): string {
   return "managed";
 }
 
+function resolveManagedProtocol(args: {
+  api?: ManagedProtocol;
+  config: ManagedModelConfig;
+}): ManagedProtocol {
+  if (args.api) {
+    return args.api;
+  }
+  const gateway = resolveManagedGatewayConfig({
+    model: args.config.model,
+    configuredProvider: args.config.managedGatewayProvider,
+  });
+  return gateway.provider === "fireworks" ? "openai-responses" : "openai-completions";
+}
+
 function inferCompat(
   config: ManagedModelConfig,
   provider: string,
@@ -207,7 +221,10 @@ function readTextContent(content: unknown): Array<TextContent | ImageContent> {
       continue;
     }
     const record = part as Record<string, unknown>;
-    if (record.type === "text" && typeof record.text === "string") {
+    if (
+      (record.type === "text" || record.type === "input_text" || record.type === "output_text")
+      && typeof record.text === "string"
+    ) {
       if (record.text.length > 0) {
         blocks.push({ type: "text", text: record.text });
       }
@@ -256,6 +273,97 @@ function readTextContent(content: unknown): Array<TextContent | ImageContent> {
     }
   }
 
+  return blocks;
+}
+
+function decodeEscapedString(value: string, quote: "'" | "\""): string {
+  if (quote === "\"") {
+    try {
+      return JSON.parse(`"${value}"`) as string;
+    } catch {
+      return value;
+    }
+  }
+
+  const jsonCompatible = value
+    .replace(/\\'/g, "'")
+    .replace(/"/g, "\\\"");
+  try {
+    return JSON.parse(`"${jsonCompatible}"`) as string;
+  } catch {
+    return value.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\\\/g, "\\");
+  }
+}
+
+function readSerializedOutputTextParts(content: string): TextContent[] {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("[") || !trimmed.includes("output_text")) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return readAssistantTextBlocks(parsed);
+  } catch {
+    // Some gateways return a Python-repr-ish list with single-quoted keys.
+  }
+
+  const blocks: TextContent[] = [];
+  const singleQuotedText = /'text'\s*:\s*'((?:\\.|[^'\\])*)'/g;
+  for (const match of trimmed.matchAll(singleQuotedText)) {
+    const text = decodeEscapedString(match[1], "'");
+    if (text.length > 0) {
+      blocks.push({ type: "text", text });
+    }
+  }
+
+  if (blocks.length > 0) {
+    return blocks;
+  }
+
+  const doubleQuotedText = /"text"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+  for (const match of trimmed.matchAll(doubleQuotedText)) {
+    const text = decodeEscapedString(match[1], "\"");
+    if (text.length > 0) {
+      blocks.push({ type: "text", text });
+    }
+  }
+
+  return blocks;
+}
+
+function readAssistantTextBlocks(content: unknown): TextContent[] {
+  if (typeof content === "string") {
+    const outputTextBlocks = readSerializedOutputTextParts(content);
+    return outputTextBlocks.length > 0
+      ? outputTextBlocks
+      : content.length > 0
+        ? [{ type: "text", text: content }]
+        : [];
+  }
+
+  if (!Array.isArray(content)) {
+    return [];
+  }
+
+  const blocks: TextContent[] = [];
+  for (const part of content) {
+    if (!part || typeof part !== "object") {
+      continue;
+    }
+    const record = part as Record<string, unknown>;
+    if (
+      (record.type === "text" || record.type === "output_text")
+      && typeof record.text === "string"
+      && record.text.length > 0
+    ) {
+      blocks.push({ type: "text", text: record.text });
+      continue;
+    }
+    if (Array.isArray(record.content)) {
+      blocks.push(...readAssistantTextBlocks(record.content));
+    }
+  }
   return blocks;
 }
 
@@ -616,9 +724,7 @@ async function completeManagedOpenAICompletions(args: {
     });
     break;
   }
-  if (typeof message?.content === "string" && message.content.length > 0) {
-    content.push({ type: "text", text: message.content });
-  }
+  content.push(...readAssistantTextBlocks(message?.content));
   if (Array.isArray(message?.tool_calls)) {
     for (const toolCall of message.tool_calls) {
       if (!("function" in toolCall)) {
@@ -696,22 +802,16 @@ export async function completeManagedChat(args: {
   api?: ManagedProtocol;
   request?: ManagedCompletionRequest;
 }): Promise<AssistantMessage> {
-  const api = args.api ?? "openai-completions";
   const execute = async (config: ManagedModelConfig) => {
-    const message = api === "openai-completions"
-      ? await completeManagedOpenAICompletions({
-          config,
-          context: args.context,
-          request: args.request,
-        })
-      : await completeSimple(
-          buildManagedModel(config, api, args.request?.headers),
-          args.context,
-          buildSimpleOptions({
-            config,
-            request: args.request,
-          }),
-        );
+    const api = resolveManagedProtocol({ api: args.api, config });
+    const message = await completeSimple(
+      buildManagedModel(config, api, args.request?.headers),
+      args.context,
+      buildSimpleOptions({
+        config,
+        request: args.request,
+      }),
+    );
     if (message.stopReason === "error" || message.stopReason === "aborted") {
       throw new Error(message.errorMessage || "Managed completion failed");
     }
@@ -734,7 +834,7 @@ export function streamManagedChat(args: {
   api?: ManagedProtocol;
   request?: ManagedCompletionRequest;
 }) {
-  const api = args.api ?? "openai-completions";
+  const api = resolveManagedProtocol({ api: args.api, config: args.config });
   return streamSimple(
     buildManagedModel(args.config, api, args.request?.headers),
     args.context,

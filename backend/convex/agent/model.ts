@@ -261,8 +261,8 @@ const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<Model
 
 export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
-  [AGENT_IDS.ORCHESTRATOR]: "sota",
-  [AGENT_IDS.GENERAL]: "sota",
+  [AGENT_IDS.ORCHESTRATOR]: "smart",
+  [AGENT_IDS.GENERAL]: "smart",
 
   schedule: "standard",
   synthesis: "synthesis",
