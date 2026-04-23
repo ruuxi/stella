@@ -6,7 +6,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message";
+import { GrowIn } from "@/app/chat/GrowIn";
+import {
+  STELLA_SEND_MESSAGE_EVENT,
+  type StellaSendMessageDetail,
+} from "@/shared/lib/stella-send-message";
 import "./AskQuestionBubble.css";
 
 const BADGE_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
@@ -140,12 +144,18 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
           : buildAnswersMessage(payload, selections);
       setSubmitted(true);
       setEditingIndex(null);
-      dispatchStellaSendMessage({
-        text,
-        uiVisibility: "hidden",
-        triggerKind: "ask_question_response",
-        triggerSource: "ask-question-bubble",
-      });
+      // Dispatch the send-message event directly (without opening the sidebar
+      // chat) since the bubble is already rendered inside the active chat.
+      window.dispatchEvent(
+        new CustomEvent<StellaSendMessageDetail>(STELLA_SEND_MESSAGE_EVENT, {
+          detail: {
+            text,
+            uiVisibility: "hidden",
+            triggerKind: "ask_question_response",
+            triggerSource: "ask-question-bubble",
+          },
+        }),
+      );
     },
     [payload, selections, submitted],
   );
@@ -217,87 +227,89 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
   );
 
   return (
-    <div
-      className="ask-question-bubble"
-      tabIndex={-1}
-      data-submitted={submitted ? "true" : undefined}
-      aria-disabled={submitted ? "true" : undefined}
-    >
-      <div className="ask-question-bubble__header">
-        <span className="ask-question-bubble__label">
-          {submitted ? "Answered" : "Questions"}
-        </span>
-        <div className="ask-question-bubble__stepper">
-          <button
-            type="button"
-            className="ask-question-bubble__nav"
-            disabled={isFirst || submitted}
-            onClick={goPrev}
-            aria-label="Previous question"
-          >
-            <ChevronIcon direction="left" />
-          </button>
-          <span className="ask-question-bubble__counter">
-            {safeIndex + 1} of {total}
+    <GrowIn show={!submitted} duration={420}>
+      <div
+        className="ask-question-bubble"
+        tabIndex={-1}
+        data-submitted={submitted ? "true" : undefined}
+        aria-disabled={submitted ? "true" : undefined}
+      >
+        <div className="ask-question-bubble__header">
+          <span className="ask-question-bubble__label">
+            {submitted ? "Answered" : "Questions"}
           </span>
+          <div className="ask-question-bubble__stepper">
+            <button
+              type="button"
+              className="ask-question-bubble__nav"
+              disabled={isFirst || submitted}
+              onClick={goPrev}
+              aria-label="Previous question"
+            >
+              <ChevronIcon direction="left" />
+            </button>
+            <span className="ask-question-bubble__counter">
+              {safeIndex + 1} of {total}
+            </span>
+            <button
+              type="button"
+              className="ask-question-bubble__nav"
+              disabled={isLast || submitted}
+              onClick={goNextOrSubmit}
+              aria-label="Next question"
+            >
+              <ChevronIcon direction="right" />
+            </button>
+          </div>
+        </div>
+
+        <div className="ask-question-bubble__body">
+          <div className="ask-question-bubble__steps">
+            {payload.questions.map((question, index) => (
+              <QuestionStep
+                key={`q-${index}`}
+                index={index}
+                question={question}
+                isActive={index === safeIndex}
+                selection={selections[index]}
+                isEditingOther={editingIndex === index}
+                disabled={submitted}
+                onActivate={() => handleStepActivate(index)}
+                onPickOption={(optionKey) => handlePickOption(index, optionKey)}
+                onStartOther={() => handleStartOther(index)}
+                onOtherChange={(text) => handleOtherChange(index, text)}
+                onOtherSubmit={handleOtherSubmit}
+                onStopEditingOther={() => setEditingIndex(null)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="ask-question-bubble__actions">
           <button
             type="button"
-            className="ask-question-bubble__nav"
-            disabled={isLast || submitted}
-            onClick={goNextOrSubmit}
-            aria-label="Next question"
+            className="ask-question-bubble__button"
+            data-variant="text"
+            disabled={submitted}
+            onClick={() => submitAnswers("skip")}
           >
-            <ChevronIcon direction="right" />
+            Skip
+          </button>
+          <button
+            type="button"
+            className="ask-question-bubble__button"
+            data-variant="primary"
+            disabled={!hasAnswer || submitted}
+            onClick={goNextOrSubmit}
+          >
+            <span>{submitted ? "Sent" : isLast ? "Done" : "Next"}</span>
+            {!submitted && (
+              <span className="ask-question-bubble__shortcut">⏎</span>
+            )}
           </button>
         </div>
       </div>
-
-      <div className="ask-question-bubble__body">
-        <div className="ask-question-bubble__steps">
-          {payload.questions.map((question, index) => (
-            <QuestionStep
-              key={`q-${index}`}
-              index={index}
-              question={question}
-              isActive={index === safeIndex}
-              selection={selections[index]}
-              isEditingOther={editingIndex === index}
-              disabled={submitted}
-              onActivate={() => handleStepActivate(index)}
-              onPickOption={(optionKey) => handlePickOption(index, optionKey)}
-              onStartOther={() => handleStartOther(index)}
-              onOtherChange={(text) => handleOtherChange(index, text)}
-              onOtherSubmit={handleOtherSubmit}
-              onStopEditingOther={() => setEditingIndex(null)}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="ask-question-bubble__actions">
-        <button
-          type="button"
-          className="ask-question-bubble__button"
-          data-variant="text"
-          disabled={submitted}
-          onClick={() => submitAnswers("skip")}
-        >
-          Skip
-        </button>
-        <button
-          type="button"
-          className="ask-question-bubble__button"
-          data-variant="primary"
-          disabled={!hasAnswer || submitted}
-          onClick={goNextOrSubmit}
-        >
-          <span>{submitted ? "Sent" : isLast ? "Done" : "Next"}</span>
-          {!submitted && (
-            <span className="ask-question-bubble__shortcut">⏎</span>
-          )}
-        </button>
-      </div>
-    </div>
+    </GrowIn>
   );
 });
 
