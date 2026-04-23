@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { getElectronApi } from "@/platform/electron/electron";
@@ -90,6 +90,10 @@ export function ComposerSuggestionContextRow({
   setChatContext,
 }: ComposerSuggestionRowProps) {
   const { lanes, dismissSlot, pinSuggestion } = useAutoContextChips(true);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [hiddenLaneIndexes, setHiddenLaneIndexes] = useState<Set<number>>(
+    () => new Set(),
+  );
 
   // Listen for externally-pinned suggestions (e.g. cmd+rc → "Open chat"
   // surfaces the right-clicked window as a one-shot suggestion). We dispatch
@@ -112,7 +116,8 @@ export function ComposerSuggestionContextRow({
   // don't want "+ Brave – github.com" suggesting itself when it's already
   // attached). The lane stays mounted so the row's reserved height is kept
   // — only the chip body is omitted.
-  const attachedAppName = chatContext?.window?.app?.toLowerCase().trim() ?? null;
+  const attachedAppName =
+    chatContext?.window?.app?.toLowerCase().trim() ?? null;
   const attachedUrl = chatContext?.browserUrl ?? null;
 
   const isChipAttached = (chip: SuggestionChip): boolean => {
@@ -124,19 +129,115 @@ export function ComposerSuggestionContextRow({
     );
   };
 
+  const laneVisibilityKey = useMemo(
+    () =>
+      lanes
+        .map((lane) => {
+          const current =
+            lane.current && !isChipAttached(lane.current.chip)
+              ? `${lane.current.key}:${lane.current.phase}`
+              : "";
+          const outgoing = lane.outgoing
+            ? `${lane.outgoing.key}:${lane.outgoing.phase}`
+            : "";
+          return `${current}|${outgoing}`;
+        })
+        .join(","),
+    [lanes, attachedAppName, attachedUrl],
+  );
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+
+    let frame = 0;
+
+    const syncVisibleLanes = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const laneEls = Array.from(
+          row.querySelectorAll<HTMLElement>(
+            ".composer-context-suggestion-lane",
+          ),
+        );
+        const availableWidth = row.clientWidth;
+        const styles = window.getComputedStyle(row);
+        const gap =
+          Number.parseFloat(styles.columnGap || styles.gap || "0") || 0;
+        const nextHidden = new Set<number>();
+        let usedWidth = 0;
+        let visibleCount = 0;
+
+        for (const laneEl of laneEls) {
+          const rawIndex = laneEl.dataset.laneIndex;
+          const laneIndex = rawIndex ? Number.parseInt(rawIndex, 10) : NaN;
+          if (!Number.isFinite(laneIndex)) continue;
+
+          const laneWidth = laneEl.offsetWidth;
+          if (laneWidth <= 0) continue;
+
+          const nextWidth =
+            usedWidth + (visibleCount > 0 ? gap : 0) + laneWidth;
+          if (nextWidth <= availableWidth) {
+            usedWidth = nextWidth;
+            visibleCount += 1;
+          } else {
+            nextHidden.add(laneIndex);
+          }
+        }
+
+        setHiddenLaneIndexes((current) => {
+          if (current.size === nextHidden.size) {
+            let same = true;
+            for (const index of current) {
+              if (!nextHidden.has(index)) {
+                same = false;
+                break;
+              }
+            }
+            if (same) return current;
+          }
+          return nextHidden;
+        });
+      });
+    };
+
+    syncVisibleLanes();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", syncVisibleLanes);
+      return () => {
+        cancelAnimationFrame(frame);
+        window.removeEventListener("resize", syncVisibleLanes);
+      };
+    }
+
+    const observer = new ResizeObserver(syncVisibleLanes);
+    observer.observe(row);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [laneVisibilityKey]);
+
   // The row container always renders so the strip's vertical space is
   // reserved (CSS `min-height`), even when every lane is empty or hidden.
   // This stops the composer from popping up when the last suggestion fades
   // out and back down when the first one fades in.
   return (
-    <div className="composer-context-actions composer-context-actions--suggestions">
+    <div
+      ref={rowRef}
+      className="composer-context-actions composer-context-actions--suggestions"
+    >
       {lanes.map((lane, index) => (
         <SuggestionLaneView
           key={`lane-${index}`}
+          index={index}
           lane={lane}
           setChatContext={setChatContext}
           onDismissCurrent={dismissSlot}
           isChipAttached={isChipAttached}
+          overflowHidden={hiddenLaneIndexes.has(index)}
         />
       ))}
     </div>
@@ -150,15 +251,19 @@ export function ComposerSuggestionContextRow({
  * blank between two sets of chips.
  */
 function SuggestionLaneView({
+  index,
   lane,
   setChatContext,
   onDismissCurrent,
   isChipAttached,
+  overflowHidden,
 }: {
+  index: number;
   lane: SuggestionLane;
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
   onDismissCurrent: (slotKey: string) => void;
   isChipAttached: (chip: SuggestionChip) => boolean;
+  overflowHidden: boolean;
 }) {
   const showCurrent = Boolean(
     lane.current && !isChipAttached(lane.current.chip),
@@ -168,7 +273,11 @@ function SuggestionLaneView({
   if (!showCurrent && !showOutgoing) return null;
 
   return (
-    <div className="composer-context-suggestion-lane">
+    <div
+      className="composer-context-suggestion-lane"
+      data-lane-index={index}
+      data-overflow-hidden={overflowHidden || undefined}
+    >
       {showOutgoing && lane.outgoing ? (
         <SuggestionChipSlot
           slot={lane.outgoing}
@@ -209,7 +318,10 @@ function SuggestionChipSlot({
     } else {
       setChatContext(appChipToChatContext(slot.chip));
       captureAppWindowAsync(
-        { appName: slot.chip.name, pid: slot.chip.pid > 0 ? slot.chip.pid : null },
+        {
+          appName: slot.chip.name,
+          pid: slot.chip.pid > 0 ? slot.chip.pid : null,
+        },
         setChatContext,
       );
     }
@@ -323,10 +435,7 @@ function AppSuggestionChip({
       <span className="composer-context-suggestion__plus" aria-hidden="true">
         +
       </span>
-      <ChipAppGlyph
-        iconDataUrl={app.iconDataUrl}
-        fallbackLabel={app.name}
-      />
+      <ChipAppGlyph iconDataUrl={app.iconDataUrl} fallbackLabel={app.name} />
       {app.windowTitle && (
         <span className="composer-context-suggestion__meta">
           {truncateChipLabel(app.windowTitle)}
@@ -360,10 +469,7 @@ function TabSuggestionChip({
       <span className="composer-context-suggestion__plus" aria-hidden="true">
         +
       </span>
-      <ChipAppGlyph
-        iconDataUrl={tab.iconDataUrl}
-        fallbackLabel={tab.browser}
-      />
+      <ChipAppGlyph iconDataUrl={tab.iconDataUrl} fallbackLabel={tab.browser} />
       <span className="composer-context-suggestion__meta">
         {truncateChipLabel(tab.host)}
       </span>
