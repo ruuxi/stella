@@ -300,12 +300,24 @@ function spawnProcess(spec) {
   });
 }
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(signal, () => {
     exitCode = 0;
     void shutdownAll(`received ${signal}`);
   });
 }
+
+process.on("uncaughtException", (error) => {
+  exitCode = 1;
+  console.error(error);
+  void shutdownAll("uncaught exception");
+});
+
+process.on("unhandledRejection", (reason) => {
+  exitCode = 1;
+  console.error(reason);
+  void shutdownAll("unhandled rejection");
+});
 
 process.on("exit", () => {
   removeOwnPidFile();

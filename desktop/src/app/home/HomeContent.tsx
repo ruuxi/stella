@@ -1,16 +1,19 @@
-import { createElement, useEffect, useState, type ReactNode } from "react"
-import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation"
-import { displayTabs } from "@/shell/display/tab-store"
-import { IdeasTabContent } from "./IdeasTabContent"
-import "./home.css"
+import { createElement, useEffect, useState, type ReactNode } from "react";
+import { useUiState } from "@/context/ui-state";
+import { useWindowFocus } from "@/shared/hooks/use-window-focus";
+import { useWindowType } from "@/shared/hooks/use-window-type";
+import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
+import { displayTabs } from "@/shell/display/tab-store";
+import { IdeasTabContent } from "./IdeasTabContent";
+import "./home.css";
 
 type HomeContentProps = {
-  onDismissHome?: () => void
-  hasMessages?: boolean
-  children?: ReactNode
-}
+  onDismissHome?: () => void;
+  hasMessages?: boolean;
+  children?: ReactNode;
+};
 
-const IDEAS_TAB_ID = "ideas:home-footer"
+const IDEAS_TAB_ID = "ideas:home-footer";
 
 function openIdeasTab() {
   displayTabs.openTab({
@@ -18,16 +21,16 @@ function openIdeasTab() {
     kind: "ideas",
     title: "Ideas",
     render: () => createElement(IdeasTabContent),
-  })
+  });
 }
 
 function getTimeBasedGreeting(date: Date): string {
-  const hour = date.getHours()
-  if (hour < 5) return "Good night"
-  if (hour < 12) return "Good morning"
-  if (hour < 17) return "Good afternoon"
-  if (hour < 21) return "Good evening"
-  return "Good night"
+  const hour = date.getHours();
+  if (hour < 5) return "Good night";
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  if (hour < 21) return "Good evening";
+  return "Good night";
 }
 
 const FUN_GREETINGS: readonly string[] = [
@@ -71,36 +74,34 @@ const FUN_GREETINGS: readonly string[] = [
   "Tell me everything",
   "What's the plan?",
   "Let's make something",
-]
+];
 
 // Probability the greeting is a random fun message instead of the time-of-day greeting.
-const FUN_GREETING_CHANCE = 0.25
+const FUN_GREETING_CHANCE = 0.25;
 
-type GreetingState =
-  | { kind: "fun"; text: string }
-  | { kind: "time" }
+type GreetingState = { kind: "fun"; text: string } | { kind: "time" };
 
 function pickInitialGreetingState(): GreetingState {
   if (Math.random() < FUN_GREETING_CHANCE) {
-    const idx = Math.floor(Math.random() * FUN_GREETINGS.length)
-    return { kind: "fun", text: FUN_GREETINGS[idx] }
+    const idx = Math.floor(Math.random() * FUN_GREETINGS.length);
+    return { kind: "fun", text: FUN_GREETINGS[idx] };
   }
-  return { kind: "time" }
+  return { kind: "time" };
 }
 
 function useGreeting(): string {
-  const [state] = useState<GreetingState>(pickInitialGreetingState)
-  const [, forceTick] = useState(0)
+  const [state] = useState<GreetingState>(pickInitialGreetingState);
+  const [, forceTick] = useState(0);
 
   useEffect(() => {
-    if (state.kind !== "time") return
+    if (state.kind !== "time") return;
     // Re-evaluate every minute so the time-of-day greeting stays accurate across boundaries.
-    const interval = setInterval(() => forceTick((n) => n + 1), 60_000)
-    return () => clearInterval(interval)
-  }, [state.kind])
+    const interval = setInterval(() => forceTick((n) => n + 1), 60_000);
+    return () => clearInterval(interval);
+  }, [state.kind]);
 
-  if (state.kind === "fun") return state.text
-  return getTimeBasedGreeting(new Date())
+  if (state.kind === "fun") return state.text;
+  return getTimeBasedGreeting(new Date());
 }
 
 export function HomeContent({
@@ -108,23 +109,25 @@ export function HomeContent({
   hasMessages,
   children,
 }: HomeContentProps) {
-  const greeting = useGreeting()
+  const greeting = useGreeting();
+  const { state } = useUiState();
+  const windowType = useWindowType();
+  const windowFocused = useWindowFocus();
+  const animationPaused = !windowFocused || state.window !== windowType;
 
   // Defer StellaAnimation mount so WebGL shader compilation does not block the
   // first home paint — same pattern as WorkingIndicator.
-  const [animReady, setAnimReady] = useState(false)
+  const [animReady, setAnimReady] = useState(false);
   useEffect(() => {
-    const id = requestAnimationFrame(() => setAnimReady(true))
-    return () => cancelAnimationFrame(id)
-  }, [])
+    const id = requestAnimationFrame(() => setAnimReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
-  const showViewMessages = Boolean(hasMessages && onDismissHome)
+  const showViewMessages = Boolean(hasMessages && onDismissHome);
 
   return (
     <div className="home-content">
-      <h1 className="home-stella-title">
-        {greeting}
-      </h1>
+      <h1 className="home-stella-title">{greeting}</h1>
 
       {children}
 
@@ -161,7 +164,13 @@ export function HomeContent({
           <span className="home-ideas-button__anim" aria-hidden="true">
             <span className="home-ideas-button__anim-scale">
               {animReady && (
-                <StellaAnimation width={20} height={20} maxDpr={1} frameSkip={2} />
+                <StellaAnimation
+                  width={20}
+                  height={20}
+                  maxDpr={1}
+                  frameSkip={2}
+                  paused={animationPaused}
+                />
               )}
             </span>
           </span>
@@ -169,5 +178,5 @@ export function HomeContent({
         </button>
       </div>
     </div>
-  )
+  );
 }

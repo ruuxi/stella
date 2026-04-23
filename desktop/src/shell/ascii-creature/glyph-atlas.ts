@@ -20,17 +20,19 @@ export const getCssNumber = (value: string, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-// Module-level cache — the atlas is identical for a given glyph size.
-let cachedAtlas: { canvas: HTMLCanvasElement; key: string } | null = null;
+// Module-level cache — atlas generation is pure for the resolved font metrics.
+const glyphAtlasCache = new Map<string, HTMLCanvasElement>();
+const MAX_GLYPH_ATLAS_CACHE_ENTRIES = 16;
 
 export const buildGlyphAtlas = (
-  _fontFamily: string,
-  _fontSize: number,
+  fontFamily: string,
+  fontSize: number,
   glyphWidth: number,
   glyphHeight: number,
 ) => {
-  const key = `${glyphWidth}x${glyphHeight}`;
-  if (cachedAtlas?.key === key) return cachedAtlas.canvas;
+  const key = `${fontFamily}\0${fontSize}\0${glyphWidth}x${glyphHeight}`;
+  const cachedAtlas = glyphAtlasCache.get(key);
+  if (cachedAtlas) return cachedAtlas;
 
   const canvas = document.createElement("canvas");
   canvas.width = glyphWidth * DOT_COUNT;
@@ -57,6 +59,10 @@ export const buildGlyphAtlas = (
     }
   }
 
-  cachedAtlas = { canvas, key };
+  if (glyphAtlasCache.size >= MAX_GLYPH_ATLAS_CACHE_ENTRIES) {
+    const oldestKey = glyphAtlasCache.keys().next().value;
+    if (oldestKey) glyphAtlasCache.delete(oldestKey);
+  }
+  glyphAtlasCache.set(key, canvas);
   return canvas;
 };

@@ -15,6 +15,10 @@
   animation: breathing 8s ease-in-out infinite;
 }
 
+.stella-animation-container--paused {
+  animation: none;
+}
+
 .ascii-canvas {
   position: absolute;
   top: 50%;
