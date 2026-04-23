@@ -1,6 +1,4 @@
-import { createElement, useEffect, useState, type ReactNode } from "react";
-import { displayTabs } from "@/shell/display/tab-store";
-import { IdeasTabContent } from "./IdeasTabContent";
+import { useEffect, useState, type ReactNode } from "react";
 import "./home.css";
 
 type HomeContentProps = {
@@ -9,15 +7,14 @@ type HomeContentProps = {
   children?: ReactNode;
 };
 
-const IDEAS_TAB_ID = "ideas:home-footer";
+const SIDEBAR_HINT_STORAGE_KEY = "stella.home.sidebarHintSeen";
 
-function openIdeasTab() {
-  displayTabs.openTab({
-    id: IDEAS_TAB_ID,
-    kind: "ideas",
-    title: "Ideas",
-    render: () => createElement(IdeasTabContent),
-  });
+function shouldShowSidebarHint(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_HINT_STORAGE_KEY) !== "1";
+  } catch {
+    return false;
+  }
 }
 
 function getTimeBasedGreeting(date: Date): string {
@@ -107,6 +104,16 @@ export function HomeContent({
 }: HomeContentProps) {
   const greeting = useGreeting();
   const showViewMessages = Boolean(hasMessages && onDismissHome);
+  const [showSidebarHint] = useState(shouldShowSidebarHint);
+
+  useEffect(() => {
+    if (!showSidebarHint) return;
+    try {
+      window.localStorage.setItem(SIDEBAR_HINT_STORAGE_KEY, "1");
+    } catch {
+      // Ignore storage failures; the hint is nonessential.
+    }
+  }, [showSidebarHint]);
 
   return (
     <div className="home-content">
@@ -138,15 +145,11 @@ export function HomeContent({
         </button>
       )}
 
-      <div className="home-ideas-footer">
-        <button
-          className="home-ideas-button"
-          type="button"
-          onClick={openIdeasTab}
-        >
-          <span className="home-ideas-button__label">Ideas</span>
-        </button>
-      </div>
+      {showSidebarHint && (
+        <div className="home-sidebar-hint" role="status">
+          Right-click to open the display sidebar
+        </div>
+      )}
     </div>
   );
 }

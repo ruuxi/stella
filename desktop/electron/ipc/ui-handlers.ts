@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain } from "electron";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
+import { IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE } from "../../src/shared/contracts/ipc-channels.js";
 import type { UiState } from "../types.js";
 import type { WindowManager } from "../windows/window-manager.js";
 
@@ -60,6 +61,12 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
   ipcMain.handle("window:isMaximized", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     return win?.isMaximized() ?? false;
+  });
+
+  ipcMain.on(IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE, (event, visible: boolean) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || process.platform !== "darwin") return;
+    win.setWindowButtonVisibility(Boolean(visible));
   });
 
   ipcMain.handle("ui:getState", () => options.uiState);

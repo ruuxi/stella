@@ -10,6 +10,7 @@
   width: 100%;
   flex: 1;
   padding: 48px 24px;
+  position: relative;
 }
 
 .full-body-main--home {
@@ -30,11 +31,11 @@
 /* Fade-in for home content elements */
 .home-stella-title,
 .home-view-messages-link,
-.home-ideas-footer {
+.home-sidebar-hint {
   animation: homeContentFadeIn 300ms ease both;
 }
 
-.home-ideas-footer {
+.home-sidebar-hint {
   animation-delay: 80ms;
 }
 
@@ -52,7 +53,7 @@
 /* Fade-out when leaving home → chat */
 .full-body-main--home-leaving .home-stella-title,
 .full-body-main--home-leaving .home-view-messages-link,
-.full-body-main--home-leaving .home-ideas-footer,
+.full-body-main--home-leaving .home-sidebar-hint,
 .full-body-main--home-leaving .composer-wrap {
   animation: homeContentFadeOut 280ms ease both;
 }
@@ -112,70 +113,21 @@
   transform: translateX(2px);
 }
 
-/* ── Ideas footer ─────────────────────────────────────────────────────
- * Single bottom-anchored entry point. Stella animation on the left,
- * "Ideas" label on the right; clicking opens the Display sidebar's
- * Ideas tab where the categories live.
- */
-.home-ideas-footer {
+.home-sidebar-hint {
   position: absolute;
-  bottom: 24px;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  pointer-events: none;
-}
-
-.home-ideas-footer > * {
-  pointer-events: auto;
-}
-
-.home-ideas-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
-  background: transparent;
-  border: none;
-  color: var(--text-base);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 16px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  cursor: default;
-  transition: color 0.15s ease;
-}
-
-.home-ideas-button:hover {
-  color: var(--text-strong);
-}
-
-/* Same layout as `.indicator-stella` / `.indicator-stella-scale` in
- * `indicators.css` (WorkingIndicator) — 22px circle, 20×20 canvas, 0.2 scale.
- */
-.home-ideas-button__anim {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  position: relative;
-  overflow: hidden;
-  border-radius: 50%;
-}
-
-.home-ideas-button__anim-scale {
-  width: 200%;
-  height: 200%;
-  transform: scale(0.2);
-  transform-origin: center center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: absolute;
-  top: 50%;
   left: 50%;
-  translate: -50% -50%;
+  bottom: 24px;
+  translate: -50% 0;
+  width: min(calc(100% - 48px), 360px);
+  color: var(--text-weak);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* ── Music Player Widget (kept; user may add via self-mod) ─────────── */

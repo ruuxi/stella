@@ -28,7 +28,6 @@ const TYPE_COLORS = {
   model3d: "#0ea5e9",
   download: "#0d9488",
   text: "#64748b",
-  ideas: "#eab308",
 } as const;
 
 type IconProps = {
@@ -257,12 +256,13 @@ const IdeasIcon = ({ size = 18, style }: IconProps) => (
   >
     <path
       d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1.1 1.1 1.4 1.8l.2.4h4l.2-.4c.3-.7.8-1.3 1.4-1.8A6 6 0 0 0 12 3z"
-      stroke={TYPE_COLORS.ideas}
+      stroke="currentColor"
+      strokeOpacity="0.7"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      fill={TYPE_COLORS.ideas}
-      fillOpacity="0.18"
+      fill="currentColor"
+      fillOpacity="0.08"
     />
   </svg>
 );

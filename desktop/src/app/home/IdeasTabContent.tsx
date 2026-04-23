@@ -5,15 +5,14 @@ import { usePersonalizedCategories } from "./categories"
 import "./ideas-tab.css"
 
 /**
- * Display-sidebar tab body for the "Ideas" entry point. Renders the same
- * personalized category set as the home footer, grouped vertically with
- * the category label as a section heading. Clicking an option places its
- * prompt into the composer (mirrors the original home-footer behavior)
+ * Display-sidebar tab body for the "Ideas" entry point. Renders the
+ * personalized category set grouped vertically with the category label as a
+ * section heading. Clicking an option places its prompt into the composer
  * via the shared `onSuggestionClick` from the chat runtime.
  *
- * Lives in `app/home/` because it shares categorization logic with
- * `HomeContent`; the display-sidebar layer just registers the tab spec
- * with a `() => <IdeasTabContent />` render closure.
+ * Lives in `app/home/` because these suggestions are generated from the home
+ * onboarding flow; the display-sidebar layer just registers the tab spec with
+ * a `() => <IdeasTabContent />` render closure.
  */
 export function IdeasTabContent() {
   const { state } = useUiState()

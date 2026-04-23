@@ -450,6 +450,10 @@ export const Sidebar = ({
   // concept and is forced compact via CSS regardless of this state.
   const [railCollapsed, setRailCollapsed] = useState<boolean>(readPersistedRail);
 
+  useEffect(() => {
+    window.electronAPI?.window.setNativeButtonsVisible(!railCollapsed);
+  }, [railCollapsed]);
+
   const handleBrandClick = useCallback(() => {
     setRailCollapsed((prev) => {
       const next = !prev;

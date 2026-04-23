@@ -19,6 +19,8 @@ export const IPC_WINDOW_MAXIMIZE = "window:maximize" as const;
 export const IPC_WINDOW_CLOSE = "window:close" as const;
 export const IPC_WINDOW_IS_MAXIMIZED = "window:isMaximized" as const;
 export const IPC_WINDOW_SHOW = "window:show" as const;
+export const IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE =
+  "window:setNativeButtonsVisible" as const;
 
 // ── Display ─────────────────────────────────────────────────────────────────
 
