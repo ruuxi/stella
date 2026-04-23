@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const resolveDevUrlFile = (): string => {
+export function getDevServerUrl(): string {
   const candidates = [
     process.env.STELLA_ROOT
       ? path.join(process.env.STELLA_ROOT, 'desktop', '.vite-dev-url')
@@ -17,13 +17,7 @@ const resolveDevUrlFile = (): string => {
   ].filter((candidate): candidate is string => Boolean(candidate))
 
   const devUrlFile = candidates.find((candidate) => fs.existsSync(candidate))
-  if (devUrlFile) return devUrlFile
-
-  return candidates[0]
-}
-
-export function getDevServerUrl(): string {
-  const devUrlFile = resolveDevUrlFile()
+    ?? candidates[0]
   const url = fs.readFileSync(devUrlFile, 'utf-8').trim()
   if (!url) {
     throw new Error(`Vite dev server URL file is empty: ${devUrlFile}`)

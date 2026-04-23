@@ -1,7 +1,7 @@
 import type { Model } from "../ai/types.js";
 import {
   STELLA_DEFAULT_MODEL,
-} from "./stella-provider.js";
+} from "../../desktop/src/shared/stella-api.js";
 import { readConfiguredStellaSiteUrl } from "./convex-urls.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 

@@ -2,7 +2,6 @@ import type {
   PromptCatalog,
   PromptDefinition,
   PromptId,
-  PromptTemplateValues,
 } from "./types";
 
 const renderStatic = (template: string): string => template;
@@ -15,31 +14,6 @@ const interpolateTemplate = (
     /\{\{(\w+)\}\}/g,
     (_match, key: string) => replacements[key] ?? "",
   );
-
-const renderCategoryAnalysisUser = (
-  template: string,
-  values: PromptTemplateValues["synthesis.category_analysis.user"],
-): string => interpolateTemplate(template, values);
-
-const renderCoreMemoryUser = (
-  template: string,
-  values: PromptTemplateValues["synthesis.core_memory.user"],
-): string => interpolateTemplate(template, values);
-
-const renderWelcomeMessageUser = (
-  template: string,
-  values: PromptTemplateValues["synthesis.welcome_message.user"],
-): string => interpolateTemplate(template, values);
-
-const renderHomeSuggestionsUser = (
-  template: string,
-  values: PromptTemplateValues["synthesis.home_suggestions.user"],
-): string => interpolateTemplate(template, values);
-
-const renderSuggestionsUser = (
-  template: string,
-  values: PromptTemplateValues["suggestions.user"],
-): string => interpolateTemplate(template, values);
 
 export const PROMPT_CATALOG = {
   "offline_responder.system": {
@@ -255,7 +229,7 @@ Preserve contact names with frequency, group chat names, note folder structure, 
 {{data}}
 
 Output the filtered data (300-500 tokens). Preserve paths, names, and structure. No preamble.`,
-    render: renderCategoryAnalysisUser,
+    render: (template, values) => interpolateTemplate(template, values),
   },
   "synthesis.core_memory.system": {
     id: "synthesis.core_memory.system",
@@ -333,7 +307,7 @@ Use 1000-1500 tokens. Preserve specific names, projects, services, and interests
 {{rawOutputs}}
 
 Output ONLY the structured profile. No preamble.`,
-    render: renderCoreMemoryUser,
+    render: (template, values) => interpolateTemplate(template, values),
   },
   "synthesis.welcome_message.user": {
     id: "synthesis.welcome_message.user",
@@ -346,7 +320,7 @@ Output ONLY the structured profile. No preamble.`,
 Say a brief greeting. Use the person's name only if you are confident you know it from the context above; if you are not sure what their name is, do not mention a name.
 
 Write ONLY the greeting.`,
-    render: renderWelcomeMessageUser,
+    render: (template, values) => interpolateTemplate(template, values),
   },
   "synthesis.home_suggestions.user": {
     id: "synthesis.home_suggestions.user",
@@ -402,7 +376,7 @@ Rules:
 7. If the profile is empty or minimal, use broadly useful defaults that showcase Stella's capabilities.
 
 Output ONLY valid JSON for that object. No markdown fences, no commentary.`,
-    render: renderHomeSuggestionsUser,
+    render: (template, values) => interpolateTemplate(template, values),
   },
   "suggestions.user": {
     id: "suggestions.user",
@@ -419,7 +393,7 @@ Only suggest commands that are clearly relevant to the conversation context. Ret
 
 Return ONLY a JSON array (no markdown fences). Each element: {"commandId": "...", "name": "...", "description": "..."}
 If no commands are relevant, return: []`,
-    render: renderSuggestionsUser,
+    render: (template, values) => interpolateTemplate(template, values),
   },
   "music.system": {
     id: "music.system",

@@ -1,4 +1,5 @@
-const resolveWindowType = (): "mini" | "full" | "overlay" => {
+/** Returns 'mini', 'full', or 'overlay' for voice overlay activity gating. */
+export function useWindowType(): "mini" | "full" | "overlay" {
   const dataHint = document.documentElement.dataset.stellaWindow;
   if (dataHint === "mini") {
     return "mini";
@@ -18,9 +19,4 @@ const resolveWindowType = (): "mini" | "full" | "overlay" => {
   }
 
   return "full";
-};
-
-/** Returns 'mini', 'full', or 'overlay' for voice overlay activity gating. */
-export function useWindowType(): "mini" | "full" | "overlay" {
-  return resolveWindowType();
 }

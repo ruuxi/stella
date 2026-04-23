@@ -97,7 +97,7 @@ async function main() {
     console.log(`✓ Downloaded native binary: ${binaryName}`);
   } catch (err) {
     console.log(`⚠ Could not download native binary: ${err.message}`);
-    console.log(`  The CLI will use Node.js fallback (slightly slower startup)`);
+    console.log(`  The CLI requires a native binary to run.`);
     console.log('');
     console.log('To build the native binary locally:');
     console.log('  1. Install Rust: https://rustup.rs');

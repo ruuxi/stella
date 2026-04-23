@@ -5,22 +5,14 @@ import {
   type LocalHistoryMessage,
 } from '@/app/chat/services/local-chat-store'
 import { useAuthSessionState } from '@/global/auth/hooks/use-auth-session-state'
-import type { UploadedAttachment } from '@/app/chat/streaming/attachment-upload'
 
 export type ChatStorageMode = 'cloud' | 'local'
-
-type UploadAttachmentsArgs = {
-  screenshots: { dataUrl: string }[] | undefined
-  conversationId: string
-  deviceId: string
-}
 
 type ChatStoreContextValue = {
   storageMode: ChatStorageMode
   isLocalStorage: boolean
   cloudFeaturesEnabled: boolean
   isAuthenticated: boolean
-  uploadAttachments: (args: UploadAttachmentsArgs) => Promise<UploadedAttachment[]>
   buildHistory: (conversationId: string) => Promise<LocalHistoryMessage[] | undefined>
 }
 
@@ -32,11 +24,6 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   const cloudFeaturesEnabled = false
   const storageMode: ChatStorageMode = 'local'
   const isLocalStorage = true
-
-  const uploadAttachments = useCallback(
-    async (_args: UploadAttachmentsArgs): Promise<UploadedAttachment[]> => [],
-    [],
-  )
 
   const buildHistory = useCallback(
     async (conversationId: string): Promise<LocalHistoryMessage[] | undefined> => {
@@ -51,7 +38,6 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
       isLocalStorage,
       cloudFeaturesEnabled,
       isAuthenticated: hasConnectedAccount,
-      uploadAttachments,
       buildHistory,
     }),
     [
@@ -59,7 +45,6 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
       isLocalStorage,
       cloudFeaturesEnabled,
       hasConnectedAccount,
-      uploadAttachments,
       buildHistory,
     ],
   )
@@ -74,5 +59,3 @@ export const useChatStore = () => {
   }
   return context
 }
-
-export const useOptionalChatStore = () => useContext(ChatStoreContext)

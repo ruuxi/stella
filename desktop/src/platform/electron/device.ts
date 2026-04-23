@@ -53,5 +53,3 @@ export const getOrCreateDeviceId = async () => {
   writeLocalDeviceId(fromHost);
   return fromHost;
 };
-
-export const getCachedDeviceId = () => cachedDeviceId;

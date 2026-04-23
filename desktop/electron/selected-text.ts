@@ -17,16 +17,6 @@ export type SelectedTextResult = {
 }
 
 /**
- * Initialize selected text process (no-op — native binary needs no init)
- */
-export const initSelectedTextProcess = (): void => {}
-
-/**
- * Cleanup selected text process (no-op — native binary needs no cleanup)
- */
-export const cleanupSelectedTextProcess = (): void => {}
-
-/**
  * Parse the helper's stdout into a structured result.
  *
  * Current binaries emit a single JSON line:

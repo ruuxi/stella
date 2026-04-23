@@ -14,8 +14,7 @@ if (!existsSync(officeCliBuildScript)) {
   process.exit(1);
 }
 
-const command = process.platform === "win32" ? "bash" : "bash";
-const result = spawnSync(command, [officeCliBuildScript, "release"], {
+const result = spawnSync("bash", [officeCliBuildScript, "release"], {
   cwd: officeCliRoot,
   stdio: "inherit",
 });

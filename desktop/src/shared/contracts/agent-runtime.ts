@@ -181,12 +181,6 @@ export const BUILTIN_AGENT_DEFINITION_BY_ID = Object.freeze(
   ) as Record<AgentId, BuiltInAgentDefinition>,
 );
 
-export const DESKTOP_SUBAGENT_IDS = Object.freeze(
-  BUILTIN_AGENT_DEFINITIONS.filter((entry) => entry.runsAsSubagent).map(
-    (entry) => entry.id,
-  ) as DesktopSubagentId[],
-);
-
 export const BUNDLED_CORE_AGENT_IDS = Object.freeze(
   BUILTIN_AGENT_DEFINITIONS.filter((entry) => entry.bundledCore).map(
     (entry) => entry.id,

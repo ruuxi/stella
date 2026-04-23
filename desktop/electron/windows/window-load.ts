@@ -34,10 +34,6 @@ export const getDevUrl = (windowMode: WindowLoadMode, getDevServerUrl: () => str
   return url.toString()
 }
 
-const getFileTarget = (electronDir: string, windowMode: WindowLoadMode) => {
-  return { filePath: path.join(electronDir, `../dist/${getWindowEntryFile(windowMode)}`) }
-}
-
 export const loadWindow = (
   window: BrowserWindow,
   options: {
@@ -52,11 +48,11 @@ export const loadWindow = (
     return
   }
 
-  const target = getFileTarget(options.electronDir, options.mode)
+  const filePath = path.join(options.electronDir, `../dist/${getWindowEntryFile(options.mode)}`)
   const query = getWindowQuery(options.mode)
   if (query) {
-    window.loadFile(target.filePath, { query })
+    window.loadFile(filePath, { query })
     return
   }
-  window.loadFile(target.filePath)
+  window.loadFile(filePath)
 }
