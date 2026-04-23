@@ -15,6 +15,7 @@ import {
   type RecentAppChip,
   type BrowserTabChip,
   type SuggestionChip,
+  type SuggestionLane,
   type SuggestionSlot,
 } from "./hooks/use-auto-context-chips";
 import {
@@ -88,7 +89,7 @@ export function ComposerSuggestionContextRow({
   chatContext,
   setChatContext,
 }: ComposerSuggestionRowProps) {
-  const { slots, dismissSlot, pinSuggestion } = useAutoContextChips(true);
+  const { lanes, dismissSlot, pinSuggestion } = useAutoContextChips(true);
 
   // Listen for externally-pinned suggestions (e.g. cmd+rc → "Open chat"
   // surfaces the right-clicked window as a one-shot suggestion). We dispatch
@@ -107,9 +108,10 @@ export function ComposerSuggestionContextRow({
     };
   }, [pinSuggestion]);
 
-  // Hide a slot whose chip is equivalent to the currently-attached context
-  // (we don't want "+ Brave – github.com" suggesting itself when it's the
-  // attached chip). Slot still occupies its position, just renders empty.
+  // Hide a chip whose contents match the currently-attached context (we
+  // don't want "+ Brave – github.com" suggesting itself when it's already
+  // attached). The lane stays mounted so the row's reserved height is kept
+  // — only the chip body is omitted.
   const attachedAppName = chatContext?.window?.app?.toLowerCase().trim() ?? null;
   const attachedUrl = chatContext?.browserUrl ?? null;
 
@@ -122,29 +124,65 @@ export function ComposerSuggestionContextRow({
     );
   };
 
-  const hasAnyVisible = slots.some(
-    (slot) => slot && !isChipAttached(slot.chip),
-  );
-  if (!hasAnyVisible) return null;
-
+  // The row container always renders so the strip's vertical space is
+  // reserved (CSS `min-height`), even when every lane is empty or hidden.
+  // This stops the composer from popping up when the last suggestion fades
+  // out and back down when the first one fades in.
   return (
     <div className="composer-context-actions composer-context-actions--suggestions">
-      {slots.map((slot, index) => {
-        if (!slot) {
-          return <span key={`slot-empty-${index}`} className="composer-context-suggestion-placeholder" aria-hidden="true" />;
-        }
-        if (isChipAttached(slot.chip)) {
-          return <span key={slot.key} className="composer-context-suggestion-placeholder" aria-hidden="true" />;
-        }
-        return (
-          <SuggestionChipSlot
-            key={slot.key}
-            slot={slot}
-            setChatContext={setChatContext}
-            onDismiss={() => dismissSlot(slot.key)}
-          />
-        );
-      })}
+      {lanes.map((lane, index) => (
+        <SuggestionLaneView
+          key={`lane-${index}`}
+          lane={lane}
+          setChatContext={setChatContext}
+          onDismissCurrent={dismissSlot}
+          isChipAttached={isChipAttached}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One slot position in the suggestion strip. Renders the lane's `current`
+ * occupant (entering/stable) and `outgoing` occupant (leaving) stacked in
+ * the same grid cell — they overlap during a swap so the strip never goes
+ * blank between two sets of chips.
+ */
+function SuggestionLaneView({
+  lane,
+  setChatContext,
+  onDismissCurrent,
+  isChipAttached,
+}: {
+  lane: SuggestionLane;
+  setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
+  onDismissCurrent: (slotKey: string) => void;
+  isChipAttached: (chip: SuggestionChip) => boolean;
+}) {
+  const showCurrent = Boolean(
+    lane.current && !isChipAttached(lane.current.chip),
+  );
+  const showOutgoing = Boolean(lane.outgoing);
+
+  if (!showCurrent && !showOutgoing) return null;
+
+  return (
+    <div className="composer-context-suggestion-lane">
+      {showOutgoing && lane.outgoing ? (
+        <SuggestionChipSlot
+          slot={lane.outgoing}
+          setChatContext={setChatContext}
+          onDismiss={() => {}}
+        />
+      ) : null}
+      {showCurrent && lane.current ? (
+        <SuggestionChipSlot
+          slot={lane.current}
+          setChatContext={setChatContext}
+          onDismiss={() => onDismissCurrent(lane.current!.key)}
+        />
+      ) : null}
     </div>
   );
 }
