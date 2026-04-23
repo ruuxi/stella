@@ -6,7 +6,6 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { useTheme } from "@/context/theme-context";
 import { animate } from "motion";
 import { createPortal } from "react-dom";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
@@ -31,7 +30,6 @@ import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import { useChatContextSync } from "./use-chat-context-sync";
-import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./chat-sidebar.css";
 
 export interface ChatSidebarOpenOptions {
@@ -120,7 +118,6 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     const [inputText, setInputText] = useState("");
     const [sidebarExpanded, setSidebarExpanded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
-    const { gradientMode, gradientColor } = useTheme();
     const { chatContext, setChatContext, selectedText, setSelectedText } =
       useChatContextSync();
     const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
@@ -276,11 +273,6 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
         {...(onContextMenu ? { onContextMenu } : {})}
       >
         <div className="chat-sidebar-inner">
-          <ShiftingGradient
-            mode={gradientMode}
-            colorMode={gradientColor}
-            contained
-          />
           <div className="chat-sidebar-main">
             <CompactConversationSurface
               className="chat-sidebar-messages"

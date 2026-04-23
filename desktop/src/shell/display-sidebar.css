@@ -7,9 +7,13 @@
   margin-left: auto;
   order: 999;
   position: relative;
-  transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1),
-              opacity 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 320ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: width;
+  /* Scope layout/paint to this subtree so width-driven reflows don't
+     cascade into siblings (and vice-versa). Crucial during the slide
+     because the panel can host heavy content (HTML viewer, PDF). */
+  contain: layout paint;
 }
 
 .display-sidebar--open {
@@ -110,6 +114,9 @@
   -webkit-backdrop-filter: var(--glass-blur);
   border-left: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
   border-radius: 0 0 0 32px;
+  /* Isolate paint/layout so backdrop-filter recomputation and content
+     reflows stay inside the panel. */
+  contain: layout paint;
   overflow: hidden;
 }
 
