@@ -1,152 +1,152 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
   TASK_COMPLETION_INDICATOR_MS,
   type TaskItem,
-} from "@/app/chat/lib/event-transforms";
-import { showToast } from "@/ui/toast";
+} from '@/app/chat/lib/event-transforms'
+import { showToast } from '@/ui/toast'
 import {
   AGENT_IDS,
   AGENT_RUN_FINISH_OUTCOMES,
   AGENT_STREAM_EVENT_TYPES,
   isTerminalTaskLifecycleStatus,
   type TaskLifecycleStatus,
-} from "@/shared/contracts/agent-runtime";
+} from '@/shared/contracts/agent-runtime'
 import {
   useRafStringAccumulator,
   useStreamBuffer,
-} from "@/shared/hooks/use-raf-state";
-import { useResumeAgentRun } from "../hooks/use-resume-agent-run";
-import type { AgentStreamEvent, SelfModAppliedData } from "./streaming-types";
-import type { AttachmentRef } from "./chat-types";
-import type { ChatContext } from "@/shared/types/electron";
+} from '@/shared/hooks/use-raf-state'
+import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
+import type { AgentStreamEvent, SelfModAppliedData } from './streaming-types'
+import type { AttachmentRef } from './chat-types'
+import type { ChatContext } from '@/shared/types/electron'
 import {
   getAgentHealthReason,
   resolveAgentNotReadyToast,
   trySyncHostToken,
-} from "./agent-stream-errors";
+} from './agent-stream-errors'
 
 type UseLocalAgentStreamOptions = {
-  activeConversationId: string | null;
-  storageMode: "cloud" | "local";
-};
+  activeConversationId: string | null
+  storageMode: 'cloud' | 'local'
+}
 
 type StartStreamArgs = {
-  userPrompt: string;
-  selectedText?: string | null;
-  chatContext?: ChatContext | null;
-  deviceId?: string;
-  platform?: string;
-  timezone?: string;
-  mode?: string;
-  messageMetadata?: Record<string, unknown>;
-  attachments?: AttachmentRef[];
-};
+  userPrompt: string
+  selectedText?: string | null
+  chatContext?: ChatContext | null
+  deviceId?: string
+  platform?: string
+  timezone?: string
+  mode?: string
+  messageMetadata?: Record<string, unknown>
+  attachments?: AttachmentRef[]
+}
 
 type RunRecord = {
-  runId: string;
-  conversationId: string;
-  requestId?: string;
-  userMessageId?: string;
-  uiVisibility?: "visible" | "hidden";
-  terminal: boolean;
-  outcome?: "completed" | "error" | "canceled";
-  statusText: string | null;
-};
+  runId: string
+  conversationId: string
+  requestId?: string
+  userMessageId?: string
+  uiVisibility?: 'visible' | 'hidden'
+  terminal: boolean
+  outcome?: 'completed' | 'error' | 'canceled'
+  statusText: string | null
+}
 
 type StreamStoreState = {
-  runsById: Record<string, RunRecord>;
-  activeRunIdByConversation: Record<string, string | null>;
-  tasksByRunId: Record<string, Record<string, TaskItem>>;
-  requestToRunId: Record<string, string>;
-};
+  runsById: Record<string, RunRecord>
+  activeRunIdByConversation: Record<string, string | null>
+  tasksByRunId: Record<string, Record<string, TaskItem>>
+  requestToRunId: Record<string, string>
+}
 
 type ActiveRunSnapshot = {
-  runId: string;
-  conversationId: string;
-  requestId?: string;
-  userMessageId?: string;
-  uiVisibility?: "visible" | "hidden";
-} | null;
+  runId: string
+  conversationId: string
+  requestId?: string
+  userMessageId?: string
+  uiVisibility?: 'visible' | 'hidden'
+} | null
 
 type ResumeTaskSnapshot = {
-  runId: string;
-  agentId: string;
-  agentType?: string;
-  description?: string;
-  anchorTurnId?: string;
-  parentAgentId?: string;
-  status: TaskLifecycleStatus;
-  statusText?: string;
-  reasoningText?: string;
-  result?: string;
-  error?: string;
-};
+  runId: string
+  agentId: string
+  agentType?: string
+  description?: string
+  anchorTurnId?: string
+  parentAgentId?: string
+  status: TaskLifecycleStatus
+  statusText?: string
+  reasoningText?: string
+  result?: string
+  error?: string
+}
 
 type StreamStoreAction =
   | {
-      type: "run-started";
-      runId: string;
-      conversationId: string;
-      requestId?: string;
-      userMessageId?: string;
-      uiVisibility?: "visible" | "hidden";
+      type: 'run-started'
+      runId: string
+      conversationId: string
+      requestId?: string
+      userMessageId?: string
+      uiVisibility?: 'visible' | 'hidden'
     }
   | {
-      type: "run-status";
-      runId: string;
-      statusText: string | null;
+      type: 'run-status'
+      runId: string
+      statusText: string | null
     }
   | {
-      type: "run-finished";
-      runId: string;
-      conversationId: string;
-      outcome: "completed" | "error" | "canceled";
+      type: 'run-finished'
+      runId: string
+      conversationId: string
+      outcome: 'completed' | 'error' | 'canceled'
     }
   | {
-      type: "task-upsert";
-      runId: string;
-      conversationId: string;
-      userMessageId?: string;
-      task: TaskItem;
+      type: 'task-upsert'
+      runId: string
+      conversationId: string
+      userMessageId?: string
+      task: TaskItem
     }
   | {
-      type: "agent-reasoning";
-      runId: string;
-      conversationId: string;
-      userMessageId?: string;
-      agentId: string;
-      chunk: string;
+      type: 'agent-reasoning'
+      runId: string
+      conversationId: string
+      userMessageId?: string
+      agentId: string
+      chunk: string
     }
   | {
-      type: "task-remove";
-      runId: string;
-      agentId: string;
+      type: 'task-remove'
+      runId: string
+      agentId: string
     }
   | {
-      type: "clear-run-tasks";
-      runId: string;
+      type: 'clear-run-tasks'
+      runId: string
     }
   | {
-      type: "hydrate-conversation";
-      conversationId: string;
-      activeRun: ActiveRunSnapshot;
-      tasks: TaskItem[];
-    };
+      type: 'hydrate-conversation'
+      conversationId: string
+      activeRun: ActiveRunSnapshot
+      tasks: TaskItem[]
+    }
 
 const initialStoreState: StreamStoreState = {
   runsById: {},
   activeRunIdByConversation: {},
   tasksByRunId: {},
   requestToRunId: {},
-};
+}
 
 function streamStoreReducer(
   state: StreamStoreState,
   action: StreamStoreAction,
 ): StreamStoreState {
   switch (action.type) {
-    case "run-started": {
-      const current = state.runsById[action.runId];
+    case 'run-started': {
+      const current = state.runsById[action.runId]
       const nextRun: RunRecord = {
         runId: action.runId,
         conversationId: action.conversationId,
@@ -155,7 +155,7 @@ function streamStoreReducer(
         uiVisibility: action.uiVisibility ?? current?.uiVisibility,
         terminal: false,
         statusText: null,
-      };
+      }
       return {
         ...state,
         runsById: {
@@ -172,12 +172,12 @@ function streamStoreReducer(
               [action.requestId]: action.runId,
             }
           : state.requestToRunId,
-      };
+      }
     }
-    case "run-status": {
-      const current = state.runsById[action.runId];
+    case 'run-status': {
+      const current = state.runsById[action.runId]
       if (!current || current.terminal) {
-        return state;
+        return state
       }
       return {
         ...state,
@@ -188,10 +188,10 @@ function streamStoreReducer(
             statusText: action.statusText,
           },
         },
-      };
+      }
     }
-    case "run-finished": {
-      const current = state.runsById[action.runId];
+    case 'run-finished': {
+      const current = state.runsById[action.runId]
       const nextRun: RunRecord = {
         runId: action.runId,
         conversationId: action.conversationId,
@@ -200,9 +200,9 @@ function streamStoreReducer(
         terminal: true,
         outcome: action.outcome,
         statusText: null,
-      };
+      }
       const activeRunId =
-        state.activeRunIdByConversation[action.conversationId] ?? null;
+        state.activeRunIdByConversation[action.conversationId] ?? null
       return {
         ...state,
         runsById: {
@@ -216,25 +216,27 @@ function streamStoreReducer(
                 [action.conversationId]: null,
               }
             : state.activeRunIdByConversation,
-      };
+      }
     }
-    case "task-upsert": {
-      const runRecord = state.runsById[action.runId];
-      const runTasks = state.tasksByRunId[action.runId] ?? {};
-      const existing = runTasks[action.task.id];
+    case 'task-upsert': {
+      const runRecord = state.runsById[action.runId]
+      const runTasks = state.tasksByRunId[action.runId] ?? {}
+      const existing = runTasks[action.task.id]
       const nextTask: TaskItem = {
         ...action.task,
         anchorTurnId: action.task.anchorTurnId ?? existing?.anchorTurnId,
         startedAtMs: existing?.startedAtMs ?? action.task.startedAtMs,
         statusText:
-          action.task.status === "running" ? action.task.statusText : undefined,
+          action.task.status === 'running' ? action.task.statusText : undefined,
         reasoningText:
-          typeof action.task.reasoningText === "string"
+          typeof action.task.reasoningText === 'string'
             ? action.task.reasoningText
             : existing?.reasoningText,
         outputPreview:
-          action.task.status === "running" ? undefined : action.task.outputPreview,
-      };
+          action.task.status === 'running'
+            ? undefined
+            : action.task.outputPreview,
+      }
       return {
         ...state,
         runsById: runRecord
@@ -245,7 +247,7 @@ function streamStoreReducer(
                 runId: action.runId,
                 conversationId: action.conversationId,
                 userMessageId: action.userMessageId,
-                uiVisibility: "hidden",
+                uiVisibility: 'hidden',
                 terminal: false,
                 statusText: null,
               },
@@ -257,21 +259,21 @@ function streamStoreReducer(
             [action.task.id]: nextTask,
           },
         },
-      };
-    }
-    case "agent-reasoning": {
-      const runRecord = state.runsById[action.runId];
-      const runTasks = state.tasksByRunId[action.runId] ?? {};
-      const existing = runTasks[action.agentId];
-      if (!action.chunk) {
-        return state;
       }
-      const nextReasoningText = `${existing?.reasoningText ?? ""}${action.chunk}`;
+    }
+    case 'agent-reasoning': {
+      const runRecord = state.runsById[action.runId]
+      const runTasks = state.tasksByRunId[action.runId] ?? {}
+      const existing = runTasks[action.agentId]
+      if (!action.chunk) {
+        return state
+      }
+      const nextReasoningText = `${existing?.reasoningText ?? ''}${action.chunk}`
       const storedReasoningText =
         nextReasoningText.length > MAX_AGENT_REASONING_CHARS
           ? nextReasoningText.slice(-MAX_AGENT_REASONING_CHARS)
-          : nextReasoningText;
-      const nowMs = Date.now();
+          : nextReasoningText
+      const nowMs = Date.now()
       return {
         ...state,
         runsById: runRecord
@@ -282,7 +284,7 @@ function streamStoreReducer(
                 runId: action.runId,
                 conversationId: action.conversationId,
                 userMessageId: action.userMessageId,
-                uiVisibility: "hidden",
+                uiVisibility: 'hidden',
                 terminal: false,
                 statusText: null,
               },
@@ -294,9 +296,9 @@ function streamStoreReducer(
             [action.agentId]: {
               ...(existing ?? {
                 id: action.agentId,
-                description: "Task",
+                description: 'Task',
                 agentType: AGENT_IDS.GENERAL,
-                status: "running",
+                status: 'running',
                 anchorTurnId: runRecord?.userMessageId,
                 startedAtMs: nowMs,
                 lastUpdatedAtMs: nowMs,
@@ -306,52 +308,52 @@ function streamStoreReducer(
             },
           },
         },
-      };
-    }
-    case "task-remove": {
-      const runTasks = state.tasksByRunId[action.runId];
-      if (!runTasks || !(action.agentId in runTasks)) {
-        return state;
       }
-      const nextRunTasks = { ...runTasks };
-      delete nextRunTasks[action.agentId];
+    }
+    case 'task-remove': {
+      const runTasks = state.tasksByRunId[action.runId]
+      if (!runTasks || !(action.agentId in runTasks)) {
+        return state
+      }
+      const nextRunTasks = { ...runTasks }
+      delete nextRunTasks[action.agentId]
       return {
         ...state,
         tasksByRunId: {
           ...state.tasksByRunId,
           [action.runId]: nextRunTasks,
         },
-      };
-    }
-    case "clear-run-tasks": {
-      if (!(action.runId in state.tasksByRunId)) {
-        return state;
       }
-      const nextTasksByRunId = { ...state.tasksByRunId };
-      delete nextTasksByRunId[action.runId];
+    }
+    case 'clear-run-tasks': {
+      if (!(action.runId in state.tasksByRunId)) {
+        return state
+      }
+      const nextTasksByRunId = { ...state.tasksByRunId }
+      delete nextTasksByRunId[action.runId]
       return {
         ...state,
         tasksByRunId: nextTasksByRunId,
-      };
+      }
     }
-    case "hydrate-conversation": {
-      const nextRunsById = { ...state.runsById };
-      const nextTasksByRunId = { ...state.tasksByRunId };
+    case 'hydrate-conversation': {
+      const nextRunsById = { ...state.runsById }
+      const nextTasksByRunId = { ...state.tasksByRunId }
       for (const task of action.tasks) {
         // Hydrate tasks always come from resume snapshots which carry runId;
         // skip any oddballs that don't, since they can't be bucketed by run.
-        const runId = task.runId;
-        if (!runId) continue;
+        const runId = task.runId
+        if (!runId) continue
         nextRunsById[runId] = nextRunsById[runId] ?? {
           runId,
           conversationId: action.conversationId,
           terminal: false,
           statusText: null,
-        };
+        }
         nextTasksByRunId[runId] = {
           ...(nextTasksByRunId[runId] ?? {}),
           [task.id]: task,
-        };
+        }
       }
       if (!action.activeRun) {
         return {
@@ -362,13 +364,13 @@ function streamStoreReducer(
             ...state.activeRunIdByConversation,
             [action.conversationId]: null,
           },
-        };
+        }
       }
-      const runId = action.activeRun.runId;
+      const runId = action.activeRun.runId
       const taskMap = {
         ...(nextTasksByRunId[runId] ?? {}),
         ...Object.fromEntries(action.tasks.map((task) => [task.id, task])),
-      };
+      }
       return {
         ...state,
         runsById: {
@@ -397,55 +399,55 @@ function streamStoreReducer(
           ...nextTasksByRunId,
           [runId]: taskMap,
         },
-      };
+      }
     }
     default:
-      return state;
+      return state
   }
 }
 
 function attachmentsForStartChat(
   attachments: AttachmentRef[] | undefined,
 ): { url: string; mimeType?: string }[] | undefined {
-  if (!attachments?.length) return undefined;
+  if (!attachments?.length) return undefined
   const mapped = attachments
     .filter(
       (a): a is AttachmentRef & { url: string } =>
-        typeof a.url === "string" && a.url.length > 0,
+        typeof a.url === 'string' && a.url.length > 0,
     )
     .map((a) => {
-      const item: { url: string; mimeType?: string } = { url: a.url };
-      if (a.mimeType) item.mimeType = a.mimeType;
-      return item;
-    });
-  return mapped.length ? mapped : undefined;
+      const item: { url: string; mimeType?: string } = { url: a.url }
+      if (a.mimeType) item.mimeType = a.mimeType
+      return item
+    })
+  return mapped.length ? mapped : undefined
 }
 
-const toRunTaskId = (runId: string, agentId: string) => `${runId}:${agentId}`;
-const MAX_AGENT_REASONING_CHARS = 8_000;
+const toRunTaskId = (runId: string, agentId: string) => `${runId}:${agentId}`
+const MAX_AGENT_REASONING_CHARS = 8_000
 
 export const reconcileTerminalTaskKeysFromResumeTasks = (args: {
-  currentKeys: ReadonlySet<string>;
+  currentKeys: ReadonlySet<string>
   tasks: Array<{
-    runId: string;
-    agentId: string;
-    status: TaskLifecycleStatus;
-  }>;
+    runId: string
+    agentId: string
+    status: TaskLifecycleStatus
+  }>
 }): Set<string> => {
-  const nextKeys = new Set(args.currentKeys);
+  const nextKeys = new Set(args.currentKeys)
   for (const task of args.tasks) {
-    const taskKey = toRunTaskId(task.runId, task.agentId);
+    const taskKey = toRunTaskId(task.runId, task.agentId)
     if (isTerminalTaskLifecycleStatus(task.status)) {
-      nextKeys.add(taskKey);
+      nextKeys.add(taskKey)
     } else {
-      nextKeys.delete(taskKey);
+      nextKeys.delete(taskKey)
     }
   }
-  return nextKeys;
-};
+  return nextKeys
+}
 
 const isTokenSyncIssue = (reason: string | null) =>
-  Boolean(reason && reason.toLowerCase().match(/token|auth/));
+  Boolean(reason && reason.toLowerCase().match(/token|auth/))
 
 const toTaskFromResumeSnapshot = (
   snapshot: ResumeTaskSnapshot,
@@ -453,274 +455,370 @@ const toTaskFromResumeSnapshot = (
 ): TaskItem => ({
   id: snapshot.agentId,
   runId: snapshot.runId,
-  description: snapshot.description ?? "Task",
+  description: snapshot.description ?? 'Task',
   agentType: snapshot.agentType || AGENT_IDS.GENERAL,
   status:
-    snapshot.status === "completed"
-      ? "completed"
-      : snapshot.status === "error"
-        ? "error"
-        : snapshot.status === "canceled"
-          ? "canceled"
-          : "running",
+    snapshot.status === 'completed'
+      ? 'completed'
+      : snapshot.status === 'error'
+        ? 'error'
+        : snapshot.status === 'canceled'
+          ? 'canceled'
+          : 'running',
   anchorTurnId: snapshot.anchorTurnId,
   parentAgentId: snapshot.parentAgentId,
   statusText: snapshot.statusText,
   startedAtMs: nowMs,
   completedAtMs:
-    snapshot.status === "completed" || snapshot.status === "error" || snapshot.status === "canceled"
+    snapshot.status === 'completed' ||
+    snapshot.status === 'error' ||
+    snapshot.status === 'canceled'
       ? nowMs
       : undefined,
   lastUpdatedAtMs: nowMs,
   outputPreview: snapshot.result ?? snapshot.error,
   reasoningText: snapshot.reasoningText,
-});
+})
 
 export function useLocalAgentStream({
   activeConversationId,
   storageMode,
 }: UseLocalAgentStreamOptions) {
-  const [storeState, dispatch] = useReducer(streamStoreReducer, initialStoreState);
+  const [storeState, dispatch] = useReducer(
+    streamStoreReducer,
+    initialStoreState,
+  )
   const [rawStreamingText, appendStreamingDelta, resetStreamingText] =
-    useRafStringAccumulator();
-  const [rawReasoningText, , resetReasoningText] = useRafStringAccumulator();
-  const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
-    null,
-  );
-  const [selfModMap, setSelfModMap] = useState<Record<string, SelfModAppliedData>>(
-    {},
-  );
+    useRafStringAccumulator()
+  const [rawReasoningText, , resetReasoningText] = useRafStringAccumulator()
+  const [pendingUserMessageId, setPendingUserMessageId] = useState<
+    string | null
+  >(null)
+  const [selfModMap, setSelfModMap] = useState<
+    Record<string, SelfModAppliedData>
+  >({})
 
-  const activeConversationIdRef = useRef<string | null>(activeConversationId);
+  const activeConversationIdRef = useRef<string | null>(activeConversationId)
   const activeRunIdByConversationRef = useRef<Record<string, string | null>>(
     storeState.activeRunIdByConversation,
-  );
-  const lastSeqByConversationRef = useRef(new Map<string, number>());
-  const terminalRunIdsRef = useRef(new Set<string>());
+  )
+  const lastSeqByConversationRef = useRef(new Map<string, number>())
+  const terminalRunIdsRef = useRef(new Set<string>())
   // Tracks per-run agent IDs that have reached a terminal lifecycle state.
   // Mirrors the persisted-event guard in `extractTasksFromEvents` so that
   // late `agent-progress` events arriving after `agent-completed` /
   // `agent-failed` / `agent-canceled` cannot flip a finished task back to
   // "running" — which would otherwise pin a phantom "Working … Task" chip.
-  const terminalTaskKeysRef = useRef(new Set<string>());
-  const pendingRequestIdsRef = useRef(new Set<string>());
-  const startAttemptRef = useRef(0);
-  const agentStreamCleanupRef = useRef<(() => void) | null>(null);
-  const liveTaskRemovalTimeoutsRef = useRef(new Map<string, number>());
+  const terminalTaskKeysRef = useRef(new Set<string>())
+  const pendingRequestIdsRef = useRef(new Set<string>())
+  const startAttemptRef = useRef(0)
+  const agentStreamCleanupRef = useRef<(() => void) | null>(null)
+  const liveTaskRemovalTimeoutsRef = useRef(new Map<string, number>())
+  const pendingReasoningChunksRef = useRef(
+    new Map<
+      string,
+      {
+        runId: string
+        conversationId: string
+        userMessageId?: string
+        agentId: string
+        chunk: string
+      }
+    >(),
+  )
+  const reasoningFrameRef = useRef<number | null>(null)
 
-  const activeRunId =
-    activeConversationId
-      ? storeState.activeRunIdByConversation[activeConversationId] ?? null
-      : null;
-  const activeRun = activeRunId ? storeState.runsById[activeRunId] ?? null : null;
-  const isStreaming = Boolean(activeRun && !activeRun.terminal);
-  const runtimeStatusText = activeRun?.statusText ?? null;
+  const activeRunId = activeConversationId
+    ? (storeState.activeRunIdByConversation[activeConversationId] ?? null)
+    : null
+  const activeRun = activeRunId
+    ? (storeState.runsById[activeRunId] ?? null)
+    : null
+  const isStreaming = Boolean(activeRun && !activeRun.terminal)
+  const runtimeStatusText = activeRun?.statusText ?? null
 
-  const streamingText = useStreamBuffer(rawStreamingText, isStreaming);
-  const reasoningText = useStreamBuffer(rawReasoningText, isStreaming);
+  const streamingText = useStreamBuffer(rawStreamingText, isStreaming)
+  const reasoningText = useStreamBuffer(rawReasoningText, isStreaming)
 
   useEffect(() => {
-    activeConversationIdRef.current = activeConversationId;
-  }, [activeConversationId]);
+    activeConversationIdRef.current = activeConversationId
+  }, [activeConversationId])
 
   useEffect(() => {
-    activeRunIdByConversationRef.current = storeState.activeRunIdByConversation;
-  }, [storeState.activeRunIdByConversation]);
+    activeRunIdByConversationRef.current = storeState.activeRunIdByConversation
+  }, [storeState.activeRunIdByConversation])
 
-  const clearScheduledTaskRemoval = useCallback((runId: string, agentId: string) => {
-    const key = toRunTaskId(runId, agentId);
-    const timeoutId = liveTaskRemovalTimeoutsRef.current.get(key);
-    if (typeof timeoutId === "number") {
-      window.clearTimeout(timeoutId);
-      liveTaskRemovalTimeoutsRef.current.delete(key);
-    }
-  }, []);
+  const clearScheduledTaskRemoval = useCallback(
+    (runId: string, agentId: string) => {
+      const key = toRunTaskId(runId, agentId)
+      const timeoutId = liveTaskRemovalTimeoutsRef.current.get(key)
+      if (typeof timeoutId === 'number') {
+        window.clearTimeout(timeoutId)
+        liveTaskRemovalTimeoutsRef.current.delete(key)
+      }
+    },
+    [],
+  )
 
   const scheduleTaskRemoval = useCallback(
     (runId: string, agentId: string, delayMs: number) => {
-      clearScheduledTaskRemoval(runId, agentId);
-      const key = toRunTaskId(runId, agentId);
+      clearScheduledTaskRemoval(runId, agentId)
+      const key = toRunTaskId(runId, agentId)
       const timeoutId = window.setTimeout(() => {
-        liveTaskRemovalTimeoutsRef.current.delete(key);
+        liveTaskRemovalTimeoutsRef.current.delete(key)
         dispatch({
-          type: "task-remove",
+          type: 'task-remove',
           runId,
           agentId,
-        });
-      }, delayMs);
-      liveTaskRemovalTimeoutsRef.current.set(key, timeoutId);
+        })
+      }, delayMs)
+      liveTaskRemovalTimeoutsRef.current.set(key, timeoutId)
     },
     [clearScheduledTaskRemoval],
-  );
+  )
 
   const clearAllScheduledTaskRemovals = useCallback(() => {
     for (const timeoutId of liveTaskRemovalTimeoutsRef.current.values()) {
-      window.clearTimeout(timeoutId);
+      window.clearTimeout(timeoutId)
     }
-    liveTaskRemovalTimeoutsRef.current.clear();
-  }, []);
+    liveTaskRemovalTimeoutsRef.current.clear()
+  }, [])
+
+  const flushPendingReasoningChunks = useCallback((onlyKey?: string) => {
+    const pending = pendingReasoningChunksRef.current
+    const entries = onlyKey
+      ? pending.has(onlyKey)
+        ? [[onlyKey, pending.get(onlyKey)!] as const]
+        : []
+      : [...pending.entries()]
+    if (entries.length === 0) {
+      return
+    }
+
+    for (const [key] of entries) {
+      pending.delete(key)
+    }
+    for (const [, entry] of entries) {
+      dispatch({
+        type: 'agent-reasoning',
+        runId: entry.runId,
+        conversationId: entry.conversationId,
+        userMessageId: entry.userMessageId,
+        agentId: entry.agentId,
+        chunk: entry.chunk,
+      })
+    }
+  }, [])
+
+  const queueAgentReasoningChunk = useCallback(
+    (entry: {
+      runId: string
+      conversationId: string
+      userMessageId?: string
+      agentId: string
+      chunk: string
+    }) => {
+      const key = toRunTaskId(entry.runId, entry.agentId)
+      const current = pendingReasoningChunksRef.current.get(key)
+      pendingReasoningChunksRef.current.set(key, {
+        ...entry,
+        chunk: `${current?.chunk ?? ''}${entry.chunk}`,
+      })
+
+      if (reasoningFrameRef.current !== null) {
+        return
+      }
+      reasoningFrameRef.current = window.requestAnimationFrame(() => {
+        reasoningFrameRef.current = null
+        flushPendingReasoningChunks()
+      })
+    },
+    [flushPendingReasoningChunks],
+  )
+
+  const discardPendingReasoningChunks = useCallback(
+    (runId: string, agentId: string) => {
+      pendingReasoningChunksRef.current.delete(toRunTaskId(runId, agentId))
+    },
+    [],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (reasoningFrameRef.current !== null) {
+        window.cancelAnimationFrame(reasoningFrameRef.current)
+        reasoningFrameRef.current = null
+      }
+      pendingReasoningChunksRef.current.clear()
+    }
+  }, [])
 
   useEffect(
     () => () => {
-      clearAllScheduledTaskRemovals();
+      clearAllScheduledTaskRemovals()
     },
     [clearAllScheduledTaskRemovals],
-  );
+  )
 
   useEffect(
     () => () => {
       if (agentStreamCleanupRef.current) {
-        agentStreamCleanupRef.current();
-        agentStreamCleanupRef.current = null;
+        agentStreamCleanupRef.current()
+        agentStreamCleanupRef.current = null
       }
     },
     [],
-  );
+  )
 
   const resetStreamingState = useCallback(() => {
-    resetStreamingText();
-    resetReasoningText();
-    setPendingUserMessageId(null);
+    resetStreamingText()
+    resetReasoningText()
+    setPendingUserMessageId(null)
     if (activeRunId) {
       dispatch({
-        type: "clear-run-tasks",
+        type: 'clear-run-tasks',
         runId: activeRunId,
-      });
+      })
     }
-  }, [activeRunId, resetReasoningText, resetStreamingText]);
+  }, [activeRunId, resetReasoningText, resetStreamingText])
 
   const handleAgentEvent = useCallback(
     (event: AgentStreamEvent) => {
       const conversationId =
-        event.conversationId ?? activeConversationIdRef.current ?? null;
+        event.conversationId ?? activeConversationIdRef.current ?? null
       if (!conversationId) {
-        return;
+        return
       }
 
-      const seq = Number.isFinite(event.seq) ? event.seq : 0;
+      const seq = Number.isFinite(event.seq) ? event.seq : 0
       if (seq > 0) {
         const previousSeq =
-          lastSeqByConversationRef.current.get(conversationId) ?? 0;
+          lastSeqByConversationRef.current.get(conversationId) ?? 0
         if (seq <= previousSeq) {
-          return;
+          return
         }
-        lastSeqByConversationRef.current.set(conversationId, seq);
+        lastSeqByConversationRef.current.set(conversationId, seq)
       }
 
       if (event.requestId) {
-        pendingRequestIdsRef.current.delete(event.requestId);
+        pendingRequestIdsRef.current.delete(event.requestId)
       }
 
       const isOrchestratorEvent =
-        (event.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR;
+        (event.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR
       const activeRunForConversation =
-        activeRunIdByConversationRef.current[conversationId] ?? null;
+        activeRunIdByConversationRef.current[conversationId] ?? null
       const isPrimaryRun =
-        Boolean(activeRunForConversation) && activeRunForConversation === event.runId;
+        Boolean(activeRunForConversation) &&
+        activeRunForConversation === event.runId
 
       const applyRunFinished = (args: {
-        outcome: "completed" | "error" | "canceled";
-        reason?: string;
+        outcome: 'completed' | 'error' | 'canceled'
+        reason?: string
       }) => {
         if (terminalRunIdsRef.current.has(event.runId)) {
-          return;
+          return
         }
-        terminalRunIdsRef.current.add(event.runId);
+        terminalRunIdsRef.current.add(event.runId)
         // Drop terminal-task entries scoped to this run so the set doesn't
         // grow unbounded across the session.
-        const runIdPrefix = `${event.runId}:`;
+        const runIdPrefix = `${event.runId}:`
         for (const key of terminalTaskKeysRef.current) {
           if (key.startsWith(runIdPrefix)) {
-            terminalTaskKeysRef.current.delete(key);
+            terminalTaskKeysRef.current.delete(key)
           }
         }
         dispatch({
-          type: "run-finished",
+          type: 'run-finished',
           runId: event.runId,
           conversationId,
           outcome: args.outcome,
-        });
+        })
         if (
-          conversationId === activeConversationIdRef.current
-          && args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR
+          conversationId === activeConversationIdRef.current &&
+          args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR
         ) {
           showToast({
-            title: "Something went wrong",
+            title: 'Something went wrong',
             description: args.reason || event.error || undefined,
-            variant: "error",
-          });
+            variant: 'error',
+          })
         }
         if (args.outcome !== AGENT_RUN_FINISH_OUTCOMES.COMPLETED) {
-          resetStreamingText();
-          resetReasoningText();
-          setPendingUserMessageId(null);
+          resetStreamingText()
+          resetReasoningText()
+          setPendingUserMessageId(null)
         }
         if (event.selfModApplied && event.userMessageId) {
           setSelfModMap((previous) => ({
             ...previous,
             [event.userMessageId!]: event.selfModApplied!,
-          }));
+          }))
         }
-      };
+      }
 
       switch (event.type) {
         case AGENT_STREAM_EVENT_TYPES.RUN_STARTED: {
-          if (event.uiVisibility === "hidden") {
-            break;
+          if (event.uiVisibility === 'hidden') {
+            break
           }
-          terminalRunIdsRef.current.delete(event.runId);
+          terminalRunIdsRef.current.delete(event.runId)
           dispatch({
-            type: "run-started",
+            type: 'run-started',
             runId: event.runId,
             conversationId,
             requestId: event.requestId,
             userMessageId: event.userMessageId,
             uiVisibility: event.uiVisibility,
-          });
+          })
           if (conversationId === activeConversationIdRef.current) {
-            resetStreamingText();
-            resetReasoningText();
-            setPendingUserMessageId(event.userMessageId ?? null);
+            resetStreamingText()
+            resetReasoningText()
+            setPendingUserMessageId(event.userMessageId ?? null)
           }
-          break;
+          break
         }
         case AGENT_STREAM_EVENT_TYPES.STREAM: {
           const isReactivation =
             !isPrimaryRun &&
             isOrchestratorEvent &&
-            terminalRunIdsRef.current.has(event.runId);
+            terminalRunIdsRef.current.has(event.runId)
           if (isReactivation) {
-            terminalRunIdsRef.current.delete(event.runId);
+            terminalRunIdsRef.current.delete(event.runId)
             dispatch({
-              type: "run-started",
+              type: 'run-started',
               runId: event.runId,
               conversationId,
               requestId: event.requestId,
-            });
-            resetStreamingText();
-            resetReasoningText();
+            })
+            resetStreamingText()
+            resetReasoningText()
           }
           dispatch({
-            type: "run-status",
+            type: 'run-status',
             runId: event.runId,
             statusText: null,
-          });
-          if ((isPrimaryRun || isReactivation) && isOrchestratorEvent && event.chunk) {
-            appendStreamingDelta(event.chunk);
+          })
+          if (
+            (isPrimaryRun || isReactivation) &&
+            isOrchestratorEvent &&
+            event.chunk
+          ) {
+            appendStreamingDelta(event.chunk)
           }
-          break;
+          break
         }
         case AGENT_STREAM_EVENT_TYPES.STATUS: {
           dispatch({
-            type: "run-status",
+            type: 'run-status',
             runId: event.runId,
             statusText: event.statusText
-              ? event.statusState === "compacting"
-                ? event.statusText || "Compacting context"
+              ? event.statusState === 'compacting'
+                ? event.statusText || 'Compacting context'
                 : event.statusText
               : null,
-          });
-          break;
+          })
+          break
         }
         case AGENT_STREAM_EVENT_TYPES.AGENT_STARTED:
         case AGENT_STREAM_EVENT_TYPES.AGENT_REASONING:
@@ -728,83 +826,90 @@ export function useLocalAgentStream({
         case AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED:
         case AGENT_STREAM_EVENT_TYPES.AGENT_FAILED:
         case AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED: {
-          const runId = event.rootRunId ?? event.runId;
+          const runId = event.rootRunId ?? event.runId
           if (!runId || !event.agentId) {
-            return;
+            return
           }
 
           // Drop late progress/reasoning events for tasks that already
           // reached a terminal state. Only a fresh AGENT_STARTED may revive
           // a terminal task (mirrors the persisted-event guard in
           // extractTasksFromEvents).
-          const taskKey = toRunTaskId(runId, event.agentId);
-          const isStarted = event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED;
+          const taskKey = toRunTaskId(runId, event.agentId)
+          const isStarted =
+            event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED
           const isTerminal =
-            event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED
-            || event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED
-            || event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED;
-          if (terminalTaskKeysRef.current.has(taskKey) && !isStarted && !isTerminal) {
-            return;
+            event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED ||
+            event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED ||
+            event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED
+          if (
+            terminalTaskKeysRef.current.has(taskKey) &&
+            !isStarted &&
+            !isTerminal
+          ) {
+            return
           }
           if (isStarted) {
-            terminalTaskKeysRef.current.delete(taskKey);
+            terminalTaskKeysRef.current.delete(taskKey)
           }
 
           if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_REASONING) {
             if (!event.chunk) {
-              return;
+              return
             }
-            dispatch({
-              type: "agent-reasoning",
+            queueAgentReasoningChunk({
               runId,
               conversationId,
               userMessageId: event.userMessageId,
               agentId: event.agentId,
               chunk: event.chunk,
-            });
-            break;
+            })
+            break
           }
 
-          clearScheduledTaskRemoval(runId, event.agentId);
-          const nowMs = Date.now();
+          clearScheduledTaskRemoval(runId, event.agentId)
+          const nowMs = Date.now()
           if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED) {
-            terminalTaskKeysRef.current.add(taskKey);
+            discardPendingReasoningChunks(runId, event.agentId)
+            terminalTaskKeysRef.current.add(taskKey)
             dispatch({
-              type: "task-remove",
+              type: 'task-remove',
               runId,
               agentId: event.agentId,
-            });
-            return;
+            })
+            return
           }
           if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED) {
-            terminalTaskKeysRef.current.add(taskKey);
+            discardPendingReasoningChunks(runId, event.agentId)
+            terminalTaskKeysRef.current.add(taskKey)
             dispatch({
-              type: "task-remove",
+              type: 'task-remove',
               runId,
               agentId: event.agentId,
-            });
-            return;
+            })
+            return
           }
 
+          flushPendingReasoningChunks(taskKey)
           dispatch({
-            type: "task-upsert",
+            type: 'task-upsert',
             runId,
             conversationId,
             userMessageId: event.userMessageId,
             task: {
               id: event.agentId,
-              description: event.description ?? "Task",
+              description: event.description ?? 'Task',
               agentType: event.agentType || AGENT_IDS.GENERAL,
               status:
                 event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED
-                  ? "completed"
-                  : "running",
+                  ? 'completed'
+                  : 'running',
               anchorTurnId: event.userMessageId,
               parentAgentId: event.parentAgentId,
               statusText: event.statusText,
               reasoningText:
                 event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED
-                  ? ""
+                  ? ''
                   : undefined,
               startedAtMs: nowMs,
               completedAtMs:
@@ -814,85 +919,94 @@ export function useLocalAgentStream({
               lastUpdatedAtMs: nowMs,
               outputPreview: event.result,
             },
-          });
+          })
 
           if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED) {
-            terminalTaskKeysRef.current.add(taskKey);
-            scheduleTaskRemoval(runId, event.agentId, TASK_COMPLETION_INDICATOR_MS);
+            terminalTaskKeysRef.current.add(taskKey)
+            scheduleTaskRemoval(
+              runId,
+              event.agentId,
+              TASK_COMPLETION_INDICATOR_MS,
+            )
           }
-          break;
+          break
         }
         case AGENT_STREAM_EVENT_TYPES.RUN_FINISHED: {
           applyRunFinished({
             outcome: event.outcome ?? AGENT_RUN_FINISH_OUTCOMES.ERROR,
             reason: event.reason ?? event.error,
-          });
-          break;
+          })
+          break
         }
         case AGENT_STREAM_EVENT_TYPES.TOOL_START:
         case AGENT_STREAM_EVENT_TYPES.TOOL_END:
         default:
-          break;
+          break
       }
     },
     [
       appendStreamingDelta,
       clearScheduledTaskRemoval,
+      discardPendingReasoningChunks,
+      flushPendingReasoningChunks,
+      queueAgentReasoningChunk,
       resetReasoningText,
       resetStreamingText,
       scheduleTaskRemoval,
     ],
-  );
+  )
 
   const ensureAgentStreamSubscription = useCallback(() => {
     if (!window.electronAPI?.agent.onStream || agentStreamCleanupRef.current) {
-      return;
+      return
     }
-    agentStreamCleanupRef.current = window.electronAPI.agent.onStream((event) => {
-      handleAgentEvent(event);
-    });
-  }, [handleAgentEvent]);
+    agentStreamCleanupRef.current = window.electronAPI.agent.onStream(
+      (event) => {
+        handleAgentEvent(event)
+      },
+    )
+  }, [handleAgentEvent])
 
   const applyResumeSnapshot = useCallback(
     (args: {
-      conversationId: string;
-      activeRun: ActiveRunSnapshot;
-      tasks: ResumeTaskSnapshot[];
+      conversationId: string
+      activeRun: ActiveRunSnapshot
+      tasks: ResumeTaskSnapshot[]
     }) => {
-      const nowMs = Date.now();
+      const nowMs = Date.now()
       terminalTaskKeysRef.current = reconcileTerminalTaskKeysFromResumeTasks({
         currentKeys: terminalTaskKeysRef.current,
         tasks: args.tasks,
-      });
-      const taskItems = args.tasks.map((task) => toTaskFromResumeSnapshot(task, nowMs));
+      })
+      const taskItems = args.tasks.map((task) =>
+        toTaskFromResumeSnapshot(task, nowMs),
+      )
       dispatch({
-        type: "hydrate-conversation",
+        type: 'hydrate-conversation',
         conversationId: args.conversationId,
         activeRun:
-          args.activeRun?.uiVisibility === "hidden"
-            ? null
-            : args.activeRun,
+          args.activeRun?.uiVisibility === 'hidden' ? null : args.activeRun,
         tasks: taskItems,
-      });
+      })
       if (args.conversationId === activeConversationIdRef.current) {
         setPendingUserMessageId(
-          args.activeRun?.uiVisibility === "hidden"
+          args.activeRun?.uiVisibility === 'hidden'
             ? null
             : (args.activeRun?.userMessageId ?? null),
-        );
+        )
       }
       for (const task of args.tasks) {
-        if (task.status === "completed") {
+        if (task.status === 'completed') {
           scheduleTaskRemoval(
             task.runId,
             task.agentId,
             TASK_COMPLETION_INDICATOR_MS,
-          );
+          )
         }
       }
     },
     [scheduleTaskRemoval],
-  );
+  )
 
   useResumeAgentRun({
     activeConversationId,
@@ -904,69 +1018,69 @@ export function useLocalAgentStream({
       applyResumeSnapshot,
       handleAgentEvent,
     },
-  });
+  })
 
   useEffect(() => {
-    resetStreamingText();
-    resetReasoningText();
+    resetStreamingText()
+    resetReasoningText()
     const timeoutId = window.setTimeout(() => {
-      setPendingUserMessageId(null);
-    }, 0);
-    return () => window.clearTimeout(timeoutId);
-  }, [activeConversationId, resetReasoningText, resetStreamingText]);
+      setPendingUserMessageId(null)
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [activeConversationId, resetReasoningText, resetStreamingText])
 
   const startStream = useCallback(
     (args: StartStreamArgs) => {
       if (!activeConversationId || !window.electronAPI) {
-        return;
+        return
       }
 
-      ensureAgentStreamSubscription();
+      ensureAgentStreamSubscription()
 
       if (!window.electronAPI.agent.healthCheck) {
-        showToast({ title: "Stella agent is not running", variant: "error" });
-        return;
+        showToast({ title: 'Stella agent is not running', variant: 'error' })
+        return
       }
 
-      const attemptId = ++startAttemptRef.current;
-      const startChatAttachments = attachmentsForStartChat(args.attachments);
+      const attemptId = ++startAttemptRef.current
+      const startChatAttachments = attachmentsForStartChat(args.attachments)
 
       void window.electronAPI.agent
         .healthCheck()
         .then(async (health) => {
-          if (attemptId !== startAttemptRef.current) return;
+          if (attemptId !== startAttemptRef.current) return
 
-          let nextHealth = health;
-          let reason = getAgentHealthReason(nextHealth);
+          let nextHealth = health
+          let reason = getAgentHealthReason(nextHealth)
 
           if (!nextHealth?.ready && isTokenSyncIssue(reason)) {
-            const synced = await trySyncHostToken();
-            if (attemptId !== startAttemptRef.current) return;
+            const synced = await trySyncHostToken()
+            if (attemptId !== startAttemptRef.current) return
 
             if (synced && window.electronAPI?.agent.healthCheck) {
-              nextHealth = await window.electronAPI.agent.healthCheck();
-              if (attemptId !== startAttemptRef.current) return;
-              reason = getAgentHealthReason(nextHealth);
+              nextHealth = await window.electronAPI.agent.healthCheck()
+              if (attemptId !== startAttemptRef.current) return
+              reason = getAgentHealthReason(nextHealth)
             }
           }
 
           if (!nextHealth?.ready && isTokenSyncIssue(reason)) {
-            const toast = resolveAgentNotReadyToast(reason);
+            const toast = resolveAgentNotReadyToast(reason)
             showToast({
               title: toast.title,
               description: toast.description,
-              variant: "error",
-            });
-            return;
+              variant: 'error',
+            })
+            return
           }
 
           const { requestId } = await window.electronAPI!.agent.startChat({
             conversationId: activeConversationId,
             userPrompt: args.userPrompt,
-            ...(typeof args.selectedText !== "undefined"
+            ...(typeof args.selectedText !== 'undefined'
               ? { selectedText: args.selectedText }
               : {}),
-            ...(typeof args.chatContext !== "undefined"
+            ...(typeof args.chatContext !== 'undefined'
               ? { chatContext: args.chatContext }
               : {}),
             deviceId: args.deviceId,
@@ -980,49 +1094,55 @@ export function useLocalAgentStream({
               ? { attachments: startChatAttachments }
               : {}),
             storageMode,
-          });
-          pendingRequestIdsRef.current.add(requestId);
+          })
+          pendingRequestIdsRef.current.add(requestId)
         })
         .catch((error) => {
-          console.error("Failed to start local agent chat:", (error as Error).message);
+          console.error(
+            'Failed to start local agent chat:',
+            (error as Error).message,
+          )
           showToast({
             title: "Stella couldn't start this reply",
-            description: (error as Error).message || "Please try again.",
-            variant: "error",
-          });
-        });
+            description: (error as Error).message || 'Please try again.',
+            variant: 'error',
+          })
+        })
     },
     [activeConversationId, ensureAgentStreamSubscription, storageMode],
-  );
+  )
 
   const queueStream = useCallback(
     (args: StartStreamArgs) => {
-      startStream(args);
+      startStream(args)
     },
     [startStream],
-  );
+  )
 
   const cancelCurrentStream = useCallback(() => {
     if (!activeRunId || !window.electronAPI?.agent.cancelChat) {
-      return;
+      return
     }
-    window.electronAPI.agent.cancelChat(activeRunId);
-  }, [activeRunId]);
+    window.electronAPI.agent.cancelChat(activeRunId)
+  }, [activeRunId])
 
   const conversationTasks = activeConversationId
     ? Object.entries(storeState.tasksByRunId)
-        .filter(([runId]) => storeState.runsById[runId]?.conversationId === activeConversationId)
+        .filter(
+          ([runId]) =>
+            storeState.runsById[runId]?.conversationId === activeConversationId,
+        )
         .flatMap(([runId, taskMap]) => {
-          const anchorTurnId = storeState.runsById[runId]?.userMessageId;
+          const anchorTurnId = storeState.runsById[runId]?.userMessageId
           return Object.values(taskMap).map((task) => ({
             ...task,
             anchorTurnId: task.anchorTurnId ?? anchorTurnId ?? undefined,
-          }));
+          }))
         })
-    : [];
+    : []
   const liveTasks = conversationTasks.sort(
     (a, b) => a.startedAtMs - b.startedAtMs,
-  );
+  )
 
   return {
     liveTasks,
@@ -1036,5 +1156,5 @@ export function useLocalAgentStream({
     queueStream,
     cancelCurrentStream,
     resetStreamingState,
-  };
+  }
 }

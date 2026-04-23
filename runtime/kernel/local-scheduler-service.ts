@@ -2,7 +2,10 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { Cron } from 'croner'
-import { ensurePrivateDirSync, writePrivateFileSync } from './shared/private-fs.js'
+import {
+  ensurePrivateDirSync,
+  writePrivateFileSync,
+} from './shared/private-fs.js'
 import type { StellaHostRunnerTarget } from './lifecycle-targets.js'
 import type {
   LocalCronJobCreateInput,
@@ -123,8 +126,14 @@ const assertValidSchedule = (schedule: unknown): LocalCronSchedule => {
     }
     const anchorRaw = record.anchorMs
     const anchorMs =
-      typeof anchorRaw === 'number' && Number.isFinite(anchorRaw) ? anchorRaw : undefined
-    return { kind: 'every', everyMs: Math.floor(everyMs), ...(anchorMs ? { anchorMs } : {}) }
+      typeof anchorRaw === 'number' && Number.isFinite(anchorRaw)
+        ? anchorRaw
+        : undefined
+    return {
+      kind: 'every',
+      everyMs: Math.floor(everyMs),
+      ...(anchorMs ? { anchorMs } : {}),
+    }
   }
   if (kind === 'cron') {
     const expr = asTrimmedString(record.expr)
@@ -182,7 +191,9 @@ const assertValidPayloadForSession = (
     throw new Error('sessionTarget="main" requires payload.kind="systemEvent".')
   }
   if (sessionTarget === 'isolated' && payload.kind !== 'agentTurn') {
-    throw new Error('sessionTarget="isolated" requires payload.kind="agentTurn".')
+    throw new Error(
+      'sessionTarget="isolated" requires payload.kind="agentTurn".',
+    )
   }
 }
 
@@ -306,7 +317,10 @@ const parseActiveHoursTime = (
   return hour * 60 + minute
 }
 
-const resolveMinutesInTimeZone = (nowMs: number, timeZone: string): number | null => {
+const resolveMinutesInTimeZone = (
+  nowMs: number,
+  timeZone: string,
+): number | null => {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone,
@@ -367,7 +381,37 @@ const sortEventsAscending = (events: ScheduledConversationEvent[]) =>
     return a._id.localeCompare(b._id)
   })
 
-const sortByUpdatedDesc = <T extends { updatedAt: number; createdAt: number }>(rows: T[]) =>
+const insertEventAscending = (
+  events: ScheduledConversationEvent[],
+  event: ScheduledConversationEvent,
+) => {
+  const last = events.at(-1)
+  if (
+    !last ||
+    last.timestamp < event.timestamp ||
+    (last.timestamp === event.timestamp &&
+      last._id.localeCompare(event._id) <= 0)
+  ) {
+    events.push(event)
+    return
+  }
+
+  const index = events.findIndex(
+    (existing) =>
+      existing.timestamp > event.timestamp ||
+      (existing.timestamp === event.timestamp &&
+        existing._id.localeCompare(event._id) > 0),
+  )
+  if (index === -1) {
+    events.push(event)
+    return
+  }
+  events.splice(index, 0, event)
+}
+
+const sortByUpdatedDesc = <T extends { updatedAt: number; createdAt: number }>(
+  rows: T[],
+) =>
   [...rows].sort((a, b) => {
     if (a.updatedAt !== b.updatedAt) {
       return b.updatedAt - a.updatedAt
@@ -415,7 +459,9 @@ const isCronJobRecord = (value: unknown): value is LocalCronJobRecord => {
   }
 }
 
-const isHeartbeatRecord = (value: unknown): value is LocalHeartbeatConfigRecord => {
+const isHeartbeatRecord = (
+  value: unknown,
+): value is LocalHeartbeatConfigRecord => {
   if (!value || typeof value !== 'object') {
     return false
   }
@@ -449,7 +495,9 @@ const sanitizeState = (value: unknown): LocalSchedulerState => {
       : {}
   const generatedEvents: Record<string, ScheduledConversationEvent[]> = {}
 
-  for (const [conversationId, events] of Object.entries(generatedEventsRecord)) {
+  for (const [conversationId, events] of Object.entries(
+    generatedEventsRecord,
+  )) {
     if (!Array.isArray(events)) {
       continue
     }
@@ -480,7 +528,11 @@ export class LocalSchedulerService {
   private tickInFlight = false
 
   constructor(private readonly options: LocalSchedulerServiceOptions) {
-    this.statePath = path.join(options.stellaHome, 'state', 'local-scheduler.json')
+    this.statePath = path.join(
+      options.stellaHome,
+      'state',
+      'local-scheduler.json',
+    )
   }
 
   start() {
@@ -576,9 +628,13 @@ export class LocalSchedulerService {
     }
 
     const nextSchedule =
-      patch.schedule !== undefined ? assertValidSchedule(patch.schedule) : job.schedule
+      patch.schedule !== undefined
+        ? assertValidSchedule(patch.schedule)
+        : job.schedule
     const nextPayload =
-      patch.payload !== undefined ? assertValidPayload(patch.payload) : job.payload
+      patch.payload !== undefined
+        ? assertValidPayload(patch.payload)
+        : job.payload
     const nextSessionTarget =
       patch.sessionTarget !== undefined
         ? ensureSessionTarget(patch.sessionTarget)
@@ -638,18 +694,28 @@ export class LocalSchedulerService {
     const now = Date.now()
     const intervalMs = normalizeIntervalMs(input.intervalMs)
     const activeHours =
-      input.activeHours !== undefined ? normalizeActiveHours(input.activeHours) : undefined
-    const prompt = input.prompt !== undefined ? asTrimmedString(input.prompt) || undefined : undefined
+      input.activeHours !== undefined
+        ? normalizeActiveHours(input.activeHours)
+        : undefined
+    const prompt =
+      input.prompt !== undefined
+        ? asTrimmedString(input.prompt) || undefined
+        : undefined
     const checklist =
-      input.checklist !== undefined ? asTrimmedString(input.checklist) || undefined : undefined
+      input.checklist !== undefined
+        ? asTrimmedString(input.checklist) || undefined
+        : undefined
     const targetDeviceId =
       input.targetDeviceId !== undefined
         ? asTrimmedString(input.targetDeviceId) || undefined
         : undefined
     const agentType =
-      input.agentType !== undefined ? asTrimmedString(input.agentType) || undefined : undefined
+      input.agentType !== undefined
+        ? asTrimmedString(input.agentType) || undefined
+        : undefined
     const ackMaxChars =
-      typeof input.ackMaxChars === 'number' && Number.isFinite(input.ackMaxChars)
+      typeof input.ackMaxChars === 'number' &&
+      Number.isFinite(input.ackMaxChars)
         ? Math.max(0, Math.floor(input.ackMaxChars))
         : undefined
 
@@ -657,7 +723,8 @@ export class LocalSchedulerService {
       (entry) => entry.conversationId === conversationId,
     )
     if (existing) {
-      existing.enabled = input.enabled !== undefined ? Boolean(input.enabled) : existing.enabled
+      existing.enabled =
+        input.enabled !== undefined ? Boolean(input.enabled) : existing.enabled
       existing.intervalMs = intervalMs
       if (input.prompt !== undefined) {
         existing.prompt = prompt
@@ -722,9 +789,7 @@ export class LocalSchedulerService {
   }
 
   listConversationEvents(conversationId: string, maxItems = 200) {
-    const events = sortEventsAscending(
-      this.state.generatedEvents[conversationId] ?? [],
-    )
+    const events = this.state.generatedEvents[conversationId] ?? []
     const normalizedMax = Math.max(1, maxItems)
     if (events.length <= normalizedMax) {
       return events.map(cloneGeneratedEvent)
@@ -750,7 +815,7 @@ export class LocalSchedulerService {
     if (!fs.existsSync(dir)) {
       ensurePrivateDirSync(dir)
     }
-    writePrivateFileSync(this.statePath, JSON.stringify(this.state, null, 2))
+    writePrivateFileSync(this.statePath, JSON.stringify(this.state))
   }
 
   private emitChange() {
@@ -800,10 +865,13 @@ export class LocalSchedulerService {
       delayMs = Math.max(250, Math.min(dueAt - Date.now(), MAX_TIMER_DELAY_MS))
     }
 
-    this.timer = setTimeout(() => {
-      this.timer = null
-      void this.runDueItems()
-    }, Math.max(0, delayMs))
+    this.timer = setTimeout(
+      () => {
+        this.timer = null
+        void this.runDueItems()
+      },
+      Math.max(0, delayMs),
+    )
   }
 
   private getNextDueAt(): number | null {
@@ -831,15 +899,27 @@ export class LocalSchedulerService {
     return this.options.runnerTarget.getRunner()
   }
 
-  private getNextDueItem(now: number):
+  private getNextDueItem(
+    now: number,
+  ):
     | { kind: 'cron'; record: LocalCronJobRecord }
     | { kind: 'heartbeat'; record: LocalHeartbeatConfigRecord }
     | null {
     const cronCandidate = this.state.cronJobs
-      .filter((job) => job.enabled && job.runningAtMs === undefined && job.nextRunAtMs <= now)
+      .filter(
+        (job) =>
+          job.enabled &&
+          job.runningAtMs === undefined &&
+          job.nextRunAtMs <= now,
+      )
       .sort((a, b) => a.nextRunAtMs - b.nextRunAtMs)[0]
     const heartbeatCandidate = this.state.heartbeats
-      .filter((config) => config.enabled && config.runningAtMs === undefined && config.nextRunAtMs <= now)
+      .filter(
+        (config) =>
+          config.enabled &&
+          config.runningAtMs === undefined &&
+          config.nextRunAtMs <= now,
+      )
       .sort((a, b) => a.nextRunAtMs - b.nextRunAtMs)[0]
 
     if (!cronCandidate && !heartbeatCandidate) {
@@ -897,7 +977,7 @@ export class LocalSchedulerService {
     payload: Record<string, unknown>,
   ) {
     const bucket = this.state.generatedEvents[conversationId] ?? []
-    bucket.push({
+    insertEventAscending(bucket, {
       _id: `schedule:${crypto.randomUUID()}`,
       conversationId,
       timestamp: Date.now(),
@@ -927,7 +1007,9 @@ export class LocalSchedulerService {
     this.emitChange()
 
     const prompt =
-      active.payload.kind === 'systemEvent' ? active.payload.text : active.payload.message
+      active.payload.kind === 'systemEvent'
+        ? active.payload.text
+        : active.payload.message
     const runResult = await runner.runAutomationTurn({
       conversationId: active.conversationId,
       userPrompt: prompt,
@@ -966,7 +1048,9 @@ export class LocalSchedulerService {
     const deliver = active.payload.deliver !== false
     active.lastStatus = finalText ? 'ok' : 'no-response'
     active.lastError = undefined
-    active.lastOutputPreview = finalText ? truncatePreview(finalText) : undefined
+    active.lastOutputPreview = finalText
+      ? truncatePreview(finalText)
+      : undefined
 
     if (deliver && finalText) {
       this.appendGeneratedAssistantMessage(active.conversationId, {
@@ -980,7 +1064,9 @@ export class LocalSchedulerService {
 
     if (active.schedule.kind === 'at') {
       if (active.deleteAfterRun) {
-        this.state.cronJobs = this.state.cronJobs.filter((entry) => entry.id !== active.id)
+        this.state.cronJobs = this.state.cronJobs.filter(
+          (entry) => entry.id !== active.id,
+        )
       } else {
         active.enabled = false
       }
@@ -1075,7 +1161,8 @@ export class LocalSchedulerService {
     }
 
     const dedupeText = active.lastSentText?.trim() ?? ''
-    const lastSentAtMs = typeof active.lastSentAtMs === 'number' ? active.lastSentAtMs : 0
+    const lastSentAtMs =
+      typeof active.lastSentAtMs === 'number' ? active.lastSentAtMs : 0
     const isDuplicate =
       Boolean(dedupeText) &&
       dedupeText === finalText &&

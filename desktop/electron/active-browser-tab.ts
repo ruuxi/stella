@@ -19,26 +19,80 @@ type BrowserSpec = {
 
 const KNOWN_BROWSERS: BrowserSpec[] = [
   { bundleId: 'com.google.Chrome', displayName: 'Chrome', dialect: 'chromium' },
-  { bundleId: 'com.google.Chrome.beta', displayName: 'Chrome Beta', dialect: 'chromium' },
-  { bundleId: 'com.google.Chrome.dev', displayName: 'Chrome Dev', dialect: 'chromium' },
-  { bundleId: 'com.google.Chrome.canary', displayName: 'Chrome Canary', dialect: 'chromium' },
+  {
+    bundleId: 'com.google.Chrome.beta',
+    displayName: 'Chrome Beta',
+    dialect: 'chromium',
+  },
+  {
+    bundleId: 'com.google.Chrome.dev',
+    displayName: 'Chrome Dev',
+    dialect: 'chromium',
+  },
+  {
+    bundleId: 'com.google.Chrome.canary',
+    displayName: 'Chrome Canary',
+    dialect: 'chromium',
+  },
   { bundleId: 'com.brave.Browser', displayName: 'Brave', dialect: 'chromium' },
-  { bundleId: 'com.brave.Browser.beta', displayName: 'Brave Beta', dialect: 'chromium' },
-  { bundleId: 'com.brave.Browser.nightly', displayName: 'Brave Nightly', dialect: 'chromium' },
-  { bundleId: 'company.thebrowser.Browser', displayName: 'Arc', dialect: 'chromium' },
-  { bundleId: 'company.thebrowser.dia', displayName: 'Dia', dialect: 'chromium' },
-  { bundleId: 'com.microsoft.edgemac', displayName: 'Edge', dialect: 'chromium' },
-  { bundleId: 'com.vivaldi.Vivaldi', displayName: 'Vivaldi', dialect: 'chromium' },
-  { bundleId: 'org.chromium.Chromium', displayName: 'Chromium', dialect: 'chromium' },
-  { bundleId: 'com.operasoftware.Opera', displayName: 'Opera', dialect: 'chromium' },
+  {
+    bundleId: 'com.brave.Browser.beta',
+    displayName: 'Brave Beta',
+    dialect: 'chromium',
+  },
+  {
+    bundleId: 'com.brave.Browser.nightly',
+    displayName: 'Brave Nightly',
+    dialect: 'chromium',
+  },
+  {
+    bundleId: 'company.thebrowser.Browser',
+    displayName: 'Arc',
+    dialect: 'chromium',
+  },
+  {
+    bundleId: 'company.thebrowser.dia',
+    displayName: 'Dia',
+    dialect: 'chromium',
+  },
+  {
+    bundleId: 'com.microsoft.edgemac',
+    displayName: 'Edge',
+    dialect: 'chromium',
+  },
+  {
+    bundleId: 'com.vivaldi.Vivaldi',
+    displayName: 'Vivaldi',
+    dialect: 'chromium',
+  },
+  {
+    bundleId: 'org.chromium.Chromium',
+    displayName: 'Chromium',
+    dialect: 'chromium',
+  },
+  {
+    bundleId: 'com.operasoftware.Opera',
+    displayName: 'Opera',
+    dialect: 'chromium',
+  },
   { bundleId: 'com.kagi.kagimacOS', displayName: 'Orion', dialect: 'chromium' },
   { bundleId: 'com.apple.Safari', displayName: 'Safari', dialect: 'safari' },
-  { bundleId: 'com.apple.SafariTechnologyPreview', displayName: 'Safari Technology Preview', dialect: 'safari' },
+  {
+    bundleId: 'com.apple.SafariTechnologyPreview',
+    displayName: 'Safari Technology Preview',
+    dialect: 'safari',
+  },
 ]
 
 const BUNDLE_ID_TO_BROWSER = new Map(
   KNOWN_BROWSERS.map((spec) => [spec.bundleId, spec] as const),
 )
+const ACTIVE_TAB_CACHE_MS = 1_500
+const activeTabCache = new Map<
+  string,
+  { expiresAt: number; value: ActiveBrowserTab | null }
+>()
+const activeTabInFlight = new Map<string, Promise<ActiveBrowserTab | null>>()
 
 const buildScript = (spec: BrowserSpec): string => {
   // Quote bundle id once via tell block so the syntax stays straightforward.
@@ -58,7 +112,10 @@ end tell`
 end tell`
 }
 
-const runOsascript = (script: string, timeoutMs: number): Promise<string | null> =>
+const runOsascript = (
+  script: string,
+  timeoutMs: number,
+): Promise<string | null> =>
   new Promise((resolve) => {
     execFile(
       'osascript',
@@ -135,7 +192,27 @@ export const getActiveBrowserTabForBundleId = async (
   if (!bundleId) return null
   const spec = BUNDLE_ID_TO_BROWSER.get(bundleId)
   if (!spec) return null
-  return await queryBrowserMac(spec)
+  const now = Date.now()
+  const cached = activeTabCache.get(bundleId)
+  if (cached && cached.expiresAt > now) {
+    return cached.value
+  }
+  const inFlight = activeTabInFlight.get(bundleId)
+  if (inFlight) {
+    return await inFlight
+  }
+  const promise = queryBrowserMac(spec)
+  activeTabInFlight.set(bundleId, promise)
+  try {
+    const value = await promise
+    activeTabCache.set(bundleId, {
+      expiresAt: Date.now() + ACTIVE_TAB_CACHE_MS,
+      value,
+    })
+    return value
+  } finally {
+    activeTabInFlight.delete(bundleId)
+  }
 }
 
 /**
