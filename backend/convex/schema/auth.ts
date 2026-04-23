@@ -31,10 +31,15 @@ export const authSchema = {
     .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
     .index("by_secretId_and_createdAt", ["secretId", "createdAt"]),
 
+  // Per-account session-revocation marker. A row exists only after the user
+  // calls `revokeActiveSessions`; absence means "no revocations on file".
+  // `assertSensitiveSessionPolicy` rejects any JWT whose `iat` claim is older
+  // than `minIssuedAtSec`. This is the only mechanism for invalidating
+  // outstanding tokens — by design we don't carry a separate version counter
+  // since `iat`/`minIssuedAtSec` already covers the same semantics.
   auth_session_policies: defineTable({
     ownerId: v.string(),
-    sessionVersion: v.number(),
-    minIssuedAtSec: v.optional(v.number()),
+    minIssuedAtSec: v.number(),
     updatedAt: v.number(),
   }).index("by_ownerId", ["ownerId"]),
 
