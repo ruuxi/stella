@@ -2,6 +2,7 @@
  * Shared type definitions for the tools system.
  */
 
+import type { TaskLifecycleStatus } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import type {
   LocalCronJobCreateInput,
   LocalCronJobRecord,
@@ -91,7 +92,7 @@ export type AgentToolRequest = {
 
 export type AgentToolSnapshot = {
   id: string;
-  status: "running" | "completed" | "error" | "canceled";
+  status: TaskLifecycleStatus;
   description: string;
   startedAt: number;
   completedAt: number | null;

@@ -140,10 +140,10 @@ export const shouldIncludeInOrchestratorLocalHistory = (
   // Task lifecycle updates are delivered back to the orchestrator as hidden
   // follow-up prompts. Keeping them in local-history context as well doubles
   // the same signal.
-  event.type !== "agent_started" &&
-  event.type !== "agent_completed" &&
-  event.type !== "agent_failed" &&
-  event.type !== "agent_canceled";
+  event.type !== "agent-started" &&
+  event.type !== "agent-completed" &&
+  event.type !== "agent-failed" &&
+  event.type !== "agent-canceled";
 
 const trimDuplicatedTransitionUserEvent = (
   events: LocalContextEvent[],

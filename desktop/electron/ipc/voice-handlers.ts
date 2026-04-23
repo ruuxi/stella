@@ -243,15 +243,14 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         onSelfModHmrState: (state) => {
           emitVoiceHmrState(state);
         },
-        onEnd: (event) => {
-          emitVoiceAgentEvent({ ...event, type: "end" });
-        },
-        onError: (event) => {
-          console.error(
-            `[${ts()}] [Voice] orchestratorChat error:`,
-            event.error,
-          );
-          emitVoiceAgentEvent({ ...event, type: "error" });
+        onRunFinished: (event) => {
+          if (event.outcome === "error") {
+            console.error(
+              `[${ts()}] [Voice] orchestratorChat error:`,
+              event.error ?? event.reason,
+            );
+          }
+          emitVoiceAgentEvent({ ...event, type: "run-finished" });
         },
       });
     },

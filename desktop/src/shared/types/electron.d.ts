@@ -10,6 +10,7 @@ import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "@/app/chat/streaming/streaming-types";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
+import type { TaskLifecycleStatus } from "@/shared/contracts/agent-runtime";
 import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
 import type {
   ChatContext as SharedChatContext,
@@ -290,6 +291,10 @@ export type ElectronOverlayApi = {
   morphDone: (transitionId: string) => void;
 };
 
+export type ElectronMorphApi = {
+  rendererPainted: () => void;
+};
+
 export type ElectronThemeApi = {
   onChange: (
     callback: (event: unknown, data: { key: string; value: string }) => void,
@@ -368,7 +373,7 @@ export type ElectronAgentApi = {
       description?: string;
       anchorTurnId?: string;
       parentAgentId?: string;
-      status: "running" | "completed" | "error" | "canceled";
+      status: TaskLifecycleStatus;
       statusText?: string;
       reasoningText?: string;
       result?: string;
@@ -802,6 +807,7 @@ export type ElectronApi = {
   ui: ElectronUiApi;
   capture: ElectronCaptureApi;
   overlay: ElectronOverlayApi;
+  morph: ElectronMorphApi;
   screenGuide: ElectronScreenGuideApi;
   theme: ElectronThemeApi;
   voice: ElectronVoiceApi;

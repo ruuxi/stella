@@ -6,15 +6,19 @@ import {
   optionalChannelEnvelopeValidator,
 } from "../shared_validators";
 
-/** All event `type` values written by the app (appendEvent + internal inserters). */
+/** All event `type` values written by the app (appendEvent + internal inserters).
+ *
+ * Subagent lifecycle events use kebab-case to match the IPC wire format
+ * (`AGENT_STREAM_EVENT_TYPES`). Other events keep snake_case for historical
+ * consistency with the rest of the events table. */
 export const eventTypeValidator = v.union(
   v.literal("user_message"),
   v.literal("assistant_message"),
-  v.literal("agent_started"),
-  v.literal("agent_completed"),
-  v.literal("agent_failed"),
-  v.literal("agent_canceled"),
-  v.literal("agent_progress"),
+  v.literal("agent-started"),
+  v.literal("agent-completed"),
+  v.literal("agent-failed"),
+  v.literal("agent-canceled"),
+  v.literal("agent-progress"),
   v.literal("tool_request"),
   v.literal("tool_result"),
   v.literal("microcompact_boundary"),

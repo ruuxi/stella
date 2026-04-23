@@ -12,11 +12,11 @@ import {
   AGENT_STREAM_EVENT_TYPES,
 } from "@/shared/contracts/agent-runtime";
 import {
-  isTaskStarted,
-  isTaskCompleted,
-  isTaskCanceled,
-  isTaskFailed,
-  isTaskProgress,
+  isAgentStartedEvent,
+  isAgentCompletedEvent,
+  isAgentCanceledEvent,
+  isAgentFailedEvent,
+  isAgentProgressEvent,
   isToolRequest,
   isToolResult,
   isUserMessage,
@@ -85,16 +85,6 @@ export function useTraceIpcListener(enabled: boolean) {
             );
           }
           break;
-        case AGENT_STREAM_EVENT_TYPES.ERROR:
-          traceAgentError(
-            event.error ?? "unknown error",
-            event.fatal ?? false,
-            event.runId,
-          );
-          break;
-        case AGENT_STREAM_EVENT_TYPES.END:
-          traceStreamEnd(event.runId, (event.finalText ?? "").slice(0, 200));
-          break;
         case AGENT_STREAM_EVENT_TYPES.AGENT_STARTED:
           traceTaskStarted(
             event.agentId ?? "unknown",
@@ -144,28 +134,28 @@ export function useTraceEventMonitor(enabled: boolean, events: EventRecord[]) {
       if (seen.has(event._id)) continue;
       seen.add(event._id);
 
-      if (isTaskStarted(event)) {
+      if (isAgentStartedEvent(event)) {
         const p = event.payload;
         traceTaskStarted(p.agentId, p.agentType, p.description, p.parentAgentId);
         continue;
       }
 
-      if (isTaskCompleted(event)) {
+      if (isAgentCompletedEvent(event)) {
         traceTaskCompleted(event.payload.agentId, event.payload.result);
         continue;
       }
 
-      if (isTaskFailed(event)) {
+      if (isAgentFailedEvent(event)) {
         traceTaskFailed(event.payload.agentId, event.payload.error);
         continue;
       }
 
-      if (isTaskCanceled(event)) {
+      if (isAgentCanceledEvent(event)) {
         traceTaskCanceled(event.payload.agentId, event.payload.error);
         continue;
       }
 
-      if (isTaskProgress(event)) {
+      if (isAgentProgressEvent(event)) {
         traceTaskProgress(event.payload.agentId, event.payload.statusText);
         continue;
       }

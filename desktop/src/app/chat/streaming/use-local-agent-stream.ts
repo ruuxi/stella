@@ -8,6 +8,8 @@ import {
   AGENT_IDS,
   AGENT_RUN_FINISH_OUTCOMES,
   AGENT_STREAM_EVENT_TYPES,
+  isTerminalTaskLifecycleStatus,
+  type TaskLifecycleStatus,
 } from "@/shared/contracts/agent-runtime";
 import {
   useRafStringAccumulator,
@@ -73,7 +75,7 @@ type ResumeTaskSnapshot = {
   description?: string;
   anchorTurnId?: string;
   parentAgentId?: string;
-  status: "running" | "completed" | "error" | "canceled";
+  status: TaskLifecycleStatus;
   statusText?: string;
   reasoningText?: string;
   result?: string;
@@ -422,6 +424,26 @@ function attachmentsForStartChat(
 const toRunTaskId = (runId: string, agentId: string) => `${runId}:${agentId}`;
 const MAX_AGENT_REASONING_CHARS = 8_000;
 
+export const reconcileTerminalTaskKeysFromResumeTasks = (args: {
+  currentKeys: ReadonlySet<string>;
+  tasks: Array<{
+    runId: string;
+    agentId: string;
+    status: TaskLifecycleStatus;
+  }>;
+}): Set<string> => {
+  const nextKeys = new Set(args.currentKeys);
+  for (const task of args.tasks) {
+    const taskKey = toRunTaskId(task.runId, task.agentId);
+    if (isTerminalTaskLifecycleStatus(task.status)) {
+      nextKeys.add(taskKey);
+    } else {
+      nextKeys.delete(taskKey);
+    }
+  }
+  return nextKeys;
+};
+
 const isTokenSyncIssue = (reason: string | null) =>
   Boolean(reason && reason.toLowerCase().match(/token|auth/));
 
@@ -475,6 +497,12 @@ export function useLocalAgentStream({
   );
   const lastSeqByConversationRef = useRef(new Map<string, number>());
   const terminalRunIdsRef = useRef(new Set<string>());
+  // Tracks per-run agent IDs that have reached a terminal lifecycle state.
+  // Mirrors the persisted-event guard in `extractTasksFromEvents` so that
+  // late `agent-progress` events arriving after `agent-completed` /
+  // `agent-failed` / `agent-canceled` cannot flip a finished task back to
+  // "running" — which would otherwise pin a phantom "Working … Task" chip.
+  const terminalTaskKeysRef = useRef(new Set<string>());
   const pendingRequestIdsRef = useRef(new Set<string>());
   const startAttemptRef = useRef(0);
   const agentStreamCleanupRef = useRef<(() => void) | null>(null);
@@ -598,6 +626,14 @@ export function useLocalAgentStream({
           return;
         }
         terminalRunIdsRef.current.add(event.runId);
+        // Drop terminal-task entries scoped to this run so the set doesn't
+        // grow unbounded across the session.
+        const runIdPrefix = `${event.runId}:`;
+        for (const key of terminalTaskKeysRef.current) {
+          if (key.startsWith(runIdPrefix)) {
+            terminalTaskKeysRef.current.delete(key);
+          }
+        }
         dispatch({
           type: "run-finished",
           runId: event.runId,
@@ -696,6 +732,24 @@ export function useLocalAgentStream({
           if (!runId || !event.agentId) {
             return;
           }
+
+          // Drop late progress/reasoning events for tasks that already
+          // reached a terminal state. Only a fresh AGENT_STARTED may revive
+          // a terminal task (mirrors the persisted-event guard in
+          // extractTasksFromEvents).
+          const taskKey = toRunTaskId(runId, event.agentId);
+          const isStarted = event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED;
+          const isTerminal =
+            event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED
+            || event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED
+            || event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED;
+          if (terminalTaskKeysRef.current.has(taskKey) && !isStarted && !isTerminal) {
+            return;
+          }
+          if (isStarted) {
+            terminalTaskKeysRef.current.delete(taskKey);
+          }
+
           if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_REASONING) {
             if (!event.chunk) {
               return;
@@ -710,9 +764,11 @@ export function useLocalAgentStream({
             });
             break;
           }
+
           clearScheduledTaskRemoval(runId, event.agentId);
           const nowMs = Date.now();
           if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED) {
+            terminalTaskKeysRef.current.add(taskKey);
             dispatch({
               type: "task-remove",
               runId,
@@ -721,6 +777,7 @@ export function useLocalAgentStream({
             return;
           }
           if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED) {
+            terminalTaskKeysRef.current.add(taskKey);
             dispatch({
               type: "task-remove",
               runId,
@@ -760,6 +817,7 @@ export function useLocalAgentStream({
           });
 
           if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED) {
+            terminalTaskKeysRef.current.add(taskKey);
             scheduleTaskRemoval(runId, event.agentId, TASK_COMPLETION_INDICATOR_MS);
           }
           break;
@@ -768,19 +826,6 @@ export function useLocalAgentStream({
           applyRunFinished({
             outcome: event.outcome ?? AGENT_RUN_FINISH_OUTCOMES.ERROR,
             reason: event.reason ?? event.error,
-          });
-          break;
-        }
-        case AGENT_STREAM_EVENT_TYPES.ERROR: {
-          applyRunFinished({
-            outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
-            reason: event.error,
-          });
-          break;
-        }
-        case AGENT_STREAM_EVENT_TYPES.END: {
-          applyRunFinished({
-            outcome: AGENT_RUN_FINISH_OUTCOMES.COMPLETED,
           });
           break;
         }
@@ -815,6 +860,10 @@ export function useLocalAgentStream({
       tasks: ResumeTaskSnapshot[];
     }) => {
       const nowMs = Date.now();
+      terminalTaskKeysRef.current = reconcileTerminalTaskKeysFromResumeTasks({
+        currentKeys: terminalTaskKeysRef.current,
+        tasks: args.tasks,
+      });
       const taskItems = args.tasks.map((task) => toTaskFromResumeSnapshot(task, nowMs));
       dispatch({
         type: "hydrate-conversation",

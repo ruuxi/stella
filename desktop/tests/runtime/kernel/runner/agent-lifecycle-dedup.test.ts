@@ -94,10 +94,10 @@ describe("task lifecycle deduping", () => {
   });
 
   it("keeps lifecycle UI events out of orchestrator local history", () => {
-    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent_started") as never)).toBe(false);
-    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent_completed") as never)).toBe(false);
-    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent_failed") as never)).toBe(false);
-    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent_canceled") as never)).toBe(false);
+    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent-started") as never)).toBe(false);
+    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent-completed") as never)).toBe(false);
+    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent-failed") as never)).toBe(false);
+    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent-canceled") as never)).toBe(false);
     expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("user_message") as never)).toBe(true);
     expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("tool_result") as never)).toBe(true);
   });

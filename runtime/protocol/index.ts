@@ -16,7 +16,10 @@ import type {
   StoreReleaseArtifact,
   StoreReleaseDraft,
 } from "../contracts/index.js";
-import type { AgentRunFinishOutcome } from "../../desktop/src/shared/contracts/agent-runtime.js";
+import type {
+  AgentRunFinishOutcome,
+  TaskLifecycleStatus,
+} from "../../desktop/src/shared/contracts/agent-runtime.js";
 
 export type {
   AgentHealth,
@@ -411,7 +414,7 @@ export type RuntimeLocalAgentRequest = {
 
 export type RuntimeLocalAgentSnapshot = {
   id: string;
-  status: "running" | "completed" | "error" | "canceled";
+  status: TaskLifecycleStatus;
   description: string;
   startedAt: number;
   completedAt: number | null;
@@ -495,7 +498,7 @@ export type RuntimeConversationTaskSnapshot = {
   agentType?: string;
   description?: string;
   parentAgentId?: string;
-  status: "running" | "completed" | "error" | "canceled";
+  status: TaskLifecycleStatus;
   statusText?: string;
   result?: string;
   error?: string;

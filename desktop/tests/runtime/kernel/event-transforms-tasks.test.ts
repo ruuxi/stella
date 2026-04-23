@@ -18,28 +18,28 @@ const event = (
 });
 
 describe("extractTasksFromEvents", () => {
-  it("treats agent_canceled as terminal even if a stale agent_progress arrives later", () => {
+  it("treats agent-canceled as terminal even if a stale agent-progress arrives later", () => {
     // Race recreated by pause_agent: the orchestrator cancels the task while
     // the subagent's agent loop is still iterating tool calls, so a few
-    // `agent_progress` lifecycle events get persisted *after* the
-    // `agent_canceled` event. Without the terminal guard those late
+    // `agent-progress` lifecycle events get persisted *after* the
+    // `agent-canceled` event. Without the terminal guard those late
     // progresses flip the task back to "running" and pin a phantom
     // "Working … Task" indicator in the footer.
     const events = [
-      event("1", 100, "agent_started", {
+      event("1", 100, "agent-started", {
         agentId: "task-1",
         description: "Open Spotify",
         agentType: "general",
       }),
-      event("2", 200, "agent_canceled", {
+      event("2", 200, "agent-canceled", {
         agentId: "task-1",
         error: "Paused by orchestrator.",
       }),
-      event("3", 250, "agent_progress", {
+      event("3", 250, "agent-progress", {
         agentId: "task-1",
         statusText: "Using Read",
       }),
-      event("4", 260, "agent_progress", {
+      event("4", 260, "agent-progress", {
         agentId: "task-1",
         statusText: "Using Write",
       }),
@@ -53,27 +53,27 @@ describe("extractTasksFromEvents", () => {
     expect(footer).toEqual([]);
   });
 
-  it("revives a canceled task when send_input emits a fresh agent_started", () => {
+  it("revives a canceled task when send_input emits a fresh agent-started", () => {
     // send_input is the legitimate way to bring a paused task back to
     // running — it resets the status to pending and the manager emits a
-    // brand-new `agent_started`. The terminal guard must clear so the
+    // brand-new `agent-started`. The terminal guard must clear so the
     // revived task actually shows up in the footer again.
     const events = [
-      event("1", 100, "agent_started", {
+      event("1", 100, "agent-started", {
         agentId: "task-1",
         description: "Open Spotify",
         agentType: "general",
       }),
-      event("2", 200, "agent_canceled", {
+      event("2", 200, "agent-canceled", {
         agentId: "task-1",
         error: "Paused by orchestrator.",
       }),
-      event("3", 300, "agent_started", {
+      event("3", 300, "agent-started", {
         agentId: "task-1",
         description: "Open Spotify",
         agentType: "general",
       }),
-      event("4", 350, "agent_progress", {
+      event("4", 350, "agent-progress", {
         agentId: "task-1",
         statusText: "Using Read",
       }),
@@ -84,18 +84,18 @@ describe("extractTasksFromEvents", () => {
     expect(task.statusText).toBe("Using Read");
   });
 
-  it("ignores agent_progress that arrives after agent_completed", () => {
+  it("ignores agent-progress that arrives after agent-completed", () => {
     const events = [
-      event("1", 100, "agent_started", {
+      event("1", 100, "agent-started", {
         agentId: "task-1",
         description: "Summarize PR",
         agentType: "general",
       }),
-      event("2", 200, "agent_completed", {
+      event("2", 200, "agent-completed", {
         agentId: "task-1",
         result: "Done",
       }),
-      event("3", 250, "agent_progress", {
+      event("3", 250, "agent-progress", {
         agentId: "task-1",
         statusText: "Using Write",
       }),

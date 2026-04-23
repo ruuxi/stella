@@ -46,9 +46,9 @@ export const estimateContextEventTokens = (event: ContextEventLike): number => {
   }
 
   if (
-    event.type === "agent_started" ||
-    event.type === "agent_completed" ||
-    event.type === "agent_failed"
+    event.type === "agent-started" ||
+    event.type === "agent-completed" ||
+    event.type === "agent-failed"
   ) {
     const descriptionTokens = estimateTextTokens(payload.description);
     const resultTokens = "result" in payload ? estimateJsonTokens(payload.result) : 0;

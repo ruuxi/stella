@@ -1,4 +1,5 @@
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
+import type { TaskLifecycleStatus } from "@/shared/contracts/agent-runtime";
 
 export interface StepItem {
   id: string;
@@ -119,8 +120,9 @@ export const getEventText = (event: EventRecord): string => {
   return "";
 };
 
-// Task event payload structures
-export type TaskStartedPayload = {
+// Persisted lifecycle event payloads (kebab-case `agent-*` events). These
+// mirror the data emitted by `appendAgentLifecycleChatEvent` in the runner.
+export type AgentStartedEventPayload = {
   agentId: string;
   description: string;
   agentType: string;
@@ -129,22 +131,22 @@ export type TaskStartedPayload = {
   maxAgentDepth?: number;
 };
 
-export type TaskCompletedPayload = {
+export type AgentCompletedEventPayload = {
   agentId: string;
   result?: string;
 };
 
-export type TaskFailedPayload = {
+export type AgentFailedEventPayload = {
   agentId: string;
   error?: string;
 };
 
-export type TaskCanceledPayload = {
+export type AgentCanceledEventPayload = {
   agentId: string;
   error?: string;
 };
 
-export type TaskProgressPayload = {
+export type AgentProgressEventPayload = {
   agentId: string;
   statusText: string;
 };
@@ -154,7 +156,7 @@ export type TaskItem = {
   id: string;
   description: string;
   agentType: string;
-  status: "running" | "completed" | "error" | "canceled";
+  status: TaskLifecycleStatus;
   /** Identifier of the agent run that owns this task. Set when a task is
    *  produced from streaming events (resume snapshots, task-upserts).
    *  Tasks reconstructed from local persisted events may not have it. */
@@ -201,28 +203,28 @@ export function isAssistantMessage(event: EventRecord): boolean {
   return event.type === "assistant_message";
 }
 
-export const isTaskStarted = createEventGuard<TaskStartedPayload>(
-  "agent_started",
+export const isAgentStartedEvent = createEventGuard<AgentStartedEventPayload>(
+  "agent-started",
   ["agentId"],
 );
 
-export const isTaskCompleted = createEventGuard<TaskCompletedPayload>(
-  "agent_completed",
+export const isAgentCompletedEvent = createEventGuard<AgentCompletedEventPayload>(
+  "agent-completed",
   ["agentId"],
 );
 
-export const isTaskFailed = createEventGuard<TaskFailedPayload>(
-  "agent_failed",
+export const isAgentFailedEvent = createEventGuard<AgentFailedEventPayload>(
+  "agent-failed",
   ["agentId"],
 );
 
-export const isTaskCanceled = createEventGuard<TaskCanceledPayload>(
-  "agent_canceled",
+export const isAgentCanceledEvent = createEventGuard<AgentCanceledEventPayload>(
+  "agent-canceled",
   ["agentId"],
 );
 
-export const isTaskProgress = createEventGuard<TaskProgressPayload>(
-  "agent_progress",
+export const isAgentProgressEvent = createEventGuard<AgentProgressEventPayload>(
+  "agent-progress",
   ["agentId", "statusText"],
 );
 
@@ -455,16 +457,16 @@ export function extractTasksFromEvents(
     };
   };
 
-  // Once a task reaches a terminal state, only a fresh `agent_started`
+  // Once a task reaches a terminal state, only a fresh `agent-started`
   // (send_input re-activation) may revive it. This guards against in-flight
-  // `agent_progress` events that race with `agent_canceled` and would
+  // `agent-progress` events that race with `agent-canceled` and would
   // otherwise flip the task back to "running" — the renderer treats that
   // resurrected task as live and pins a phantom "Working … Task" chip in
   // the footer.
   const terminalTaskIds = new Set<string>();
 
   for (const event of events) {
-    if (isTaskStarted(event)) {
+    if (isAgentStartedEvent(event)) {
       tasksById.set(event.payload.agentId, {
         id: event.payload.agentId,
         description: event.payload.description,
@@ -480,7 +482,7 @@ export function extractTasksFromEvents(
       continue;
     }
 
-    if (isTaskProgress(event)) {
+    if (isAgentProgressEvent(event)) {
       if (terminalTaskIds.has(event.payload.agentId)) {
         continue;
       }
@@ -497,7 +499,7 @@ export function extractTasksFromEvents(
       continue;
     }
 
-    if (isTaskCompleted(event)) {
+    if (isAgentCompletedEvent(event)) {
       tasksById.set(
         event.payload.agentId,
         ensureTask(event.payload.agentId, event.timestamp, {
@@ -512,7 +514,7 @@ export function extractTasksFromEvents(
       continue;
     }
 
-    if (isTaskFailed(event)) {
+    if (isAgentFailedEvent(event)) {
       tasksById.set(
         event.payload.agentId,
         ensureTask(event.payload.agentId, event.timestamp, {
@@ -527,7 +529,7 @@ export function extractTasksFromEvents(
       continue;
     }
 
-    if (isTaskCanceled(event)) {
+    if (isAgentCanceledEvent(event)) {
       tasksById.set(
         event.payload.agentId,
         ensureTask(event.payload.agentId, event.timestamp, {

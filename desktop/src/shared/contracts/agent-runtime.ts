@@ -241,37 +241,103 @@ export const shouldIncludeStellaDocumentation = (
   agentType: string,
 ): boolean => getAgentDefinition(agentType)?.includesStellaDocumentation ?? false;
 
+// All IPC stream event types. RUN_FINISHED is the single terminal event for
+// a run; per-agent lifecycle is the AGENT_* family below.
 export const AGENT_STREAM_EVENT_TYPES = {
   RUN_STARTED: "run-started",
+  RUN_FINISHED: "run-finished",
   STREAM: "stream",
   STATUS: "status",
   AGENT_REASONING: "agent-reasoning",
   TOOL_START: "tool-start",
   TOOL_END: "tool-end",
-  /** Legacy terminal event — prefer RUN_FINISHED. */
-  ERROR: "error",
-  /** Legacy terminal event — prefer RUN_FINISHED. */
-  END: "end",
-  RUN_FINISHED: "run-finished",
   AGENT_STARTED: "agent-started",
+  AGENT_PROGRESS: "agent-progress",
   AGENT_COMPLETED: "agent-completed",
   AGENT_FAILED: "agent-failed",
   AGENT_CANCELED: "agent-canceled",
-  AGENT_PROGRESS: "agent-progress",
 } as const;
 
 export type AgentStreamEventType =
   (typeof AGENT_STREAM_EVENT_TYPES)[keyof typeof AGENT_STREAM_EVENT_TYPES];
 
+// Per-agent lifecycle (subset of AGENT_STREAM_EVENT_TYPES). Tracks one
+// subagent task from spawn to terminal state.
+export const TASK_LIFECYCLE_EVENT_TYPES = [
+  AGENT_STREAM_EVENT_TYPES.AGENT_STARTED,
+  AGENT_STREAM_EVENT_TYPES.AGENT_PROGRESS,
+  AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED,
+  AGENT_STREAM_EVENT_TYPES.AGENT_FAILED,
+  AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED,
+] as const;
+
+export type TaskLifecycleEventType = (typeof TASK_LIFECYCLE_EVENT_TYPES)[number];
+
+export const TASK_LIFECYCLE_TERMINAL_TYPES = [
+  AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED,
+  AGENT_STREAM_EVENT_TYPES.AGENT_FAILED,
+  AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED,
+] as const;
+
+export type TaskLifecycleTerminalType =
+  (typeof TASK_LIFECYCLE_TERMINAL_TYPES)[number];
+
+const TASK_LIFECYCLE_TYPE_SET: ReadonlySet<string> = new Set(
+  TASK_LIFECYCLE_EVENT_TYPES,
+);
+const TASK_LIFECYCLE_TERMINAL_SET: ReadonlySet<string> = new Set(
+  TASK_LIFECYCLE_TERMINAL_TYPES,
+);
+
+export const isTaskLifecycleEventType = (
+  type: string,
+): type is TaskLifecycleEventType => TASK_LIFECYCLE_TYPE_SET.has(type);
+
+export const isTaskLifecycleTerminalType = (
+  type: string,
+): type is TaskLifecycleTerminalType => TASK_LIFECYCLE_TERMINAL_SET.has(type);
+
+// Single status enum used by every layer that tracks a task's lifecycle
+// state: TaskItem (UI), ConversationTaskSnapshot (IPC resume), and the
+// runtime LocalAgentManager.
+export type TaskLifecycleStatus = "running" | "completed" | "error" | "canceled";
+
+export type TerminalTaskLifecycleStatus = Exclude<TaskLifecycleStatus, "running">;
+
+export type TaskLifecycleFeedEventType =
+  | typeof AGENT_STREAM_EVENT_TYPES.AGENT_REASONING
+  | TaskLifecycleEventType;
+
+export const isTerminalTaskLifecycleStatus = (
+  status: TaskLifecycleStatus | undefined,
+): status is TerminalTaskLifecycleStatus =>
+  status === "completed" || status === "error" || status === "canceled";
+
+export const shouldIgnoreTerminalTaskFeedEvent = (args: {
+  currentStatus?: TaskLifecycleStatus;
+  eventType: TaskLifecycleFeedEventType;
+}): boolean => {
+  if (!isTerminalTaskLifecycleStatus(args.currentStatus)) {
+    return false;
+  }
+  return (
+    args.eventType !== AGENT_STREAM_EVENT_TYPES.AGENT_STARTED
+    && !isTaskLifecycleTerminalType(args.eventType)
+  );
+};
+
+// Outcome of a single run (RUN_FINISHED). Mirrors the terminal subset of
+// TaskLifecycleStatus.
 export const AGENT_RUN_FINISH_OUTCOMES = {
   COMPLETED: "completed",
   ERROR: "error",
   CANCELED: "canceled",
-} as const;
+} as const satisfies Record<string, TerminalTaskLifecycleStatus>;
 
-export type AgentRunFinishOutcome =
-  (typeof AGENT_RUN_FINISH_OUTCOMES)[keyof typeof AGENT_RUN_FINISH_OUTCOMES];
+export type AgentRunFinishOutcome = TerminalTaskLifecycleStatus;
 
+// Internal runtime store event types (separate vocabulary because these
+// are persisted to RuntimeStore and the schema is independent from IPC).
 export const RUNTIME_RUN_EVENT_TYPES = {
   RUN_START: "run_start",
   STREAM: "stream",

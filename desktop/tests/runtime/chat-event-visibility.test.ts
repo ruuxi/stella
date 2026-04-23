@@ -81,7 +81,7 @@ describe("chat-event-visibility", () => {
       event("5", "user_message", 5, { text: "latest prompt" }),
       event("6", "tool_request", 6, { toolName: "Read" }),
       event("7", "assistant_message", 7, { text: "latest reply" }),
-      event("8", "agent_progress", 8, { agentId: "task-1", statusText: "Working" }),
+      event("8", "agent-progress", 8, { agentId: "task-1", statusText: "Working" }),
     ];
 
     expect(

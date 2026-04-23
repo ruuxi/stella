@@ -1,4 +1,5 @@
 import {
+  AGENT_RUN_FINISH_OUTCOMES,
   AGENT_STREAM_EVENT_TYPES,
   type AgentStreamEventType,
 } from "../../../desktop/src/shared/contracts/agent-runtime.js";
@@ -297,11 +298,26 @@ export class VoiceRuntimeService {
               reportState?.(createSelfModHmrState("idle", false));
             },
             onEnd: (event) => {
-              emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.END);
+              this.options.emitAgentEvent({
+                requestId: payload.requestId,
+                event: {
+                  ...event,
+                  type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+                  outcome: AGENT_RUN_FINISH_OUTCOMES.COMPLETED,
+                },
+              });
               resolveOnce(resolve, (event.finalText ?? fullText) || "Done.");
             },
             onError: (event) => {
-              emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.ERROR);
+              this.options.emitAgentEvent({
+                requestId: payload.requestId,
+                event: {
+                  ...event,
+                  type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+                  outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
+                  reason: event.error,
+                },
+              });
               rejectOnce(reject, event.error ?? "Unknown voice runtime error");
             },
           },

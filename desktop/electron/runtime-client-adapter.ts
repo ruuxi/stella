@@ -2,6 +2,8 @@ import type { SelfModHmrState } from "../src/shared/contracts/boundary.js";
 import type { DiscoveryKnowledgeSeedPayload } from "../src/shared/contracts/discovery.js";
 import {
   AGENT_STREAM_EVENT_TYPES,
+  isTaskLifecycleEventType,
+  isTaskLifecycleTerminalType,
 } from "../src/shared/contracts/agent-runtime.js";
 import type {
   RuntimeActiveRun,
@@ -23,14 +25,12 @@ import { readConfiguredStellaSiteUrl } from "../../runtime/kernel/convex-urls.js
 
 type AgentCallbacks = {
   onRunStarted?: (event: RuntimeAgentEventPayload) => void;
-  onRunFinished?: (event: RuntimeAgentEventPayload) => void;
+  onRunFinished: (event: RuntimeAgentEventPayload) => void;
   onStream: (event: RuntimeAgentEventPayload) => void;
   onAgentReasoning?: (event: RuntimeAgentEventPayload) => void;
   onStatus?: (event: RuntimeAgentEventPayload) => void;
   onToolStart: (event: RuntimeAgentEventPayload) => void;
   onToolEnd: (event: RuntimeAgentEventPayload) => void;
-  onError: (event: RuntimeAgentEventPayload) => void;
-  onEnd: (event: RuntimeAgentEventPayload) => void;
   onAgentEvent?: (event: AgentLifecycleEvent) => void;
   onSelfModHmrState?: (event: SelfModHmrState) => void;
   onHmrResume?: (args: {
@@ -49,27 +49,12 @@ export type RuntimeAvailabilitySnapshot = {
   reason?: string;
 };
 
-const isTerminalEvent = (type: string) =>
-  type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED
-  || type === AGENT_STREAM_EVENT_TYPES.END
-  || type === AGENT_STREAM_EVENT_TYPES.ERROR;
-
-const isTerminalAgentLifecycleEvent = (type: string) =>
-  type === "agent-completed" || type === "agent-failed" || type === "agent-canceled";
-
-const isAgentLifecycleEvent = (type: string) =>
-  type !== AGENT_STREAM_EVENT_TYPES.STREAM &&
-  type !== AGENT_STREAM_EVENT_TYPES.AGENT_REASONING &&
-  type !== AGENT_STREAM_EVENT_TYPES.STATUS &&
-  type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
-  type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
-  type !== AGENT_STREAM_EVENT_TYPES.RUN_STARTED &&
-  type !== AGENT_STREAM_EVENT_TYPES.RUN_FINISHED &&
-  type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
-  type !== AGENT_STREAM_EVENT_TYPES.END;
+const isRunTerminalEvent = (type: string) =>
+  type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED;
 
 const isTaskScopedEvent = (type: string) =>
-  type === AGENT_STREAM_EVENT_TYPES.AGENT_REASONING || isAgentLifecycleEvent(type);
+  type === AGENT_STREAM_EVENT_TYPES.AGENT_REASONING ||
+  isTaskLifecycleEventType(type);
 
 const LOCAL_CHAT_SESSION_IDLE_CLEANUP_MS = 30_000;
 
@@ -150,11 +135,7 @@ export class RuntimeClientAdapter {
           conversationId: event.conversationId,
         };
       }
-      if (
-        event.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED
-        || event.type === AGENT_STREAM_EVENT_TYPES.ERROR
-        || event.type === AGENT_STREAM_EVENT_TYPES.END
-      ) {
+      if (event.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED) {
         if (this.activeRun?.runId === event.runId) {
           this.activeRun = null;
         }
@@ -252,13 +233,13 @@ export class RuntimeClientAdapter {
 
     if (event.type === AGENT_STREAM_EVENT_TYPES.RUN_STARTED) {
       session.activeRunIds.add(event.runId);
-    } else if (isTerminalEvent(event.type)) {
+    } else if (isRunTerminalEvent(event.type)) {
       session.activeRunIds.delete(event.runId);
     }
 
     if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED && taskKey) {
       session.activeTaskIds.add(taskKey);
-    } else if (isTerminalAgentLifecycleEvent(event.type) && taskKey) {
+    } else if (isTaskLifecycleTerminalType(event.type) && taskKey) {
       session.activeTaskIds.delete(taskKey);
     }
 
@@ -282,33 +263,10 @@ export class RuntimeClientAdapter {
         session.callbacks.onToolEnd(event);
         break;
       case AGENT_STREAM_EVENT_TYPES.RUN_FINISHED:
-        session.callbacks.onRunFinished?.(event);
-        break;
-      case AGENT_STREAM_EVENT_TYPES.ERROR:
-        if (session.callbacks.onRunFinished) {
-          session.callbacks.onRunFinished({
-            ...event,
-            type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
-            outcome: "error",
-            reason: event.error,
-          });
-        } else {
-          session.callbacks.onError(event);
-        }
-        break;
-      case AGENT_STREAM_EVENT_TYPES.END:
-        if (session.callbacks.onRunFinished) {
-          session.callbacks.onRunFinished({
-            ...event,
-            type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
-            outcome: "completed",
-          });
-        } else {
-          session.callbacks.onEnd(event);
-        }
+        session.callbacks.onRunFinished(event);
         break;
       default:
-        if (isAgentLifecycleEvent(event.type)) {
+        if (isTaskLifecycleEventType(event.type)) {
           session.callbacks.onAgentEvent?.({
             type: event.type as AgentLifecycleEvent["type"],
             conversationId: session.conversationId,
@@ -718,7 +676,7 @@ export class RuntimeClientAdapter {
     };
 
     const dispatch = (event: RuntimeAgentEventPayload) => {
-      const taskLifecycleEvent = isAgentLifecycleEvent(event.type);
+      const taskLifecycleEvent = isTaskLifecycleEventType(event.type);
 
       if (taskLifecycleEvent) {
         if (event.seq <= lastTaskEventSeq) {
@@ -732,9 +690,9 @@ export class RuntimeClientAdapter {
         lastRunEventSeq = event.seq;
       }
 
-      if (event.type === "agent-started" && event.agentId) {
+      if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED && event.agentId) {
         activeTaskIds.add(event.agentId);
-      } else if (isTerminalAgentLifecycleEvent(event.type) && event.agentId) {
+      } else if (isTaskLifecycleTerminalType(event.type) && event.agentId) {
         activeTaskIds.delete(event.agentId);
       }
 
@@ -751,28 +709,27 @@ export class RuntimeClientAdapter {
         case AGENT_STREAM_EVENT_TYPES.TOOL_END:
           callbacks.onToolEnd(event);
           break;
-        case AGENT_STREAM_EVENT_TYPES.ERROR:
-          callbacks.onError(event);
-          break;
-        case AGENT_STREAM_EVENT_TYPES.END:
-          callbacks.onEnd(event);
+        case AGENT_STREAM_EVENT_TYPES.RUN_FINISHED:
+          callbacks.onRunFinished(event);
           break;
         default:
-          callbacks.onAgentEvent?.({
-            type: event.type as AgentLifecycleEvent["type"],
-            conversationId: payload.conversationId,
-            rootRunId: event.runId,
-            agentId: event.agentId ?? "",
-            agentType: event.agentType ?? "",
-            ...(event.description ? { description: event.description } : {}),
-            ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
-            ...(event.result ? { result: event.result } : {}),
-            ...(event.error ? { error: event.error } : {}),
-            ...(event.statusText ? { statusText: event.statusText } : {}),
-          });
+          if (taskLifecycleEvent) {
+            callbacks.onAgentEvent?.({
+              type: event.type as AgentLifecycleEvent["type"],
+              conversationId: payload.conversationId,
+              rootRunId: event.runId,
+              agentId: event.agentId ?? "",
+              agentType: event.agentType ?? "",
+              ...(event.description ? { description: event.description } : {}),
+              ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
+              ...(event.result ? { result: event.result } : {}),
+              ...(event.error ? { error: event.error } : {}),
+              ...(event.statusText ? { statusText: event.statusText } : {}),
+            });
+          }
           break;
       }
-      if (isTerminalEvent(event.type)) {
+      if (isRunTerminalEvent(event.type)) {
         runTerminated = true;
       }
       maybeUnsubscribe();
