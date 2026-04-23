@@ -1,3 +1,5 @@
+import type { TaskLifecycleStatus } from "@/shared/contracts/agent-runtime"
+
 export type ScheduleItem = {
   id: string
   kind: "scheduled" | "monitoring"
@@ -16,7 +18,7 @@ export type TaskActivityItem = {
   description?: string
   nextRunAtMs?: number
   lastRunAtMs: number
-  lastStatus?: "running" | "completed" | "error" | "canceled"
+  lastStatus?: TaskLifecycleStatus
   outputPreview?: string
 }
 
