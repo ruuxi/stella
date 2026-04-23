@@ -106,6 +106,13 @@ export const IPC_VOICE_GET_RUNTIME_STATE = "voice:getRuntimeState" as const;
 export const IPC_VOICE_RUNTIME_STATE = "voice:runtimeState" as const;
 export const IPC_VOICE_RTC_SET_SHORTCUT = "voice-rtc:setShortcut" as const;
 
+// ── Dictation ───────────────────────────────────────────────────────────────
+
+export const IPC_DICTATION_TOGGLE = "dictation:toggle" as const;
+export const IPC_DICTATION_SET_SHORTCUT = "dictation:setShortcut" as const;
+export const IPC_DICTATION_GET_SHORTCUT = "dictation:getShortcut" as const;
+export const IPC_DICTATION_TRIGGER = "dictation:trigger" as const;
+
 // ── Agent ───────────────────────────────────────────────────────────────────
 
 export const IPC_AGENT_HEALTH_CHECK = "agent:healthCheck" as const;

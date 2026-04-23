@@ -15,10 +15,13 @@ import {
 } from "@/app/chat/ComposerContextRow";
 import {
   ComposerAddButton,
+  ComposerMicButton,
   ComposerSubmitButton,
   ComposerStopButton,
   ComposerTextarea,
 } from "@/app/chat/ComposerPrimitives";
+import { useDictation } from "@/features/dictation/hooks/use-dictation";
+import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
 import {
   deriveComposerState,
   hasAttachedComposerChips,
@@ -131,6 +134,12 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
 
     const { isDragOver, dropHandlers } = useFileDrop({
       setChatContext,
+      disabled: isStreaming,
+    });
+
+    const dictation = useDictation({
+      message: inputText,
+      setMessage: setInputText,
       disabled: isStreaming,
     });
 
@@ -317,7 +326,13 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
                   <form
                     ref={formRef}
                     className={`chat-sidebar-form${sidebarExpanded ? " expanded" : ""}`}
-                    onSubmit={handleSubmit}
+                    onSubmit={(event) => {
+                      if (dictation.isRecording) {
+                        event.preventDefault();
+                        return;
+                      }
+                      handleSubmit(event);
+                    }}
                   >
                     <ComposerAddButton
                       className="composer-add-button"
@@ -325,67 +340,87 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
                       onClick={onAdd}
                     />
 
-                    <ComposerTextarea
-                      ref={inputRef}
-                      className="chat-sidebar-input"
-                      tone="default"
-                      value={inputText}
-                      rows={1}
-                      onChange={(event) => {
-                        setInputText(event.target.value);
-                        requestAnimationFrame(() => {
-                          const el = inputRef.current;
-                          if (!el) return;
-                          const form = el.closest(".chat-sidebar-form") as HTMLElement | null;
-                          if (!form) return;
-                          const isExp = form.classList.contains("expanded");
+                    {dictation.isRecording ? (
+                      <DictationRecordingBar
+                        levels={dictation.levels}
+                        elapsedMs={dictation.elapsedMs}
+                        onCancel={dictation.cancel}
+                        onConfirm={dictation.toggle}
+                      />
+                    ) : (
+                      <>
+                        <ComposerTextarea
+                          ref={inputRef}
+                          className="chat-sidebar-input"
+                          tone="default"
+                          value={inputText}
+                          rows={1}
+                          onChange={(event) => {
+                            setInputText(event.target.value);
+                            requestAnimationFrame(() => {
+                              const el = inputRef.current;
+                              if (!el) return;
+                              const form = el.closest(".chat-sidebar-form") as HTMLElement | null;
+                              if (!form) return;
+                              const isExp = form.classList.contains("expanded");
 
-                          if (!isExp) {
-                            if (el.scrollHeight > 44) setSidebarExpanded(true);
-                          } else {
-                            form.classList.remove("expanded");
-                            const pillSh = el.scrollHeight;
-                            form.classList.add("expanded");
-                            if (pillSh <= 44) setSidebarExpanded(false);
-                          }
-                        });
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          handleSubmit(event);
-                        }
-                      }}
-                      placeholder={composerState.placeholder}
-                    />
-
-                    <div className="composer-toolbar">
-                      <div className="composer-toolbar-left">
-                        <ComposerAddButton
-                          className="composer-add-button composer-add-button--toolbar"
-                          title="Add"
-                          onClick={onAdd}
+                              if (!isExp) {
+                                if (el.scrollHeight > 44) setSidebarExpanded(true);
+                              } else {
+                                form.classList.remove("expanded");
+                                const pillSh = el.scrollHeight;
+                                form.classList.add("expanded");
+                                if (pillSh <= 44) setSidebarExpanded(false);
+                              }
+                            });
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              handleSubmit(event);
+                            }
+                          }}
+                          placeholder={composerState.placeholder}
                         />
-                      </div>
 
-                      <div className="composer-toolbar-right">
-                        {isStreaming && (
-                          <ComposerStopButton
-                            className="composer-stop"
-                            onClick={() => {
-                              /* stop handled externally */
-                            }}
-                            title="Stop"
-                            aria-label="Stop"
-                          />
-                        )}
-                        <ComposerSubmitButton
-                          className="composer-submit"
-                          disabled={!composerState.canSubmit}
-                          animated
-                        />
-                      </div>
-                    </div>
+                        <div className="composer-toolbar">
+                          <div className="composer-toolbar-left">
+                            <ComposerAddButton
+                              className="composer-add-button composer-add-button--toolbar"
+                              title="Add"
+                              onClick={onAdd}
+                            />
+                          </div>
+
+                          <div className="composer-toolbar-right">
+                            <ComposerMicButton
+                              className="composer-mic"
+                              isTranscribing={dictation.isTranscribing}
+                              disabled={
+                                isStreaming || dictation.isTranscribing
+                              }
+                              onClick={dictation.toggle}
+                              title={dictation.error ? `Dictation: ${dictation.error}` : undefined}
+                            />
+                            {isStreaming && (
+                              <ComposerStopButton
+                                className="composer-stop"
+                                onClick={() => {
+                                  /* stop handled externally */
+                                }}
+                                title="Stop"
+                                aria-label="Stop"
+                              />
+                            )}
+                            <ComposerSubmitButton
+                              className="composer-submit"
+                              disabled={!composerState.canSubmit}
+                              animated
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </form>
                 </div>
               </div>

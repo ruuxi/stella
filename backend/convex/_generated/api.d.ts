@@ -61,6 +61,7 @@ import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as http_routes_backups from "../http_routes/backups.js";
 import type * as http_routes_connectors from "../http_routes/connectors.js";
+import type * as http_routes_dictation from "../http_routes/dictation.js";
 import type * as http_routes_media from "../http_routes/media.js";
 import type * as http_routes_mobile from "../http_routes/mobile.js";
 import type * as http_routes_music from "../http_routes/music.js";
@@ -226,6 +227,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "http_routes/backups": typeof http_routes_backups;
   "http_routes/connectors": typeof http_routes_connectors;
+  "http_routes/dictation": typeof http_routes_dictation;
   "http_routes/media": typeof http_routes_media;
   "http_routes/mobile": typeof http_routes_mobile;
   "http_routes/music": typeof http_routes_music;
