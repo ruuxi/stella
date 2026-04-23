@@ -45,6 +45,20 @@
   min-height: 52px;
 }
 
+/* Full-shell variant: float over the bottom of the scroll viewport so the
+   chat region extends all the way down to the composer. The viewport's
+   bottom mask fades chat content out behind this strip — content scrolls
+   beneath the working indicator / chips without visually overlapping
+   them. */
+.chat-viewport-region .thinking-footer-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 12;
+  margin: 0 auto;
+}
+
 /* Compact surfaces (sidebar, mini): left-align, tighter padding */
 .chat-conversation-surface .thinking-footer-overlay {
   margin: 0;

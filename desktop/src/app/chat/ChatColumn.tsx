@@ -101,6 +101,7 @@ export const ChatColumn = memo(function ChatColumn({
     setContentElement,
     setViewportElement,
     showScrollButton,
+    isAtBottom,
     scrollToBottom,
     thumbState,
   } = scroll;
@@ -205,7 +206,7 @@ export const ChatColumn = memo(function ChatColumn({
       {/* Viewport region: scroll container + overlays (scrollbar, scroll-to-bottom) */}
       <div className="chat-viewport-region">
         <div
-          className="session-content"
+          className={`session-content${isAtBottom ? " at-bottom" : ""}`}
           ref={assignViewport}
           onScroll={onScroll}
           style={{ overflowAnchor }}
@@ -259,18 +260,20 @@ export const ChatColumn = memo(function ChatColumn({
             </svg>
           </button>
         )}
-      </div>
 
-      {/* Thinking footer — between chat and composer, always reserves space */}
-      <div className="thinking-footer-overlay">
-        {showThinkingFooter && (
-          <StickyThinkingFooter
-            tasks={footerTasks}
-            runningTool={runningTool}
-            isStreaming={conversation.streaming.isStreaming}
-            status={conversation.streaming.runtimeStatusText}
-          />
-        )}
+        {/* Thinking footer — floats over the bottom of the scroll viewport so
+            the chat content can extend down to the composer. The bottom mask
+            on .session-content fades content out behind it. */}
+        <div className="thinking-footer-overlay">
+          {showThinkingFooter && (
+            <StickyThinkingFooter
+              tasks={footerTasks}
+              runningTool={runningTool}
+              isStreaming={conversation.streaming.isStreaming}
+              status={conversation.streaming.runtimeStatusText}
+            />
+          )}
+        </div>
       </div>
 
       {/* Composer: normal flow below the scroll viewport */}

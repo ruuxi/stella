@@ -91,8 +91,29 @@
   padding: 8px 4px 4px;
   min-height: 0;
   scrollbar-width: thin;
+  /* Top fade always — older history tapers into the panel chrome.
+   * Bottom fade is added only when scrolled away from bottom (see below) so
+   * the latest message sits flush with the composer when at-bottom. */
   mask-image: linear-gradient(to bottom, transparent 0%, black 16px, black 100%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 16px, black 100%);
+  transition: mask-image 160ms ease, -webkit-mask-image 160ms ease;
+}
+
+.chat-sidebar-messages:not(.at-bottom) {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 16px,
+    black calc(100% - 24px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 16px,
+    black calc(100% - 24px),
+    transparent 100%
+  );
 }
 
 .chat-sidebar-conversation {
@@ -106,8 +127,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px 12px;
+  gap: 6px;
+  padding: 4px 12px 8px;
 }
 
 /* Shell: animated height + border-radius (motion inline; same pattern as .composer-shell).
@@ -116,11 +137,11 @@
   position: relative;
   width: 100%;
   background: color-mix(in oklch, var(--background) 18%, transparent);
-  border: 1px solid var(--border-strong);
+  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
   border-radius: 999px; /* fallback before JS; overridden by motion */
   box-shadow: var(--shadow-md);
   overflow: clip;
-  transition: box-shadow 200ms ease;
+  transition: box-shadow 200ms ease, border-color 200ms ease;
 }
 
 /* Wraps the optional chip strip + form so the ResizeObserver can spring
@@ -150,16 +171,16 @@
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  min-height: 48px;
-  padding: 8px;
+  min-height: 42px;
+  padding: 6px;
 }
 
 .chat-sidebar-input {
   flex: 1;
   field-sizing: content;
-  min-height: 30px;
+  min-height: 26px;
   max-height: 200px;
-  padding: 4px 4px;
+  padding: 2px 4px;
 }
 
 /* Toolbar hidden in pill mode — buttons sit inline */
@@ -185,8 +206,8 @@
 
 .chat-sidebar-form.expanded .chat-sidebar-input {
   width: 100%;
-  min-height: 44px;
-  padding: 14px 18px 4px;
+  min-height: 36px;
+  padding: 10px 16px 2px;
   order: -1;
 }
 
@@ -198,7 +219,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px 8px;
+  padding: 2px 8px 6px;
 }
 
 .chat-sidebar-form.expanded .composer-toolbar-left {
