@@ -10,7 +10,12 @@ import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { VoiceOverlay } from "@/shell/overlay/VoiceOverlay";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
-import { ScreenGuideAnnotations, type ScreenGuideAnnotation } from "@/shell/overlay/ScreenGuideAnnotations";
+import {
+  ScreenGuideAnnotations,
+  type ScreenGuideAnnotation,
+} from "@/shell/overlay/ScreenGuideAnnotations";
+import { InworldDictationSession } from "@/features/dictation/services/inworld-dictation";
+import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
 import {
   SelectionChipOverlay,
   type SelectionChipState,
@@ -42,6 +47,8 @@ type OverlayState = {
   regionCaptureActive: boolean;
   voiceVisible: boolean;
   voicePosition: { x: number; y: number } | null;
+  dictationVisible: boolean;
+  dictationPosition: { x: number; y: number } | null;
   screenGuideVisible: boolean;
   screenGuideAnnotations: ScreenGuideAnnotation[];
   selectionChip: SelectionChipState | null;
@@ -60,8 +67,13 @@ type OverlayAction =
       tone?: WindowHighlightTone;
     }
   | { type: "region"; active: boolean }
-  | { type: "voice:show"; position: { x: number; y: number } }
+  | {
+      type: "voice:show";
+      position: { x: number; y: number };
+    }
   | { type: "voice:hide" }
+  | { type: "dictation:show"; position: { x: number; y: number } }
+  | { type: "dictation:hide" }
   | { type: "screenGuide:show"; annotations: ScreenGuideAnnotation[] }
   | { type: "screenGuide:hide" }
   | { type: "selectionChip:show"; chip: SelectionChipState }
@@ -83,6 +95,8 @@ const initialState: OverlayState = {
   regionCaptureActive: false,
   voiceVisible: false,
   voicePosition: null,
+  dictationVisible: false,
+  dictationPosition: null,
   screenGuideVisible: false,
   screenGuideAnnotations: [],
   selectionChip: null,
@@ -120,24 +134,51 @@ function overlayReducer(
       return {
         ...state,
         windowHighlightBounds: action.bounds,
-        windowHighlightTone: action.bounds ? (action.tone ?? "default") : "default",
+        windowHighlightTone: action.bounds
+          ? (action.tone ?? "default")
+          : "default",
       };
     case "region":
       return state.regionCaptureActive === action.active
         ? state
         : { ...state, regionCaptureActive: action.active };
-    case "voice:show":
+    case "voice:show": {
       if (
         state.voiceVisible &&
         isSamePosition(state.voicePosition, action.position)
       ) {
         return state;
       }
-      return { ...state, voiceVisible: true, voicePosition: action.position };
+      return {
+        ...state,
+        voiceVisible: true,
+        voicePosition: action.position,
+      };
+    }
     case "voice:hide":
       return state.voiceVisible ? { ...state, voiceVisible: false } : state;
+    case "dictation:show":
+      if (
+        state.dictationVisible &&
+        isSamePosition(state.dictationPosition, action.position)
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        dictationVisible: true,
+        dictationPosition: action.position,
+      };
+    case "dictation:hide":
+      return state.dictationVisible
+        ? { ...state, dictationVisible: false }
+        : state;
     case "screenGuide:show":
-      return { ...state, screenGuideVisible: true, screenGuideAnnotations: action.annotations };
+      return {
+        ...state,
+        screenGuideVisible: true,
+        screenGuideAnnotations: action.annotations,
+      };
     case "screenGuide:hide":
       return state.screenGuideVisible
         ? { ...state, screenGuideVisible: false, screenGuideAnnotations: [] }
@@ -168,9 +209,7 @@ const VOICE_CREATURE_SIZE = {
 // Consolidates ALL IPC subscription effects (window highlight, region capture,
 // voice show/hide, screen guide) into a single hook.
 // ---------------------------------------------------------------------------
-function useOverlayIPC(
-  dispatch: Dispatch<OverlayAction>,
-) {
+function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
   const radialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -237,20 +276,22 @@ function useOverlayIPC(
     const api = window.electronAPI;
     if (!api) return;
 
-    const cleanupWindowHighlight = api.overlay.onWindowHighlight?.((payload) => {
-      dispatch({
-        type: "overlay:windowHighlight",
-        bounds: payload
-          ? {
-              x: payload.x,
-              y: payload.y,
-              width: payload.width,
-              height: payload.height,
-            }
-          : null,
-        tone: payload?.tone,
-      });
-    });
+    const cleanupWindowHighlight = api.overlay.onWindowHighlight?.(
+      (payload) => {
+        dispatch({
+          type: "overlay:windowHighlight",
+          bounds: payload
+            ? {
+                x: payload.x,
+                y: payload.y,
+                width: payload.width,
+                height: payload.height,
+              }
+            : null,
+          tone: payload?.tone,
+        });
+      },
+    );
 
     return () => {
       cleanupWindowHighlight?.();
@@ -279,11 +320,36 @@ function useOverlayIPC(
 
     const cleanupShow = api.overlay.onShowVoice?.(
       (data: { x: number; y: number; mode: "realtime" }) => {
-        dispatch({ type: "voice:show", position: { x: data.x, y: data.y } });
+        dispatch({
+          type: "voice:show",
+          position: { x: data.x, y: data.y },
+        });
       },
     );
     const cleanupHide = api.overlay.onHideVoice?.(() => {
       dispatch({ type: "voice:hide" });
+    });
+
+    return () => {
+      cleanupShow?.();
+      cleanupHide?.();
+    };
+  }, [dispatch]);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanupShow = api.overlay.onShowDictation?.(
+      (data: { x: number; y: number }) => {
+        dispatch({
+          type: "dictation:show",
+          position: { x: data.x, y: data.y },
+        });
+      },
+    );
+    const cleanupHide = api.overlay.onHideDictation?.(() => {
+      dispatch({ type: "dictation:hide" });
     });
 
     return () => {
@@ -360,11 +426,15 @@ function useOverlayHitTesting(
     radialVisible,
     voiceVisible,
     voicePosition,
+    dictationVisible,
+    dictationPosition,
     screenGuideVisible,
     selectionChip,
   } = state;
   const voiceX = voicePosition?.x ?? null;
   const voiceY = voicePosition?.y ?? null;
+  const dictationX = dictationPosition?.x ?? null;
+  const dictationY = dictationPosition?.y ?? null;
   const selectionChipActive = Boolean(selectionChip);
   const chipLeft = selectionChipBounds?.left ?? null;
   const chipTop = selectionChipBounds?.top ?? null;
@@ -382,7 +452,7 @@ function useOverlayHitTesting(
       return;
     }
 
-    if (!voiceVisible && !selectionChipActive) {
+    if (!voiceVisible && !dictationVisible && !selectionChipActive) {
       updateInteractive(false);
       return;
     }
@@ -401,6 +471,17 @@ function useOverlayHitTesting(
           e.clientY <= top + VOICE_CREATURE_SIZE.height;
       }
 
+      let isOverDictation = false;
+      if (dictationVisible && dictationX !== null && dictationY !== null) {
+        const left = dictationX - DICTATION_OVERLAY_SIZE.width / 2;
+        const top = dictationY - DICTATION_OVERLAY_SIZE.height / 2;
+        isOverDictation =
+          e.clientX >= left &&
+          e.clientX <= left + DICTATION_OVERLAY_SIZE.width &&
+          e.clientY >= top &&
+          e.clientY <= top + DICTATION_OVERLAY_SIZE.height;
+      }
+
       let isOverChip = false;
       if (
         selectionChipActive &&
@@ -416,7 +497,7 @@ function useOverlayHitTesting(
           e.clientY <= chipTop + chipHeight;
       }
 
-      updateInteractive(isOverVoice || isOverChip);
+      updateInteractive(isOverVoice || isOverDictation || isOverChip);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -427,6 +508,9 @@ function useOverlayHitTesting(
     voiceVisible,
     voiceX,
     voiceY,
+    dictationVisible,
+    dictationX,
+    dictationY,
     selectionChipActive,
     chipLeft,
     chipTop,
@@ -440,6 +524,7 @@ function useOverlayHitTesting(
       radialVisible ||
       regionCaptureActive ||
       voiceVisible ||
+      dictationVisible ||
       screenGuideVisible ||
       selectionChipActive;
 
@@ -450,10 +535,191 @@ function useOverlayHitTesting(
     radialVisible,
     regionCaptureActive,
     voiceVisible,
+    dictationVisible,
     screenGuideVisible,
     selectionChipActive,
     updateInteractive,
   ]);
+}
+
+function useOverlayDictation() {
+  const [levels, setLevels] = useState<number[]>([]);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const sessionRef = useRef<InworldDictationSession | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const transcriptRef = useRef("");
+  const startedAtRef = useRef<number | null>(null);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearSession = useCallback(() => {
+    sessionRef.current = null;
+    sessionIdRef.current = null;
+    transcriptRef.current = "";
+    startedAtRef.current = null;
+    if (elapsedTimerRef.current) {
+      clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+    }
+    setLevels([]);
+    setElapsedMs(0);
+  }, []);
+
+  const stopAndComplete = useCallback(
+    async (sessionId: string) => {
+      const session = sessionRef.current;
+      if (!session || sessionIdRef.current !== sessionId) return;
+
+      try {
+        await session.stop();
+        window.electronAPI?.dictation?.overlayCompleted({
+          sessionId,
+          text: transcriptRef.current,
+        });
+      } catch (error) {
+        window.electronAPI?.dictation?.overlayFailed({
+          sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        clearSession();
+      }
+    },
+    [clearSession],
+  );
+
+  useEffect(() => {
+    const api = window.electronAPI?.dictation;
+    if (!api) return;
+
+    const cleanupStart = api.onOverlayStart(({ sessionId }) => {
+      const previous = sessionRef.current;
+      if (previous) {
+        void previous.cancel().catch(() => undefined);
+        clearSession();
+      }
+
+      const session = new InworldDictationSession();
+      sessionRef.current = session;
+      sessionIdRef.current = sessionId;
+      transcriptRef.current = "";
+      startedAtRef.current = performance.now();
+      setLevels([]);
+      setElapsedMs(0);
+      elapsedTimerRef.current = setInterval(() => {
+        if (startedAtRef.current !== null) {
+          setElapsedMs(performance.now() - startedAtRef.current);
+        }
+      }, 250);
+
+      void session
+        .start({
+          onFinalTranscript: (text) => {
+            transcriptRef.current = text;
+          },
+          onLevel: (level) => {
+            setLevels((prev) => {
+              if (prev.length < MAX_DICTATION_OVERLAY_LEVELS) {
+                return [...prev, level];
+              }
+              const next = prev.slice(
+                prev.length - MAX_DICTATION_OVERLAY_LEVELS + 1,
+              );
+              next.push(level);
+              return next;
+            });
+          },
+          onStateChange: (state, error) => {
+            if (state === "error") {
+              window.electronAPI?.dictation?.overlayFailed({
+                sessionId,
+                error,
+              });
+              clearSession();
+            }
+          },
+        })
+        .catch((error) => {
+          window.electronAPI?.dictation?.overlayFailed({
+            sessionId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          clearSession();
+        });
+    });
+
+    const cleanupStop = api.onOverlayStop(({ sessionId }) => {
+      void stopAndComplete(sessionId);
+    });
+
+    return () => {
+      cleanupStart();
+      cleanupStop();
+      const session = sessionRef.current;
+      if (session) {
+        void session.cancel().catch(() => undefined);
+      }
+      clearSession();
+    };
+  }, [clearSession, stopAndComplete]);
+
+  const confirm = useCallback(() => {
+    const sessionId = sessionIdRef.current;
+    if (sessionId) {
+      void stopAndComplete(sessionId);
+    }
+  }, [stopAndComplete]);
+
+  const cancel = useCallback(() => {
+    const session = sessionRef.current;
+    const sessionId = sessionIdRef.current;
+    if (!session || !sessionId) return;
+    void session.cancel().finally(() => {
+      window.electronAPI?.dictation?.overlayFailed({ sessionId });
+      clearSession();
+    });
+  }, [clearSession]);
+
+  return { levels, elapsedMs, confirm, cancel };
+}
+
+const MAX_DICTATION_OVERLAY_LEVELS = 96;
+const DICTATION_OVERLAY_SIZE = {
+  width: 360,
+  height: 56,
+} as const;
+
+function DictationOverlay({
+  visible,
+  position,
+  levels,
+  elapsedMs,
+  onCancel,
+  onConfirm,
+}: {
+  visible: boolean;
+  position: { x: number; y: number } | null;
+  levels: number[];
+  elapsedMs: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!visible || !position) return null;
+  return (
+    <div
+      className="dictation-overlay"
+      style={{
+        left: position.x,
+        top: position.y,
+      }}
+    >
+      <DictationRecordingBar
+        levels={levels}
+        elapsedMs={elapsedMs}
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+      />
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -471,6 +737,7 @@ export function OverlayRoot() {
   } | null>(null);
 
   useOverlayIPC(dispatch);
+  const dictation = useOverlayDictation();
 
   const updateInteractive = useCallback((shouldBeInteractive: boolean) => {
     if (interactiveRef.current === shouldBeInteractive) return;
@@ -489,6 +756,7 @@ export function OverlayRoot() {
     state.radialVisible,
     state.regionCaptureActive,
     state.voiceVisible,
+    state.dictationVisible,
     state.screenGuideVisible,
     state.selectionChip,
   ]);
@@ -570,6 +838,15 @@ export function OverlayRoot() {
               }
             : undefined
         }
+      />
+
+      <DictationOverlay
+        visible={state.dictationVisible}
+        position={state.dictationPosition}
+        levels={dictation.levels}
+        elapsedMs={dictation.elapsedMs}
+        onCancel={dictation.cancel}
+        onConfirm={dictation.confirm}
       />
 
       <ScreenGuideAnnotations

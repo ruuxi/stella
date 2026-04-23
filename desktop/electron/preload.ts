@@ -275,6 +275,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "overlay:showVoice",
     ),
     onHideVoice: onIpcSignal("overlay:hideVoice"),
+    onShowDictation: onIpc<{ x: number; y: number }>(
+      "overlay:showDictation",
+    ),
+    onHideDictation: onIpcSignal("overlay:hideDictation"),
     onShowScreenGuide: onIpc<{
       annotations: Array<{
         id: string;
@@ -419,7 +423,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   dictation: {
-    onToggle: onIpcSignal("dictation:toggle"),
+    onToggle: onIpc<{ startId?: string }>("dictation:toggle"),
     trigger: () =>
       ipcRenderer.invoke("dictation:trigger") as Promise<{ ok: boolean }>,
     getShortcut: () =>
@@ -431,6 +435,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
         activeShortcut: string;
         error?: string;
       }>,
+    onOverlayStart: onIpc<{ sessionId: string }>("dictation:overlayStart"),
+    onOverlayStop: onIpc<{ sessionId: string }>("dictation:overlayStop"),
+    overlayCompleted: (payload: { sessionId: string; text: string }) =>
+      ipcRenderer.send("dictation:overlayCompleted", payload),
+    overlayFailed: (payload: { sessionId: string; error?: string }) =>
+      ipcRenderer.send("dictation:overlayFailed", payload),
+    inAppStarted: (payload: { startId?: string }) =>
+      ipcRenderer.send("dictation:inAppStarted", payload),
   },
 
   agent: {

@@ -36,6 +36,8 @@ export type LocalPreferences = {
   syncMode: "on" | "off";
   /** Hold key used to open the radial dial. */
   radialTriggerKey: RadialTriggerCode;
+  /** Global accelerator used for OS-wide and in-app dictation. Empty disables it. */
+  dictationShortcut: string;
 };
 
 const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
@@ -50,6 +52,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   syncMode: "off",
   radialTriggerKey: DEFAULT_RADIAL_TRIGGER_CODE,
+  dictationShortcut: "Control+M",
 };
 
 let _cached: LocalPreferences | null = null;
@@ -81,6 +84,10 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
       syncMode: parsed.syncMode === "on" ? "on" : "off",
       radialTriggerKey: normalizeRadialTriggerCode(parsed.radialTriggerKey),
+      dictationShortcut:
+        typeof parsed.dictationShortcut === "string"
+          ? parsed.dictationShortcut
+          : DEFAULT_PREFERENCES.dictationShortcut,
     };
     _cached = prefs;
     _cachedMtime = stat.mtimeMs;
