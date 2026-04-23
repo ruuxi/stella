@@ -155,9 +155,9 @@ export class RadialGestureService {
         break
       }
       case 'chat': {
-        capture.setRadialContextShouldCommit(true)
-        capture.setRadialWindowContextEnabled(false)
-        capture.commitStagedRadialContext(this.contextBeforeGesture)
+        this.clearScheduledRadialCapture()
+        capture.cancelRadialContextCapture()
+        this.restoreOrClearTransientContext()
         updateUiState({ mode: 'chat' })
         capture.broadcastChatContext()
         if (win.isCompactMode() && win.isWindowFocused()) {
