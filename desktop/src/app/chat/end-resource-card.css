@@ -1,17 +1,22 @@
 .end-resource-card {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin-top: 10px;
-  padding: 6px 10px 6px 8px;
-  font-size: 12px;
-  line-height: 1.4;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground, #0f1728) 14%, transparent);
-  background: color-mix(in oklch, var(--background, #edf3fb) 60%, transparent);
-  color: var(--foreground, #0f1728);
+  padding: 10px 14px 10px 12px;
+  min-height: 52px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  border-radius: var(--radius-lg, 14px);
+  border: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--card) 20%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-base);
   cursor: pointer;
   max-width: 100%;
+  text-align: left;
   transition:
     background 140ms ease,
     border-color 140ms ease,
@@ -19,8 +24,8 @@
 }
 
 .end-resource-card:hover {
-  background: color-mix(in oklch, var(--background, #edf3fb) 85%, transparent);
-  border-color: color-mix(in oklch, var(--foreground, #0f1728) 26%, transparent);
+  background: color-mix(in srgb, var(--card) 32%, transparent);
+  border-color: color-mix(in srgb, var(--foreground) 18%, transparent);
 }
 
 .end-resource-card:active {
@@ -32,27 +37,33 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  color: color-mix(in oklch, var(--foreground, #0f1728) 70%, transparent);
+  width: 30px;
+  height: 30px;
+  color: var(--text-base);
+}
+
+.end-resource-card__text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
 }
 
 .end-resource-card__label {
-  flex: 1;
-  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--text-strong);
 }
 
 .end-resource-card__action {
-  flex-shrink: 0;
   font-size: 11px;
   letter-spacing: 0.01em;
-  color: color-mix(in oklch, var(--foreground, #0f1728) 55%, transparent);
+  color: var(--text-weak);
 }
 
 .end-resource-card:hover .end-resource-card__action {
-  color: color-mix(in oklch, var(--foreground, #0f1728) 80%, transparent);
+  color: var(--text-base);
 }
