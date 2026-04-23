@@ -3633,7 +3633,37 @@ func captureScreenshot(
         }
     }
 
-    // Fallback: screencapture shell-out
+    // Fallback: /usr/sbin/screencapture with -l<windowID>. Captures ONLY
+    // the targeted window's content even if other windows overlap it on
+    // screen — critical for computer-use, where the model must see the
+    // targeted app and not whatever happens to be on top of it on the
+    // user's real desktop. We only fall back to -R<rect> as a last
+    // resort, and even then prefer to fail loudly: a screen-rect capture
+    // would mislead the model about what it's clicking on.
+    if let pid, let windowID = pickLargestOnScreenWindowID(forPid: pid) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-o", "-l", String(windowID), outputPath]
+        do {
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus == 0 {
+                return (
+                    screenshotFromOnDiskPNG(path: outputPath, includeBase64: includeBase64),
+                    nil
+                )
+            }
+            trace("screenshot:screencapture-l failed exit=\(process.terminationStatus) windowID=\(windowID)")
+        } catch {
+            trace("screenshot:screencapture-l threw \(error.localizedDescription)")
+        }
+    }
+
+    // Last resort: /usr/sbin/screencapture -R<rect>. This DOES include
+    // overlapping windows because it's a pure screen-rect capture; we
+    // only reach here when SCK and the windowID-targeted shell-out both
+    // failed, which is rare enough that returning a possibly-confusing
+    // image is preferable to returning no image at all.
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
     var arguments = ["-x"]
@@ -3657,6 +3687,44 @@ func captureScreenshot(
     } catch {
         return (nil, "Failed to capture screenshot: \(error.localizedDescription)")
     }
+}
+
+// Pick the largest on-screen window owned by `pid` and return its
+// CGWindowID. Mirrors the SCK path's "largest window for this app" rule
+// so the windowID-targeted screencapture fallback captures the same
+// surface the SCK path would have.
+private func pickLargestOnScreenWindowID(forPid pid: Int32) -> CGWindowID? {
+    guard let entries = CGWindowListCopyWindowInfo(
+        [.optionOnScreenOnly, .excludeDesktopElements],
+        kCGNullWindowID
+    ) as? [[String: Any]] else {
+        return nil
+    }
+
+    struct Candidate {
+        let windowID: CGWindowID
+        let area: CGFloat
+    }
+
+    var best: Candidate?
+    for entry in entries {
+        guard let ownerPid = entry[kCGWindowOwnerPID as String] as? pid_t,
+              ownerPid == pid,
+              let windowID = entry[kCGWindowNumber as String] as? CGWindowID,
+              let bounds = entry[kCGWindowBounds as String] as? [String: CGFloat],
+              let width = bounds["Width"],
+              let height = bounds["Height"],
+              width > 0,
+              height > 0 else {
+            continue
+        }
+        let area = width * height
+        if best == nil || area > best!.area {
+            best = Candidate(windowID: windowID, area: area)
+        }
+    }
+
+    return best?.windowID
 }
 
 // Read a PNG that was just written by /usr/sbin/screencapture and turn it
@@ -4831,13 +4899,100 @@ func simulateLeftClick(at point: CGPoint) -> Bool {
     return true
 }
 
+// Post a left-click directly to the target pid's event queue using
+// CGEventPostToPid. Bypasses the system event tap, so the event reaches
+// the target process even when another app's window is visually on top
+// at those screen coordinates. Required for clicking inside web-wrapped
+// app surfaces (Spotify, Slack, Discord, etc.) without raising.
+func simulateLeftClickToPid(at point: CGPoint, pid: pid_t) -> Bool {
+    guard let source = CGEventSource(stateID: .hidSystemState),
+          let mouseDown = CGEvent(
+              mouseEventSource: source,
+              mouseType: .leftMouseDown,
+              mouseCursorPosition: point,
+              mouseButton: .left
+          ),
+          let mouseUp = CGEvent(
+              mouseEventSource: source,
+              mouseType: .leftMouseUp,
+              mouseCursorPosition: point,
+              mouseButton: .left
+          ) else {
+        return false
+    }
+    mouseDown.postToPid(pid)
+    mouseUp.postToPid(pid)
+    return true
+}
+
+// Click an element of the target app at the given screen point WITHOUT
+// raising the window. Uses AXUIElementCopyElementAtPosition rooted at the
+// target's AX node, so element resolution is filtered to the target app's
+// tree even if another window is visually on top at that screen point.
+// Returns true only when an AX press action actually fired against an
+// element belonging to the target.
+func clickViaAxAtScreenPoint(target: AppTarget, point: CGPoint) -> Bool {
+    var hit: AXUIElement?
+    let result = AXUIElementCopyElementAtPosition(
+        target.axApp,
+        Float(point.x),
+        Float(point.y),
+        &hit
+    )
+    guard result == .success, let element = hit else {
+        trace("input:ax-click no-element-at point=(\(point.x), \(point.y)) result=\(result.rawValue)")
+        return false
+    }
+
+    // Confirm the element belongs to the target app — otherwise the AX
+    // walk drifted (rare but possible for tooltip / menu surfaces).
+    var ownerPid: pid_t = 0
+    if AXUIElementGetPid(element, &ownerPid) == .success,
+       ownerPid != target.app.processIdentifier {
+        trace("input:ax-click pid-mismatch expected=\(target.app.processIdentifier) got=\(ownerPid)")
+        return false
+    }
+
+    // Try AXPress first (the canonical "click" action), then walk through
+    // the element's other supported actions for AXOpen / AXConfirm / etc.
+    let preferred: [String] = [
+        kAXPressAction as String,
+        "AXConfirm",
+        "AXOpen",
+        "AXShowMenu",
+    ]
+    for action in preferred {
+        if AXUIElementPerformAction(element, action as CFString) == .success {
+            trace("input:ax-click ok action=\(action) point=(\(point.x), \(point.y))")
+            return true
+        }
+    }
+    return false
+}
+
 func postLeftClick(at point: CGPoint, target: AppTarget, raise: Bool = true) -> Bool {
-    // System Events `click at {x, y}` only delivers reliably when the
-    // target process is frontmost. Computer-use is supposed to drive the
-    // app in the background (Codex's CUA never raises either), so when
-    // raise=false we skip the AppleScript path entirely and post a real
-    // HID mouse-down/mouse-up — that hits whatever window is at the
-    // screen point regardless of focus, which is what we want.
+    // System Events `click at {x, y}` and HID-tap CGEvent posts both
+    // route to whatever window is on top at the screen point — useless
+    // when the target app is backgrounded. When raise=false (the
+    // computer-use default; Codex doesn't raise either) we walk three
+    // steps in order:
+    //   1) AX-at-position press: best for native AX-mapped UI (buttons,
+    //      menu items). No-op for web-view content.
+    //   2) CGEventPostToPid: delivers the event directly to the target
+    //      process's event queue, bypassing the screen-stacking event
+    //      router. Works inside web-wrapped apps (Spotify, Slack,
+    //      Discord) without focusing them.
+    //   3) HID-tap CGEvent: last resort. May land on the wrong window if
+    //      another app overlaps the screen point.
+    if !raise {
+        if clickViaAxAtScreenPoint(target: target, point: point) {
+            return true
+        }
+        if simulateLeftClickToPid(at: point, pid: target.app.processIdentifier) {
+            trace("input:click path=cgevent-postToPid pid=\(target.app.processIdentifier)")
+            return true
+        }
+    }
     if raise,
        !alwaysSimulateInput(),
        runSystemEventsOnTarget(
