@@ -13,13 +13,84 @@
 }
 
 .display-sidebar--open {
-  width: clamp(380px, 34vw, 520px);
+  width: var(--display-panel-width, clamp(380px, 34vw, 520px));
   opacity: 1;
+}
+
+/* Expanded mode: panel takes the full content area. Pair this with the
+   `:has()` rule below that hides `.content-area` so we don't briefly
+   double up. */
+.display-sidebar--open.display-sidebar--expanded {
+  width: 100%;
+  flex: 1;
+  margin-left: 0;
+}
+
+/* Mirror the chat-sidebar's compact-mode pattern: when a sibling panel
+   wants to take over the content area, hide the chat outlet entirely.
+   Uses `:has()` so we don't have to lift state into the React parent.
+   Requires BOTH `--expanded` and `--open` so the chat outlet reappears
+   when the user closes a panel that was left in expanded mode (the
+   expanded preference is persisted across close so it can be restored
+   on next open). */
+.full-body:has(.display-sidebar--expanded.display-sidebar--open) .content-area {
+  display: none;
+}
+
+/* While the user is actively dragging the resize handle, suppress the
+   width transition so the panel tracks the cursor 1:1 instead of
+   easing toward each new width value. */
+.display-sidebar--resizing {
+  transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .display-sidebar {
     transition: none;
+  }
+}
+
+/* ── Mini window: full-width takeover ───────────────────────────────
+   Mirrors the chat-sidebar's compact-mode pattern (chat-sidebar.css ~L34).
+   In the mini window the chat sidebar already covers the content area;
+   when the user right-clicks to summon the display panel we want it to
+   replace the chat surface entirely instead of slicing it. */
+@media (max-width: 600px) {
+  .display-sidebar--open {
+    width: 100%;
+    flex: 1;
+  }
+
+  .display-sidebar-inner {
+    width: 100%;
+    border-left: none;
+    border-radius: 0;
+  }
+
+  .display-sidebar {
+    border-radius: 0;
+    margin-left: 0;
+    /* No slide animation in mini — the panel is a full-surface swap
+       (chat hides, display takes over), so the slide reads as flicker. */
+    transition: none;
+  }
+
+  /* Hide both the chat outlet AND the open chat sidebar so the display
+     panel cleanly owns the available space next to the icon rail. */
+  .full-body:has(.display-sidebar--open) .content-area,
+  .full-body:has(.display-sidebar--open) .chat-sidebar {
+    display: none;
+  }
+
+  /* Resize and expand are meaningless at full width. */
+  .display-sidebar__resize-handle {
+    display: none;
+  }
+
+  /* Only the expand button carries `aria-pressed` (close does not),
+     so this selector hides exactly the expand toggle. */
+  .display-sidebar__chrome-btn[aria-pressed] {
+    display: none;
   }
 }
 
@@ -29,7 +100,11 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-width: clamp(380px, 34vw, 520px);
+  /* Stay at the panel's "open" width even while the outer is animating
+     from 0 → open. The outer has `overflow: hidden`, so this gives us
+     the "roll away" effect on close instead of letting content reflow. */
+  width: var(--display-panel-width, clamp(380px, 34vw, 520px));
+  min-width: 0;
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -38,17 +113,31 @@
   overflow: hidden;
 }
 
-.display-sidebar__close {
+.display-sidebar--expanded .display-sidebar-inner {
+  width: 100%;
+}
+
+/* ── Top-right chrome row (expand + close) ──────────────────────────── */
+
+.display-sidebar__chrome {
   position: absolute;
   top: 12px;
   right: 12px;
-  z-index: 1;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.display-sidebar__chrome-btn {
   width: 28px;
   height: 28px;
+  padding: 0;
   border-radius: 50%;
   border: 1px solid color-mix(in oklch, var(--foreground, #0f1728) 15%, transparent);
   background: color-mix(in oklch, var(--background, #edf3fb) 80%, transparent);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   color: var(--foreground, #0f1728);
   cursor: pointer;
   display: flex;
@@ -58,9 +147,48 @@
   opacity: 0.6;
 }
 
-.display-sidebar__close:hover {
+.display-sidebar__chrome-btn:hover {
   opacity: 1;
   border-color: color-mix(in oklch, var(--foreground, #0f1728) 30%, transparent);
+}
+
+.display-sidebar__chrome-btn[aria-pressed="true"] {
+  opacity: 1;
+  background: color-mix(in oklch, var(--foreground, #0f1728) 10%, transparent);
+}
+
+/* ── Left-edge resize handle ────────────────────────────────────────── */
+
+.display-sidebar__resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 100%;
+  z-index: 3;
+  cursor: col-resize;
+  /* Subtle visual: a 1px highlight on the actual border line, with a
+     wider invisible hit area for easier grabbing. */
+  background: linear-gradient(
+    to right,
+    color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent) 0,
+    color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent) 1px,
+    transparent 1px,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.display-sidebar--open .display-sidebar__resize-handle:hover,
+.display-sidebar--resizing .display-sidebar__resize-handle {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .display-sidebar__resize-handle {
+    transition: none;
+  }
 }
 
 /* ── Tab strip ──────────────────────────────────────────────────── */
@@ -69,11 +197,13 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 8px 56px 0 12px; /* leave room for the floating close button */
+  gap: 4px;
+  /* Right padding reserves room for the floating chrome row
+     (expand + close = ~74px). Left padding clears the resize handle. */
+  padding: 10px 96px 0 16px;
   overflow-x: auto;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent) transparent;
 }
 
 .display-sidebar__tabbar::-webkit-scrollbar {
@@ -81,7 +211,7 @@
 }
 
 .display-sidebar__tabbar::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent);
+  background: color-mix(in srgb, var(--foreground) 18%, transparent);
   border-radius: 2px;
 }
 
@@ -90,31 +220,32 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  max-width: 220px;
-  padding: 4px 4px 4px 8px;
-  border-radius: 8px;
-  font-size: 12px;
-  color: color-mix(in oklch, var(--foreground, #0f1728) 70%, transparent);
-  border: 1px solid transparent;
+  max-width: 240px;
+  min-height: 34px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--text-base);
   background: transparent;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 
 .display-sidebar__tab:hover {
-  background: color-mix(in oklch, var(--foreground, #0f1728) 6%, transparent);
-  color: var(--foreground, #0f1728);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
 }
 
 .display-sidebar__tab--active {
-  background: color-mix(in oklch, var(--background, #edf3fb) 75%, transparent);
-  color: var(--foreground, #0f1728);
-  border-color: color-mix(in oklch, var(--foreground, #0f1728) 12%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
 }
 
 .display-sidebar__tab-button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   background: none;
   border: none;
   padding: 0;
@@ -129,29 +260,31 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 160px;
+  max-width: 170px;
+  font-weight: 500;
 }
 
 .display-sidebar__tab-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
   border: none;
   padding: 0;
   margin: 0;
   background: transparent;
   cursor: pointer;
-  color: inherit;
+  color: var(--text-weak);
   opacity: 0.55;
-  transition: opacity 120ms ease, background 120ms ease;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
 }
 
 .display-sidebar__tab-close:hover {
   opacity: 1;
-  background: color-mix(in oklch, var(--foreground, #0f1728) 10%, transparent);
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 
 .display-sidebar__active {
@@ -275,7 +408,7 @@
 .display-media__primary-btn {
   appearance: none;
   background: transparent;
-  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  border: none;
   border-radius: 12px;
   padding: 0;
   overflow: hidden;
@@ -289,10 +422,12 @@
 
 .display-media__primary-img {
   display: block;
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
   object-fit: contain;
-  background: color-mix(in oklch, var(--background) 70%, transparent);
+  background: transparent;
 }
 
 .display-media__strip {
@@ -393,10 +528,10 @@
 .display-media__audio-card {
   display: flex;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 4px;
   border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
-  background: color-mix(in oklch, var(--background) 60%, transparent);
+  border: none;
+  background: transparent;
 }
 
 .display-media__audio-icon {
@@ -428,10 +563,10 @@
 .display-media__download-card {
   display: flex;
   gap: 12px;
-  padding: 14px;
+  padding: 14px 4px;
   border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
-  background: color-mix(in oklch, var(--background) 60%, transparent);
+  border: none;
+  background: transparent;
 }
 
 .display-media__download-icon {
@@ -487,10 +622,10 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 14px 16px;
+  padding: 14px 4px;
   border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
-  background: color-mix(in oklch, var(--background) 60%, transparent);
+  border: none;
+  background: transparent;
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
