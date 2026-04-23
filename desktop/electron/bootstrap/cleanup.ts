@@ -1,3 +1,4 @@
+import { stopAllDesktopAutomationDaemons } from "../services/desktop-automation-cleanup.js";
 import { cleanupSelectedTextProcess } from "../selected-text.js";
 import type { BootstrapContext } from "./context.js";
 
@@ -32,4 +33,17 @@ export const registerBootstrapProcessCleanups = (
     await context.state.chronicleController?.stop();
     context.state.chronicleController = null;
   });
+  // The desktop_automation daemon is a long-lived child process spawned
+  // on demand by stella-computer. macOS doesn't reload an executable
+  // under a live process, so without killing it on quit a rebuilt
+  // binary would never be picked up until the user manually killed the
+  // old one. Stopping here also clears the per-session pidfiles +
+  // sockets so the next launch starts clean.
+  processRuntime.registerCleanup(
+    "before-quit",
+    "desktop-automation-daemon",
+    async () => {
+      await stopAllDesktopAutomationDaemons();
+    },
+  );
 };
