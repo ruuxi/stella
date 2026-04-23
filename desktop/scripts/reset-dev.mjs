@@ -223,6 +223,8 @@ const main = async () => {
     throw new Error(`Missing runner script: ${runnerScriptPath}`);
   }
 
+  const includePermissions = process.argv.slice(2).includes('--with-permissions');
+
   const stoppedRunner = await stopExistingDevRunner();
   const stoppedResidualElectron = await stopResidualDevElectron();
 
@@ -231,13 +233,13 @@ const main = async () => {
     ...desktopGeneratedPaths,
   ]);
 
-  const resetPairs = resetMacPermissions();
+  const resetPairs = includePermissions ? resetMacPermissions() : [];
 
   console.log(
     [
       '[reset] Stella desktop dev environment reset.',
       `Cleared ${stellaStatePath}`,
-      process.platform === 'darwin'
+      includePermissions && process.platform === 'darwin'
         ? resetPairs.length > 0
           ? `Reset macOS TCC permissions for ${resetPairs.join(', ')}`
           : `Attempted macOS TCC reset for ${macPermissionServices.join(', ')} on ${macPermissionBundleIds.join(', ')}`
