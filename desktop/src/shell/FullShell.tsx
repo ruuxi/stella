@@ -91,7 +91,7 @@ export const FullShell = () => {
 
   useEffect(() => {
     updateState({
-      suppressNativeContextMenuDuringOnboarding: !onboarding.onboardingDone,
+      suppressNativeRadialDuringOnboarding: !onboarding.onboardingDone,
     });
   }, [onboarding.onboardingDone, updateState]);
 

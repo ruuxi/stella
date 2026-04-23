@@ -6,7 +6,7 @@ import type { AuthService } from "../services/auth-service.js";
 import type { CaptureService } from "../services/capture-service.js";
 import type { BackupService } from "../services/backup-service.js";
 import type { CredentialService } from "../services/credential-service.js";
-import type { ContextMenuService } from "../services/context-menu-service.js";
+import type { RadialGestureService } from "../services/radial-gesture-service.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
 import type { SecurityPolicyService } from "../services/security-policy-service.js";
 import type { SelectionWatcherService } from "../services/selection-watcher-service.js";
@@ -63,7 +63,7 @@ export type BootstrapServices = {
   authService: AuthService;
   backupService: BackupService;
   captureService: CaptureService;
-  contextMenuService: ContextMenuService;
+  radialGestureService: RadialGestureService;
   credentialService: CredentialService;
   externalLinkService: ExternalLinkService;
   securityPolicyService: SecurityPolicyService;

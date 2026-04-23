@@ -6,6 +6,7 @@ import {
   useState,
   type Dispatch,
 } from "react";
+import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { VoiceOverlay } from "@/shell/overlay/VoiceOverlay";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
@@ -33,6 +34,9 @@ type WindowBounds = { x: number; y: number; width: number; height: number };
 type WindowHighlightTone = "default" | "subtle";
 
 type OverlayState = {
+  radialVisible: boolean;
+  radialPosition: { x: number; y: number } | null;
+  radialCompactFocused: boolean;
   windowHighlightBounds: WindowBounds | null;
   windowHighlightTone: WindowHighlightTone;
   regionCaptureActive: boolean;
@@ -44,6 +48,12 @@ type OverlayState = {
 };
 
 type OverlayAction =
+  | {
+      type: "radial:show";
+      position?: { x: number; y: number };
+      compactFocused?: boolean;
+    }
+  | { type: "radial:hide" }
   | {
       type: "overlay:windowHighlight";
       bounds: WindowBounds | null;
@@ -65,6 +75,9 @@ function isSamePosition(
 }
 
 const initialState: OverlayState = {
+  radialVisible: false,
+  radialPosition: null,
+  radialCompactFocused: false,
   windowHighlightBounds: null,
   windowHighlightTone: "default",
   regionCaptureActive: false,
@@ -80,6 +93,29 @@ function overlayReducer(
   action: OverlayAction,
 ): OverlayState {
   switch (action.type) {
+    case "radial:show": {
+      const nextPosition = action.position ?? state.radialPosition;
+      if (
+        state.radialVisible &&
+        isSamePosition(state.radialPosition, nextPosition)
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        radialVisible: true,
+        radialPosition: nextPosition,
+        radialCompactFocused: action.compactFocused ?? false,
+      };
+    }
+    case "radial:hide":
+      return state.radialVisible
+        ? {
+            ...state,
+            radialVisible: false,
+            radialCompactFocused: false,
+          }
+        : state;
     case "overlay:windowHighlight":
       return {
         ...state,
@@ -135,6 +171,68 @@ const VOICE_CREATURE_SIZE = {
 function useOverlayIPC(
   dispatch: Dispatch<OverlayAction>,
 ) {
+  const radialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanupShow = api.radial.onShow(
+      (
+        _event: unknown,
+        data: {
+          centerX: number;
+          centerY: number;
+          x?: number;
+          y?: number;
+          screenX?: number;
+          screenY?: number;
+          compactFocused?: boolean;
+        },
+      ) => {
+        if (radialHideTimerRef.current) {
+          clearTimeout(radialHideTimerRef.current);
+          radialHideTimerRef.current = null;
+        }
+        if (
+          typeof data.screenX === "number" &&
+          typeof data.screenY === "number"
+        ) {
+          dispatch({
+            type: "radial:show",
+            position: { x: data.screenX, y: data.screenY },
+            compactFocused: data.compactFocused,
+          });
+        } else {
+          dispatch({
+            type: "radial:show",
+            compactFocused: data.compactFocused,
+          });
+        }
+      },
+    );
+    const cleanupHide = api.radial.onHide(() => {
+      // Do not immediately set radialVisible=false. RadialDial plays a close
+      // animation; hide after a short delay to let it complete.
+      if (radialHideTimerRef.current) {
+        clearTimeout(radialHideTimerRef.current);
+      }
+      radialHideTimerRef.current = setTimeout(() => {
+        radialHideTimerRef.current = null;
+        dispatch({ type: "radial:hide" });
+      }, 300);
+    });
+
+    return () => {
+      if (radialHideTimerRef.current) {
+        clearTimeout(radialHideTimerRef.current);
+        radialHideTimerRef.current = null;
+      }
+      cleanupShow();
+      cleanupHide();
+    };
+  }, [dispatch]);
+
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
@@ -259,6 +357,7 @@ function useOverlayHitTesting(
 ) {
   const {
     regionCaptureActive,
+    radialVisible,
     voiceVisible,
     voicePosition,
     screenGuideVisible,
@@ -275,6 +374,11 @@ function useOverlayHitTesting(
   useEffect(() => {
     if (regionCaptureActive) {
       updateInteractive(true);
+      return;
+    }
+
+    if (radialVisible) {
+      // Radial owns its own hit-testing inside the renderer.
       return;
     }
 
@@ -319,6 +423,7 @@ function useOverlayHitTesting(
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [
     regionCaptureActive,
+    radialVisible,
     voiceVisible,
     voiceX,
     voiceY,
@@ -332,6 +437,7 @@ function useOverlayHitTesting(
 
   useEffect(() => {
     const anythingActive =
+      radialVisible ||
       regionCaptureActive ||
       voiceVisible ||
       screenGuideVisible ||
@@ -341,6 +447,7 @@ function useOverlayHitTesting(
       updateInteractive(false);
     }
   }, [
+    radialVisible,
     regionCaptureActive,
     voiceVisible,
     screenGuideVisible,
@@ -379,6 +486,7 @@ export function OverlayRoot() {
   useEffect(() => {
     interactiveRef.current = null;
   }, [
+    state.radialVisible,
     state.regionCaptureActive,
     state.voiceVisible,
     state.screenGuideVisible,
@@ -416,6 +524,25 @@ export function OverlayRoot() {
           }}
         />
       )}
+
+      {/* Radial Dial: always mounted; visibility is managed via IPC.
+          When not visible, position off-screen so the compositor's stale
+          backing-store frame doesn't flash at the old position when the
+          overlay window transitions from hidden → visible. */}
+      <div
+        className="radial-shell"
+        style={{
+          position: "absolute",
+          zIndex: 2,
+          left: state.radialVisible ? (state.radialPosition?.x ?? 0) : -9999,
+          top: state.radialVisible ? (state.radialPosition?.y ?? 0) : -9999,
+          width: 280,
+          height: 280,
+          pointerEvents: state.radialVisible ? "auto" : "none",
+        }}
+      >
+        <RadialDial miniVisible={state.radialCompactFocused} />
+      </div>
 
       {state.regionCaptureActive && (
         <div

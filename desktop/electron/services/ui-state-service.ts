@@ -22,7 +22,7 @@ export class UiStateService {
     window: 'full',
     conversationId: null,
     isVoiceRtcActive: false,
-    suppressNativeContextMenuDuringOnboarding: false,
+    suppressNativeRadialDuringOnboarding: false,
   }
 
   private deps: UiStateServiceDeps | null = null

@@ -70,6 +70,7 @@ import type {
   BackupSummary as SharedBackupSummary,
   RestoreBackupResult as SharedRestoreBackupResult,
 } from "../contracts/backup";
+import type { RadialTriggerCode as SharedRadialTriggerCode } from "@/shared/lib/radial-trigger";
 
 export type ChatContext = SharedChatContext;
 export type ChatContextFile = SharedChatContextFile;
@@ -115,6 +116,8 @@ export type BackupNowResult = SharedBackupNowResult;
 export type BackupStatusSnapshot = SharedBackupStatusSnapshot;
 export type BackupSummary = SharedBackupSummary;
 export type RestoreBackupResult = SharedRestoreBackupResult;
+export type RadialTriggerCode = SharedRadialTriggerCode;
+export type RadialWedge = "capture" | "chat" | "add" | "voice" | "dismiss";
 export type VoiceShortcutRegistrationResult = {
   ok: boolean;
   requestedShortcut: string;
@@ -201,6 +204,36 @@ export type ElectronCaptureApi = {
   }>;
   cancelRegion: () => void;
   onRegionReset: (callback: () => void) => () => void;
+};
+
+export type ElectronRadialApi = {
+  onShow: (
+    callback: (
+      event: unknown,
+      data: {
+        centerX: number;
+        centerY: number;
+        x?: number;
+        y?: number;
+        screenX?: number;
+        screenY?: number;
+        compactFocused?: boolean;
+      },
+    ) => void,
+  ) => () => void;
+  onHide: (callback: () => void) => () => void;
+  animDone: () => void;
+  onCursor: (
+    callback: (
+      event: unknown,
+      data: { x: number; y: number; centerX: number; centerY: number },
+    ) => void,
+  ) => () => void;
+  onWindowBounds: (
+    callback: (
+      data: { x: number; y: number; width: number; height: number } | null,
+    ) => void,
+  ) => () => void;
 };
 
 export type ElectronOverlayApi = {
@@ -476,6 +509,10 @@ export type ElectronSystemApi = {
   shellKillByPort: (port: number) => Promise<void>;
   getLocalSyncMode: () => Promise<string>;
   setLocalSyncMode: (mode: string) => Promise<void>;
+  getRadialTriggerKey: () => Promise<RadialTriggerCode>;
+  setRadialTriggerKey: (
+    triggerKey: RadialTriggerCode,
+  ) => Promise<{ triggerKey: RadialTriggerCode }>;
   getBackupStatus: () => Promise<BackupStatusSnapshot>;
   backUpNow: () => Promise<BackupNowResult>;
   listBackups: (limit?: number) => Promise<BackupSummary[]>;
@@ -838,6 +875,7 @@ export type ElectronApi = {
   window: ElectronWindowApi;
   ui: ElectronUiApi;
   capture: ElectronCaptureApi;
+  radial: ElectronRadialApi;
   overlay: ElectronOverlayApi;
   morph: ElectronMorphApi;
   screenGuide: ElectronScreenGuideApi;

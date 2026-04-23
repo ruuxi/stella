@@ -5,6 +5,7 @@ import type {
   SelfModHmrState,
 } from "../src/shared/contracts/boundary.js";
 import type { TaskLifecycleStatus } from "../src/shared/contracts/agent-runtime.js";
+import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
 import type { OfficePreviewSnapshot } from "../src/shared/contracts/office-preview.js";
 import {
   IPC_BROWSER_FETCH_JSON,
@@ -40,7 +41,9 @@ import {
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
   IPC_PERMISSIONS_RESET_MICROPHONE,
+  IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
+  IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_SYNC_MODELS,
   IPC_SOCIAL_SESSIONS_CREATE,
@@ -216,6 +219,32 @@ contextBridge.exposeInMainWorld("electronAPI", {
     pageDataUrl: () =>
       ipcRenderer.invoke("capture:pageDataUrl") as Promise<string | null>,
     onRegionReset: onIpcSignal("region:reset"),
+  },
+
+  radial: {
+    onShow: onIpcWithEvent<{
+      centerX: number;
+      centerY: number;
+      x?: number;
+      y?: number;
+      screenX?: number;
+      screenY?: number;
+      compactFocused?: boolean;
+    }>("radial:show"),
+    onHide: onIpcSignal("radial:hide"),
+    animDone: () => ipcRenderer.send("radial:animDone"),
+    onCursor: onIpcWithEvent<{
+      x: number;
+      y: number;
+      centerX: number;
+      centerY: number;
+    }>("radial:cursor"),
+    onWindowBounds: onIpc<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    } | null>("radial:windowBounds"),
   },
 
   overlay: {
@@ -653,6 +682,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_PREFERENCES_GET_SYNC_MODE) as Promise<string>,
     setLocalSyncMode: (mode: string) =>
       ipcRenderer.invoke(IPC_PREFERENCES_SET_SYNC_MODE, mode),
+    getRadialTriggerKey: () =>
+      ipcRenderer.invoke(IPC_PREFERENCES_GET_RADIAL_TRIGGER) as Promise<RadialTriggerCode>,
+    setRadialTriggerKey: (triggerKey: RadialTriggerCode) =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_RADIAL_TRIGGER,
+        triggerKey,
+      ) as Promise<{ triggerKey: RadialTriggerCode }>,
     getBackupStatus: () =>
       ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),
     backUpNow: () =>

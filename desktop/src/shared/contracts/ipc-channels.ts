@@ -52,6 +52,14 @@ export const IPC_REGION_CANCEL = "region:cancel" as const;
 export const IPC_REGION_RESET = "region:reset" as const;
 export const IPC_CAPTURE_PAGE_DATA_URL = "capture:pageDataUrl" as const;
 
+// ── Radial ──────────────────────────────────────────────────────────────────
+
+export const IPC_RADIAL_SHOW = "radial:show" as const;
+export const IPC_RADIAL_HIDE = "radial:hide" as const;
+export const IPC_RADIAL_ANIM_DONE = "radial:animDone" as const;
+export const IPC_RADIAL_CURSOR = "radial:cursor" as const;
+export const IPC_RADIAL_WINDOW_BOUNDS = "radial:windowBounds" as const;
+
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
 export const IPC_OVERLAY_SET_INTERACTIVE = "overlay:setInteractive" as const;
@@ -157,6 +165,8 @@ export const IPC_SHELL_KILL_BY_PORT = "shell:killByPort" as const;
 export const IPC_PREFERENCES_GET_SYNC_MODE = "preferences:getSyncMode" as const;
 export const IPC_PREFERENCES_SET_SYNC_MODE = "preferences:setSyncMode" as const;
 export const IPC_PREFERENCES_SYNC_MODELS = "preferences:syncLocalModelPreferences" as const;
+export const IPC_PREFERENCES_GET_RADIAL_TRIGGER = "preferences:getRadialTrigger" as const;
+export const IPC_PREFERENCES_SET_RADIAL_TRIGGER = "preferences:setRadialTrigger" as const;
 export const IPC_BACKUP_GET_STATUS = "backup:getStatus" as const;
 export const IPC_BACKUP_RUN_NOW = "backup:runNow" as const;
 export const IPC_BACKUP_LIST = "backup:list" as const;

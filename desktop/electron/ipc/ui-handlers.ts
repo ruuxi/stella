@@ -16,7 +16,7 @@ type UiHandlersOptions = {
   syncVoiceOverlay: () => void;
   setAppReady: (ready: boolean) => void;
   deactivateVoiceModes: () => boolean;
-  syncNativeContextMenu: () => void;
+  syncNativeRadialGesture: () => void;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -68,7 +68,7 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     if (!options.assertPrivilegedSender(event, "ui:setState"))
       return options.uiState;
     const previousSuppression =
-      options.uiState.suppressNativeContextMenuDuringOnboarding;
+      options.uiState.suppressNativeRadialDuringOnboarding;
     const {
       window: nextWindow,
       isVoiceRtcActive,
@@ -84,10 +84,10 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
       options.updateUiState(rest);
     }
     if (
-      partial.suppressNativeContextMenuDuringOnboarding !== undefined &&
-      partial.suppressNativeContextMenuDuringOnboarding !== previousSuppression
+      partial.suppressNativeRadialDuringOnboarding !== undefined &&
+      partial.suppressNativeRadialDuringOnboarding !== previousSuppression
     ) {
-      options.syncNativeContextMenu();
+      options.syncNativeRadialGesture();
     }
     if (isVoiceRtcActive !== undefined) {
       options.syncVoiceOverlay();
