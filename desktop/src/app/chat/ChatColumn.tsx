@@ -178,25 +178,13 @@ export const ChatColumn = memo(function ChatColumn({
     return (
       <div className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}>
         <HomeContent
-          conversationId={conversationId}
-          onSuggestionClick={onSuggestionClick}
+          onDismissHome={onDismissHome}
+          hasMessages={hasMessages}
         >
           <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
             {composerElement}
           </div>
         </HomeContent>
-        {hasMessages && onDismissHome && (
-          <button
-            className="home-view-messages"
-            type="button"
-            onClick={onDismissHome}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            View messages
-          </button>
-        )}
       </div>
     );
   }

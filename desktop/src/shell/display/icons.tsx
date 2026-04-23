@@ -28,6 +28,7 @@ const TYPE_COLORS = {
   model3d: "#0ea5e9",
   download: "#0d9488",
   text: "#64748b",
+  ideas: "#eab308",
 } as const;
 
 type IconProps = {
@@ -245,6 +246,27 @@ const TextIcon = (props: IconProps) => (
   </Sheet>
 );
 
+const IdeasIcon = ({ size = 18, style }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={style}
+  >
+    <path
+      d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1.1 1.1 1.4 1.8l.2.4h4l.2-.4c.3-.7.8-1.3 1.4-1.8A6 6 0 0 0 12 3z"
+      stroke={TYPE_COLORS.ideas}
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill={TYPE_COLORS.ideas}
+      fillOpacity="0.18"
+    />
+  </svg>
+);
+
 export const DisplayTabIcon = ({
   kind,
   size,
@@ -277,5 +299,7 @@ export const DisplayTabIcon = ({
       return <DownloadIcon size={size} style={style} />;
     case "text":
       return <TextIcon size={size} style={style} />;
+    case "ideas":
+      return <IdeasIcon size={size} style={style} />;
   }
 };
