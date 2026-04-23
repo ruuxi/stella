@@ -214,26 +214,14 @@ async function handleCommand(message) {
 
 onCommand(handleCommand);
 
-let disconnectShutdownTimer = null;
-
+// The Stella tab group is persistent across daemon restarts and agent runs.
+// Daemon disconnects (e.g. idle shutdown between agent invocations, transient
+// connection blips, Chrome service worker restarts) must NOT destroy the
+// window/group — otherwise every subsequent agent invocation would spawn a
+// fresh "Stella" group instead of reusing the shared one. Use `closeAgentWindow`
+// only for the explicit `close` action initiated by the user.
 onStatus((connected) => {
   console.log('[background] Connection status:', connected ? 'connected' : 'disconnected');
-  if (connected) {
-    // Cancel pending shutdown if we reconnected
-    if (disconnectShutdownTimer) {
-      clearTimeout(disconnectShutdownTimer);
-      disconnectShutdownTimer = null;
-    }
-  } else {
-    // Only close the agent window after a prolonged disconnect (30s),
-    // not on every transient connection blip.
-    if (!disconnectShutdownTimer) {
-      disconnectShutdownTimer = setTimeout(() => {
-        disconnectShutdownTimer = null;
-        closeAgentWindow();
-      }, 30_000);
-    }
-  }
 });
 
 // Keep service worker alive via offscreen document port
