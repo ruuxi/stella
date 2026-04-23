@@ -1,131 +1,281 @@
 /**
- * Tiny inline icons for tabs and resource pills. Inline SVG so we don't
- * pull a whole icon set just for ~10 glyphs.
+ * File-type icons for the Display tab strip and the inline chat
+ * end-resource pill.
+ *
+ * Each icon is a custom SVG built around a shared "folded sheet" silhouette,
+ * with a type-specific colored badge or glyph painted on top. The sheet
+ * outline tracks `currentColor` so it adapts to the surrounding text colour
+ * in either theme; the badge colours are intentionally fixed brand-style
+ * accents (PDF red, sheet green, slides orange, etc.) so each format is
+ * recognizable at a glance.
+ *
+ * Inline SVG keeps the icon set self-contained — we avoid pulling in a full
+ * icon dependency just for ~10 glyphs.
  */
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { DisplayTabKind } from "./types";
 
-const baseProps = {
-  width: 14,
-  height: 14,
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.6,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
+const TYPE_COLORS = {
+  pdf: "#dc2626",
+  doc: "#2563eb",
+  sheet: "#16a34a",
+  slides: "#ea580c",
+  html: "#0891b2",
+  image: "#7c3aed",
+  video: "#e11d48",
+  audio: "#9333ea",
+  model3d: "#0ea5e9",
+  download: "#0d9488",
+  text: "#64748b",
+} as const;
+
+type IconProps = {
+  size?: number;
+  style?: CSSProperties;
 };
 
-const ImageIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <circle cx="8.5" cy="8.5" r="1.5" />
-    <path d="M21 15l-5-5L5 21" />
+const Sheet = ({
+  size = 18,
+  style,
+  children,
+}: IconProps & { children: ReactNode }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={style}
+  >
+    <path
+      d="M6 2.5h7.6L18.5 7.5v12.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4.5a2 2 0 0 1 2-2z"
+      fill="currentColor"
+      fillOpacity="0.07"
+    />
+    <path
+      d="M6 2.5h7.6L18.5 7.5v12.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4.5a2 2 0 0 1 2-2z"
+      stroke="currentColor"
+      strokeOpacity="0.32"
+      strokeWidth="1"
+    />
+    <path
+      d="M13.5 2.5v5h5"
+      stroke="currentColor"
+      strokeOpacity="0.32"
+      strokeWidth="1"
+      fill="none"
+      strokeLinejoin="round"
+    />
+    {children}
   </svg>
 );
 
-const PdfIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <path d="M14 2v6h6" />
-    <text x="7.5" y="17.5" fontSize="6.5" fontWeight="700" stroke="none" fill="currentColor">PDF</text>
-  </svg>
+const TypeBadge = ({ color, label }: { color: string; label: string }) => (
+  <>
+    <rect x="5" y="13.2" width="12" height="6" rx="1.4" fill={color} />
+    <text
+      x="11"
+      y="17.6"
+      textAnchor="middle"
+      fontSize="3.9"
+      fontWeight="700"
+      fontFamily="ui-sans-serif, system-ui, sans-serif"
+      fill="#fff"
+      letterSpacing="0.04em"
+    >
+      {label}
+    </text>
+  </>
 );
 
-const SheetIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
-  </svg>
+const PdfIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <TypeBadge color={TYPE_COLORS.pdf} label="PDF" />
+  </Sheet>
 );
 
-const DocumentIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <path d="M14 2v6h6" />
-    <path d="M8 13h8M8 17h6" />
-  </svg>
+const DocumentIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <TypeBadge color={TYPE_COLORS.doc} label="DOC" />
+  </Sheet>
 );
 
-const SlidesIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <rect x="3" y="4" width="18" height="14" rx="2" />
-    <path d="M9 21h6M12 18v3" />
-  </svg>
+const SheetIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <g transform="translate(5 11.2)" fill={TYPE_COLORS.sheet}>
+      <rect x="0" y="0" width="12" height="8" rx="1.2" />
+      <rect x="0" y="0" width="12" height="2.4" fill="#fff" fillOpacity="0.55" />
+      <line x1="4" y1="0" x2="4" y2="8" stroke="#fff" strokeOpacity="0.7" strokeWidth="0.7" />
+      <line x1="8" y1="0" x2="8" y2="8" stroke="#fff" strokeOpacity="0.7" strokeWidth="0.7" />
+      <line x1="0" y1="2.4" x2="12" y2="2.4" stroke="#fff" strokeOpacity="0.7" strokeWidth="0.7" />
+      <line x1="0" y1="5.2" x2="12" y2="5.2" stroke="#fff" strokeOpacity="0.7" strokeWidth="0.7" />
+    </g>
+  </Sheet>
 );
 
-const HtmlIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <path d="M4 4h16v16H4z" />
-    <path d="M9 9l-2 3 2 3M15 9l2 3-2 3" />
-  </svg>
+const SlidesIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <TypeBadge color={TYPE_COLORS.slides} label="PPT" />
+  </Sheet>
 );
 
-const VideoIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <rect x="3" y="6" width="13" height="12" rx="2" />
-    <path d="M16 10l5-3v10l-5-3z" />
-  </svg>
+const HtmlIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <g
+      transform="translate(5 12.5)"
+      stroke={TYPE_COLORS.html}
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    >
+      <path d="M3.4 0.8L0.8 3.6L3.4 6.4" />
+      <path d="M8.6 0.8L11.2 3.6L8.6 6.4" />
+      <path d="M7 0.4L5 6.8" />
+    </g>
+  </Sheet>
 );
 
-const AudioIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <path d="M9 17V5l10-2v12" />
-    <circle cx="6" cy="17" r="3" />
-    <circle cx="16" cy="15" r="3" />
-  </svg>
+const ImageIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <g transform="translate(5 11.2)">
+      <rect
+        x="0"
+        y="0"
+        width="12"
+        height="8.6"
+        rx="1.2"
+        fill={TYPE_COLORS.image}
+        fillOpacity="0.18"
+        stroke={TYPE_COLORS.image}
+        strokeWidth="1"
+      />
+      <circle cx="3" cy="2.8" r="1" fill={TYPE_COLORS.image} />
+      <path
+        d="M0.6 7.6L3.8 4.4L6.4 6.4L8.8 3.8L11.4 7.6"
+        stroke={TYPE_COLORS.image}
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </g>
+  </Sheet>
 );
 
-const Model3dIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <path d="M12 2l9 5v10l-9 5-9-5V7z" />
-    <path d="M12 12l9-5M12 12v10M12 12L3 7" />
-  </svg>
+const VideoIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <g transform="translate(5 11.5)">
+      <rect x="0" y="0" width="12" height="8.5" rx="1.4" fill={TYPE_COLORS.video} />
+      <path d="M4.7 2.4L8.7 4.25L4.7 6.1Z" fill="#fff" />
+    </g>
+  </Sheet>
 );
 
-const DownloadIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <path d="M7 10l5 5 5-5M12 15V3" />
-  </svg>
+const AudioIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <g
+      transform="translate(5 11.4)"
+      stroke={TYPE_COLORS.audio}
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      fill="none"
+    >
+      <path d="M4.4 0.6V7" />
+      <path d="M4.4 0.6L10 -0.2V6" />
+      <circle cx="2.8" cy="7" r="1.5" fill={TYPE_COLORS.audio} stroke="none" />
+      <circle cx="8.4" cy="6" r="1.5" fill={TYPE_COLORS.audio} stroke="none" />
+    </g>
+  </Sheet>
 );
 
-const TextIcon = (props: { style?: CSSProperties }) => (
-  <svg {...baseProps} style={props.style}>
-    <path d="M4 6h16M4 12h16M4 18h10" />
-  </svg>
+const Model3dIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <g
+      transform="translate(5 11.4)"
+      stroke={TYPE_COLORS.model3d}
+      strokeWidth="1.1"
+      strokeLinejoin="round"
+      strokeLinecap="round"
+      fill="none"
+    >
+      <path
+        d="M6 0L11.6 3V8L6 11L0.4 8V3Z"
+        fill={TYPE_COLORS.model3d}
+        fillOpacity="0.15"
+      />
+      <path d="M6 5.5L11.6 3" />
+      <path d="M6 5.5V11" />
+      <path d="M6 5.5L0.4 3" />
+    </g>
+  </Sheet>
+);
+
+const DownloadIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <g
+      transform="translate(5 11.6)"
+      stroke={TYPE_COLORS.download}
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    >
+      <path d="M6 0V6.2" />
+      <path d="M3.4 4L6 6.7L8.6 4" />
+      <path d="M0.5 8.4H11.5" />
+    </g>
+  </Sheet>
+);
+
+const TextIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <g
+      transform="translate(5 11.6)"
+      stroke={TYPE_COLORS.text}
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      fill="none"
+    >
+      <path d="M0.5 0.6H11.5" />
+      <path d="M0.5 4H11.5" />
+      <path d="M0.5 7.4H7.5" />
+    </g>
+  </Sheet>
 );
 
 export const DisplayTabIcon = ({
   kind,
+  size,
   style,
 }: {
   kind: DisplayTabKind;
+  size?: number;
   style?: CSSProperties;
 }) => {
   switch (kind) {
     case "image":
-      return <ImageIcon style={style} />;
+      return <ImageIcon size={size} style={style} />;
     case "pdf":
-      return <PdfIcon style={style} />;
+      return <PdfIcon size={size} style={style} />;
     case "office-spreadsheet":
-      return <SheetIcon style={style} />;
+      return <SheetIcon size={size} style={style} />;
     case "office-document":
-      return <DocumentIcon style={style} />;
+      return <DocumentIcon size={size} style={style} />;
     case "office-slides":
-      return <SlidesIcon style={style} />;
+      return <SlidesIcon size={size} style={style} />;
     case "html":
-      return <HtmlIcon style={style} />;
+      return <HtmlIcon size={size} style={style} />;
     case "video":
-      return <VideoIcon style={style} />;
+      return <VideoIcon size={size} style={style} />;
     case "audio":
-      return <AudioIcon style={style} />;
+      return <AudioIcon size={size} style={style} />;
     case "model3d":
-      return <Model3dIcon style={style} />;
+      return <Model3dIcon size={size} style={style} />;
     case "download":
-      return <DownloadIcon style={style} />;
+      return <DownloadIcon size={size} style={style} />;
     case "text":
-      return <TextIcon style={style} />;
+      return <TextIcon size={size} style={style} />;
   }
 };

@@ -40,7 +40,7 @@ export const DisplayTabBar = () => {
               className="display-sidebar__tab-button"
               onClick={() => displayTabs.activateTab(tab.id)}
             >
-              <DisplayTabIcon kind={tab.kind} />
+              <DisplayTabIcon kind={tab.kind} size={20} />
               <span className="display-sidebar__tab-title">{tab.title}</span>
             </button>
             <button

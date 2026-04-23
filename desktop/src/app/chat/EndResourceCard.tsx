@@ -84,11 +84,13 @@ export const EndResourceCard = ({ payload }: { payload: DisplayPayload }) => {
       title={tooltip}
     >
       <span className="end-resource-card__icon">
-        <DisplayTabIcon kind={spec.kind} />
+        <DisplayTabIcon kind={spec.kind} size={26} />
       </span>
-      <span className="end-resource-card__label">{label}</span>
-      <span className="end-resource-card__action" aria-hidden>
-        Open in sidebar
+      <span className="end-resource-card__text">
+        <span className="end-resource-card__label">{label}</span>
+        <span className="end-resource-card__action" aria-hidden>
+          Open in sidebar
+        </span>
       </span>
     </button>
   );
