@@ -19,6 +19,7 @@ import {
 import { useBootstrapState } from "@/systems/boot/bootstrap-state";
 import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
+import { MorphInputAbsorber } from "./MorphInputAbsorber";
 import "./full-shell.layout.css";
 import "./mobile.css";
 
@@ -111,6 +112,7 @@ export const FullShell = () => {
         colorMode={gradientColor}
         lightweight={false}
       />
+      <MorphInputAbsorber />
 
       <div className="full-body">
         {appReady ? (

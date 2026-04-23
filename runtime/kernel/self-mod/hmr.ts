@@ -1,9 +1,14 @@
 import { setTimeout as delay } from "timers/promises";
 
 const HMR_ENDPOINT_BASE = "/__stella/self-mod/hmr";
-const REQUEST_TIMEOUT_MS = 4_000;
-const PAUSE_MAX_WAIT_MS = 8_000;
-const RESUME_MAX_WAIT_MS = 90_000;
+// Per-attempt timeout — kept tight so we get multiple retries inside the total
+// budget when the dev server is slow to accept the connection.
+const REQUEST_TIMEOUT_MS = 1_500;
+// Total wait budgets — a healthy HMR pause/resume completes in well under a
+// second; anything past this points at a wedged dev server and we'd rather
+// fail fast than block the agent or hold the morph cover up.
+const PAUSE_MAX_WAIT_MS = 5_000;
+const RESUME_MAX_WAIT_MS = 5_000;
 
 type HmrControllerOptions = {
   getDevServerUrl: () => string;
