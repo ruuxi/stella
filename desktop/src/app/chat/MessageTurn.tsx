@@ -590,11 +590,7 @@ export const TurnItem = memo(function TurnItem({
         </GrowIn>
       )}
 
-      {turn.askQuestion && (
-        <GrowIn animate={true} duration={420}>
-          <AskQuestionBubble payload={turn.askQuestion} />
-        </GrowIn>
-      )}
+      {turn.askQuestion && <AskQuestionBubble payload={turn.askQuestion} />}
 
       {hasTaskReasoning && (
         <div className="subagent-reasoning-attach">
