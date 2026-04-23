@@ -1,8 +1,4 @@
 import { createElement, useEffect, useState, type ReactNode } from "react";
-import { useUiState } from "@/context/ui-state";
-import { useWindowFocus } from "@/shared/hooks/use-window-focus";
-import { useWindowType } from "@/shared/hooks/use-window-type";
-import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 import { displayTabs } from "@/shell/display/tab-store";
 import { IdeasTabContent } from "./IdeasTabContent";
 import "./home.css";
@@ -110,19 +106,6 @@ export function HomeContent({
   children,
 }: HomeContentProps) {
   const greeting = useGreeting();
-  const { state } = useUiState();
-  const windowType = useWindowType();
-  const windowFocused = useWindowFocus();
-  const animationPaused = !windowFocused || state.window !== windowType;
-
-  // Defer StellaAnimation mount so WebGL shader compilation does not block the
-  // first home paint — same pattern as WorkingIndicator.
-  const [animReady, setAnimReady] = useState(false);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setAnimReady(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-
   const showViewMessages = Boolean(hasMessages && onDismissHome);
 
   return (
@@ -161,19 +144,6 @@ export function HomeContent({
           type="button"
           onClick={openIdeasTab}
         >
-          <span className="home-ideas-button__anim" aria-hidden="true">
-            <span className="home-ideas-button__anim-scale">
-              {animReady && (
-                <StellaAnimation
-                  width={20}
-                  height={20}
-                  maxDpr={1}
-                  frameSkip={2}
-                  paused={animationPaused}
-                />
-              )}
-            </span>
-          </span>
           <span className="home-ideas-button__label">Ideas</span>
         </button>
       </div>
