@@ -20,6 +20,7 @@ export type ThumbState = {
 }
 
 const AT_BOTTOM_THRESHOLD = 2
+const SCROLL_BUTTON_THRESHOLD = 180
 const PROGRAMMATIC_GRACE_MS = 120
 const SETTLE_MS = 500
 const LOAD_OLDER_THRESHOLD = 200
@@ -59,6 +60,8 @@ export function useChatScrollManagement({
 
   const [userScrolled, setUserScrolledState] = useState(false)
   const userScrolledRef = useRef(false)
+  const [scrollButtonVisible, setScrollButtonVisibleState] = useState(false)
+  const scrollButtonVisibleRef = useRef(false)
 
   const springRef = useRef<ReturnType<typeof animate> | null>(null)
   const lastProgrammaticRef = useRef(0)
@@ -86,12 +89,17 @@ export function useChatScrollManagement({
 
   const isNearBottom = !userScrolled
   const isNearBottomRef = useRef(true)
-  const showScrollButton = userScrolled && !pinnedToTurn
+  const showScrollButton = scrollButtonVisible && !pinnedToTurn
 
   const setUserScrolled = useCallback((scrolled: boolean) => {
     userScrolledRef.current = scrolled
     isNearBottomRef.current = !scrolled
     setUserScrolledState(scrolled)
+  }, [])
+
+  const setScrollButtonVisible = useCallback((visible: boolean) => {
+    scrollButtonVisibleRef.current = visible
+    setScrollButtonVisibleState(visible)
   }, [])
 
   const markProgrammatic = useCallback(() => {
@@ -152,6 +160,7 @@ export function useChatScrollManagement({
       stopSpring()
       markProgrammatic()
       setUserScrolled(false)
+      setScrollButtonVisible(false)
 
       if (behavior === 'instant') {
         el.scrollTop = 0
@@ -173,7 +182,7 @@ export function useChatScrollManagement({
         },
       })
     },
-    [stopSpring, markProgrammatic, setUserScrolled],
+    [stopSpring, markProgrammatic, setScrollButtonVisible, setUserScrolled],
   )
 
   /**
@@ -241,12 +250,13 @@ export function useChatScrollManagement({
   const resetScrollState = useCallback(() => {
     stopSpring()
     setUserScrolled(false)
+    setScrollButtonVisible(false)
     setPinnedToTurn(false)
     if (settleRef.current) {
       clearTimeout(settleRef.current)
       settleRef.current = null
     }
-  }, [stopSpring, setUserScrolled, setPinnedToTurn])
+  }, [stopSpring, setScrollButtonVisible, setUserScrolled, setPinnedToTurn])
 
   const handleScroll = useCallback(() => {
     if (rafRef.current !== null) return
@@ -273,9 +283,16 @@ export function useChatScrollManagement({
         !pauseResizeFollowRef.current
       ) {
         setUserScrolled(false)
+        setScrollButtonVisible(false)
       } else if (!atBottom && !userScrolledRef.current) {
         setUserScrolled(true)
         stopSpring()
+      }
+
+      const shouldShowScrollButton =
+        Math.abs(el.scrollTop) > SCROLL_BUTTON_THRESHOLD
+      if (shouldShowScrollButton !== scrollButtonVisibleRef.current) {
+        setScrollButtonVisible(shouldShowScrollButton)
       }
 
       if (hasOlderEvents && !isLoadingOlder && onLoadOlder) {
@@ -291,6 +308,7 @@ export function useChatScrollManagement({
   }, [
     isWithinGrace,
     updateThumb,
+    setScrollButtonVisible,
     setUserScrolled,
     setPinnedToTurn,
     stopSpring,
