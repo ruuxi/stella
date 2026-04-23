@@ -268,7 +268,6 @@ export const createRunnerContext = ({
   listLocalChatEvents,
   appendLocalChatEvent,
   getDefaultConversationId,
-  webSearch,
   memoryStore,
 }: StellaHostRunnerOptions): RunnerContext => {
   const envProxyBaseUrl = sanitizeStellaBase(
@@ -290,7 +289,16 @@ export const createRunnerContext = ({
     requestCredential,
     displayHtml,
     scheduleApi,
-    ...(webSearch ? { webSearch } : {}),
+    webSearch: async (query, searchOptions) => {
+      const handler = context.state?.webSearch;
+      if (!handler) {
+        return {
+          text: "Web search is not available yet — runtime is still starting up.",
+          results: [],
+        };
+      }
+      return await handler(query, searchOptions);
+    },
     getStellaSiteAuth: () => {
       const baseUrl = sanitizeStellaBase(context.state?.convexSiteUrl ?? envProxyBaseUrl);
       const authToken = (context.state?.authToken ?? envAuthToken ?? "").trim();
@@ -433,6 +441,7 @@ export const createRunnerContext = ({
       googleWorkspaceDisconnect: null,
       googleWorkspaceCallTool: null,
       googleWorkspaceAuthenticated: null,
+      webSearch: null,
     },
     ensureGoogleWorkspaceToolsLoaded: async () => undefined,
     hookEmitter,

@@ -59,13 +59,6 @@ export const createOrchestratorController = (
       agentType: string,
       agent?: unknown,
     ) => string | undefined;
-    webSearch: (
-      query: string,
-      options?: { category?: string; displayResults?: boolean },
-    ) => Promise<{
-      text: string;
-      results: Array<{ title: string; url: string; snippet: string }>;
-    }>;
   },
 ) => {
   const coordinator = createOrchestratorCoordinator(context);
@@ -120,7 +113,6 @@ export const createOrchestratorController = (
       ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
       replayTurn: args.replayTurn ?? null,
       createRuntimeCallbacks: args.createRunCallbacks,
-      webSearch: deps.webSearch,
       finishInterruptedRun,
       cleanupRun,
       onPrepared: (prepared) => {
@@ -527,7 +519,6 @@ export const createOrchestratorController = (
             onInterrupted: prepared.replayInterruptedTurn,
           },
         ),
-      webSearch: deps.webSearch,
       finishInterruptedRun,
       cleanupRun,
       onFatalError: createAutomationFatalErrorHandler(resolveResult),

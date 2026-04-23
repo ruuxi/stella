@@ -262,13 +262,6 @@ export const createAgentOrchestration = (
       callbackRunId?: string;
       responseTarget?: import("../../protocol/index.js").RuntimeAgentEventPayload["responseTarget"];
     }) => Promise<void>;
-    webSearch: (
-      query: string,
-      options?: { category?: string; displayResults?: boolean },
-    ) => Promise<{
-      text: string;
-      results: Array<{ title: string; url: string; snippet: string }>;
-    }>;
   },
 ) => {
   context.state.localAgentManager = new LocalAgentManager({
@@ -455,7 +448,6 @@ export const createAgentOrchestration = (
                 onEnd: (event) => runnerCallbacks.onEnd(event),
               }
             : undefined,
-          webSearch: deps.webSearch,
           hookEmitter: context.hookEmitter,
         });
         subagentSucceeded = !result.error;

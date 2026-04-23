@@ -10,7 +10,7 @@ import {
   rawMemoriesPath,
 } from "../memory/dream-storage.js";
 import type { ThreadSummariesStore } from "../memory/thread-summaries-store.js";
-import { localNoResponse, localWebFetch } from "./local-tool-overrides.js";
+import { localNoResponse } from "./local-tool-overrides.js";
 
 export type LocalToolStore = {
   memoryStore: MemoryStore;
@@ -110,10 +110,6 @@ const isMemoryAction = (
 
 export type LocalToolDeps = {
   conversationId: string;
-  webSearch?: (
-    query: string,
-    options?: { category?: string },
-  ) => Promise<{ text: string }>;
   store?: LocalToolStore | null;
   dream?: LocalDreamConfig;
   signal?: AbortSignal;
@@ -132,25 +128,6 @@ export async function dispatchLocalTool(
   args: Record<string, unknown>,
   deps: LocalToolDeps,
 ): Promise<DispatchResult> {
-  if (toolName === TOOL_IDS.WEB_SEARCH) {
-    if (!deps.webSearch) {
-      return { handled: true, text: "WebSearch is not available." };
-    }
-    const query = typeof args.query === "string" ? args.query : "";
-    const category =
-      typeof args.category === "string" ? args.category : undefined;
-    const result = await deps.webSearch(query, { category });
-    return { handled: true, text: result.text || "No results found." };
-  }
-
-  if (toolName === TOOL_IDS.WEB_FETCH) {
-    const url = typeof args.url === "string" ? args.url : "";
-    const prompt =
-      typeof args.prompt === "string" ? args.prompt : undefined;
-    const text = await localWebFetch({ url, prompt });
-    return { handled: true, text };
-  }
-
   if (toolName === TOOL_IDS.NO_RESPONSE) {
     const text = await localNoResponse();
     return { handled: true, text };

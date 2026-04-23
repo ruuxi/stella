@@ -25,7 +25,6 @@ type SessionOptions = Pick<
   | "stellaRoot"
   | "store"
   | "toolExecutor"
-  | "webSearch"
   | "hookEmitter"
   | "resolvedLlm"
   | "responseTarget"
@@ -76,7 +75,6 @@ export const createRuntimeExecutionSession = (
     toolCatalog: opts.toolCatalog,
     store: opts.store,
     toolExecutor: opts.toolExecutor,
-    webSearch: opts.webSearch,
     hookEmitter: opts.hookEmitter,
   });
 

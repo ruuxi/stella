@@ -117,6 +117,7 @@ export const createStellaHostRunner = (
 ): RunnerPublicApi => {
   const context = createRunnerContext(options);
   const convexSession = createConvexSession(context);
+  context.state.webSearch = convexSession.webSearch;
 
   const storeOperations = createStoreOperations(context, {
     ensureStoreClient: convexSession.ensureStoreClient,
@@ -126,12 +127,10 @@ export const createStellaHostRunner = (
     resolveAgent: (agentType) => resolveAgent(context, agentType),
     getConfiguredModel: (agentType, agent) =>
       getConfiguredModel(context, agentType, agent as never),
-    webSearch: convexSession.webSearch,
   });
   const taskOrchestration = createAgentOrchestration(context, {
     buildAgentContext: (args) => buildAgentContext(context, args),
     sendMessage: orchestratorController.sendMessage,
-    webSearch: convexSession.webSearch,
   });
 
   const runtimeInitialization = createRuntimeInitialization(context, {

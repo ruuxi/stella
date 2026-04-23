@@ -114,17 +114,6 @@ export type StellaHostRunnerOptions = {
   displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
   /**
-   * Optional handler that powers Stella's search-backed web tools (`web` and
-   * the legacy `WebSearch` alias). Wire this when an Exa client is configured.
-   */
-  webSearch?: (
-    query: string,
-    options?: { category?: string },
-  ) => Promise<{
-    text: string;
-    results?: Array<{ title: string; url: string; snippet: string }>;
-  }>;
-  /**
    * Optional MemoryStore wired to the orchestrator's memory surface.
    * Defaults to `runtimeStore.memoryStore` when not provided.
    */
@@ -259,6 +248,21 @@ export type RunnerState = {
   googleWorkspaceCallTool: ((name: string, args: Record<string, unknown>) => Promise<ToolResult>) | null;
   /** Cached Google Workspace auth state. null = unknown, true/false = last observed state. */
   googleWorkspaceAuthenticated: boolean | null;
+  /**
+   * Late-bound web search handler. Wired by `createStellaHostRunner` after the
+   * Convex session is created so the toolHost (built earlier in startup) can
+   * reach Exa via the same convex-session call path that the rest of the
+   * runtime uses. Stored on state so the toolHost can read it lazily.
+   */
+  webSearch:
+    | ((
+        query: string,
+        options?: { category?: string; displayResults?: boolean },
+      ) => Promise<{
+        text: string;
+        results: Array<{ title: string; url: string; snippet: string }>;
+      }>)
+    | null;
 };
 
 export type RunnerContext = {

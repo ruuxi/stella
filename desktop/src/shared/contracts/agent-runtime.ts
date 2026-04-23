@@ -352,8 +352,6 @@ export type RuntimeRunEventType =
 
 export const TOOL_IDS = {
   DISPLAY: "Display",
-  WEB_SEARCH: "WebSearch",
-  WEB_FETCH: "WebFetch",
   NO_RESPONSE: "NoResponse",
   MEMORY: "Memory",
   DREAM: "Dream",

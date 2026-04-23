@@ -192,7 +192,6 @@ const runClaudeHostedTurn = async (args: {
         allowedToolNames: args.opts.agentContext.toolsAllowlist,
         store: args.opts.store,
         toolExecutor: args.opts.toolExecutor,
-        webSearch: args.opts.webSearch,
         hookEmitter: args.opts.hookEmitter,
         signal,
       });
