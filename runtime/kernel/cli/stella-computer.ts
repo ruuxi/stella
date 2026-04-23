@@ -69,6 +69,8 @@ type SnapshotDocument = {
   screenshotPath?: string | null;
   screenshot?: Screenshot | null;
   appInstructions?: string | null;
+  selectedText?: string | null;
+  focusedSummary?: string | null;
   nodes: SnapshotNode[];
   capturedAt?: string | null;
   maxDepth?: number | null;
@@ -95,6 +97,7 @@ type ListedAppPayload = {
   bundleId?: string | null;
   pid: number;
   activationPolicy: string;
+  isRunning?: boolean | null;
   isActive: boolean;
   // Spotlight-tracked usage data populated by the desktop_automation
   // daemon. Either or both can be null when the bundle isn't indexed
@@ -201,15 +204,15 @@ Usage:
   stella-computer list-apps
   stella-computer [--session ID] snapshot (--app NAME|--bundle-id ID|--pid PID) [--all-windows] [--screenshot [PATH]|--no-screenshot] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
   stella-computer [--session ID] get-state (--app NAME|--bundle-id ID|--pid PID) [--all-windows] [--screenshot [PATH]|--no-screenshot] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
-  stella-computer [--session ID] click <element> [--coordinate-fallback] [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] click <element> [--mouse-button left|right|middle] [--click-count N] [--coordinate-fallback] [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] fill <element> <text> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] focus <element> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] secondary-action <element> <action> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] scroll <element> <up|down|left|right> [--pages N] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] drag <from_x> <from_y> <to_x> <to_y> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] drag-element <source-element> (<dest-element> | <to_x> <to_y> | --to-ref REF | --to-x N --to-y N) [--type file|url|text] [--operation copy|link|move|every] [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
-  stella-computer [--session ID] click-point <x> <y> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
-  stella-computer [--session ID] click-screenshot <x_px> <y_px> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] click-point <x> <y> [--mouse-button left|right|middle] [--click-count N] [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] click-screenshot <x_px> <y_px> [--mouse-button left|right|middle] [--click-count N] [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] drag-screenshot <from_x_px> <from_y_px> <to_x_px> <to_y_px> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] type <text> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] press <key> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
@@ -1045,9 +1048,15 @@ const formatAppStateBlock = (snapshot: SnapshotDocument) => {
   for (const node of snapshot.nodes) {
     process.stdout.write(`${formatNodeLinesCodex(node).join("\n")}\n`);
   }
-  const focused = findFocusedElement(snapshot.nodes);
-  if (focused) {
-    process.stdout.write(`\nThe focused UI element is ${focused.index} ${focused.role}.\n`);
+  if (snapshot.selectedText) {
+    process.stdout.write(`\nSelected text: [${snapshot.selectedText}]\n`);
+  } else if (snapshot.focusedSummary) {
+    process.stdout.write(`\nThe focused UI element is ${snapshot.focusedSummary}.\n`);
+  } else {
+    const focused = findFocusedElement(snapshot.nodes);
+    if (focused) {
+      process.stdout.write(`\nThe focused UI element is ${focused.index} ${focused.role}.\n`);
+    }
   }
   const bundleNote = formatBundleSpecificStateNote(snapshot);
   if (bundleNote) {
@@ -1101,7 +1110,10 @@ const formatListApps = (payload: ListAppsPayload) => {
   });
 
   for (const app of visible) {
-    const flags: string[] = ["running"];
+    const flags: string[] = [];
+    if (app.isRunning !== false) {
+      flags.push("running");
+    }
     if (app.isActive) {
       flags.push("active");
     }
