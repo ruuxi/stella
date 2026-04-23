@@ -169,15 +169,6 @@ export type BaseRunOptions = {
   abortSignal?: AbortSignal;
   stellaRoot?: string;
   selfModMonitor?: SelfModMonitor | null;
-  webSearch?: (
-    query: string,
-    options?: {
-      category?: string;
-    },
-  ) => Promise<{
-    text: string;
-    results: Array<{ title: string; url: string; snippet: string }>;
-  }>;
   hookEmitter?: HookEmitter;
   displayHtml?: (html: string) => void;
   responseTarget?: RuntimeAgentEventPayload["responseTarget"];

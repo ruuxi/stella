@@ -219,15 +219,6 @@ type RuntimeToolExecutionArgs = RuntimeToolContextArgs & {
     signal?: AbortSignal,
     onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
-  webSearch?: (
-    query: string,
-    options?: {
-      category?: string;
-    },
-  ) => Promise<{
-    text: string;
-    results: Array<{ title: string; url: string; snippet: string }>;
-  }>;
   hookEmitter?: HookEmitter;
   signal?: AbortSignal;
   onUpdate?: ToolUpdateCallback;
@@ -239,7 +230,6 @@ export const executeRuntimeToolCall = async (
   if (args.toolName === TOOL_IDS.NO_RESPONSE) {
     const localResult = await dispatchLocalTool(args.toolName, args.args, {
       conversationId: args.conversationId,
-      webSearch: args.webSearch,
       store: args.store,
       ...(args.signal ? { signal: args.signal } : {}),
     });
@@ -316,15 +306,6 @@ export const createPiTools = (opts: {
     signal?: AbortSignal,
     onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
-  webSearch?: (
-    query: string,
-    options?: {
-      category?: string;
-    },
-  ) => Promise<{
-    text: string;
-    results: Array<{ title: string; url: string; snippet: string }>;
-  }>;
   hookEmitter?: HookEmitter;
 }): AgentTool[] => {
   const requested = getRequestedRuntimeToolNames(opts.toolsAllowlist);
@@ -364,7 +345,6 @@ export const createPiTools = (opts: {
           allowedToolNames: requested,
           store: opts.store,
           toolExecutor: opts.toolExecutor,
-          webSearch: opts.webSearch,
           hookEmitter: opts.hookEmitter,
           signal,
           onUpdate: onUpdate

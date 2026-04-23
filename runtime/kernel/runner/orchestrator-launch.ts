@@ -19,14 +19,6 @@ type BuildAgentContext = (args: {
   threadId?: string;
 }) => Promise<LocalAgentContext>;
 
-type WebSearch = (
-  query: string,
-  options?: { category?: string; displayResults?: boolean },
-) => Promise<{
-  text: string;
-  results: Array<{ title: string; url: string; snippet: string }>;
-}>;
-
 export type PreparedOrchestratorRun = {
   runId: string;
   conversationId: string;
@@ -133,7 +125,6 @@ export const launchPreparedOrchestratorRun = (args: {
   onExecutionSessionCreated?: NonNullable<
     Parameters<typeof runOrchestratorTurn>[0]["onExecutionSessionCreated"]
   >;
-  webSearch: WebSearch;
   finishInterruptedRun: (args: {
     runId: string;
     onInterrupted?: () => void;
@@ -177,7 +168,6 @@ export const launchPreparedOrchestratorRun = (args: {
     abortSignal: prepared.abortController.signal,
     stellaRoot: context.stellaRoot,
     selfModMonitor: context.selfModMonitor,
-    webSearch: args.webSearch,
     hookEmitter: context.hookEmitter,
     displayHtml: context.displayHtml,
     onExecutionSessionCreated: args.onExecutionSessionCreated,
@@ -218,7 +208,6 @@ export const startPreparedOrchestratorRun = async (args: {
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
   userMessageId: string;
-  webSearch: WebSearch;
   finishInterruptedRun: (args: {
     runId: string;
     onInterrupted?: () => void;
@@ -258,7 +247,6 @@ export const startPreparedOrchestratorRun = async (args: {
       prepared,
     }),
     onExecutionSessionCreated: args.onExecutionSessionCreated,
-    webSearch: args.webSearch,
     finishInterruptedRun: args.finishInterruptedRun,
     cleanupRun: args.cleanupRun,
     onFatalError: args.onFatalError,

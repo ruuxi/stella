@@ -5,7 +5,6 @@ import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction, requireUserId } from "../auth";
 import {
   AGENT_IDS,
-  BACKEND_TOOL_IDS,
   LOCAL_RUNTIME_BACKEND_TOOL_NAMES,
 } from "../lib/agent_constants";
 import {
@@ -132,37 +131,3 @@ export const webSearch = action({
     });
   },
 });
-
-export const webFetch = action({
-  args: {
-    url: v.string(),
-    prompt: v.optional(v.string()),
-    conversationId: v.optional(v.id("conversations")),
-    agentType: v.optional(v.string()),
-  },
-  returns: v.string(),
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    await enforceActionRateLimit(
-      ctx,
-      "agent_local_runtime_web_fetch",
-      ownerId,
-      RATE_EXPENSIVE,
-      "Too many web fetches. Please wait a moment and try again.",
-    );
-    if (args.conversationId) {
-      await requireConversationOwnerAction(ctx, args.conversationId);
-    }
-    return await executeBackendTool(
-      ctx,
-      {
-        ownerId,
-        conversationId: args.conversationId,
-        agentType: args.agentType,
-      },
-      BACKEND_TOOL_IDS.WEB_FETCH,
-      { url: args.url, prompt: args.prompt },
-    );
-  },
-});
-
