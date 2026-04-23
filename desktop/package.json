@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "reset": "node scripts/reset-dev.mjs",
+    "reset:all": "node scripts/reset-dev.mjs --with-permissions",
     "reset:sql": "node scripts/reset-sql.mjs",
     "build": "bunx --package typescript@5.9.3 tsc --build && vite build",
     "format": "bunx prettier@3.6.2 --write .",
