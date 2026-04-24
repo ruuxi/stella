@@ -56,6 +56,7 @@ export class MiniWindowController {
           minHeight: 300,
           maxWidth: MINI_SHELL_MAX_SIZE.width,
           maxHeight: MINI_SHELL_MAX_SIZE.height,
+          ...(isMac ? { type: 'panel' as const } : {}),
           show: false,
           frame: false,
           fullscreenable: false,

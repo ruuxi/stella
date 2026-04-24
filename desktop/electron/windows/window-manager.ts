@@ -561,13 +561,17 @@ export class WindowManager {
   private focusAndRaise(window: BrowserWindow, mode: ShellWindowMode) {
     if (mode === 'mini') {
       if (process.platform === 'darwin') {
-        if (app.isHidden()) {
-          app.show()
-        }
-        app.focus({ steal: true })
-        window.show()
-        window.moveTop()
+        window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
         window.setAlwaysOnTop(true, 'screen-saver')
+        if (!window.isVisible()) {
+          window.showInactive()
+        } else {
+          window.show()
+        }
+        window.moveTop()
+        window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+        window.setAlwaysOnTop(true, 'screen-saver')
+        app.focus({ steal: true })
         window.focus()
         return
       }
@@ -661,5 +665,3 @@ export class WindowManager {
     this.showWindow(this.lastActiveWindowMode)
   }
 }
-
-
