@@ -20,7 +20,7 @@ const ESTIMATED_IMAGE_TOKENS = 1_200;
 
 type ThreadMessage = {
   timestamp: number;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "runtimeInternal";
   content: string;
   toolCallId?: string;
 };
@@ -66,6 +66,9 @@ const stringifyMessage = (message: ThreadMessage): string => {
   }
   if (message.role === "user") {
     return `[User] ${ellipsize(content)}`;
+  }
+  if (message.role === "runtimeInternal") {
+    return `[Runtime] ${ellipsize(content)}`;
   }
   return `[Assistant] ${ellipsize(content)}`;
 };
@@ -391,6 +394,9 @@ export const splitThreadMessagesForCompaction = (
   };
 };
 
+export const resolveOrchestratorThreadKey = (conversationId: string): string =>
+  conversationId;
+
 export const buildRuntimeThreadKey = (args: {
   conversationId: string;
   agentType: string;
@@ -402,7 +408,7 @@ export const buildRuntimeThreadKey = (args: {
     return existing;
   }
   if (args.agentType === "orchestrator") {
-    return args.conversationId;
+    return resolveOrchestratorThreadKey(args.conversationId);
   }
   const threadKey = `run:${args.runId}`;
   return `${args.conversationId}::subagent::${args.agentType}::${threadKey}`;

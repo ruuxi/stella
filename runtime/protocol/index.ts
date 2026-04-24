@@ -341,7 +341,6 @@ export type RuntimePromptMessage = {
   messageType?: "message" | "user";
   customType?: string;
   display?: boolean;
-  details?: unknown;
 };
 
 export type RuntimeChatPayload = {

@@ -13,7 +13,10 @@ import type {
 } from "../tools/types.js";
 import { truncate } from "../tools/utils.js";
 import type { PersistedAgentRecord } from "../storage/runtime-store.js";
-import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
+import type {
+  PersistedRuntimeThreadPayload,
+  RuntimeThreadMessage,
+} from "../storage/shared.js";
 import type { RuntimeThreadRecord } from "../runtime-threads.js";
 
 export type LocalAgentContext = {
@@ -39,6 +42,7 @@ export type LocalAgentContext = {
     content: string;
     toolCallId?: string;
     payload?: PersistedRuntimeThreadPayload;
+    customMessage?: RuntimeThreadMessage["customMessage"];
   }>;
   activeThreadId?: string;
   agentEngine?: "default" | "claude_code_local";

@@ -238,13 +238,14 @@ export const createOrchestratorController = (
   };
 
   const buildInjectedInternalMessage = (
-    text: string,
+    input: RuntimeSendMessageInput,
     timestamp: number,
   ): AgentMessage =>
     createRuntimePromptAgentMessage({
-      text,
+      text: input.text.trim(),
       messageType: "message",
-      customType: "runtime.send_message",
+      customType: input.customType ?? "runtime.send_message",
+      ...(input.display !== undefined ? { display: input.display } : {}),
     }, timestamp);
 
   const persistInjectedUserMessage = (
@@ -307,11 +308,12 @@ export const createOrchestratorController = (
     );
     if (liveSession) {
       const timestamp = Date.now();
-      const message = buildInjectedInternalMessage(text, timestamp);
+      const message = buildInjectedInternalMessage(input, timestamp);
       liveSession.queueMessage(message, delivery);
       return;
     }
 
+    const promptText = input.wakePrompt?.trim() || text;
     await executeOrQueueSystemOrchestratorTurn({
       hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
       queueOrchestratorTurn,
@@ -322,10 +324,10 @@ export const createOrchestratorController = (
             conversationId: input.conversationId,
             userPrompt: "",
             promptMessages: [{
-              text,
-              uiVisibility: input.uiVisibility ?? UI_VISIBILITY_HIDDEN,
+              text: promptText,
               messageType: "message",
-              customType: "runtime.send_message",
+              customType: input.customType ?? "runtime.send_message",
+              ...(input.display !== undefined ? { display: input.display } : {}),
             }],
             agentType: input.agentType ?? AGENT_IDS.ORCHESTRATOR,
             userMessageId: `message:${crypto.randomUUID()}`,

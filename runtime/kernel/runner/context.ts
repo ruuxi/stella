@@ -38,7 +38,10 @@ import {
   getAgentEnginePreference,
   isLocalCliAgentId,
 } from "../../../desktop/src/shared/contracts/agent-runtime.js";
-import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
+import type {
+  PersistedRuntimeThreadPayload,
+  RuntimeThreadMessage,
+} from "../storage/shared.js";
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import {
   defaultPromptForAgentType,
@@ -58,6 +61,7 @@ type ThreadHistoryEntry = {
   content: string;
   toolCallId?: string;
   payload?: PersistedRuntimeThreadPayload;
+  customMessage?: RuntimeThreadMessage["customMessage"];
 };
 
 const getLocalHistoryBudget = (contextWindow: number): number =>
@@ -133,17 +137,6 @@ const buildStaleUserReminder = (
     getLocalEventTimezone(previousUserEvent);
   return formatDateTimeReminder(latestUserEvent.timestamp, timezone);
 };
-
-export const shouldIncludeInOrchestratorLocalHistory = (
-  event: LocalContextEvent,
-): boolean =>
-  // Task lifecycle updates are delivered back to the orchestrator as hidden
-  // follow-up prompts. Keeping them in local-history context as well doubles
-  // the same signal.
-  event.type !== "agent-started" &&
-  event.type !== "agent-completed" &&
-  event.type !== "agent-failed" &&
-  event.type !== "agent-canceled";
 
 const trimDuplicatedTransitionUserEvent = (
   events: LocalContextEvent[],
@@ -516,13 +509,10 @@ export const buildAgentContext = async (
     const localEvents = context
       .listLocalChatEvents(args.conversationId, 800)
       .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
-    const localHistoryEvents = localEvents.filter(
-      shouldIncludeInOrchestratorLocalHistory,
-    );
     staleUserReminderText = buildStaleUserReminder(localEvents);
     threadHistory = buildOrchestratorThreadHistory({
       storedThreadMessages,
-      localEvents: localHistoryEvents,
+      localEvents,
       contextWindow,
     });
   } else {

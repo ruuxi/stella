@@ -4,7 +4,9 @@ import { resolveLlmRoute } from "../model-routing.js";
 import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
 import { createAgentLifecycleResponseTarget } from "../agent-runtime/response-target.js";
+import { persistThreadCustomMessage } from "../agent-runtime/thread-memory.js";
 import { runExplore } from "../agent-runtime/explore.js";
+import { resolveOrchestratorThreadKey } from "../thread-runtime.js";
 import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
 import { LocalAgentManager } from "../agents/local-agent-manager.js";
 import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
@@ -24,6 +26,9 @@ import type {
 import { buildAgentEventPrompt, createSelfModHmrState } from "./shared.js";
 import type { SelfModHmrState } from "../../contracts/index.js";
 import { shouldRunSelfModHmrTransition } from "../self-mod/flush-mode.js";
+
+const TASK_LIFECYCLE_WAKE_PROMPT =
+  "<system_reminder>Continue from the latest task lifecycle update.</system_reminder>";
 
 const WINDOWS_PATH_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\)/;
 const SHELL_PATH_SOURCE = String.raw`(?:[A-Za-z]:[\\/]|\\\\|\/|\.\.?[\\/])`;
@@ -261,6 +266,9 @@ export const createAgentOrchestration = (
       deliverAs?: "steer" | "followUp";
       callbackRunId?: string;
       responseTarget?: import("../../protocol/index.js").RuntimeAgentEventPayload["responseTarget"];
+      customType?: string;
+      display?: boolean;
+      wakePrompt?: string;
     }) => Promise<void>;
   },
 ) => {
@@ -290,6 +298,15 @@ export const createAgentOrchestration = (
       if (!userPrompt) {
         return;
       }
+      // The follow-up below is in-memory delivery for the active orchestrator
+      // session; this row is the durable record read by the next history rebuild.
+      persistThreadCustomMessage(context.runtimeStore, {
+        threadKey: resolveOrchestratorThreadKey(event.conversationId),
+        customType: "runtime.task_lifecycle",
+        content: [{ type: "text", text: userPrompt }],
+        display: false,
+        timestamp: Date.now(),
+      });
       void deps.sendMessage({
         conversationId: event.conversationId,
         text: userPrompt,
@@ -297,6 +314,9 @@ export const createAgentOrchestration = (
         agentType: AGENT_IDS.ORCHESTRATOR,
         deliverAs: "followUp",
         callbackRunId: event.rootRunId,
+        customType: "runtime.task_lifecycle",
+        display: false,
+        wakePrompt: TASK_LIFECYCLE_WAKE_PROMPT,
         responseTarget: createAgentLifecycleResponseTarget({
           agentId: event.agentId,
           eventType: event.type,

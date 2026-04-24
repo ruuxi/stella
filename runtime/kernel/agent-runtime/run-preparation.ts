@@ -63,7 +63,6 @@ export const createRuntimePromptAgentMessage = (
       timestamp,
       ...(message.customType ? { customType: message.customType } : {}),
       ...(message.display !== undefined ? { display: message.display } : {}),
-      ...(message.details !== undefined ? { details: message.details } : {}),
     };
   }
   return {

@@ -10,7 +10,10 @@ import type {
   UserMessage,
 } from "../../ai/types.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
-import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
+import type {
+  PersistedRuntimeThreadPayload,
+  RuntimeThreadCustomMessageEntry,
+} from "../storage/shared.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RuntimePromptMessage } from "../../protocol/index.js";
@@ -21,6 +24,7 @@ import {
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { wrapSystemReminder } from "../message-timestamp.js";
 import { now } from "./shared.js";
+import type { AgentMessage } from "../agent-core/types.js";
 
 const logger = createRuntimeLogger("agent-runtime.thread-memory");
 const LIFE_REGISTRY_DISPLAY_PATH = "state/registry.md";
@@ -112,12 +116,21 @@ export const stripStaleImageBlocks = <T extends { role: string }>(
 
 export const buildHistorySource = (
   context: LocalAgentContext,
-): Message[] => {
+): AgentMessage[] => {
   const messages =
     context.threadHistory
-      ?.map((entry) => {
+      ?.map((entry): AgentMessage | null => {
         if (entry.payload) {
           return toRuntimeMessage(entry.payload);
+        }
+        if (entry.role === "runtimeInternal" && entry.customMessage) {
+          return {
+            role: "runtimeInternal",
+            content: entry.customMessage.content,
+            timestamp: entry.timestamp ?? now(),
+            customType: entry.customMessage.customType,
+            display: entry.customMessage.display,
+          } satisfies AgentMessage;
         }
         if (entry.role === "user" && typeof entry.content === "string") {
           return {
@@ -133,9 +146,18 @@ export const buildHistorySource = (
             { type: "text", text: trimmed } satisfies TextContent,
           ]);
         }
+        if (entry.role === "runtimeInternal" && typeof entry.content === "string") {
+          const trimmed = entry.content.trim();
+          if (!trimmed) return null;
+          return {
+            role: "runtimeInternal",
+            content: [{ type: "text", text: trimmed }],
+            timestamp: now(),
+          } satisfies AgentMessage;
+        }
         return null;
       })
-      .filter((entry): entry is Message => entry !== null) ?? [];
+      .filter((entry): entry is AgentMessage => entry !== null) ?? [];
   return stripStaleImageBlocks(messages);
 };
 
@@ -261,6 +283,25 @@ export const persistThreadPayloadMessage = (
     content: preview,
     ...(toolCallId ? { toolCallId } : {}),
     payload: args.payload,
+  });
+};
+
+export const persistThreadCustomMessage = (
+  store: RuntimeStore,
+  args: {
+    threadKey: string;
+    customType: string;
+    content: RuntimeThreadCustomMessageEntry["content"];
+    display?: boolean;
+    timestamp?: number;
+  },
+): void => {
+  store.appendThreadCustomMessage({
+    threadKey: args.threadKey,
+    timestamp: args.timestamp ?? now(),
+    customType: args.customType,
+    content: args.content,
+    display: args.display === true,
   });
 };
 

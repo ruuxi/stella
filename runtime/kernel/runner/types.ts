@@ -145,6 +145,9 @@ export type RuntimeSendMessageInput = {
   deliverAs?: "steer" | "followUp";
   callbackRunId?: string;
   responseTarget?: RuntimeAgentEventPayload["responseTarget"];
+  customType?: string;
+  display?: boolean;
+  wakePrompt?: string;
 };
 
 export type RuntimeSendUserMessageInput = RuntimeSendMessageInput & {

@@ -16,6 +16,7 @@ import {
   type RuntimeRunEvent,
   RUNTIME_THREAD_SESSION_VERSION,
   type RuntimeThreadCompactionEntry,
+  type RuntimeThreadCustomMessageEntry,
   type RuntimeThreadMessageEntry,
   type RuntimeThreadSessionEntry,
   type RuntimeThreadMessage,
@@ -24,6 +25,7 @@ import {
   asTrimmedString,
   eventTextFromPayload,
   generateLocalId,
+  isUserContent,
   parseJsonRecord,
   parseRuntimeThreadPayload,
   toJsonString,
@@ -118,7 +120,7 @@ const formatThreadCheckpointMessage = (summary: string): string =>
   ].join("\n");
 
 const previewFromTextAndImages = (
-  content: Extract<PersistedRuntimeThreadPayload, { role: "user" | "toolResult" }>["content"],
+  content: Extract<PersistedRuntimeThreadPayload, { role: "user" | "toolResult" }>["content"] | RuntimeThreadCustomMessageEntry["content"],
 ): string => {
   if (typeof content === "string") {
     return content;
@@ -230,6 +232,13 @@ const THREAD_ROW_PREVIEW_CHARS = 500;
 
 const payloadByteLength = (payload: PersistedRuntimeThreadPayload): number =>
   rowSizeTextEncoder.encode(JSON.stringify(payload)).byteLength;
+
+const customMessageByteLength = (
+  message: Pick<
+    RuntimeThreadCustomMessageEntry,
+    "customType" | "content" | "display"
+  >,
+): number => rowSizeTextEncoder.encode(JSON.stringify(message)).byteLength;
 
 const truncatePreview = (
   value: string,
@@ -362,6 +371,73 @@ const enforceThreadPayloadRowSizeLimit = (
   };
 };
 
+const enforceCustomMessageRowSizeLimit = (
+  message: Pick<
+    RuntimeThreadCustomMessageEntry,
+    "customType" | "content" | "display"
+  >,
+): Pick<
+  RuntimeThreadCustomMessageEntry,
+  "customType" | "content" | "display"
+> => {
+  if (customMessageByteLength(message) <= THREAD_ROW_MAX_BYTES) {
+    return message;
+  }
+
+  const content =
+    typeof message.content === "string"
+      ? truncateTextBlockForStorage(message.content, "Custom message")
+      : message.content.map((block) => {
+          if (block.type === "text" && block.text.length > THREAD_ROW_MAX_TEXT_CHARS) {
+            return {
+              ...block,
+              text: truncateTextBlockForStorage(block.text, "Custom message"),
+            };
+          }
+          return block;
+        });
+  const compacted = {
+    ...message,
+    content,
+  };
+  if (customMessageByteLength(compacted) <= THREAD_ROW_MAX_BYTES) {
+    return compacted;
+  }
+
+  const withoutImageData = {
+    ...compacted,
+    content: typeof compacted.content === "string"
+      ? compacted.content
+      : compacted.content.map((block) => {
+          if (block.type !== "image") {
+            return block;
+          }
+          const sizeKb = Math.round((block.data?.length ?? 0) * 0.75 / 1024);
+          return {
+            type: "text" as const,
+            text: `[image content block stripped for storage: mime=${block.mimeType ?? "image/png"} approx_kb=${sizeKb}]`,
+          };
+        }),
+  };
+  if (customMessageByteLength(withoutImageData) <= THREAD_ROW_MAX_BYTES) {
+    return withoutImageData;
+  }
+
+  return {
+    ...message,
+    content:
+      typeof message.content === "string"
+        ? truncateTextBlockForStorage(message.content, "Custom message")
+        : [{
+            type: "text",
+            text: truncateTextBlockForStorage(
+              JSON.stringify(message.content),
+              "Custom message",
+            ),
+          }],
+  };
+};
+
 const parseThreadSessionEntry = (
   row: ThreadSessionEntryRow,
 ): RuntimeThreadSessionEntry | null => {
@@ -420,6 +496,24 @@ const parseThreadSessionEntry = (
         ...(data?.fromHook === true ? { fromHook: true } : {}),
       } satisfies RuntimeThreadCompactionEntry;
     }
+    case "custom_message": {
+      const customType =
+        typeof data?.customType === "string" ? data.customType.trim() : "";
+      const content = (data as { content?: unknown } | null)?.content;
+      const display = data?.display === true;
+      if (!customType || !isUserContent(content)) {
+        return null;
+      }
+      return {
+        type: "custom_message",
+        id: row.entryId,
+        parentId: row.parentEntryId,
+        timestamp: row.timestampIso,
+        customType,
+        content,
+        display,
+      } satisfies RuntimeThreadCustomMessageEntry;
+    }
     default:
       return null;
   }
@@ -442,13 +536,18 @@ const toThreadMessageRecord = (
       payload,
     };
   }
-  if (entry.type === "compaction") {
+  if (entry.type === "custom_message") {
     return {
       entryId: entry.id,
       threadKey: "",
       timestamp: Date.parse(entry.timestamp) || Date.now(),
-      role: "assistant",
-      content: formatThreadCheckpointMessage(entry.summary),
+      role: "runtimeInternal",
+      content: previewFromTextAndImages(entry.content),
+      customMessage: {
+        customType: entry.customType,
+        content: entry.content,
+        display: entry.display,
+      },
     };
   }
   return null;
@@ -486,7 +585,6 @@ const buildRawThreadMessages = (
   path: RuntimeThreadSessionEntry[],
 ): Array<RuntimeThreadMessage & { entryId: string }> =>
   path
-    .filter((entry): entry is RuntimeThreadMessageEntry => entry.type === "message")
     .map((entry) => toThreadMessageRecord(entry))
     .filter(
       (message): message is RuntimeThreadMessage & { entryId: string } =>
@@ -1245,6 +1343,49 @@ export class SessionStore {
     });
   }
 
+  appendThreadCustomMessage(message: {
+    threadKey: string;
+    timestamp: number;
+    customType: string;
+    content: RuntimeThreadCustomMessageEntry["content"];
+    display: boolean;
+  }): void {
+    const threadKey = normalizeRuntimeThreadId(message.threadKey);
+    if (!threadKey) {
+      throw new Error("threadKey is required.");
+    }
+    const customType = message.customType.trim();
+    if (!customType) {
+      throw new Error("customType is required.");
+    }
+    const boundedMessage = enforceCustomMessageRowSizeLimit({
+      customType,
+      content: message.content,
+      display: message.display,
+    });
+    const conversationId = this.getThreadConversationId(threadKey);
+    this.withTransaction(() => {
+      this.upsertSession(conversationId, message.timestamp);
+      const threadSession = this.ensureThreadSession(
+        threadKey,
+        conversationId,
+        message.timestamp,
+      );
+      this.appendThreadSessionEntry({
+        threadKey,
+        sessionId: threadSession.sessionId,
+        entryType: "custom_message",
+        timestamp: message.timestamp,
+        data: {
+          customType: boundedMessage.customType,
+          content: boundedMessage.content,
+          display: boundedMessage.display,
+        },
+      });
+      this.touchThread(threadKey);
+    });
+  }
+
   loadThreadMessages(
     threadKeyInput: string,
     limit?: number,
@@ -1255,6 +1396,7 @@ export class SessionStore {
     content: string;
     toolCallId?: string;
     payload?: RuntimeThreadMessage["payload"];
+    customMessage?: RuntimeThreadMessage["customMessage"];
   }> {
     const threadKey = normalizeRuntimeThreadId(threadKeyInput);
     if (!threadKey) {
@@ -1269,6 +1411,7 @@ export class SessionStore {
       content: message.content,
       ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
       ...(message.payload ? { payload: message.payload } : {}),
+      ...(message.customMessage ? { customMessage: message.customMessage } : {}),
     }));
   }
 
