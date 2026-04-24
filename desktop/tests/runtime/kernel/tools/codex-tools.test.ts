@@ -374,13 +374,13 @@ EOF`,
     expect((payload.original_token_count as number) >= 1).toBe(true);
   });
 
-  it("multi_tool_use.parallel rejects write_stdin (non-parallel-safe)", async () => {
+  it("multi_tool_use_parallel rejects write_stdin (non-parallel-safe)", async () => {
     const root = await createTempDir();
     const host = createToolHost({ stellaRoot: root });
 
     try {
       const result = await host.executeTool(
-        "multi_tool_use.parallel",
+        "multi_tool_use_parallel",
         {
           tool_uses: [
             {
@@ -399,27 +399,27 @@ EOF`,
           requestId: "r1",
           agentType: "general",
           stellaRoot: root,
-          allowedToolNames: ["write_stdin", "multi_tool_use.parallel"],
+          allowedToolNames: ["write_stdin", "multi_tool_use_parallel"],
         },
       );
 
       expect(result.error).toBeUndefined();
       const text = String(result.result ?? "");
       expect(text).toContain(
-        "write_stdin is not safe to run inside multi_tool_use.parallel",
+        "write_stdin is not safe to run inside multi_tool_use_parallel",
       );
     } finally {
       await host.shutdown();
     }
   });
 
-  it("multi_tool_use.parallel runs independent tool calls", async () => {
+  it("multi_tool_use_parallel runs independent tool calls", async () => {
     const root = await createTempDir();
     const host = createToolHost({ stellaRoot: root });
 
     try {
       const result = await host.executeTool(
-        "multi_tool_use.parallel",
+        "multi_tool_use_parallel",
         {
           tool_uses: [
             {
@@ -438,7 +438,7 @@ EOF`,
           requestId: "r1",
           agentType: "general",
           stellaRoot: root,
-          allowedToolNames: ["exec_command", "multi_tool_use.parallel"],
+          allowedToolNames: ["exec_command", "multi_tool_use_parallel"],
         },
       );
 

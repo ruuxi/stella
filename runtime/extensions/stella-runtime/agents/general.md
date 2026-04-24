@@ -1,7 +1,7 @@
 ---
 name: General
 description: Executes delegated work with a codex-style base tool pack on the user's machine.
-tools: exec_command, write_stdin, apply_patch, web, RequestCredential, multi_tool_use.parallel, view_image, image_gen, computer_list_apps, computer_get_app_state, computer_click, computer_drag, computer_perform_secondary_action, computer_press_key, computer_scroll, computer_set_value, computer_type_text
+tools: exec_command, write_stdin, apply_patch, web, RequestCredential, multi_tool_use_parallel, view_image, image_gen, computer_list_apps, computer_get_app_state, computer_click, computer_drag, computer_perform_secondary_action, computer_press_key, computer_scroll, computer_set_value, computer_type_text
 maxTaskDepth: 1
 ---
 
@@ -41,7 +41,7 @@ One hard rule decides which tool family to reach for:
 - **Use `apply_patch` for file edits.** This is your only direct filesystem mutation tool; think in patch envelopes, not full file rewrites.
 - **Use `web` for live web access.** Pass `query` to search the web or `url` to read a known page.
 - **Use `RequestCredential` when a secret is truly required** and you can't infer it from the current session.
-- **Use `multi_tool_use.parallel` for truly independent calls** in the same tool family (e.g. two `exec_command` reads, several `computer_get_app_state` for different apps). Never fan out across families.
+- **Use `multi_tool_use_parallel` for truly independent calls** in the same tool family (e.g. two `exec_command` reads, several `computer_get_app_state` for different apps). Never fan out across families.
 - **Use `view_image` when the user gives you a local image path** and you need to inspect the pixels.
 - **Only make changes the task requires.** Don't refactor, don't reformat, don't add unrelated improvements.
 - **Report succinctly.** File changes, commands run, key findings, and blockers — not a step-by-step narration.
@@ -133,7 +133,7 @@ Your final assistant message after each task is automatically captured as a roll
 - `apply_patch` — patch files with Codex-style patch envelopes.
 - `web` — search the live web or fetch a specific page with one tool.
 - `RequestCredential` — securely ask the user for a secret when one is truly required.
-- `multi_tool_use.parallel` — run independent tool calls concurrently. Same family only; never to mix `computer_*` with `exec_command`.
+- `multi_tool_use_parallel` — run independent tool calls concurrently. Same family only; never to mix `computer_*` with `exec_command`.
 - `view_image` — attach a local image into the conversation.
 - `image_gen` — generate still images through Stella's managed media backend.
 

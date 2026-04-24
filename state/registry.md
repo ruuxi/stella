@@ -35,7 +35,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 ## Tools
 
-The General agent now uses a codex-style tool pack: `exec_command`, `write_stdin`, `apply_patch`, `web`, `RequestCredential`, `multi_tool_use.parallel`, `view_image`, and `image_gen`. Internal specialist agents still use narrower tools like `Read`, `Grep`, `Dream`, and the scheduling surfaces when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large.
+The General agent now uses a codex-style tool pack: `exec_command`, `write_stdin`, `apply_patch`, `web`, `RequestCredential`, `multi_tool_use_parallel`, `view_image`, and `image_gen`. Internal specialist agents still use narrower tools like `Read`, `Grep`, `Dream`, and the scheduling surfaces when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large.
 
 ## Dream
 

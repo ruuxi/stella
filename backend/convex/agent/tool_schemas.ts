@@ -13,7 +13,7 @@ export const DEVICE_TOOL_NAMES = [
   "apply_patch",
   "web",
   "RequestCredential",
-  "multi_tool_use.parallel",
+  "multi_tool_use_parallel",
   "view_image",
   "image_gen",
 ] as const;
@@ -202,7 +202,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Apply a Codex-style patch envelope (`*** Begin Patch` ... `*** End Patch`) to one or more files.",
   web:
     "Unified web tool. Search the web with `query`, or fetch a specific page with `url`.",
-  "multi_tool_use.parallel":
+  "multi_tool_use_parallel":
     "Execute multiple independent tool calls concurrently. Use only when the calls do not depend on each other.",
   view_image:
     "Attach a local image file from disk so the model can inspect it visually.",
@@ -238,7 +238,7 @@ export const TOOL_SCHEMAS = {
   apply_patch: ApplyPatchSchema,
   web: WebSchema,
   RequestCredential: RequestCredentialSchema,
-  "multi_tool_use.parallel": MultiToolUseParallelSchema,
+  "multi_tool_use_parallel": MultiToolUseParallelSchema,
   view_image: ViewImageSchema,
   image_gen: ImageGenSchema,
   Read: ReadSchema,

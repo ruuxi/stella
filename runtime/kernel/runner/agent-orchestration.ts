@@ -151,7 +151,7 @@ export const resolveHmrToolTargetPath = (
   args: Record<string, unknown>,
   fallbackCwd?: string,
 ): string | null => {
-  if (toolName === "multi_tool_use.parallel") {
+  if (toolName === "multi_tool_use_parallel") {
     const requested = Array.isArray(args.tool_uses) ? args.tool_uses : [];
     for (const entry of requested) {
       if (!entry || typeof entry !== "object") continue;

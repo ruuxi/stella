@@ -52,7 +52,7 @@ export type BuildBuiltinToolsContext = ToolHostOptions & {
   /** Initialized state context for the durable spawn_agent / send_input / pause_agent tools. */
   stateContext: StateContext;
   /**
-   * Re-entrant tool dispatcher used by `multi_tool_use.parallel` to invoke
+   * Re-entrant tool dispatcher used by `multi_tool_use_parallel` to invoke
    * sibling tools. Provided by the host since the parallel tool needs a
    * reference to the same dispatcher it lives behind.
    */
