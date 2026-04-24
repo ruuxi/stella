@@ -10,10 +10,11 @@ import type {
 } from "openai/resources/chat/completions.js";
 import { AssistantMessageEventStream } from "./event_stream";
 import { parseStreamingJson } from "./json_parse";
-import { calculateCost, supportsXhigh } from "./model_utils";
+import { supportsXhigh } from "./model_utils";
 import { sanitizeSurrogates } from "./sanitize_unicode";
 import { buildBaseOptions, clampReasoning } from "./simple_options";
 import { transformMessages } from "./transform_messages";
+import { parseOpenAIChatUsage, type OpenAIChatUsagePayload } from "./usage";
 import type {
   Api,
   AssistantMessage,
@@ -202,7 +203,7 @@ export const streamOpenAICompletions: StreamFunction<
         output.responseId ||= chunk.id;
 
         if (chunk.usage) {
-          output.usage = parseChunkUsage(chunk.usage, model);
+          output.usage = parseOpenAIChatUsage(chunk.usage, model);
         }
 
         const choice = chunk.choices?.[0];
@@ -212,8 +213,8 @@ export const streamOpenAICompletions: StreamFunction<
 
         // Fallback: some providers (e.g., Moonshot) return usage in choice.usage
         if (!chunk.usage && "usage" in choice && choice.usage) {
-          output.usage = parseChunkUsage(
-            choice.usage as Parameters<typeof parseChunkUsage>[0],
+          output.usage = parseOpenAIChatUsage(
+            choice.usage as OpenAIChatUsagePayload,
             model,
           );
         }
@@ -812,52 +813,6 @@ function mapStopReasonDetailed(
         errorMessage: `Provider finish_reason: ${reason}`,
       };
   }
-}
-
-function parseChunkUsage(
-  rawUsage: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
-    completion_tokens_details?: { reasoning_tokens?: number };
-  },
-  model: Model<"openai-completions">,
-): AssistantMessage["usage"] {
-  const promptTokens = rawUsage.prompt_tokens || 0;
-  const reportedCachedTokens = rawUsage.prompt_tokens_details?.cached_tokens || 0;
-  const cacheWriteTokens = rawUsage.prompt_tokens_details?.cache_write_tokens || 0;
-  const reasoningTokens = rawUsage.completion_tokens_details?.reasoning_tokens || 0;
-
-  // Normalize to pi-ai semantics:
-  // - cacheRead: hits from cache created by previous requests only
-  // - cacheWrite: tokens written to cache in this request
-  // Some OpenAI-compatible providers (observed on OpenRouter) report cached_tokens
-  // as (previous hits + current writes). In that case, remove cacheWrite from cacheRead.
-  const cacheReadTokens =
-    cacheWriteTokens > 0
-      ? Math.max(0, reportedCachedTokens - cacheWriteTokens)
-      : reportedCachedTokens;
-
-  const input = Math.max(0, promptTokens - cacheReadTokens - cacheWriteTokens);
-  // Stella backend billing semantics:
-  //   output = total completion tokens (already includes reasoning, per OpenAI semantics)
-  //   reasoningTokens = reasoning subset
-  // computeUsageCostMicroCents() subtracts reasoning from output to get text tokens,
-  // bills text at outputPrice and reasoning at reasoningPrice separately. Adding
-  // reasoning to output here (pi-ai's convention for Groq compat) would double-bill
-  // reasoning for OpenAI/Fireworks/OpenRouter, which is the bulk of managed traffic.
-  const outputTokens = rawUsage.completion_tokens || 0;
-  const usage: AssistantMessage["usage"] = {
-    input,
-    output: outputTokens,
-    cacheRead: cacheReadTokens,
-    cacheWrite: cacheWriteTokens,
-    reasoningTokens,
-    totalTokens: input + outputTokens + cacheReadTokens + cacheWriteTokens,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-  calculateCost(model, usage);
-  return usage;
 }
 
 function detectCompat(

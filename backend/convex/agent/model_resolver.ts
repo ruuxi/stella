@@ -13,7 +13,10 @@ import {
 } from "./model";
 import { resolveManagedGatewayProvider, type ManagedGatewayProvider } from "../lib/managed_gateway";
 import { resolveStellaModelSelection } from "../stella_models";
-import type { ManagedModelAccess } from "../lib/managed_billing";
+import {
+  assertManagedUsageAllowed,
+  type ManagedModelAccess,
+} from "../lib/managed_billing";
 
 export type ResolvedModelConfig = {
   model: string;
@@ -22,6 +25,25 @@ export type ResolvedModelConfig = {
   maxOutputTokens?: number;
   providerOptions?: Record<string, Record<string, unknown>>;
 };
+
+export const toResolvedModelConfig = (
+  config: {
+    model: string;
+    managedGatewayProvider?: ManagedGatewayProvider;
+    temperature?: number;
+    maxOutputTokens?: number;
+    providerOptions?: unknown;
+  },
+): ResolvedModelConfig => ({
+  model: config.model,
+  managedGatewayProvider: resolveManagedGatewayProvider({
+    model: config.model,
+    configuredProvider: config.managedGatewayProvider,
+  }),
+  temperature: config.temperature,
+  maxOutputTokens: config.maxOutputTokens,
+  providerOptions: config.providerOptions as Record<string, Record<string, unknown>> | undefined,
+});
 
 type ResolveModelConfigOptions = {
   audience?: ManagedModelAudience;
@@ -38,13 +60,7 @@ export async function resolveModelConfig(
   const defaults = getModelConfig(agentType, audience);
 
   if (!ownerId) {
-    return {
-      model: defaults.model,
-      managedGatewayProvider: defaults.managedGatewayProvider,
-      temperature: defaults.temperature,
-      maxOutputTokens: defaults.maxOutputTokens,
-      providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
-    };
+    return toResolvedModelConfig(defaults);
   }
 
   let modelString = defaults.model;
@@ -56,16 +72,12 @@ export async function resolveModelConfig(
     modelString = resolveStellaModelSelection(agentType, override, audience);
   }
 
-  return {
-    model: modelString,
-    managedGatewayProvider: resolveManagedGatewayProvider({
-      model: modelString,
-      configuredProvider: defaults.managedGatewayProvider,
-    }),
+  return toResolvedModelConfig({
+    ...defaults,
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
-    providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
-  };
+    model: modelString,
+  });
 }
 
 export async function resolveFallbackConfig(
@@ -78,18 +90,30 @@ export async function resolveFallbackConfig(
   const defaults = getModelConfig(agentType, audience);
   if (!defaults.fallback) return null;
 
-  const resolvedFallback: ResolvedModelConfig = {
+  const resolvedFallback = toResolvedModelConfig({
     model: defaults.fallback,
-    managedGatewayProvider: resolveManagedGatewayProvider({
-      model: defaults.fallback,
-      configuredProvider: defaults.fallbackManagedGatewayProvider,
-    }),
+    managedGatewayProvider: defaults.fallbackManagedGatewayProvider,
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
-    providerOptions: defaults.fallbackProviderOptions as Record<string, Record<string, unknown>> | undefined,
-  };
+    providerOptions: defaults.fallbackProviderOptions,
+  });
 
   void ctx;
   void ownerId;
   return resolvedFallback;
+}
+
+export async function resolveManagedModelConfigs(
+  ctx: Pick<ActionCtx, "runMutation" | "runQuery">,
+  agentType: string,
+  ownerId: string,
+): Promise<{
+  access: ManagedModelAccess;
+  config: ResolvedModelConfig;
+  fallbackConfig: ResolvedModelConfig | null;
+}> {
+  const access = await assertManagedUsageAllowed(ctx, ownerId);
+  const config = await resolveModelConfig(ctx, agentType, ownerId, { access });
+  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, ownerId, { access });
+  return { access, config, fallbackConfig };
 }

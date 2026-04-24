@@ -19,14 +19,16 @@ import {
   requireConnectedSocialUserIdAction,
   requireRoomMembership,
   requireSessionHost,
+  requireSessionHostDevice,
   requireSessionMembership,
+  requireSessionTurn,
   sanitizeWorkspaceSlug,
   sanitizeWorkspaceFolderName,
   normalizeRelativeSessionPath,
   getSocialSessionConversationId,
 } from "./shared";
 import { requireConnectedUserId } from "../auth";
-import { requireBoundedString } from "../shared_validators";
+import { clampPageLimit, requireBoundedString } from "../shared_validators";
 import {
   enforceActionRateLimit,
   enforceMutationRateLimit,
@@ -166,6 +168,41 @@ const appendSessionSystemMessage = async (
     updatedAt: timestamp,
     latestMessageAt: timestamp,
   });
+};
+
+const appendSessionFileOp = async (
+  ctx: MutationCtx,
+  args: {
+    session: Doc<"stella_sessions">;
+    type: "upsert" | "delete" | "mkdir";
+    relativePath: string;
+    actorOwnerId: string;
+    contentHash?: string;
+    storageId?: Id<"_storage">;
+    sizeBytes?: number;
+    contentType?: string;
+    timestamp?: number;
+  },
+): Promise<{ ordinal: number; timestamp: number }> => {
+  const ordinal = args.session.latestFileOpOrdinal + 1;
+  const timestamp = args.timestamp ?? Date.now();
+  await ctx.db.insert("stella_session_file_ops", {
+    sessionId: args.session._id,
+    ordinal,
+    type: args.type,
+    relativePath: args.relativePath,
+    actorOwnerId: args.actorOwnerId,
+    contentHash: args.contentHash,
+    storageId: args.storageId,
+    sizeBytes: args.sizeBytes,
+    contentType: args.contentType,
+    createdAt: timestamp,
+  });
+  await ctx.db.patch(args.session._id, {
+    latestFileOpOrdinal: ordinal,
+    updatedAt: timestamp,
+  });
+  return { ordinal, timestamp };
 };
 
 const resolveActiveRoomSession = async (
@@ -326,7 +363,6 @@ export const recordFileUploadInternal = internalMutation({
       };
     }
 
-    const nextOrdinal = session.latestFileOpOrdinal + 1;
     const timestamp = Date.now();
     if (currentEntry) {
       await ctx.db.patch(currentEntry._id, {
@@ -350,9 +386,8 @@ export const recordFileUploadInternal = internalMutation({
       });
     }
 
-    await ctx.db.insert("stella_session_file_ops", {
-      sessionId: args.sessionId,
-      ordinal: nextOrdinal,
+    const op = await appendSessionFileOp(ctx, {
+      session,
       type: "upsert",
       relativePath: args.relativePath,
       actorOwnerId: args.ownerId,
@@ -360,16 +395,11 @@ export const recordFileUploadInternal = internalMutation({
       storageId: args.storageId,
       sizeBytes: args.sizeBytes,
       contentType: args.contentType,
-      createdAt: timestamp,
-    });
-
-    await ctx.db.patch(session._id, {
-      latestFileOpOrdinal: nextOrdinal,
-      updatedAt: timestamp,
+      timestamp,
     });
 
     return {
-      ordinal: nextOrdinal,
+      ordinal: op.ordinal,
       noop: false,
     };
   },
@@ -555,7 +585,7 @@ export const listTurns = query({
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
     await requireSessionMembership(ctx, args.sessionId, ownerId);
-    const limit = Math.min(Math.max(Math.floor(args.limit ?? 100), 1), MAX_TURN_LIMIT);
+    const limit = clampPageLimit(args.limit, 100, MAX_TURN_LIMIT);
     const turns = await ctx.db
       .query("stella_session_turns")
       .withIndex("by_sessionId_and_ordinal", (q) => q.eq("sessionId", args.sessionId))
@@ -715,14 +745,7 @@ export const claimTurn = mutation({
       ownerId,
       RATE_HOT_PATH,
     );
-    const session = await requireSessionHost(ctx, args.sessionId, ownerId);
-    const deviceId = args.deviceId.trim();
-    if (session.hostDeviceId !== deviceId) {
-      throw new ConvexError({
-        code: "FORBIDDEN",
-        message: "This device is not the host for the session.",
-      });
-    }
+    const { deviceId } = await requireSessionHostDevice(ctx, args.sessionId, ownerId, args.deviceId);
     const turn = await ctx.db.get(args.turnId);
     if (!turn || turn.sessionId !== args.sessionId) {
       return { claimed: false, turn: null };
@@ -766,21 +789,8 @@ export const completeTurn = mutation({
       ownerId,
       RATE_HOT_PATH,
     );
-    const session = await requireSessionHost(ctx, args.sessionId, ownerId);
-    const deviceId = args.deviceId.trim();
-    if (session.hostDeviceId !== deviceId) {
-      throw new ConvexError({
-        code: "FORBIDDEN",
-        message: "This device is not the host for the session.",
-      });
-    }
-    const turn = await ctx.db.get(args.turnId);
-    if (!turn || turn.sessionId !== args.sessionId) {
-      throw new ConvexError({
-        code: "NOT_FOUND",
-        message: "Turn not found.",
-      });
-    }
+    const { session, deviceId } = await requireSessionHostDevice(ctx, args.sessionId, ownerId, args.deviceId);
+    const turn = await requireSessionTurn(ctx, args.sessionId, args.turnId);
     const resultText = args.resultText.trim();
     requireBoundedString(resultText, "resultText", MAX_SESSION_RESULT_LENGTH);
     const now = Date.now();
@@ -824,21 +834,8 @@ export const failTurn = mutation({
       ownerId,
       RATE_HOT_PATH,
     );
-    const session = await requireSessionHost(ctx, args.sessionId, ownerId);
-    const deviceId = args.deviceId.trim();
-    if (session.hostDeviceId !== deviceId) {
-      throw new ConvexError({
-        code: "FORBIDDEN",
-        message: "This device is not the host for the session.",
-      });
-    }
-    const turn = await ctx.db.get(args.turnId);
-    if (!turn || turn.sessionId !== args.sessionId) {
-      throw new ConvexError({
-        code: "NOT_FOUND",
-        message: "Turn not found.",
-      });
-    }
+    const { deviceId } = await requireSessionHostDevice(ctx, args.sessionId, ownerId, args.deviceId);
+    const turn = await requireSessionTurn(ctx, args.sessionId, args.turnId);
     const error = args.error.trim();
     requireBoundedString(error, "error", 4000);
     const now = Date.now();
@@ -875,21 +872,8 @@ export const releaseTurn = mutation({
       ownerId,
       RATE_HOT_PATH,
     );
-    const session = await requireSessionHost(ctx, args.sessionId, ownerId);
-    const deviceId = args.deviceId.trim();
-    if (session.hostDeviceId !== deviceId) {
-      throw new ConvexError({
-        code: "FORBIDDEN",
-        message: "This device is not the host for the session.",
-      });
-    }
-    const turn = await ctx.db.get(args.turnId);
-    if (!turn || turn.sessionId !== args.sessionId) {
-      throw new ConvexError({
-        code: "NOT_FOUND",
-        message: "Turn not found.",
-      });
-    }
+    const { deviceId } = await requireSessionHostDevice(ctx, args.sessionId, ownerId, args.deviceId);
+    const turn = await requireSessionTurn(ctx, args.sessionId, args.turnId);
     await ctx.db.patch(turn._id, {
       status: "queued",
       claimedByDeviceId: undefined,
@@ -1061,7 +1045,6 @@ export const createDirectory = mutation({
       };
     }
 
-    const nextOrdinal = session.latestFileOpOrdinal + 1;
     const timestamp = Date.now();
     if (currentEntry) {
       await ctx.db.patch(currentEntry._id, {
@@ -1080,20 +1063,15 @@ export const createDirectory = mutation({
         updatedAt: timestamp,
       });
     }
-    await ctx.db.insert("stella_session_file_ops", {
-      sessionId: args.sessionId,
-      ordinal: nextOrdinal,
+    const op = await appendSessionFileOp(ctx, {
+      session,
       type: "mkdir",
       relativePath,
       actorOwnerId: ownerId,
-      createdAt: timestamp,
-    });
-    await ctx.db.patch(session._id, {
-      latestFileOpOrdinal: nextOrdinal,
-      updatedAt: timestamp,
+      timestamp,
     });
     return {
-      ordinal: nextOrdinal,
+      ordinal: op.ordinal,
       noop: false,
     };
   },
@@ -1110,7 +1088,7 @@ export const listFileOps = query({
     const ownerId = await requireConnectedUserId(ctx);
     await requireSessionMembership(ctx, args.sessionId, ownerId);
     const afterOrdinal = Math.max(0, Math.floor(args.afterOrdinal ?? 0));
-    const limit = Math.min(Math.max(Math.floor(args.limit ?? 200), 1), MAX_FILE_OP_LIMIT);
+    const limit = clampPageLimit(args.limit, 200, MAX_FILE_OP_LIMIT);
     const ops = await ctx.db
       .query("stella_session_file_ops")
       .withIndex("by_sessionId_and_ordinal", (q) =>
@@ -1232,7 +1210,6 @@ export const deleteFile = mutation({
       };
     }
 
-    const nextOrdinal = session.latestFileOpOrdinal + 1;
     const timestamp = Date.now();
     await ctx.db.patch(currentEntry._id, {
       deleted: true,
@@ -1242,20 +1219,15 @@ export const deleteFile = mutation({
       sizeBytes: undefined,
       contentType: undefined,
     });
-    await ctx.db.insert("stella_session_file_ops", {
-      sessionId: args.sessionId,
-      ordinal: nextOrdinal,
+    const op = await appendSessionFileOp(ctx, {
+      session,
       type: "delete",
       relativePath,
       actorOwnerId: ownerId,
-      createdAt: timestamp,
-    });
-    await ctx.db.patch(session._id, {
-      latestFileOpOrdinal: nextOrdinal,
-      updatedAt: timestamp,
+      timestamp,
     });
     return {
-      ordinal: nextOrdinal,
+      ordinal: op.ordinal,
       noop: false,
     };
   },

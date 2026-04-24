@@ -4,8 +4,8 @@ import {
   assistantText,
   buildContextFromChatMessages,
   completeManagedChat,
-  type ManagedUsageSummary,
 } from "../runtime_ai/managed";
+import type { ManagedUsageSummary } from "../lib/managed_usage";
 import type { AssistantMessage } from "../runtime_ai/types";
 import type { ResolvedModelConfig } from "./model_resolver";
 import { withModelFailoverAsync } from "./model_failover";

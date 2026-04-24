@@ -120,3 +120,15 @@ export const corsPreflightHandler = async (
   if (rejection) return rejection;
   return preflightCorsResponse(request);
 };
+
+export const registerCorsOptions = (http: HttpRouter, paths: string[]) => {
+  for (const path of paths) {
+    http.route({
+      path,
+      method: "OPTIONS",
+      handler: httpAction(async (_ctx, request) => corsPreflightHandler(request)),
+    });
+  }
+};
+import type { HttpRouter } from "convex/server";
+import { httpAction } from "../_generated/server";

@@ -2,12 +2,9 @@ import { ConvexError } from "convex/values";
 import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
+import { resolveManagedModelConfigs } from "../agent/model_resolver";
 import { withModelFailoverAsync } from "../agent/model_failover";
-import {
-  assertManagedUsageAllowed,
-  scheduleManagedUsage,
-} from "./managed_billing";
+import { scheduleManagedUsage } from "./managed_billing";
 import {
   buildStoreImageSafetyReviewPrompt,
   buildStoreSecurityReviewPrompt,
@@ -15,6 +12,7 @@ import {
   STORE_SECURITY_REVIEW_SYSTEM_PROMPT,
 } from "../prompts/store_reviews";
 import { extractJsonBlock } from "./json";
+import { truncateWithNotice } from "./text_utils";
 import {
   assistantText,
   completeManagedChat,
@@ -156,9 +154,6 @@ type ReviewableImageFile = {
 
 const normalizePath = (value: string): string => value.trim().replace(/\\/g, "/");
 
-const truncate = (value: string, maxChars: number): string =>
-  value.length > maxChars ? `${value.slice(0, maxChars)}\n\n... (truncated)` : value;
-
 const getFileExtension = (filePath: string): string => {
   const normalized = normalizePath(filePath);
   const fileName = normalized.split("/").pop() ?? normalized;
@@ -231,7 +226,7 @@ const buildPatchTextForFile = (
   if (!matchingPatches.trim()) {
     return undefined;
   }
-  return truncate(matchingPatches, MAX_PATCH_TEXT_CHARS);
+  return truncateWithNotice(matchingPatches, MAX_PATCH_TEXT_CHARS);
 };
 
 const summarizeFindings = (
@@ -412,7 +407,7 @@ export const parseReviewableStoreArtifact = (artifactBody: string): {
     if (!file.deleted && file.referenceContentBase64) {
       const decodedText = decodeBase64ToText(file.referenceContentBase64);
       if (isLikelyCodePath(normalizedPath) || isProbablyText(decodedText)) {
-        contentText = truncate(decodedText, MAX_CONTENT_TEXT_CHARS);
+        contentText = truncateWithNotice(decodedText, MAX_CONTENT_TEXT_CHARS);
       }
     }
 
@@ -447,13 +442,11 @@ const reviewCodeFile = async (
     file: ReviewableCodeFile;
   },
 ) => {
-  const modelAccess = await assertManagedUsageAllowed(ctx, args.ownerId);
-  const resolvedConfig = await resolveModelConfig(ctx, "store_security_review", args.ownerId, {
-    access: modelAccess,
-  });
-  const fallbackConfig = await resolveFallbackConfig(ctx, "store_security_review", args.ownerId, {
-    access: modelAccess,
-  });
+  const { config: resolvedConfig, fallbackConfig } = await resolveManagedModelConfigs(
+    ctx,
+    "store_security_review",
+    args.ownerId,
+  );
 
   return await completeStoreReviewVerdict(ctx, {
     ownerId: args.ownerId,
@@ -500,13 +493,11 @@ const reviewImageFile = async (
     file: ReviewableImageFile;
   },
 ) => {
-  const modelAccess = await assertManagedUsageAllowed(ctx, args.ownerId);
-  const resolvedConfig = await resolveModelConfig(ctx, "store_image_safety_review", args.ownerId, {
-    access: modelAccess,
-  });
-  const fallbackConfig = await resolveFallbackConfig(ctx, "store_image_safety_review", args.ownerId, {
-    access: modelAccess,
-  });
+  const { config: resolvedConfig, fallbackConfig } = await resolveManagedModelConfigs(
+    ctx,
+    "store_image_safety_review",
+    args.ownerId,
+  );
 
   const imageMatch = args.file.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!imageMatch) {

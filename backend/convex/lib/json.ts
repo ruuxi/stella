@@ -55,25 +55,53 @@ export const extractJsonBlock = (text: string): string | null => {
     // fall through
   }
 
-  const firstObject = trimmed.indexOf("{");
-  const firstArray = trimmed.indexOf("[");
-  const startCandidates = [firstObject, firstArray].filter((idx) => idx >= 0);
-  if (startCandidates.length === 0) {
-    return null;
-  }
-  const start = Math.min(...startCandidates);
-  const objectEnd = trimmed.lastIndexOf("}");
-  const arrayEnd = trimmed.lastIndexOf("]");
-  const endCandidates = [objectEnd, arrayEnd].filter((idx) => idx >= start);
-  if (endCandidates.length === 0) {
-    return null;
-  }
-  const end = Math.max(...endCandidates);
-  const candidate = trimmed.slice(start, end + 1).trim();
+  const candidate = extractJsonValueBlock(trimmed);
+  if (!candidate) return null;
   try {
     JSON.parse(candidate);
     return candidate;
   } catch {
     return null;
   }
+};
+
+export const extractJsonValueBlock = (text: string): string | null => {
+  const trimmed = text.trim();
+  const objectStart = trimmed.indexOf("{");
+  const arrayStart = trimmed.indexOf("[");
+  if (objectStart < 0 && arrayStart < 0) return null;
+  const start = objectStart < 0
+    ? arrayStart
+    : arrayStart < 0
+      ? objectStart
+      : Math.min(objectStart, arrayStart);
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < trimmed.length; i += 1) {
+    const char = trimmed[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === "{" || char === "[") {
+      depth += 1;
+    } else if (char === "}" || char === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        return trimmed.slice(start, i + 1).trim();
+      }
+    }
+  }
+  return null;
 };

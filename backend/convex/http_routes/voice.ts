@@ -12,7 +12,7 @@ import {
   jsonResponse,
   withCors,
   handleCorsRequest,
-  corsPreflightHandler,
+  registerCorsOptions,
 } from "../http_shared/cors";
 import { rateLimitResponse } from "../http_shared/webhook_controls";
 
@@ -119,15 +119,7 @@ const parseVoiceUsageBody = (body: VoiceUsageBody | null) => {
 export const registerVoiceRoutes = (http: HttpRouter) => {
   // --- Voice Session ---
 
-  for (const path of ["/api/voice/session", "/api/voice/usage"]) {
-    http.route({
-      path,
-      method: "OPTIONS",
-      handler: httpAction(async (_ctx, request) =>
-        corsPreflightHandler(request),
-      ),
-    });
-  }
+  registerCorsOptions(http, ["/api/voice/session", "/api/voice/usage"]);
 
   http.route({
     path: "/api/voice/session",

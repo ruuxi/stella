@@ -20,7 +20,7 @@ import {
   jsonResponse,
   withCors,
   handleCorsRequest,
-  corsPreflightHandler,
+  registerCorsOptions,
 } from "../http_shared/cors";
 import { rateLimitResponse } from "../http_shared/webhook_controls";
 
@@ -47,13 +47,7 @@ type TranscribeRequestBody = {
 };
 
 export const registerDictationRoutes = (http: HttpRouter) => {
-  http.route({
-    path: "/api/dictation/transcribe",
-    method: "OPTIONS",
-    handler: httpAction(async (_ctx, request) =>
-      corsPreflightHandler(request),
-    ),
-  });
+  registerCorsOptions(http, ["/api/dictation/transcribe"]);
 
   http.route({
     path: "/api/dictation/transcribe",

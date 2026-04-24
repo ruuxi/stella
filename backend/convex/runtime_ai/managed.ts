@@ -5,6 +5,7 @@ import {
 } from "../lib/managed_gateway";
 import { buildOpenAICompletionsParams, mapStopReason } from "./openai_completions";
 import { completeSimple, streamSimple } from "./stream";
+import { parseOpenAIChatUsage } from "./usage";
 import type {
   Api,
   AssistantMessage,
@@ -18,6 +19,10 @@ import type {
   Tool,
   ToolCall,
 } from "./types";
+export {
+  usageSummaryFromAssistant,
+  type ManagedUsageSummary,
+} from "../lib/managed_usage";
 
 export type ManagedProtocol = "openai-completions" | "openai-responses";
 
@@ -27,15 +32,6 @@ export type ManagedModelConfig = {
   temperature?: number;
   maxOutputTokens?: number;
   providerOptions?: Record<string, Record<string, unknown>>;
-};
-
-export type ManagedUsageSummary = {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-  cachedInputTokens?: number;
-  cacheWriteInputTokens?: number;
-  reasoningTokens?: number;
 };
 
 type ManagedCompletionRequest = {
@@ -762,26 +758,13 @@ async function completeManagedOpenAICompletions(args: {
     }
   }
 
-  const cachedTokens = response.usage?.prompt_tokens_details?.cached_tokens || 0;
-  const input = response.usage?.prompt_tokens || 0;
-  const output = response.usage?.completion_tokens || 0;
-  const reasoningTokens = response.usage?.completion_tokens_details?.reasoning_tokens || 0;
-
   return {
     role: "assistant",
     content,
     api: "openai-completions",
     provider: model.provider,
     model: model.id,
-    usage: {
-      input,
-      output,
-      cacheRead: cachedTokens,
-      cacheWrite: 0,
-      reasoningTokens,
-      totalTokens: response.usage?.total_tokens ?? input + output,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
+    usage: parseOpenAIChatUsage(response.usage, model),
     stopReason,
     ...(stopReason === "error"
       ? {
@@ -851,21 +834,4 @@ export function assistantText(message: AssistantMessage): string {
     .map((block) => block.text)
     .join("")
     .trim();
-}
-
-export function usageSummaryFromAssistant(
-  message: AssistantMessage | null | undefined,
-): ManagedUsageSummary | undefined {
-  if (!message) {
-    return undefined;
-  }
-
-  return {
-    inputTokens: message.usage.input,
-    outputTokens: message.usage.output,
-    totalTokens: message.usage.totalTokens,
-    cachedInputTokens: message.usage.cacheRead,
-    cacheWriteInputTokens: message.usage.cacheWrite,
-    reasoningTokens: message.usage.reasoningTokens,
-  };
 }

@@ -23,6 +23,39 @@ export type PromptBuildResult = {
   timezone: string;
 };
 
+type AgentPromptFields = {
+  systemPrompt: string;
+  toolsAllowlist?: string[];
+  maxAgentDepth?: number;
+};
+
+const buildAgentPromptContext = (
+  agent: AgentPromptFields,
+  options?: { platform?: string; timezone?: string },
+): Pick<PromptBuildResult, "systemPrompt" | "dynamicContext" | "toolsAllowlist" | "maxAgentDepth" | "timezone"> => {
+  const systemParts = [agent.systemPrompt];
+  if (options?.platform) {
+    const guidance = getPlatformSystemGuidance(options.platform);
+    if (guidance) {
+      systemParts.push(guidance);
+    }
+  }
+
+  const maxAgentDepthValue = Number(agent.maxAgentDepth);
+  const maxAgentDepth =
+    Number.isFinite(maxAgentDepthValue) && maxAgentDepthValue >= 0
+      ? Math.floor(maxAgentDepthValue)
+      : 2;
+
+  return {
+    systemPrompt: systemParts.join("\n\n").trim(),
+    dynamicContext: "",
+    toolsAllowlist: agent.toolsAllowlist,
+    maxAgentDepth,
+    timezone: options?.timezone ?? "UTC",
+  };
+};
+
 type FetchAgentContextSharedArgs = {
   ownerId: string;
   conversationId: Id<"conversations">;
@@ -52,30 +85,7 @@ export const buildSystemPrompt = async (
     },
   );
 
-  const systemParts = [agent.systemPrompt];
-
-  if (options?.platform) {
-    const guidance = getPlatformSystemGuidance(options.platform);
-    if (guidance) {
-      systemParts.push(guidance);
-    }
-  }
-
-  const dynamicParts: string[] = [];
-
-  const maxAgentDepthValue = Number(agent.maxAgentDepth);
-  const maxAgentDepth =
-    Number.isFinite(maxAgentDepthValue) && maxAgentDepthValue >= 0
-      ? Math.floor(maxAgentDepthValue)
-      : 2;
-
-  return {
-    systemPrompt: systemParts.join("\n\n").trim(),
-    dynamicContext: dynamicParts.join("\n\n").trim(),
-    toolsAllowlist: agent.toolsAllowlist,
-    maxAgentDepth,
-    timezone: options?.timezone ?? "UTC",
-  };
+  return buildAgentPromptContext(agent, options);
 };
 
 // fetchAgentContext
@@ -286,25 +296,17 @@ const fetchAgentContextForOwner = async (
     },
   );
 
-  const systemParts = [bundle.agent.systemPrompt];
-  if (args.platform) {
-    const guidance = getPlatformSystemGuidance(args.platform);
-    if (guidance) {
-      systemParts.push(guidance);
-    }
-  }
-  const maxAgentDepthValue = Number(bundle.agent.maxAgentDepth);
-  const maxAgentDepth =
-    Number.isFinite(maxAgentDepthValue) && maxAgentDepthValue >= 0
-      ? Math.floor(maxAgentDepthValue)
-      : 2;
+  const promptContext = buildAgentPromptContext(bundle.agent, {
+    platform: args.platform,
+    timezone: args.timezone,
+  });
 
   return {
-    systemPrompt: systemParts.join("\n\n").trim(),
-    dynamicContext: "",
-    toolsAllowlist: bundle.agent.toolsAllowlist,
+    systemPrompt: promptContext.systemPrompt,
+    dynamicContext: promptContext.dynamicContext,
+    toolsAllowlist: promptContext.toolsAllowlist,
     model: bundle.modelOverride ?? STELLA_DEFAULT_MODEL,
-    maxAgentDepth,
+    maxAgentDepth: promptContext.maxAgentDepth,
     threadHistory: bundle.threadMessages.length > 0 ? bundle.threadMessages : undefined,
     activeThreadId: bundle.resolvedThreadId ?? undefined,
     agentEngine: bundle.agentEngine ?? undefined,
@@ -354,25 +356,16 @@ export const fetchLocalAgentContextForRuntime = action({
       },
     );
 
-    const systemParts = [bundle.agent.systemPrompt];
-    if (args.platform) {
-      const guidance = getPlatformSystemGuidance(args.platform);
-      if (guidance) {
-        systemParts.push(guidance);
-      }
-    }
-    const maxAgentDepthValue = Number(bundle.agent.maxAgentDepth);
-    const maxAgentDepth =
-      Number.isFinite(maxAgentDepthValue) && maxAgentDepthValue >= 0
-        ? Math.floor(maxAgentDepthValue)
-        : 2;
+    const promptContext = buildAgentPromptContext(bundle.agent, {
+      platform: args.platform,
+    });
 
     return {
-      systemPrompt: systemParts.join("\n\n").trim(),
-      dynamicContext: "",
-      toolsAllowlist: bundle.agent.toolsAllowlist,
+      systemPrompt: promptContext.systemPrompt,
+      dynamicContext: promptContext.dynamicContext,
+      toolsAllowlist: promptContext.toolsAllowlist,
       model: bundle.modelOverride ?? STELLA_DEFAULT_MODEL,
-      maxAgentDepth,
+      maxAgentDepth: promptContext.maxAgentDepth,
       threadHistory: undefined,
       activeThreadId: undefined,
       agentEngine: bundle.agentEngine ?? undefined,

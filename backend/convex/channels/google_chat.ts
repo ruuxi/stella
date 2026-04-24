@@ -1,12 +1,11 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { processIncomingMessage } from "./message_pipeline";
-import { processLinkCode } from "./link_codes";
+import { handleConnectorIncomingMessage } from "./message_pipeline";
+import { formatLinkCodeResultMessage, processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
-import { base64UrlDecode } from "../lib/crypto_utils";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 import { GOOGLE_CHAT_MAX_MESSAGE_CHARS, truncateForConnector } from "./connector_constants";
-import { getGoogleAccessToken } from "./connector_auth";
+import { getGoogleAccessToken, verifyRsaJwtWithCachedJwks } from "./connector_auth";
 
 // ---------------------------------------------------------------------------
 // Google Chat JWT Verification
@@ -16,71 +15,20 @@ import { getGoogleAccessToken } from "./connector_auth";
 const GOOGLE_CHAT_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/chat@system.gserviceaccount.com";
 
-let cachedJwks: { keys: JsonWebKey[]; fetchedAt: number } | null = null;
-const JWKS_CACHE_MS = 60 * 60 * 1000; // 1 hour
-
-async function fetchGoogleJwks(): Promise<JsonWebKey[]> {
-  if (cachedJwks && Date.now() - cachedJwks.fetchedAt < JWKS_CACHE_MS) {
-    return cachedJwks.keys;
-  }
-  const res = await fetch(GOOGLE_CHAT_JWKS_URL);
-  if (!res.ok) throw new Error(`Failed to fetch Google JWKs: ${res.status}`);
-  const data = await res.json();
-  cachedJwks = { keys: data.keys, fetchedAt: Date.now() };
-  return data.keys;
-}
-
-// base64UrlDecode imported from lib/crypto_utils
-
 export async function verifyGoogleChatJwt(
   authHeader: string,
   projectNumber: string,
 ): Promise<boolean> {
-  try {
-    if (!authHeader.startsWith("Bearer ")) return false;
-    const token = authHeader.slice(7);
-    const parts = token.split(".");
-    if (parts.length !== 3) return false;
-
-    const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));
-    const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])));
-
-    // Check issuer and audience
-    if (payload.iss !== "chat@system.gserviceaccount.com") return false;
-    if (payload.aud !== projectNumber) return false;
-
-    // Check expiry
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < now) return false;
-    if (payload.iat && payload.iat > now + 300) return false;
-
-    // Find matching key
-    const jwks = await fetchGoogleJwks();
-    const jwk = jwks.find((k) => (k as JsonWebKey & { kid?: string }).kid === header.kid);
-    if (!jwk) return false;
-
-    // Import RSA public key
-    const key = await crypto.subtle.importKey(
-      "jwk",
-      jwk,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-
-    // Verify signature
-    const signatureBytes = base64UrlDecode(parts[2]);
-    const signedContent = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-    return await crypto.subtle.verify(
-      "RSASSA-PKCS1-v1_5",
-      key,
-      signatureBytes.buffer as ArrayBuffer,
-      signedContent.buffer as ArrayBuffer,
-    );
-  } catch (error) {
-    console.error("[google_chat] JWT verification failed:", error);
-    return false;
-  }
+  return verifyRsaJwtWithCachedJwks({
+    authHeader,
+    jwksUrl: GOOGLE_CHAT_JWKS_URL,
+    logPrefix: "[google_chat]",
+    validatePayload: (payload, now) =>
+      payload.iss === "chat@system.gserviceaccount.com"
+      && payload.aud === projectNumber
+      && (typeof payload.exp !== "number" || payload.exp >= now)
+      && (typeof payload.iat !== "number" || payload.iat <= now + 300),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -132,20 +80,10 @@ export const handleLinkCommand = internalAction({
       displayName: args.displayName,
     });
 
-    if (result === "invalid_code") {
-      await sendGoogleChatMessage(args.spaceName, "Invalid or expired code. Please generate a new one in Stella Settings.");
-    } else if (result === "already_linked") {
-      await sendGoogleChatMessage(args.spaceName, "Your Google Chat account is already linked to Stella!");
-    } else if (result === "linking_disabled") {
-      await sendGoogleChatMessage(
-        args.spaceName,
-        "Google Chat linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
-      );
-    } else if (result === "not_allowed") {
-      await sendGoogleChatMessage(args.spaceName, "This Google Chat account is not allowed to link.");
-    } else {
-      await sendGoogleChatMessage(args.spaceName, "Linked! You can now message Stella directly here.");
-    }
+    await sendGoogleChatMessage(args.spaceName, formatLinkCodeResultMessage(result, {
+      providerName: "Google Chat",
+      linkedMessage: "Linked! You can now message Stella directly here.",
+    }));
     return null;
   },
 });
@@ -162,41 +100,20 @@ export const handleIncomingMessage = internalAction({
     respond: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const shouldRespond = args.respond !== false;
-
-    try {
-      const result = await processIncomingMessage({
-        ctx,
-        provider: "google_chat",
-        externalUserId: args.googleUserId,
-        text: args.text,
-        groupId: args.groupId,
-        attachments: args.attachments,
-        channelEnvelope: args.channelEnvelope,
-        respond: args.respond,
-        deliveryMeta: { spaceName: args.spaceName },
-      });
-
-      if (result?.deferred) return null;
-
-      if (!result) {
-        if (!shouldRespond) return null;
-        await sendGoogleChatMessage(
-          args.spaceName,
-          "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.",
-        );
-        return null;
-      }
-
-      if (shouldRespond) {
-        await sendGoogleChatMessage(args.spaceName, result.text);
-      }
-    } catch (error) {
-      console.error("[google_chat] Agent turn failed:", error);
-      if (shouldRespond) {
-        await sendGoogleChatMessage(args.spaceName, "Sorry, something went wrong. Please try again.");
-      }
-    }
+    await handleConnectorIncomingMessage({
+      ctx,
+      provider: "google_chat",
+      externalUserId: args.googleUserId,
+      text: args.text,
+      groupId: args.groupId,
+      attachments: args.attachments,
+      channelEnvelope: args.channelEnvelope,
+      respond: args.respond,
+      deliveryMeta: { spaceName: args.spaceName },
+      logPrefix: "[google_chat]",
+      notLinkedText: "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.",
+      sendReply: (text) => sendGoogleChatMessage(args.spaceName, text),
+    });
     return null;
   },
 });

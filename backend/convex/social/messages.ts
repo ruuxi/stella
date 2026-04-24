@@ -9,6 +9,7 @@ import {
   refreshRoomUpdatedAt,
 } from "./shared";
 import {
+  clampPageLimit,
   requireBoundedString,
 } from "../shared_validators";
 import {
@@ -29,7 +30,7 @@ export const listRoomMessages = query({
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
     await requireRoomMembership(ctx, args.roomId, ownerId);
-    const limit = Math.min(Math.max(Math.floor(args.limit ?? 100), 1), 500);
+    const limit = clampPageLimit(args.limit, 100, 500);
     const query = ctx.db
       .query("social_messages")
       .withIndex("by_roomId_and_createdAt", (q) =>

@@ -12,63 +12,6 @@ function stripMarkdownFences(text: string): string {
   return s;
 }
 
-function findFirstJsonStart(s: string): number {
-  const b = s.indexOf("{");
-  const a = s.indexOf("[");
-  if (a < 0 && b < 0) {
-    return -1;
-  }
-  if (a < 0) {
-    return b;
-  }
-  if (b < 0) {
-    return a;
-  }
-  return Math.min(a, b);
-}
-
-/**
- * Extract a single balanced JSON value (object or array) from text.
- * Handles strings that contain `]` or `}` without relying on lastIndexOf.
- */
-function extractBalancedJsonSlice(text: string): string | null {
-  const trimmed = text.trim();
-  const start = findFirstJsonStart(trimmed);
-  if (start < 0) {
-    return null;
-  }
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  for (let i = start; i < trimmed.length; i++) {
-    const c = trimmed[i];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (c === "\\" && inString) {
-      escape = true;
-      continue;
-    }
-    if (c === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) {
-      continue;
-    }
-    if (c === "{" || c === "[") {
-      depth++;
-    } else if (c === "}" || c === "]") {
-      depth--;
-      if (depth === 0) {
-        return trimmed.slice(start, i + 1);
-      }
-    }
-  }
-  return null;
-}
-
 function coerceToSuggestionArray(parsed: unknown): unknown[] {
   if (Array.isArray(parsed)) {
     return parsed;
@@ -155,10 +98,6 @@ export const parseHomeSuggestionsFromModelText = (
     const block = extractJsonBlock(candidate);
     if (block) {
       sliceSet.add(block);
-    }
-    const balanced = extractBalancedJsonSlice(candidate);
-    if (balanced) {
-      sliceSet.add(balanced);
     }
     const slices = [...sliceSet];
     if (slices.length === 0 && candidate.length > 0) {

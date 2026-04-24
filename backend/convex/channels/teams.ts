@@ -1,12 +1,11 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { processIncomingMessage } from "./message_pipeline";
-import { processLinkCode } from "./link_codes";
+import { handleConnectorIncomingMessage } from "./message_pipeline";
+import { formatLinkCodeResultMessage, processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
-import { base64UrlDecode } from "../lib/crypto_utils";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 import { TEAMS_MAX_MESSAGE_CHARS, truncateForConnector } from "./connector_constants";
-import { getTeamsBotToken } from "./connector_auth";
+import { getTeamsBotToken, verifyRsaJwtWithCachedJwks } from "./connector_auth";
 
 // ---------------------------------------------------------------------------
 // Azure AD JWT Verification (Bot Framework)
@@ -16,16 +15,9 @@ const BOTFRAMEWORK_OPENID_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
 
 let cachedOpenIdConfig: { jwks_uri: string; fetchedAt: number } | null = null;
-let cachedJwks: { keys: JsonWebKey[]; fetchedAt: number } | null = null;
 const CACHE_MS = 60 * 60 * 1000; // 1 hour
 
-// base64UrlDecode imported from lib/crypto_utils
-
-async function fetchBotFrameworkJwks(): Promise<JsonWebKey[]> {
-  if (cachedJwks && Date.now() - cachedJwks.fetchedAt < CACHE_MS) {
-    return cachedJwks.keys;
-  }
-
+async function getBotFrameworkJwksUrl(): Promise<string> {
   // Get OpenID config if not cached
   if (!cachedOpenIdConfig || Date.now() - cachedOpenIdConfig.fetchedAt > CACHE_MS) {
     const configRes = await fetch(BOTFRAMEWORK_OPENID_URL);
@@ -33,68 +25,28 @@ async function fetchBotFrameworkJwks(): Promise<JsonWebKey[]> {
     const config = await configRes.json();
     cachedOpenIdConfig = { jwks_uri: config.jwks_uri, fetchedAt: Date.now() };
   }
-
-  const jwksRes = await fetch(cachedOpenIdConfig.jwks_uri);
-  if (!jwksRes.ok) throw new Error(`Failed to fetch JWKs: ${jwksRes.status}`);
-  const data = await jwksRes.json();
-  cachedJwks = { keys: data.keys, fetchedAt: Date.now() };
-  return data.keys;
+  return cachedOpenIdConfig.jwks_uri;
 }
 
 export async function verifyTeamsToken(
   authHeader: string,
   appId: string,
 ): Promise<boolean> {
-  try {
-    if (!authHeader.startsWith("Bearer ")) return false;
-    const token = authHeader.slice(7);
-    const parts = token.split(".");
-    if (parts.length !== 3) return false;
-
-    const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));
-    const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])));
-
-    // Check audience matches our app ID
-    if (payload.aud !== appId) return false;
-
-    // Check expiry
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < now) return false;
-
-    // Check issuer (Bot Framework or Azure AD)
-    const validIssuers = [
-      "https://api.botframework.com",
-      "https://sts.windows.net/d6d49420-f39b-4df7-a1dc-d59a935871db/",
-      "https://login.microsoftonline.com/d6d49420-f39b-4df7-a1dc-d59a935871db/v2.0",
-    ];
-    if (!validIssuers.includes(payload.iss)) return false;
-
-    // Find matching key
-    const jwks = await fetchBotFrameworkJwks();
-    const jwk = jwks.find((k) => (k as JsonWebKey & { kid?: string }).kid === header.kid);
-    if (!jwk) return false;
-
-    // Import RSA public key and verify
-    const key = await crypto.subtle.importKey(
-      "jwk",
-      jwk,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-
-    const signatureBytes = base64UrlDecode(parts[2]);
-    const signedContent = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-    return await crypto.subtle.verify(
-      "RSASSA-PKCS1-v1_5",
-      key,
-      signatureBytes.buffer as ArrayBuffer,
-      signedContent.buffer as ArrayBuffer,
-    );
-  } catch (error) {
-    console.error("[teams] Token verification failed:", error);
-    return false;
-  }
+  const validIssuers = [
+    "https://api.botframework.com",
+    "https://sts.windows.net/d6d49420-f39b-4df7-a1dc-d59a935871db/",
+    "https://login.microsoftonline.com/d6d49420-f39b-4df7-a1dc-d59a935871db/v2.0",
+  ];
+  return verifyRsaJwtWithCachedJwks({
+    authHeader,
+    jwksUrl: await getBotFrameworkJwksUrl(),
+    logPrefix: "[teams]",
+    validatePayload: (payload, now) =>
+      payload.aud === appId
+      && (typeof payload.exp !== "number" || payload.exp >= now)
+      && typeof payload.iss === "string"
+      && validIssuers.includes(payload.iss),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -157,21 +109,10 @@ export const handleLinkCommand = internalAction({
       displayName: args.displayName,
     });
 
-    if (result === "invalid_code") {
-      await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Invalid or expired code. Please generate a new one in Stella Settings.");
-    } else if (result === "already_linked") {
-      await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Your Teams account is already linked to Stella!");
-    } else if (result === "linking_disabled") {
-      await sendTeamsMessage(
-        args.serviceUrl,
-        args.conversationIdTeams,
-        "Teams linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
-      );
-    } else if (result === "not_allowed") {
-      await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "This Teams account is not allowed to link.");
-    } else {
-      await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Linked! You can now message Stella directly here.");
-    }
+    await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, formatLinkCodeResultMessage(result, {
+      providerName: "Teams",
+      linkedMessage: "Linked! You can now message Stella directly here.",
+    }));
     return null;
   },
 });
@@ -189,45 +130,23 @@ export const handleIncomingMessage = internalAction({
     respond: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const shouldRespond = args.respond !== false;
-
-    try {
-      const result = await processIncomingMessage({
-        ctx,
-        provider: "teams",
-        externalUserId: args.teamsUserId,
-        text: args.text,
-        groupId: args.groupId,
-        attachments: args.attachments,
-        channelEnvelope: args.channelEnvelope,
-        respond: args.respond,
-        deliveryMeta: {
-          serviceUrl: args.serviceUrl,
-          conversationIdTeams: args.conversationIdTeams,
-        },
-      });
-
-      if (result?.deferred) return null;
-
-      if (!result) {
-        if (!shouldRespond) return null;
-        await sendTeamsMessage(
-          args.serviceUrl,
-          args.conversationIdTeams,
-          "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.",
-        );
-        return null;
-      }
-
-      if (shouldRespond) {
-        await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, result.text);
-      }
-    } catch (error) {
-      console.error("[teams] Agent turn failed:", error);
-      if (shouldRespond) {
-        await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Sorry, something went wrong. Please try again.");
-      }
-    }
+    await handleConnectorIncomingMessage({
+      ctx,
+      provider: "teams",
+      externalUserId: args.teamsUserId,
+      text: args.text,
+      groupId: args.groupId,
+      attachments: args.attachments,
+      channelEnvelope: args.channelEnvelope,
+      respond: args.respond,
+      deliveryMeta: {
+        serviceUrl: args.serviceUrl,
+        conversationIdTeams: args.conversationIdTeams,
+      },
+      logPrefix: "[teams]",
+      notLinkedText: "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.",
+      sendReply: (text) => sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, text),
+    });
     return null;
   },
 });

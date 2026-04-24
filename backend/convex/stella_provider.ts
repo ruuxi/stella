@@ -11,10 +11,8 @@ import { internal } from "./_generated/api";
 import {
   getModeConfig,
   getModelConfig,
-  isModelMode,
   type ManagedModelAudience,
   type ModelConfig,
-  type ModelMode,
 } from "./agent/model";
 import {
   resolveManagedGatewayConfig,
@@ -47,6 +45,7 @@ import {
   STELLA_DEFAULT_MODEL,
   isStellaModel,
   listStellaCatalogModels,
+  parseStellaModelSelection,
   resolveStellaModelSelection,
 } from "./stella_models";
 import { resolveManagedModelAccess } from "./lib/managed_billing";
@@ -197,26 +196,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function getRequestedStellaMode(selection: string): ModelMode | "default" | null {
-  const trimmed = selection.trim();
-  if (!trimmed || trimmed === STELLA_DEFAULT_MODEL) {
-    return "default";
-  }
-  if (!trimmed.startsWith("stella/")) {
-    return null;
-  }
-
-  const aliasOrUpstreamModel = trimmed.slice("stella/".length).trim();
-  if (!aliasOrUpstreamModel || aliasOrUpstreamModel === "default") {
-    return "default";
-  }
-
-  const modeKey = aliasOrUpstreamModel === "cheap"
-    ? "standard"
-    : aliasOrUpstreamModel;
-  return isModelMode(modeKey) ? modeKey : null;
-}
-
 type ResolvedStellaModelSelection = {
   requestedModel: string;
   resolvedModel: string;
@@ -237,11 +216,11 @@ function resolveRequestedStellaModel(
     throw new Error(`Unsupported Stella model selection: ${requestedModel}`);
   }
 
-  const requestedMode = getRequestedStellaMode(requestedModel);
-  if (requestedMode) {
-    const config = requestedMode === "default"
+  const parsedModel = parseStellaModelSelection(requestedModel);
+  if (parsedModel?.kind === "default" || parsedModel?.kind === "mode") {
+    const config = parsedModel.kind === "default"
       ? getModelConfig(agentType, audience)
-      : getModeConfig(requestedMode, audience);
+      : getModeConfig(parsedModel.mode, audience);
     return {
       requestedModel,
       resolvedModel: config.model,

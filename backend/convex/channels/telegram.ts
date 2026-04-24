@@ -1,7 +1,7 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { processIncomingMessage } from "./message_pipeline";
-import { processLinkCode } from "./link_codes";
+import { handleConnectorIncomingMessage } from "./message_pipeline";
+import { formatLinkCodeResultMessage, processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 import { TELEGRAM_MAX_MESSAGE_CHARS } from "./connector_constants";
@@ -114,26 +114,11 @@ export const handleStartCommand = internalAction({
       displayName: args.displayName,
     });
 
-    if (result === "invalid_code") {
-      await sendTelegramMessage(
-        args.chatId,
-        "Invalid or expired code. Please generate a new one in Stella Settings.",
-      );
-    } else if (result === "already_linked") {
-      await sendTelegramMessage(args.chatId, "Your Telegram is already linked to Stella!");
-    } else if (result === "linking_disabled") {
-      await sendTelegramMessage(
-        args.chatId,
-        "Telegram linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
-      );
-    } else if (result === "not_allowed") {
-      await sendTelegramMessage(args.chatId, "This Telegram account is not allowed to link.");
-    } else {
-      await sendTelegramMessage(
-        args.chatId,
-        "Linked! You can now message Stella directly here.",
-      );
-    }
+    await sendTelegramMessage(args.chatId, formatLinkCodeResultMessage(result, {
+      providerName: "Telegram",
+      accountName: "Telegram",
+      linkedMessage: "Linked! You can now message Stella directly here.",
+    }));
     return null;
   },
 });
@@ -150,44 +135,20 @@ export const handleIncomingMessage = internalAction({
     respond: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const shouldRespond = args.respond !== false;
-
-    try {
-      const result = await processIncomingMessage({
-        ctx,
-        provider: "telegram",
-        externalUserId: args.telegramUserId,
-        text: args.text,
-        groupId: args.groupId,
-        attachments: args.attachments,
-        channelEnvelope: args.channelEnvelope,
-        respond: args.respond,
-        deliveryMeta: { chatId: args.chatId },
-      });
-
-      if (result?.deferred) return null;
-
-      if (!result) {
-        if (!shouldRespond) return null;
-        await sendTelegramMessage(
-          args.chatId,
-          "Your account isn't linked yet. Send /start to get started.",
-        );
-        return null;
-      }
-
-      if (shouldRespond) {
-        await sendTelegramMessage(args.chatId, result.text);
-      }
-    } catch (error) {
-      console.error("[telegram] Agent turn failed:", error);
-      if (shouldRespond) {
-        await sendTelegramMessage(
-          args.chatId,
-          "Sorry, something went wrong. Please try again.",
-        );
-      }
-    }
+    await handleConnectorIncomingMessage({
+      ctx,
+      provider: "telegram",
+      externalUserId: args.telegramUserId,
+      text: args.text,
+      groupId: args.groupId,
+      attachments: args.attachments,
+      channelEnvelope: args.channelEnvelope,
+      respond: args.respond,
+      deliveryMeta: { chatId: args.chatId },
+      logPrefix: "[telegram]",
+      notLinkedText: "Your account isn't linked yet. Send /start to get started.",
+      sendReply: (text) => sendTelegramMessage(args.chatId, text),
+    });
     return null;
   },
 });

@@ -50,6 +50,15 @@ type ProcessIncomingMessageArgs = {
   deliveryMeta?: Record<string, unknown>;
 };
 
+type HandleConnectorIncomingMessageArgs = Omit<ProcessIncomingMessageArgs, "ctx"> & {
+  ctx: ActionCtx;
+  logPrefix: string;
+  notLinkedText: string;
+  failureText?: string;
+  sendReply: (text: string) => Promise<void>;
+  onResult?: (result: { text: string; deferred?: boolean } | null) => void;
+};
+
 type FreshDeviceOption = {
   deviceId: string;
   deviceName: string;
@@ -723,5 +732,47 @@ export async function processIncomingMessage(
   } finally {
     // Always clear transient connector rows, including unexpected error paths.
     await cleanupTransientBatch();
+  }
+}
+
+export async function handleConnectorIncomingMessage(
+  args: HandleConnectorIncomingMessageArgs,
+): Promise<void> {
+  const shouldRespond = args.respond !== false;
+
+  try {
+    const result = await processIncomingMessage({
+      ctx: args.ctx,
+      ownerId: args.ownerId,
+      provider: args.provider,
+      externalUserId: args.externalUserId,
+      text: args.text,
+      groupId: args.groupId,
+      attachments: args.attachments,
+      channelEnvelope: args.channelEnvelope,
+      displayName: args.displayName,
+      preEnsureOwnerConnection: args.preEnsureOwnerConnection,
+      respond: args.respond,
+      deliveryMeta: args.deliveryMeta,
+    });
+
+    args.onResult?.(result);
+    if (result?.deferred) return;
+
+    if (!result) {
+      if (shouldRespond) {
+        await args.sendReply(args.notLinkedText);
+      }
+      return;
+    }
+
+    if (shouldRespond) {
+      await args.sendReply(result.text);
+    }
+  } catch (error) {
+    console.error(`${args.logPrefix} Agent turn failed:`, error);
+    if (shouldRespond) {
+      await args.sendReply(args.failureText ?? "Sorry, something went wrong. Please try again.");
+    }
   }
 }

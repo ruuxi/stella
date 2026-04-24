@@ -4,10 +4,10 @@ import { internal } from "../_generated/api";
 import { ConvexError } from "convex/values";
 import { isAnonymousIdentity } from "../auth";
 import {
-  corsPreflightHandler,
   errorResponse,
   handleCorsRequest,
   jsonResponse,
+  registerCorsOptions,
   withCors,
 } from "../http_shared/cors";
 import {
@@ -116,20 +116,14 @@ const toErrorResponse = (
 };
 
 export const registerBackupRoutes = (http: HttpRouter) => {
-  for (const path of [
+  registerCorsOptions(http, [
     BACKUP_KEY_PATH,
     BACKUP_LIST_PATH,
     BACKUP_PREPARE_UPLOAD_PATH,
     BACKUP_FINALIZE_UPLOAD_PATH,
     BACKUP_RESTORE_MANIFEST_PATH,
     BACKUP_OBJECT_DOWNLOADS_PATH,
-  ]) {
-    http.route({
-      path,
-      method: "OPTIONS",
-      handler: httpAction(async (_ctx, request) => corsPreflightHandler(request)),
-    });
-  }
+  ]);
 
   http.route({
     path: BACKUP_KEY_PATH,

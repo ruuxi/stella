@@ -1,4 +1,5 @@
 import type { ActionCtx } from "../_generated/server";
+import { TRANSIENT_ALLOWED_BACKEND_TOOL_NAMES } from "../lib/agent_constants";
 import { createBackendTools } from "./backend";
 import { type BackendToolSet, type ToolOptions } from "./types";
 
@@ -15,10 +16,7 @@ const filterTools = (tools: BackendToolSet, allowlist?: string[]): BackendToolSe
   return Object.fromEntries(filteredEntries) as BackendToolSet;
 };
 
-const TRANSIENT_ALLOWED_TOOLS = new Set<string>([
-  "WebSearch",
-  "WebFetch",
-]);
+const TRANSIENT_ALLOWED_TOOLS = new Set<string>(TRANSIENT_ALLOWED_BACKEND_TOOL_NAMES);
 
 const sanitizeToolName = (name: string): string => name.replace(/\./g, "_");
 
