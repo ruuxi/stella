@@ -8,7 +8,7 @@
  * - Conversation transcript logging
  */
 
-import { createServiceRequest } from "@/infra/http/service-request";
+import { postServiceJson } from "@/infra/http/service-request";
 import {
   getVoiceSessionPromptConfig,
 } from "@/prompts";
@@ -298,20 +298,16 @@ export class RealtimeVoiceSession {
 
       // A) Create the ephemeral session token in parallel with local setup.
       const keyPromise = (async () => {
-        const { endpoint, headers } =
-          await createServiceRequest("/api/voice/session");
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify(buildVoiceSessionRequestBody(conversationId)),
-        });
-        if (!res.ok) {
-          const detail = await res.text();
-          throw new Error(
-            `Failed to create voice session: ${res.status} ${detail}`,
-          );
-        }
-        return (await res.json()) as VoiceSessionToken;
+        return postServiceJson<VoiceSessionToken>(
+          "/api/voice/session",
+          buildVoiceSessionRequestBody(conversationId),
+          {
+            errorMessage: async (response) => {
+              const detail = await response.text();
+              return `Failed to create voice session: ${response.status} ${detail}`;
+            },
+          },
+        );
       })();
 
       // B) Create RTCPeerConnection + SDP offer locally (no network, no mic needed)
@@ -777,20 +773,16 @@ export class RealtimeVoiceSession {
     }
 
     try {
-      const { endpoint, headers } = await createServiceRequest("/api/voice/usage");
-      await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...headers,
-        },
-        body: JSON.stringify({
+      await postServiceJson<unknown>(
+        "/api/voice/usage",
+        {
           responseId,
           model,
           ...(this.conversationId ? { conversationId: this.conversationId } : {}),
           usage,
-        }),
-      });
+        },
+        { parseResponse: false },
+      );
     } catch (err) {
       console.debug(
         "[realtime-voice] Failed to report voice usage:",

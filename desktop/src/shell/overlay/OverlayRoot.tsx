@@ -15,6 +15,7 @@ import {
   type ScreenGuideAnnotation,
 } from "@/shell/overlay/ScreenGuideAnnotations";
 import { InworldDictationSession } from "@/features/dictation/services/inworld-dictation";
+import { appendRollingLevel } from "@/features/dictation/rolling-levels";
 import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
 import {
   SelectionChipOverlay,
@@ -617,16 +618,9 @@ function useOverlayDictation() {
             transcriptRef.current = text;
           },
           onLevel: (level) => {
-            setLevels((prev) => {
-              if (prev.length < MAX_DICTATION_OVERLAY_LEVELS) {
-                return [...prev, level];
-              }
-              const next = prev.slice(
-                prev.length - MAX_DICTATION_OVERLAY_LEVELS + 1,
-              );
-              next.push(level);
-              return next;
-            });
+            setLevels((prev) =>
+              appendRollingLevel(prev, level, MAX_DICTATION_OVERLAY_LEVELS),
+            );
           },
           onStateChange: (state, error) => {
             if (state === "error") {

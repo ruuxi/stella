@@ -21,6 +21,7 @@ import {
   InworldDictationSession,
   type DictationSessionState,
 } from "@/features/dictation/services/inworld-dictation";
+import { appendRollingLevel } from "@/features/dictation/rolling-levels";
 
 export const DICTATION_TOGGLE_EVENT = "stella:dictation-toggle";
 
@@ -153,15 +154,7 @@ export const useDictation = ({
           setMessageRef.current(next);
         },
         onLevel: (level) => {
-          setLevels((prev) => {
-            if (prev.length < MAX_LEVEL_BARS) {
-              return [...prev, level];
-            }
-            // Rolling buffer — drop oldest, append newest.
-            const next = prev.slice(prev.length - MAX_LEVEL_BARS + 1);
-            next.push(level);
-            return next;
-          });
+          setLevels((prev) => appendRollingLevel(prev, level, MAX_LEVEL_BARS));
         },
       });
     } catch (err) {

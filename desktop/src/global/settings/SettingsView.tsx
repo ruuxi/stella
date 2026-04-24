@@ -5,7 +5,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
 } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
@@ -34,6 +33,10 @@ import { NativeSelect } from "@/ui/native-select";
 import { Keybind } from "@/ui/keybind";
 import { AudioTab } from "@/global/settings/AudioTab";
 import { ConnectionsTab } from "@/global/settings/ConnectionsTab";
+import {
+  useDesktopPermissions,
+  type DesktopPermissionStatus,
+} from "@/global/permissions/use-desktop-permissions";
 import "@/global/settings/settings.css";
 
 const LegalDialog = lazy(() =>
@@ -57,18 +60,6 @@ type SettingsTab =
 
 type BasicSettingsSection = "basic" | "memory" | "backup" | "account";
 
-type BasicTabPermissionStatus = {
-  accessibility: boolean;
-  screen: boolean;
-  microphone: boolean;
-  microphoneStatus:
-    | "not-determined"
-    | "granted"
-    | "denied"
-    | "restricted"
-    | "unknown";
-};
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -77,6 +68,7 @@ const GENERAL_AGENT_ENGINE_OPTIONS = [
   { id: "default", name: "Stella" },
   { id: "claude_code_local", name: "Claude Code" },
 ] as const;
+const SETTINGS_PERMISSION_RESTART_KINDS = ["screen"] as const;
 
 const MAX_AGENT_CONCURRENCY_OPTIONS = Array.from(
   { length: 24 },
@@ -230,22 +222,37 @@ function GeneralSettingsTab({
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(
     null,
   );
-  const [permissionStatus, setPermissionStatus] =
-    useState<BasicTabPermissionStatus>({
+  const initialPermissionStatus = useMemo<DesktopPermissionStatus>(
+    () => ({
       accessibility: platform === "darwin" ? false : true,
       screen: platform === "darwin" ? false : true,
       microphone: platform === "darwin" ? false : true,
       microphoneStatus: platform === "darwin" ? "unknown" : "granted",
-    });
-  const lastPermissionStatusRef = useRef<BasicTabPermissionStatus | null>(null);
-  const [permissionsLoaded, setPermissionsLoaded] = useState(platform !== "darwin");
-  const [permissionsError, setPermissionsError] = useState<string | null>(null);
-  const [activePermissionAction, setActivePermissionAction] = useState<
-    "accessibility" | "screen" | null
-  >(null);
-  const [isRestartingAfterPermissions, setIsRestartingAfterPermissions] =
-    useState(false);
-  const [screenRestartRecommended, setScreenRestartRecommended] = useState(false);
+    }),
+    [platform],
+  );
+  const formatPermissionLoadError = useCallback(
+    (error: unknown) =>
+      getSettingsErrorMessage(error, "Failed to load desktop permission status."),
+    [],
+  );
+  const {
+    status: permissionStatus,
+    loaded: permissionsLoaded,
+    error: permissionsError,
+    setError: setPermissionsError,
+    activeAction: activePermissionAction,
+    restartRecommended: screenRestartRecommended,
+    isRestarting: isRestartingAfterPermissions,
+    requestWithSettingsFallback,
+    restart: restartAfterPermissionChange,
+  } = useDesktopPermissions({
+    enabled: platform === "darwin",
+    pollMs: 1500,
+    initialStatus: initialPermissionStatus,
+    restartKinds: SETTINGS_PERMISSION_RESTART_KINDS,
+    errorMessage: formatPermissionLoadError,
+  });
   const [dictationShortcut, setDictationShortcut] = useState("Control+M");
   const [dictationShortcutLoaded, setDictationShortcutLoaded] = useState(false);
   const [isCapturingDictationShortcut, setIsCapturingDictationShortcut] =
@@ -341,63 +348,6 @@ function GeneralSettingsTab({
       cancelled = true;
     };
   }, []);
-
-  const fetchPermissionStatus = useCallback(async () => {
-    const systemApi = window.electronAPI?.system;
-    if (!systemApi?.getPermissionStatus) {
-      throw new Error("Desktop permission status is unavailable in this window.");
-    }
-
-    const nextStatus = await systemApi.getPermissionStatus();
-    const previousStatus = lastPermissionStatusRef.current;
-    if (previousStatus && !previousStatus.screen && nextStatus.screen) {
-      setScreenRestartRecommended(true);
-    }
-    lastPermissionStatusRef.current = nextStatus;
-    setPermissionStatus(nextStatus);
-    return nextStatus;
-  }, []);
-
-  useEffect(() => {
-    if (platform !== "darwin") {
-      return;
-    }
-
-    let cancelled = false;
-    const loadPermissions = async () => {
-      try {
-        const nextStatus = await fetchPermissionStatus();
-        if (!cancelled) {
-          setPermissionsError(null);
-          setPermissionStatus(nextStatus);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setPermissionsError(
-            getSettingsErrorMessage(
-              error,
-              "Failed to load desktop permission status.",
-            ),
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setPermissionsLoaded(true);
-        }
-      }
-    };
-
-    void loadPermissions();
-    const intervalId = window.setInterval(() => {
-      void loadPermissions();
-    }, 1500);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [fetchPermissionStatus, platform]);
-
 
   const handleSyncModeChange = useCallback(
     async (value: string) => {
@@ -496,56 +446,28 @@ function GeneralSettingsTab({
 
   const handlePermissionEnable = useCallback(
     async (kind: "accessibility" | "screen") => {
-      const systemApi = window.electronAPI?.system;
-      if (
-        !systemApi?.requestPermission
-        || !systemApi.openPermissionSettings
-        || !systemApi.getPermissionStatus
-      ) {
-        setPermissionsError("Desktop permissions are unavailable in this window.");
-        return;
-      }
-
       setPermissionsError(null);
-      setActivePermissionAction(kind);
       try {
-        const result = await systemApi.requestPermission(kind);
-        const nextStatus = await fetchPermissionStatus();
-        if (!nextStatus[kind] && !result.granted && !result.openedSettings) {
-          await systemApi.openPermissionSettings(kind);
-        }
+        await requestWithSettingsFallback(kind);
       } catch (error) {
         setPermissionsError(
           getSettingsErrorMessage(error, `Failed to update ${kind} permission.`),
         );
-      } finally {
-        setActivePermissionAction(null);
       }
     },
-    [fetchPermissionStatus],
+    [requestWithSettingsFallback, setPermissionsError],
   );
 
   const handlePermissionRestart = useCallback(async () => {
-    const systemApi = window.electronAPI?.system;
-    if (!systemApi?.quitForRestart) {
-      setPermissionsError("Restart is unavailable in this window.");
-      return;
-    }
-
     setPermissionsError(null);
-    setIsRestartingAfterPermissions(true);
     try {
-      const result = await systemApi.quitForRestart();
-      if (!result?.ok) {
-        setIsRestartingAfterPermissions(false);
-      }
+      await restartAfterPermissionChange();
     } catch (error) {
-      setIsRestartingAfterPermissions(false);
       setPermissionsError(
         getSettingsErrorMessage(error, "Failed to restart Stella."),
       );
     }
-  }, []);
+  }, [restartAfterPermissionChange, setPermissionsError]);
 
   const saveDictationShortcut = useCallback(async (shortcut: string) => {
     const dictationApi = window.electronAPI?.dictation;

@@ -1,4 +1,4 @@
-import { createServiceRequest } from "@/infra/http/service-request"
+import { postServiceJson } from "@/infra/http/service-request"
 import {
   generateMusicPrompt,
   type MusicMood,
@@ -274,16 +274,9 @@ export async function play(): Promise<void> {
       return
     }
 
-    const { endpoint, headers } = await createServiceRequest("/api/music/stream", {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    })
-    logMusic("Resolved music generation endpoint.", { endpoint })
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
+    const payload = await postServiceJson<GeneratedMusicResponse>(
+      "/api/music/stream",
+      {
         promptLabel: promptSet.label,
         weightedPrompts: promptSet.prompts,
         musicGenerationConfig: {
@@ -294,20 +287,21 @@ export async function play(): Promise<void> {
           temperature: promptSet.config.temperature,
           ...(state.lyrics ? { musicGenerationMode: "VOCALIZATION" } : {}),
         },
-      }),
-    })
-
-    logMusic("Music generation HTTP response received.", {
-      ok: response.ok,
-      status: response.status,
-      statusText: response.statusText,
-    })
-
-    if (!response.ok) {
-      throw new Error(await parseErrorResponse(response))
-    }
-
-    const payload = (await response.json()) as GeneratedMusicResponse
+      },
+      {
+        headers: {
+          Accept: "application/json",
+        },
+        onResponse: (response) => {
+          logMusic("Music generation HTTP response received.", {
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+          })
+        },
+        errorMessage: parseErrorResponse,
+      },
+    )
     if (generation !== playbackGeneration) {
       return
     }

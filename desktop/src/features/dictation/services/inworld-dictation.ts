@@ -11,7 +11,7 @@
  * either expose the API key or require a stateful WebSocket proxy.
  */
 
-import { createServiceRequest } from "@/infra/http/service-request";
+import { postServiceJson } from "@/infra/http/service-request";
 import {
   acquireSharedMicrophone,
   type SharedMicrophoneLease,
@@ -201,22 +201,19 @@ export class InworldDictationSession {
         wavBytes.byteLength / 2,
       ),
     );
-    const { endpoint, headers } = await createServiceRequest(
+    const parsed = await postServiceJson<TranscribeResponse>(
       "/api/dictation/transcribe",
-    );
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({
+      {
         audioBase64,
         audioEncoding: "AUTO_DETECT",
-      }),
-    });
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`Transcription failed: ${response.status} ${detail}`);
-    }
-    const parsed = (await response.json()) as TranscribeResponse;
+      },
+      {
+        errorMessage: async (response) => {
+          const detail = await response.text();
+          return `Transcription failed: ${response.status} ${detail}`;
+        },
+      },
+    );
     return parsed.transcript ?? "";
   }
 

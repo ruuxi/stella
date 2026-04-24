@@ -12,6 +12,13 @@ type ServiceRequestOptions = {
   includeDeviceId?: boolean;
 };
 
+type PostServiceJsonOptions = ServiceRequestOptions & {
+  headers?: Record<string, string>;
+  errorMessage?: (response: Response) => Promise<string> | string;
+  onResponse?: (response: Response) => void;
+  parseResponse?: boolean;
+};
+
 const resolveCloudBaseUrl = (): string => {
   const resolved = readConfiguredConvexSiteUrl(
     import.meta.env.VITE_CONVEX_SITE_URL as string | undefined,
@@ -66,3 +73,46 @@ export const createServiceRequest = async (
   };
 };
 
+const defaultServiceErrorMessage = async (response: Response): Promise<string> => {
+  const detail = await response.text().catch(() => "");
+  return `Service request failed: ${response.status}${detail ? ` ${detail}` : ""}`;
+};
+
+export const postServiceJson = async <TResponse>(
+  path: string,
+  body: unknown,
+  options: PostServiceJsonOptions = {},
+): Promise<TResponse> => {
+  const {
+    headers = {},
+    errorMessage,
+    onResponse,
+    parseResponse = true,
+    ...requestOptions
+  } = options;
+  const { endpoint, headers: requestHeaders } = await createServiceRequest(
+    path,
+    {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    requestOptions,
+  );
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: requestHeaders,
+    body: JSON.stringify(body),
+  });
+  onResponse?.(response);
+  if (!response.ok) {
+    throw new Error(
+      errorMessage
+        ? await errorMessage(response)
+        : await defaultServiceErrorMessage(response),
+    );
+  }
+  if (!parseResponse) {
+    return undefined as TResponse;
+  }
+  return (await response.json()) as TResponse;
+};

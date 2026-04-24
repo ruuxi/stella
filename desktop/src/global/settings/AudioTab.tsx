@@ -7,6 +7,7 @@ import {
   MIC_ENABLED_KEY,
   isMicrophoneEnabled,
 } from "@/features/voice/services/shared-microphone";
+import { useMicrophoneRecovery } from "@/global/permissions/use-microphone-recovery";
 
 type MicrophonePermissionStatus =
   | "not-determined"
@@ -33,7 +34,7 @@ export function AudioTab() {
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [microphoneStatus, setMicrophoneStatus] =
     useState<MicrophonePermissionStatus>("unknown");
-  const [isResettingMicrophone, setIsResettingMicrophone] = useState(false);
+  const microphoneRecovery = useMicrophoneRecovery();
 
   const syncPermissionStatus = useCallback(async () => {
     const result = await window.electronAPI?.system.getPermissionStatus?.();
@@ -154,24 +155,6 @@ export function AudioTab() {
     }
   }, []);
 
-  const handleResetMicrophoneAndRestart = useCallback(async () => {
-    setIsResettingMicrophone(true);
-    try {
-      const resetResult =
-        await window.electronAPI?.system.resetMicrophonePermission?.();
-      if (!resetResult?.ok) {
-        setIsResettingMicrophone(false);
-        return;
-      }
-      const quitResult = await window.electronAPI?.system.quitForRestart?.();
-      if (!quitResult?.ok) {
-        setIsResettingMicrophone(false);
-      }
-    } catch {
-      setIsResettingMicrophone(false);
-    }
-  }, []);
-
   const microphoneDenied =
     platform === "darwin" && microphoneStatus === "denied";
   const showMicrophoneRecovery = platform === "darwin";
@@ -221,22 +204,18 @@ export function AudioTab() {
               <button
                 type="button"
                 className="settings-btn"
-                disabled={isResettingMicrophone}
-                onClick={() =>
-                  void window.electronAPI?.system.openPermissionSettings?.(
-                    "microphone",
-                  )
-                }
+                disabled={microphoneRecovery.isResetting}
+                onClick={microphoneRecovery.openSettings}
               >
                 Open Settings
               </button>
               <button
                 type="button"
                 className="settings-btn settings-btn--danger"
-                disabled={isResettingMicrophone}
-                onClick={() => void handleResetMicrophoneAndRestart()}
+                disabled={microphoneRecovery.isResetting}
+                onClick={() => void microphoneRecovery.resetAndRestart()}
               >
-                {isResettingMicrophone ? "Closing..." : "Reset & Restart"}
+                {microphoneRecovery.isResetting ? "Closing..." : "Reset & Restart"}
               </button>
             </div>
           </div>

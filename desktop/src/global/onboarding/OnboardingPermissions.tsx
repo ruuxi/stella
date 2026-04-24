@@ -1,20 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
+import {
+  useDesktopPermissions,
+  type DesktopPermissionKind,
+  type DesktopPermissionStatus,
+} from "@/global/permissions/use-desktop-permissions";
+import { useMicrophoneRecovery } from "@/global/permissions/use-microphone-recovery";
 
-type PermissionKind =
-  | "accessibility"
-  | "screen"
-  | "microphone";
-
-type MicrophonePermissionStatus =
-  | "not-determined"
-  | "granted"
-  | "denied"
-  | "restricted"
-  | "unknown";
-
-type PermissionStatus = Record<PermissionKind, boolean> & {
-  microphoneStatus: MicrophonePermissionStatus;
-};
+type PermissionKind = DesktopPermissionKind;
+type PermissionStatus = DesktopPermissionStatus;
 
 type PermissionCard = {
   kind: PermissionKind;
@@ -50,6 +43,15 @@ const PERMISSION_CARDS: PermissionCard[] = [
 ];
 
 const POLL_INTERVAL_MS = 1500;
+const INITIAL_PERMISSION_STATUS: PermissionStatus = {
+  accessibility: false,
+  screen: false,
+  microphone: false,
+  microphoneStatus: "unknown",
+};
+const ONBOARDING_RESTART_KINDS = PERMISSION_CARDS
+  .filter((card) => card.requiresRelaunch)
+  .map((card) => card.kind);
 
 type OnboardingPermissionsProps = {
   splitTransitionActive: boolean;
@@ -77,58 +79,33 @@ export function OnboardingPermissions({
   splitTransitionActive,
   onContinue,
 }: OnboardingPermissionsProps) {
-  const [status, setStatus] = useState<PermissionStatus>({
-    accessibility: false,
-    screen: false,
-    microphone: false,
-    microphoneStatus: "unknown",
-  });
-
   /** Windows/Linux: main process cannot read mic TCC; set after successful getUserMedia. */
   const micSessionGrantedRef = useRef(false);
-  const lastStatusRef = useRef<PermissionStatus | null>(null);
+  const normalizeOnboardingStatus = useCallback(
+    (result: PermissionStatus) => ({
+      ...result,
+      microphone: result.microphone || micSessionGrantedRef.current,
+    }),
+    [],
+  );
+  const {
+    status,
+    activeAction: requesting,
+    setActiveAction: setRequesting,
+    restartRecommended,
+    isRestarting,
+    refresh: fetchStatus,
+    requestWithSettingsFallback,
+    restart: handleRestart,
+  } = useDesktopPermissions({
+    pollMs: POLL_INTERVAL_MS,
+    initialStatus: INITIAL_PERMISSION_STATUS,
+    restartKinds: ONBOARDING_RESTART_KINDS,
+    normalizeStatus: normalizeOnboardingStatus,
+  });
+  const microphoneRecovery = useMicrophoneRecovery();
+  const isClosing = isRestarting || microphoneRecovery.isResetting;
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [restartRecommended, setRestartRecommended] = useState(false);
-  const [isRestarting, setIsRestarting] = useState(false);
-
-  const fetchStatus = useCallback(async () => {
-    const result = await window.electronAPI?.system.getPermissionStatus?.();
-    if (result) {
-      const nextStatus = {
-        accessibility: result.accessibility,
-        screen: result.screen,
-        microphone: result.microphone || micSessionGrantedRef.current,
-        microphoneStatus: result.microphoneStatus,
-      };
-      const previousStatus = lastStatusRef.current;
-      if (
-        previousStatus &&
-        PERMISSION_CARDS.some(
-          (card) =>
-            card.requiresRelaunch
-            && !previousStatus[card.kind]
-            && nextStatus[card.kind],
-        )
-      ) {
-        setRestartRecommended(true);
-      }
-      lastStatusRef.current = nextStatus;
-      setStatus(nextStatus);
-      return nextStatus;
-    }
-    return null;
-  }, []);
-
-  useEffect(() => {
-    void fetchStatus();
-    pollRef.current = setInterval(() => void fetchStatus(), POLL_INTERVAL_MS);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [fetchStatus]);
-
-  const [requesting, setRequesting] = useState<PermissionKind | null>(null);
   const platform = window.electronAPI?.platform;
   const microphoneDenied =
     platform === "darwin" && status.microphoneStatus === "denied";
@@ -166,7 +143,7 @@ export function OnboardingPermissions({
           return;
         }
 
-        await window.electronAPI?.system.requestPermission?.(card.kind);
+        await requestWithSettingsFallback(card.kind);
         await fetchStatus();
       } catch {
         await fetchStatus();
@@ -174,7 +151,7 @@ export function OnboardingPermissions({
         setRequesting(null);
       }
     },
-    [fetchStatus, microphoneDenied],
+    [fetchStatus, microphoneDenied, requestWithSettingsFallback, setRequesting],
   );
 
   const allMeasuredGranted =
@@ -185,36 +162,6 @@ export function OnboardingPermissions({
     );
   const showMicrophoneRecovery =
     platform === "darwin" && status.microphoneStatus === "denied";
-
-  const handleRestart = useCallback(async () => {
-    setIsRestarting(true);
-    try {
-      const result = await window.electronAPI?.system.quitForRestart?.();
-      if (!result?.ok) {
-        setIsRestarting(false);
-      }
-    } catch {
-      setIsRestarting(false);
-    }
-  }, []);
-
-  const handleResetMicrophoneAndRestart = useCallback(async () => {
-    setIsRestarting(true);
-    try {
-      const resetResult =
-        await window.electronAPI?.system.resetMicrophonePermission?.();
-      if (!resetResult?.ok) {
-        setIsRestarting(false);
-        return;
-      }
-      const quitResult = await window.electronAPI?.system.quitForRestart?.();
-      if (!quitResult?.ok) {
-        setIsRestarting(false);
-      }
-    } catch {
-      setIsRestarting(false);
-    }
-  }, []);
 
   return (
     <div className="onboarding-step-content">
@@ -289,22 +236,18 @@ export function OnboardingPermissions({
           <div className="onboarding-permissions-actions">
             <button
               className="onboarding-permission-card__action"
-              disabled={isRestarting}
-              onClick={() =>
-                void window.electronAPI?.system.openPermissionSettings?.(
-                  "microphone",
-                )
-              }
+              disabled={isClosing}
+              onClick={microphoneRecovery.openSettings}
             >
               Open Settings
             </button>
             <button
               className="onboarding-confirm"
               data-visible={true}
-              disabled={isRestarting}
-              onClick={() => void handleResetMicrophoneAndRestart()}
+              disabled={isClosing}
+              onClick={() => void microphoneRecovery.resetAndRestart()}
             >
-              {isRestarting ? "Closing..." : "Reset & Restart"}
+              {isClosing ? "Closing..." : "Reset & Restart"}
             </button>
           </div>
         </div>
@@ -319,10 +262,10 @@ export function OnboardingPermissions({
           <button
             className="onboarding-confirm"
             data-visible={true}
-            disabled={isRestarting}
+            disabled={isClosing}
             onClick={() => void handleRestart()}
           >
-            {isRestarting ? "Closing..." : "Restart"}
+            {isClosing ? "Closing..." : "Restart"}
           </button>
         </div>
       ) : null}
@@ -330,7 +273,7 @@ export function OnboardingPermissions({
       <button
         className="onboarding-confirm"
         data-visible={true}
-        disabled={splitTransitionActive || isRestarting}
+        disabled={splitTransitionActive || isClosing}
         onClick={onContinue}
       >
         {allMeasuredGranted ? "Continue" : "Skip for now"}
