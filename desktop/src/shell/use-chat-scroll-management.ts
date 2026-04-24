@@ -28,7 +28,6 @@ const THUMB_MIN_HEIGHT = 24
 const THUMB_FADE_MS = 1200
 
 type ChatScrollManagementOptions = {
-  itemCount?: number
   hasOlderEvents?: boolean
   isLoadingOlder?: boolean
   onLoadOlder?: () => void

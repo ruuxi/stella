@@ -49,3 +49,12 @@ swiftc -O -o "$OUTPUT_DIR/home_capture" src/home_capture.swift \
   -framework Foundation \
   -framework ScreenCaptureKit
 echo "Build successful: $OUTPUT_DIR/home_capture"
+
+echo "Building chronicle (macOS)..."
+swiftc -O -o "$OUTPUT_DIR/chronicle" src/chronicle.swift \
+  -framework AppKit \
+  -framework CoreGraphics \
+  -framework Foundation \
+  -framework ScreenCaptureKit \
+  -framework Vision
+echo "Build successful: $OUTPUT_DIR/chronicle"

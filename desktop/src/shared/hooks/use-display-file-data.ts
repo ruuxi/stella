@@ -26,14 +26,12 @@ export const decodeBase64ToUint8Array = (base64: string): Uint8Array => {
 };
 
 export const decodeBase64ToBlob = (base64: string, mimeType: string): Blob => {
-  const binary = atob(base64);
+  const decoded = decodeBase64ToUint8Array(base64);
   // Allocate an `ArrayBuffer` (not `SharedArrayBuffer`) so BlobPart stays
   // compatible with TS strict DOM typings.
-  const buffer = new ArrayBuffer(binary.length);
+  const buffer = new ArrayBuffer(decoded.byteLength);
   const bytes = new Uint8Array(buffer);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
+  bytes.set(decoded);
   return new Blob([buffer], {
     type: mimeType || "application/octet-stream",
   });

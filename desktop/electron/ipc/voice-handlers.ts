@@ -5,6 +5,7 @@ import type { WindowManager } from "../windows/window-manager.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 import { applyShortcutRegistration } from "./shortcut-registration.js";
+import type { VoiceRuntimeSnapshot } from "../../../runtime/contracts/index.js";
 
 type VoiceHandlersOptions = {
   uiState: UiState;
@@ -15,15 +16,6 @@ type VoiceHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
   getOverlayController?: () => OverlayWindowController | null;
-};
-
-type VoiceRuntimeSnapshot = {
-  sessionState: "idle" | "connecting" | "connected" | "error" | "disconnecting";
-  isConnected: boolean;
-  isSpeaking: boolean;
-  isUserSpeaking: boolean;
-  micLevel: number;
-  outputLevel: number;
 };
 
 const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {

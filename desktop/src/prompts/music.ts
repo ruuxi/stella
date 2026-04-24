@@ -36,8 +36,6 @@ const MOOD_GUIDANCE: Record<MusicMood, string> = {
 
 export const getMusicSystemPrompt = (): string => resolvePromptText("music.system")
 
-export const MUSIC_SYSTEM_PROMPT = getMusicSystemPrompt()
-
 export async function generateMusicPrompt(
   mood: MusicMood,
   previousLabel: string | null,
@@ -168,7 +166,7 @@ const FALLBACKS: Record<MusicMood, PromptSet> = {
   },
 }
 
-export function getFallbackPrompt(mood: MusicMood): PromptSet {
+function getFallbackPrompt(mood: MusicMood): PromptSet {
   return {
     ...FALLBACKS[mood],
     prompts: FALLBACKS[mood].prompts.map((prompt) => ({ ...prompt })),

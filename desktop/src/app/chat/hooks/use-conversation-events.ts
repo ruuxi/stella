@@ -14,8 +14,7 @@ import {
 } from "@/app/chat/services/local-chat-store";
 import { countVisibleChatMessageEvents } from "../../../../../runtime/chat-event-visibility.js";
 import { useChatStore } from "@/context/chat-store";
-import type { EventRecord, MessageTurn, StepItem } from "@/app/chat/lib/event-transforms";
-import { extractStepsFromEvents, groupEventsIntoTurns } from "@/app/chat/lib/event-transforms";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 
 const EVENT_PAGE_SIZE = 200;
 const LOCAL_LOAD_RETRY_MS = 300;
@@ -385,20 +384,4 @@ export const useConversationEventFeed = (
     storageMode,
   ]);
 };
-
-export const useConversationEvents = (
-  conversationId?: string,
-) => {
-  const feed = useConversationEventFeed(conversationId);
-  return feed.events;
-};
-
-export const useStepsFromEvents = (events: EventRecord[]): StepItem[] => {
-  return useMemo(() => extractStepsFromEvents(events), [events]);
-};
-
-export const useMessageTurns = (events: EventRecord[]): MessageTurn[] => {
-  return useMemo(() => groupEventsIntoTurns(events), [events]);
-};
-
 

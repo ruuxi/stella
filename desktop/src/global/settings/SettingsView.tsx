@@ -33,6 +33,8 @@ import { NativeSelect } from "@/ui/native-select";
 import { Keybind } from "@/ui/keybind";
 import { AudioTab } from "@/global/settings/AudioTab";
 import { ConnectionsTab } from "@/global/settings/ConnectionsTab";
+import { SettingsPanel } from "@/global/settings/SettingsPanel";
+import { SETTINGS_TABS, type SettingsTab } from "@/global/settings/settings-tabs";
 import {
   useDesktopPermissions,
   type DesktopPermissionStatus,
@@ -45,20 +47,7 @@ const LegalDialog = lazy(() =>
   })),
 );
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type SettingsTab =
-  | "basic"
-  | "memory"
-  | "backup"
-  | "account"
-  | "models"
-  | "audio"
-  | "connections";
-
-type BasicSettingsSection = "basic" | "memory" | "backup" | "account";
+type HookedSettingsSection = "basic" | "backup";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -90,16 +79,6 @@ const LLM_PROVIDERS = [
   { key: "vercel-ai-gateway", label: "Vercel AI Gateway", placeholder: "..." },
   { key: "opencode", label: "OpenCode Zen", placeholder: "..." },
 ] as const;
-
-const TABS: { key: SettingsTab; label: string }[] = [
-  { key: "basic", label: "Basic" },
-  { key: "memory", label: "Memory" },
-  { key: "backup", label: "Backups" },
-  { key: "account", label: "Account & Legal" },
-  { key: "models", label: "Models" },
-  { key: "audio", label: "Audio" },
-  { key: "connections", label: "Connections" },
-];
 
 function getSettingsErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -201,12 +180,8 @@ function keyboardEventToAccelerator(event: KeyboardEvent): string | null {
 
 function GeneralSettingsTab({
   section,
-  onSignOut,
-  onOpenLegal,
 }: {
-  section: BasicSettingsSection;
-  onSignOut?: () => void;
-  onOpenLegal?: (doc: LegalDocument) => void;
+  section: HookedSettingsSection;
 }) {
   const { hasConnectedAccount } = useAuthSessionState();
   const platform = window.electronAPI?.platform;
@@ -813,14 +788,22 @@ function GeneralSettingsTab({
           : null}
         </div>
       ) : null}
-      {section === "memory" ? <ChronicleSettingsCard /> : null}
-      {section === "account" ? (
-        <>
-          <div className="settings-card">
+    </div>
+  );
+}
+
+function AccountSettingsTab({
+  onSignOut,
+  onOpenLegal,
+}: {
+  onSignOut?: () => void;
+  onOpenLegal?: (doc: LegalDocument) => void;
+}) {
+  return (
+    <div className="settings-tab-content">
+      <div className="settings-card">
         <h3 className="settings-card-title">Account</h3>
-        <p className="settings-card-desc">
-          Manage your Stella account.
-        </p>
+        <p className="settings-card-desc">Manage your Stella account.</p>
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Sign out</div>
@@ -875,8 +858,8 @@ function GeneralSettingsTab({
             </Button>
           </div>
         </div>
-          </div>
-          <div className="settings-card">
+      </div>
+      <div className="settings-card">
         <h3 className="settings-card-title">Legal</h3>
         <div className="settings-row">
           <div className="settings-row-info">
@@ -908,9 +891,7 @@ function GeneralSettingsTab({
             </Button>
           </div>
         </div>
-          </div>
-        </>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -2130,24 +2111,6 @@ function ModelsTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Settings Panel (scroll container with bottom fade)
-// ---------------------------------------------------------------------------
-
-/**
- * Reusable scroll-and-fade chrome that wraps any panel with the same
- * standalone visual treatment as the settings tabs. Exported so peer
- * route-mounted screens (e.g. `/billing`) can match the look without
- * duplicating CSS.
- */
-export function SettingsPanel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="settings-panel-wrap">
-      <div className="settings-panel">{children}</div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // SettingsScreen (route-mounted, no Dialog wrapper)
 // ---------------------------------------------------------------------------
 
@@ -2196,7 +2159,7 @@ export const SettingsScreen = ({
           this tab list (and prepends a Back button automatically). The
           screen body itself is single-column. */}
       <PageSidebar title="Settings">
-        {TABS.map((tab) => (
+        {SETTINGS_TABS.map((tab) => (
           <button
             key={tab.key}
             type="button"
@@ -2212,25 +2175,20 @@ export const SettingsScreen = ({
           <SettingsPanel>
             {activeTab === "basic" ? (
               <GeneralSettingsTab
+                key="basic"
                 section="basic"
-                onSignOut={onSignOut}
-                onOpenLegal={setActiveLegalDoc}
               />
             ) : activeTab === "memory" ? (
-              <GeneralSettingsTab
-                section="memory"
-                onSignOut={onSignOut}
-                onOpenLegal={setActiveLegalDoc}
-              />
+              <div className="settings-tab-content">
+                <ChronicleSettingsCard />
+              </div>
             ) : activeTab === "backup" ? (
               <GeneralSettingsTab
+                key="backup"
                 section="backup"
-                onSignOut={onSignOut}
-                onOpenLegal={setActiveLegalDoc}
               />
             ) : activeTab === "account" ? (
-              <GeneralSettingsTab
-                section="account"
+              <AccountSettingsTab
                 onSignOut={onSignOut}
                 onOpenLegal={setActiveLegalDoc}
               />

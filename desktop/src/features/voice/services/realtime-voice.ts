@@ -112,7 +112,6 @@ const RTC_CONFIGURATION: RTCConfiguration = {
   // Pre-gather one ICE candidate batch to shorten negotiation time.
   iceCandidatePoolSize: 1,
 };
-const RTC_VOICE_MIC_USE_CASE = "voice-rtc" as const;
 const ECHO_GUARD_SAMPLE_MS = 40;
 const ECHO_GUARD_OUTPUT_LEVEL_THRESHOLD = 0.02;
 const ECHO_GUARD_BARGE_IN_MIN_MIC_LEVEL = 0.05;
@@ -684,9 +683,7 @@ export class RealtimeVoiceSession {
       return;
     }
 
-    const lease = await acquireSharedMicrophone({
-      useCase: RTC_VOICE_MIC_USE_CASE,
-    });
+    const lease = await acquireSharedMicrophone();
     if (!this.inputActive || this.destroyed) {
       lease.release();
       return;

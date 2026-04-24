@@ -31,7 +31,7 @@ import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/Scree
 import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
-import { useChatContextSync } from "./use-chat-context-sync";
+import { useCapturedChatContext } from "./use-captured-chat-context";
 import {
   updateComposerTextareaExpansion,
   useAnimatedComposerShell,
@@ -87,6 +87,7 @@ interface ChatSidebarProps {
     chatContext?: ChatContext | null,
     selectedText?: string | null,
   ) => void;
+  onStop?: () => void;
   onAdd?: () => void;
   onOpenChange?: (open: boolean) => void;
   /**
@@ -114,6 +115,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       isLoadingOlder,
       isInitialLoading,
       onSend,
+      onStop,
       onAdd,
       onOpenChange,
       onContextMenu,
@@ -125,7 +127,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     const [sidebarExpanded, setSidebarExpanded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const { chatContext, setChatContext, selectedText, setSelectedText } =
-      useChatContextSync();
+      useCapturedChatContext();
     const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
       useScreenshotPreview(chatContext);
 
@@ -342,9 +344,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
                             {isStreaming && (
                               <ComposerStopButton
                                 className="composer-stop"
-                                onClick={() => {
-                                  /* stop handled externally */
-                                }}
+                                onClick={onStop}
                                 title="Stop"
                                 aria-label="Stop"
                               />

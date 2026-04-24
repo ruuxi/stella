@@ -16,7 +16,6 @@ import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import type { LegalDocument } from "@/global/legal/legal-text";
-import { markOpenOrbAfterOnboarding } from "@/shared/lib/stella-orb-chat";
 
 const LegalDialog = lazy(() =>
   import("@/global/legal/LegalDialog").then((m) => ({ default: m.LegalDialog })),
@@ -119,7 +118,6 @@ export function useOnboardingOverlay() {
     setOnboardingExiting(true);
     exitTimerRef.current = setTimeout(() => {
       setSplitMode(false);
-      markOpenOrbAfterOnboarding();
       completeOnboarding();
     }, 600);
   }, [completeOnboarding]);

@@ -3,9 +3,7 @@
  * Codex right-panel UI: horizontal scroll, left→right insertion order,
  * close-on-X, click-to-activate.
  *
- * Reorder-by-drag is intentionally out of scope for the first cut — we
- * exposed `displayTabs.reorderTab` so it can be added later without
- * touching the store.
+ * Reorder-by-drag is intentionally out of scope for the current tab strip.
  */
 
 import type { CSSProperties } from "react";

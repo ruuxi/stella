@@ -25,7 +25,7 @@ type TabStoreSnapshot = {
   panelOpen: boolean;
   /**
    * When true, the panel takes over the entire content area beside the
-   * left rail. Persists across reloads but resets on `displayTabs.reset`.
+   * left rail. Persists across reloads.
    */
   panelExpanded: boolean;
   /**
@@ -187,25 +187,6 @@ export const displayTabs = {
     }
     emit({ ...state, tabs: remaining, activeTabId: nextActive });
   },
-  closeActiveTab(): void {
-    if (state.activeTabId == null) return;
-    this.closeTab(state.activeTabId);
-  },
-  /**
-   * Move a tab to a different ordinal position by swapping with the tab at
-   * `targetIndex`. Used by the tab strip drag handle.
-   */
-  reorderTab(tabId: string, targetIndex: number): void {
-    const idx = findIndex(state, tabId);
-    if (idx === -1) return;
-    const clamped = Math.max(0, Math.min(targetIndex, state.tabs.length - 1));
-    if (clamped === idx) return;
-    const next = [...state.tabs];
-    const [moved] = next.splice(idx, 1);
-    if (!moved) return;
-    next.splice(clamped, 0, moved);
-    emit({ ...state, tabs: next });
-  },
   /**
    * Open / close the panel without changing the active tab. Closing here
    * leaves tabs intact so re-opening restores the previous selection.
@@ -236,22 +217,6 @@ export const displayTabs = {
     if (state.panelWidth === width) return;
     writePersistedWidth(width);
     emit({ ...state, panelWidth: width });
-  },
-  /**
-   * Drop everything. Currently only used by hard-reset / sign-out flows
-   * (and tests).
-   */
-  reset(): void {
-    nextOrd = 1;
-    writePersistedWidth(null);
-    writePersistedExpanded(false);
-    emit({
-      tabs: [],
-      activeTabId: null,
-      panelOpen: false,
-      panelExpanded: false,
-      panelWidth: null,
-    });
   },
 };
 

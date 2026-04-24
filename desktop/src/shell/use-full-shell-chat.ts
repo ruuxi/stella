@@ -23,7 +23,7 @@ import {
   toStellaMessageMetadata,
 } from '@/shared/lib/stella-send-message'
 import { STELLA_SHOW_HOME_EVENT } from '@/shared/lib/stella-orb-chat'
-import { useChatContextSync } from './use-chat-context-sync'
+import { useCapturedChatContext } from './use-captured-chat-context'
 import { useChatScrollManagement } from './use-chat-scroll-management'
 
 const NO_OP = () => {}
@@ -64,7 +64,7 @@ export function useFullShellChat({
     useState(false)
   const prevOnChatRouteRef = useRef(isOnChatRoute)
   const { chatContext, setChatContext, selectedText, setSelectedText } =
-    useChatContextSync()
+    useCapturedChatContext()
 
   const {
     events,
@@ -193,7 +193,6 @@ export function useFullShellChat({
     overflowAnchor,
     thumbState,
   } = useChatScrollManagement({
-    itemCount: events.length,
     hasOlderEvents,
     isLoadingOlder,
     onLoadOlder: loadOlder,

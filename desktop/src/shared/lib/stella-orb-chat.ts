@@ -1,28 +1,5 @@
 import type { ChatContext } from "@/shared/types/electron";
 
-/** Set when onboarding finishes; the root chrome consumes to open the sidebar chat once. */
-const OPEN_ORB_AFTER_ONBOARDING_KEY = "stella-open-orb-after-onboarding";
-
-export function markOpenOrbAfterOnboarding(): void {
-  try {
-    sessionStorage.setItem(OPEN_ORB_AFTER_ONBOARDING_KEY, "1");
-  } catch {
-    /* ignore */
-  }
-}
-
-export function consumeOpenOrbAfterOnboarding(): boolean {
-  try {
-    if (sessionStorage.getItem(OPEN_ORB_AFTER_ONBOARDING_KEY) === "1") {
-      sessionStorage.removeItem(OPEN_ORB_AFTER_ONBOARDING_KEY);
-      return true;
-    }
-  } catch {
-    /* ignore */
-  }
-  return false;
-}
-
 /**
  * Set when the user opted into Live Memory during onboarding but isn't
  * signed in yet. The post-onboarding root chrome consumes this once and
