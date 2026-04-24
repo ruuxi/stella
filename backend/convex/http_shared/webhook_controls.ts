@@ -1,5 +1,6 @@
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { withCors } from "./cors";
 
 const WEBHOOK_EVENT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -47,3 +48,18 @@ export const consumeWebhookRateLimit = async (
     windowMs: args.windowMs,
     blockMs: args.blockMs,
   });
+
+export const enforceHttpRateLimit = async (
+  ctx: Pick<ActionCtx, "runMutation">,
+  origin: string | null,
+  args: {
+    scope: string;
+    key: string;
+    limit: number;
+    windowMs: number;
+    blockMs: number;
+  },
+): Promise<Response | null> => {
+  const status = await consumeWebhookRateLimit(ctx, args);
+  return status.allowed ? null : withCors(rateLimitResponse(status.retryAfterMs), origin);
+};

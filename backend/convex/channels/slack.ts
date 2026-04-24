@@ -2,8 +2,8 @@ import { internalAction } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { processIncomingMessage } from "./message_pipeline";
-import { processLinkCode } from "./link_codes";
+import { handleConnectorIncomingMessage } from "./message_pipeline";
+import { formatLinkCodeResultMessage, processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 import { constantTimeEqual } from "../lib/crypto_utils";
@@ -120,21 +120,10 @@ export const handleLinkCommand = internalAction({
       displayName: args.displayName,
     });
 
-    if (result === "invalid_code") {
-      await sendSlackMessage(args.channelId, "Invalid or expired code. Please generate a new one in Stella Settings.", token);
-    } else if (result === "already_linked") {
-      await sendSlackMessage(args.channelId, "Your Slack account is already linked to Stella!", token);
-    } else if (result === "linking_disabled") {
-      await sendSlackMessage(
-        args.channelId,
-        "Slack linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
-        token,
-      );
-    } else if (result === "not_allowed") {
-      await sendSlackMessage(args.channelId, "This Slack account is not allowed to link.", token);
-    } else {
-      await sendSlackMessage(args.channelId, "Linked! You can now message Stella directly here.", token);
-    }
+    await sendSlackMessage(args.channelId, formatLinkCodeResultMessage(result, {
+      providerName: "Slack",
+      linkedMessage: "Linked! You can now message Stella directly here.",
+    }), token);
     return null;
   },
 });
@@ -152,53 +141,27 @@ export const handleIncomingMessage = internalAction({
     respond: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const shouldRespond = args.respond !== false;
-
-    try {
-      const result = await processIncomingMessage({
-        ctx,
-        provider: "slack",
-        externalUserId: args.slackUserId,
-        text: args.text,
-        groupId: args.groupId,
-        attachments: args.attachments,
-        channelEnvelope: args.channelEnvelope,
-        respond: args.respond,
-        deliveryMeta: { channelId: args.channelId, teamId: args.teamId },
-      });
-
-      if (result?.deferred) return null;
-
-      if (!result) {
-        if (!shouldRespond) return null;
+    await handleConnectorIncomingMessage({
+      ctx,
+      provider: "slack",
+      externalUserId: args.slackUserId,
+      text: args.text,
+      groupId: args.groupId,
+      attachments: args.attachments,
+      channelEnvelope: args.channelEnvelope,
+      respond: args.respond,
+      deliveryMeta: { channelId: args.channelId, teamId: args.teamId },
+      logPrefix: "[slack]",
+      notLinkedText: "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.",
+      sendReply: async (text) => {
         const token = await resolveSlackToken(ctx, args.teamId);
         if (!token) {
           console.error("[slack] No bot token available for team:", args.teamId);
-          return null;
+          return;
         }
-        await sendSlackMessage(args.channelId, "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.", token);
-        return null;
-      }
-
-      if (shouldRespond) {
-        const token = await resolveSlackToken(ctx, args.teamId);
-        if (!token) {
-          console.error("[slack] No bot token available for team:", args.teamId);
-          return null;
-        }
-        await sendSlackMessage(args.channelId, result.text, token);
-      }
-    } catch (error) {
-      console.error("[slack] Agent turn failed:", error);
-      if (shouldRespond) {
-        const token = await resolveSlackToken(ctx, args.teamId);
-        if (!token) {
-          console.error("[slack] No bot token available for team:", args.teamId);
-          return null;
-        }
-        await sendSlackMessage(args.channelId, "Sorry, something went wrong. Please try again.", token);
-      }
-    }
+        await sendSlackMessage(args.channelId, text, token);
+      },
+    });
     return null;
   },
 });

@@ -11,6 +11,66 @@ import { base64UrlDecode } from "../lib/crypto_utils";
 const GOOGLE_JWT_EXPIRATION_SECONDS = 3600;
 const TOKEN_REFRESH_BUFFER_MS = 60_000;
 const DEFAULT_TOKEN_LIFETIME_SECONDS = 3600;
+const JWKS_CACHE_MS = 60 * 60 * 1000;
+
+const jwksCache = new Map<string, { keys: JsonWebKey[]; fetchedAt: number }>();
+
+const fetchCachedJwks = async (url: string): Promise<JsonWebKey[]> => {
+  const cached = jwksCache.get(url);
+  if (cached && Date.now() - cached.fetchedAt < JWKS_CACHE_MS) {
+    return cached.keys;
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch JWKs: ${res.status}`);
+  const data = await res.json();
+  const keys = Array.isArray(data.keys) ? data.keys as JsonWebKey[] : [];
+  jwksCache.set(url, { keys, fetchedAt: Date.now() });
+  return keys;
+};
+
+export async function verifyRsaJwtWithCachedJwks(args: {
+  authHeader: string;
+  jwksUrl: string;
+  validatePayload: (payload: Record<string, unknown>, nowSeconds: number) => boolean;
+  logPrefix: string;
+}): Promise<boolean> {
+  try {
+    if (!args.authHeader.startsWith("Bearer ")) return false;
+    const token = args.authHeader.slice(7);
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+
+    const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0]))) as Record<string, unknown>;
+    const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1]))) as Record<string, unknown>;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (!args.validatePayload(payload, nowSeconds)) return false;
+
+    const kid = typeof header.kid === "string" ? header.kid : null;
+    if (!kid) return false;
+    const jwks = await fetchCachedJwks(args.jwksUrl);
+    const jwk = jwks.find((key) => (key as JsonWebKey & { kid?: string }).kid === kid);
+    if (!jwk) return false;
+
+    const key = await crypto.subtle.importKey(
+      "jwk",
+      jwk,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const signatureBytes = base64UrlDecode(parts[2]);
+    const signedContent = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+    return await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      key,
+      signatureBytes.buffer as ArrayBuffer,
+      signedContent.buffer as ArrayBuffer,
+    );
+  } catch (error) {
+    console.error(`${args.logPrefix} JWT verification failed:`, error);
+    return false;
+  }
+}
 
 // ─── Google Chat Service Account JWT Auth ────────────────────────────────────
 

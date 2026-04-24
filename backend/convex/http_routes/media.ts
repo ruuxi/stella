@@ -2,10 +2,10 @@ import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
-  corsPreflightHandler,
   errorResponse,
   handleCorsRequest,
   jsonResponse,
+  registerCorsOptions,
   withCors,
 } from "../http_shared/cors";
 import {
@@ -395,13 +395,7 @@ const requireCapabilityInputs = (args: {
 };
 
 export const registerMediaRoutes = (http: HttpRouter) => {
-  for (const path of [MEDIA_CAPABILITIES_PATH, MEDIA_GENERATE_PATH, MEDIA_FAL_WEBHOOK_PATH]) {
-    http.route({
-      path,
-      method: "OPTIONS",
-      handler: httpAction(async (_ctx, request) => corsPreflightHandler(request)),
-    });
-  }
+  registerCorsOptions(http, [MEDIA_CAPABILITIES_PATH, MEDIA_GENERATE_PATH, MEDIA_FAL_WEBHOOK_PATH]);
 
   http.route({
     path: MEDIA_CAPABILITIES_PATH,
@@ -673,7 +667,6 @@ export {
   MEDIA_FAL_WEBHOOK_PATH,
   MEDIA_GENERATE_PATH,
 };
-
 
 
 

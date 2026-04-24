@@ -3,17 +3,14 @@ import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "../agent/prompt_builder";
 import { createTools } from "../tools/index";
-import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
+import { resolveManagedModelConfigs } from "../agent/model_resolver";
 import {
   createStreamExecutionLifecycle,
   splitDurationAcrossModels,
   streamTextWithFailover,
 } from "../agent/model_execution";
 import { buildBackendJobModeSystemPrompt } from "../prompts/index";
-import {
-  assertManagedUsageAllowed,
-  scheduleManagedUsage,
-} from "../lib/managed_billing";
+import { scheduleManagedUsage } from "../lib/managed_billing";
 
 export type RunAgentTurnResult = {
   text: string;
@@ -80,13 +77,11 @@ export async function runAgentTurn({
   }
 
   const resolvedOwnerId = ownerId ?? conversation.ownerId;
-  const modelAccess = await assertManagedUsageAllowed(ctx, resolvedOwnerId);
-  const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId, {
-    access: modelAccess,
-  });
-  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId, {
-    access: modelAccess,
-  });
+  const { config: resolvedConfig, fallbackConfig } = await resolveManagedModelConfigs(
+    ctx,
+    agentType,
+    resolvedOwnerId,
+  );
   const promptBuild = await buildSystemPrompt(ctx, agentType, {
     ownerId: resolvedOwnerId,
     conversationId,

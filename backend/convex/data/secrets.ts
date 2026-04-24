@@ -1,4 +1,6 @@
 import { mutation, query, internalQuery, internalMutation } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { v, ConvexError } from "convex/values";
 import { decryptSecret, encryptSecret } from "./secrets_crypto";
 import { requireSensitiveUserId } from "../auth";
@@ -9,6 +11,22 @@ import {
 import { optionalJsonValueValidator, requireBoundedString } from "../shared_validators";
 
 const MAX_SECRET_PLAINTEXT_CHARS = 2000;
+const SECRET_NOT_FOUND_ERROR = {
+  code: "NOT_FOUND",
+  message: "Secret not found or access denied",
+} as const;
+
+const requireOwnedSecret = async (
+  ctx: Pick<QueryCtx | MutationCtx, "db">,
+  ownerId: string,
+  secretId: Id<"secrets">,
+) => {
+  const record = await ctx.db.get(secretId);
+  if (!record || record.ownerId !== ownerId) {
+    throw new ConvexError(SECRET_NOT_FOUND_ERROR);
+  }
+  return record;
+};
 
 export const createSecret = mutation({
   args: {
@@ -185,10 +203,7 @@ export const updateSecret = internalMutation({
     }
 
     const ownerId = await requireSensitiveUserId(ctx);
-    const record = await ctx.db.get(args.secretId);
-    if (!record || record.ownerId !== ownerId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });
-    }
+    const record = await requireOwnedSecret(ctx, ownerId, args.secretId);
 
     const now = Date.now();
     const encryptedPayload = await encryptSecret(args.plaintext);
@@ -226,10 +241,7 @@ export const deleteSecret = mutation({
       RATE_SENSITIVE,
       "Too many secret deletions. Please wait a minute and try again.",
     );
-    const record = await ctx.db.get(args.secretId);
-    if (!record || record.ownerId !== ownerId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });
-    }
+    await requireOwnedSecret(ctx, ownerId, args.secretId);
     await ctx.db.delete(args.secretId);
     return null;
   },
@@ -265,10 +277,7 @@ export const getSecretForTool = internalQuery({
     secretId: v.id("secrets"),
   },
   handler: async (ctx, args) => {
-    const record = await ctx.db.get(args.secretId);
-    if (!record || record.ownerId !== args.ownerId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });
-    }
+    const record = await requireOwnedSecret(ctx, args.ownerId, args.secretId);
     const plaintext = await decryptSecret(record.encryptedValue);
     return {
       secretId: record._id,
@@ -287,10 +296,7 @@ export const touchSecretUsage = internalMutation({
     secretId: v.id("secrets"),
   },
   handler: async (ctx, args) => {
-    const record = await ctx.db.get(args.secretId);
-    if (!record || record.ownerId !== args.ownerId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });
-    }
+    await requireOwnedSecret(ctx, args.ownerId, args.secretId);
     await ctx.db.patch(args.secretId, { lastUsedAt: Date.now() });
     return null;
   },

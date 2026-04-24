@@ -133,34 +133,47 @@ export const isStellaModel = (model: string | null | undefined): boolean => {
   return Boolean(trimmed) && (trimmed === STELLA_DEFAULT_MODEL || trimmed!.startsWith(`${STELLA_PROVIDER}/`));
 };
 
+export const parseStellaModelSelection = (
+  selection: string | null | undefined,
+): { kind: "default" } | { kind: "mode"; mode: ModelMode } | { kind: "upstream"; model: string } | null => {
+  const trimmed = selection?.trim();
+  if (!trimmed || trimmed === STELLA_DEFAULT_MODEL) {
+    return { kind: "default" };
+  }
+  if (!trimmed.startsWith(`${STELLA_PROVIDER}/`)) {
+    return null;
+  }
+
+  const aliasOrUpstreamModel = trimmed.slice(`${STELLA_PROVIDER}/`.length).trim();
+  if (!aliasOrUpstreamModel || aliasOrUpstreamModel === "default") {
+    return { kind: "default" };
+  }
+
+  const modeKey =
+    aliasOrUpstreamModel === "cheap" ? "standard" : aliasOrUpstreamModel;
+  if (isModelMode(modeKey)) {
+    return { kind: "mode", mode: modeKey };
+  }
+
+  return { kind: "upstream", model: aliasOrUpstreamModel };
+};
+
 export const resolveStellaModelSelection = (
   agentType: string,
   selection?: string | null,
   audience: ManagedModelAudience = "free",
 ): string => {
-  const trimmed = selection?.trim();
-  if (!trimmed || trimmed === STELLA_DEFAULT_MODEL) {
+  const parsed = parseStellaModelSelection(selection);
+  if (!parsed) {
+    return selection?.trim() || getModelConfig(agentType, audience).model;
+  }
+  if (parsed.kind === "default") {
     return getModelConfig(agentType, audience).model;
   }
-
-  if (!trimmed.startsWith(`${STELLA_PROVIDER}/`)) {
-    return trimmed;
+  if (parsed.kind === "mode") {
+    return getModeConfig(parsed.mode, audience).model;
   }
-
-  const aliasOrUpstreamModel = trimmed.slice(`${STELLA_PROVIDER}/`.length).trim();
-  if (!aliasOrUpstreamModel || aliasOrUpstreamModel === "default") {
-    return getModelConfig(agentType, audience).model;
-  }
-
-  // Legacy alias before mode rename `cheap` → `standard`
-  const modeKey =
-    aliasOrUpstreamModel === "cheap" ? "standard" : aliasOrUpstreamModel;
-
-  if (isModelMode(modeKey)) {
-    return getModeConfig(modeKey, audience).model;
-  }
-
-  return aliasOrUpstreamModel;
+  return parsed.model;
 };
 
 export const listStellaCatalogModels = (

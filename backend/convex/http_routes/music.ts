@@ -6,7 +6,7 @@ import {
   errorResponse,
   withCors,
   handleCorsRequest,
-  corsPreflightHandler,
+  registerCorsOptions,
 } from "../http_shared/cors";
 import { rateLimitResponse } from "../http_shared/webhook_controls";
 import { getUserProviderKey } from "../lib/provider_keys";
@@ -241,15 +241,7 @@ const generateMusic = async (args: {
 };
 
 export const registerMusicRoutes = (http: HttpRouter) => {
-  for (const path of [MUSIC_STREAM_PATH, MUSIC_KEY_PATH]) {
-    http.route({
-      path,
-      method: "OPTIONS",
-      handler: httpAction(async (_ctx, request) =>
-        corsPreflightHandler(request),
-      ),
-    });
-  }
+  registerCorsOptions(http, [MUSIC_STREAM_PATH, MUSIC_KEY_PATH]);
 
   http.route({
     path: MUSIC_STREAM_PATH,

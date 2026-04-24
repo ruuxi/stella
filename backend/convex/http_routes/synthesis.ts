@@ -11,10 +11,10 @@ import {
 } from "../prompts/index";
 import type { HomeSuggestion } from "../prompts/index";
 import {
-  corsPreflightHandler,
   errorResponse,
   handleCorsRequest,
   jsonResponse,
+  registerCorsOptions,
   withCors,
 } from "../http_shared/cors";
 import {
@@ -78,11 +78,7 @@ export const getHomeSuggestionsText = (
 ): string => (result ? assistantText(result.result) : "");
 
 export const registerSynthesisRoutes = (http: HttpRouter) => {
-  http.route({
-    path: "/api/synthesize",
-    method: "OPTIONS",
-    handler: httpAction(async (_ctx, request) => corsPreflightHandler(request)),
-  });
+  registerCorsOptions(http, ["/api/synthesize"]);
 
   http.route({
     path: "/api/synthesize",

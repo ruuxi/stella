@@ -20,12 +20,15 @@ import {
   jsonResponse,
   withCors,
   handleCorsRequest,
-  corsPreflightHandler,
+  registerCorsOptions,
 } from "../http_shared/cors";
 import {
   consumeWebhookRateLimit,
+  enforceHttpRateLimit,
   rateLimitResponse,
 } from "../http_shared/webhook_controls";
+import { readJsonBody } from "../http_shared/request";
+import { encodeSseData, sseResponse } from "../http_shared/sse";
 import { getClientAddressKey } from "../lib/http_utils";
 import {
   resolveManagedModelAccess,
@@ -558,23 +561,20 @@ const streamOfflineReply = async (args: {
   const startedAt = Date.now();
   const eventStream = streamManagedChat({ config, context });
 
-  const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
       try {
         let finalMessage: AssistantMessage | null = null;
         for await (const event of eventStream) {
           if (event.type === "text_delta") {
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ t: event.delta })}\n\n`),
-            );
+            controller.enqueue(encodeSseData({ t: event.delta }));
           } else if (event.type === "done") {
             finalMessage = event.message;
           } else if (event.type === "error") {
             finalMessage = event.error;
           }
         }
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
         controller.close();
 
         void scheduleManagedUsage(args.ctx, {
@@ -587,31 +587,18 @@ const streamOfflineReply = async (args: {
         });
       } catch (error) {
         console.error("[mobile/offline-chat-stream] Error:", error);
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ error: "Stream failed" })}\n\n`,
-          ),
-        );
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.enqueue(encodeSseData({ error: "Stream failed" }));
+        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
         controller.close();
       }
     },
   });
 
-  const headers: Record<string, string> = {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-  };
-  if (args.origin) {
-    headers["Access-Control-Allow-Origin"] = args.origin;
-    headers["Access-Control-Allow-Credentials"] = "true";
-  }
-  return new Response(readable, { status: 200, headers });
+  return sseResponse(readable, args.origin);
 };
 
 export const registerMobileRoutes = (http: HttpRouter) => {
-  for (const path of [
+  registerCorsOptions(http, [
     "/api/mobile/offline-chat",
     "/api/mobile/offline-chat/stream",
     "/api/mobile/chat",
@@ -621,15 +608,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
     "/api/mobile/desktop-bridge/request",
     "/api/mobile/desktop-bridge/authorize",
     "/api/mobile/desktop-bridge/tunnel-token",
-  ]) {
-    http.route({
-      path,
-      method: "OPTIONS",
-      handler: httpAction(async (_ctx, request) =>
-        corsPreflightHandler(request),
-      ),
-    });
-  }
+  ]);
 
   http.route({
     path: "/api/mobile/offline-chat",
@@ -649,34 +628,22 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           return errorResponse(500, "Server configuration error", origin);
         }
 
-        const rateLimit = await ctx.runMutation(
-          internal.rate_limits.consumeWebhookRateLimit,
-          {
-            scope: "mobile_offline_chat",
-            key: owner.ownerId,
-            limit: OFFLINE_CHAT_RATE_LIMIT,
-            windowMs: OFFLINE_CHAT_RATE_WINDOW_MS,
-            blockMs: OFFLINE_CHAT_RATE_WINDOW_MS,
-          },
-        );
-        if (!rateLimit.allowed) {
-          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
-        }
+        const rateLimitResponse = await enforceHttpRateLimit(ctx, origin, {
+          scope: "mobile_offline_chat",
+          key: owner.ownerId,
+          limit: OFFLINE_CHAT_RATE_LIMIT,
+          windowMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+          blockMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+        });
+        if (rateLimitResponse) return rateLimitResponse;
 
-        let body: {
+        const bodyResult = await readJsonBody<{
           message?: unknown;
           history?: unknown;
           images?: unknown;
-        } | null = null;
-        try {
-          body = (await request.json()) as {
-            message?: unknown;
-            history?: unknown;
-            images?: unknown;
-          };
-        } catch {
-          return errorResponse(400, "Invalid request body", origin);
-        }
+        }>(request, origin, "Invalid request body");
+        if (!bodyResult.ok) return bodyResult.response;
+        const body = bodyResult.body;
 
         const message =
           typeof body?.message === "string"
@@ -729,34 +696,22 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           return errorResponse(500, "Server configuration error", origin);
         }
 
-        const rateLimit = await ctx.runMutation(
-          internal.rate_limits.consumeWebhookRateLimit,
-          {
-            scope: "mobile_offline_chat",
-            key: owner.ownerId,
-            limit: OFFLINE_CHAT_RATE_LIMIT,
-            windowMs: OFFLINE_CHAT_RATE_WINDOW_MS,
-            blockMs: OFFLINE_CHAT_RATE_WINDOW_MS,
-          },
-        );
-        if (!rateLimit.allowed) {
-          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
-        }
+        const rateLimitResponse = await enforceHttpRateLimit(ctx, origin, {
+          scope: "mobile_offline_chat",
+          key: owner.ownerId,
+          limit: OFFLINE_CHAT_RATE_LIMIT,
+          windowMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+          blockMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+        });
+        if (rateLimitResponse) return rateLimitResponse;
 
-        let body: {
+        const bodyResult = await readJsonBody<{
           message?: unknown;
           history?: unknown;
           images?: unknown;
-        };
-        try {
-          body = (await request.json()) as {
-            message?: unknown;
-            history?: unknown;
-            images?: unknown;
-          };
-        } catch {
-          return errorResponse(400, "Invalid request body", origin);
-        }
+        }>(request, origin, "Invalid request body");
+        if (!bodyResult.ok) return bodyResult.response;
+        const body = bodyResult.body;
 
         const message =
           typeof body.message === "string"
@@ -793,26 +748,22 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           return owner.response;
         }
 
-        const rateLimit = await ctx.runMutation(
-          internal.rate_limits.consumeWebhookRateLimit,
-          {
-            scope: "mobile_offline_chat",
-            key: owner.ownerId,
-            limit: OFFLINE_CHAT_RATE_LIMIT,
-            windowMs: OFFLINE_CHAT_RATE_WINDOW_MS,
-            blockMs: OFFLINE_CHAT_RATE_WINDOW_MS,
-          },
-        );
-        if (!rateLimit.allowed) {
-          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
-        }
+        const rateLimitResponse = await enforceHttpRateLimit(ctx, origin, {
+          scope: "mobile_offline_chat",
+          key: owner.ownerId,
+          limit: OFFLINE_CHAT_RATE_LIMIT,
+          windowMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+          blockMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+        });
+        if (rateLimitResponse) return rateLimitResponse;
 
-        let body: { message?: unknown; mobileDeviceId?: unknown };
-        try {
-          body = (await request.json()) as { message?: unknown; mobileDeviceId?: unknown };
-        } catch {
-          return errorResponse(400, "Invalid request body", origin);
-        }
+        const bodyResult = await readJsonBody<{ message?: unknown; mobileDeviceId?: unknown }>(
+          request,
+          origin,
+          "Invalid request body",
+        );
+        if (!bodyResult.ok) return bodyResult.response;
+        const body = bodyResult.body;
 
         const message =
           typeof body.message === "string"
@@ -849,31 +800,18 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         }
 
         if (!result.deferred && result.text) {
-          const encoder = new TextEncoder();
           const readable = new ReadableStream({
             start(controller) {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ t: result.text })}\n\n`),
-              );
-              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.enqueue(encodeSseData({ t: result.text }));
+              controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
               controller.close();
             },
           });
-          const headers: Record<string, string> = {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-          };
-          if (origin) {
-            headers["Access-Control-Allow-Origin"] = origin;
-            headers["Access-Control-Allow-Credentials"] = "true";
-          }
-          return new Response(readable, { status: 200, headers });
+          return sseResponse(readable, origin);
         }
 
         const POLL_INTERVAL_MS = 500;
         const MAX_POLL_MS = 30_000;
-        const encoder = new TextEncoder();
         const readable = new ReadableStream({
           async start(controller) {
             const deadline = beforeSend + MAX_POLL_MS;
@@ -896,9 +834,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
                   if (events[i].type === "assistant_message") {
                     const text = (events[i].payload?.text as string) ?? "";
                     if (text) {
-                      controller.enqueue(
-                        encoder.encode(`data: ${JSON.stringify({ t: text })}\n\n`),
-                      );
+                      controller.enqueue(encodeSseData({ t: text }));
                       found = true;
                       break;
                     }
@@ -909,27 +845,14 @@ export const registerMobileRoutes = (http: HttpRouter) => {
             }
 
             if (!found) {
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ t: "Sorry, I couldn\u2019t reach your computer in time. Try again or send without desktop." })}\n\n`,
-                ),
-              );
+              controller.enqueue(encodeSseData({ t: "Sorry, I couldn\u2019t reach your computer in time. Try again or send without desktop." }));
             }
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
             controller.close();
           },
         });
 
-        const headers: Record<string, string> = {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        };
-        if (origin) {
-          headers["Access-Control-Allow-Origin"] = origin;
-          headers["Access-Control-Allow-Credentials"] = "true";
-        }
-        return new Response(readable, { status: 200, headers });
+        return sseResponse(readable, origin);
       }),
     ),
   });
@@ -1378,15 +1301,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
 
   // ── Mobile magic link (no-redirect) ────────────────────────────────
 
-  for (const path of ["/api/auth/link/send", "/api/auth/link/status"]) {
-    http.route({
-      path,
-      method: "OPTIONS",
-      handler: httpAction(async (_ctx, request) =>
-        corsPreflightHandler(request),
-      ),
-    });
-  }
+  registerCorsOptions(http, ["/api/auth/link/send", "/api/auth/link/status"]);
 
   // Send a magic link and return a requestId for polling.
   http.route({

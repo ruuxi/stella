@@ -3,6 +3,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { ManagedModelAudience } from "../agent/model";
+import type { ManagedUsageSummary } from "./managed_usage";
 
 type BillingMutationCtx = {
   runMutation: ActionCtx["runMutation"];
@@ -10,15 +11,6 @@ type BillingMutationCtx = {
 
 type BillingSchedulerCtx = {
   scheduler: ActionCtx["scheduler"];
-};
-
-export type ManagedUsageSummary = {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-  cachedInputTokens?: number;
-  cacheWriteInputTokens?: number;
-  reasoningTokens?: number;
 };
 
 export type ManagedUsageLogArgs = {

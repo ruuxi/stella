@@ -8,6 +8,15 @@ import {
   requireConnectedUserId,
   requireConnectedUserIdAction,
 } from "../auth";
+import {
+  socialMessageKindValidator,
+  socialRelationshipStatusValidator,
+  socialRoomKindValidator,
+  socialRoomMemberRoleValidator,
+  stellaSessionFileOpTypeValidator,
+  stellaSessionStatusValidator,
+  stellaSessionTurnStatusValidator,
+} from "../schema/social";
 
 const FRIEND_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const FRIEND_CODE_LENGTH = 8;
@@ -66,12 +75,7 @@ export const socialRelationshipValidator = v.object({
   requesterOwnerId: v.string(),
   addresseeOwnerId: v.string(),
   initiatedByOwnerId: v.string(),
-  status: v.union(
-    v.literal("pending"),
-    v.literal("accepted"),
-    v.literal("declined"),
-    v.literal("blocked"),
-  ),
+  status: socialRelationshipStatusValidator,
   createdAt: v.number(),
   updatedAt: v.number(),
   respondedAt: v.optional(v.number()),
@@ -80,7 +84,7 @@ export const socialRelationshipValidator = v.object({
 export const socialRoomValidator = v.object({
   _id: v.id("social_rooms"),
   _creationTime: v.number(),
-  kind: v.union(v.literal("dm"), v.literal("group")),
+  kind: socialRoomKindValidator,
   roomKey: v.optional(v.string()),
   title: v.optional(v.string()),
   createdByOwnerId: v.string(),
@@ -95,7 +99,7 @@ export const socialRoomMemberValidator = v.object({
   _creationTime: v.number(),
   roomId: v.id("social_rooms"),
   ownerId: v.string(),
-  role: v.union(v.literal("owner"), v.literal("member")),
+  role: socialRoomMemberRoleValidator,
   joinedAt: v.number(),
   lastReadMessageId: v.optional(v.id("social_messages")),
   lastReadAt: v.optional(v.number()),
@@ -108,7 +112,7 @@ export const socialMessageValidator = v.object({
   roomId: v.id("social_rooms"),
   senderOwnerId: v.string(),
   clientMessageId: v.optional(v.string()),
-  kind: v.union(v.literal("text"), v.literal("system")),
+  kind: socialMessageKindValidator,
   body: v.string(),
   createdAt: v.number(),
   editedAt: v.optional(v.number()),
@@ -124,7 +128,7 @@ export const stellaSessionValidator = v.object({
   workspaceSlug: v.string(),
   workspaceFolderName: v.string(),
   conversationId: v.string(),
-  status: v.union(v.literal("active"), v.literal("paused"), v.literal("ended")),
+  status: stellaSessionStatusValidator,
   latestTurnOrdinal: v.number(),
   latestFileOpOrdinal: v.number(),
   lastSnapshotAt: v.optional(v.number()),
@@ -137,13 +141,7 @@ export const stellaSessionTurnValidator = v.object({
   _creationTime: v.number(),
   sessionId: v.id("stella_sessions"),
   ordinal: v.number(),
-  status: v.union(
-    v.literal("queued"),
-    v.literal("claimed"),
-    v.literal("completed"),
-    v.literal("failed"),
-    v.literal("canceled"),
-  ),
+  status: stellaSessionTurnStatusValidator,
   requestedByOwnerId: v.string(),
   requestId: v.optional(v.string()),
   prompt: v.string(),
@@ -172,7 +170,7 @@ export const stellaSessionFileOpValidator = v.object({
   _creationTime: v.number(),
   sessionId: v.id("stella_sessions"),
   ordinal: v.number(),
-  type: v.union(v.literal("upsert"), v.literal("delete"), v.literal("mkdir")),
+  type: stellaSessionFileOpTypeValidator,
   relativePath: v.string(),
   actorOwnerId: v.string(),
   contentHash: v.optional(v.string()),
@@ -379,6 +377,38 @@ export const requireSessionHost = async (
     });
   }
   return session;
+};
+
+export const requireSessionHostDevice = async (
+  ctx: AnyCtx,
+  sessionId: Id<"stella_sessions">,
+  ownerId: string,
+  rawDeviceId: string,
+) => {
+  const session = await requireSessionHost(ctx, sessionId, ownerId);
+  const deviceId = rawDeviceId.trim();
+  if (session.hostDeviceId !== deviceId) {
+    throw new ConvexError({
+      code: "FORBIDDEN",
+      message: "This device is not the host for the session.",
+    });
+  }
+  return { session, deviceId };
+};
+
+export const requireSessionTurn = async (
+  ctx: AnyCtx,
+  sessionId: Id<"stella_sessions">,
+  turnId: Id<"stella_session_turns">,
+) => {
+  const turn = await ctx.db.get(turnId);
+  if (!turn || turn.sessionId !== sessionId) {
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Turn not found.",
+    });
+  }
+  return turn;
 };
 
 // Cap the number of accepted friendships scanned per side. Friend lists are

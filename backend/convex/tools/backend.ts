@@ -1,5 +1,6 @@
 import type { ActionCtx } from "../_generated/server";
 import { BACKEND_TOOL_IDS } from "../lib/agent_constants";
+import { truncateWithNotice } from "../lib/text_utils";
 import { normalizeSafeExternalUrl } from "../lib/url_security";
 import type { BackendToolSet, ToolOptions } from "./types";
 
@@ -175,9 +176,6 @@ export const createBackendTools = (
       .replace(/\s+/g, " ")
       .trim();
 
-  const truncateText = (value: string, max = 30_000) =>
-    value.length > max ? `${value.slice(0, max)}\n\n... (truncated)` : value;
-
   return {
     [BACKEND_TOOL_IDS.WEB_SEARCH]: {
       name: BACKEND_TOOL_IDS.WEB_SEARCH,
@@ -254,7 +252,7 @@ export const createBackendTools = (
             : text;
 
           return wrapExternalContent(
-            `Content from ${secureUrl}\nPrompt: ${String(args.prompt ?? "")}\n\n${truncateText(body, 15_000)}`,
+            `Content from ${secureUrl}\nPrompt: ${String(args.prompt ?? "")}\n\n${truncateWithNotice(body, 15_000)}`,
             secureUrl,
           );
         } catch (error) {

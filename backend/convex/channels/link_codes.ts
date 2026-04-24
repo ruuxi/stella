@@ -352,3 +352,28 @@ export async function processLinkCode(args: {
   });
   return "linked";
 }
+
+export type LinkCodeResult = Awaited<ReturnType<typeof processLinkCode>>;
+
+export const formatLinkCodeResultMessage = (
+  result: LinkCodeResult,
+  args: {
+    providerName: string;
+    accountName?: string;
+    linkedMessage: string;
+  },
+): string => {
+  const accountName = args.accountName ?? `${args.providerName} account`;
+  switch (result) {
+    case "invalid_code":
+      return "Invalid or expired code. Please generate a new one in Stella Settings.";
+    case "already_linked":
+      return `Your ${accountName} is already linked to Stella!`;
+    case "linking_disabled":
+      return `${args.providerName} linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.`;
+    case "not_allowed":
+      return `This ${accountName} is not allowed to link.`;
+    case "linked":
+      return args.linkedMessage;
+  }
+};

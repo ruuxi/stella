@@ -6,6 +6,9 @@ export const truncateWithSuffix = (
   suffix = DEFAULT_TRUNCATION_SUFFIX,
 ): string => (value.length <= maxChars ? value : `${value.slice(0, maxChars)}${suffix}`);
 
+export const truncateWithNotice = (value: string, maxChars: number): string =>
+  truncateWithSuffix(value, maxChars, "\n\n... (truncated)");
+
 export const stringifyBounded = (value: unknown, maxChars: number): string => {
   if (typeof value === "string") {
     return truncateWithSuffix(value.trim(), maxChars);

@@ -1,7 +1,7 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { processIncomingMessage } from "./message_pipeline";
-import { processLinkCode } from "./link_codes";
+import { handleConnectorIncomingMessage } from "./message_pipeline";
+import { formatLinkCodeResultMessage, processLinkCode } from "./link_codes";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 import { hexToUint8Array } from "../lib/crypto_utils";
 import { DISCORD_MAX_MESSAGE_CHARS, truncateForConnector } from "./connector_constants";
@@ -123,37 +123,14 @@ export const handleLinkCommand = internalAction({
       displayName: args.displayName,
     });
 
-    if (result === "invalid_code") {
-      await editInteractionResponse(
-        args.applicationId,
-        args.interactionToken,
-        "Invalid or expired code. Please generate a new one in Stella Settings.",
-      );
-    } else if (result === "already_linked") {
-      await editInteractionResponse(
-        args.applicationId,
-        args.interactionToken,
-        "Your Discord account is already linked to Stella!",
-      );
-    } else if (result === "linking_disabled") {
-      await editInteractionResponse(
-        args.applicationId,
-        args.interactionToken,
-        "Discord linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
-      );
-    } else if (result === "not_allowed") {
-      await editInteractionResponse(
-        args.applicationId,
-        args.interactionToken,
-        "This Discord account is not allowed to link.",
-      );
-    } else {
-      await editInteractionResponse(
-        args.applicationId,
-        args.interactionToken,
-        "Linked! You can now use `/ask` to message Stella.",
-      );
-    }
+    await editInteractionResponse(
+      args.applicationId,
+      args.interactionToken,
+      formatLinkCodeResultMessage(result, {
+        providerName: "Discord",
+        linkedMessage: "Linked! You can now use `/ask` to message Stella.",
+      }),
+    );
     return null;
   },
 });
@@ -171,53 +148,27 @@ export const handleAskCommand = internalAction({
     respond: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const shouldRespond = args.respond !== false;
-
-    try {
-      const result = await processIncomingMessage({
-        ctx,
-        provider: "discord",
-        externalUserId: args.discordUserId,
-        text: args.text,
-        groupId: args.groupId,
-        attachments: args.attachments,
-        channelEnvelope: args.channelEnvelope,
-        respond: args.respond,
-        deliveryMeta: {
-          applicationId: args.applicationId,
-          interactionToken: args.interactionToken,
-        },
-      });
-
-      if (result?.deferred) return null;
-
-      if (!result) {
-        if (!shouldRespond) return null;
-        await editInteractionResponse(
-          args.applicationId,
-          args.interactionToken,
-          "Your account isn't linked yet. Use `/link` with your 6-digit code from Stella Settings.",
-        );
-        return null;
-      }
-
-      if (shouldRespond) {
-        await editInteractionResponse(
-          args.applicationId,
-          args.interactionToken,
-          result.text,
-        );
-      }
-    } catch (error) {
-      console.error("[discord] Agent turn failed:", error);
-      if (shouldRespond) {
-        await editInteractionResponse(
-          args.applicationId,
-          args.interactionToken,
-          "Sorry, something went wrong. Please try again.",
-        );
-      }
-    }
+    await handleConnectorIncomingMessage({
+      ctx,
+      provider: "discord",
+      externalUserId: args.discordUserId,
+      text: args.text,
+      groupId: args.groupId,
+      attachments: args.attachments,
+      channelEnvelope: args.channelEnvelope,
+      respond: args.respond,
+      deliveryMeta: {
+        applicationId: args.applicationId,
+        interactionToken: args.interactionToken,
+      },
+      logPrefix: "[discord]",
+      notLinkedText: "Your account isn't linked yet. Use `/link` with your 6-digit code from Stella Settings.",
+      sendReply: (text) => editInteractionResponse(
+        args.applicationId,
+        args.interactionToken,
+        text,
+      ),
+    });
     return null;
   },
 });

@@ -40,6 +40,12 @@ export const requireBoundedString = (
   }
 };
 
+export const clampPageLimit = (
+  value: number | undefined,
+  defaultLimit: number,
+  maxLimit: number,
+): number => Math.min(Math.max(Math.floor(value ?? defaultLimit), 1), maxLimit);
+
 type JsonValidator = Validator<Value, "required", string>;
 
 // Build a JSON validator without using v.any().

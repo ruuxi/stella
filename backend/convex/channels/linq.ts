@@ -7,8 +7,8 @@ import {
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v, ConvexError } from "convex/values";
-import { processIncomingMessage } from "./message_pipeline";
-import { processLinkCode } from "./link_codes";
+import { handleConnectorIncomingMessage } from "./message_pipeline";
+import { formatLinkCodeResultMessage, processLinkCode } from "./link_codes";
 import { SIGN_IN_REQUIRED_ERROR } from "./routing_flow";
 import { retryFetch } from "../lib/retry_fetch";
 import { enforceActionRateLimit, RATE_VERY_EXPENSIVE } from "../lib/rate_limits";
@@ -22,15 +22,6 @@ const LINQ_API_BASE = "https://api.linqapp.com/api/partner";
 const PRIMARY_LINQ_CONVEX_URL = "https://benevolent-minnow-586.convex.cloud";
 const LINQ_NON_PRIMARY_OVERRIDE_ENV = "LINQ_ALLOW_NON_PRIMARY_DEPLOYMENT";
 type LinkCodeResult = Awaited<ReturnType<typeof processLinkCode>>;
-
-const LINK_RESULT_MESSAGE: Record<LinkCodeResult, string> = {
-  invalid_code: "Invalid or expired code. Please generate a new one in Stella Settings.",
-  already_linked: "Your number is already linked to Stella!",
-  linking_disabled:
-    "Linq linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
-  not_allowed: "This number is not allowed to link.",
-  linked: "Linked! You can now message Stella directly here via iMessage/SMS.",
-};
 
 const linqFetch = async (
   path: string,
@@ -297,7 +288,11 @@ export const handleStartCommand = internalAction({
     await sendLinqReply(
       ctx,
       args.senderPhone,
-      LINK_RESULT_MESSAGE[result],
+      formatLinkCodeResultMessage(result as LinkCodeResult, {
+        providerName: "Linq",
+        accountName: "number",
+        linkedMessage: "Linked! You can now message Stella directly here via iMessage/SMS.",
+      }),
       args.incomingChatId,
     );
     return null;
@@ -315,50 +310,27 @@ export const handleIncomingMessage = internalAction({
     respond: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const shouldRespond = args.respond !== false;
     console.log(`[linq:trace] Incoming message from ${args.senderPhone}`);
-    try {
-      const result = await processIncomingMessage({
-        ctx,
-        provider: "linq",
-        externalUserId: args.senderPhone,
-        text: args.text,
-        groupId: args.groupId,
-        attachments: args.attachments,
-        channelEnvelope: args.channelEnvelope,
-        respond: args.respond,
-        deliveryMeta: {
-          senderPhone: args.senderPhone,
-          incomingChatId: args.incomingChatId,
-        },
-      });
-
-      console.log(`[linq:trace] processIncomingMessage result: deferred=${result?.deferred}, hasText=${!!result?.text}`);
-      if (result?.deferred) return null;
-
-      if (!result) {
-        if (!shouldRespond) return null;
-        await sendLinqReply(
-          ctx,
-          args.senderPhone,
-          "Your number isn't linked yet. Open Stella \u2192 Settings \u2192 Text Stella, then text your 6-digit code here.",
-          args.incomingChatId,
-        );
-        return null;
-      }
-
-      if (!shouldRespond) return null;
-      await sendLinqReply(ctx, args.senderPhone, result.text, args.incomingChatId);
-    } catch (error) {
-      console.error("[linq] Agent turn failed:", error);
-      if (!shouldRespond) return null;
-      await sendLinqReply(
-        ctx,
-        args.senderPhone,
-        "Sorry, something went wrong. Please try again.",
-        args.incomingChatId,
-      );
-    }
+    await handleConnectorIncomingMessage({
+      ctx,
+      provider: "linq",
+      externalUserId: args.senderPhone,
+      text: args.text,
+      groupId: args.groupId,
+      attachments: args.attachments,
+      channelEnvelope: args.channelEnvelope,
+      respond: args.respond,
+      deliveryMeta: {
+        senderPhone: args.senderPhone,
+        incomingChatId: args.incomingChatId,
+      },
+      logPrefix: "[linq]",
+      notLinkedText: "Your number isn't linked yet. Open Stella \u2192 Settings \u2192 Text Stella, then text your 6-digit code here.",
+      sendReply: (text) => sendLinqReply(ctx, args.senderPhone, text, args.incomingChatId),
+      onResult: (result) => {
+        console.log(`[linq:trace] processIncomingMessage result: deferred=${result?.deferred}, hasText=${!!result?.text}`);
+      },
+    });
     return null;
   },
 });
