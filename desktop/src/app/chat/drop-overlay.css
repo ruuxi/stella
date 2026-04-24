@@ -22,6 +22,14 @@
   border-radius: 12px;
 }
 
+.drop-overlay--surface {
+  border-radius: 0;
+}
+
+.drop-overlay--sidebar {
+  border-radius: 0 0 0 32px;
+}
+
 .drop-overlay-content {
   display: flex;
   flex-direction: column;

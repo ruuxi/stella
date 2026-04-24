@@ -264,6 +264,7 @@
 
 /* Chat column — fills the chat panel or content area */
 .full-body-main {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;

@@ -18,8 +18,6 @@ import {
   deriveComposerState,
   hasAttachedComposerChips,
 } from "./composer-context";
-import { useFileDrop } from "./hooks/use-file-drop";
-import { DropOverlay } from "./DropOverlay";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "./ScreenshotPreview";
 import { useDictation } from "@/features/dictation/hooks/use-dictation";
 import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
@@ -61,11 +59,6 @@ export function Composer({
   const [composerExpanded, setComposerExpanded] = useState(false);
   const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
     useScreenshotPreview(chatContext);
-
-  const { isDragOver, dropHandlers } = useFileDrop({
-    setChatContext,
-    disabled: isStreaming,
-  });
 
   const dictation = useDictation({
     message,
@@ -149,8 +142,7 @@ export function Composer({
         chatContext={chatContext}
         setChatContext={setChatContext}
       />
-      <div ref={shellRef} className="composer-shell" {...dropHandlers}>
-        <DropOverlay visible={isDragOver} variant="full" />
+      <div ref={shellRef} className="composer-shell">
         <div ref={shellContentRef} className="composer-shell-content">
           {hasAttachedChips && (
             <div className="composer-attached-strip">
