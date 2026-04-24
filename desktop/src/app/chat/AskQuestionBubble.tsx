@@ -1,4 +1,5 @@
 import {
+  forwardRef,
   memo,
   useCallback,
   useEffect,
@@ -32,7 +33,8 @@ export type AskQuestionPayload = {
 
 type Selection =
   | { kind: "option"; key: string }
-  | { kind: "other"; text: string };
+  | { kind: "other"; text: string }
+  | { kind: "skipped" };
 
 export function parseAskQuestionArgs(
   raw: unknown,
@@ -80,6 +82,7 @@ function describeSelection(
   selection: Selection | undefined,
 ): string {
   if (!selection) return "(skipped)";
+  if (selection.kind === "skipped") return "(skipped)";
   if (selection.kind === "option") {
     const match = selection.key.match(/-opt-(\d+)$/);
     const optionIndex = match ? Number.parseInt(match[1], 10) : -1;
@@ -118,6 +121,9 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
   const [selections, setSelections] = useState<Record<number, Selection>>({});
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const stepsRef = useRef<HTMLDivElement>(null);
+  const stepRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   const safeIndex = Math.min(Math.max(activeIndex, 0), total - 1);
   const isFirst = safeIndex === 0;
@@ -129,19 +135,38 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
         (currentSelection.kind === "other" && currentSelection.text.trim().length > 0)),
   );
 
+  const scrollStepIntoView = useCallback((questionIndex: number) => {
+    const scroll = () => {
+      const body = bodyRef.current;
+      const steps = stepsRef.current;
+      const step = stepRefs.current[questionIndex];
+      if (!body || !steps || !step) return;
+      const target = step.offsetTop - steps.offsetTop;
+      const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
+      body.scrollTo({
+        top: Math.min(target, maxScrollTop),
+        behavior: "smooth",
+      });
+    };
+
+    window.requestAnimationFrame(scroll);
+    window.setTimeout(scroll, 220);
+  }, []);
+
   const goPrev = useCallback(() => {
     if (isFirst || submitted) return;
     setEditingIndex(null);
-    setActiveIndex((i) => Math.max(0, i - 1));
-  }, [isFirst, submitted]);
+    setActiveIndex((i) => {
+      const nextIndex = Math.max(0, i - 1);
+      scrollStepIntoView(nextIndex);
+      return nextIndex;
+    });
+  }, [isFirst, scrollStepIntoView, submitted]);
 
   const submitAnswers = useCallback(
-    (kind: "answers" | "skip") => {
+    (nextSelections: Record<number, Selection> = selections) => {
       if (submitted) return;
-      const text =
-        kind === "skip"
-          ? "(skipped questions)"
-          : buildAnswersMessage(payload, selections);
+      const text = buildAnswersMessage(payload, nextSelections);
       setSubmitted(true);
       setEditingIndex(null);
       // Dispatch the send-message event directly (without opening the sidebar
@@ -160,28 +185,67 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
     [payload, selections, submitted],
   );
 
+  const advanceAfterSelection = useCallback(
+    (questionIndex: number, nextSelections: Record<number, Selection>) => {
+      if (questionIndex >= total - 1) {
+        submitAnswers(nextSelections);
+        return;
+      }
+      const nextIndex = Math.min(total - 1, questionIndex + 1);
+      setActiveIndex(nextIndex);
+      scrollStepIntoView(nextIndex);
+    },
+    [scrollStepIntoView, submitAnswers, total],
+  );
+
   const goNextOrSubmit = useCallback(() => {
     if (submitted) return;
     if (!hasAnswer) return;
     setEditingIndex(null);
     if (isLast) {
-      submitAnswers("answers");
+      submitAnswers();
       return;
     }
-    setActiveIndex((i) => Math.min(total - 1, i + 1));
-  }, [hasAnswer, isLast, submitAnswers, submitted, total]);
+    setActiveIndex((i) => {
+      const nextIndex = Math.min(total - 1, i + 1);
+      scrollStepIntoView(nextIndex);
+      return nextIndex;
+    });
+  }, [hasAnswer, isLast, scrollStepIntoView, submitAnswers, submitted, total]);
+
+  const skipCurrent = useCallback(() => {
+    if (submitted) return;
+    const nextSelections = {
+      ...selections,
+      [safeIndex]: { kind: "skipped" as const },
+    };
+    setSelections(nextSelections);
+    setEditingIndex(null);
+    advanceAfterSelection(safeIndex, nextSelections);
+  }, [advanceAfterSelection, safeIndex, selections, submitted]);
 
   const handlePickOption = useCallback(
     (questionIndex: number, optionKey: string) => {
       if (submitted) return;
-      setSelections((prev) => ({
-        ...prev,
+      const existing = selections[questionIndex];
+      if (existing?.kind === "option" && existing.key === optionKey) {
+        const nextSelections = { ...selections };
+        delete nextSelections[questionIndex];
+        setSelections(nextSelections);
+        setActiveIndex(questionIndex);
+        setEditingIndex(null);
+        scrollStepIntoView(questionIndex);
+        return;
+      }
+      const nextSelections = {
+        ...selections,
         [questionIndex]: { kind: "option", key: optionKey },
-      }));
-      setActiveIndex(questionIndex);
+      } satisfies Record<number, Selection>;
+      setSelections(nextSelections);
       setEditingIndex(null);
+      advanceAfterSelection(questionIndex, nextSelections);
     },
-    [submitted],
+    [advanceAfterSelection, scrollStepIntoView, selections, submitted],
   );
 
   const handleStartOther = useCallback(
@@ -189,6 +253,7 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
       if (submitted) return;
       setActiveIndex(questionIndex);
       setEditingIndex(questionIndex);
+      scrollStepIntoView(questionIndex);
       setSelections((prev) => {
         const existing = prev[questionIndex];
         if (existing && existing.kind === "other") return prev;
@@ -198,7 +263,7 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
         };
       });
     },
-    [submitted],
+    [scrollStepIntoView, submitted],
   );
 
   const handleOtherChange = useCallback(
@@ -222,12 +287,13 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
       if (submitted) return;
       setActiveIndex(questionIndex);
       setEditingIndex(null);
+      scrollStepIntoView(questionIndex);
     },
-    [submitted],
+    [scrollStepIntoView, submitted],
   );
 
   return (
-    <GrowIn show={!submitted} duration={420}>
+    <GrowIn animate={false}>
       <div
         className="ask-question-bubble"
         tabIndex={-1}
@@ -238,95 +304,113 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
           <span className="ask-question-bubble__label">
             {submitted ? "Answered" : "Questions"}
           </span>
-          <div className="ask-question-bubble__stepper">
-            <button
-              type="button"
-              className="ask-question-bubble__nav"
-              disabled={isFirst || submitted}
-              onClick={goPrev}
-              aria-label="Previous question"
-            >
-              <ChevronIcon direction="left" />
-            </button>
-            <span className="ask-question-bubble__counter">
-              {safeIndex + 1} of {total}
-            </span>
-            <button
-              type="button"
-              className="ask-question-bubble__nav"
-              disabled={isLast || submitted}
-              onClick={goNextOrSubmit}
-              aria-label="Next question"
-            >
-              <ChevronIcon direction="right" />
-            </button>
-          </div>
+          {!submitted && (
+            <div className="ask-question-bubble__stepper">
+              <button
+                type="button"
+                className="ask-question-bubble__nav"
+                disabled={isFirst}
+                onClick={goPrev}
+                aria-label="Previous question"
+              >
+                <ChevronIcon direction="left" />
+              </button>
+              <span className="ask-question-bubble__counter">
+                {safeIndex + 1} of {total}
+              </span>
+              <button
+                type="button"
+                className="ask-question-bubble__nav"
+                disabled={isLast || !hasAnswer}
+                onClick={goNextOrSubmit}
+                aria-label="Next question"
+              >
+                <ChevronIcon direction="right" />
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="ask-question-bubble__body">
-          <div className="ask-question-bubble__steps">
-            {payload.questions.map((question, index) => (
-              <QuestionStep
-                key={`q-${index}`}
-                index={index}
-                question={question}
-                isActive={index === safeIndex}
-                selection={selections[index]}
-                isEditingOther={editingIndex === index}
-                disabled={submitted}
-                onActivate={() => handleStepActivate(index)}
-                onPickOption={(optionKey) => handlePickOption(index, optionKey)}
-                onStartOther={() => handleStartOther(index)}
-                onOtherChange={(text) => handleOtherChange(index, text)}
-                onOtherSubmit={handleOtherSubmit}
-                onStopEditingOther={() => setEditingIndex(null)}
-              />
-            ))}
-          </div>
-        </div>
+        {submitted ? (
+          <AnsweredSummary payload={payload} selections={selections} />
+        ) : (
+          <>
+            <div ref={bodyRef} className="ask-question-bubble__body">
+              <div ref={stepsRef} className="ask-question-bubble__steps">
+                {payload.questions.map((question, index) => (
+                  <QuestionStep
+                    key={`q-${index}`}
+                    ref={(node) => {
+                      stepRefs.current[index] = node;
+                    }}
+                    index={index}
+                    question={question}
+                    isActive={index === safeIndex}
+                    selection={selections[index]}
+                    isEditingOther={editingIndex === index}
+                    disabled={submitted}
+                    onActivate={() => handleStepActivate(index)}
+                    onPickOption={(optionKey) => handlePickOption(index, optionKey)}
+                    onStartOther={() => handleStartOther(index)}
+                    onOtherChange={(text) => handleOtherChange(index, text)}
+                    onOtherSubmit={handleOtherSubmit}
+                    onStopEditingOther={() => setEditingIndex(null)}
+                  />
+                ))}
+              </div>
+            </div>
 
-        <div className="ask-question-bubble__actions">
-          <button
-            type="button"
-            className="ask-question-bubble__button"
-            data-variant="text"
-            disabled={submitted}
-            onClick={() => submitAnswers("skip")}
-          >
-            Skip
-          </button>
-          <button
-            type="button"
-            className="ask-question-bubble__button"
-            data-variant="primary"
-            disabled={!hasAnswer || submitted}
-            onClick={goNextOrSubmit}
-          >
-            <span>{submitted ? "Sent" : isLast ? "Done" : "Next"}</span>
-            {!submitted && (
-              <span className="ask-question-bubble__shortcut">⏎</span>
-            )}
-          </button>
-        </div>
+            <div className="ask-question-bubble__actions">
+              <button
+                type="button"
+                className="ask-question-bubble__button"
+                data-variant="text"
+                onClick={skipCurrent}
+              >
+                Skip
+              </button>
+              <button
+                type="button"
+                className="ask-question-bubble__button"
+                data-variant="primary"
+                disabled={!hasAnswer}
+                onClick={goNextOrSubmit}
+              >
+                <span>{isLast ? "Done" : "Next"}</span>
+                <span className="ask-question-bubble__shortcut">⏎</span>
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </GrowIn>
   );
 });
 
-const QuestionStep = memo(function QuestionStep({
-  index,
-  question,
-  isActive,
-  selection,
-  isEditingOther,
-  disabled,
-  onActivate,
-  onPickOption,
-  onStartOther,
-  onOtherChange,
-  onOtherSubmit,
-  onStopEditingOther,
+const AnsweredSummary = memo(function AnsweredSummary({
+  payload,
+  selections,
 }: {
+  payload: AskQuestionPayload;
+  selections: Record<number, Selection>;
+}) {
+  return (
+    <div className="ask-question-bubble__summary">
+      {payload.questions.map((question, index) => (
+        <div key={`summary-${index}`} className="ask-question-bubble__summary-row">
+          <span className="ask-question-bubble__summary-question">
+            {question.question}
+          </span>
+          <span className="ask-question-bubble__summary-answer">
+            {describeSelection(question, selections[index])}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+});
+
+const QuestionStep = memo(forwardRef<HTMLDivElement, {
   index: number;
   question: AskQuestion;
   isActive: boolean;
@@ -339,7 +423,20 @@ const QuestionStep = memo(function QuestionStep({
   onOtherChange: (text: string) => void;
   onOtherSubmit: () => void;
   onStopEditingOther: () => void;
-}) {
+}>(function QuestionStep({
+  index,
+  question,
+  isActive,
+  selection,
+  isEditingOther,
+  disabled,
+  onActivate,
+  onPickOption,
+  onStartOther,
+  onOtherChange,
+  onOtherSubmit,
+  onStopEditingOther,
+}, ref) {
   const handleStepKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (isActive || disabled) return;
@@ -371,6 +468,7 @@ const QuestionStep = memo(function QuestionStep({
 
   return (
     <div
+      ref={ref}
       className="ask-question-bubble__step"
       data-active={isActive ? "true" : "false"}
       {...(isActive || disabled
@@ -429,7 +527,7 @@ const QuestionStep = memo(function QuestionStep({
       </div>
     </div>
   );
-});
+}));
 
 function OtherOption({
   letter,

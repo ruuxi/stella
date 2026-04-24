@@ -99,7 +99,7 @@ function MessageList({
           <TurnItem
             key={turn.id}
             turn={turn}
-            isLastTurn={index === turns.length - 1}
+            isLastTurn={index === turns.length - 1 && !showStandaloneStreaming}
             onOpenAttachment={onOpenAttachment}
             taskReasoningText={taskReasoning?.text}
             taskReasoningDescription={taskReasoning?.description}
