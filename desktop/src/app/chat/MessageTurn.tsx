@@ -1,5 +1,8 @@
 import { memo, useRef, useState, useEffect } from "react";
-import type { Attachment, ChannelEnvelope } from "@/app/chat/lib/event-transforms";
+import type {
+  Attachment,
+  ChannelEnvelope,
+} from "@/app/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
 import { EndResourceCard } from "@/app/chat/EndResourceCard";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
@@ -123,7 +126,8 @@ const reactionsEqual = (
     if (!av || !bv) return false;
     if (av.emoji !== bv.emoji) return false;
     if (av.action !== bv.action) return false;
-    if ((av.targetMessageId ?? null) !== (bv.targetMessageId ?? null)) return false;
+    if ((av.targetMessageId ?? null) !== (bv.targetMessageId ?? null))
+      return false;
   }
 
   return true;
@@ -231,6 +235,14 @@ const resourcePayloadEqual = (
         a.previewRef.sourcePath ===
         (b as { previewRef: OfficePreviewRef }).previewRef.sourcePath
       );
+    case "file-artifact": {
+      const bb = b as Extract<DisplayPayload, { kind: "file-artifact" }>;
+      return (
+        a.filePath === bb.filePath &&
+        a.artifactKind === bb.artifactKind &&
+        (a.createdAt ?? null) === (bb.createdAt ?? null)
+      );
+    }
     case "pdf":
       return a.filePath === (b as { filePath: string }).filePath;
     case "media": {
@@ -240,8 +252,8 @@ const resourcePayloadEqual = (
         return a.asset.filePaths.join("|") === bb.asset.filePaths.join("|");
       }
       if (
-        (a.asset.kind === "video" || a.asset.kind === "audio")
-        && (bb.asset.kind === "video" || bb.asset.kind === "audio")
+        (a.asset.kind === "video" || a.asset.kind === "audio") &&
+        (bb.asset.kind === "video" || bb.asset.kind === "audio")
       ) {
         return a.asset.filePath === bb.asset.filePath;
       }
@@ -250,11 +262,12 @@ const resourcePayloadEqual = (
   }
 };
 
-const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
+const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean =>
   a.id === b.id &&
   a.userText === b.userText &&
   (a.userWindowLabel ?? null) === (b.userWindowLabel ?? null) &&
-  (a.userWindowPreviewImageUrl ?? null) === (b.userWindowPreviewImageUrl ?? null) &&
+  (a.userWindowPreviewImageUrl ?? null) ===
+    (b.userWindowPreviewImageUrl ?? null) &&
   attachmentsEqual(a.userAttachments, b.userAttachments) &&
   channelEnvelopeEqual(a.userChannelEnvelope, b.userChannelEnvelope) &&
   a.assistantText === b.assistantText &&
@@ -265,8 +278,7 @@ const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
     (b.officePreviewRef?.sessionId ?? null) &&
   resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
   askQuestionPayloadEqual(a.askQuestion, b.askQuestion) &&
-  selfModAppliedEqual(a.selfModApplied, b.selfModApplied)
-);
+  selfModAppliedEqual(a.selfModApplied, b.selfModApplied);
 
 const areTurnItemPropsEqual = (
   prev: {
@@ -285,14 +297,14 @@ const areTurnItemPropsEqual = (
     taskReasoningText?: string;
     taskReasoningDescription?: string;
   },
-): boolean => (
+): boolean =>
   prev.onOpenAttachment === next.onOpenAttachment &&
   prev.isLastTurn === next.isLastTurn &&
   (prev.taskReasoningText ?? "") === (next.taskReasoningText ?? "") &&
-  (prev.taskReasoningDescription ?? "") === (next.taskReasoningDescription ?? "") &&
+  (prev.taskReasoningDescription ?? "") ===
+    (next.taskReasoningDescription ?? "") &&
   turnViewModelEqual(prev.turn, next.turn) &&
-  streamingPropsEqual(prev.streaming, next.streaming)
-);
+  streamingPropsEqual(prev.streaming, next.streaming);
 
 /** Memoized turn renderer to prevent unnecessary re-renders */
 export const TurnItem = memo(function TurnItem({
@@ -325,7 +337,9 @@ export const TurnItem = memo(function TurnItem({
   const hasWebSearchBadge = webSearchBadgeHtml.length > 0;
   const hasOfficePreview = Boolean(officePreviewRef);
   const hasUserContent =
-    userText.trim().length > 0 || userAttachments.length > 0 || Boolean(userWindowLabel);
+    userText.trim().length > 0 ||
+    userAttachments.length > 0 ||
+    Boolean(userWindowLabel);
   const hasChannelMeta = Boolean(userChannelEnvelope?.provider);
   const reactionSummary = userChannelEnvelope
     ? summarizeReactions(userChannelEnvelope)
@@ -336,9 +350,7 @@ export const TurnItem = memo(function TurnItem({
   const shouldShowStreamingAssistant = Boolean(
     !hasAssistantContent &&
       Boolean(streaming) &&
-      (hasStreamingContent ||
-        hasReasoningContent ||
-        streaming?.isStreaming),
+      (hasStreamingContent || hasReasoningContent || streaming?.isStreaming),
   );
 
   const shouldShowAssistantArea =
@@ -437,11 +449,12 @@ export const TurnItem = memo(function TurnItem({
                     {formatProvider(userChannelEnvelope.provider)}
                   </span>
                 )}
-                {userChannelEnvelope && userChannelEnvelope.kind !== "message" && (
-                  <span className="event-channel-badge kind">
-                    {formatChannelKind(userChannelEnvelope.kind)}
-                  </span>
-                )}
+                {userChannelEnvelope &&
+                  userChannelEnvelope.kind !== "message" && (
+                    <span className="event-channel-badge kind">
+                      {formatChannelKind(userChannelEnvelope.kind)}
+                    </span>
+                  )}
                 {userChannelEnvelope && reactionSummary && (
                   <span className="event-channel-badge reaction">
                     {reactionSummary}
@@ -526,7 +539,9 @@ export const TurnItem = memo(function TurnItem({
               />
             )}
 
-            {officePreviewRef && <OfficePreviewCard previewRef={officePreviewRef} />}
+            {officePreviewRef && (
+              <OfficePreviewCard previewRef={officePreviewRef} />
+            )}
 
             {turn.resourcePayload && !shouldShowStreamingAssistant && (
               <EndResourceCard payload={turn.resourcePayload} />
@@ -551,7 +566,6 @@ export const TurnItem = memo(function TurnItem({
           />
         </div>
       )}
-
     </div>
   );
 }, areTurnItemPropsEqual);

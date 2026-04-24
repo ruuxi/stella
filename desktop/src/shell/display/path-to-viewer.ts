@@ -8,6 +8,10 @@
  */
 
 import type { DisplayTabKind } from "./types";
+import type {
+  DisplayFileArtifactKind,
+  DisplayPayload,
+} from "@/shared/contracts/display-payload";
 
 const IMAGE_EXTS = new Set([
   "png",
@@ -27,7 +31,9 @@ const PDF_EXTS = new Set(["pdf"]);
 
 const OFFICE_DOC_EXTS = new Set(["doc", "docx"]);
 const OFFICE_SHEET_EXTS = new Set(["xls", "xlsx", "xlsm", "csv", "tsv"]);
+const OFFICE_PREVIEW_SHEET_EXTS = new Set(["xlsx", "xlsm"]);
 const OFFICE_SLIDES_EXTS = new Set(["ppt", "pptx"]);
+const DELIMITED_TABLE_EXTS = new Set(["csv", "tsv"]);
 
 const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "m4v"]);
 const AUDIO_EXTS = new Set(["mp3", "wav", "ogg", "m4a", "flac"]);
@@ -111,6 +117,34 @@ export const kindForExtension = (
 export const kindForPath = (filePath: string): DisplayTabKind | null =>
   kindForExtension(extensionOf(filePath));
 
+export const fileArtifactKindForPath = (
+  filePath: string,
+): DisplayFileArtifactKind | null => {
+  const extension = extensionOf(filePath);
+  if (extension == null) return null;
+  if (OFFICE_DOC_EXTS.has(extension)) return "office-document";
+  if (DELIMITED_TABLE_EXTS.has(extension)) return "delimited-table";
+  if (OFFICE_PREVIEW_SHEET_EXTS.has(extension)) return "office-spreadsheet";
+  if (OFFICE_SLIDES_EXTS.has(extension)) return "office-slides";
+  return null;
+};
+
+export const fileArtifactPayloadForPath = (
+  filePath: string,
+  createdAt?: number,
+): DisplayPayload | null => {
+  const artifactKind = fileArtifactKindForPath(filePath);
+  return artifactKind
+    ? {
+        kind: "file-artifact",
+        filePath,
+        artifactKind,
+        title: basenameOf(filePath),
+        ...(createdAt !== undefined ? { createdAt } : {}),
+      }
+    : null;
+};
+
 /**
  * Codex-style primary-path picker for a turn.
  *
@@ -169,9 +203,9 @@ export const tabIdForPath = (filePath: string): string => {
   const kind = kindForPath(filePath);
   if (kind === "pdf") return `pdf:${filePath}`;
   if (
-    kind === "office-document"
-    || kind === "office-spreadsheet"
-    || kind === "office-slides"
+    kind === "office-document" ||
+    kind === "office-spreadsheet" ||
+    kind === "office-slides"
   ) {
     return `office:${filePath}`;
   }

@@ -6,7 +6,8 @@ import {
 import type { EventRecord } from "../../../src/app/chat/lib/event-transforms";
 
 const event = (
-  partial: Partial<EventRecord> & Pick<EventRecord, "_id" | "type" | "timestamp">,
+  partial: Partial<EventRecord> &
+    Pick<EventRecord, "_id" | "type" | "timestamp">,
 ): EventRecord => ({
   payload: {},
   ...partial,
@@ -46,9 +47,7 @@ describe("deriveTurnResource", () => {
           payload: {
             toolName: "Write",
             result: "Created /out/report.pdf",
-            fileChanges: [
-              { path: "/out/report.pdf", kind: { type: "add" } },
-            ],
+            fileChanges: [{ path: "/out/report.pdf", kind: { type: "add" } }],
           },
         }),
       ]),
@@ -65,16 +64,14 @@ describe("deriveTurnResource", () => {
           payload: {
             toolName: "exec_command",
             result: "created report",
-            producedFiles: [
-              { path: "/out/report.pdf", kind: { type: "add" } },
-            ],
+            producedFiles: [{ path: "/out/report.pdf", kind: { type: "add" } }],
           },
         }),
       ]),
     ).toEqual({ kind: "pdf", filePath: "/out/report.pdf" });
   });
 
-  it("surfaces shell-produced Office files as downloadable resources", () => {
+  it("surfaces shell-produced Office files as sidebar artifacts", () => {
     expect(
       deriveTurnResource([
         event({
@@ -84,9 +81,30 @@ describe("deriveTurnResource", () => {
           payload: {
             toolName: "exec_command",
             result: "created deck",
-            producedFiles: [
-              { path: "/out/deck.pptx", kind: { type: "add" } },
-            ],
+            producedFiles: [{ path: "/out/deck.pptx", kind: { type: "add" } }],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "file-artifact",
+      filePath: "/out/deck.pptx",
+      artifactKind: "office-slides",
+      title: "deck.pptx",
+      createdAt: 5,
+    });
+  });
+
+  it("surfaces unsupported shell-produced Office files as downloads", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 5,
+          payload: {
+            toolName: "exec_command",
+            result: "created spreadsheet",
+            producedFiles: [{ path: "/out/legacy.xls", kind: { type: "add" } }],
           },
         }),
       ]),
@@ -94,8 +112,8 @@ describe("deriveTurnResource", () => {
       kind: "media",
       asset: {
         kind: "download",
-        filePath: "/out/deck.pptx",
-        label: "deck.pptx",
+        filePath: "/out/legacy.xls",
+        label: "legacy.xls",
       },
       createdAt: 5,
     });
@@ -110,9 +128,7 @@ describe("deriveTurnResource", () => {
           timestamp: 5,
           payload: {
             agentId: "agent-1",
-            producedFiles: [
-              { path: "/out/chart.png", kind: { type: "add" } },
-            ],
+            producedFiles: [{ path: "/out/chart.png", kind: { type: "add" } }],
           },
         }),
       ]),
@@ -155,9 +171,7 @@ describe("deriveTurnResource", () => {
           payload: {
             toolName: "apply_patch",
             result: "ok",
-            fileChanges: [
-              { path: "/out/old.pdf", kind: { type: "delete" } },
-            ],
+            fileChanges: [{ path: "/out/old.pdf", kind: { type: "delete" } }],
           },
         }),
       ]),
@@ -277,9 +291,7 @@ describe("deriveTurnResource", () => {
           payload: {
             toolName: "Write",
             result: "Wrote /out/notes.md",
-            fileChanges: [
-              { path: "/out/notes.md", kind: { type: "update" } },
-            ],
+            fileChanges: [{ path: "/out/notes.md", kind: { type: "update" } }],
           },
         }),
         event({
@@ -350,9 +362,7 @@ describe("deriveTurnResource", () => {
           timestamp: 5,
           payload: {
             toolName: "Write",
-            fileChanges: [
-              { path: "/out/cover.png", kind: { type: "add" } },
-            ],
+            fileChanges: [{ path: "/out/cover.png", kind: { type: "add" } }],
           },
         }),
       ],
@@ -375,9 +385,7 @@ describe("deriveTurnResource", () => {
           timestamp: 5,
           payload: {
             toolName: "Write",
-            fileChanges: [
-              { path: "/out/report.docx", kind: { type: "add" } },
-            ],
+            fileChanges: [{ path: "/out/report.docx", kind: { type: "add" } }],
           },
         }),
       ]),
@@ -425,9 +433,9 @@ describe("extractMarkdownLinkPaths", () => {
   });
 
   it("decodes percent-encoded path components", () => {
-    expect(
-      extractMarkdownLinkPaths("[x](/tmp/with%20space.pdf)"),
-    ).toEqual(["/tmp/with space.pdf"]);
+    expect(extractMarkdownLinkPaths("[x](/tmp/with%20space.pdf)")).toEqual([
+      "/tmp/with space.pdf",
+    ]);
   });
 
   it("filters out http(s), mailto, and protocol-relative urls", () => {

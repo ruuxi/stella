@@ -5,6 +5,21 @@ vi.mock("../../../src/shell/display/tab-content", () => ({
   ImageTabContent: () => null,
   PdfTabContent: () => null,
   OfficeTabContent: () => null,
+  OfficeFileTabContent: () => null,
+  DelimitedTableTabContent: () => null,
+  VideoTabContent: () => null,
+  AudioTabContent: () => null,
+  Model3dTabContent: () => null,
+  DownloadTabContent: () => null,
+  TextTabContent: () => null,
+}));
+vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
+  HtmlTabContent: () => null,
+  ImageTabContent: () => null,
+  PdfTabContent: () => null,
+  OfficeTabContent: () => null,
+  OfficeFileTabContent: () => null,
+  DelimitedTableTabContent: () => null,
   VideoTabContent: () => null,
   AudioTabContent: () => null,
   Model3dTabContent: () => null,
@@ -12,8 +27,11 @@ vi.mock("../../../src/shell/display/tab-content", () => ({
   TextTabContent: () => null,
 }));
 
-import { payloadToTabSpec } from "../../../src/shell/display/payload-to-tab-spec";
 import type { DisplayPayload } from "../../../src/shared/contracts/display-payload";
+
+const { payloadToTabSpec } = await import(
+  "../../../src/shell/display/payload-to-tab-spec"
+);
 
 describe("payloadToTabSpec", () => {
   it("keeps docx office previews as office-document tabs", () => {
@@ -50,5 +68,28 @@ describe("payloadToTabSpec", () => {
       },
     };
     expect(payloadToTabSpec(payload).kind).toBe("office-slides");
+  });
+
+  it("maps file-backed xlsx artifacts to spreadsheet tabs", () => {
+    const payload: DisplayPayload = {
+      kind: "file-artifact",
+      filePath: "/tmp/budget.xlsx",
+      artifactKind: "office-spreadsheet",
+      title: "budget.xlsx",
+      createdAt: 42,
+    };
+    const spec = payloadToTabSpec(payload);
+    expect(spec.id).toBe("file-artifact:/tmp/budget.xlsx");
+    expect(spec.kind).toBe("office-spreadsheet");
+  });
+
+  it("maps csv artifacts to spreadsheet tabs", () => {
+    const payload: DisplayPayload = {
+      kind: "file-artifact",
+      filePath: "/tmp/data.csv",
+      artifactKind: "delimited-table",
+      title: "data.csv",
+    };
+    expect(payloadToTabSpec(payload).kind).toBe("office-spreadsheet");
   });
 });

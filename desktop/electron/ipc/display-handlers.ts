@@ -14,6 +14,8 @@ const MAX_DISPLAY_FILE_BYTES = 200 * 1024 * 1024;
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".pdf": "application/pdf",
+  ".csv": "text/csv",
+  ".tsv": "text/tab-separated-values",
   // Images
   ".png": "image/png",
   ".jpg": "image/jpeg",

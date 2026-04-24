@@ -17,6 +17,8 @@ import {
   ImageTabContent,
   PdfTabContent,
   OfficeTabContent,
+  OfficeFileTabContent,
+  DelimitedTableTabContent,
   VideoTabContent,
   AudioTabContent,
   Model3dTabContent,
@@ -37,8 +39,7 @@ const HTML_STREAM_TAB_ID = "html:stream";
  * Stable hash for a list of file paths (used as part of media-image tab
  * ids). Sorted so that `[a, b]` and `[b, a]` collapse to the same tab.
  */
-const stableJoin = (paths: string[]): string =>
-  [...paths].sort().join("|");
+const stableJoin = (paths: string[]): string => [...paths].sort().join("|");
 
 export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
   const title = getDisplayPayloadTitle(payload);
@@ -69,6 +70,33 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
       };
     }
 
+    case "file-artifact":
+      return {
+        id: `file-artifact:${payload.filePath}`,
+        kind:
+          payload.artifactKind === "delimited-table"
+            ? "office-spreadsheet"
+            : payload.artifactKind,
+        title,
+        tooltip: payload.filePath,
+        metadata: {
+          kind: "file-artifact",
+          filePath: payload.filePath,
+          artifactKind: payload.artifactKind,
+        },
+        render: () =>
+          payload.artifactKind === "delimited-table"
+            ? createElement(DelimitedTableTabContent, {
+                filePath: payload.filePath,
+                title,
+              })
+            : createElement(OfficeFileTabContent, {
+                filePath: payload.filePath,
+                title,
+                refreshToken: payload.createdAt,
+              }),
+      };
+
     case "pdf":
       return {
         id: `pdf:${payload.filePath}`,
@@ -97,12 +125,18 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
             kind: "image",
             title,
             tooltip: asset.filePaths.map(basenameOf).join(", "),
-            metadata: { kind: "image", filePaths: asset.filePaths, ...baseMeta },
+            metadata: {
+              kind: "image",
+              filePaths: asset.filePaths,
+              ...baseMeta,
+            },
             render: () =>
               createElement(ImageTabContent, {
                 filePaths: asset.filePaths,
                 ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability ? { capability: payload.capability } : {}),
+                ...(payload.capability
+                  ? { capability: payload.capability }
+                  : {}),
               }),
           };
         case "video":
@@ -116,7 +150,9 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
               createElement(VideoTabContent, {
                 filePath: asset.filePath,
                 ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability ? { capability: payload.capability } : {}),
+                ...(payload.capability
+                  ? { capability: payload.capability }
+                  : {}),
               }),
           };
         case "audio":
@@ -130,7 +166,9 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
               createElement(AudioTabContent, {
                 filePath: asset.filePath,
                 ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability ? { capability: payload.capability } : {}),
+                ...(payload.capability
+                  ? { capability: payload.capability }
+                  : {}),
               }),
           };
         case "model3d":
@@ -139,13 +177,19 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
             kind: "model3d",
             title,
             tooltip: asset.filePath,
-            metadata: { kind: "model3d", filePath: asset.filePath, ...baseMeta },
+            metadata: {
+              kind: "model3d",
+              filePath: asset.filePath,
+              ...baseMeta,
+            },
             render: () =>
               createElement(Model3dTabContent, {
                 filePath: asset.filePath,
                 label: asset.label,
                 ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability ? { capability: payload.capability } : {}),
+                ...(payload.capability
+                  ? { capability: payload.capability }
+                  : {}),
               }),
           };
         case "download":
@@ -154,13 +198,19 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
             kind: "download",
             title,
             tooltip: asset.filePath,
-            metadata: { kind: "download", filePath: asset.filePath, ...baseMeta },
+            metadata: {
+              kind: "download",
+              filePath: asset.filePath,
+              ...baseMeta,
+            },
             render: () =>
               createElement(DownloadTabContent, {
                 filePath: asset.filePath,
                 label: asset.label,
                 ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability ? { capability: payload.capability } : {}),
+                ...(payload.capability
+                  ? { capability: payload.capability }
+                  : {}),
               }),
           };
         case "text": {
@@ -176,7 +226,9 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
               createElement(TextTabContent, {
                 text: asset.text,
                 ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability ? { capability: payload.capability } : {}),
+                ...(payload.capability
+                  ? { capability: payload.capability }
+                  : {}),
               }),
           };
         }

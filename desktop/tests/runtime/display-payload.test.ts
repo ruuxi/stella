@@ -44,6 +44,17 @@ describe("normalizeDisplayPayload", () => {
     expect(normalizeDisplayPayload(payload)).toBe(payload);
   });
 
+  it("passes through valid file artifact payloads", () => {
+    const payload: DisplayPayload = {
+      kind: "file-artifact",
+      filePath: "/tmp/report.docx",
+      artifactKind: "office-document",
+      title: "report.docx",
+      createdAt: 1,
+    };
+    expect(normalizeDisplayPayload(payload)).toBe(payload);
+  });
+
   it("passes through valid media payloads", () => {
     const image: DisplayPayload = {
       kind: "media",
@@ -72,7 +83,15 @@ describe("normalizeDisplayPayload", () => {
     expect(normalizeDisplayPayload(undefined)).toBeNull();
     expect(normalizeDisplayPayload(42)).toBeNull();
     expect(normalizeDisplayPayload({ kind: "html" })).toBeNull();
-    expect(normalizeDisplayPayload({ kind: "office", previewRef: {} })).toBeNull();
+    expect(
+      normalizeDisplayPayload({ kind: "office", previewRef: {} }),
+    ).toBeNull();
+    expect(
+      normalizeDisplayPayload({
+        kind: "file-artifact",
+        filePath: "/tmp/a.docx",
+      }),
+    ).toBeNull();
     expect(normalizeDisplayPayload({ kind: "pdf" })).toBeNull();
     expect(
       normalizeDisplayPayload({
@@ -107,6 +126,14 @@ describe("normalizeDisplayPayload", () => {
         },
       }),
     ).toBe("report.docx");
+    expect(
+      getDisplayPayloadTitle({
+        kind: "file-artifact",
+        filePath: "/a/b/report.docx",
+        artifactKind: "office-document",
+      }),
+    ).toBe("report.docx");
+
     expect(
       getDisplayPayloadTitle({
         kind: "pdf",
