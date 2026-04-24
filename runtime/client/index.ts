@@ -107,10 +107,28 @@ export type RuntimeHostHandlers = {
   showWindow?: (target: HostWindowTarget) => Promise<void> | void;
   focusWindow?: (target: HostWindowTarget) => Promise<void> | void;
   runHmrTransition?: (payload: {
-    runId: string;
+    /**
+     * The run ids in the apply batch that this morph cover wraps. Used by
+     * the host for diagnostics and for tagging the post-apply screenshot.
+     */
+    runIds: string[];
+    /**
+     * Visible root run ids that should receive transition state events.
+     * These can differ from runIds, which are internal self-mod run ids used
+     * by the worker for apply/release bookkeeping.
+     */
+    stateRunIds?: string[];
     requiresFullReload: boolean;
-    resumeHmr: (
-      options?: { suppressClientFullReload?: boolean },
+    /**
+     * Triggers the worker-side overlay apply for this batch (POSTs `/apply`
+     * to the Vite plugin). Called by the host once the morph cover is on
+     * screen so the renderer never visibly crosses the swap.
+     */
+    applyBatch: (
+      options?: {
+        suppressClientFullReload?: boolean;
+        forceClientFullReload?: boolean;
+      },
     ) => Promise<void>;
     reportState?: (state: SelfModHmrState) => Promise<void> | void;
   }) => Promise<void> | void;
@@ -216,6 +234,7 @@ export class StellaRuntimeClient {
       workerEntryPath: resolveDefaultWorkerEntryPath(this.options),
       isHostStarted: () => this.started,
       initializeConnection: async (connection) => {
+        await this.resetRuntimeReloadPauses();
         this.registerHostHandlers(connection.peer);
         this.registerNotifications(connection.peer);
         await connection.peer.request(
@@ -310,6 +329,19 @@ export class StellaRuntimeClient {
     setTimeout(() => {
       void this.scheduleRuntimeReload();
     }, 0);
+  }
+
+  private async resetRuntimeReloadPauses() {
+    const hadPausedRuns = this.pausedRuntimeReloadRuns.size > 0;
+    const hadDeferredReload = this.deferredRuntimeReload;
+    this.pausedRuntimeReloadRuns.clear();
+    this.deferredRuntimeReload = false;
+    await this.persistRuntimeReloadPauseState();
+    if (hadPausedRuns && hadDeferredReload) {
+      setTimeout(() => {
+        void this.scheduleRuntimeReload();
+      }, 0);
+    }
   }
 
   private async scheduleRuntimeReload() {
@@ -1710,28 +1742,58 @@ export class StellaRuntimeClient {
       return { ok: true };
     });
     peer.registerRequestHandler(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, async (params) => {
-      const payload = params as { runId?: string; requiresFullReload?: boolean };
-      if (!payload.runId) {
-        throw new Error("HOST_HMR_RUN_TRANSITION requires a runId.");
+      const payload = params as {
+        transitionId?: string;
+        runIds?: string[];
+        stateRunIds?: string[];
+        requiresFullReload?: boolean;
+      };
+      if (!payload.transitionId) {
+        throw new Error("HOST_HMR_RUN_TRANSITION requires a transitionId.");
       }
-      await this.options.hostHandlers.runHmrTransition?.({
-        runId: payload.runId,
+      const runIds = Array.isArray(payload.runIds) ? payload.runIds : [];
+      if (runIds.length === 0) {
+        throw new Error(
+          "HOST_HMR_RUN_TRANSITION requires a non-empty runIds array.",
+        );
+      }
+      const runHmrTransition = this.options.hostHandlers.runHmrTransition;
+      if (!runHmrTransition) {
+        throw new Error("HOST_HMR_RUN_TRANSITION handler is not registered.");
+      }
+      await runHmrTransition({
+        runIds,
+        stateRunIds: Array.isArray(payload.stateRunIds)
+          ? payload.stateRunIds.filter((runId) => typeof runId === "string")
+          : runIds,
         requiresFullReload: Boolean(payload.requiresFullReload),
-        resumeHmr: async (options) => {
-          await this.requestWorker(
+        applyBatch: async (options) => {
+          const result = await this.requestWorker<{ ok?: boolean; reason?: string }>(
             METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR,
             {
-              runId: payload.runId,
+              transitionId: payload.transitionId,
+              runIds,
               ...(options ? { options } : {}),
             },
             { ensureWorker: false, recordActivity: true },
           );
+          if (result?.ok === false) {
+            throw new Error(
+              `Self-mod HMR apply failed${result.reason ? `: ${result.reason}` : ""}`,
+            );
+          }
         },
         reportState: async (state) => {
-          this.events.emit("run-self-mod-hmr-state", {
-            runId: payload.runId,
-            state,
-          });
+          const stateRunIds = Array.isArray(payload.stateRunIds)
+            ? payload.stateRunIds.filter((runId) => typeof runId === "string")
+            : runIds;
+          const emitRunIds = stateRunIds.length > 0 ? stateRunIds : runIds;
+          for (const runId of new Set(emitRunIds)) {
+            this.events.emit("run-self-mod-hmr-state", {
+              runId,
+              state,
+            });
+          }
         },
       });
       return { ok: true };

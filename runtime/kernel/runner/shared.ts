@@ -11,7 +11,6 @@ import {
   readConfiguredStellaBaseUrl as sanitizeStellaBase,
 } from "../convex-urls.js";
 import { isOrchestratorAgentType } from "../../../desktop/src/shared/contracts/agent-runtime.js";
-import type { SelfModHmrState } from "../../contracts/index.js";
 
 export const DEFAULT_MAX_AGENT_DEPTH = 8;
 export const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
@@ -152,13 +151,3 @@ export const buildAgentEventPrompt = (
     ...lines,
   ].join("\n");
 };
-
-export const createSelfModHmrState = (
-  phase: SelfModHmrState["phase"],
-  paused: boolean,
-  requiresFullReload = false,
-): SelfModHmrState => ({
-  phase,
-  paused,
-  requiresFullReload,
-});

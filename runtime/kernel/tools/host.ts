@@ -210,6 +210,18 @@ export const createToolHost = ({
     }
   };
 
+  const killShell = async (sessionId: string) => {
+    const shell = shellState.shells.get(sessionId);
+    if (!shell) return;
+    if (shell.running) {
+      shell.kill();
+    }
+    const deadline = Date.now() + 1_500;
+    while (shell.running && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  };
+
   const shutdown = async () => {
     killAllShells();
   };
@@ -227,6 +239,7 @@ export const createToolHost = ({
     getHandlerNames: () => Object.keys(handlers),
     getShells: () => Array.from(shellState.shells.values()),
     killAllShells,
+    killShell,
     killShellsByPort,
     shutdown,
     registerExtensionTools: (tools: ToolDefinition[]) => {

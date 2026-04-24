@@ -111,15 +111,17 @@ export const createHostRunnerHandlers = (
     window?.focus();
   },
   runHmrTransition: async ({
-    runId,
+    runIds,
+    stateRunIds,
     requiresFullReload,
-    resumeHmr,
+    applyBatch,
     reportState,
   }) => {
     if (context.state.hmrTransitionController) {
       await context.state.hmrTransitionController.runTransition({
-        runId,
-        resumeHmr,
+        runIds,
+        stateRunIds,
+        applyBatch,
         reportState,
         requiresFullReload,
       });
@@ -130,8 +132,17 @@ export const createHostRunnerHandlers = (
       paused: false,
       requiresFullReload,
     });
-    await resumeHmr();
-    reportState?.(IDLE_HMR_STATE);
+    const fullWindow = context.state.windowManager?.getFullWindow() ?? null;
+    const canReload =
+      requiresFullReload && fullWindow != null && !fullWindow.isDestroyed();
+    try {
+      await applyBatch({ suppressClientFullReload: canReload });
+      if (canReload) {
+        fullWindow.webContents.reloadIgnoringCache();
+      }
+    } finally {
+      reportState?.(IDLE_HMR_STATE);
+    }
   },
 });
 
