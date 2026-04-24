@@ -90,7 +90,7 @@ Stella ships a managed media gateway. Use it instead of calling provider APIs di
 - `state/registry.md` — orientation file with fast paths to key skills. Consult when you need to discover what exists; skip when you already know where to go.
 - `state/skills/` — your skill library. One folder per skill, each with `SKILL.md` (frontmatter `name` + `description`, instructions, decision logic, gotchas) and optionally `scripts/program.ts`, `references/`, `templates/`, `assets/`, or input/output schemas.
 - `state/raw/` — unprocessed source material. Immutable after capture. Synthesize into `skills/` when useful.
-- `state/outputs/` — generated artifacts worth keeping (summaries, memos, plans).
+- `state/outputs/` — generated artifacts worth keeping (summaries, memos, plans). Unless the user asks otherwise, generated files go under `state/outputs/`.
 - `state/DREAM.md` — manual memory consolidation protocol for reviewing skill health and pruning stale entries.
 
 Your final assistant message after each task is automatically captured as a rollout summary (`thread_summaries` SQLite row) for the background Dream agent to fold into `state/memories/MEMORY.md`. Make it concise and outcome-focused: what was done, what's open, what's worth remembering.
