@@ -1,0 +1,90 @@
+/* ---------------------------------------------------------------------------
+ * Pill button — the canonical Stella button shape.
+ *
+ * Hoisted from `.settings-btn` so any dialog/screen can adopt the same look.
+ * Use `.pill-btn` on plain <button> elements OR on the shared <Button>
+ * component (it overrides the base button styling).
+ * --------------------------------------------------------------------------- */
+
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full, 999px);
+  background: transparent;
+  color: var(--text-weak, var(--muted-foreground));
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  outline: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+/* Re-assert against the shared <Button> primitive's data-component styles. */
+.pill-btn[data-component="button"] {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full, 999px);
+  background: transparent;
+  color: var(--text-weak, var(--muted-foreground));
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+.pill-btn:hover:not(:disabled),
+.pill-btn[data-component="button"]:hover:not(:disabled) {
+  color: var(--text-base, var(--foreground));
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.pill-btn:disabled,
+.pill-btn[data-component="button"]:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: transparent;
+  color: var(--text-weak, var(--muted-foreground));
+}
+
+/* Sizes ------------------------------------------------------------------- */
+
+.pill-btn--lg,
+.pill-btn--lg[data-component="button"] {
+  min-height: 32px;
+  padding: 6px 16px;
+  font-size: 12.5px;
+}
+
+/* Variants ---------------------------------------------------------------- */
+
+.pill-btn--primary,
+.pill-btn--primary[data-component="button"] {
+  background: var(--interactive, var(--foreground));
+  color: var(--primary-foreground, var(--background));
+  border-color: var(--interactive, var(--foreground));
+}
+
+.pill-btn--primary:hover:not(:disabled),
+.pill-btn--primary[data-component="button"]:hover:not(:disabled) {
+  background: var(--interactive, var(--foreground));
+  color: var(--primary-foreground, var(--background));
+  border-color: var(--interactive, var(--foreground));
+  opacity: 0.9;
+}
+
+.pill-btn--danger:hover:not(:disabled),
+.pill-btn--danger[data-component="button"]:hover:not(:disabled) {
+  color: var(--destructive);
+  border-color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 6%, transparent);
+}

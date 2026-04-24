@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { Dialog } from "@/ui/dialog";
+import { KeyRound } from "lucide-react";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogBody,
+  DialogCloseButton,
+} from "@/ui/dialog";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import "./credential-modal.css";
@@ -16,6 +25,12 @@ export type CredentialModalProps = {
 
 type CredentialModalContentProps = Omit<CredentialModalProps, "open">;
 
+function formatProviderName(provider: string): string {
+  return provider
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 const CredentialModalContent = ({
   provider,
   label,
@@ -29,13 +44,16 @@ const CredentialModalContent = ({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async () => {
+  const providerTitle = label?.trim() || formatProviderName(provider);
+
+  const handleSubmit = async (event?: React.FormEvent) => {
+    event?.preventDefault();
     setError(null);
     if (!secret.trim()) {
       setError("API key is required.");
       return;
     }
-    const finalLabel = labelValue.trim() || `${provider} key`;
+    const finalLabel = labelValue.trim() || `${providerTitle} key`;
     try {
       setSubmitting(true);
       await onSubmit({ label: finalLabel, secret: secret.trim() });
@@ -47,49 +65,67 @@ const CredentialModalContent = ({
 
   return (
     <>
-      <Dialog.Header>
-        <Dialog.Title>Connect {provider}</Dialog.Title>
-        <Dialog.Description>
+      <VisuallyHidden asChild>
+        <DialogTitle>Connect {providerTitle}</DialogTitle>
+      </VisuallyHidden>
+      <VisuallyHidden asChild>
+        <DialogDescription>
           {description ??
-            "Enter your API key. This is stored securely and never shown to the AI."}
-        </Dialog.Description>
-      </Dialog.Header>
-      <Dialog.Body>
-        <div className="credential-form">
-          <TextField
-            label="Label"
-            value={labelValue}
-            onChange={(event) => setLabelValue(event.target.value)}
-            placeholder={`${provider} key`}
-          />
+            "Enter your API key. It is stored securely and never shown to the AI."}
+        </DialogDescription>
+      </VisuallyHidden>
+      <DialogCloseButton className="credential-modal-close" />
+      <DialogBody className="credential-modal-body">
+        <div className="credential-modal-hero">
+          <div className="credential-modal-icon">
+            <KeyRound size={20} />
+          </div>
+          <p className="credential-modal-headline">Connect {providerTitle}</p>
+          <p className="credential-modal-sub">
+            {description ??
+              "Paste your API key. It's stored securely on your device and never shown to the AI."}
+          </p>
+        </div>
+
+        <form className="credential-modal-form" onSubmit={handleSubmit}>
           <TextField
             label="API key"
             type="password"
             value={secret}
             onChange={(event) => setSecret(event.target.value)}
             placeholder={placeholder ?? "Paste your key"}
+            autoFocus
           />
-        </div>
-        {error ? <div className="credential-error">{error}</div> : null}
-      </Dialog.Body>
-      <div className="credential-actions">
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={onCancel}
-          disabled={submitting}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          variant="primary"
-          onClick={handleSubmit}
-          disabled={submitting}
-        >
-          {submitting ? "Saving..." : "Save"}
-        </Button>
-      </div>
+          <TextField
+            label="Label"
+            description="A friendly name to recognize this key later."
+            value={labelValue}
+            onChange={(event) => setLabelValue(event.target.value)}
+            placeholder={`${providerTitle} key`}
+          />
+          {error ? <div className="credential-modal-error">{error}</div> : null}
+
+          <div className="credential-modal-actions">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onCancel}
+              disabled={submitting}
+              className="pill-btn pill-btn--lg credential-modal-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={submitting}
+              className="pill-btn pill-btn--primary pill-btn--lg credential-modal-submit"
+            >
+              {submitting ? "Saving..." : "Save key"}
+            </Button>
+          </div>
+        </form>
+      </DialogBody>
     </>
   );
 };
@@ -108,7 +144,7 @@ export const CredentialModal = ({
       open={open}
       onOpenChange={(nextOpen) => (!nextOpen ? onCancel() : undefined)}
     >
-      <Dialog.Content className="credential-modal">
+      <DialogContent fit className="credential-modal-content">
         {open ? (
           <CredentialModalContent
             key={`${provider}-${label ?? ""}`}
@@ -120,7 +156,7 @@ export const CredentialModal = ({
             onCancel={onCancel}
           />
         ) : null}
-      </Dialog.Content>
+      </DialogContent>
     </Dialog>
   );
 };

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogBody,
@@ -21,7 +21,6 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
   const { hasConnectedAccount } = useAuthSessionState();
   const [resetVersion, setResetVersion] = useState(0);
 
-  // Close dialog when user becomes authenticated
   useEffect(() => {
     if (hasConnectedAccount && open) {
       onOpenChange(false);
@@ -37,20 +36,50 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent fit>
-        <DialogHeader>
+      <DialogContent fit className="auth-dialog-content">
+        <VisuallyHidden asChild>
           <DialogTitle>Welcome to Stella</DialogTitle>
-          <DialogCloseButton />
-        </DialogHeader>
-        <DialogDescription>Sign in with your email.</DialogDescription>
-        <DialogBody>
+        </VisuallyHidden>
+        <VisuallyHidden asChild>
+          <DialogDescription>
+            Sign in with your email to start using Stella.
+          </DialogDescription>
+        </VisuallyHidden>
+        <DialogCloseButton className="auth-dialog-close" />
+        <DialogBody className="auth-dialog-body">
+          <div className="auth-dialog-hero">
+            <p className="auth-dialog-headline">Welcome to Stella</p>
+            <p className="auth-dialog-sub">
+              Sign in with your email — we'll send you a one-tap link.
+            </p>
+          </div>
           <MagicLinkAuthFlow
             key={resetVersion}
+            mode="inline"
+            hideEmailLabel
+            inputVariant="normal"
+            emailPlaceholder="you@example.com"
+            autoFocus
             formClassName="auth-dialog-form"
-            buttonClassName="auth-dialog-button"
+            inputClassName="auth-dialog-input"
+            buttonClassName="pill-btn pill-btn--primary pill-btn--lg auth-dialog-cta"
+            buttonVariant="primary"
             buttonSize="large"
-            successClassName="auth-dialog-status success"
-            errorClassName="auth-dialog-status error"
+            submitLabel="Continue"
+            sendingLabel="Sending..."
+            sentClassName="auth-dialog-sent"
+            sentMessage={
+              <>
+                <span className="auth-dialog-sent-title">Check your inbox</span>
+                <span className="auth-dialog-sent-body">
+                  We sent you a sign-in link. Open it on this device to finish
+                  signing in.
+                </span>
+              </>
+            }
+            retryClassName="pill-btn auth-dialog-retry"
+            retryLabel="Use a different email"
+            errorClassName="auth-dialog-error"
           />
         </DialogBody>
       </DialogContent>

@@ -4,6 +4,7 @@ import "./dialog.css";
 import "./dropdown-menu.css";
 import "./keybind.css";
 import "./native-select.css";
+import "./pill.css";
 import "./popover.css";
 import "./spinner.css";
 import "./switch.css";
