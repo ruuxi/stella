@@ -3,7 +3,10 @@
  */
 
 import type { TaskLifecycleStatus } from "../../../desktop/src/shared/contracts/agent-runtime.js";
-import type { FileChangeRecord } from "../../../desktop/src/shared/contracts/file-changes.js";
+import type {
+  FileChangeRecord,
+  ProducedFileRecord,
+} from "../../../desktop/src/shared/contracts/file-changes.js";
 import type {
   LocalCronJobCreateInput,
   LocalCronJobRecord,
@@ -43,11 +46,16 @@ export type ToolResult = {
    * change.
    *
    * Tools that don't mutate the filesystem leave this `undefined`.
-   * Tools that may mutate the filesystem but cannot enumerate the
-   * resulting paths (e.g. arbitrary `Bash` / `exec_command`) also leave
-   * this `undefined`, exactly like Codex does.
+   * Shell-like tools should use `producedFiles` for snapshot-detected outputs
+   * rather than treating arbitrary CLI side effects as explicit edits.
    */
   fileChanges?: FileChangeRecord[];
+  /**
+   * User-facing output files detected from a tool side effect. This is for
+   * artifacts Stella should show to the user even when they were produced by
+   * shell/CLI work rather than an explicit file-edit tool.
+   */
+  producedFiles?: ProducedFileRecord[];
 };
 
 export type ToolUpdateCallback = (update: ToolResult) => void;

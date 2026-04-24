@@ -270,7 +270,7 @@ describe("chronicle-summarizer", () => {
         addedLines: [
           "Stella project README",
           "AGENTS.md heading",
-          "useDisplayAutoRoute hook",
+          "deriveTurnResource helper",
           "PdfViewerCard react-pdf import",
           "vitest test runner",
         ],

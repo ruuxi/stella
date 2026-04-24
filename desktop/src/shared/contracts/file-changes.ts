@@ -4,11 +4,12 @@
  * Mirrors the shape Codex's runtime emits on its `fileChange` items
  * (`{ path, kind: { type: 'add' | 'update' | 'delete', move_path? } }`).
  *
- * Tools that touch the filesystem populate the optional `fileChanges`
- * field on their `ToolResult`. The runtime worker hoists those records
- * into the persisted `tool_result` event payload, and the chat surface
- * walks the records to build a per-turn `editedFilePaths` list — without
- * having to know which specific tool produced the change.
+ * Tools that explicitly edit the filesystem populate the optional
+ * `fileChanges` field on their `ToolResult`. Shell-like tools that detect
+ * user-facing output files indirectly populate `producedFiles` instead.
+ * The runtime worker hoists both records into the persisted `tool_result`
+ * event payload, and the chat surface walks them to build resource cards
+ * without having to know which specific tool produced the change.
  *
  * This decouples the artifact-derivation logic on the client from the
  * tool catalog: any new tool that mutates a file just emits structured
@@ -32,6 +33,14 @@ export type FileChangeRecord = {
   kind: FileChangeKind;
 };
 
+/**
+ * User-facing output detected from a tool/run side effect. This deliberately
+ * stays separate from Codex-style `fileChanges`: a shell command that writes
+ * `deck.pptx` did not emit an explicit fileChange item, but Stella should
+ * still surface the produced file to the user.
+ */
+export type ProducedFileRecord = FileChangeRecord;
+
 const isFileChangeKind = (value: unknown): value is FileChangeKind => {
   if (!value || typeof value !== "object") return false;
   const kind = value as { type?: unknown; move_path?: unknown };
@@ -54,6 +63,11 @@ export const isFileChangeRecord = (value: unknown): value is FileChangeRecord =>
 export const isFileChangeRecordArray = (
   value: unknown,
 ): value is FileChangeRecord[] =>
+  Array.isArray(value) && value.every(isFileChangeRecord);
+
+export const isProducedFileRecordArray = (
+  value: unknown,
+): value is ProducedFileRecord[] =>
   Array.isArray(value) && value.every(isFileChangeRecord);
 
 /**

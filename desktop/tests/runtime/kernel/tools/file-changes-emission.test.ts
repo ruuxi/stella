@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -9,6 +9,11 @@ import {
   handleWrite,
 } from "../../../../../runtime/kernel/tools/file.js";
 import { handleApplyPatch } from "../../../../../runtime/kernel/tools/apply-patch.js";
+import {
+  createShellState,
+  handleExecCommand,
+  handleWriteStdin,
+} from "../../../../../runtime/kernel/tools/shell.js";
 
 const tempDirs: string[] = [];
 
@@ -152,5 +157,158 @@ describe("fileChanges emission", () => {
     });
     expect(result.error).toBeDefined();
     expect(result.fileChanges).toBeUndefined();
+  });
+
+  it("exec_command emits producedFiles for foreground shell mutations", async () => {
+    const root = await createTempDir();
+    const shellState = createShellState(root);
+    const filePath = path.join(root, "shell-created.md");
+
+    const result = await handleExecCommand(
+      shellState,
+      {
+        cmd: "printf '# hello' > shell-created.md",
+        workdir: root,
+        yield_time_ms: 1000,
+      },
+      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.producedFiles).toEqual([
+      { path: filePath, kind: { type: "add" } },
+    ]);
+  });
+
+  it("exec_command snapshots stellaRoot when cwd is a subdirectory", async () => {
+    const root = await createTempDir();
+    const workdir = path.join(root, "desktop");
+    await mkdir(workdir, { recursive: true });
+    const shellState = createShellState(root);
+    const filePath = path.join(root, "sibling-artifact.md");
+
+    const result = await handleExecCommand(
+      shellState,
+      {
+        cmd: "printf '# hello' > ../sibling-artifact.md",
+        workdir,
+        yield_time_ms: 1000,
+      },
+      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.producedFiles).toEqual([
+      { path: filePath, kind: { type: "add" } },
+    ]);
+  });
+
+  it("exec_command snapshots explicit workdir when it is outside stellaRoot", async () => {
+    const stellaRoot = await createTempDir();
+    const externalRoot = await createTempDir();
+    const shellState = createShellState(stellaRoot);
+    const filePath = path.join(externalRoot, "external-report.pdf");
+
+    const result = await handleExecCommand(
+      shellState,
+      {
+        cmd: "printf '%PDF-1.4' > external-report.pdf",
+        workdir: externalRoot,
+        yield_time_ms: 1000,
+      },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot,
+      },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.producedFiles).toEqual([
+      { path: filePath, kind: { type: "add" } },
+    ]);
+  });
+
+  it("exec_command ignores build outputs before enforcing the snapshot cap", async () => {
+    const root = await createTempDir();
+    const targetDir = path.join(root, "target");
+    await mkdir(targetDir, { recursive: true });
+    await Promise.all(
+      Array.from({ length: 20_010 }, (_, index) =>
+        writeFile(path.join(targetDir, `artifact-${index}.txt`), ""),
+      ),
+    );
+
+    const shellState = createShellState(root);
+    const filePath = path.join(root, "reported.md");
+
+    const result = await handleExecCommand(
+      shellState,
+      {
+        cmd: "printf '# hello' > reported.md",
+        workdir: root,
+        yield_time_ms: 1000,
+      },
+      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.producedFiles).toEqual([
+      { path: filePath, kind: { type: "add" } },
+    ]);
+  });
+
+  it("write_stdin emits final producedFiles for an interactive exec_command session", async () => {
+    const root = await createTempDir();
+    const shellState = createShellState(root);
+    const context = {
+      conversationId: "c1",
+      deviceId: "d1",
+      requestId: "r1",
+      stellaRoot: root,
+    };
+    const filePath = path.join(root, "interactive-created.md");
+
+    const started = await handleExecCommand(
+      shellState,
+      {
+        cmd: 'read line; printf "%s" "$line" > interactive-created.md',
+        workdir: root,
+        yield_time_ms: 100,
+      },
+      context,
+    );
+
+    const sessionId = (started.result as { session_id: string | null }).session_id;
+    expect(typeof sessionId).toBe("string");
+
+    const finished = await handleWriteStdin(
+      shellState,
+      {
+        session_id: sessionId,
+        chars: "# hello\n",
+        yield_time_ms: 1000,
+      },
+      context,
+    );
+
+    expect(finished.error).toBeUndefined();
+    expect(finished.producedFiles).toEqual([
+      { path: filePath, kind: { type: "add" } },
+    ]);
+
+    const repeated = await handleWriteStdin(
+      shellState,
+      {
+        session_id: sessionId,
+        chars: "",
+        yield_time_ms: 10,
+      },
+      context,
+    );
+
+    expect(repeated.error).toBeUndefined();
+    expect(repeated.producedFiles).toBeUndefined();
   });
 });

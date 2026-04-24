@@ -1,4 +1,8 @@
 import { RUNTIME_RUN_EVENT_TYPES } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import {
+  isFileChangeRecordArray,
+  isProducedFileRecordArray,
+} from "../../../desktop/src/shared/contracts/file-changes.js";
 import type { AgentEvent, AgentMessage } from "../agent-core/types.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
@@ -47,6 +51,38 @@ type RunRecorderArgs = {
 };
 
 export type RuntimeRunEventRecorder = ReturnType<typeof createRunEventRecorder>;
+
+const fileChangesFromDetails = (details: unknown) => {
+  if (!details || typeof details !== "object" || Array.isArray(details)) {
+    return undefined;
+  }
+  const candidate = (details as { fileChanges?: unknown }).fileChanges;
+  return isFileChangeRecordArray(candidate) ? candidate : undefined;
+};
+
+const fileChangesFromToolResult = (result: unknown) => {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return undefined;
+  }
+  const candidate = (result as { fileChanges?: unknown }).fileChanges;
+  return isFileChangeRecordArray(candidate) ? candidate : undefined;
+};
+
+const producedFilesFromDetails = (details: unknown) => {
+  if (!details || typeof details !== "object" || Array.isArray(details)) {
+    return undefined;
+  }
+  const candidate = (details as { producedFiles?: unknown }).producedFiles;
+  return isProducedFileRecordArray(candidate) ? candidate : undefined;
+};
+
+const producedFilesFromToolResult = (result: unknown) => {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return undefined;
+  }
+  const candidate = (result as { producedFiles?: unknown }).producedFiles;
+  return isProducedFileRecordArray(candidate) ? candidate : undefined;
+};
 
 export const createRunEventRecorder = ({
   store,
@@ -164,6 +200,11 @@ export const createRunEventRecorder = ({
         toolName: args.toolName,
         resultPreview,
       });
+      const fileChanges =
+        fileChangesFromDetails(args.details) ?? fileChangesFromToolResult(args.result);
+      const producedFiles =
+        producedFilesFromDetails(args.details) ??
+        producedFilesFromToolResult(args.result);
       return {
         runId,
         agentType,
@@ -172,6 +213,8 @@ export const createRunEventRecorder = ({
         toolName: args.toolName,
         resultPreview,
         ...(args.details !== undefined ? { details: args.details } : {}),
+        ...(fileChanges ? { fileChanges } : {}),
+        ...(producedFiles ? { producedFiles } : {}),
         ...(uiVisibility ? { uiVisibility } : {}),
       };
     },

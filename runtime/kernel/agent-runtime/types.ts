@@ -15,6 +15,10 @@ import type {
   RuntimePromptMessage,
   RuntimeAgentEventPayload,
 } from "../../protocol/index.js";
+import type {
+  FileChangeRecord,
+  ProducedFileRecord,
+} from "../../../desktop/src/shared/contracts/file-changes.js";
 
 export type SelfModAppliedPayload = {
   featureId: string;
@@ -67,6 +71,8 @@ export type RuntimeToolEndEvent = {
   toolName: string;
   resultPreview: string;
   details?: unknown;
+  fileChanges?: FileChangeRecord[];
+  producedFiles?: ProducedFileRecord[];
   uiVisibility?: "visible" | "hidden";
 };
 
@@ -103,6 +109,8 @@ export type RuntimeEndEvent = {
   finalText: string;
   persisted: boolean;
   selfModApplied?: SelfModAppliedPayload;
+  fileChanges?: FileChangeRecord[];
+  producedFiles?: ProducedFileRecord[];
   uiVisibility?: "visible" | "hidden";
   responseTarget?: RuntimeAgentEventPayload["responseTarget"];
 };
@@ -197,4 +205,6 @@ export type SubagentRunResult = {
   runId: string;
   result: string;
   error?: string;
+  fileChanges?: FileChangeRecord[];
+  producedFiles?: ProducedFileRecord[];
 };

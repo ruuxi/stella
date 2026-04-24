@@ -107,6 +107,32 @@ export const buildAgentEventPrompt = (
   if (event.type === "agent-completed" && event.result) {
     lines.push(`result: ${truncateAgentEventField(event.result)}`);
   }
+  if (event.type === "agent-completed" && event.fileChanges?.length) {
+    lines.push("explicit file changes:");
+    for (const change of event.fileChanges.slice(0, 20)) {
+      const destination =
+        change.kind.type === "update" && change.kind.move_path
+          ? ` -> ${change.kind.move_path}`
+          : "";
+      lines.push(`- ${change.kind.type}: ${change.path}${destination}`);
+    }
+    if (event.fileChanges.length > 20) {
+      lines.push(`- ... ${event.fileChanges.length - 20} more`);
+    }
+  }
+  if (event.type === "agent-completed" && event.producedFiles?.length) {
+    lines.push("produced files:");
+    for (const file of event.producedFiles.slice(0, 20)) {
+      const destination =
+        file.kind.type === "update" && file.kind.move_path
+          ? ` -> ${file.kind.move_path}`
+          : "";
+      lines.push(`- ${file.kind.type}: ${file.path}${destination}`);
+    }
+    if (event.producedFiles.length > 20) {
+      lines.push(`- ... ${event.producedFiles.length - 20} more`);
+    }
+  }
   if (
     (event.type === "agent-failed" || event.type === "agent-canceled") &&
     event.error
