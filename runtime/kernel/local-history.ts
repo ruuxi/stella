@@ -1,9 +1,8 @@
-import { TASK_LIFECYCLE_EVENT_TYPES } from "../../desktop/src/shared/contracts/agent-runtime.js";
 import { formatTimestampForHistory, TEN_MINUTES_MS } from "./message-timestamp.js";
 
 // Internal sub-agent management tool names. Tool calls/results for these are
-// hidden from the orchestrator's local history because they're already
-// reflected by the dedicated `agent-*` lifecycle events.
+// runtime coordination details; model-visible task updates are delivered as
+// hidden transcript messages instead of being reconstructed from UI events.
 const INTERNAL_TASK_TOOL_NAMES = new Set([
   "spawn_agent",
   "send_input",
@@ -28,7 +27,6 @@ export const LOCAL_CONTEXT_EVENT_TYPES = new Set<string>([
   "assistant_message",
   "tool_request",
   "tool_result",
-  ...TASK_LIFECYCLE_EVENT_TYPES.filter((type) => type !== "agent-progress"),
   "microcompact_boundary",
 ]);
 
@@ -187,20 +185,6 @@ const estimateContextEventTokens = (event: {
     );
   }
 
-  if (
-    event.type === "agent-started" ||
-    event.type === "agent-completed" ||
-    event.type === "agent-failed" ||
-    event.type === "agent-canceled"
-  ) {
-    return clampEventTokens(
-      estimateTextTokens(payload.description) +
-        ("result" in payload ? estimateJsonTokens(payload.result) : 0) +
-        estimateTextTokens(payload.error) +
-        14,
-    );
-  }
-
   return clampEventTokens(estimateJsonTokens(payload) + 6);
 };
 
@@ -223,50 +207,6 @@ const normalizeToolName = (
 
 const shouldHideToolFromHistory = (toolName: string): boolean =>
   INTERNAL_TASK_TOOL_NAMES.has(toolName);
-
-const formatTaskEvent = (
-  eventType: string,
-  payload: Record<string, unknown>,
-): LocalHistoryMessage | null => {
-  const agentId = typeof payload.agentId === "string" ? payload.agentId : undefined;
-  switch (eventType) {
-    case "agent-started": {
-      const description =
-        typeof payload.description === "string" ? payload.description : "Task started";
-      const agentType =
-        typeof payload.agentType === "string" ? payload.agentType : "unknown";
-      const lines = [`[Task started] ${description} (agent: ${agentType})`];
-      if (agentId) lines.push(`thread_id: ${agentId}`);
-      return { role: "user", content: lines.join("\n") };
-    }
-    case "agent-completed": {
-      const lines = ["[Task completed]"];
-      if (agentId) lines.push(`thread_id: ${agentId}`);
-      if (payload.result !== undefined) {
-        lines.push(`result: ${stringifyBounded(payload.result, MAX_JSON_CHARS)}`);
-      }
-      return { role: "user", content: lines.join("\n") };
-    }
-    case "agent-failed": {
-      const lines = ["[Task failed]"];
-      if (agentId) lines.push(`thread_id: ${agentId}`);
-      if (payload.error !== undefined) {
-        lines.push(`error: ${stringifyBounded(payload.error, MAX_TEXT_CHARS)}`);
-      }
-      return { role: "user", content: lines.join("\n") };
-    }
-    case "agent-canceled": {
-      const lines = ["[Task canceled]"];
-      if (agentId) lines.push(`thread_id: ${agentId}`);
-      if (payload.error !== undefined) {
-        lines.push(`error: ${stringifyBounded(payload.error, MAX_TEXT_CHARS)}`);
-      }
-      return { role: "user", content: lines.join("\n") };
-    }
-    default:
-      return null;
-  }
-};
 
 const microcompactTrimmedMessage = () =>
   `${MICROCOMPACT_SENTINEL_OPEN}${MICROCOMPACT_SENTINEL_TEXT}${MICROCOMPACT_SENTINEL_CLOSE}`;
@@ -648,9 +588,6 @@ const eventsToHistoryMessages = (
       if (message) out.push(message);
       continue;
     }
-
-    const taskMessage = formatTaskEvent(event.type, asObject(event.payload));
-    if (taskMessage) out.push(taskMessage);
   }
 
   if (pendingById.size > 0 || pendingWithoutId.length > 0) {

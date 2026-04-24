@@ -1,16 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { shouldIncludeInOrchestratorLocalHistory } from "../../../../../runtime/kernel/runner/context.js";
 import { buildAgentEventPrompt } from "../../../../../runtime/kernel/runner/shared.js";
 import {
   AGENT_PAUSE_CANCEL_REASON,
   AGENT_SHUTDOWN_CANCEL_REASON,
 } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
-
-const makeEvent = (type: string) => ({
-  _id: `${type}-1`,
-  timestamp: 0,
-  type,
-});
 
 describe("task lifecycle deduping", () => {
   it("does not build hidden orchestrator prompts for agent-started", () => {
@@ -91,14 +84,5 @@ describe("task lifecycle deduping", () => {
     });
 
     expect(shutdownPrompt).toBeNull();
-  });
-
-  it("keeps lifecycle UI events out of orchestrator local history", () => {
-    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent-started") as never)).toBe(false);
-    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent-completed") as never)).toBe(false);
-    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent-failed") as never)).toBe(false);
-    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("agent-canceled") as never)).toBe(false);
-    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("user_message") as never)).toBe(true);
-    expect(shouldIncludeInOrchestratorLocalHistory(makeEvent("tool_result") as never)).toBe(true);
   });
 });

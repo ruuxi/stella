@@ -1,9 +1,5 @@
-import { createContext, useCallback, useContext, useMemo } from 'react'
+import { createContext, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import {
-  buildLocalHistoryMessages,
-  type LocalHistoryMessage,
-} from '@/app/chat/services/local-chat-store'
 import { useAuthSessionState } from '@/global/auth/hooks/use-auth-session-state'
 
 export type ChatStorageMode = 'cloud' | 'local'
@@ -13,7 +9,6 @@ type ChatStoreContextValue = {
   isLocalStorage: boolean
   cloudFeaturesEnabled: boolean
   isAuthenticated: boolean
-  buildHistory: (conversationId: string) => Promise<LocalHistoryMessage[] | undefined>
 }
 
 const ChatStoreContext = createContext<ChatStoreContextValue | null>(null)
@@ -25,27 +20,18 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   const storageMode: ChatStorageMode = 'local'
   const isLocalStorage = true
 
-  const buildHistory = useCallback(
-    async (conversationId: string): Promise<LocalHistoryMessage[] | undefined> => {
-      return await buildLocalHistoryMessages(conversationId)
-    },
-    [],
-  )
-
   const value = useMemo<ChatStoreContextValue>(
     () => ({
       storageMode,
       isLocalStorage,
       cloudFeaturesEnabled,
       isAuthenticated: hasConnectedAccount,
-      buildHistory,
     }),
     [
       storageMode,
       isLocalStorage,
       cloudFeaturesEnabled,
       hasConnectedAccount,
-      buildHistory,
     ],
   )
 

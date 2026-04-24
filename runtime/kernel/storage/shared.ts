@@ -113,7 +113,6 @@ export type RuntimeThreadCustomMessageEntry =
     customType: string;
     content: string | (TextContent | ImageContent)[];
     display: boolean;
-    details?: unknown;
   };
 
 export type RuntimeThreadLabelEntry = RuntimeThreadSessionEntryBase & {
@@ -145,10 +144,14 @@ export type RuntimeThreadSessionFileEntry =
 export type RuntimeThreadMessage = {
   timestamp: number;
   threadKey: string;
-  role: "user" | "assistant" | "toolResult";
+  role: "user" | "assistant" | "toolResult" | "runtimeInternal";
   content: string;
   toolCallId?: string;
   payload?: PersistedRuntimeThreadPayload;
+  customMessage?: Pick<
+    RuntimeThreadCustomMessageEntry,
+    "customType" | "content" | "display"
+  >;
 };
 
 export type RuntimeRunEvent = {
@@ -315,7 +318,7 @@ const isToolCall = (value: unknown): value is ToolCall =>
       !Array.isArray((value as { arguments?: unknown }).arguments),
   );
 
-const isUserContent = (
+export const isUserContent = (
   value: unknown,
 ): value is string | (TextContent | ImageContent)[] =>
   typeof value === "string" ||
@@ -461,4 +464,3 @@ export const eventTextFromPayload = (payload?: Record<string, unknown>): string 
   const text = payload?.contextText ?? payload?.text;
   return typeof text === "string" ? text.trim() : "";
 };
-

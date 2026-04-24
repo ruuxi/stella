@@ -28,6 +28,7 @@ const createAssistantMessage = (text: string) => ({
 describe("executeRuntimeAgentPrompt", () => {
   it("does not persist or emit internal message prompts", async () => {
     const appendThreadMessage = vi.fn();
+    const appendThreadCustomMessage = vi.fn();
     const onUserMessage = vi.fn();
     const prompt = vi.fn(async () => {
       agent.state.messages = [createAssistantMessage("done")];
@@ -57,6 +58,7 @@ describe("executeRuntimeAgentPrompt", () => {
       callbacks: { onUserMessage },
       threadStore: {
         appendThreadMessage,
+        appendThreadCustomMessage,
       } as never,
       threadKey: "thread-1",
     });
@@ -69,6 +71,7 @@ describe("executeRuntimeAgentPrompt", () => {
       }),
     ]);
     expect(appendThreadMessage).not.toHaveBeenCalled();
+    expect(appendThreadCustomMessage).not.toHaveBeenCalled();
     expect(onUserMessage).not.toHaveBeenCalled();
   });
 

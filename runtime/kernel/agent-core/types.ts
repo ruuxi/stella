@@ -243,7 +243,6 @@ export interface CustomAgentMessages {
 		timestamp: number;
 		customType?: string;
 		display?: boolean;
-		details?: unknown;
 	};
 	/** Preserves declaration merging without widening the indexed union. */
 	__customAgentMessagesBrand?: never;

@@ -346,7 +346,7 @@ export const createRuntimeAgent = (args: {
   resolvedLlm: ResolvedLlmRoute;
   hookEmitter?: HookEmitter;
   tools: AgentTool[];
-  historySource: Message[];
+  historySource: AgentMessage[];
   afterToolCall?: (
     context: AfterToolCallContext,
     signal?: AbortSignal,

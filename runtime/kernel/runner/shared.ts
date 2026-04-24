@@ -62,6 +62,13 @@ export const readCoreMemory = (stellaHome: string): string | undefined => {
   return undefined;
 };
 
+const MAX_AGENT_EVENT_FIELD_CHARS = 30_000;
+
+const truncateAgentEventField = (value: string): string =>
+  value.length <= MAX_AGENT_EVENT_FIELD_CHARS
+    ? value
+    : `${value.slice(0, MAX_AGENT_EVENT_FIELD_CHARS)}\n[truncated ${value.length - MAX_AGENT_EVENT_FIELD_CHARS} chars]`;
+
 export const buildAgentEventPrompt = (
   event: AgentLifecycleEvent,
 ): string | null => {
@@ -98,13 +105,13 @@ export const buildAgentEventPrompt = (
     return null;
   }
   if (event.type === "agent-completed" && event.result) {
-    lines.push(`result: ${event.result}`);
+    lines.push(`result: ${truncateAgentEventField(event.result)}`);
   }
   if (
     (event.type === "agent-failed" || event.type === "agent-canceled") &&
     event.error
   ) {
-    lines.push(`error: ${event.error}`);
+    lines.push(`error: ${truncateAgentEventField(event.error)}`);
   }
 
   return [

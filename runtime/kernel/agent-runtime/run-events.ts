@@ -476,5 +476,7 @@ const toPersistedThreadPayload = (
       timestamp: message.timestamp,
     };
   }
+  // runtimeInternal messages are not universally durable; producers persist
+  // durable cases at emit time, before queueing them into the agent loop.
   return null;
 };

@@ -1,12 +1,5 @@
 import { type EventRecord } from "@/app/chat/lib/event-transforms";
-import {
-  buildLocalHistoryFromEvents,
-  LOCAL_CONTEXT_EVENT_TYPES,
-  type LocalHistoryMessage,
-} from "../../../../../runtime/kernel/local-history.js";
 import type { LocalChatEventWindowMode } from "../../../../../runtime/chat-event-visibility.js";
-
-export type { LocalHistoryMessage } from "../../../../../runtime/kernel/local-history.js";
 
 const MAX_EVENTS_PER_CONVERSATION = 2000;
 
@@ -16,12 +9,6 @@ export type LocalSyncMessage = {
   text: string;
   timestamp: number;
   deviceId?: string;
-};
-
-const DEFAULT_HISTORY_MAX_TOKENS = 24_000;
-const DEFAULT_WARNING_THRESHOLD_TOKENS = 170_000;
-const getLocalTimezone = (): string | undefined => {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
 };
 
 const getLocalChatApi = () => {
@@ -58,20 +45,6 @@ export const getLocalEventCount = async (
     conversationId,
     ...(options?.countBy ? { countBy: options.countBy } : {}),
   });
-
-export const buildLocalHistoryMessages = async (
-  conversationId: string,
-): Promise<LocalHistoryMessage[]> => {
-  const events = await listLocalEvents(conversationId, 800);
-  const contextEvents = events.filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
-  if (contextEvents.length === 0) return [];
-  return buildLocalHistoryFromEvents({
-    events: contextEvents,
-    maxTokens: DEFAULT_HISTORY_MAX_TOKENS,
-    timezone: getLocalTimezone(),
-    warningThresholdTokens: DEFAULT_WARNING_THRESHOLD_TOKENS,
-  });
-};
 
 export const buildLocalSyncMessages = async (
   conversationId: string,
