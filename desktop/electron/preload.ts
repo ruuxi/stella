@@ -47,6 +47,7 @@ import {
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_SYNC_MODELS,
   IPC_SHELL_SAVE_FILE_AS,
+  IPC_SYSTEM_OPEN_FDA,
   IPC_SOCIAL_SESSIONS_CREATE,
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
@@ -655,7 +656,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }>(IPC_AUTH_RUNTIME_REFRESH_REQUESTED),
     quitForRestart: () =>
       ipcRenderer.invoke(IPC_APP_QUIT_FOR_RESTART) as Promise<{ ok: boolean }>,
-    openFullDiskAccess: () => ipcRenderer.send("system:openFullDiskAccess"),
+    openFullDiskAccess: () => ipcRenderer.send(IPC_SYSTEM_OPEN_FDA),
     getPermissionStatus: () =>
       ipcRenderer.invoke("permissions:getStatus") as Promise<{
         accessibility: boolean;

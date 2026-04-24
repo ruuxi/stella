@@ -38,6 +38,7 @@ import {
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
+  IPC_SYSTEM_OPEN_FDA,
   IPC_SOCIAL_SESSIONS_CREATE,
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_PERMISSIONS_GET_STATUS,
@@ -654,11 +655,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
-  ipcMain.on("system:openFullDiskAccess", async (event) => {
+  ipcMain.on(IPC_SYSTEM_OPEN_FDA, async (event) => {
     if (
       !options.externalLinkService.assertPrivilegedSender(
         event,
-        "system:openFullDiskAccess",
+        IPC_SYSTEM_OPEN_FDA,
       )
     ) {
       return;
@@ -673,11 +674,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       return;
     }
     if (process.platform === "darwin") {
-      import("child_process").then(({ exec: execCmd }) => {
-        execCmd(
-          'open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"',
-        );
-      });
+      await openMacPermissionSettings("full-disk-access");
     }
   });
 

@@ -14,10 +14,6 @@ export default defineConfig([
     'workspace',
     'workspace/**',
     '**/dist/**',
-    '.eslint-browser.json',
-    '.eslint-focus.json',
-    '.eslint-packages.json',
-    '.eslint-report.json',
     'src/routeTree.gen.ts',
   ]),
   {

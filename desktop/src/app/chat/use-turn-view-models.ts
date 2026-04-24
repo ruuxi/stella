@@ -8,11 +8,13 @@ import { filterEventsForUiDisplay } from '@/app/chat/lib/message-display'
 import { isOrchestratorChatMessagePayload } from '@/app/chat/emotes/message-source'
 import {
   type TurnViewModel,
+} from './MessageTurn'
+import {
   getDisplayMessageText,
   getDisplayUserText,
   getAttachments,
   getChannelEnvelope,
-} from './MessageTurn'
+} from './lib/message-turn-display'
 import type { SelfModAppliedData } from '@/app/chat/streaming/streaming-types'
 import {
   parseAskQuestionArgs,
