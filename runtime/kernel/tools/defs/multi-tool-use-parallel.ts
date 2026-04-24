@@ -1,5 +1,5 @@
 /**
- * `multi_tool_use.parallel` tool — fan-out wrapper.
+ * `multi_tool_use_parallel` tool — fan-out wrapper.
  *
  * Pass `tool_uses` as an array of `{ recipient_name, parameters }` entries;
  * each entry runs in parallel and the combined results are returned. Only
@@ -31,7 +31,7 @@ export type MultiToolUseParallelOptions = {
 export const createMultiToolUseParallelTool = (
   options: MultiToolUseParallelOptions,
 ): ToolDefinition => ({
-  name: "multi_tool_use.parallel",
+  name: "multi_tool_use_parallel",
   description:
     "Run several independent tool calls concurrently. Pass `tool_uses` as an array of `{ recipient_name, parameters }` entries; each entry runs in parallel and the combined results are returned. Only batch calls that don't depend on each other (e.g. multiple file reads, or a snapshot per app), and stay within the same tool family — never mix `computer_*` with `exec_command`.",
   promptSnippet: "Fan out independent tool calls in parallel",
