@@ -82,6 +82,26 @@
 
 .ask-question-bubble__body {
   padding: 4px 16px 0;
+  height: 236px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0,
+    black calc(100% - 26px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    black 0,
+    black calc(100% - 26px),
+    transparent 100%
+  );
+}
+
+.ask-question-bubble__body::-webkit-scrollbar {
+  display: none;
 }
 
 .ask-question-bubble__steps {
@@ -276,4 +296,35 @@
   font-size: 11px;
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
+}
+
+.ask-question-bubble__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 16px 14px;
+}
+
+.ask-question-bubble__summary-row {
+  display: grid;
+  gap: 3px;
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.ask-question-bubble__summary-row:first-child {
+  border-top: none;
+}
+
+.ask-question-bubble__summary-question {
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ask-question-bubble__summary-answer {
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 500;
 }

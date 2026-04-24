@@ -632,7 +632,7 @@ export const StreamingIndicator = memo(function StreamingIndicator({
   }
 
   return (
-    <div className="session-turn">
+    <div className="session-turn session-turn--last-turn">
       <div className="event-item assistant streaming">
         {hasReasoningContent && (
           <ReasoningSection
