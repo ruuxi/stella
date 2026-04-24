@@ -36,9 +36,7 @@ export interface DisplaySidebarHandle {
   open(payload: DisplayPayload | string): void;
   /**
    * Refresh a tab's content without forcing the panel open or stealing
-   * focus from another active tab. Used by `useDisplayAutoRoute` when the
-   * user is not on the chat home — we want to update the existing surface
-   * but not pop the sidebar over their work.
+   * focus from another active tab.
    */
   update(payload: DisplayPayload | string): void;
   /** Close the panel; tabs are kept in memory for the next open. */

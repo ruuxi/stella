@@ -1009,6 +1009,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
                 result: details ?? ev.resultPreview,
                 resultPreview: ev.resultPreview,
                 ...(details ? details : {}),
+                ...(ev.fileChanges?.length ? { fileChanges: ev.fileChanges } : {}),
+                ...(ev.producedFiles?.length ? { producedFiles: ev.producedFiles } : {}),
                 ...(ev.agentType ? { agentType: ev.agentType } : {}),
               },
             });

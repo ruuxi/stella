@@ -6,7 +6,13 @@ import { spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
+import { readdir, stat } from "fs/promises";
 import { resolveGitDir, setupEnvironment } from "dugite";
+import {
+  fileChange,
+  type FileChangeRecord,
+  type ProducedFileRecord,
+} from "../../../desktop/src/shared/contracts/file-changes.js";
 import type { ToolContext, ToolResult, ShellRecord } from "./types.js";
 import { truncate } from "./utils.js";
 import { isDangerousCommand } from "./command-safety.js";
@@ -36,6 +42,19 @@ type ManagedShellRecord = ShellRecord & {
   waiters: Set<() => void>;
   child?: SpawnedShell;
   stdinOpen: boolean;
+  startSnapshot?: FileSnapshot | null;
+  producedFilesReported?: boolean;
+};
+
+type FileSnapshotEntry = {
+  size: number;
+  mtimeMs: number;
+};
+
+type FileSnapshot = {
+  root: string;
+  files: Map<string, FileSnapshotEntry>;
+  complete: boolean;
 };
 
 // Codex defaults: 10s for exec_command, 250ms for write_stdin. Letting
@@ -46,6 +65,21 @@ export const DEFAULT_EXEC_YIELD_MS = 10_000;
 export const DEFAULT_WRITE_STDIN_YIELD_MS = 250;
 const MAX_EXEC_YIELD_MS = 30_000;
 const DEFAULT_EXEC_OUTPUT_TOKENS = 4_000;
+const MAX_SNAPSHOT_FILES = 20_000;
+const SNAPSHOT_IGNORED_DIRS = new Set([
+  ".git",
+  ".hg",
+  ".svn",
+  "node_modules",
+  ".next",
+  ".turbo",
+  "target",
+  "dist",
+  "build",
+  "coverage",
+  ".cache",
+  "state/electron-user-data",
+]);
 
 const APPROX_BYTES_PER_TOKEN = 4;
 /**
@@ -57,6 +91,129 @@ export const approxTokenCount = (text: string): number =>
   Math.ceil(text.length / APPROX_BYTES_PER_TOKEN);
 
 const OFFICE_PREVIEW_REF_MARKER = "__STELLA_OFFICE_PREVIEW_REF__";
+
+const normalizeSnapshotRoot = (cwd: string): string | null => {
+  const resolved = path.resolve(cwd);
+  try {
+    if (!existsSync(resolved)) return null;
+  } catch {
+    return null;
+  }
+  return resolved;
+};
+
+const shouldSkipSnapshotDir = (relativeDir: string): boolean => {
+  const normalized = relativeDir.split(path.sep).join("/");
+  return (
+    SNAPSHOT_IGNORED_DIRS.has(normalized) ||
+    normalized.split("/").some((segment) => SNAPSHOT_IGNORED_DIRS.has(segment))
+  );
+};
+
+const snapshotFiles = async (cwd: string): Promise<FileSnapshot | null> => {
+  const root = normalizeSnapshotRoot(cwd);
+  if (!root) return null;
+
+  const files = new Map<string, FileSnapshotEntry>();
+  let complete = true;
+
+  const walk = async (dir: string): Promise<void> => {
+    if (!complete) return;
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!complete) return;
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = path.relative(root, fullPath);
+      if (entry.isDirectory()) {
+        if (!shouldSkipSnapshotDir(relativePath)) {
+          await walk(fullPath);
+        }
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (files.size >= MAX_SNAPSHOT_FILES) {
+        complete = false;
+        return;
+      }
+      try {
+        const info = await stat(fullPath);
+        files.set(fullPath, {
+          size: info.size,
+          mtimeMs: info.mtimeMs,
+        });
+      } catch {
+        // File changed while walking; the next snapshot will catch stable state.
+      }
+    }
+  };
+
+  await walk(root);
+  return { root, files, complete };
+};
+
+const resolveShellSnapshotRoot = (
+  cwd: string,
+  context?: ToolContext,
+): string => {
+  const resolvedCwd = normalizeSnapshotRoot(cwd);
+  const resolvedStellaRoot = context?.stellaRoot?.trim()
+    ? normalizeSnapshotRoot(context.stellaRoot)
+    : null;
+  if (
+    resolvedCwd &&
+    resolvedStellaRoot &&
+    (resolvedCwd === resolvedStellaRoot ||
+      resolvedCwd.startsWith(`${resolvedStellaRoot}${path.sep}`))
+  ) {
+    return resolvedStellaRoot;
+  }
+  return resolvedCwd ?? cwd;
+};
+
+const diffFileSnapshots = (
+  before: FileSnapshot | null,
+  after: FileSnapshot | null,
+): FileChangeRecord[] | undefined => {
+  if (!before || !after || !before.complete || !after.complete || before.root !== after.root) {
+    return undefined;
+  }
+  const changes: FileChangeRecord[] = [];
+  for (const [filePath, afterEntry] of after.files) {
+    const beforeEntry = before.files.get(filePath);
+    if (!beforeEntry) {
+      changes.push(fileChange(filePath, { type: "add" }));
+      continue;
+    }
+    if (
+      beforeEntry.size !== afterEntry.size ||
+      beforeEntry.mtimeMs !== afterEntry.mtimeMs
+    ) {
+      changes.push(fileChange(filePath, { type: "update" }));
+    }
+  }
+  for (const filePath of before.files.keys()) {
+    if (!after.files.has(filePath)) {
+      changes.push(fileChange(filePath, { type: "delete" }));
+    }
+  }
+  return changes.length > 0 ? changes : undefined;
+};
+
+const takeCompletedProducedFiles = async (
+  record: ManagedShellRecord,
+): Promise<ProducedFileRecord[] | undefined> => {
+  if (record.running || record.producedFilesReported) return undefined;
+  record.producedFilesReported = true;
+  return diffFileSnapshots(
+    record.startSnapshot ?? null,
+    await snapshotFiles(record.startSnapshot?.root ?? record.cwd),
+  );
+};
 
 export const extractOfficePreviewRef = (
   output: string,
@@ -562,6 +719,7 @@ export const startShell = (
   cwd: string,
   envOverrides?: Record<string, string>,
   onClose?: () => void,
+  startSnapshot?: FileSnapshot | null,
 ) => {
   const id = crypto.randomUUID();
   const protectedCommand = buildProtectedCommand(command, state);
@@ -581,6 +739,7 @@ export const startShell = (
       outputVersion: 1,
       waiters: new Set(),
       stdinOpen: false,
+      startSnapshot,
       kill: () => {},
     };
     state.shells.set(id, record);
@@ -603,6 +762,7 @@ export const startShell = (
     outputVersion: 0,
     waiters: new Set(),
     stdinOpen: Boolean(child.stdin),
+    startSnapshot,
     kill: () => {
       terminateShellProcess(child);
     },
@@ -813,11 +973,15 @@ export const handleExecCommand = async (
     return { error: "cmd is required." };
   }
 
+  const snapshotRoot = resolveShellSnapshotRoot(prepared.cwd, context);
+  const beforeSnapshot = await snapshotFiles(snapshotRoot);
   const record = startShell(
     state,
     prepared.command,
     prepared.cwd,
     prepared.envOverrides,
+    undefined,
+    beforeSnapshot,
   );
   const observedVersion = record.outputVersion;
   try {
@@ -837,7 +1001,14 @@ export const handleExecCommand = async (
     outputCharBudgetFromTokens(args.max_output_tokens),
   );
   const payload = buildExecToolPayload(record, drained, callStartedAt);
-  return { result: payload, details: payload };
+  const producedFiles = !record.running
+    ? await takeCompletedProducedFiles(record)
+    : undefined;
+  return {
+    result: payload,
+    details: payload,
+    ...(producedFiles ? { producedFiles } : {}),
+  };
 };
 
 export const handleWriteStdin = async (
@@ -883,7 +1054,12 @@ export const handleWriteStdin = async (
     outputCharBudgetFromTokens(args.max_output_tokens),
   );
   const payload = buildExecToolPayload(record, drained, callStartedAt);
-  return { result: payload, details: payload };
+  const producedFiles = await takeCompletedProducedFiles(record);
+  return {
+    result: payload,
+    details: payload,
+    ...(producedFiles ? { producedFiles } : {}),
+  };
 };
 
 export const handleBash = async (
@@ -909,7 +1085,9 @@ export const handleBash = async (
   const envOverrides = prepared.envOverrides;
 
   if (runInBackground) {
-    const record = startShell(state, command, cwd, envOverrides);
+    const snapshotRoot = resolveShellSnapshotRoot(cwd, context);
+    const beforeSnapshot = await snapshotFiles(snapshotRoot);
+    const record = startShell(state, command, cwd, envOverrides, undefined, beforeSnapshot);
     const extracted = extractOfficePreviewRef(record.output || "");
     return {
       result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
@@ -928,10 +1106,14 @@ export const handleBash = async (
     };
   }
 
+  const snapshotRoot = resolveShellSnapshotRoot(cwd, context);
+  const beforeSnapshot = await snapshotFiles(snapshotRoot);
   const output = await runShell(state, command, cwd, timeout, envOverrides);
+  const producedFiles = diffFileSnapshots(beforeSnapshot, await snapshotFiles(snapshotRoot));
   const extracted = extractOfficePreviewRef(output);
   return {
     result: truncate(extracted.cleanedOutput),
+    ...(producedFiles ? { producedFiles } : {}),
     ...(extracted.officePreviewRef
       ? {
           details: {
@@ -980,7 +1162,11 @@ export const handleShellStatus = async (
   result += `\nCommand: ${record.command.slice(0, 200)}`;
   result += `\n\n--- Output (last ${Math.min(tail_lines, lines.length)} lines) ---\n${tail}`;
 
-  return { result };
+  const producedFiles = await takeCompletedProducedFiles(record);
+  return {
+    result,
+    ...(producedFiles ? { producedFiles } : {}),
+  };
 };
 
 export const handleKillShell = async (

@@ -20,6 +20,12 @@ import {
   AGENT_IDS,
   isLocalCliAgentId,
 } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import {
+  isFileChangeRecordArray,
+  isProducedFileRecordArray,
+  type FileChangeRecord,
+  type ProducedFileRecord,
+} from "../../../desktop/src/shared/contracts/file-changes.js";
 import type {
   RunnerContext,
 } from "./types.js";
@@ -29,6 +35,46 @@ import { shouldRunSelfModHmrTransition } from "../self-mod/flush-mode.js";
 
 const TASK_LIFECYCLE_WAKE_PROMPT =
   "<system_reminder>Continue from the latest task lifecycle update.</system_reminder>";
+
+const collectFileChanges = (
+  target: FileChangeRecord[],
+  seen: Set<string>,
+  source: unknown,
+): void => {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return;
+  }
+  const candidate = (source as { fileChanges?: unknown }).fileChanges;
+  if (!isFileChangeRecordArray(candidate)) {
+    return;
+  }
+  for (const change of candidate) {
+    const key = `${change.kind.type}:${change.path}:${change.kind.type === "update" ? change.kind.move_path ?? "" : ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    target.push(change);
+  }
+};
+
+const collectProducedFiles = (
+  target: ProducedFileRecord[],
+  seen: Set<string>,
+  source: unknown,
+): void => {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return;
+  }
+  const candidate = (source as { producedFiles?: unknown }).producedFiles;
+  if (!isProducedFileRecordArray(candidate)) {
+    return;
+  }
+  for (const file of candidate) {
+    const key = `${file.kind.type}:${file.path}:${file.kind.type === "update" ? file.kind.move_path ?? "" : ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    target.push(file);
+  }
+};
 
 const WINDOWS_PATH_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\)/;
 const SHELL_PATH_SOURCE = String.raw`(?:[A-Za-z]:[\\/]|\\\\|\/|\.\.?[\\/])`;
@@ -219,6 +265,8 @@ const buildLifecycleEventPayload = (
       return {
         agentId: event.agentId,
         ...(event.result ? { result: event.result } : {}),
+        ...(event.fileChanges?.length ? { fileChanges: event.fileChanges } : {}),
+        ...(event.producedFiles?.length ? { producedFiles: event.producedFiles } : {}),
       };
     case "agent-failed":
     case "agent-canceled":
@@ -427,6 +475,10 @@ export const createAgentOrchestration = (
         : `${taskDescription}\n\n${taskPrompt}`;
 
       let subagentSucceeded = false;
+      const subagentFileChanges: FileChangeRecord[] = [];
+      const subagentFileChangeKeys = new Set<string>();
+      const subagentProducedFiles: ProducedFileRecord[] = [];
+      const subagentProducedFileKeys = new Set<string>();
       try {
         const result = await runSubagentTask({
           conversationId,
@@ -448,29 +500,49 @@ export const createAgentOrchestration = (
           stellaRoot: context.stellaRoot,
           selfModMonitor: context.selfModMonitor,
           onProgress,
-          callbacks: runnerCallbacks
-            ? {
-                onStream: (event) => runnerCallbacks.onStream(event),
-                onReasoning: (event) => {
-                  if (!agentId) {
-                    return;
-                  }
-                  runnerCallbacks.onAgentReasoning?.({
-                    ...event,
-                    agentId,
-                    ...(rootRunId ? { rootRunId } : {}),
-                  });
-                },
-                onToolStart: (event) => runnerCallbacks.onToolStart(event),
-                onToolEnd: (event) => runnerCallbacks.onToolEnd(event),
-                onError: (event) => runnerCallbacks.onError(event),
-                onInterrupted: (event) => runnerCallbacks.onInterrupted?.(event),
-                onEnd: (event) => runnerCallbacks.onEnd(event),
-              }
-            : undefined,
+          callbacks: {
+            ...(runnerCallbacks
+              ? {
+                  onStream: (event) => runnerCallbacks.onStream(event),
+                  onReasoning: (event) => {
+                    if (!agentId) {
+                      return;
+                    }
+                    runnerCallbacks.onAgentReasoning?.({
+                      ...event,
+                      agentId,
+                      ...(rootRunId ? { rootRunId } : {}),
+                    });
+                  },
+                  onToolStart: (event) => runnerCallbacks.onToolStart(event),
+                  onError: (event) => runnerCallbacks.onError(event),
+                  onInterrupted: (event) => runnerCallbacks.onInterrupted?.(event),
+                  onEnd: (event) => runnerCallbacks.onEnd(event),
+                }
+              : {}),
+            onToolEnd: (event) => {
+              collectFileChanges(
+                subagentFileChanges,
+                subagentFileChangeKeys,
+                event.fileChanges?.length ? event : event.details,
+              );
+              collectProducedFiles(
+                subagentProducedFiles,
+                subagentProducedFileKeys,
+                event.producedFiles?.length ? event : event.details,
+              );
+              runnerCallbacks?.onToolEnd(event);
+            },
+          },
           hookEmitter: context.hookEmitter,
         });
         subagentSucceeded = !result.error;
+        if (subagentFileChanges.length > 0) {
+          result.fileChanges = subagentFileChanges;
+        }
+        if (subagentProducedFiles.length > 0) {
+          result.producedFiles = subagentProducedFiles;
+        }
         return result;
       } finally {
         if (shouldAttachSelfModLifecycle) {

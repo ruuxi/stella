@@ -20,7 +20,6 @@ import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { IdeasTabContent } from "@/app/home/IdeasTabContent";
-import { useDisplayAutoRoute } from "@/app/chat/use-display-auto-route";
 import { useMediaMaterializer } from "@/app/media/use-media-materializer";
 import {
   ChatSidebar,
@@ -364,10 +363,6 @@ function RootChrome() {
       routeDisplayPayload(payload);
     });
   }, [routeDisplayPayload]);
-
-  // Renderer-side auto-routing: chat tool results that produce visual
-  // payloads (office preview, PDF read) surface in the Display sidebar.
-  useDisplayAutoRoute(chat.conversation.events, routeDisplayPayload);
 
   // Owner-scoped materializer: any media job (this conversation, another
   // device, the agent, the studio, …) gets downloaded into

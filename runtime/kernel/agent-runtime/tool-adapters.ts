@@ -63,19 +63,29 @@ export const getRuntimeToolMetadata = (opts: {
   return resolved;
 };
 
-const mergeFileChangesIntoDetails = (
+const mergeToolSideEffectsIntoDetails = (
   details: unknown,
   fileChanges: ToolResult["fileChanges"],
+  producedFiles: ToolResult["producedFiles"],
 ): unknown => {
-  if (!fileChanges || fileChanges.length === 0) return details;
-  if (details && typeof details === "object" && !Array.isArray(details)) {
-    return { ...(details as Record<string, unknown>), fileChanges };
+  if (
+    (!fileChanges || fileChanges.length === 0) &&
+    (!producedFiles || producedFiles.length === 0)
+  ) {
+    return details;
   }
-  // Wrap non-object details so the spread in the worker server hoists
-  // `fileChanges` to the top level of the persisted event payload while
+  const sideEffects = {
+    ...(fileChanges && fileChanges.length > 0 ? { fileChanges } : {}),
+    ...(producedFiles && producedFiles.length > 0 ? { producedFiles } : {}),
+  };
+  if (details && typeof details === "object" && !Array.isArray(details)) {
+    return { ...(details as Record<string, unknown>), ...sideEffects };
+  }
+  // Wrap non-object details so the worker server hoists structured side
+  // effects to the top level of the persisted event payload while
   // still preserving the original details under `result`.
-  if (details === undefined || details === null) return { fileChanges };
-  return { result: details, fileChanges };
+  if (details === undefined || details === null) return sideEffects;
+  return { result: details, ...sideEffects };
 };
 
 const formatToolResult = (
@@ -84,18 +94,20 @@ const formatToolResult = (
   if (toolResult.error) {
     return {
       text: `Error: ${toolResult.error}`,
-      details: mergeFileChangesIntoDetails(
+      details: mergeToolSideEffectsIntoDetails(
         toolResult.details ?? { error: toolResult.error },
         toolResult.fileChanges,
+        toolResult.producedFiles,
       ),
     };
   }
 
   return {
     text: textFromUnknown(toolResult.result),
-    details: mergeFileChangesIntoDetails(
+    details: mergeToolSideEffectsIntoDetails(
       toolResult.details ?? toolResult.result,
       toolResult.fileChanges,
+      toolResult.producedFiles,
     ),
   };
 };

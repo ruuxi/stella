@@ -4,6 +4,10 @@ import type {
   TerminalTaskLifecycleStatus,
 } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import type {
+  FileChangeRecord,
+  ProducedFileRecord,
+} from "../../../desktop/src/shared/contracts/file-changes.js";
+import type {
   ToolContext,
   ToolResult,
   ToolUpdateCallback,
@@ -74,6 +78,8 @@ type RuntimeAgentRecord = {
   startedAt: number;
   completedAt: number | null;
   result?: string;
+  fileChanges?: FileChangeRecord[];
+  producedFiles?: ProducedFileRecord[];
   error?: string;
   controller: AbortController;
   storageMode: "cloud" | "local";
@@ -113,6 +119,8 @@ export type AgentLifecycleEvent = {
   description?: string;
   parentAgentId?: string;
   result?: string;
+  fileChanges?: FileChangeRecord[];
+  producedFiles?: ProducedFileRecord[];
   error?: string;
   statusText?: string;
 };
@@ -156,7 +164,13 @@ type LocalAgentManagerOpts = {
       signal?: AbortSignal,
       onUpdate?: ToolUpdateCallback,
     ) => Promise<ToolResult>;
-  }) => Promise<{ runId: string; result: string; error?: string }>;
+  }) => Promise<{
+    runId: string;
+    result: string;
+    error?: string;
+    fileChanges?: FileChangeRecord[];
+    producedFiles?: ProducedFileRecord[];
+  }>;
   toolExecutor: (
     toolName: string,
     args: Record<string, unknown>,
@@ -638,6 +652,8 @@ export class LocalAgentManager implements AgentToolApi {
       } else {
         task.status = "completed";
         task.result = result.result;
+        task.fileChanges = result.fileChanges;
+        task.producedFiles = result.producedFiles;
       }
     } catch (error) {
       task.completedAt = Date.now();
@@ -670,6 +686,8 @@ export class LocalAgentManager implements AgentToolApi {
           agentType: task.agentType,
           description: task.description,
           result: task.result,
+          ...(task.fileChanges?.length ? { fileChanges: task.fileChanges } : {}),
+          ...(task.producedFiles?.length ? { producedFiles: task.producedFiles } : {}),
         });
       } else if (task.status === "error") {
         this.opts.onAgentEvent?.({

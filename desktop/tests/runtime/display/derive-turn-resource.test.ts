@@ -55,6 +55,74 @@ describe("deriveTurnResource", () => {
     ).toEqual({ kind: "pdf", filePath: "/out/report.pdf" });
   });
 
+  it("derives a payload from producedFiles detected from shell output", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 5,
+          payload: {
+            toolName: "exec_command",
+            result: "created report",
+            producedFiles: [
+              { path: "/out/report.pdf", kind: { type: "add" } },
+            ],
+          },
+        }),
+      ]),
+    ).toEqual({ kind: "pdf", filePath: "/out/report.pdf" });
+  });
+
+  it("surfaces shell-produced Office files as downloadable resources", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 5,
+          payload: {
+            toolName: "exec_command",
+            result: "created deck",
+            producedFiles: [
+              { path: "/out/deck.pptx", kind: { type: "add" } },
+            ],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "media",
+      asset: {
+        kind: "download",
+        filePath: "/out/deck.pptx",
+        label: "deck.pptx",
+      },
+      createdAt: 5,
+    });
+  });
+
+  it("derives a payload from subagent completed producedFiles", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "agent-1",
+          type: "agent-completed",
+          timestamp: 5,
+          payload: {
+            agentId: "agent-1",
+            producedFiles: [
+              { path: "/out/chart.png", kind: { type: "add" } },
+            ],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "media",
+      asset: { kind: "image", filePaths: ["/out/chart.png"] },
+      createdAt: 5,
+    });
+  });
+
   it("uses move_path for renames (apply_patch update with Move to)", () => {
     expect(
       deriveTurnResource([

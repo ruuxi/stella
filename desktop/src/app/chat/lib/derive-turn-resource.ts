@@ -5,10 +5,9 @@
  * `send-app-server-request-BTldVjKF.js` and `index-CxBol07n.js`:
  *
  *   1. Walk every `tool_result` in the turn and collect normalized
- *      `fileChanges` records (the runtime-emitted `{ path, kind }`
- *      shape mirroring Codex's `fileChange` items). This becomes the
- *      `editedFilePaths` pool — independent of which specific tool
- *      produced the change.
+ *      `fileChanges` records (explicit Codex-style edit provenance) plus
+ *      Stella `producedFiles` records (user-facing outputs detected from
+ *      shell/CLI side effects).
  *   2. Collect `referencedFilePaths` from
  *        - office preview refs (which are "look at this file" signals,
  *          not edits, so they belong with referenced files)
@@ -29,15 +28,18 @@ import { isOfficePreviewRef } from "@/shared/contracts/office-preview";
 import {
   type FileChangeRecord,
   isFileChangeRecordArray,
+  isProducedFileRecordArray,
+  type ProducedFileRecord,
 } from "@/shared/contracts/file-changes";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 import {
   kindForPath,
+  basenameOf,
   pickPrimaryEditedPath,
 } from "@/shell/display/path-to-viewer";
 import type { EventRecord } from "./event-transforms";
-import { isToolResult } from "./event-transforms";
+import { isAgentCompletedEvent, isToolResult } from "./event-transforms";
 
 const asNonEmptyString = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -99,9 +101,15 @@ const resolveRelativePathFromKnownAbsolute = (
 };
 
 const fileChangesForResult = (event: EventRecord): FileChangeRecord[] => {
-  if (!isToolResult(event)) return [];
-  const candidate = (event.payload as { fileChanges?: unknown }).fileChanges;
+  if (!isToolResult(event) && !isAgentCompletedEvent(event)) return [];
+  const candidate = (event.payload as { fileChanges?: unknown } | undefined)?.fileChanges;
   return isFileChangeRecordArray(candidate) ? candidate : [];
+};
+
+const producedFilesForResult = (event: EventRecord): ProducedFileRecord[] => {
+  if (!isToolResult(event) && !isAgentCompletedEvent(event)) return [];
+  const candidate = (event.payload as { producedFiles?: unknown } | undefined)?.producedFiles;
+  return isProducedFileRecordArray(candidate) ? candidate : [];
 };
 
 const officeRefForResult = (event: EventRecord): OfficePreviewRef | null => {
@@ -179,8 +187,23 @@ const imageGenPayloadsByPath = (
 const buildPayloadFromBarePath = (
   filePath: string,
   createdAt: number,
+  options?: { produced?: boolean },
 ): DisplayPayload | null => {
   switch (kindForPath(filePath)) {
+    case "office-document":
+    case "office-spreadsheet":
+    case "office-slides":
+      return options?.produced === true
+        ? {
+            kind: "media",
+            asset: {
+              kind: "download",
+              filePath,
+              label: basenameOf(filePath),
+            },
+            createdAt,
+          }
+        : null;
     case "pdf":
       return { kind: "pdf", filePath };
     case "image":
@@ -297,11 +320,10 @@ export const deriveTurnResource = (
     }
   }
 
-  // Codex's "edited" pool = paths from fileChange items.
+  // Codex's "edited" pool = paths from explicit fileChange items.
   const editedPaths: string[] = [];
   const editedSeen = new Set<string>();
   for (const event of toolEvents) {
-    if (!isToolResult(event)) continue;
     const records = fileChangesForResult(event);
     for (const record of records) {
       const resolved = resolveFileChange(record, event.timestamp);
@@ -321,11 +343,37 @@ export const deriveTurnResource = (
     }
   }
 
+  // Stella's produced-file pool = user-facing outputs detected from shell/CLI
+  // side effects or rolled up from child agents. These are not Codex-style
+  // explicit edit artifacts, but they should still surface in Stella's chat.
+  const producedPaths: string[] = [];
+  const producedSeen = new Set<string>();
+  for (const event of toolEvents) {
+    const records = producedFilesForResult(event);
+    for (const record of records) {
+      const resolved = resolveFileChange(record, event.timestamp);
+      if (!resolved) continue;
+      if (producedSeen.has(resolved.path) || editedSeen.has(resolved.path)) continue;
+      producedSeen.add(resolved.path);
+      producedPaths.push(resolved.path);
+      if (!payloadByPath.has(resolved.path)) {
+        const inferred = buildPayloadFromBarePath(
+          resolved.path,
+          resolved.timestamp,
+          { produced: true },
+        );
+        if (inferred) {
+          payloadByPath.set(resolved.path, inferred);
+        }
+      }
+    }
+  }
+
   // Codex's "referenced" pool = office preview ref source paths +
   // markdown links in the assistant message text.
   const referencedPaths: string[] = [];
   const referencedSeen = new Set<string>();
-  const absoluteCandidates = [...editedPaths, ...referencedFromOffice.keys()]
+  const absoluteCandidates = [...editedPaths, ...producedPaths, ...referencedFromOffice.keys()]
     .filter((candidate) => candidate.startsWith("/"))
     .map(normalizePosixPath);
   const pushReferenced = (path: string | null) => {
@@ -340,7 +388,7 @@ export const deriveTurnResource = (
     );
   }
 
-  const candidatePaths = [...editedPaths, ...referencedPaths];
+  const candidatePaths = [...editedPaths, ...producedPaths, ...referencedPaths];
   if (candidatePaths.length === 0) return null;
 
   const primary = pickPrimaryEditedPath(candidatePaths);

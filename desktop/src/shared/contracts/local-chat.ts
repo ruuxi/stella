@@ -1,4 +1,5 @@
 import type { OfficePreviewRef } from "./office-preview";
+import type { FileChangeRecord, ProducedFileRecord } from "./file-changes";
 
 export type EventRecord = {
   _id: string;
@@ -26,6 +27,8 @@ export type ToolResultPayload = {
   requestId?: string;
   agentType?: string;
   officePreviewRef?: OfficePreviewRef;
+  fileChanges?: FileChangeRecord[];
+  producedFiles?: ProducedFileRecord[];
 };
 
 export type Attachment = {

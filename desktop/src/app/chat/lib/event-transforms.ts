@@ -3,6 +3,10 @@ import {
   type TaskLifecycleStatus,
 } from '@/shared/contracts/agent-runtime'
 import type {
+  FileChangeRecord,
+  ProducedFileRecord,
+} from '@/shared/contracts/file-changes'
+import type {
   Attachment,
   ChannelEnvelope,
   ChannelReaction,
@@ -96,6 +100,8 @@ export type AgentStartedEventPayload = {
 export type AgentCompletedEventPayload = {
   agentId: string
   result?: string
+  fileChanges?: FileChangeRecord[]
+  producedFiles?: ProducedFileRecord[]
 }
 
 export type AgentFailedEventPayload = {
@@ -340,7 +346,7 @@ export function groupEventsIntoTurns(events: EventRecord[]): MessageTurn[] {
         })
       }
     } else if (currentTurn) {
-      if (isToolRequest(event) || isToolResult(event)) {
+      if (isToolRequest(event) || isToolResult(event) || isAgentCompletedEvent(event)) {
         currentTurn.toolEvents.push(event)
       }
     }
