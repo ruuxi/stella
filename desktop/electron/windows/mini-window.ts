@@ -2,12 +2,8 @@ import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
 import { resolveAppIconPath } from '../app-icon.js'
 import { MINI_SHELL_SIZE } from '../layout-constants.js'
 import { createSharedWebPreferences } from './shared-window-preferences.js'
-import {
-  createShellWindow,
-  loadShellRecoveryPage,
-  reloadShellMainWindow,
-  type ShellWindowDidFailLoadDetails,
-} from './shell-window-factory.js'
+import type { ShellWindowDidFailLoadDetails } from './shell-window-factory.js'
+import { ShellWindowController } from './shell-window-controller.js'
 
 const MINI_SHELL_MAX_SIZE = {
   width: 500,
@@ -28,28 +24,16 @@ type MiniWindowControllerOptions = {
 }
 
 export class MiniWindowController {
-  private window: BrowserWindow | null = null
+  private readonly controller: ShellWindowController
 
-  constructor(private readonly options: MiniWindowControllerOptions) {}
-
-  getWindow() {
-    return this.window
-  }
-
-  create() {
-    if (this.window && !this.window.isDestroyed()) {
-      return this.window
-    }
-
-    const isMac = process.platform === 'darwin'
-    const windowIcon = !isMac ? resolveAppIconPath(this.options.electronDir) : undefined
-    const window = createShellWindow({
+  constructor(private readonly options: MiniWindowControllerOptions) {
+    this.controller = new ShellWindowController(options, {
       mode: 'mini',
-      electronDir: this.options.electronDir,
-      isDev: this.options.isDev,
-      getDevServerUrl: this.options.getDevServerUrl,
-      createWindow: () =>
-        new BrowserWindow({
+      createWindow: () => {
+        const isMac = process.platform === 'darwin'
+        const windowIcon = !isMac ? resolveAppIconPath(this.options.electronDir) : undefined
+
+        return new BrowserWindow({
           width: MINI_SHELL_SIZE.width,
           height: MINI_SHELL_SIZE.height,
           minWidth: 400,
@@ -67,37 +51,29 @@ export class MiniWindowController {
             preloadPath: this.options.preloadPath,
             sessionPartition: this.options.sessionPartition,
           }),
-        }),
-      setupExternalLinkHandlers: this.options.setupExternalLinkHandlers,
-      onDidStartLoading: this.options.onDidStartLoading,
-      onRenderProcessGone: this.options.onRenderProcessGone,
-      onDidFailLoad: this.options.onDidFailLoad,
-      onClosed: () => {
-        this.window = null
-        this.options.onClosed?.()
+        })
+      },
+      afterCreate: (window) => {
+        if (process.platform !== 'darwin') return
+        window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+        window.setAlwaysOnTop(true, 'screen-saver')
       },
     })
+  }
 
-    if (isMac) {
-      window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-      window.setAlwaysOnTop(true, 'screen-saver')
-    }
+  getWindow() {
+    return this.controller.getWindow()
+  }
 
-    this.window = window
-
-    return window
+  create() {
+    return this.controller.create()
   }
 
   reloadMainWindow() {
-    reloadShellMainWindow(this.window, {
-      electronDir: this.options.electronDir,
-      isDev: this.options.isDev,
-      mode: 'mini',
-      getDevServerUrl: this.options.getDevServerUrl,
-    })
+    this.controller.reloadMainWindow()
   }
 
   loadRecoveryPage() {
-    loadShellRecoveryPage(this.window, this.options.electronDir)
+    this.controller.loadRecoveryPage()
   }
 }

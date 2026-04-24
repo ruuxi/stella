@@ -1,6 +1,6 @@
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
-import { useCallback, useState } from "react";
 import { useOfficePreview } from "./office-preview-store";
+import { useFilePreviewActions } from "./hooks/use-file-preview-actions";
 import "./office-preview-card.css";
 
 const formatStatusLabel = (status?: string) => {
@@ -15,7 +15,10 @@ export function OfficePreviewCard({
 }: {
   previewRef: OfficePreviewRef;
 }) {
-  const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const { actionStatus, handleSave, handleCopy } = useFilePreviewActions({
+    sourcePath: previewRef.sourcePath,
+    suggestedName: previewRef.title,
+  });
   const snapshot = useOfficePreview(previewRef.sessionId);
   const title = snapshot?.title ?? previewRef.title;
   const status = snapshot?.status;
@@ -27,20 +30,6 @@ export function OfficePreviewCard({
           minute: "2-digit",
         })
       : null;
-
-  const handleSave = useCallback(async () => {
-    const result = await window.electronAPI?.system?.saveFileAs?.(
-      previewRef.sourcePath,
-      previewRef.title,
-    );
-    if (!result || result.canceled) return;
-    setActionStatus(result.ok ? "Saved" : (result.error ?? "Could not save"));
-  }, [previewRef.sourcePath, previewRef.title]);
-
-  const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(previewRef.sourcePath);
-    setActionStatus("Copied");
-  }, [previewRef.sourcePath]);
 
   return (
     <section className="office-preview-card">

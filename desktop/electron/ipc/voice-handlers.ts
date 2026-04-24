@@ -1,9 +1,10 @@
-import { globalShortcut, ipcMain } from "electron";
+import { ipcMain } from "electron";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { UiState } from "../types.js";
 import type { WindowManager } from "../windows/window-manager.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
+import { applyShortcutRegistration } from "./shortcut-registration.js";
 
 type VoiceHandlersOptions = {
   uiState: UiState;
@@ -32,13 +33,6 @@ const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
   isUserSpeaking: false,
   micLevel: 0,
   outputLevel: 0,
-};
-
-type ShortcutRegistrationResult = {
-  ok: boolean;
-  requestedShortcut: string;
-  activeShortcut: string;
-  error?: string;
 };
 
 export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
@@ -71,71 +65,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     }
   };
 
-  const applyShortcutRegistration = (
-    label: string,
-    requestedShortcut: string,
-    currentShortcut: string,
-    toggle: () => void,
-  ): ShortcutRegistrationResult => {
-    if (requestedShortcut === currentShortcut) {
-      return {
-        ok: true,
-        requestedShortcut,
-        activeShortcut: currentShortcut,
-      };
-    }
-
-    if (currentShortcut) {
-      globalShortcut.unregister(currentShortcut);
-    }
-
-    if (!requestedShortcut) {
-      return {
-        ok: true,
-        requestedShortcut,
-        activeShortcut: "",
-      };
-    }
-
-    let registrationError: string | undefined;
-    try {
-      const registered = globalShortcut.register(requestedShortcut, toggle);
-      if (registered) {
-        return {
-          ok: true,
-          requestedShortcut,
-          activeShortcut: requestedShortcut,
-        };
-      }
-      registrationError = `${label} shortcut "${requestedShortcut}" is unavailable.`;
-    } catch (error) {
-      registrationError =
-        error instanceof Error
-          ? error.message
-          : `${label} shortcut "${requestedShortcut}" is unavailable.`;
-    }
-
-    let restoredShortcut = "";
-    if (currentShortcut) {
-      try {
-        if (globalShortcut.register(currentShortcut, toggle)) {
-          restoredShortcut = currentShortcut;
-        }
-      } catch {
-        restoredShortcut = "";
-      }
-    }
-
-    return {
-      ok: false,
-      requestedShortcut,
-      activeShortcut: restoredShortcut,
-      error: restoredShortcut
-        ? `${registrationError} Kept "${restoredShortcut}" active instead.`
-        : `${registrationError} No fallback shortcut is active.`,
-    };
-  };
-
   const broadcastRuntimeState = () => {
     for (const window of options.windowManager.getAllWindows()) {
       if (window.isDestroyed()) continue;
@@ -154,24 +83,24 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     options.broadcastUiState();
   };
 
-  const initialVoiceRtcShortcut = applyShortcutRegistration(
-    "Voice realtime",
-    "CommandOrControl+Shift+D",
-    currentVoiceRtcShortcut,
-    toggleVoiceRtc,
-  );
+  const initialVoiceRtcShortcut = applyShortcutRegistration({
+    label: "Voice realtime",
+    requestedShortcut: "CommandOrControl+Shift+D",
+    currentShortcut: currentVoiceRtcShortcut,
+    callback: toggleVoiceRtc,
+  });
   currentVoiceRtcShortcut = initialVoiceRtcShortcut.activeShortcut;
   if (!initialVoiceRtcShortcut.ok) {
     console.warn("[voice]", initialVoiceRtcShortcut.error);
   }
 
   ipcMain.handle("voice-rtc:setShortcut", (_event, shortcut: string) => {
-    const result = applyShortcutRegistration(
-      "Voice realtime",
-      shortcut,
-      currentVoiceRtcShortcut,
-      toggleVoiceRtc,
-    );
+    const result = applyShortcutRegistration({
+      label: "Voice realtime",
+      requestedShortcut: shortcut,
+      currentShortcut: currentVoiceRtcShortcut,
+      callback: toggleVoiceRtc,
+    });
     currentVoiceRtcShortcut = result.activeShortcut;
     if (!result.ok) {
       console.warn("[voice]", result.error);

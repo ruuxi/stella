@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
+import { useFilePreviewActions } from "./hooks/use-file-preview-actions";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import "./pdf-viewer-card.css";
@@ -50,7 +51,6 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageWidth, setPageWidth] = useState<number | null>(null);
-  const [actionStatus, setActionStatus] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const resizeTimerRef = useRef<number | null>(null);
   const lastWidthRef = useRef<number | null>(null);
@@ -179,20 +179,10 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
     title?.replace(/\.pdf$/i, "") ??
     filePath.split("/").pop()?.replace(/\.pdf$/i, "") ??
     "PDF";
-
-  const handleSave = useCallback(async () => {
-    const result = await window.electronAPI?.system?.saveFileAs?.(
-      filePath,
-      filePath.split(/[\\/]/).pop() ?? title ?? "document.pdf",
-    );
-    if (!result || result.canceled) return;
-    setActionStatus(result.ok ? "Saved" : (result.error ?? "Could not save"));
-  }, [filePath, title]);
-
-  const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(filePath);
-    setActionStatus("Copied");
-  }, [filePath]);
+  const { actionStatus, handleSave, handleCopy } = useFilePreviewActions({
+    sourcePath: filePath,
+    suggestedName: filePath.split(/[\\/]/).pop() ?? title ?? "document.pdf",
+  });
 
   return (
     <section className="pdf-viewer-card">

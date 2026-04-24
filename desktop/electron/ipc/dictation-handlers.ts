@@ -9,7 +9,6 @@
 import {
   BrowserWindow,
   clipboard,
-  globalShortcut,
   ipcMain,
   screen,
   systemPreferences,
@@ -23,6 +22,10 @@ import {
   loadLocalPreferences,
   saveLocalPreferences,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
+import {
+  applyShortcutRegistration,
+  type ShortcutRegistrationResult,
+} from "./shortcut-registration.js";
 
 const DEFAULT_DICTATION_SHORTCUT = "Control+M";
 const CLIPBOARD_SETTLE_MS = 150;
@@ -30,13 +33,6 @@ const PASTE_SETTLE_MS = 700;
 const IN_APP_START_ACK_TIMEOUT_MS = 150;
 
 const execFileAsync = promisify(execFile);
-
-type ShortcutRegistrationResult = {
-  ok: boolean;
-  requestedShortcut: string;
-  activeShortcut: string;
-  error?: string;
-};
 
 type DictationHandlersOptions = {
   windowManager: WindowManager;
@@ -183,76 +179,18 @@ export const registerDictationHandlers = (options: DictationHandlersOptions) => 
     startOverlaySession();
   };
 
-  const applyShortcutRegistration = (
+  const applyDictationShortcutRegistration = (
     requestedShortcut: string,
   ): ShortcutRegistrationResult => {
-    if (requestedShortcut === currentShortcut) {
-      return {
-        ok: true,
-        requestedShortcut,
-        activeShortcut: currentShortcut,
-      };
-    }
-
-    if (currentShortcut) {
-      globalShortcut.unregister(currentShortcut);
-    }
-
-    if (!requestedShortcut) {
-      currentShortcut = "";
-      return {
-        ok: true,
-        requestedShortcut,
-        activeShortcut: "",
-      };
-    }
-
-    let registrationError: string | undefined;
-    try {
-      const registered = globalShortcut.register(
-        requestedShortcut,
-        toggleDictation,
-      );
-      if (registered) {
-        currentShortcut = requestedShortcut;
-        return {
-          ok: true,
-          requestedShortcut,
-          activeShortcut: requestedShortcut,
-        };
-      }
-      registrationError = `Dictation shortcut "${requestedShortcut}" is unavailable.`;
-    } catch (error) {
-      registrationError =
-        error instanceof Error
-          ? error.message
-          : `Dictation shortcut "${requestedShortcut}" is unavailable.`;
-    }
-
-    let restoredShortcut = "";
-    if (currentShortcut) {
-      try {
-        if (globalShortcut.register(currentShortcut, toggleDictation)) {
-          restoredShortcut = currentShortcut;
-        } else {
-          currentShortcut = "";
-        }
-      } catch {
-        currentShortcut = "";
-      }
-    }
-    if (!restoredShortcut) {
-      currentShortcut = "";
-    }
-
-    return {
-      ok: false,
+    return applyShortcutRegistration({
+      label: "Dictation",
       requestedShortcut,
-      activeShortcut: restoredShortcut,
-      error: restoredShortcut
-        ? `${registrationError} Kept "${restoredShortcut}" active instead.`
-        : `${registrationError} No fallback shortcut is active.`,
-    };
+      currentShortcut,
+      callback: toggleDictation,
+      onActiveShortcutChange: (shortcut) => {
+        currentShortcut = shortcut;
+      },
+    });
   };
 
   const loadConfiguredShortcut = () => {
@@ -269,13 +207,13 @@ export const registerDictationHandlers = (options: DictationHandlersOptions) => 
     saveLocalPreferences(stellaRoot, prefs);
   };
 
-  const initial = applyShortcutRegistration(loadConfiguredShortcut());
+  const initial = applyDictationShortcutRegistration(loadConfiguredShortcut());
   if (!initial.ok) {
     console.warn("[dictation]", initial.error);
   }
 
   ipcMain.handle("dictation:setShortcut", (_event, shortcut: string) => {
-    const result = applyShortcutRegistration(shortcut);
+    const result = applyDictationShortcutRegistration(shortcut);
     if (!result.ok) {
       console.warn("[dictation]", result.error);
     } else {
