@@ -25,8 +25,6 @@ import {
 const TARGET_SAMPLE_RATE = 16_000;
 const PCM_WORKLET_NAME = "stella-dictation-pcm-capture";
 const PCM_WORKLET_URL = "/dictation-pcm-worklet.js";
-const DICTATION_MIC_USE_CASE = "dictation" as const;
-
 /** Cap a single dictation segment so the upload stays well under the
  *  backend's 14 MB base64 audio limit. 16 kHz int16 mono = 32 KB/s, so
  *  ~3 minutes of speech ≈ 5.7 MB raw → ~7.6 MB base64 → safely under. */
@@ -91,9 +89,7 @@ export class InworldDictationSession {
 
     let lease: SharedMicrophoneLease;
     try {
-      lease = await acquireSharedMicrophone({
-        useCase: DICTATION_MIC_USE_CASE,
-      });
+      lease = await acquireSharedMicrophone();
     } catch (err) {
       console.error("[dictation] failed to acquire microphone:", err);
       this.setState("error", (err as Error).message);

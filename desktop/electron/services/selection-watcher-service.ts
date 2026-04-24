@@ -1,4 +1,4 @@
-import { BrowserWindow, globalShortcut } from 'electron'
+import { globalShortcut } from 'electron'
 import { getSelectedText, type SelectedTextResult } from '../selected-text.js'
 import type { LeftMouseUpEvent } from '../input/mouse-hook.js'
 import type { CaptureService } from './capture-service.js'
@@ -240,16 +240,3 @@ export class SelectionWatcherService {
     }
   }
 }
-
-/**
- * Convenience: build a window bridge that treats Stella as focused if
- * any Electron BrowserWindow is currently focused.
- */
-export const createSelectionWatcherWindowBridge = (
-  isMiniWindowVisible: () => boolean,
-  routeSelectionToSidebar: (text: string) => void,
-): SelectionWatcherWindowBridge => ({
-  isStellaFocused: () => Boolean(BrowserWindow.getFocusedWindow()),
-  isMiniWindowVisible,
-  routeSelectionToSidebar,
-})

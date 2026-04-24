@@ -5,12 +5,6 @@ export const PREFERRED_MIC_KEY = "stella-preferred-mic-id";
 export const PREFERRED_SPEAKER_KEY = "stella-preferred-speaker-id";
 export const MIC_ENABLED_KEY = "stella-mic-enabled";
 
-export type SharedMicrophoneUseCase = "voice-rtc" | "dictation";
-
-export interface SharedMicrophoneAcquireOptions {
-  useCase: SharedMicrophoneUseCase;
-}
-
 // All renderer voice features intentionally share one speech-capture profile
 // so browser/OS echo cancellation is configured consistently everywhere.
 export const SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS: MediaTrackConstraints = {
@@ -19,7 +13,6 @@ export const SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS: MediaTrackConstraints = {
   noiseSuppression: true,
   autoGainControl: true,
 };
-export const SHARED_MIC_CONSTRAINTS = SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS;
 
 export interface SharedMicrophoneLease {
   stream: MediaStream;
@@ -123,9 +116,7 @@ export function isMicrophoneEnabled(): boolean {
   return localStorage.getItem(MIC_ENABLED_KEY) !== "false";
 }
 
-export async function acquireSharedMicrophone(
-  _options: SharedMicrophoneAcquireOptions,
-): Promise<SharedMicrophoneLease> {
+export async function acquireSharedMicrophone(): Promise<SharedMicrophoneLease> {
   if (!isMicrophoneEnabled()) {
     throw new Error("Microphone access is disabled in settings.");
   }
@@ -154,13 +145,4 @@ export async function acquireSharedMicrophone(
       }
     },
   };
-}
-
-export function resetSharedMicrophoneForTests(): void {
-  const state = getSharedMicrophoneState();
-  clearReleaseTimer(state);
-  stopStream(state.rootStream);
-  state.rootStream = null;
-  state.acquirePromise = null;
-  state.activeLeaseCount = 0;
 }

@@ -1,8 +1,28 @@
-import type { OfficePreviewRef } from '@/shared/contracts/office-preview'
 import {
   isTerminalTaskLifecycleStatus,
   type TaskLifecycleStatus,
 } from '@/shared/contracts/agent-runtime'
+import type {
+  Attachment,
+  ChannelEnvelope,
+  ChannelReaction,
+  EventRecord,
+  MessageMetadata,
+  MessagePayload,
+  ToolRequestPayload,
+  ToolResultPayload,
+} from '@/shared/contracts/local-chat'
+
+export type {
+  Attachment,
+  ChannelEnvelope,
+  ChannelReaction,
+  EventRecord,
+  MessageMetadata,
+  MessagePayload,
+  ToolRequestPayload,
+  ToolResultPayload,
+}
 
 export interface StepItem {
   id: string
@@ -10,102 +30,6 @@ export interface StepItem {
   title?: string
   subtitle?: string
   status: 'pending' | 'running' | 'completed' | 'error'
-}
-
-export type EventRecord = {
-  _id: string
-  timestamp: number
-  type: string
-  deviceId?: string
-  requestId?: string
-  targetDeviceId?: string
-  payload?: Record<string, unknown>
-  channelEnvelope?: ChannelEnvelope
-}
-
-export type ToolRequestPayload = {
-  toolName: string
-  args?: Record<string, unknown>
-  targetDeviceId?: string
-  agentType?: string
-}
-
-// Tool result payload structure
-export type ToolResultPayload = {
-  toolName: string
-  result?: unknown
-  resultPreview?: string
-  error?: string
-  requestId?: string
-  agentType?: string
-  officePreviewRef?: OfficePreviewRef
-}
-
-// Attachment structure
-export type Attachment = {
-  id?: string
-  url?: string
-  mimeType?: string
-  name?: string
-  size?: number
-  kind?: string
-  providerMeta?: unknown
-}
-
-export type ChannelReaction = {
-  emoji: string
-  action: 'add' | 'remove'
-  targetMessageId?: string
-}
-
-export type ChannelEnvelope = {
-  provider: string
-  kind: 'message' | 'reaction' | 'edit' | 'delete' | 'system'
-  chatType?: string
-  externalUserId?: string
-  externalChatId?: string
-  externalMessageId?: string
-  threadId?: string
-  text?: string
-  attachments?: Attachment[]
-  reactions?: ChannelReaction[]
-  sourceTimestamp?: number
-  providerPayload?: unknown
-}
-
-// Message payload structure
-export type MessagePayload = {
-  text?: string
-  contextText?: string
-  role?: string
-  source?: string
-  agentType?: string
-  attachments?: Attachment[]
-  mode?: string
-  /** Set on assistant_message events to thread back to the user message
-   *  that triggered them (used by the renderer to pin the in-flight turn
-   *  and dismiss the pending state once the assistant reply lands). */
-  userMessageId?: string
-  usage?: {
-    inputTokens?: number
-    outputTokens?: number
-    totalTokens?: number
-  }
-  metadata?: MessageMetadata
-}
-
-export type MessageMetadata = {
-  ui?: {
-    visibility?: 'visible' | 'hidden'
-  }
-  context?: {
-    windowLabel?: string
-    windowPreviewImageUrl?: string
-  }
-  trigger?: {
-    kind?: string
-    source?: string
-  }
 }
 
 /**

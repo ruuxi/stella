@@ -8,8 +8,8 @@
  */
 import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
-import type { AgentStreamEvent } from "@/app/chat/streaming/streaming-types";
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
+import type { AgentStreamEvent } from "@/shared/contracts/agent-stream";
+import type { EventRecord } from "@/shared/contracts/local-chat";
 import type { TaskLifecycleStatus } from "@/shared/contracts/agent-runtime";
 import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
 import type {

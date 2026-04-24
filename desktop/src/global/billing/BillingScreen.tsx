@@ -1,5 +1,5 @@
 import { BillingTab } from "@/global/settings/BillingTab";
-import { SettingsPanel } from "@/global/settings/SettingsView";
+import { SettingsPanel } from "@/global/settings/SettingsPanel";
 import "@/global/settings/settings.css";
 
 /**

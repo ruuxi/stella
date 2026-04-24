@@ -12,9 +12,7 @@ export type {
   HomeSuggestion,
 } from "./types"
 export {
-  MUSIC_SYSTEM_PROMPT,
   generateMusicPrompt,
-  getFallbackPrompt,
   getMusicSystemPrompt,
 } from "./music"
 export type { MusicMood, PromptSet } from "./music"

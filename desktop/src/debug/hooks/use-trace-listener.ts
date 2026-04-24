@@ -210,14 +210,3 @@ export function useTraceEventMonitor(enabled: boolean, events: EventRecord[]) {
     }
   }, [events.length]);
 }
-
-/**
- * Registers the orchestrator's runId so trace entries can label the agent.
- */
-export function useTraceRunRegistration(runId: string | null) {
-  useEffect(() => {
-    if (runId) {
-      registerRunAgent(runId, AGENT_IDS.ORCHESTRATOR);
-    }
-  }, [runId]);
-}
