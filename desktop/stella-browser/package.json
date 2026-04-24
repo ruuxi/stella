@@ -16,10 +16,7 @@
     "version:sync": "node scripts/sync-version.js",
     "version": "npm run version:sync && git add cli/Cargo.toml",
     "build:native": "npm run version:sync && cargo build --release --manifest-path cli/Cargo.toml && node scripts/copy-native.js",
-    "build:linux": "npm run version:sync && docker compose -f docker/docker-compose.yml run --rm build-linux",
     "build:macos": "npm run version:sync && (cargo build --release --manifest-path cli/Cargo.toml --target aarch64-apple-darwin & cargo build --release --manifest-path cli/Cargo.toml --target x86_64-apple-darwin & wait) && cp cli/target/aarch64-apple-darwin/release/stella-browser bin/stella-browser-darwin-arm64 && cp cli/target/x86_64-apple-darwin/release/stella-browser bin/stella-browser-darwin-x64",
-    "build:windows": "npm run version:sync && docker compose -f docker/docker-compose.yml run --rm build-windows",
-    "build:all-platforms": "npm run version:sync && (npm run build:linux & npm run build:windows & wait) && npm run build:macos",
     "postinstall": "node scripts/postinstall.js",
     "test": "cargo test --manifest-path cli/Cargo.toml"
   },

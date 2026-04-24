@@ -205,6 +205,19 @@ const VOICE_CREATURE_SIZE = {
   height: 168,
 } as const;
 
+type InteractiveRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+const pointInRect = (point: { x: number; y: number }, rect: InteractiveRect) =>
+  point.x >= rect.left &&
+  point.x <= rect.left + rect.width &&
+  point.y >= rect.top &&
+  point.y <= rect.top + rect.height;
+
 // ---------------------------------------------------------------------------
 // Hook: useOverlayIPC
 // Consolidates ALL IPC subscription effects (window highlight, region capture,
@@ -277,8 +290,8 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
     const api = window.electronAPI;
     if (!api) return;
 
-    const cleanupWindowHighlight = api.overlay.onWindowHighlight?.(
-      (payload) => {
+    const cleanups = [
+      api.overlay.onWindowHighlight?.((payload) => {
         dispatch({
           type: "overlay:windowHighlight",
           bounds: payload
@@ -291,117 +304,63 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
             : null,
           tone: payload?.tone,
         });
-      },
-    );
-
-    return () => {
-      cleanupWindowHighlight?.();
-    };
-  }, [dispatch]);
-
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupStart = api.overlay.onStartRegionCapture?.(() => {
-      dispatch({ type: "region", active: true });
-    });
-    const cleanupEnd = api.overlay.onEndRegionCapture?.(() => {
-      dispatch({ type: "region", active: false });
-    });
-    return () => {
-      cleanupStart?.();
-      cleanupEnd?.();
-    };
-  }, [dispatch]);
-
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupShow = api.overlay.onShowVoice?.(
-      (data: { x: number; y: number; mode: "realtime" }) => {
-        dispatch({
-          type: "voice:show",
-          position: { x: data.x, y: data.y },
-        });
-      },
-    );
-    const cleanupHide = api.overlay.onHideVoice?.(() => {
-      dispatch({ type: "voice:hide" });
-    });
-
-    return () => {
-      cleanupShow?.();
-      cleanupHide?.();
-    };
-  }, [dispatch]);
-
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupShow = api.overlay.onShowDictation?.(
-      (data: { x: number; y: number }) => {
+      }),
+      api.overlay.onStartRegionCapture?.(() => {
+        dispatch({ type: "region", active: true });
+      }),
+      api.overlay.onEndRegionCapture?.(() => {
+        dispatch({ type: "region", active: false });
+      }),
+      api.overlay.onShowVoice?.(
+        (data: { x: number; y: number; mode: "realtime" }) => {
+          dispatch({
+            type: "voice:show",
+            position: { x: data.x, y: data.y },
+          });
+        },
+      ),
+      api.overlay.onHideVoice?.(() => {
+        dispatch({ type: "voice:hide" });
+      }),
+      api.overlay.onShowDictation?.((data: { x: number; y: number }) => {
         dispatch({
           type: "dictation:show",
           position: { x: data.x, y: data.y },
         });
-      },
-    );
-    const cleanupHide = api.overlay.onHideDictation?.(() => {
-      dispatch({ type: "dictation:hide" });
-    });
-
-    return () => {
-      cleanupShow?.();
-      cleanupHide?.();
-    };
-  }, [dispatch]);
-
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupShow = api.overlay.onShowScreenGuide?.(
-      (data: { annotations: ScreenGuideAnnotation[] }) => {
-        dispatch({ type: "screenGuide:show", annotations: data.annotations });
-      },
-    );
-    const cleanupHide = api.overlay.onHideScreenGuide?.(() => {
-      dispatch({ type: "screenGuide:hide" });
-    });
-
-    return () => {
-      cleanupShow?.();
-      cleanupHide?.();
-    };
-  }, [dispatch]);
-
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupShow = api.overlay.onShowSelectionChip?.((data) => {
-      dispatch({
-        type: "selectionChip:show",
-        chip: {
-          requestId: data.requestId,
-          text: data.text,
-          rect: data.rect,
+      }),
+      api.overlay.onHideDictation?.(() => {
+        dispatch({ type: "dictation:hide" });
+      }),
+      api.overlay.onShowScreenGuide?.(
+        (data: { annotations: ScreenGuideAnnotation[] }) => {
+          dispatch({ type: "screenGuide:show", annotations: data.annotations });
         },
-      });
-    });
-    const cleanupHide = api.overlay.onHideSelectionChip?.((data) => {
-      dispatch({
-        type: "selectionChip:hide",
-        requestId: data?.requestId,
-      });
-    });
+      ),
+      api.overlay.onHideScreenGuide?.(() => {
+        dispatch({ type: "screenGuide:hide" });
+      }),
+      api.overlay.onShowSelectionChip?.((data) => {
+        dispatch({
+          type: "selectionChip:show",
+          chip: {
+            requestId: data.requestId,
+            text: data.text,
+            rect: data.rect,
+          },
+        });
+      }),
+      api.overlay.onHideSelectionChip?.((data) => {
+        dispatch({
+          type: "selectionChip:hide",
+          requestId: data?.requestId,
+        });
+      }),
+    ];
 
     return () => {
-      cleanupShow?.();
-      cleanupHide?.();
+      for (const cleanup of cleanups) {
+        cleanup?.();
+      }
     };
   }, [dispatch]);
 }
@@ -432,15 +391,7 @@ function useOverlayHitTesting(
     screenGuideVisible,
     selectionChip,
   } = state;
-  const voiceX = voicePosition?.x ?? null;
-  const voiceY = voicePosition?.y ?? null;
-  const dictationX = dictationPosition?.x ?? null;
-  const dictationY = dictationPosition?.y ?? null;
   const selectionChipActive = Boolean(selectionChip);
-  const chipLeft = selectionChipBounds?.left ?? null;
-  const chipTop = selectionChipBounds?.top ?? null;
-  const chipWidth = selectionChipBounds?.width ?? null;
-  const chipHeight = selectionChipBounds?.height ?? null;
 
   useEffect(() => {
     if (regionCaptureActive) {
@@ -461,44 +412,37 @@ function useOverlayHitTesting(
     updateInteractive(false);
 
     const handleMouseMove = (e: MouseEvent) => {
-      let isOverVoice = false;
-      if (voiceVisible && voiceX !== null && voiceY !== null) {
-        const left = voiceX - VOICE_CREATURE_SIZE.width / 2;
-        const top = voiceY - VOICE_CREATURE_SIZE.height / 2;
-        isOverVoice =
-          e.clientX >= left &&
-          e.clientX <= left + VOICE_CREATURE_SIZE.width &&
-          e.clientY >= top &&
-          e.clientY <= top + VOICE_CREATURE_SIZE.height;
+      const rects: InteractiveRect[] = [];
+      if (voiceVisible && voicePosition) {
+        rects.push({
+          left: voicePosition.x - VOICE_CREATURE_SIZE.width / 2,
+          top: voicePosition.y - VOICE_CREATURE_SIZE.height / 2,
+          width: VOICE_CREATURE_SIZE.width,
+          height: VOICE_CREATURE_SIZE.height,
+        });
+      }
+      if (dictationVisible && dictationPosition) {
+        rects.push({
+          left: dictationPosition.x - DICTATION_OVERLAY_SIZE.width / 2,
+          top: dictationPosition.y - DICTATION_OVERLAY_SIZE.height / 2,
+          width: DICTATION_OVERLAY_SIZE.width,
+          height: DICTATION_OVERLAY_SIZE.height,
+        });
+      }
+      if (selectionChipActive && selectionChipBounds) {
+        rects.push({
+          left: selectionChipBounds.left,
+          top: selectionChipBounds.top,
+          width: selectionChipBounds.width,
+          height: selectionChipBounds.height,
+        });
       }
 
-      let isOverDictation = false;
-      if (dictationVisible && dictationX !== null && dictationY !== null) {
-        const left = dictationX - DICTATION_OVERLAY_SIZE.width / 2;
-        const top = dictationY - DICTATION_OVERLAY_SIZE.height / 2;
-        isOverDictation =
-          e.clientX >= left &&
-          e.clientX <= left + DICTATION_OVERLAY_SIZE.width &&
-          e.clientY >= top &&
-          e.clientY <= top + DICTATION_OVERLAY_SIZE.height;
-      }
-
-      let isOverChip = false;
-      if (
-        selectionChipActive &&
-        chipLeft !== null &&
-        chipTop !== null &&
-        chipWidth !== null &&
-        chipHeight !== null
-      ) {
-        isOverChip =
-          e.clientX >= chipLeft &&
-          e.clientX <= chipLeft + chipWidth &&
-          e.clientY >= chipTop &&
-          e.clientY <= chipTop + chipHeight;
-      }
-
-      updateInteractive(isOverVoice || isOverDictation || isOverChip);
+      updateInteractive(
+        rects.some((rect) =>
+          pointInRect({ x: e.clientX, y: e.clientY }, rect),
+        ),
+      );
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -507,16 +451,11 @@ function useOverlayHitTesting(
     regionCaptureActive,
     radialVisible,
     voiceVisible,
-    voiceX,
-    voiceY,
+    voicePosition,
     dictationVisible,
-    dictationX,
-    dictationY,
+    dictationPosition,
     selectionChipActive,
-    chipLeft,
-    chipTop,
-    chipWidth,
-    chipHeight,
+    selectionChipBounds,
     updateInteractive,
   ]);
 

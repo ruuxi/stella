@@ -366,20 +366,10 @@ export class CaptureService {
     }
   }
 
-  /**
-   * Hides overlay components, conceals the mini window, waits for the
-   * compositor, runs `fn`, then restores the mini window. Centralises the
-   * capture-preparation pattern shared by every capture path.
-   */
   private async withCaptureContext<T>(fn: () => Promise<T>): Promise<T> {
     this.options.overlay.endRegionCapture()
-
-    try {
-      await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
-      return await fn()
-    } finally {
-      // no-op: mini shell no longer needs concealing/restoring
-    }
+    await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
+    return await fn()
   }
 
   /** Converts an overlay-relative point to native screen coordinates. */

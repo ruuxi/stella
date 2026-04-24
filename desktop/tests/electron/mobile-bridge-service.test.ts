@@ -113,7 +113,6 @@ describe("MobileBridgeService registration lease", () => {
   it("expires active sessions and sockets when the lease runs out", async () => {
     const service = createService();
     const anyService = configureReadyService(service);
-    const unsubscribe = vi.fn();
     const ws = {
       close: vi.fn(),
       send: vi.fn(),
@@ -122,7 +121,7 @@ describe("MobileBridgeService registration lease", () => {
 
     anyService.wsClients.set(ws, {
       authenticated: true,
-      subscriptions: new Map([["display:update", unsubscribe]]),
+      subscriptions: new Set(["display:update"]),
     });
     anyService.sessions.set("session-1", {
       expiresAt: Date.now() + 60_000,
@@ -135,7 +134,6 @@ describe("MobileBridgeService registration lease", () => {
     expect(anyService.registrationState).toBe("expired");
     expect(anyService.registrationLeaseExpiresAt).toBeNull();
     expect(anyService.isBridgeAccessEnabled()).toBe(false);
-    expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(ws.close).toHaveBeenCalledWith(4001, "Desktop bridge lease expired");
     expect(anyService.wsClients.size).toBe(0);
     expect(anyService.sessions.size).toBe(0);

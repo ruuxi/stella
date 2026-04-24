@@ -47,8 +47,6 @@ const LegalDialog = lazy(() =>
   })),
 );
 
-type HookedSettingsSection = "basic" | "backup";
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -178,25 +176,8 @@ function keyboardEventToAccelerator(event: KeyboardEvent): string | null {
 // General Settings Sections
 // ---------------------------------------------------------------------------
 
-function GeneralSettingsTab({
-  section,
-}: {
-  section: HookedSettingsSection;
-}) {
-  const { hasConnectedAccount } = useAuthSessionState();
+function BasicSettingsTab() {
   const platform = window.electronAPI?.platform;
-  const [syncMode, setSyncMode] = useState<"on" | "off">("off");
-  const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot | null>(
-    null,
-  );
-  const [remoteBackups, setRemoteBackups] = useState<BackupSummary[]>([]);
-  const [backupLoaded, setBackupLoaded] = useState(false);
-  const [backupError, setBackupError] = useState<string | null>(null);
-  const [isSavingSyncMode, setIsSavingSyncMode] = useState(false);
-  const [isRunningBackup, setIsRunningBackup] = useState(false);
-  const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(
-    null,
-  );
   const initialPermissionStatus = useMemo<DesktopPermissionStatus>(
     () => ({
       accessibility: platform === "darwin" ? false : true,
@@ -237,6 +218,309 @@ function GeneralSettingsTab({
   const [dictationShortcutError, setDictationShortcutError] = useState<
     string | null
   >(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const dictationApi = window.electronAPI?.dictation;
+    if (!dictationApi?.getShortcut) {
+      setDictationShortcutLoaded(true);
+      return;
+    }
+    void dictationApi
+      .getShortcut()
+      .then((shortcut) => {
+        if (!cancelled) {
+          setDictationShortcut(shortcut);
+          setDictationShortcutError(null);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setDictationShortcutError(
+            getSettingsErrorMessage(
+              error,
+              "Failed to load dictation shortcut.",
+            ),
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDictationShortcutLoaded(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handlePermissionEnable = useCallback(
+    async (kind: "accessibility" | "screen") => {
+      setPermissionsError(null);
+      try {
+        await requestWithSettingsFallback(kind);
+      } catch (error) {
+        setPermissionsError(
+          getSettingsErrorMessage(error, `Failed to update ${kind} permission.`),
+        );
+      }
+    },
+    [requestWithSettingsFallback, setPermissionsError],
+  );
+
+  const handlePermissionRestart = useCallback(async () => {
+    setPermissionsError(null);
+    try {
+      await restartAfterPermissionChange();
+    } catch (error) {
+      setPermissionsError(
+        getSettingsErrorMessage(error, "Failed to restart Stella."),
+      );
+    }
+  }, [restartAfterPermissionChange, setPermissionsError]);
+
+  const saveDictationShortcut = useCallback(async (shortcut: string) => {
+    const dictationApi = window.electronAPI?.dictation;
+    if (!dictationApi?.setShortcut) {
+      setDictationShortcutError("Dictation shortcuts are unavailable in this window.");
+      return;
+    }
+
+    setIsSavingDictationShortcut(true);
+    setDictationShortcutError(null);
+    try {
+      const result = await dictationApi.setShortcut(shortcut);
+      setDictationShortcut(result.activeShortcut);
+      if (!result.ok) {
+        setDictationShortcutError(result.error ?? "That shortcut is unavailable.");
+        showToast({
+          title: "Shortcut unavailable",
+          description: result.error ?? "That shortcut is already in use.",
+          variant: "error",
+        });
+        return;
+      }
+      showToast({
+        title: shortcut ? "Dictation shortcut updated" : "Dictation shortcut cleared",
+        description: shortcut
+          ? `Press ${formatShortcutForDisplay(shortcut).join(" + ")} to start dictation.`
+          : "Global dictation is disabled until you set a new shortcut.",
+      });
+    } catch (error) {
+      const message = getSettingsErrorMessage(
+        error,
+        "Failed to update dictation shortcut.",
+      );
+      setDictationShortcutError(message);
+      showToast({
+        title: "Shortcut update failed",
+        description: message,
+        variant: "error",
+      });
+    } finally {
+      setIsSavingDictationShortcut(false);
+      setIsCapturingDictationShortcut(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isCapturingDictationShortcut) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (event.key === "Escape") {
+        setIsCapturingDictationShortcut(false);
+        return;
+      }
+
+      const accelerator = keyboardEventToAccelerator(event);
+      if (!accelerator) return;
+      void saveDictationShortcut(accelerator);
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isCapturingDictationShortcut, saveDictationShortcut]);
+
+  return (
+    <div className="settings-tab-content">
+      <div className="settings-card">
+        <h3 className="settings-card-title">Shortcuts</h3>
+        <p className="settings-card-desc">
+          {platform === "darwin"
+            ? "Hold ⌘ and right-click anywhere on your screen to open Stella."
+            : "Hold Ctrl and right-click anywhere on your screen to open Stella."}
+        </p>
+        <p className="settings-card-desc">
+          {platform === "darwin"
+            ? "Or tap ⌥ Option twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."
+            : "Or tap Alt twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."}
+        </p>
+        {dictationShortcutError ? (
+          <p
+            className="settings-card-desc settings-card-desc--error"
+            role="alert"
+          >
+            {dictationShortcutError}
+          </p>
+        ) : null}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Dictation</div>
+            <div className="settings-row-sublabel">
+              Starts in the active Stella composer, or opens OS-wide dictation
+              when another app is focused.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <Keybind keys={formatShortcutForDisplay(dictationShortcut)} />
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn"
+              disabled={
+                !dictationShortcutLoaded ||
+                isSavingDictationShortcut ||
+                isCapturingDictationShortcut
+              }
+              onClick={() => setIsCapturingDictationShortcut(true)}
+            >
+              {isCapturingDictationShortcut ? "Press keys..." : "Change"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn"
+              disabled={
+                !dictationShortcutLoaded ||
+                isSavingDictationShortcut ||
+                isCapturingDictationShortcut ||
+                !dictationShortcut
+              }
+              onClick={() => void saveDictationShortcut("")}
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+      </div>
+      {platform === "darwin" ? (
+        <div className="settings-card">
+          <h3 className="settings-card-title">Permissions</h3>
+          <p className="settings-card-desc">
+            Stella will ask for these when you first use a feature. You can
+            also turn them on here.
+          </p>
+          {permissionsError ? (
+            <p
+              className="settings-card-desc settings-card-desc--error"
+              role="alert"
+            >
+              {permissionsError}
+            </p>
+          ) : null}
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Accessibility</div>
+              <div className="settings-row-sublabel">
+                Lets Stella read selected text and open from the ⌘+right-click
+                shortcut anywhere on your Mac.
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Button
+                type="button"
+                variant="ghost"
+                className="settings-btn"
+                disabled={
+                  !permissionsLoaded
+                  || permissionStatus.accessibility
+                  || activePermissionAction === "accessibility"
+                }
+                onClick={() => void handlePermissionEnable("accessibility")}
+              >
+                {permissionStatus.accessibility
+                  ? "Granted"
+                  : activePermissionAction === "accessibility"
+                    ? "Opening..."
+                    : "Enable"}
+              </Button>
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Screen Capture</div>
+              <div className="settings-row-sublabel">
+                Lets Stella see your screen so it can help with what you're
+                looking at. You may need to quit and reopen Stella after
+                turning this on.
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Button
+                type="button"
+                variant="ghost"
+                className="settings-btn"
+                disabled={
+                  !permissionsLoaded
+                  || permissionStatus.screen
+                  || activePermissionAction === "screen"
+                }
+                onClick={() => void handlePermissionEnable("screen")}
+              >
+                {permissionStatus.screen
+                  ? "Granted"
+                  : activePermissionAction === "screen"
+                    ? "Opening..."
+                    : "Enable"}
+              </Button>
+            </div>
+          </div>
+          {screenRestartRecommended ? (
+            <div className="settings-row">
+              <div className="settings-row-info">
+                <div className="settings-row-label">Restart Stella</div>
+                <div className="settings-row-sublabel">
+                  Screen capture was just turned on. Quit and reopen Stella
+                  to finish setting it up.
+                </div>
+              </div>
+              <div className="settings-row-control">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="settings-btn settings-btn--danger"
+                  disabled={isRestartingAfterPermissions}
+                  onClick={() => void handlePermissionRestart()}
+                >
+                  {isRestartingAfterPermissions ? "Closing..." : "Restart"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BackupSettingsTab() {
+  const { hasConnectedAccount } = useAuthSessionState();
+  const [syncMode, setSyncMode] = useState<"on" | "off">("off");
+  const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot | null>(
+    null,
+  );
+  const [remoteBackups, setRemoteBackups] = useState<BackupSummary[]>([]);
+  const [backupLoaded, setBackupLoaded] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [isSavingSyncMode, setIsSavingSyncMode] = useState(false);
+  const [isRunningBackup, setIsRunningBackup] = useState(false);
+  const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(
+    null,
+  );
 
   const loadBackupState = useCallback(async () => {
     const systemApi = window.electronAPI?.system;
@@ -287,42 +571,6 @@ function GeneralSettingsTab({
       cancelled = true;
     };
   }, [loadBackupState]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const dictationApi = window.electronAPI?.dictation;
-    if (!dictationApi?.getShortcut) {
-      setDictationShortcutLoaded(true);
-      return;
-    }
-    void dictationApi
-      .getShortcut()
-      .then((shortcut) => {
-        if (!cancelled) {
-          setDictationShortcut(shortcut);
-          setDictationShortcutError(null);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setDictationShortcutError(
-            getSettingsErrorMessage(
-              error,
-              "Failed to load dictation shortcut.",
-            ),
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setDictationShortcutLoaded(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const handleSyncModeChange = useCallback(
     async (value: string) => {
@@ -419,260 +667,9 @@ function GeneralSettingsTab({
     [],
   );
 
-  const handlePermissionEnable = useCallback(
-    async (kind: "accessibility" | "screen") => {
-      setPermissionsError(null);
-      try {
-        await requestWithSettingsFallback(kind);
-      } catch (error) {
-        setPermissionsError(
-          getSettingsErrorMessage(error, `Failed to update ${kind} permission.`),
-        );
-      }
-    },
-    [requestWithSettingsFallback, setPermissionsError],
-  );
-
-  const handlePermissionRestart = useCallback(async () => {
-    setPermissionsError(null);
-    try {
-      await restartAfterPermissionChange();
-    } catch (error) {
-      setPermissionsError(
-        getSettingsErrorMessage(error, "Failed to restart Stella."),
-      );
-    }
-  }, [restartAfterPermissionChange, setPermissionsError]);
-
-  const saveDictationShortcut = useCallback(async (shortcut: string) => {
-    const dictationApi = window.electronAPI?.dictation;
-    if (!dictationApi?.setShortcut) {
-      setDictationShortcutError("Dictation shortcuts are unavailable in this window.");
-      return;
-    }
-
-    setIsSavingDictationShortcut(true);
-    setDictationShortcutError(null);
-    try {
-      const result = await dictationApi.setShortcut(shortcut);
-      setDictationShortcut(result.activeShortcut);
-      if (!result.ok) {
-        setDictationShortcutError(result.error ?? "That shortcut is unavailable.");
-        showToast({
-          title: "Shortcut unavailable",
-          description: result.error ?? "That shortcut is already in use.",
-          variant: "error",
-        });
-        return;
-      }
-      showToast({
-        title: shortcut ? "Dictation shortcut updated" : "Dictation shortcut cleared",
-        description: shortcut
-          ? `Press ${formatShortcutForDisplay(shortcut).join(" + ")} to start dictation.`
-          : "Global dictation is disabled until you set a new shortcut.",
-      });
-    } catch (error) {
-      const message = getSettingsErrorMessage(
-        error,
-        "Failed to update dictation shortcut.",
-      );
-      setDictationShortcutError(message);
-      showToast({
-        title: "Shortcut update failed",
-        description: message,
-        variant: "error",
-      });
-    } finally {
-      setIsSavingDictationShortcut(false);
-      setIsCapturingDictationShortcut(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isCapturingDictationShortcut) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (event.key === "Escape") {
-        setIsCapturingDictationShortcut(false);
-        return;
-      }
-
-      const accelerator = keyboardEventToAccelerator(event);
-      if (!accelerator) return;
-      void saveDictationShortcut(accelerator);
-    };
-
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [isCapturingDictationShortcut, saveDictationShortcut]);
-
   return (
     <div className="settings-tab-content">
-      {section === "basic" ? (
-        <>
-          <div className="settings-card">
-            <h3 className="settings-card-title">Shortcuts</h3>
-            <p className="settings-card-desc">
-              {platform === "darwin"
-                ? "Hold ⌘ and right-click anywhere on your screen to open Stella."
-                : "Hold Ctrl and right-click anywhere on your screen to open Stella."}
-            </p>
-            <p className="settings-card-desc">
-              {platform === "darwin"
-                ? "Or tap ⌥ Option twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."
-                : "Or tap Alt twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."}
-            </p>
-            {dictationShortcutError ? (
-              <p
-                className="settings-card-desc settings-card-desc--error"
-                role="alert"
-              >
-                {dictationShortcutError}
-              </p>
-            ) : null}
-            <div className="settings-row">
-              <div className="settings-row-info">
-                <div className="settings-row-label">Dictation</div>
-                <div className="settings-row-sublabel">
-                  Starts in the active Stella composer, or opens OS-wide dictation
-                  when another app is focused.
-                </div>
-              </div>
-              <div className="settings-row-control">
-                <Keybind keys={formatShortcutForDisplay(dictationShortcut)} />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="settings-btn"
-                  disabled={
-                    !dictationShortcutLoaded ||
-                    isSavingDictationShortcut ||
-                    isCapturingDictationShortcut
-                  }
-                  onClick={() => setIsCapturingDictationShortcut(true)}
-                >
-                  {isCapturingDictationShortcut ? "Press keys..." : "Change"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="settings-btn"
-                  disabled={
-                    !dictationShortcutLoaded ||
-                    isSavingDictationShortcut ||
-                    isCapturingDictationShortcut ||
-                    !dictationShortcut
-                  }
-                  onClick={() => void saveDictationShortcut("")}
-                >
-                  Clear
-                </Button>
-              </div>
-            </div>
-          </div>
-          {platform === "darwin" ? (
-            <div className="settings-card">
-          <h3 className="settings-card-title">Permissions</h3>
-          <p className="settings-card-desc">
-            Stella will ask for these when you first use a feature. You can
-            also turn them on here.
-          </p>
-          {permissionsError ? (
-            <p
-              className="settings-card-desc settings-card-desc--error"
-              role="alert"
-            >
-              {permissionsError}
-            </p>
-          ) : null}
-          <div className="settings-row">
-            <div className="settings-row-info">
-              <div className="settings-row-label">Accessibility</div>
-              <div className="settings-row-sublabel">
-                Lets Stella read selected text and open from the ⌘+right-click
-                shortcut anywhere on your Mac.
-              </div>
-            </div>
-            <div className="settings-row-control">
-              <Button
-                type="button"
-                variant="ghost"
-                className="settings-btn"
-                disabled={
-                  !permissionsLoaded
-                  || permissionStatus.accessibility
-                  || activePermissionAction === "accessibility"
-                }
-                onClick={() => void handlePermissionEnable("accessibility")}
-              >
-                {permissionStatus.accessibility
-                  ? "Granted"
-                  : activePermissionAction === "accessibility"
-                    ? "Opening..."
-                    : "Enable"}
-              </Button>
-            </div>
-          </div>
-          <div className="settings-row">
-            <div className="settings-row-info">
-              <div className="settings-row-label">Screen Capture</div>
-              <div className="settings-row-sublabel">
-                Lets Stella see your screen so it can help with what you're
-                looking at. You may need to quit and reopen Stella after
-                turning this on.
-              </div>
-            </div>
-            <div className="settings-row-control">
-              <Button
-                type="button"
-                variant="ghost"
-                className="settings-btn"
-                disabled={
-                  !permissionsLoaded
-                  || permissionStatus.screen
-                  || activePermissionAction === "screen"
-                }
-                onClick={() => void handlePermissionEnable("screen")}
-              >
-                {permissionStatus.screen
-                  ? "Granted"
-                  : activePermissionAction === "screen"
-                    ? "Opening..."
-                    : "Enable"}
-              </Button>
-            </div>
-          </div>
-          {screenRestartRecommended ? (
-            <div className="settings-row">
-              <div className="settings-row-info">
-                <div className="settings-row-label">Restart Stella</div>
-                <div className="settings-row-sublabel">
-                  Screen capture was just turned on. Quit and reopen Stella
-                  to finish setting it up.
-                </div>
-              </div>
-              <div className="settings-row-control">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="settings-btn settings-btn--danger"
-                  disabled={isRestartingAfterPermissions}
-                  onClick={() => void handlePermissionRestart()}
-                >
-                  {isRestartingAfterPermissions ? "Closing..." : "Restart"}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-            </div>
-          ) : null}
-        </>
-      ) : null}
-      {section === "backup" ? (
-        <div className="settings-card">
+      <div className="settings-card">
         <h3 className="settings-card-title">Backups</h3>
         <p className="settings-card-desc">
           Your data is encrypted on this device before it's uploaded.
@@ -786,8 +783,7 @@ function GeneralSettingsTab({
               </div>
             ))
           : null}
-        </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -1396,47 +1392,29 @@ function ModelConfigSection() {
 
       setModelConfigError(null);
       setIsSavingModelPreferences(true);
+      setLocalOverrides((prev) => ({ ...prev, [agentType]: value === "" ? null : value }));
 
-      if (value === "") {
-        setLocalOverrides((prev) => ({ ...prev, [agentType]: null }));
-        try {
+      try {
+        if (value === "") {
           await clearOverride({ agentType });
-        } catch (error) {
-          setLocalOverrides((prev) => {
-            const next = { ...prev };
-            if (previousValue === undefined) {
-              delete next[agentType];
-            } else {
-              next[agentType] = previousValue;
-            }
-            return next;
-          });
-          setModelConfigError(
-            getSettingsErrorMessage(error, "Failed to update model setting."),
-          );
-        } finally {
-          setIsSavingModelPreferences(false);
-        }
-      } else {
-        setLocalOverrides((prev) => ({ ...prev, [agentType]: value }));
-        try {
+        } else {
           await setOverride({ agentType, model: value });
-        } catch (error) {
-          setLocalOverrides((prev) => {
-            const next = { ...prev };
-            if (previousValue === undefined) {
-              delete next[agentType];
-            } else {
-              next[agentType] = previousValue;
-            }
-            return next;
-          });
-          setModelConfigError(
-            getSettingsErrorMessage(error, "Failed to update model setting."),
-          );
-        } finally {
-          setIsSavingModelPreferences(false);
         }
+      } catch (error) {
+        setLocalOverrides((prev) => {
+          const next = { ...prev };
+          if (previousValue === undefined) {
+            delete next[agentType];
+          } else {
+            next[agentType] = previousValue;
+          }
+          return next;
+        });
+        setModelConfigError(
+          getSettingsErrorMessage(error, "Failed to update model setting."),
+        );
+      } finally {
+        setIsSavingModelPreferences(false);
       }
     },
     [clearOverride, isSavingModelPreferences, localOverrides, setOverride],
@@ -2174,19 +2152,13 @@ export const SettingsScreen = ({
         <div className="settings-layout settings-layout--single">
           <SettingsPanel>
             {activeTab === "basic" ? (
-              <GeneralSettingsTab
-                key="basic"
-                section="basic"
-              />
+              <BasicSettingsTab />
             ) : activeTab === "memory" ? (
               <div className="settings-tab-content">
                 <ChronicleSettingsCard />
               </div>
             ) : activeTab === "backup" ? (
-              <GeneralSettingsTab
-                key="backup"
-                section="backup"
-              />
+              <BackupSettingsTab />
             ) : activeTab === "account" ? (
               <AccountSettingsTab
                 onSignOut={onSignOut}

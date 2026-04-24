@@ -46,29 +46,9 @@ export interface ChatSidebarOpenOptions {
 }
 
 export interface ChatSidebarHandle {
-  open(options?: ChatSidebarOpenOptions | ChatContext | null): void;
+  open(options?: ChatSidebarOpenOptions): void;
   close(): void;
 }
-
-/**
- * The legacy signature was `open(chatContext)`; the new one is
- * `open({ chatContext, prefillText })`. We detect the new form by looking
- * for either explicit options key — `regionScreenshots` is unique to
- * `ChatContext` so its presence means the caller passed a raw context.
- */
-const normalizeOpenArg = (
-  arg?: ChatSidebarOpenOptions | ChatContext | null,
-): ChatSidebarOpenOptions => {
-  if (arg === undefined) return {};
-  if (arg === null) return { chatContext: null };
-  if ("chatContext" in arg || "prefillText" in arg) {
-    return arg as ChatSidebarOpenOptions;
-  }
-  if ("regionScreenshots" in arg) {
-    return { chatContext: arg as ChatContext };
-  }
-  return arg as ChatSidebarOpenOptions;
-};
 
 interface ChatSidebarProps {
   events: EventRecord[];
@@ -147,8 +127,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     });
 
     useImperativeHandle(ref, () => ({
-      open(arg?: ChatSidebarOpenOptions | ChatContext | null) {
-        const options = normalizeOpenArg(arg);
+      open(options: ChatSidebarOpenOptions = {}) {
         if (options.chatContext !== undefined) {
           setChatContext(options.chatContext);
         }

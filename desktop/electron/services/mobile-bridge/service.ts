@@ -56,6 +56,9 @@ type BridgeRegistrationState =
   | "revoked";
 
 export type MobileBroadcastFn = (channel: string, data: unknown) => void;
+type CapturedIpcDispatchResult =
+  | { kind: "handle"; result: unknown }
+  | { kind: "event" };
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
@@ -79,6 +82,45 @@ const getDesktopPlatformLabel = () => {
     return "Windows";
   }
   return os.type();
+};
+
+const dispatchCapturedIpc = async (
+  channel: string,
+  args: unknown,
+  broadcastToMobile: MobileBroadcastFn,
+  options?: { swallowEventHandlerErrors?: boolean },
+): Promise<CapturedIpcDispatchResult> => {
+  const handleHandler = getHandler(channel);
+  const onHandlerList = !handleHandler ? getOnHandlers(channel) : undefined;
+
+  if (!handleHandler && (!onHandlerList || onHandlerList.length === 0)) {
+    throw new Error(`Unknown IPC channel: ${channel}`);
+  }
+
+  const fakeEvent = createFakeIpcEvent(broadcastToMobile);
+  const spreadArgs = Array.isArray(args) ? args : [args];
+
+  if (handleHandler) {
+    return {
+      kind: "handle",
+      result: await handleHandler(fakeEvent, ...spreadArgs),
+    };
+  }
+
+  for (const handler of onHandlerList!) {
+    try {
+      handler(fakeEvent as unknown as IpcMainEvent, ...spreadArgs);
+    } catch (error) {
+      if (!options?.swallowEventHandlerErrors) {
+        throw error;
+      }
+      console.warn(
+        `[mobile-bridge] on-handler error for ${channel}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+  return { kind: "event" };
 };
 
 const readBody = (req: IncomingMessage): Promise<string> => {
@@ -191,7 +233,7 @@ export class MobileBridgeService {
   private readonly sessions = new Map<string, BridgeSessionRecord>();
   private readonly wsClients = new Map<
     WebSocket,
-    { subscriptions: Map<string, () => void>; authenticated: boolean }
+    { subscriptions: Set<string>; authenticated: boolean }
   >();
 
   private server: http.Server | null = null;
@@ -351,8 +393,7 @@ export class MobileBridgeService {
       this.refreshTimer = null;
     }
     this.clearRegistrationLeaseTimer();
-    for (const [ws, client] of this.wsClients) {
-      for (const unsub of client.subscriptions.values()) unsub();
+    for (const [ws] of this.wsClients) {
       ws.close(1001, "Server shutting down");
     }
     this.wsClients.clear();
@@ -398,10 +439,7 @@ export class MobileBridgeService {
 
   private closeBridgeClients(reason: string) {
     this.sessions.clear();
-    for (const [ws, client] of this.wsClients) {
-      for (const unsub of client.subscriptions.values()) {
-        unsub();
-      }
+    for (const [ws] of this.wsClients) {
       ws.close(4001, reason);
     }
     this.wsClients.clear();
@@ -538,45 +576,29 @@ export class MobileBridgeService {
       return;
     }
 
-    const handleHandler = getHandler(channel);
-    const onHandlerList = !handleHandler ? getOnHandlers(channel) : undefined;
-
-    if (!handleHandler && (!onHandlerList || onHandlerList.length === 0)) {
-      sendJson(
-        res,
-        404,
-        { error: `Unknown IPC channel: ${channel}` },
-        requestOrigin,
-      );
-      return;
-    }
-
     try {
       const body = req.method === "POST" ? JSON.parse(await readBody(req)) : {};
       const args = body.args ?? [];
-      const fakeEvent = createFakeIpcEvent(this.broadcastToMobile);
-      const spreadArgs = Array.isArray(args) ? args : [args];
-
-      if (handleHandler) {
-        const result = await handleHandler(fakeEvent, ...spreadArgs);
+      const dispatchResult = await dispatchCapturedIpc(
+        channel,
+        args,
+        this.broadcastToMobile,
+        { swallowEventHandlerErrors: true },
+      );
+      if (dispatchResult.kind === "handle") {
+        const { result } = dispatchResult;
         sendJson(res, 200, { result }, requestOrigin);
       } else {
-        for (const handler of onHandlerList!) {
-          try {
-            handler(fakeEvent as unknown as IpcMainEvent, ...spreadArgs);
-          } catch (handlerErr) {
-            console.warn(
-              `[mobile-bridge] on-handler error for ${channel}:`,
-              (handlerErr as Error).message,
-            );
-          }
-        }
         sendNoContent(res, requestOrigin);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Internal error";
-      console.error(`[mobile-bridge] IPC error on ${channel}: ${message}`);
-      sendJson(res, 500, { error: message }, requestOrigin);
+      if (message.startsWith("Unknown IPC channel:")) {
+        sendJson(res, 404, { error: message }, requestOrigin);
+      } else {
+        console.error(`[mobile-bridge] IPC error on ${channel}: ${message}`);
+        sendJson(res, 500, { error: message }, requestOrigin);
+      }
     }
   }
 
@@ -619,7 +641,7 @@ export class MobileBridgeService {
     }
 
     const client = {
-      subscriptions: new Map<string, () => void>(),
+      subscriptions: new Set<string>(),
       authenticated: true,
     };
     this.wsClients.set(ws, client);
@@ -645,16 +667,12 @@ export class MobileBridgeService {
             isMobileBridgeEventChannel(msg.channel) &&
             !client.subscriptions.has(msg.channel)
           ) {
-            client.subscriptions.set(msg.channel, () => {});
+            client.subscriptions.add(msg.channel);
           }
         }
 
         if (msg.type === "unsubscribe" && msg.channel) {
-          const unsub = client.subscriptions.get(msg.channel);
-          if (unsub) {
-            unsub();
-            client.subscriptions.delete(msg.channel);
-          }
+          client.subscriptions.delete(msg.channel);
         }
 
         if (msg.type === "invoke" && msg.channel && msg.id) {
@@ -678,7 +696,6 @@ export class MobileBridgeService {
     });
 
     ws.on("close", () => {
-      for (const unsub of client.subscriptions.values()) unsub();
       this.wsClients.delete(ws);
       console.log("[mobile-bridge] WebSocket disconnected");
     });
@@ -694,35 +711,18 @@ export class MobileBridgeService {
     id: string,
     args: unknown[],
   ) {
-    const handleHandler = getHandler(channel);
-    const onHandlerList = !handleHandler ? getOnHandlers(channel) : undefined;
-
-    if (!handleHandler && (!onHandlerList || onHandlerList.length === 0)) {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(
-          JSON.stringify({
-            type: "response",
-            id,
-            error: `Unknown channel: ${channel}`,
-          }),
-        );
-      }
-      return;
-    }
-
-    const fakeEvent = createFakeIpcEvent(this.broadcastToMobile);
-    const spreadArgs = Array.isArray(args) ? args : [];
-
     try {
-      if (handleHandler) {
-        const result = await handleHandler(fakeEvent, ...spreadArgs);
+      const dispatchResult = await dispatchCapturedIpc(
+        channel,
+        args,
+        this.broadcastToMobile,
+      );
+      if (dispatchResult.kind === "handle") {
+        const { result } = dispatchResult;
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "response", id, result }));
         }
       } else {
-        for (const handler of onHandlerList!) {
-          handler(fakeEvent as unknown as IpcMainEvent, ...spreadArgs);
-        }
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "response", id, result: undefined }));
         }
