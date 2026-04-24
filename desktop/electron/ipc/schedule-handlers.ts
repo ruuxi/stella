@@ -1,10 +1,7 @@
-import {
-  ipcMain,
-  type IpcMainEvent,
-  type IpcMainInvokeEvent,
-} from "electron";
+import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
+import { registerPrivilegedHandle } from "./privileged-ipc.js";
 
 type ScheduleHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
@@ -25,33 +22,18 @@ export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
       onRunnerChanged: options.onStellaHostRunnerChanged,
     });
 
-  ipcMain.handle("schedule:listCronJobs", async (event) => {
-    if (!options.assertPrivilegedSender(event, "schedule:listCronJobs")) {
-      throw new Error("Blocked untrusted schedule:listCronJobs request.");
-    }
+  registerPrivilegedHandle(options, "schedule:listCronJobs", async () => {
     return await (await waitForRunner()).listCronJobs();
   });
 
-  ipcMain.handle("schedule:listHeartbeats", async (event) => {
-    if (!options.assertPrivilegedSender(event, "schedule:listHeartbeats")) {
-      throw new Error("Blocked untrusted schedule:listHeartbeats request.");
-    }
+  registerPrivilegedHandle(options, "schedule:listHeartbeats", async () => {
     return await (await waitForRunner()).listHeartbeats();
   });
 
-  ipcMain.handle(
+  registerPrivilegedHandle(
+    options,
     "schedule:listConversationEvents",
-    async (event, payload: { conversationId?: string; maxItems?: number }) => {
-      if (
-        !options.assertPrivilegedSender(
-          event,
-          "schedule:listConversationEvents",
-        )
-      ) {
-        throw new Error(
-          "Blocked untrusted schedule:listConversationEvents request.",
-        );
-      }
+    async (_event, payload: { conversationId?: string; maxItems?: number }) => {
       const conversationId =
         typeof payload?.conversationId === "string"
           ? payload.conversationId.trim()
@@ -67,19 +49,10 @@ export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
     },
   );
 
-  ipcMain.handle(
+  registerPrivilegedHandle(
+    options,
     "schedule:getConversationEventCount",
-    async (event, payload: { conversationId?: string }) => {
-      if (
-        !options.assertPrivilegedSender(
-          event,
-          "schedule:getConversationEventCount",
-        )
-      ) {
-        throw new Error(
-          "Blocked untrusted schedule:getConversationEventCount request.",
-        );
-      }
+    async (_event, payload: { conversationId?: string }) => {
       const conversationId =
         typeof payload?.conversationId === "string"
           ? payload.conversationId.trim()
