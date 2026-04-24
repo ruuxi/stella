@@ -57,6 +57,7 @@ export type StellaHostRunnerOptions = {
   selfModLifecycle?: {
     beginRun: (args: {
       runId: string;
+      rootRunId?: string;
       taskDescription: string;
       taskPrompt: string;
       conversationId: string;
@@ -69,6 +70,7 @@ export type StellaHostRunnerOptions = {
     }) => Promise<void> | void;
     finalizeRun: (args: {
       runId: string;
+      rootRunId?: string;
       taskDescription: string;
       taskPrompt: string;
       conversationId: string;
@@ -82,28 +84,7 @@ export type StellaHostRunnerOptions = {
     }) => Promise<void> | void;
     cancelRun?: (runId: string) => Promise<void> | void;
   } | null;
-  selfModHmrController?: {
-    pause: (runId: string) => Promise<boolean>;
-    resume: (
-      runId: string,
-      options?: { suppressClientFullReload?: boolean },
-    ) => Promise<boolean>;
-    forceResumeAll: () => Promise<boolean>;
-    getStatus: () => Promise<{
-      queuedFiles: number;
-      requiresFullReload: boolean;
-    } | null>;
-  } | null;
-  getHmrTransitionController?: () => {
-    runTransition: (args: {
-      runId: string;
-      resumeHmr: (
-        options?: { suppressClientFullReload?: boolean },
-      ) => Promise<void>;
-      reportState?: (state: SelfModHmrState) => void;
-      requiresFullReload: boolean;
-    }) => Promise<void>;
-  } | null;
+  selfModHmrController?: import("../self-mod/hmr.js").SelfModHmrController | null;
   requestCredential?: (payload: {
     provider: string;
     label?: string;
@@ -191,14 +172,6 @@ export type AgentCallbacks = {
   }) => void;
   onAgentEvent?: (event: AgentLifecycleEvent) => void;
   onSelfModHmrState?: (event: SelfModHmrState) => void;
-  onHmrResume?: (args: {
-    runId: string;
-    resumeHmr: (
-      options?: { suppressClientFullReload?: boolean },
-    ) => Promise<void>;
-    reportState?: (state: SelfModHmrState) => void;
-    requiresFullReload: boolean;
-  }) => Promise<void>;
 };
 
 export type QueuedOrchestratorTurn = {
@@ -279,7 +252,6 @@ export type RunnerContext = {
   selfModMonitor?: SelfModMonitor | null;
   selfModLifecycle?: StellaHostRunnerOptions["selfModLifecycle"];
   selfModHmrController?: StellaHostRunnerOptions["selfModHmrController"];
-  getHmrTransitionController?: StellaHostRunnerOptions["getHmrTransitionController"];
   requestCredential?: StellaHostRunnerOptions["requestCredential"];
   scheduleApi?: ScheduleToolApi;
   displayHtml?: (html: string) => void;
@@ -302,6 +274,7 @@ export type RunnerContext = {
     ) => Promise<ToolResult>;
     registerExtensionTools: (tools: ToolDefinition[]) => void;
     killAllShells: () => void;
+    killShell: (sessionId: string) => Promise<void> | void;
     killShellsByPort: (port: number) => void;
     shutdown: () => Promise<void>;
   };
@@ -385,10 +358,6 @@ export type RunnerPublicApi = {
   getLocalAgentSnapshot: (agentId: string) => Promise<AgentToolSnapshot | null>;
   cancelLocalChat: (runId: string) => void;
   getActiveOrchestratorRun: () => RuntimeActiveRun | null;
-  resumeSelfModHmr: (
-    runId: string,
-    options?: { suppressClientFullReload?: boolean },
-  ) => Promise<boolean>;
   appendThreadMessage: (args: {
     threadKey: string;
     role: "user" | "assistant";

@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -408,6 +408,92 @@ EOF`,
       expect(text).toContain(
         "write_stdin is not safe to run inside multi_tool_use_parallel",
       );
+    } finally {
+      await host.shutdown();
+    }
+  });
+
+  it("multi_tool_use_parallel rejects apply_patch", async () => {
+    const root = await createTempDir();
+    const host = createToolHost({ stellaRoot: root });
+
+    try {
+      const result = await host.executeTool(
+        "multi_tool_use_parallel",
+        {
+          tool_uses: [
+            {
+              recipient_name: "apply_patch",
+              parameters: {
+                input:
+                  "*** Begin Patch\n*** Add File: foo.txt\n+hello\n*** End Patch",
+              },
+            },
+          ],
+        },
+        {
+          conversationId: "c1",
+          deviceId: "d1",
+          requestId: "r1",
+          agentType: "general",
+          stellaRoot: root,
+          allowedToolNames: ["apply_patch", "multi_tool_use_parallel"],
+        },
+      );
+
+      expect(result.error).toBeUndefined();
+      const text = String(result.result ?? "");
+      expect(text).toContain(
+        "apply_patch is not safe to run inside multi_tool_use_parallel",
+      );
+    } finally {
+      await host.shutdown();
+    }
+  });
+
+  it("multi_tool_use_parallel rejects the full batch before starting valid siblings", async () => {
+    const root = await createTempDir();
+    const host = createToolHost({ stellaRoot: root });
+    const markerPath = path.join(root, "parallel-ran.txt");
+
+    try {
+      const result = await host.executeTool(
+        "multi_tool_use_parallel",
+        {
+          tool_uses: [
+            {
+              recipient_name: "exec_command",
+              parameters: {
+                cmd: "printf ran > parallel-ran.txt",
+                workdir: root,
+                yield_time_ms: 1000,
+              },
+            },
+            {
+              recipient_name: "apply_patch",
+              parameters: {
+                input:
+                  "*** Begin Patch\n*** Add File: foo.txt\n+hello\n*** End Patch",
+              },
+            },
+          ],
+        },
+        {
+          conversationId: "c1",
+          deviceId: "d1",
+          requestId: "r1",
+          agentType: "general",
+          stellaRoot: root,
+          allowedToolNames: ["exec_command", "apply_patch", "multi_tool_use_parallel"],
+        },
+      );
+
+      expect(result.error).toBeUndefined();
+      const text = String(result.result ?? "");
+      expect(text).toContain(
+        "apply_patch is not safe to run inside multi_tool_use_parallel",
+      );
+      await expect(access(markerPath)).rejects.toThrow();
     } finally {
       await host.shutdown();
     }

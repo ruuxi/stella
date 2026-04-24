@@ -28,9 +28,24 @@ import {
 
 export type HmrTransitionController = {
   runTransition: (opts: {
-    runId: string;
-    resumeHmr: (
-      options?: { suppressClientFullReload?: boolean },
+    /**
+     * The run ids whose changes are being applied in this single morph
+     * cover. Typically a single run, but can be the entire batch if a
+     * held run drained alongside the finalizing run.
+    */
+    runIds: string[];
+    stateRunIds?: string[];
+    /**
+     * Performs the actual overlay apply on the Vite plugin while the
+     * cover is on screen. Replaces the old `resumeHmr` callback — the
+     * controller calls this once the cover has captured the pre-apply
+     * screenshot and is ready for the renderer to swap.
+     */
+    applyBatch: (
+      options?: {
+        suppressClientFullReload?: boolean;
+        forceClientFullReload?: boolean;
+      },
     ) => Promise<void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
@@ -95,9 +110,13 @@ export function createHmrTransitionController(deps: {
   };
 
   const runTransition = async (opts: {
-    runId: string;
-    resumeHmr: (
-      options?: { suppressClientFullReload?: boolean },
+    runIds: string[];
+    stateRunIds?: string[];
+    applyBatch: (
+      options?: {
+        suppressClientFullReload?: boolean;
+        forceClientFullReload?: boolean;
+      },
     ) => Promise<void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
@@ -113,15 +132,38 @@ export function createHmrTransitionController(deps: {
       overlayController?.endMorph(transitionId);
       opts.reportState?.(IDLE_HMR_STATE);
     };
-
-    if (!fullWindow || fullWindow.isDestroyed() || !overlayController) {
+    const applyWithoutMorph = async (
+      windowForReload: BrowserWindow | null,
+    ) => {
       opts.reportState?.({
         phase: opts.requiresFullReload ? "reloading" : "applying",
         paused: false,
         requiresFullReload: opts.requiresFullReload,
       });
-      await opts.resumeHmr();
-      opts.reportState?.(IDLE_HMR_STATE);
+      const canReload =
+        opts.requiresFullReload &&
+        windowForReload != null &&
+        !windowForReload.isDestroyed();
+      const paintedPromise = canReload
+        ? waitForRendererPainted(MORPH_FULL_RELOAD_PAINT_FALLBACK_MS)
+        : null;
+      try {
+        await opts.applyBatch({
+          suppressClientFullReload: canReload,
+        });
+        if (canReload) {
+          windowForReload.webContents.reloadIgnoringCache();
+          await paintedPromise;
+        }
+      } finally {
+        opts.reportState?.(IDLE_HMR_STATE);
+      }
+    };
+
+    if (!fullWindow || fullWindow.isDestroyed() || !overlayController) {
+      await applyWithoutMorph(
+        fullWindow && !fullWindow.isDestroyed() ? fullWindow : null,
+      );
       return;
     }
 
@@ -137,13 +179,7 @@ export function createHmrTransitionController(deps: {
       }),
     ]);
     if (!overlayReadyForMorph || !oldScreenshot) {
-      opts.reportState?.({
-        phase: opts.requiresFullReload ? "reloading" : "applying",
-        paused: false,
-        requiresFullReload: opts.requiresFullReload,
-      });
-      await opts.resumeHmr();
-      opts.reportState?.(IDLE_HMR_STATE);
+      await applyWithoutMorph(fullWindow);
       return;
     }
 
@@ -195,7 +231,7 @@ export function createHmrTransitionController(deps: {
             : MORPH_SOFT_HMR_PAINT_FALLBACK_MS,
         );
 
-        await opts.resumeHmr({
+        await opts.applyBatch({
           suppressClientFullReload: opts.requiresFullReload,
         });
 

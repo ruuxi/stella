@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import path from "path";
+import path from "node:path";
 import { resolveLlmRoute } from "../model-routing.js";
 import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
@@ -11,6 +11,7 @@ import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
 import { LocalAgentManager } from "../agents/local-agent-manager.js";
 import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
 import { isKnownSafeCommand } from "../tools/safe-commands.js";
+import { expandHomePath } from "../tools/utils.js";
 import type { AgentToolRequest, ToolContext, ToolResult } from "../tools/types.js";
 import type {
   LocalAgentContext,
@@ -29,9 +30,7 @@ import {
 import type {
   RunnerContext,
 } from "./types.js";
-import { buildAgentEventPrompt, createSelfModHmrState } from "./shared.js";
-import type { SelfModHmrState } from "../../contracts/index.js";
-import { shouldRunSelfModHmrTransition } from "../self-mod/flush-mode.js";
+import { buildAgentEventPrompt } from "./shared.js";
 
 const TASK_LIFECYCLE_WAKE_PROMPT =
   "<system_reminder>Continue from the latest task lifecycle update.</system_reminder>";
@@ -76,18 +75,201 @@ const collectProducedFiles = (
   }
 };
 
-const WINDOWS_PATH_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\)/;
-const SHELL_PATH_SOURCE = String.raw`(?:[A-Za-z]:[\\/]|\\\\|\/|\.\.?[\\/])`;
-const SHELL_REDIRECT_PATTERN = new RegExp(
-  String.raw`(?:^|[;&|]\s*|\s)\d*>>?\s*(?:"([^"]+)"|'([^']+)'|([^\s"'` +
-    "`" +
-    String.raw`]+))`,
-);
-const SHELL_PATH_PATTERN = new RegExp(
-  String.raw`(?:^|\s)(?:"(${SHELL_PATH_SOURCE}[^"]+)"|'(${SHELL_PATH_SOURCE}[^']+)'|(${SHELL_PATH_SOURCE}[^\s"'` +
-    "`" +
-    String.raw`]+))`,
-);
+/**
+ * Pulls the absolute paths a tool actually wrote to from its `fileChanges` /
+ * `producedFiles` records (commit 95f74a28). The contention tracker needs
+ * destination paths, so for `update` records with a `move_path` we surface
+ * both the source and destination — both might be relevant if the move
+ * crosses a tracked source root.
+ */
+const collectWrittenPaths = (
+  records: ReadonlyArray<FileChangeRecord | ProducedFileRecord> | undefined,
+): string[] => {
+  if (!records || records.length === 0) return [];
+  const out: string[] = [];
+  for (const record of records) {
+    if (typeof record.path === "string" && record.path.length > 0) {
+      out.push(record.path);
+    }
+    if (record.kind.type === "update" && record.kind.move_path) {
+      out.push(record.kind.move_path);
+    }
+  }
+  return out;
+};
+
+const SHELL_TOKEN_PATTERN = /"([^"]+)"|'([^']+)'|([^\s;&|<>]+)/g;
+
+const resolveToolPath = (
+  rawPath: unknown,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): string | null => {
+  if (typeof rawPath !== "string" || rawPath.trim().length === 0) return null;
+  const expanded = expandHomePath(rawPath.trim());
+  if (path.isAbsolute(expanded)) return path.resolve(expanded);
+  const rawWorkdir = args.workdir ?? args.working_directory ?? args.cwd;
+  const base =
+    typeof rawWorkdir === "string" && rawWorkdir.trim().length > 0
+      ? path.resolve(expandHomePath(rawWorkdir.trim()))
+      : context.stellaRoot ?? process.cwd();
+  return path.resolve(base, expanded);
+};
+
+const inferShellMentionedPaths = (
+  args: Record<string, unknown>,
+  context: ToolContext,
+): string[] => {
+  const command =
+    typeof args.cmd === "string"
+      ? args.cmd
+      : typeof args.command === "string"
+        ? args.command
+        : "";
+  if (!command.trim()) return [];
+
+  const out: string[] = [];
+  for (const match of command.matchAll(SHELL_TOKEN_PATTERN)) {
+    const token = match[1] ?? match[2] ?? match[3] ?? "";
+    if (!token || token.startsWith("-")) continue;
+    if (
+      path.isAbsolute(token) ||
+      token.startsWith("./") ||
+      token.startsWith("../") ||
+      token.startsWith("desktop/") ||
+      token.startsWith("runtime/") ||
+      token.startsWith("backend/") ||
+      token.startsWith("launcher/")
+    ) {
+      const resolved = resolveToolPath(token, args, context);
+      if (resolved) out.push(resolved);
+    }
+  }
+  return [...new Set(out)];
+};
+
+const inferPreWritePaths = (
+  toolName: string,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): string[] => {
+  if (toolName === "apply_patch") {
+    const patch = String(args.input ?? args.patch ?? "").trim();
+    if (!patch) return [];
+    try {
+      return extractApplyPatchTargetPaths(patch)
+        .map((target) => resolveToolPath(target, args, context))
+        .filter((target): target is string => Boolean(target));
+    } catch {
+      return [];
+    }
+  }
+
+  if (
+    toolName === "Write" ||
+    toolName === "Edit" ||
+    toolName === "StrReplace"
+  ) {
+    const resolved = resolveToolPath(args.file_path, args, context);
+    return resolved ? [resolved] : [];
+  }
+
+  if (toolName === "exec_command") {
+    if (isReadOnlyShellCommand(args)) return [];
+    return inferShellMentionedPaths(args, context);
+  }
+
+  return [];
+};
+
+const getShellExecutionState = (
+  result: ToolResult,
+): { sessionId: string | null; running: boolean } | null => {
+  const payload = result.details ?? result.result;
+  if (typeof payload === "string") {
+    const match = payload.match(/\bShell ID:\s*([^\s]+)/);
+    if (match) {
+      return { sessionId: match[1] ?? null, running: true };
+    }
+  }
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as { session_id?: unknown; running?: unknown };
+  if (typeof record.running !== "boolean") return null;
+  return {
+    sessionId: typeof record.session_id === "string" ? record.session_id : null,
+    running: record.running,
+  };
+};
+
+const normalizeNestedToolName = (raw: unknown): string => {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  return value.startsWith("functions.") ? value.slice("functions.".length) : value;
+};
+
+const getParallelToolEntries = (
+  args: Record<string, unknown>,
+): Array<{ toolName: string; parameters: Record<string, unknown> }> => {
+  if (!Array.isArray(args.tool_uses)) return [];
+  const out: Array<{ toolName: string; parameters: Record<string, unknown> }> = [];
+  for (const entry of args.tool_uses) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as { recipient_name?: unknown; parameters?: unknown };
+    const toolName = normalizeNestedToolName(record.recipient_name);
+    const parameters =
+      record.parameters && typeof record.parameters === "object"
+        ? (record.parameters as Record<string, unknown>)
+        : {};
+    out.push({ toolName, parameters });
+  }
+  return out;
+};
+
+const parallelContainsShellCommand = (args: Record<string, unknown>): boolean =>
+  getParallelToolEntries(args).some((entry) => entry.toolName === "exec_command");
+
+const isReadOnlyShellCommand = (args: Record<string, unknown>): boolean => {
+  const command =
+    typeof args.cmd === "string"
+      ? args.cmd
+      : typeof args.command === "string"
+        ? args.command
+        : "";
+  return command.trim().length > 0 && isKnownSafeCommand(command);
+};
+
+const parallelContainsGuardedShellCommand = (
+  args: Record<string, unknown>,
+): boolean =>
+  getParallelToolEntries(args).some(
+    (entry) =>
+      entry.toolName === "exec_command" &&
+      !isReadOnlyShellCommand(entry.parameters),
+  );
+
+const getParallelRunningShellSessions = (result: ToolResult): string[] => {
+  const details = result.details;
+  if (!details || typeof details !== "object") return [];
+  const results = (details as { results?: unknown }).results;
+  if (!Array.isArray(results)) return [];
+  const sessionIds: string[] = [];
+  for (const entry of results) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as {
+      tool_name?: unknown;
+      result?: unknown;
+      details?: unknown;
+    };
+    if (record.tool_name !== "exec_command") continue;
+    const shellState = getShellExecutionState({
+      result: record.result,
+      details: record.details,
+    });
+    if (shellState?.running && shellState.sessionId) {
+      sessionIds.push(shellState.sessionId);
+    }
+  }
+  return sessionIds;
+};
 
 const normalizeString = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
@@ -128,126 +310,6 @@ const resolveSelfModMetadata = (args: {
     featureId: deriveConversationFeatureId(args.conversationId),
     mode: "author",
   };
-};
-
-const getPathApi = (...values: Array<string | undefined>) =>
-  values.some((value) => value && WINDOWS_PATH_PATTERN.test(value))
-    ? path.win32
-    : path.posix;
-
-const pickMatch = (value: string, pattern: RegExp): string | undefined =>
-  value.match(pattern)?.slice(1).find((part): part is string => Boolean(part));
-
-const extractShellPath = (command: string): string | undefined =>
-  pickMatch(command, SHELL_REDIRECT_PATTERN) ?? pickMatch(command, SHELL_PATH_PATTERN);
-
-const resolvePath = (candidate: string, cwd?: string): string => {
-  const pathApi = getPathApi(candidate, cwd);
-  const base = normalizeString(cwd) ?? process.cwd();
-  return pathApi.normalize(
-    pathApi.isAbsolute(candidate)
-      ? candidate
-      : pathApi.resolve(base, candidate),
-  );
-};
-
-const resolveToolWorkingDirectory = (
-  args: Record<string, unknown>,
-  fallbackCwd?: string,
-): string | undefined =>
-  normalizeString(args.workdir ?? args.working_directory ?? args.cwd) ??
-  normalizeString(fallbackCwd);
-
-const resolveMutatingToolPath = (
-  toolName: string,
-  args: Record<string, unknown>,
-  fallbackCwd?: string,
-): string | null => {
-  const workingDirectory = resolveToolWorkingDirectory(args, fallbackCwd);
-  if (toolName === "Write" || toolName === "Edit") {
-    const rawPath = normalizeString(
-      args.file_path ?? args.path ?? args.target_path,
-    );
-    return rawPath ? resolvePath(rawPath, workingDirectory) : null;
-  }
-  if (toolName === "apply_patch") {
-    const patch = normalizeString(args.input ?? args.patch);
-    if (!patch) return null;
-    try {
-      const rawPath = extractApplyPatchTargetPaths(patch)[0];
-      return rawPath ? resolvePath(rawPath, workingDirectory) : null;
-    } catch {
-      return null;
-    }
-  }
-  if (toolName === "Bash" || toolName === "exec_command") {
-    const command = normalizeString(args.cmd ?? args.command);
-    if (!command) return null;
-    // Read-only commands (`ls`, `git status`, `rg`, `cat`, etc.) cannot
-    // possibly write source, so they don't need to trigger speculative HMR.
-    if (isKnownSafeCommand(command)) return null;
-    const rawPath = extractShellPath(command);
-    if (rawPath) {
-      return resolvePath(rawPath, workingDirectory);
-    }
-    return workingDirectory
-      ? resolvePath(workingDirectory, normalizeString(fallbackCwd))
-      : null;
-  }
-  return null;
-};
-
-export const resolveHmrToolTargetPath = (
-  toolName: string,
-  args: Record<string, unknown>,
-  fallbackCwd?: string,
-): string | null => {
-  if (toolName === "multi_tool_use_parallel") {
-    const requested = Array.isArray(args.tool_uses) ? args.tool_uses : [];
-    for (const entry of requested) {
-      if (!entry || typeof entry !== "object") continue;
-      const record = entry as {
-        recipient_name?: unknown;
-        parameters?: unknown;
-      };
-      const nestedToolName = normalizeString(record.recipient_name)?.replace(
-        /^functions\./,
-        "",
-      );
-      const nestedArgs =
-        record.parameters && typeof record.parameters === "object"
-          ? (record.parameters as Record<string, unknown>)
-          : {};
-      if (!nestedToolName) continue;
-      const nestedPath = resolveMutatingToolPath(
-        nestedToolName,
-        nestedArgs,
-        fallbackCwd,
-      );
-      if (nestedPath) return nestedPath;
-    }
-    return null;
-  }
-  return resolveMutatingToolPath(toolName, args, fallbackCwd);
-};
-
-export const isHmrPathUnderDirectory = (
-  filePath: string,
-  directory: string,
-): boolean => {
-  const pathApi = getPathApi(filePath, directory);
-  const normalizeForCompare = (value: string) =>
-    pathApi === path.win32
-      ? pathApi.normalize(value).toLowerCase()
-      : pathApi.normalize(value);
-  const relativePath = pathApi.relative(
-    normalizeForCompare(directory),
-    normalizeForCompare(filePath),
-  );
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !pathApi.isAbsolute(relativePath))
-  );
 };
 
 const buildLifecycleEventPayload = (
@@ -410,45 +472,16 @@ export const createAgentOrchestration = (
           : null)
         ?? context.state.conversationCallbacks.get(conversationId)
         ?? null;
-      const reportSelfModHmrState = (state: SelfModHmrState) => {
-        runnerCallbacks?.onSelfModHmrState?.(state);
-      };
-
-      let hmrPaused = false;
-      const pauseHmrIfStellaWrite = async (
-        toolName: string,
-        args: Record<string, unknown>,
-      ) => {
-        if (hmrPaused || !context.selfModHmrController || !context.stellaRoot) return;
-        const targetPath = resolveHmrToolTargetPath(
-          toolName,
-          args,
-          context.stellaRoot,
-        );
-        if (!targetPath || !isHmrPathUnderDirectory(targetPath, context.stellaRoot)) return;
-        hmrPaused = true;
-        const applied = await context.selfModHmrController.pause(runId);
-        if (!applied) {
-          console.warn("[self-mod-hmr] Pause endpoint unavailable for Stella file write.");
-        } else {
-          reportSelfModHmrState(createSelfModHmrState("paused", true));
-        }
-      };
-
-      const hmrAwareToolExecutor = async (
-        toolName: string,
-        args: Record<string, unknown>,
-        ctx: ToolContext,
-        signal?: AbortSignal,
-      ): Promise<ToolResult> => {
-        await pauseHmrIfStellaWrite(toolName, args);
-        return toolExecutor(toolName, args, ctx, signal);
-      };
 
       if (shouldAttachSelfModLifecycle) {
+        // Register the run with the contention tracker before any writes can
+        // arrive. recordWrite is a no-op on unknown runs to avoid resurrecting
+        // already-finalized runs, so beginRun must precede writes.
+        context.selfModHmrController?.beginRun(runId);
         await Promise.resolve(
           context.selfModLifecycle!.beginRun({
             runId,
+            ...(rootRunId ? { rootRunId } : {}),
             taskDescription,
             taskPrompt,
             conversationId,
@@ -479,6 +512,192 @@ export const createAgentOrchestration = (
       const subagentFileChangeKeys = new Set<string>();
       const subagentProducedFiles: ProducedFileRecord[] = [];
       const subagentProducedFileKeys = new Set<string>();
+      const pendingToolWriteRecords: Promise<void>[] = [];
+      const guardedShellSessionLeases = new Map<string, string>();
+      const guardedShellLeaseSessions = new Map<string, Set<string>>();
+
+      const endShellMutationGuard = async () => {
+        await context.selfModHmrController
+          ?.endShellMutationGuard()
+          .catch((error) => {
+            console.warn(
+              "[self-mod-hmr] failed to end shell mutation guard:",
+              (error as Error).message,
+            );
+          });
+      };
+
+      const releaseGuardedShellSessions = async () => {
+        const leaseCount = guardedShellLeaseSessions.size;
+        guardedShellSessionLeases.clear();
+        guardedShellLeaseSessions.clear();
+        for (let i = 0; i < leaseCount; i += 1) {
+          await endShellMutationGuard();
+        }
+      };
+
+      const hasGuardedShellSessions = () => guardedShellLeaseSessions.size > 0;
+
+      const killGuardedShellSessions = async () => {
+        if (!hasGuardedShellSessions()) return;
+        const sessionIds = [...guardedShellSessionLeases.keys()];
+        console.warn(
+          "[self-mod-hmr] mutating shell session still running at finalize; killing guarded shell sessions and cancelling self-mod apply.",
+        );
+        await Promise.allSettled(
+          sessionIds.map((sessionId) => context.toolHost.killShell(sessionId)),
+        );
+      };
+
+      const retainShellGuardLease = (sessionIds: string[]) => {
+        const uniqueSessionIds = [...new Set(sessionIds)].filter(Boolean);
+        if (uniqueSessionIds.length === 0) return false;
+        const leaseId = crypto.randomUUID();
+        guardedShellLeaseSessions.set(leaseId, new Set(uniqueSessionIds));
+        for (const sessionId of uniqueSessionIds) {
+          guardedShellSessionLeases.set(sessionId, leaseId);
+        }
+        return true;
+      };
+
+      const releaseShellSessionGuard = async (sessionId: string) => {
+        const leaseId = guardedShellSessionLeases.get(sessionId);
+        if (!leaseId) return;
+        guardedShellSessionLeases.delete(sessionId);
+        const sessions = guardedShellLeaseSessions.get(leaseId);
+        if (!sessions) return;
+        sessions.delete(sessionId);
+        if (sessions.size > 0) return;
+        guardedShellLeaseSessions.delete(leaseId);
+        await endShellMutationGuard();
+      };
+
+      const recordWritePaths = async (
+        paths: string[],
+        options?: { captureSnapshot?: boolean },
+      ) => {
+        if (!shouldAttachSelfModLifecycle || !context.selfModHmrController) {
+          return;
+        }
+        if (paths.length === 0) return;
+        await context.selfModHmrController.recordWrite(runId, paths, options);
+      };
+
+      const recordToolWrites = async (event: {
+        fileChanges?: FileChangeRecord[];
+        producedFiles?: ProducedFileRecord[];
+      }) => {
+        const paths = [
+          ...collectWrittenPaths(event.fileChanges),
+          ...collectWrittenPaths(event.producedFiles),
+        ];
+        try {
+          await recordWritePaths(paths);
+        } catch (error) {
+          console.warn(
+            "[self-mod-hmr] recordWrite failed (continuing):",
+            (error as Error).message,
+          );
+        }
+      };
+
+      const hmrAwareToolExecutor = async (
+        toolName: string,
+        args: Record<string, unknown>,
+        ctx: ToolContext,
+        signal?: AbortSignal,
+        onUpdate?: (update: ToolResult) => void,
+      ): Promise<ToolResult> => {
+        const isShellCommand = toolName === "exec_command";
+        const shouldGuardShellCommand =
+          isShellCommand && !isReadOnlyShellCommand(args);
+        const isShellPoll = toolName === "write_stdin";
+        const isParallelWithShellCommands =
+          toolName === "multi_tool_use_parallel" &&
+          parallelContainsShellCommand(args);
+        const isParallelWithGuardedShellCommands =
+          toolName === "multi_tool_use_parallel" &&
+          parallelContainsGuardedShellCommand(args);
+        const shellSessionId =
+          typeof args.session_id === "string" ? args.session_id : null;
+        const isGuardedShellPoll =
+          isShellPoll && shellSessionId
+            ? guardedShellSessionLeases.has(shellSessionId)
+            : false;
+        let shellGuardActive = false;
+        if (
+          (shouldGuardShellCommand || isParallelWithGuardedShellCommands) &&
+          shouldAttachSelfModLifecycle
+        ) {
+          shellGuardActive = Boolean(
+            await context.selfModHmrController
+              ?.beginShellMutationGuard()
+              .catch((error) => {
+                console.warn(
+                  "[self-mod-hmr] failed to begin shell mutation guard:",
+                  (error as Error).message,
+                );
+                return false;
+              }),
+          );
+          if (!shellGuardActive) {
+            return {
+              error:
+                "Self-mod HMR shell guard failed before running a mutating shell command.",
+            };
+          }
+        }
+        try {
+          const preWritePaths = inferPreWritePaths(toolName, args, ctx);
+          if (preWritePaths.length > 0) {
+            try {
+              await recordWritePaths(preWritePaths, { captureSnapshot: false });
+            } catch (error) {
+              console.warn(
+                "[self-mod-hmr] pre-write recordWrite failed:",
+                (error as Error).message,
+              );
+              return {
+                error: `Self-mod HMR tracking failed before write: ${(error as Error).message}`,
+              };
+            }
+          }
+          const result = await toolExecutor(toolName, args, ctx, signal, onUpdate);
+          if (isShellCommand || isParallelWithShellCommands || isGuardedShellPoll) {
+            await recordToolWrites({
+              fileChanges: result.fileChanges,
+              producedFiles: result.producedFiles,
+            });
+          }
+          const shellState = getShellExecutionState(result);
+          if (
+            isShellCommand &&
+            shellGuardActive &&
+            shellState?.running &&
+            shellState.sessionId
+          ) {
+            if (retainShellGuardLease([shellState.sessionId])) {
+              shellGuardActive = false;
+            }
+          } else if (isParallelWithShellCommands && shellGuardActive) {
+            const runningSessionIds = getParallelRunningShellSessions(result);
+            if (retainShellGuardLease(runningSessionIds)) {
+              shellGuardActive = false;
+            }
+          } else if (
+            isGuardedShellPoll &&
+            shellSessionId &&
+            (shellState?.running === false || shellState == null)
+          ) {
+            await releaseShellSessionGuard(shellSessionId);
+          }
+          return result;
+        } finally {
+          if (shellGuardActive) {
+            await endShellMutationGuard();
+          }
+        }
+      };
       try {
         const result = await runSubagentTask({
           conversationId,
@@ -531,6 +750,12 @@ export const createAgentOrchestration = (
                 subagentProducedFileKeys,
                 event.producedFiles?.length ? event : event.details,
               );
+              pendingToolWriteRecords.push(
+                recordToolWrites({
+                  fileChanges: event.fileChanges,
+                  producedFiles: event.producedFiles,
+                }),
+              );
               runnerCallbacks?.onToolEnd(event);
             },
           },
@@ -545,11 +770,25 @@ export const createAgentOrchestration = (
         }
         return result;
       } finally {
+        if (pendingToolWriteRecords.length > 0) {
+          await Promise.allSettled(pendingToolWriteRecords);
+        }
+        if (hasGuardedShellSessions()) {
+          await killGuardedShellSessions();
+          subagentSucceeded = false;
+        }
+        await releaseGuardedShellSessions();
         if (shouldAttachSelfModLifecycle) {
+          // The finalize/cancel hooks below own the entire apply pipeline
+          // (contention tracker drain, Vite overlay swap, runtime restart,
+          // morph cover). The renderer no longer participates in the
+          // resume-flush dance — it just observes self-mod-hmr state events
+          // emitted by the worker server.
           if (subagentSucceeded) {
             await Promise.resolve(
               context.selfModLifecycle!.finalizeRun({
                 runId,
+                ...(rootRunId ? { rootRunId } : {}),
                 taskDescription,
                 taskPrompt,
                 conversationId,
@@ -559,61 +798,6 @@ export const createAgentOrchestration = (
             );
           } else if (typeof context.selfModLifecycle!.cancelRun === "function") {
             await Promise.resolve(context.selfModLifecycle!.cancelRun(runId));
-          }
-        }
-        if (hmrPaused && context.selfModHmrController) {
-          const status = await context.selfModHmrController
-            .getStatus()
-            .catch(() => null);
-          const requiresFullReload = Boolean(status?.requiresFullReload);
-          const shouldMorph = shouldRunSelfModHmrTransition(status);
-          const resumeHmr = async () => {
-            const resumeApplied =
-              await context.selfModHmrController?.resume(runId);
-            if (!resumeApplied) {
-              console.warn(
-                "[self-mod-hmr] Resume endpoint unavailable after Stella file write.",
-              );
-            }
-          };
-
-          try {
-            const hmrTransitionController =
-              context.getHmrTransitionController?.() ?? null;
-            if (shouldMorph && runnerCallbacks?.onHmrResume) {
-              await runnerCallbacks.onHmrResume({
-                runId,
-                resumeHmr,
-                reportState: reportSelfModHmrState,
-                requiresFullReload,
-              });
-            } else if (shouldMorph && hmrTransitionController) {
-              await hmrTransitionController.runTransition({
-                runId,
-                resumeHmr,
-                reportState: reportSelfModHmrState,
-                requiresFullReload,
-              });
-            } else {
-              reportSelfModHmrState(
-                createSelfModHmrState(
-                  requiresFullReload ? "reloading" : "applying",
-                  false,
-                  requiresFullReload,
-                ),
-              );
-              await resumeHmr();
-              reportSelfModHmrState(createSelfModHmrState("idle", false));
-            }
-          } catch (error) {
-            console.warn(
-              "[self-mod-hmr] Failed to resume HMR after Stella file write:",
-              (error as Error).message,
-            );
-            await context.selfModHmrController
-              .resume(runId)
-              .catch(() => undefined);
-            reportSelfModHmrState(createSelfModHmrState("idle", false));
           }
         }
       }

@@ -204,7 +204,6 @@ export const registerBootstrapIpcHandlers = (
     stellaRoot: config.stellaRoot,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
-    hmrTransitionController: state.hmrTransitionController,
     getBroadcastToMobile: lazyMobileBroadcast,
   });
 

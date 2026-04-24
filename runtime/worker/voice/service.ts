@@ -19,7 +19,6 @@ import type {
   RuntimeToolEndEvent,
   RuntimeToolStartEvent,
 } from "../../kernel/agent-runtime.js";
-import { createSelfModHmrState } from "../../kernel/runner/shared.js";
 import type { AgentLifecycleEvent } from "../../kernel/agents/local-agent-manager.js";
 import type { SelfModHmrState } from "../../contracts/index.js";
 import type { ChatStore } from "../../kernel/storage/chat-store.js";
@@ -42,12 +41,6 @@ type VoiceRunner = {
       onEnd: (event: RuntimeEndEvent) => void;
       onAgentEvent?: (event: AgentLifecycleEvent) => void;
       onSelfModHmrState?: (state: SelfModHmrState) => void;
-      onHmrResume?: (args: {
-        runId: string;
-        resumeHmr: () => Promise<void>;
-        reportState?: (state: SelfModHmrState) => void;
-        requiresFullReload: boolean;
-      }) => Promise<void>;
     },
   ) => Promise<{ runId: string }>;
   appendThreadMessage: (args: {
@@ -74,10 +67,6 @@ type VoiceRuntimeServiceOptions = {
   onLocalChatUpdated: () => void;
   emitAgentEvent: (payload: RuntimeVoiceAgentEventPayload) => void;
   emitSelfModHmrState: (payload: RuntimeVoiceHmrStatePayload) => void;
-  requestHostHmrTransition: (payload: {
-    runId: string;
-    requiresFullReload: boolean;
-  }) => Promise<void>;
 };
 
 const normalizeError = (error: unknown) =>
@@ -281,21 +270,6 @@ export class VoiceRuntimeService {
                 runId: activeRunId || undefined,
                 state,
               });
-            },
-            onHmrResume: async ({ runId, requiresFullReload, reportState }) => {
-              activeRunId = runId;
-              reportState?.(
-                createSelfModHmrState(
-                  requiresFullReload ? "reloading" : "applying",
-                  false,
-                  requiresFullReload,
-                ),
-              );
-              await this.options.requestHostHmrTransition({
-                runId,
-                requiresFullReload,
-              });
-              reportState?.(createSelfModHmrState("idle", false));
             },
             onEnd: (event) => {
               this.options.emitAgentEvent({

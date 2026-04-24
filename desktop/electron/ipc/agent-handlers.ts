@@ -19,7 +19,6 @@ import {
 } from "../../src/shared/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
-import type { HmrTransitionController } from "../self-mod/hmr-morph.js";
 import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 
 type AgentHandlersOptions = {
@@ -31,7 +30,6 @@ type AgentHandlersOptions = {
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
-  hmrTransitionController?: HmrTransitionController | null;
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
@@ -620,15 +618,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
               );
             },
             onSelfModHmrState: (ev) => emitSelfModHmrState(ev, senderWebContentsId),
-            onHmrResume: options.hmrTransitionController
-              ? ({ runId, resumeHmr, reportState, requiresFullReload }) =>
-                  options.hmrTransitionController!.runTransition({
-                    runId,
-                    resumeHmr,
-                    reportState,
-                    requiresFullReload,
-                  })
-              : undefined,
           },
         )
         .catch((error) => {

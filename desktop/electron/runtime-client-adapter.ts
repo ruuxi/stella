@@ -33,14 +33,6 @@ type AgentCallbacks = {
   onToolEnd: (event: RuntimeAgentEventPayload) => void;
   onAgentEvent?: (event: AgentLifecycleEvent) => void;
   onSelfModHmrState?: (event: SelfModHmrState) => void;
-  onHmrResume?: (args: {
-    runId: string;
-    resumeHmr: (
-      options?: { suppressClientFullReload?: boolean },
-    ) => Promise<void>;
-    reportState?: (state: SelfModHmrState) => void;
-    requiresFullReload: boolean;
-  }) => Promise<void>;
 };
 
 export type RuntimeAvailabilitySnapshot = {
@@ -665,6 +657,7 @@ export class RuntimeClientAdapter {
     let lastRunEventSeq = 0;
     let lastTaskEventSeq = 0;
     const activeTaskIds = new Set<string>();
+    const knownRunIds = new Set<string>();
     let runTerminated = false;
 
     let unsubscribe = () => {};
@@ -676,6 +669,9 @@ export class RuntimeClientAdapter {
     };
 
     const dispatch = (event: RuntimeAgentEventPayload) => {
+      if (event.runId) {
+        knownRunIds.add(event.runId);
+      }
       const taskLifecycleEvent = isTaskLifecycleEventType(event.type);
 
       if (taskLifecycleEvent) {
@@ -745,11 +741,31 @@ export class RuntimeClientAdapter {
       if (hmrPayload.requestId !== requestId) {
         return;
       }
+      if (hmrPayload.runId) {
+        knownRunIds.add(hmrPayload.runId);
+      }
+      callbacks.onSelfModHmrState?.(hmrPayload.state);
+    });
+    const offRunHmr = this.client.on("run-self-mod-hmr-state", (hmrPayload) => {
+      if (!hmrPayload.runId && knownRunIds.size === 0) {
+        return;
+      }
+      if (
+        hmrPayload.runId &&
+        knownRunIds.size > 0 &&
+        !knownRunIds.has(hmrPayload.runId)
+      ) {
+        return;
+      }
+      if (hmrPayload.runId) {
+        knownRunIds.add(hmrPayload.runId);
+      }
       callbacks.onSelfModHmrState?.(hmrPayload.state);
     });
     unsubscribe = () => {
       offEvent();
       offHmr();
+      offRunHmr();
     };
 
     try {
