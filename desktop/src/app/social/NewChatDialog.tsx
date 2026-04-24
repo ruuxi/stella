@@ -1,13 +1,15 @@
 import { useState, useCallback } from "react";
+import { Check, UserPlus } from "lucide-react";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
-  DialogCloseButton,
-  DialogBody,
   DialogDescription,
+  DialogBody,
+  DialogCloseButton,
 } from "@/ui/dialog";
+import { TextField } from "@/ui/text-field";
 import { Avatar } from "@/ui/avatar";
 import { useSocialFriends } from "./hooks/use-social-friends";
 
@@ -86,15 +88,23 @@ export function NewChatDialog({
   if (friends.length === 0) {
     return (
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent fit>
-          <DialogHeader>
+        <DialogContent fit className="friends-dialog-content">
+          <VisuallyHidden asChild>
             <DialogTitle>New message</DialogTitle>
-            <DialogCloseButton />
-          </DialogHeader>
-          <DialogBody>
-            <div className="friends-empty">
+          </VisuallyHidden>
+          <VisuallyHidden asChild>
+            <DialogDescription>
               Add some friends first to start a conversation.
-            </div>
+            </DialogDescription>
+          </VisuallyHidden>
+          <DialogCloseButton className="friends-dialog-close" />
+          <DialogBody className="friends-dialog-body">
+            <header className="friends-dialog-header">
+              <p className="friends-dialog-title">New message</p>
+              <p className="friends-dialog-sub">
+                Add some friends first to start a conversation.
+              </p>
+            </header>
           </DialogBody>
         </DialogContent>
       </Dialog>
@@ -104,29 +114,34 @@ export function NewChatDialog({
   if (mode === "group") {
     return (
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent fit>
-          <DialogHeader>
+        <DialogContent fit className="friends-dialog-content">
+          <VisuallyHidden asChild>
             <DialogTitle>New group</DialogTitle>
-            <DialogCloseButton />
-          </DialogHeader>
-          <DialogDescription>Pick friends to add to this group.</DialogDescription>
-          <DialogBody>
-            <div className="friends-dialog-body">
-              <div className="friends-add-section">
-                <input
-                  className="social-composer-input"
-                  style={{
-                    background: "var(--background)",
-                    borderRadius: "var(--radius-md)",
-                    border: "1px solid var(--border)",
-                    padding: "6px 12px",
-                    fontSize: 14,
-                  }}
-                  placeholder="Group name (optional)"
-                  value={groupName}
-                  onChange={(e) => setGroupName(e.target.value)}
-                />
-              </div>
+          </VisuallyHidden>
+          <VisuallyHidden asChild>
+            <DialogDescription>
+              Pick friends to add to this group.
+            </DialogDescription>
+          </VisuallyHidden>
+          <DialogCloseButton className="friends-dialog-close" />
+          <DialogBody className="friends-dialog-body">
+            <header className="friends-dialog-header">
+              <p className="friends-dialog-title">New group</p>
+              <p className="friends-dialog-sub">
+                Pick friends to add to this group.
+              </p>
+            </header>
+
+            <TextField
+              label="Group name"
+              hideLabel
+              placeholder="Group name (optional)"
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+            />
+
+            <section className="friends-section">
+              <div className="friends-section-label">Members</div>
               <div className="friends-list">
                 {friends.map((friend) => {
                   const isSelected = selectedIds.has(friend.profile.ownerId);
@@ -135,13 +150,9 @@ export function NewChatDialog({
                       key={friend.profile.ownerId}
                       type="button"
                       className="new-chat-item"
+                      data-selected={isSelected ? "true" : undefined}
                       onClick={() => toggleSelection(friend.profile.ownerId)}
                       disabled={isCreatingGroup}
-                      style={{
-                        background: isSelected
-                          ? "color-mix(in oklch, var(--foreground) 8%, transparent)"
-                          : undefined,
-                      }}
                     >
                       <Avatar
                         fallback={friend.profile.nickname}
@@ -151,27 +162,31 @@ export function NewChatDialog({
                       <span className="new-chat-item-name">
                         {friend.profile.nickname}
                       </span>
-                      {isSelected && (
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          style={{ marginLeft: "auto", color: "var(--interactive)" }}
-                        >
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      )}
+                      {isSelected ? (
+                        <Check
+                          size={16}
+                          className="new-chat-item-check"
+                          aria-hidden
+                        />
+                      ) : null}
                     </button>
                   );
                 })}
               </div>
+            </section>
+
+            <div className="friends-dialog-footer">
               <button
                 type="button"
-                className="friends-add-button"
-                style={{ alignSelf: "flex-end" }}
+                className="pill-btn pill-btn--lg"
+                onClick={() => setMode("pick")}
+                disabled={isCreatingGroup}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="pill-btn pill-btn--primary pill-btn--lg"
                 disabled={selectedIds.size === 0 || isCreatingGroup}
                 onClick={() => void handleCreateGroup()}
               >
@@ -186,53 +201,37 @@ export function NewChatDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent fit>
-        <DialogHeader>
+      <DialogContent fit className="friends-dialog-content">
+        <VisuallyHidden asChild>
           <DialogTitle>New message</DialogTitle>
-          <DialogCloseButton />
-        </DialogHeader>
-        <DialogBody>
+        </VisuallyHidden>
+        <VisuallyHidden asChild>
+          <DialogDescription>
+            Pick a friend or start a new group conversation.
+          </DialogDescription>
+        </VisuallyHidden>
+        <DialogCloseButton className="friends-dialog-close" />
+        <DialogBody className="friends-dialog-body">
+          <header className="friends-dialog-header">
+            <p className="friends-dialog-title">New message</p>
+            <p className="friends-dialog-sub">
+              Pick a friend or start a group.
+            </p>
+          </header>
+
           <div className="new-chat-list">
             <button
               type="button"
               className="new-chat-item"
               onClick={() => setMode("group")}
             >
-              <div
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: "var(--radius-sm)",
-                  background:
-                    "color-mix(in oklch, var(--foreground) 8%, transparent)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--text-base)",
-                  flexShrink: 0,
-                }}
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4-4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <line x1="19" y1="8" x2="19" y2="14" />
-                  <line x1="22" y1="11" x2="16" y2="11" />
-                </svg>
-              </div>
+              <span className="new-chat-item-icon">
+                <UserPlus size={16} aria-hidden />
+              </span>
               <span className="new-chat-item-name">New group</span>
             </button>
 
-            <div
-              className="friends-section-label"
-              style={{ padding: "8px 12px 4px" }}
-            >
+            <div className="friends-section-label new-chat-list-label">
               Friends
             </div>
 

@@ -1,11 +1,12 @@
 import { useState, useCallback } from "react";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
-  DialogCloseButton,
+  DialogDescription,
   DialogBody,
+  DialogCloseButton,
 } from "@/ui/dialog";
 import { TextField } from "@/ui/text-field";
 import { Avatar } from "@/ui/avatar";
@@ -38,6 +39,9 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [sending, setSending] = useState(false);
   const [pendingChatOwnerId, setPendingChatOwnerId] = useState<string | null>(null);
+  const [pendingActionOwnerId, setPendingActionOwnerId] = useState<string | null>(
+    null,
+  );
 
   const handleAddFriend = useCallback(async () => {
     const code = friendCode.trim().toUpperCase();
@@ -58,25 +62,16 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
     }
   }, [friendCode, sendFriendRequest]);
 
-  const handleAccept = useCallback(
-    async (requesterOwnerId: string) => {
-      await acceptRequest(requesterOwnerId);
+  const runOwnerAction = useCallback(
+    async (ownerId: string, action: () => Promise<unknown>) => {
+      setPendingActionOwnerId(ownerId);
+      try {
+        await action();
+      } finally {
+        setPendingActionOwnerId(null);
+      }
     },
-    [acceptRequest],
-  );
-
-  const handleDecline = useCallback(
-    async (requesterOwnerId: string) => {
-      await declineRequest(requesterOwnerId);
-    },
-    [declineRequest],
-  );
-
-  const handleRemove = useCallback(
-    async (otherOwnerId: string) => {
-      await removeFriend(otherOwnerId);
-    },
-    [removeFriend],
+    [],
   );
 
   const handleStartChat = useCallback(
@@ -92,175 +87,227 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
     [onOpenChange, onStartChat],
   );
 
+  const handleCopyCode = useCallback(() => {
+    if (!profile) return;
+    void navigator.clipboard.writeText(profile.friendCode);
+    setStatus({ type: "success", text: "Friend code copied!" });
+  }, [profile]);
+
   const { incoming, outgoing } = pendingRequests;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent fit>
-        <DialogHeader>
+      <DialogContent fit className="friends-dialog-content">
+        <VisuallyHidden asChild>
           <DialogTitle>Friends</DialogTitle>
-          <DialogCloseButton />
-        </DialogHeader>
-        <DialogBody>
-          <div className="friends-dialog-body">
-            {profile && (
-              <div style={{ marginBottom: 4 }}>
-                <div className="friends-section-label">Your friend code</div>
-                <div
-                  className="social-profile-tag"
-                  style={{ fontSize: 14, cursor: "pointer" }}
-                  title="Click to copy"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(profile.friendCode);
-                    setStatus({ type: "success", text: "Copied to clipboard!" });
-                  }}
-                >
+        </VisuallyHidden>
+        <VisuallyHidden asChild>
+          <DialogDescription>
+            Share your friend code to connect, or enter someone else&rsquo;s to
+            send a request.
+          </DialogDescription>
+        </VisuallyHidden>
+        <DialogCloseButton className="friends-dialog-close" />
+        <DialogBody className="friends-dialog-body">
+          <header className="friends-dialog-header">
+            <p className="friends-dialog-title">Friends</p>
+            <p className="friends-dialog-sub">
+              Share your code, or enter a friend&rsquo;s to connect.
+            </p>
+          </header>
+
+          {profile ? (
+            <button
+              type="button"
+              className="friends-code-card"
+              onClick={handleCopyCode}
+              title="Click to copy"
+            >
+              <div className="friends-code-card-info">
+                <span className="friends-section-label">Your friend code</span>
+                <span className="friends-code-card-value">
                   {profile.friendCode}
-                </div>
+                </span>
               </div>
-            )}
+              <span className="pill-btn">Copy</span>
+            </button>
+          ) : null}
 
-            <div className="friends-add-section">
-              <TextField
-                label="Add a friend"
-                hideLabel
-                placeholder="Enter friend code"
-                value={friendCode}
-                onChange={(e) => {
-                  setFriendCode((e.target as HTMLInputElement).value);
-                  setStatus(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    void handleAddFriend();
-                  }
-                }}
-              />
-              <button
-                type="button"
-                className="friends-add-button"
-                onClick={() => void handleAddFriend()}
-                disabled={!friendCode.trim() || sending}
-              >
-                Add
-              </button>
+          <form
+            className="friends-add-section"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleAddFriend();
+            }}
+          >
+            <TextField
+              label="Add a friend"
+              hideLabel
+              placeholder="Enter friend code"
+              value={friendCode}
+              onChange={(e) => {
+                setFriendCode((e.target as HTMLInputElement).value);
+                setStatus(null);
+              }}
+            />
+            <button
+              type="submit"
+              className="pill-btn pill-btn--primary pill-btn--lg friends-add-button"
+              disabled={!friendCode.trim() || sending}
+            >
+              {sending ? "Adding..." : "Add"}
+            </button>
+          </form>
+
+          {status ? (
+            <div className="friends-status-message" data-type={status.type}>
+              {status.text}
             </div>
+          ) : null}
 
-            {status && (
-              <div className="friends-status-message" data-type={status.type}>
-                {status.text}
+          {incoming.length > 0 ? (
+            <section className="friends-section">
+              <div className="friends-section-label">
+                Requests ({incoming.length})
               </div>
-            )}
-
-            {incoming.length > 0 && (
-              <>
-                <div className="friends-section-label">
-                  Requests ({incoming.length})
-                </div>
-                <div className="friends-list">
-                  {incoming.map((request) => (
-                    <div key={request.relationship.requesterOwnerId} className="friends-item">
+              <div className="friends-list">
+                {incoming.map((request) => {
+                  const ownerId = request.relationship.requesterOwnerId;
+                  const isPending = pendingActionOwnerId === ownerId;
+                  return (
+                    <div key={ownerId} className="friends-item">
                       <Avatar
                         fallback={request.profile.nickname}
                         src={request.profile.avatarUrl}
                         size="normal"
                       />
                       <div className="friends-item-info">
-                        <div className="friends-item-name">{request.profile.nickname}</div>
-                        <div className="friends-item-tag">{request.profile.friendCode}</div>
+                        <div className="friends-item-name">
+                          {request.profile.nickname}
+                        </div>
+                        <div className="friends-item-tag">
+                          {request.profile.friendCode}
+                        </div>
                       </div>
                       <div className="friends-item-actions">
                         <button
                           type="button"
-                          className="friends-item-action"
-                          data-variant="primary"
+                          className="pill-btn pill-btn--primary"
+                          disabled={isPending}
                           onClick={() =>
-                            void handleAccept(request.relationship.requesterOwnerId)
+                            void runOwnerAction(ownerId, () =>
+                              acceptRequest(ownerId),
+                            )
                           }
                         >
                           Accept
                         </button>
                         <button
                           type="button"
-                          className="friends-item-action"
+                          className="pill-btn"
+                          disabled={isPending}
                           onClick={() =>
-                            void handleDecline(request.relationship.requesterOwnerId)
+                            void runOwnerAction(ownerId, () =>
+                              declineRequest(ownerId),
+                            )
                           }
                         >
                           Decline
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </>
-            )}
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
 
-            {outgoing.length > 0 && (
-              <>
-                <div className="friends-section-label">Sent</div>
-                <div className="friends-list">
-                  {outgoing.map((request) => (
-                    <div key={request.relationship.addresseeOwnerId} className="friends-item">
-                      <Avatar
-                        fallback={request.profile.nickname}
-                        src={request.profile.avatarUrl}
-                        size="normal"
-                      />
-                      <div className="friends-item-info">
-                        <div className="friends-item-name">{request.profile.nickname}</div>
-                        <div className="friends-item-tag">Waiting for response</div>
+          {outgoing.length > 0 ? (
+            <section className="friends-section">
+              <div className="friends-section-label">Sent</div>
+              <div className="friends-list">
+                {outgoing.map((request) => (
+                  <div
+                    key={request.relationship.addresseeOwnerId}
+                    className="friends-item"
+                  >
+                    <Avatar
+                      fallback={request.profile.nickname}
+                      src={request.profile.avatarUrl}
+                      size="normal"
+                    />
+                    <div className="friends-item-info">
+                      <div className="friends-item-name">
+                        {request.profile.nickname}
+                      </div>
+                      <div className="friends-item-tag">
+                        Waiting for response
                       </div>
                     </div>
-                  ))}
-                </div>
-              </>
-            )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
+          <section className="friends-section">
             <div className="friends-section-label">
               Friends{friends.length > 0 ? ` (${friends.length})` : ""}
             </div>
             {friends.length === 0 ? (
               <div className="friends-empty">
-                No friends yet. Share your friend code or enter someone else's above to connect.
+                No friends yet. Share your friend code or enter someone
+                else&rsquo;s above to connect.
               </div>
             ) : (
               <div className="friends-list">
-                {friends.map((friend) => (
-                  <div key={friend.profile.ownerId} className="friends-item">
-                    <Avatar
-                      fallback={friend.profile.nickname}
-                      src={friend.profile.avatarUrl}
-                      size="normal"
-                    />
-                    <div className="friends-item-info">
-                      <div className="friends-item-name">{friend.profile.nickname}</div>
-                      <div className="friends-item-tag">{friend.profile.friendCode}</div>
+                {friends.map((friend) => {
+                  const ownerId = friend.profile.ownerId;
+                  const isOpening = pendingChatOwnerId === ownerId;
+                  const isRemoving = pendingActionOwnerId === ownerId;
+                  return (
+                    <div key={ownerId} className="friends-item">
+                      <Avatar
+                        fallback={friend.profile.nickname}
+                        src={friend.profile.avatarUrl}
+                        size="normal"
+                      />
+                      <div className="friends-item-info">
+                        <div className="friends-item-name">
+                          {friend.profile.nickname}
+                        </div>
+                        <div className="friends-item-tag">
+                          {friend.profile.friendCode}
+                        </div>
+                      </div>
+                      <div className="friends-item-actions">
+                        <button
+                          type="button"
+                          className="pill-btn"
+                          disabled={pendingChatOwnerId !== null}
+                          onClick={() => void handleStartChat(ownerId)}
+                        >
+                          {isOpening ? "Opening..." : "Message"}
+                        </button>
+                        <button
+                          type="button"
+                          className="pill-btn pill-btn--danger"
+                          disabled={isRemoving}
+                          onClick={() =>
+                            void runOwnerAction(ownerId, () =>
+                              removeFriend(ownerId),
+                            )
+                          }
+                        >
+                          {isRemoving ? "Removing..." : "Remove"}
+                        </button>
+                      </div>
                     </div>
-                    <div className="friends-item-actions">
-                      <button
-                        type="button"
-                        className="friends-item-action"
-                        disabled={pendingChatOwnerId !== null}
-                        onClick={() => void handleStartChat(friend.profile.ownerId)}
-                      >
-                        {pendingChatOwnerId === friend.profile.ownerId
-                          ? "Opening..."
-                          : "Message"}
-                      </button>
-                      <button
-                        type="button"
-                        className="friends-item-action"
-                        onClick={() => void handleRemove(friend.profile.ownerId)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
-          </div>
+          </section>
         </DialogBody>
       </DialogContent>
     </Dialog>

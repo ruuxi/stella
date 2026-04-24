@@ -28,14 +28,6 @@ import type {
   LocalLlmCredentialSummary,
 } from "@/shared/types/electron";
 import type { LegalDocument } from "@/global/legal/legal-text";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogCloseButton,
-  DialogBody,
-} from "@/ui/dialog";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import { NativeSelect } from "@/ui/native-select";
@@ -76,12 +68,6 @@ type BasicTabPermissionStatus = {
     | "restricted"
     | "unknown";
 };
-
-interface SettingsDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSignOut?: () => void;
-}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -2348,28 +2334,4 @@ export const SettingsScreen = ({
   );
 };
 
-// ---------------------------------------------------------------------------
-// SettingsDialog (legacy — wraps SettingsScreen in a Dialog shell)
-// ---------------------------------------------------------------------------
-
-export const SettingsDialog = ({
-  open,
-  onOpenChange,
-  onSignOut,
-}: SettingsDialogProps) => {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="settings-dialog">
-        <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
-          <DialogCloseButton />
-        </DialogHeader>
-        <DialogBody>
-          <SettingsScreen onSignOut={onSignOut} />
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-export default SettingsDialog;
+export default SettingsScreen;

@@ -710,49 +710,111 @@
    Friends Dialog
    ============================================ */
 
-.friends-dialog-body {
-  padding: 0 24px 20px;
+.friends-dialog-content[data-slot="dialog-content"] {
+  padding: 0;
+  overflow: hidden;
+  background: var(--popover);
+}
+
+.friends-dialog-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1;
+}
+
+.friends-dialog-body[data-slot="dialog-body"] {
+  padding: 32px 28px 24px;
+  gap: 18px;
+  align-items: stretch;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+}
+
+.friends-dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: center;
+  padding: 0 8px;
+}
+
+.friends-dialog-title {
+  margin: 0;
+  color: var(--text-strong, var(--foreground));
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(1.5rem, 2.8vw, 1.9rem);
+  font-weight: 450;
+  font-style: italic;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.friends-dialog-sub {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+}
+
+.friends-code-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg, 12px);
+  background: color-mix(in oklch, var(--foreground) 4%, var(--popover));
+  border: 1px solid var(--border);
+  text-align: left;
+  cursor: default;
+  transition: background 0.15s ease;
+  font-family: inherit;
+}
+
+.friends-code-card:hover {
+  background: color-mix(in oklch, var(--foreground) 7%, var(--popover));
+}
+
+.friends-code-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.friends-code-card-value {
+  font-family: var(--social-mono);
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: var(--text-strong, var(--foreground));
 }
 
 .friends-add-section {
   display: flex;
   gap: 8px;
-  align-items: flex-end;
+  align-items: stretch;
 }
 
 .friends-add-section [data-component="input"] {
   flex: 1;
 }
 
+.friends-add-section [data-component="input"] [data-slot="input-wrapper"] {
+  background: color-mix(in oklch, var(--foreground) 4%, var(--popover));
+}
+
 .friends-add-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 34px;
-  padding: 0 16px;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--social-fg);
-  border: 1px solid var(--social-border);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: default;
   flex-shrink: 0;
-  transition: opacity 0.15s ease, border-color 0.15s ease;
+  align-self: stretch;
 }
 
-.friends-add-button:hover:not(:disabled) {
-  opacity: 0.7;
-  border-color: color-mix(in oklch, var(--social-fg) 30%, transparent);
-}
-
-.friends-add-button:disabled {
-  opacity: 0.25;
-  cursor: not-allowed;
+.friends-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .friends-section-label {
@@ -761,9 +823,9 @@
   font-weight: 500;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--social-muted);
-  padding: 4px 0;
-  opacity: 0.6;
+  color: var(--muted-foreground);
+  padding: 0;
+  opacity: 0.7;
 }
 
 .friends-list {
@@ -777,12 +839,12 @@
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md, 8px);
   transition: background 0.15s ease;
 }
 
 .friends-item:hover {
-  background: color-mix(in oklch, var(--social-fg) 4%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 
 .friends-item-info {
@@ -800,70 +862,40 @@
 .friends-item-tag {
   font-size: 10.5px;
   font-family: var(--social-mono);
-  color: var(--social-muted);
-  opacity: 0.5;
+  color: var(--muted-foreground);
+  opacity: 0.7;
 }
 
 .friends-item-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
-}
-
-.friends-item-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  border: 1px solid var(--social-border);
-  background: transparent;
-  color: var(--social-fg);
-  cursor: default;
-  transition: opacity 0.15s ease, border-color 0.15s ease;
-}
-
-.friends-item-action:hover {
-  opacity: 0.7;
-  border-color: color-mix(in oklch, var(--social-fg) 30%, transparent);
-}
-
-.friends-item-action[data-variant="primary"] {
-  border-color: color-mix(in oklch, var(--social-fg) 30%, transparent);
-  background: color-mix(in oklch, var(--social-fg) 4%, transparent);
-}
-
-.friends-item-action[data-variant="primary"]:hover {
-  opacity: 0.7;
+  gap: 6px;
 }
 
 .friends-empty {
-  padding: 24px;
+  padding: 20px 8px;
   text-align: center;
   font-size: 13px;
-  color: var(--social-muted);
+  color: var(--muted-foreground);
   line-height: 1.55;
 }
 
 .friends-status-message {
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 8px);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12.5px;
   line-height: 1.4;
+  text-align: center;
 }
 
 .friends-status-message[data-type="success"] {
-  border: 1px solid color-mix(in srgb, oklch(0.7 0.15 145) 25%, transparent);
-  background: transparent;
-  color: oklch(0.55 0.1 145);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-base, var(--foreground));
 }
 
 .friends-status-message[data-type="error"] {
-  border: 1px solid color-mix(in srgb, var(--destructive) 20%, transparent);
-  background: transparent;
+  background: color-mix(in oklch, var(--destructive) 10%, transparent);
   color: var(--destructive);
 }
 
@@ -871,29 +903,63 @@
    New Chat Dialog
    ============================================ */
 
+.friends-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .new-chat-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 0 24px 20px;
+}
+
+.new-chat-list-label {
+  padding: 8px 12px 4px;
 }
 
 .new-chat-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  border-radius: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 8px);
   background: transparent;
   border: none;
   width: 100%;
   text-align: left;
   cursor: default;
   transition: background 0.15s ease;
+  font-family: inherit;
+  color: inherit;
 }
 
-.new-chat-item:hover {
-  background: color-mix(in oklch, var(--social-fg) 4%, transparent);
+.new-chat-item:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.new-chat-item[data-selected] {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.new-chat-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.new-chat-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in oklch, var(--foreground) 6%, var(--popover));
+  color: var(--text-base, var(--foreground));
+  flex-shrink: 0;
 }
 
 .new-chat-item-name {
@@ -901,6 +967,13 @@
   font-weight: 500;
   color: var(--text-strong);
   letter-spacing: -0.01em;
+  flex: 1;
+  min-width: 0;
+}
+
+.new-chat-item-check {
+  margin-left: auto;
+  color: var(--interactive, var(--foreground));
 }
 
 /* ============================================
