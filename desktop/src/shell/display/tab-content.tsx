@@ -9,14 +9,14 @@
  * path.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { PdfViewerCard } from "@/app/chat/PdfViewerCard";
-import {
-  MediaPreviewCard,
-} from "@/shell/MediaPreviewCard";
+import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
+import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { applyMorphdomHtml } from "@/shell/apply-morphdom-html";
+import { useFilePreviewActions } from "@/app/chat/hooks/use-file-preview-actions";
 
 type WithMediaMeta = {
   prompt?: string;
@@ -49,7 +49,9 @@ export const HtmlTabContent = ({ html }: { html: string }) => {
           const prompt = el.getAttribute("data-prompt");
           if (prompt) {
             window.dispatchEvent(
-              new CustomEvent("stella:send-message", { detail: { text: prompt } }),
+              new CustomEvent("stella:send-message", {
+                detail: { text: prompt },
+              }),
             );
           }
         }
@@ -67,6 +69,196 @@ export const OfficeTabContent = ({
     <OfficePreviewCard previewRef={previewRef} />
   </div>
 );
+
+const startOfficePreviewForPath = (
+  filePath: string,
+): Promise<OfficePreviewRef> => {
+  return (async () => {
+    const api = window.electronAPI?.officePreview;
+    if (typeof api?.start !== "function") {
+      throw new Error("Office previews require the Stella desktop app.");
+    }
+    return await api.start(filePath);
+  })();
+};
+
+export const OfficeFileTabContent = ({
+  filePath,
+  title,
+  refreshToken,
+}: {
+  filePath: string;
+  title?: string;
+  refreshToken?: number;
+}) => {
+  const [previewRef, setPreviewRef] = useState<OfficePreviewRef | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewRef(null);
+    setError(null);
+    void startOfficePreviewForPath(filePath)
+      .then((ref) => {
+        if (!cancelled) setPreviewRef(title ? { ...ref, title } : ref);
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setError(caught instanceof Error ? caught.message : String(caught));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filePath, title, refreshToken]);
+
+  if (previewRef) {
+    return <OfficeTabContent previewRef={previewRef} />;
+  }
+
+  return (
+    <div className="display-sidebar__rich">
+      <div className="display-file-preview display-file-preview--placeholder">
+        <div className="display-file-preview__eyebrow">
+          {error ? "Preview error" : "Preparing preview"}
+        </div>
+        <div className="display-file-preview__title" title={filePath}>
+          {title ?? filePath.split(/[\\/]/).pop() ?? "Document"}
+        </div>
+        {error && <div className="display-file-preview__error">{error}</div>}
+      </div>
+    </div>
+  );
+};
+
+const textDecoder = new TextDecoder("utf-8");
+
+const parseDelimitedRows = (
+  text: string,
+  delimiter: "," | "\t",
+): string[][] => {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]!;
+    const next = text[index + 1];
+    if (quoted) {
+      if (char === '"' && next === '"') {
+        cell += '"';
+        index += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+    if (char === '"') {
+      quoted = true;
+    } else if (char === delimiter) {
+      row.push(cell);
+      cell = "";
+    } else if (char === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else if (char !== "\r") {
+      cell += char;
+    }
+  }
+
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+};
+
+export const DelimitedTableTabContent = ({
+  filePath,
+  title,
+}: {
+  filePath: string;
+  title?: string;
+}) => {
+  const { bytes, error, loading } = useDisplayFileBytes(
+    filePath,
+    "Spreadsheet preview requires the Stella desktop app.",
+  );
+  const delimiter = filePath.toLowerCase().endsWith(".tsv") ? "\t" : ",";
+  const rows = useMemo(() => {
+    if (!bytes) return [];
+    return parseDelimitedRows(textDecoder.decode(bytes), delimiter).slice(
+      0,
+      1_000,
+    );
+  }, [bytes, delimiter]);
+  const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0);
+  const header = rows[0] ?? [];
+  const body = rows.slice(1);
+  const { actionStatus, handleSave, handleCopy } = useFilePreviewActions({
+    sourcePath: filePath,
+    suggestedName: title ?? filePath.split(/[\\/]/).pop() ?? "data.csv",
+  });
+
+  return (
+    <div className="display-sidebar__rich display-sidebar__rich--table">
+      <section className="display-file-preview display-file-preview--table">
+        <header className="display-file-preview__header">
+          <div className="display-file-preview__title-group">
+            <span className="display-file-preview__eyebrow">Spreadsheet</span>
+            <div className="display-file-preview__title" title={filePath}>
+              {title ?? filePath.split(/[\\/]/).pop() ?? "Spreadsheet"}
+            </div>
+          </div>
+          <div className="display-file-preview__actions">
+            <button type="button" onClick={handleSave}>
+              Save
+            </button>
+            <button type="button" onClick={handleCopy}>
+              Copy
+            </button>
+            {actionStatus && <span>{actionStatus}</span>}
+          </div>
+        </header>
+        {error ? (
+          <div className="display-file-preview__error">{error}</div>
+        ) : loading ? (
+          <div className="display-file-preview__empty">Loading…</div>
+        ) : rows.length === 0 ? (
+          <div className="display-file-preview__empty">No rows found.</div>
+        ) : (
+          <div className="display-file-preview__table-wrap">
+            <table className="display-file-preview__table">
+              <thead>
+                <tr>
+                  {Array.from({ length: columnCount }, (_, index) => (
+                    <th key={index}>
+                      {header[index] || `Column ${index + 1}`}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {body.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {Array.from({ length: columnCount }, (_, colIndex) => (
+                      <td key={colIndex}>{row[colIndex] ?? ""}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+};
 
 export const PdfTabContent = ({
   filePath,

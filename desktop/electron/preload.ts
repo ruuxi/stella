@@ -23,6 +23,7 @@ import {
   IPC_DISCOVERY_WRITE_KNOWLEDGE,
   IPC_MORPH_RENDERER_PAINTED,
   IPC_OFFICE_PREVIEW_LIST,
+  IPC_OFFICE_PREVIEW_START,
   IPC_OFFICE_PREVIEW_UPDATE,
   IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE,
 } from "../src/shared/contracts/ipc-channels.js";
@@ -148,7 +149,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   officePreview: {
     list: () =>
-      ipcRenderer.invoke(IPC_OFFICE_PREVIEW_LIST) as Promise<OfficePreviewSnapshot[]>,
+      ipcRenderer.invoke(IPC_OFFICE_PREVIEW_LIST) as Promise<
+        OfficePreviewSnapshot[]
+      >,
+    start: (filePath: string) =>
+      ipcRenderer.invoke(IPC_OFFICE_PREVIEW_START, { filePath }) as Promise<{
+        sessionId: string;
+        title: string;
+        sourcePath: string;
+      }>,
     onUpdate: onIpc<OfficePreviewSnapshot>(IPC_OFFICE_PREVIEW_UPDATE),
   },
 
@@ -176,25 +185,27 @@ contextBridge.exposeInMainWorld("electronAPI", {
     screenshot: (point?: { x: number; y: number }) =>
       ipcRenderer.invoke("screenshot:capture", point),
     visionScreenshots: (point?: { x: number; y: number }) =>
-      ipcRenderer.invoke("screenshot:captureVision", point) as Promise<Array<{
-        dataUrl: string;
-        width: number;
-        height: number;
-        displayId: number;
-        screenNumber: number;
-        label: string;
-        isPrimaryFocus: boolean;
-        coordinateSpace: {
-          x: number;
-          y: number;
-          logicalWidth: number;
-          logicalHeight: number;
-          sourceWidth: number;
-          sourceHeight: number;
-          targetWidth: number;
-          targetHeight: number;
-        };
-      }>>,
+      ipcRenderer.invoke("screenshot:captureVision", point) as Promise<
+        Array<{
+          dataUrl: string;
+          width: number;
+          height: number;
+          displayId: number;
+          screenNumber: number;
+          label: string;
+          isPrimaryFocus: boolean;
+          coordinateSpace: {
+            x: number;
+            y: number;
+            logicalWidth: number;
+            logicalHeight: number;
+            sourceWidth: number;
+            sourceHeight: number;
+            targetWidth: number;
+            targetHeight: number;
+          };
+        }>
+      >,
     removeScreenshot: (index: number) =>
       ipcRenderer.send("chatContext:removeScreenshot", index),
     submitRegionSelection: (payload: {
@@ -271,9 +282,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "overlay:showVoice",
     ),
     onHideVoice: onIpcSignal("overlay:hideVoice"),
-    onShowDictation: onIpc<{ x: number; y: number }>(
-      "overlay:showDictation",
-    ),
+    onShowDictation: onIpc<{ x: number; y: number }>("overlay:showDictation"),
     onHideDictation: onIpcSignal("overlay:hideDictation"),
     onShowScreenGuide: onIpc<{
       annotations: Array<{
@@ -345,13 +354,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   screenGuide: {
-    show: (annotations: Array<{
-      id: string;
-      label: string;
-      x: number;
-      y: number;
-    }>) =>
-      ipcRenderer.send("screenGuide:show", { annotations }),
+    show: (
+      annotations: Array<{
+        id: string;
+        label: string;
+        x: number;
+        y: number;
+      }>,
+    ) => ipcRenderer.send("screenGuide:show", { annotations }),
     hide: () => ipcRenderer.send("screenGuide:hide"),
   },
 
@@ -459,7 +469,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       conversationId: string;
       userPrompt: string;
       selectedText?: string | null;
-      chatContext?: import("../../runtime/contracts/index.js").ChatContext | null;
+      chatContext?:
+        | import("../../runtime/contracts/index.js").ChatContext
+        | null;
       deviceId?: string;
       platform?: string;
       timezone?: string;
@@ -634,15 +646,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
       authenticated: boolean;
       token?: string;
       hasConnectedAccount?: boolean;
-    }) =>
-      ipcRenderer.invoke("auth:setState", payload),
+    }) => ipcRenderer.invoke("auth:setState", payload),
     completeRuntimeAuthRefresh: (payload: {
       requestId: string;
       authenticated: boolean;
       token?: string;
       hasConnectedAccount?: boolean;
-    }) =>
-      ipcRenderer.invoke(IPC_AUTH_RUNTIME_REFRESH_COMPLETE, payload),
+    }) => ipcRenderer.invoke(IPC_AUTH_RUNTIME_REFRESH_COMPLETE, payload),
     setCloudSyncEnabled: (payload: { enabled: boolean }) =>
       ipcRenderer.invoke("host:setCloudSyncEnabled", payload),
     onAuthCallback: onIpc<{ url: string }>("auth:callback"),
@@ -701,16 +711,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setLocalSyncMode: (mode: string) =>
       ipcRenderer.invoke(IPC_PREFERENCES_SET_SYNC_MODE, mode),
     getRadialTriggerKey: () =>
-      ipcRenderer.invoke(IPC_PREFERENCES_GET_RADIAL_TRIGGER) as Promise<RadialTriggerCode>,
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_GET_RADIAL_TRIGGER,
+      ) as Promise<RadialTriggerCode>,
     setRadialTriggerKey: (triggerKey: RadialTriggerCode) =>
       ipcRenderer.invoke(
         IPC_PREFERENCES_SET_RADIAL_TRIGGER,
         triggerKey,
       ) as Promise<{ triggerKey: RadialTriggerCode }>,
-    getBackupStatus: () =>
-      ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),
-    backUpNow: () =>
-      ipcRenderer.invoke(IPC_BACKUP_RUN_NOW),
+    getBackupStatus: () => ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),
+    backUpNow: () => ipcRenderer.invoke(IPC_BACKUP_RUN_NOW),
     listBackups: (limit?: number) =>
       ipcRenderer.invoke(IPC_BACKUP_LIST, { limit }),
     restoreBackup: (snapshotId: string) =>
@@ -723,10 +733,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       selfModAgentEngine: "default" | "claude_code_local";
       maxAgentConcurrency: number;
     }) =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_SYNC_MODELS,
-        payload,
-      ) as Promise<{ ok: boolean }>,
+      ipcRenderer.invoke(IPC_PREFERENCES_SYNC_MODELS, payload) as Promise<{
+        ok: boolean;
+      }>,
     listLlmCredentials: () =>
       ipcRenderer.invoke("llmCredentials:list") as Promise<
         Array<{
@@ -781,7 +790,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   discovery: {
     checkCoreMemoryExists: () =>
       ipcRenderer.invoke(IPC_DISCOVERY_CORE_MEMORY_EXISTS),
-    checkKnowledgeExists: () => ipcRenderer.invoke(IPC_DISCOVERY_KNOWLEDGE_EXISTS),
+    checkKnowledgeExists: () =>
+      ipcRenderer.invoke(IPC_DISCOVERY_KNOWLEDGE_EXISTS),
     collectData: (options?: {
       selectedBrowser?: string;
       selectedProfile?: string;
@@ -855,9 +865,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         } | null;
       }>,
     captureAppWindow: (
-      target:
-        | string
-        | { appName?: string | null; pid?: number | null },
+      target: string | { appName?: string | null; pid?: number | null },
     ) => {
       const payload =
         typeof target === "string"
@@ -1013,13 +1021,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       conversationId: string;
       maxItems?: number;
       windowBy?: "events" | "visible_messages";
-    }) =>
-      ipcRenderer.invoke("localChat:listEvents", payload),
+    }) => ipcRenderer.invoke("localChat:listEvents", payload),
     getEventCount: (payload: {
       conversationId: string;
       countBy?: "events" | "visible_messages";
-    }) =>
-      ipcRenderer.invoke("localChat:getEventCount", payload),
+    }) => ipcRenderer.invoke("localChat:getEventCount", payload),
     persistDiscoveryWelcome: (payload: {
       conversationId: string;
       message: string;

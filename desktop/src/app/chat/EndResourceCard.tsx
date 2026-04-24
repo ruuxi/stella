@@ -22,6 +22,8 @@ const labelForPayload = (payload: DisplayPayload): string => {
       return getDisplayPayloadTitle(payload);
     case "office":
       return basenameOf(payload.previewRef.sourcePath);
+    case "file-artifact":
+      return basenameOf(payload.filePath);
     case "pdf":
       return basenameOf(payload.filePath);
     case "media":
@@ -45,6 +47,8 @@ const tooltipForPayload = (payload: DisplayPayload): string | undefined => {
   switch (payload.kind) {
     case "office":
       return payload.previewRef.sourcePath;
+    case "file-artifact":
+      return payload.filePath;
     case "pdf":
       return payload.filePath;
     case "media":

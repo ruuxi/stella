@@ -36,6 +36,7 @@ import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 import {
   kindForPath,
   basenameOf,
+  fileArtifactPayloadForPath,
   pickPrimaryEditedPath,
 } from "@/shell/display/path-to-viewer";
 import type { EventRecord } from "./event-transforms";
@@ -102,19 +103,22 @@ const resolveRelativePathFromKnownAbsolute = (
 
 const fileChangesForResult = (event: EventRecord): FileChangeRecord[] => {
   if (!isToolResult(event) && !isAgentCompletedEvent(event)) return [];
-  const candidate = (event.payload as { fileChanges?: unknown } | undefined)?.fileChanges;
+  const candidate = (event.payload as { fileChanges?: unknown } | undefined)
+    ?.fileChanges;
   return isFileChangeRecordArray(candidate) ? candidate : [];
 };
 
 const producedFilesForResult = (event: EventRecord): ProducedFileRecord[] => {
   if (!isToolResult(event) && !isAgentCompletedEvent(event)) return [];
-  const candidate = (event.payload as { producedFiles?: unknown } | undefined)?.producedFiles;
+  const candidate = (event.payload as { producedFiles?: unknown } | undefined)
+    ?.producedFiles;
   return isProducedFileRecordArray(candidate) ? candidate : [];
 };
 
 const officeRefForResult = (event: EventRecord): OfficePreviewRef | null => {
   if (!isToolResult(event)) return null;
-  const ref = (event.payload as { officePreviewRef?: unknown }).officePreviewRef;
+  const ref = (event.payload as { officePreviewRef?: unknown })
+    .officePreviewRef;
   return isOfficePreviewRef(ref) ? ref : null;
 };
 
@@ -193,17 +197,18 @@ const buildPayloadFromBarePath = (
     case "office-document":
     case "office-spreadsheet":
     case "office-slides":
-      return options?.produced === true
-        ? {
-            kind: "media",
-            asset: {
-              kind: "download",
-              filePath,
-              label: basenameOf(filePath),
-            },
-            createdAt,
-          }
-        : null;
+      if (options?.produced !== true) return null;
+      return (
+        fileArtifactPayloadForPath(filePath, createdAt) ?? {
+          kind: "media",
+          asset: {
+            kind: "download",
+            filePath,
+            label: basenameOf(filePath),
+          },
+          createdAt,
+        }
+      );
     case "pdf":
       return { kind: "pdf", filePath };
     case "image":
@@ -277,9 +282,9 @@ const resolveReferencedMarkdownPath = (
   if (!trimmed) return null;
   if (trimmed.startsWith("/")) return normalizePosixPath(trimmed);
   return (
-    resolvePathAgainstCwd(trimmed, turnCwd)
-    ?? resolveRelativePathFromKnownAbsolute(trimmed, absoluteCandidates)
-    ?? trimmed
+    resolvePathAgainstCwd(trimmed, turnCwd) ??
+    resolveRelativePathFromKnownAbsolute(trimmed, absoluteCandidates) ??
+    trimmed
   );
 };
 
@@ -353,7 +358,8 @@ export const deriveTurnResource = (
     for (const record of records) {
       const resolved = resolveFileChange(record, event.timestamp);
       if (!resolved) continue;
-      if (producedSeen.has(resolved.path) || editedSeen.has(resolved.path)) continue;
+      if (producedSeen.has(resolved.path) || editedSeen.has(resolved.path))
+        continue;
       producedSeen.add(resolved.path);
       producedPaths.push(resolved.path);
       if (!payloadByPath.has(resolved.path)) {
@@ -373,7 +379,11 @@ export const deriveTurnResource = (
   // markdown links in the assistant message text.
   const referencedPaths: string[] = [];
   const referencedSeen = new Set<string>();
-  const absoluteCandidates = [...editedPaths, ...producedPaths, ...referencedFromOffice.keys()]
+  const absoluteCandidates = [
+    ...editedPaths,
+    ...producedPaths,
+    ...referencedFromOffice.keys(),
+  ]
     .filter((candidate) => candidate.startsWith("/"))
     .map(normalizePosixPath);
   const pushReferenced = (path: string | null) => {
@@ -381,7 +391,8 @@ export const deriveTurnResource = (
     referencedSeen.add(path);
     referencedPaths.push(path);
   };
-  for (const sourcePath of referencedFromOffice.keys()) pushReferenced(sourcePath);
+  for (const sourcePath of referencedFromOffice.keys())
+    pushReferenced(sourcePath);
   for (const linkPath of extractMarkdownLinkPaths(assistantText)) {
     pushReferenced(
       resolveReferencedMarkdownPath(linkPath, turnCwd, absoluteCandidates),

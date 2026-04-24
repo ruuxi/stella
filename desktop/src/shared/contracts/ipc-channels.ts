@@ -27,6 +27,7 @@ export const IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE =
 export const IPC_DISPLAY_UPDATE = "display:update" as const;
 export const IPC_DISPLAY_READ_FILE = "display:readFile" as const;
 export const IPC_OFFICE_PREVIEW_LIST = "officePreview:list" as const;
+export const IPC_OFFICE_PREVIEW_START = "officePreview:start" as const;
 export const IPC_OFFICE_PREVIEW_UPDATE = "officePreview:update" as const;
 
 // ── UI State ────────────────────────────────────────────────────────────────
@@ -45,7 +46,8 @@ export const IPC_MORPH_COMPLETE = "morph:complete" as const;
 export const IPC_CHAT_CONTEXT_GET = "chatContext:get" as const;
 export const IPC_CHAT_CONTEXT_UPDATED = "chatContext:updated" as const;
 export const IPC_CHAT_CONTEXT_ACK = "chatContext:ack" as const;
-export const IPC_CHAT_CONTEXT_REMOVE_SCREENSHOT = "chatContext:removeScreenshot" as const;
+export const IPC_CHAT_CONTEXT_REMOVE_SCREENSHOT =
+  "chatContext:removeScreenshot" as const;
 export const IPC_SCREENSHOT_CAPTURE = "screenshot:capture" as const;
 export const IPC_REGION_SELECT = "region:select" as const;
 export const IPC_REGION_CLICK = "region:click" as const;
@@ -63,8 +65,10 @@ export const IPC_RADIAL_CURSOR = "radial:cursor" as const;
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
 export const IPC_OVERLAY_SET_INTERACTIVE = "overlay:setInteractive" as const;
-export const IPC_OVERLAY_START_REGION_CAPTURE = "overlay:startRegionCapture" as const;
-export const IPC_OVERLAY_END_REGION_CAPTURE = "overlay:endRegionCapture" as const;
+export const IPC_OVERLAY_START_REGION_CAPTURE =
+  "overlay:startRegionCapture" as const;
+export const IPC_OVERLAY_END_REGION_CAPTURE =
+  "overlay:endRegionCapture" as const;
 export const IPC_OVERLAY_SHOW_MINI = "overlay:showMini" as const;
 export const IPC_OVERLAY_HIDE_MINI = "overlay:hideMini" as const;
 export const IPC_OVERLAY_RESTORE_MINI = "overlay:restoreMini" as const;
@@ -85,8 +89,10 @@ export const IPC_OVERLAY_MORPH_DONE = "overlay:morphDone" as const;
  *  reverse crossfade — replaces a fixed `setTimeout` settle. */
 export const IPC_MORPH_RENDERER_PAINTED = "morph:rendererPainted" as const;
 export const IPC_OVERLAY_WINDOW_HIGHLIGHT = "overlay:windowHighlight" as const;
-export const IPC_OVERLAY_SHOW_WINDOW_HIGHLIGHT = "overlay:showWindowHighlight" as const;
-export const IPC_OVERLAY_HIDE_WINDOW_HIGHLIGHT = "overlay:hideWindowHighlight" as const;
+export const IPC_OVERLAY_SHOW_WINDOW_HIGHLIGHT =
+  "overlay:showWindowHighlight" as const;
+export const IPC_OVERLAY_HIDE_WINDOW_HIGHLIGHT =
+  "overlay:hideWindowHighlight" as const;
 export const IPC_OVERLAY_PREVIEW_WINDOW_HIGHLIGHT_AT_POINT =
   "overlay:previewWindowHighlightAtPoint" as const;
 
@@ -125,7 +131,8 @@ export const IPC_DICTATION_TRIGGER = "dictation:trigger" as const;
 
 export const IPC_AGENT_HEALTH_CHECK = "agent:healthCheck" as const;
 export const IPC_AGENT_GET_ACTIVE_RUN = "agent:getActiveRun" as const;
-export const IPC_AGENT_GET_SESSION_STARTED_AT = "agent:getAppSessionStartedAt" as const;
+export const IPC_AGENT_GET_SESSION_STARTED_AT =
+  "agent:getAppSessionStartedAt" as const;
 export const IPC_AGENT_START_CHAT = "agent:startChat" as const;
 export const IPC_AGENT_CANCEL_CHAT = "agent:cancelChat" as const;
 export const IPC_AGENT_RESUME = "agent:resume" as const;
@@ -134,7 +141,8 @@ export const IPC_AGENT_SELF_MOD_HMR_STATE = "agent:selfModHmrState" as const;
 export const IPC_SELFMOD_REVERT = "selfmod:revert" as const;
 export const IPC_SELFMOD_LAST_FEATURE = "selfmod:lastFeature" as const;
 export const IPC_SELFMOD_RECENT_FEATURES = "selfmod:recentFeatures" as const;
-export const IPC_DEVTEST_TRIGGER_VITE_ERROR = "devtest:triggerViteError" as const;
+export const IPC_DEVTEST_TRIGGER_VITE_ERROR =
+  "devtest:triggerViteError" as const;
 export const IPC_DEVTEST_FIX_VITE_ERROR = "devtest:fixViteError" as const;
 
 // ── System ──────────────────────────────────────────────────────────────────
@@ -155,7 +163,8 @@ export const IPC_AUTH_RUNTIME_REFRESH_COMPLETE =
 export const IPC_APP_QUIT_FOR_RESTART = "app:quitForRestart" as const;
 export const IPC_SYSTEM_OPEN_FDA = "system:openFullDiskAccess" as const;
 export const IPC_PERMISSIONS_GET_STATUS = "permissions:getStatus" as const;
-export const IPC_PERMISSIONS_OPEN_SETTINGS = "permissions:openSettings" as const;
+export const IPC_PERMISSIONS_OPEN_SETTINGS =
+  "permissions:openSettings" as const;
 export const IPC_PERMISSIONS_REQUEST = "permissions:request" as const;
 export const IPC_PERMISSIONS_RESET_MICROPHONE =
   "permissions:resetMicrophone" as const;
@@ -165,9 +174,12 @@ export const IPC_SHELL_SAVE_FILE_AS = "shell:saveFileAs" as const;
 export const IPC_SHELL_KILL_BY_PORT = "shell:killByPort" as const;
 export const IPC_PREFERENCES_GET_SYNC_MODE = "preferences:getSyncMode" as const;
 export const IPC_PREFERENCES_SET_SYNC_MODE = "preferences:setSyncMode" as const;
-export const IPC_PREFERENCES_SYNC_MODELS = "preferences:syncLocalModelPreferences" as const;
-export const IPC_PREFERENCES_GET_RADIAL_TRIGGER = "preferences:getRadialTrigger" as const;
-export const IPC_PREFERENCES_SET_RADIAL_TRIGGER = "preferences:setRadialTrigger" as const;
+export const IPC_PREFERENCES_SYNC_MODELS =
+  "preferences:syncLocalModelPreferences" as const;
+export const IPC_PREFERENCES_GET_RADIAL_TRIGGER =
+  "preferences:getRadialTrigger" as const;
+export const IPC_PREFERENCES_SET_RADIAL_TRIGGER =
+  "preferences:setRadialTrigger" as const;
 export const IPC_BACKUP_GET_STATUS = "backup:getStatus" as const;
 export const IPC_BACKUP_RUN_NOW = "backup:runNow" as const;
 export const IPC_BACKUP_LIST = "backup:list" as const;
@@ -182,7 +194,8 @@ export const IPC_CREDENTIAL_CANCEL = "credential:cancel" as const;
 
 // ── Onboarding ──────────────────────────────────────────────────────────────
 
-export const IPC_ONBOARDING_SYNTHESIZE = "onboarding:synthesizeCoreMemory" as const;
+export const IPC_ONBOARDING_SYNTHESIZE =
+  "onboarding:synthesizeCoreMemory" as const;
 
 // ── Discovery ───────────────────────────────────────────────────────────────
 
@@ -225,15 +238,19 @@ export const IPC_MEDIA_GET_DIR = "media:getStellaMediaDir" as const;
 
 export const IPC_SCHEDULE_LIST_CRON_JOBS = "schedule:listCronJobs" as const;
 export const IPC_SCHEDULE_LIST_HEARTBEATS = "schedule:listHeartbeats" as const;
-export const IPC_SCHEDULE_LIST_CONVERSATION_EVENTS = "schedule:listConversationEvents" as const;
-export const IPC_SCHEDULE_GET_EVENT_COUNT = "schedule:getConversationEventCount" as const;
+export const IPC_SCHEDULE_LIST_CONVERSATION_EVENTS =
+  "schedule:listConversationEvents" as const;
+export const IPC_SCHEDULE_GET_EVENT_COUNT =
+  "schedule:getConversationEventCount" as const;
 export const IPC_SCHEDULE_UPDATED = "schedule:updated" as const;
 
 // ── Store ───────────────────────────────────────────────────────────────────
 
 export const IPC_STORE_LIST_LOCAL_FEATURES = "store:listLocalFeatures" as const;
-export const IPC_STORE_LIST_FEATURE_BATCHES = "store:listFeatureBatches" as const;
-export const IPC_STORE_CREATE_RELEASE_DRAFT = "store:createReleaseDraft" as const;
+export const IPC_STORE_LIST_FEATURE_BATCHES =
+  "store:listFeatureBatches" as const;
+export const IPC_STORE_CREATE_RELEASE_DRAFT =
+  "store:createReleaseDraft" as const;
 export const IPC_STORE_PUBLISH_RELEASE = "store:publishRelease" as const;
 export const IPC_STORE_LIST_PACKAGES = "store:listPackages" as const;
 export const IPC_STORE_GET_PACKAGE = "store:getPackage" as const;
@@ -245,25 +262,37 @@ export const IPC_STORE_UNINSTALL = "store:uninstallMod" as const;
 
 // ── Local Chat ──────────────────────────────────────────────────────────────
 
-export const IPC_LOCAL_CHAT_GET_OR_CREATE_ID = "localChat:getOrCreateDefaultConversationId" as const;
+export const IPC_LOCAL_CHAT_GET_OR_CREATE_ID =
+  "localChat:getOrCreateDefaultConversationId" as const;
 export const IPC_LOCAL_CHAT_LIST_EVENTS = "localChat:listEvents" as const;
-export const IPC_LOCAL_CHAT_GET_EVENT_COUNT = "localChat:getEventCount" as const;
-export const IPC_LOCAL_CHAT_PERSIST_WELCOME = "localChat:persistDiscoveryWelcome" as const;
-export const IPC_LOCAL_CHAT_LIST_SYNC_MESSAGES = "localChat:listSyncMessages" as const;
-export const IPC_LOCAL_CHAT_GET_SYNC_CHECKPOINT = "localChat:getSyncCheckpoint" as const;
-export const IPC_LOCAL_CHAT_SET_SYNC_CHECKPOINT = "localChat:setSyncCheckpoint" as const;
+export const IPC_LOCAL_CHAT_GET_EVENT_COUNT =
+  "localChat:getEventCount" as const;
+export const IPC_LOCAL_CHAT_PERSIST_WELCOME =
+  "localChat:persistDiscoveryWelcome" as const;
+export const IPC_LOCAL_CHAT_LIST_SYNC_MESSAGES =
+  "localChat:listSyncMessages" as const;
+export const IPC_LOCAL_CHAT_GET_SYNC_CHECKPOINT =
+  "localChat:getSyncCheckpoint" as const;
+export const IPC_LOCAL_CHAT_SET_SYNC_CHECKPOINT =
+  "localChat:setSyncCheckpoint" as const;
 export const IPC_LOCAL_CHAT_UPDATED = "localChat:updated" as const;
 
 // ── Social Sessions ─────────────────────────────────────────────────────────
 
 export const IPC_SOCIAL_SESSIONS_CREATE = "socialSessions:create" as const;
-export const IPC_SOCIAL_SESSIONS_UPDATE_STATUS = "socialSessions:updateStatus" as const;
-export const IPC_SOCIAL_SESSIONS_QUEUE_TURN = "socialSessions:queueTurn" as const;
-export const IPC_SOCIAL_SESSIONS_GET_STATUS = "socialSessions:getStatus" as const;
+export const IPC_SOCIAL_SESSIONS_UPDATE_STATUS =
+  "socialSessions:updateStatus" as const;
+export const IPC_SOCIAL_SESSIONS_QUEUE_TURN =
+  "socialSessions:queueTurn" as const;
+export const IPC_SOCIAL_SESSIONS_GET_STATUS =
+  "socialSessions:getStatus" as const;
 
 // ── Google Workspace ────────────────────────────────────────────────────────
 
-export const IPC_GOOGLE_WORKSPACE_AUTH_STATUS = "googleWorkspace:authStatus" as const;
+export const IPC_GOOGLE_WORKSPACE_AUTH_STATUS =
+  "googleWorkspace:authStatus" as const;
 export const IPC_GOOGLE_WORKSPACE_CONNECT = "googleWorkspace:connect" as const;
-export const IPC_GOOGLE_WORKSPACE_DISCONNECT = "googleWorkspace:disconnect" as const;
-export const IPC_GOOGLE_WORKSPACE_AUTH_REQUIRED = "googleWorkspace:authRequired" as const;
+export const IPC_GOOGLE_WORKSPACE_DISCONNECT =
+  "googleWorkspace:disconnect" as const;
+export const IPC_GOOGLE_WORKSPACE_AUTH_REQUIRED =
+  "googleWorkspace:authRequired" as const;

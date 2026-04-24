@@ -386,11 +386,13 @@ export type ElectronDictationApi = {
    * Replace the global shortcut accelerator. Pass an empty string to
    * disable the shortcut entirely.
    */
-  setShortcut: (
-    shortcut: string,
-  ) => Promise<VoiceShortcutRegistrationResult>;
-  onOverlayStart: (callback: (data: { sessionId: string }) => void) => () => void;
-  onOverlayStop: (callback: (data: { sessionId: string }) => void) => () => void;
+  setShortcut: (shortcut: string) => Promise<VoiceShortcutRegistrationResult>;
+  onOverlayStart: (
+    callback: (data: { sessionId: string }) => void,
+  ) => () => void;
+  onOverlayStop: (
+    callback: (data: { sessionId: string }) => void,
+  ) => () => void;
   overlayCompleted: (payload: { sessionId: string; text: string }) => void;
   overlayFailed: (payload: { sessionId: string; error?: string }) => void;
   inAppStarted: (payload: { startId?: string }) => void;
@@ -848,6 +850,7 @@ export type ElectronDisplayApi = {
 
 export type ElectronOfficePreviewApi = {
   list: () => Promise<OfficePreviewSnapshot[]>;
+  start: (filePath: string) => Promise<OfficePreviewRef>;
   onUpdate: (callback: (snapshot: OfficePreviewSnapshot) => void) => () => void;
 };
 

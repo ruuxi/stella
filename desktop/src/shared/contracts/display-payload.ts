@@ -1,6 +1,12 @@
 import type { OfficePreviewRef } from "./office-preview";
 import { isOfficePreviewRef } from "./office-preview";
 
+export type DisplayFileArtifactKind =
+  | "office-document"
+  | "office-spreadsheet"
+  | "office-slides"
+  | "delimited-table";
+
 /**
  * Tagged union for everything the Display sidebar can show.
  *
@@ -8,6 +14,8 @@ import { isOfficePreviewRef } from "./office-preview";
  *              Morphdom-applied into the sidebar (existing behavior).
  * - `office` — docx/xlsx/pptx live-preview produced by `stella-office preview`.
  *              Renders the existing OfficePreviewCard (iframe + auto-refresh).
+ * - `file-artifact` — a previewable local file without an existing live
+ *              preview ref. The sidebar resolves it into the right viewer.
  * - `pdf`    — local PDF file rendered with react-pdf in the renderer.
  * - `media`  — generated media (image/video/audio/3d/text) materialized to
  *              `state/media/outputs/`. Emitted by the media materializer when
@@ -20,6 +28,13 @@ import { isOfficePreviewRef } from "./office-preview";
 export type DisplayPayload =
   | { kind: "html"; html: string }
   | { kind: "office"; previewRef: OfficePreviewRef; title?: string }
+  | {
+      kind: "file-artifact";
+      filePath: string;
+      artifactKind: DisplayFileArtifactKind;
+      title?: string;
+      createdAt?: number;
+    }
   | { kind: "pdf"; filePath: string; title?: string }
   | {
       kind: "media";
@@ -77,6 +92,19 @@ export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
   if (value.kind === "office") {
     return isOfficePreviewRef((value as { previewRef?: unknown }).previewRef);
   }
+  if (value.kind === "file-artifact") {
+    const artifactKind = (value as { artifactKind?: unknown }).artifactKind;
+    const createdAt = (value as { createdAt?: unknown }).createdAt;
+    return (
+      typeof (value as { filePath?: unknown }).filePath === "string" &&
+      (createdAt === undefined ||
+        (typeof createdAt === "number" && Number.isFinite(createdAt))) &&
+      (artifactKind === "office-document" ||
+        artifactKind === "office-spreadsheet" ||
+        artifactKind === "office-slides" ||
+        artifactKind === "delimited-table")
+    );
+  }
   if (value.kind === "pdf") {
     return typeof (value as { filePath?: unknown }).filePath === "string";
   }
@@ -109,6 +137,9 @@ export const getDisplayPayloadTitle = (payload: DisplayPayload): string => {
   if (payload.kind === "office") {
     return payload.title ?? payload.previewRef.title;
   }
+  if (payload.kind === "file-artifact") {
+    return payload.title ?? payload.filePath.split("/").pop() ?? "File";
+  }
   if (payload.kind === "pdf") {
     return payload.title ?? payload.filePath.split("/").pop() ?? "Document";
   }
@@ -117,7 +148,9 @@ export const getDisplayPayloadTitle = (payload: DisplayPayload): string => {
   if (payload.capability) return payload.capability.replace(/_/g, " ");
   switch (payload.asset.kind) {
     case "image":
-      return payload.asset.filePaths.length > 1 ? "Generated images" : "Generated image";
+      return payload.asset.filePaths.length > 1
+        ? "Generated images"
+        : "Generated image";
     case "video":
       return "Generated video";
     case "audio":
