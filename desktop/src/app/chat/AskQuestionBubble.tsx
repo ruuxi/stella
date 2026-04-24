@@ -31,10 +31,15 @@ export type AskQuestionPayload = {
   questions: AskQuestion[];
 };
 
-type Selection =
+export type Selection =
   | { kind: "option"; key: string }
   | { kind: "other"; text: string }
   | { kind: "skipped" };
+
+export type AskQuestionState = AskQuestionPayload & {
+  submitted?: boolean;
+  selections?: Record<number, Selection>;
+};
 
 export function parseAskQuestionArgs(
   raw: unknown,
@@ -111,16 +116,64 @@ function buildAnswersMessage(
   return lines.join("\n");
 }
 
+export function parseAskQuestionAnswersMessage(
+  payload: AskQuestionPayload,
+  text: string,
+): Record<number, Selection> | null {
+  const lines = text.split(/\r?\n/);
+  const selections: Record<number, Selection> = {};
+
+  for (let index = 0; index < payload.questions.length; index += 1) {
+    const question = payload.questions[index];
+    const questionLineIndex = lines.findIndex(
+      (line) => line.trim() === `Q: ${question.question}`,
+    );
+    if (questionLineIndex < 0) continue;
+
+    const answerLine = lines
+      .slice(questionLineIndex + 1)
+      .find((line) => line.trim().startsWith("A: "));
+    const answer = answerLine?.trim().slice(3).trim() ?? "";
+
+    if (!answer || answer === "(skipped)") {
+      selections[index] = { kind: "skipped" };
+      continue;
+    }
+
+    if (answer.startsWith("Other:")) {
+      selections[index] = {
+        kind: "other",
+        text: answer.slice("Other:".length).trim(),
+      };
+      continue;
+    }
+
+    const optionIndex = question.options.findIndex(
+      (option) => option.label === answer,
+    );
+    if (optionIndex >= 0) {
+      selections[index] = {
+        kind: "option",
+        key: `q-${index}-opt-${optionIndex}`,
+      };
+    }
+  }
+
+  return Object.keys(selections).length > 0 ? selections : null;
+}
+
 export const AskQuestionBubble = memo(function AskQuestionBubble({
   payload,
 }: {
-  payload: AskQuestionPayload;
+  payload: AskQuestionState;
 }) {
   const total = payload.questions.length;
   const [activeIndex, setActiveIndex] = useState(0);
-  const [selections, setSelections] = useState<Record<number, Selection>>({});
+  const [selections, setSelections] = useState<Record<number, Selection>>(
+    payload.selections ?? {},
+  );
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState(Boolean(payload.submitted));
   const bodyRef = useRef<HTMLDivElement>(null);
   const stepsRef = useRef<HTMLDivElement>(null);
   const stepRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -300,11 +353,9 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
         data-submitted={submitted ? "true" : undefined}
         aria-disabled={submitted ? "true" : undefined}
       >
-        <div className="ask-question-bubble__header">
-          <span className="ask-question-bubble__label">
-            {submitted ? "Answered" : "Questions"}
-          </span>
-          {!submitted && (
+        {!submitted && (
+          <div className="ask-question-bubble__header">
+            <span className="ask-question-bubble__label">Questions</span>
             <div className="ask-question-bubble__stepper">
               <button
                 type="button"
@@ -328,8 +379,8 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
                 <ChevronIcon direction="right" />
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {submitted ? (
           <AnsweredSummary payload={payload} selections={selections} />
@@ -396,16 +447,31 @@ const AnsweredSummary = memo(function AnsweredSummary({
 }) {
   return (
     <div className="ask-question-bubble__summary">
-      {payload.questions.map((question, index) => (
-        <div key={`summary-${index}`} className="ask-question-bubble__summary-row">
-          <span className="ask-question-bubble__summary-question">
-            {question.question}
-          </span>
-          <span className="ask-question-bubble__summary-answer">
-            {describeSelection(question, selections[index])}
-          </span>
-        </div>
-      ))}
+      {payload.questions.map((question, index) => {
+        const selection = selections[index];
+        const isSkipped =
+          !selection ||
+          selection.kind === "skipped" ||
+          (selection.kind === "other" && selection.text.trim().length === 0);
+        const answer = describeSelection(question, selection);
+        const displayAnswer = isSkipped ? "Skipped" : answer;
+        return (
+          <div
+            key={`summary-${index}`}
+            className="ask-question-bubble__summary-row"
+          >
+            <span className="ask-question-bubble__summary-question">
+              {question.question}
+            </span>
+            <span
+              className="ask-question-bubble__summary-answer"
+              data-skipped={isSkipped ? "true" : undefined}
+            >
+              {displayAnswer}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 });

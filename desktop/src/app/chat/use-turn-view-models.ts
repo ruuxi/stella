@@ -16,7 +16,9 @@ import {
 import type { SelfModAppliedData } from '@/app/chat/streaming/streaming-types'
 import {
   parseAskQuestionArgs,
-  type AskQuestionPayload,
+  parseAskQuestionAnswersMessage,
+  type Selection,
+  type AskQuestionState,
 } from './AskQuestionBubble'
 
 type BaseTurnViewModel = Omit<TurnViewModel, 'selfModApplied'>
@@ -63,7 +65,7 @@ const getWebSearchBadgeHtml = (events: EventRecord[]): string | undefined => {
 
 const getAskQuestionPayload = (
   events: EventRecord[],
-): AskQuestionPayload | undefined => {
+): AskQuestionState | undefined => {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
     if (event.type !== 'tool_request') {
@@ -84,6 +86,68 @@ const getAskQuestionPayload = (
     }
   }
   return undefined
+}
+
+const isAskQuestionResponseMessage = (event: EventRecord): boolean => {
+  if (event.type !== 'user_message') return false
+  const payload = getMessagePayload(event)
+  return (
+    payload?.metadata?.trigger?.kind === 'ask_question_response' &&
+    payload.metadata.trigger.source === 'ask-question-bubble'
+  )
+}
+
+const deriveAnsweredAskQuestions = (
+  events: EventRecord[],
+): Map<string, Record<number, Selection>> => {
+  const answeredByTurnId = new Map<
+    string,
+    Record<number, Selection>
+  >()
+  let currentVisibleTurnId: string | null = null
+  let pendingAsk:
+    | { turnId: string; payload: AskQuestionState }
+    | null = null
+
+  for (const event of events) {
+    if (event.type === 'user_message') {
+      if (isAskQuestionResponseMessage(event) && pendingAsk) {
+        const text =
+          typeof event.payload?.text === 'string' ? event.payload.text : ''
+        const selections = parseAskQuestionAnswersMessage(
+          pendingAsk.payload,
+          text,
+        )
+        if (selections) {
+          answeredByTurnId.set(pendingAsk.turnId, selections)
+          pendingAsk = null
+        }
+        continue
+      }
+      if (getMessagePayload(event)?.metadata?.ui?.visibility === 'hidden') {
+        continue
+      }
+      currentVisibleTurnId = event._id
+      continue
+    }
+
+    if (!currentVisibleTurnId || event.type !== 'tool_request') {
+      continue
+    }
+
+    const payload = event.payload as
+      | { toolName?: string; args?: unknown }
+      | undefined
+    if (payload?.toolName !== 'askQuestion') {
+      continue
+    }
+    const parsed = parseAskQuestionArgs(payload.args)
+    if (parsed) {
+      pendingAsk = { turnId: currentVisibleTurnId, payload: parsed }
+    }
+  }
+
+  return answeredByTurnId
 }
 
 const asNonEmptyString = (value: unknown): string | undefined =>
@@ -174,6 +238,10 @@ export function useTurnViewModels(opts: {
     () => filterEventsForUiDisplay(events),
     [events],
   )
+  const answeredAskQuestions = useMemo(
+    () => deriveAnsweredAskQuestions(events),
+    [events],
+  )
   const allTurns = useMemo(
     () => groupEventsIntoTurns(displayEvents),
     [displayEvents],
@@ -217,6 +285,7 @@ export function useTurnViewModels(opts: {
         getMessagePayload(turn.assistantMessage),
       )
       const askQuestionPayload = getAskQuestionPayload(turn.toolEvents)
+      const askQuestionSelections = answeredAskQuestions.get(turn.id)
       const resourcePayload = deriveTurnResource(
         turn.toolEvents,
         assistantText,
@@ -241,10 +310,22 @@ export function useTurnViewModels(opts: {
         webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
         officePreviewRef: getOfficePreviewRef(turn.toolEvents),
         ...(resourcePayload ? { resourcePayload } : {}),
-        ...(askQuestionPayload ? { askQuestion: askQuestionPayload } : {}),
+        ...(askQuestionPayload
+          ? {
+              askQuestion: {
+                ...askQuestionPayload,
+                ...(askQuestionSelections
+                  ? {
+                      submitted: true,
+                      selections: askQuestionSelections,
+                    }
+                  : {}),
+              },
+            }
+          : {}),
       }
     })
-  }, [slicedTurns])
+  }, [answeredAskQuestions, slicedTurns])
 
   const turns = useMemo(() => {
     if (!selfModMap) {

@@ -17,7 +17,7 @@ import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import { GrowIn } from "@/app/chat/GrowIn";
 import {
   AskQuestionBubble,
-  type AskQuestionPayload,
+  type AskQuestionState,
 } from "@/app/chat/AskQuestionBubble";
 import { UserMessageBody } from "@/app/chat/UserMessageBody";
 
@@ -41,7 +41,7 @@ export type TurnViewModel = {
    */
   resourcePayload?: DisplayPayload;
   selfModApplied?: SelfModApplied;
-  askQuestion?: AskQuestionPayload;
+  askQuestion?: AskQuestionState;
 };
 
 export type StreamingTurnProps = {
@@ -247,11 +247,12 @@ const streamingPropsEqual = (
 };
 
 const askQuestionPayloadEqual = (
-  a: AskQuestionPayload | undefined,
-  b: AskQuestionPayload | undefined,
+  a: AskQuestionState | undefined,
+  b: AskQuestionState | undefined,
 ): boolean => {
   if (a === b) return true;
   if (!a || !b) return a === b;
+  if (Boolean(a.submitted) !== Boolean(b.submitted)) return false;
   if (a.questions.length !== b.questions.length) return false;
   for (let i = 0; i < a.questions.length; i += 1) {
     const left = a.questions[i];
@@ -261,6 +262,23 @@ const askQuestionPayloadEqual = (
     if (left.options.length !== right.options.length) return false;
     for (let j = 0; j < left.options.length; j += 1) {
       if (left.options[j].label !== right.options[j].label) return false;
+    }
+    const leftSelection = a.selections?.[i];
+    const rightSelection = b.selections?.[i];
+    if (leftSelection?.kind !== rightSelection?.kind) return false;
+    if (
+      leftSelection?.kind === "option" &&
+      rightSelection?.kind === "option" &&
+      leftSelection.key !== rightSelection.key
+    ) {
+      return false;
+    }
+    if (
+      leftSelection?.kind === "other" &&
+      rightSelection?.kind === "other" &&
+      leftSelection.text !== rightSelection.text
+    ) {
+      return false;
     }
   }
   return true;
