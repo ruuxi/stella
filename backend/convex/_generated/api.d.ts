@@ -82,7 +82,6 @@ import type * as lib_context_window from "../lib/context_window.js";
 import type * as lib_crypto_utils from "../lib/crypto_utils.js";
 import type * as lib_email_templates from "../lib/email_templates.js";
 import type * as lib_error_classification from "../lib/error_classification.js";
-import type * as lib_history_messages from "../lib/history_messages.js";
 import type * as lib_http_utils from "../lib/http_utils.js";
 import type * as lib_json from "../lib/json.js";
 import type * as lib_managed_billing from "../lib/managed_billing.js";
@@ -248,7 +247,6 @@ declare const fullApi: ApiFromModules<{
   "lib/crypto_utils": typeof lib_crypto_utils;
   "lib/email_templates": typeof lib_email_templates;
   "lib/error_classification": typeof lib_error_classification;
-  "lib/history_messages": typeof lib_history_messages;
   "lib/http_utils": typeof lib_http_utils;
   "lib/json": typeof lib_json;
   "lib/managed_billing": typeof lib_managed_billing;
