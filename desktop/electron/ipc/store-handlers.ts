@@ -10,6 +10,7 @@ import type {
 } from "../../src/shared/contracts/boundary.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
+import { assertPrivilegedRequest } from "./privileged-ipc.js";
 
 type StoreHandlersOptions = {
   getStellaRoot: () => string | null;
@@ -43,16 +44,6 @@ const listInstalledThemes = async (stellaRoot: string) => {
     return themes;
   } catch {
     return [];
-  }
-};
-
-const assertPrivilegedRequest = (
-  options: StoreHandlersOptions,
-  event: IpcMainEvent | IpcMainInvokeEvent,
-  channel: string,
-) => {
-  if (!options.assertPrivilegedSender(event, channel)) {
-    throw new Error(`Blocked untrusted ${channel} request.`);
   }
 };
 

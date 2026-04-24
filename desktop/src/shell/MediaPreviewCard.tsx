@@ -5,8 +5,12 @@
  * stream rather than living entirely in a base64 string.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import type { MediaAsset } from "@/shared/contracts/display-payload";
+import {
+  useDisplayFileBlobs,
+  type DisplayFileBlob,
+} from "@/shared/hooks/use-display-file-data";
 
 type MediaPreviewCardProps = {
   asset: MediaAsset;
@@ -14,94 +18,8 @@ type MediaPreviewCardProps = {
   capability?: string;
 };
 
-type LoadedFile = {
-  url: string;
-  mimeType: string;
-  blob: Blob;
-};
-
-const decodeBase64ToBlob = (base64: string, mimeType: string): Blob => {
-  const binary = atob(base64);
-  // Allocate an `ArrayBuffer` (not `SharedArrayBuffer`) so the resulting
-  // typed view is accepted by Blob's `BlobPart` signature in TS strict mode.
-  const buffer = new ArrayBuffer(binary.length);
-  const bytes = new Uint8Array(buffer);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return new Blob([buffer], { type: mimeType || "application/octet-stream" });
-};
-
-const isElectronApiAvailable = (): boolean =>
-  typeof window !== "undefined" &&
-  typeof window.electronAPI?.display?.readFile === "function";
-
 const filenameOf = (filePath: string): string =>
   filePath.split(/[\\/]/).pop() ?? filePath;
-
-/**
- * Hook: read N file paths into Blob URLs. Revokes the URLs on unmount or
- * when the file paths change so we don't leak memory across rapid updates.
- */
-const useFileBlobs = (filePaths: string[]) => {
-  const [files, setFiles] = useState<(LoadedFile | null)[]>(() =>
-    filePaths.map(() => null),
-  );
-  const [error, setError] = useState<string | null>(null);
-
-  const key = useMemo(() => filePaths.join("|"), [filePaths]);
-
-  useEffect(() => {
-    if (!isElectronApiAvailable()) {
-      setError("Media preview requires the Electron host runtime.");
-      return;
-    }
-
-    let cancelled = false;
-    setError(null);
-    setFiles(filePaths.map(() => null));
-    const createdUrls: string[] = [];
-
-    void (async () => {
-      const results = await Promise.all(
-        filePaths.map(async (filePath): Promise<LoadedFile | null> => {
-          try {
-            const result =
-              await window.electronAPI!.display.readFile(filePath);
-            const blob = decodeBase64ToBlob(
-              result.contentsBase64,
-              result.mimeType,
-            );
-            const url = URL.createObjectURL(blob);
-            createdUrls.push(url);
-            return { url, mimeType: result.mimeType, blob };
-          } catch (err) {
-            if (!cancelled) {
-              setError(
-                err instanceof Error ? err.message : String(err),
-              );
-            }
-            return null;
-          }
-        }),
-      );
-      if (cancelled) {
-        for (const u of createdUrls) URL.revokeObjectURL(u);
-        return;
-      }
-      setFiles(results);
-    })();
-
-    return () => {
-      cancelled = true;
-      for (const u of createdUrls) URL.revokeObjectURL(u);
-    };
-    // `filePaths` reference changes on every render, so key off contents.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  return { files, error };
-};
 
 const PromptHeader = ({
   prompt,
@@ -131,7 +49,7 @@ const MediaActions = ({
 }: {
   filePath?: string;
   copyText?: string;
-  copyImage?: LoadedFile | null;
+  copyImage?: DisplayFileBlob | null;
   extraAction?: ReactNode;
 }) => {
   const [message, setMessage] = useState<string | null>(null);
@@ -205,7 +123,10 @@ const ImageGallery = ({
   prompt?: string;
   capability?: string;
 }) => {
-  const { files, error } = useFileBlobs(filePaths);
+  const { files, error } = useDisplayFileBlobs(
+    filePaths,
+    "Media preview requires the Electron host runtime.",
+  );
   const [activeIndex, setActiveIndex] = useState(0);
   const [lightbox, setLightbox] = useState(false);
 
@@ -298,7 +219,10 @@ const VideoCard = ({
   prompt?: string;
   capability?: string;
 }) => {
-  const { files, error } = useFileBlobs([filePath]);
+  const { files, error } = useDisplayFileBlobs(
+    [filePath],
+    "Media preview requires the Electron host runtime.",
+  );
   const file = files[0];
   return (
     <div className="display-media display-media--video">
@@ -332,7 +256,10 @@ const AudioCard = ({
   prompt?: string;
   capability?: string;
 }) => {
-  const { files, error } = useFileBlobs([filePath]);
+  const { files, error } = useDisplayFileBlobs(
+    [filePath],
+    "Media preview requires the Electron host runtime.",
+  );
   const file = files[0];
   return (
     <div className="display-media display-media--audio">

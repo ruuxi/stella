@@ -4,9 +4,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { BrowserWindow, ipcMain } from "electron";
+import { ipcMain } from "electron";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 import type { WindowManager } from "../windows/window-manager.js";
+import {
+  captureWindowDataUrl,
+  waitForOverlayMorphSignal,
+} from "../windows/morph-transition-helpers.js";
 
 type MorphHandlersOptions = {
   windowManager: WindowManager;
@@ -20,40 +24,6 @@ const ONBOARDING_MORPH_DONE_TIMEOUT_MS = 5000;
 export const registerMorphHandlers = (options: MorphHandlersOptions) => {
   let activeOnboardingTransitionId: string | null = null;
 
-  const captureWindow = async (win: BrowserWindow): Promise<string | null> => {
-    try {
-      const image = await win.webContents.capturePage();
-      return image.toDataURL();
-    } catch {
-      return null;
-    }
-  };
-
-  const waitForSignal = (
-    channel: "overlay:morphReady" | "overlay:morphDone",
-    transitionId: string,
-    timeoutMs: number,
-  ): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const handler = (
-        _event: unknown,
-        payload?: { transitionId?: string },
-      ) => {
-        if (payload?.transitionId !== transitionId) {
-          return;
-        }
-        clearTimeout(timer);
-        ipcMain.removeListener(channel, handler);
-        resolve(true);
-      };
-      const timer = setTimeout(() => {
-        ipcMain.removeListener(channel, handler);
-        resolve(false);
-      }, timeoutMs);
-      ipcMain.on(channel, handler);
-    });
-  };
-
   /**
    * morph:start — Captures the current window, starts the forward morph ripple,
    * and resolves once the overlay is ready (covering the old state).
@@ -65,7 +35,7 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
       return { ok: false };
     }
 
-    const screenshot = await captureWindow(fullWindow);
+    const screenshot = await captureWindowDataUrl(fullWindow);
     if (!screenshot) {
       return { ok: false };
     }
@@ -73,7 +43,7 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
     const bounds = fullWindow.getBounds();
     const transitionId = randomUUID();
     activeOnboardingTransitionId = transitionId;
-    const readyPromise = waitForSignal(
+    const readyPromise = waitForOverlayMorphSignal(
       "overlay:morphReady",
       transitionId,
       ONBOARDING_MORPH_OVERLAY_READY_TIMEOUT_MS,
@@ -113,14 +83,14 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
       return { ok: false };
     }
 
-    const screenshot = await captureWindow(fullWindow);
+    const screenshot = await captureWindowDataUrl(fullWindow);
     if (!screenshot) {
       overlay.endMorph(transitionId);
       activeOnboardingTransitionId = null;
       return { ok: false };
     }
 
-    const donePromise = waitForSignal(
+    const donePromise = waitForOverlayMorphSignal(
       "overlay:morphDone",
       transitionId,
       ONBOARDING_MORPH_DONE_TIMEOUT_MS,

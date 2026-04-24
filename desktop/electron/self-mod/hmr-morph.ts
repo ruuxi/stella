@@ -21,6 +21,10 @@ import {
   MORPH_SOFT_HMR_PAINT_FALLBACK_MS,
 } from "../../src/shared/contracts/morph-timing.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
+import {
+  captureWindowDataUrl,
+  waitForOverlayMorphSignal,
+} from "../windows/morph-transition-helpers.js";
 
 export type HmrTransitionController = {
   runTransition: (opts: {
@@ -50,52 +54,8 @@ export function createHmrTransitionController(deps: {
     console.info("[stella:morph]", phase, data);
   };
 
-  const captureWindow = async (win: BrowserWindow): Promise<string | null> => {
-    const startedAt = performance.now();
-    try {
-      const image = await win.webContents.capturePage();
-      logMorphTiming("capture", {
-        durationMs: Math.round(performance.now() - startedAt),
-        ok: true,
-      });
-      return image.toDataURL();
-    } catch {
-      logMorphTiming("capture", {
-        durationMs: Math.round(performance.now() - startedAt),
-        ok: false,
-      });
-      return null;
-    }
-  };
-
-  const waitForOverlaySignal = (
-    channel: "overlay:morphReady" | "overlay:morphDone",
-    transitionId: string,
-    timeoutMs: number,
-  ): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const handler = (
-        _event: unknown,
-        payload?: { transitionId?: string },
-      ) => {
-        if (payload?.transitionId !== transitionId) {
-          return;
-        }
-        clearTimeout(timer);
-        ipcMain.removeListener(channel, handler);
-        resolve(true);
-      };
-      const timer = setTimeout(() => {
-        ipcMain.removeListener(channel, handler);
-        resolve(false);
-      }, timeoutMs);
-
-      ipcMain.on(channel, handler);
-    });
-  };
-
   const waitForMorphDone = (transitionId: string) =>
-    waitForOverlaySignal(
+    waitForOverlayMorphSignal(
       "overlay:morphDone",
       transitionId,
       MORPH_DONE_TIMEOUT_MS,
@@ -172,7 +132,9 @@ export function createHmrTransitionController(deps: {
     // `activeMorphTransitionId`, which is only set in `startMorphForward`.)
     const [overlayReadyForMorph, oldScreenshot] = await Promise.all([
       overlayController.ensureReadyForMorph(),
-      captureWindow(fullWindow),
+      captureWindowDataUrl(fullWindow, (ok, durationMs) => {
+        logMorphTiming("capture", { durationMs, ok });
+      }),
     ]);
     if (!overlayReadyForMorph || !oldScreenshot) {
       opts.reportState?.({
@@ -187,7 +149,7 @@ export function createHmrTransitionController(deps: {
 
     const bounds = fullWindow.getBounds();
     const transitionStartedAt = performance.now();
-    const overlayReady = waitForOverlaySignal(
+    const overlayReady = waitForOverlayMorphSignal(
       "overlay:morphReady",
       transitionId,
       MORPH_OVERLAY_READY_TIMEOUT_MS,
@@ -270,7 +232,12 @@ export function createHmrTransitionController(deps: {
         return;
       }
 
-      const newScreenshot = await captureWindow(fullWindow);
+      const newScreenshot = await captureWindowDataUrl(
+        fullWindow,
+        (ok, durationMs) => {
+          logMorphTiming("capture", { durationMs, ok });
+        },
+      );
       if (!newScreenshot) {
         return;
       }

@@ -3,8 +3,7 @@
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import { useRef, useState, useEffect } from "react";
-import { animate } from "motion";
+import { useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { ComposerContextRow, ComposerSuggestionContextRow } from "./ComposerContextRow";
 import {
@@ -21,6 +20,10 @@ import {
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "./ScreenshotPreview";
 import { useDictation } from "@/features/dictation/hooks/use-dictation";
 import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
+import {
+  updateComposerTextareaExpansion,
+  useAnimatedComposerShell,
+} from "@/shared/hooks/use-animated-composer-shell";
 import "./full-shell.composer.css";
 
 type ComposerProps = {
@@ -66,9 +69,6 @@ export function Composer({
     disabled: isStreaming,
   });
 
-  const heightAnimRef = useRef<ReturnType<typeof animate> | null>(null);
-  const lastHeightRef = useRef(0);
-
   const composerState = deriveComposerState({
     message,
     chatContext,
@@ -79,60 +79,11 @@ export function Composer({
   const { placeholder } = composerState;
   const isExpanded = composerExpanded;
 
-  /* Shell height animation.
-     The shell-content wrapper renders at full natural size (chip strip +
-     form). The shell clips overflow and springs its height to match the
-     wrapper, creating a smooth reveal animation when chips are added or
-     the textarea expands. */
-  useEffect(() => {
-    const content = shellContentRef.current;
-    const form = formRef.current;
-    const shell = shellRef.current;
-    if (!content || !form || !shell || typeof ResizeObserver === "undefined") return;
-
-    lastHeightRef.current = content.getBoundingClientRect().height;
-    shell.style.height = `${lastHeightRef.current}px`;
-    // Clamp pill radius to height — a radius equal to the height gives a
-    // perfect pill shape but keeps the animation range small (48→20 instead
-    // of 999→20) so the shape change is perceptible throughout, not bunched
-    // at the tail end. Force a non-pill radius once chips are present so
-    // the chip strip never visually overflows the curve.
-    const isExpandedNow = form.classList.contains("expanded");
-    const hasChipsNow = Boolean(content.querySelector(".composer-attached-strip"));
-    shell.style.borderRadius = isExpandedNow || hasChipsNow
-      ? "20px"
-      : `${Math.min(999, lastHeightRef.current)}px`;
-
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      const newH =
-        entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
-      if (Math.abs(newH - lastHeightRef.current) < 1) return;
-
-      lastHeightRef.current = newH;
-      const expanded = form.classList.contains("expanded");
-      const hasChips = Boolean(content.querySelector(".composer-attached-strip"));
-      const targetRadius = expanded || hasChips ? 20 : Math.min(999, newH);
-
-      heightAnimRef.current?.stop();
-      heightAnimRef.current = animate(
-        shell,
-        { height: `${newH}px`, borderRadius: `${targetRadius}px` },
-        {
-          type: "spring",
-          duration: 0.35,
-          bounce: 0,
-        },
-      );
-    });
-
-    ro.observe(content);
-    return () => {
-      ro.disconnect();
-      heightAnimRef.current?.stop();
-    };
-  }, []);
+  useAnimatedComposerShell({
+    shellRef,
+    contentRef: shellContentRef,
+    formRef,
+  });
 
   const hasAttachedChips = hasAttachedComposerChips(chatContext, selectedText);
 
@@ -188,20 +139,10 @@ export function Composer({
                   onChange={(event) => {
                     setMessage(event.target.value);
                     requestAnimationFrame(() => {
-                      const el = textareaRef.current;
-                      if (!el) return;
-                      const form = el.closest(".composer-form") as HTMLElement | null;
-                      if (!form) return;
-                      const isExpanded = form.classList.contains("expanded");
-
-                      if (!isExpanded) {
-                        if (el.scrollHeight > 44) setComposerExpanded(true);
-                      } else {
-                        form.classList.remove("expanded");
-                        const pillSh = el.scrollHeight;
-                        form.classList.add("expanded");
-                        if (pillSh <= 44) setComposerExpanded(false);
-                      }
+                      updateComposerTextareaExpansion(
+                        textareaRef.current,
+                        setComposerExpanded,
+                      );
                     });
                   }}
                   onKeyDown={(event) => {

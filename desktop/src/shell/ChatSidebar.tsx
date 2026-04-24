@@ -6,7 +6,6 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { animate } from "motion";
 import { createPortal } from "react-dom";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
 import {
@@ -33,6 +32,10 @@ import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import { useChatContextSync } from "./use-chat-context-sync";
+import {
+  updateComposerTextareaExpansion,
+  useAnimatedComposerShell,
+} from "@/shared/hooks/use-animated-composer-shell";
 import "./chat-sidebar.css";
 
 export interface ChatSidebarOpenOptions {
@@ -129,8 +132,6 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     const formRef = useRef<HTMLFormElement | null>(null);
     const shellRef = useRef<HTMLDivElement | null>(null);
     const shellContentRef = useRef<HTMLDivElement | null>(null);
-    const heightAnimRef = useRef<ReturnType<typeof animate> | null>(null);
-    const lastHeightRef = useRef(0);
 
     const { isDragOver, dropHandlers } = useFileDrop({
       setChatContext,
@@ -187,67 +188,13 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       return () => document.removeEventListener("keydown", handleKeyDown);
     }, [isOpen]);
 
-    /* Shell height + corner radius — same behavior as full chat Composer
-       (ResizeObserver + spring). Watches the shell-content wrapper (chip
-       strip + form) so the shell grows when chips are attached. Only attach
-       while sidebar is open so layout is valid after the panel width finishes
-       expanding. */
-    useEffect(() => {
-      if (!isOpen) return;
-
-      const content = shellContentRef.current;
-      const form = formRef.current;
-      const shell = shellRef.current;
-      if (!content || !form || !shell || typeof ResizeObserver === "undefined") return;
-
-      const syncShellToContent = () => {
-        lastHeightRef.current = content.getBoundingClientRect().height;
-        shell.style.height = `${lastHeightRef.current}px`;
-        const expanded = form.classList.contains("expanded");
-        const hasChips = Boolean(content.querySelector(".composer-attached-strip"));
-        shell.style.borderRadius = expanded || hasChips
-          ? "20px"
-          : `${Math.min(999, lastHeightRef.current)}px`;
-      };
-
-      syncShellToContent();
-
-      const ro = new ResizeObserver((entries) => {
-        const entry = entries[0];
-        if (!entry) return;
-        const newH =
-          entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
-        if (Math.abs(newH - lastHeightRef.current) < 1) return;
-
-        lastHeightRef.current = newH;
-        const expanded = form.classList.contains("expanded");
-        const hasChips = Boolean(content.querySelector(".composer-attached-strip"));
-        const targetRadius = expanded || hasChips ? 20 : Math.min(999, newH);
-
-        heightAnimRef.current?.stop();
-        heightAnimRef.current = animate(
-          shell,
-          { height: `${newH}px`, borderRadius: `${targetRadius}px` },
-          {
-            type: "spring",
-            duration: 0.35,
-            bounce: 0,
-          },
-        );
-      });
-
-      ro.observe(content);
-
-      const id = requestAnimationFrame(() => {
-        syncShellToContent();
-      });
-
-      return () => {
-        cancelAnimationFrame(id);
-        ro.disconnect();
-        heightAnimRef.current?.stop();
-      };
-    }, [isOpen]);
+    useAnimatedComposerShell({
+      active: isOpen,
+      shellRef,
+      contentRef: shellContentRef,
+      formRef,
+      syncOnNextFrame: true,
+    });
 
     const handleSubmit = useCallback(
       (event: React.FormEvent) => {
@@ -358,20 +305,10 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
                           onChange={(event) => {
                             setInputText(event.target.value);
                             requestAnimationFrame(() => {
-                              const el = inputRef.current;
-                              if (!el) return;
-                              const form = el.closest(".chat-sidebar-form") as HTMLElement | null;
-                              if (!form) return;
-                              const isExp = form.classList.contains("expanded");
-
-                              if (!isExp) {
-                                if (el.scrollHeight > 44) setSidebarExpanded(true);
-                              } else {
-                                form.classList.remove("expanded");
-                                const pillSh = el.scrollHeight;
-                                form.classList.add("expanded");
-                                if (pillSh <= 44) setSidebarExpanded(false);
-                              }
+                              updateComposerTextareaExpansion(
+                                inputRef.current,
+                                setSidebarExpanded,
+                              );
                             });
                           }}
                           onKeyDown={(event) => {
