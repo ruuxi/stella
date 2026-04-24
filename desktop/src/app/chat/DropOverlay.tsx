@@ -3,7 +3,7 @@ import "./drop-overlay.css";
 
 type DropOverlayProps = {
   visible: boolean;
-  variant?: "full" | "mini" | "orb";
+  variant?: "full" | "mini" | "orb" | "surface" | "sidebar";
 };
 
 function DropIcon() {

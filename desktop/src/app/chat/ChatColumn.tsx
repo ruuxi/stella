@@ -5,11 +5,13 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
+import { DropOverlay } from "./DropOverlay";
 import { HomeContent } from "@/app/home/HomeContent";
 import { StickyThinkingFooter } from "./StickyThinkingFooter";
 import { getCurrentRunningTool } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import { useFooterTasks } from "./hooks/use-footer-tasks";
+import { useFileDrop } from "./hooks/use-file-drop";
 import type { ChatColumnProps } from "./chat-column-types";
 import "./full-shell.chat.css";
 
@@ -146,6 +148,10 @@ export const ChatColumn = memo(function ChatColumn({
     Boolean(conversation.streaming.runtimeStatusText);
   const showThinkingFooter = hasActiveWork;
   const shouldShowHomeContent = homeVisible;
+  const { isDragOver, dropHandlers } = useFileDrop({
+    setChatContext: composer.setChatContext,
+    disabled: conversation.streaming.isStreaming,
+  });
 
   // Capture viewport ref for drag operations
   const assignViewport = useCallback(
@@ -176,7 +182,11 @@ export const ChatColumn = memo(function ChatColumn({
   if (shouldShowHomeContent && onSuggestionClick) {
     const hasMessages = conversation.events.length > 0;
     return (
-      <div className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}>
+      <div
+        className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}
+        {...dropHandlers}
+      >
+        <DropOverlay visible={isDragOver} variant="surface" />
         <HomeContent
           onDismissHome={onDismissHome}
           hasMessages={hasMessages}
@@ -190,7 +200,8 @@ export const ChatColumn = memo(function ChatColumn({
   }
 
   return (
-    <div className="full-body-main">
+    <div className="full-body-main" {...dropHandlers}>
+      <DropOverlay visible={isDragOver} variant="surface" />
       {/* Viewport region: scroll container + overlays (scrollbar, scroll-to-bottom) */}
       <div className="chat-viewport-region">
         <div

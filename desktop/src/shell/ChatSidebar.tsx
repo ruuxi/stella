@@ -279,9 +279,11 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       <aside
         className={`chat-sidebar${isOpen ? " chat-sidebar--open" : ""}`}
         aria-hidden={!isOpen}
+        {...dropHandlers}
         {...(onContextMenu ? { onContextMenu } : {})}
       >
         <div className="chat-sidebar-inner">
+          <DropOverlay visible={isDragOver} variant="sidebar" />
           <div className="chat-sidebar-main">
             <CompactConversationSurface
               className="chat-sidebar-messages"
@@ -301,9 +303,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
               isLoadingHistory={isInitialLoading}
             />
 
-            <div className="chat-sidebar-composer" {...dropHandlers}>
-              <DropOverlay visible={isDragOver} variant="orb" />
-
+            <div className="chat-sidebar-composer">
               <ComposerSuggestionContextRow
                 chatContext={chatContext}
                 setChatContext={setChatContext}
