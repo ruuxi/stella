@@ -4,6 +4,7 @@
 
 import { spawn } from "child_process";
 import path from "path";
+import os from "os";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
 import { readdir, stat } from "fs/promises";
@@ -18,6 +19,7 @@ import { truncate } from "./utils.js";
 import { isDangerousCommand } from "./command-safety.js";
 import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
 import { getStellaComputerSessionId } from "./stella-computer-session.js";
+import { inferShellMentionedPaths } from "./path-inference.js";
 import type { OfficePreviewRef } from "../../../desktop/src/shared/contracts/office-preview.js";
 
 export type ShellState = {
@@ -43,6 +45,7 @@ type ManagedShellRecord = ShellRecord & {
   child?: SpawnedShell;
   stdinOpen: boolean;
   startSnapshot?: FileSnapshot | null;
+  externalCandidateSnapshots?: ExternalCandidateSnapshot[];
   producedFilesReported?: boolean;
 };
 
@@ -56,6 +59,22 @@ type FileSnapshot = {
   files: Map<string, FileSnapshotEntry>;
   complete: boolean;
 };
+
+type ExternalCandidateSnapshot =
+  | {
+      path: string;
+      kind: "missing";
+    }
+  | {
+      path: string;
+      kind: "file";
+      entry: FileSnapshotEntry;
+    }
+  | {
+      path: string;
+      kind: "directory";
+      snapshot: FileSnapshot | null;
+    };
 
 // Codex defaults: 10s for exec_command, 250ms for write_stdin. Letting
 // short commands finish on the first call dramatically reduces the
@@ -175,11 +194,34 @@ const resolveShellSnapshotRoot = (
   return resolvedCwd ?? cwd;
 };
 
+const isSameOrInsidePath = (candidate: string, root: string): boolean => {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+};
+
+const isBroadExternalCandidate = (candidate: string): boolean => {
+  const resolved = path.resolve(candidate);
+  return (
+    resolved === path.parse(resolved).root ||
+    resolved === os.homedir() ||
+    resolved === path.dirname(os.homedir())
+  );
+};
+
 const diffFileSnapshots = (
   before: FileSnapshot | null,
   after: FileSnapshot | null,
 ): FileChangeRecord[] | undefined => {
-  if (!before || !after || !before.complete || !after.complete || before.root !== after.root) {
+  if (
+    !before ||
+    !after ||
+    !before.complete ||
+    !after.complete ||
+    before.root !== after.root
+  ) {
     return undefined;
   }
   const changes: FileChangeRecord[] = [];
@@ -204,14 +246,142 @@ const diffFileSnapshots = (
   return changes.length > 0 ? changes : undefined;
 };
 
+const snapshotExternalCandidate = async (
+  candidatePath: string,
+): Promise<ExternalCandidateSnapshot> => {
+  try {
+    const info = await stat(candidatePath);
+    if (info.isDirectory()) {
+      return {
+        path: candidatePath,
+        kind: "directory",
+        snapshot: await snapshotFiles(candidatePath),
+      };
+    }
+    if (info.isFile()) {
+      return {
+        path: candidatePath,
+        kind: "file",
+        entry: {
+          size: info.size,
+          mtimeMs: info.mtimeMs,
+        },
+      };
+    }
+  } catch {
+    // Missing or unreadable paths are still useful: if they appear after the
+    // command, we can report them as produced files.
+  }
+  return { path: candidatePath, kind: "missing" };
+};
+
+const snapshotExternalCandidates = async (
+  candidatePaths: string[],
+  snapshotRoot: string,
+): Promise<ExternalCandidateSnapshot[] | undefined> => {
+  const root = path.resolve(snapshotRoot);
+  const paths = [
+    ...new Set(candidatePaths.map((candidate) => path.resolve(candidate))),
+  ].filter(
+    (candidate) =>
+      !isSameOrInsidePath(candidate, root) &&
+      !isBroadExternalCandidate(candidate),
+  );
+  if (paths.length === 0) return undefined;
+  return Promise.all(
+    paths.map((candidate) => snapshotExternalCandidate(candidate)),
+  );
+};
+
+const diffExternalCandidateSnapshots = async (
+  beforeSnapshots: ExternalCandidateSnapshot[] | undefined,
+): Promise<ProducedFileRecord[] | undefined> => {
+  if (!beforeSnapshots || beforeSnapshots.length === 0) return undefined;
+  const changes: ProducedFileRecord[] = [];
+
+  for (const before of beforeSnapshots) {
+    const after = await snapshotExternalCandidate(before.path);
+    if (after.kind === "missing") {
+      if (before.kind !== "missing") {
+        changes.push(fileChange(before.path, { type: "delete" }));
+      }
+      continue;
+    }
+
+    if (after.kind === "file") {
+      if (before.kind !== "file") {
+        changes.push(fileChange(after.path, { type: "add" }));
+        continue;
+      }
+      if (
+        before.entry.size !== after.entry.size ||
+        before.entry.mtimeMs !== after.entry.mtimeMs
+      ) {
+        changes.push(fileChange(after.path, { type: "update" }));
+      }
+      continue;
+    }
+
+    if (before.kind === "directory") {
+      changes.push(
+        ...(diffFileSnapshots(before.snapshot, after.snapshot) ?? []),
+      );
+      continue;
+    }
+    if (after.snapshot?.complete) {
+      for (const filePath of after.snapshot.files.keys()) {
+        changes.push(fileChange(filePath, { type: "add" }));
+      }
+    }
+  }
+
+  return changes.length > 0 ? changes : undefined;
+};
+
+const mergeProducedFiles = (
+  ...groups: Array<ProducedFileRecord[] | undefined>
+): ProducedFileRecord[] | undefined => {
+  const out: ProducedFileRecord[] = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    if (!group) continue;
+    for (const file of group) {
+      const key = `${file.kind.type}:${file.path}:${file.kind.type === "update" ? (file.kind.move_path ?? "") : ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(file);
+    }
+  }
+  return out.length > 0 ? out : undefined;
+};
+
+const snapshotShellSideEffects = async (
+  args: Record<string, unknown>,
+  snapshotRoot: string,
+  context?: ToolContext,
+): Promise<{
+  rootSnapshot: FileSnapshot | null;
+  externalCandidateSnapshots?: ExternalCandidateSnapshot[];
+}> => {
+  const rootSnapshot = await snapshotFiles(snapshotRoot);
+  const externalCandidateSnapshots = await snapshotExternalCandidates(
+    inferShellMentionedPaths(args, context),
+    snapshotRoot,
+  );
+  return { rootSnapshot, externalCandidateSnapshots };
+};
+
 const takeCompletedProducedFiles = async (
   record: ManagedShellRecord,
 ): Promise<ProducedFileRecord[] | undefined> => {
   if (record.running || record.producedFilesReported) return undefined;
   record.producedFilesReported = true;
-  return diffFileSnapshots(
-    record.startSnapshot ?? null,
-    await snapshotFiles(record.startSnapshot?.root ?? record.cwd),
+  return mergeProducedFiles(
+    diffFileSnapshots(
+      record.startSnapshot ?? null,
+      await snapshotFiles(record.startSnapshot?.root ?? record.cwd),
+    ),
+    await diffExternalCandidateSnapshots(record.externalCandidateSnapshots),
   );
 };
 
@@ -249,7 +419,8 @@ export const extractOfficePreviewRef = (
   const cleanedOutput = keptLines.join("\n").trim();
   return {
     cleanedOutput:
-      cleanedOutput || (officePreviewRef ? "Started inline office preview." : ""),
+      cleanedOutput ||
+      (officePreviewRef ? "Started inline office preview." : ""),
     ...(officePreviewRef ? { officePreviewRef } : {}),
   };
 };
@@ -273,11 +444,15 @@ export function createShellState(
 }
 
 const deferredDeleteHelperPath = (() => {
-  const jsPath = fileURLToPath(new URL("./deferred-delete-cli.js", import.meta.url));
+  const jsPath = fileURLToPath(
+    new URL("./deferred-delete-cli.js", import.meta.url),
+  );
   if (existsSync(jsPath)) {
     return jsPath;
   }
-  const tsPath = fileURLToPath(new URL("./deferred-delete-cli.ts", import.meta.url));
+  const tsPath = fileURLToPath(
+    new URL("./deferred-delete-cli.ts", import.meta.url),
+  );
   if (existsSync(tsPath)) {
     return tsPath;
   }
@@ -328,11 +503,13 @@ const buildProtectedCommand = (
   }
 
   const pythonFuncs = [...pythonNames]
-    .map(name => `${name}() { __stella_dd python "$PWD" "$(type -P ${name} || true)" "$@"; }`)
-    .join('\n');
-  const pythonExports = pythonNames.size > 0
-    ? ` ${[...pythonNames].join(' ')}`
-    : '';
+    .map(
+      (name) =>
+        `${name}() { __stella_dd python "$PWD" "$(type -P ${name} || true)" "$@"; }`,
+    )
+    .join("\n");
+  const pythonExports =
+    pythonNames.size > 0 ? ` ${[...pythonNames].join(" ")}` : "";
 
   const preamble = `
 __stella_dd() {
@@ -419,11 +596,21 @@ const buildShellEnv = (
     ...(envOverrides ? { ...process.env, ...envOverrides } : process.env),
     STELLA_NODE_BIN: process.execPath,
     STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
-    ...(options?.secretStateRoot ? { STELLA_UI_STATE_DIR: options.secretStateRoot } : {}),
-    ...(options?.stellaBrowserBinPath ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath } : {}),
-    ...(options?.stellaOfficeBinPath ? { STELLA_OFFICE_BIN: options.stellaOfficeBinPath } : {}),
-    ...(options?.stellaUiCliPath ? { STELLA_UI_CLI: options.stellaUiCliPath } : {}),
-    ...(options?.stellaComputerCliPath ? { STELLA_COMPUTER_CLI: options.stellaComputerCliPath } : {}),
+    ...(options?.secretStateRoot
+      ? { STELLA_UI_STATE_DIR: options.secretStateRoot }
+      : {}),
+    ...(options?.stellaBrowserBinPath
+      ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath }
+      : {}),
+    ...(options?.stellaOfficeBinPath
+      ? { STELLA_OFFICE_BIN: options.stellaOfficeBinPath }
+      : {}),
+    ...(options?.stellaUiCliPath
+      ? { STELLA_UI_CLI: options.stellaUiCliPath }
+      : {}),
+    ...(options?.stellaComputerCliPath
+      ? { STELLA_COMPUTER_CLI: options.stellaComputerCliPath }
+      : {}),
   };
 
   return setupEnvironment(mergedEnv).env;
@@ -448,10 +635,18 @@ const WINDOWS_GIT_BASH_CANDIDATES = [
 
 const resolveWindowsBash = (): string | null => {
   try {
-    const resolvedGitDir = resolveGitDir(process.env.LOCAL_GIT_DIRECTORY?.trim());
+    const resolvedGitDir = resolveGitDir(
+      process.env.LOCAL_GIT_DIRECTORY?.trim(),
+    );
     const dugiteCandidates = [
       path.join(resolvedGitDir, getWin32GitSubfolder(), "bin", "bash.exe"),
-      path.join(resolvedGitDir, getWin32GitSubfolder(), "usr", "bin", "bash.exe"),
+      path.join(
+        resolvedGitDir,
+        getWin32GitSubfolder(),
+        "usr",
+        "bin",
+        "bash.exe",
+      ),
       path.join(resolvedGitDir, "bin", "bash.exe"),
       path.join(resolvedGitDir, "usr", "bin", "bash.exe"),
     ];
@@ -475,7 +670,9 @@ const resolveWindowsBash = (): string | null => {
     }
   }
 
-  const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  const pathEntries = (process.env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean);
   for (const entry of pathEntries) {
     const candidate = path.join(entry, "bash.exe");
     if (existsSync(candidate)) {
@@ -493,7 +690,11 @@ const resolveWindowsBash = (): string | null => {
 // spawning bare "bash" fails with `ENOENT: posix_spawn 'bash'`. Probe for
 // /bin/bash first; fall back to PATH-resolved "bash" only if it isn't there
 // (e.g. a stripped-down BSD jail), which keeps test environments working.
-const UNIX_BASH_CANDIDATES = ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash"];
+const UNIX_BASH_CANDIDATES = [
+  "/bin/bash",
+  "/usr/bin/bash",
+  "/usr/local/bin/bash",
+];
 
 const resolveUnixBash = (): string => {
   for (const candidate of UNIX_BASH_CANDIDATES) {
@@ -506,9 +707,7 @@ const resolveUnixBash = (): string => {
 
 const resolveShellLaunch = (
   command: string,
-):
-  | { shell: string; args: string[] }
-  | { error: string } => {
+): { shell: string; args: string[] } | { error: string } => {
   if (process.platform !== "win32") {
     return { shell: resolveUnixBash(), args: ["-lc", command] };
   }
@@ -642,7 +841,10 @@ const spawnShellProcess = (
     detached: process.platform !== "win32",
   });
 
-const killShellProcess = (child: SpawnedShell, signal: NodeJS.Signals = "SIGTERM") => {
+const killShellProcess = (
+  child: SpawnedShell,
+  signal: NodeJS.Signals = "SIGTERM",
+) => {
   const pid = child.pid;
 
   if (!pid) {
@@ -708,7 +910,8 @@ export const normalizeComputerAgentShellCommand = (command: string) =>
     .trim();
 
 const shouldUseStellaBrowserBridge = (command: string): boolean =>
-  /\bstella-browser\b/.test(command) || /\bSTELLA_BROWSER_SESSION=/.test(command);
+  /\bstella-browser\b/.test(command) ||
+  /\bSTELLA_BROWSER_SESSION=/.test(command);
 
 const shouldUseStellaComputer = (command: string): boolean =>
   /\bstella-computer\b/.test(command);
@@ -720,6 +923,7 @@ export const startShell = (
   envOverrides?: Record<string, string>,
   onClose?: () => void,
   startSnapshot?: FileSnapshot | null,
+  externalCandidateSnapshots?: ExternalCandidateSnapshot[],
 ) => {
   const id = crypto.randomUUID();
   const protectedCommand = buildProtectedCommand(command, state);
@@ -740,13 +944,19 @@ export const startShell = (
       waiters: new Set(),
       stdinOpen: false,
       startSnapshot,
+      externalCandidateSnapshots,
       kill: () => {},
     };
     state.shells.set(id, record);
     return record;
   }
 
-  const child = spawnShellProcess(launch.shell, launch.args, cwd, buildShellEnv(envOverrides, state));
+  const child = spawnShellProcess(
+    launch.shell,
+    launch.args,
+    cwd,
+    buildShellEnv(envOverrides, state),
+  );
 
   const record: ManagedShellRecord = {
     id,
@@ -763,6 +973,7 @@ export const startShell = (
     waiters: new Set(),
     stdinOpen: Boolean(child.stdin),
     startSnapshot,
+    externalCandidateSnapshots,
     kill: () => {
       terminateShellProcess(child);
     },
@@ -826,7 +1037,12 @@ export const runShell = async (
   }
 
   return new Promise<string>((resolve) => {
-    const child = spawnShellProcess(launch.shell, launch.args, cwd, buildShellEnv(envOverrides, state));
+    const child = spawnShellProcess(
+      launch.shell,
+      launch.args,
+      cwd,
+      buildShellEnv(envOverrides, state),
+    );
 
     let output = "";
     let finished = false;
@@ -855,7 +1071,9 @@ export const runShell = async (
       if (code === 0) {
         resolve(cleanedOutput || "Command completed successfully (no output).");
       } else {
-        resolve(`Command exited with code ${code}.\n\n${truncate(cleanedOutput)}`);
+        resolve(
+          `Command exited with code ${code}.\n\n${truncate(cleanedOutput)}`,
+        );
       }
     });
     child.on("error", (error) => {
@@ -877,10 +1095,14 @@ const resolveManagedShellCommand = (
 } => {
   let command = String(args.cmd ?? args.command ?? "");
   const cwd = String(
-    args.workdir ?? args.working_directory ?? context?.stellaRoot ?? process.cwd(),
+    args.workdir ??
+      args.working_directory ??
+      context?.stellaRoot ??
+      process.cwd(),
   );
   const envOverrides: Record<string, string> = {};
-  const browserOwnerId = context?.agentId ?? context?.runId ?? context?.rootRunId;
+  const browserOwnerId =
+    context?.agentId ?? context?.runId ?? context?.rootRunId;
   const stellaComputerSessionId = getStellaComputerSessionId(context);
 
   if (shouldUseStellaBrowserBridge(command)) {
@@ -974,14 +1196,19 @@ export const handleExecCommand = async (
   }
 
   const snapshotRoot = resolveShellSnapshotRoot(prepared.cwd, context);
-  const beforeSnapshot = await snapshotFiles(snapshotRoot);
+  const beforeSideEffects = await snapshotShellSideEffects(
+    { cmd: prepared.command, workdir: prepared.cwd },
+    snapshotRoot,
+    context,
+  );
   const record = startShell(
     state,
     prepared.command,
     prepared.cwd,
     prepared.envOverrides,
     undefined,
-    beforeSnapshot,
+    beforeSideEffects.rootSnapshot,
+    beforeSideEffects.externalCandidateSnapshots,
   );
   const observedVersion = record.outputVersion;
   try {
@@ -1086,8 +1313,20 @@ export const handleBash = async (
 
   if (runInBackground) {
     const snapshotRoot = resolveShellSnapshotRoot(cwd, context);
-    const beforeSnapshot = await snapshotFiles(snapshotRoot);
-    const record = startShell(state, command, cwd, envOverrides, undefined, beforeSnapshot);
+    const beforeSideEffects = await snapshotShellSideEffects(
+      { cmd: command, workdir: cwd },
+      snapshotRoot,
+      context,
+    );
+    const record = startShell(
+      state,
+      command,
+      cwd,
+      envOverrides,
+      undefined,
+      beforeSideEffects.rootSnapshot,
+      beforeSideEffects.externalCandidateSnapshots,
+    );
     const extracted = extractOfficePreviewRef(record.output || "");
     return {
       result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
@@ -1107,9 +1346,21 @@ export const handleBash = async (
   }
 
   const snapshotRoot = resolveShellSnapshotRoot(cwd, context);
-  const beforeSnapshot = await snapshotFiles(snapshotRoot);
+  const beforeSideEffects = await snapshotShellSideEffects(
+    { cmd: command, workdir: cwd },
+    snapshotRoot,
+    context,
+  );
   const output = await runShell(state, command, cwd, timeout, envOverrides);
-  const producedFiles = diffFileSnapshots(beforeSnapshot, await snapshotFiles(snapshotRoot));
+  const producedFiles = mergeProducedFiles(
+    diffFileSnapshots(
+      beforeSideEffects.rootSnapshot,
+      await snapshotFiles(snapshotRoot),
+    ),
+    await diffExternalCandidateSnapshots(
+      beforeSideEffects.externalCandidateSnapshots,
+    ),
+  );
   const extracted = extractOfficePreviewRef(output);
   return {
     result: truncate(extracted.cleanedOutput),
@@ -1138,7 +1389,9 @@ export const handleShellStatus = async (
       command: r.command.slice(0, 100),
       running: r.running,
       exitCode: r.exitCode,
-      elapsed: r.running ? `${Math.round((Date.now() - r.startedAt) / 1000)}s` : undefined,
+      elapsed: r.running
+        ? `${Math.round((Date.now() - r.startedAt) / 1000)}s`
+        : undefined,
     }));
     if (shells.length === 0) return { result: "No active shells." };
     return { result: JSON.stringify(shells, null, 2) };
@@ -1154,7 +1407,9 @@ export const handleShellStatus = async (
   const tail = truncate(lines.slice(-tail_lines).join("\n"));
 
   const status = record.running ? "running" : "completed";
-  const elapsed = Math.round(((record.completedAt ?? Date.now()) - record.startedAt) / 1000);
+  const elapsed = Math.round(
+    ((record.completedAt ?? Date.now()) - record.startedAt) / 1000,
+  );
 
   let result = `Shell ${shellId}: ${status}`;
   if (!record.running) result += ` (exit code: ${record.exitCode ?? "?"})`;

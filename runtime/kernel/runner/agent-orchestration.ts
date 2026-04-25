@@ -1,5 +1,4 @@
 import crypto from "crypto";
-import path from "node:path";
 import { resolveLlmRoute } from "../model-routing.js";
 import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
@@ -11,8 +10,15 @@ import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
 import { LocalAgentManager } from "../agents/local-agent-manager.js";
 import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
 import { isKnownSafeCommand } from "../tools/safe-commands.js";
-import { expandHomePath } from "../tools/utils.js";
-import type { AgentToolRequest, ToolContext, ToolResult } from "../tools/types.js";
+import {
+  inferShellMentionedPaths,
+  resolveToolPath,
+} from "../tools/path-inference.js";
+import type {
+  AgentToolRequest,
+  ToolContext,
+  ToolResult,
+} from "../tools/types.js";
 import type {
   LocalAgentContext,
   AgentLifecycleEvent,
@@ -27,9 +33,7 @@ import {
   type FileChangeRecord,
   type ProducedFileRecord,
 } from "../../../desktop/src/shared/contracts/file-changes.js";
-import type {
-  RunnerContext,
-} from "./types.js";
+import type { RunnerContext } from "./types.js";
 import { buildAgentEventPrompt } from "./shared.js";
 
 const TASK_LIFECYCLE_WAKE_PROMPT =
@@ -48,7 +52,7 @@ const collectFileChanges = (
     return;
   }
   for (const change of candidate) {
-    const key = `${change.kind.type}:${change.path}:${change.kind.type === "update" ? change.kind.move_path ?? "" : ""}`;
+    const key = `${change.kind.type}:${change.path}:${change.kind.type === "update" ? (change.kind.move_path ?? "") : ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     target.push(change);
@@ -68,7 +72,7 @@ const collectProducedFiles = (
     return;
   }
   for (const file of candidate) {
-    const key = `${file.kind.type}:${file.path}:${file.kind.type === "update" ? file.kind.move_path ?? "" : ""}`;
+    const key = `${file.kind.type}:${file.path}:${file.kind.type === "update" ? (file.kind.move_path ?? "") : ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     target.push(file);
@@ -96,56 +100,6 @@ const collectWrittenPaths = (
     }
   }
   return out;
-};
-
-const SHELL_TOKEN_PATTERN = /"([^"]+)"|'([^']+)'|([^\s;&|<>]+)/g;
-
-const resolveToolPath = (
-  rawPath: unknown,
-  args: Record<string, unknown>,
-  context: ToolContext,
-): string | null => {
-  if (typeof rawPath !== "string" || rawPath.trim().length === 0) return null;
-  const expanded = expandHomePath(rawPath.trim());
-  if (path.isAbsolute(expanded)) return path.resolve(expanded);
-  const rawWorkdir = args.workdir ?? args.working_directory ?? args.cwd;
-  const base =
-    typeof rawWorkdir === "string" && rawWorkdir.trim().length > 0
-      ? path.resolve(expandHomePath(rawWorkdir.trim()))
-      : context.stellaRoot ?? process.cwd();
-  return path.resolve(base, expanded);
-};
-
-const inferShellMentionedPaths = (
-  args: Record<string, unknown>,
-  context: ToolContext,
-): string[] => {
-  const command =
-    typeof args.cmd === "string"
-      ? args.cmd
-      : typeof args.command === "string"
-        ? args.command
-        : "";
-  if (!command.trim()) return [];
-
-  const out: string[] = [];
-  for (const match of command.matchAll(SHELL_TOKEN_PATTERN)) {
-    const token = match[1] ?? match[2] ?? match[3] ?? "";
-    if (!token || token.startsWith("-")) continue;
-    if (
-      path.isAbsolute(token) ||
-      token.startsWith("./") ||
-      token.startsWith("../") ||
-      token.startsWith("desktop/") ||
-      token.startsWith("runtime/") ||
-      token.startsWith("backend/") ||
-      token.startsWith("launcher/")
-    ) {
-      const resolved = resolveToolPath(token, args, context);
-      if (resolved) out.push(resolved);
-    }
-  }
-  return [...new Set(out)];
 };
 
 const inferPreWritePaths = (
@@ -203,14 +157,17 @@ const getShellExecutionState = (
 
 const normalizeNestedToolName = (raw: unknown): string => {
   const value = typeof raw === "string" ? raw.trim() : "";
-  return value.startsWith("functions.") ? value.slice("functions.".length) : value;
+  return value.startsWith("functions.")
+    ? value.slice("functions.".length)
+    : value;
 };
 
 const getParallelToolEntries = (
   args: Record<string, unknown>,
 ): Array<{ toolName: string; parameters: Record<string, unknown> }> => {
   if (!Array.isArray(args.tool_uses)) return [];
-  const out: Array<{ toolName: string; parameters: Record<string, unknown> }> = [];
+  const out: Array<{ toolName: string; parameters: Record<string, unknown> }> =
+    [];
   for (const entry of args.tool_uses) {
     if (!entry || typeof entry !== "object") continue;
     const record = entry as { recipient_name?: unknown; parameters?: unknown };
@@ -225,7 +182,9 @@ const getParallelToolEntries = (
 };
 
 const parallelContainsShellCommand = (args: Record<string, unknown>): boolean =>
-  getParallelToolEntries(args).some((entry) => entry.toolName === "exec_command");
+  getParallelToolEntries(args).some(
+    (entry) => entry.toolName === "exec_command",
+  );
 
 const isReadOnlyShellCommand = (args: Record<string, unknown>): boolean => {
   const command =
@@ -278,11 +237,7 @@ const normalizeString = (value: unknown): string | undefined => {
 };
 
 const shortHash = (value: string): string =>
-  crypto
-    .createHash("sha1")
-    .update(value)
-    .digest("hex")
-    .slice(0, 10);
+  crypto.createHash("sha1").update(value).digest("hex").slice(0, 10);
 
 const deriveConversationFeatureId = (conversationId: string): string => {
   const normalizedConversationId = normalizeString(conversationId);
@@ -327,8 +282,12 @@ const buildLifecycleEventPayload = (
       return {
         agentId: event.agentId,
         ...(event.result ? { result: event.result } : {}),
-        ...(event.fileChanges?.length ? { fileChanges: event.fileChanges } : {}),
-        ...(event.producedFiles?.length ? { producedFiles: event.producedFiles } : {}),
+        ...(event.fileChanges?.length
+          ? { fileChanges: event.fileChanges }
+          : {}),
+        ...(event.producedFiles?.length
+          ? { producedFiles: event.producedFiles }
+          : {}),
       };
     case "agent-failed":
     case "agent-canceled":
@@ -467,11 +426,9 @@ export const createAgentOrchestration = (
         },
       });
       const runnerCallbacks =
-        (rootRunId
-          ? context.state.runCallbacksByRunId.get(rootRunId)
-          : null)
-        ?? context.state.conversationCallbacks.get(conversationId)
-        ?? null;
+        (rootRunId ? context.state.runCallbacksByRunId.get(rootRunId) : null) ??
+        context.state.conversationCallbacks.get(conversationId) ??
+        null;
 
       if (shouldAttachSelfModLifecycle) {
         // Register the run with the contention tracker before any writes can
@@ -492,7 +449,7 @@ export const createAgentOrchestration = (
       let exploreFindingsBlock = "";
       if (
         agentType === AGENT_IDS.GENERAL &&
-        await shouldUseAutomaticSkillExplore(context.stellaRoot)
+        (await shouldUseAutomaticSkillExplore(context.stellaRoot))
       ) {
         exploreFindingsBlock = await runExplore({
           context,
@@ -662,8 +619,18 @@ export const createAgentOrchestration = (
               };
             }
           }
-          const result = await toolExecutor(toolName, args, ctx, signal, onUpdate);
-          if (isShellCommand || isParallelWithShellCommands || isGuardedShellPoll) {
+          const result = await toolExecutor(
+            toolName,
+            args,
+            ctx,
+            signal,
+            onUpdate,
+          );
+          if (
+            isShellCommand ||
+            isParallelWithShellCommands ||
+            isGuardedShellPoll
+          ) {
             await recordToolWrites({
               fileChanges: result.fileChanges,
               producedFiles: result.producedFiles,
@@ -735,7 +702,8 @@ export const createAgentOrchestration = (
                   },
                   onToolStart: (event) => runnerCallbacks.onToolStart(event),
                   onError: (event) => runnerCallbacks.onError(event),
-                  onInterrupted: (event) => runnerCallbacks.onInterrupted?.(event),
+                  onInterrupted: (event) =>
+                    runnerCallbacks.onInterrupted?.(event),
                   onEnd: (event) => runnerCallbacks.onEnd(event),
                 }
               : {}),
@@ -796,7 +764,9 @@ export const createAgentOrchestration = (
                 ...(effectiveSelfModMetadata ?? {}),
               }),
             );
-          } else if (typeof context.selfModLifecycle!.cancelRun === "function") {
+          } else if (
+            typeof context.selfModLifecycle!.cancelRun === "function"
+          ) {
             await Promise.resolve(context.selfModLifecycle!.cancelRun(runId));
           }
         }
@@ -817,7 +787,8 @@ export const createAgentOrchestration = (
     getCloudAgentRecord: async () => null,
     cancelCloudAgentRecord: async () => ({ canceled: false }),
     saveAgentRecord: (record) => context.runtimeStore.saveAgentRecord?.(record),
-    getAgentRecord: (threadId) => context.runtimeStore.getAgentRecord?.(threadId) ?? null,
+    getAgentRecord: (threadId) =>
+      context.runtimeStore.getAgentRecord?.(threadId) ?? null,
   });
 
   const runBlockingLocalAgent = async (
