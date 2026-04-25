@@ -782,8 +782,12 @@ export function useLocalAgentStream({
           if (conversationId === activeConversationIdRef.current) {
             resetStreamingText()
             resetReasoningText()
-            setPendingUserMessageId(event.userMessageId ?? null)
-            setStreamingResponseTarget(null)
+            setPendingUserMessageId(
+              event.responseTarget && event.responseTarget.type !== 'user_turn'
+                ? null
+                : (event.userMessageId ?? null),
+            )
+            setStreamingResponseTarget(event.responseTarget ?? null)
           }
           break
         }

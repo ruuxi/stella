@@ -121,6 +121,7 @@ export const createOrchestratorController = (
           agentType: args.agentType,
           seq: 0,
           userMessageId: args.userMessageId,
+          ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
           ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
         });
         args.onPrepared?.(prepared);

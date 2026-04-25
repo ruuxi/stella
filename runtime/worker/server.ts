@@ -1075,6 +1075,18 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             const isHiddenRun = ev.uiVisibility === "hidden";
             if (isHiddenRun) {
               hiddenSystemRunIds.add(ev.runId);
+              if (lastVisibleRunId && ev.responseTarget) {
+                emitRunEvent({
+                  ...ev,
+                  runId: lastVisibleRunId,
+                  type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
+                  conversationId: payload.conversationId,
+                  uiVisibility: "visible",
+                  ...(lastVisibleRequestId
+                    ? { requestId: lastVisibleRequestId }
+                    : {}),
+                });
+              }
               return;
             }
             lastVisibleRunId = ev.runId;
