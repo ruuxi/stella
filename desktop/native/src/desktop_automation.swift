@@ -2482,6 +2482,21 @@ func overlayLocalPoint(fromAXPoint point: CGPoint, viewportFrame: CGRect) -> CGP
     )
 }
 
+func axPoint(fromOverlayLocalPoint point: CGPoint, viewportFrame: CGRect) -> CGPoint {
+    CGPoint(
+        x: viewportFrame.origin.x + point.x,
+        y: viewportFrame.origin.y + viewportFrame.height - point.y
+    )
+}
+
+func rectsApproximatelyEqual(_ lhs: CGRect?, _ rhs: CGRect, tolerance: CGFloat = 1) -> Bool {
+    guard let lhs else { return false }
+    return abs(lhs.origin.x - rhs.origin.x) <= tolerance
+        && abs(lhs.origin.y - rhs.origin.y) <= tolerance
+        && abs(lhs.width - rhs.width) <= tolerance
+        && abs(lhs.height - rhs.height) <= tolerance
+}
+
 func rotationForHeading(dx: CGFloat, dy: CGFloat) -> CGFloat {
     let safeDx = (dx == 0 && dy == 0) ? 1 : dx
     return atan2(safeDx, dy)
@@ -2999,6 +3014,7 @@ final class PersistentOverlayController {
     private var animationFinishesAt: CFTimeInterval = 0
     private var pendingShow: (viewportFrame: CGRect, cursorPoint: CGPoint)?
     private var currentPosition: CGPoint?
+    private var lastKnownAXCursorPoint: CGPoint?
     private var activePath: CursorMotionPath?
     private var activeTiming: BezierFunction = .easeInEaseOut
     private var activeStartTime: CFTimeInterval = 0
@@ -3051,7 +3067,7 @@ final class PersistentOverlayController {
         currentTargetIdentity = targetIdentity
         currentInteractionKind = interactionKind
 
-        if window == nil || currentScreen !== targetScreen || currentViewportFrame != viewportFrame {
+        if window == nil || currentScreen !== targetScreen || !rectsApproximatelyEqual(currentViewportFrame, viewportFrame) {
             rebuildWindow(screen: targetScreen, viewportFrame: viewportFrame, cursorPoint: cursorPoint)
             refreshOverlayWindowOrdering()
         }
@@ -3141,6 +3157,7 @@ final class PersistentOverlayController {
         let clickScale = clickPulseScale(at: now)
 
         guard let path = activePath else {
+            rememberCurrentAXCursorPoint()
             applyCursorState(
                 cursor,
                 position: position,
@@ -3163,6 +3180,7 @@ final class PersistentOverlayController {
         let newAngle = normalizeAngle(renderedAngle + limited)
 
         currentPosition = nextPosition
+        rememberCurrentAXCursorPoint()
         renderedAngle = newAngle
         applyCursorState(cursor, position: nextPosition, rotation: newAngle, scale: clickScale)
         updateTailPath(at: now, hasActivePath: true)
@@ -3187,6 +3205,7 @@ final class PersistentOverlayController {
 
     func hide() {
         guard let win = window, let host = win.contentView else { return }
+        rememberCurrentAXCursorPoint()
         let fadeOut = CABasicAnimation(keyPath: "opacity")
         fadeOut.fromValue = 1
         fadeOut.toValue = 0
@@ -3202,6 +3221,7 @@ final class PersistentOverlayController {
     }
 
     private func rebuildWindow(screen: NSScreen, viewportFrame: CGRect, cursorPoint: CGPoint) {
+        let preservedAX = currentAXCursorPoint() ?? lastKnownAXCursorPoint
         hideImmediate(preservingTargetIdentity: true)
         let winFrame = appKitFrame(fromAXRect: viewportFrame, screen: screen)
         let win = ActionOverlayWindow(frame: winFrame)
@@ -3214,13 +3234,16 @@ final class PersistentOverlayController {
         win.contentView = host
 
         let mouseAX = mouseLocationInAXCoordinates(screen: screen)
-        let spawnAX = clampPoint(mouseAX, into: viewportFrame)
+        let spawnAX = clampPoint(preservedAX ?? mouseAX, into: viewportFrame)
         let cursor = makeCursorLayer(at: spawnAX, viewportFrame: viewportFrame, screen: screen)
         host.layer?.addSublayer(cursor)
         cursorLayer = cursor
         currentPosition = cursor.position
+        lastKnownAXCursorPoint = spawnAX
         activePath = nil
-        lastArrivalTangent = nil
+        if preservedAX == nil {
+            lastArrivalTangent = nil
+        }
         renderedAngle = overlayCursorBaseRotation
         idleAnimationStartedAt = CACurrentMediaTime()
         clickPulseStartedAt = nil
@@ -3483,7 +3506,21 @@ final class PersistentOverlayController {
         activePath != nil || now < animationFinishesAt
     }
 
+    private func currentAXCursorPoint() -> CGPoint? {
+        guard let position = currentPosition, let viewportFrame = currentViewportFrame else {
+            return nil
+        }
+        return axPoint(fromOverlayLocalPoint: position, viewportFrame: viewportFrame)
+    }
+
+    private func rememberCurrentAXCursorPoint() {
+        if let point = currentAXCursorPoint() {
+            lastKnownAXCursorPoint = point
+        }
+    }
+
     private func hideImmediate(preservingTargetIdentity: Bool = false) {
+        rememberCurrentAXCursorPoint()
         window?.orderOut(nil)
         window = nil
         cursorLayer = nil
@@ -5638,40 +5675,271 @@ func simulateLeftClick(at point: CGPoint, clickCount: Int = 1, button: CGMouseBu
     return true
 }
 
-// Post a left-click directly to the target pid's event queue using
-// CGEventPostToPid. Bypasses the system event tap, so the event reaches
-// the target process even when another app's window is visually on top
-// at those screen coordinates. Required for clicking inside web-wrapped
-// app surfaces (Spotify, Slack, Discord, etc.) without raising.
-//
-// Post a left-click directly to the target pid's event queue using
-// CGEventPostToPid. Bypasses the system event tap, so the event reaches
-// the target process even when another app's window is visually on top
-// at those screen coordinates. Required for clicking inside web-wrapped
-// app surfaces (Spotify, Slack, Discord, etc.) without raising.
-//
-// Mirrors open-codex-computer-use's `clickTargeted`:
-//   - `.combinedSessionState` event source (NOT `.hidSystemState`;
-//     per-pid posting requires session-scoped events).
-//   - Three events in order: mouseMoved → mouseDown → mouseUp. The
-//     mouseMoved primes the cursor position in the target's coord frame;
-//     web views ignore the click without it.
-//   - `.mouseEventClickState = clickCount` set on every event so the
-//     receiver registers the click sequence properly.
-//   - 30 ms sleep between events so the receiver's run loop has time
-//     to dispatch each one before the next arrives.
+enum SkyLightEventPost {
+    private typealias PostToPidFn = @convention(c) (pid_t, CGEvent) -> Void
+    private typealias SetAuthMessageFn = @convention(c) (CGEvent, AnyObject) -> Void
+    private typealias FactoryMsgSendFn = @convention(c) (
+        AnyObject,
+        Selector,
+        UnsafeMutableRawPointer,
+        Int32,
+        UInt32
+    ) -> AnyObject?
+
+    private struct Resolved {
+        let postToPid: PostToPidFn
+        let setAuthMessage: SetAuthMessageFn
+        let msgSendFactory: FactoryMsgSendFn
+        let messageClass: AnyClass
+        let factorySelector: Selector
+    }
+
+    private static let resolved: Resolved? = {
+        _ = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
+
+        func fn<T>(_ name: String, as _: T.Type) -> T? {
+            guard let pointer = dlsym(UnsafeMutableRawPointer(bitPattern: -2), name) else {
+                return nil
+            }
+            return unsafeBitCast(pointer, to: T.self)
+        }
+
+        guard let postToPid = fn("SLEventPostToPid", as: PostToPidFn.self),
+              let setAuthMessage = fn("SLEventSetAuthenticationMessage", as: SetAuthMessageFn.self),
+              let msgSendFactory = fn("objc_msgSend", as: FactoryMsgSendFn.self),
+              let messageClass = NSClassFromString("SLSEventAuthenticationMessage") else {
+            return nil
+        }
+
+        return Resolved(
+            postToPid: postToPid,
+            setAuthMessage: setAuthMessage,
+            msgSendFactory: msgSendFactory,
+            messageClass: messageClass,
+            factorySelector: NSSelectorFromString("messageWithEventRecord:pid:version:")
+        )
+    }()
+
+    private typealias SetWindowLocationFn = @convention(c) (CGEvent, CGPoint) -> Void
+    private typealias PostEventRecordToFn = @convention(c) (
+        UnsafeRawPointer,
+        UnsafePointer<UInt8>
+    ) -> Int32
+    private typealias GetFrontProcessFn = @convention(c) (UnsafeMutableRawPointer) -> Int32
+    private typealias GetProcessForPIDFn = @convention(c) (pid_t, UnsafeMutableRawPointer) -> Int32
+
+    private static let setWindowLocationFn: SetWindowLocationFn? = {
+        _ = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
+        guard let pointer = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGEventSetWindowLocation") else {
+            return nil
+        }
+        return unsafeBitCast(pointer, to: SetWindowLocationFn.self)
+    }()
+
+    private static let postEventRecordToFn: PostEventRecordToFn? = {
+        _ = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
+        guard let pointer = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "SLPSPostEventRecordTo") else {
+            return nil
+        }
+        return unsafeBitCast(pointer, to: PostEventRecordToFn.self)
+    }()
+
+    private static let getFrontProcessFn: GetFrontProcessFn? = {
+        _ = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
+        guard let pointer = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "_SLPSGetFrontProcess") else {
+            return nil
+        }
+        return unsafeBitCast(pointer, to: GetFrontProcessFn.self)
+    }()
+
+    private static let getProcessForPIDFn: GetProcessForPIDFn? = {
+        guard let pointer = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "GetProcessForPID") else {
+            return nil
+        }
+        return unsafeBitCast(pointer, to: GetProcessForPIDFn.self)
+    }()
+
+    @discardableResult
+    static func postToPid(_ pid: pid_t, event: CGEvent, attachAuthMessage: Bool = true) -> Bool {
+        guard let resolved else { return false }
+        if attachAuthMessage,
+           let record = extractEventRecord(from: event),
+           let message = resolved.msgSendFactory(
+            resolved.messageClass as AnyObject,
+            resolved.factorySelector,
+            record,
+            pid,
+            0
+           ) {
+            resolved.setAuthMessage(event, message)
+        }
+        resolved.postToPid(pid, event)
+        return true
+    }
+
+    @discardableResult
+    static func setWindowLocation(_ event: CGEvent, _ point: CGPoint) -> Bool {
+        guard let setWindowLocationFn else { return false }
+        setWindowLocationFn(event, point)
+        return true
+    }
+
+    static func getFrontProcess(_ psnBuffer: UnsafeMutableRawPointer) -> Bool {
+        guard let getFrontProcessFn else { return false }
+        return getFrontProcessFn(psnBuffer) == 0
+    }
+
+    static func getProcessPSN(forPid pid: pid_t, into psnBuffer: UnsafeMutableRawPointer) -> Bool {
+        guard let getProcessForPIDFn else { return false }
+        return getProcessForPIDFn(pid, psnBuffer) == 0
+    }
+
+    @discardableResult
+    static func postEventRecordTo(psn: UnsafeRawPointer, bytes: UnsafePointer<UInt8>) -> Bool {
+        guard let postEventRecordToFn else { return false }
+        return postEventRecordToFn(psn, bytes) == 0
+    }
+
+    private static func extractEventRecord(from event: CGEvent) -> UnsafeMutableRawPointer? {
+        let base = Unmanaged.passUnretained(event).toOpaque()
+        for offset in [24, 32, 16] {
+            let slot = base.advanced(by: offset).assumingMemoryBound(to: UnsafeMutableRawPointer?.self)
+            if let pointer = slot.pointee {
+                return pointer
+            }
+        }
+        return nil
+    }
+}
+
+enum FocusWithoutRaise {
+    static func activateWithoutRaise(targetPid: pid_t, targetWindowID: CGWindowID?) -> Bool {
+        var frontPSN = [UInt8](repeating: 0, count: 8)
+        var targetPSN = [UInt8](repeating: 0, count: 8)
+        guard frontPSN.withUnsafeMutableBytes({ SkyLightEventPost.getFrontProcess($0.baseAddress!) }),
+              targetPSN.withUnsafeMutableBytes({ SkyLightEventPost.getProcessPSN(forPid: targetPid, into: $0.baseAddress!) }) else {
+            return false
+        }
+
+        func record(marker: UInt8, windowID: CGWindowID?) -> [UInt8] {
+            var bytes = [UInt8](repeating: 0, count: 248)
+            bytes[0x04] = 0xf8
+            bytes[0x08] = 0x0d
+            bytes[0x8a] = marker
+            if let windowID {
+                let raw = UInt32(windowID)
+                bytes[0x3c] = UInt8(raw & 0xff)
+                bytes[0x3d] = UInt8((raw >> 8) & 0xff)
+                bytes[0x3e] = UInt8((raw >> 16) & 0xff)
+                bytes[0x3f] = UInt8((raw >> 24) & 0xff)
+            }
+            return bytes
+        }
+
+        let defocus = record(marker: 0x02, windowID: nil)
+        let focus = record(marker: 0x01, windowID: targetWindowID)
+        let didDefocus = frontPSN.withUnsafeBytes { psn in
+            defocus.withUnsafeBufferPointer { bytes in
+                SkyLightEventPost.postEventRecordTo(psn: psn.baseAddress!, bytes: bytes.baseAddress!)
+            }
+        }
+        let didFocus = targetPSN.withUnsafeBytes { psn in
+            focus.withUnsafeBufferPointer { bytes in
+                SkyLightEventPost.postEventRecordTo(psn: psn.baseAddress!, bytes: bytes.baseAddress!)
+            }
+        }
+        return didDefocus || didFocus
+    }
+}
+
+func cocoaLocation(fromScreenPoint point: CGPoint) -> CGPoint {
+    let screenHeight = NSScreen.main?.frame.height ?? NSScreen.screens.first?.frame.height ?? 0
+    guard screenHeight > 0 else { return point }
+    return CGPoint(x: point.x, y: screenHeight - point.y)
+}
+
+func onScreenWindowForClick(pid: pid_t, point: CGPoint) -> WindowEntry? {
+    enumerateOnScreenWindows()
+        .filter { entry in
+            entry.pid == pid && entry.frame.contains(point)
+        }
+        .sorted { lhs, rhs in
+            if lhs.layer != rhs.layer {
+                return lhs.layer < rhs.layer
+            }
+            let lhsArea = lhs.frame.width * lhs.frame.height
+            let rhsArea = rhs.frame.width * rhs.frame.height
+            return lhsArea < rhsArea
+        }
+        .first
+}
+
+func buildMouseCGEvent(
+    type: NSEvent.EventType,
+    point: CGPoint,
+    clickCount: Int,
+    button: CGMouseButton,
+    windowID: CGWindowID?
+) -> CGEvent? {
+    let eventButton: Int
+    switch button {
+    case .right:
+        eventButton = 1
+    case .center:
+        eventButton = 2
+    default:
+        eventButton = 0
+    }
+    guard let event = NSEvent.mouseEvent(
+        with: type,
+        location: cocoaLocation(fromScreenPoint: point),
+        modifierFlags: [],
+        timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: windowID.map(Int.init) ?? 0,
+        context: nil,
+        eventNumber: 0,
+        clickCount: clickCount,
+        pressure: 1.0
+    )?.cgEvent else {
+        return nil
+    }
+    event.location = point
+    event.setIntegerValueField(.mouseEventButtonNumber, value: Int64(eventButton))
+    event.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+    event.setIntegerValueField(.mouseEventSubtype, value: 3)
+    if let windowID {
+        event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowID))
+        event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowID))
+    }
+    return event
+}
+
+@discardableResult
+func postPidMouseEvent(_ event: CGEvent, pid: pid_t, windowLocalPoint: CGPoint?) -> Bool {
+    if let windowLocalPoint {
+        _ = SkyLightEventPost.setWindowLocation(event, windowLocalPoint)
+    }
+    event.timestamp = CGEventTimestamp(clock_gettime_nsec_np(CLOCK_UPTIME_RAW))
+    _ = SkyLightEventPost.postToPid(pid, event: event, attachAuthMessage: false)
+    event.postToPid(pid)
+    return true
+}
+
+// Post a click directly to the target pid's event queue. This remains a
+// background path: it does not raise the app, does not activate the app, and
+// does not use the global HID tap. The event recipe intentionally mirrors the
+// working cua-driver path more closely than raw `CGEvent(mouseEventSource:)`:
+// build via NSEvent, stamp the target window, post through SkyLight's per-pid
+// path, then also post through the public pid route.
 func simulateLeftClickToPid(
     at point: CGPoint,
     pid: pid_t,
     clickCount: Int = 1,
     button: CGMouseButton = .left
 ) -> Bool {
-    guard let source = CGEventSource(stateID: .combinedSessionState) else {
-        return false
-    }
     let count = max(1, clickCount)
-    let downType: CGEventType
-    let upType: CGEventType
+    let downType: NSEvent.EventType
+    let upType: NSEvent.EventType
     switch button {
     case .right:
         downType = .rightMouseDown
@@ -5683,23 +5951,51 @@ func simulateLeftClickToPid(
         downType = .otherMouseDown
         upType = .otherMouseUp
     }
-    func post(_ type: CGEventType) -> Bool {
-        guard let event = CGEvent(
-            mouseEventSource: source,
-            mouseType: type,
-            mouseCursorPosition: point,
-            mouseButton: button
+
+    let window = onScreenWindowForClick(pid: pid, point: point)
+    let windowLocalPoint = window.map {
+        CGPoint(x: point.x - $0.frame.minX, y: point.y - $0.frame.minY)
+    }
+    let windowID = window?.windowID
+
+    if let windowID {
+        _ = FocusWithoutRaise.activateWithoutRaise(targetPid: pid, targetWindowID: windowID)
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+
+    guard let move = buildMouseCGEvent(
+        type: .mouseMoved,
+        point: point,
+        clickCount: 0,
+        button: button,
+        windowID: windowID
+    ) else {
+        return false
+    }
+    _ = postPidMouseEvent(move, pid: pid, windowLocalPoint: windowLocalPoint)
+    Thread.sleep(forTimeInterval: 0.015)
+
+    for clickIndex in 1...count {
+        guard let down = buildMouseCGEvent(
+            type: downType,
+            point: point,
+            clickCount: clickIndex,
+            button: button,
+            windowID: windowID
+        ), let up = buildMouseCGEvent(
+            type: upType,
+            point: point,
+            clickCount: clickIndex,
+            button: button,
+            windowID: windowID
         ) else {
             return false
         }
-        event.setIntegerValueField(.mouseEventClickState, value: Int64(count))
-        event.postToPid(pid)
+        _ = postPidMouseEvent(down, pid: pid, windowLocalPoint: windowLocalPoint)
         Thread.sleep(forTimeInterval: 0.03)
-        return true
-    }
-    for _ in 0..<count {
-        guard post(.mouseMoved), post(downType), post(upType) else {
-            return false
+        _ = postPidMouseEvent(up, pid: pid, windowLocalPoint: windowLocalPoint)
+        if clickIndex < count {
+            Thread.sleep(forTimeInterval: 0.08)
         }
     }
     return true
