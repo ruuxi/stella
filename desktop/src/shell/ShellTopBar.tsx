@@ -8,13 +8,16 @@ import {
   Minus,
   PanelRight,
   Palette,
+  Pin,
   Settings,
   Square,
   X,
 } from "lucide-react";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import { getPlatform } from "@/platform/electron/platform";
+import { useWindowType } from "@/shared/hooks/use-window-type";
 import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
+import { dispatchOpenDisplaySidebar } from "@/shared/lib/stella-orb-chat";
 
 export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
 
@@ -101,7 +104,9 @@ export const ShellTopBar = () => {
   const navigate = useNavigate();
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
-  const { panelOpen, panelExpanded, tabs } = useDisplayTabs();
+  const isMiniWindow = useWindowType() === "mini";
+  const { panelOpen, panelExpanded } = useDisplayTabs();
+  const [miniAlwaysOnTop, setMiniAlwaysOnTopState] = useState(true);
 
   const toggleSidebar = useCallback(() => {
     window.dispatchEvent(new Event(STELLA_TOGGLE_SIDEBAR_RAIL_EVENT));
@@ -110,6 +115,26 @@ export const ShellTopBar = () => {
   const openSettings = useCallback(() => {
     void navigate({ to: "/settings" });
   }, [navigate]);
+
+  useEffect(() => {
+    if (!isMiniWindow) return;
+    let cancelled = false;
+    void window.electronAPI?.window.isMiniAlwaysOnTop?.().then((enabled) => {
+      if (!cancelled) setMiniAlwaysOnTopState(Boolean(enabled));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isMiniWindow]);
+
+  const toggleMiniAlwaysOnTop = useCallback(() => {
+    const next = !miniAlwaysOnTop;
+    setMiniAlwaysOnTopState(next);
+    void window.electronAPI?.window
+      .setMiniAlwaysOnTop?.(next)
+      .then((actual) => setMiniAlwaysOnTopState(Boolean(actual)))
+      .catch(() => setMiniAlwaysOnTopState(!next));
+  }, [miniAlwaysOnTop]);
 
   return (
     <header className="shell-topbar" data-platform={isMac ? "mac" : "other"}>
@@ -166,6 +191,26 @@ export const ShellTopBar = () => {
         </button>
       </div>
       <div className="shell-topbar-right">
+        {isMiniWindow ? (
+          <button
+            type="button"
+            className="shell-topbar-icon-btn"
+            onClick={toggleMiniAlwaysOnTop}
+            aria-label={
+              miniAlwaysOnTop
+                ? "Disable always on top"
+                : "Keep mini window on top"
+            }
+            aria-pressed={miniAlwaysOnTop}
+            title={
+              miniAlwaysOnTop
+                ? "Disable always on top"
+                : "Keep mini window on top"
+            }
+          >
+            <Pin size={14} strokeWidth={1.75} />
+          </button>
+        ) : null}
         <div className="shell-topbar-display-controls">
           {panelOpen ? (
             <>
@@ -199,10 +244,9 @@ export const ShellTopBar = () => {
             <button
               type="button"
               className="shell-topbar-icon-btn"
-              onClick={() => displayTabs.setPanelOpen(true)}
+              onClick={dispatchOpenDisplaySidebar}
               aria-label="Open display panel"
               title="Open display panel"
-              disabled={tabs.length === 0}
             >
               <PanelRight size={14} strokeWidth={1.75} />
             </button>

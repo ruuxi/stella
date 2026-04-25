@@ -134,6 +134,8 @@ export type ElectronWindowApi = {
   maximize: () => void;
   close: () => void;
   isMaximized: () => Promise<boolean>;
+  isMiniAlwaysOnTop: () => Promise<boolean>;
+  setMiniAlwaysOnTop: (enabled: boolean) => Promise<boolean>;
   show: (target: WindowMode) => void;
   setNativeButtonsVisible: (visible: boolean) => void;
 };

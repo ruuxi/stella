@@ -132,6 +132,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     maximize: () => ipcRenderer.send("window:maximize"),
     close: () => ipcRenderer.send("window:close"),
     isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
+    isMiniAlwaysOnTop: () => ipcRenderer.invoke("window:isMiniAlwaysOnTop"),
+    setMiniAlwaysOnTop: (enabled: boolean) =>
+      ipcRenderer.invoke("window:setMiniAlwaysOnTop", enabled),
     show: (target: "mini" | "full") => ipcRenderer.send("window:show", target),
     setNativeButtonsVisible: (visible: boolean) =>
       ipcRenderer.send(IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE, visible),

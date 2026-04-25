@@ -154,7 +154,7 @@
   gap: 2px;
   padding: 0 8px;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .shell-topbar[data-platform="mac"] .shell-topbar-left {
@@ -164,6 +164,7 @@
 
 .shell-topbar-icon-btn,
 .shell-topbar-wc-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -182,6 +183,64 @@
   flex-shrink: 0;
 }
 
+.shell-topbar-icon-btn::after,
+.shell-topbar-wc-btn::after {
+  content: attr(aria-label);
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 50%;
+  z-index: 100;
+  max-width: 180px;
+  padding: 5px 7px;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface-raised-stronger-non-alpha);
+  color: var(--text-strong);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.1;
+  white-space: nowrap;
+  box-shadow: var(--shadow-soft, 0 8px 24px rgb(0 0 0 / 0.18));
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(-2px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+.shell-topbar-icon-btn:hover::after,
+.shell-topbar-icon-btn:focus-visible::after,
+.shell-topbar-wc-btn:hover::after,
+.shell-topbar-wc-btn:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.shell-topbar-left .shell-topbar-icon-btn::after {
+  left: 0;
+  transform: translateY(-2px);
+}
+
+.shell-topbar-left .shell-topbar-icon-btn:hover::after,
+.shell-topbar-left .shell-topbar-icon-btn:focus-visible::after {
+  transform: translateY(0);
+}
+
+.shell-topbar-right .shell-topbar-icon-btn::after,
+.shell-topbar-right .shell-topbar-wc-btn::after {
+  right: 0;
+  left: auto;
+  transform: translateY(-2px);
+}
+
+.shell-topbar-right .shell-topbar-icon-btn:hover::after,
+.shell-topbar-right .shell-topbar-icon-btn:focus-visible::after,
+.shell-topbar-right .shell-topbar-wc-btn:hover::after,
+.shell-topbar-right .shell-topbar-wc-btn:focus-visible::after {
+  transform: translateY(0);
+}
+
 .shell-topbar-sidebar-toggle-icon {
   display: block;
   flex-shrink: 0;
@@ -190,6 +249,11 @@
 .shell-topbar-icon-btn:hover,
 .shell-topbar-wc-btn:hover {
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+.shell-topbar-icon-btn[aria-pressed="true"] {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
   color: var(--text-strong);
 }
 
@@ -703,10 +767,43 @@
 
   .full-body > .sidebar .sidebar-nav {
     padding: 12px 6px;
+    overflow: visible;
   }
 
   .full-body > .sidebar .sidebar-footer {
     padding: 8px 6px;
+    overflow: visible;
+  }
+
+  .full-body > .sidebar [aria-label]::after {
+    content: attr(aria-label);
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 8px);
+    z-index: 100;
+    max-width: 180px;
+    padding: 5px 7px;
+    border: 1px solid var(--border-weak);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--surface-raised-stronger-non-alpha);
+    color: var(--text-strong);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.1;
+    white-space: nowrap;
+    box-shadow: var(--shadow-soft, 0 8px 24px rgb(0 0 0 / 0.18));
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-50%) translateX(-2px);
+    transition:
+      opacity 0.12s ease,
+      transform 0.12s ease;
+  }
+
+  .full-body > .sidebar [aria-label]:hover::after,
+  .full-body > .sidebar [aria-label]:focus-visible::after {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
   }
 
   /* Account row collapses to the avatar over a tiny pill, matching the

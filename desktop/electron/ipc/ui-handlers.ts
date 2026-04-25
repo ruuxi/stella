@@ -59,6 +59,18 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     return win?.isMaximized() ?? false;
   });
 
+  ipcMain.handle("window:isMiniAlwaysOnTop", () =>
+    options.windowManager.isMiniAlwaysOnTop(),
+  );
+
+  ipcMain.handle("window:setMiniAlwaysOnTop", (event, enabled: boolean) => {
+    if (!options.assertPrivilegedSender(event, "window:setMiniAlwaysOnTop")) {
+      return options.windowManager.isMiniAlwaysOnTop();
+    }
+    options.windowManager.setMiniAlwaysOnTop(Boolean(enabled));
+    return options.windowManager.isMiniAlwaysOnTop();
+  });
+
   ipcMain.on(IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE, (event, visible: boolean) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || process.platform !== "darwin") return;
