@@ -64,6 +64,7 @@ const initializeWindowShell = (context: BootstrapContext) => {
       isAppReady: () => state.appReady,
       externalLinkService: services.externalLinkService,
       onUpdateUiState: (partial) => services.uiStateService.update(partial),
+      onMiniHidden: () => services.selectionWatcherService.hideChip(),
     }),
   );
 
@@ -92,17 +93,6 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
   const { config, services, state } = context;
 
   state.windowManager!.createInitialWindows();
-
-  // The global "Ask Stella" selection pill is gated on the mini window
-  // being visible. Snap the chip away the moment the mini hides so a
-  // chip popped just before the user closed the overlay doesn't linger
-  // until the 10s auto-hide.
-  const miniWindow = state.windowManager!.getMiniWindow();
-  if (miniWindow && !miniWindow.isDestroyed()) {
-    miniWindow.on("hide", () => {
-      services.selectionWatcherService.hideChip();
-    });
-  }
 
   const fullWindow = state.windowManager!.getFullWindow();
 

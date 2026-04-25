@@ -14,9 +14,11 @@ type WindowManagerOptions = {
   isAppReady: () => boolean
   externalLinkService: ExternalLinkService
   onUpdateUiState: (partial: Partial<UiState>) => void
+  onMiniHidden?: () => void
 }
 
 const compactSize = MINI_SHELL_SIZE
+const MINI_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
 
 type Bounds = { x: number; y: number; width: number; height: number }
 type ShellWindowMode = 'full' | 'mini'
@@ -102,6 +104,7 @@ export class WindowManager {
   private miniWindowBounds: Bounds | null = null
   private miniShouldRestoreExternalApp = false
   private miniAlwaysOnTop = true
+  private miniIdleDestroyTimer: ReturnType<typeof setTimeout> | null = null
   private readonly transientReloadStateByMode = new Map<
     ShellWindowMode,
     TransientReloadState
@@ -175,6 +178,7 @@ export class WindowManager {
       },
       onClosed: () => {
         this.cancelTransientReload('mini')
+        this.cancelMiniIdleDestroy()
         this.syncLastActiveWindowMode()
       },
     })
@@ -279,6 +283,7 @@ export class WindowManager {
   }
 
   private createMiniWindow() {
+    this.cancelMiniIdleDestroy()
     const window = this.miniWindowController.create()
     this.observeShellWindow(window, 'mini')
     return window
@@ -286,7 +291,6 @@ export class WindowManager {
 
   createInitialWindows() {
     this.createFullWindow()
-    this.createMiniWindow()
   }
 
   getFullWindow() {
@@ -400,6 +404,7 @@ export class WindowManager {
       fullWindow.setFocusable(false)
       this.hideWindow(miniWindow, { preserveExternalFocus: true })
       this.syncLastActiveWindowMode()
+      this.scheduleMiniIdleDestroy()
       this.miniShouldRestoreExternalApp = false
       setImmediate(() => {
         if (fullWindow && !fullWindow.isDestroyed()) {
@@ -411,6 +416,7 @@ export class WindowManager {
 
     this.hideWindow(miniWindow, { preserveExternalFocus: true })
     this.syncLastActiveWindowMode()
+    this.scheduleMiniIdleDestroy()
 
     // Case B: user popped the mini from outside Stella AND the full
     // window isn't on screen. `app.hide()` is safe here (nothing of
@@ -429,6 +435,26 @@ export class WindowManager {
     }
   }
 
+  private cancelMiniIdleDestroy() {
+    if (!this.miniIdleDestroyTimer) {
+      return
+    }
+    clearTimeout(this.miniIdleDestroyTimer)
+    this.miniIdleDestroyTimer = null
+  }
+
+  private scheduleMiniIdleDestroy() {
+    this.cancelMiniIdleDestroy()
+    this.miniIdleDestroyTimer = setTimeout(() => {
+      this.miniIdleDestroyTimer = null
+      const miniWindow = this.getMiniWindow()
+      if (!miniWindow || miniWindow.isDestroyed() || miniWindow.isVisible()) {
+        return
+      }
+      this.miniWindowController.destroy()
+    }, MINI_IDLE_DESTROY_DELAY_MS)
+  }
+
   private observeShellWindow(window: BrowserWindow, mode: ShellWindowMode) {
     if (this.observedWindows.has(window)) {
       return
@@ -439,10 +465,17 @@ export class WindowManager {
       this.setLastActiveWindowMode(mode)
     })
     window.on('show', () => {
+      if (mode === 'mini') {
+        this.cancelMiniIdleDestroy()
+      }
       this.lastActiveWindowMode = mode
     })
     window.on('hide', () => {
       this.syncLastActiveWindowMode()
+      if (mode === 'mini') {
+        this.options.onMiniHidden?.()
+        this.scheduleMiniIdleDestroy()
+      }
     })
 
     if (mode === 'mini') {
