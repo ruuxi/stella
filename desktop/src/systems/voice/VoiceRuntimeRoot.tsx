@@ -91,7 +91,7 @@ export function VoiceRuntimeRoot() {
   }, [bootConversationId, state.conversationId]);
 
   useEffect(() => {
-    if (state.conversationId || bootConversationId) {
+    if (!state.isVoiceRtcActive || state.conversationId || bootConversationId) {
       return;
     }
 
@@ -122,13 +122,34 @@ export function VoiceRuntimeRoot() {
     return () => {
       cancelled = true;
     };
-  }, [bootConversationId, state.conversationId]);
+  }, [bootConversationId, state.conversationId, state.isVoiceRtcActive]);
 
   useEffect(() => {
     inputActiveRef.current = state.isVoiceRtcActive;
   }, [state.isVoiceRtcActive]);
 
+  const stopRuntimeSession = () => {
+    if (levelTimerRef.current) {
+      clearInterval(levelTimerRef.current);
+      levelTimerRef.current = null;
+    }
+    managerRef.current?.stop();
+    managerRef.current = null;
+    speakingRef.current = false;
+    userSpeakingRef.current = false;
+    sessionStateRef.current = "idle";
+    analyserRef.current = null;
+    outputAnalyserRef.current = null;
+    publishedStateRef.current = DEFAULT_RUNTIME_STATE;
+    window.electronAPI?.voice.pushRuntimeState(DEFAULT_RUNTIME_STATE);
+  };
+
   useEffect(() => {
+    if (!state.isVoiceRtcActive) {
+      stopRuntimeSession();
+      return;
+    }
+
     if (!resolvedConversationId || managerRef.current) {
       return;
     }
@@ -176,23 +197,11 @@ export function VoiceRuntimeRoot() {
         outputLevel: computeEnergy(outputAnalyserRef.current),
       });
     }, LEVEL_SAMPLE_MS);
-  }, [resolvedConversationId]);
+  }, [resolvedConversationId, state.isVoiceRtcActive]);
 
   useEffect(() => {
     return () => {
-      if (levelTimerRef.current) {
-        clearInterval(levelTimerRef.current);
-        levelTimerRef.current = null;
-      }
-      managerRef.current?.stop();
-      managerRef.current = null;
-      speakingRef.current = false;
-      userSpeakingRef.current = false;
-      sessionStateRef.current = "idle";
-      analyserRef.current = null;
-      outputAnalyserRef.current = null;
-      publishedStateRef.current = DEFAULT_RUNTIME_STATE;
-      window.electronAPI?.voice.pushRuntimeState(DEFAULT_RUNTIME_STATE);
+      stopRuntimeSession();
     };
   }, []);
 
@@ -210,4 +219,3 @@ export function VoiceRuntimeRoot() {
 
   return null;
 }
-

@@ -24,7 +24,15 @@ export const authClient = new Proxy({} as AuthClient, {
       if (!baseURL) {
         throw new Error("Convex site URL is not set. Cannot initialize auth client.");
       }
-      _instance = createAuthClient({ baseURL, plugins });
+      _instance = createAuthClient({
+        baseURL,
+        plugins,
+        sessionOptions: {
+          refetchInterval: 0,
+          refetchOnWindowFocus: false,
+          refetchWhenOffline: false,
+        },
+      });
     }
     return Reflect.get(_instance, prop, receiver);
   },
