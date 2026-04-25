@@ -101,6 +101,7 @@ export class WindowManager {
   private lastActiveWindowMode: ShellWindowMode = 'full'
   private miniWindowBounds: Bounds | null = null
   private miniShouldRestoreExternalApp = false
+  private miniAlwaysOnTop = true
   private readonly transientReloadStateByMode = new Map<
     ShellWindowMode,
     TransientReloadState
@@ -350,6 +351,21 @@ export class WindowManager {
     return Boolean(miniWindow && !miniWindow.isDestroyed() && miniWindow.isVisible())
   }
 
+  isMiniAlwaysOnTop() {
+    return this.miniAlwaysOnTop
+  }
+
+  setMiniAlwaysOnTop(enabled: boolean) {
+    this.miniAlwaysOnTop = enabled
+    const miniWindow = this.getMiniWindow()
+    if (!miniWindow || miniWindow.isDestroyed()) return
+    if (enabled) {
+      miniWindow.setAlwaysOnTop(true, 'screen-saver')
+    } else {
+      miniWindow.setAlwaysOnTop(false)
+    }
+  }
+
   hideMiniWindow(_animate: boolean) {
     const miniWindow = this.getMiniWindow()
     if (!miniWindow || miniWindow.isDestroyed()) return
@@ -561,8 +577,14 @@ export class WindowManager {
   private focusAndRaise(window: BrowserWindow, mode: ShellWindowMode) {
     if (mode === 'mini') {
       if (process.platform === 'darwin') {
+        app.dock?.show()
+        app.show()
         window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-        window.setAlwaysOnTop(true, 'screen-saver')
+        if (this.miniAlwaysOnTop) {
+          window.setAlwaysOnTop(true, 'screen-saver')
+        } else {
+          window.setAlwaysOnTop(false)
+        }
         if (!window.isVisible()) {
           window.showInactive()
         } else {
@@ -570,7 +592,9 @@ export class WindowManager {
         }
         window.moveTop()
         window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-        window.setAlwaysOnTop(true, 'screen-saver')
+        if (this.miniAlwaysOnTop) {
+          window.setAlwaysOnTop(true, 'screen-saver')
+        }
         app.focus({ steal: true })
         window.focus()
         return
@@ -661,7 +685,27 @@ export class WindowManager {
   onActivate() {
     if (BrowserWindow.getAllWindows().length === 0) {
       this.createInitialWindows()
+      return
     }
-    this.showWindow(this.lastActiveWindowMode)
+
+    const miniWindow = this.getMiniWindow()
+    const shouldRaiseMini = Boolean(
+      miniWindow && !miniWindow.isDestroyed() && miniWindow.isVisible(),
+    )
+
+    const fullWindow = this.createFullWindow()
+    if (fullWindow.isMinimized()) {
+      fullWindow.restore()
+    }
+    this.focusAndRaise(fullWindow, 'full')
+    this.setLastActiveWindowMode('full')
+
+    if (shouldRaiseMini && miniWindow && !miniWindow.isDestroyed()) {
+      if (miniWindow.isMinimized()) {
+        miniWindow.restore()
+      }
+      this.focusAndRaise(miniWindow, 'mini')
+      this.setLastActiveWindowMode('mini')
+    }
   }
 }

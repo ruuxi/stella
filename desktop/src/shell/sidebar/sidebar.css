@@ -101,6 +101,15 @@
   display: none;
 }
 
+.sidebar-nav-item,
+.sidebar-page-back,
+.sidebar-brand,
+.sidebar-account-signin,
+.sidebar-account-avatar,
+.sidebar-account-pill {
+  position: relative;
+}
+
 /* ── Page-sidebar override ──────────────────────────────────────────
    When a route registers `<PageSidebar>`, the default top-nav and
    footer are replaced with a Back button + the page's nav content.
@@ -519,6 +528,7 @@
 .sidebar.sidebar--rail .sidebar-footer {
   padding-left: 6px;
   padding-right: 6px;
+  overflow: visible;
 }
 
 .sidebar.sidebar--rail .sidebar-nav-item {
@@ -558,6 +568,37 @@
 
 .sidebar.sidebar--rail .sidebar-account-signin-label {
   display: none;
+}
+
+.sidebar.sidebar--rail [aria-label]::after {
+  content: attr(aria-label);
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 8px);
+  z-index: 100;
+  max-width: 180px;
+  padding: 5px 7px;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface-raised-stronger-non-alpha);
+  color: var(--text-strong);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.1;
+  white-space: nowrap;
+  box-shadow: var(--shadow-soft, 0 8px 24px rgb(0 0 0 / 0.18));
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(-2px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+.sidebar.sidebar--rail [aria-label]:hover::after,
+.sidebar.sidebar--rail [aria-label]:focus-visible::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
 }
 
 /* ============================================

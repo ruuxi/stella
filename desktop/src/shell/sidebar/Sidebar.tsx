@@ -116,6 +116,7 @@ const AppNavItem = ({ app }: AppNavItemProps) => {
       className={`sidebar-nav-item${isActive ? " sidebar-nav-item--active" : ""}`}
       onClick={handleClick}
       title={app.label}
+      aria-label={app.label}
     >
       <span className="sidebar-nav-icon">
         <Icon size={18} />
@@ -216,6 +217,7 @@ const AccountRow = ({ onSignIn, onUpgrade }: AccountRowProps) => {
           className="sidebar-account-signin"
           onClick={() => onSignIn?.()}
           title="Sign in"
+          aria-label="Sign in"
         >
           <span className="sidebar-account-signin-icon">
             <LogIn size={18} />
@@ -239,6 +241,7 @@ const AccountRow = ({ onSignIn, onUpgrade }: AccountRowProps) => {
             type="button"
             className="sidebar-account-avatar"
             title={user?.email ?? user?.name ?? "Account"}
+            aria-label="Account"
           >
             {initials}
           </button>
@@ -270,6 +273,7 @@ const AccountRow = ({ onSignIn, onUpgrade }: AccountRowProps) => {
         }
         onClick={onUpgrade}
         title={isPaidPlan ? `${pillLabel} plan — manage billing` : "Upgrade your plan"}
+        aria-label={isPaidPlan ? `${pillLabel} plan` : "Upgrade your plan"}
       >
         {pillLabel}
       </button>
@@ -374,6 +378,7 @@ export const Sidebar = ({
       className="sidebar-brand"
       onClick={handleBrandClick}
       title={railCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      aria-label={railCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       aria-pressed={railCollapsed}
     >
       <span className="sidebar-brand-logo" aria-hidden="true">
@@ -401,6 +406,7 @@ export const Sidebar = ({
               className="sidebar-page-back"
               onClick={defaultBack}
               title="Back"
+              aria-label="Back"
             >
               <span className="sidebar-nav-icon">
                 <ArrowLeft size={18} />
@@ -425,6 +431,7 @@ export const Sidebar = ({
                     type="button"
                     className="sidebar-nav-item"
                     title="New App"
+                    aria-label="New App"
                   >
                     <span className="sidebar-nav-icon">
                       <PlusSquare size={18} />
@@ -448,6 +455,7 @@ export const Sidebar = ({
                 className="sidebar-nav-item"
                 onClick={onConnect}
                 title="Connect"
+                aria-label="Connect"
               >
                 <span className="sidebar-nav-icon">
                   <Device size={18} />
