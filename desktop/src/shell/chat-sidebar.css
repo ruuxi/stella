@@ -52,6 +52,10 @@
   .full-body:has(.chat-sidebar--open) .content-area {
     display: none;
   }
+
+  .chat-sidebar-composer {
+    padding-inline: 6px;
+  }
 }
 
 .chat-sidebar-inner {

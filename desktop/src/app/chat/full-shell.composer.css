@@ -177,6 +177,17 @@
   }
 }
 
+@media (max-width: 600px) {
+  .composer {
+    padding-inline: 8px;
+  }
+
+  .composer-shell,
+  .composer > .composer-context-actions--suggestions {
+    max-width: 100%;
+  }
+}
+
 /* Image attachments area */
 .composer-attachments {
   display: flex;
