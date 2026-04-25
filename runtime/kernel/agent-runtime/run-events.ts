@@ -27,6 +27,7 @@ import type {
   RuntimeToolStartEvent,
   SelfModAppliedPayload,
 } from "./types.js";
+import type { RuntimeAgentEventPayload } from "../../protocol/index.js";
 
 const logger = createRuntimeLogger("agent-runtime.events");
 type PersistedAssistantContent = Extract<
@@ -48,6 +49,7 @@ type RunRecorderArgs = {
   agentType: string;
   userMessageId: string;
   uiVisibility?: "visible" | "hidden";
+  getResponseTarget?: () => RuntimeAgentEventPayload["responseTarget"];
 };
 
 export type RuntimeRunEventRecorder = ReturnType<typeof createRunEventRecorder>;
@@ -91,6 +93,7 @@ export const createRunEventRecorder = ({
   agentType,
   userMessageId,
   uiVisibility,
+  getResponseTarget,
 }: RunRecorderArgs) => {
   let seq = 0;
   const nextSeq = () => ++seq;
@@ -117,24 +120,28 @@ export const createRunEventRecorder = ({
         type: RUNTIME_RUN_EVENT_TYPES.STREAM,
         chunk,
       });
+      const responseTarget = getResponseTarget?.();
       return {
         runId,
         agentType,
         seq,
         chunk,
         userMessageId,
+        ...(responseTarget ? { responseTarget } : {}),
         ...(uiVisibility ? { uiVisibility } : {}),
       };
     },
 
     recordReasoning(chunk: string): RuntimeReasoningEvent {
       const seq = nextSeq();
+      const responseTarget = getResponseTarget?.();
       return {
         runId,
         agentType,
         seq,
         chunk,
         userMessageId,
+        ...(responseTarget ? { responseTarget } : {}),
         ...(uiVisibility ? { uiVisibility } : {}),
       };
     },

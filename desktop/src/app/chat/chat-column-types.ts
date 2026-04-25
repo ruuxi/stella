@@ -1,6 +1,9 @@
 import type { Dispatch, RefCallback, SetStateAction } from 'react'
 import type { EventRecord, TaskItem } from '@/app/chat/lib/event-transforms'
-import type { SelfModAppliedData } from '@/app/chat/streaming/streaming-types'
+import type {
+  AgentResponseTarget,
+  SelfModAppliedData,
+} from '@/app/chat/streaming/streaming-types'
 import type { ChatContext } from '@/shared/types/electron'
 
 type ChatColumnThumbState = {
@@ -14,6 +17,7 @@ export type ChatColumnConversation = {
   streaming: {
     text: string
     reasoningText: string
+    responseTarget?: AgentResponseTarget | null
     isStreaming: boolean
     runtimeStatusText?: string | null
     pendingUserMessageId: string | null

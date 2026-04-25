@@ -9,7 +9,10 @@ import {
 import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCard";
 import { GrowIn } from "@/app/chat/GrowIn";
 import { useTurnViewModels } from "./use-turn-view-models";
-import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
+import type {
+  AgentResponseTarget,
+  SelfModAppliedData,
+} from "@/app/chat/streaming/streaming-types";
 import {
   acknowledgeGoogleWorkspaceAuthRequired,
   getGoogleWorkspaceAuthRequired,
@@ -21,6 +24,7 @@ type Props = {
   maxItems?: number;
   streamingText?: string;
   reasoningText?: string;
+  streamingResponseTarget?: AgentResponseTarget | null;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   selfModMap?: Record<string, SelfModAppliedData>;
@@ -38,6 +42,8 @@ function MessageList({
   reasoningText,
   isStreaming,
   pendingUserMessageId,
+  streamingTargetTurnId,
+  isReplacingAssistant,
   onOpenAttachment,
   showStandaloneStreaming,
   liveTasks,
@@ -48,6 +54,8 @@ function MessageList({
   reasoningText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
+  streamingTargetTurnId?: string | null;
+  isReplacingAssistant?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
   showStandaloneStreaming: boolean;
   liveTasks?: TaskItem[];
@@ -86,8 +94,8 @@ function MessageList({
       {turns.map((turn, index) => {
         const shouldAttachStreaming =
           showStreaming &&
-          Boolean(pendingUserMessageId) &&
-          turn.id === pendingUserMessageId;
+          Boolean(streamingTargetTurnId) &&
+          turn.id === streamingTargetTurnId;
 
         const taskReasoning =
           taskReasoningByAnchorTurnId?.get(turn.id)
@@ -110,6 +118,7 @@ function MessageList({
                     reasoningText,
                     isStreaming,
                     pendingUserMessageId,
+                    replaceAssistant: Boolean(isReplacingAssistant),
                   }
                 : undefined
             }
@@ -134,6 +143,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   maxItems,
   streamingText,
   reasoningText,
+  streamingResponseTarget,
   isStreaming,
   pendingUserMessageId,
   selfModMap,
@@ -162,11 +172,14 @@ export const ConversationEvents = memo(function ConversationEvents({
     showStandaloneStreaming,
     processedStreamingText,
     processedReasoningText,
+    streamingTargetTurnId,
+    isReplacingAssistant,
   } = useTurnViewModels({
     events,
     maxItems,
     streamingText,
     reasoningText,
+    streamingResponseTarget,
     isStreaming,
     pendingUserMessageId,
     selfModMap,
@@ -214,6 +227,8 @@ export const ConversationEvents = memo(function ConversationEvents({
         reasoningText={processedReasoningText}
         isStreaming={isStreaming}
         pendingUserMessageId={pendingUserMessageId}
+        streamingTargetTurnId={streamingTargetTurnId}
+        isReplacingAssistant={isReplacingAssistant}
         onOpenAttachment={onOpenAttachment}
         liveTasks={liveTasks}
       />

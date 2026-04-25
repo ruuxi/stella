@@ -16,6 +16,7 @@ import {
   getChannelEnvelope,
 } from './lib/message-turn-display'
 import type { SelfModAppliedData } from '@/app/chat/streaming/streaming-types'
+import type { AgentResponseTarget } from '@/app/chat/streaming/streaming-types'
 import {
   parseAskQuestionArgs,
   parseAskQuestionAnswersMessage,
@@ -202,6 +203,7 @@ export function useTurnViewModels(opts: {
   reasoningText?: string
   isStreaming?: boolean
   pendingUserMessageId?: string | null
+  streamingResponseTarget?: AgentResponseTarget | null
   selfModMap?: Record<string, SelfModAppliedData>
 }) {
   const {
@@ -211,6 +213,7 @@ export function useTurnViewModels(opts: {
     reasoningText,
     isStreaming,
     pendingUserMessageId,
+    streamingResponseTarget,
     selfModMap,
   } = opts
 
@@ -283,6 +286,12 @@ export function useTurnViewModels(opts: {
         ? getDisplayMessageText(turn.assistantMessage)
         : ''
       const assistantMessageId = turn.assistantMessage?._id ?? null
+      const assistantMetadata = getMessagePayload(turn.assistantMessage)
+        ?.metadata as
+        | { runtime?: { responseTarget?: AgentResponseTarget } }
+        | undefined
+      const assistantResponseTarget =
+        assistantMetadata?.runtime?.responseTarget
       const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
         getMessagePayload(turn.assistantMessage),
       )
@@ -308,6 +317,7 @@ export function useTurnViewModels(opts: {
         userChannelEnvelope,
         assistantText,
         assistantMessageId,
+        ...(assistantResponseTarget ? { assistantResponseTarget } : {}),
         assistantEmotesEnabled,
         webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
         officePreviewRef: getOfficePreviewRef(turn.toolEvents),
@@ -347,20 +357,44 @@ export function useTurnViewModels(opts: {
     return hasAppliedSelfMod ? nextTurns : baseTurns
   }, [baseTurns, selfModMap])
 
+  const streamingTargetTurnId = useMemo(() => {
+    if (
+      streamingResponseTarget?.type !== 'agent_turn' &&
+      streamingResponseTarget?.type !== 'agent_terminal_notice'
+    ) {
+      return pendingUserMessageId ?? null
+    }
+
+    const targetAgentId = streamingResponseTarget.agentId
+    for (const turn of turns) {
+      const responseTarget = turn.assistantResponseTarget
+      if (
+        responseTarget &&
+        (responseTarget.type === 'agent_turn' ||
+          responseTarget.type === 'agent_terminal_notice') &&
+        responseTarget.agentId === targetAgentId
+      ) {
+        return turn.id
+      }
+    }
+
+    return pendingUserMessageId ?? null
+  }, [pendingUserMessageId, streamingResponseTarget, turns])
+
   const processedStreamingText = streamingText
   const processedReasoningText = reasoningText
 
   const hasPendingTurn = useMemo(
     () =>
       Boolean(
-        pendingUserMessageId &&
-          turns.some((turn) => turn.id === pendingUserMessageId),
+        streamingTargetTurnId &&
+          turns.some((turn) => turn.id === streamingTargetTurnId),
       ),
-    [turns, pendingUserMessageId],
+    [turns, streamingTargetTurnId],
   )
 
   const showStandaloneStreaming = Boolean(
-    showStreaming && pendingUserMessageId && !hasPendingTurn,
+    showStreaming && streamingTargetTurnId && !hasPendingTurn,
   )
 
   return {
@@ -369,5 +403,9 @@ export function useTurnViewModels(opts: {
     showStandaloneStreaming,
     processedStreamingText,
     processedReasoningText,
+    streamingTargetTurnId,
+    isReplacingAssistant:
+      Boolean(streamingTargetTurnId) &&
+      streamingTargetTurnId !== pendingUserMessageId,
   }
 }

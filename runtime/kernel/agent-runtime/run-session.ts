@@ -59,6 +59,8 @@ export const createRuntimeExecutionSession = (
     agentType: opts.agentType,
     userMessageId: opts.userMessageId,
     uiVisibility: opts.uiVisibility,
+    getResponseTarget: () =>
+      opts.responseTargetTracker?.resolve() ?? opts.responseTarget,
   });
 
   const tools = createPiTools({

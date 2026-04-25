@@ -16,7 +16,11 @@ import {
   useStreamBuffer,
 } from '@/shared/hooks/use-raf-state'
 import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
-import type { AgentStreamEvent, SelfModAppliedData } from './streaming-types'
+import type {
+  AgentResponseTarget,
+  AgentStreamEvent,
+  SelfModAppliedData,
+} from './streaming-types'
 import type { AttachmentRef } from './chat-types'
 import type { ChatContext } from '@/shared/types/electron'
 import {
@@ -494,6 +498,8 @@ export function useLocalAgentStream({
   const [pendingUserMessageId, setPendingUserMessageId] = useState<
     string | null
   >(null)
+  const [streamingResponseTarget, setStreamingResponseTarget] =
+    useState<AgentResponseTarget | null>(null)
   const [selfModMap, setSelfModMap] = useState<
     Record<string, SelfModAppliedData>
   >({})
@@ -674,6 +680,7 @@ export function useLocalAgentStream({
     resetStreamingText()
     resetReasoningText()
     setPendingUserMessageId(null)
+    setStreamingResponseTarget(null)
     if (activeRunId) {
       dispatch({
         type: 'clear-run-tasks',
@@ -748,6 +755,7 @@ export function useLocalAgentStream({
           resetStreamingText()
           resetReasoningText()
           setPendingUserMessageId(null)
+          setStreamingResponseTarget(null)
         }
         if (event.selfModApplied && event.userMessageId) {
           setSelfModMap((previous) => ({
@@ -775,6 +783,7 @@ export function useLocalAgentStream({
             resetStreamingText()
             resetReasoningText()
             setPendingUserMessageId(event.userMessageId ?? null)
+            setStreamingResponseTarget(null)
           }
           break
         }
@@ -793,6 +802,7 @@ export function useLocalAgentStream({
             })
             resetStreamingText()
             resetReasoningText()
+            setStreamingResponseTarget(null)
           }
           dispatch({
             type: 'run-status',
@@ -804,6 +814,7 @@ export function useLocalAgentStream({
             isOrchestratorEvent &&
             event.chunk
           ) {
+            setStreamingResponseTarget(event.responseTarget ?? null)
             appendStreamingDelta(event.chunk)
           }
           break
@@ -994,6 +1005,7 @@ export function useLocalAgentStream({
             ? null
             : (args.activeRun?.userMessageId ?? null),
         )
+        setStreamingResponseTarget(null)
       }
       for (const task of args.tasks) {
         if (task.status === 'completed') {
@@ -1023,6 +1035,7 @@ export function useLocalAgentStream({
   useEffect(() => {
     resetStreamingText()
     resetReasoningText()
+    setStreamingResponseTarget(null)
     const timeoutId = window.setTimeout(() => {
       setPendingUserMessageId(null)
     }, 0)
@@ -1149,6 +1162,7 @@ export function useLocalAgentStream({
     runtimeStatusText,
     streamingText,
     reasoningText,
+    streamingResponseTarget,
     isStreaming,
     pendingUserMessageId,
     selfModMap,
