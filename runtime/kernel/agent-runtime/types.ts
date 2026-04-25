@@ -201,6 +201,7 @@ export type OrchestratorRunOptions = BaseRunOptions & {
 export type SubagentRunOptions = BaseRunOptions & {
   onProgress?: (chunk: string) => void;
   callbacks?: Partial<RuntimeRunCallbacks>;
+  suppressCompletionSideEffects?: boolean;
 };
 
 export type SubagentRunResult = {
