@@ -2,6 +2,10 @@ import type { Api, Model } from "../ai/types.js";
 import { AGENT_IDS } from "../../desktop/src/shared/contracts/agent-runtime.js";
 import { getModels } from "../ai/models.js";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
+import {
+  getLocalLlmOAuthApiKey,
+  hasLocalLlmOAuthCredential,
+} from "./storage/llm-oauth-credentials.js";
 import { STELLA_DEFAULT_MODEL } from "../../desktop/src/shared/stella-api.js";
 import {
   findRegistryModel,
@@ -13,17 +17,18 @@ import {
   STELLA_PROVIDER,
   type StellaSiteConfig,
 } from "./model-routing-stella.js";
+import { getLocalLlmProviderPreference } from "./preferences/local-preferences.js";
 
 export type ResolvedLlmRoute = {
   model: Model<Api>;
-  route: "direct-provider" | "direct-openrouter" | "direct-gateway" | "stella";
-  getApiKey: () => string | undefined;
+  route: "direct-provider" | "direct-gateway" | "stella";
+  getApiKey: () => Promise<string | undefined> | string | undefined;
 };
 
-export const getResolvedLlmApiKey = (
+export const getResolvedLlmApiKey = async (
   resolved: ResolvedLlmRoute,
-): string | undefined => {
-  const apiKey = resolved.getApiKey()?.trim();
+): Promise<string | undefined> => {
+  const apiKey = (await resolved.getApiKey())?.trim();
   return apiKey ? apiKey : undefined;
 };
 
@@ -37,8 +42,19 @@ const getCredential = (
   providerId: string,
 ): string | null => getLocalLlmCredential(stellaRoot, providerId);
 
-const getGatewayCredential = (stellaRoot: string): string | null =>
-  getCredential(stellaRoot, "vercel-ai-gateway");
+const hasLocalProviderAuth = (stellaRoot: string, providerId: string): boolean =>
+  Boolean(getCredential(stellaRoot, providerId)) ||
+  hasLocalLlmOAuthCredential(stellaRoot, providerId);
+
+const getLocalProviderApiKey = async (
+  stellaRoot: string,
+  providerId: string,
+): Promise<string | undefined> => {
+  const apiKey = getCredential(stellaRoot, providerId)?.trim();
+  if (apiKey) return apiKey;
+  const oauthKey = (await getLocalLlmOAuthApiKey(stellaRoot, providerId))?.trim();
+  return oauthKey || undefined;
+};
 
 const getDirectProviderCandidates = (
   provider: string,
@@ -107,7 +123,7 @@ const resolveDirectProviderRoute = (args: {
     return null;
   }
 
-  const directKey = getCredential(
+  const hasAuth = hasLocalProviderAuth(
     args.stellaRoot,
     directProvider.credentialProvider,
   );
@@ -117,7 +133,7 @@ const resolveDirectProviderRoute = (args: {
     ...directProvider.candidates,
   ]);
 
-  if (directKey) {
+  if (hasAuth) {
     const directModel = findRegistryModel(
       directProvider.registryProvider,
       requestedCandidates,
@@ -126,12 +142,16 @@ const resolveDirectProviderRoute = (args: {
       return {
         model: directModel,
         route: "direct-provider",
-        getApiKey: () => directKey,
+        getApiKey: () =>
+          getLocalProviderApiKey(
+            args.stellaRoot,
+            directProvider.credentialProvider,
+          ),
       };
     }
   }
 
-  if (!directKey && directProvider.allowBaseUrlWithoutCredential) {
+  if (!hasAuth && directProvider.allowBaseUrlWithoutCredential) {
     const directModel = findRegistryModel(
       directProvider.registryProvider,
       requestedCandidates,
@@ -152,8 +172,7 @@ const resolveOpenRouterRoute = (args: {
   stellaRoot: string;
   requestedCandidates: string[];
 }): ResolvedLlmRoute | null => {
-  const openrouterKey = getCredential(args.stellaRoot, "openrouter");
-  if (!openrouterKey) {
+  if (!hasLocalProviderAuth(args.stellaRoot, "openrouter")) {
     return null;
   }
 
@@ -161,8 +180,8 @@ const resolveOpenRouterRoute = (args: {
   if (openrouterModel) {
     return {
       model: openrouterModel,
-      route: "direct-openrouter",
-      getApiKey: () => openrouterKey,
+      route: "direct-provider",
+      getApiKey: () => getLocalProviderApiKey(args.stellaRoot, "openrouter"),
     };
   }
   return null;
@@ -172,8 +191,7 @@ const resolveGatewayRoute = (args: {
   stellaRoot: string;
   requestedCandidates: string[];
 }): ResolvedLlmRoute | null => {
-  const gatewayKey = getGatewayCredential(args.stellaRoot);
-  if (!gatewayKey) {
+  if (!hasLocalProviderAuth(args.stellaRoot, "vercel-ai-gateway")) {
     return null;
   }
 
@@ -185,7 +203,8 @@ const resolveGatewayRoute = (args: {
     return {
       model: gatewayModel,
       route: "direct-gateway",
-      getApiKey: () => gatewayKey,
+      getApiKey: () =>
+        getLocalProviderApiKey(args.stellaRoot, "vercel-ai-gateway"),
     };
   }
   return null;
@@ -194,13 +213,14 @@ const resolveGatewayRoute = (args: {
 const resolveParsedProviderRoute = (args: {
   stellaRoot: string;
   parsed: NonNullable<ReturnType<typeof parseModelReference>>;
+  selectedProvider: string;
 }): ResolvedLlmRoute | null => {
   const requestedCandidates = uniqueModelCandidates([
     args.parsed.fullModelId,
     args.parsed.modelId,
   ]);
 
-  switch (args.parsed.provider) {
+  switch (args.selectedProvider) {
     case "openrouter":
       return resolveOpenRouterRoute({
         stellaRoot: args.stellaRoot,
@@ -214,7 +234,7 @@ const resolveParsedProviderRoute = (args: {
     default:
       return resolveDirectProviderRoute({
         stellaRoot: args.stellaRoot,
-        provider: args.parsed.provider,
+        provider: args.selectedProvider,
         modelId: args.parsed.modelId,
         fullModelId: args.parsed.fullModelId,
       });
@@ -247,40 +267,24 @@ const resolveMaybeLlmRoute = (args: {
     );
   }
 
+  const localProviderPreference = getLocalLlmProviderPreference(args.stellaRoot);
+  if (!localProviderPreference.enabled) {
+    return (
+      createStellaRoute({
+        site: args.site,
+        agentType: args.agentType,
+        modelId: `${STELLA_PROVIDER}/${parsed.fullModelId}`,
+      }) ?? null
+    );
+  }
+
   const directProviderRoute = resolveParsedProviderRoute({
     stellaRoot: args.stellaRoot,
     parsed,
+    selectedProvider: localProviderPreference.provider,
   });
   if (directProviderRoute) {
     return directProviderRoute;
-  }
-
-  // When the explicit provider didn't resolve, try OpenRouter and Gateway as
-  // fallbacks before giving up. Users with an OpenRouter key expect
-  // "openai/gpt-5.1-codex" to route through OpenRouter when no direct key exists.
-  const fallbackCandidates = uniqueModelCandidates([
-    parsed.fullModelId,
-    parsed.modelId,
-  ]);
-
-  if (parsed.provider !== "openrouter") {
-    const openRouterFallback = resolveOpenRouterRoute({
-      stellaRoot: args.stellaRoot,
-      requestedCandidates: fallbackCandidates,
-    });
-    if (openRouterFallback) {
-      return openRouterFallback;
-    }
-  }
-
-  if (parsed.provider !== "vercel-ai-gateway") {
-    const gatewayFallback = resolveGatewayRoute({
-      stellaRoot: args.stellaRoot,
-      requestedCandidates: fallbackCandidates,
-    });
-    if (gatewayFallback) {
-      return gatewayFallback;
-    }
   }
 
   return (

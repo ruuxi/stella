@@ -253,7 +253,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
     return FALLBACK_FINDINGS;
   }
 
-  const apiKey = resolvedLlm.getApiKey()?.trim();
+  const apiKey = (await resolvedLlm.getApiKey())?.trim();
   if (!apiKey) {
     logger.debug("explore.skipped.no-api-key");
     return FALLBACK_FINDINGS;

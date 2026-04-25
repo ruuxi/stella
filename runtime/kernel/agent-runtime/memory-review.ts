@@ -162,7 +162,7 @@ const runReview = async (args: {
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;
 }): Promise<void> => {
-  const apiKey = args.resolvedLlm.getApiKey()?.trim();
+  const apiKey = (await args.resolvedLlm.getApiKey())?.trim();
   if (!apiKey) {
     logger.debug("memory-review.skipped.no-api-key");
     return;

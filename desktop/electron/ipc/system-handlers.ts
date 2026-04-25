@@ -23,6 +23,12 @@ import {
   listLocalLlmCredentials,
   saveLocalLlmCredential,
 } from "../../../runtime/kernel/storage/llm-credentials.js";
+import {
+  deleteLocalLlmOAuthCredential,
+  listLocalLlmOAuthCredentials,
+  saveLocalLlmOAuthCredential,
+} from "../../../runtime/kernel/storage/llm-oauth-credentials.js";
+import { getOAuthProvider, getOAuthProviders } from "../../../runtime/ai/utils/oauth/index.js";
 import type { RuntimeSocialSessionStatus } from "../../../runtime/protocol/index.js";
 import { isRuntimeUnavailableError } from "../../../runtime/protocol/rpc-peer.js";
 import {
@@ -922,6 +928,155 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     }
     return listLocalLlmCredentials(stellaRoot);
   });
+
+  ipcMain.handle("llmCredentials:listOAuthProviders", (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "llmCredentials:listOAuthProviders",
+      )
+    ) {
+      throw new Error("Blocked untrusted OAuth provider request.");
+    }
+    return getOAuthProviders().map((provider) => ({
+      provider: provider.id,
+      label: provider.name,
+    }));
+  });
+
+  ipcMain.handle("llmCredentials:listOAuth", (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "llmCredentials:listOAuth",
+      )
+    ) {
+      throw new Error("Blocked untrusted OAuth credential request.");
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) {
+      return [];
+    }
+    return listLocalLlmOAuthCredentials(stellaRoot);
+  });
+
+  ipcMain.handle(
+    "llmCredentials:loginOAuth",
+    async (event, payload: { provider?: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "llmCredentials:loginOAuth",
+        )
+      ) {
+        throw new Error("Blocked untrusted OAuth login request.");
+      }
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        throw new Error("Local Stella root is unavailable.");
+      }
+
+      const providerId = asTrimmedString(payload?.provider).toLowerCase();
+      const provider = getOAuthProvider(providerId);
+      if (!provider) {
+        throw new Error("Unsupported OAuth provider.");
+      }
+
+      const credentials = await provider.login({
+        onAuth: (info) => {
+          void shell.openExternal(info.url);
+        },
+        onPrompt: async (prompt) => {
+          if (prompt.allowEmpty) return "";
+          const result = await dialog.showMessageBox({
+            type: "info",
+            message: prompt.message,
+            detail: prompt.placeholder
+              ? `Expected value: ${prompt.placeholder}`
+              : undefined,
+            buttons: ["Continue"],
+          });
+          return result.response === 0 ? "" : "";
+        },
+      });
+
+      return saveLocalLlmOAuthCredential(stellaRoot, {
+        provider: provider.id,
+        label: provider.name,
+        credentials,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    "llmCredentials:deleteOAuth",
+    (event, payload: { provider?: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "llmCredentials:deleteOAuth",
+        )
+      ) {
+        throw new Error("Blocked untrusted OAuth credential delete.");
+      }
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        return { removed: false };
+      }
+      return deleteLocalLlmOAuthCredential(
+        stellaRoot,
+        asTrimmedString(payload?.provider),
+      );
+    },
+  );
+
+  ipcMain.handle("llmCredentials:getRoutingPreference", (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "llmCredentials:getRoutingPreference",
+      )
+    ) {
+      throw new Error("Blocked untrusted credential preference request.");
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) {
+      return { enabled: false, provider: "openai" };
+    }
+    const prefs = loadLocalPreferences(stellaRoot);
+    return {
+      enabled: prefs.localLlmKeysEnabled,
+      provider: prefs.localLlmProvider,
+    };
+  });
+
+  ipcMain.handle(
+    "llmCredentials:setRoutingPreference",
+    (event, payload: { enabled?: boolean; provider?: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "llmCredentials:setRoutingPreference",
+        )
+      ) {
+        throw new Error("Blocked untrusted credential preference write.");
+      }
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        throw new Error("Local Stella root is unavailable.");
+      }
+      const provider =
+        asTrimmedString(payload?.provider).toLowerCase() || "openai";
+      const prefs = loadLocalPreferences(stellaRoot);
+      prefs.localLlmKeysEnabled = payload?.enabled === true;
+      prefs.localLlmProvider = provider;
+      saveLocalPreferences(stellaRoot, prefs);
+      return {
+        enabled: prefs.localLlmKeysEnabled,
+        provider: prefs.localLlmProvider,
+      };
+    },
+  );
 
   ipcMain.handle(
     "llmCredentials:save",

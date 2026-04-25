@@ -758,6 +758,46 @@ contextBridge.exposeInMainWorld("electronAPI", {
           updatedAt: number;
         }>
       >,
+    listLlmOAuthProviders: () =>
+      ipcRenderer.invoke("llmCredentials:listOAuthProviders") as Promise<
+        Array<{ provider: string; label: string }>
+      >,
+    listLlmOAuthCredentials: () =>
+      ipcRenderer.invoke("llmCredentials:listOAuth") as Promise<
+        Array<{
+          provider: string;
+          label: string;
+          status: "active";
+          updatedAt: number;
+        }>
+      >,
+    loginLlmOAuthCredential: (provider: string) =>
+      ipcRenderer.invoke("llmCredentials:loginOAuth", { provider }) as Promise<{
+        provider: string;
+        label: string;
+        status: "active";
+        updatedAt: number;
+      }>,
+    deleteLlmOAuthCredential: (provider: string) =>
+      ipcRenderer.invoke("llmCredentials:deleteOAuth", { provider }) as Promise<{
+        removed: boolean;
+      }>,
+    getLlmCredentialRoutingPreference: () =>
+      ipcRenderer.invoke("llmCredentials:getRoutingPreference") as Promise<{
+        enabled: boolean;
+        provider: string;
+      }>,
+    setLlmCredentialRoutingPreference: (payload: {
+      enabled: boolean;
+      provider: string;
+    }) =>
+      ipcRenderer.invoke(
+        "llmCredentials:setRoutingPreference",
+        payload,
+      ) as Promise<{
+        enabled: boolean;
+        provider: string;
+      }>,
     saveLlmCredential: (payload: {
       provider: string;
       label: string;

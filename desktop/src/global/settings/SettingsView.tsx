@@ -25,6 +25,7 @@ import type {
   BackupStatusSnapshot,
   BackupSummary,
   LocalLlmCredentialSummary,
+  LocalLlmOAuthProviderSummary,
 } from "@/shared/types/electron";
 import type { LegalDocument } from "@/global/legal/legal-text";
 import { Button } from "@/ui/button";
@@ -76,6 +77,13 @@ const LLM_PROVIDERS = [
   { key: "openrouter", label: "OpenRouter", placeholder: "sk-or-..." },
   { key: "vercel-ai-gateway", label: "Vercel AI Gateway", placeholder: "..." },
   { key: "opencode", label: "OpenCode Zen", placeholder: "..." },
+  { key: "github-copilot", label: "GitHub Copilot", placeholder: "OAuth only" },
+  { key: "google-gemini-cli", label: "Gemini CLI", placeholder: "OAuth only" },
+  {
+    key: "google-antigravity",
+    label: "Google Antigravity",
+    placeholder: "OAuth only",
+  },
 ] as const;
 
 function getSettingsErrorMessage(error: unknown, fallback: string) {
@@ -1857,8 +1865,21 @@ function ApiKeysSection() {
   const [llmCredentials, setLlmCredentials] = useState<
     LocalLlmCredentialSummary[]
   >([]);
+  const [oauthProviders, setOauthProviders] = useState<
+    LocalLlmOAuthProviderSummary[]
+  >([]);
+  const [oauthCredentials, setOauthCredentials] = useState<
+    LocalLlmCredentialSummary[]
+  >([]);
+  const [useLocalKeys, setUseLocalKeys] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState("openai");
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
   const [isSavingKey, setIsSavingKey] = useState(false);
+  const [oauthProviderInFlight, setOauthProviderInFlight] = useState<
+    string | null
+  >(null);
+  const [isSavingRoutingPreference, setIsSavingRoutingPreference] =
+    useState(false);
   const [removingProvider, setRemovingProvider] = useState<string | null>(null);
 
   const loadCredentials = useCallback(async () => {
@@ -1872,13 +1893,39 @@ function ApiKeysSection() {
     setLlmCredentials(nextCredentials);
   }, []);
 
+  const loadOauthCredentials = useCallback(async () => {
+    const systemApi = window.electronAPI?.system;
+    if (
+      !systemApi?.listLlmOAuthProviders ||
+      !systemApi.listLlmOAuthCredentials
+    ) {
+      setOauthProviders([]);
+      setOauthCredentials([]);
+      return;
+    }
+
+    const [nextProviders, nextCredentials] = await Promise.all([
+      systemApi.listLlmOAuthProviders(),
+      systemApi.listLlmOAuthCredentials(),
+    ]);
+    setOauthProviders(nextProviders);
+    setOauthCredentials(nextCredentials);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
       try {
         await loadCredentials();
+        await loadOauthCredentials();
+        const routingPreference =
+          await window.electronAPI?.system.getLlmCredentialRoutingPreference?.();
         if (!cancelled) {
+          if (routingPreference) {
+            setUseLocalKeys(routingPreference.enabled);
+            setSelectedProvider(routingPreference.provider || "openai");
+          }
           setCredentialsError(null);
         }
       } catch (error) {
@@ -1897,13 +1944,59 @@ function ApiKeysSection() {
     return () => {
       cancelled = true;
     };
-  }, [loadCredentials]);
+  }, [loadCredentials, loadOauthCredentials]);
 
   const getCredentialForProvider = (providerKey: string) =>
     llmCredentials.find(
       (credential) =>
         credential.provider === providerKey && credential.status === "active",
     );
+
+  const getOauthProviderForProvider = (providerKey: string) =>
+    oauthProviders.find((provider) => provider.provider === providerKey);
+
+  const getOauthCredentialForProvider = (providerKey: string) =>
+    oauthCredentials.find(
+      (credential) =>
+        credential.provider === providerKey && credential.status === "active",
+    );
+
+  const saveRoutingPreference = useCallback(
+    async (next: { enabled: boolean; provider: string }) => {
+      if (!window.electronAPI?.system.setLlmCredentialRoutingPreference) {
+        setCredentialsError(
+          "Local API key settings are unavailable in this window.",
+        );
+        return;
+      }
+
+      const previous = {
+        enabled: useLocalKeys,
+        provider: selectedProvider,
+      };
+      setUseLocalKeys(next.enabled);
+      setSelectedProvider(next.provider);
+      setCredentialsError(null);
+      setIsSavingRoutingPreference(true);
+      try {
+        const saved =
+          await window.electronAPI.system.setLlmCredentialRoutingPreference(next);
+        setUseLocalKeys(saved.enabled);
+        setSelectedProvider(saved.provider || "openai");
+      } catch (error) {
+        setUseLocalKeys(previous.enabled);
+        setSelectedProvider(previous.provider);
+        setCredentialsError(
+          error instanceof Error
+            ? error.message
+            : "Failed to update local API key settings.",
+        );
+      } finally {
+        setIsSavingRoutingPreference(false);
+      }
+    },
+    [selectedProvider, useLocalKeys],
+  );
 
   const handleSave = useCallback(
     async (providerKey: string, label: string) => {
@@ -1969,20 +2062,119 @@ function ApiKeysSection() {
     }
   }, []);
 
+  const handleOauthLogin = useCallback(async (providerKey: string) => {
+    if (!window.electronAPI?.system.loginLlmOAuthCredential) {
+      setCredentialsError("OAuth login is unavailable in this window.");
+      return;
+    }
+    setCredentialsError(null);
+    setOauthProviderInFlight(providerKey);
+    try {
+      const saved =
+        await window.electronAPI.system.loginLlmOAuthCredential(providerKey);
+      setOauthCredentials((prev) => {
+        const next = prev.filter((entry) => entry.provider !== saved.provider);
+        next.push(saved);
+        return next.sort((a, b) => a.label.localeCompare(b.label));
+      });
+    } catch (error) {
+      setCredentialsError(
+        error instanceof Error ? error.message : "OAuth login failed.",
+      );
+    } finally {
+      setOauthProviderInFlight(null);
+    }
+  }, []);
+
+  const handleOauthRemove = useCallback(async (providerKey: string) => {
+    if (!window.electronAPI?.system.deleteLlmOAuthCredential) {
+      setCredentialsError("OAuth login is unavailable in this window.");
+      return;
+    }
+    setCredentialsError(null);
+    setOauthProviderInFlight(providerKey);
+    try {
+      await window.electronAPI.system.deleteLlmOAuthCredential(providerKey);
+      setOauthCredentials((prev) =>
+        prev.filter((entry) => entry.provider !== providerKey),
+      );
+    } catch (error) {
+      setCredentialsError(
+        error instanceof Error ? error.message : "Failed to remove OAuth login.",
+      );
+    } finally {
+      setOauthProviderInFlight(null);
+    }
+  }, []);
+
   return (
     <div className="settings-card">
       <h3 className="settings-card-title">API keys</h3>
       <p className="settings-card-desc">
         Add your own API keys to talk to a model provider directly. Keys stay
-        on this device. If you don't add one, Stella uses its built-in access.
+        on this device. Stella uses its built-in access unless you turn this on.
       </p>
       {credentialsError ? (
         <p className="settings-card-desc">{credentialsError}</p>
       ) : null}
+      <div className="settings-row">
+        <div className="settings-row-info">
+          <div className="settings-row-label">Use my API key</div>
+          <div className="settings-row-sublabel">
+            When off, Stella uses its built-in access.
+          </div>
+        </div>
+        <div className="settings-row-control">
+          <label className="settings-toggle-row">
+            <input
+              type="checkbox"
+              checked={useLocalKeys}
+              disabled={isSavingRoutingPreference}
+              onChange={(event) =>
+                void saveRoutingPreference({
+                  enabled: event.currentTarget.checked,
+                  provider: selectedProvider,
+                })
+              }
+            />
+            <span>{useLocalKeys ? "On" : "Off"}</span>
+          </label>
+        </div>
+      </div>
+      <div className="settings-row">
+        <div className="settings-row-info">
+          <div className="settings-row-label">Provider</div>
+          <div className="settings-row-sublabel">
+            Stella only uses this provider when API key use is on.
+          </div>
+        </div>
+        <div className="settings-row-control">
+          <NativeSelect
+            className="settings-model-select"
+            value={selectedProvider}
+            disabled={isSavingRoutingPreference}
+            onChange={(event) =>
+              void saveRoutingPreference({
+                enabled: useLocalKeys,
+                provider: event.currentTarget.value,
+              })
+            }
+          >
+            {LLM_PROVIDERS.map((provider) => (
+              <option key={provider.key} value={provider.key}>
+                {provider.label}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+      </div>
       {LLM_PROVIDERS.map((provider) => {
         const credential = getCredentialForProvider(provider.key);
+        const oauthProvider = getOauthProviderForProvider(provider.key);
+        const oauthCredential = getOauthCredentialForProvider(provider.key);
         const isEditing = editingProvider === provider.key;
         const isRemoving = removingProvider === provider.key;
+        const isOauthBusy = oauthProviderInFlight === provider.key;
         return (
           <div key={provider.key} className="settings-row">
             <div className="settings-row-info">
@@ -1999,6 +2191,12 @@ function ApiKeysSection() {
                     No key
                   </span>
                 )}
+                {oauthCredential ? (
+                  <span className="settings-key-status">
+                    <span className="settings-key-dot settings-key-dot--active" />
+                    Signed in
+                  </span>
+                ) : null}
               </div>
             </div>
             <div className="settings-row-control">
@@ -2069,6 +2267,29 @@ function ApiKeysSection() {
                       {isRemoving ? "Removing..." : "Remove"}
                     </Button>
                   )}
+                  {oauthProvider ? (
+                    oauthCredential ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="settings-btn settings-btn--danger"
+                        onClick={() => handleOauthRemove(provider.key)}
+                        disabled={isOauthBusy || isSavingKey}
+                      >
+                        {isOauthBusy ? "Signing out..." : "Sign out"}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="settings-btn"
+                        onClick={() => handleOauthLogin(provider.key)}
+                        disabled={isOauthBusy || isSavingKey}
+                      >
+                        {isOauthBusy ? "Opening..." : "Sign in"}
+                      </Button>
+                    )
+                  ) : null}
                 </>
               )}
             </div>

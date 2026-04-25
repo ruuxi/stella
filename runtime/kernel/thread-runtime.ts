@@ -520,7 +520,7 @@ const generateThreadSummary = async (args: {
   previousSummary?: string;
   resolvedLlm: ResolvedLlmRoute;
 }): Promise<string | null> => {
-  const apiKey = args.resolvedLlm.getApiKey()?.trim();
+  const apiKey = (await args.resolvedLlm.getApiKey())?.trim();
   if (!apiKey) {
     return null;
   }
