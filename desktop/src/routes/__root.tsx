@@ -297,10 +297,10 @@ function RootChrome() {
   }, []);
 
   useEffect(() => {
-    if (isOnChatRoute && chat.showHomeContent) {
+    if (isOnChatRoute) {
       sidebarRef.current?.close();
     }
-  }, [chat.showHomeContent, isOnChatRoute]);
+  }, [isOnChatRoute]);
 
   useEffect(() => {
     if (!isDisplaySidebarOpen || !isSidebarChatOpen) return;
@@ -525,7 +525,10 @@ function RootChrome() {
         <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
       )}
 
-      <ShellTopBar />
+      <ShellTopBar
+        isChatOpen={isSidebarChatOpen}
+        showChatButton={!isOnChatRoute}
+      />
 
       <Sidebar
         className={drawerOpen ? "sidebar--drawer-open" : undefined}
