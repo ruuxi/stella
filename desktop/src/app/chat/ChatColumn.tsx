@@ -172,6 +172,7 @@ export const ChatColumn = memo(function ChatColumn({
       setSelectedText={composer.setSelectedText}
       isStreaming={conversation.streaming.isStreaming}
       canSubmit={composer.canSubmit}
+      focusRequestId={composer.focusRequestId}
       conversationId={conversationId}
       onAdd={composer.onAdd}
       onSend={composer.onSend}

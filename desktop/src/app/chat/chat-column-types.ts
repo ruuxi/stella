@@ -39,6 +39,7 @@ export type ChatColumnComposer = {
   selectedText: string | null
   setSelectedText: Dispatch<SetStateAction<string | null>>
   canSubmit: boolean
+  focusRequestId?: number
   onAdd?: () => void
   onSend: () => void
   onStop: () => void
