@@ -1288,6 +1288,25 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               });
               return;
             }
+            if (
+              ev.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED &&
+              ev.agentType === AGENT_IDS.GENERAL
+            ) {
+              const notificationText = ev.description?.trim() || "Task complete";
+              void peer
+                .request(METHOD_NAMES.HOST_NOTIFICATION_SHOW, {
+                  title: notificationText,
+                  body: "",
+                  sound: "Glass",
+                })
+                .catch((error) => {
+                  logger.debug("agent-completion-notification-failed", {
+                    conversationId: payload.conversationId,
+                    agentId: ev.agentId,
+                    error: error instanceof Error ? error.message : String(error),
+                  });
+                });
+            }
             emitRunEvent({
               type: ev.type,
               runId: ev.rootRunId,

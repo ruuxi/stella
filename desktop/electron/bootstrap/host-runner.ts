@@ -92,9 +92,9 @@ export const createHostRunnerHandlers = (
   displayUpdate: (html) => {
     broadcastToWindows(context, "display:update", html);
   },
-  showNotification: ({ title, body }) => {
+  showNotification: ({ title, body, sound }) => {
     if (Notification.isSupported()) {
-      new Notification({ title, body }).show();
+      new Notification({ title, body, sound, silent: false }).show();
     }
   },
   openExternal: async (url) => {

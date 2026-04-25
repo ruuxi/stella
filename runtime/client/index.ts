@@ -100,7 +100,11 @@ export type RuntimeHostHandlers = {
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
   displayUpdate: (html: string) => Promise<void> | void;
-  showNotification?: (payload: { title: string; body: string }) => Promise<void> | void;
+  showNotification?: (payload: {
+    title: string;
+    body: string;
+    sound?: string;
+  }) => Promise<void> | void;
   openExternal?: (url: string) => Promise<void> | void;
   showWindow?: (target: HostWindowTarget) => Promise<void> | void;
   focusWindow?: (target: HostWindowTarget) => Promise<void> | void;
@@ -1690,7 +1694,7 @@ export class StellaRuntimeClient {
     });
     peer.registerRequestHandler(METHOD_NAMES.HOST_NOTIFICATION_SHOW, async (params) => {
       await this.options.hostHandlers.showNotification?.(
-        params as { title: string; body: string },
+        params as { title: string; body: string; sound?: string },
       );
       return { ok: true };
     });
