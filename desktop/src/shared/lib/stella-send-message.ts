@@ -8,6 +8,7 @@ export type StellaSendMessageDetail = {
   uiVisibility?: "visible" | "hidden";
   triggerKind?: string;
   triggerSource?: string;
+  targetAgentId?: string;
 };
 
 export function toStellaMessageMetadata(
@@ -19,8 +20,9 @@ export function toStellaMessageMetadata(
   const uiVisibility = detail.uiVisibility;
   const triggerKind = detail.triggerKind?.trim();
   const triggerSource = detail.triggerSource?.trim();
+  const targetAgentId = detail.targetAgentId?.trim();
 
-  if (!uiVisibility && !triggerKind && !triggerSource) {
+  if (!uiVisibility && !triggerKind && !triggerSource && !targetAgentId) {
     return undefined;
   }
 
@@ -31,6 +33,7 @@ export function toStellaMessageMetadata(
           trigger: {
             ...(triggerKind ? { kind: triggerKind } : {}),
             ...(triggerSource ? { source: triggerSource } : {}),
+            ...(targetAgentId ? { targetAgentId } : {}),
           },
         }
       : {}),

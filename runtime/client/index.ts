@@ -33,6 +33,7 @@ import {
   type HostWindowTarget,
   type InstalledStoreModRecord,
   type LocalCronJobRecord,
+  type LocalGitCommitRecord,
   type LocalHeartbeatConfigRecord,
   type RuntimeAgentEventPayload,
   type RuntimeAutomationTurnRequest,
@@ -51,14 +52,11 @@ import {
   type RuntimeWebSearchResult,
   type RunResumeEventsResult,
   type ScheduledConversationEvent,
-  type SelfModBatchRecord,
-  type SelfModFeatureRecord,
   type SelfModFeatureSummary,
   type SelfModHmrState,
   type StorePackageRecord,
   type StorePackageReleaseRecord,
   type StorePublishArgs,
-  type StoreReleaseDraft,
   type RuntimeInitializeParams,
 } from "../protocol/index.js";
 import {
@@ -930,6 +928,23 @@ export class StellaRuntimeClient {
     );
   }
 
+  async sendAgentInput(payload: {
+    conversationId: string;
+    threadId: string;
+    message: string;
+    interrupt?: boolean;
+    metadata?: Record<string, unknown>;
+  }) {
+    return await this.requestWorker<{ delivered: boolean }>(
+      METHOD_NAMES.INTERNAL_WORKER_SEND_AGENT_INPUT,
+      payload,
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
   async cancelChat(runId: string) {
     return await this.requestWorker(
       METHOD_NAMES.INTERNAL_WORKER_CANCEL,
@@ -1127,27 +1142,11 @@ export class StellaRuntimeClient {
     );
   }
 
-  async listLocalFeatures(limit?: number) {
-    return await this.requestWorker<SelfModFeatureRecord[]>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_FEATURES,
+  async listLocalCommits(limit?: number) {
+    return await this.requestWorker<LocalGitCommitRecord[]>(
+      METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS,
       typeof limit === "number" && Number.isFinite(limit) ? { limit } : undefined,
       { ensureWorker: true, recordActivity: false },
-    );
-  }
-
-  async listFeatureBatches(featureId: string) {
-    return await this.requestWorker<SelfModBatchRecord[]>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_BATCHES,
-      { featureId },
-      { ensureWorker: true, recordActivity: false },
-    );
-  }
-
-  async createReleaseDraft(payload: { featureId: string; batchIds?: string[] }) {
-    return await this.requestWorker<StoreReleaseDraft>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_CREATE_RELEASE_DRAFT,
-      payload,
-      { ensureWorker: true, recordActivity: true },
     );
   }
 
@@ -1206,24 +1205,6 @@ export class StellaRuntimeClient {
     return await this.requestWorker<StorePackageReleaseRecord>(
       METHOD_NAMES.INTERNAL_WORKER_CREATE_STORE_RELEASE_UPDATE,
       args,
-      {
-        ensureWorker: true,
-        recordActivity: true,
-      },
-    );
-  }
-
-  async publishStoreRelease(payload: {
-    featureId: string;
-    batchIds?: string[];
-    packageId?: string;
-    displayName?: string;
-    description?: string;
-    releaseNotes?: string;
-  }) {
-    return await this.requestWorker<StorePackageReleaseRecord>(
-      METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_RELEASE,
-      payload,
       {
         ensureWorker: true,
         recordActivity: true,

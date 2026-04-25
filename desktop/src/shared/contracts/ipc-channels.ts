@@ -246,12 +246,7 @@ export const IPC_SCHEDULE_UPDATED = "schedule:updated" as const;
 
 // ── Store ───────────────────────────────────────────────────────────────────
 
-export const IPC_STORE_LIST_LOCAL_FEATURES = "store:listLocalFeatures" as const;
-export const IPC_STORE_LIST_FEATURE_BATCHES =
-  "store:listFeatureBatches" as const;
-export const IPC_STORE_CREATE_RELEASE_DRAFT =
-  "store:createReleaseDraft" as const;
-export const IPC_STORE_PUBLISH_RELEASE = "store:publishRelease" as const;
+export const IPC_STORE_LIST_LOCAL_COMMITS = "store:listLocalCommits" as const;
 export const IPC_STORE_LIST_PACKAGES = "store:listPackages" as const;
 export const IPC_STORE_GET_PACKAGE = "store:getPackage" as const;
 export const IPC_STORE_LIST_RELEASES = "store:listReleases" as const;

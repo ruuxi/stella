@@ -2,31 +2,10 @@ import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
 import { exec } from "dugite";
-import { resolveRuntimeStatePath } from "../home/stella-home.js";
 
 const LOG_ENTRY_SEPARATOR = "\x1e";
 const LOG_FIELD_SEPARATOR = "\x1f";
-const FEATURE_TAG_REGEX = /\[feature:([a-zA-Z0-9_-]+)(?:,\s*\+\d+)?\]/g;
-const DEFAULT_LOG_SCAN_LIMIT = 500;
-const DEFAULT_RECENT_FEATURE_LIMIT = 8;
-
-const getFeaturesIndexPath = () =>
-  path.join(
-    resolveRuntimeStatePath(),
-    "mods",
-    "features.json",
-  );
-
-type FeatureIndexEntry = {
-  name?: string;
-  description?: string;
-  updatedAt?: number;
-};
-
-type FeatureIndex = {
-  version: number;
-  features: Record<string, FeatureIndexEntry>;
-};
+const DEFAULT_RECENT_COMMIT_LIMIT = 8;
 
 type GitLogCommit = {
   hash: string;
@@ -35,6 +14,13 @@ type GitLogCommit = {
   body: string;
 };
 
+/**
+ * Lightweight summary of one self-mod commit, surfaced to runtime
+ * diagnostic UIs (Vite error overlay revert button, crash surface,
+ * taint monitor toast). The legacy "feature" terminology is retained
+ * in field names for renderer compatibility — `featureId` is just the
+ * full commit hash since the per-feature index was removed.
+ */
 export type GitFeatureSummary = {
   featureId: string;
   name: string;
@@ -58,21 +44,17 @@ export type SelfModAppliedPayload = {
   batchIndex: number;
 };
 
-export type GitFeatureCommitArgs = {
-  repoRoot: string;
-  featureId: string;
-  batchId: string;
-  ordinal: number;
-  taskDescription?: string;
-  packageId?: string;
-  releaseNumber?: number;
-  source?: "author" | "install" | "update";
-};
-
 export type GitCustomCommitArgs = {
   repoRoot: string;
   subject: string;
   bodyLines?: string[];
+  /**
+   * When provided, commits ONLY these working-tree paths (via
+   * `git commit --only -- <paths>`), ignoring whatever else may be
+   * staged. Use this for self-mod commits to prevent pre-existing
+   * staged user changes from being swept into an agent-authored commit.
+   */
+  paths?: string[];
 };
 
 export type GitCommitReference = {
@@ -83,32 +65,8 @@ export type GitCommitReference = {
   patch: string;
 };
 
-const humanizeFeatureId = (featureId: string): string =>
-  featureId
-    .split(/[-_]+/g)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ")
-    .trim() || featureId;
-
 const normalizeGitPath = (value: string): string =>
   value.trim().replace(/\\/g, "/");
-
-const buildFeatureTag = (featureId: string, ordinal?: number): string =>
-  typeof ordinal === "number" && Number.isFinite(ordinal)
-    ? `[feature:${featureId}, +${Math.max(1, Math.floor(ordinal))}]`
-    : `[feature:${featureId}]`;
-
-const extractFeatureIds = (text: string): string[] => {
-  FEATURE_TAG_REGEX.lastIndex = 0;
-  const matches = text.matchAll(FEATURE_TAG_REGEX);
-  const ids = new Set<string>();
-  for (const match of matches) {
-    const featureId = match[1]?.trim();
-    if (featureId) ids.add(featureId);
-  }
-  return Array.from(ids);
-};
 
 const runGit = async (
   repoRoot: string,
@@ -183,48 +141,6 @@ const parseStatusPath = (line: string): string | null => {
   return normalizeGitPath(rawPath);
 };
 
-const readFeatureIndex = async (): Promise<FeatureIndex> => {
-  try {
-    const raw = await fs.readFile(getFeaturesIndexPath(), "utf-8");
-    const parsed = JSON.parse(raw) as Partial<FeatureIndex>;
-    if (!parsed || typeof parsed !== "object") {
-      throw new Error("Invalid index payload.");
-    }
-    return {
-      version: typeof parsed.version === "number" ? parsed.version : 1,
-      features:
-        parsed.features && typeof parsed.features === "object"
-          ? parsed.features as Record<string, FeatureIndexEntry>
-          : {},
-    };
-  } catch {
-    return { version: 1, features: {} };
-  }
-};
-
-const writeFeatureIndex = async (index: FeatureIndex): Promise<void> => {
-  const featuresIndexPath = getFeaturesIndexPath();
-  await fs.mkdir(path.dirname(featuresIndexPath), { recursive: true });
-  await fs.writeFile(
-    featuresIndexPath,
-    JSON.stringify(index, null, 2),
-    "utf-8",
-  );
-};
-
-const listTaggedCommits = async (
-  repoRoot: string,
-  maxCount = DEFAULT_LOG_SCAN_LIMIT,
-): Promise<GitLogCommit[]> => {
-  const format = `%H${LOG_FIELD_SEPARATOR}%ct${LOG_FIELD_SEPARATOR}%s${LOG_FIELD_SEPARATOR}%b${LOG_ENTRY_SEPARATOR}`;
-  const output = await runGit(repoRoot, [
-    "log",
-    `--max-count=${Math.max(1, maxCount)}`,
-    `--pretty=format:${format}`,
-  ]);
-  return parseGitLog(output);
-};
-
 const listDirtyFiles = async (repoRoot: string): Promise<string[]> => {
   const result = await exec([
     "-c",
@@ -247,7 +163,14 @@ const listDirtyFiles = async (repoRoot: string): Promise<string[]> => {
     .filter((line): line is string => Boolean(line));
 };
 
-const listDependencyFiles = async (repoRoot: string): Promise<string[]> => {
+/**
+ * Dependency manifest/lock files that should follow the changes the
+ * agent makes (e.g. `bun install` updating `bun.lock`). Returns only
+ * the files that exist in the repo. Callers MUST further filter against
+ * the run's baseline dirty set before staging — staging unconditionally
+ * sweeps in unrelated user work.
+ */
+export const listDependencyFiles = async (repoRoot: string): Promise<string[]> => {
   const candidates = [
     "package.json",
     "bun.lock",
@@ -284,179 +207,41 @@ const hasStagedChanges = async (repoRoot: string): Promise<boolean> => {
   throw new Error(`Git command failed (diff --cached --quiet --exit-code): ${details}`);
 };
 
+const hasWorkingTreeChangesForPaths = async (
+  repoRoot: string,
+  paths: string[],
+): Promise<boolean> => {
+  if (paths.length === 0) return false;
+  const result = await exec(
+    ["diff", "--quiet", "--exit-code", "HEAD", "--", ...paths],
+    repoRoot,
+    { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
+  );
+  if (result.exitCode === 0) {
+    return false;
+  }
+  if (result.exitCode === 1) {
+    return true;
+  }
+  const details =
+    result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
+  throw new Error(
+    `Git command failed (diff --quiet HEAD -- <paths>): ${details}`,
+  );
+};
+
+export const stageGitPathsForCommit = async (
+  repoRoot: string,
+  paths: string[],
+): Promise<void> => {
+  if (paths.length === 0) return;
+  await runGit(repoRoot, ["add", "--", ...paths]);
+};
+
 export const getGitHead = async (repoRoot: string): Promise<string | null> => {
   await assertGitRepository(repoRoot);
   const output = await runGit(repoRoot, ["rev-parse", "HEAD"]);
   return output || null;
-};
-
-export const listRecentGitFeatures = async (
-  repoRoot: string,
-  limit = DEFAULT_RECENT_FEATURE_LIMIT,
-): Promise<GitFeatureSummary[]> => {
-  await assertGitRepository(repoRoot);
-  const commits = await listTaggedCommits(repoRoot);
-  const index = await readFeatureIndex();
-  const nextIndex: FeatureIndex = {
-    version: index.version,
-    features: { ...index.features },
-  };
-
-  const byFeature = new Map<string, GitFeatureSummary>();
-  const commitHashesByFeature = new Map<string, string[]>();
-
-  for (const commit of commits) {
-    const featureIds = extractFeatureIds(`${commit.subject}\n${commit.body}`);
-    if (featureIds.length === 0) continue;
-
-    for (const featureId of featureIds) {
-      const hashes = commitHashesByFeature.get(featureId) ?? [];
-      hashes.push(commit.hash);
-      commitHashesByFeature.set(featureId, hashes);
-
-      const existing = byFeature.get(featureId);
-      if (!existing) {
-        const indexEntry = index.features[featureId];
-        const name = indexEntry?.name?.trim() || humanizeFeatureId(featureId);
-        const description = indexEntry?.description?.trim() || "";
-        byFeature.set(featureId, {
-          featureId,
-          name,
-          description,
-          latestCommit: commit.hash,
-          latestTimestampMs: commit.timestampMs,
-          commitCount: 1,
-        });
-      } else {
-        existing.commitCount += 1;
-      }
-
-      if (!nextIndex.features[featureId]) {
-        nextIndex.features[featureId] = {
-          name: humanizeFeatureId(featureId),
-          description: "",
-          updatedAt: commit.timestampMs,
-        };
-      } else {
-        nextIndex.features[featureId] = {
-          ...nextIndex.features[featureId],
-          updatedAt: Math.max(
-            Number(nextIndex.features[featureId]?.updatedAt ?? 0),
-            commit.timestampMs,
-          ),
-        };
-      }
-    }
-  }
-
-  if (JSON.stringify(index) !== JSON.stringify(nextIndex)) {
-    await writeFeatureIndex(nextIndex);
-  }
-
-  const recent = Array.from(byFeature.values())
-    .sort((a, b) => b.latestTimestampMs - a.latestTimestampMs)
-    .slice(0, Math.max(1, limit));
-
-  if (recent.length > 0) {
-    const dirtyFiles = await listDirtyFiles(repoRoot);
-    if (dirtyFiles.length > 0) {
-      // Collect all commit hashes across recent features, batch into one git call
-      const allHashes: string[] = [];
-      for (const feature of recent) {
-        const hashes = commitHashesByFeature.get(feature.featureId) ?? [];
-        allHashes.push(...hashes);
-      }
-
-      const filesByCommit = await getChangedFilesForCommits(repoRoot, allHashes);
-
-      for (const feature of recent) {
-        const touchedFiles = new Set<string>();
-        const featureCommits = commitHashesByFeature.get(feature.featureId) ?? [];
-        for (const commitHash of featureCommits) {
-          for (const file of filesByCommit.get(commitHash) ?? []) {
-            touchedFiles.add(file);
-          }
-        }
-
-        const taintedFiles = dirtyFiles.filter((file) => touchedFiles.has(file));
-        if (taintedFiles.length > 0) {
-          feature.tainted = true;
-          feature.taintedFiles = taintedFiles;
-        }
-      }
-    }
-  }
-
-  return recent;
-};
-
-export const getLastGitFeatureId = async (
-  repoRoot: string,
-): Promise<string | null> => {
-  const recent = await listRecentGitFeatures(repoRoot, 1);
-  return recent[0]?.featureId ?? null;
-};
-
-export const listFeatureCommitHashes = async (
-  repoRoot: string,
-  featureId: string,
-): Promise<string[]> => {
-  const output = await runGit(repoRoot, [
-    "log",
-    "--pretty=format:%H",
-    "--fixed-strings",
-    `--grep=Stella-Feature-Id: ${featureId}`,
-  ]);
-  return output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-};
-
-export const revertGitFeature = async (args: {
-  repoRoot: string;
-  featureId?: string | null;
-  steps?: number;
-}): Promise<GitRevertResult> => {
-  const { repoRoot } = args;
-  await assertGitRepository(repoRoot);
-
-  const featureId = args.featureId?.trim() || await getLastGitFeatureId(repoRoot);
-  if (!featureId) {
-    throw new Error("No recent self-mod feature found to revert.");
-  }
-
-  const steps = Math.max(1, Math.floor(args.steps ?? 1));
-  const commits = await listFeatureCommitHashes(repoRoot, featureId);
-  if (commits.length === 0) {
-    throw new Error(`No commits found for feature "${featureId}".`);
-  }
-
-  const target = commits.slice(0, steps);
-  const reverted: string[] = [];
-
-  for (const hash of target) {
-    try {
-      await runGit(repoRoot, ["revert", "--no-edit", hash]);
-      reverted.push(hash);
-    } catch (error) {
-      try {
-        await runGit(repoRoot, ["revert", "--abort"]);
-      } catch {
-        // Best effort.
-      }
-      throw error;
-    }
-  }
-
-  return {
-    featureId,
-    revertedCommitHashes: reverted,
-    message:
-      reverted.length === 1
-        ? `Reverted 1 commit for feature ${featureId}.`
-        : `Reverted ${reverted.length} commits for feature ${featureId}.`,
-  };
 };
 
 const getChangedFilesForCommit = async (
@@ -475,84 +260,558 @@ const getChangedFilesForCommit = async (
     .filter(Boolean);
 };
 
+/** Batch version: returns a map of commitHash → normalized file paths. */
+const getChangedFilesForCommits = async (
+  repoRoot: string,
+  commitHashes: string[],
+): Promise<Map<string, string[]>> => {
+  const result = new Map<string, string[]>();
+  if (commitHashes.length === 0) return result;
+
+  const separator = "---COMMIT_BOUNDARY---";
+  const format = `${separator}%H`;
+  const output = await runGit(repoRoot, [
+    "show",
+    "--name-only",
+    `--pretty=format:${format}`,
+    ...commitHashes,
+  ]);
+
+  const blocks = output.split(separator).filter(Boolean);
+  for (const block of blocks) {
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) continue;
+    const hash = lines[0];
+    const files = lines.slice(1).map(normalizeGitPath);
+    result.set(hash, files);
+  }
+
+  return result;
+};
+
+const TRAILER_LINE_REGEX = /^([A-Za-z][A-Za-z0-9-]*):\s*(.+)$/;
+const STELLA_INTERNAL_TRAILERS = new Set([
+  "Stella-Conversation",
+  "Stella-Package-Id",
+  "Stella-Release-Number",
+  "Stella-Task",
+]);
+
+const parseStellaCommitTrailers = (
+  body: string,
+): { conversationId?: string; packageId?: string } => {
+  const trailers: { conversationId?: string; packageId?: string } = {};
+  const lines = body.split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(TRAILER_LINE_REGEX);
+    if (!match) continue;
+    const [, key, value] = match;
+    const trimmedValue = value?.trim();
+    if (!trimmedValue) continue;
+    if (key === "Stella-Conversation") {
+      trailers.conversationId = trimmedValue;
+    } else if (key === "Stella-Package-Id") {
+      trailers.packageId = trimmedValue;
+    }
+  }
+  return trailers;
+};
+
+// Legacy commits from the pre-Phase-3 feature/batch scheme used a
+// `[feature:<id>, +N]` subject prefix. We strip it so the normalized
+// list shows clean human-readable subjects without rewriting history.
+const LEGACY_FEATURE_TAG_REGEX = /\[feature:[a-zA-Z0-9_-]+(?:,\s*\+\d+)?\]/g;
+
+const stripLegacyFeatureTagFromSubject = (subject: string): string => {
+  LEGACY_FEATURE_TAG_REGEX.lastIndex = 0;
+  return subject.replace(LEGACY_FEATURE_TAG_REGEX, "").trim();
+};
+
+const stripStellaTrailerLinesFromBody = (body: string): string => {
+  const lines = body.split(/\r?\n/);
+  const filtered = lines.filter((line) => {
+    const match = line.match(TRAILER_LINE_REGEX);
+    if (!match) return true;
+    return !STELLA_INTERNAL_TRAILERS.has(match[1] ?? "");
+  });
+  return filtered.join("\n").trim();
+};
+
+export type LocalGitCommitSummary = {
+  commitHash: string;
+  shortHash: string;
+  subject: string;
+  body: string;
+  timestampMs: number;
+  fileCount: number;
+  files: string[];
+  conversationId?: string;
+  legacyFeatureTagged?: boolean;
+  packageId?: string;
+};
+
+const FILE_PREVIEW_LIMIT = 12;
+
+// Single ERE pattern used both server-side (`git log --grep`) and as an
+// in-memory safety net. Matches any Stella-internal trailer key or the
+// legacy `[feature:…]` tag, so non-Stella commits never reach the Store
+// UI or publish path.
+const STELLA_COMMIT_GREP_PATTERN =
+  "Stella-(Conversation|Package-Id|Release-Number|Task)|\\[feature:";
+const STELLA_COMMIT_VERIFY_REGEX = new RegExp(STELLA_COMMIT_GREP_PATTERN);
+const STELLA_STORE_APPLY_TRAILER_REGEX =
+  /^Stella-(Package-Id|Release-Number|Task):/m;
+
+const isStellaSelfModCommitMessage = (rawMessage: string): boolean =>
+  STELLA_COMMIT_VERIFY_REGEX.test(rawMessage);
+
+const isPublishableStellaSelfModCommitMessage = (rawMessage: string): boolean =>
+  isStellaSelfModCommitMessage(rawMessage)
+  && !STELLA_STORE_APPLY_TRAILER_REGEX.test(rawMessage);
+
+/**
+ * Return recent local *Stella self-mod* commits as a flat list — that
+ * is, agent-authored commits with `Stella-*` trailers (current scheme)
+ * or legacy `[feature:…]`-tagged commits. Plain user/dev commits are
+ * filtered out so the Store UI can't surface them as publishable
+ * "creations" and the publish path can't ship non-Stella history.
+ *
+ * `body` and `subject` are sanitized for human display: legacy feature
+ * tags are stripped from the subject, and Stella-internal trailers
+ * (Conversation, Package-Id, etc.) are removed from the body.
+ */
+export const listRecentGitCommits = async (
+  repoRoot: string,
+  limit = 50,
+): Promise<LocalGitCommitSummary[]> => {
+  await assertGitRepository(repoRoot);
+  const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
+  // Install/update commits share Stella trailers but are not user-authored
+  // creations. Overfetch before filtering so a run of store apply commits
+  // does not make the Store UI look empty.
+  const queryLimit = Math.min(2_000, Math.max(safeLimit, safeLimit * 4));
+  const format = `%H${LOG_FIELD_SEPARATOR}%h${LOG_FIELD_SEPARATOR}%ct${LOG_FIELD_SEPARATOR}%s${LOG_FIELD_SEPARATOR}%b${LOG_ENTRY_SEPARATOR}`;
+  const output = await runGit(repoRoot, [
+    "log",
+    `--max-count=${queryLimit}`,
+    "--extended-regexp",
+    `--grep=${STELLA_COMMIT_GREP_PATTERN}`,
+    `--pretty=format:${format}`,
+  ]);
+
+  const records = output
+    .split(LOG_ENTRY_SEPARATOR)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  const summaries: LocalGitCommitSummary[] = [];
+  for (const record of records) {
+    const fields = record.split(LOG_FIELD_SEPARATOR);
+    if (fields.length < 5) continue;
+    const [hash, shortHash, timestampSec, rawSubject, rawBody] = fields;
+    const timestampMs = Number(timestampSec) * 1000;
+    if (!hash || !Number.isFinite(timestampMs)) continue;
+
+    const fullCombined = `${rawSubject ?? ""}\n${rawBody ?? ""}`;
+    // Defense-in-depth: even with `--grep`, double-check the message
+    // ourselves so a regex divergence between git and Node can't leak
+    // non-Stella commits through.
+    if (!isPublishableStellaSelfModCommitMessage(fullCombined)) continue;
+
+    const trailers = parseStellaCommitTrailers(rawBody ?? "");
+    const cleanSubject = stripLegacyFeatureTagFromSubject(rawSubject ?? "");
+    const cleanBody = stripStellaTrailerLinesFromBody(rawBody ?? "");
+    LEGACY_FEATURE_TAG_REGEX.lastIndex = 0;
+    const legacyFeatureTagged = LEGACY_FEATURE_TAG_REGEX.test(fullCombined);
+    LEGACY_FEATURE_TAG_REGEX.lastIndex = 0;
+
+    let files: string[] = [];
+    let fileCount = 0;
+    try {
+      files = await getChangedFilesForCommit(repoRoot, hash);
+      fileCount = files.length;
+      if (files.length > FILE_PREVIEW_LIMIT) {
+        files = files.slice(0, FILE_PREVIEW_LIMIT);
+      }
+    } catch {
+      // Best-effort; skip file enumeration on error.
+    }
+
+    summaries.push({
+      commitHash: hash,
+      shortHash: shortHash ?? hash.slice(0, 7),
+      subject: cleanSubject || "Self mod update",
+      body: cleanBody,
+      timestampMs,
+      fileCount,
+      files,
+      ...(trailers.conversationId ? { conversationId: trailers.conversationId } : {}),
+      ...(legacyFeatureTagged ? { legacyFeatureTagged: true } : {}),
+      ...(trailers.packageId ? { packageId: trailers.packageId } : {}),
+    });
+    if (summaries.length >= safeLimit) {
+      break;
+    }
+  }
+  return summaries;
+};
+
+/**
+ * Verify that every commit hash in `commitHashes` resolves to a
+ * Stella self-mod commit (current `Stella-*` trailer scheme or the
+ * legacy `[feature:…]` tag). Throws with a structured message listing
+ * any unresolved or non-Stella hashes — used by the publish path so
+ * the Store agent can't ship arbitrary commits from `git log`.
+ */
+export const assertStellaSelfModCommits = async (args: {
+  repoRoot: string;
+  commitHashes: string[];
+}): Promise<void> => {
+  await assertGitRepository(args.repoRoot);
+  const dedup = Array.from(
+    new Set(args.commitHashes.map((hash) => hash.trim()).filter(Boolean)),
+  );
+  if (dedup.length === 0) return;
+
+  const unresolved: string[] = [];
+  const nonStella: string[] = [];
+  for (const hash of dedup) {
+    let message: string;
+    try {
+      message = await runGit(args.repoRoot, [
+        "show",
+        "-s",
+        "--format=%s%n%b",
+        hash,
+      ]);
+    } catch {
+      unresolved.push(hash);
+      continue;
+    }
+    if (!isPublishableStellaSelfModCommitMessage(message)) {
+      nonStella.push(hash);
+    }
+  }
+  if (unresolved.length > 0 || nonStella.length > 0) {
+    const parts: string[] = [];
+    if (unresolved.length > 0) {
+      parts.push(`unresolved: ${unresolved.join(", ")}`);
+    }
+    if (nonStella.length > 0) {
+      parts.push(`not Stella self-mod commits: ${nonStella.join(", ")}`);
+    }
+    throw new Error(`Refusing to publish ${parts.join("; ")}`);
+  }
+};
+
+/**
+ * Return recent local self-mod commits as `GitFeatureSummary`-shaped
+ * entries. Each commit becomes one summary with `featureId === commitHash`,
+ * preserving the existing `SelfModFeatureSummary` contract used by the
+ * runtime diagnostic UIs (revert button, crash surface, taint monitor).
+ */
+export const listRecentGitFeatures = async (
+  repoRoot: string,
+  limit = DEFAULT_RECENT_COMMIT_LIMIT,
+): Promise<GitFeatureSummary[]> => {
+  await assertGitRepository(repoRoot);
+  const safeLimit = Math.max(1, Math.floor(limit));
+  const commitFormat = `%H${LOG_FIELD_SEPARATOR}%ct${LOG_FIELD_SEPARATOR}%s${LOG_FIELD_SEPARATOR}%b${LOG_ENTRY_SEPARATOR}`;
+  const output = await runGit(repoRoot, [
+    "log",
+    `--max-count=${safeLimit}`,
+    "--extended-regexp",
+    `--grep=${STELLA_COMMIT_GREP_PATTERN}`,
+    `--pretty=format:${commitFormat}`,
+  ]);
+  const commits = parseGitLog(output).filter((commit) =>
+    isStellaSelfModCommitMessage(`${commit.subject}\n${commit.body}`));
+  if (commits.length === 0) {
+    return [];
+  }
+
+  const summaries: GitFeatureSummary[] = commits.map((commit) => {
+    const cleanedSubject =
+      stripLegacyFeatureTagFromSubject(commit.subject) || "Self mod update";
+    const cleanedBody = stripStellaTrailerLinesFromBody(commit.body);
+    return {
+      featureId: commit.hash,
+      name: cleanedSubject,
+      description: cleanedBody,
+      latestCommit: commit.hash,
+      latestTimestampMs: commit.timestampMs,
+      commitCount: 1,
+    };
+  });
+
+  const dirtyFiles = await listDirtyFiles(repoRoot);
+  if (dirtyFiles.length === 0) {
+    return summaries;
+  }
+
+  const filesByCommit = await getChangedFilesForCommits(
+    repoRoot,
+    summaries.map((entry) => entry.latestCommit),
+  );
+  const dirtySet = new Set(dirtyFiles);
+  for (const summary of summaries) {
+    const touched = filesByCommit.get(summary.latestCommit) ?? [];
+    const taintedFiles = touched.filter((file) => dirtySet.has(file));
+    if (taintedFiles.length > 0) {
+      summary.tainted = true;
+      summary.taintedFiles = taintedFiles;
+    }
+  }
+
+  return summaries;
+};
+
+/**
+ * Hash of the most recent self-mod commit (i.e. HEAD), or null when the
+ * repo has no commits. Renamed from the legacy "last feature id" but
+ * kept under the same export so the worker doesn't need to fork.
+ */
+export const getLastGitFeatureId = async (
+  repoRoot: string,
+): Promise<string | null> => {
+  await assertGitRepository(repoRoot);
+  const output = await runGit(repoRoot, [
+    "log",
+    "--max-count=1",
+    "--extended-regexp",
+    `--grep=${STELLA_COMMIT_GREP_PATTERN}`,
+    "--pretty=format:%H",
+  ]);
+  return output || null;
+};
+
+/**
+ * Revert one or more self-mod commits. The legacy API took a
+ * `featureId` and reverted every commit tagged with it; with the
+ * feature-tag scheme gone, `featureId` is now interpreted as a single
+ * commit hash and `steps` controls how far back from there to revert
+ * (defaults to 1). Passing no `featureId` reverts from HEAD.
+ */
+export const revertGitFeature = async (args: {
+  repoRoot: string;
+  featureId?: string | null;
+  steps?: number;
+}): Promise<GitRevertResult> => {
+  const { repoRoot } = args;
+  await assertGitRepository(repoRoot);
+
+  const startCommit =
+    args.featureId?.trim() || (await getLastGitFeatureId(repoRoot)) || "";
+  if (!startCommit) {
+    throw new Error("No commit found to revert.");
+  }
+
+  if (args.featureId?.trim()) {
+    const message = await runGit(repoRoot, [
+      "show",
+      "-s",
+      "--format=%s%n%b",
+      startCommit,
+    ]);
+    if (!isStellaSelfModCommitMessage(message)) {
+      throw new Error(`Refusing to revert non-Stella self-mod commit "${startCommit}".`);
+    }
+  }
+
+  const steps = Math.max(1, Math.floor(args.steps ?? 1));
+  let commitHashes: string[] = [];
+  try {
+    const output = await runGit(repoRoot, [
+      "log",
+      `--max-count=${steps}`,
+      "--extended-regexp",
+      `--grep=${STELLA_COMMIT_GREP_PATTERN}`,
+      "--pretty=format:%H",
+      startCommit,
+    ]);
+    commitHashes = output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch (error) {
+    throw new Error(
+      `Could not resolve commit "${startCommit}" for revert: ${(error as Error).message}`,
+    );
+  }
+  if (commitHashes.length === 0) {
+    throw new Error(`No commits found for "${startCommit}".`);
+  }
+
+  const reverted = await revertGitCommits({
+    repoRoot,
+    commitHashes,
+  });
+
+  return {
+    featureId: startCommit,
+    revertedCommitHashes: reverted,
+    message:
+      reverted.length === 1
+        ? `Reverted 1 commit (${reverted[0]?.slice(0, 7)}).`
+        : `Reverted ${reverted.length} commits.`,
+  };
+};
+
 export const listGitDirtyFiles = async (repoRoot: string): Promise<string[]> => {
   await assertGitRepository(repoRoot);
   return await listDirtyFiles(repoRoot);
 };
 
-export const stageGitFiles = async (
+/**
+ * Return a truncated unified diff for the changes about to be committed.
+ *
+ * Used to prompt the modifying agent for a commit message without sending
+ * unbounded patch bytes through the LLM. We cap line count rather than byte
+ * count because the model only needs an overview of edits.
+ *
+ * When `paths` is provided (the self-mod path), we diff the working tree
+ * against `HEAD` scoped to those paths — this matches what
+ * `git commit --only -- <paths>` will end up committing. Otherwise we
+ * fall back to the staged diff.
+ */
+export const getStagedDiffPreview = async (
   repoRoot: string,
-  files: string[],
-): Promise<void> => {
-  await assertGitRepository(repoRoot);
-  const uniqueFiles = Array.from(new Set(files.map(normalizeGitPath).filter(Boolean)));
-  if (uniqueFiles.length === 0) {
-    return;
+  options?: { maxLines?: number; paths?: string[] },
+): Promise<string> => {
+  const maxLines = Math.max(20, options?.maxLines ?? 400);
+  const paths = normalizePathspecs(options?.paths);
+  const diffArgs: string[] =
+    paths.length > 0
+      ? ["diff", "HEAD", "--unified=2", "--no-color", "--stat-width=120", "--", ...paths]
+      : ["diff", "--cached", "--unified=2", "--no-color", "--stat-width=120"];
+  const raw = await runGit(repoRoot, diffArgs);
+  if (!raw) return "";
+  const lines = raw.split("\n");
+  if (lines.length <= maxLines) {
+    return raw;
   }
-  await runGit(repoRoot, ["add", "--", ...uniqueFiles]);
-};
-
-export const stageFeatureDependencyFiles = async (repoRoot: string): Promise<string[]> => {
-  await assertGitRepository(repoRoot);
-  const dependencyFiles = await listDependencyFiles(repoRoot);
-  if (dependencyFiles.length > 0) {
-    await runGit(repoRoot, ["add", "--", ...dependencyFiles]);
-  }
-  return dependencyFiles;
-};
-
-export const commitGitFeatureBatch = async (
-  args: GitFeatureCommitArgs,
-): Promise<string | null> => {
-  await assertGitRepository(args.repoRoot);
-  if (!(await hasStagedChanges(args.repoRoot))) {
-    return null;
-  }
-
-  const subjectPrefix =
-    args.source === "install"
-      ? "Store install"
-      : args.source === "update"
-        ? "Store update"
-        : "";
-  const featureTag = buildFeatureTag(args.featureId, args.ordinal);
-  const subject = subjectPrefix ? `${subjectPrefix} ${featureTag}` : featureTag;
-  const bodyLines = [
-    `Stella-Batch-Id: ${args.batchId}`,
-    `Stella-Feature-Id: ${args.featureId}`,
-  ];
-  if (args.packageId?.trim()) {
-    bodyLines.push(`Stella-Package-Id: ${args.packageId.trim()}`);
-  }
-  if (typeof args.releaseNumber === "number" && Number.isFinite(args.releaseNumber)) {
-    bodyLines.push(`Stella-Release-Number: ${Math.max(1, Math.floor(args.releaseNumber))}`);
-  }
-  if (args.taskDescription?.trim()) {
-    bodyLines.push(`Stella-Task: ${args.taskDescription.trim()}`);
-  }
-
-  return await commitGitOperation({
-    repoRoot: args.repoRoot,
-    subject,
-    bodyLines,
-  });
+  return `${lines.slice(0, maxLines).join("\n")}\n... [diff truncated, ${lines.length - maxLines} more lines]`;
 };
 
 export const commitGitOperation = async (
   args: GitCustomCommitArgs,
 ): Promise<string | null> => {
   await assertGitRepository(args.repoRoot);
-  if (!(await hasStagedChanges(args.repoRoot))) {
+  const paths = normalizePathspecs(args.paths);
+  if (paths.length > 0) {
+    await stageGitPathsForCommit(args.repoRoot, paths);
+    if (!(await hasWorkingTreeChangesForPaths(args.repoRoot, paths))) {
+      return null;
+    }
+  } else if (!(await hasStagedChanges(args.repoRoot))) {
     return null;
   }
 
-  await runGit(args.repoRoot, [
+  const commitArgs: string[] = [
     "commit",
     "-m",
     args.subject,
     "-m",
     (args.bodyLines ?? []).join("\n"),
-  ]);
+  ];
+  if (paths.length > 0) {
+    commitArgs.push("--only", "--", ...paths);
+  }
+  await runGit(args.repoRoot, commitArgs);
+  return await getGitHead(args.repoRoot);
+};
+
+export type GitMessageCommitArgs = {
+  repoRoot: string;
+  /** Single-line subject, free-form. Will be sanitized to a single line. */
+  subject: string;
+  /** Optional body paragraphs (free-form). */
+  body?: string;
+  /** RFC 822-style commit trailers like { "Stella-Conversation": "<id>" }. */
+  trailers?: Record<string, string>;
+  /**
+   * When provided, commits ONLY these working-tree paths (via
+   * `git commit --only -- <paths>`), ignoring whatever else may be
+   * staged. Use this for self-mod commits to prevent pre-existing
+   * staged user changes from being swept into an agent-authored commit.
+   */
+  paths?: string[];
+};
+
+const normalizePathspecs = (paths: string[] | undefined): string[] => {
+  if (!paths || paths.length === 0) return [];
+  return Array.from(
+    new Set(paths.map((entry) => normalizeGitPath(entry)).filter(Boolean)),
+  );
+};
+
+const SUBJECT_MAX_LENGTH = 72;
+
+const sanitizeCommitSubject = (raw: string): string => {
+  const cleaned = raw
+    .replace(/\r\n/g, "\n")
+    .split("\n")[0]
+    ?.trim()
+    ?? "";
+  if (cleaned.length <= SUBJECT_MAX_LENGTH) {
+    return cleaned;
+  }
+  return `${cleaned.slice(0, SUBJECT_MAX_LENGTH - 1).trim()}…`;
+};
+
+const formatTrailer = (key: string, value: string): string => {
+  const safeKey = key.replace(/[\s:]+/g, "-");
+  const safeValue = value.replace(/\r?\n/g, " ").trim();
+  return `${safeKey}: ${safeValue}`;
+};
+
+/**
+ * Commit currently-staged changes with a free-form, agent-authored message.
+ *
+ * Use this for the self-mod tracking flow where the modifying agent
+ * produces a human-readable commit message and the runtime appends machine
+ * trailers (e.g. `Stella-Conversation: <id>`) for later context lookup.
+ */
+export const commitGitMessage = async (
+  args: GitMessageCommitArgs,
+): Promise<string | null> => {
+  await assertGitRepository(args.repoRoot);
+  const paths = normalizePathspecs(args.paths);
+  if (paths.length > 0) {
+    await stageGitPathsForCommit(args.repoRoot, paths);
+    if (!(await hasWorkingTreeChangesForPaths(args.repoRoot, paths))) {
+      return null;
+    }
+  } else if (!(await hasStagedChanges(args.repoRoot))) {
+    return null;
+  }
+
+  const subject = sanitizeCommitSubject(args.subject);
+  if (!subject) {
+    throw new Error("commitGitMessage requires a non-empty subject.");
+  }
+
+  const trailerLines = Object.entries(args.trailers ?? {})
+    .map(([key, value]) => {
+      const trimmedValue = value?.trim();
+      return trimmedValue ? formatTrailer(key, trimmedValue) : null;
+    })
+    .filter((entry): entry is string => Boolean(entry));
+
+  const body = (args.body ?? "").replace(/\r\n/g, "\n").trim();
+
+  const commitArgs: string[] = ["commit", "-m", subject];
+  if (body) {
+    commitArgs.push("-m", body);
+  }
+  if (trailerLines.length > 0) {
+    commitArgs.push("-m", trailerLines.join("\n"));
+  }
+  if (paths.length > 0) {
+    commitArgs.push("--only", "--", ...paths);
+  }
+
+  await runGit(args.repoRoot, commitArgs);
   return await getGitHead(args.repoRoot);
 };
 
@@ -592,6 +851,60 @@ export const getCommitFileSnapshot = async (args: {
     || (Buffer.isBuffer(result.stdout) ? result.stdout.toString("utf8") : result.stdout).trim()
     || `exit code ${result.exitCode}`;
   throw new Error(`Git command failed (show ${args.commitHash}:${gitPath}): ${details}`);
+};
+
+/**
+ * Order an arbitrary set of commit hashes by their git timestamp (oldest
+ * first). Useful when an external caller (e.g. the Store agent) hands us a
+ * picked-list of commits without preserving chronological order.
+ *
+ * Throws with a structured message listing any unresolved hashes so a
+ * typo or stale selection can never silently produce a partial release.
+ * Duplicate hashes are deduplicated up front and do NOT count as missing.
+ */
+export const orderCommitHashesChronologically = async (args: {
+  repoRoot: string;
+  commitHashes: string[];
+}): Promise<string[]> => {
+  await assertGitRepository(args.repoRoot);
+  const dedup = Array.from(
+    new Set(args.commitHashes.map((hash) => hash.trim()).filter(Boolean)),
+  );
+  if (dedup.length === 0) {
+    return [];
+  }
+  const entries: Array<{ hash: string; timestampMs: number }> = [];
+  const missing: string[] = [];
+  for (const hash of dedup) {
+    try {
+      const output = await runGit(args.repoRoot, [
+        "show",
+        "-s",
+        "--format=%H%x1f%ct",
+        hash,
+      ]);
+      const [resolvedHash, timestampSec] = output.split("\x1f");
+      if (!resolvedHash) {
+        missing.push(hash);
+        continue;
+      }
+      const timestampMs = Number(timestampSec) * 1000;
+      if (!Number.isFinite(timestampMs)) {
+        missing.push(hash);
+        continue;
+      }
+      entries.push({ hash: resolvedHash.trim(), timestampMs });
+    } catch {
+      missing.push(hash);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Could not resolve ${missing.length} commit hash(es): ${missing.join(", ")}`,
+    );
+  }
+  entries.sort((left, right) => left.timestampMs - right.timestampMs);
+  return entries.map((entry) => entry.hash);
 };
 
 export const getCommitReference = async (args: {
@@ -640,7 +953,7 @@ export const getCommitSelectionSnapshots = async (args: {
   try {
     baseCommitHash = await runGit(args.repoRoot, ["rev-parse", `${firstCommitHash}^`]);
   } catch {
-    throw new Error("Selected batches could not be reconstructed from git history.");
+    throw new Error("Selected commits could not be reconstructed from git history.");
   }
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stella-store-release-"));
@@ -659,7 +972,7 @@ export const getCommitSelectionSnapshots = async (args: {
             // Best effort only.
           }
           throw new Error(
-            `Selected batches could not be reconstructed: ${(error as Error).message}`,
+            `Selected commits could not be reconstructed: ${(error as Error).message}`,
           );
         }
       }
@@ -720,36 +1033,13 @@ export const revertGitCommits = async (args: {
   return reverted;
 };
 
-/** Batch version: returns a map of commitHash → normalized file paths. */
-const getChangedFilesForCommits = async (
-  repoRoot: string,
-  commitHashes: string[],
-): Promise<Map<string, string[]>> => {
-  const result = new Map<string, string[]>();
-  if (commitHashes.length === 0) return result;
-
-  // Use a single git command with a separator-delimited format
-  const separator = "---COMMIT_BOUNDARY---";
-  const format = `${separator}%H`;
-  const output = await runGit(repoRoot, [
-    "show",
-    "--name-only",
-    `--pretty=format:${format}`,
-    ...commitHashes,
-  ]);
-
-  const blocks = output.split(separator).filter(Boolean);
-  for (const block of blocks) {
-    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (lines.length === 0) continue;
-    const hash = lines[0];
-    const files = lines.slice(1).map(normalizeGitPath);
-    result.set(hash, files);
-  }
-
-  return result;
-};
-
+/**
+ * Detect whether new self-mod commits landed on `repoRoot` since
+ * `sinceHead`. Returns a `SelfModAppliedPayload` describing the most
+ * recent commit (its hash becomes the synthetic `featureId`) so the
+ * runtime can surface an undo affordance against it. Returns null
+ * when no new commits exist.
+ */
 export const detectSelfModAppliedSince = async (args: {
   repoRoot: string;
   sinceHead: string | null;
@@ -762,27 +1052,22 @@ export const detectSelfModAppliedSince = async (args: {
   const output = await runGit(repoRoot, [
     "log",
     range,
+    "--extended-regexp",
+    `--grep=${STELLA_COMMIT_GREP_PATTERN}`,
     `--pretty=format:${format}`,
+    `--max-count=1`,
   ]);
-  const commits = parseGitLog(output);
-  if (commits.length === 0) {
+  const commits = parseGitLog(output).filter((commit) =>
+    isStellaSelfModCommitMessage(`${commit.subject}\n${commit.body}`));
+  const latest = commits[0];
+  if (!latest) {
     return null;
   }
 
-  for (const commit of commits) {
-    const featureIds = extractFeatureIds(`${commit.subject}\n${commit.body}`);
-    if (featureIds.length === 0) continue;
-    const featureId = featureIds[0];
-    const files = await getChangedFilesForCommit(repoRoot, commit.hash);
-    const allFeatureCommits = await listFeatureCommitHashes(repoRoot, featureId);
-    const newestIndex = allFeatureCommits.findIndex((hash) => hash === commit.hash);
-    const batchIndex = newestIndex >= 0 ? newestIndex : 0;
-    return {
-      featureId,
-      files,
-      batchIndex,
-    };
-  }
-
-  return null;
+  const files = await getChangedFilesForCommit(repoRoot, latest.hash);
+  return {
+    featureId: latest.hash,
+    files,
+    batchIndex: 0,
+  };
 };

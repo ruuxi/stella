@@ -48,10 +48,15 @@ const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
   "Display",
   "DisplayGuidelines",
   "Schedule",
+  "Store",
   "spawn_agent",
   "send_input",
   "pause_agent",
   "Memory",
+  "askQuestion",
+]);
+
+const USER_FACING_AGENT_TOOL_NAMES = new Set([
   "askQuestion",
 ]);
 
@@ -64,6 +69,7 @@ export const createToolHost = ({
   requestCredential,
   agentApi,
   scheduleApi,
+  storeApi,
   extensionTools,
   displayHtml,
   webSearch,
@@ -121,6 +127,7 @@ export const createToolHost = ({
     requestCredential,
     agentApi,
     scheduleApi,
+    storeApi,
     extensionTools,
     displayHtml,
     webSearch,
@@ -230,6 +237,7 @@ export const createToolHost = ({
     Array.from(toolCatalog.values()).filter(
       (tool) =>
         agentType === AGENT_IDS.ORCHESTRATOR ||
+        (agentType === AGENT_IDS.STORE && USER_FACING_AGENT_TOOL_NAMES.has(tool.name)) ||
         !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
     );
 

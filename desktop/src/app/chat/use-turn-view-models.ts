@@ -91,6 +91,18 @@ const getAskQuestionPayload = (
   return undefined
 }
 
+const getAskQuestionTargetAgentId = (
+  responseTarget: AgentResponseTarget | undefined,
+): string | undefined => {
+  if (
+    responseTarget?.type === 'agent_turn' ||
+    responseTarget?.type === 'agent_terminal_notice'
+  ) {
+    return responseTarget.agentId
+  }
+  return undefined
+}
+
 const isAskQuestionResponseMessage = (event: EventRecord): boolean => {
   if (event.type !== 'user_message') return false
   const payload = getMessagePayload(event)
@@ -297,6 +309,8 @@ export function useTurnViewModels(opts: {
       )
       const askQuestionPayload = getAskQuestionPayload(turn.toolEvents)
       const askQuestionSelections = answeredAskQuestions.get(turn.id)
+      const askQuestionTargetAgentId =
+        getAskQuestionTargetAgentId(assistantResponseTarget)
       const resourcePayload = deriveTurnResource(
         turn.toolEvents,
         assistantText,
@@ -326,6 +340,9 @@ export function useTurnViewModels(opts: {
           ? {
               askQuestion: {
                 ...askQuestionPayload,
+                ...(askQuestionTargetAgentId
+                  ? { targetAgentId: askQuestionTargetAgentId }
+                  : {}),
                 ...(askQuestionSelections
                   ? {
                       submitted: true,

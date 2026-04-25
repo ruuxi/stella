@@ -1,27 +1,47 @@
 import type {
   InstalledStoreModRecord,
-  SelfModBatchRecord,
-  SelfModFeatureRecord,
+  LocalGitCommitRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
   StoreReleaseBlueprintBatch,
   StoreReleaseBlueprintFile,
-  StoreReleaseDraft,
   StoreReleaseManifest,
 } from "../../contracts/index.js";
 import { StoreModStore } from "../storage/store-mod-store.js";
 import {
-  commitGitFeatureBatch,
+  assertStellaSelfModCommits,
+  commitGitMessage,
+  commitGitOperation,
   getCommitReference,
   getCommitSelectionSnapshots,
+  getStagedDiffPreview,
+  listDependencyFiles,
   listGitDirtyFiles,
-  stageFeatureDependencyFiles,
-  stageGitFiles,
+  listRecentGitCommits,
+  orderCommitHashesChronologically,
+  stageGitPathsForCommit,
 } from "./git.js";
 
+export type CommitMessageProviderArgs = {
+  /** What the agent was asked to do (subagent task description). */
+  taskDescription: string;
+  /** Files about to be committed (relative repo paths). */
+  files: string[];
+  /** Truncated unified diff of staged changes (may be empty). */
+  diffPreview: string;
+};
+
+/**
+ * Optional callback invoked by finalizeSelfModRun to produce a human-readable
+ * commit message just before committing. The runtime layer passes this in so
+ * `StoreModService` stays LLM-agnostic.
+ */
+export type CommitMessageProvider = (
+  args: CommitMessageProviderArgs,
+) => Promise<string | null>;
+
 type ActiveSelfModRun = {
-  featureId: string;
   baselineDirtyFiles: Set<string>;
   taskDescription: string;
   packageId?: string;
@@ -29,9 +49,17 @@ type ActiveSelfModRun = {
   applyMode: "author" | "install" | "update";
 };
 
+export type FinalizedSelfModCommit = {
+  commitHash: string;
+  files: string[];
+  blockedFiles: string[];
+  applyMode: "author" | "install" | "update";
+  packageId?: string;
+  releaseNumber?: number;
+};
+
 type PublishReleaseArgs = {
   packageId: string;
-  featureId: string;
   releaseNumber: number;
   displayName: string;
   description: string;
@@ -48,55 +76,17 @@ type FetchReleaseResult = {
   artifact: StoreReleaseArtifact;
 };
 
-const FEATURE_MAX_SLUG_LENGTH = 48;
-
-const slugify = (value: string): string => {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
-  return slug.slice(0, FEATURE_MAX_SLUG_LENGTH) || "self-mod";
-};
-
-const humanize = (value: string): string =>
-  value
-    .split(/[-_]+/g)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ")
-    .trim() || value;
-
-const shortHash = (value: string): string => {
-  let hash = 2166136261;
-  for (const char of value) {
-    hash ^= char.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return Math.abs(hash >>> 0).toString(36).slice(0, 6);
-};
-
-const deriveFeatureId = (taskDescription: string): string => {
-  const normalized = taskDescription.trim().toLowerCase();
-  const slug = slugify(taskDescription);
-  return `${slug}-${shortHash(normalized || slug)}`;
-};
-
 const normalizeFileList = (files: string[]): string[] =>
   Array.from(new Set(files.map((file) => file.trim().replace(/\\/g, "/")).filter(Boolean))).sort();
 
-const sortBatchesByOrdinal = (batches: SelfModBatchRecord[]) =>
-  [...batches].sort((a, b) => a.ordinal - b.ordinal || a.createdAt - b.createdAt);
-
-const isPublishableBatch = (batch: SelfModBatchRecord): boolean =>
-  (batch.state === "committed" || batch.state === "published")
-  && typeof batch.commitHash === "string"
-  && batch.commitHash.length > 0;
-
-const hasPendingPublishableBatches = (batches: SelfModBatchRecord[]): boolean =>
-  batches.some((batch) => batch.state === "committed" && isPublishableBatch(batch));
-
-const AUTHOR_SELF_MOD_AUTO_COMMIT_ENABLED = false;
+const sanitizeConversationTrailer = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (!/^[A-Za-z0-9._:\-]{1,200}$/.test(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
+};
 
 const DEFAULT_BLUEPRINT_APPLY_GUIDANCE =
   "Treat this release blueprint as the reference implementation for the feature. " +
@@ -149,42 +139,21 @@ export class StoreModService {
   async beginSelfModRun(args: {
     runId: string;
     taskDescription: string;
-    featureId?: string;
     packageId?: string;
     releaseNumber?: number;
     applyMode?: "author" | "install" | "update";
-    displayName?: string;
-    description?: string;
-  }): Promise<SelfModFeatureRecord> {
+  }): Promise<void> {
     const taskDescription = args.taskDescription.trim() || "Self mod update";
-    const featureId = trimOrUndefined(args.featureId) ?? deriveFeatureId(taskDescription);
-    const existingFeature = this.store.getFeature(featureId);
-    const name = trimOrUndefined(args.displayName)
-      ?? existingFeature?.name
-      ?? trimOrUndefined(taskDescription)
-      ?? humanize(featureId.replace(/-[a-z0-9]{1,6}$/, ""));
-    const description = trimOrUndefined(args.description)
-      ?? existingFeature?.description
-      ?? taskDescription;
     const baselineDirtyFiles = new Set(await listGitDirtyFiles(this.repoRoot));
-    const packageId = trimOrUndefined(args.packageId);
-    const releaseNumber = normalizeReleaseNumber(args.releaseNumber);
-    const applyMode = args.applyMode ?? "author";
-    const feature = this.store.upsertFeature({
-      featureId,
-      name,
-      description,
-      ...(packageId ? { packageId } : {}),
-    });
     this.activeRuns.set(args.runId, {
-      featureId,
       baselineDirtyFiles,
       taskDescription,
-      ...(packageId ? { packageId } : {}),
-      ...(releaseNumber == null ? {} : { releaseNumber }),
-      applyMode,
+      ...(trimOrUndefined(args.packageId) ? { packageId: trimOrUndefined(args.packageId) } : {}),
+      ...(normalizeReleaseNumber(args.releaseNumber) == null
+        ? {}
+        : { releaseNumber: normalizeReleaseNumber(args.releaseNumber) }),
+      applyMode: args.applyMode ?? "author",
     });
-    return feature;
   }
 
   cancelSelfModRun(runId: string): void {
@@ -194,7 +163,15 @@ export class StoreModService {
   async finalizeSelfModRun(args: {
     runId: string;
     succeeded: boolean;
-  }): Promise<SelfModBatchRecord | null> {
+    /** Conversation that produced these changes; recorded as a commit trailer. */
+    conversationId?: string;
+    /**
+     * Callback invoked by the runtime to produce an agent-authored commit
+     * message. Only used for author-mode runs (install/update keep their
+     * deterministic "Store install/update <package>" subjects).
+     */
+    commitMessageProvider?: CommitMessageProvider;
+  }): Promise<FinalizedSelfModCommit | null> {
     const activeRun = this.activeRuns.get(args.runId);
     this.activeRuns.delete(args.runId);
     if (!activeRun || !args.succeeded) {
@@ -209,85 +186,161 @@ export class StoreModService {
     const baselineDirty = activeRun.baselineDirtyFiles;
     const blockedFiles = currentDirtyFiles.filter((file) => baselineDirty.has(file));
     const safeFiles = currentDirtyFiles.filter((file) => !baselineDirty.has(file));
-    const ordinal = this.store.getNextFeatureOrdinal(activeRun.featureId);
-    const batchState: SelfModBatchRecord["state"] =
-      activeRun.applyMode === "author" ? "committed" : "published";
 
-    if (
-      activeRun.applyMode === "author" &&
-      !AUTHOR_SELF_MOD_AUTO_COMMIT_ENABLED
-    ) {
+    if (safeFiles.length === 0) {
       return null;
     }
 
-    if (safeFiles.length === 0) {
-      return this.store.createBatch({
-        featureId: activeRun.featureId,
-        runId: args.runId,
-        ordinal,
-        state: "blocked",
-        files: currentDirtyFiles,
-        blockedFiles,
-        ...(activeRun.packageId ? { packageId: activeRun.packageId } : {}),
-        ...(activeRun.releaseNumber == null ? {} : { releaseNumber: activeRun.releaseNumber }),
-      });
-    }
+    // Dependency files (package.json, lockfiles, …) follow the agent's
+    // changes only when they (a) actually changed during this run and
+    // (b) weren't dirty at run begin. Staging them unconditionally would
+    // sweep in unrelated user work staged before the agent started.
+    const currentDirtySet = new Set(currentDirtyFiles);
+    const dependencyFiles = await listDependencyFiles(this.repoRoot);
+    const safeDepFiles = dependencyFiles.filter(
+      (file) => currentDirtySet.has(file) && !baselineDirty.has(file),
+    );
+    const commitPaths = normalizeFileList([...safeFiles, ...safeDepFiles]);
 
-    await stageGitFiles(this.repoRoot, safeFiles);
-    await stageFeatureDependencyFiles(this.repoRoot);
-    const batchId = `batch:${activeRun.featureId}:${ordinal}`;
-    const commitHash = await commitGitFeatureBatch({
-      repoRoot: this.repoRoot,
-      featureId: activeRun.featureId,
-      batchId,
-      ordinal,
-      taskDescription: activeRun.taskDescription,
-      ...(activeRun.packageId ? { packageId: activeRun.packageId } : {}),
-      ...(activeRun.releaseNumber == null ? {} : { releaseNumber: activeRun.releaseNumber }),
-      source: activeRun.applyMode,
+    const conversationTrailer = sanitizeConversationTrailer(args.conversationId);
+    const commitHash = await this.commitFinalizedRun({
+      activeRun,
+      safeFiles,
+      commitPaths,
+      conversationTrailer,
+      commitMessageProvider: args.commitMessageProvider,
     });
     if (!commitHash) {
       return null;
     }
 
-    const batch = this.store.createBatch({
-      batchId,
-      featureId: activeRun.featureId,
-      runId: args.runId,
-      ordinal,
-      state: batchState,
-      commitHash,
-      files: safeFiles,
-      blockedFiles,
-      ...(activeRun.packageId ? { packageId: activeRun.packageId } : {}),
-      ...(activeRun.releaseNumber == null ? {} : { releaseNumber: activeRun.releaseNumber }),
-    });
     if (
       activeRun.packageId
       && activeRun.releaseNumber != null
       && activeRun.applyMode !== "author"
     ) {
-      this.store.bindFeaturePackage(activeRun.featureId, activeRun.packageId);
       this.store.recordInstallCommit({
         packageId: activeRun.packageId,
-        featureId: activeRun.featureId,
         releaseNumber: activeRun.releaseNumber,
         applyCommitHash: commitHash,
       });
     }
-    return batch;
+    return {
+      commitHash,
+      files: safeFiles,
+      blockedFiles,
+      applyMode: activeRun.applyMode,
+      ...(activeRun.packageId ? { packageId: activeRun.packageId } : {}),
+      ...(activeRun.releaseNumber == null ? {} : { releaseNumber: activeRun.releaseNumber }),
+    };
   }
 
-  listLocalFeatures(limit?: number): SelfModFeatureRecord[] {
-    const features = this.store.listFeatures();
-    if (typeof limit !== "number" || !Number.isFinite(limit)) {
-      return features;
+  private async commitFinalizedRun(args: {
+    activeRun: ActiveSelfModRun;
+    safeFiles: string[];
+    commitPaths: string[];
+    conversationTrailer: string | undefined;
+    commitMessageProvider: CommitMessageProvider | undefined;
+  }): Promise<string | null> {
+    const { activeRun } = args;
+    await stageGitPathsForCommit(this.repoRoot, args.commitPaths);
+
+    if (activeRun.applyMode === "author") {
+      const subject = await this.deriveAuthorCommitSubject({
+        activeRun,
+        safeFiles: args.safeFiles,
+        commitPaths: args.commitPaths,
+        commitMessageProvider: args.commitMessageProvider,
+      });
+      const trailers: Record<string, string> = {};
+      if (args.conversationTrailer) {
+        trailers["Stella-Conversation"] = args.conversationTrailer;
+      }
+      return await commitGitMessage({
+        repoRoot: this.repoRoot,
+        subject,
+        trailers,
+        paths: args.commitPaths,
+      });
     }
-    return features.slice(0, Math.max(0, Math.floor(limit)));
+
+    // Install/update commits keep a deterministic subject + machine-readable
+    // trailers so `recordInstallCommit` can later reconcile them with the
+    // package they belong to.
+    const subjectPrefix =
+      activeRun.applyMode === "install" ? "Store install" : "Store update";
+    const subject = activeRun.packageId
+      ? `${subjectPrefix}: ${activeRun.packageId}`
+      : subjectPrefix;
+    const bodyLines: string[] = [];
+    if (activeRun.packageId) {
+      bodyLines.push(`Stella-Package-Id: ${activeRun.packageId}`);
+    }
+    if (activeRun.releaseNumber != null) {
+      bodyLines.push(`Stella-Release-Number: ${activeRun.releaseNumber}`);
+    }
+    if (activeRun.taskDescription) {
+      bodyLines.push(`Stella-Task: ${activeRun.taskDescription}`);
+    }
+    if (args.conversationTrailer) {
+      bodyLines.push(`Stella-Conversation: ${args.conversationTrailer}`);
+    }
+    return await commitGitOperation({
+      repoRoot: this.repoRoot,
+      subject,
+      bodyLines,
+      paths: args.commitPaths,
+    });
   }
 
-  listFeatureBatches(featureId: string): SelfModBatchRecord[] {
-    return sortBatchesByOrdinal(this.store.listBatches(featureId));
+  private async deriveAuthorCommitSubject(args: {
+    activeRun: ActiveSelfModRun;
+    safeFiles: string[];
+    commitPaths: string[];
+    commitMessageProvider: CommitMessageProvider | undefined;
+  }): Promise<string> {
+    const fallbackSubject =
+      trimOrUndefined(args.activeRun.taskDescription) ?? "Self mod update";
+    if (!args.commitMessageProvider) {
+      return fallbackSubject;
+    }
+    let diffPreview = "";
+    try {
+      diffPreview = await getStagedDiffPreview(this.repoRoot, {
+        paths: args.commitPaths,
+      });
+    } catch {
+      diffPreview = "";
+    }
+    try {
+      const message = await args.commitMessageProvider({
+        taskDescription: args.activeRun.taskDescription,
+        files: args.safeFiles,
+        diffPreview,
+      });
+      const trimmed = message?.trim();
+      return trimmed && trimmed.length > 0 ? trimmed : fallbackSubject;
+    } catch {
+      return fallbackSubject;
+    }
+  }
+
+  /**
+   * Flat list of recent self-mod commits for the Store UI. Skips silently
+   * when the working tree isn't a Git repo so the renderer can degrade
+   * gracefully (e.g. fresh installs or detached worktrees).
+   */
+  async listLocalCommits(limit?: number): Promise<LocalGitCommitRecord[]> {
+    const safeLimit =
+      typeof limit === "number" && Number.isFinite(limit)
+        ? Math.max(1, Math.min(500, Math.floor(limit)))
+        : 50;
+    try {
+      const summaries = await listRecentGitCommits(this.repoRoot, safeLimit);
+      return summaries.map((entry) => ({ ...entry } satisfies LocalGitCommitRecord));
+    } catch {
+      return [];
+    }
   }
 
   getInstalledModByPackageId(packageId: string): InstalledStoreModRecord | null {
@@ -298,72 +351,49 @@ export class StoreModService {
     return this.store.listInstalledMods();
   }
 
-  createReleaseDraft(args: {
-    featureId: string;
-    batchIds?: string[];
-  }): StoreReleaseDraft {
-    const feature = this.store.getFeature(args.featureId);
-    if (!feature) {
-      throw new Error(`Unknown feature "${args.featureId}".`);
-    }
-
-    const allBatches = this.listFeatureBatches(args.featureId);
-    const publishable = allBatches.filter(isPublishableBatch);
-    if (publishable.length === 0) {
-      throw new Error(`Feature "${args.featureId}" has no committed history to publish.`);
-    }
-    if (!hasPendingPublishableBatches(allBatches)) {
-      throw new Error(`Feature "${args.featureId}" has no new commits to publish.`);
-    }
-
-    return {
-      feature,
-      batches: publishable,
-      selectedBatchIds: publishable.map((batch) => batch.batchId),
-      packageId: feature.packageId,
-      displayName: feature.name,
-      description: feature.description,
-    };
-  }
-
-  async publishRelease(args: {
-    featureId: string;
-    batchIds?: string[];
-    packageId?: string;
-    releaseNumber?: number;
-    displayName?: string;
-    description?: string;
+  /**
+   * Commit-based publish path used by the Store agent.
+   *
+   * The agent picks raw commit hashes from `git log` and we build the
+   * artifact straight from them — no SQL feature/batch state needed.
+   */
+  async publishCommitsAsRelease(args: {
+    commitHashes: string[];
+    packageId: string;
+    releaseNumber: number;
+    displayName: string;
+    description: string;
     releaseNotes?: string;
     publish: (args: PublishReleaseArgs) => Promise<PublishReleaseResult>;
   }): Promise<PublishReleaseResult> {
-    const draft = this.createReleaseDraft({
-      featureId: args.featureId,
-      batchIds: args.batchIds,
-    });
-    const packageId = (args.packageId ?? draft.packageId ?? "").trim();
+    const packageId = args.packageId.trim();
     if (!packageId) {
-      throw new Error("packageId is required for the first publish.");
+      throw new Error("packageId is required.");
     }
-    const displayName = (args.displayName ?? draft.displayName).trim();
-    const description = (args.description ?? draft.description).trim();
+    const displayName = args.displayName.trim();
+    const description = args.description.trim();
     if (!displayName || !description) {
       throw new Error("displayName and description are required.");
     }
+    const commitHashes = Array.from(
+      new Set(args.commitHashes.map((hash) => hash.trim()).filter(Boolean)),
+    );
+    if (commitHashes.length === 0) {
+      throw new Error("At least one commit must be selected to publish.");
+    }
     const releaseNumber = normalizeReleaseNumber(args.releaseNumber) ?? 1;
 
-    const artifact = await this.buildReleaseArtifact({
-      featureId: draft.feature.featureId,
+    const artifact = await this.buildReleaseArtifactFromCommits({
       packageId,
       releaseNumber,
       displayName,
       description,
       releaseNotes: args.releaseNotes?.trim(),
-      batches: draft.batches,
+      commitHashes,
     });
 
-    const release = await args.publish({
+    return await args.publish({
       packageId,
-      featureId: draft.feature.featureId,
       releaseNumber,
       displayName,
       description,
@@ -371,15 +401,6 @@ export class StoreModService {
       manifest: artifact.manifest,
       artifact,
     });
-    this.store.markBatchesPublished({
-      featureId: draft.feature.featureId,
-      batchIds: draft.batches
-        .filter((batch) => batch.state === "committed")
-        .map((batch) => batch.batchId),
-      packageId,
-      releaseNumber: release.releaseNumber,
-    });
-    return release;
   }
 
   async installRelease(args: {
@@ -421,30 +442,39 @@ export class StoreModService {
     this.store.markInstallUninstalled(installId);
   }
 
-  private async buildReleaseArtifact(args: {
-    featureId: string;
+  /**
+   * Build a release blueprint from raw commit hashes (no SQL feature state).
+   */
+  private async buildReleaseArtifactFromCommits(args: {
     packageId: string;
     releaseNumber: number;
     displayName: string;
     description: string;
     releaseNotes?: string;
-    batches: SelfModBatchRecord[];
+    commitHashes: string[];
   }): Promise<StoreReleaseArtifact> {
-    const orderedBatches = sortBatchesByOrdinal(args.batches).filter((batch) => batch.commitHash);
-    if (orderedBatches.length === 0) {
-      throw new Error("Selected batches do not have committed changes.");
-    }
-
-    const batchReferences = await Promise.all(
-      orderedBatches.map(async (batch) => {
+    // Refuse to publish anything that isn't a Stella self-mod commit
+    // (current `Stella-*` trailer scheme or legacy `[feature:…]` tag).
+    // Throws with the offending hashes so the Store agent surfaces a
+    // clear error rather than producing a silently-tainted release.
+    await assertStellaSelfModCommits({
+      repoRoot: this.repoRoot,
+      commitHashes: args.commitHashes,
+    });
+    const orderedHashes = await orderCommitHashesChronologically({
+      repoRoot: this.repoRoot,
+      commitHashes: args.commitHashes,
+    });
+    const batchReferences: StoreReleaseBlueprintBatch[] = await Promise.all(
+      orderedHashes.map(async (commitHash, index) => {
         const reference = await getCommitReference({
           repoRoot: this.repoRoot,
-          commitHash: batch.commitHash!,
+          commitHash,
         });
         return {
-          batchId: batch.batchId,
-          ordinal: batch.ordinal,
-          commitHash: batch.commitHash!,
+          batchId: `commit:${commitHash.slice(0, 12)}`,
+          ordinal: index + 1,
+          commitHash,
           files: [...reference.files],
           subject: reference.subject,
           body: reference.body,
@@ -452,26 +482,24 @@ export class StoreModService {
         } satisfies StoreReleaseBlueprintBatch;
       }),
     );
-    const commitHashes = orderedBatches.map((batch) => batch.commitHash!).filter(Boolean);
 
     const files = normalizeFileList(
-      orderedBatches.flatMap((batch) => batch.files),
+      batchReferences.flatMap((batch) => batch.files),
     );
     const snapshots = await getCommitSelectionSnapshots({
       repoRoot: this.repoRoot,
-      commitHashes,
+      commitHashes: orderedHashes,
       files,
     });
 
     const manifest: StoreReleaseManifest = {
-      featureId: args.featureId,
       packageId: args.packageId,
       releaseNumber: args.releaseNumber,
       displayName: args.displayName,
       description: args.description,
       ...(args.releaseNotes ? { releaseNotes: args.releaseNotes } : {}),
-      batchIds: orderedBatches.map((batch) => batch.batchId),
-      commitHashes,
+      batchIds: batchReferences.map((batch) => batch.batchId),
+      commitHashes: orderedHashes,
       files,
       createdAt: Date.now(),
     };

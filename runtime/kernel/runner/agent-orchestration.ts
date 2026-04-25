@@ -1,5 +1,7 @@
 import crypto from "crypto";
-import { resolveLlmRoute } from "../model-routing.js";
+import { completeSimple, readAssistantText } from "../../ai/stream.js";
+import type { Context, Message } from "../../ai/types.js";
+import { resolveLlmRoute, type ResolvedLlmRoute } from "../model-routing.js";
 import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
 import { createAgentLifecycleResponseTarget } from "../agent-runtime/response-target.js";
@@ -38,6 +40,98 @@ import { buildAgentEventPrompt } from "./shared.js";
 
 const TASK_LIFECYCLE_WAKE_PROMPT =
   "<system_reminder>Continue from the latest task lifecycle update.</system_reminder>";
+
+const COMMIT_MESSAGE_SYSTEM_PROMPT = [
+  "You are the same Stella agent that just modified Stella's own code.",
+  "The user does not see this turn — your only job is to write a commit subject.",
+  "Output a single short imperative sentence describing what was changed and why.",
+  "Constraints:",
+  "- Plain English, friendly to a non-developer reader (the user browses these in the Store).",
+  "- No leading prefix like 'feat:'/'fix:' and no trailing period.",
+  "- 12 words or fewer; never wrap to a second line.",
+  "- Refer to user-visible behavior when possible (e.g. 'Make the composer bar square').",
+  "Respond with the subject only — no quotes, no explanation, no markdown.",
+].join("\n");
+
+const COMMIT_MESSAGE_MAX_FILES_IN_PROMPT = 30;
+const COMMIT_MESSAGE_DIFF_MAX_LINES = 240;
+const COMMIT_MESSAGE_FALLBACK_SUBJECT_MAX_WORDS = 12;
+
+const truncateForCommitSubject = (raw: string): string => {
+  const cleaned = raw
+    .replace(/^["'`\s]+|["'`\s]+$/g, "")
+    .replace(/\r?\n.*$/s, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return cleaned;
+  const words = cleaned.split(" ");
+  if (words.length <= COMMIT_MESSAGE_FALLBACK_SUBJECT_MAX_WORDS) {
+    return cleaned;
+  }
+  return `${words.slice(0, COMMIT_MESSAGE_FALLBACK_SUBJECT_MAX_WORDS).join(" ")}…`;
+};
+
+const buildCommitMessageProvider = (args: {
+  resolvedLlm: ResolvedLlmRoute;
+  abortSignal?: AbortSignal;
+}): ((input: {
+  taskDescription: string;
+  files: string[];
+  diffPreview: string;
+}) => Promise<string | null>) => {
+  return async (input) => {
+    const apiKey = args.resolvedLlm.getApiKey()?.trim();
+    if (!apiKey) {
+      return null;
+    }
+    const filesShown = input.files.slice(0, COMMIT_MESSAGE_MAX_FILES_IN_PROMPT);
+    const filesOmitted = Math.max(0, input.files.length - filesShown.length);
+    const filesBlock = filesShown.length > 0
+      ? `Files changed:\n${filesShown.map((file) => `- ${file}`).join("\n")}${
+          filesOmitted > 0 ? `\n(...and ${filesOmitted} more files)` : ""
+        }`
+      : "Files changed: (none reported)";
+    const diffLines = input.diffPreview ? input.diffPreview.split("\n") : [];
+    const trimmedDiff = diffLines.length > COMMIT_MESSAGE_DIFF_MAX_LINES
+      ? `${diffLines.slice(0, COMMIT_MESSAGE_DIFF_MAX_LINES).join("\n")}\n... [diff truncated]`
+      : input.diffPreview;
+    const diffBlock = trimmedDiff
+      ? `Diff (truncated):\n\`\`\`diff\n${trimmedDiff}\n\`\`\``
+      : "Diff: (not available)";
+    const userText = [
+      `You were asked to: ${input.taskDescription.trim() || "(no task description)"}`,
+      "",
+      filesBlock,
+      "",
+      diffBlock,
+      "",
+      "Write the commit subject now.",
+    ].join("\n");
+
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: userText }],
+        timestamp: Date.now(),
+      },
+    ];
+    const context: Context = {
+      systemPrompt: COMMIT_MESSAGE_SYSTEM_PROMPT,
+      messages,
+    };
+    try {
+      const response = await completeSimple(args.resolvedLlm.model, context, {
+        apiKey,
+        ...(args.abortSignal ? { signal: args.abortSignal } : {}),
+      });
+      const text = readAssistantText(response);
+      const subject = truncateForCommitSubject(text);
+      return subject || null;
+    } catch {
+      return null;
+    }
+  };
+};
 
 const collectFileChanges = (
   target: FileChangeRecord[],
@@ -230,25 +324,7 @@ const getParallelRunningShellSessions = (result: ToolResult): string[] => {
   return sessionIds;
 };
 
-const normalizeString = (value: unknown): string | undefined => {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-};
-
-const shortHash = (value: string): string =>
-  crypto.createHash("sha1").update(value).digest("hex").slice(0, 10);
-
-const deriveConversationFeatureId = (conversationId: string): string => {
-  const normalizedConversationId = normalizeString(conversationId);
-  if (!normalizedConversationId) {
-    return `feature-${shortHash(crypto.randomUUID())}`;
-  }
-  return `feature-${shortHash(normalizedConversationId)}`;
-};
-
 const resolveSelfModMetadata = (args: {
-  conversationId: string;
   agentType: string;
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
 }): AgentToolRequest["selfModMetadata"] | undefined => {
@@ -261,10 +337,7 @@ const resolveSelfModMetadata = (args: {
   if (args.agentType !== AGENT_IDS.GENERAL) {
     return undefined;
   }
-  return {
-    featureId: deriveConversationFeatureId(args.conversationId),
-    mode: "author",
-  };
+  return { mode: "author" };
 };
 
 const buildLifecycleEventPayload = (
@@ -409,7 +482,6 @@ export const createAgentOrchestration = (
     }) => {
       const runId = `local:sub:${crypto.randomUUID()}`;
       const effectiveSelfModMetadata = resolveSelfModMetadata({
-        conversationId,
         agentType,
         selfModMetadata,
       });
@@ -753,6 +825,10 @@ export const createAgentOrchestration = (
           // resume-flush dance — it just observes self-mod-hmr state events
           // emitted by the worker server.
           if (subagentSucceeded) {
+            const commitMessageProvider = buildCommitMessageProvider({
+              resolvedLlm,
+              ...(abortSignal ? { abortSignal } : {}),
+            });
             await Promise.resolve(
               context.selfModLifecycle!.finalizeRun({
                 runId,
@@ -761,6 +837,7 @@ export const createAgentOrchestration = (
                 taskPrompt,
                 conversationId,
                 succeeded: true,
+                commitMessageProvider,
                 ...(effectiveSelfModMetadata ?? {}),
               }),
             );

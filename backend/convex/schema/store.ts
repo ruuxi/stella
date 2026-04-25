@@ -2,7 +2,6 @@ import { defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export const store_release_manifest_validator = v.object({
-  featureId: v.string(),
   includedBatchIds: v.array(v.string()),
   includedCommitHashes: v.array(v.string()),
   changedFiles: v.array(v.string()),
@@ -13,7 +12,6 @@ export const store_release_manifest_validator = v.object({
 const storePackageFields = {
   ownerId: v.string(),
   packageId: v.string(),
-  featureId: v.string(),
   displayName: v.string(),
   description: v.string(),
   latestReleaseNumber: v.number(),
@@ -26,7 +24,6 @@ const storePackageReleaseFields = {
   ownerId: v.string(),
   packageRef: v.id("store_packages"),
   packageId: v.string(),
-  featureId: v.string(),
   releaseNumber: v.number(),
   releaseNotes: v.optional(v.string()),
   manifest: store_release_manifest_validator,

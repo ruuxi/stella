@@ -1,21 +1,33 @@
 /**
- * `askQuestion` — orchestrator-only inline multiple-choice question tray.
+ * `askQuestion` — inline multiple-choice question tray.
  *
  * Renders a fade-in tray bubble in the chat. Questions are presented one at
  * a time; the user picks an option for each. Use this instead of an
  * open-ended question when the answer space is small.
+ *
+ * Available to user-facing agents that drive the main chat surface
+ * (orchestrator + store). Subagents that don't talk to the user
+ * directly (general/research-style runs) are denied so they don't try
+ * to render bubbles in chats they don't own.
  */
 
 import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtime.js";
 import type { ToolContext, ToolDefinition, ToolResult } from "../types.js";
 
-const requireOrchestrator = (
+const ASK_QUESTION_ALLOWED_AGENTS = new Set<string>([
+  AGENT_IDS.ORCHESTRATOR,
+  AGENT_IDS.STORE,
+]);
+
+const requireUserFacingAgent = (
   toolName: string,
   context: ToolContext,
 ): ToolResult | null =>
-  context.agentType === AGENT_IDS.ORCHESTRATOR
+  context.agentType && ASK_QUESTION_ALLOWED_AGENTS.has(context.agentType)
     ? null
-    : { error: `${toolName} is only available to the orchestrator.` };
+    : {
+        error: `${toolName} is only available to user-facing agents (orchestrator, store).`,
+      };
 
 export const askQuestionTool: ToolDefinition = {
   name: "askQuestion",
@@ -64,7 +76,7 @@ export const askQuestionTool: ToolDefinition = {
     required: ["questions"],
   },
   execute: async (args, context) => {
-    const denied = requireOrchestrator("askQuestion", context);
+    const denied = requireUserFacingAgent("askQuestion", context);
     if (denied) return denied;
 
     const rawQuestions = Array.isArray(args.questions) ? args.questions : null;
@@ -109,10 +121,12 @@ export const askQuestionTool: ToolDefinition = {
       })
       .join("\n\n");
 
+    const followUpInstruction =
+      context.agentType === AGENT_IDS.STORE
+        ? "Question tray rendered in chat. Stop here and wait. The user's answer will be delivered back to this same Store thread as new input; do not publish or continue until then."
+        : "Question tray rendered in chat. Wait for the user to answer before continuing.";
     return {
-      result:
-        "Question tray rendered in chat. Wait for the user to answer before continuing.\n\n" +
-        summary,
+      result: `${followUpInstruction}\n\n${summary}`,
     };
   },
 };

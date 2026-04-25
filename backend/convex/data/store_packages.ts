@@ -138,7 +138,6 @@ const normalizeStringArray = (
 
 const normalizeManifest = (
   manifest: {
-    featureId: string;
     includedBatchIds: string[];
     includedCommitHashes: string[];
     changedFiles: string[];
@@ -146,7 +145,6 @@ const normalizeManifest = (
     summary?: string;
   },
 ) => {
-  const featureId = normalizeRequiredText(manifest.featureId, "manifest.featureId", 120);
   const includedBatchIds = normalizeStringArray(
     manifest.includedBatchIds,
     "manifest.includedBatchIds",
@@ -177,7 +175,6 @@ const normalizeManifest = (
   );
 
   return {
-    featureId,
     includedBatchIds,
     includedCommitHashes,
     changedFiles,
@@ -201,7 +198,6 @@ const areStringArraysEqual = (
 
 const areManifestMetadataEqual = (
   left: {
-    featureId: string;
     includedBatchIds: readonly string[];
     includedCommitHashes: readonly string[];
     changedFiles: readonly string[];
@@ -209,7 +205,6 @@ const areManifestMetadataEqual = (
     summary?: string;
   },
   right: {
-    featureId: string;
     includedBatchIds: readonly string[];
     includedCommitHashes: readonly string[];
     changedFiles: readonly string[];
@@ -217,8 +212,7 @@ const areManifestMetadataEqual = (
     summary?: string;
   },
 ) =>
-  left.featureId === right.featureId
-  && left.artifactHash === right.artifactHash
+  left.artifactHash === right.artifactHash
   && left.summary === right.summary
   && areStringArraysEqual(left.includedBatchIds, right.includedBatchIds)
   && areStringArraysEqual(left.includedCommitHashes, right.includedCommitHashes)
@@ -352,7 +346,6 @@ export const createFirstReleaseRecord = internalMutation({
     const packageRef = await ctx.db.insert("store_packages", {
       ownerId: args.ownerId,
       packageId: args.packageId,
-      featureId: args.manifest.featureId,
       displayName: args.displayName,
       description: args.description,
       latestReleaseNumber: 0,
@@ -364,7 +357,6 @@ export const createFirstReleaseRecord = internalMutation({
       ownerId: args.ownerId,
       packageRef,
       packageId: args.packageId,
-      featureId: args.manifest.featureId,
       releaseNumber: 1,
       releaseNotes: args.releaseNotes,
       manifest: args.manifest,
@@ -417,13 +409,6 @@ export const createUpdateReleaseRecord = internalMutation({
       });
     }
 
-    if (pkg.featureId !== args.manifest.featureId) {
-      throw new ConvexError({
-        code: "INVALID_ARGUMENT",
-        message: "Release manifest feature does not match the existing package feature.",
-      });
-    }
-
     const latestRelease = pkg.latestReleaseNumber > 0
       ? await getReleaseByPackageIdAndNumber(ctx, args.packageId, pkg.latestReleaseNumber)
       : null;
@@ -444,7 +429,6 @@ export const createUpdateReleaseRecord = internalMutation({
       ownerId: args.ownerId,
       packageRef: pkg._id,
       packageId: args.packageId,
-      featureId: args.manifest.featureId,
       releaseNumber: nextReleaseNumber,
       releaseNotes: args.releaseNotes,
       manifest: args.manifest,

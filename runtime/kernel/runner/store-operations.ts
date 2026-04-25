@@ -20,7 +20,6 @@ export const createStoreOperations = (
     const record = value as Record<string, unknown>;
     if (
       typeof record.packageId !== "string" ||
-      typeof record.featureId !== "string" ||
       typeof record.displayName !== "string" ||
       typeof record.description !== "string" ||
       typeof record.latestReleaseNumber !== "number" ||
@@ -31,7 +30,6 @@ export const createStoreOperations = (
     }
     return {
       packageId: record.packageId,
-      featureId: record.featureId,
       displayName: record.displayName,
       description: record.description,
       latestReleaseNumber: record.latestReleaseNumber,
@@ -58,7 +56,6 @@ export const createStoreOperations = (
       typeof record.releaseNumber !== "number" ||
       typeof record.createdAt !== "number" ||
       typeof record.artifactStorageKey !== "string" ||
-      typeof manifest.featureId !== "string" ||
       !Array.isArray(manifest.includedBatchIds) ||
       !Array.isArray(manifest.includedCommitHashes) ||
       !Array.isArray(manifest.changedFiles)
@@ -69,7 +66,6 @@ export const createStoreOperations = (
       packageId: record.packageId,
       releaseNumber: record.releaseNumber,
       manifest: {
-        featureId: manifest.featureId,
         packageId: record.packageId,
         releaseNumber: record.releaseNumber,
         displayName: args.packageRecord.displayName,
@@ -97,7 +93,6 @@ export const createStoreOperations = (
   };
 
   const toBackendStoreManifest = (manifest: StoreReleaseManifest) => ({
-    featureId: manifest.featureId,
     includedBatchIds: [...manifest.batchIds],
     includedCommitHashes: [...manifest.commitHashes],
     changedFiles: [...manifest.files],
