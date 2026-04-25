@@ -477,6 +477,12 @@ export const buildAgentContext = async (
       releaseNumber?: number;
       mode?: "author" | "install" | "update";
     };
+    /**
+     * True only on Orchestrator turns that should re-inject the dynamic
+     * memory bundle. Computed by prepareOrchestratorRun on the every-N-turn
+     * cadence; subagent paths leave this undefined and never see memory.
+     */
+    shouldInjectDynamicMemory?: boolean;
   },
 ): Promise<LocalAgentContext> => {
   const agent = resolveAgent(context, args.agentType);
@@ -543,8 +549,14 @@ export const buildAgentContext = async (
     dynamicContextSections.push(await renderSkillCatalogBlock(context.stellaRoot));
   }
 
+  // Memory snapshot is only built for Orchestrator turns that the caller
+  // marked as "inject this turn" — every Nth user turn. Skipping the work
+  // on coast turns keeps both the prompt and the snapshot rebuild cheap.
   let memorySnapshot: { memory?: string; user?: string } | undefined;
-  if (args.agentType === AGENT_IDS.ORCHESTRATOR) {
+  const shouldInjectDynamicMemory =
+    args.agentType === AGENT_IDS.ORCHESTRATOR
+    && args.shouldInjectDynamicMemory === true;
+  if (shouldInjectDynamicMemory) {
     const memoryStore = context.runtimeStore.memoryStore;
     // Freeze a fresh snapshot for this run so new writes appear on the next
     // turn without changing the current run's prefix.
@@ -571,6 +583,7 @@ export const buildAgentContext = async (
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
     coreMemory: readCoreMemory(context.stellaRoot),
     ...(memorySnapshot ? { memorySnapshot } : {}),
+    ...(shouldInjectDynamicMemory ? { shouldInjectDynamicMemory: true } : {}),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine:

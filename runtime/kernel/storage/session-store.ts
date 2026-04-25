@@ -2020,4 +2020,55 @@ export class SessionStore {
         last_review_at = excluded.last_review_at
     `).run(conversationId, now);
   }
+
+  /**
+   * Increment the memory-injection user-turn counter for the given
+   * conversation and return the new value. Caller is responsible for gating
+   * on `uiVisibility !== "hidden"` so that synthetic task-callback turns do
+   * not inflate the count. Used by prepareOrchestratorRun to decide whether
+   * the next orchestrator turn should re-inject the memory bundle (every N
+   * user turns) instead of paying for it on every single turn.
+   */
+  incrementUserTurnsSinceMemoryInjection(conversationId: string): number {
+    const row = this.db.prepare(`
+      SELECT user_turns_since_injection AS userTurnsSinceInjection
+      FROM runtime_memory_injection_state
+      WHERE conversation_id = ?
+      LIMIT 1
+    `).get(conversationId) as { userTurnsSinceInjection?: unknown } | undefined;
+    const current = typeof row?.userTurnsSinceInjection === "number"
+      ? Math.max(0, Math.floor(row.userTurnsSinceInjection))
+      : 0;
+    const next = current + 1;
+    this.db.prepare(`
+      INSERT INTO runtime_memory_injection_state (
+        conversation_id,
+        user_turns_since_injection
+      )
+      VALUES (?, ?)
+      ON CONFLICT(conversation_id) DO UPDATE SET
+        user_turns_since_injection = excluded.user_turns_since_injection
+    `).run(conversationId, next);
+    return next;
+  }
+
+  /**
+   * Reset the memory-injection user-turn counter to one. Call this on the
+   * exact turn that just (re)injected the memory bundle so the count is "1
+   * turn since injection" going into the next turn — keeps the existing
+   * 40-turn cadence consistent across both the cold-start case (counter was
+   * already 1) and the every-N-turn case (counter rolled past the
+   * threshold).
+   */
+  resetUserTurnsSinceMemoryInjection(conversationId: string): void {
+    this.db.prepare(`
+      INSERT INTO runtime_memory_injection_state (
+        conversation_id,
+        user_turns_since_injection
+      )
+      VALUES (?, 1)
+      ON CONFLICT(conversation_id) DO UPDATE SET
+        user_turns_since_injection = 1
+    `).run(conversationId);
+  }
 }
