@@ -3,11 +3,15 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   forwardRef,
   useImperativeHandle,
 } from "react";
 import { createPortal } from "react-dom";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
+import type { ChatColumnScroll } from "@/app/chat/chat-column-types";
+import { useChatScrollManagement } from "@/shell/use-chat-scroll-management";
 import {
   ComposerContextRow,
   ComposerSuggestionContextRow,
@@ -111,6 +115,90 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     const [inputText, setInputText] = useState("");
     const [sidebarExpanded, setSidebarExpanded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const pinnedTurnIdRef = useRef<string | null>(null);
+
+    /*
+     * Own scroll-management instance for the sidebar viewport. Mirrors the
+     * full chat (`useFullShellChat` → `useChatScrollManagement`) so the
+     * sidebar gets the same user-bubble pin-to-top, custom auto-anchor,
+     * and ResizeObserver-driven follow behavior — instead of the previous
+     * raw `scrollTop = 0` snap that visibly "unsettled" assistant replies
+     * mid-stream and after CV containment toggled on completed turns.
+     *
+     * `pauseResizeFollow` mirrors the full-chat semantic: while a reply is
+     * in flight (`pendingUserMessageId`), don't re-snap to the newest edge
+     * on resize — the user bubble is pinned to the top instead.
+     */
+    const sidebarScroll = useChatScrollManagement({
+      hasOlderEvents,
+      isLoadingOlder,
+      isWorking: isStreaming,
+      pauseResizeFollow: Boolean(pendingUserMessageId),
+    });
+
+    const sidebarScrollApi = useMemo<ChatColumnScroll>(
+      () => ({
+        setViewportElement: sidebarScroll.setScrollContainerElement,
+        setContentElement: sidebarScroll.setContentElement,
+        onScroll: sidebarScroll.handleScroll,
+        showScrollButton: sidebarScroll.showScrollButton,
+        isAtBottom: sidebarScroll.isNearBottom,
+        scrollToBottom: sidebarScroll.scrollToBottom,
+        scrollTurnToPinTop: sidebarScroll.scrollTurnToPinTop,
+        overflowAnchor: sidebarScroll.overflowAnchor,
+        thumbState: sidebarScroll.thumbState,
+        hasScrollElement: sidebarScroll.hasScrollElement,
+      }),
+      [
+        sidebarScroll.setScrollContainerElement,
+        sidebarScroll.setContentElement,
+        sidebarScroll.handleScroll,
+        sidebarScroll.showScrollButton,
+        sidebarScroll.isNearBottom,
+        sidebarScroll.scrollToBottom,
+        sidebarScroll.scrollTurnToPinTop,
+        sidebarScroll.overflowAnchor,
+        sidebarScroll.thumbState,
+        sidebarScroll.hasScrollElement,
+      ],
+    );
+
+    /*
+     * Pin the freshly-sent user bubble to the top of the sidebar viewport
+     * once `pendingUserMessageId` arrives. Mirrors `ChatColumn`'s effect.
+     * The retry loop covers the case where the new turn isn't laid out yet
+     * on the same frame the pendingUserMessageId becomes available.
+     */
+    const { scrollTurnToPinTop, hasScrollElement: hasSidebarScroll } =
+      sidebarScrollApi;
+    useLayoutEffect(() => {
+      if (!pendingUserMessageId) {
+        pinnedTurnIdRef.current = null;
+        return;
+      }
+      if (pinnedTurnIdRef.current === pendingUserMessageId) return;
+
+      let attempts = 0;
+      const maxAttempts = 36;
+      const tick = () => {
+        const ok = scrollTurnToPinTop(pendingUserMessageId);
+        if (ok) {
+          pinnedTurnIdRef.current = pendingUserMessageId;
+          return;
+        }
+        attempts += 1;
+        if (attempts < maxAttempts) {
+          requestAnimationFrame(tick);
+        }
+      };
+      tick();
+    }, [
+      pendingUserMessageId,
+      events.length,
+      hasSidebarScroll,
+      scrollTurnToPinTop,
+    ]);
+
     const { chatContext, setChatContext, selectedText, setSelectedText } =
       useCapturedChatContext();
     const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
@@ -222,7 +310,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
               className="chat-sidebar-messages"
               conversationClassName="chat-sidebar-conversation"
               variant="sidebar"
-              trackEdges
+              scroll={sidebarScrollApi}
               events={events}
               streamingText={streamingText}
               reasoningText={reasoningText}

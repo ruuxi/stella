@@ -83,8 +83,24 @@
   min-height: 0;
 }
 
+/*
+ * Sidebar viewport-region wrapper — owns flex sizing, position, and the
+ * `container-type: size` that lets the shared `100cqh` last-turn floor
+ * resolve to the sidebar's height (so `pendingUserMessageId` pin-to-top
+ * leaves a full sidebar of room below the user bubble for the assistant
+ * to stream into, exactly like the full chat).
+ *
+ * The base `.chat-viewport-region` rule already supplies
+ * `flex: 1; min-height: 0; position: relative; overflow: hidden;
+ *  container-type: size` — no override needed here.
+ */
+
 .chat-sidebar-messages {
-  flex: 1;
+  /*
+   * `.chat-viewport-region` (parent) takes the flex slot now; we just
+   * fill its height and act as the scroll viewport.
+   */
+  height: 100%;
   display: flex;
   flex-direction: column-reverse;
   overflow-y: auto;

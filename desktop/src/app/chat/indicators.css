@@ -50,12 +50,21 @@
   margin: 0 auto;
 }
 
-/* Compact surfaces (sidebar, mini): left-align, tighter padding */
-.chat-conversation-surface .thinking-footer-overlay {
+/* Compact surfaces (sidebar, mini, orb): left-align, tighter padding.
+ * After the unification, the thinking-footer-overlay is a sibling of the
+ * scroll viewport (not inside `.chat-conversation-surface` anymore), so
+ * the selector targets the parent `.chat-viewport-region--*` instead.
+ * Also drop the base `min-height: 52px` — that reserved a fixed gutter at
+ * the bottom of the narrow sidebar even when no working indicator was
+ * showing, which read as dead space below the latest message. */
+.chat-viewport-region--sidebar .thinking-footer-overlay,
+.chat-viewport-region--mini .thinking-footer-overlay,
+.chat-viewport-region--orb .thinking-footer-overlay {
   margin: 0;
   padding: 8px 12px;
   max-width: none;
   text-align: left;
+  min-height: 0;
 }
 
 .sticky-thinking-footer {
