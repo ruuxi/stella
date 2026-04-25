@@ -193,6 +193,11 @@
   color: var(--text-strong);
 }
 
+.shell-topbar-icon-btn:disabled {
+  opacity: 0.32;
+  pointer-events: none;
+}
+
 .shell-topbar-window-controls {
   height: 100%;
   display: flex;
@@ -200,6 +205,26 @@
   gap: 2px;
   padding: 0 8px;
   -webkit-app-region: no-drag;
+}
+
+.shell-topbar-right {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-right: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.shell-topbar[data-platform="mac"] .shell-topbar-right {
+  transform: translateY(2px);
+}
+
+.shell-topbar-display-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .shell-topbar-wc-close:hover {
@@ -645,6 +670,10 @@
   .shell-topbar[data-platform="mac"] .shell-topbar-left {
     transform: translateY(-5px);
     padding-left: 70px;
+  }
+
+  .shell-topbar[data-platform="mac"] .shell-topbar-right {
+    transform: translateY(-5px);
   }
 
   .full-body > .sidebar {

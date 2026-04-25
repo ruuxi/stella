@@ -97,11 +97,6 @@
     display: none;
   }
 
-  /* Only the expand button carries `aria-pressed` (close does not),
-     so this selector hides exactly the expand toggle. */
-  .display-sidebar__chrome-btn[aria-pressed] {
-    display: none;
-  }
 }
 
 .display-sidebar-inner {
@@ -167,56 +162,8 @@ html[data-stella-window="mini"]
   display: none;
 }
 
-html[data-stella-window="mini"] .display-sidebar__resize-handle,
-html[data-stella-window="mini"] .display-sidebar__chrome-btn[aria-pressed] {
+html[data-stella-window="mini"] .display-sidebar__resize-handle {
   display: none;
-}
-
-/* ── Top-right chrome row (expand + close) ──────────────────────────── */
-
-.display-sidebar__chrome {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.display-sidebar__chrome-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 50%;
-  border: 1px solid
-    color-mix(in oklch, var(--foreground, #0f1728) 15%, transparent);
-  background: color-mix(in oklch, var(--background, #edf3fb) 80%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: var(--foreground, #0f1728);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    opacity 0.15s,
-    border-color 0.15s;
-  opacity: 0.6;
-}
-
-.display-sidebar__chrome-btn:hover {
-  opacity: 1;
-  border-color: color-mix(
-    in oklch,
-    var(--foreground, #0f1728) 30%,
-    transparent
-  );
-}
-
-.display-sidebar__chrome-btn[aria-pressed="true"] {
-  opacity: 1;
-  background: color-mix(in oklch, var(--foreground, #0f1728) 10%, transparent);
 }
 
 /* ── Left-edge resize handle ────────────────────────────────────────── */
@@ -260,9 +207,7 @@ html[data-stella-window="mini"] .display-sidebar__chrome-btn[aria-pressed] {
   display: flex;
   align-items: center;
   gap: 4px;
-  /* Right padding reserves room for the floating chrome row
-     (expand + close = ~74px). Left padding clears the resize handle. */
-  padding: 10px 96px 0 16px;
+  padding: 10px 16px 0;
   overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent)
