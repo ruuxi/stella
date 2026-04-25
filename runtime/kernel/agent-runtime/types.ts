@@ -52,6 +52,7 @@ export type RuntimeRunStartedEvent = {
   seq: number;
   userMessageId: string;
   uiVisibility?: "visible" | "hidden";
+  responseTarget?: RuntimeAgentEventPayload["responseTarget"];
 };
 
 export type RuntimeToolStartEvent = {

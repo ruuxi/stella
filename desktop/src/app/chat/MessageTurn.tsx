@@ -355,9 +355,11 @@ export const TurnItem = memo(function TurnItem({
   const hasReasoningContent = Boolean(streaming?.reasoningText?.trim().length);
   const isReplacingAssistant = Boolean(streaming?.replaceAssistant);
   const shouldShowStreamingAssistant = Boolean(
-    (!hasAssistantContent || isReplacingAssistant) &&
-      Boolean(streaming) &&
-      (hasStreamingContent || hasReasoningContent || streaming?.isStreaming),
+    Boolean(streaming) &&
+      (isReplacingAssistant
+        ? hasStreamingContent || hasReasoningContent
+        : !hasAssistantContent &&
+          (hasStreamingContent || hasReasoningContent || streaming?.isStreaming)),
   );
 
   const shouldShowAssistantArea =

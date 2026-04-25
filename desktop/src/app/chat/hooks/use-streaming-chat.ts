@@ -60,6 +60,7 @@ export function useStreamingChat({
         }
         const responseTarget = payload.metadata?.runtime?.responseTarget
         if (
+          !isStreaming &&
           streamingResponseTarget &&
           responseTarget &&
           (responseTarget.type === 'agent_turn' ||
@@ -82,7 +83,13 @@ export function useStreamingChat({
     if (hasAssistantReply) {
       resetStreamingState()
     }
-  }, [events, pendingUserMessageId, resetStreamingState, streamingResponseTarget])
+  }, [
+    events,
+    isStreaming,
+    pendingUserMessageId,
+    resetStreamingState,
+    streamingResponseTarget,
+  ])
 
   const sendMessage = useCallback(
     async (options: SendMessageArgs) => {
