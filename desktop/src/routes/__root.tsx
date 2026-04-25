@@ -166,6 +166,7 @@ function RootChrome() {
   const sidebarRef = useRef<ChatSidebarHandle>(null);
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
   const latestDisplayPayloadRef = useRef<DisplayPayload | null>(null);
+  const preferredPanelRef = useRef<"chat" | "display">("display");
 
   const { hasConnectedAccount, isLoading: isAuthLoading } =
     useAuthSessionState();
@@ -285,6 +286,31 @@ function RootChrome() {
     ? isDisplaySidebarOpen
     : isSidebarChatOpen;
 
+  const handleSidebarOpenChange = useCallback((open: boolean) => {
+    if (open) preferredPanelRef.current = "chat";
+    setIsSidebarChatOpen(open);
+  }, []);
+
+  const handleDisplayOpenChange = useCallback((open: boolean) => {
+    if (open) preferredPanelRef.current = "display";
+    setIsDisplaySidebarOpen(open);
+  }, []);
+
+  useEffect(() => {
+    if (isOnChatRoute && chat.showHomeContent) {
+      sidebarRef.current?.close();
+    }
+  }, [chat.showHomeContent, isOnChatRoute]);
+
+  useEffect(() => {
+    if (!isDisplaySidebarOpen || !isSidebarChatOpen) return;
+    if (preferredPanelRef.current === "chat") {
+      displaySidebarRef.current?.close();
+    } else {
+      sidebarRef.current?.close();
+    }
+  }, [isDisplaySidebarOpen, isSidebarChatOpen]);
+
   // In the mini window the chat sidebar covers `.content-area`, so the
   // root-level `StellaContextMenu` is unreachable. Forward right-clicks
   // on the chat sidebar surface to the same display-sidebar toggle the
@@ -315,6 +341,8 @@ function RootChrome() {
       triggerKind: WORKSPACE_CREATION_TRIGGER_KIND,
       triggerSource: "sidebar",
     });
+    preferredPanelRef.current = "chat";
+    displaySidebarRef.current?.close();
     sidebarRef.current?.open();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-shot consumer (see comment above).
     handlePendingAskStellaHandled(pendingAskStellaRequest.id);
@@ -344,10 +372,14 @@ function RootChrome() {
         return;
       }
       if (payload.kind === "media") {
+        preferredPanelRef.current = "display";
+        sidebarRef.current?.close();
         ds.open(payload);
         return;
       }
       if (chat.showHomeContent && isOnChatRoute) {
+        preferredPanelRef.current = "display";
+        sidebarRef.current?.close();
         ds.open(payload);
       } else {
         ds.update(payload);
@@ -393,6 +425,9 @@ function RootChrome() {
       const chatContext = detail?.chatContext;
       const prefillText = detail?.prefillText;
 
+      preferredPanelRef.current = "chat";
+      displaySidebarRef.current?.close();
+
       if (chatContext === undefined && prefillText === undefined) {
         sidebarRef.current?.open();
         return;
@@ -407,6 +442,8 @@ function RootChrome() {
     const handleClose = () => sidebarRef.current?.close();
 
     const handleOpenDisplay = () => {
+      preferredPanelRef.current = "display";
+      sidebarRef.current?.close();
       // Prefer reopening whatever tabs are already in the manager; only
       // fall back to re-routing the last payload when nothing has been
       // opened yet this session. If there is no display payload yet, seed
@@ -442,6 +479,8 @@ function RootChrome() {
     );
 
     const cleanupIpcOpen = window.electronAPI?.ui.onOpenChatSidebar?.(() => {
+      preferredPanelRef.current = "chat";
+      displaySidebarRef.current?.close();
       sidebarRef.current?.open();
     });
 
@@ -546,13 +585,13 @@ function RootChrome() {
         onAdd={chat.composer.onAdd}
         onSend={chat.conversation.sendMessageWithContext}
         onStop={chat.conversation.cancelCurrentStream}
-        onOpenChange={setIsSidebarChatOpen}
+        onOpenChange={handleSidebarOpenChange}
         onContextMenu={handleChatSidebarContextMenu}
       />
 
       <DisplaySidebar
         ref={displaySidebarRef}
-        onOpenChange={setIsDisplaySidebarOpen}
+        onOpenChange={handleDisplayOpenChange}
       />
 
       <FullShellDialogs
