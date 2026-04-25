@@ -9,11 +9,83 @@
       content="default-src 'self'; script-src 'self' 'unsafe-eval' https://js.stripe.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; font-src 'self' data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
     <title>Stella</title>
+    <style>
+      html,
+      body,
+      #root {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      body {
+        background: #f2f4f8;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #161616;
+        }
+      }
+
+      .stella-launch {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: grid;
+        place-items: center;
+        background: #f2f4f8;
+        color: #161616;
+        opacity: 1;
+        transition: opacity 220ms ease;
+        pointer-events: none;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .stella-launch {
+          background: #161616;
+          color: #f2f4f8;
+        }
+      }
+
+      .stella-launch[data-exiting="true"] {
+        opacity: 0;
+      }
+
+      .stella-launch__content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        transform: translateY(-8px);
+      }
+
+      .stella-launch__logo {
+        width: 72px;
+        height: 72px;
+        object-fit: contain;
+        filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.1));
+      }
+
+      .stella-launch__name {
+        font-family: Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 24px;
+        font-weight: 520;
+        letter-spacing: 0;
+      }
+    </style>
     <!-- Preload critical fonts (must match fonts.css @font-face usage) -->
     <link rel="preload" href="/src/assets/fonts/manrope.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
     <link rel="preload" href="/src/assets/fonts/ibm-plex-mono.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
   </head>
   <body>
+    <div id="stella-launch" class="stella-launch" aria-hidden="true">
+      <div class="stella-launch__content">
+        <img class="stella-launch__logo" src="/stella-logo.svg" alt="" />
+        <div class="stella-launch__name">Stella</div>
+      </div>
+    </div>
     <div id="root">
       <div id="stella-mini-boot" style="display: none" aria-hidden="true">
         <div class="stella-mini-boot__top">

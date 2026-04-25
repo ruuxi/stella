@@ -809,10 +809,18 @@ function selfModHmrControl(): Plugin {
         }
 
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/force-resume`) {
+          const shouldReload =
+            inFlightPaths.size > 0 ||
+            prePeriodSnapshot.size > 0 ||
+            appliedOverlay.size > 0 ||
+            shellSnapshotPaths.size > 0 ||
+            shellMutationDepth > 0
           clearAllState()
           shellMutationDepth = 0
-          server.ws.send({ type: 'full-reload', path: '*' })
-          sendJson(200, { ok: true, paused: false })
+          if (shouldReload) {
+            server.ws.send({ type: 'full-reload', path: '*' })
+          }
+          sendJson(200, { ok: true, paused: false, reloaded: shouldReload })
           return
         }
 

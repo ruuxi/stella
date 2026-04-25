@@ -1,4 +1,4 @@
-import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
+import { BrowserWindow, nativeTheme, type RenderProcessGoneDetails } from 'electron'
 import { resolveAppIconPath } from '../app-icon.js'
 import { createSharedWebPreferences } from './shared-window-preferences.js'
 import type { ShellWindowDidFailLoadDetails } from './shell-window-factory.js'
@@ -37,6 +37,7 @@ export class FullWindowController {
           titleBarStyle: isMac ? 'hiddenInset' : undefined,
           trafficLightPosition: isMac ? { x: 16, y: 13 } : undefined,
           ...(isWindows || process.platform === 'linux' ? { frame: false } : {}),
+          backgroundColor: nativeTheme.shouldUseDarkColors ? '#161616' : '#f2f4f8',
           icon: windowIcon,
           webPreferences: createSharedWebPreferences({
             preloadPath: this.options.preloadPath,
