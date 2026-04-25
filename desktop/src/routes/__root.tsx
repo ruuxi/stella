@@ -29,6 +29,7 @@ import {
   DisplaySidebar,
   type DisplaySidebarHandle,
 } from "@/shell/DisplaySidebar";
+import { ShellTopBar } from "@/shell/ShellTopBar";
 import { displayTabs } from "@/shell/display/tab-store";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
@@ -484,6 +485,8 @@ function RootChrome() {
       {drawerOpen && (
         <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
       )}
+
+      <ShellTopBar />
 
       <Sidebar
         className={drawerOpen ? "sidebar--drawer-open" : undefined}

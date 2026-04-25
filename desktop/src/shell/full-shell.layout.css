@@ -13,6 +13,10 @@
 }
 
 .window-shell.full {
+  --shell-topbar-height: 38px;
+  --shell-sidebar-width: 170px;
+  --shell-sidebar-rail-width: 82px;
+  --shell-topbar-left-width: var(--shell-sidebar-width);
   padding: 0;
 }
 
@@ -124,6 +128,87 @@
   flex-direction: row;
   flex: 1;
   min-height: 0;
+}
+
+.shell-topbar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--shell-topbar-height);
+  z-index: 75;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-base);
+  background: transparent;
+  -webkit-app-region: drag;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.shell-topbar-left {
+  width: var(--shell-topbar-left-width);
+  min-width: var(--shell-topbar-left-width);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.shell-topbar[data-platform="mac"] .shell-topbar-left {
+  transform: translateY(2px);
+  padding-left: 82px;
+}
+
+.shell-topbar-icon-btn,
+.shell-topbar-wc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+  -webkit-app-region: no-drag;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+  flex-shrink: 0;
+}
+
+.shell-topbar-sidebar-toggle-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.shell-topbar-icon-btn:hover,
+.shell-topbar-wc-btn:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+.shell-topbar-window-controls {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+}
+
+.shell-topbar-wc-close:hover {
+  background: #e81123;
+  color: white;
+}
+
+.shell-topbar-history-btn {
+  display: none;
 }
 
 /* Compact mode elements — hidden at normal widths */
@@ -244,6 +329,8 @@
   background: transparent;
   border-left: 1px solid var(--border-weak);
   border-top: 1px solid var(--border-weak);
+  padding-top: var(--shell-topbar-height);
+  box-sizing: border-box;
 }
 
 /* Drag strip at top of content area for window dragging */
@@ -546,23 +633,31 @@
    alongside the content so chat/home is still visible. The drawer plumbing
    in the React tree is left in place but neutralised here. */
 @media (max-width: 600px) {
+  .window-shell.full {
+    --shell-sidebar-rail-width: 68px;
+    --shell-topbar-left-width: var(--shell-sidebar-width);
+  }
+
+  .shell-topbar-history-btn {
+    display: none;
+  }
+
+  .shell-topbar[data-platform="mac"] .shell-topbar-left {
+    transform: translateY(-5px);
+    padding-left: 70px;
+  }
+
   .full-body > .sidebar {
     position: relative;
-    width: 56px;
+    width: var(--shell-sidebar-rail-width, 88px);
     flex-shrink: 0;
     transform: none;
     box-shadow: none;
     z-index: 2;
   }
 
-  /* The mini window is frameless and has no traffic lights / custom
-     window controls — there's nothing for the title-bar row to host,
-     so collapse it. The brand row also turns into dead space; hide it
-     entirely so the rail starts directly with the nav icons. */
-  .full-body > .sidebar .sidebar-titlebar {
-    display: none;
-  }
-
+  /* The mini window uses the shared topbar spacer; hide the brand row so the
+     rail content starts below that empty band. */
   .full-body > .sidebar .sidebar-brand {
     display: none;
   }
