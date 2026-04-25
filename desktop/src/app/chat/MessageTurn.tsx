@@ -18,6 +18,7 @@ import {
   type AskQuestionState,
 } from "@/app/chat/AskQuestionBubble";
 import { UserMessageBody } from "@/app/chat/UserMessageBody";
+import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
 
 export type TurnViewModel = {
   id: string;
@@ -28,6 +29,7 @@ export type TurnViewModel = {
   userChannelEnvelope?: ChannelEnvelope;
   assistantText: string;
   assistantMessageId: string | null;
+  assistantResponseTarget?: AgentResponseTarget;
   assistantEmotesEnabled: boolean;
   webSearchBadgeHtml?: string;
   officePreviewRef?: OfficePreviewRef;
@@ -47,6 +49,7 @@ export type StreamingTurnProps = {
   reasoningText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
+  replaceAssistant?: boolean;
 };
 
 const getAttachmentLabel = (attachment: Attachment, index: number) => {
@@ -178,7 +181,8 @@ const streamingPropsEqual = (
     a.streamingText === b.streamingText &&
     a.reasoningText === b.reasoningText &&
     Boolean(a.isStreaming) === Boolean(b.isStreaming) &&
-    (a.pendingUserMessageId ?? null) === (b.pendingUserMessageId ?? null)
+    (a.pendingUserMessageId ?? null) === (b.pendingUserMessageId ?? null) &&
+    Boolean(a.replaceAssistant) === Boolean(b.replaceAssistant)
   );
 };
 
@@ -272,6 +276,8 @@ const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean =>
   channelEnvelopeEqual(a.userChannelEnvelope, b.userChannelEnvelope) &&
   a.assistantText === b.assistantText &&
   a.assistantMessageId === b.assistantMessageId &&
+  JSON.stringify(a.assistantResponseTarget ?? null) ===
+    JSON.stringify(b.assistantResponseTarget ?? null) &&
   a.assistantEmotesEnabled === b.assistantEmotesEnabled &&
   (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
   (a.officePreviewRef?.sessionId ?? null) ===
@@ -347,8 +353,9 @@ export const TurnItem = memo(function TurnItem({
 
   const hasStreamingContent = Boolean(streaming?.streamingText?.trim().length);
   const hasReasoningContent = Boolean(streaming?.reasoningText?.trim().length);
+  const isReplacingAssistant = Boolean(streaming?.replaceAssistant);
   const shouldShowStreamingAssistant = Boolean(
-    !hasAssistantContent &&
+    (!hasAssistantContent || isReplacingAssistant) &&
       Boolean(streaming) &&
       (hasStreamingContent || hasReasoningContent || streaming?.isStreaming),
   );
@@ -401,10 +408,10 @@ export const TurnItem = memo(function TurnItem({
 
   const animateReplacement = hadPreviousMessageRef.current;
 
-  const assistantDisplayText = hasAssistantContent
+  const assistantDisplayText = hasAssistantContent && !isReplacingAssistant
     ? assistantText
     : (streaming?.streamingText ?? "");
-  const assistantEnableEmotes = hasAssistantContent
+  const assistantEnableEmotes = hasAssistantContent && !isReplacingAssistant
     ? turn.assistantEmotesEnabled
     : shouldShowStreamingAssistant;
   const assistantCacheKey = `assistant-${turn.id}`;

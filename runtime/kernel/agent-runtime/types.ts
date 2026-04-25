@@ -41,6 +41,7 @@ export type RuntimeStreamEvent = {
   chunk: string;
   userMessageId: string;
   uiVisibility?: "visible" | "hidden";
+  responseTarget?: RuntimeAgentEventPayload["responseTarget"];
 };
 
 export type RuntimeReasoningEvent = RuntimeStreamEvent;

@@ -30,6 +30,7 @@ export function useStreamingChat({
     runtimeStatusText,
     streamingText,
     reasoningText,
+    streamingResponseTarget,
     isStreaming,
     pendingUserMessageId,
     selfModMap,
@@ -43,15 +44,35 @@ export function useStreamingChat({
   })
 
   useEffect(() => {
-    if (!pendingUserMessageId) return
+    if (!pendingUserMessageId && !streamingResponseTarget) return
 
     const hasAssistantReply = events.some((event) => {
       if (event.type !== 'assistant_message') return false
 
       if (event.payload && typeof event.payload === 'object') {
+        const payload = event.payload as {
+          userMessageId?: string
+          metadata?: {
+            runtime?: {
+              responseTarget?: typeof streamingResponseTarget
+            }
+          }
+        }
+        const responseTarget = payload.metadata?.runtime?.responseTarget
+        if (
+          streamingResponseTarget &&
+          responseTarget &&
+          (responseTarget.type === 'agent_turn' ||
+            responseTarget.type === 'agent_terminal_notice') &&
+          (streamingResponseTarget.type === 'agent_turn' ||
+            streamingResponseTarget.type === 'agent_terminal_notice') &&
+          responseTarget.agentId === streamingResponseTarget.agentId
+        ) {
+          return true
+        }
         return (
-          (event.payload as { userMessageId?: string }).userMessageId
-          === pendingUserMessageId
+          pendingUserMessageId !== null &&
+          payload.userMessageId === pendingUserMessageId
         )
       }
 
@@ -61,7 +82,7 @@ export function useStreamingChat({
     if (hasAssistantReply) {
       resetStreamingState()
     }
-  }, [events, pendingUserMessageId, resetStreamingState])
+  }, [events, pendingUserMessageId, resetStreamingState, streamingResponseTarget])
 
   const sendMessage = useCallback(
     async (options: SendMessageArgs) => {
@@ -150,6 +171,7 @@ export function useStreamingChat({
     runtimeStatusText,
     streamingText,
     reasoningText,
+    streamingResponseTarget,
     isStreaming,
     pendingUserMessageId,
     selfModMap,

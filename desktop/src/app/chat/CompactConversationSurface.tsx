@@ -6,7 +6,10 @@ import {
 } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import { useFooterTasks } from "./hooks/use-footer-tasks";
-import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
+import type {
+  AgentResponseTarget,
+  SelfModAppliedData,
+} from "@/app/chat/streaming/streaming-types";
 import { ConversationEvents } from "./ConversationEvents";
 import { StickyThinkingFooter } from "./StickyThinkingFooter";
 import "./full-shell.chat.css";
@@ -22,6 +25,7 @@ type CompactConversationSurfaceProps = {
   maxItems?: number;
   streamingText: string;
   reasoningText: string;
+  streamingResponseTarget?: AgentResponseTarget | null;
   isStreaming: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
@@ -42,6 +46,7 @@ export function CompactConversationSurface({
   maxItems,
   streamingText,
   reasoningText,
+  streamingResponseTarget,
   isStreaming,
   runtimeStatusText,
   pendingUserMessageId,
@@ -135,6 +140,7 @@ export function CompactConversationSurface({
             maxItems={maxItems}
             streamingText={streamingText}
             reasoningText={reasoningText}
+            streamingResponseTarget={streamingResponseTarget}
             isStreaming={isStreaming}
             pendingUserMessageId={pendingUserMessageId}
             selfModMap={selfModMap}
