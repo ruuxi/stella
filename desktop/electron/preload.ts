@@ -444,6 +444,29 @@ contextBridge.exposeInMainWorld("electronAPI", {
         activeShortcut: string;
         error?: string;
       }>,
+    localStatus: () =>
+      ipcRenderer.invoke("dictation:localStatus") as Promise<{
+        available: boolean;
+        model: string;
+        reason?: string;
+      }>,
+    downloadLocalModel: () =>
+      ipcRenderer.invoke("dictation:downloadLocalModel") as Promise<{
+        available: boolean;
+        model: string;
+        reason?: string;
+      }>,
+    warmLocal: () =>
+      ipcRenderer.invoke("dictation:warmLocal") as Promise<{
+        available: boolean;
+        model: string;
+        reason?: string;
+      }>,
+    transcribeLocal: (payload: { audioBase64: string }) =>
+      ipcRenderer.invoke("dictation:transcribeLocal", payload) as Promise<{
+        transcript: string;
+        model: string;
+      }>,
     onOverlayStart: onIpc<{ sessionId: string }>("dictation:overlayStart"),
     onOverlayStop: onIpc<{ sessionId: string }>("dictation:overlayStop"),
     overlayCompleted: (payload: { sessionId: string; text: string }) =>

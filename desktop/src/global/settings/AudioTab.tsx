@@ -7,6 +7,13 @@ import {
   MIC_ENABLED_KEY,
   isMicrophoneEnabled,
 } from "@/features/voice/services/shared-microphone";
+import {
+  isDictationEnhanceEnabled,
+  isDictationSuperFastEnabled,
+  setDictationEnhancePreference,
+  setDictationSuperFastModeEnabled,
+  setDictationSuperFastPreference,
+} from "@/features/dictation/services/inworld-dictation";
 import { useMicrophoneRecovery } from "@/global/permissions/use-microphone-recovery";
 
 type MicrophonePermissionStatus =
@@ -19,6 +26,12 @@ type MicrophonePermissionStatus =
 export function AudioTab() {
   const platform = window.electronAPI?.platform;
   const [micEnabled, setMicEnabled] = useState(() => isMicrophoneEnabled());
+  const [dictationSuperFast, setDictationSuperFast] = useState(() =>
+    isDictationSuperFastEnabled(),
+  );
+  const [enhanceDictation, setEnhanceDictation] = useState(() =>
+    isDictationEnhanceEnabled(),
+  );
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>(
     [],
   );
@@ -137,6 +150,31 @@ export function AudioTab() {
     [loadDevices, microphoneStatus, platform, syncPermissionStatus],
   );
 
+  const handleDictationSuperFastToggle = useCallback((checked: boolean) => {
+    setDictationSuperFast(checked);
+    setDictationSuperFastPreference(checked);
+    void setDictationSuperFastModeEnabled(checked).catch((error: Error) => {
+      setPermissionError(error.message);
+      setDictationSuperFast(false);
+      setDictationSuperFastPreference(false);
+    });
+  }, []);
+
+  const handleEnhanceDictationToggle = useCallback((checked: boolean) => {
+    setEnhanceDictation(checked);
+    setDictationEnhancePreference(checked);
+  }, []);
+
+  useEffect(() => {
+    if (!micEnabled && dictationSuperFast) {
+      handleDictationSuperFastToggle(false);
+      return;
+    }
+    if (micEnabled && dictationSuperFast) {
+      void setDictationSuperFastModeEnabled(true).catch(() => undefined);
+    }
+  }, [dictationSuperFast, handleDictationSuperFastToggle, micEnabled]);
+
   const handleMicChange = useCallback((deviceId: string) => {
     setSelectedMicId(deviceId);
     if (deviceId) {
@@ -241,6 +279,40 @@ export function AudioTab() {
                   </option>
                 ))}
               </NativeSelect>
+            </div>
+          </div>
+        ) : null}
+        {micEnabled ? (
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Super Fast dictation</div>
+              <div className="settings-row-sublabel">
+                Keep the microphone warm so dictation starts with less delay.
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Switch
+                checked={dictationSuperFast}
+                onCheckedChange={handleDictationSuperFastToggle}
+                hideLabel
+              />
+            </div>
+          </div>
+        ) : null}
+        {micEnabled ? (
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Enhance transcription</div>
+              <div className="settings-row-sublabel">
+                Clean up local dictation text with Stella Fast before inserting it.
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Switch
+                checked={enhanceDictation}
+                onCheckedChange={handleEnhanceDictationToggle}
+                hideLabel
+              />
             </div>
           </div>
         ) : null}

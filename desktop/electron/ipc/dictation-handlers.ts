@@ -26,6 +26,12 @@ import {
   applyShortcutRegistration,
   type ShortcutRegistrationResult,
 } from "./shortcut-registration.js";
+import {
+  downloadLocalParakeetModel,
+  getLocalParakeetStatus,
+  transcribeWithLocalParakeet,
+  warmLocalParakeet,
+} from "../dictation/local-parakeet.js";
 
 const DEFAULT_DICTATION_SHORTCUT = "Control+M";
 const CLIPBOARD_SETTLE_MS = 150;
@@ -228,6 +234,30 @@ export const registerDictationHandlers = (options: DictationHandlersOptions) => 
     toggleDictation();
     return { ok: true };
   });
+
+  ipcMain.handle("dictation:localStatus", () => getLocalParakeetStatus());
+
+  ipcMain.handle("dictation:downloadLocalModel", () =>
+    downloadLocalParakeetModel(),
+  );
+
+  ipcMain.handle("dictation:warmLocal", () => warmLocalParakeet());
+
+  ipcMain.handle(
+    "dictation:transcribeLocal",
+    async (
+      _event,
+      payload: {
+        audioBase64?: string;
+      } | null,
+    ) => {
+      const audioBase64 = payload?.audioBase64;
+      if (!audioBase64) {
+        throw new Error("Missing dictation audio.");
+      }
+      return transcribeWithLocalParakeet(audioBase64);
+    },
+  );
 
   ipcMain.on(
     "dictation:inAppStarted",

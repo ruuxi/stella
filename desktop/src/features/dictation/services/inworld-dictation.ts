@@ -13,11 +13,15 @@
 
 import { postServiceJson } from "@/infra/http/service-request";
 import {
+  callChatCompletion,
+  extractChatText,
+} from "@/infra/ai/llm";
+import {
   acquireSharedMicrophone,
+  setSharedMicrophoneKeepWarm,
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
 import {
-  encodeInt16ToBase64,
   floatToInt16Pcm,
   resampleLinear,
 } from "@/features/voice/services/audio-encoding";
@@ -25,6 +29,8 @@ import {
 const TARGET_SAMPLE_RATE = 16_000;
 const PCM_WORKLET_NAME = "stella-dictation-pcm-capture";
 const PCM_WORKLET_URL = "/dictation-pcm-worklet.js";
+export const DICTATION_SUPER_FAST_KEY = "stella-dictation-super-fast";
+export const DICTATION_ENHANCE_KEY = "stella-dictation-enhance";
 /** Cap a single dictation segment so the upload stays well under the
  *  backend's 14 MB base64 audio limit. 16 kHz int16 mono = 32 KB/s, so
  *  ~3 minutes of speech ≈ 5.7 MB raw → ~7.6 MB base64 → safely under. */
@@ -39,6 +45,7 @@ const LEVEL_EMIT_INTERVAL_MS = 80;
  *  this constant maps that range onto a perceptually pleasing 0–1 scale
  *  for the waveform without immediately clipping at the top. */
 const LEVEL_GAIN = 6;
+const SUPER_FAST_PRE_ROLL_MS = 450;
 
 export type DictationSessionState =
   | "idle"
@@ -60,6 +67,271 @@ type TranscribeResponse = {
   isFinal: boolean;
   transcribedAudioMs: number | null;
   modelId: string | null;
+};
+
+type DictationTranscriptResult = {
+  transcript: string;
+  source: "local" | "inworld";
+};
+
+export function isDictationSuperFastEnabled(): boolean {
+  return localStorage.getItem(DICTATION_SUPER_FAST_KEY) === "true";
+}
+
+export function isDictationEnhanceEnabled(): boolean {
+  return localStorage.getItem(DICTATION_ENHANCE_KEY) === "true";
+}
+
+export function setDictationEnhancePreference(enabled: boolean): void {
+  localStorage.setItem(DICTATION_ENHANCE_KEY, enabled ? "true" : "false");
+}
+
+export function setDictationSuperFastPreference(enabled: boolean): void {
+  localStorage.setItem(DICTATION_SUPER_FAST_KEY, enabled ? "true" : "false");
+}
+
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+};
+
+class DictationWarmCapture {
+  private micLease: SharedMicrophoneLease | null = null;
+  private audioContext: AudioContext | null = null;
+  private sourceNode: MediaStreamAudioSourceNode | null = null;
+  private workletNode: AudioWorkletNode | null = null;
+  private chunks: Int16Array[] = [];
+  private totalSamples = 0;
+  private startPromise: Promise<void> | null = null;
+
+  async start(): Promise<void> {
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = this.startInner().finally(() => {
+      this.startPromise = null;
+    });
+    return this.startPromise;
+  }
+
+  async stop(): Promise<void> {
+    this.tearDownAudioPipeline();
+    if (this.audioContext) {
+      await this.audioContext.close().catch(() => undefined);
+      this.audioContext = null;
+    }
+    this.micLease?.release();
+    this.micLease = null;
+    this.chunks = [];
+    this.totalSamples = 0;
+  }
+
+  snapshot(): Int16Array[] {
+    return this.chunks.map((chunk) => chunk.slice());
+  }
+
+  private async startInner(): Promise<void> {
+    if (this.audioContext && this.micLease) return;
+    this.micLease = await acquireSharedMicrophone();
+    const ctx = new AudioContext();
+    this.audioContext = ctx;
+    await ctx.audioWorklet.addModule(PCM_WORKLET_URL);
+
+    const source = ctx.createMediaStreamSource(this.micLease.stream);
+    this.sourceNode = source;
+    const worklet = new AudioWorkletNode(ctx, PCM_WORKLET_NAME, {
+      numberOfInputs: 1,
+      numberOfOutputs: 0,
+      channelCount: 1,
+      channelCountMode: "explicit",
+      channelInterpretation: "speakers",
+    });
+    const sourceRate = ctx.sampleRate;
+    worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
+      const samples = event.data;
+      if (!samples?.length) return;
+      const resampled =
+        sourceRate === TARGET_SAMPLE_RATE
+          ? samples
+          : resampleLinear(samples, sourceRate, TARGET_SAMPLE_RATE);
+      this.append(floatToInt16Pcm(resampled));
+    };
+    this.workletNode = worklet;
+    source.connect(worklet);
+  }
+
+  private append(chunk: Int16Array): void {
+    this.chunks.push(chunk);
+    this.totalSamples += chunk.length;
+    const maxSamples = Math.round(
+      (SUPER_FAST_PRE_ROLL_MS / 1000) * TARGET_SAMPLE_RATE,
+    );
+    while (this.totalSamples > maxSamples && this.chunks.length > 0) {
+      const first = this.chunks[0]!;
+      if (this.totalSamples - first.length >= maxSamples) {
+        this.chunks.shift();
+        this.totalSamples -= first.length;
+        continue;
+      }
+      const trim = this.totalSamples - maxSamples;
+      this.chunks[0] = first.slice(trim);
+      this.totalSamples -= trim;
+      break;
+    }
+  }
+
+  private tearDownAudioPipeline(): void {
+    if (this.workletNode) {
+      this.workletNode.port.onmessage = null;
+      this.workletNode.port.close();
+      this.workletNode.disconnect();
+      this.workletNode = null;
+    }
+    this.sourceNode?.disconnect();
+    this.sourceNode = null;
+  }
+}
+
+const warmCapture = new DictationWarmCapture();
+
+export async function setDictationSuperFastModeEnabled(
+  enabled: boolean,
+): Promise<void> {
+  setDictationSuperFastPreference(enabled);
+  await setSharedMicrophoneKeepWarm(enabled);
+  if (enabled) {
+    await warmCapture.start();
+  } else {
+    await warmCapture.stop();
+  }
+}
+
+export async function ensureDictationSuperFastWarm(): Promise<void> {
+  if (!isDictationSuperFastEnabled()) return;
+  await setDictationSuperFastModeEnabled(true);
+}
+
+export async function warmLocalDictationModel(): Promise<void> {
+  if (window.electronAPI?.platform !== "darwin") return;
+  await window.electronAPI.dictation?.warmLocal?.();
+}
+
+const ENHANCE_TRANSCRIPTION_SYSTEM_PROMPT = `
+You clean up raw voice dictation before it is inserted into a text field.
+
+Return only the cleaned text. Do not explain your edits. Do not wrap the result in quotes.
+
+Preserve the user's meaning and intent. If the transcript is already clear, return it unchanged.
+Do not summarize, shorten, combine, generalize, or make the text more concise. Keep all requested actions, objects, qualifiers, and framing unless they are filler or an explicit discarded correction.
+
+Clean up:
+- filler words and speech sounds such as um, uh, er, hm, ah
+- conversational hesitation such as you know, like, I mean, sort of, kind of when it is not meaningful
+- false starts, repeated words, repeated phrases, and mid-sentence corrections
+- explicit self-corrections by keeping the final intended wording
+- dictated punctuation and formatting instructions when obvious
+
+Examples of cleanup:
+Input: "uh can you like look at this file for me"
+Output: "Can you look at this file for me?"
+
+Input: "I need you to go and do the following for me uh uhm like just go do this first"
+Output: "I need you to go and do the following for me: just go do this first."
+
+Input: "this is kind of sort of broken and I mean it crashes when I open settings"
+Output: "This is broken, and it crashes when I open settings."
+
+For corrections, prefer the user's latest correction. Remove the abandoned wording, but keep the user's final intent.
+Examples of corrections:
+Input: "when referring to the model documentation, sorry, I meant the API model documentation. Oh no wait, I meant the API configuration documentation"
+Output: "When referring to the API configuration documentation"
+
+Input: "look at the settings file actually no look at the audio settings file"
+Output: "Look at the audio settings file."
+
+Input: "make the button blue no wait make it green and keep the same size"
+Output: "Make the button green and keep the same size."
+
+When the user dictates paths, commands, code identifiers, filenames, or URLs, normalize them into written technical form:
+- "codex slash project slash file dot ts" -> "codex/project/file.ts"
+- "API model documentation" may stay as normal prose
+- preserve casing for common technical names when clear
+Examples of technical normalization:
+Input: "look at codex slash projects slash effect dot ts"
+Output: "Look at codex/projects/effect.ts."
+
+Input: "run bun run desktop colon type check"
+Output: "Run bun run desktop:typecheck."
+
+Input: "open local host colon three thousand slash settings"
+Output: "Open localhost:3000/settings."
+
+If the user is listing steps, tasks, instructions, or ordered items, format them as a compact Markdown bullet list.
+Treat words such as first, second, third, next, then, finally, also, and after that as strong evidence that the user is listing items.
+When formatting a list, preserve the full content of each item. Only remove filler and hesitation. Do not turn a detailed request into a short task summary.
+Examples of when to format:
+Input: "first understand this project second look at codex slash projects slash effect dot ts and then summarize and explain that concept to me"
+Output: "- Understand this project.
+- Look at codex/projects/effect.ts.
+- Summarize and explain that concept to me."
+
+Input: "I need you to go and do the following for me uh like just go do this first look at codex slash projects slash effect dot ts then I need you to go and summarize it for me and then summarize Stella project"
+Output: "I need you to go and do the following for me:
+- First, look at codex/projects/effect.ts.
+- Then summarize it for me.
+- Then summarize Stella project."
+
+Input: "can you check three things the audio settings the microphone permissions and the launcher download step"
+Output: "Can you check three things:
+- The audio settings.
+- The microphone permissions.
+- The launcher download step."
+
+Do not format as a list when the user is speaking one normal sentence, even if it contains "and" or "then".
+Examples of when not to format:
+Input: "look at the audio settings and tell me why the toggle is not saving"
+Output: "Look at the audio settings and tell me why the toggle is not saving."
+
+Input: "go into the launcher and check whether the download runs on macOS"
+Output: "Go into the launcher and check whether the download runs on macOS."
+
+Do not add facts, commands, filenames, or intent that the user did not say.
+`.trim();
+
+const enhanceTranscript = async (transcript: string): Promise<string> => {
+  const raw = transcript.trim();
+  if (!raw || !isDictationEnhanceEnabled()) return transcript;
+  try {
+    const response = await callChatCompletion({
+      agentType: "dictation",
+      messages: [
+        {
+          role: "system",
+          content: ENHANCE_TRANSCRIPTION_SYSTEM_PROMPT,
+        },
+        {
+          role: "user",
+          content: raw,
+        },
+      ],
+      body: {
+        model: "stella/fast",
+        max_tokens: Math.min(4000, Math.max(512, raw.length * 2)),
+        temperature: 0.1,
+      },
+    });
+    const enhanced = extractChatText(response).trim();
+    return enhanced || transcript;
+  } catch (error) {
+    console.warn(
+      "[dictation] enhance transcription failed, using raw transcript:",
+      (error as Error).message,
+    );
+    return transcript;
+  }
 };
 
 export class InworldDictationSession {
@@ -85,7 +357,9 @@ export class InworldDictationSession {
     if (this.isActive()) return;
     this.callbacks = callbacks;
     this.cancelled = false;
-    this.pcmChunks = [];
+    this.pcmChunks = isDictationSuperFastEnabled()
+      ? warmCapture.snapshot()
+      : [];
 
     let lease: SharedMicrophoneLease;
     try {
@@ -172,10 +446,14 @@ export class InworldDictationSession {
     try {
       const wav = encodeWav16(this.pcmChunks, TARGET_SAMPLE_RATE);
       this.pcmChunks = [];
-      const transcript = await this.sendForTranscription(wav);
+      const result = await this.sendForTranscription(wav);
+      const finalTranscript =
+        result.source === "local"
+          ? await enhanceTranscript(result.transcript)
+          : result.transcript;
       this.setState("idle");
-      if (transcript) {
-        this.callbacks.onFinalTranscript?.(transcript);
+      if (finalTranscript) {
+        this.callbacks.onFinalTranscript?.(finalTranscript);
       }
     } catch (err) {
       console.error("[dictation] transcription failed:", err);
@@ -189,14 +467,27 @@ export class InworldDictationSession {
     await this.stop();
   }
 
-  private async sendForTranscription(wavBytes: Uint8Array): Promise<string> {
-    const audioBase64 = encodeInt16ToBase64(
-      new Int16Array(
-        wavBytes.buffer,
-        wavBytes.byteOffset,
-        wavBytes.byteLength / 2,
-      ),
-    );
+  private async sendForTranscription(
+    wavBytes: Uint8Array,
+  ): Promise<DictationTranscriptResult> {
+    const audioBase64 = bytesToBase64(wavBytes);
+    if (
+      window.electronAPI?.platform === "darwin" &&
+      window.electronAPI.dictation?.transcribeLocal
+    ) {
+      try {
+        const local = await window.electronAPI.dictation.transcribeLocal({
+          audioBase64,
+        });
+        return { transcript: local.transcript ?? "", source: "local" };
+      } catch (error) {
+        console.warn(
+          "[dictation] local Parakeet transcription unavailable, falling back:",
+          (error as Error).message,
+        );
+      }
+    }
+
     const parsed = await postServiceJson<TranscribeResponse>(
       "/api/dictation/transcribe",
       {
@@ -210,7 +501,7 @@ export class InworldDictationSession {
         },
       },
     );
-    return parsed.transcript ?? "";
+    return { transcript: parsed.transcript ?? "", source: "inworld" };
   }
 
   private async setupAudioPipeline(stream: MediaStream): Promise<void> {

@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 pub enum SetupStepId {
     Runtime,
     Prepare,
+    Parakeet,
     Payload,
     Deps,
     Env,

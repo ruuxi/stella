@@ -237,6 +237,16 @@ fn emotes_dir_of(d: &str) -> PathBuf {
 fn emotes_manifest_of(d: &str) -> PathBuf {
     emotes_dir_of(d).join("manifest.json")
 }
+fn parakeet_cache_dir_of(d: &str) -> PathBuf {
+    desktop_dir_of(d).join("resources").join("parakeet")
+}
+fn parakeet_helper_of(d: &str) -> PathBuf {
+    desktop_dir_of(d)
+        .join("native")
+        .join("out")
+        .join("darwin")
+        .join("parakeet_transcriber")
+}
 fn emote_staging_root_of(d: &str) -> PathBuf {
     Path::new(d).join(".stella-emotes-staging")
 }
@@ -745,6 +755,48 @@ async fn ensure_mac_screen_capture_permissions_built(install_dir: &str) -> Resul
     }
 }
 
+async fn ensure_parakeet_model_downloaded(install_dir: &str) -> Result<(), String> {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return Ok(());
+    }
+    let helper = parakeet_helper_of(install_dir);
+    if !path_exists(&helper).await {
+        log_install(
+            install_dir,
+            "Skipping Parakeet model download because the local dictation helper is not present.",
+        )
+        .await;
+        return Ok(());
+    }
+    let cache = parakeet_cache_dir_of(install_dir);
+    fs::create_dir_all(&cache)
+        .await
+        .map_err(|e| format!("Failed to prepare Parakeet model cache: {e}"))?;
+    log_install(install_dir, "Downloading local Parakeet dictation model").await;
+    let helper_str = helper.to_string_lossy().to_string();
+    let cache_str = cache.to_string_lossy().to_string();
+    let result = run(
+        &[
+            &helper_str,
+            "--download",
+            "--cache-root",
+            &cache_str,
+        ],
+        Some(desktop_dir_of(install_dir).as_path()),
+    )
+    .await;
+    if result.ok {
+        Ok(())
+    } else {
+        let detail = if result.stderr.is_empty() {
+            result.stdout
+        } else {
+            result.stderr
+        };
+        Err(format!("Parakeet model download failed: {detail}"))
+    }
+}
+
 // ── Tarball download + extract ──────────────────────────────────────
 
 async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
@@ -1105,6 +1157,10 @@ fn build_step_defs() -> Vec<StepDef> {
             label: "Downloading emotes",
         },
         StepDef {
+            id: SetupStepId::Parakeet,
+            label: "Preparing local dictation",
+        },
+        StepDef {
             id: SetupStepId::Finalize,
             label: "Finishing up",
         },
@@ -1136,6 +1192,14 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
                     }
                     _ => false,
                 }
+            }
+        }
+        SetupStepId::Parakeet => {
+            if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+                true
+            } else {
+                path_exists(&parakeet_cache_dir_of(dir).join("FluidAudio")).await
+                    || path_exists(&parakeet_cache_dir_of(dir).join("fluidaudio")).await
             }
         }
         SetupStepId::Finalize => {
@@ -1203,6 +1267,7 @@ async fn install_step(id: &SetupStepId, state: &mut InstallerState) -> Result<()
             }
             Ok(())
         }
+        SetupStepId::Parakeet => ensure_parakeet_model_downloaded(&dir).await,
         SetupStepId::Finalize => {
             let script_path = write_launch_script(&dir).await;
 

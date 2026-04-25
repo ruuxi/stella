@@ -389,6 +389,25 @@ export type ElectronDictationApi = {
    * disable the shortcut entirely.
    */
   setShortcut: (shortcut: string) => Promise<VoiceShortcutRegistrationResult>;
+  localStatus: () => Promise<{
+    available: boolean;
+    model: string;
+    reason?: string;
+  }>;
+  downloadLocalModel: () => Promise<{
+    available: boolean;
+    model: string;
+    reason?: string;
+  }>;
+  warmLocal: () => Promise<{
+    available: boolean;
+    model: string;
+    reason?: string;
+  }>;
+  transcribeLocal: (payload: { audioBase64: string }) => Promise<{
+    transcript: string;
+    model: string;
+  }>;
   onOverlayStart: (
     callback: (data: { sessionId: string }) => void,
   ) => () => void;
