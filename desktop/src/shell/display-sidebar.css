@@ -49,6 +49,10 @@
   transition: none;
 }
 
+.display-sidebar--resizing iframe {
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .display-sidebar {
     transition: none;
