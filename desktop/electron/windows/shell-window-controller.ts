@@ -75,4 +75,11 @@ export class ShellWindowController {
       getDevServerUrl: this.options.getDevServerUrl,
     })
   }
+
+  destroy() {
+    if (!this.window || this.window.isDestroyed()) {
+      return
+    }
+    this.window.destroy()
+  }
 }

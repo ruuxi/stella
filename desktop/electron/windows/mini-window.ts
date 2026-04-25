@@ -76,4 +76,8 @@ export class MiniWindowController {
   loadRecoveryPage() {
     this.controller.loadRecoveryPage()
   }
+
+  destroy() {
+    this.controller.destroy()
+  }
 }

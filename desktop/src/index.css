@@ -6,6 +6,66 @@
 
 @custom-variant dark (&:is(.dark *));
 
+#stella-mini-boot {
+  display: none;
+}
+
+html[data-stella-window="mini"] #stella-mini-boot {
+  display: flex !important;
+  width: 100vw;
+  height: 100vh;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(22, 22, 22, 0.1);
+  background:
+    radial-gradient(circle at 22% 12%, rgba(255, 255, 255, 0.92), transparent 34%),
+    linear-gradient(135deg, #f8fafc 0%, #eef2f7 46%, #e8edf3 100%);
+  color: #161616;
+  font-family: "Manrope", "Manrope Fallback", system-ui, sans-serif;
+  -webkit-app-region: drag;
+}
+
+.stella-mini-boot__top {
+  display: flex;
+  height: 42px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 15px;
+}
+
+.stella-mini-boot__top span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(22, 22, 22, 0.14);
+}
+
+.stella-mini-boot__body {
+  display: grid;
+  flex: 1;
+  align-content: end;
+  gap: 12px;
+  padding: 0 22px 28px;
+}
+
+.stella-mini-boot__mark {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.stella-mini-boot__line {
+  width: 58%;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(22, 22, 22, 0.08);
+}
+
+.stella-mini-boot__line--wide {
+  width: 76%;
+}
+
 @theme inline {
   /* Aura-style smaller border radii */
   --radius-xs: 2px;
@@ -291,4 +351,3 @@ html:has(.window-voice) #root {
   background: transparent !important;
   min-height: 100vh;
 }
-

@@ -14,7 +14,19 @@
     <link rel="preload" href="/src/assets/fonts/ibm-plex-mono.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="stella-mini-boot" style="display: none" aria-hidden="true">
+        <div class="stella-mini-boot__top">
+          <span></span>
+          <span></span>
+        </div>
+        <div class="stella-mini-boot__body">
+          <div class="stella-mini-boot__mark">Stella</div>
+          <div class="stella-mini-boot__line stella-mini-boot__line--wide"></div>
+          <div class="stella-mini-boot__line"></div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
