@@ -25,7 +25,8 @@
 /* --- Root --- */
 
 .store-root {
-  height: 100%;
+  height: 100vh;
+  max-height: 100vh;
   overflow-y: auto;
   scrollbar-width: none;
   container-type: inline-size;
@@ -38,6 +39,18 @@
   padding: 0 32px 48px;
   max-width: 960px;
   margin: 0 auto;
+}
+
+/* Fashion tab takes over the full surface — no width cap, no padding,
+   and it owns the scroll snap. The store header still floats above it. */
+.store-root[data-tab="fashion"] {
+  overflow: hidden;
+}
+.store-root[data-tab="fashion"] .store-scroll {
+  padding: 0;
+  max-width: none;
+  margin: 0;
+  height: 100vh;
 }
 
 /* --- Header --- */

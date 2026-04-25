@@ -13,6 +13,7 @@ import Layers from "lucide-react/dist/esm/icons/layers"
 import Sparkles from "lucide-react/dist/esm/icons/sparkles"
 import Package from "lucide-react/dist/esm/icons/package"
 import { useSelfModTaintMonitor } from "@/systems/boot/use-self-mod-taint-monitor"
+import { FashionTab } from "./fashion/FashionTab"
 import "./store.css"
 
 // ---------------------------------------------------------------------------
@@ -1000,7 +1001,7 @@ function PackageDetailView({
 // Store View (main export)
 // ---------------------------------------------------------------------------
 
-type StoreTab = "discover" | "creations"
+type StoreTab = "discover" | "fashion" | "creations"
 
 export function StoreView() {
   useSelfModTaintMonitor()
@@ -1102,7 +1103,7 @@ export function StoreView() {
   }
 
   return (
-    <div className="store-root" ref={rootRef}>
+    <div className="store-root" ref={rootRef} data-tab={tab}>
       <div className="store-header" data-scrolled={scrolled || undefined}>
         <div className="store-header-inner">
           <h1 className="store-title">Store</h1>
@@ -1113,6 +1114,13 @@ export function StoreView() {
               onClick={() => setTab("discover")}
             >
               Discover
+            </button>
+            <button
+              className="store-tab"
+              data-active={tab === "fashion" || undefined}
+              onClick={() => setTab("fashion")}
+            >
+              Fashion
             </button>
             <button
               className="store-tab"
@@ -1136,6 +1144,8 @@ export function StoreView() {
             onSelect={setSelectedPackageId}
             onInstall={handleInstall}
           />
+        ) : tab === "fashion" ? (
+          <FashionTab />
         ) : (
           <CreationsTab
             commits={commits}

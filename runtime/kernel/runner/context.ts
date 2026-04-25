@@ -1,4 +1,5 @@
 import path from "path";
+import { createFashionApi } from "./fashion-api.js";
 import { createToolHost } from "../tools/host.js";
 import { HookEmitter } from "../extensions/hook-emitter.js";
 import {
@@ -256,6 +257,7 @@ export const createRunnerContext = ({
   requestCredential,
   scheduleApi,
   storeApi,
+  fashionApi,
   displayHtml,
   runtimeStore,
   listLocalChatEvents,
@@ -273,6 +275,42 @@ export const createRunnerContext = ({
 
   const context = {} as RunnerContext;
   const hookEmitter = new HookEmitter();
+
+  const convexAction = async (ref: unknown, args: unknown): Promise<unknown> => {
+    const deploymentUrl = sanitizeConvexDeploymentUrl(
+      context.state?.convexDeploymentUrl ?? envConvexDeploymentUrl,
+    );
+    const authToken = (context.state?.authToken ?? envAuthToken ?? "").trim();
+    if (!deploymentUrl || !authToken) {
+      throw new Error("Convex connection and auth are required.");
+    }
+
+    const existingClient = context.state?.convexClient;
+    if (existingClient && context.state?.convexClientUrl === deploymentUrl) {
+      return await (existingClient as { action: (tool: unknown, params: unknown) => Promise<unknown> }).action(
+        ref,
+        args,
+      );
+    }
+
+    const client = new ConvexClient(deploymentUrl, {
+      logger: false,
+      unsavedChangesWarning: false,
+    });
+    client.setAuth(async () => authToken);
+    try {
+      return await (client as { action: (tool: unknown, params: unknown) => Promise<unknown> }).action(
+        ref,
+        args,
+      );
+    } finally {
+      void client.close().catch(() => undefined);
+    }
+  };
+
+  const resolvedFashionApi =
+    fashionApi ?? createFashionApi({ convexAction, convexApi: anyApi });
+
   const toolHost = createToolHost({
     stellaRoot,
     stellaBrowserBinPath,
@@ -283,6 +321,7 @@ export const createRunnerContext = ({
     displayHtml,
     scheduleApi,
     storeApi,
+    fashionApi: resolvedFashionApi,
     webSearch: async (query, searchOptions) => {
       const handler = context.state?.webSearch;
       if (!handler) {
@@ -398,6 +437,7 @@ export const createRunnerContext = ({
     requestCredential,
     scheduleApi,
     storeApi,
+    fashionApi: resolvedFashionApi,
     displayHtml,
     runtimeStore,
     listLocalChatEvents,

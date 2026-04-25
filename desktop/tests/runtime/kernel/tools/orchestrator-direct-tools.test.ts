@@ -101,6 +101,7 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("web")).toBe(true);
     expect(orchestratorTools.has("Memory")).toBe(true);
     expect(orchestratorTools.has("askQuestion")).toBe(true);
+    expect(orchestratorTools.has("Fashion")).toBe(false);
 
     const generalTools = new Set(host.getToolCatalog("general").map((tool) => tool.name));
     expect(generalTools.has("spawn_agent")).toBe(false);
@@ -120,6 +121,15 @@ describe("orchestrator direct tool surface", () => {
     expect(storeTools.has("StoreListLocalCommits")).toBe(true);
     expect(storeTools.has("StorePublishCommits")).toBe(true);
     expect(storeTools.has("Store")).toBe(false);
+
+    const fashionTools = new Set(host.getToolCatalog("fashion").map((tool) => tool.name));
+    expect(fashionTools.has("askQuestion")).toBe(false);
+    expect(fashionTools.has("FashionGetContext")).toBe(true);
+    expect(fashionTools.has("FashionSearchProducts")).toBe(true);
+    expect(fashionTools.has("FashionCreateOutfit")).toBe(true);
+    expect(fashionTools.has("FashionMarkOutfitReady")).toBe(true);
+    expect(fashionTools.has("Fashion")).toBe(false);
+    expect(fashionTools.has("image_gen")).toBe(true);
   });
 
   it("executes askQuestion for user-facing agents and rejects other agents", async () => {

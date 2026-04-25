@@ -60,6 +60,10 @@ const USER_FACING_AGENT_TOOL_NAMES = new Set([
   "askQuestion",
 ]);
 
+const SUBAGENT_USER_FACING_TOOL_NAMES: Record<string, ReadonlySet<string>> = {
+  [AGENT_IDS.STORE]: USER_FACING_AGENT_TOOL_NAMES,
+};
+
 export const createToolHost = ({
   stellaRoot,
   stellaBrowserBinPath: _stellaBrowserBinPath,
@@ -70,6 +74,7 @@ export const createToolHost = ({
   agentApi,
   scheduleApi,
   storeApi,
+  fashionApi,
   extensionTools,
   displayHtml,
   webSearch,
@@ -128,6 +133,7 @@ export const createToolHost = ({
     agentApi,
     scheduleApi,
     storeApi,
+    fashionApi,
     extensionTools,
     displayHtml,
     webSearch,
@@ -233,13 +239,17 @@ export const createToolHost = ({
     killAllShells();
   };
 
-  const getToolCatalog = (agentType?: string) =>
-    Array.from(toolCatalog.values()).filter(
+  const getToolCatalog = (agentType?: string) => {
+    const subagentExtras = agentType
+      ? SUBAGENT_USER_FACING_TOOL_NAMES[agentType]
+      : undefined;
+    return Array.from(toolCatalog.values()).filter(
       (tool) =>
         agentType === AGENT_IDS.ORCHESTRATOR ||
-        (agentType === AGENT_IDS.STORE && USER_FACING_AGENT_TOOL_NAMES.has(tool.name)) ||
+        (subagentExtras !== undefined && subagentExtras.has(tool.name)) ||
         !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
     );
+  };
 
   return {
     executeTool,

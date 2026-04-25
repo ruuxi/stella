@@ -17,6 +17,7 @@ import type { RuntimeAgentEventPayload } from "../../protocol/index.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { LocalContextEvent } from "../local-history.js";
 import type {
+  FashionToolApi,
   ScheduleToolApi,
   StoreToolApi,
   AgentToolRequest,
@@ -98,6 +99,7 @@ export type StellaHostRunnerOptions = {
   }) => Promise<{ secretId: string; provider: string; label: string }>;
   scheduleApi?: ScheduleToolApi;
   storeApi?: StoreToolApi;
+  fashionApi?: FashionToolApi;
   displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
   /**
@@ -261,6 +263,7 @@ export type RunnerContext = {
   requestCredential?: StellaHostRunnerOptions["requestCredential"];
   scheduleApi?: ScheduleToolApi;
   storeApi?: StoreToolApi;
+  fashionApi?: FashionToolApi;
   displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
   listLocalChatEvents?: StellaHostRunnerOptions["listLocalChatEvents"];

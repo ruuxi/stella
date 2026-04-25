@@ -30,6 +30,7 @@ import { createComputerTools } from "./computer.js";
 import { createDisplayTools } from "./display.js";
 import { dreamTool } from "./dream.js";
 import { createExecCommandTool } from "./exec-command.js";
+import { createFashionControlTools } from "./fashion-control.js";
 import { grepTool } from "./grep.js";
 import { createImageGenTool } from "./image-gen.js";
 import { createMemoryTool } from "./memory.js";
@@ -123,6 +124,9 @@ export const buildBuiltinTools = (
 
   // Store subagent surface
   tools.push(...createStoreControlTools({ storeApi: options.storeApi }));
+
+  // Fashion subagent surface
+  tools.push(...createFashionControlTools({ fashionApi: options.fashionApi }));
 
   // Subagent file/search/dream surface
   // Read & Grep have unrestricted handlers in the host; StrReplace and Dream
