@@ -11,12 +11,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
-import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { PdfViewerCard } from "@/app/chat/PdfViewerCard";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { applyMorphdomHtml } from "@/shell/apply-morphdom-html";
 import { useFilePreviewActions } from "@/app/chat/hooks/use-file-preview-actions";
+import { OfficeArtifactPanel } from "./office-artifact-panel";
 
 type WithMediaMeta = {
   prompt?: string;
@@ -66,7 +66,7 @@ export const OfficeTabContent = ({
   previewRef: OfficePreviewRef;
 }) => (
   <div className="display-sidebar__rich">
-    <OfficePreviewCard previewRef={previewRef} />
+    <OfficeArtifactPanel previewRef={previewRef} />
   </div>
 );
 
@@ -118,15 +118,22 @@ export const OfficeFileTabContent = ({
 
   return (
     <div className="display-sidebar__rich">
-      <div className="display-file-preview display-file-preview--placeholder">
-        <div className="display-file-preview__eyebrow">
-          {error ? "Preview error" : "Preparing preview"}
+      <section className="display-artifact-panel">
+        <div className="display-artifact-panel__body">
+          <div className="display-artifact-status">
+            <div
+              className={
+                error
+                  ? "display-artifact-status__text"
+                  : "display-artifact-status__text loading-shimmer-pure-text"
+              }
+              title={filePath}
+            >
+              {error || "Preparing preview..."}
+            </div>
+          </div>
         </div>
-        <div className="display-file-preview__title" title={filePath}>
-          {title ?? filePath.split(/[\\/]/).pop() ?? "Document"}
-        </div>
-        {error && <div className="display-file-preview__error">{error}</div>}
-      </div>
+      </section>
     </div>
   );
 };
