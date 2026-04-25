@@ -97,6 +97,10 @@ export type SelfModHmrPhase = SharedSelfModHmrPhase;
 export type SelfModHmrState = SharedSelfModHmrState;
 export type AgentHealth = SharedAgentHealth;
 export type LocalLlmCredentialSummary = SharedLocalLlmCredentialSummary;
+export type LocalLlmOAuthProviderSummary = {
+  provider: string;
+  label: string;
+};
 export type LocalCronSchedule = SharedLocalCronSchedule;
 export type LocalCronPayload = SharedLocalCronPayload;
 export type LocalHeartbeatActiveHours = SharedLocalHeartbeatActiveHours;
@@ -545,6 +549,23 @@ export type ElectronSystemApi = {
     maxAgentConcurrency: number;
   }) => Promise<{ ok: boolean }>;
   listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>;
+  listLlmOAuthProviders: () => Promise<LocalLlmOAuthProviderSummary[]>;
+  listLlmOAuthCredentials: () => Promise<LocalLlmCredentialSummary[]>;
+  loginLlmOAuthCredential: (
+    provider: string,
+  ) => Promise<LocalLlmCredentialSummary>;
+  deleteLlmOAuthCredential: (provider: string) => Promise<{ removed: boolean }>;
+  getLlmCredentialRoutingPreference: () => Promise<{
+    enabled: boolean;
+    provider: string;
+  }>;
+  setLlmCredentialRoutingPreference: (payload: {
+    enabled: boolean;
+    provider: string;
+  }) => Promise<{
+    enabled: boolean;
+    provider: string;
+  }>;
   saveLlmCredential: (payload: {
     provider: string;
     label: string;

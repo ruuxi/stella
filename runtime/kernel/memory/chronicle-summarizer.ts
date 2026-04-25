@@ -399,7 +399,7 @@ export const runChronicleSummary = async (args: {
     };
   }
 
-  const apiKey = getResolvedLlmApiKey(args.resolvedLlm);
+  const apiKey = await getResolvedLlmApiKey(args.resolvedLlm);
   if (!apiKey && !resolvedLlmSupportsCredentiallessCalls(args.resolvedLlm)) {
     return {
       wrote: false,

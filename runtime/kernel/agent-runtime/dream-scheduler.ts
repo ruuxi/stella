@@ -203,7 +203,7 @@ const runDream = async (args: {
   store: RuntimeStore;
   resolvedLlm: ResolvedLlmRoute;
 }): Promise<void> => {
-  const apiKey = getResolvedLlmApiKey(args.resolvedLlm);
+  const apiKey = await getResolvedLlmApiKey(args.resolvedLlm);
   if (!apiKey && !resolvedLlmSupportsCredentiallessCalls(args.resolvedLlm)) {
     logger.debug("dream.skipped.no-api-key");
     return;
@@ -419,7 +419,7 @@ export const maybeSpawnDreamRun = async (
     }
   }
 
-  const apiKey = getResolvedLlmApiKey(args.resolvedLlm);
+  const apiKey = await getResolvedLlmApiKey(args.resolvedLlm);
   if (!apiKey && !resolvedLlmSupportsCredentiallessCalls(args.resolvedLlm)) {
     logger.debug("dream.skipped.no-api-key");
     return {

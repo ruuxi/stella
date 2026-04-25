@@ -24,6 +24,10 @@ export type LocalPreferences = {
   resolvedDefaultModels: Record<string, string>;
   /** Model overrides keyed by agent type, e.g. "orchestrator" -> "anthropic/claude-opus-4.6" */
   modelOverrides: Record<string, string>;
+  /** Whether runtime LLM calls may use locally saved user API keys. */
+  localLlmKeysEnabled: boolean;
+  /** Active local provider when local API keys are enabled. */
+  localLlmProvider: string;
   /** Expression style: "none" | "emoji" | undefined (default) */
   expressionStyle?: string;
   /** General agent engine: "default" | "claude_code_local" */
@@ -46,6 +50,8 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   defaultModels: {},
   resolvedDefaultModels: {},
   modelOverrides: {},
+  localLlmKeysEnabled: false,
+  localLlmProvider: "openai",
   expressionStyle: undefined,
   generalAgentEngine: "default",
   selfModAgentEngine: "default",
@@ -78,6 +84,12 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       resolvedDefaultModels:
         parsed.resolvedDefaultModels ?? DEFAULT_PREFERENCES.resolvedDefaultModels,
       modelOverrides: parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
+      localLlmKeysEnabled: parsed.localLlmKeysEnabled === true,
+      localLlmProvider:
+        typeof parsed.localLlmProvider === "string" &&
+        parsed.localLlmProvider.trim()
+          ? parsed.localLlmProvider.trim().toLowerCase()
+          : DEFAULT_PREFERENCES.localLlmProvider,
       expressionStyle: parsed.expressionStyle,
       generalAgentEngine: normalizeEngine(parsed.generalAgentEngine),
       selfModAgentEngine: normalizeEngine(parsed.selfModAgentEngine),
@@ -129,6 +141,16 @@ export const getDefaultModel = (
 ): string | undefined => {
   const prefs = loadLocalPreferences(stellaHome);
   return prefs.defaultModels[agentType];
+};
+
+export const getLocalLlmProviderPreference = (
+  stellaHome: string,
+): { enabled: boolean; provider: string } => {
+  const prefs = loadLocalPreferences(stellaHome);
+  return {
+    enabled: prefs.localLlmKeysEnabled,
+    provider: prefs.localLlmProvider,
+  };
 };
 
 export const getExpressionStyle = (
