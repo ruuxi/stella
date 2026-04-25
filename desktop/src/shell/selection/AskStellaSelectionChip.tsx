@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { router } from "@/router";
 import { dispatchOpenSidebarChat } from "@/shared/lib/stella-orb-chat";
 import "./ask-stella-selection-chip.css";
 
@@ -198,7 +199,9 @@ export function AskStellaSelectionChip() {
         });
       }
 
-      dispatchOpenSidebarChat();
+      if (router.state.location.pathname !== "/chat") {
+        dispatchOpenSidebarChat();
+      }
 
       window.setTimeout(() => {
         pendingClickRef.current = false;

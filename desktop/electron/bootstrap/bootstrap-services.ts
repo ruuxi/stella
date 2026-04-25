@@ -86,27 +86,26 @@ export const createBootstrapServices = (options: {
     processRuntime: state.processRuntime,
   });
 
-  const sendChatContextSelectedText = (text: string) => {
+  const setChatContextSelectedText = (text: string) => {
     const baseEmpty: ChatContext = captureService.emptyContext();
     captureService.setPendingChatContext({ ...baseEmpty, selectedText: text });
-    captureService.broadcastChatContext();
   };
 
-  const focusSidebarChatTarget = () => {
+  const showMiniChatTarget = () => {
     const wm = state.windowManager;
     if (!wm) return;
     wm.showWindow("mini");
     const window = wm.getMiniWindow();
     if (!window || window.isDestroyed()) return;
-    const send = () => {
+    const broadcast = () => {
       if (!window.isDestroyed()) {
-        window.webContents.send("chat:openSidebar");
+        captureService.broadcastChatContext();
       }
     };
     if (window.webContents.isLoading()) {
-      window.webContents.once("did-finish-load", send);
+      window.webContents.once("did-finish-load", broadcast);
     } else {
-      send();
+      broadcast();
     }
   };
 
@@ -127,8 +126,8 @@ export const createBootstrapServices = (options: {
       isMiniWindowVisible: () =>
         state.windowManager?.isMiniShowing() ?? false,
       routeSelectionToSidebar: (text) => {
-        sendChatContextSelectedText(text);
-        focusSidebarChatTarget();
+        setChatContextSelectedText(text);
+        showMiniChatTarget();
       },
     },
     capture: captureService,
