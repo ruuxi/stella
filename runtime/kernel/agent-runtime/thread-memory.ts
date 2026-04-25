@@ -117,6 +117,29 @@ export const stripStaleImageBlocks = <T extends { role: string }>(
 export const buildHistorySource = (
   context: LocalAgentContext,
 ): AgentMessage[] => {
+  const memoryBootstrapKeysKept = new Set<string>();
+  const memoryBootstrapReplayKey = (entry: AgentMessage): string | null => {
+    if (entry.role !== "runtimeInternal") return null;
+    if (
+      entry.customType !== "bootstrap.memory_file" &&
+      entry.customType !== "bootstrap.memory_snapshot"
+    ) {
+      return null;
+    }
+    const text = Array.isArray(entry.content)
+      ? entry.content
+          .flatMap((block) =>
+            block.type === "text" ? [block.text] : [],
+          )
+          .join("\n")
+      : "";
+    if (entry.customType === "bootstrap.memory_file") {
+      const pathMatch = /<memory_file path="([^"]+)">/.exec(text);
+      return `memory_file:${pathMatch?.[1] ?? text.slice(0, 80)}`;
+    }
+    const targetMatch = /<memory_snapshot target="([^"]+)">/.exec(text);
+    return `memory_snapshot:${targetMatch?.[1] ?? text.slice(0, 80)}`;
+  };
   const messages =
     context.threadHistory
       ?.map((entry): AgentMessage | null => {
@@ -157,7 +180,16 @@ export const buildHistorySource = (
         }
         return null;
       })
-      .filter((entry): entry is AgentMessage => entry !== null) ?? [];
+      .filter((entry): entry is AgentMessage => entry !== null)
+      .reverse()
+      .filter((entry) => {
+        const key = memoryBootstrapReplayKey(entry);
+        if (!key) return true;
+        if (memoryBootstrapKeysKept.has(key)) return false;
+        memoryBootstrapKeysKept.add(key);
+        return true;
+      })
+      .reverse() ?? [];
   return stripStaleImageBlocks(messages);
 };
 
@@ -387,12 +419,19 @@ const buildMemoryFileMessage = (
 const DREAM_MEMORY_DISPLAY_PATH = "state/memories/MEMORY.md";
 const DREAM_MEMORY_SUMMARY_DISPLAY_PATH = "state/memories/memory_summary.md";
 
+/**
+ * Cadence for re-injecting the dynamic memory bundle (memory_summary.md +
+ * MEMORY.md + MEMORY/USER snapshots) into the Orchestrator prompt. The
+ * runtime persists the injected bundle as hidden transcript messages; turns
+ * between injections replay that stored bundle without rebuilding it. Inject
+ * on turn 1, then every Nth turn after (turns 41, 81, ...).
+ */
+export const MEMORY_INJECTION_TURN_THRESHOLD = 40;
+
 const injectDreamMemoryFiles = async (args: {
   messages: RuntimePromptMessage[];
-  context: LocalAgentContext;
   stellaHome?: string;
   stellaRoot?: string;
-  isFirstTurn: boolean;
 }): Promise<void> => {
   const home = args.stellaHome?.trim() || args.stellaRoot?.trim();
   if (!home) return;
@@ -409,7 +448,6 @@ const injectDreamMemoryFiles = async (args: {
     );
   }
 
-  if (!args.isFirstTurn) return;
   const memoryPath = path.join(home, "state", "memories", "MEMORY.md");
   const memory = await readOptionalTextFile(memoryPath);
   if (memory) {
@@ -493,47 +531,41 @@ export const buildStartupPromptMessages = async (args: {
     }
   }
 
-  if (args.includeDreamMemoryFiles) {
-    // Dream-managed memory files (state/memories/MEMORY.md and
-    // memory_summary.md) are injected into the ORCHESTRATOR only. MEMORY.md is
-    // bigger and more stable, so we only inject it on the first turn (when
-    // there is no thread history). memory_summary.md is small and dynamic, so
-    // we inject it on every orchestrator turn.
+  // Dream-managed memory files (memory_summary.md, MEMORY.md) and the
+  // frozen MEMORY/USER snapshots are the "dynamic memory bundle" — only
+  // re-injected on Orchestrator turns the runner marked with
+  // shouldInjectDynamicMemory (cold start + every Nth user turn). The runtime
+  // persists those hidden bootstrap messages so fresh agent sessions can
+  // replay the latest bundle on coast turns without rebuilding it every time.
+  if (args.includeDreamMemoryFiles && args.context.shouldInjectDynamicMemory) {
     await injectDreamMemoryFiles({
       messages,
-      context: args.context,
       stellaHome: args.stellaHome,
       stellaRoot: args.stellaRoot,
-      isFirstTurn: shouldIncludeStartupDocs,
     });
-  }
 
-  // Frozen Memory + User Profile snapshot. Populated only for the Orchestrator
-  // by buildAgentContext - General agents do not see the snapshot.
-  //
-  // Unlike startup docs, we resend this on resumed turns because runtimeInternal
-  // bootstrap messages are not persisted in thread history.
-  const memorySnapshot = args.context.memorySnapshot;
-  if (memorySnapshot) {
-    const userBlock = memorySnapshot.user?.trim();
-    if (userBlock) {
-      messages.push(
-        createInternalPromptMessage(
-          `<memory_snapshot target="user">\n${userBlock}\n</memory_snapshot>`,
-          "hidden",
-          "bootstrap.memory_snapshot",
-        ),
-      );
-    }
-    const memoryBlock = memorySnapshot.memory?.trim();
-    if (memoryBlock) {
-      messages.push(
-        createInternalPromptMessage(
-          `<memory_snapshot target="memory">\n${memoryBlock}\n</memory_snapshot>`,
-          "hidden",
-          "bootstrap.memory_snapshot",
-        ),
-      );
+    const memorySnapshot = args.context.memorySnapshot;
+    if (memorySnapshot) {
+      const userBlock = memorySnapshot.user?.trim();
+      if (userBlock) {
+        messages.push(
+          createInternalPromptMessage(
+            `<memory_snapshot target="user">\n${userBlock}\n</memory_snapshot>`,
+            "hidden",
+            "bootstrap.memory_snapshot",
+          ),
+        );
+      }
+      const memoryBlock = memorySnapshot.memory?.trim();
+      if (memoryBlock) {
+        messages.push(
+          createInternalPromptMessage(
+            `<memory_snapshot target="memory">\n${memoryBlock}\n</memory_snapshot>`,
+            "hidden",
+            "bootstrap.memory_snapshot",
+          ),
+        );
+      }
     }
   }
 

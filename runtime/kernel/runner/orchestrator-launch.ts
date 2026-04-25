@@ -2,6 +2,7 @@ import { runOrchestratorTurn, type RuntimeRunCallbacks } from "../agent-runtime.
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { resolveRunnerLlmRoute } from "./model-selection.js";
 import { isReportedOrchestratorError } from "../agent-runtime/run-completion.js";
+import { MEMORY_INJECTION_TURN_THRESHOLD } from "../agent-runtime/thread-memory.js";
 import type {
   QueuedOrchestratorTurn,
   RunnerContext,
@@ -17,6 +18,7 @@ type BuildAgentContext = (args: {
   agentType: string;
   runId: string;
   threadId?: string;
+  shouldInjectDynamicMemory?: boolean;
 }) => Promise<LocalAgentContext>;
 
 export type PreparedOrchestratorRun = {
@@ -54,10 +56,42 @@ export const prepareOrchestratorRun = async (args: {
   attachments: RuntimeAttachmentRef[];
   replayTurn?: QueuedOrchestratorTurn | null;
 }): Promise<PreparedOrchestratorRun> => {
+  // Decide whether this turn should re-inject the memory bundle BEFORE we
+  // build the agent context, so context construction can skip the snapshot
+  // formatting work on turns we won't inject. Only real Orchestrator user
+  // turns count toward the cadence — synthetic hidden turns coast on
+  // whatever the prior real turn injected.
+  const isRealOrchestratorTurn =
+    args.agentType === AGENT_IDS.ORCHESTRATOR
+    && args.uiVisibility !== "hidden";
+  let shouldInjectDynamicMemory = false;
+  if (isRealOrchestratorTurn) {
+    try {
+      const counter =
+        args.context.runtimeStore.incrementUserTurnsSinceMemoryInjection(
+          args.conversationId,
+        );
+      if (counter === 1 || counter > MEMORY_INJECTION_TURN_THRESHOLD) {
+        shouldInjectDynamicMemory = true;
+        if (counter > 1) {
+          // Roll the counter back to 1 so the next 40 turns coast again.
+          args.context.runtimeStore.resetUserTurnsSinceMemoryInjection(
+            args.conversationId,
+          );
+        }
+      }
+    } catch {
+      // Memory injection cadence is best-effort. Counter failure must not
+      // block the turn — fall back to "don't inject" to avoid spamming the
+      // bundle on every failure.
+    }
+  }
+
   const agentContext = await args.buildAgentContext({
     conversationId: args.conversationId,
     agentType: args.agentType,
     runId: args.runId,
+    ...(shouldInjectDynamicMemory ? { shouldInjectDynamicMemory: true } : {}),
   });
   const resolvedLlm = resolveRunnerLlmRoute(
     args.context,
@@ -84,10 +118,7 @@ export const prepareOrchestratorRun = async (args: {
   // Orchestrator turns. Synthetic task-callback turns (uiVisibility === "hidden")
   // do not count - they would inflate the counter without representing user input.
   let userTurnsSinceMemoryReview: number | undefined;
-  if (
-    args.agentType === AGENT_IDS.ORCHESTRATOR
-    && args.uiVisibility !== "hidden"
-  ) {
+  if (isRealOrchestratorTurn) {
     try {
       userTurnsSinceMemoryReview =
         args.context.runtimeStore.incrementUserTurnsSinceMemoryReview(

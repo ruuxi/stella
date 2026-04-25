@@ -14,7 +14,10 @@ import {
   now,
 } from "./shared.js";
 import type { RuntimeRunCallbacks } from "./types.js";
-import { persistThreadPayloadMessage } from "./thread-memory.js";
+import {
+  persistThreadCustomMessage,
+  persistThreadPayloadMessage,
+} from "./thread-memory.js";
 
 type RuntimeExecutableAgent = {
   state: {
@@ -94,6 +97,21 @@ export const executeRuntimeAgentPrompt = async (args: {
         persistThreadPayloadMessage(args.threadStore, {
           threadKey: args.threadKey,
           payload: promptMessage.message,
+        });
+      }
+      if (
+        messageType === "message" &&
+        promptMessage.message.role === "runtimeInternal" &&
+        promptInput.customType?.startsWith("bootstrap.") &&
+        args.threadStore &&
+        args.threadKey
+      ) {
+        persistThreadCustomMessage(args.threadStore, {
+          threadKey: args.threadKey,
+          customType: promptInput.customType,
+          content: promptMessage.message.content,
+          display: promptMessage.message.display === true,
+          timestamp: promptMessage.message.timestamp,
         });
       }
       const uiVisibility = promptInput?.uiVisibility;

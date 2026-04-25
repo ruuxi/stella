@@ -274,6 +274,13 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_memory_injection_state (
+      conversation_id TEXT PRIMARY KEY,
+      user_turns_since_injection INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+
   // Self-mod publishing is commit-driven: the Store agent picks raw commits
   // from `git log` at publish time, so we no longer materialize features or
   // batches in SQL. Only the install record (per-package mirror of what's
