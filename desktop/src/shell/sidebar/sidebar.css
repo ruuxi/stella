@@ -29,7 +29,7 @@
 .sidebar-titlebar {
   height: var(--shell-topbar-height, 38px);
   flex-shrink: 0;
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 
 /* Brand row: logo + "Stella" text, sitting just under the title bar.
