@@ -26,6 +26,7 @@ const SETTLE_MS = 500
 const LOAD_OLDER_THRESHOLD = 200
 const THUMB_MIN_HEIGHT = 24
 const THUMB_FADE_MS = 1200
+const RESIZE_ANCHOR_TOP_PX = 64
 
 type ChatScrollManagementOptions = {
   hasOlderEvents?: boolean
@@ -43,6 +44,11 @@ function escapeTurnIdForSelector(turnId: string): string {
     return CSS.escape(turnId)
   }
   return turnId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+type ResizeAnchor = {
+  element: HTMLElement
+  offsetTop: number
 }
 
 export function useChatScrollManagement({
@@ -66,6 +72,7 @@ export function useChatScrollManagement({
   const lastProgrammaticRef = useRef(0)
   const settleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rafRef = useRef<number | null>(null)
+  const resizeAnchorRef = useRef<ResizeAnchor | null>(null)
 
   const [thumbState, setThumbState] = useState<ThumbState>({
     top: 0,
@@ -150,6 +157,72 @@ export function useChatScrollManagement({
       setThumbState((thumb) => ({ ...thumb, visible: false }))
     }, THUMB_FADE_MS)
   }, [])
+
+  const captureResizeAnchor = useCallback(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const viewportRect = viewport.getBoundingClientRect()
+    const anchorLine = viewportRect.top + RESIZE_ANCHOR_TOP_PX
+    const turns = Array.from(
+      viewport.querySelectorAll<HTMLElement>('[data-turn-id]'),
+    )
+    let best: HTMLElement | null = null
+    let bestDistance = Number.POSITIVE_INFINITY
+
+    for (const turn of turns) {
+      const rect = turn.getBoundingClientRect()
+      if (rect.bottom < viewportRect.top || rect.top > viewportRect.bottom) {
+        continue
+      }
+
+      if (rect.top <= anchorLine && rect.bottom >= anchorLine) {
+        best = turn
+        break
+      }
+
+      const distance = Math.abs(rect.top - anchorLine)
+      if (distance < bestDistance) {
+        best = turn
+        bestDistance = distance
+      }
+    }
+
+    resizeAnchorRef.current = best
+      ? {
+          element: best,
+          offsetTop: best.getBoundingClientRect().top - viewportRect.top,
+        }
+      : null
+  }, [])
+
+  const restoreResizeAnchor = useCallback(() => {
+    const viewport = viewportRef.current
+    const anchor = resizeAnchorRef.current
+    if (!viewport || !anchor || !anchor.element.isConnected) return
+
+    const measureError = () => {
+      const viewportRect = viewport.getBoundingClientRect()
+      const anchorRect = anchor.element.getBoundingClientRect()
+      return anchorRect.top - viewportRect.top - anchor.offsetTop
+    }
+
+    const error = measureError()
+    if (Math.abs(error) < 1) return
+
+    const before = viewport.scrollTop
+    viewport.scrollTop = before - error
+    const afterSubtract = Math.abs(measureError())
+
+    viewport.scrollTop = before + error
+    const afterAdd = Math.abs(measureError())
+
+    if (afterSubtract <= afterAdd) {
+      viewport.scrollTop = before - error
+    }
+
+    markProgrammatic()
+  }, [markProgrammatic])
 
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = 'smooth') => {
@@ -303,6 +376,7 @@ export function useChatScrollManagement({
       }
 
       updateThumb()
+      captureResizeAnchor()
     })
   }, [
     isWithinGrace,
@@ -314,6 +388,7 @@ export function useChatScrollManagement({
     hasOlderEvents,
     isLoadingOlder,
     onLoadOlder,
+    captureResizeAnchor,
   ])
 
   useEffect(() => {
@@ -335,14 +410,28 @@ export function useChatScrollManagement({
       if (grew && !userScrolledRef.current && !pauseResizeFollowRef.current) {
         viewport.scrollTop = 0
         markProgrammatic()
+      } else if (userScrolledRef.current) {
+        restoreResizeAnchor()
       }
 
       updateThumb()
+      captureResizeAnchor()
     })
 
     resizeObserver.observe(content)
     return () => resizeObserver.disconnect()
-  }, [hasViewport, hasContent, markProgrammatic, updateThumb])
+  }, [
+    hasViewport,
+    hasContent,
+    markProgrammatic,
+    updateThumb,
+    captureResizeAnchor,
+    restoreResizeAnchor,
+  ])
+
+  useEffect(() => {
+    captureResizeAnchor()
+  }, [hasViewport, hasContent, captureResizeAnchor])
 
   useEffect(() => {
     if (isWorking) {
