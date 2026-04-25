@@ -2,9 +2,8 @@ import { promises as fs } from "fs";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import path from "path";
 import type {
-  SelfModBatchRecord,
-  SelfModFeatureRecord,
   InstalledStoreModRecord,
+  LocalGitCommitRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
 } from "../../src/shared/contracts/boundary.js";
@@ -71,36 +70,10 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     return await listInstalledThemes(stellaRoot);
   });
 
-  ipcMain.handle("store:listLocalFeatures", async (event, payload?: { limit?: number }) => {
-    return await withStoreRunner(event, "store:listLocalFeatures", async (runner) =>
-      await runner.listLocalFeatures(payload?.limit) satisfies SelfModFeatureRecord[]);
+  ipcMain.handle("store:listLocalCommits", async (event, payload?: { limit?: number }) => {
+    return await withStoreRunner(event, "store:listLocalCommits", async (runner) =>
+      await runner.listLocalCommits(payload?.limit) satisfies LocalGitCommitRecord[]);
   });
-
-  ipcMain.handle("store:listFeatureBatches", async (event, payload: { featureId: string }) => {
-    return await withStoreRunner(event, "store:listFeatureBatches", async (runner) =>
-      await runner.listFeatureBatches(payload.featureId) satisfies SelfModBatchRecord[]);
-  });
-
-  ipcMain.handle("store:createReleaseDraft", async (event, payload: { featureId: string; batchIds?: string[] }) => {
-    return await withStoreRunner(event, "store:createReleaseDraft", (runner) =>
-      runner.createReleaseDraft(payload));
-  });
-
-  ipcMain.handle(
-    "store:publishRelease",
-    async (
-      event,
-      payload: {
-        featureId: string;
-        batchIds?: string[];
-        packageId?: string;
-        displayName?: string;
-        description?: string;
-        releaseNotes?: string;
-      },
-    ) => await withStoreRunner(event, "store:publishRelease", (runner) =>
-      runner.publishStoreRelease(payload)),
-  );
 
   ipcMain.handle("store:listPackages", async (event) => {
     return await withStoreRunner(event, "store:listPackages", async (runner) =>

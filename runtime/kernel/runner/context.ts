@@ -255,6 +255,7 @@ export const createRunnerContext = ({
   selfModHmrController,
   requestCredential,
   scheduleApi,
+  storeApi,
   displayHtml,
   runtimeStore,
   listLocalChatEvents,
@@ -281,6 +282,7 @@ export const createRunnerContext = ({
     requestCredential,
     displayHtml,
     scheduleApi,
+    storeApi,
     webSearch: async (query, searchOptions) => {
       const handler = context.state?.webSearch;
       if (!handler) {
@@ -395,6 +397,7 @@ export const createRunnerContext = ({
     selfModHmrController,
     requestCredential,
     scheduleApi,
+    storeApi,
     displayHtml,
     runtimeStore,
     listLocalChatEvents,
@@ -470,12 +473,9 @@ export const buildAgentContext = async (
     runId: string;
     threadId?: string;
     selfModMetadata?: {
-      featureId?: string;
       packageId?: string;
       releaseNumber?: number;
       mode?: "author" | "install" | "update";
-      displayName?: string;
-      description?: string;
     };
   },
 ): Promise<LocalAgentContext> => {

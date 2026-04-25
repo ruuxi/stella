@@ -3,18 +3,16 @@ import type {
   AgentHealth,
   InstalledStoreModRecord,
   LocalCronJobRecord,
+  LocalGitCommitRecord,
   LocalHeartbeatConfigRecord,
   ScheduledConversationEvent,
   SelfModFeatureSummary,
-  SelfModBatchRecord,
-  SelfModFeatureRecord,
   SelfModHmrState,
   SocialSessionRuntimeRecord,
   SocialSessionServiceSnapshot,
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
-  StoreReleaseDraft,
 } from "../contracts/index.js";
 import type {
   AgentRunFinishOutcome,
@@ -25,18 +23,16 @@ export type {
   AgentHealth,
   InstalledStoreModRecord,
   LocalCronJobRecord,
+  LocalGitCommitRecord,
   LocalHeartbeatConfigRecord,
   ScheduledConversationEvent,
   SelfModFeatureSummary,
-  SelfModBatchRecord,
-  SelfModFeatureRecord,
   SelfModHmrState,
   SocialSessionRuntimeRecord,
   SocialSessionServiceSnapshot,
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
-  StoreReleaseDraft,
 };
 
 export const STELLA_RUNTIME_PROTOCOL_VERSION = "v1";
@@ -111,9 +107,6 @@ export const METHOD_NAMES = {
   LOCAL_CHAT_LIST_SYNC_MESSAGES: "localChat.listSyncMessages",
   LOCAL_CHAT_GET_SYNC_CHECKPOINT: "localChat.getSyncCheckpoint",
   LOCAL_CHAT_SET_SYNC_CHECKPOINT: "localChat.setSyncCheckpoint",
-  STORE_MODS_LIST_FEATURES: "storeMods.listLocalFeatures",
-  STORE_MODS_LIST_BATCHES: "storeMods.listFeatureBatches",
-  STORE_MODS_CREATE_RELEASE_DRAFT: "storeMods.createReleaseDraft",
   STORE_MODS_LIST_INSTALLED: "storeMods.listInstalledMods",
   STORE_LIST_PACKAGES: "store.listPackages",
   STORE_GET_PACKAGE: "store.getPackage",
@@ -121,7 +114,6 @@ export const METHOD_NAMES = {
   STORE_GET_RELEASE: "store.getRelease",
   STORE_CREATE_FIRST_RELEASE: "store.createFirstRelease",
   STORE_CREATE_RELEASE_UPDATE: "store.createReleaseUpdate",
-  STORE_PUBLISH_RELEASE: "store.publishRelease",
   STORE_INSTALL_RELEASE: "store.installRelease",
   STORE_UNINSTALL_MOD: "store.uninstallMod",
   SCHEDULE_LIST_CRON_JOBS: "schedule.listCronJobs",
@@ -169,6 +161,7 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_CREATE_BACKGROUND_AGENT: "internal.worker.createBackgroundAgent",
   INTERNAL_WORKER_GET_AGENT_SNAPSHOT: "internal.worker.getAgentSnapshot",
   INTERNAL_WORKER_APPEND_THREAD_MESSAGE: "internal.worker.appendThreadMessage",
+  INTERNAL_WORKER_SEND_AGENT_INPUT: "internal.worker.sendAgentInput",
   INTERNAL_WORKER_WEB_SEARCH: "internal.worker.webSearch",
   INTERNAL_WORKER_VOICE_PERSIST_TRANSCRIPT:
     "internal.worker.voice.persistTranscript",
@@ -181,7 +174,6 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_GET_STORE_RELEASE: "internal.worker.getStoreRelease",
   INTERNAL_WORKER_CREATE_FIRST_STORE_RELEASE: "internal.worker.createFirstStoreRelease",
   INTERNAL_WORKER_CREATE_STORE_RELEASE_UPDATE: "internal.worker.createStoreReleaseUpdate",
-  INTERNAL_WORKER_PUBLISH_STORE_RELEASE: "internal.worker.publishStoreRelease",
   INTERNAL_WORKER_INSTALL_STORE_RELEASE: "internal.worker.installStoreRelease",
   INTERNAL_WORKER_UNINSTALL_STORE_MOD: "internal.worker.uninstallStoreMod",
   INTERNAL_WORKER_RESUME_HMR: "internal.worker.resumeHmr",
@@ -204,10 +196,8 @@ export const METHOD_NAMES = {
     "internal.worker.discovery.collectBrowserData",
   INTERNAL_WORKER_DISCOVERY_COLLECT_ALL_SIGNALS:
     "internal.worker.discovery.collectAllSignals",
-  INTERNAL_WORKER_STORE_MODS_LIST_FEATURES: "internal.worker.storeMods.listLocalFeatures",
-  INTERNAL_WORKER_STORE_MODS_LIST_BATCHES: "internal.worker.storeMods.listFeatureBatches",
-  INTERNAL_WORKER_STORE_MODS_CREATE_RELEASE_DRAFT:
-    "internal.worker.storeMods.createReleaseDraft",
+  INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS:
+    "internal.worker.storeMods.listLocalCommits",
   INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED: "internal.worker.storeMods.listInstalledMods",
   INTERNAL_WORKER_SCHEDULE_LIST_CRON_JOBS: "internal.worker.schedule.listCronJobs",
   INTERNAL_WORKER_SCHEDULE_LIST_HEARTBEATS: "internal.worker.schedule.listHeartbeats",
@@ -402,12 +392,9 @@ export type RuntimeLocalAgentRequest = {
   prompt: string;
   agentType?: string;
   selfModMetadata?: {
-    featureId?: string;
     packageId?: string;
     releaseNumber?: number;
     mode?: "author" | "install" | "update";
-    displayName?: string;
-    description?: string;
   };
 };
 
@@ -575,7 +562,6 @@ export const runtimeProtocolSchema: RuntimeProtocolSchemaExport = {
 
 export type StorePublishArgs = {
   packageId: string;
-  featureId: string;
   releaseNumber: number;
   displayName: string;
   description: string;
@@ -601,12 +587,6 @@ export type RuntimeStoreApi = {
 };
 
 export type RuntimeStoreModApi = {
-  listLocalFeatures: (limit?: number) => Promise<SelfModFeatureRecord[]>;
-  listFeatureBatches: (featureId: string) => Promise<SelfModBatchRecord[]>;
-  createReleaseDraft: (args: {
-    featureId: string;
-    batchIds?: string[];
-  }) => Promise<StoreReleaseDraft>;
   listInstalledMods: () => Promise<InstalledStoreModRecord[]>;
 };
 

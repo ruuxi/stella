@@ -90,5 +90,6 @@ export type MessageMetadata = {
   trigger?: {
     kind?: string;
     source?: string;
+    targetAgentId?: string;
   };
 };

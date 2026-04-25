@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import type {
-  SelfModFeatureRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
   InstalledStoreModRecord,
-  StoreReleaseDraft,
+  LocalGitCommitRecord,
 } from "@/shared/types/electron"
 import { showToast } from "@/ui/toast"
+import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message"
 import ChevronLeft from "lucide-react/dist/esm/icons/chevron-left"
 import Clock from "lucide-react/dist/esm/icons/clock"
 import Layers from "lucide-react/dist/esm/icons/layers"
@@ -44,16 +44,6 @@ function getGradient(name: string): string {
 
 function getInitial(name: string): string {
   return (name.trim()[0] ?? "S").toUpperCase()
-}
-
-function slugify(value: string): string {
-  return (
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 64) || "creation"
-  )
 }
 
 function formatDate(ms: number): string {
@@ -174,39 +164,39 @@ function useStorePackages() {
   return { packages, installed, installedMap, loading, error, reload: load }
 }
 
-function useStoreFeatures() {
+/**
+ * Flat list of recent self-mod commits surfaced from the runtime. Each
+ * commit is one agent-authored change to Stella's own code (renderer,
+ * runtime, electron, etc.). The Store agent uses this list (plus git
+ * history + the original conversation) to assemble a publishable release.
+ */
+function useLocalCommits(limit = 60) {
   const api = useStoreApi()
-  const [features, setFeatures] = useState<SelfModFeatureRecord[]>([])
+  const [commits, setCommits] = useState<LocalGitCommitRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!api) {
+  const load = useCallback(async () => {
+    if (!api?.listLocalCommits) {
       setLoading(false)
       return
     }
-    let cancelled = false
-    void (async () => {
-      try {
-        const result = await api.listSelfModFeatures()
-        if (!cancelled) {
-          setFeatures(result)
-          setError(null)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Something went wrong")
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
+    try {
+      const result = await api.listLocalCommits(limit)
+      setCommits(result)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong")
+    } finally {
+      setLoading(false)
     }
-  }, [api])
+  }, [api, limit])
 
-  return { features, loading, error }
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return { commits, loading, error, reload: load }
 }
 
 function usePackageDetail(packageId: string | null) {
@@ -593,191 +583,198 @@ function DiscoverTab({
 }
 
 // ---------------------------------------------------------------------------
-// Share Flow
+// Publish prompt builder
 // ---------------------------------------------------------------------------
 
-function ShareFlow({
-  feature,
-  onDone,
-  onCancel,
-}: {
-  feature: SelfModFeatureRecord
-  onDone: () => void
-  onCancel: () => void
-}) {
-  const api = useStoreApi()
-  const [draft, setDraft] = useState<StoreReleaseDraft | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
-  const [notes, setNotes] = useState("")
-  const [sharing, setSharing] = useState(false)
-
-  useEffect(() => {
-    if (!api) return
-    let cancelled = false
-    void (async () => {
-      try {
-        const result = await api.getReleaseDraft({
-          featureId: feature.featureId,
-        })
-        if (!cancelled) {
-          setDraft(result)
-          setName(result.displayName)
-          setDescription(result.description)
-          setError(null)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "This creation can't be shared right now",
-          )
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
+/**
+ * Build the canned prompt the Publish button hands off to the orchestrator.
+ *
+ * The orchestrator recognizes the publish framing and routes it to the
+ * Store specialist via its `Store({ prompt })` tool. The prompt is plain
+ * user-voice: which commits the user picked, with shape (single / multi /
+ * update). The Store agent is the one that loads git, confirms metadata,
+ * and publishes — so we deliberately don't over-spec the workflow here.
+ */
+function buildPublishPrompt(commits: LocalGitCommitRecord[]): string {
+  const lines: string[] = []
+  if (commits.length === 1) {
+    const single = commits[0]!
+    lines.push("Publish this change to the Stella Store:")
+    lines.push("")
+    lines.push(`- ${single.shortHash} ${single.subject}`)
+    if (single.body) {
+      const trimmed = single.body.split("\n").slice(0, 4).join(" ")
+      lines.push(`  ${trimmed}`)
     }
-  }, [api, feature.featureId])
-
-  const handleShare = useCallback(async () => {
-    if (!api || !draft || sharing) return
-    setSharing(true)
-    setError(null)
-    try {
-      const packageId =
-        draft.packageId || feature.packageId || slugify(name || feature.name)
-      await api.publishRelease({
-        featureId: feature.featureId,
-        packageId,
-        displayName: name.trim() || feature.name,
-        description: description.trim() || feature.description,
-        releaseNotes: notes.trim() || undefined,
-        batchIds: draft.selectedBatchIds,
-      })
-      showToast({ title: "Shared successfully!", variant: "success" })
-      onDone()
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Something went wrong",
-      )
-    } finally {
-      setSharing(false)
+  } else {
+    lines.push("Publish these changes to the Stella Store as one mod:")
+    lines.push("")
+    for (const commit of commits) {
+      lines.push(`- ${commit.shortHash} ${commit.subject}`)
     }
-  }, [api, draft, feature, name, description, notes, sharing, onDone])
-
-  if (loading) {
-    return (
-      <div className="store-share-form">
-        <div className="store-share-heading">Preparing...</div>
-        <div className="store-skeleton-line" />
-        <div className="store-skeleton-line store-skeleton-line--short" />
-      </div>
-    )
   }
+  return lines.join("\n")
+}
 
-  if (error && !draft) {
-    return (
-      <div className="store-share-form">
-        <div className="store-status" data-variant="error">
-          {error}
-        </div>
-        <div className="store-share-actions">
+function buildUpdatePrompt(pkg: StorePackageRecord): string {
+  return [
+    `Update my "${pkg.displayName}" Stella Store mod.`,
+    "",
+    `Package ID: ${pkg.packageId}`,
+    `Current version: ${pkg.latestReleaseNumber}`,
+    "",
+    "Look at recent self-mod commits and the existing release history, pick the relevant changes for this mod, confirm with me if anything is ambiguous, then publish a new version.",
+  ].join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// My Creations Tab — flat commit list
+// ---------------------------------------------------------------------------
+
+function describeFiles(commit: LocalGitCommitRecord): string {
+  if (commit.fileCount === 0) return "Internal change"
+  if (commit.fileCount === 1) return "1 file changed"
+  return `${commit.fileCount} files changed`
+}
+
+function CommitRow({
+  commit,
+  selected,
+  onToggle,
+  onPublish,
+}: {
+  commit: LocalGitCommitRecord
+  selected: boolean
+  onToggle: () => void
+  onPublish: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div
+      className="store-card"
+      data-store-commit
+      data-selected={selected || undefined}
+    >
+      <div className="store-card-body">
+        <div className="store-card-top">
+          <label
+            className="store-card-name"
+            style={{ display: "flex", alignItems: "center", gap: 10 }}
+          >
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggle}
+              aria-label={`Select ${commit.subject}`}
+            />
+            <span>{commit.subject}</span>
+          </label>
           <button
             className="store-action-btn"
-            data-variant="added"
-            onClick={onCancel}
+            data-variant="share"
+            onClick={(e) => {
+              e.stopPropagation()
+              onPublish()
+            }}
           >
-            Close
+            Publish
           </button>
         </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="store-share-form">
-      <div className="store-share-heading">Share with others</div>
-
-      {error && (
-        <div className="store-status" data-variant="error">
-          {error}
+        {commit.body && (
+          <div className="store-card-desc">
+            {commit.body.split("\n").slice(0, 2).join(" ")}
+          </div>
+        )}
+        <div
+          className="store-card-meta"
+          style={{ display: "flex", alignItems: "center", gap: 12 }}
+        >
+          <span>{formatTimeAgo(commit.timestampMs)}</span>
+          <span aria-hidden>·</span>
+          <button
+            type="button"
+            className="store-card-meta"
+            style={{
+              background: "transparent",
+              border: 0,
+              padding: 0,
+              cursor: commit.fileCount > 0 ? "pointer" : "default",
+              color: "inherit",
+            }}
+            onClick={() => commit.fileCount > 0 && setExpanded((v) => !v)}
+            aria-expanded={expanded}
+          >
+            {describeFiles(commit)}
+            {commit.fileCount > 0 && (expanded ? " ▴" : " ▾")}
+          </button>
         </div>
-      )}
-
-      <div className="store-share-field">
-        <label className="store-share-label">Name</label>
-        <input
-          className="store-share-input"
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="What should it be called?"
-        />
-      </div>
-
-      <div className="store-share-field">
-        <label className="store-share-label">Description</label>
-        <textarea
-          className="store-share-input"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Describe it briefly"
-        />
-      </div>
-
-      <div className="store-share-field">
-        <label className="store-share-label">What's new (optional)</label>
-        <input
-          className="store-share-input"
-          type="text"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Describe what changed in this version"
-        />
-      </div>
-
-      <div className="store-share-actions">
-        <button
-          className="store-action-btn"
-          data-variant="added"
-          onClick={onCancel}
-          disabled={sharing}
-        >
-          Cancel
-        </button>
-        <button
-          className="store-action-btn"
-          data-variant={sharing ? "working" : "get"}
-          onClick={() => void handleShare()}
-          disabled={sharing || !name.trim()}
-        >
-          {sharing ? "Sharing..." : "Share"}
-        </button>
+        {expanded && commit.files.length > 0 && (
+          <div
+            className="store-card-meta"
+            style={{
+              marginTop: 6,
+              fontFamily:
+                "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace",
+              fontSize: 11,
+              lineHeight: 1.5,
+              opacity: 0.75,
+              wordBreak: "break-all",
+            }}
+          >
+            {commit.files.join("\n")}
+            {commit.fileCount > commit.files.length && (
+              <div>… and {commit.fileCount - commit.files.length} more</div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// My Creations Tab
-// ---------------------------------------------------------------------------
-
 function CreationsTab({
-  features,
+  commits,
   loading,
   error,
 }: {
-  features: SelfModFeatureRecord[]
+  commits: LocalGitCommitRecord[]
   loading: boolean
   error: string | null
 }) {
-  const [sharingFeatureId, setSharingFeatureId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+
+  const toggle = useCallback((commitHash: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(commitHash)) {
+        next.delete(commitHash)
+      } else {
+        next.add(commitHash)
+      }
+      return next
+    })
+  }, [])
+
+  const handlePublish = useCallback(
+    (target: LocalGitCommitRecord[]) => {
+      if (target.length === 0) return
+      const prompt = buildPublishPrompt(target)
+      dispatchStellaSendMessage({
+        text: prompt,
+        triggerKind: "store_publish_request",
+        triggerSource: "store_view",
+      })
+      showToast({
+        title:
+          target.length === 1
+            ? "Asked Stella to help publish this change."
+            : `Asked Stella to help publish ${target.length} changes.`,
+        variant: "success",
+      })
+      setSelected(new Set())
+    },
+    [],
+  )
 
   if (loading) return <SkeletonGrid />
 
@@ -789,46 +786,55 @@ function CreationsTab({
     )
   }
 
-  if (features.length === 0) {
+  if (commits.length === 0) {
     return (
       <EmptyState
         icon={<Sparkles size={32} />}
         title="No creations yet"
-        description="Ask Stella to customize your experience, and your creations will appear here."
+        description="Ask Stella to customize your experience, and the changes will show up here."
       />
     )
   }
 
+  const selectedCommits = commits.filter((c) => selected.has(c.commitHash))
+
   return (
     <div className="store-section">
-      <div className="store-section-header">
+      <div
+        className="store-section-header"
+        style={{ display: "flex", alignItems: "center", gap: 12 }}
+      >
         <span className="store-section-title">Your Creations</span>
-        <span className="store-section-count">{features.length}</span>
+        <span className="store-section-count">{commits.length}</span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button
+            className="store-action-btn"
+            data-variant={selectedCommits.length > 0 ? "share" : "added"}
+            disabled={selectedCommits.length === 0}
+            onClick={() => handlePublish(selectedCommits)}
+          >
+            Publish selected
+            {selectedCommits.length > 0 ? ` (${selectedCommits.length})` : ""}
+          </button>
+        </div>
       </div>
 
-      {sharingFeatureId && (
-        <ShareFlow
-          feature={features.find((f) => f.featureId === sharingFeatureId)!}
-          onDone={() => setSharingFeatureId(null)}
-          onCancel={() => setSharingFeatureId(null)}
-        />
-      )}
-
-      <div className="store-grid">
-        {features.map((feature) => {
-          const isShared = Boolean(feature.packageId)
-          return (
-            <StoreCard
-              key={feature.featureId}
-              name={feature.name}
-              description={feature.description}
-              actionLabel={isShared ? "Shared" : "Share"}
-              actionVariant={isShared ? "shared" : "share"}
-              meta={formatTimeAgo(feature.updatedAt)}
-              onAction={() => setSharingFeatureId(feature.featureId)}
-            />
-          )
-        })}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        {commits.map((commit) => (
+          <CommitRow
+            key={commit.commitHash}
+            commit={commit}
+            selected={selected.has(commit.commitHash)}
+            onToggle={() => toggle(commit.commitHash)}
+            onPublish={() => handlePublish([commit])}
+          />
+        ))}
       </div>
     </div>
   )
@@ -844,12 +850,14 @@ function PackageDetailView({
   onBack,
   onInstall,
   onRemove,
+  onPublishUpdate,
 }: {
   packageId: string
   installedMap: Map<string, InstalledStoreModRecord>
   onBack: () => void
   onInstall: (packageId: string) => Promise<void>
   onRemove: (packageId: string) => Promise<void>
+  onPublishUpdate: (pkg: StorePackageRecord) => void
 }) {
   const { pkg, releases, loading, error } = usePackageDetail(packageId)
   const [working, setWorking] = useState(false)
@@ -926,6 +934,13 @@ function PackageDetailView({
             </span>
           </div>
           <div className="store-detail-actions">
+            <button
+              className="store-action-btn store-action-btn--lg"
+              data-variant="share"
+              onClick={() => onPublishUpdate(pkg)}
+            >
+              Publish update
+            </button>
             {isAdded ? (
               <button
                 className="store-action-btn store-action-btn--lg"
@@ -1013,10 +1028,10 @@ export function StoreView() {
   } = useStorePackages()
 
   const {
-    features,
-    loading: featuresLoading,
-    error: featuresError,
-  } = useStoreFeatures()
+    commits,
+    loading: commitsLoading,
+    error: commitsError,
+  } = useLocalCommits()
 
   const handleInstall = useCallback(
     async (packageId: string) => {
@@ -1056,6 +1071,18 @@ export function StoreView() {
     [reloadPackages],
   )
 
+  const handlePublishUpdate = useCallback((pkg: StorePackageRecord) => {
+    dispatchStellaSendMessage({
+      text: buildUpdatePrompt(pkg),
+      triggerKind: "store_publish_request",
+      triggerSource: "store_view",
+    })
+    showToast({
+      title: `Asked Stella to update ${pkg.displayName}.`,
+      variant: "success",
+    })
+  }, [])
+
   // Detail view
   if (selectedPackageId) {
     return (
@@ -1067,6 +1094,7 @@ export function StoreView() {
             onBack={() => setSelectedPackageId(null)}
             onInstall={handleInstall}
             onRemove={handleRemove}
+            onPublishUpdate={handlePublishUpdate}
           />
         </div>
       </div>
@@ -1110,9 +1138,9 @@ export function StoreView() {
           />
         ) : (
           <CreationsTab
-            features={features}
-            loading={featuresLoading}
-            error={featuresError}
+            commits={commits}
+            loading={commitsLoading}
+            error={commitsError}
           />
         )}
       </div>

@@ -490,6 +490,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("agent:startChat", payload) as Promise<{
         requestId: string;
       }>,
+    sendInput: (payload: {
+      conversationId: string;
+      threadId: string;
+      message: string;
+      interrupt?: boolean;
+      metadata?: Record<string, unknown>;
+    }) =>
+      ipcRenderer.invoke("agent:sendInput", payload) as Promise<{
+        delivered: boolean;
+      }>,
     cancelChat: (runId: string) => ipcRenderer.send("agent:cancelChat", runId),
     resumeConversationExecution: (payload: {
       conversationId: string;
@@ -987,20 +997,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   store: {
-    listSelfModFeatures: (limit?: number) =>
-      ipcRenderer.invoke("store:listLocalFeatures", { limit }),
-    listFeatureBatches: (featureId: string) =>
-      ipcRenderer.invoke("store:listFeatureBatches", { featureId }),
-    getReleaseDraft: (payload: { featureId: string; batchIds?: string[] }) =>
-      ipcRenderer.invoke("store:createReleaseDraft", payload),
-    publishRelease: (payload: {
-      featureId: string;
-      packageId?: string;
-      displayName?: string;
-      description?: string;
-      releaseNotes?: string;
-      batchIds?: string[];
-    }) => ipcRenderer.invoke("store:publishRelease", payload),
+    listLocalCommits: (limit?: number) =>
+      ipcRenderer.invoke("store:listLocalCommits", { limit }),
     listPackages: () => ipcRenderer.invoke("store:listPackages"),
     getPackage: (packageId: string) =>
       ipcRenderer.invoke("store:getPackage", { packageId }),

@@ -643,6 +643,30 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     },
   );
 
+  ipcMain.handle(
+    "agent:sendInput",
+    async (
+      event,
+      payload: {
+        conversationId: string;
+        threadId: string;
+        message: string;
+        interrupt?: boolean;
+        metadata?: Record<string, unknown>;
+      },
+    ) => {
+      if (!options.assertPrivilegedSender(event, "agent:sendInput")) {
+        throw new Error("Blocked untrusted request.");
+      }
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner) {
+        throw new Error("Stella runtime not available");
+      }
+      await stellaHostRunner.waitUntilConnected(5_000);
+      return await stellaHostRunner.sendAgentInput(payload);
+    },
+  );
+
   ipcMain.on("agent:cancelChat", (event, runId: string) => {
     if (!options.assertPrivilegedSender(event, "agent:cancelChat")) {
       return;

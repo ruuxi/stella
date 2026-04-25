@@ -29,14 +29,12 @@ import type {
   AllUserSignals as SharedAllUserSignals,
   AllUserSignalsResult as SharedAllUserSignalsResult,
   SelfModFeatureSummary as SharedSelfModFeatureSummary,
-  SelfModFeatureRecord as SharedSelfModFeatureRecord,
-  SelfModBatchRecord as SharedSelfModBatchRecord,
-  StoreReleaseDraft as SharedStoreReleaseDraft,
   StoreReleaseArtifact as SharedStoreReleaseArtifact,
   StoreReleaseManifest as SharedStoreReleaseManifest,
   StorePackageRecord as SharedStorePackageRecord,
   StorePackageReleaseRecord as SharedStorePackageReleaseRecord,
   InstalledStoreModRecord as SharedInstalledStoreModRecord,
+  LocalGitCommitRecord as SharedLocalGitCommitRecord,
   SelfModHmrPhase as SharedSelfModHmrPhase,
   SelfModHmrState as SharedSelfModHmrState,
   AgentHealth as SharedAgentHealth,
@@ -89,14 +87,12 @@ export type AllUserSignals = SharedAllUserSignals;
 export type AllUserSignalsResult = SharedAllUserSignalsResult;
 export type AgentStreamIpcEvent = AgentStreamEvent;
 export type SelfModFeatureSummary = SharedSelfModFeatureSummary;
-export type SelfModFeatureRecord = SharedSelfModFeatureRecord;
-export type SelfModBatchRecord = SharedSelfModBatchRecord;
-export type StoreReleaseDraft = SharedStoreReleaseDraft;
 export type StoreReleaseArtifact = SharedStoreReleaseArtifact;
 export type StoreReleaseManifest = SharedStoreReleaseManifest;
 export type StorePackageRecord = SharedStorePackageRecord;
 export type StorePackageReleaseRecord = SharedStorePackageReleaseRecord;
 export type InstalledStoreModRecord = SharedInstalledStoreModRecord;
+export type LocalGitCommitRecord = SharedLocalGitCommitRecord;
 export type SelfModHmrPhase = SharedSelfModHmrPhase;
 export type SelfModHmrState = SharedSelfModHmrState;
 export type AgentHealth = SharedAgentHealth;
@@ -425,6 +421,13 @@ export type ElectronAgentApi = {
     agentType?: string;
     storageMode?: "cloud" | "local";
   }) => Promise<{ requestId: string }>;
+  sendInput: (payload: {
+    conversationId: string;
+    threadId: string;
+    message: string;
+    interrupt?: boolean;
+    metadata?: Record<string, unknown>;
+  }) => Promise<{ delivered: boolean }>;
   cancelChat: (runId: string) => void;
   resumeConversationExecution: (payload: {
     conversationId: string;
@@ -648,20 +651,7 @@ export type ElectronScheduleApi = {
 };
 
 export type ElectronStoreApi = {
-  listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureRecord[]>;
-  listFeatureBatches: (featureId: string) => Promise<SelfModBatchRecord[]>;
-  getReleaseDraft: (payload: {
-    featureId: string;
-    batchIds?: string[];
-  }) => Promise<StoreReleaseDraft>;
-  publishRelease: (payload: {
-    featureId: string;
-    packageId?: string;
-    displayName?: string;
-    description?: string;
-    releaseNotes?: string;
-    batchIds?: string[];
-  }) => Promise<StorePackageReleaseRecord>;
+  listLocalCommits: (limit?: number) => Promise<LocalGitCommitRecord[]>;
   listPackages: () => Promise<StorePackageRecord[]>;
   getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
   listPackageReleases: (

@@ -208,7 +208,7 @@ const buildStoreInstallPrompt = (args: {
     "Apply the intended changes to the current local Stella codebase.",
     "Stella installations may differ, so adapt the implementation instead of blindly copying text.",
     "Create missing files when the blueprint expects them, update existing files to preserve the intended behavior, and delete files only when the blueprint clearly marks them as removed.",
-    `Target featureId: ${args.packageRecord.featureId}. Target releaseNumber: ${args.release.releaseNumber}.`,
+    `Target packageId: ${args.packageRecord.packageId}. Target releaseNumber: ${args.release.releaseNumber}.`,
   ].join("\n\n");
 
 const asTrimmedString = (value: unknown): string =>
@@ -720,6 +720,32 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             conversationId,
           }),
       },
+      storeApi: {
+        listLocalCommits: async (limit) =>
+          await storeModService.listLocalCommits(limit),
+        listPackages: async () =>
+          await ensureRunner().listStorePackages(),
+        getPackage: async (packageId) =>
+          await ensureRunner().getStorePackage(packageId),
+        listPackageReleases: async (packageId) =>
+          await ensureRunner().listStorePackageReleases(packageId),
+        publishCommitsAsRelease: async (input) => {
+          const liveRunner = ensureRunner();
+          const existing = await liveRunner.getStorePackage(input.packageId);
+          return await storeModService.publishCommitsAsRelease({
+            packageId: input.packageId,
+            commitHashes: input.commitHashes,
+            displayName: input.displayName,
+            description: input.description,
+            ...(input.releaseNotes ? { releaseNotes: input.releaseNotes } : {}),
+            releaseNumber: existing ? existing.latestReleaseNumber + 1 : 1,
+            publish: (publishArgs) =>
+              existing
+                ? liveRunner.createStoreReleaseUpdate(publishArgs)
+                : liveRunner.createFirstStoreRelease(publishArgs),
+          });
+        },
+      },
       selfModMonitor: {
         getBaselineHead: getGitHead,
         detectAppliedSince: detectSelfModAppliedSince,
@@ -730,12 +756,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           runId,
           rootRunId,
           taskDescription,
-          featureId,
           packageId,
           releaseNumber,
           mode,
-          displayName,
-          description,
         }) => {
           selfModRunRootIds.set(runId, rootRunId ?? runId);
           await peer
@@ -751,21 +774,28 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           await storeModService.beginSelfModRun({
             runId,
             taskDescription,
-            featureId,
             packageId,
             releaseNumber,
             applyMode: mode,
-            displayName,
-            description,
           });
         },
-        finalizeRun: async ({ runId, succeeded }) => {
+        finalizeRun: async ({
+          runId,
+          succeeded,
+          conversationId,
+          commitMessageProvider,
+        }) => {
           // Git commit happens BEFORE the apply so the overlay's
           // "read from disk at apply time" sees the post-commit content.
           // (For most cases the disk hasn't moved between write and
           // commit, but this ordering is cheaper to reason about than
           // racing them.)
-          await storeModService.finalizeSelfModRun({ runId, succeeded });
+          await storeModService.finalizeSelfModRun({
+            runId,
+            succeeded,
+            ...(conversationId ? { conversationId } : {}),
+            ...(commitMessageProvider ? { commitMessageProvider } : {}),
+          });
 
           if (!selfModHmrController.hasRun(runId)) {
             // Run was never registered with the contention tracker
@@ -1390,6 +1420,81 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   );
 
   peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SEND_AGENT_INPUT,
+    async (params) => {
+      const payload = params as {
+        conversationId?: string;
+        threadId?: string;
+        message?: string;
+        interrupt?: boolean;
+        metadata?: Record<string, unknown>;
+      };
+      const conversationId = asTrimmedString(payload.conversationId);
+      const threadId = asTrimmedString(payload.threadId);
+      const message = asTrimmedString(payload.message);
+      if (!conversationId) {
+        throw new Error("conversationId is required.");
+      }
+      if (!threadId) {
+        throw new Error("threadId is required.");
+      }
+      if (!message) {
+        throw new Error("message is required.");
+      }
+
+      const delivered = await ensureRunner().executeTool(
+        "send_input",
+        {
+          thread_id: threadId,
+          message,
+          interrupt: payload.interrupt !== false,
+        },
+        {
+          conversationId,
+          deviceId: state.deviceId ?? "local",
+          requestId: `agent-input:${crypto.randomUUID()}`,
+          agentType: AGENT_IDS.ORCHESTRATOR,
+          storageMode: "local",
+        },
+      );
+      if (delivered.error) {
+        throw new Error(delivered.error);
+      }
+
+      const metadata =
+        payload.metadata && typeof payload.metadata === "object"
+          ? payload.metadata
+          : {};
+      const uiMetadata =
+        metadata.ui && typeof metadata.ui === "object"
+          ? (metadata.ui as Record<string, unknown>)
+          : {};
+      const timestamp = Date.now();
+      ensureChatStore().appendEvent({
+        conversationId,
+        type: "user_message",
+        timestamp,
+        payload: prepareStoredLocalChatPayload({
+          type: "user_message",
+          payload: {
+            text: message,
+            metadata: {
+              ...metadata,
+              ui: {
+                ...uiMetadata,
+                visibility: "hidden",
+              },
+            },
+          },
+          timestamp,
+        }),
+      });
+      peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      return { delivered: true };
+    },
+  );
+
+  peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_CANCEL,
     async (params) => {
       ensureRunner().cancelLocalChat((params as { runId: string }).runId);
@@ -1558,33 +1663,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   );
 
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_RELEASE,
-    async (params) => {
-      const payload = params as {
-        featureId: string;
-        batchIds?: string[];
-        packageId?: string;
-        displayName?: string;
-        description?: string;
-        releaseNotes?: string;
-      };
-      const runner = ensureRunner();
-      const service = ensureStoreModService();
-      const existing = payload.packageId
-        ? await runner.getStorePackage(payload.packageId)
-        : null;
-      return await service.publishRelease({
-        ...payload,
-        releaseNumber: existing ? existing.latestReleaseNumber + 1 : 1,
-        publish: (args) =>
-          existing
-            ? runner.createStoreReleaseUpdate(args)
-            : runner.createFirstStoreRelease(args),
-      });
-    },
-  );
-
-  peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_INSTALL_STORE_RELEASE,
     async (params) => {
       if (!state.init) {
@@ -1661,12 +1739,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             }),
             agentType: "general",
             selfModMetadata: {
-              featureId: packageRecord.featureId,
               packageId: packageRecord.packageId,
               releaseNumber: release.releaseNumber,
               mode,
-              displayName: packageRecord.displayName,
-              description: packageRecord.description,
             },
           });
           if (blockingAgentResult.status !== "ok") {
@@ -1947,28 +2022,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   );
 
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_FEATURES,
+    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS,
     async (params) => {
-      return ensureStoreModService().listLocalFeatures(
+      return await ensureStoreModService().listLocalCommits(
         (params as { limit?: number } | undefined)?.limit,
-      );
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_BATCHES,
-    async (params) => {
-      return ensureStoreModService().listFeatureBatches(
-        (params as { featureId: string }).featureId,
-      );
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_CREATE_RELEASE_DRAFT,
-    async (params) => {
-      return ensureStoreModService().createReleaseDraft(
-        params as { featureId: string; batchIds?: string[] },
       );
     },
   );

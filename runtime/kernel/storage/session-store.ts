@@ -69,12 +69,9 @@ export type PersistedAgentRecord = {
   maxAgentDepth?: number;
   parentAgentId?: string;
   selfModMetadata?: {
-    featureId?: string;
     packageId?: string;
     releaseNumber?: number;
     mode?: "author" | "install" | "update";
-    displayName?: string;
-    description?: string;
   };
   status: TaskLifecycleStatus;
   startedAt: number;

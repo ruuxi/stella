@@ -18,6 +18,7 @@ import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { LocalContextEvent } from "../local-history.js";
 import type {
   ScheduleToolApi,
+  StoreToolApi,
   AgentToolRequest,
   AgentToolSnapshot,
   ToolContext,
@@ -61,12 +62,9 @@ export type StellaHostRunnerOptions = {
       taskDescription: string;
       taskPrompt: string;
       conversationId: string;
-      featureId?: string;
       packageId?: string;
       releaseNumber?: number;
       mode?: "author" | "install" | "update";
-      displayName?: string;
-      description?: string;
     }) => Promise<void> | void;
     finalizeRun: (args: {
       runId: string;
@@ -75,12 +73,19 @@ export type StellaHostRunnerOptions = {
       taskPrompt: string;
       conversationId: string;
       succeeded: boolean;
-      featureId?: string;
       packageId?: string;
       releaseNumber?: number;
       mode?: "author" | "install" | "update";
-      displayName?: string;
-      description?: string;
+      /**
+       * Optional callback the lifecycle invokes (during author-mode runs)
+       * just before committing, to produce a human-readable commit subject.
+       * Resolves to null/empty string to fall back to the task description.
+       */
+      commitMessageProvider?: (args: {
+        taskDescription: string;
+        files: string[];
+        diffPreview: string;
+      }) => Promise<string | null>;
     }) => Promise<void> | void;
     cancelRun?: (runId: string) => Promise<void> | void;
   } | null;
@@ -92,6 +97,7 @@ export type StellaHostRunnerOptions = {
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
   scheduleApi?: ScheduleToolApi;
+  storeApi?: StoreToolApi;
   displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
   /**
@@ -254,6 +260,7 @@ export type RunnerContext = {
   selfModHmrController?: StellaHostRunnerOptions["selfModHmrController"];
   requestCredential?: StellaHostRunnerOptions["requestCredential"];
   scheduleApi?: ScheduleToolApi;
+  storeApi?: StoreToolApi;
   displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
   listLocalChatEvents?: StellaHostRunnerOptions["listLocalChatEvents"];

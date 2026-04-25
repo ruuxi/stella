@@ -118,6 +118,33 @@ export function useFullShellChat({
     [markHomeSessionInteraction],
   )
 
+  const sendAgentInputMessage = useCallback(
+    (detail: StellaSendMessageDetail, metadata?: MessageMetadata) => {
+      const threadId = detail.targetAgentId?.trim()
+      if (!threadId || !activeConversationId || !window.electronAPI?.agent?.sendInput) {
+        sendContextlessMessage(detail.text, metadata)
+        return
+      }
+      markHomeSessionInteraction()
+      void window.electronAPI.agent
+        .sendInput({
+          conversationId: activeConversationId,
+          threadId,
+          message: detail.text,
+          interrupt: true,
+          ...(metadata ? { metadata } : {}),
+        })
+        .catch((error) => {
+          console.error(
+            'Failed to send routed agent input:',
+            (error as Error).message,
+          )
+          sendContextlessMessage(detail.text, metadata)
+        })
+    },
+    [activeConversationId, markHomeSessionInteraction, sendContextlessMessage],
+  )
+
   const sendMessageWithContext = useCallback(
     (
       text: string,
@@ -244,7 +271,12 @@ export function useFullShellChat({
     const handleSuggestionMessage = (event: Event) => {
       const detail = (event as CustomEvent<StellaSendMessageDetail>).detail
       if (detail?.text) {
-        sendContextlessMessage(detail.text, toStellaMessageMetadata(detail))
+        const metadata = toStellaMessageMetadata(detail)
+        if (detail.targetAgentId) {
+          sendAgentInputMessage(detail, metadata)
+          return
+        }
+        sendContextlessMessage(detail.text, metadata)
       }
     }
 
@@ -252,7 +284,7 @@ export function useFullShellChat({
     return () => {
       window.removeEventListener(STELLA_SEND_MESSAGE_EVENT, handleSuggestionMessage)
     }
-  }, [sendContextlessMessage])
+  }, [sendAgentInputMessage, sendContextlessMessage])
 
   const { canSubmit } = deriveComposerState({
     message,

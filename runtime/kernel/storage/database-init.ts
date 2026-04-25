@@ -4,6 +4,67 @@ import { ensurePrivateDirSync } from "../shared/private-fs.js";
 
 const DB_FILE = "stella.sqlite";
 
+const STORE_MOD_INSTALLS_COLUMNS = [
+  "install_id",
+  "package_id",
+  "release_number",
+  "apply_commit_hashes_json",
+  "state",
+  "created_at",
+  "updated_at",
+] as const;
+
+const STORE_MOD_INSTALLS_CREATE_SQL = `
+  CREATE TABLE IF NOT EXISTS store_mod_installs (
+    install_id TEXT PRIMARY KEY,
+    package_id TEXT NOT NULL,
+    release_number INTEGER NOT NULL,
+    apply_commit_hashes_json TEXT NOT NULL,
+    state TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+`;
+
+const ensureStoreModInstallsTable = (db: SqliteDatabase) => {
+  const rows = db.prepare("PRAGMA table_info(store_mod_installs);").all() as Array<{
+    name?: unknown;
+  }>;
+  if (rows.length === 0) {
+    db.exec(STORE_MOD_INSTALLS_CREATE_SQL);
+    return;
+  }
+
+  const columnNames = new Set(
+    rows
+      .map((row) => (typeof row.name === "string" ? row.name : ""))
+      .filter(Boolean),
+  );
+  const expectedColumns = new Set<string>(STORE_MOD_INSTALLS_COLUMNS);
+  const needsRebuild =
+    columnNames.size !== expectedColumns.size ||
+    STORE_MOD_INSTALLS_COLUMNS.some((column) => !columnNames.has(column));
+  if (!needsRebuild) {
+    return;
+  }
+
+  const canPreserveRows = STORE_MOD_INSTALLS_COLUMNS.every((column) =>
+    columnNames.has(column),
+  );
+  db.exec("ALTER TABLE store_mod_installs RENAME TO store_mod_installs_old;");
+  db.exec(STORE_MOD_INSTALLS_CREATE_SQL);
+  if (canPreserveRows) {
+    db.exec(`
+      INSERT INTO store_mod_installs (
+        ${STORE_MOD_INSTALLS_COLUMNS.join(", ")}
+      )
+      SELECT ${STORE_MOD_INSTALLS_COLUMNS.join(", ")}
+      FROM store_mod_installs_old;
+    `);
+  }
+  db.exec("DROP TABLE store_mod_installs_old;");
+};
+
 export const ensureDatabaseStateRoot = (stellaHome: string) => {
   const stateRoot = path.join(stellaHome, "state");
   ensurePrivateDirSync(stateRoot);
@@ -99,6 +160,8 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec("DROP TABLE IF EXISTS runtime_run_events;");
   db.exec("DROP TABLE IF EXISTS runtime_memories;");
   db.exec("DROP TABLE IF EXISTS runtime_tasks;");
+  db.exec("DROP TABLE IF EXISTS self_mod_batches;");
+  db.exec("DROP TABLE IF EXISTS self_mod_features;");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_threads (
@@ -211,58 +274,11 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     );
   `);
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS self_mod_features (
-      feature_id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL,
-      package_id TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-  `);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_self_mod_features_package
-    ON self_mod_features(package_id, updated_at);
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS self_mod_batches (
-      batch_id TEXT PRIMARY KEY,
-      feature_id TEXT NOT NULL,
-      run_id TEXT,
-      ordinal INTEGER NOT NULL,
-      state TEXT NOT NULL,
-      commit_hash TEXT,
-      files_json TEXT NOT NULL,
-      blocked_files_json TEXT,
-      package_id TEXT,
-      release_number INTEGER,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-  `);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_self_mod_batches_feature
-    ON self_mod_batches(feature_id, ordinal, created_at);
-  `);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_self_mod_batches_package
-    ON self_mod_batches(package_id, release_number, updated_at);
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS store_mod_installs (
-      install_id TEXT PRIMARY KEY,
-      package_id TEXT NOT NULL,
-      feature_id TEXT NOT NULL,
-      release_number INTEGER NOT NULL,
-      apply_commit_hashes_json TEXT NOT NULL,
-      state TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-  `);
+  // Self-mod publishing is commit-driven: the Store agent picks raw commits
+  // from `git log` at publish time, so we no longer materialize features or
+  // batches in SQL. Only the install record (per-package mirror of what's
+  // applied locally) is persisted.
+  ensureStoreModInstallsTable(db);
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_store_mod_installs_package
     ON store_mod_installs(package_id, updated_at);

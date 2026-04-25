@@ -37,6 +37,7 @@ export type Selection =
   | { kind: "skipped" };
 
 export type AskQuestionState = AskQuestionPayload & {
+  targetAgentId?: string;
   submitted?: boolean;
   selections?: Record<number, Selection>;
 };
@@ -231,6 +232,7 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
             uiVisibility: "hidden",
             triggerKind: "ask_question_response",
             triggerSource: "ask-question-bubble",
+            targetAgentId: payload.targetAgentId,
           },
         }),
       );

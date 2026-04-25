@@ -586,6 +586,16 @@ export class RuntimeClientAdapter {
     }
   }
 
+  async sendAgentInput(payload: {
+    conversationId: string;
+    threadId: string;
+    message: string;
+    interrupt?: boolean;
+    metadata?: Record<string, unknown>;
+  }) {
+    return await this.client.sendAgentInput(payload);
+  }
+
   runAutomationTurn(payload: RuntimeAutomationTurnRequest) {
     return this.client.runAutomationTurn(payload);
   }
@@ -596,12 +606,9 @@ export class RuntimeClientAdapter {
     prompt: string;
     agentType?: string;
     selfModMetadata?: {
-      featureId?: string;
       packageId?: string;
       releaseNumber?: number;
       mode?: "author" | "install" | "update";
-      displayName?: string;
-      description?: string;
     };
   }) {
     return this.client.runBlockingLocalAgent(payload);
@@ -613,12 +620,9 @@ export class RuntimeClientAdapter {
     prompt: string;
     agentType?: string;
     selfModMetadata?: {
-      featureId?: string;
       packageId?: string;
       releaseNumber?: number;
       mode?: "author" | "install" | "update";
-      displayName?: string;
-      description?: string;
     };
   }) {
     return this.client.createBackgroundAgent(payload);
@@ -791,16 +795,8 @@ export class RuntimeClientAdapter {
     return this.client.listStorePackages();
   }
 
-  listLocalFeatures(limit?: number) {
-    return this.client.listLocalFeatures(limit);
-  }
-
-  listFeatureBatches(featureId: string) {
-    return this.client.listFeatureBatches(featureId);
-  }
-
-  createReleaseDraft(args: { featureId: string; batchIds?: string[] }) {
-    return this.client.createReleaseDraft(args);
+  listLocalCommits(limit?: number) {
+    return this.client.listLocalCommits(limit);
   }
 
   listInstalledMods() {
@@ -825,17 +821,6 @@ export class RuntimeClientAdapter {
 
   createStoreReleaseUpdate(args: StorePublishArgs) {
     return this.client.createStoreReleaseUpdate(args);
-  }
-
-  publishStoreRelease(args: {
-    featureId: string;
-    batchIds?: string[];
-    packageId?: string;
-    displayName?: string;
-    description?: string;
-    releaseNotes?: string;
-  }) {
-    return this.client.publishStoreRelease(args);
   }
 
   installStoreRelease(args: { packageId: string; releaseNumber?: number }) {

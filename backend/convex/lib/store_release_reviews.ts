@@ -78,7 +78,6 @@ const storeReleaseArtifactSchema = z.object({
   schemaVersion: z.literal(1),
   manifest: z.object({
     packageId: z.string(),
-    featureId: z.string(),
     releaseNumber: z.number(),
     displayName: z.string(),
     description: z.string(),
