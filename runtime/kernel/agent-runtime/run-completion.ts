@@ -247,7 +247,10 @@ export const finalizeSubagentSuccess = async (args: {
   threadKey: string;
   result: string;
 }): Promise<SubagentRunResult> => {
-  if (shouldRecordThreadSummary(args.opts.agentType)) {
+  if (
+    !args.opts.suppressCompletionSideEffects &&
+    shouldRecordThreadSummary(args.opts.agentType)
+  ) {
     // Stage 1 SQLite store: durable, queryable rollout summary feed for the
     // Dream protocol. Best-effort — never block the subagent finalize path.
     try {
@@ -293,9 +296,11 @@ export const finalizeSubagentSuccess = async (args: {
       agentType: args.opts.agentType,
     });
   }
-  args.opts.callbacks?.onEnd?.(
-    args.runEvents.recordRunEnd({ finalText: args.result }),
-  );
+  if (!args.opts.suppressCompletionSideEffects) {
+    args.opts.callbacks?.onEnd?.(
+      args.runEvents.recordRunEnd({ finalText: args.result }),
+    );
+  }
 
   return {
     runId: args.runId,
