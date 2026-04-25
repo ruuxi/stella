@@ -28,9 +28,7 @@ export const authClient = new Proxy({} as AuthClient, {
         baseURL,
         plugins,
         sessionOptions: {
-          refetchInterval: 0,
           refetchOnWindowFocus: false,
-          refetchWhenOffline: false,
         },
       });
     }
