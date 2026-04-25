@@ -83,211 +83,179 @@ const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
  * call. This component just observes the store and renders the active
  * tab's `render()`.
  */
-export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarProps>(
-  function DisplaySidebar({ onOpenChange }, ref) {
-    const { panelOpen, panelExpanded, panelWidth, tabs } = useDisplayTabs();
-    const activeTab = useActiveDisplayTab();
-    const asideRef = useRef<HTMLElement | null>(null);
+export const DisplaySidebar = forwardRef<
+  DisplaySidebarHandle,
+  DisplaySidebarProps
+>(function DisplaySidebar({ onOpenChange }, ref) {
+  const { panelOpen, panelExpanded, panelWidth, tabs } = useDisplayTabs();
+  const activeTab = useActiveDisplayTab();
+  const asideRef = useRef<HTMLElement | null>(null);
 
-    useImperativeHandle(
-      ref,
-      () => ({
-        open(rawPayload) {
-          const next = normalizeDisplayPayload(rawPayload);
-          if (!next) return;
-          displayTabs.openTab(payloadToTabSpec(next));
-        },
-        update(rawPayload) {
-          const next = normalizeDisplayPayload(rawPayload);
-          if (!next) return;
-          const spec = payloadToTabSpec(next);
-          const { panelOpen } = displayTabs.getSnapshot();
-          // Refresh the underlying tab without activating / opening the
-          // panel. If the panel is already open and this tab happens to be
-          // active, the new render() takes effect immediately. If the panel is
-          // closed, make the updated tab the next active tab without reopening
-          // the UI; the next explicit open will land on the freshest payload.
-          displayTabs.openTab(
-            spec,
-            panelOpen
-              ? { activate: false }
-              : { activate: true, openPanel: false },
-          );
-        },
-        close() {
-          displayTabs.setPanelOpen(false);
-        },
-      }),
-      [],
-    );
-
-    useEffect(() => {
-      if (!panelOpen) return;
-      const onKey = (e: KeyboardEvent) => {
-        if (e.key !== "Escape") return;
-        // Esc collapses an expanded panel before fully closing it, so the
-        // first press feels like "back out" and the second like "dismiss".
-        if (displayTabs.getSnapshot().panelExpanded) {
-          displayTabs.setPanelExpanded(false);
-        } else {
-          displayTabs.setPanelOpen(false);
-        }
-      };
-      document.addEventListener("keydown", onKey);
-      return () => document.removeEventListener("keydown", onKey);
-    }, [panelOpen]);
-
-    useEffect(() => {
-      onOpenChange?.(panelOpen);
-    }, [panelOpen, onOpenChange]);
-
-    // If the window shrinks below the user's chosen width, snap the stored
-    // width down so we don't end up wider than the viewport allows.
-    useEffect(() => {
-      if (panelWidth == null) return;
-      const onResize = () => {
-        const max = computeMaxWidth();
-        if (panelWidth > max) displayTabs.setPanelWidth(max);
-      };
-      window.addEventListener("resize", onResize);
-      return () => window.removeEventListener("resize", onResize);
-    }, [panelWidth]);
-
-    const handleResizeStart = useCallback(
-      (event: ReactPointerEvent<HTMLDivElement>) => {
-        // Only respond to primary-button drags; ignore right-clicks and
-        // touch contextmenu emulation.
-        if (event.button !== 0) return;
-        event.preventDefault();
-
-        const aside = asideRef.current;
-        const startWidth = aside?.getBoundingClientRect().width ?? panelWidth ?? 0;
-        const startX = event.clientX;
-
-        // Pin the cursor / disable selection globally so dragging across
-        // the chat outlet doesn't accidentally start a text selection.
-        const previousCursor = document.body.style.cursor;
-        const previousUserSelect = document.body.style.userSelect;
-        document.body.style.cursor = "col-resize";
-        document.body.style.userSelect = "none";
-        aside?.classList.add("display-sidebar--resizing");
-
-        const onMove = (ev: PointerEvent) => {
-          // Panel sits on the right edge, so dragging left increases width.
-          const delta = startX - ev.clientX;
-          const max = computeMaxWidth();
-          const next = Math.max(
-            DISPLAY_PANEL_MIN_WIDTH,
-            Math.min(max, startWidth + delta),
-          );
-          displayTabs.setPanelWidth(next);
-        };
-
-        const onUp = () => {
-          window.removeEventListener("pointermove", onMove);
-          window.removeEventListener("pointerup", onUp);
-          window.removeEventListener("pointercancel", onUp);
-          document.body.style.cursor = previousCursor;
-          document.body.style.userSelect = previousUserSelect;
-          aside?.classList.remove("display-sidebar--resizing");
-        };
-
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
-        window.addEventListener("pointercancel", onUp);
+  useImperativeHandle(
+    ref,
+    () => ({
+      open(rawPayload) {
+        const next = normalizeDisplayPayload(rawPayload);
+        if (!next) return;
+        displayTabs.openTab(payloadToTabSpec(next));
       },
-      [panelWidth],
-    );
+      update(rawPayload) {
+        const next = normalizeDisplayPayload(rawPayload);
+        if (!next) return;
+        const spec = payloadToTabSpec(next);
+        const { panelOpen } = displayTabs.getSnapshot();
+        // Refresh the underlying tab without activating / opening the
+        // panel. If the panel is already open and this tab happens to be
+        // active, the new render() takes effect immediately. If the panel is
+        // closed, make the updated tab the next active tab without reopening
+        // the UI; the next explicit open will land on the freshest payload.
+        displayTabs.openTab(
+          spec,
+          panelOpen
+            ? { activate: false }
+            : { activate: true, openPanel: false },
+        );
+      },
+      close() {
+        displayTabs.setPanelOpen(false);
+      },
+    }),
+    [],
+  );
 
-    const handleResizeDoubleClick = useCallback(() => {
-      // Snap back to the stylesheet default.
-      displayTabs.setPanelWidth(null);
-    }, []);
+  useEffect(() => {
+    if (!panelOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Esc collapses an expanded panel before fully closing it, so the
+      // first press feels like "back out" and the second like "dismiss".
+      if (displayTabs.getSnapshot().panelExpanded) {
+        displayTabs.setPanelExpanded(false);
+      } else {
+        displayTabs.setPanelOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [panelOpen]);
 
-    const portalTarget =
-      document.querySelector(".full-body") ?? document.body;
+  useEffect(() => {
+    onOpenChange?.(panelOpen);
+  }, [panelOpen, onOpenChange]);
 
-    // Inline CSS variable lets the stylesheet keep its `clamp()` default
-    // when the user hasn't resized yet. While expanded, the class wins via
-    // a higher-specificity rule (no need to clear the var).
-    const widthStyle: CSSProperties | undefined =
-      panelWidth != null
-        ? ({ "--display-panel-width": `${panelWidth}px` } as CSSProperties)
-        : undefined;
+  // If the window shrinks below the user's chosen width, snap the stored
+  // width down so we don't end up wider than the viewport allows.
+  useEffect(() => {
+    if (panelWidth == null) return;
+    const onResize = () => {
+      const max = computeMaxWidth();
+      if (panelWidth > max) displayTabs.setPanelWidth(max);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [panelWidth]);
 
-    return createPortal(
-      <aside
-        ref={asideRef}
-        className={`display-sidebar${panelOpen ? " display-sidebar--open" : ""}${
-          panelExpanded ? " display-sidebar--expanded" : ""
-        }`}
-        aria-hidden={!panelOpen}
-        {...(widthStyle ? { style: widthStyle } : {})}
-      >
-        {/* Left-edge drag handle. Hidden visually while expanded since
+  const handleResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      // Only respond to primary-button drags; ignore right-clicks and
+      // touch contextmenu emulation.
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+
+      const aside = asideRef.current;
+      const startWidth =
+        aside?.getBoundingClientRect().width ?? panelWidth ?? 0;
+      const startX = event.clientX;
+      const pointerId = event.pointerId;
+      const handle = event.currentTarget;
+
+      // Pin the cursor / disable selection globally so dragging across
+      // the chat outlet doesn't accidentally start a text selection.
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      aside?.classList.add("display-sidebar--resizing");
+
+      const onMove = (ev: PointerEvent) => {
+        // Panel sits on the right edge, so dragging left increases width.
+        const delta = startX - ev.clientX;
+        const max = computeMaxWidth();
+        const next = Math.max(
+          DISPLAY_PANEL_MIN_WIDTH,
+          Math.min(max, startWidth + delta),
+        );
+        displayTabs.setPanelWidth(next);
+      };
+
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        if (handle.hasPointerCapture?.(pointerId)) {
+          handle.releasePointerCapture(pointerId);
+        }
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        aside?.classList.remove("display-sidebar--resizing");
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [panelWidth],
+  );
+
+  const handleResizeDoubleClick = useCallback(() => {
+    // Snap back to the stylesheet default.
+    displayTabs.setPanelWidth(null);
+  }, []);
+
+  const portalTarget = document.querySelector(".full-body") ?? document.body;
+
+  // Inline CSS variable lets the stylesheet keep its `clamp()` default
+  // when the user hasn't resized yet. While expanded, the class wins via
+  // a higher-specificity rule (no need to clear the var).
+  const widthStyle: CSSProperties | undefined =
+    panelWidth != null
+      ? ({ "--display-panel-width": `${panelWidth}px` } as CSSProperties)
+      : undefined;
+
+  return createPortal(
+    <aside
+      ref={asideRef}
+      className={`display-sidebar${panelOpen ? " display-sidebar--open" : ""}${
+        panelExpanded ? " display-sidebar--expanded" : ""
+      }`}
+      aria-hidden={!panelOpen}
+      {...(widthStyle ? { style: widthStyle } : {})}
+    >
+      {/* Left-edge drag handle. Hidden visually while expanded since
             the panel already fills the space. */}
-        {!panelExpanded && (
-          <div
-            className="display-sidebar__resize-handle"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize display panel"
-            onPointerDown={handleResizeStart}
-            onDoubleClick={handleResizeDoubleClick}
-            title="Drag to resize · double-click to reset"
-          />
-        )}
-        <div className="display-sidebar-inner">
-          <div className="display-sidebar__chrome">
-            <button
-              type="button"
-              className="display-sidebar__chrome-btn"
-              onClick={() => displayTabs.togglePanelExpanded()}
-              aria-label={panelExpanded ? "Restore panel size" : "Expand panel"}
-              aria-pressed={panelExpanded}
-              title={panelExpanded ? "Restore panel size" : "Expand panel"}
-            >
-              {panelExpanded ? (
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="9 4 4 4 4 9" />
-                  <polyline points="15 4 20 4 20 9" />
-                  <polyline points="20 15 20 20 15 20" />
-                  <polyline points="4 15 4 20 9 20" />
-                </svg>
-              ) : (
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="4 9 4 4 9 4" />
-                  <polyline points="20 9 20 4 15 4" />
-                  <polyline points="15 20 20 20 20 15" />
-                  <polyline points="9 20 4 20 4 15" />
-                </svg>
-              )}
-            </button>
-            <button
-              type="button"
-              className="display-sidebar__chrome-btn"
-              onClick={() => displayTabs.setPanelOpen(false)}
-              aria-label="Close"
-              title="Close"
-            >
+      {!panelExpanded && (
+        <div
+          className="display-sidebar__resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize display panel"
+          onPointerDown={handleResizeStart}
+          onDoubleClick={handleResizeDoubleClick}
+          title="Drag to resize · double-click to reset"
+        />
+      )}
+      <div className="display-sidebar-inner">
+        <div className="display-sidebar__chrome">
+          <button
+            type="button"
+            className="display-sidebar__chrome-btn"
+            onClick={() => displayTabs.togglePanelExpanded()}
+            aria-label={panelExpanded ? "Restore panel size" : "Expand panel"}
+            aria-pressed={panelExpanded}
+            title={panelExpanded ? "Restore panel size" : "Expand panel"}
+          >
+            {panelExpanded ? (
               <svg
                 width="14"
                 height="14"
@@ -298,25 +266,64 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle, DisplaySidebarPro
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
+                <polyline points="9 4 4 4 4 9" />
+                <polyline points="15 4 20 4 20 9" />
+                <polyline points="20 15 20 20 15 20" />
+                <polyline points="4 15 4 20 9 20" />
               </svg>
-            </button>
-          </div>
-
-          {tabs.length > 0 && <DisplayTabBar />}
-
-          <div className="display-sidebar__active">
-            {panelOpen && activeTab ? (
-              <DeferredDisplayContent
-                key={activeTab.id}
-                render={activeTab.render}
-              />
-            ) : null}
-          </div>
+            ) : (
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="4 9 4 4 9 4" />
+                <polyline points="20 9 20 4 15 4" />
+                <polyline points="15 20 20 20 20 15" />
+                <polyline points="9 20 4 20 4 15" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            className="display-sidebar__chrome-btn"
+            onClick={() => displayTabs.setPanelOpen(false)}
+            aria-label="Close"
+            title="Close"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
-      </aside>,
-      portalTarget,
-    );
-  },
-);
+
+        {tabs.length > 0 && <DisplayTabBar />}
+
+        <div className="display-sidebar__active">
+          {panelOpen && activeTab ? (
+            <DeferredDisplayContent
+              key={activeTab.id}
+              render={activeTab.render}
+            />
+          ) : null}
+        </div>
+      </div>
+    </aside>,
+    portalTarget,
+  );
+});
