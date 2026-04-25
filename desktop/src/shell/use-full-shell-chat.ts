@@ -62,6 +62,7 @@ export function useFullShellChat({
   })
   const [hasInteractedWithChatThisSession, setHasInteractedWithChatThisSession] =
     useState(false)
+  const [composerFocusRequestId, setComposerFocusRequestId] = useState(0)
   const prevOnChatRouteRef = useRef(isOnChatRoute)
   const { chatContext, setChatContext, selectedText, setSelectedText } =
     useCapturedChatContext()
@@ -212,6 +213,9 @@ export function useFullShellChat({
   }, [isOnChatRoute, resetScrollState, scrollToBottom])
 
   const handleSend = useCallback(() => {
+    if (showHomeContent) {
+      setComposerFocusRequestId((id) => id + 1)
+    }
     markHomeSessionInteraction()
     resetIdleTimer()
     void sendMessage({
@@ -233,6 +237,7 @@ export function useFullShellChat({
     sendMessage,
     setChatContext,
     setSelectedText,
+    showHomeContent,
   ])
 
   useEffect(() => {
@@ -301,6 +306,7 @@ export function useFullShellChat({
       selectedText,
       setSelectedText,
       canSubmit,
+      focusRequestId: composerFocusRequestId,
       onSend: handleSend,
       onStop: cancelCurrentStream,
     }),
@@ -312,6 +318,7 @@ export function useFullShellChat({
       selectedText,
       setSelectedText,
       canSubmit,
+      composerFocusRequestId,
       handleSend,
       cancelCurrentStream,
     ],

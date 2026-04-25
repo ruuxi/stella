@@ -3,7 +3,7 @@
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { ComposerContextRow, ComposerSuggestionContextRow } from "./ComposerContextRow";
 import {
@@ -35,6 +35,7 @@ type ComposerProps = {
   setSelectedText: React.Dispatch<React.SetStateAction<string | null>>;
   isStreaming: boolean;
   canSubmit: boolean;
+  focusRequestId?: number;
   conversationId: string | null;
   onSend: () => void;
   onStop: () => void;
@@ -50,6 +51,7 @@ export function Composer({
   setSelectedText,
   isStreaming,
   canSubmit,
+  focusRequestId,
   conversationId,
   onSend,
   onStop,
@@ -84,6 +86,14 @@ export function Composer({
     contentRef: shellContentRef,
     formRef,
   });
+
+  useEffect(() => {
+    if (!focusRequestId || dictation.isRecording) return;
+    const raf = requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [dictation.isRecording, focusRequestId]);
 
   const hasAttachedChips = hasAttachedComposerChips(chatContext, selectedText);
 
