@@ -24,6 +24,7 @@ type SharedMicrophoneState = {
   acquirePromise: Promise<MediaStream> | null;
   activeLeaseCount: number;
   releaseTimer: ReturnType<typeof setTimeout> | null;
+  keepWarm: boolean;
 };
 
 const getSharedMicrophoneState = (): SharedMicrophoneState => {
@@ -37,6 +38,7 @@ const getSharedMicrophoneState = (): SharedMicrophoneState => {
       acquirePromise: null,
       activeLeaseCount: 0,
       releaseTimer: null,
+      keepWarm: false,
     };
   }
 
@@ -71,8 +73,14 @@ const getSharedMicrophoneConstraints = (): MediaTrackConstraints => {
 
 const scheduleRootRelease = (state: SharedMicrophoneState) => {
   clearReleaseTimer(state);
+  if (state.keepWarm) {
+    return;
+  }
   state.releaseTimer = setTimeout(() => {
     if (state.activeLeaseCount > 0) {
+      return;
+    }
+    if (state.keepWarm) {
       return;
     }
     stopStream(state.rootStream);
@@ -145,4 +153,19 @@ export async function acquireSharedMicrophone(): Promise<SharedMicrophoneLease> 
       }
     },
   };
+}
+
+export async function setSharedMicrophoneKeepWarm(
+  keepWarm: boolean,
+): Promise<void> {
+  const state = getSharedMicrophoneState();
+  state.keepWarm = keepWarm;
+  if (keepWarm) {
+    clearReleaseTimer(state);
+    await acquireRootStream(state);
+    return;
+  }
+  if (state.activeLeaseCount === 0) {
+    scheduleRootRelease(state);
+  }
 }

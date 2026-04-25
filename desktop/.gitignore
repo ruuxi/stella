@@ -30,6 +30,11 @@ src/routeTree.gen.ts
 # Copied from node_modules/pdfjs-dist; not source-controlled.
 public/vendor/pdfjs/
 
+# Local Parakeet/Core ML dictation model cache.
+resources/parakeet/*
+!resources/parakeet/.gitkeep
+native/src/parakeet-helper/.build/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

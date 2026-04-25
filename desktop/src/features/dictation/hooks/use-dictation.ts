@@ -18,7 +18,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ensureDictationSuperFastWarm,
   InworldDictationSession,
+  isDictationSuperFastEnabled,
+  warmLocalDictationModel,
   type DictationSessionState,
 } from "@/features/dictation/services/inworld-dictation";
 import { appendRollingLevel } from "@/features/dictation/rolling-levels";
@@ -93,6 +96,12 @@ export const useDictation = ({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    void warmLocalDictationModel().catch(() => undefined);
+    if (!isDictationSuperFastEnabled()) return;
+    void ensureDictationSuperFastWarm().catch(() => undefined);
+  }, []);
 
   // While listening, tick a 4-Hz timer for the visible mm:ss display.
   // The initial 0:00 paint is set in `start()` before the session begins

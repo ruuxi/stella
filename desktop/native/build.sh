@@ -58,3 +58,12 @@ swiftc -O -o "$OUTPUT_DIR/chronicle" src/chronicle.swift \
   -framework ScreenCaptureKit \
   -framework Vision
 echo "Build successful: $OUTPUT_DIR/chronicle"
+
+if [ "$(uname -m)" = "arm64" ]; then
+  echo "Building parakeet_transcriber (macOS arm64)..."
+  swift build -c release --package-path src/parakeet-helper
+  cp src/parakeet-helper/.build/release/parakeet_transcriber "$OUTPUT_DIR/parakeet_transcriber"
+  echo "Build successful: $OUTPUT_DIR/parakeet_transcriber"
+else
+  echo "Skipping parakeet_transcriber: Parakeet Core ML is only enabled for macOS arm64."
+fi
