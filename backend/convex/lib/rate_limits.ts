@@ -120,6 +120,9 @@ export const RATE_SETTINGS: RateLimitConfig = { rate: 60, periodMs: 60_000 };
 /** Expensive third-party calls (LLM, web search/fetch, Cloudflare, Stripe). */
 export const RATE_EXPENSIVE: RateLimitConfig = { rate: 30, periodMs: 60_000 };
 
+/** Shopify global catalog search is easy for agents to fan out; keep it slow. */
+export const RATE_SHOPIFY_SEARCH: RateLimitConfig = { rate: 8, periodMs: 60_000 };
+
 /** Very expensive / costly actions (SMS, store package release, large LLM jobs). */
 export const RATE_VERY_EXPENSIVE: RateLimitConfig = { rate: 10, periodMs: 60_000 };
 

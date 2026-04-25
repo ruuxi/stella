@@ -156,6 +156,7 @@ export type ToolHostOptions = {
   agentApi?: AgentToolApi;
   scheduleApi?: ScheduleToolApi;
   storeApi?: StoreToolApi;
+  fashionApi?: FashionToolApi;
   extensionTools?: import("../extensions/types.js").ToolDefinition[];
   displayHtml?: (html: string) => void;
   /**
@@ -222,6 +223,109 @@ export type StoreToolApi = {
     description: string;
     releaseNotes?: string;
   }) => Promise<StorePackageReleaseRecord>;
+};
+
+export type FashionShopProduct = {
+  productId: string;
+  variantId: string;
+  title: string;
+  vendor?: string;
+  description?: string;
+  price?: number;
+  currency?: string;
+  imageUrl?: string;
+  productUrl?: string;
+  checkoutUrl?: string;
+  merchantOrigin: string;
+};
+
+export type FashionShopProductDetail = FashionShopProduct & {
+  variants?: Array<{
+    variantId: string;
+    title?: string;
+    price?: number;
+    currency?: string;
+    available?: boolean;
+    options?: Record<string, string>;
+  }>;
+};
+
+export type FashionOutfitProductInput = {
+  slot: string;
+  productId: string;
+  variantId: string;
+  title: string;
+  price?: number;
+  currency?: string;
+  imageUrl?: string;
+  productUrl?: string;
+  checkoutUrl?: string;
+  vendor?: string;
+  merchantOrigin: string;
+};
+
+export type FashionContextSummary = {
+  profile: { sizes?: Record<string, string>; stylePreferences?: string } | null;
+  recentLikes: Array<{ productId: string; title: string; vendor?: string }>;
+  cart: Array<{ productId: string; title: string; quantity: number }>;
+  recentOutfitProductIds: string[];
+};
+
+export type FashionCheckoutSessionResult = {
+  checkoutId: string;
+  status: string;
+  continueUrl?: string;
+  merchantOrigin: string;
+  mcpEndpoint: string;
+  usingMcp: boolean;
+  cartUrl?: string;
+};
+
+/**
+ * Fashion-tab Convex bridge.
+ *
+ * Mirrors `StoreToolApi`: a tight set of typed methods the Fashion subagent
+ * (and the Fashion tab worker) calls into. Implementations live in the
+ * runtime context layer and forward to `backend/convex/agent/local_runtime.ts`
+ * so HTTP, auth, and rate-limits stay backend-side.
+ */
+export type FashionToolApi = {
+  getOrchestratorContext: () => Promise<FashionContextSummary>;
+  searchProducts: (args: {
+    query: string;
+    context?: string;
+    limit?: number;
+    savedCatalog?: string;
+  }) => Promise<FashionShopProduct[]>;
+  getProductDetails: (args: {
+    productId: string;
+  }) => Promise<FashionShopProductDetail | null>;
+  registerOutfit: (args: {
+    batchId: string;
+    ordinal: number;
+    themeLabel: string;
+    themeDescription?: string;
+    stylePrompt?: string;
+    products: FashionOutfitProductInput[];
+    tryOnPrompt?: string;
+  }) => Promise<string>;
+  markOutfitReady: (args: {
+    outfitId: string;
+    tryOnImagePath?: string;
+    tryOnImageUrl?: string;
+  }) => Promise<void>;
+  markOutfitFailed: (args: {
+    outfitId: string;
+    errorMessage: string;
+  }) => Promise<void>;
+  createCheckout: (args: {
+    merchantOrigin: string;
+    lines: Array<{ variantId: string; quantity: number }>;
+  }) => Promise<FashionCheckoutSessionResult>;
+  cancelCheckout: (args: {
+    mcpEndpoint: string;
+    checkoutId: string;
+  }) => Promise<{ checkoutId: string; status: string }>;
 };
 
 export type ScheduleToolApi = {

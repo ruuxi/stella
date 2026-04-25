@@ -11,6 +11,7 @@ import { registerMemoryHandlers } from "../ipc/memory-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerOfficePreviewHandlers } from "../ipc/office-preview-handlers.js";
+import { registerFashionHandlers } from "../ipc/fashion-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
 import { registerStoreHandlers } from "../ipc/store-handlers.js";
 import { registerSystemHandlers } from "../ipc/system-handlers.js";
@@ -221,6 +222,14 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerStoreHandlers({
+    getStellaRoot: lifecycle.getStellaRoot,
+    getStellaHostRunner: lifecycle.getRunner,
+    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerFashionHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,

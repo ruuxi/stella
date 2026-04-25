@@ -1,0 +1,745 @@
+/* ============================================
+   Fashion tab — full-bleed snap feed, no cards
+   ============================================ */
+
+@keyframes fashion-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fashion-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fashion-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
+}
+
+/* --- Root: owns the snap-scroll surface --- */
+
+.fashion-root {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  background: var(--background);
+  animation: fashion-fade-in 0.32s ease both;
+}
+
+.fashion-feed {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+}
+
+.fashion-feed::-webkit-scrollbar { display: none; }
+
+/* --- Stage (one outfit per viewport) --- */
+
+.fashion-stage {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(320px, 460px) minmax(140px, 1fr);
+  align-items: center;
+  justify-items: center;
+  gap: clamp(16px, 4vw, 56px);
+  padding: clamp(72px, 9vh, 120px) clamp(20px, 5vw, 64px) clamp(56px, 8vh, 96px);
+  animation: fashion-rise 0.4s ease both;
+}
+
+.fashion-stage-meta {
+  position: absolute;
+  top: clamp(60px, 8vh, 92px);
+  left: clamp(20px, 5vw, 64px);
+  right: clamp(20px, 5vw, 64px);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.fashion-stage-theme {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-base);
+  letter-spacing: -0.005em;
+}
+
+.fashion-stage-subtitle {
+  font-size: 12px;
+  color: var(--text-weaker);
+  margin-top: 2px;
+  max-width: 60ch;
+  line-height: 1.45;
+}
+
+.fashion-stage-status {
+  font-size: 10.5px;
+  color: var(--text-weaker);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.fashion-stage-status[data-state="generating"] {
+  animation: fashion-pulse 1.4s ease-in-out infinite;
+}
+
+.fashion-stage-status[data-state="failed"] {
+  color: oklch(0.55 0.18 25);
+}
+
+/* --- Hero image (no card, just the image) --- */
+
+.fashion-stage-hero {
+  width: 100%;
+  max-width: 460px;
+  aspect-ratio: 3 / 4;
+  border-radius: 18px;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fashion-stage-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.fashion-stage-placeholder {
+  font-size: 12px;
+  color: var(--text-weaker);
+  animation: fashion-pulse 1.6s ease-in-out infinite;
+}
+
+.fashion-stage-failed {
+  font-size: 12px;
+  color: oklch(0.55 0.18 25);
+  text-align: center;
+  padding: 18px;
+}
+
+/* --- Surrounding products (no backgrounds, just spacing) --- */
+
+.fashion-stage-side {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 4vh, 40px);
+  width: 100%;
+  max-width: 220px;
+  align-self: center;
+  justify-content: center;
+  align-items: center;
+}
+
+.fashion-stage-side[data-align="left"]  { align-items: flex-end; }
+.fashion-stage-side[data-align="right"] { align-items: flex-start; }
+
+.fashion-product {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 180px;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: default;
+  position: relative;
+}
+
+.fashion-product-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  position: relative;
+  transition: transform 0.2s ease;
+}
+
+.fashion-product:hover .fashion-product-thumb {
+  transform: translateY(-2px);
+}
+
+.fashion-product-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.fashion-product-thumb-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  color: var(--text-weaker);
+}
+
+.fashion-product-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fashion-product-slot {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-weaker);
+  font-weight: 600;
+}
+
+.fashion-product-title {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-strong);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.fashion-product-vendor {
+  font-size: 11px;
+  color: var(--text-weaker);
+}
+
+.fashion-product-price {
+  font-size: 12px;
+  color: var(--text-base);
+  font-weight: 550;
+  margin-top: 2px;
+}
+
+.fashion-product-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.fashion-product:hover .fashion-product-actions,
+.fashion-product:focus-within .fashion-product-actions {
+  opacity: 1;
+}
+
+.fashion-icon-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-base);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+
+.fashion-icon-btn:hover {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.fashion-icon-btn:active {
+  transform: scale(0.94);
+}
+
+.fashion-icon-btn[data-active] {
+  background: color-mix(in oklch, oklch(0.66 0.17 340) 20%, transparent);
+  color: oklch(0.55 0.22 340);
+}
+
+/* --- Top-left floating profile button --- */
+
+.fashion-profile-btn {
+  position: absolute;
+  top: clamp(14px, 2vh, 22px);
+  left: clamp(16px, 2.5vw, 28px);
+  z-index: 20;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--background) 80%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  padding: 0;
+  overflow: hidden;
+  cursor: default;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fashion-profile-btn:hover {
+  transform: scale(1.04);
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.fashion-profile-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fashion-profile-btn-fallback {
+  font-size: 14px;
+  color: var(--text-weak);
+}
+
+/* --- Bottom-center floating prompt pill --- */
+
+.fashion-prompt-dock {
+  position: absolute;
+  bottom: clamp(20px, 4vh, 36px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 16px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--background) 78%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  box-shadow: 0 8px 28px color-mix(in oklch, var(--foreground) 8%, transparent);
+  width: min(560px, calc(100% - 48px));
+}
+
+.fashion-prompt-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 4px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--text-strong);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.fashion-prompt-input::placeholder {
+  color: var(--text-weaker);
+}
+
+.fashion-prompt-send {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--background);
+  background: var(--text-strong);
+  border: none;
+  border-radius: 999px;
+  cursor: default;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.fashion-prompt-send:hover { opacity: 0.85; }
+.fashion-prompt-send:active { transform: scale(0.96); }
+.fashion-prompt-send[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+/* --- Cart pill (bottom-right) --- */
+
+.fashion-cart-dock {
+  position: absolute;
+  bottom: clamp(20px, 4vh, 36px);
+  right: clamp(20px, 3vw, 36px);
+  z-index: 19;
+  max-width: min(360px, calc(100% - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.fashion-cart-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--background) 80%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  box-shadow: 0 6px 22px color-mix(in oklch, var(--foreground) 8%, transparent);
+  font-size: 12.5px;
+  color: var(--text-strong);
+  font-weight: 550;
+  cursor: default;
+}
+
+.fashion-cart-pill span {
+  color: var(--text-weak);
+  font-weight: 500;
+}
+
+.fashion-cart-checkout {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--background);
+  background: var(--text-strong);
+  border: none;
+  border-radius: 999px;
+  cursor: default;
+  transition: opacity 0.15s;
+}
+
+.fashion-cart-checkout:hover { opacity: 0.85; }
+.fashion-cart-checkout[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+.fashion-cart-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: color-mix(in oklch, var(--background) 88%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.fashion-cart-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-strong);
+  padding: 4px 0;
+}
+
+.fashion-cart-item-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fashion-cart-item-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fashion-cart-item-price { font-size: 11px; color: var(--text-weaker); }
+
+.fashion-cart-qty-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-base);
+  font-size: 12px;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fashion-cart-qty-btn:hover { background: color-mix(in oklch, var(--foreground) 12%, transparent); }
+
+/* --- Empty / loading states (full-bleed, no card) --- */
+
+.fashion-blank {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 32px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.fashion-blank-inner {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 460px;
+  animation: fashion-rise 0.4s ease both;
+}
+
+.fashion-blank-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-weaker);
+  font-weight: 600;
+}
+
+.fashion-blank-title {
+  font-size: clamp(28px, 4vw, 38px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+  line-height: 1.15;
+}
+
+.fashion-blank-subtitle {
+  font-size: 14.5px;
+  color: var(--text-weak);
+  line-height: 1.5;
+}
+
+.fashion-blank-cta {
+  margin-top: 8px;
+  height: 40px;
+  padding: 0 22px;
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--background);
+  background: var(--text-strong);
+  border: none;
+  border-radius: 999px;
+  cursor: default;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.fashion-blank-cta:hover { opacity: 0.85; }
+.fashion-blank-cta:active { transform: scale(0.98); }
+.fashion-blank-cta[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+.fashion-blank-error {
+  font-size: 12.5px;
+  color: oklch(0.55 0.18 25);
+  margin-top: 4px;
+}
+
+/* --- Onboarding sheet (overlay, opens from profile button) --- */
+
+.fashion-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: color-mix(in oklch, var(--background) 60%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(40px, 8vh, 80px) 24px;
+  animation: fashion-fade-in 0.2s ease both;
+}
+
+.fashion-sheet {
+  width: min(640px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fashion-rise 0.28s ease both;
+}
+
+.fashion-sheet::-webkit-scrollbar { display: none; }
+
+.fashion-sheet-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fashion-sheet-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text-strong);
+}
+
+.fashion-sheet-subtitle {
+  font-size: 13px;
+  color: var(--text-weak);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.fashion-sheet-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-base);
+  font-size: 14px;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fashion-sheet-close:hover { background: color-mix(in oklch, var(--foreground) 12%, transparent); }
+
+.fashion-sheet-grid {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@container store (max-width: 640px) {
+  .fashion-sheet-grid { grid-template-columns: 1fr; }
+}
+
+.fashion-photo-slot {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 16px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border: 1.5px dashed color-mix(in oklch, var(--foreground) 14%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-weaker);
+  cursor: default;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.15s, background 0.15s;
+  padding: 16px;
+}
+
+.fashion-photo-slot:hover {
+  border-color: color-mix(in oklch, var(--foreground) 26%, transparent);
+}
+
+.fashion-photo-slot img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fashion-photo-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 8px;
+  font-size: 11.5px;
+  background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0));
+  color: #fff;
+  text-align: center;
+}
+
+.fashion-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fashion-field-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-weak);
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.fashion-size-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.fashion-size-input,
+.fashion-prefs-textarea {
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-strong);
+  background: var(--background);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+
+.fashion-prefs-textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.fashion-size-input:focus,
+.fashion-prefs-textarea:focus {
+  border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.fashion-sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fashion-sheet-save {
+  height: 36px;
+  padding: 0 20px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--background);
+  background: var(--text-strong);
+  border: none;
+  border-radius: 999px;
+  cursor: default;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.fashion-sheet-save:hover { opacity: 0.85; }
+.fashion-sheet-save:active { transform: scale(0.98); }
+.fashion-sheet-save[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+/* --- Responsive: stack the stage on narrow widths --- */
+
+@container store (max-width: 760px) {
+  .fashion-stage {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    padding-top: clamp(72px, 10vh, 120px);
+  }
+  .fashion-stage-side {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: none;
+    align-items: flex-start !important;
+  }
+  .fashion-product { max-width: 140px; }
+  .fashion-product-actions { opacity: 1; }
+}
