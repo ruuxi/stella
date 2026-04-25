@@ -6,7 +6,7 @@
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: 170px;
+  width: var(--shell-sidebar-width, 170px);
   flex-shrink: 0;
   position: relative;
   z-index: 2;
@@ -24,138 +24,12 @@
   -webkit-backdrop-filter: var(--glass-blur);
 }
 
-/* ── Title-bar row ──────────────────────────────────────────────
-   On Windows/Linux this hosts the custom window controls (close,
-   minimize, maximize). On macOS the OS-rendered traffic lights
-   live in this same strip — we just reserve enough vertical space.
-   The whole row is a drag region; interactive children opt back out
-   via `-webkit-app-region: no-drag`. Theme + Settings used to live
-   here; both have moved into the avatar dropdown at the bottom of
-   the sidebar. */
+/* Empty top band. The transparent shell topbar sits over this space while
+   this sidebar surface supplies the background behind it. */
 .sidebar-titlebar {
-  height: 32px;
+  height: var(--shell-topbar-height, 38px);
   flex-shrink: 0;
   -webkit-app-region: drag;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  padding: 0 6px 0 8px;
-}
-
-/* macOS: leave a wider safe area on the left so the OS traffic lights don't
-   overlap any sidebar content, and left-align so the chrome (Settings,
-   Theme) sits immediately to the right of the traffic lights. On Win/Linux
-   the row stays right-aligned and the chrome sits to the left of the custom
-   window controls. */
-.sidebar-titlebar--mac {
-  justify-content: flex-start;
-  padding-left: 80px;
-}
-
-/* Compact / mini-window collapsed: drop interactive children, but keep
-   a thin spacer so the macOS traffic lights still have a drag region. */
-.sidebar-titlebar--compact {
-  height: 16px;
-  padding: 0;
-  gap: 0;
-}
-
-/* ── Custom window controls (Windows / Linux) ── */
-
-.sidebar-window-controls {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  -webkit-app-region: no-drag;
-}
-
-.sidebar-wc-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: var(--radius-sm, 4px);
-  background: transparent;
-  color: var(--text-weak);
-  cursor: default;
-  transition: background 0.1s ease, color 0.1s ease;
-}
-
-.sidebar-wc-btn:hover {
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
-  color: var(--text-strong);
-}
-
-.sidebar-wc-btn:active {
-  background: color-mix(in oklch, var(--foreground) 15%, transparent);
-}
-
-.sidebar-wc-close:hover {
-  background: #e81123;
-  color: white;
-}
-
-.sidebar-wc-close:active {
-  background: #c50f1f;
-  color: white;
-}
-
-.sidebar-wc-btn svg {
-  flex-shrink: 0;
-}
-
-.sidebar-titlebar .sidebar-window-controls {
-  -webkit-app-region: no-drag;
-}
-
-/* ── Title-bar chrome (Settings + Theme) ── */
-
-.sidebar-titlebar-chrome {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  -webkit-app-region: no-drag;
-}
-
-/* macOS: the OS traffic lights sit at `trafficLightPosition: { x: 16, y: 16 }`
-   (see `electron/windows/full-window.ts`). Their ~12px height puts their
-   vertical centre at y≈22, while the chrome buttons centred in the 32px
-   title bar sit at y≈16. Shift the chrome group ~6px down so the icon
-   centres line up with the dots' centres. */
-.sidebar-titlebar--mac .sidebar-titlebar-chrome {
-  position: relative;
-  top: 8px;
-}
-
-.sidebar-titlebar-chrome-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: var(--radius-sm, 4px);
-  background: transparent;
-  color: var(--text-weak);
-  cursor: default;
-  transition: background 0.1s ease, color 0.1s ease;
-  -webkit-app-region: no-drag;
-}
-
-.sidebar-titlebar-chrome-btn:hover {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--text-strong);
-}
-
-.sidebar-titlebar-chrome-btn:active {
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
-}
-
-.sidebar-titlebar-chrome-btn svg {
-  flex-shrink: 0;
 }
 
 /* Brand row: logo + "Stella" text, sitting just under the title bar.
@@ -622,16 +496,12 @@
    Mirrors the compact-window media query so a click on the brand
    collapses the same way an under-600px window would. */
 .sidebar.sidebar--rail {
-  width: 64px;
-}
-
-.sidebar.sidebar--rail .sidebar-titlebar {
-  display: none;
+  width: var(--shell-sidebar-rail-width, 88px);
 }
 
 .sidebar.sidebar--rail .sidebar-brand {
   justify-content: center;
-  padding: 20px 0 8px;
+  padding: 4px 0 8px;
   gap: 0;
 }
 

@@ -1,0 +1,167 @@
+import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Maximize2,
+  Minus,
+  Palette,
+  Settings,
+  Square,
+  X,
+} from "lucide-react";
+import { ThemePicker } from "@/global/settings/ThemePicker";
+import { getPlatform } from "@/platform/electron/platform";
+
+export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
+
+const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
+
+const WindowControls = () => {
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  const updateMaximizedState = useCallback(() => {
+    const promise = window.electronAPI?.window.isMaximized?.();
+    if (!promise) return;
+    void promise.then((maximized) => setIsMaximized(Boolean(maximized)));
+  }, []);
+
+  useEffect(() => {
+    updateMaximizedState();
+  }, [updateMaximizedState]);
+
+  return (
+    <div className="shell-topbar-window-controls">
+      <button
+        type="button"
+        className="shell-topbar-wc-btn"
+        onClick={() => window.electronAPI?.window.minimize?.()}
+        aria-label="Minimize"
+      >
+        <Minus size={13} strokeWidth={1.8} />
+      </button>
+      <button
+        type="button"
+        className="shell-topbar-wc-btn"
+        onClick={() => {
+          window.electronAPI?.window.maximize?.();
+          window.setTimeout(updateMaximizedState, MAXIMIZE_STATE_SYNC_DELAY_MS);
+        }}
+        aria-label={isMaximized ? "Restore" : "Maximize"}
+      >
+        {isMaximized ? (
+          <Square size={11} strokeWidth={1.8} />
+        ) : (
+          <Maximize2 size={12} strokeWidth={1.8} />
+        )}
+      </button>
+      <button
+        type="button"
+        className="shell-topbar-wc-btn shell-topbar-wc-close"
+        onClick={() => window.electronAPI?.window.close?.()}
+        aria-label="Close"
+      >
+        <X size={13} strokeWidth={1.8} />
+      </button>
+    </div>
+  );
+};
+
+const SidebarToggleIcon = () => (
+  <svg
+    aria-hidden="true"
+    className="shell-topbar-sidebar-toggle-icon"
+    width="15"
+    height="15"
+    viewBox="0 0 16 16"
+    fill="none"
+  >
+    <rect
+      x="2.25"
+      y="2.25"
+      width="11.5"
+      height="11.5"
+      rx="2.25"
+      stroke="currentColor"
+      strokeWidth="1.4"
+    />
+    <path
+      d="M6.25 2.75V13.25"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+export const ShellTopBar = () => {
+  const navigate = useNavigate();
+  const router = useRouter();
+  const isMac = getPlatform() === "darwin";
+
+  const toggleSidebar = useCallback(() => {
+    window.dispatchEvent(new Event(STELLA_TOGGLE_SIDEBAR_RAIL_EVENT));
+  }, []);
+
+  const openSettings = useCallback(() => {
+    void navigate({ to: "/settings" });
+  }, [navigate]);
+
+  return (
+    <header className="shell-topbar" data-platform={isMac ? "mac" : "other"}>
+      <div className="shell-topbar-left">
+        <button
+          type="button"
+          className="shell-topbar-icon-btn"
+          onClick={toggleSidebar}
+          aria-label="Toggle sidebar"
+          title="Toggle sidebar"
+        >
+          <SidebarToggleIcon />
+        </button>
+        <button
+          type="button"
+          className="shell-topbar-icon-btn"
+          onClick={openSettings}
+          aria-label="Settings"
+          title="Settings"
+        >
+          <Settings size={14} strokeWidth={1.75} />
+        </button>
+        <ThemePicker
+          side="bottom"
+          align="start"
+          trigger={
+            <button
+              type="button"
+              className="shell-topbar-icon-btn"
+              aria-label="Theme"
+              title="Theme"
+            >
+              <Palette size={14} strokeWidth={1.75} />
+            </button>
+          }
+        />
+        <button
+          type="button"
+          className="shell-topbar-icon-btn shell-topbar-history-btn"
+          onClick={() => router.history.back()}
+          aria-label="Back"
+          title="Back"
+        >
+          <ArrowLeft size={15} strokeWidth={1.75} />
+        </button>
+        <button
+          type="button"
+          className="shell-topbar-icon-btn shell-topbar-history-btn"
+          onClick={() => router.history.forward()}
+          aria-label="Forward"
+          title="Forward"
+        >
+          <ArrowRight size={15} strokeWidth={1.75} />
+        </button>
+      </div>
+      {!isMac ? <WindowControls /> : null}
+    </header>
+  );
+};

@@ -72,6 +72,7 @@
 
   .display-sidebar-inner {
     width: 100%;
+    padding-top: var(--shell-topbar-height, 38px);
     border-left: none;
     border-radius: 0;
   }
@@ -109,6 +110,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  padding-top: var(--shell-topbar-height, 38px);
+  box-sizing: border-box;
   /* Stay at the panel's "open" width even while the outer is animating
      from 0 → open. The outer has `overflow: hidden`, so this gives us
      the "roll away" effect on close instead of letting content reflow. */

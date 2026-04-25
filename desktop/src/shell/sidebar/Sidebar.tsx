@@ -1,11 +1,6 @@
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import {
-  ArrowLeft,
-  LogOut,
-  Palette,
-  Settings as SettingsIcon,
-} from "lucide-react";
+import { ArrowLeft, LogOut } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -22,8 +17,7 @@ import {
 } from "@/context/page-sidebar";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
-import { ThemePicker } from "@/global/settings/ThemePicker";
-import { getPlatform } from "@/platform/electron/platform";
+import { STELLA_TOGGLE_SIDEBAR_RAIL_EVENT } from "@/shell/ShellTopBar";
 import { Button } from "@/ui/button";
 import {
   Dialog,
@@ -76,8 +70,6 @@ interface SidebarProps {
   onNewAppAskStella?: () => void;
 }
 
-const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
-
 const RAIL_STORAGE_KEY = "stella:sidebar:rail";
 
 const readPersistedRail = (): boolean => {
@@ -97,61 +89,6 @@ const writePersistedRail = (collapsed: boolean) => {
     // localStorage can throw in private mode / sandboxed contexts; the
     // toggle is purely visual, so a silent no-op is the right thing.
   }
-};
-
-const WindowControls = () => {
-  const [isMaximized, setIsMaximized] = useState(false);
-
-  const updateMaximizedState = useCallback(() => {
-    const promise = window.electronAPI?.window.isMaximized?.();
-    if (!promise) return;
-    void promise.then((maximized) => setIsMaximized(Boolean(maximized)));
-  }, []);
-
-  useEffect(() => {
-    updateMaximizedState();
-  }, [updateMaximizedState]);
-
-  return (
-    <div className="sidebar-window-controls">
-      <button
-        className="sidebar-wc-btn"
-        onClick={() => window.electronAPI?.window.minimize?.()}
-        aria-label="Minimize"
-      >
-        <svg width="10" height="10" viewBox="0 0 10 1">
-          <rect width="10" height="1" fill="currentColor" />
-        </svg>
-      </button>
-      <button
-        className="sidebar-wc-btn"
-        onClick={() => {
-          window.electronAPI?.window.maximize?.();
-          window.setTimeout(updateMaximizedState, MAXIMIZE_STATE_SYNC_DELAY_MS);
-        }}
-        aria-label={isMaximized ? "Restore" : "Maximize"}
-      >
-        {isMaximized ? (
-          <svg width="10" height="10" viewBox="0 0 10 10">
-            <path fill="none" stroke="currentColor" strokeWidth="1" d="M2.5 0.5h7v7h-7zM0.5 2.5v7h7" />
-          </svg>
-        ) : (
-          <svg width="10" height="10" viewBox="0 0 10 10">
-            <rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1" />
-          </svg>
-        )}
-      </button>
-      <button
-        className="sidebar-wc-btn sidebar-wc-close"
-        onClick={() => window.electronAPI?.window.close?.()}
-        aria-label="Close"
-      >
-        <svg width="10" height="10" viewBox="0 0 10 10">
-          <path stroke="currentColor" strokeWidth="1.2" d="M1 1l8 8M9 1l-8 8" />
-        </svg>
-      </button>
-    </div>
-  );
 };
 
 interface AppNavItemProps {
@@ -369,68 +306,7 @@ const AccountRow = ({ onSignIn, onUpgrade }: AccountRowProps) => {
 // Sidebar
 // ---------------------------------------------------------------------------
 
-interface TitleBarRowProps {
-  isMac: boolean;
-  /** When true (compact / rail), the row collapses to a thin spacer so traffic
-   * lights still have somewhere to live but the window controls hide. */
-  compact: boolean;
-  onOpenSettings: () => void;
-}
-
-/**
- * Settings + Theme buttons that live in the sidebar title bar.
- *
- * Positioning is handled by the parent: on macOS the row is left-aligned
- * (these sit immediately to the right of the OS traffic lights), on
- * Windows/Linux the row is right-aligned and these sit immediately to the
- * left of the custom window controls.
- *
- * Icons are intentionally small (14px) — they're decorative chrome, not
- * primary nav. Buttons opt out of the drag region so they're clickable.
- */
-interface TitleBarChromeProps {
-  onOpenSettings: () => void;
-}
-
-const TitleBarChrome = ({ onOpenSettings }: TitleBarChromeProps) => (
-  <div className="sidebar-titlebar-chrome">
-    <button
-      type="button"
-      className="sidebar-titlebar-chrome-btn"
-      onClick={onOpenSettings}
-      aria-label="Settings"
-      title="Settings"
-    >
-      <SettingsIcon size={14} strokeWidth={1.75} />
-    </button>
-    <ThemePicker
-      side="bottom"
-      align="start"
-      trigger={
-        <button
-          type="button"
-          className="sidebar-titlebar-chrome-btn"
-          aria-label="Theme"
-          title="Theme"
-        >
-          <Palette size={14} strokeWidth={1.75} />
-        </button>
-      }
-    />
-  </div>
-);
-
-const TitleBarRow = ({ isMac, compact, onOpenSettings }: TitleBarRowProps) => (
-  <div
-    className={
-      `sidebar-titlebar${isMac ? " sidebar-titlebar--mac" : ""}` +
-      (compact ? " sidebar-titlebar--compact" : "")
-    }
-  >
-    {!compact && <TitleBarChrome onOpenSettings={onOpenSettings} />}
-    {!compact && !isMac ? <WindowControls /> : null}
-  </div>
-);
+const TitleBarSpacer = () => <div className="sidebar-titlebar" />;
 
 export const Sidebar = ({
   className,
@@ -439,7 +315,6 @@ export const Sidebar = ({
   onNewApp,
   onNewAppAskStella,
 }: SidebarProps) => {
-  const isMac = getPlatform() === "darwin";
   const handleAskStella = onNewAppAskStella ?? onNewApp;
   const navigate = useNavigate();
   const pageOverride = usePageSidebarOverride();
@@ -450,11 +325,7 @@ export const Sidebar = ({
   // concept and is forced compact via CSS regardless of this state.
   const [railCollapsed, setRailCollapsed] = useState<boolean>(readPersistedRail);
 
-  useEffect(() => {
-    window.electronAPI?.window.setNativeButtonsVisible(!railCollapsed);
-  }, [railCollapsed]);
-
-  const handleBrandClick = useCallback(() => {
+  const toggleRailCollapsed = useCallback(() => {
     setRailCollapsed((prev) => {
       const next = !prev;
       writePersistedRail(next);
@@ -462,12 +333,29 @@ export const Sidebar = ({
     });
   }, []);
 
+  useEffect(() => {
+    window.electronAPI?.window.setNativeButtonsVisible(true);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener(
+      STELLA_TOGGLE_SIDEBAR_RAIL_EVENT,
+      toggleRailCollapsed,
+    );
+    return () => {
+      window.removeEventListener(
+        STELLA_TOGGLE_SIDEBAR_RAIL_EVENT,
+        toggleRailCollapsed,
+      );
+    };
+  }, [toggleRailCollapsed]);
+
+  const handleBrandClick = useCallback(() => {
+    toggleRailCollapsed();
+  }, [toggleRailCollapsed]);
+
   const handleUpgrade = useCallback(() => {
     void navigate({ to: "/billing" });
-  }, [navigate]);
-
-  const handleOpenSettings = useCallback(() => {
-    void navigate({ to: "/settings" });
   }, [navigate]);
 
   const sidebarClass = useMemo(() => {
@@ -498,11 +386,7 @@ export const Sidebar = ({
   return (
     <aside className={sidebarClass}>
       <div className="sidebar-stack">
-        <TitleBarRow
-          isMac={isMac}
-          compact={railCollapsed}
-          onOpenSettings={handleOpenSettings}
-        />
+        <TitleBarSpacer />
         {brandRow}
         {pageOverride ? (
           // Page-sidebar override mode: a route (e.g. /settings) has
