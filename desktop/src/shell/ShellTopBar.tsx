@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Maximize2,
+  MessageSquare,
   Minimize2,
   Minus,
   PanelRight,
@@ -17,7 +18,11 @@ import { ThemePicker } from "@/global/settings/ThemePicker";
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
-import { dispatchOpenDisplaySidebar } from "@/shared/lib/stella-orb-chat";
+import {
+  dispatchCloseSidebarChat,
+  dispatchOpenDisplaySidebar,
+  dispatchOpenSidebarChat,
+} from "@/shared/lib/stella-orb-chat";
 
 export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
 
@@ -100,7 +105,15 @@ const SidebarToggleIcon = () => (
   </svg>
 );
 
-export const ShellTopBar = () => {
+type ShellTopBarProps = {
+  isChatOpen?: boolean;
+  showChatButton?: boolean;
+};
+
+export const ShellTopBar = ({
+  isChatOpen = false,
+  showChatButton = false,
+}: ShellTopBarProps) => {
   const navigate = useNavigate();
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
@@ -115,6 +128,14 @@ export const ShellTopBar = () => {
   const openSettings = useCallback(() => {
     void navigate({ to: "/settings" });
   }, [navigate]);
+
+  const toggleChatSidebar = useCallback(() => {
+    if (isChatOpen) {
+      dispatchCloseSidebarChat();
+    } else {
+      dispatchOpenSidebarChat();
+    }
+  }, [isChatOpen]);
 
   useEffect(() => {
     if (!isMiniWindow) return;
@@ -212,6 +233,18 @@ export const ShellTopBar = () => {
           </button>
         ) : null}
         <div className="shell-topbar-display-controls">
+          {showChatButton ? (
+            <button
+              type="button"
+              className="shell-topbar-icon-btn"
+              onClick={toggleChatSidebar}
+              aria-label={isChatOpen ? "Close chat" : "Open chat"}
+              aria-pressed={isChatOpen}
+              title={isChatOpen ? "Close chat" : "Open chat"}
+            >
+              <MessageSquare size={14} strokeWidth={1.75} />
+            </button>
+          ) : null}
           {panelOpen ? (
             <>
               <button
