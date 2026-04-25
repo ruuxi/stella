@@ -21,48 +21,48 @@
   flex-direction: column;
   gap: 16px;
   overflow-anchor: none;
-  /*
-   * Render-time virtualization (no JS list lib).
-   *
-   * `content-visibility: auto` tells the browser it may skip layout, style,
-   * and paint for any turn that isn't intersecting the viewport — the same
-   * payoff @legendapp/list and react-window provide via JS windowing, but
-   * browser-native and without disrupting the column-reverse viewport, the
-   * mask-image fades, the custom scrollbar overlay, `scrollTurnToPinTop`'s
-   * `[data-turn-id]` querySelector, or the last-turn `100cqh` min-height
-   * that gives the freshly-streamed assistant reply a full reading area.
-   *
-   * `contain-intrinsic-size: auto 200px` is the placeholder size used while
-   * the row is hidden. After a row is laid out once, the browser remembers
-   * its real size and re-uses it as the placeholder, so scroll position
-   * stays stable when off-screen rows pop in/out of containment. 200px is
-   * a sane initial guess for a typical user/assistant turn; the wrong
-   * guess only costs a single re-layout the first time the row scrolls in.
-   *
-   * Skipped on the in-flight last turn (`session-turn--last-turn`) below
-   * — it owns the floor of the viewport while streaming and must always
-   * be live so resize-observer auto-scroll keeps tracking the bottom.
-   */
+}
+
+/*
+ * Render-time virtualization (no JS list lib).
+ *
+ * `content-visibility: auto` lets the browser skip layout, style, and
+ * paint for any turn that isn't intersecting the viewport — the same
+ * payoff @legendapp/list and react-window provide via JS windowing,
+ * but browser-native and without disrupting the column-reverse
+ * viewport, the mask-image fades, the custom scrollbar overlay,
+ * `scrollTurnToPinTop`'s `[data-turn-id]` querySelector, or the
+ * last-turn `100cqh` min-height that gives the freshly-streamed
+ * assistant reply a full reading area.
+ *
+ * `contain-intrinsic-size: auto 200px` is the placeholder size used
+ * while the row is hidden. After the row has been laid out once the
+ * browser caches the real size and re-uses it.
+ *
+ * Scoped to `.chat-viewport-region` so it applies uniformly to BOTH the
+ * full-shell viewport and the compact-surface viewport (sidebar/mini) —
+ * the sidebar now wraps in the same `.chat-viewport-region` and uses the
+ * same `useChatScrollManagement` hook (user-bubble pin-to-top, anchor
+ * restore on resize), so the previous "unsettle on stream complete"
+ * artifact in the sidebar is gone and CV virtualization can be used
+ * everywhere.
+ */
+.chat-viewport-region .session-turn {
   content-visibility: auto;
   contain-intrinsic-size: auto 200px;
 }
 
-.session-turn--last-turn {
+.chat-viewport-region .session-turn--last-turn {
   content-visibility: visible;
   contain-intrinsic-size: none;
 }
 
 /*
- * Latest turn (full-shell only): stretch to fill the scroll viewport so
- * the user bubble can sit at the top with the assistant reply below,
- * regardless of window size. 100cqh = 100% of .chat-viewport-region's
- * height (the nearest size container).
- *
- * Scoped to .chat-viewport-region so the rule does NOT apply inside the
- * compact conversation surface used by the chat sidebar — that surface
- * has no size container in scope, so 100cqh would fall back to the
- * layout viewport and reserve a full screen of empty space below the
- * pending message.
+ * Latest turn: stretch to fill the scroll viewport so the user bubble
+ * can sit at the top with the assistant reply below, regardless of
+ * window size. 100cqh = 100% of .chat-viewport-region's height (the
+ * nearest size container — applies to both the full-chat and sidebar
+ * viewport-regions).
  */
 .chat-viewport-region .session-turn--last-turn {
   min-height: calc(100cqh - 48px);
