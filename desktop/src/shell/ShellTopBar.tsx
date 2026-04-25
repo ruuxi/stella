@@ -4,7 +4,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Maximize2,
+  Minimize2,
   Minus,
+  PanelRight,
   Palette,
   Settings,
   Square,
@@ -12,6 +14,7 @@ import {
 } from "lucide-react";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import { getPlatform } from "@/platform/electron/platform";
+import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
 
 export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
 
@@ -98,6 +101,7 @@ export const ShellTopBar = () => {
   const navigate = useNavigate();
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
+  const { panelOpen, panelExpanded, tabs } = useDisplayTabs();
 
   const toggleSidebar = useCallback(() => {
     window.dispatchEvent(new Event(STELLA_TOGGLE_SIDEBAR_RAIL_EVENT));
@@ -161,7 +165,51 @@ export const ShellTopBar = () => {
           <ArrowRight size={15} strokeWidth={1.75} />
         </button>
       </div>
-      {!isMac ? <WindowControls /> : null}
+      <div className="shell-topbar-right">
+        <div className="shell-topbar-display-controls">
+          {panelOpen ? (
+            <>
+              <button
+                type="button"
+                className="shell-topbar-icon-btn"
+                onClick={() => displayTabs.togglePanelExpanded()}
+                aria-label={
+                  panelExpanded ? "Restore panel size" : "Expand panel"
+                }
+                aria-pressed={panelExpanded}
+                title={panelExpanded ? "Restore panel size" : "Expand panel"}
+              >
+                {panelExpanded ? (
+                  <Minimize2 size={14} strokeWidth={1.75} />
+                ) : (
+                  <Maximize2 size={14} strokeWidth={1.75} />
+                )}
+              </button>
+              <button
+                type="button"
+                className="shell-topbar-icon-btn"
+                onClick={() => displayTabs.setPanelOpen(false)}
+                aria-label="Close display panel"
+                title="Close display panel"
+              >
+                <X size={16} strokeWidth={1.85} />
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="shell-topbar-icon-btn"
+              onClick={() => displayTabs.setPanelOpen(true)}
+              aria-label="Open display panel"
+              title="Open display panel"
+              disabled={tabs.length === 0}
+            >
+              <PanelRight size={14} strokeWidth={1.75} />
+            </button>
+          )}
+        </div>
+        {!isMac ? <WindowControls /> : null}
+      </div>
     </header>
   );
 };
