@@ -40,6 +40,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   "moonshotai/kimi-k2.5": "Kimi K2.5",
   "openai/gpt-5.4": "GPT-5.4",
   "openai/gpt-5.4-mini": "GPT-5.4 Mini",
+  "openai/gpt-5.5": "GPT-5.5",
   "zai/glm-4.7": "GLM 4.7",
 };
 

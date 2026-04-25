@@ -106,7 +106,7 @@ const gatewayOptions = (
 
 const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   standard: {
-    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
+    model: "accounts/fireworks/models/kimi-k2p6",
     fallbackMode: "fast",
     managedGatewayProvider: "fireworks",
     temperature: 1.0,
@@ -190,14 +190,14 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   sota: {
-    model: "openai/gpt-5.4",
+    model: "openai/gpt-5.5",
     fallbackMode: "best",
     managedGatewayProvider: "openrouter",
     temperature: 1.0,
     maxOutputTokens: 32768,
     providerOptions: {
       openai: {
-        reasoningEffort: "medium",
+        reasoningEffort: "low",
       },
       ...gatewayOptions("openrouter"),
     },
@@ -261,8 +261,8 @@ const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<Model
 
 export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
-  [AGENT_IDS.ORCHESTRATOR]: "best",
-  [AGENT_IDS.GENERAL]: "best",
+  [AGENT_IDS.ORCHESTRATOR]: "sota",
+  [AGENT_IDS.GENERAL]: "sota",
 
   schedule: "standard",
   synthesis: "synthesis",
@@ -272,7 +272,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   mercury: "fast",
   music_prompt: "media",
   search_html: "fast",
-  store_security_review: "best",
+  store_security_review: "sota",
   store_image_safety_review: "media",
 
   // Memory pipeline (mirrors Codex's split: cheap extract / strong consolidate).
@@ -280,7 +280,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   // the rollout summary). Stage 2 = Dream consolidation, run on the strongest
   // tier so it can faithfully merge weeks of context. Chronicle's recursive
   // summarizer ticks every minute, so it must stay cheap.
-  dream: "best",
+  dream: "sota",
   chronicle: "synthesis",
 };
 
