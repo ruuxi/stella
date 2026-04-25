@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
 import type { MessagePayload } from '@/app/chat/lib/event-transforms'
 import { isOfficePreviewRef } from '@/shared/contracts/office-preview'
@@ -7,8 +7,11 @@ import { deriveTurnResource } from '@/app/chat/lib/derive-turn-resource'
 import { filterEventsForUiDisplay } from '@/app/chat/lib/message-display'
 import { isOrchestratorChatMessagePayload } from '@/app/chat/emotes/message-source'
 import {
-  type TurnViewModel,
-} from './MessageTurn'
+  stabilizeTurnRows,
+  type StableTurnRowsState,
+} from '@/app/chat/lib/stable-rows'
+import { turnViewModelEqual } from '@/app/chat/lib/turn-equality'
+import type { TurnViewModel } from './MessageTurn'
 import {
   getDisplayMessageText,
   getDisplayUserText,
@@ -285,8 +288,21 @@ export function useTurnViewModels(opts: {
     return allTurns.slice(baseStart)
   }, [allTurns, maxTurns, pendingUserMessageId, showStreaming])
 
+  /* eslint-disable react-hooks/refs --
+   * `*StableRef` are pure memoization caches consumed only inside the
+   * companion `useMemo` callback. Reading/writing `.current` inside a
+   * memo callback is the canonical "structural-sharing" pattern (mirrors
+   * t3code's stable-rows implementation): the cache holds the previous
+   * computation so we can reuse object references when nothing changed,
+   * which is what makes downstream `<TurnItem>` `memo()` bail-outs free.
+   * The refs are never observed during render outside of these memos. */
+  const baseTurnsStableRef = useRef<StableTurnRowsState<BaseTurnViewModel> | null>(
+    null,
+  )
+  const turnsStableRef = useRef<StableTurnRowsState<TurnViewModel> | null>(null)
+
   const baseTurns = useMemo(() => {
-    return slicedTurns.map((turn): BaseTurnViewModel => {
+    const computed = slicedTurns.map((turn): BaseTurnViewModel => {
       const userText = getDisplayUserText(turn.userMessage)
       const contextMetadata = getMessagePayload(turn.userMessage)?.metadata
         ?.context
@@ -354,25 +370,41 @@ export function useTurnViewModels(opts: {
           : {}),
       }
     })
+    const next = stabilizeTurnRows(
+      computed,
+      baseTurnsStableRef.current,
+      turnViewModelEqual as (a: BaseTurnViewModel, b: BaseTurnViewModel) => boolean,
+    )
+    baseTurnsStableRef.current = next
+    return next.result
   }, [answeredAskQuestions, slicedTurns])
 
   const turns = useMemo(() => {
+    let candidate: TurnViewModel[]
     if (!selfModMap) {
-      return baseTurns
+      candidate = baseTurns
+    } else {
+      let hasAppliedSelfMod = false
+      const mapped = baseTurns.map((turn): TurnViewModel => {
+        const selfModApplied = selfModMap[turn.id]
+        if (!selfModApplied) {
+          return turn
+        }
+        hasAppliedSelfMod = true
+        return { ...turn, selfModApplied }
+      })
+      candidate = hasAppliedSelfMod ? mapped : baseTurns
     }
 
-    let hasAppliedSelfMod = false
-    const nextTurns = baseTurns.map((turn): TurnViewModel => {
-      const selfModApplied = selfModMap[turn.id]
-      if (!selfModApplied) {
-        return turn
-      }
-      hasAppliedSelfMod = true
-      return { ...turn, selfModApplied }
-    })
-
-    return hasAppliedSelfMod ? nextTurns : baseTurns
+    const next = stabilizeTurnRows(
+      candidate,
+      turnsStableRef.current,
+      turnViewModelEqual,
+    )
+    turnsStableRef.current = next
+    return next.result
   }, [baseTurns, selfModMap])
+  /* eslint-enable react-hooks/refs */
 
   const streamingTargetTurnId = useMemo(() => {
     if (

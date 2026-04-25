@@ -21,6 +21,35 @@
   flex-direction: column;
   gap: 16px;
   overflow-anchor: none;
+  /*
+   * Render-time virtualization (no JS list lib).
+   *
+   * `content-visibility: auto` tells the browser it may skip layout, style,
+   * and paint for any turn that isn't intersecting the viewport — the same
+   * payoff @legendapp/list and react-window provide via JS windowing, but
+   * browser-native and without disrupting the column-reverse viewport, the
+   * mask-image fades, the custom scrollbar overlay, `scrollTurnToPinTop`'s
+   * `[data-turn-id]` querySelector, or the last-turn `100cqh` min-height
+   * that gives the freshly-streamed assistant reply a full reading area.
+   *
+   * `contain-intrinsic-size: auto 200px` is the placeholder size used while
+   * the row is hidden. After a row is laid out once, the browser remembers
+   * its real size and re-uses it as the placeholder, so scroll position
+   * stays stable when off-screen rows pop in/out of containment. 200px is
+   * a sane initial guess for a typical user/assistant turn; the wrong
+   * guess only costs a single re-layout the first time the row scrolls in.
+   *
+   * Skipped on the in-flight last turn (`session-turn--last-turn`) below
+   * — it owns the floor of the viewport while streaming and must always
+   * be live so resize-observer auto-scroll keeps tracking the bottom.
+   */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
+}
+
+.session-turn--last-turn {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
 }
 
 /*
