@@ -74,17 +74,10 @@ export const FullShell = () => {
     }, 400);
   }, []);
 
-  // The IPC `app:setReady` signal and the local `appReady` (router-mount)
-  // gate are intentionally asymmetric:
-  //   * Main-process `setAppReady(onboardingDone)` fires as soon as the user
-  //     finishes onboarding, even if the kernel worker is still preparing or
-  //     failed. This unblocks system integrations (window controls, voice,
-  //     hotkeys) that don't depend on the runtime.
-  //   * `appReady` below additionally requires `runtimeStatus === "ready"`
-  //     before mounting `<RouterProvider>`, because routes like `/chat` and
-  //     `/social` invoke runtime hooks that would crash on a "preparing"
-  //     runtime. The onboarding view shows runtime preparing/error state in
-  //     the meantime.
+  // Once onboarding is complete, do not reuse the onboarding creature as a
+  // runtime startup screen. The app shell can mount while bootstrap prepares
+  // the active conversation; chat controls already handle a missing
+  // conversation id by staying disabled until bootstrap provides one.
   useEffect(() => {
     window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone);
   }, [onboarding.onboardingDone]);
@@ -103,7 +96,7 @@ export const FullShell = () => {
     };
   }, []);
 
-  const appReady = onboarding.onboardingDone && runtimeStatus === "ready";
+  const appReady = onboarding.onboardingDone;
   const showOnboardingDemos = activeDemo || demoClosing;
 
   return (
