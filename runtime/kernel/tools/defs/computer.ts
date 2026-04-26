@@ -1,8 +1,9 @@
 /**
- * macOS computer-use tools.
+ * Desktop computer-use tools.
  *
- * Nine sibling tools that all drive the user's apps in the background through
- * the `stella-computer` CLI (Accessibility + ScreenCaptureKit). Surface
+ * Nine sibling tools that drive the user's apps through the `stella-computer`
+ * CLI. macOS uses Accessibility + ScreenCaptureKit; Windows uses UI
+ * Automation first with Win32 window-message fallbacks. Surface
  * mirrors the upstream computer-use MCP shape so model skill transfers 1:1:
  * `computer_list_apps`, `computer_get_app_state`, `computer_click`,
  * `computer_drag`, `computer_perform_secondary_action`, `computer_press_key`,
@@ -141,7 +142,7 @@ export type ComputerToolOptions = {
 const COMPUTER_APP_PROPERTY = {
   type: "string",
   description:
-    'The target macOS app. Use the display name ("Spotify") or the bundle id ("com.spotify.client"). Required on every call.',
+    'The target desktop app. Use the display name ("Spotify", "Notepad") or platform identifier ("com.spotify.client", "notepad.exe"). Required on every call.',
 };
 
 const unavailableHandler =
@@ -173,8 +174,8 @@ export const createComputerTools = (
     {
       name: "computer_list_apps",
       description:
-        "List the apps on this macOS device (running + recently used). Returns app name, bundle id, pid, last-used date, and active state.",
-      promptSnippet: "List installed/running macOS apps",
+        "List the apps on this device. macOS returns running + recently used apps; Windows returns running top-level apps. Includes app name, identifier, pid, and available state details.",
+      promptSnippet: "List installed/running desktop apps",
       parameters: { type: "object", properties: {} },
       execute: handler("computer_list_apps", () => ["list-apps"]),
     },
@@ -182,7 +183,7 @@ export const createComputerTools = (
       name: "computer_get_app_state",
       description:
         "Start a computer-use session for an app if needed, then return its current accessibility tree (compact numbered element list) and a screenshot of its key window. Call this once per turn before interacting with the app. Required: app.",
-      promptSnippet: "Snapshot a macOS app's UI before acting on it",
+      promptSnippet: "Snapshot a desktop app's UI before acting on it",
       parameters: {
         type: "object",
         properties: { app: COMPUTER_APP_PROPERTY },
@@ -197,7 +198,7 @@ export const createComputerTools = (
     {
       name: "computer_click",
       description:
-        "Click an element of the target app. Strongly prefer element_index (an Accessibility click on a numbered AX element from the latest get_app_state) — it works reliably while the target app stays in the background. Use x/y only as a last resort, when the visible UI you need is not in the AX tree at all. Required: app.",
+        "Click an element of the target app. Strongly prefer element_index (a native accessibility click on a numbered element from the latest get_app_state) — it works reliably while the target app stays in the background. Use x/y only as a last resort, when the visible UI you need is not in the accessibility tree at all. Required: app.",
       parameters: {
         type: "object",
         properties: {
@@ -210,7 +211,7 @@ export const createComputerTools = (
           x: {
             type: "number",
             description:
-              "X pixel coordinate inside the most recent screenshot. Use only when nothing in the AX tree corresponds to what you need to click. Coordinate clicks (especially click_count >= 2) are not reliably accepted by web-view-backed apps such as Spotify, Slack, Discord, and Notion while those apps are in the background — prefer an element_index click on a labeled action button instead.",
+              "X pixel coordinate inside the most recent screenshot. Use only when nothing in the accessibility tree corresponds to what you need to click. Coordinate clicks (especially click_count >= 2) are not reliably accepted by web-view-backed apps such as Spotify, Slack, Discord, and Notion while those apps are in the background — prefer an element_index click on a labeled action button instead.",
           },
           y: {
             type: "number",

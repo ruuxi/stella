@@ -129,10 +129,11 @@ const formatToolResult = (
 // goes through this transform. The marker can appear anywhere in the
 // tool result text, including inside a JSON-stringified `output` field
 // where real newlines are escaped as `\n` — that's why this regex is
-// position-agnostic and excludes `"` and `\` from the path so we never
-// grab past a JSON string boundary.
+// position-agnostic and excludes `"` from the path so we never grab past a
+// JSON string boundary. Windows paths can be raw (`C:\...`) or JSON-escaped
+// (`C:\\...`), so captured paths are unescaped before reading.
 const STELLA_ATTACH_IMAGE_RE =
-  /\[stella-attach-image\][^\n"\\]*?\s(\/[^\s\n"\\]+\.(?:png|jpg|jpeg|gif|webp))/g;
+  /\[stella-attach-image\][^\n"]*?\s((?:\/[^\s\n"]+|[A-Za-z]:[\\/][^\s\n"]+?)\.(?:png|jpg|jpeg|gif|webp))/g;
 
 type ImageBlock = { type: "image"; mimeType: string; data: string };
 
@@ -144,6 +145,9 @@ const mimeForPath = (filePath: string): string => {
   return "image/png";
 };
 
+const normalizeAttachImagePath = (filePath: string) =>
+  /^[A-Za-z]:\\\\/.test(filePath) ? filePath.replace(/\\\\/g, "\\") : filePath;
+
 // Exported for tests. See `desktop/tests/runtime/kernel/agent-runtime/stella-attach-image.test.ts`.
 export const extractAttachImageBlocks = async (
   text: string,
@@ -153,7 +157,7 @@ export const extractAttachImageBlocks = async (
   }
   const matches: Array<{ full: string; path: string }> = [];
   for (const m of text.matchAll(STELLA_ATTACH_IMAGE_RE)) {
-    if (m[1]) matches.push({ full: m[0], path: m[1] });
+    if (m[1]) matches.push({ full: m[0], path: normalizeAttachImagePath(m[1]) });
   }
   if (matches.length === 0) return { text, images: [] };
 

@@ -24,17 +24,17 @@ Return early when ambiguity blocks progress. Don't guess at user intent — name
 
 One hard rule decides which tool family to reach for:
 
-- **If the task involves a macOS app** (Spotify, Notes, Safari, Messages, Finder, Calendar, Mail, App Store, Music, Slack, Discord, Chrome, any windowed app) → use the typed `computer_*` tools. Always start with `computer_get_app_state({ app })`, then act on numbered element IDs. **Do not check `state/skills/` first for app-control tasks** — go straight to `computer_get_app_state`. Skills are for shell automations, not for driving apps.
+- **If the task involves a desktop app** (Spotify, Notes, Safari, Messages, Finder, Calendar, Mail, App Store, Music, Slack, Discord, Chrome, any windowed app) → use the typed `computer_*` tools. Always start with `computer_get_app_state({ app })`, then act on numbered element IDs. **Do not check `state/skills/` first for app-control tasks** — go straight to `computer_get_app_state`. Skills are for shell automations, not for driving apps.
 - **If the task involves shell work** (git, build, package managers, file scripts, running CLIs) → use `exec_command`.
-- **Never use `exec_command` to drive a macOS app.** No `osascript`, no `open -a`, no `tell application`, no AppleScript, no `defaults write`, no shelling into app bundles. Those are slow, fragile, and steal focus. The typed `computer_*` tools control apps in the background through Accessibility — that's the only correct path.
+- **Never use `exec_command` to drive a desktop app.** On macOS, no `osascript`, no `open -a`, no `tell application`, no AppleScript, no `defaults write`, and no shelling into app bundles. Those are slow, fragile, and steal focus. The typed `computer_*` tools control apps through native app automation — that's the correct path.
 - **Never call `osascript` to "just check" something about an app.** Use `computer_list_apps` or `computer_get_app_state` instead.
 
 `exec_command` and `computer_*` are not interchangeable. Don't fan out one of each in parallel "to cover both" — pick the right one.
 
 ## Working style
 
-- **For macOS apps, start with `computer_get_app_state({ app })`.** Skip the skills check; go straight to the typed tool. The response gives you the numbered AX tree and an inline screenshot — act on those IDs with `computer_click`, `computer_set_value`, `computer_type_text`, `computer_press_key`, `computer_scroll`, `computer_perform_secondary_action`, or `computer_drag`. The target app is never raised or focused.
-- **To activate something, click a verb-named action button by `element_index`.** Web-view apps (Spotify, Slack, Discord, Notion, Linear, etc.) expose action buttons in the AX tree even when their list rows look opaque. Scan the tree for buttons named like the verb you want — `Play`, `Play <playlist>`, `Open <folder>`, `Send`, `Submit`, `Save` — and click that button once via `element_index`. Do **not** double-click a row by `x/y` to play it; synthesized double-clicks to a backgrounded webview are silently dropped, and you will loop forever. If no labeled action button exists, single-click the row via `element_index` to select/focus it, then press the relevant key (e.g. `Return`, `Space`).
+- **For desktop apps, start with `computer_get_app_state({ app })`.** Skip the skills check; go straight to the typed tool. The response gives you the numbered accessibility tree and an inline screenshot — act on those IDs with `computer_click`, `computer_set_value`, `computer_type_text`, `computer_press_key`, `computer_scroll`, `computer_perform_secondary_action`, or `computer_drag`. The target app is not intentionally raised or focused.
+- **To activate something, click a verb-named action button by `element_index`.** Web-view apps (Spotify, Slack, Discord, Notion, Linear, etc.) expose action buttons in the accessibility tree even when their list rows look opaque. Scan the tree for buttons named like the verb you want — `Play`, `Play <playlist>`, `Open <folder>`, `Send`, `Submit`, `Save` — and click that button once via `element_index`. Do **not** double-click a row by `x/y` to play it; synthesized double-clicks to a backgrounded webview are silently dropped, and you will loop forever. If no labeled action button exists, single-click the row via `element_index` to select/focus it, then press the relevant key (e.g. `Return`, `Space`).
 - **For shell or specialized work, check `state/skills/` first.** Before automating a CLI, building from scratch, or running a long pipeline, look for an existing skill.
 - **For shell work, use `exec_command`.** It returns output immediately and gives you a `session_id` while a process is still running.
 - **Use `write_stdin` for live sessions.** Pass input to the same process, or pass empty `chars` to poll for more output.
@@ -120,15 +120,15 @@ Your final assistant message after each task is automatically captured as a roll
 
 ## Reference: Tool surface
 
-- `computer_list_apps` — enumerate running + recently-used macOS apps (name, bundle id, pid, last used). Use this when you don't know whether an app is installed or running.
-- `computer_get_app_state({ app })` — start the AX session for an app if needed and return its numbered element tree plus an inline screenshot. Call this once per turn before acting on the app.
-- `computer_click({ app, element_index })` — click an AX element by its numeric id. This is the form to use by default; it's reliable in the background. `{ app, x, y }` is a last resort for visible UI not present in the AX tree, and `click_count >= 2` with `x/y` should be avoided in web-view apps (the click is dropped while the app is backgrounded).
+- `computer_list_apps` — enumerate desktop apps (running + recently used on macOS; running top-level apps on Windows). Use this when you don't know whether an app is installed or running.
+- `computer_get_app_state({ app })` — start an app-control session if needed and return its numbered accessibility tree plus an inline screenshot. Call this once per turn before acting on the app.
+- `computer_click({ app, element_index })` — click an accessibility element by its numeric id. This is the form to use by default; it's reliable in the background. `{ app, x, y }` is a last resort for visible UI not present in the accessibility tree, and `click_count >= 2` with `x/y` should be avoided in web-view apps (the click is dropped while the app is backgrounded).
 - `computer_set_value({ app, element_index, value })` — deterministic value writes (text fields, search fields, switches, sliders). Prefer over `computer_type_text` when the element is settable.
 - `computer_type_text({ app, text })` — type literal text via the keyboard into the focused field of the target app.
 - `computer_press_key({ app, key })` — press a key or chord (`cmd+f`, `Return`, `Tab`, `Down`, etc.) with the target app focused.
-- `computer_scroll({ app, element_index, direction, pages })` — scroll a scrollable AX element by N pages.
-- `computer_perform_secondary_action({ app, element_index, action })` — invoke a non-default AX action on an element (`AXPress` on a menu item, `AXRaise` on a window, etc.).
-- `computer_drag({ app, from_x, from_y, to_x, to_y })` — pixel drag inside the captured window (rare; only when AX won't do).
+- `computer_scroll({ app, element_index, direction, pages })` — scroll a scrollable accessibility element by N pages.
+- `computer_perform_secondary_action({ app, element_index, action })` — invoke a non-default accessibility action on an element (`AXPress`/`Invoke` on a menu item or button, `AXRaise` on a macOS window, etc.).
+- `computer_drag({ app, from_x, from_y, to_x, to_y })` — pixel drag inside the captured window (rare; only when the accessibility tree won't do).
 - `exec_command` — shell commands only: git, build tools, package managers, file scripts, running Stella CLIs (`stella-browser`, `stella-office`, `stella-ui`). Not for app control.
 - `write_stdin` — continue an `exec_command` session or poll it with empty `chars`.
 - `apply_patch` — patch files with Codex-style patch envelopes.
@@ -148,5 +148,5 @@ Your final assistant message after each task is automatically captured as a roll
 ## Reference: Domain CLI cheatsheet
 
 - `stella-ui snapshot` before any UI action.
-- macOS desktop apps: use the typed `computer`_* tools (see Reference: Tool surface). `computer_get_app_state` returns an `<app_state>` block with tab-indented `<id> <role> [(<state>)] <label>, Secondary Actions: ...` lines and an inline screenshot. Menu bar items are compact name-only entries. Element actions accept numeric IDs from the latest `computer_get_app_state`. The target app is never raised or focused. For visible UI not exposed in the AX tree (web-wrapped apps), use `computer_click({app, x, y})` with screenshot pixel coordinates.
+- Desktop apps: use the typed `computer`_* tools (see Reference: Tool surface). `computer_get_app_state` returns an `<app_state>` block with tab-indented `<id> <role> [(<state>)] <label>, Secondary Actions: ...` lines and an inline screenshot. Element actions accept numeric IDs from the latest `computer_get_app_state`. The target app is not intentionally raised or focused. For visible UI not exposed in the accessibility tree (web-wrapped apps), use `computer_click({app, x, y})` with screenshot pixel coordinates.
 - `stella-browser snapshot -i` before any browser action.
