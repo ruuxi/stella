@@ -18,6 +18,7 @@ import "./Onboarding.css";
  * loading-style intro, so the bundle savings aren't worth the visual
  * jolt — eager imports keep the disclosure as one block. */
 import { OnboardingPermissions } from "./OnboardingPermissions";
+import { OnboardingExtensionPhase } from "./OnboardingExtensionPhase";
 import { OnboardingBrowserPhase } from "./OnboardingBrowserPhase";
 import { OnboardingCreationPhase } from "./OnboardingCreationPhase";
 import { OnboardingThemePhase } from "./OnboardingThemePhase";
@@ -28,6 +29,7 @@ import { OnboardingMemoryPhase } from "./OnboardingMemoryPhase";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 
 const STEP_TITLES: Partial<Record<Phase, string>> = {
+  extension: "Add Stella to your browser.",
   browser: "Let Stella get to know you.",
   creation: "Stella can change.",
   theme: "How should Stella look?",
@@ -123,6 +125,13 @@ export const OnboardingStep1 = ({
       case "permissions":
         return (
           <OnboardingPermissions
+            splitTransitionActive={leaving}
+            onContinue={nextSplitStep}
+          />
+        );
+      case "extension":
+        return (
+          <OnboardingExtensionPhase
             splitTransitionActive={leaving}
             onContinue={nextSplitStep}
           />
