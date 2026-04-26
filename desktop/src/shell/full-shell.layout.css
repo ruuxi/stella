@@ -488,10 +488,10 @@
  * then animate only opacity/transform. That preserves the reveal while
  * avoiding layout-property transitions. */
 .onboarding-layout[data-demo] .onboarding-demo-area {
-  left: 10%;
-  right: 10%;
-  top: 14%;
-  bottom: 26%;
+  left: 6%;
+  right: 6%;
+  top: 12%;
+  bottom: 20%;
   width: auto;
   padding-right: 0;
   box-sizing: border-box;

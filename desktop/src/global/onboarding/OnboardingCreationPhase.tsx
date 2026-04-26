@@ -10,8 +10,8 @@ export function OnboardingCreationPhase({
   return (
     <div className="onboarding-step-content onboarding-step-content--creation">
       <p className="onboarding-step-desc">
-        Click any pill on the demo above to transform that part of me. Mix and
-        match — every change happens live.
+        Click a pill inside the demo to see Stella reshape itself. Every change
+        happens live.
       </p>
 
       <button

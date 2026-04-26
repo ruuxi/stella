@@ -471,7 +471,7 @@
   width: 100%;
   min-width: 100%;
   margin-left: 0;
-  padding: clamp(48px, 7vh, 84px) 40px 40px;
+  padding: clamp(20px, 3vh, 36px) 40px 24px;
   z-index: 5;
   pointer-events: none;
   background: transparent;
@@ -492,6 +492,7 @@
   align-items: center;
   justify-content: space-between;
   max-width: none;
+  min-height: min(1040px, calc(100vh - 48px));
 }
 
 .onboarding-dialogue[data-phase="creation"] .onboarding-split-title {
@@ -509,11 +510,14 @@
   text-align: center;
   max-width: 480px;
   margin: 0 auto;
+  font-size: clamp(17px, 2vw, 22px);
+  line-height: 1.45;
 }
 
 .onboarding-step-content--creation {
   align-items: center;
   gap: 18px;
+  transform: translateY(-72px);
 }
 
 .onboarding-split-stage {
@@ -2328,6 +2332,59 @@
   min-width: 0;
   overflow: hidden;
   position: relative;
+}
+
+.onboarding-canvas > .selfmod-layout {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  pointer-events: auto;
+}
+
+.onboarding-canvas > .selfmod-layout > .sam-root {
+  min-height: 100%;
+}
+
+.onboarding-dialogue[data-phase="creation"] .onboarding-canvas {
+  width: min(1280px, calc(100vw - 80px));
+  height: clamp(860px, 94vh, 1080px);
+  min-height: clamp(860px, 94vh, 1080px);
+  overflow: visible;
+  flex: 0 1 auto;
+  pointer-events: auto;
+}
+
+.onboarding-dialogue[data-phase="creation"] .selfmod-layout {
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  pointer-events: auto;
+}
+
+.onboarding-dialogue[data-phase="creation"] .sam-root {
+  min-height: inherit;
+}
+
+/* Electron's transparent onboarding window makes blur/continuous decorative
+ * animations noticeably heavier than the website. Keep the same states, but
+ * stop the always-running meter/purr/cat loops inside this onboarding mock. */
+.onboarding-dialogue[data-phase="creation"] .sam-studio-meter-bar,
+.onboarding-dialogue[data-phase="creation"] .sam-cozy-cat-body,
+.onboarding-dialogue[data-phase="creation"] .sam-cozy-cat-tail,
+.onboarding-dialogue[data-phase="creation"] .sam-cozy-zzz,
+.onboarding-dialogue[data-phase="creation"] .sam-cozy-heart,
+.onboarding-dialogue[data-phase="creation"] .sam-mochi__purr-bar {
+  animation: none !important;
+}
+
+.onboarding-dialogue[data-phase="creation"] .sam-sidebar,
+.onboarding-dialogue[data-phase="creation"] .sam-header,
+.onboarding-dialogue[data-phase="creation"] .sam-mochi__chips,
+.onboarding-dialogue[data-phase="creation"] .sam-mochi__pulse,
+.onboarding-dialogue[data-phase="creation"] .sam-mochi__compose,
+.onboarding-dialogue[data-phase="creation"] .sam-pill {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /*
