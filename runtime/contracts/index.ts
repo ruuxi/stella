@@ -265,6 +265,8 @@ export type StoreReleaseBlueprintBatch = {
   patch: string;
 };
 
+export type StorePackageCategory = "agents" | "stella";
+
 export type StoreReleaseArtifact = {
   kind: "self_mod_blueprint";
   schemaVersion: 1;
@@ -277,6 +279,7 @@ export type StoreReleaseArtifact = {
 export type StoreReleaseManifest = {
   packageId: string;
   releaseNumber: number;
+  category: StorePackageCategory;
   displayName: string;
   description: string;
   releaseNotes?: string;
@@ -289,6 +292,7 @@ export type StoreReleaseManifest = {
 
 export type StorePackageRecord = {
   packageId: string;
+  category?: StorePackageCategory;
   displayName: string;
   description: string;
   latestReleaseNumber: number;
@@ -313,6 +317,31 @@ export type InstalledStoreModRecord = {
   state: "installed" | "uninstalled";
   createdAt: number;
   updatedAt: number;
+};
+
+export type StorePublishCandidateFile = {
+  path: string;
+  deleted: boolean;
+  contentBase64?: string;
+};
+
+export type StorePublishCandidateCommit = {
+  commitHash: string;
+  shortHash?: string;
+  subject: string;
+  body: string;
+  timestampMs?: number;
+  files: string[];
+  patch: string;
+  conversationId?: string;
+};
+
+export type StorePublishCandidateBundle = {
+  requestText: string;
+  selectedCommitHashes: string[];
+  commits: StorePublishCandidateCommit[];
+  files: StorePublishCandidateFile[];
+  existingPackageId?: string;
 };
 
 export type SelfModHmrPhase =

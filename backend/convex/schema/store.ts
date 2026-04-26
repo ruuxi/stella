@@ -5,6 +5,7 @@ export const store_release_manifest_validator = v.object({
   includedBatchIds: v.array(v.string()),
   includedCommitHashes: v.array(v.string()),
   changedFiles: v.array(v.string()),
+  category: v.optional(v.union(v.literal("agents"), v.literal("stella"))),
   artifactHash: v.optional(v.string()),
   summary: v.optional(v.string()),
 });
@@ -12,6 +13,7 @@ export const store_release_manifest_validator = v.object({
 const storePackageFields = {
   ownerId: v.string(),
   packageId: v.string(),
+  category: v.optional(v.union(v.literal("agents"), v.literal("stella"))),
   displayName: v.string(),
   description: v.string(),
   latestReleaseNumber: v.number(),

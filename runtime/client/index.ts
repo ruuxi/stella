@@ -1216,6 +1216,21 @@ export class StellaRuntimeClient {
     );
   }
 
+  async publishStoreCandidateRelease(payload: {
+    requestText: string;
+    selectedCommitHashes: string[];
+    existingPackageId?: string;
+  }) {
+    return await this.requestWorker<StorePackageReleaseRecord>(
+      METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_CANDIDATE_RELEASE,
+      payload,
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
   async installStoreRelease(payload: { packageId: string; releaseNumber?: number }) {
     return await this.requestWorker<InstalledStoreModRecord>(
       METHOD_NAMES.INTERNAL_WORKER_INSTALL_STORE_RELEASE,

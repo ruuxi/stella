@@ -114,6 +114,7 @@ export const METHOD_NAMES = {
   STORE_GET_RELEASE: "store.getRelease",
   STORE_CREATE_FIRST_RELEASE: "store.createFirstRelease",
   STORE_CREATE_RELEASE_UPDATE: "store.createReleaseUpdate",
+  STORE_PUBLISH_CANDIDATE_RELEASE: "store.publishCandidateRelease",
   STORE_INSTALL_RELEASE: "store.installRelease",
   STORE_UNINSTALL_MOD: "store.uninstallMod",
   SCHEDULE_LIST_CRON_JOBS: "schedule.listCronJobs",
@@ -174,6 +175,7 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_GET_STORE_RELEASE: "internal.worker.getStoreRelease",
   INTERNAL_WORKER_CREATE_FIRST_STORE_RELEASE: "internal.worker.createFirstStoreRelease",
   INTERNAL_WORKER_CREATE_STORE_RELEASE_UPDATE: "internal.worker.createStoreReleaseUpdate",
+  INTERNAL_WORKER_PUBLISH_STORE_CANDIDATE_RELEASE: "internal.worker.publishStoreCandidateRelease",
   INTERNAL_WORKER_INSTALL_STORE_RELEASE: "internal.worker.installStoreRelease",
   INTERNAL_WORKER_UNINSTALL_STORE_MOD: "internal.worker.uninstallStoreMod",
   INTERNAL_WORKER_RESUME_HMR: "internal.worker.resumeHmr",
@@ -570,6 +572,12 @@ export type StorePublishArgs = {
   artifact: StoreReleaseArtifact;
 };
 
+export type StorePublishCandidateArgs = {
+  requestText: string;
+  selectedCommitHashes: string[];
+  existingPackageId?: string;
+};
+
 export type RuntimeStoreApi = {
   listPackages: () => Promise<StorePackageRecord[]>;
   getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
@@ -583,6 +591,9 @@ export type RuntimeStoreApi = {
   ) => Promise<StorePackageReleaseRecord>;
   createReleaseUpdate: (
     args: StorePublishArgs,
+  ) => Promise<StorePackageReleaseRecord>;
+  publishCandidateRelease: (
+    args: StorePublishCandidateArgs,
   ) => Promise<StorePackageReleaseRecord>;
 };
 

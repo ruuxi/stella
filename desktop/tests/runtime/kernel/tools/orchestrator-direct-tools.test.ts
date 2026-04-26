@@ -117,8 +117,8 @@ describe("orchestrator direct tool surface", () => {
 
     const storeTools = new Set(host.getToolCatalog("store").map((tool) => tool.name));
     expect(storeTools.has("askQuestion")).toBe(true);
-    expect(storeTools.has("StoreListLocalCommits")).toBe(true);
-    expect(storeTools.has("StorePublishCommits")).toBe(true);
+    expect(storeTools.has("StoreListLocalCommits")).toBe(false);
+    expect(storeTools.has("StorePublishCommits")).toBe(false);
     expect(storeTools.has("Store")).toBe(false);
   });
 

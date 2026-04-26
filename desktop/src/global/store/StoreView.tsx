@@ -6,7 +6,6 @@ import type {
   LocalGitCommitRecord,
 } from "@/shared/types/electron"
 import { showToast } from "@/ui/toast"
-import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message"
 import ChevronLeft from "lucide-react/dist/esm/icons/chevron-left"
 import Clock from "lucide-react/dist/esm/icons/clock"
 import Layers from "lucide-react/dist/esm/icons/layers"
@@ -646,7 +645,7 @@ function CommitRow({
   commit: LocalGitCommitRecord
   selected: boolean
   onToggle: () => void
-  onPublish: () => void
+  onPublish: () => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(false)
   return (
@@ -674,7 +673,7 @@ function CommitRow({
             data-variant="share"
             onClick={(e) => {
               e.stopPropagation()
-              onPublish()
+              void onPublish()
             }}
           >
             Publish
@@ -756,22 +755,27 @@ function CreationsTab({
   }, [])
 
   const handlePublish = useCallback(
-    (target: LocalGitCommitRecord[]) => {
+    async (target: LocalGitCommitRecord[]) => {
       if (target.length === 0) return
+      const api = window.electronAPI?.store
+      if (!api?.publishCandidateRelease) return
       const prompt = buildPublishPrompt(target)
-      dispatchStellaSendMessage({
-        text: prompt,
-        triggerKind: "store_publish_request",
-        triggerSource: "store_view",
-      })
-      showToast({
-        title:
-          target.length === 1
-            ? "Asked Stella to help publish this change."
-            : `Asked Stella to help publish ${target.length} changes.`,
-        variant: "success",
-      })
-      setSelected(new Set())
+      try {
+        const release = await api.publishCandidateRelease({
+          requestText: prompt,
+          selectedCommitHashes: target.map((commit) => commit.commitHash),
+        })
+        showToast({
+          title: `Published ${release.manifest.displayName}.`,
+          variant: "success",
+        })
+        setSelected(new Set())
+      } catch (err) {
+        showToast({
+          title: err instanceof Error ? err.message : "Couldn't publish this right now",
+          variant: "error",
+        })
+      }
     },
     [],
   )
@@ -811,7 +815,7 @@ function CreationsTab({
             className="store-action-btn"
             data-variant={selectedCommits.length > 0 ? "share" : "added"}
             disabled={selectedCommits.length === 0}
-            onClick={() => handlePublish(selectedCommits)}
+            onClick={() => void handlePublish(selectedCommits)}
           >
             Publish selected
             {selectedCommits.length > 0 ? ` (${selectedCommits.length})` : ""}
@@ -857,7 +861,7 @@ function PackageDetailView({
   onBack: () => void
   onInstall: (packageId: string) => Promise<void>
   onRemove: (packageId: string) => Promise<void>
-  onPublishUpdate: (pkg: StorePackageRecord) => void
+  onPublishUpdate: (pkg: StorePackageRecord) => Promise<void>
 }) {
   const { pkg, releases, loading, error } = usePackageDetail(packageId)
   const [working, setWorking] = useState(false)
@@ -937,7 +941,7 @@ function PackageDetailView({
             <button
               className="store-action-btn store-action-btn--lg"
               data-variant="share"
-              onClick={() => onPublishUpdate(pkg)}
+              onClick={() => void onPublishUpdate(pkg)}
             >
               Publish update
             </button>
@@ -1071,17 +1075,35 @@ export function StoreView() {
     [reloadPackages],
   )
 
-  const handlePublishUpdate = useCallback((pkg: StorePackageRecord) => {
-    dispatchStellaSendMessage({
-      text: buildUpdatePrompt(pkg),
-      triggerKind: "store_publish_request",
-      triggerSource: "store_view",
-    })
-    showToast({
-      title: `Asked Stella to update ${pkg.displayName}.`,
-      variant: "success",
-    })
-  }, [])
+  const handlePublishUpdate = useCallback(async (pkg: StorePackageRecord) => {
+    const api = window.electronAPI?.store
+    if (!api?.publishCandidateRelease) return
+    const candidateHashes = commits.map((commit) => commit.commitHash)
+    if (candidateHashes.length === 0) {
+      showToast({
+        title: "No recent changes are available to publish.",
+        variant: "error",
+      })
+      return
+    }
+    try {
+      const release = await api.publishCandidateRelease({
+        requestText: buildUpdatePrompt(pkg),
+        selectedCommitHashes: candidateHashes,
+        existingPackageId: pkg.packageId,
+      })
+      showToast({
+        title: `Published ${pkg.displayName} version ${release.releaseNumber}.`,
+        variant: "success",
+      })
+      await reloadPackages()
+    } catch (err) {
+      showToast({
+        title: err instanceof Error ? err.message : "Couldn't publish this update right now",
+        variant: "error",
+      })
+    }
+  }, [commits, reloadPackages])
 
   // Detail view
   if (selectedPackageId) {

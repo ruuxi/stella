@@ -177,6 +177,7 @@ export const createStellaHostRunner = (
     getStorePackageRelease: storeOperations.getStorePackageRelease,
     createFirstStoreRelease: storeOperations.createFirstStoreRelease,
     createStoreReleaseUpdate: storeOperations.createStoreReleaseUpdate,
+    publishStoreCandidateRelease: storeOperations.publishStoreCandidateRelease,
     handleLocalChat: orchestratorController.handleLocalChat,
     sendMessage: orchestratorController.sendMessage,
     sendUserMessage: orchestratorController.sendUserMessage,

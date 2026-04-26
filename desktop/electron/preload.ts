@@ -1075,6 +1075,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       packageId: string;
       releaseNumber: number;
     }) => ipcRenderer.invoke("store:getRelease", payload),
+    publishCandidateRelease: (payload: {
+      requestText: string;
+      selectedCommitHashes: string[];
+      existingPackageId?: string;
+    }) => ipcRenderer.invoke("store:publishCandidateRelease", payload),
     listInstalledMods: () => ipcRenderer.invoke("store:listInstalledMods"),
     installRelease: (payload: { packageId: string; releaseNumber?: number }) =>
       ipcRenderer.invoke("store:installRelease", payload),

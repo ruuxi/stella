@@ -12,6 +12,7 @@ import {
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
   type StorePublishArgs,
+  type StorePublishCandidateArgs,
   type RuntimeLocalAgentRequest,
 } from "../protocol/index.js";
 import {
@@ -1679,6 +1680,27 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     METHOD_NAMES.INTERNAL_WORKER_CREATE_STORE_RELEASE_UPDATE,
     async (params) =>
       await ensureRunner().createStoreReleaseUpdate(params as StorePublishArgs),
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_CANDIDATE_RELEASE,
+    async (params) => {
+      const payload = params as StorePublishCandidateArgs;
+      const candidate = await ensureStoreModService().buildPublishCandidateBundle({
+        requestText: payload.requestText,
+        selectedCommitHashes: payload.selectedCommitHashes,
+        existingPackageId: payload.existingPackageId,
+      });
+      return await ensureRunner().publishStoreCandidateRelease({
+        requestText: candidate.requestText,
+        selectedCommitHashes: candidate.selectedCommitHashes,
+        commits: candidate.commits,
+        files: candidate.files,
+        ...(candidate.existingPackageId
+          ? { existingPackageId: candidate.existingPackageId }
+          : {}),
+      });
+    },
   );
 
   peer.registerRequestHandler(

@@ -38,8 +38,6 @@ import { readTool } from "./read.js";
 import { createRequestCredentialTool } from "./request-credential.js";
 import { createScheduleTool } from "./schedule.js";
 import { createScheduleControlTools } from "./schedule-control.js";
-import { createStoreTool } from "./store.js";
-import { createStoreControlTools } from "./store-control.js";
 import { strReplaceTool } from "./str-replace.js";
 import { createAgentTools } from "./task.js";
 import { viewImageTool } from "./view-image.js";
@@ -110,7 +108,6 @@ export const buildBuiltinTools = (
       scheduleApi: options.scheduleApi,
     }),
   );
-  tools.push(createStoreTool({ agentApi: options.agentApi }));
   tools.push(...createAgentTools(options.stateContext));
   if (options.memoryStore) {
     tools.push(createMemoryTool({ memoryStore: options.memoryStore }));
@@ -120,9 +117,6 @@ export const buildBuiltinTools = (
   tools.push(
     ...createScheduleControlTools({ scheduleApi: options.scheduleApi }),
   );
-
-  // Store subagent surface
-  tools.push(...createStoreControlTools({ storeApi: options.storeApi }));
 
   // Subagent file/search/dream surface
   // Read & Grep have unrestricted handlers in the host; StrReplace and Dream

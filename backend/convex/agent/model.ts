@@ -272,6 +272,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   mercury: "fast",
   music_prompt: "media",
   search_html: "fast",
+  store_publish: "sota",
   store_security_review: "sota",
   store_image_safety_review: "media",
 

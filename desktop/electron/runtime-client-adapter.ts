@@ -823,6 +823,14 @@ export class RuntimeClientAdapter {
     return this.client.createStoreReleaseUpdate(args);
   }
 
+  publishStoreCandidateRelease(args: {
+    requestText: string;
+    selectedCommitHashes: string[];
+    existingPackageId?: string;
+  }) {
+    return this.client.publishStoreCandidateRelease(args);
+  }
+
   installStoreRelease(args: { packageId: string; releaseNumber?: number }) {
     return this.client.installStoreRelease(args);
   }

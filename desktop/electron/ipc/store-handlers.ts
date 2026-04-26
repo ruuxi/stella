@@ -101,6 +101,20 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
   );
 
   ipcMain.handle(
+    "store:publishCandidateRelease",
+    async (
+      event,
+      payload: {
+        requestText: string;
+        selectedCommitHashes: string[];
+        existingPackageId?: string;
+      },
+    ) =>
+      await withStoreRunner(event, "store:publishCandidateRelease", async (runner) =>
+        await runner.publishStoreCandidateRelease(payload) satisfies StorePackageReleaseRecord),
+  );
+
+  ipcMain.handle(
     "store:installRelease",
     async (event, payload: { packageId: string; releaseNumber?: number }) =>
       await withStoreRunner(event, "store:installRelease", async (runner) =>

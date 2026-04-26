@@ -11,6 +11,7 @@ import type {
   LocalGitCommitRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
+  StoreReleaseManifest,
 } from "../../contracts/index.js";
 import type {
   LocalCronJobCreateInput,
@@ -218,6 +219,7 @@ export type StoreToolApi = {
   publishCommitsAsRelease: (input: {
     packageId: string;
     commitHashes: string[];
+    category?: StoreReleaseManifest["category"];
     displayName: string;
     description: string;
     releaseNotes?: string;

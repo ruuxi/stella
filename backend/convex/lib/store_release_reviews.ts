@@ -79,6 +79,7 @@ const storeReleaseArtifactSchema = z.object({
   manifest: z.object({
     packageId: z.string(),
     releaseNumber: z.number(),
+    category: z.enum(["agents", "stella"]).optional(),
     displayName: z.string(),
     description: z.string(),
     releaseNotes: z.string().optional(),
