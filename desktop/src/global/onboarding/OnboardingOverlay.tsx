@@ -2,7 +2,14 @@
  * Onboarding flow: Start -> Auth -> Intro (center) -> split layout steps.
  */
 
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
@@ -13,13 +20,15 @@ import {
   type StellaAnimationHandle,
 } from "@/shell/ascii-creature/StellaAnimation";
 import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
-import type { Phase } from "@/global/onboarding/use-onboarding-state";
+import type { Phase } from "@/global/onboarding/onboarding-flow";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import type { LegalDocument } from "@/global/legal/legal-text";
 
 const LegalDialog = lazy(() =>
-  import("@/global/legal/LegalDialog").then((m) => ({ default: m.LegalDialog })),
+  import("@/global/legal/LegalDialog").then((m) => ({
+    default: m.LegalDialog,
+  })),
 );
 
 const CREATURE_INITIAL_SIZE = 0.22;
@@ -45,27 +54,42 @@ const clearLocalBrowserState = async () => {
 
   try {
     localStorage.clear();
-  } catch { /* best-effort browser state cleanup */ }
+  } catch {
+    /* best-effort browser state cleanup */
+  }
 
   try {
     sessionStorage.clear();
-  } catch { /* best-effort browser state cleanup */ }
+  } catch {
+    /* best-effort browser state cleanup */
+  }
 
-  if (typeof indexedDB !== "undefined" && typeof indexedDB.databases === "function") {
+  if (
+    typeof indexedDB !== "undefined" &&
+    typeof indexedDB.databases === "function"
+  ) {
     try {
       const databases = await indexedDB.databases();
       const names = databases
         .map((database) => database.name)
-        .filter((name): name is string => typeof name === "string" && name.length > 0);
+        .filter(
+          (name): name is string => typeof name === "string" && name.length > 0,
+        );
       await Promise.all(names.map(deleteIndexedDatabase));
-    } catch { /* best-effort browser state cleanup */ }
+    } catch {
+      /* best-effort browser state cleanup */
+    }
   }
 
   if (typeof caches !== "undefined") {
     try {
       const cacheNames = await caches.keys();
-      await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
-    } catch { /* best-effort browser state cleanup */ }
+      await Promise.all(
+        cacheNames.map((cacheName) => caches.delete(cacheName)),
+      );
+    } catch {
+      /* best-effort browser state cleanup */
+    }
   }
 };
 
@@ -81,10 +105,8 @@ export function useOnboardingOverlay() {
     complete: completeOnboarding,
     reset: resetOnboarding,
   } = useOnboardingState();
-  const {
-    hasConnectedAccount,
-    isLoading: isAuthLoading,
-  } = useAuthSessionState();
+  const { hasConnectedAccount, isLoading: isAuthLoading } =
+    useAuthSessionState();
   const resetUserData = useAction(api.reset.resetAllUserData);
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
   const [hasStarted, setHasStarted] = useState(() => onboardingDone);
@@ -236,15 +258,23 @@ export function OnboardingView({
   stellaAnimationPaused?: boolean;
   stellaAnimationHidden?: boolean;
 }) {
-  const showRuntimeGate = isPreparingRuntime || Boolean(runtimeError)
-  const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(null);
+  const showRuntimeGate = isPreparingRuntime || Boolean(runtimeError);
+  const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(
+    null,
+  );
 
   return (
-    <div className="new-session-view" data-split={splitMode} data-exiting={onboardingExiting || undefined}>
+    <div
+      className="new-session-view"
+      data-split={splitMode}
+      data-exiting={onboardingExiting || undefined}
+    >
       <Suspense fallback={null}>
         <LegalDialog
           document={activeLegalDoc}
-          onOpenChange={(open) => { if (!open) setActiveLegalDoc(null); }}
+          onOpenChange={(open) => {
+            if (!open) setActiveLegalDoc(null);
+          }}
         />
       </Suspense>
       <div
@@ -282,7 +312,7 @@ export function OnboardingView({
             <button
               className="onboarding-start-button"
               onClick={() => {
-                onRetryRuntime?.()
+                onRetryRuntime?.();
               }}
             >
               Retry Stella Startup

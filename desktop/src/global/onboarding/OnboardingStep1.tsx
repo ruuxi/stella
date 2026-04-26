@@ -18,9 +18,8 @@ import {
   SPLIT_PHASES,
   SPLIT_STEP_ORDER,
   type BrowserId,
-  type OnboardingStep1Props,
   type Phase,
-} from "./use-onboarding-state";
+} from "./onboarding-flow";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { getPlatform } from "@/platform/electron/platform";
 import { markRequestSignInAfterOnboarding } from "@/shared/lib/stella-orb-chat";
@@ -62,6 +61,18 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
 
 type CategoryStates = Record<DiscoveryCategory, boolean>;
 
+export interface OnboardingStep1Props {
+  onComplete: () => void;
+  onInteract?: () => void;
+  initialPhase?: Phase;
+  onDiscoveryConfirm?: (categories: DiscoveryCategory[]) => void;
+  onEnterSplit?: () => void;
+  onDemoChange?: (demo: "default" | null) => void;
+  onPhaseChange?: (phase: Phase) => void;
+  onSelectionChange?: (hasSelections: boolean) => void;
+  isAuthenticated?: boolean;
+}
+
 const createDiscoveryCategoryStates = (): CategoryStates => {
   const initial = {} as CategoryStates;
   for (const category of DISCOVERY_CATEGORIES) {
@@ -79,9 +90,8 @@ const getFirstEnabledDiscoveryCategory = (states: CategoryStates) =>
   DISCOVERY_CATEGORIES.find((category) => states[category.id])?.id ?? null;
 
 export const OnboardingStep1 = ({
-  initialPhase = "start",
+  initialPhase = "intro",
   onComplete,
-  onAccept,
   onInteract,
   onDiscoveryConfirm,
   onEnterSplit,
@@ -216,17 +226,6 @@ export const OnboardingStep1 = ({
     },
     [clearTimeoutRef, phase, prefersReducedMotion],
   );
-
-  const handleStart = useCallback(() => {
-    clearTimeoutRef();
-    setLeaving(true);
-    onAccept?.();
-    onInteract?.();
-    timeoutRef.current = setTimeout(() => {
-      setLeaving(false);
-      setPhase("intro");
-    }, 1600);
-  }, [clearTimeoutRef, onAccept, onInteract]);
 
   useEffect(() => {
     if (phase !== "intro") {
@@ -636,14 +635,6 @@ export const OnboardingStep1 = ({
       data-leaving={leaving}
       style={{ display: isComplete ? "none" : undefined }}
     >
-      {phase === "start" && (
-        <div className="onboarding-moment onboarding-moment--start">
-          <button className="onboarding-start-button" onClick={handleStart}>
-            Start Stella
-          </button>
-        </div>
-      )}
-
       {phase === "intro" && (
         <div
           className="onboarding-moment onboarding-moment--ripple"

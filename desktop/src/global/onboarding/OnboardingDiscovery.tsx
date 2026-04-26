@@ -1,6 +1,6 @@
 import React from "react";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
-import { DISCOVERY_CATEGORIES } from "./use-onboarding-state";
+import { DISCOVERY_CATEGORIES } from "./onboarding-flow";
 import { getPlatform } from "@/platform/electron/platform";
 import { OnboardingSelectionTile } from "./OnboardingSelectionTile";
 
