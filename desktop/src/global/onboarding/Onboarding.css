@@ -1974,6 +1974,91 @@
   line-height: 1.4;
 }
 
+.onboarding-dialogue[data-phase="browser"] .onboarding-step-label {
+  font-size: 14px;
+}
+
+.onboarding-dialogue[data-phase="browser"] .onboarding-pill--sm {
+  padding: 10px 18px;
+  font-size: 15px;
+}
+
+.onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row {
+  gap: 7px;
+  padding: 16px 20px;
+}
+
+.onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row-label {
+  font-size: 19px;
+}
+
+.onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row-desc {
+  font-size: 15px;
+  line-height: 1.48;
+}
+
+.onboarding-dialogue[data-phase="browser"] .onboarding-discovery-recommended {
+  font-size: 10px;
+}
+
+.onboarding-dialogue[data-phase="browser"] .onboarding-discovery-warning-badge {
+  font-size: 12px;
+}
+
+.onboarding-dialogue[data-phase="browser"] .onboarding-discovery-warning-text {
+  font-size: 14px;
+}
+
+.onboarding-dialogue[data-phase="permissions"] .onboarding-step-label,
+.onboarding-dialogue[data-phase="theme"] .onboarding-step-label,
+.onboarding-dialogue[data-phase="personality"] .onboarding-step-label {
+  font-size: 14px;
+}
+
+.onboarding-dialogue[data-phase="permissions"] .onboarding-step-desc {
+  font-size: 16px;
+  line-height: 1.62;
+}
+
+.onboarding-dialogue[data-phase="permissions"] .onboarding-permission-card {
+  gap: 18px;
+  padding: 16px 20px;
+}
+
+.onboarding-dialogue[data-phase="permissions"]
+  .onboarding-permission-card__title {
+  font-size: 19px;
+}
+
+.onboarding-dialogue[data-phase="permissions"]
+  .onboarding-permission-card__desc {
+  font-size: 15px;
+  line-height: 1.48;
+}
+
+.onboarding-dialogue[data-phase="permissions"]
+  .onboarding-permission-card__meta {
+  font-size: 13px;
+}
+
+.onboarding-dialogue[data-phase="permissions"]
+  .onboarding-permission-card__action {
+  font-size: 14px;
+}
+
+.onboarding-dialogue[data-phase="theme"] .onboarding-theme-row .onboarding-pill,
+.onboarding-dialogue[data-phase="theme"] .onboarding-theme-grid .onboarding-pill,
+.onboarding-dialogue[data-phase="personality"] .onboarding-pill {
+  padding: 10px 18px;
+  font-size: 15px;
+}
+
+.onboarding-dialogue[data-phase="personality"]
+  .onboarding-personality-preview {
+  font-size: 16px;
+  line-height: 1.55;
+}
+
 .onboarding-discovery-warning {
   display: flex;
   flex-direction: column;
