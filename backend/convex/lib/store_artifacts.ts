@@ -80,6 +80,166 @@ const normalizePath = (value: string): string =>
 const normalizeFileList = (files: string[]): string[] =>
   Array.from(new Set(files.map(normalizePath).filter(Boolean))).sort();
 
+const COMMENT_STRIP_EXTENSIONS = new Set([
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".css", ".scss", ".sass",
+  ".less", ".html", ".htm", ".vue", ".svelte", ".astro", ".java", ".kt",
+  ".swift", ".php", ".go", ".rs", ".c", ".cc", ".cpp", ".h", ".hpp", ".py",
+  ".rb", ".sh", ".bash", ".zsh", ".ps1", ".yml", ".yaml", ".toml", ".ini",
+  ".conf",
+]);
+
+const getFileExtension = (filePath: string): string => {
+  const fileName = normalizePath(filePath).split("/").pop() ?? filePath;
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : "";
+};
+
+const shouldStripComments = (filePath: string): boolean =>
+  COMMENT_STRIP_EXTENSIONS.has(getFileExtension(filePath));
+
+const stripSlashComments = (input: string): string => {
+  let output = "";
+  let inBlockComment = false;
+  let inString: "'" | "\"" | "`" | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index] ?? "";
+    const next = input[index + 1] ?? "";
+
+    if (inBlockComment) {
+      if (char === "*" && next === "/") {
+        inBlockComment = false;
+        index += 1;
+      } else if (char === "\n") {
+        output += "\n";
+      }
+      continue;
+    }
+
+    if (inString) {
+      output += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === inString) {
+        inString = null;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === "\"" || char === "`") {
+      inString = char;
+      output += char;
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      while (index < input.length && input[index] !== "\n") {
+        index += 1;
+      }
+      if (index < input.length) {
+        output += "\n";
+      }
+      continue;
+    }
+
+    output += char;
+  }
+
+  return output;
+};
+
+const stripHashComments = (input: string): string =>
+  input
+    .split(/\r?\n/)
+    .map((line) => {
+      const trimmed = line.trimStart();
+      if (trimmed.startsWith("#")) return "";
+      return line;
+    })
+    .join("\n");
+
+const stripHtmlComments = (input: string): string =>
+  input.replace(/<!--[\s\S]*?-->/g, "");
+
+export const stripStoreCodeComments = (filePath: string, input: string): string => {
+  if (!shouldStripComments(filePath)) {
+    return input;
+  }
+  const ext = getFileExtension(filePath);
+  let stripped = input;
+  if ([".html", ".htm", ".vue", ".svelte", ".astro"].includes(ext)) {
+    stripped = stripHtmlComments(stripped);
+  }
+  if ([".py", ".rb", ".sh", ".bash", ".zsh", ".ps1", ".yml", ".yaml", ".toml", ".ini", ".conf"].includes(ext)) {
+    stripped = stripHashComments(stripped);
+  }
+  return stripSlashComments(stripped);
+};
+
+const decodeBase64ToText = (value: string): string => {
+  const normalized = value.replace(/\s+/g, "");
+  const decoded = atob(normalized);
+  const bytes = new Uint8Array(decoded.length);
+  for (let index = 0; index < decoded.length; index += 1) {
+    bytes[index] = decoded.charCodeAt(index);
+  }
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+};
+
+const encodeTextToBase64 = (value: string): string => {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index] ?? 0);
+  }
+  return btoa(binary);
+};
+
+const stripPatchComments = (
+  patch: string,
+  files: string[],
+): string => {
+  const primaryPath = files.find(shouldStripComments);
+  if (!primaryPath) {
+    return patch;
+  }
+  return patch
+    .split(/\r?\n/)
+    .map((line) => {
+      const prefix = line[0];
+      if (
+        (prefix !== "+" && prefix !== "-" && prefix !== " ") ||
+        line.startsWith("+++") ||
+        line.startsWith("---")
+      ) {
+        return line;
+      }
+      return `${prefix}${stripStoreCodeComments(primaryPath, line.slice(1))}`;
+    })
+    .join("\n");
+};
+
+const stripSnapshotContent = (
+  filePath: string,
+  contentBase64: string | undefined,
+): string | undefined => {
+  if (!contentBase64 || !shouldStripComments(filePath)) {
+    return contentBase64;
+  }
+  return encodeTextToBase64(
+    stripStoreCodeComments(filePath, decodeBase64ToText(contentBase64)),
+  );
+};
+
 export const isStorePackageCategory = (
   value: string,
 ): value is StorePackageCategory =>
@@ -156,8 +316,8 @@ export const buildStoreReleaseArtifactFromCandidate = (args: {
     commitHash: commit.commitHash,
     files: normalizeFileList(commit.files),
     subject: commit.subject,
-    body: commit.body,
-    patch: commit.patch,
+    body: "",
+    patch: stripPatchComments(commit.patch, commit.files),
   }));
 
   const files = normalizeFileList(batches.flatMap((batch) => batch.files));
@@ -194,7 +354,12 @@ export const buildStoreReleaseArtifactFromCandidate = (args: {
         }),
         ...(deleted ? { deleted: true } : {}),
         ...(snapshot?.contentBase64
-          ? { referenceContentBase64: snapshot.contentBase64 }
+          ? {
+              referenceContentBase64: stripSnapshotContent(
+                filePath,
+                snapshot.contentBase64,
+              ),
+            }
           : {}),
       };
     }),
