@@ -1,7 +1,4 @@
-import {
-  BROWSERS,
-  type BrowserId,
-} from "./use-onboarding-state";
+import { BROWSERS, type BrowserId } from "./onboarding-flow";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { OnboardingReveal } from "./OnboardingReveal";

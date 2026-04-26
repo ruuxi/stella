@@ -14,7 +14,7 @@ import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import {
   SPLIT_STEP_ORDER,
   type Phase as OnboardingPhase,
-} from "@/global/onboarding/use-onboarding-state";
+} from "@/global/onboarding/onboarding-flow";
 import { useDiscoveryFlow } from "@/global/onboarding/DiscoveryFlow";
 import {
   OnboardingView,
@@ -48,11 +48,8 @@ export const FullShell = () => {
   const activeDemoRef = useRef<OnboardingDemo>(null);
   const fogDefsRef = useRef<SVGSVGElement | null>(null);
   const onboarding = useOnboardingOverlay();
-  const {
-    runtimeStatus,
-    runtimeError,
-    retryRuntimeBootstrap,
-  } = useBootstrapState();
+  const { runtimeStatus, runtimeError, retryRuntimeBootstrap } =
+    useBootstrapState();
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
     conversationId: activeConversationId,
   });
