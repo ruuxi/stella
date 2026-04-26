@@ -3772,3 +3772,90 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+
+/* ── Browser extension phase ───────────────────────────────────────── */
+
+.onboarding-extension-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-top: 16px;
+  margin-bottom: 4px;
+  transition:
+    background 0.25s ease,
+    border-color 0.25s ease,
+    opacity 0.25s ease;
+  opacity: 0.95;
+  animation: onboardingBrowserListIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) both;
+  animation-delay: calc(var(--onboarding-stagger-step) * 1);
+}
+
+.onboarding-extension-card:hover {
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.onboarding-extension-card__icon {
+  flex-shrink: 0;
+  width: 96px;
+  height: 96px;
+  border-radius: 18px;
+  user-select: none;
+  -webkit-user-drag: none;
+  filter: drop-shadow(
+    0 6px 18px color-mix(in oklch, var(--foreground) 18%, transparent)
+  );
+}
+
+.onboarding-extension-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.onboarding-extension-card__title {
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+}
+
+.onboarding-extension-card__desc {
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+  opacity: 0.7;
+  line-height: 1.5;
+}
+
+.onboarding-dialogue[data-phase="extension"] .onboarding-step-label {
+  font-size: 14px;
+}
+
+.onboarding-dialogue[data-phase="extension"] .onboarding-step-desc {
+  font-size: 16px;
+  line-height: 1.62;
+}
+
+.onboarding-dialogue[data-phase="extension"]
+  .onboarding-extension-card__title {
+  font-size: 18px;
+}
+
+.onboarding-dialogue[data-phase="extension"]
+  .onboarding-extension-card__desc {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.onboarding-dialogue[data-phase="extension"]
+  .onboarding-extension-card
+  .onboarding-permission-card__action {
+  font-size: 14px;
+}
