@@ -1144,8 +1144,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     uninstallPackage: (packageId: string) =>
       ipcRenderer.invoke("store:uninstallMod", { packageId }),
     listConnectors: () => ipcRenderer.invoke("store:listConnectors"),
-    installConnector: (marketplaceKey: string) =>
-      ipcRenderer.invoke("store:installConnector", { marketplaceKey }),
+    installConnector: (
+      marketplaceKey: string,
+      credential?: string,
+      config?: Record<string, string>,
+    ) =>
+      ipcRenderer.invoke("store:installConnector", { marketplaceKey, credential, config }),
   },
 
   localChat: {

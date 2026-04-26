@@ -28,6 +28,7 @@ import {
 import { anyApi } from "convex/server";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { renderSkillCatalogBlock } from "../shared/skill-catalog.js";
+import { listStellaConnectors } from "../mcp/state.js";
 import type {
   RunnerContext,
   ParsedAgentLike,
@@ -547,6 +548,24 @@ export const buildAgentContext = async (
     args.agentType === AGENT_IDS.GENERAL
   ) {
     dynamicContextSections.push(await renderSkillCatalogBlock(context.stellaRoot));
+  }
+  if (args.agentType === AGENT_IDS.GENERAL) {
+    const connectors = await listStellaConnectors(context.stellaRoot);
+    const installed = connectors.filter((connector) => connector.installed);
+    const available = connectors.filter(
+      (connector) => !connector.installed && connector.status === "official-mcp",
+    );
+    const lines = [
+      "## Stella Connect",
+      "Connected-service tools are discovered on demand through the `MCP` tool; full tool schemas are not preloaded.",
+      installed.length > 0
+        ? `Installed: ${installed.map((entry) => entry.displayName).join(", ")}.`
+        : "Installed: none.",
+      available.length > 0
+        ? `Ready to add: ${available.map((entry) => entry.displayName).join(", ")}.`
+        : "",
+    ].filter(Boolean);
+    dynamicContextSections.push(lines.join("\n"));
   }
 
   // Memory snapshot is only built for Orchestrator turns that the caller

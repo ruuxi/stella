@@ -1,5 +1,5 @@
 import { promises as fs } from "fs";
-import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import path from "path";
 import type {
   InstalledStoreModRecord,
@@ -10,6 +10,12 @@ import type {
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 import { assertPrivilegedRequest } from "./privileged-ipc.js";
+import {
+  installOfficialConnector,
+  listStellaConnectors,
+  removeOfficialConnector,
+} from "../../../runtime/kernel/mcp/state.js";
+import { connectMcpOAuth, saveMcpAccessToken } from "../../../runtime/kernel/mcp/oauth.js";
 
 type StoreHandlersOptions = {
   getStellaRoot: () => string | null;
@@ -130,4 +136,68 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     return await withStoreRunner(event, "store:uninstallMod", (runner) =>
       runner.uninstallStoreMod(payload.packageId));
   });
+
+  ipcMain.handle("store:listConnectors", async (event) => {
+    assertPrivilegedRequest(options, event, "store:listConnectors");
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return [];
+    return await listStellaConnectors(stellaRoot);
+  });
+
+  ipcMain.handle(
+    "store:installConnector",
+    async (event, payload: { marketplaceKey: string; credential?: string; config?: Record<string, string> }) => {
+      assertPrivilegedRequest(options, event, "store:installConnector");
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        throw new Error("Stella root is unavailable.");
+      }
+      const installed = await installOfficialConnector(
+        stellaRoot,
+        payload.marketplaceKey,
+        payload.config ?? {},
+      );
+      const oauthResults = [];
+      for (const target of [...installed.servers, ...installed.apis]) {
+        if (target.auth?.type !== "none" && target.auth?.tokenKey && payload.credential) {
+          await saveMcpAccessToken(stellaRoot, target.auth.tokenKey, payload.credential);
+        }
+      }
+      for (const [key, value] of Object.entries(payload.config ?? {})) {
+        if (value) {
+          await saveMcpAccessToken(stellaRoot, key, value);
+        }
+      }
+      for (const server of installed.servers) {
+        if (server.transport !== "streamable_http" || !server.url) continue;
+        if (server.auth?.type !== "oauth" || !server.auth.tokenKey) continue;
+        try {
+          oauthResults.push(await connectMcpOAuth(stellaRoot, {
+            tokenKey: server.auth.tokenKey,
+            resourceUrl: server.url,
+            openUrl: (url) => shell.openExternal(url),
+          }));
+        } catch (error) {
+          await removeOfficialConnector(stellaRoot, payload.marketplaceKey);
+          throw error;
+        }
+      }
+      return {
+        installedServers: installed.servers.map((server) => ({
+          id: server.id,
+          displayName: server.displayName,
+          transport: server.transport,
+          url: server.url,
+          auth: server.auth?.type,
+        })),
+        installedApis: installed.apis.map((api) => ({
+          id: api.id,
+          displayName: api.displayName,
+          baseUrl: api.baseUrl,
+          auth: api.auth?.type,
+        })),
+        oauth: oauthResults,
+      };
+    },
+  );
 };

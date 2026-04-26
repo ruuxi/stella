@@ -256,6 +256,8 @@ export const IPC_STORE_GET_RELEASE = "store:getRelease" as const;
 export const IPC_STORE_LIST_INSTALLED = "store:listInstalledMods" as const;
 export const IPC_STORE_INSTALL_RELEASE = "store:installRelease" as const;
 export const IPC_STORE_UNINSTALL = "store:uninstallMod" as const;
+export const IPC_STORE_LIST_CONNECTORS = "store:listConnectors" as const;
+export const IPC_STORE_INSTALL_CONNECTOR = "store:installConnector" as const;
 
 // ── Local Chat ──────────────────────────────────────────────────────────────
 

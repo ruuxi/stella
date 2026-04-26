@@ -33,6 +33,7 @@ import { createExecCommandTool } from "./exec-command.js";
 import { grepTool } from "./grep.js";
 import { createImageGenTool } from "./image-gen.js";
 import { createMemoryTool } from "./memory.js";
+import { createMcpTool } from "./mcp.js";
 import { createMultiToolUseParallelTool } from "./multi-tool-use-parallel.js";
 import { readTool } from "./read.js";
 import { createRequestCredentialTool } from "./request-credential.js";
@@ -90,6 +91,7 @@ export const buildBuiltinTools = (
     requestCredential: options.requestCredential,
   }));
   tools.push(createWebTool({ webSearch: options.webSearch }));
+  tools.push(createMcpTool(options.stellaRoot));
 
   // macOS computer-use surface (9 sibling tools sharing one CLI wrapper).
   tools.push(

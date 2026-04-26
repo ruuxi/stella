@@ -4,6 +4,7 @@ import type {
   StorePackageReleaseRecord,
   InstalledStoreModRecord,
   LocalGitCommitRecord,
+  StellaConnectorSummary,
 } from "@/shared/types/electron"
 import { showToast } from "@/ui/toast"
 import ChevronLeft from "lucide-react/dist/esm/icons/chevron-left"
@@ -11,7 +12,12 @@ import Clock from "lucide-react/dist/esm/icons/clock"
 import Layers from "lucide-react/dist/esm/icons/layers"
 import Sparkles from "lucide-react/dist/esm/icons/sparkles"
 import Package from "lucide-react/dist/esm/icons/package"
+import Plug from "lucide-react/dist/esm/icons/plug"
 import { useSelfModTaintMonitor } from "@/systems/boot/use-self-mod-taint-monitor"
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogBody, DialogCloseButton } from "@/ui/dialog"
+import { Button } from "@/ui/button"
+import { TextField } from "@/ui/text-field"
+import "@/global/integrations/credential-modal.css"
 import "./store.css"
 
 // ---------------------------------------------------------------------------
@@ -196,6 +202,35 @@ function useLocalCommits(limit = 60) {
   }, [load])
 
   return { commits, loading, error, reload: load }
+}
+
+function useStoreConnectors() {
+  const api = useStoreApi()
+  const [connectors, setConnectors] = useState<StellaConnectorSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (!api?.listConnectors) {
+      setLoading(false)
+      return
+    }
+    try {
+      const result = await api.listConnectors()
+      setConnectors(result)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong")
+    } finally {
+      setLoading(false)
+    }
+  }, [api])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return { connectors, loading, error, reload: load }
 }
 
 function usePackageDetail(packageId: string | null) {
@@ -844,6 +879,240 @@ function CreationsTab({
   )
 }
 
+function connectorStatusLabel(connector: StellaConnectorSummary): string {
+  if (connector.installed) return "Connected"
+  if (connector.requiresCredential) return "Key"
+  if (connector.status === "official-mcp") return "Ready"
+  if (connector.status === "official-api") return "API"
+  return "Researching"
+}
+
+function ConnectTab({
+  connectors,
+  loading,
+  error,
+  onInstall,
+}: {
+  connectors: StellaConnectorSummary[]
+  loading: boolean
+  error: string | null
+  onInstall: (marketplaceKey: string) => Promise<void>
+}) {
+  const [working, setWorking] = useState<string | null>(null)
+
+  const handleInstall = useCallback(
+    async (marketplaceKey: string) => {
+      setWorking(marketplaceKey)
+      try {
+        await onInstall(marketplaceKey)
+      } finally {
+        setWorking(null)
+      }
+    },
+    [onInstall],
+  )
+
+  if (loading) return <SkeletonGrid />
+  if (error) {
+    return (
+      <div className="store-status" data-variant="error">
+        {error}
+      </div>
+    )
+  }
+  if (connectors.length === 0) {
+    return (
+      <EmptyState
+        icon={<Plug size={32} />}
+        title="No connectors found"
+        description="Stella Connect will show supported services here."
+      />
+    )
+  }
+
+  return (
+    <div className="store-section">
+      <div className="store-section-header">
+        <span className="store-section-title">Connect</span>
+        <span className="store-section-count">{connectors.length}</span>
+      </div>
+      <div className="store-grid">
+        {connectors.map((connector) => {
+          const ready = connector.executable === true
+          const isWorking = working === connector.marketplaceKey
+          return (
+            <StoreCard
+              key={connector.id}
+              name={connector.displayName}
+              description={
+                connector.description ??
+                connector.integrationPath ??
+                "Connect this service to Stella."
+              }
+              actionLabel={
+                isWorking
+                  ? "Adding..."
+                  : connector.installed
+                    ? "Connected"
+                    : ready
+                      ? "Add"
+                      : "Soon"
+              }
+              actionVariant={
+                isWorking
+                  ? "working"
+                  : connector.installed
+                    ? "added"
+                    : ready
+                      ? "get"
+                      : "added"
+              }
+              actionDisabled={connector.installed || isWorking || !ready}
+              meta={`${connectorStatusLabel(connector)}${
+                connector.auth ? ` · ${connector.auth}` : ""
+              }`}
+              onAction={() => void handleInstall(connector.marketplaceKey)}
+            />
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+type ConnectorCredentialPayload = {
+  credential?: string
+  config: Record<string, string>
+}
+
+function ConnectorCredentialDialog({
+  connector,
+  open,
+  onSubmit,
+  onCancel,
+}: {
+  connector: StellaConnectorSummary | null
+  open: boolean
+  onSubmit: (payload: ConnectorCredentialPayload) => Promise<void>
+  onCancel: () => void
+}) {
+  const [credential, setCredential] = useState("")
+  const [config, setConfig] = useState<Record<string, string>>({})
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setCredential("")
+    setConfig({})
+    setError(null)
+    setSubmitting(false)
+  }, [open, connector?.marketplaceKey])
+
+  if (!connector) return null
+
+  const fields = connector.configFields ?? []
+  const showCredentialField = connector.requiresCredential && fields.length === 0
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    const nextConfig: Record<string, string> = {}
+    for (const field of fields) {
+      const value = config[field.key]?.trim() ?? ""
+      if (!value) {
+        setError(`${field.label} is required.`)
+        return
+      }
+      nextConfig[field.key] = value
+    }
+    const nextCredential = credential.trim()
+    if (showCredentialField && !nextCredential) {
+      setError("API key is required.")
+      return
+    }
+    try {
+      setSubmitting(true)
+      await onSubmit({
+        credential: showCredentialField ? nextCredential : undefined,
+        config: nextConfig,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't add this connector")
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onCancel() : undefined)}>
+      <DialogContent fit className="credential-modal-content">
+        <DialogCloseButton className="credential-modal-close" />
+        <DialogBody className="credential-modal-body">
+          <div className="credential-modal-hero">
+            <div className="credential-modal-icon">
+              <Plug size={20} />
+            </div>
+            <DialogTitle className="credential-modal-headline">
+              Connect {connector.displayName}
+            </DialogTitle>
+            <DialogDescription className="credential-modal-sub">
+              Add the details Stella needs to connect this service.
+            </DialogDescription>
+          </div>
+          <form className="credential-modal-form" onSubmit={handleSubmit}>
+            {showCredentialField ? (
+              <TextField
+                label="API key"
+                type="password"
+                value={credential}
+                onChange={(event) => setCredential(event.target.value)}
+                placeholder="Paste your key"
+                autoFocus
+              />
+            ) : null}
+            {fields.map((field, index) => (
+              <TextField
+                key={field.key}
+                label={field.label}
+                type={field.secret ? "password" : "text"}
+                value={config[field.key] ?? ""}
+                onChange={(event) =>
+                  setConfig((current) => ({
+                    ...current,
+                    [field.key]: event.target.value,
+                  }))
+                }
+                placeholder={field.placeholder ?? ""}
+                autoFocus={index === 0 && !showCredentialField}
+              />
+            ))}
+            {error ? <div className="credential-modal-error">{error}</div> : null}
+            <div className="credential-modal-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onCancel}
+                disabled={submitting}
+                className="pill-btn pill-btn--lg credential-modal-cancel"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={submitting}
+                className="pill-btn pill-btn--primary pill-btn--lg credential-modal-submit"
+              >
+                {submitting ? "Adding..." : "Add connector"}
+              </Button>
+            </div>
+          </form>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Package Detail View
 // ---------------------------------------------------------------------------
@@ -1004,7 +1273,7 @@ function PackageDetailView({
 // Store View (main export)
 // ---------------------------------------------------------------------------
 
-type StoreTab = "discover" | "creations"
+type StoreTab = "discover" | "connect" | "creations"
 
 export function StoreView() {
   useSelfModTaintMonitor()
@@ -1012,6 +1281,8 @@ export function StoreView() {
   const [tab, setTab] = useState<StoreTab>("discover")
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
   const [scrolled, setScrolled] = useState(false)
+  const [credentialConnector, setCredentialConnector] =
+    useState<StellaConnectorSummary | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -1036,6 +1307,12 @@ export function StoreView() {
     loading: commitsLoading,
     error: commitsError,
   } = useLocalCommits()
+  const {
+    connectors,
+    loading: connectorsLoading,
+    error: connectorsError,
+    reload: reloadConnectors,
+  } = useStoreConnectors()
 
   const handleInstall = useCallback(
     async (packageId: string) => {
@@ -1105,6 +1382,48 @@ export function StoreView() {
     }
   }, [commits, reloadPackages])
 
+  const handleInstallConnector = useCallback(
+    async (marketplaceKey: string) => {
+      const api = window.electronAPI?.store
+      if (!api?.installConnector) return
+      try {
+        const connector = connectors.find((entry) => entry.marketplaceKey === marketplaceKey)
+        if (!connector) return
+        if (connector.requiresCredential || (connector.configFields?.length ?? 0) > 0) {
+          setCredentialConnector(connector)
+          return
+        }
+        await api.installConnector(marketplaceKey)
+        showToast({ title: "Connector added to Stella.", variant: "success" })
+        await reloadConnectors()
+      } catch (err) {
+        showToast({
+          title:
+            err instanceof Error ? err.message : "Couldn't add this connector",
+          variant: "error",
+        })
+      }
+    },
+    [connectors, reloadConnectors],
+  )
+
+  const handleSubmitConnectorCredential = useCallback(
+    async ({ credential, config }: ConnectorCredentialPayload) => {
+      if (!credentialConnector) return
+      const api = window.electronAPI?.store
+      if (!api?.installConnector) return
+      await api.installConnector(
+        credentialConnector.marketplaceKey,
+        credential,
+        config,
+      )
+      setCredentialConnector(null)
+      showToast({ title: "Connector added to Stella.", variant: "success" })
+      await reloadConnectors()
+    },
+    [credentialConnector, reloadConnectors],
+  )
+
   // Detail view
   if (selectedPackageId) {
     return (
@@ -1129,16 +1448,23 @@ export function StoreView() {
         <div className="store-header-inner">
           <h1 className="store-title">Store</h1>
           <div className="store-tabs">
-            <button
-              className="store-tab"
-              data-active={tab === "discover" || undefined}
-              onClick={() => setTab("discover")}
-            >
-              Discover
-            </button>
-            <button
-              className="store-tab"
-              data-active={tab === "creations" || undefined}
+          <button
+            className="store-tab"
+            data-active={tab === "discover" || undefined}
+            onClick={() => setTab("discover")}
+          >
+            Discover
+          </button>
+          <button
+            className="store-tab"
+            data-active={tab === "connect" || undefined}
+            onClick={() => setTab("connect")}
+          >
+            Connect
+          </button>
+          <button
+            className="store-tab"
+            data-active={tab === "creations" || undefined}
               onClick={() => setTab("creations")}
             >
               My Creations
@@ -1148,8 +1474,8 @@ export function StoreView() {
       </div>
 
       <div className="store-scroll">
-        {tab === "discover" ? (
-          <DiscoverTab
+          {tab === "discover" ? (
+            <DiscoverTab
             packages={packages}
             installed={installed}
             installedMap={installedMap}
@@ -1157,15 +1483,28 @@ export function StoreView() {
             error={packagesError}
             onSelect={setSelectedPackageId}
             onInstall={handleInstall}
-          />
-        ) : (
-          <CreationsTab
+            />
+          ) : tab === "connect" ? (
+            <ConnectTab
+              connectors={connectors}
+              loading={connectorsLoading}
+              error={connectorsError}
+              onInstall={handleInstallConnector}
+            />
+          ) : (
+            <CreationsTab
             commits={commits}
             loading={commitsLoading}
             error={commitsError}
           />
         )}
       </div>
+      <ConnectorCredentialDialog
+        connector={credentialConnector}
+        open={Boolean(credentialConnector)}
+        onSubmit={handleSubmitConnectorCredential}
+        onCancel={() => setCredentialConnector(null)}
+      />
     </div>
   )
 }

@@ -778,12 +778,22 @@ export type ElectronStoreApi = {
     revertedCommits: string[];
   }>;
   listConnectors: () => Promise<StellaConnectorSummary[]>;
-  installConnector: (marketplaceKey: string) => Promise<{
+  installConnector: (
+    marketplaceKey: string,
+    credential?: string,
+    config?: Record<string, string>,
+  ) => Promise<{
     installedServers: Array<{
       id: string;
       displayName: string;
       transport: string;
       url?: string;
+      auth?: string;
+    }>;
+    installedApis: Array<{
+      id: string;
+      displayName: string;
+      baseUrl: string;
       auth?: string;
     }>;
     oauth?: Array<{ tokenKey: string }>;
@@ -801,7 +811,15 @@ export type StellaConnectorSummary = {
   officialSource?: string;
   integrationPath?: string;
   auth?: string;
-  status: "queued" | "official-mcp" | "official-api" | "implemented" | "blocked";
+  requiresCredential?: boolean;
+  executable?: boolean;
+  configFields?: Array<{
+    key: string;
+    label: string;
+    secret?: boolean;
+    placeholder?: string;
+  }>;
+  status: "official-mcp" | "official-api" | "implemented";
   installed: boolean;
 };
 
