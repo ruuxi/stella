@@ -125,4 +125,53 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     const image = await win.webContents.capturePage();
     return image.toDataURL();
   });
+
+  // Composer "+ menu" entry point. Mirrors the radial dial's "capture" wedge:
+  // minimize the active window, run the region overlay (click=window,
+  // drag=region), merge the result into chatContext, then restore the
+  // window. Returns synchronously when the user cancels (Esc / right-click).
+  ipcMain.handle("capture:beginRegionCapture", async (event) => {
+    if (!options.assertPrivilegedSender(event, "capture:beginRegionCapture")) {
+      throw new Error("Blocked untrusted request.");
+    }
+    if (!(await ensureScreenCapturePermission())) {
+      return { cancelled: true } as const;
+    }
+
+    const wm = options.windowManager;
+    const targetWindowMode = wm.getLastActiveWindowMode();
+    wm.minimizeWindow();
+
+    const result = await options.captureService.startRegionCapture();
+
+    if (result && (result.screenshot || result.window)) {
+      const ctx =
+        options.captureService.getChatContextSnapshot()
+        ?? options.captureService.emptyContext();
+      const existing = ctx.regionScreenshots ?? [];
+      const nextScreenshots = result.screenshot
+        ? [...existing, result.screenshot]
+        : existing;
+      const nextWindow = result.window ?? ctx.window;
+      options.captureService.setPendingChatContext({
+        ...ctx,
+        window: nextWindow,
+        windowContextEnabled: result.window
+          ? false
+          : ctx.windowContextEnabled,
+        regionScreenshots: nextScreenshots,
+      });
+      options.captureService.broadcastChatContext();
+    }
+
+    // Cancel resolves null; leave the window minimized to match the radial
+    // path (the user explicitly bailed, no need to pop the window back).
+    if (result !== null) {
+      wm.showWindow(targetWindowMode);
+    }
+
+    return result === null
+      ? ({ cancelled: true } as const)
+      : ({ ok: true } as const);
+  });
 };
