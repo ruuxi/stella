@@ -93,6 +93,25 @@ App=com.apple.finder (pid 504)
     expect(result.images[0].mimeType).toBe("image/jpeg");
   });
 
+  it("extracts JSON-escaped Windows image paths", async () => {
+    const tempDir = createTempDir();
+    const previousCwd = process.cwd();
+    const winPath = "C:\\Users\\test\\stella-snap.png";
+    try {
+      process.chdir(tempDir);
+      writePng(tempDir, winPath);
+      const text =
+        "[stella-attach-image] 100x100 inline=image/png C:\\\\Users\\\\test\\\\stella-snap.png\n";
+      const result = await extractAttachImageBlocks(text);
+      expect(result.images).toHaveLength(1);
+      expect(result.images[0].mimeType).toBe("image/png");
+      expect(result.images[0].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
+      expect(result.text).not.toContain("[stella-attach-image]");
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
   it("extracts a marker embedded inside a JSON-stringified tool result", async () => {
     // Mirrors the exec_command tool result shape: stdout is wrapped inside
     // a JSON envelope where real newlines become escaped `\n` characters.

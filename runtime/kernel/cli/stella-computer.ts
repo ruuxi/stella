@@ -7,6 +7,7 @@ import net from "node:net";
 import { resolveStatePath } from "./shared.js";
 import { resolveNativeHelperPath, runNativeHelper } from "./native-helper.js";
 import { screenshotPixelToScreenPoint } from "./screenshot-coordinates.js";
+import { runWindowsStellaComputer } from "./stella-computer-windows.js";
 import { sanitizeStellaComputerSessionId } from "../tools/stella-computer-session.js";
 
 type Rect = {
@@ -1867,6 +1868,18 @@ if (missingSessionValue) {
   process.exit(1);
 }
 
+if (process.platform === "win32") {
+  void runWindowsStellaComputer(argv, argv.includes("--json"), sessionOverride)
+    .then((exitCode) => {
+      process.exit(exitCode);
+    })
+    .catch((error) => {
+      process.stderr.write(
+        `${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      process.exit(1);
+    });
+} else {
 if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
   process.stdout.write(usage);
   process.exit(0);
@@ -1916,3 +1929,4 @@ void (async () => {
     process.exit(1);
   }
 })();
+}
