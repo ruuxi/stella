@@ -133,7 +133,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --gradient-blur: 120px;
   --gradient-noise: 0.08;
 
-  /* Spinner colors — aligned to Carbon theme */
+  /* Spinner colors - aligned to Carbon theme */
   --spinner-color-1: #0f62fe;
   --spinner-color-2: #42be65;
   --spinner-color-3: #f1c21b;
@@ -160,7 +160,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
     0 0 0 2px var(--background),
     0 0 0 4px var(--ring);
 
-  /* Button secondary colors — derived from theme */
+  /* Button secondary colors - derived from theme */
   --button-secondary-base: color-mix(in srgb, var(--muted) 40%, var(--background));
   --button-secondary-hover: var(--muted);
 
@@ -175,7 +175,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --surface-overlay: color-mix(in srgb, var(--card) 85%, transparent);
   --surface-raised-stronger-non-alpha: var(--card);
 
-  /* Text hierarchy — derived from theme foreground */
+  /* Text hierarchy - derived from theme foreground */
   --text-strong: color-mix(in srgb, var(--foreground) 95%, transparent);
   --text-base: color-mix(in srgb, var(--foreground) 75%, transparent);
   --text-weak: color-mix(in srgb, var(--foreground) 50%, transparent);
@@ -193,7 +193,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --border-base: color-mix(in srgb, var(--foreground) 8%, transparent);
   --border-weak: color-mix(in srgb, var(--foreground) 5%, transparent);
 
-  /* Semantic colors — aligned to default theme (Carbon) */
+  /* Semantic colors - aligned to default theme (Carbon) */
   --background: #f2f4f8;
   --foreground: #161616;
   --card: rgba(255, 255, 255, 0.9);
@@ -232,7 +232,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --gradient-blur: 140px;
   --gradient-noise: 0.12;
 
-  /* Dark mode spinner colors — aligned to Carbon theme */
+  /* Dark mode spinner colors - aligned to Carbon theme */
   --spinner-color-1: #78a9ff;
   --spinner-color-2: #42be65;
   --spinner-color-3: #f1c21b;
@@ -259,7 +259,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
     0 0 0 2px var(--background),
     0 0 0 4px var(--ring);
 
-  /* Dark mode button secondary colors — derived from theme */
+  /* Dark mode button secondary colors - derived from theme */
   --button-secondary-base: color-mix(in srgb, var(--muted) 40%, var(--background));
   --button-secondary-hover: var(--muted);
 
@@ -270,7 +270,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --surface-overlay: color-mix(in srgb, var(--card) 75%, transparent);
   --surface-raised-stronger-non-alpha: var(--card);
 
-  /* Text hierarchy — derived from theme foreground, alpha for gradient blending */
+  /* Text hierarchy - derived from theme foreground, alpha for gradient blending */
   --text-strong: color-mix(in srgb, var(--foreground) 95%, transparent);
   --text-base: color-mix(in srgb, var(--foreground) 72%, transparent);
   --text-weak: color-mix(in srgb, var(--foreground) 45%, transparent);
@@ -283,7 +283,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   /* Color scheme */
   color-scheme: dark;
 
-  /* Semantic colors — aligned to default theme (Carbon) dark */
+  /* Semantic colors - aligned to default theme (Carbon) dark */
   --background: #161616;
   --foreground: #f2f4f8;
   --card: rgba(38, 38, 38, 0.9);
@@ -327,6 +327,12 @@ html[data-stella-window="mini"] #stella-mini-boot {
     margin: 0;
     overflow: hidden;
     height: 100%;
+  }
+  /* Tailwind v4 preflight resets `button { cursor: default }` to mimic the
+   * native macOS convention. We want pointer affordance on real buttons
+   * across the app - settings, onboarding, dialogs, etc. - so put it back. */
+  button:not(:disabled) {
+    cursor: pointer;
   }
 }
 

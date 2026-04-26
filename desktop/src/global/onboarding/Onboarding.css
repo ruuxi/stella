@@ -25,6 +25,7 @@
   flex-direction: column;
   align-items: center;
   pointer-events: auto;
+  -webkit-app-region: no-drag;
   z-index: 10;
   width: 100%;
   max-width: 1000px;
@@ -68,11 +69,12 @@
     var(--onboarding-ease-standard) forwards;
 }
 
-/* Stack above .onboarding-stella-animation (z-index 5) so Start / auth hit the real controls (cursor: pointer, clicks) */
+/* Start / auth stay interactive, but the Stella creature itself lives above
+ * the dialogue so clicks on the visible creature always trigger its flash. */
 .onboarding-moment--start,
 .onboarding-moment--auth {
   position: relative;
-  z-index: 6;
+  z-index: 13;
 }
 
 /* Initial Start Stella: nudge below vertical center so it sits under the creature */
@@ -123,6 +125,7 @@
   color: var(--foreground);
   opacity: 0.45;
   cursor: pointer;
+  -webkit-app-region: no-drag;
   transition:
     opacity 0.2s ease,
     transform 0.15s ease;
@@ -134,9 +137,16 @@
   animation: startButtonFade 2.4s ease-in-out 1.5s infinite;
 }
 
-.onboarding-start-button:hover {
-  opacity: 0.7;
-  text-decoration-color: oklch(from var(--foreground) l c h / 0.5);
+.onboarding-start-button:hover,
+.onboarding-start-button:focus-visible {
+  /* `!important` overrides the running `startButtonFade` keyframe, which
+   * otherwise wins over static rules during its animation period and
+   * makes the hover state invisible. */
+  animation: none !important;
+  opacity: 1 !important;
+  text-decoration-color: oklch(from var(--foreground) l c h / 0.7);
+  transform: translateY(-1px);
+  outline: none;
 }
 
 .onboarding-start-button:active {
@@ -202,6 +212,7 @@
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
+  -webkit-app-region: no-drag;
   opacity: 1;
 }
 
@@ -274,6 +285,7 @@
   color: var(--foreground);
   opacity: 0.45;
   cursor: pointer;
+  -webkit-app-region: no-drag;
   transition:
     opacity 0.3s ease,
     transform 0.2s ease;
@@ -296,11 +308,15 @@
     transform 0.3s ease;
 }
 
-.onboarding-choice:hover {
-  opacity: 0.9;
+.onboarding-choice:hover,
+.onboarding-choice:focus-visible {
+  opacity: 1;
+  outline: none;
+  transform: translateY(-1px);
 }
 
-.onboarding-choice:hover::after {
+.onboarding-choice:hover::after,
+.onboarding-choice:focus-visible::after {
   opacity: 0.4;
   transform: scaleX(1);
 }
@@ -321,6 +337,7 @@
   letter-spacing: 0.1em;
   color: var(--foreground);
   cursor: pointer;
+  -webkit-app-region: no-drag;
   transition:
     opacity 0.32s ease,
     transform 0.2s ease,
@@ -336,10 +353,13 @@
   pointer-events: auto;
 }
 
-.onboarding-confirm:hover {
+.onboarding-confirm:hover,
+.onboarding-confirm:focus-visible {
   opacity: 1;
   border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  outline: none;
+  transform: translateY(-1px);
 }
 
 .onboarding-confirm:active {
