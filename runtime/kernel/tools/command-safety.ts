@@ -13,12 +13,12 @@ import { getDangerousCommandReason } from "./schemas.js";
 // 1. Dangerous Command Blocklist
 // ---------------------------------------------------------------------------
 
-// NOTE: Normal rm/del operations are handled by the deferred-delete trash system
-// (see deferred-delete.ts + buildProtectedCommand in tools-shell.ts) which intercepts
-// rm/rmdir/unlink/del/erase and moves files to
-// `desktop/state/deferred-delete/trash/`
-// with 24h retention. The blocklist here only catches things the trash CAN'T protect
-// against: filesystem-level destruction, fork bombs, and system power commands.
+// NOTE: Normal delete operations are handled by the deferred-delete trash system
+// (see deferred-delete.ts + shell.ts): macOS/Linux shells intercept rm/rmdir/unlink
+// through the shell preamble, and Windows native delete commands are routed through
+// the same trash helper before cmd.exe starts. The blocklist here catches things
+// the trash can't protect against: filesystem-level destruction, fork bombs, and
+// system power commands.
 
 /**
  * Check if a command string contains dangerous/destructive patterns.

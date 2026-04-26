@@ -1,4 +1,5 @@
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import { resolveStellaRoot } from "../home/stella-home.js";
 
@@ -89,6 +90,112 @@ const isSubPath = (candidate: string, parentPath: string) => {
   return target === parent || target.startsWith(`${parent}${path.sep}`);
 };
 
+const normalizeForComparison = (value: string, pathApi: path.PlatformPath) =>
+  pathApi
+    .resolve(value)
+    .replace(/[\\/]+$/g, "")
+    .replace(/\\/g, "/")
+    .toLowerCase();
+
+const isSameOrInsidePath = (
+  candidate: string,
+  protectedPath: string,
+  pathApi: path.PlatformPath,
+) => {
+  const target = normalizeForComparison(candidate, pathApi);
+  const parent = normalizeForComparison(protectedPath, pathApi);
+  return target === parent || target.startsWith(`${parent}/`);
+};
+
+const getProtectedDeletePaths = (): Array<{
+  path: string;
+  mode: "exact" | "tree";
+  label: string;
+  pathApi: path.PlatformPath;
+}> => {
+  const home = os.homedir();
+  const homeParent = home ? path.dirname(home) : "";
+  const userProfile = process.env.USERPROFILE ?? "";
+  const userProfileParent = userProfile ? path.win32.dirname(userProfile) : "";
+
+  const protectedPaths: Array<{
+    path: string;
+    mode: "exact" | "tree";
+    label: string;
+    pathApi: path.PlatformPath;
+  }> = [];
+
+  const add = (
+    protectedPath: string,
+    mode: "exact" | "tree",
+    label: string,
+    pathApi: path.PlatformPath = path,
+  ) => {
+    if (!protectedPath.trim()) return;
+    protectedPaths.push({ path: protectedPath, mode, label, pathApi });
+  };
+
+  add(home, "exact", "home directory");
+  add(homeParent, "exact", "home parent directory");
+  add(userProfile, "exact", "Windows user profile directory", path.win32);
+  add(userProfileParent, "exact", "Windows users directory", path.win32);
+
+  for (const protectedPath of [
+    "/Applications",
+    "/Library",
+    "/System",
+    "/Users",
+    "/Volumes",
+    "/bin",
+    "/boot",
+    "/dev",
+    "/etc",
+    "/private",
+    "/proc",
+    "/sbin",
+    "/sys",
+    "/usr",
+    "/var",
+  ]) {
+    add(protectedPath, "exact", "system directory");
+  }
+
+  for (const protectedPath of [
+    "C:\\Windows",
+    "C:\\Program Files",
+    "C:\\Program Files (x86)",
+    "C:\\ProgramData",
+    "C:\\Users",
+  ]) {
+    add(protectedPath, "exact", "Windows system directory", path.win32);
+  }
+
+  return protectedPaths;
+};
+
+const getProtectedDeleteReason = (absoluteTarget: string): string | null => {
+  if (isRootPath(absoluteTarget)) {
+    return "Refusing to delete filesystem root path.";
+  }
+
+  for (const protectedPath of getProtectedDeletePaths()) {
+    const matches =
+      protectedPath.mode === "tree"
+        ? isSameOrInsidePath(
+            absoluteTarget,
+            protectedPath.path,
+            protectedPath.pathApi,
+          )
+        : normalizeForComparison(absoluteTarget, protectedPath.pathApi) ===
+          normalizeForComparison(protectedPath.path, protectedPath.pathApi);
+    if (matches) {
+      return `Refusing to delete protected ${protectedPath.label}.`;
+    }
+  }
+
+  return null;
+};
+
 const normalizeTargetPath = (target: string, cwd?: string) =>
   path.resolve(cwd ?? process.cwd(), target);
 
@@ -128,10 +235,11 @@ export const trashPathsForDeferredDelete = async (
 
     const absoluteTarget = normalizeTargetPath(target, options.cwd);
 
-    if (isRootPath(absoluteTarget)) {
+    const protectedReason = getProtectedDeleteReason(absoluteTarget);
+    if (protectedReason) {
       result.errors.push({
         path: absoluteTarget,
-        error: "Refusing to delete filesystem root path.",
+        error: protectedReason,
       });
       continue;
     }

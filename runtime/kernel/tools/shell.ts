@@ -21,6 +21,11 @@ import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
 import { getStellaComputerSessionId } from "./stella-computer-session.js";
 import { inferShellMentionedPaths } from "./path-inference.js";
 import type { OfficePreviewRef } from "../../../desktop/src/shared/contracts/office-preview.js";
+import {
+  purgeExpiredDeferredDeletes,
+  trashPathsForDeferredDelete,
+} from "./deferred-delete.js";
+import { extractNativeWindowsDeleteTargets } from "./deferred-delete-cli.js";
 
 export type ShellState = {
   shells: Map<string, ManagedShellRecord>;
@@ -29,6 +34,7 @@ export type ShellState = {
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;
   stellaComputerCliPath?: string;
+  lastDeferredDeleteSweepAt: number;
 };
 
 type ShellStateOptions = {
@@ -110,6 +116,7 @@ export const approxTokenCount = (text: string): number =>
   Math.ceil(text.length / APPROX_BYTES_PER_TOKEN);
 
 const OFFICE_PREVIEW_REF_MARKER = "__STELLA_OFFICE_PREVIEW_REF__";
+const DEFERRED_DELETE_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 const normalizeSnapshotRoot = (cwd: string): string | null => {
   const resolved = path.resolve(cwd);
@@ -440,6 +447,7 @@ export function createShellState(
     stellaOfficeBinPath: options?.stellaOfficeBinPath,
     stellaUiCliPath: options?.stellaUiCliPath,
     stellaComputerCliPath: options?.stellaComputerCliPath,
+    lastDeferredDeleteSweepAt: 0,
   };
 }
 
@@ -587,6 +595,74 @@ const buildShellCommand = (command: string, state: ShellState): string => {
     return command;
   }
   return buildProtectedCommand(command, state);
+};
+
+const resolveStellaHomeFromState = (state: ShellState): string | undefined => {
+  const stateRoot = path.resolve(state.secretStateRoot);
+  if (path.basename(stateRoot) === "state") {
+    return path.dirname(stateRoot);
+  }
+  return undefined;
+};
+
+const maybeSweepDeferredDeletes = (state: ShellState) => {
+  const now = Date.now();
+  if (
+    state.lastDeferredDeleteSweepAt > 0 &&
+    now - state.lastDeferredDeleteSweepAt < DEFERRED_DELETE_SWEEP_INTERVAL_MS
+  ) {
+    return;
+  }
+  state.lastDeferredDeleteSweepAt = now;
+  void purgeExpiredDeferredDeletes({
+    stellaHome: resolveStellaHomeFromState(state),
+    now,
+  }).catch(() => undefined);
+};
+
+const maybeTrashNativeWindowsDeletes = async (
+  state: ShellState,
+  command: string,
+  cwd: string,
+  context?: ToolContext,
+): Promise<ToolResult | null> => {
+  if (process.platform !== "win32") {
+    return null;
+  }
+
+  const targets = extractNativeWindowsDeleteTargets(command);
+  if (targets.length === 0) {
+    return null;
+  }
+
+  const trashResult = await trashPathsForDeferredDelete(targets, {
+    cwd,
+    force: /(?:^|\s)(?:\/q|\/f|-force)\b/i.test(command),
+    source: "shell:windows-native",
+    stellaHome: resolveStellaHomeFromState(state),
+    requestId: context?.requestId,
+    agentType: context?.agentType,
+    conversationId: context?.conversationId,
+  });
+
+  const lines: string[] = [];
+  if (trashResult.trashed.length > 0) {
+    lines.push(
+      `Moved ${trashResult.trashed.length} item(s) to Stella trash (auto-delete in 24h).`,
+    );
+  }
+  for (const skipped of trashResult.skipped) {
+    lines.push(`Skipped missing path: ${skipped}`);
+  }
+  for (const error of trashResult.errors) {
+    lines.push(`Cannot remove '${error.path}': ${error.error}`);
+  }
+
+  return {
+    ...(trashResult.errors.length > 0
+      ? { error: lines.join("\n") || "Delete command blocked." }
+      : { result: lines.join("\n") || "Delete command completed." }),
+  };
 };
 
 const buildShellEnv = (
@@ -860,6 +936,7 @@ export const startShell = (
   startSnapshot?: FileSnapshot | null,
   externalCandidateSnapshots?: ExternalCandidateSnapshot[],
 ) => {
+  maybeSweepDeferredDeletes(state);
   const id = crypto.randomUUID();
   const shellCommand = buildShellCommand(command, state);
   const launch = resolveShellLaunch(shellCommand);
@@ -964,6 +1041,7 @@ export const runShell = async (
   timeoutMs: number,
   envOverrides?: Record<string, string>,
 ) => {
+  maybeSweepDeferredDeletes(state);
   const shellCommand = buildShellCommand(command, state);
   const launch = resolveShellLaunch(shellCommand);
 
@@ -1130,6 +1208,16 @@ export const handleExecCommand = async (
     return { error: "cmd is required." };
   }
 
+  const windowsDeleteResult = await maybeTrashNativeWindowsDeletes(
+    state,
+    prepared.command,
+    prepared.cwd,
+    context,
+  );
+  if (windowsDeleteResult) {
+    return windowsDeleteResult;
+  }
+
   const snapshotRoot = resolveShellSnapshotRoot(prepared.cwd, context);
   const beforeSideEffects = await snapshotShellSideEffects(
     { cmd: prepared.command, workdir: prepared.cwd },
@@ -1245,6 +1333,16 @@ export const handleBash = async (
   const cwd = prepared.cwd;
   const runInBackground = Boolean(args.run_in_background ?? false);
   const envOverrides = prepared.envOverrides;
+
+  const windowsDeleteResult = await maybeTrashNativeWindowsDeletes(
+    state,
+    command,
+    cwd,
+    context,
+  );
+  if (windowsDeleteResult) {
+    return windowsDeleteResult;
+  }
 
   if (runInBackground) {
     const snapshotRoot = resolveShellSnapshotRoot(cwd, context);
