@@ -55,6 +55,10 @@ export const createBootstrapServices = (options: {
     overlay: {
       startRegionCapture: () => state.overlayController?.startRegionCapture(),
       endRegionCapture: () => state.overlayController?.endRegionCapture(),
+      suspendRegionCaptureForScreenshot: () =>
+        state.overlayController?.suspendRegionCaptureForScreenshot(),
+      restoreRegionCaptureAfterScreenshot: () =>
+        state.overlayController?.restoreRegionCaptureAfterScreenshot(),
       getOverlayBounds: () =>
         state.overlayController?.getWindow()?.getBounds() ?? null,
     },

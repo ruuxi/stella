@@ -139,15 +139,26 @@ export class RadialGestureService {
         const regionCapture = await capture.startRegionCapture()
         if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
           const ctx = capture.getChatContextSnapshot() ?? capture.emptyContext()
+          const isWindowClick = Boolean(regionCapture.window && regionCapture.screenshot)
           const existing = ctx.regionScreenshots ?? []
-          const nextScreenshots = regionCapture.screenshot
-            ? [...existing, regionCapture.screenshot]
-            : existing
+          const nextScreenshots =
+            regionCapture.screenshot && !isWindowClick
+              ? [...existing, regionCapture.screenshot]
+              : existing
           const nextWindow = regionCapture.window ?? ctx.window
+          const nextWindowScreenshot = isWindowClick
+            ? regionCapture.screenshot
+            : ctx.windowScreenshot ?? null
+          const isRegionSelection = Boolean(regionCapture.screenshot && !regionCapture.window)
           capture.setPendingChatContext({
             ...ctx,
-            window: nextWindow,
-            windowContextEnabled: regionCapture.window ? false : ctx.windowContextEnabled,
+            window: isRegionSelection ? null : nextWindow,
+            windowScreenshot: isRegionSelection ? null : nextWindowScreenshot,
+            windowContextEnabled: isRegionSelection
+              ? undefined
+              : regionCapture.window
+                ? undefined
+                : ctx.windowContextEnabled,
             regionScreenshots: nextScreenshots,
           })
           capture.broadcastChatContext()

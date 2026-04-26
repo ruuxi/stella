@@ -52,10 +52,14 @@ export function WindowContextChip({
       className={cn(className)}
       data-included="true"
       data-capture-pending={capturePending ? "true" : undefined}
+      data-with-thumb={hasScreenshot ? "true" : undefined}
     >
       <button
         type="button"
-        className={cn(toggleClassName)}
+        className={cn(
+          toggleClassName,
+          hasScreenshot && "chat-composer-context-window-card",
+        )}
         title={
           capturePending
             ? `${baseLabel} — capturing window… click to remove`
@@ -66,6 +70,13 @@ export function WindowContextChip({
           event.currentTarget.blur();
         }}
       >
+        {hasScreenshot && (
+          <img
+            src={chatWindowScreenshot!.dataUrl}
+            alt=""
+            className="chat-composer-context-window-thumb"
+          />
+        )}
         <span className={cn(textClassName)}>{displayLabel}</span>
       </button>
       {hasScreenshot && (
@@ -155,7 +166,12 @@ export function ScreenshotContextChips({
         <button
           type="button"
           key={index}
-          className={cn(chipClassName)}
+          className={cn(
+            chipClassName,
+            "chat-composer-context-window-card chat-composer-context-region-card",
+          )}
+          data-with-thumb="true"
+          data-region-card="true"
           title="Click to remove screenshot"
           onClick={(event) => {
             removeComposerScreenshotContext(index, setChatContext);
@@ -164,7 +180,10 @@ export function ScreenshotContextChips({
         >
           <img
             src={screenshot.dataUrl}
-            className={cn(imageClassName)}
+            className={cn(
+              imageClassName,
+              "chat-composer-context-window-thumb chat-composer-context-region-thumb",
+            )}
             alt={`Screenshot ${index + 1}`}
           />
         </button>

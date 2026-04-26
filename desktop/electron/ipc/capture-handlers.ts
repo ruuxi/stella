@@ -8,7 +8,7 @@ import {
 } from "electron";
 import type { ChatContext } from "../../src/shared/contracts/boundary.js";
 import type { CaptureService } from "../services/capture-service.js";
-import type { RegionSelection } from "../types.js";
+import type { RegionCaptureResult, RegionSelection } from "../types.js";
 import {
   hasMacPermission,
   requestMacPermission,
@@ -60,9 +60,26 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     void options.captureService.finalizeRegionCapture(selection);
   });
 
+  ipcMain.on(
+    "region:commitPrepared",
+    (_event, result: RegionCaptureResult | null) => {
+      options.captureService.commitPreparedRegionCapture(result);
+    },
+  );
+
   ipcMain.on("region:cancel", () => {
     options.captureService.cancelRegionCapture();
   });
+
+  ipcMain.handle(
+    "region:prepareSelection",
+    async (_event, selection: RegionSelection) => {
+      if (!(await ensureScreenCapturePermission())) {
+        return null;
+      }
+      return options.captureService.prepareRegionSelection(selection);
+    },
+  );
 
   ipcMain.handle(
     "region:getWindowCapture",
@@ -150,17 +167,26 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
       const ctx =
         options.captureService.getChatContextSnapshot()
         ?? options.captureService.emptyContext();
+      const isWindowClick = Boolean(result.window && result.screenshot);
       const existing = ctx.regionScreenshots ?? [];
-      const nextScreenshots = result.screenshot
-        ? [...existing, result.screenshot]
-        : existing;
+      const nextScreenshots =
+        result.screenshot && !isWindowClick
+          ? [...existing, result.screenshot]
+          : existing;
       const nextWindow = result.window ?? ctx.window;
+      const nextWindowScreenshot = isWindowClick
+        ? result.screenshot
+        : ctx.windowScreenshot ?? null;
+      const isRegionSelection = Boolean(result.screenshot && !result.window);
       options.captureService.setPendingChatContext({
         ...ctx,
-        window: nextWindow,
-        windowContextEnabled: result.window
-          ? false
-          : ctx.windowContextEnabled,
+        window: isRegionSelection ? null : nextWindow,
+        windowScreenshot: isRegionSelection ? null : nextWindowScreenshot,
+        windowContextEnabled: isRegionSelection
+          ? undefined
+          : result.window
+            ? undefined
+            : ctx.windowContextEnabled,
         regionScreenshots: nextScreenshots,
       });
       options.captureService.broadcastChatContext();

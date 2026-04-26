@@ -32,6 +32,8 @@ export type CaptureWindowBridge = {
 export type CaptureOverlayBridge = {
   startRegionCapture: () => void
   endRegionCapture: () => void
+  suspendRegionCaptureForScreenshot: () => void
+  restoreRegionCaptureAfterScreenshot: () => void
   getOverlayBounds: () => { x: number; y: number; width: number; height: number } | null
 }
 
@@ -372,6 +374,16 @@ export class CaptureService {
     return await fn()
   }
 
+  private async withSuspendedRegionCapture<T>(fn: () => Promise<T>): Promise<T> {
+    this.options.overlay.suspendRegionCaptureForScreenshot()
+    await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
+    try {
+      return await fn()
+    } finally {
+      this.options.overlay.restoreRegionCaptureAfterScreenshot()
+    }
+  }
+
   /** Converts an overlay-relative point to native screen coordinates. */
   private toScreenPoint(overlayRelative: { x: number; y: number }): { x: number; y: number } {
     const regionBounds = this.options.overlay.getOverlayBounds()
@@ -422,10 +434,16 @@ export class CaptureService {
     }
 
     const resolve = this.pendingRegionCaptureResolve
+    const result = await this.prepareRegionSelection(selection)
+    resolve(result)
+    this.resetRegionCapture()
+  }
+
+  async prepareRegionSelection(selection: RegionSelection): Promise<RegionCaptureResult> {
     let screenshot: ScreenshotCapture | null = null
 
     try {
-      screenshot = await this.withCaptureContext(async () => {
+      screenshot = await this.withSuspendedRegionCapture(async () => {
         const regionBounds = this.options.overlay.getOverlayBounds()
         const globalX = (regionBounds?.x ?? 0) + selection.x
         const globalY = (regionBounds?.y ?? 0) + selection.y
@@ -444,7 +462,15 @@ export class CaptureService {
       console.debug('[capture] region capture failed:', (error as Error).message)
     }
 
-    resolve({ screenshot, window: null })
+    return { screenshot, window: null }
+  }
+
+  commitPreparedRegionCapture(result: RegionCaptureResult | null) {
+    if (!this.pendingRegionCaptureResolve) {
+      this.resetRegionCapture()
+      return
+    }
+    this.pendingRegionCaptureResolve(result)
     this.resetRegionCapture()
   }
 
@@ -468,6 +494,10 @@ export class CaptureService {
     if (!capture) return null
 
     const { bounds } = capture.windowInfo
+    const result = {
+      screenshot: capture.screenshot,
+      window: toChatContextWindow(capture.windowInfo),
+    }
     return {
       bounds: {
         x: Math.round(bounds.x / scaleFactor) - regionBounds.x,
@@ -476,6 +506,7 @@ export class CaptureService {
         height: Math.round(bounds.height / scaleFactor),
       },
       thumbnail: capture.screenshot.dataUrl,
+      result,
     }
   }
 
