@@ -10,9 +10,12 @@ import {
 import { copyFile, stat } from "node:fs/promises";
 import path from "node:path";
 import {
+  getLocalModelPreferences,
   getSyncMode,
   loadLocalPreferences,
   saveLocalPreferences,
+  updateLocalModelPreferences,
+  type LocalModelPreferencesSnapshot,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
@@ -53,10 +56,11 @@ import {
   IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_SHELL_SAVE_FILE_AS,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_SET_MODELS,
   IPC_PREFERENCES_SET_SYNC_MODE,
-  IPC_PREFERENCES_SYNC_MODELS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
 } from "../../src/shared/contracts/ipc-channels.js";
@@ -855,33 +859,41 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
+  ipcMain.handle(IPC_PREFERENCES_GET_MODELS, (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_MODELS,
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:getLocalModelPreferences request.");
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) {
+      return null;
+    }
+    return getLocalModelPreferences(stellaRoot);
+  });
+
   ipcMain.handle(
-    IPC_PREFERENCES_SYNC_MODELS,
+    IPC_PREFERENCES_SET_MODELS,
     (
       event,
-      payload: {
-        defaultModels?: Record<string, string>;
-        resolvedDefaultModels?: Record<string, string>;
-        modelOverrides?: Record<string, string>;
-        generalAgentEngine?: string;
-        selfModAgentEngine?: string;
-        maxAgentConcurrency?: number;
-      },
+      payload: Partial<LocalModelPreferencesSnapshot>,
     ) => {
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
-          IPC_PREFERENCES_SYNC_MODELS,
+          IPC_PREFERENCES_SET_MODELS,
         )
       ) {
         throw new Error(
-          "Blocked untrusted preferences:syncLocalModelPreferences request.",
+          "Blocked untrusted preferences:setLocalModelPreferences request.",
         );
       }
       const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) return { ok: true };
+      if (!stellaRoot) return null;
 
-      const prefs = loadLocalPreferences(stellaRoot);
       const nextDefaultModels = sanitizeStringRecord(payload?.defaultModels);
       const nextResolvedDefaultModels = sanitizeStringRecord(
         payload?.resolvedDefaultModels,
@@ -902,14 +914,26 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           ? Math.min(24, Math.floor(parsedConcurrency))
           : 24;
 
-      prefs.defaultModels = nextDefaultModels;
-      prefs.resolvedDefaultModels = nextResolvedDefaultModels;
-      prefs.modelOverrides = nextOverrides;
-      prefs.generalAgentEngine = generalAgentEngine;
-      prefs.selfModAgentEngine = selfModAgentEngine;
-      prefs.maxAgentConcurrency = maxAgentConcurrency;
-      saveLocalPreferences(stellaRoot, prefs);
-      return { ok: true };
+      const patch: Partial<LocalModelPreferencesSnapshot> = {};
+      if (payload?.defaultModels !== undefined) {
+        patch.defaultModels = nextDefaultModels;
+      }
+      if (payload?.resolvedDefaultModels !== undefined) {
+        patch.resolvedDefaultModels = nextResolvedDefaultModels;
+      }
+      if (payload?.modelOverrides !== undefined) {
+        patch.modelOverrides = nextOverrides;
+      }
+      if (payload?.generalAgentEngine !== undefined) {
+        patch.generalAgentEngine = generalAgentEngine;
+      }
+      if (payload?.selfModAgentEngine !== undefined) {
+        patch.selfModAgentEngine = selfModAgentEngine;
+      }
+      if (payload?.maxAgentConcurrency !== undefined) {
+        patch.maxAgentConcurrency = maxAgentConcurrency;
+      }
+      return updateLocalModelPreferences(stellaRoot, patch);
     },
   );
 

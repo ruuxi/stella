@@ -174,8 +174,10 @@ export const IPC_SHELL_SAVE_FILE_AS = "shell:saveFileAs" as const;
 export const IPC_SHELL_KILL_BY_PORT = "shell:killByPort" as const;
 export const IPC_PREFERENCES_GET_SYNC_MODE = "preferences:getSyncMode" as const;
 export const IPC_PREFERENCES_SET_SYNC_MODE = "preferences:setSyncMode" as const;
-export const IPC_PREFERENCES_SYNC_MODELS =
-  "preferences:syncLocalModelPreferences" as const;
+export const IPC_PREFERENCES_GET_MODELS =
+  "preferences:getLocalModelPreferences" as const;
+export const IPC_PREFERENCES_SET_MODELS =
+  "preferences:setLocalModelPreferences" as const;
 export const IPC_PREFERENCES_GET_RADIAL_TRIGGER =
   "preferences:getRadialTrigger" as const;
 export const IPC_PREFERENCES_SET_RADIAL_TRIGGER =

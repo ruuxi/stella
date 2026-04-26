@@ -42,11 +42,12 @@ import {
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
   IPC_PERMISSIONS_RESET_MICROPHONE,
+  IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
+  IPC_PREFERENCES_SET_MODELS,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_SYNC_MODE,
-  IPC_PREFERENCES_SYNC_MODELS,
   IPC_SHELL_SAVE_FILE_AS,
   IPC_SYSTEM_OPEN_FDA,
   IPC_SOCIAL_SESSIONS_CREATE,
@@ -765,17 +766,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_BACKUP_LIST, { limit }),
     restoreBackup: (snapshotId: string) =>
       ipcRenderer.invoke(IPC_BACKUP_RESTORE, { snapshotId }),
-    syncLocalModelPreferences: (payload: {
-      defaultModels: Record<string, string>;
-      resolvedDefaultModels: Record<string, string>;
-      modelOverrides: Record<string, string>;
-      generalAgentEngine: "default" | "claude_code_local";
-      selfModAgentEngine: "default" | "claude_code_local";
-      maxAgentConcurrency: number;
+    getLocalModelPreferences: () =>
+      ipcRenderer.invoke(IPC_PREFERENCES_GET_MODELS) as Promise<{
+        defaultModels: Record<string, string>;
+        resolvedDefaultModels: Record<string, string>;
+        modelOverrides: Record<string, string>;
+        generalAgentEngine: "default" | "claude_code_local";
+        selfModAgentEngine: "default" | "claude_code_local";
+        maxAgentConcurrency: number;
+      } | null>,
+    setLocalModelPreferences: (payload: {
+      defaultModels?: Record<string, string>;
+      resolvedDefaultModels?: Record<string, string>;
+      modelOverrides?: Record<string, string>;
+      generalAgentEngine?: "default" | "claude_code_local";
+      selfModAgentEngine?: "default" | "claude_code_local";
+      maxAgentConcurrency?: number;
     }) =>
-      ipcRenderer.invoke(IPC_PREFERENCES_SYNC_MODELS, payload) as Promise<{
-        ok: boolean;
-      }>,
+      ipcRenderer.invoke(IPC_PREFERENCES_SET_MODELS, payload) as Promise<{
+        defaultModels: Record<string, string>;
+        resolvedDefaultModels: Record<string, string>;
+        modelOverrides: Record<string, string>;
+        generalAgentEngine: "default" | "claude_code_local";
+        selfModAgentEngine: "default" | "claude_code_local";
+        maxAgentConcurrency: number;
+      } | null>,
     listLlmCredentials: () =>
       ipcRenderer.invoke("llmCredentials:list") as Promise<
         Array<{

@@ -6,7 +6,7 @@ import {
   useEffect,
   useMemo,
 } from "react";
-import { useQuery, useMutation, useAction } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { PageSidebar } from "@/context/page-sidebar";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
@@ -19,6 +19,7 @@ import {
   buildResolvedModelDefaultsMap,
   getConfigurableAgents,
   getDefaultModelOptionLabel,
+  getLocalModelDefaults,
   normalizeModelOverrides,
   type ModelDefaultEntry,
 } from "@/global/settings/lib/model-defaults";
@@ -71,6 +72,15 @@ const MAX_AGENT_CONCURRENCY_OPTIONS = Array.from(
   { length: 24 },
   (_, index) => index + 1,
 );
+
+type LocalModelPreferences = {
+  defaultModels: Record<string, string>;
+  resolvedDefaultModels: Record<string, string>;
+  modelOverrides: Record<string, string>;
+  generalAgentEngine: "default" | "claude_code_local";
+  selfModAgentEngine: "default" | "claude_code_local";
+  maxAgentConcurrency: number;
+};
 
 const LLM_PROVIDERS = [
   { key: "anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
@@ -1444,35 +1454,16 @@ function ChronicleSettingsCard() {
 // ---------------------------------------------------------------------------
 
 function ModelConfigSection() {
-  const remoteOverrides = useQuery(
-    api.data.preferences.getModelOverrides,
-    {},
-  ) as Record<string, string> | undefined;
-  const modelDefaults = useQuery(
-    api.data.preferences.getModelDefaults,
-    {},
-  ) as ModelDefaultEntry[] | undefined;
-  const setOverride = useMutation(api.data.preferences.setModelOverride);
-  const clearOverride = useMutation(api.data.preferences.clearModelOverride);
-  const generalAgentEngine = useQuery(
-    api.data.preferences.getGeneralAgentEngine,
-    {},
-  ) as "default" | "claude_code_local" | undefined;
-  const setGeneralAgentEngine = useMutation(
-    api.data.preferences.setGeneralAgentEngine,
-  );
-  const selfModAgentEngine = useQuery(
-    api.data.preferences.getSelfModAgentEngine,
-    {},
-  ) as "default" | "claude_code_local" | undefined;
-  const maxAgentConcurrency = useQuery(
-    api.data.preferences.getMaxAgentConcurrency,
-    {},
-  ) as number | undefined;
-  const setMaxAgentConcurrency = useMutation(
-    api.data.preferences.setMaxAgentConcurrency,
-  );
+  const [modelPreferences, setModelPreferences] =
+    useState<LocalModelPreferences | null>(null);
   const { models: stellaModels } = useModelCatalog();
+  const modelDefaults = useMemo<ModelDefaultEntry[] | undefined>(() => {
+    if (!modelPreferences) return undefined;
+    return getLocalModelDefaults(
+      modelPreferences.defaultModels,
+      modelPreferences.resolvedDefaultModels,
+    );
+  }, [modelPreferences]);
   const modelNamesById = useMemo(() => {
     const next = new Map<string, string>();
     for (const model of stellaModels) {
@@ -1497,11 +1488,14 @@ function ModelConfigSection() {
   );
 
   const serverOverrides = useMemo<Record<string, string>>(() => {
-    if (!remoteOverrides) {
+    if (!modelPreferences) {
       return {};
     }
-    return normalizeModelOverrides(remoteOverrides, defaultModelMap);
-  }, [defaultModelMap, remoteOverrides]);
+    return normalizeModelOverrides(
+      modelPreferences.modelOverrides,
+      defaultModelMap,
+    );
+  }, [defaultModelMap, modelPreferences]);
   const [localOverrides, setLocalOverrides] = useState<
     Record<string, string | null>
   >({});
@@ -1521,12 +1515,35 @@ function ModelConfigSection() {
   const [isSavingModelPreferences, setIsSavingModelPreferences] =
     useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadPreferences = async () => {
+      try {
+        const next =
+          await window.electronAPI?.system?.getLocalModelPreferences?.();
+        if (!cancelled) {
+          setModelPreferences(next ?? null);
+          setRuntimeError(null);
+          setModelConfigError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRuntimeError(
+            getSettingsErrorMessage(error, "Failed to load model settings."),
+          );
+        }
+      }
+    };
+
+    void loadPreferences();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const runtimePreferencesLoaded =
-    generalAgentEngine !== undefined &&
-    selfModAgentEngine !== undefined &&
-    maxAgentConcurrency !== undefined;
-  const modelPreferencesLoaded =
-    modelDefaults !== undefined && remoteOverrides !== undefined;
+    modelPreferences !== null;
+  const modelPreferencesLoaded = modelDefaults !== undefined;
 
   const pendingLocalOverrides = useMemo(() => {
     const next: Record<string, string | null> = {};
@@ -1557,17 +1574,17 @@ function ModelConfigSection() {
 
   const effectiveGeneralAgentEngine =
     (localGeneralAgentEngine !== null &&
-    localGeneralAgentEngine !== generalAgentEngine
+    localGeneralAgentEngine !== modelPreferences?.generalAgentEngine
       ? localGeneralAgentEngine
       : null) ??
-    generalAgentEngine ??
+    modelPreferences?.generalAgentEngine ??
     "default";
   const effectiveMaxAgentConcurrency =
     (localMaxAgentConcurrency !== null &&
-    localMaxAgentConcurrency !== maxAgentConcurrency
+    localMaxAgentConcurrency !== modelPreferences?.maxAgentConcurrency
       ? localMaxAgentConcurrency
       : null) ??
-    maxAgentConcurrency ??
+    modelPreferences?.maxAgentConcurrency ??
     24;
 
   const hasAnyOverride = Object.keys(overrides).length > 0;
@@ -1590,10 +1607,23 @@ function ModelConfigSection() {
       setLocalOverrides((prev) => ({ ...prev, [agentType]: value === "" ? null : value }));
 
       try {
+        const nextOverrides = { ...serverOverrides };
         if (value === "") {
-          await clearOverride({ agentType });
+          delete nextOverrides[agentType];
         } else {
-          await setOverride({ agentType, model: value });
+          nextOverrides[agentType] = value;
+        }
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.({
+            modelOverrides: nextOverrides,
+          });
+        if (saved) {
+          setModelPreferences(saved);
+          setLocalOverrides((prev) => {
+            const next = { ...prev };
+            delete next[agentType];
+            return next;
+          });
         }
       } catch (error) {
         setLocalOverrides((prev) => {
@@ -1612,7 +1642,7 @@ function ModelConfigSection() {
         setIsSavingModelPreferences(false);
       }
     },
-    [clearOverride, isSavingModelPreferences, localOverrides, setOverride],
+    [isSavingModelPreferences, localOverrides, serverOverrides],
   );
 
   const handleCustomDraftChange = useCallback(
@@ -1662,21 +1692,19 @@ function ModelConfigSection() {
 
     const keys = Object.keys(overrides);
     const previousLocalOverrides = localOverrides;
-    const results = await Promise.allSettled(
-      keys.map(async (key) => {
-        await clearOverride({ agentType: key });
-        return key;
-      }),
-    );
-
-    const failedKeys = results.flatMap((result, index) =>
-      result.status === "rejected" ? [keys[index]] : [],
-    );
-
-    if (failedKeys.length > 0) {
+    try {
+      const saved =
+        await window.electronAPI?.system?.setLocalModelPreferences?.({
+          modelOverrides: {},
+        });
+      if (saved) {
+        setModelPreferences(saved);
+        setLocalOverrides({});
+      }
+    } catch (error) {
       setLocalOverrides((prev) => {
         const next = { ...prev };
-        for (const key of failedKeys) {
+        for (const key of keys) {
           if (
             Object.prototype.hasOwnProperty.call(previousLocalOverrides, key)
           ) {
@@ -1688,15 +1716,12 @@ function ModelConfigSection() {
         return next;
       });
       setModelConfigError(
-        failedKeys.length === 1
-          ? "Failed to reset one model setting."
-          : `Failed to reset ${failedKeys.length} model settings.`,
+        getSettingsErrorMessage(error, "Failed to reset model settings."),
       );
     }
 
     setIsSavingModelPreferences(false);
   }, [
-    clearOverride,
     hasAnyOverride,
     isSavingModelPreferences,
     localOverrides,
@@ -1718,7 +1743,13 @@ function ModelConfigSection() {
       setLocalGeneralAgentEngine(engine);
 
       try {
-        await setGeneralAgentEngine({ engine });
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.({
+            generalAgentEngine: engine,
+          });
+        if (saved) {
+          setModelPreferences(saved);
+        }
       } catch (error) {
         setLocalGeneralAgentEngine(previousValue);
         setRuntimeError(
@@ -1734,7 +1765,6 @@ function ModelConfigSection() {
     [
       isSavingRuntimePreference,
       localGeneralAgentEngine,
-      setGeneralAgentEngine,
     ],
   );
 
@@ -1754,7 +1784,13 @@ function ModelConfigSection() {
       setLocalMaxAgentConcurrency(normalized);
 
       try {
-        await setMaxAgentConcurrency({ value: normalized });
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.({
+            maxAgentConcurrency: normalized,
+          });
+        if (saved) {
+          setModelPreferences(saved);
+        }
       } catch (error) {
         setLocalMaxAgentConcurrency(previousValue);
         setRuntimeError(
@@ -1770,7 +1806,6 @@ function ModelConfigSection() {
     [
       isSavingRuntimePreference,
       localMaxAgentConcurrency,
-      setMaxAgentConcurrency,
     ],
   );
 

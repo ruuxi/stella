@@ -560,14 +560,29 @@ export type ElectronSystemApi = {
   backUpNow: () => Promise<BackupNowResult>;
   listBackups: (limit?: number) => Promise<BackupSummary[]>;
   restoreBackup: (snapshotId: string) => Promise<RestoreBackupResult>;
-  syncLocalModelPreferences: (payload: {
+  getLocalModelPreferences: () => Promise<{
     defaultModels: Record<string, string>;
     resolvedDefaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
     generalAgentEngine: "default" | "claude_code_local";
     selfModAgentEngine: "default" | "claude_code_local";
     maxAgentConcurrency: number;
-  }) => Promise<{ ok: boolean }>;
+  } | null>;
+  setLocalModelPreferences: (payload: {
+    defaultModels?: Record<string, string>;
+    resolvedDefaultModels?: Record<string, string>;
+    modelOverrides?: Record<string, string>;
+    generalAgentEngine?: "default" | "claude_code_local";
+    selfModAgentEngine?: "default" | "claude_code_local";
+    maxAgentConcurrency?: number;
+  }) => Promise<{
+    defaultModels: Record<string, string>;
+    resolvedDefaultModels: Record<string, string>;
+    modelOverrides: Record<string, string>;
+    generalAgentEngine: "default" | "claude_code_local";
+    selfModAgentEngine: "default" | "claude_code_local";
+    maxAgentConcurrency: number;
+  } | null>;
   listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>;
   listLlmOAuthProviders: () => Promise<LocalLlmOAuthProviderSummary[]>;
   listLlmOAuthCredentials: () => Promise<LocalLlmCredentialSummary[]>;

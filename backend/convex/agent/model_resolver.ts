@@ -1,18 +1,16 @@
 /**
- * Model resolver - resolves backend model config with user model overrides.
+ * Model resolver - resolves backend managed model config.
  *
  * Backend execution is Stella-managed. Local/runtime BYOK happens in the
  * desktop runtime, not here.
  */
 
 import type { ActionCtx } from "../_generated/server";
-import { internal } from "../_generated/api";
 import {
   getModelConfig,
   type ManagedModelAudience,
 } from "./model";
 import { resolveManagedGatewayProvider, type ManagedGatewayProvider } from "../lib/managed_gateway";
-import { resolveStellaModelSelection } from "../stella_models";
 import {
   assertManagedUsageAllowed,
   type ManagedModelAccess,
@@ -51,7 +49,7 @@ type ResolveModelConfigOptions = {
 };
 
 export async function resolveModelConfig(
-  ctx: { runQuery: ActionCtx["runQuery"] },
+  ctx: unknown,
   agentType: string,
   ownerId?: string,
   options?: ResolveModelConfigOptions,
@@ -59,25 +57,9 @@ export async function resolveModelConfig(
   const audience = options?.access?.modelAudience ?? options?.audience ?? "free";
   const defaults = getModelConfig(agentType, audience);
 
-  if (!ownerId) {
-    return toResolvedModelConfig(defaults);
-  }
-
-  let modelString = defaults.model;
-  const override = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
-    ownerId,
-    key: `model_config:${agentType}`,
-  });
-  if (override) {
-    modelString = resolveStellaModelSelection(agentType, override, audience);
-  }
-
-  return toResolvedModelConfig({
-    ...defaults,
-    temperature: defaults.temperature,
-    maxOutputTokens: defaults.maxOutputTokens,
-    model: modelString,
-  });
+  void ctx;
+  void ownerId;
+  return toResolvedModelConfig(defaults);
 }
 
 export async function resolveFallbackConfig(

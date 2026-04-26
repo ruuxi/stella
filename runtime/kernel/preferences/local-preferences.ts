@@ -1,9 +1,8 @@
 /**
  * Local preferences — reads/writes `desktop/state/preferences.json`.
  *
- * Serves as the local source of truth for user preferences that were
- * previously fetched from Convex on every chat turn. The runner syncs
- * these from Convex once on startup and writes to disk.
+ * Serves as the local source of truth for user preferences. Model routing
+ * preferences live here only; Convex does not own or sync them.
  */
 
 import fs from "fs";
@@ -18,9 +17,9 @@ import {
 type AgentEngine = "default" | "claude_code_local";
 
 export type LocalPreferences = {
-  /** Backend-owned default models keyed by agent type. */
+  /** Default models keyed by agent type. */
   defaultModels: Record<string, string>;
-  /** Current resolved upstream model behind each backend-owned default. */
+  /** Current resolved upstream model behind each default. */
   resolvedDefaultModels: Record<string, string>;
   /** Model overrides keyed by agent type, e.g. "orchestrator" -> "anthropic/claude-opus-4.6" */
   modelOverrides: Record<string, string>;
@@ -43,6 +42,16 @@ export type LocalPreferences = {
   /** Global accelerator used for OS-wide and in-app dictation. Empty disables it. */
   dictationShortcut: string;
 };
+
+export type LocalModelPreferencesSnapshot = Pick<
+  LocalPreferences,
+  | "defaultModels"
+  | "resolvedDefaultModels"
+  | "modelOverrides"
+  | "generalAgentEngine"
+  | "selfModAgentEngine"
+  | "maxAgentConcurrency"
+>;
 
 const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
 
@@ -177,9 +186,51 @@ export const getMaxAgentConcurrency = (
   return loadLocalPreferences(stellaHome).maxAgentConcurrency;
 };
 
+export const getLocalModelPreferences = (
+  stellaHome: string,
+): LocalModelPreferencesSnapshot => {
+  const prefs = loadLocalPreferences(stellaHome);
+  return {
+    defaultModels: { ...prefs.defaultModels },
+    resolvedDefaultModels: { ...prefs.resolvedDefaultModels },
+    modelOverrides: { ...prefs.modelOverrides },
+    generalAgentEngine: prefs.generalAgentEngine,
+    selfModAgentEngine: prefs.selfModAgentEngine,
+    maxAgentConcurrency: prefs.maxAgentConcurrency,
+  };
+};
+
+export const updateLocalModelPreferences = (
+  stellaHome: string,
+  patch: Partial<LocalModelPreferencesSnapshot>,
+): LocalModelPreferencesSnapshot => {
+  const prefs = loadLocalPreferences(stellaHome);
+  const next: LocalPreferences = {
+    ...prefs,
+    defaultModels: patch.defaultModels ?? prefs.defaultModels,
+    resolvedDefaultModels:
+      patch.resolvedDefaultModels ?? prefs.resolvedDefaultModels,
+    modelOverrides: patch.modelOverrides ?? prefs.modelOverrides,
+    generalAgentEngine:
+      patch.generalAgentEngine === undefined
+        ? prefs.generalAgentEngine
+        : normalizeEngine(patch.generalAgentEngine),
+    selfModAgentEngine:
+      patch.selfModAgentEngine === undefined
+        ? prefs.selfModAgentEngine
+        : normalizeEngine(patch.selfModAgentEngine),
+    maxAgentConcurrency:
+      patch.maxAgentConcurrency === undefined
+        ? prefs.maxAgentConcurrency
+        : normalizeConcurrency(patch.maxAgentConcurrency),
+  };
+  saveLocalPreferences(stellaHome, next);
+  return getLocalModelPreferences(stellaHome);
+};
+
 /**
  * Resolve the model name for the Explore agent. Prefers an explicit override
- * (modelOverrides["explore"]), then a backend-supplied default
+ * (modelOverrides["explore"]), then a local default
  * (defaultModels["explore"]), then returns undefined to let resolveLlmRoute
  * fall back to STELLA_DEFAULT_MODEL.
  *

@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { AuthDeepLinkHandler } from "./global/auth/AuthDeepLinkHandler";
 import { PhoneAccessBridge } from "./global/mobile/PhoneAccessBridge";
 import { AppBootstrap } from "./systems/boot/AppBootstrap";
-import { ModelPreferencesBridge } from "@/global/settings/ModelPreferencesBridge";
 import { ChatStoreProvider } from "@/context/chat-store";
 import { CredentialRequestLayer } from "./global/auth/CredentialRequestLayer";
 import { GoogleWorkspaceAuthListener } from "./global/integrations/GoogleWorkspaceAuthListener";
@@ -47,7 +46,6 @@ function App() {
       <div className="app window-full">
         <ChatStoreProvider>
           <AppBootstrap />
-          <ModelPreferencesBridge />
           <PhoneAccessBridge />
           <CredentialRequestLayer />
           <GoogleWorkspaceAuthListener />
