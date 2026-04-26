@@ -17,34 +17,48 @@ import {
 import { isBlockedPath } from "./command-safety.js";
 
 const runRipgrep = async (args: string[], cwd: string) => {
-  return new Promise<{ ok: boolean; output: string; error?: string }>((resolve) => {
-    const child = spawn("rg", args, {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    let stdout = "";
-    let stderr = "";
+  return new Promise<{ ok: boolean; output: string; error?: string }>(
+    (resolve) => {
+      const child = spawn("rg", args, {
+        cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      });
+      let stdout = "";
+      let stderr = "";
 
-    child.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-    child.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-    child.on("error", (error) => {
-      resolve({ ok: false, output: "", error: error.message });
-    });
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve({ ok: true, output: stdout });
-      } else if (code === 1) {
-        resolve({ ok: true, output: "" });
-      } else {
-        resolve({ ok: false, output: stdout, error: stderr || `rg exited ${code}` });
-      }
-    });
-  });
+      child.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+      child.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+      child.on("error", (error) => {
+        resolve({ ok: false, output: "", error: error.message });
+      });
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolve({ ok: true, output: stdout });
+        } else if (code === 1) {
+          resolve({ ok: true, output: "" });
+        } else {
+          resolve({
+            ok: false,
+            output: stdout,
+            error: stderr || `rg exited ${code}`,
+          });
+        }
+      });
+    },
+  );
+};
+
+const isPathInsideRoot = (candidate: string, root: string): boolean => {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 };
 
 export const handleGrep = async (
@@ -52,19 +66,31 @@ export const handleGrep = async (
   context?: ToolContext,
 ): Promise<ToolResult> => {
   const pattern = String(args.pattern ?? "");
-  const basePath = expandHomePath(
-    String(args.path ?? context?.stellaRoot ?? process.cwd()),
+  const scopedRoot = context?.toolWorkspaceRoot?.trim()
+    ? path.resolve(context.toolWorkspaceRoot)
+    : null;
+  const rawPath = expandHomePath(
+    String(args.path ?? scopedRoot ?? context?.stellaRoot ?? process.cwd()),
   );
+  const basePath =
+    scopedRoot && !path.isAbsolute(rawPath)
+      ? path.resolve(scopedRoot, rawPath)
+      : path.resolve(rawPath);
   const glob = args.glob ? String(args.glob) : undefined;
   const type = args.type ? String(args.type) : undefined;
   const outputMode = String(args.output_mode ?? "files_with_matches");
   const caseInsensitive = Boolean(args.case_insensitive ?? false);
-  const contextLines = args.context_lines ? Number(args.context_lines) : undefined;
+  const contextLines = args.context_lines
+    ? Number(args.context_lines)
+    : undefined;
   const maxResults = args.max_results ? Number(args.max_results) : 100;
 
   // Safety check: block system directories
   const pathBlock = isBlockedPath(basePath);
   if (pathBlock) return { error: pathBlock };
+  if (scopedRoot && !isPathInsideRoot(basePath, scopedRoot)) {
+    return { error: "Path is outside the shared session workspace." };
+  }
 
   try {
     await fs.access(basePath);

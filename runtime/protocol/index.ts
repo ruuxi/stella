@@ -100,7 +100,8 @@ export const METHOD_NAMES = {
   VOICE_ORCHESTRATOR_CHAT: "voice.orchestratorChat",
   VOICE_WEB_SEARCH: "voice.webSearch",
   THREAD_APPEND_MESSAGE: "thread.appendMessage",
-  LOCAL_CHAT_GET_OR_CREATE_DEFAULT: "localChat.getOrCreateDefaultConversationId",
+  LOCAL_CHAT_GET_OR_CREATE_DEFAULT:
+    "localChat.getOrCreateDefaultConversationId",
   LOCAL_CHAT_LIST_EVENTS: "localChat.listEvents",
   LOCAL_CHAT_GET_EVENT_COUNT: "localChat.getEventCount",
   LOCAL_CHAT_PERSIST_DISCOVERY_WELCOME: "localChat.persistDiscoveryWelcome",
@@ -159,7 +160,8 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_CANCEL: "internal.worker.cancel",
   INTERNAL_WORKER_RUN_AUTOMATION: "internal.worker.runAutomation",
   INTERNAL_WORKER_RUN_BLOCKING_AGENT: "internal.worker.runBlockingAgent",
-  INTERNAL_WORKER_CREATE_BACKGROUND_AGENT: "internal.worker.createBackgroundAgent",
+  INTERNAL_WORKER_CREATE_BACKGROUND_AGENT:
+    "internal.worker.createBackgroundAgent",
   INTERNAL_WORKER_GET_AGENT_SNAPSHOT: "internal.worker.getAgentSnapshot",
   INTERNAL_WORKER_APPEND_THREAD_MESSAGE: "internal.worker.appendThreadMessage",
   INTERNAL_WORKER_SEND_AGENT_INPUT: "internal.worker.sendAgentInput",
@@ -173,9 +175,12 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_GET_STORE_PACKAGE: "internal.worker.getStorePackage",
   INTERNAL_WORKER_LIST_STORE_RELEASES: "internal.worker.listStoreReleases",
   INTERNAL_WORKER_GET_STORE_RELEASE: "internal.worker.getStoreRelease",
-  INTERNAL_WORKER_CREATE_FIRST_STORE_RELEASE: "internal.worker.createFirstStoreRelease",
-  INTERNAL_WORKER_CREATE_STORE_RELEASE_UPDATE: "internal.worker.createStoreReleaseUpdate",
-  INTERNAL_WORKER_PUBLISH_STORE_CANDIDATE_RELEASE: "internal.worker.publishStoreCandidateRelease",
+  INTERNAL_WORKER_CREATE_FIRST_STORE_RELEASE:
+    "internal.worker.createFirstStoreRelease",
+  INTERNAL_WORKER_CREATE_STORE_RELEASE_UPDATE:
+    "internal.worker.createStoreReleaseUpdate",
+  INTERNAL_WORKER_PUBLISH_STORE_CANDIDATE_RELEASE:
+    "internal.worker.publishStoreCandidateRelease",
   INTERNAL_WORKER_INSTALL_STORE_RELEASE: "internal.worker.installStoreRelease",
   INTERNAL_WORKER_UNINSTALL_STORE_MOD: "internal.worker.uninstallStoreMod",
   INTERNAL_WORKER_RESUME_HMR: "internal.worker.resumeHmr",
@@ -183,9 +188,12 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_KILL_SHELL_BY_PORT: "internal.worker.killShellByPort",
   INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT:
     "internal.worker.localChat.getOrCreateDefaultConversationId",
-  INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT: "internal.worker.localChat.appendEvent",
-  INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS: "internal.worker.localChat.listEvents",
-  INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT: "internal.worker.localChat.getEventCount",
+  INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT:
+    "internal.worker.localChat.appendEvent",
+  INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS:
+    "internal.worker.localChat.listEvents",
+  INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT:
+    "internal.worker.localChat.getEventCount",
   INTERNAL_WORKER_LOCAL_CHAT_PERSIST_DISCOVERY_WELCOME:
     "internal.worker.localChat.persistDiscoveryWelcome",
   INTERNAL_WORKER_LOCAL_CHAT_LIST_SYNC_MESSAGES:
@@ -200,9 +208,12 @@ export const METHOD_NAMES = {
     "internal.worker.discovery.collectAllSignals",
   INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS:
     "internal.worker.storeMods.listLocalCommits",
-  INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED: "internal.worker.storeMods.listInstalledMods",
-  INTERNAL_WORKER_SCHEDULE_LIST_CRON_JOBS: "internal.worker.schedule.listCronJobs",
-  INTERNAL_WORKER_SCHEDULE_LIST_HEARTBEATS: "internal.worker.schedule.listHeartbeats",
+  INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED:
+    "internal.worker.storeMods.listInstalledMods",
+  INTERNAL_WORKER_SCHEDULE_LIST_CRON_JOBS:
+    "internal.worker.schedule.listCronJobs",
+  INTERNAL_WORKER_SCHEDULE_LIST_HEARTBEATS:
+    "internal.worker.schedule.listHeartbeats",
   INTERNAL_WORKER_SCHEDULE_LIST_EVENTS:
     "internal.worker.schedule.listConversationEvents",
   INTERNAL_WORKER_SCHEDULE_GET_EVENT_COUNT:
@@ -229,13 +240,17 @@ export const METHOD_NAMES = {
     "internal.worker.selfMod.recentFeatures",
   INTERNAL_STORE_LOAD_THREAD_MESSAGES: "internal.store.loadThreadMessages",
   INTERNAL_STORE_LIST_ACTIVE_THREADS: "internal.store.listActiveThreads",
-  INTERNAL_STORE_GET_ORCHESTRATOR_REMINDER_STATE: "internal.store.getOrchestratorReminderState",
-  INTERNAL_STORE_RESOLVE_OR_CREATE_ACTIVE_THREAD: "internal.store.resolveOrCreateActiveThread",
+  INTERNAL_STORE_GET_ORCHESTRATOR_REMINDER_STATE:
+    "internal.store.getOrchestratorReminderState",
+  INTERNAL_STORE_RESOLVE_OR_CREATE_ACTIVE_THREAD:
+    "internal.store.resolveOrCreateActiveThread",
   INTERNAL_STORE_APPEND_THREAD_MESSAGE: "internal.store.appendThreadMessage",
   INTERNAL_STORE_ARCHIVE_THREAD: "internal.store.archiveThread",
-  INTERNAL_STORE_REPLACE_THREAD_MESSAGES: "internal.store.replaceThreadMessages",
+  INTERNAL_STORE_REPLACE_THREAD_MESSAGES:
+    "internal.store.replaceThreadMessages",
   INTERNAL_STORE_UPDATE_THREAD_SUMMARY: "internal.store.updateThreadSummary",
-  INTERNAL_STORE_UPDATE_ORCHESTRATOR_REMINDER_COUNTER: "internal.store.updateOrchestratorReminderCounter",
+  INTERNAL_STORE_UPDATE_ORCHESTRATOR_REMINDER_COUNTER:
+    "internal.store.updateOrchestratorReminderCounter",
   INTERNAL_STORE_RECORD_RUN_EVENT: "internal.store.recordRunEvent",
   INTERNAL_STORE_LIST_LOCAL_CHAT_EVENTS: "internal.store.listLocalChatEvents",
   INTERNAL_STORE_BEGIN_SELF_MOD_RUN: "internal.store.beginSelfModRun",
@@ -246,15 +261,20 @@ export const METHOD_NAMES = {
   INTERNAL_SCHEDULE_UPDATE_CRON_JOB: "internal.schedule.updateCronJob",
   INTERNAL_SCHEDULE_REMOVE_CRON_JOB: "internal.schedule.removeCronJob",
   INTERNAL_SCHEDULE_RUN_CRON_JOB: "internal.schedule.runCronJob",
-  INTERNAL_SCHEDULE_GET_HEARTBEAT_CONFIG: "internal.schedule.getHeartbeatConfig",
+  INTERNAL_SCHEDULE_GET_HEARTBEAT_CONFIG:
+    "internal.schedule.getHeartbeatConfig",
   INTERNAL_SCHEDULE_UPSERT_HEARTBEAT: "internal.schedule.upsertHeartbeat",
   INTERNAL_SCHEDULE_RUN_HEARTBEAT: "internal.schedule.runHeartbeat",
   INTERNAL_CAPABILITY_STATE_GET: "internal.capabilityState.get",
   INTERNAL_CAPABILITY_STATE_SET: "internal.capabilityState.set",
-  INTERNAL_CAPABILITY_STATE_APPEND_EVENT: "internal.capabilityState.appendEvent",
-  INTERNAL_WORKER_GOOGLE_WORKSPACE_AUTH_STATUS: "internal.worker.googleWorkspace.authStatus",
-  INTERNAL_WORKER_GOOGLE_WORKSPACE_CONNECT: "internal.worker.googleWorkspace.connect",
-  INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT: "internal.worker.googleWorkspace.disconnect",
+  INTERNAL_CAPABILITY_STATE_APPEND_EVENT:
+    "internal.capabilityState.appendEvent",
+  INTERNAL_WORKER_GOOGLE_WORKSPACE_AUTH_STATUS:
+    "internal.worker.googleWorkspace.authStatus",
+  INTERNAL_WORKER_GOOGLE_WORKSPACE_CONNECT:
+    "internal.worker.googleWorkspace.connect",
+  INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT:
+    "internal.worker.googleWorkspace.disconnect",
 } as const;
 
 export const NOTIFICATION_NAMES = {
@@ -375,6 +395,7 @@ export type RuntimeAutomationTurnRequest = {
   conversationId: string;
   userPrompt: string;
   agentType?: string;
+  toolWorkspaceRoot?: string;
 };
 
 export type RuntimeAutomationTurnResult =
@@ -608,7 +629,9 @@ export type RuntimeScheduleApi = {
     conversationId: string;
     maxItems?: number;
   }) => Promise<ScheduledConversationEvent[]>;
-  getConversationEventCount: (args: { conversationId: string }) => Promise<number>;
+  getConversationEventCount: (args: {
+    conversationId: string;
+  }) => Promise<number>;
 };
 
 export type RuntimeSocialSessionStatus = "active" | "paused" | "ended";

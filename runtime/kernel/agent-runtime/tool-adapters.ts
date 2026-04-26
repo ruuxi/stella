@@ -194,6 +194,7 @@ type RuntimeToolContextArgs = {
   agentType: string;
   deviceId: string;
   stellaRoot?: string;
+  toolWorkspaceRoot?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
   allowedToolNames?: string[];
@@ -209,9 +210,14 @@ export const buildRuntimeToolContext = (
   ...(args.rootRunId ? { rootRunId: args.rootRunId } : {}),
   agentType: args.agentType,
   ...(args.stellaRoot ? { stellaRoot: args.stellaRoot } : {}),
+  ...(args.toolWorkspaceRoot
+    ? { toolWorkspaceRoot: args.toolWorkspaceRoot }
+    : {}),
   storageMode: "local",
   ...(args.agentId ? { agentId: args.agentId } : {}),
-  ...(typeof args.agentDepth === "number" ? { agentDepth: args.agentDepth } : {}),
+  ...(typeof args.agentDepth === "number"
+    ? { agentDepth: args.agentDepth }
+    : {}),
   ...(typeof args.maxAgentDepth === "number"
     ? { maxAgentDepth: args.maxAgentDepth }
     : {}),
@@ -306,6 +312,7 @@ export const createPiTools = (opts: {
   agentType: string;
   deviceId: string;
   stellaRoot?: string;
+  toolWorkspaceRoot?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
   toolsAllowlist?: string[];
@@ -352,6 +359,7 @@ export const createPiTools = (opts: {
           agentType: opts.agentType,
           deviceId: opts.deviceId,
           stellaRoot: opts.stellaRoot,
+          toolWorkspaceRoot: opts.toolWorkspaceRoot,
           agentDepth: opts.agentDepth,
           maxAgentDepth: opts.maxAgentDepth,
           allowedToolNames: requested,
@@ -360,13 +368,13 @@ export const createPiTools = (opts: {
           hookEmitter: opts.hookEmitter,
           signal,
           onUpdate: onUpdate
-            ? ((partialResult: ToolResult) => {
+            ? (partialResult: ToolResult) => {
                 const formattedPartial = formatToolResult(partialResult);
                 onUpdate({
                   content: [{ type: "text", text: formattedPartial.text }],
                   details: formattedPartial.details,
                 });
-              })
+              }
             : undefined,
         });
         const formatted = formatToolResult(toolResult);

@@ -11,10 +11,7 @@ import type {
   SocialSessionServiceSnapshot,
   SocialSessionRuntimeRecord,
 } from "../../protocol/index.js";
-import type {
-  SocialSessionRole,
-  SocialSessionSyncRecord,
-} from "./store.js";
+import type { SocialSessionRole, SocialSessionSyncRecord } from "./store.js";
 import {
   applySessionFileOp,
   ensurePathWithinRoot,
@@ -221,7 +218,9 @@ export class SocialSessionService {
     return client;
   }
 
-  private async runClientRequest<T>(handler: (client: ConvexClient) => Promise<T>): Promise<T> {
+  private async runClientRequest<T>(
+    handler: (client: ConvexClient) => Promise<T>,
+  ): Promise<T> {
     const client = this.requireClientForRequest();
     try {
       return await handler(client);
@@ -340,16 +339,22 @@ export class SocialSessionService {
     if (!deviceId) {
       throw new Error("This device is not ready for Stella together yet.");
     }
-    const workspaceLabel = args.workspaceLabel?.trim() || `Stella Session ${args.roomId.slice(-6)}`;
+    const workspaceLabel =
+      args.workspaceLabel?.trim() || `Stella Session ${args.roomId.slice(-6)}`;
     const workspaceSlug = sanitizeWorkspaceSlugLocal(workspaceLabel);
-    const workspaceFolderName = sanitizeWorkspaceFolderNameLocal(workspaceLabel);
-    const created = await this.runClientRequest(async (client) =>
-      ((await (client as any).mutation((api as any).social.sessions.createSession, {
-        roomId: args.roomId,
-        hostDeviceId: deviceId,
-        workspaceSlug,
-        workspaceFolderName,
-      })) as { _id: string }),
+    const workspaceFolderName =
+      sanitizeWorkspaceFolderNameLocal(workspaceLabel);
+    const created = await this.runClientRequest(
+      async (client) =>
+        (await (client as any).mutation(
+          (api as any).social.sessions.createSession,
+          {
+            roomId: args.roomId,
+            hostDeviceId: deviceId,
+            workspaceSlug,
+            workspaceFolderName,
+          },
+        )) as { _id: string },
     );
     this.start();
     return { sessionId: created._id };
@@ -359,11 +364,15 @@ export class SocialSessionService {
     sessionId: string;
     status: SessionStatus;
   }): Promise<{ sessionId: string; status: SessionStatus }> {
-    const updated = await this.runClientRequest(async (client) =>
-      ((await (client as any).mutation((api as any).social.sessions.updateSessionStatus, {
-        sessionId: args.sessionId,
-        status: args.status,
-      })) as { _id: string; status: SessionStatus }),
+    const updated = await this.runClientRequest(
+      async (client) =>
+        (await (client as any).mutation(
+          (api as any).social.sessions.updateSessionStatus,
+          {
+            sessionId: args.sessionId,
+            status: args.status,
+          },
+        )) as { _id: string; status: SessionStatus },
     );
     if (args.status !== "ended") {
       this.start();
@@ -377,13 +386,17 @@ export class SocialSessionService {
     agentType?: string;
     clientTurnId?: string;
   }): Promise<{ turnId: string }> {
-    const queued = await this.runClientRequest(async (client) =>
-      ((await (client as any).mutation((api as any).social.sessions.queueTurn, {
-        sessionId: args.sessionId,
-        prompt: args.prompt,
-        ...(args.agentType ? { agentType: args.agentType } : {}),
-        ...(args.clientTurnId ? { clientTurnId: args.clientTurnId } : {}),
-      })) as { _id: string }),
+    const queued = await this.runClientRequest(
+      async (client) =>
+        (await (client as any).mutation(
+          (api as any).social.sessions.queueTurn,
+          {
+            sessionId: args.sessionId,
+            prompt: args.prompt,
+            ...(args.agentType ? { agentType: args.agentType } : {}),
+            ...(args.clientTurnId ? { clientTurnId: args.clientTurnId } : {}),
+          },
+        )) as { _id: string },
     );
     this.start();
     return { turnId: queued._id };
@@ -395,7 +408,9 @@ export class SocialSessionService {
     }
     this.clearSuspension();
     this.started = true;
-    void fs.mkdir(this.getWorkspaceRoot(), { recursive: true }).catch(() => undefined);
+    void fs
+      .mkdir(this.getWorkspaceRoot(), { recursive: true })
+      .catch(() => undefined);
     this.refreshSessionSubscription();
     this.scheduleTick();
   }
@@ -443,23 +458,21 @@ export class SocialSessionService {
       this.activeSessions.clear();
       return;
     }
-    this.sessionsUnsubscribe = client
-      .onUpdate(
-        (api as any).social.sessions.listSessions,
-        {},
-        (payload: unknown) => {
-          const reconcilePromise = this.reconcileRemoteSessions(
-            payload as RemoteSessionSummary[],
-          ).catch((error) => this.handleSyncError(error));
-          this.reconcileSessionsPromise = reconcilePromise.finally(() => {
-            if (this.reconcileSessionsPromise === reconcilePromise) {
-              this.reconcileSessionsPromise = null;
-            }
-          });
-        },
-        (error) => this.handleSyncError(error),
-      )
-      .unsubscribe;
+    this.sessionsUnsubscribe = client.onUpdate(
+      (api as any).social.sessions.listSessions,
+      {},
+      (payload: unknown) => {
+        const reconcilePromise = this.reconcileRemoteSessions(
+          payload as RemoteSessionSummary[],
+        ).catch((error) => this.handleSyncError(error));
+        this.reconcileSessionsPromise = reconcilePromise.finally(() => {
+          if (this.reconcileSessionsPromise === reconcilePromise) {
+            this.reconcileSessionsPromise = null;
+          }
+        });
+      },
+      (error) => this.handleSyncError(error),
+    ).unsubscribe;
   }
 
   private async reconcileRemoteSessions(summaries: RemoteSessionSummary[]) {
@@ -510,7 +523,6 @@ export class SocialSessionService {
         this.activeSessions.delete(sessionId);
       }
     }
-
   }
 
   private async runTick() {
@@ -587,6 +599,18 @@ export class SocialSessionService {
       if (!store) {
         return;
       }
+      const sessionRuntime = this.activeSessions.get(nextTurn.session._id);
+      if (!sessionRuntime) {
+        await (client as any).mutation(
+          (api as any).social.sessions.releaseTurn,
+          {
+            sessionId: nextTurn.session._id,
+            turnId: nextTurn.turn._id,
+            deviceId,
+          },
+        );
+        return;
+      }
       if (chatStore) {
         chatStore.appendEvent({
           conversationId: nextTurn.session.conversationId,
@@ -603,16 +627,20 @@ export class SocialSessionService {
       const result = await runner.runAutomationTurn({
         conversationId: nextTurn.session.conversationId,
         userPrompt: nextTurn.turn.prompt,
-        agentType: nextTurn.turn.agentType,
+        agentType: "social_session",
+        toolWorkspaceRoot: sessionRuntime.localFolderPath,
       });
 
       if (result.status === "busy") {
         flushLocalChatUpdated();
-        await (client as any).mutation((api as any).social.sessions.releaseTurn, {
-          sessionId: nextTurn.session._id,
-          turnId: nextTurn.turn._id,
-          deviceId,
-        });
+        await (client as any).mutation(
+          (api as any).social.sessions.releaseTurn,
+          {
+            sessionId: nextTurn.session._id,
+            turnId: nextTurn.turn._id,
+            deviceId,
+          },
+        );
         return;
       }
 
@@ -639,12 +667,15 @@ export class SocialSessionService {
         localChatUpdated = true;
       }
 
-      await (client as any).mutation((api as any).social.sessions.completeTurn, {
-        sessionId: nextTurn.session._id,
-        turnId: nextTurn.turn._id,
-        deviceId,
-        resultText: result.finalText,
-      });
+      await (client as any).mutation(
+        (api as any).social.sessions.completeTurn,
+        {
+          sessionId: nextTurn.session._id,
+          turnId: nextTurn.turn._id,
+          deviceId,
+          resultText: result.finalText,
+        },
+      );
       store.patchSession(nextTurn.session._id, {
         lastObservedTurnOrdinal: nextTurn.turn.ordinal,
       });
@@ -658,16 +689,22 @@ export class SocialSessionService {
     }
   }
 
-  private async applyRemoteFileOps(client: ConvexClient, session: SessionRuntime) {
+  private async applyRemoteFileOps(
+    client: ConvexClient,
+    session: SessionRuntime,
+  ) {
     const store = this.deps.getStore();
     if (!store) {
       return;
     }
-    const ops = (await (client as any).query((api as any).social.sessions.listFileOps, {
-      sessionId: session.sessionId,
-      afterOrdinal: session.lastAppliedFileOpOrdinal,
-      limit: MAX_FILE_SYNC_OPS_PER_TICK,
-    })) as FileOpEnvelope[];
+    const ops = (await (client as any).query(
+      (api as any).social.sessions.listFileOps,
+      {
+        sessionId: session.sessionId,
+        afterOrdinal: session.lastAppliedFileOpOrdinal,
+        limit: MAX_FILE_SYNC_OPS_PER_TICK,
+      },
+    )) as FileOpEnvelope[];
     if (ops.length === 0) {
       return;
     }
@@ -683,7 +720,9 @@ export class SocialSessionService {
           }
           const response = await fetch(entry.downloadUrl);
           if (!response.ok) {
-            throw new Error(`Failed to download session file: ${response.status}`);
+            throw new Error(
+              `Failed to download session file: ${response.status}`,
+            );
           }
           const buffer = new Uint8Array(await response.arrayBuffer());
           await applySessionFileOp({
@@ -724,20 +763,28 @@ export class SocialSessionService {
       });
     }
 
-    await (client as any).mutation((api as any).social.sessions.acknowledgeFileOps, {
-      sessionId: session.sessionId,
-      lastAppliedOrdinal: session.lastAppliedFileOpOrdinal,
-    });
+    await (client as any).mutation(
+      (api as any).social.sessions.acknowledgeFileOps,
+      {
+        sessionId: session.sessionId,
+        lastAppliedOrdinal: session.lastAppliedFileOpOrdinal,
+      },
+    );
   }
 
-  private async syncHostWorkspace(client: ConvexClient, session: SessionRuntime) {
+  private async syncHostWorkspace(
+    client: ConvexClient,
+    session: SessionRuntime,
+  ) {
     const store = this.deps.getStore();
     if (!store) {
       return;
     }
     const currentFiles = await scanSessionWorkspace(session.localFolderPath);
     const previousFiles = new Map(
-      store.listFiles(session.sessionId).map((record) => [record.relativePath, record]),
+      store
+        .listFiles(session.sessionId)
+        .map((record) => [record.relativePath, record]),
     );
 
     for (const file of currentFiles) {
@@ -751,7 +798,9 @@ export class SocialSessionService {
         continue;
       }
 
-      const base64Content = (await fs.readFile(file.absolutePath)).toString("base64");
+      const base64Content = (await fs.readFile(file.absolutePath)).toString(
+        "base64",
+      );
       await (client as any).action((api as any).social.sessions.uploadFile, {
         sessionId: session.sessionId,
         relativePath: file.relativePath,

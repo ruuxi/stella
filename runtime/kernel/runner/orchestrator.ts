@@ -71,7 +71,9 @@ export const createOrchestratorController = (
     finishInterruptedRun,
   } = coordinator;
 
-  type StartPreparedRunArgs = Parameters<typeof startPreparedOrchestratorRun>[0];
+  type StartPreparedRunArgs = Parameters<
+    typeof startPreparedOrchestratorRun
+  >[0];
   const launchOrchestratorRun = async (args: {
     alreadyRunningError: string;
     conversationId: string;
@@ -94,7 +96,10 @@ export const createOrchestratorController = (
     const runId = `local:${crypto.randomUUID()}`;
     context.state.runCallbacksByRunId.set(runId, args.callbacks);
     if (args.uiVisibility !== UI_VISIBILITY_HIDDEN) {
-      context.state.conversationCallbacks.set(args.conversationId, args.callbacks);
+      context.state.conversationCallbacks.set(
+        args.conversationId,
+        args.callbacks,
+      );
     }
 
     await startPreparedOrchestratorRun({
@@ -122,7 +127,9 @@ export const createOrchestratorController = (
           agentType: args.agentType,
           seq: 0,
           userMessageId: args.userMessageId,
-          ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
+          ...(args.responseTarget
+            ? { responseTarget: args.responseTarget }
+            : {}),
           ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
         });
         args.onPrepared?.(prepared);
@@ -184,11 +191,15 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
-      ...(startArgs.uiVisibility ? { uiVisibility: startArgs.uiVisibility } : {}),
+      ...(startArgs.uiVisibility
+        ? { uiVisibility: startArgs.uiVisibility }
+        : {}),
       ...(promptMessages?.length ? { promptMessages } : {}),
       attachments: [],
       userMessageId: startArgs.userMessageId,
-      ...(startArgs.responseTarget ? { responseTarget: startArgs.responseTarget } : {}),
+      ...(startArgs.responseTarget
+        ? { responseTarget: startArgs.responseTarget }
+        : {}),
       callbacks,
       replayTurn: payload.requeueOnInterrupt ? payload : null,
       createRunCallbacks: ({ runId, prepared }) =>
@@ -207,9 +218,9 @@ export const createOrchestratorController = (
     const callbacks =
       (args.callbackRunId
         ? context.state.runCallbacksByRunId.get(args.callbackRunId)
-        : null)
-      ?? context.state.conversationCallbacks.get(args.conversationId)
-      ?? null;
+        : null) ??
+      context.state.conversationCallbacks.get(args.conversationId) ??
+      null;
     if (!callbacks) {
       logger.debug("missing-conversation-callbacks", {
         conversationId: args.conversationId,
@@ -243,22 +254,28 @@ export const createOrchestratorController = (
     input: RuntimeSendMessageInput,
     timestamp: number,
   ): AgentMessage =>
-    createRuntimePromptAgentMessage({
-      text: input.text.trim(),
-      messageType: "message",
-      customType: input.customType ?? "runtime.send_message",
-      ...(input.display !== undefined ? { display: input.display } : {}),
-    }, timestamp);
+    createRuntimePromptAgentMessage(
+      {
+        text: input.text.trim(),
+        messageType: "message",
+        customType: input.customType ?? "runtime.send_message",
+        ...(input.display !== undefined ? { display: input.display } : {}),
+      },
+      timestamp,
+    );
 
   const persistInjectedUserMessage = (
     session: ActiveOrchestratorSession,
     text: string,
     timestamp: number,
   ): AgentMessage => {
-    const payload = createRuntimePromptAgentMessage({
-      text,
-      messageType: "user",
-    }, timestamp);
+    const payload = createRuntimePromptAgentMessage(
+      {
+        text,
+        messageType: "user",
+      },
+      timestamp,
+    );
     if (payload.role === "user") {
       persistThreadPayloadMessage(context.runtimeStore, {
         threadKey: session.threadKey,
@@ -325,16 +342,22 @@ export const createOrchestratorController = (
           {
             conversationId: input.conversationId,
             userPrompt: "",
-            promptMessages: [{
-              text: promptText,
-              messageType: "message",
-              customType: input.customType ?? "runtime.send_message",
-              ...(input.display !== undefined ? { display: input.display } : {}),
-            }],
+            promptMessages: [
+              {
+                text: promptText,
+                messageType: "message",
+                customType: input.customType ?? "runtime.send_message",
+                ...(input.display !== undefined
+                  ? { display: input.display }
+                  : {}),
+              },
+            ],
             agentType: input.agentType ?? AGENT_IDS.ORCHESTRATOR,
             userMessageId: `message:${crypto.randomUUID()}`,
             uiVisibility: UI_VISIBILITY_VISIBLE,
-            ...(input.responseTarget ? { responseTarget: input.responseTarget } : {}),
+            ...(input.responseTarget
+              ? { responseTarget: input.responseTarget }
+              : {}),
           },
           callbacks,
         );
@@ -405,11 +428,13 @@ export const createOrchestratorController = (
             conversationId: input.conversationId,
             userMessageId,
             userPrompt: "",
-            promptMessages: [{
-              text,
-              uiVisibility: runtimePromptVisibility,
-              messageType: "user",
-            }],
+            promptMessages: [
+              {
+                text,
+                uiVisibility: runtimePromptVisibility,
+                messageType: "user",
+              },
+            ],
             agentType: input.agentType,
           },
           callbacks,
@@ -428,7 +453,9 @@ export const createOrchestratorController = (
       promptMessages,
       attachments,
     } = normalizeChatRunInput(payload);
-    const hasPromptMessages = Boolean(promptMessages?.some((message) => message.text.trim().length > 0));
+    const hasPromptMessages = Boolean(
+      promptMessages?.some((message) => message.text.trim().length > 0),
+    );
     if (!userPrompt && attachments.length === 0 && !hasPromptMessages) {
       throw new Error("Missing user prompt");
     }
@@ -443,7 +470,8 @@ export const createOrchestratorController = (
       attachments,
       userMessageId: payload.userMessageId,
       callbacks,
-      createRunCallbacks: ({ runId }) => createRuntimeCallbacks(runId, callbacks),
+      createRunCallbacks: ({ runId }) =>
+        createRuntimeCallbacks(runId, callbacks),
       onPrepared: (prepared) => {
         const runId = prepared.runId;
         logger.debug("handleLocalChat", {
@@ -481,6 +509,7 @@ export const createOrchestratorController = (
       conversationId: string;
       userPrompt: string;
       agentType?: string;
+      toolWorkspaceRoot?: string;
     },
     resolveResult: (value: AutomationTurnResult) => void,
   ): Promise<{ runId: string }> => {
@@ -488,11 +517,8 @@ export const createOrchestratorController = (
       throw new Error("The orchestrator is already running.");
     }
 
-    const {
-      conversationId,
-      userPrompt,
-      agentType,
-    } = normalizeAutomationRunInput(payload);
+    const { conversationId, userPrompt, agentType, toolWorkspaceRoot } =
+      normalizeAutomationRunInput(payload);
     if (!conversationId) {
       resolveResult(createAutomationErrorResult("Missing conversationId"));
       return { runId: "" };
@@ -511,6 +537,7 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      ...(toolWorkspaceRoot ? { toolWorkspaceRoot } : {}),
       uiVisibility: "hidden",
       attachments: [],
       userMessageId: `automation:${crypto.randomUUID()}`,
@@ -535,6 +562,7 @@ export const createOrchestratorController = (
     conversationId: string;
     userPrompt: string;
     agentType?: string;
+    toolWorkspaceRoot?: string;
   }): Promise<AutomationTurnResult> => {
     const health = agentHealthCheck();
     if (!health.ready) {

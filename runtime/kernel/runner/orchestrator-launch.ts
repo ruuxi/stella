@@ -1,12 +1,12 @@
-import { runOrchestratorTurn, type RuntimeRunCallbacks } from "../agent-runtime.js";
+import {
+  runOrchestratorTurn,
+  type RuntimeRunCallbacks,
+} from "../agent-runtime.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { resolveRunnerLlmRoute } from "./model-selection.js";
 import { isReportedOrchestratorError } from "../agent-runtime/run-completion.js";
 import { MEMORY_INJECTION_TURN_THRESHOLD } from "../agent-runtime/thread-memory.js";
-import type {
-  QueuedOrchestratorTurn,
-  RunnerContext,
-} from "./types.js";
+import type { QueuedOrchestratorTurn, RunnerContext } from "./types.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
@@ -30,6 +30,7 @@ export type PreparedOrchestratorRun = {
   promptMessages?: RuntimePromptMessage[];
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
+  toolWorkspaceRoot?: string;
   agentContext: LocalAgentContext;
   resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
   abortController: AbortController;
@@ -55,6 +56,7 @@ export const prepareOrchestratorRun = async (args: {
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
   replayTurn?: QueuedOrchestratorTurn | null;
+  toolWorkspaceRoot?: string;
 }): Promise<PreparedOrchestratorRun> => {
   // Decide whether this turn should re-inject the memory bundle BEFORE we
   // build the agent context, so context construction can skip the snapshot
@@ -62,8 +64,7 @@ export const prepareOrchestratorRun = async (args: {
   // turns count toward the cadence — synthetic hidden turns coast on
   // whatever the prior real turn injected.
   const isRealOrchestratorTurn =
-    args.agentType === AGENT_IDS.ORCHESTRATOR
-    && args.uiVisibility !== "hidden";
+    args.agentType === AGENT_IDS.ORCHESTRATOR && args.uiVisibility !== "hidden";
   let shouldInjectDynamicMemory = false;
   if (isRealOrchestratorTurn) {
     try {
@@ -101,7 +102,8 @@ export const prepareOrchestratorRun = async (args: {
 
   args.context.state.activeOrchestratorRunId = args.runId;
   args.context.state.activeOrchestratorConversationId = args.conversationId;
-  args.context.state.activeOrchestratorUiVisibility = args.uiVisibility ?? "visible";
+  args.context.state.activeOrchestratorUiVisibility =
+    args.uiVisibility ?? "visible";
   args.context.state.activeInterruptedReplayTurn = args.replayTurn ?? null;
 
   const abortController = new AbortController();
@@ -138,6 +140,9 @@ export const prepareOrchestratorRun = async (args: {
     promptMessages: args.promptMessages,
     ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
     attachments: args.attachments,
+    ...(args.toolWorkspaceRoot
+      ? { toolWorkspaceRoot: args.toolWorkspaceRoot }
+      : {}),
     agentContext,
     resolvedLlm,
     abortController,
@@ -164,10 +169,7 @@ export const launchPreparedOrchestratorRun = (args: {
   cleanupRun: (runId: string, onCleanup?: () => void) => void;
   onFatalError: (error: unknown) => void;
 }): void => {
-  const {
-    prepared,
-    context,
-  } = args;
+  const { prepared, context } = args;
 
   void runOrchestratorTurn({
     runId: prepared.runId,
@@ -179,7 +181,9 @@ export const launchPreparedOrchestratorRun = (args: {
     ...(prepared.promptMessages?.length
       ? { promptMessages: prepared.promptMessages }
       : {}),
-    ...(prepared.responseTarget ? { responseTarget: prepared.responseTarget } : {}),
+    ...(prepared.responseTarget
+      ? { responseTarget: prepared.responseTarget }
+      : {}),
     attachments: prepared.attachments,
     agentContext: prepared.agentContext,
     callbacks: args.runtimeCallbacks,
@@ -198,6 +202,9 @@ export const launchPreparedOrchestratorRun = (args: {
     store: context.runtimeStore,
     abortSignal: prepared.abortController.signal,
     stellaRoot: context.stellaRoot,
+    ...(prepared.toolWorkspaceRoot
+      ? { toolWorkspaceRoot: prepared.toolWorkspaceRoot }
+      : {}),
     selfModMonitor: context.selfModMonitor,
     hookEmitter: context.hookEmitter,
     displayHtml: context.displayHtml,
