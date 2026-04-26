@@ -80,7 +80,7 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
   // Onboarding presentation: while onboarding is active we expand the
   // (transparent + frameless) main window to cover the current display so
   // the renderer's radial fog mask has room to fade fully to transparent
-  // well inside the window bounds — the user can't perceive a window
+  // well inside the window bounds - the user can't perceive a window
   // rectangle, only the floating fog. Exit restores the standard size,
   // re-centered on the same display.
   const DEFAULT_WIDTH = 1400;
@@ -94,9 +94,15 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
       const work = display.workArea;
       if (active) {
         if (process.platform === "darwin") {
-          // Simple fullscreen covers the menubar + dock without animating
-          // into a new Space, and is cheap to toggle off.
-          if (!win.isSimpleFullScreen()) win.setSimpleFullScreen(true);
+          // We deliberately do NOT use setSimpleFullScreen here: in
+          // combination with `transparent: true` + `frame: false`, macOS
+          // simple-fullscreen breaks Chromium's hover / cursor hit-testing
+          // (clicks still route, but :hover and cursor: pointer never fire).
+          // Sizing to the work area gives the fog enough room to feather
+          // (it already overscans via CSS) and keeps hover working - the
+          // Dock and menu bar stay visible but that's an acceptable trade
+          // for an interactive onboarding.
+          win.setBounds(work, false);
           win.setWindowButtonVisibility(false);
         } else if (process.platform === "win32") {
           if (!win.isFullScreen()) win.setFullScreen(true);
@@ -105,7 +111,6 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
         }
       } else {
         if (process.platform === "darwin") {
-          if (win.isSimpleFullScreen()) win.setSimpleFullScreen(false);
           win.setWindowButtonVisibility(true);
         } else if (process.platform === "win32") {
           if (win.isFullScreen()) win.setFullScreen(false);
@@ -114,7 +119,7 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
         const height = Math.min(DEFAULT_HEIGHT, work.height);
         const x = work.x + Math.round((work.width - width) / 2);
         const y = work.y + Math.round((work.height - height) / 2);
-        // `animate: true` is honored on macOS — the window smoothly contracts
+        // `animate: true` is honored on macOS - the window smoothly contracts
         // from the work-area size back to the centered default, in sync with
         // the renderer's fog fade-out. Other platforms just snap.
         win.setBounds({ x, y, width, height }, process.platform === "darwin");

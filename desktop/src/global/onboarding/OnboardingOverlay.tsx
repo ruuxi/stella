@@ -113,12 +113,6 @@ export function useOnboardingOverlay() {
     stellaAnimationRef.current?.triggerFlash();
   }, []);
 
-  const startBirthAnimation = useCallback(() => {
-    if (hasExpanded) return;
-    setHasExpanded(true);
-    stellaAnimationRef.current?.startBirth();
-  }, [hasExpanded]);
-
   const startOnboarding = useCallback(() => {
     setHasStarted(true);
     setHasExpanded(true);
@@ -186,7 +180,6 @@ export function useOnboardingOverlay() {
     stellaAnimationRef,
     triggerFlash,
     startOnboarding,
-    startBirthAnimation,
     handleEnterSplit,
     handleResetOnboarding,
   };
@@ -206,7 +199,6 @@ export function OnboardingView({
   stellaAnimationRef,
   onboardingKey,
   triggerFlash,
-  startBirthAnimation,
   startOnboarding,
   completeOnboarding,
   handleEnterSplit,
@@ -231,7 +223,6 @@ export function OnboardingView({
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   onboardingKey: number;
   triggerFlash: () => void;
-  startBirthAnimation?: () => void;
   startOnboarding: () => void;
   completeOnboarding: () => void;
   handleEnterSplit: () => void;
@@ -261,20 +252,13 @@ export function OnboardingView({
         Stella
       </div>
       <div
-        onClick={() => {
-          if (hasExpanded) {
-            triggerFlash()
-            return
-          }
-          startBirthAnimation?.()
-          triggerFlash()
-        }}
         className="onboarding-stella-animation"
+        onClick={triggerFlash}
         data-expanded={hasExpanded ? "true" : "false"}
         data-split={splitMode}
         data-has-selections={hasDiscoverySelections || undefined}
         data-demo-active={activeDemo || undefined}
-        title={hasExpanded ? undefined : "Click to awaken"}
+        title="Click to sparkle"
       >
         <StellaAnimation
           ref={stellaAnimationRef}

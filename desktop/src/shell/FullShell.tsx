@@ -239,7 +239,6 @@ export const FullShell = () => {
               stellaAnimationPaused={pauseStellaAnimation}
               onboardingKey={onboarding.onboardingKey}
               triggerFlash={onboarding.triggerFlash}
-              startBirthAnimation={onboarding.startBirthAnimation}
               startOnboarding={onboarding.startOnboarding}
               completeOnboarding={onboarding.completeOnboarding}
               handleEnterSplit={onboarding.handleEnterSplit}
