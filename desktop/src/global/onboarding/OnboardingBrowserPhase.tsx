@@ -37,7 +37,7 @@ export function OnboardingBrowserPhase({
 }: BrowserPhaseProps) {
   return (
     <div className="onboarding-step-content">
-      <div className="onboarding-step-label">What can I learn about you?</div>
+      <div className="onboarding-step-label">What can Stella learn about you?</div>
 
       <OnboardingSelectionTile
         className="onboarding-discovery-row"
@@ -53,7 +53,7 @@ export function OnboardingBrowserPhase({
             </span>
           </>
         }
-        description="I can browse the web for you, learn your favorite sites, and pick up on how you like things done"
+        description="Stella can browse the web for you, learn your favorite sites, and pick up on how you like things done"
       />
 
       <OnboardingReveal
@@ -112,8 +112,8 @@ export function OnboardingBrowserPhase({
             Not recommended
           </span>
           <p className="onboarding-discovery-warning-text">
-            Without this, I'll learn about you over time through our
-            conversations. But I won't be personal to you from the start.
+            Without this, Stella will learn about you over time through your
+            conversations. But Stella won't be personal to you from the start.
           </p>
         </div>
       </OnboardingReveal>
