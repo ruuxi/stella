@@ -282,14 +282,9 @@ export function OnboardingDoubleTapPhase({
         </div>
 
         <div className="onboarding-doubletap-hint" aria-live="polite">
-          {hasSummoned ? (
-            <span>
-              Nice — that's the gesture. It works from anywhere, even when
-              Stella is hidden.
-            </span>
-          ) : (
+          {!hasSummoned ? (
             <span>Try it now — tap {keyMeta.name} twice, fast.</span>
-          )}
+          ) : null}
         </div>
       </div>
 
