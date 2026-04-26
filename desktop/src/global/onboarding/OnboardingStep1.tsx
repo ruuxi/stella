@@ -1,11 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import {
@@ -33,61 +26,24 @@ import { getPlatform } from "@/platform/electron/platform";
 import { markRequestSignInAfterOnboarding } from "@/shared/lib/stella-orb-chat";
 import "./Onboarding.css";
 
-const loadPermissionsPhase = () => import("./OnboardingPermissions");
-const loadBrowserPhase = () => import("./OnboardingBrowserPhase");
-const loadCreationPhase = () => import("./OnboardingCreationPhase");
-const loadThemePhase = () => import("./OnboardingThemePhase");
-const loadPersonalityPhase = () => import("./OnboardingPersonalityPhase");
-const loadShortcutsPhase = () => import("./OnboardingShortcutsPhase");
-const loadDoubleTapPhase = () => import("./OnboardingDoubleTapPhase");
-const loadMemoryPhase = () => import("./OnboardingMemoryPhase");
-const loadMockWindows = () => import("./OnboardingMockWindows");
-
-const OnboardingPermissions = lazy(() =>
-  loadPermissionsPhase().then((module) => ({
-    default: module.OnboardingPermissions,
-  })),
-);
-const OnboardingBrowserPhase = lazy(() =>
-  loadBrowserPhase().then((module) => ({
-    default: module.OnboardingBrowserPhase,
-  })),
-);
-const OnboardingCreationPhase = lazy(() =>
-  loadCreationPhase().then((module) => ({
-    default: module.OnboardingCreationPhase,
-  })),
-);
-const OnboardingThemePhase = lazy(() =>
-  loadThemePhase().then((module) => ({
-    default: module.OnboardingThemePhase,
-  })),
-);
-const OnboardingPersonalityPhase = lazy(() =>
-  loadPersonalityPhase().then((module) => ({
-    default: module.OnboardingPersonalityPhase,
-  })),
-);
-const OnboardingShortcutsPhase = lazy(() =>
-  loadShortcutsPhase().then((module) => ({
-    default: module.OnboardingShortcutsPhase,
-  })),
-);
-const OnboardingDoubleTapPhase = lazy(() =>
-  loadDoubleTapPhase().then((module) => ({
-    default: module.OnboardingDoubleTapPhase,
-  })),
-);
-const OnboardingMemoryPhase = lazy(() =>
-  loadMemoryPhase().then((module) => ({
-    default: module.OnboardingMemoryPhase,
-  })),
-);
-const OnboardingMockWindows = lazy(() =>
-  loadMockWindows().then((module) => ({
-    default: module.OnboardingMockWindows,
-  })),
-);
+/* These phases used to be lazy-loaded, which caused a visible layout
+ * shift on entry: the title would render first inside an empty
+ * `.onboarding-split-stage` (the Suspense fallback was just an empty
+ * `.onboarding-step-content` div), so it sat lower in the
+ * vertically-centered split-right pane, then the lazy chunk would
+ * resolve, the pills/cards would mount, and the title would jump
+ * upward. Onboarding is a one-time flow with the user already on a
+ * loading-style intro, so the bundle savings aren't worth the visual
+ * jolt — eager imports keep the disclosure as one block. */
+import { OnboardingPermissions } from "./OnboardingPermissions";
+import { OnboardingBrowserPhase } from "./OnboardingBrowserPhase";
+import { OnboardingCreationPhase } from "./OnboardingCreationPhase";
+import { OnboardingThemePhase } from "./OnboardingThemePhase";
+import { OnboardingPersonalityPhase } from "./OnboardingPersonalityPhase";
+import { OnboardingShortcutsPhase } from "./OnboardingShortcutsPhase";
+import { OnboardingDoubleTapPhase } from "./OnboardingDoubleTapPhase";
+import { OnboardingMemoryPhase } from "./OnboardingMemoryPhase";
+import { OnboardingMockWindows } from "./OnboardingMockWindows";
 
 const FADE_OUT_MS = 260;
 const FADE_GAP_MS = 120;
@@ -121,68 +77,6 @@ const getSelectedDiscoveryCategories = (states: CategoryStates) =>
 
 const getFirstEnabledDiscoveryCategory = (states: CategoryStates) =>
   DISCOVERY_CATEGORIES.find((category) => states[category.id])?.id ?? null;
-
-const getNextPhaseToPrefetch = (phase: Phase): Phase | null => {
-  switch (phase) {
-    case "intro":
-      return "permissions";
-    case "permissions":
-      return "browser";
-    case "browser":
-      return "theme";
-    case "theme":
-      return "personality";
-    case "personality":
-      return "creation";
-    case "creation":
-      return "shortcuts-global";
-    case "shortcuts-global":
-      return "shortcuts-local";
-    case "shortcuts-local":
-      return "double-tap";
-    case "double-tap":
-      return "memory";
-    default:
-      return null;
-  }
-};
-
-const prefetchPhaseModule = (phase: Phase | null) => {
-  switch (phase) {
-    case "permissions":
-      void loadPermissionsPhase();
-      break;
-    case "browser":
-      void loadBrowserPhase();
-      void loadMockWindows();
-      break;
-    case "creation":
-      void loadCreationPhase();
-      break;
-    case "theme":
-      void loadThemePhase();
-      break;
-    case "personality":
-      void loadPersonalityPhase();
-      break;
-    case "shortcuts-global":
-    case "shortcuts-local":
-      void loadShortcutsPhase();
-      break;
-    case "double-tap":
-      void loadDoubleTapPhase();
-      break;
-    case "memory":
-      void loadMemoryPhase();
-      break;
-    default:
-      break;
-  }
-};
-
-const splitPhaseFallback = (
-  <div className="onboarding-step-content" aria-busy="true" />
-);
 
 export const OnboardingStep1 = ({
   initialPhase = "start",
@@ -302,10 +196,6 @@ export const OnboardingStep1 = ({
       mediaQuery.removeListener?.(updatePreference);
     };
   }, []);
-
-  useEffect(() => {
-    prefetchPhaseModule(getNextPhaseToPrefetch(phase));
-  }, [phase]);
 
   const transitionTo = useCallback(
     (next: Phase) => {
@@ -642,115 +532,97 @@ export const OnboardingStep1 = ({
     switch (activePhase) {
       case "permissions":
         return (
-          <Suspense fallback={splitPhaseFallback}>
-            <OnboardingPermissions
-              splitTransitionActive={leaving}
-              onContinue={nextSplitStep}
-            />
-          </Suspense>
+          <OnboardingPermissions
+            splitTransitionActive={leaving}
+            onContinue={nextSplitStep}
+          />
         );
       case "browser":
         return (
-          <Suspense fallback={splitPhaseFallback}>
-            <OnboardingBrowserPhase
-              availableProfiles={availableProfiles}
-              browserEnabled={browserEnabled}
-              categoryStates={categoryStates}
-              platform={platform}
-              selectedBrowser={selectedBrowser}
-              selectedProfile={selectedProfile}
-              showNoneWarning={showNoneWarning}
-              splitTransitionActive={leaving}
-              onContinue={handleDiscoveryConfirm}
-              onSelectBrowser={handleSelectBrowser}
-              onSelectProfile={setSelectedProfile}
-              onToggleBrowser={handleToggleBrowser}
-              onToggleCategory={handleToggleCategory}
-            />
-          </Suspense>
+          <OnboardingBrowserPhase
+            availableProfiles={availableProfiles}
+            browserEnabled={browserEnabled}
+            categoryStates={categoryStates}
+            platform={platform}
+            selectedBrowser={selectedBrowser}
+            selectedProfile={selectedProfile}
+            showNoneWarning={showNoneWarning}
+            splitTransitionActive={leaving}
+            onContinue={handleDiscoveryConfirm}
+            onSelectBrowser={handleSelectBrowser}
+            onSelectProfile={setSelectedProfile}
+            onToggleBrowser={handleToggleBrowser}
+            onToggleCategory={handleToggleCategory}
+          />
         );
       case "creation":
         return (
-          <Suspense fallback={splitPhaseFallback}>
-            <OnboardingCreationPhase
-              splitTransitionActive={leaving}
-              onContinue={nextSplitStep}
-            />
-          </Suspense>
+          <OnboardingCreationPhase
+            splitTransitionActive={leaving}
+            onContinue={nextSplitStep}
+          />
         );
       case "theme":
         return (
-          <Suspense fallback={splitPhaseFallback}>
-            <OnboardingThemePhase
-              colorMode={colorMode}
-              gradientColor={gradientColor}
-              gradientMode={gradientMode}
-              sortedThemes={sortedThemes}
-              splitTransitionActive={leaving}
-              themeId={themeId}
-              onContinue={nextSplitStep}
-              onSelectColorMode={setColorMode}
-              onSelectGradientColor={setGradientColor}
-              onSelectGradientMode={setGradientMode}
-              onSelectTheme={handleThemeSelect}
-              onThemePreviewEnter={previewTheme}
-              onThemePreviewLeave={cancelThemePreview}
-            />
-          </Suspense>
+          <OnboardingThemePhase
+            colorMode={colorMode}
+            gradientColor={gradientColor}
+            gradientMode={gradientMode}
+            sortedThemes={sortedThemes}
+            splitTransitionActive={leaving}
+            themeId={themeId}
+            onContinue={nextSplitStep}
+            onSelectColorMode={setColorMode}
+            onSelectGradientColor={setGradientColor}
+            onSelectGradientMode={setGradientMode}
+            onSelectTheme={handleThemeSelect}
+            onThemePreviewEnter={previewTheme}
+            onThemePreviewLeave={cancelThemePreview}
+          />
         );
       case "personality":
         return (
-          <Suspense fallback={splitPhaseFallback}>
-            <OnboardingPersonalityPhase
-              expressionStyle={expressionStyle}
-              splitTransitionActive={leaving}
-              showEyes={visualPrefs.showEyes}
-              showMouth={visualPrefs.showMouth}
-              onFinish={nextSplitStep}
-              onSelectStyle={handleExpressionStyleSelect}
-              onToggleEyes={handleToggleEyes}
-              onToggleMouth={handleToggleMouth}
-            />
-          </Suspense>
+          <OnboardingPersonalityPhase
+            expressionStyle={expressionStyle}
+            splitTransitionActive={leaving}
+            showEyes={visualPrefs.showEyes}
+            showMouth={visualPrefs.showMouth}
+            onFinish={nextSplitStep}
+            onSelectStyle={handleExpressionStyleSelect}
+            onToggleEyes={handleToggleEyes}
+            onToggleMouth={handleToggleMouth}
+          />
         );
       case "shortcuts-global":
         return (
-          <Suspense fallback={splitPhaseFallback}>
-            <OnboardingShortcutsPhase
-              mode="global"
-              splitTransitionActive={leaving}
-              onFinish={nextSplitStep}
-            />
-          </Suspense>
+          <OnboardingShortcutsPhase
+            mode="global"
+            splitTransitionActive={leaving}
+            onFinish={nextSplitStep}
+          />
         );
       case "shortcuts-local":
         return (
-          <Suspense fallback={splitPhaseFallback}>
-            <OnboardingShortcutsPhase
-              mode="local"
-              splitTransitionActive={leaving}
-              onFinish={nextSplitStep}
-            />
-          </Suspense>
+          <OnboardingShortcutsPhase
+            mode="local"
+            splitTransitionActive={leaving}
+            onFinish={nextSplitStep}
+          />
         );
       case "double-tap":
         return (
-          <Suspense fallback={splitPhaseFallback}>
-            <OnboardingDoubleTapPhase
-              splitTransitionActive={leaving}
-              onContinue={nextSplitStep}
-            />
-          </Suspense>
+          <OnboardingDoubleTapPhase
+            splitTransitionActive={leaving}
+            onContinue={nextSplitStep}
+          />
         );
       case "memory":
         return (
-          <Suspense fallback={splitPhaseFallback}>
-            <OnboardingMemoryPhase
-              splitTransitionActive={leaving}
-              isAuthenticated={Boolean(isAuthenticated)}
-              onContinue={handleMemoryContinue}
-            />
-          </Suspense>
+          <OnboardingMemoryPhase
+            splitTransitionActive={leaving}
+            isAuthenticated={Boolean(isAuthenticated)}
+            onContinue={handleMemoryContinue}
+          />
         );
       default:
         return null;
@@ -799,12 +671,10 @@ export const OnboardingStep1 = ({
       {isSplit && (
         <>
           {phase === "browser" ? (
-            <Suspense fallback={null}>
-              <OnboardingMockWindows
-                activeWindowId={activeMockId}
-                stageState="current"
-              />
-            </Suspense>
+            <OnboardingMockWindows
+              activeWindowId={activeMockId}
+              stageState="current"
+            />
           ) : null}
           <div className="onboarding-split-right">
             <div

@@ -6,12 +6,23 @@
 /* Ripple animation for reveal */
 
 :root {
+  /* Disclosure tokens ported from the marketing site
+   * (stella-website /globals.css `.has-reveal` block). The character
+   * is: longer duration, a small upward translate, a tiny scale, and
+   * an aggressive blur that resolves to clarity — it reads as
+   * "considered" rather than "snappy." Children cascade behind the
+   * parent on a per-element index. */
   --onboarding-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
   --onboarding-ease-soft: cubic-bezier(0.25, 0.1, 0.25, 1);
-  --onboarding-duration-fade: 320ms;
-  --onboarding-duration-enter: 560ms;
-  --onboarding-duration-morph: 640ms;
-  --onboarding-stagger-step: 40ms;
+  --onboarding-duration-fade: 240ms;
+  --onboarding-duration-enter: 620ms;
+  --onboarding-duration-text: 460ms;
+  --onboarding-duration-morph: 520ms;
+  --onboarding-stagger-step: 55ms;
+  --onboarding-reveal-blur: 12px;
+  --onboarding-reveal-text-blur: 6px;
+  --onboarding-reveal-translate: 22px;
+  --onboarding-reveal-text-translate: 14px;
 }
 
 /* ═══ Dialogue container ═══ */
@@ -90,11 +101,13 @@
 @keyframes momentFadeIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translate3d(0, var(--onboarding-reveal-translate), 0) scale(0.988);
+    filter: blur(var(--onboarding-reveal-blur)) saturate(0.92);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0) saturate(1);
   }
 }
 
@@ -194,11 +207,13 @@
 @keyframes onboardingLegalFooterFadeIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translate3d(0, var(--onboarding-reveal-text-translate), 0);
+    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
     opacity: 0.48;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
+    filter: blur(0);
   }
 }
 
@@ -233,23 +248,29 @@
 
 .onboarding-text--fade-in {
   opacity: 0;
-  animation: textFadeIn 0.72s var(--onboarding-ease-standard) 0.16s forwards;
+  animation: textFadeIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) 160ms forwards;
 }
 
 .onboarding-text--fade-in-delayed {
   margin-top: 12px;
   opacity: 0;
-  animation: textFadeIn 0.72s var(--onboarding-ease-standard) 0.5s forwards;
+  animation: textFadeIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard)
+    calc(160ms + var(--onboarding-reveal-index, 3) * var(--onboarding-stagger-step))
+    forwards;
 }
 
 @keyframes textFadeIn {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translate3d(0, var(--onboarding-reveal-text-translate), 0);
+    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
     opacity: 0.9;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
+    filter: blur(0);
   }
 }
 
@@ -260,16 +281,19 @@
   left: auto;
   margin-top: 40px;
   opacity: 0;
-  transform: translateY(8px);
+  transform: translate3d(0, var(--onboarding-reveal-text-translate), 0);
+  filter: blur(var(--onboarding-reveal-text-blur));
   transition:
-    opacity 0.42s ease-out,
-    transform 0.42s var(--onboarding-ease-standard);
+    opacity var(--onboarding-duration-text) var(--onboarding-ease-standard),
+    transform var(--onboarding-duration-text) var(--onboarding-ease-standard),
+    filter var(--onboarding-duration-text) var(--onboarding-ease-standard);
   pointer-events: none;
 }
 
 .onboarding-moment--ripple .onboarding-choices[data-visible="true"] {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate3d(0, 0, 0);
+  filter: blur(0);
   pointer-events: auto;
 }
 
@@ -394,7 +418,8 @@
   scrollbar-gutter: stable both-edges;
   opacity: 1;
   will-change: opacity;
-  animation: splitPaneFadeIn var(--onboarding-duration-fade) ease-out both;
+  animation: splitPaneFadeIn var(--onboarding-duration-enter)
+    var(--onboarding-ease-standard) both;
   transition:
     opacity var(--onboarding-duration-fade) ease-out,
     background-color var(--onboarding-duration-fade) ease,
@@ -408,12 +433,19 @@
   transform: translateX(clamp(-200px, -9vw, -120px));
 }
 
+/* The split-right pane has its own `translateX(...)` positioning per
+ * phase, so we can't put a translate/scale into this keyframe — it
+ * would fight the positioning rule. We resolve the disclosure through
+ * opacity + filter blur only, and let inner children carry their own
+ * translate via the standard reveal cascade if needed. */
 @keyframes splitPaneFadeIn {
   from {
     opacity: 0;
+    filter: blur(var(--onboarding-reveal-text-blur)) saturate(0.94);
   }
   to {
     opacity: 1;
+    filter: blur(0) saturate(1);
   }
 }
 
@@ -505,11 +537,13 @@
 @keyframes splitStageIn {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translate3d(0, var(--onboarding-reveal-translate), 0) scale(0.988);
+    filter: blur(var(--onboarding-reveal-blur)) saturate(0.92);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0) saturate(1);
   }
 }
 
@@ -676,16 +710,23 @@
 @keyframes onboardingPillStaggerIn {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translate3d(0, var(--onboarding-reveal-text-translate), 0);
+    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
+    filter: blur(0);
   }
 }
 
-/* Wrap any group of .onboarding-pill siblings; opacity end state from base / [data-active] */
+/* `.onboarding-pill-stagger` cascades each pill in top-down using the
+ * shared `--onboarding-stagger-step`. The parent split-stage runs in
+ * parallel as a softer wash; per-pill keyframes layer on top so each
+ * item visibly resolves on its own beat, but the timeline is short
+ * enough (≤ ~16 * step) that the eye reads it as one disclosure. */
 .onboarding-pill-stagger .onboarding-pill {
-  animation: onboardingPillStaggerIn 0.44s var(--onboarding-ease-standard) both;
+  animation: onboardingPillStaggerIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) both;
 }
 
 .onboarding-pill-stagger .onboarding-pill:nth-child(1) {
@@ -1151,7 +1192,8 @@
 }
 
 .onboarding-creation-preview {
-  animation: momentFadeIn 0.4s ease-out forwards;
+  animation: momentFadeIn var(--onboarding-duration-enter)
+    var(--onboarding-ease-standard) forwards;
 }
 
 /* Mock self-modification */
@@ -1288,7 +1330,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  animation: momentFadeIn 0.4s ease-out forwards;
+  animation: momentFadeIn var(--onboarding-duration-enter)
+    var(--onboarding-ease-standard) forwards;
 }
 
 .selfmod-app {
@@ -1812,50 +1855,57 @@
 @keyframes onboardingBrowserListIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translate3d(0, var(--onboarding-reveal-text-translate), 0);
+    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
+    filter: blur(0);
   }
 }
 
-/* Browser step: stagger the main heading + browser row + category rows (not reveal-on-click content) */
+/* Browser step: heading + browser row + category rows cascade
+ * top-down on the shared stagger so the user reads them sequentially
+ * (eager-imported, so no layout shift while they mount). */
 .onboarding-dialogue[data-phase="browser"]
   .onboarding-step-content
   > .onboarding-step-label {
-  animation: onboardingBrowserListIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: 0.05s;
+  animation: onboardingBrowserListIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) both;
+  animation-delay: var(--onboarding-stagger-step);
 }
 
 .onboarding-dialogue[data-phase="browser"]
   .onboarding-step-content
   > button.onboarding-discovery-row {
-  animation: onboardingBrowserListIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: 0.14s;
+  animation: onboardingBrowserListIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) both;
+  animation-delay: calc(var(--onboarding-stagger-step) * 2);
 }
 
 .onboarding-dialogue[data-phase="browser"]
   .onboarding-discovery-list
   > .onboarding-discovery-row {
-  animation: onboardingBrowserListIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: onboardingBrowserListIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) both;
 }
 
 .onboarding-dialogue[data-phase="browser"]
   .onboarding-discovery-list
   > .onboarding-discovery-row:nth-child(1) {
-  animation-delay: 0.24s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 3);
 }
 
 .onboarding-dialogue[data-phase="browser"]
   .onboarding-discovery-list
   > .onboarding-discovery-row:nth-child(2) {
-  animation-delay: 0.33s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 4);
 }
 
 .onboarding-dialogue[data-phase="browser"]
   .onboarding-discovery-list
   > .onboarding-discovery-row:nth-child(3) {
-  animation-delay: 0.42s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 5);
 }
 
 .onboarding-discovery-row {
@@ -2007,7 +2057,8 @@
   width: 100%;
   max-width: 420px;
   opacity: 0;
-  animation: momentFadeIn 0.5s ease-out 0.3s forwards;
+  animation: momentFadeIn var(--onboarding-duration-enter)
+    var(--onboarding-ease-standard) 240ms forwards;
 }
 
 .onboarding-inline-auth-label {
@@ -2245,18 +2296,21 @@
   overflow: hidden;
   background: color-mix(in oklch, var(--background) 70%, transparent);
   backdrop-filter: blur(16px);
-  animation: mockWindowIn 0.35s ease-out both;
+  animation: mockWindowIn var(--onboarding-duration-enter)
+    var(--onboarding-ease-standard) both;
   flex-shrink: 0;
 }
 
 @keyframes mockWindowIn {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.97);
+    transform: translate3d(0, var(--onboarding-reveal-translate), 0) scale(0.988);
+    filter: blur(var(--onboarding-reveal-blur)) saturate(0.92);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0) saturate(1);
   }
 }
 
@@ -2394,7 +2448,8 @@
   text-align: left;
   font-family: inherit;
   opacity: 0;
-  animation: showcaseCardIn 0.45s ease-out forwards;
+  animation: showcaseCardIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) forwards;
   transition:
     background 0.25s ease,
     border-color 0.25s ease,
@@ -2520,21 +2575,21 @@
   transform: scale(0.98);
 }
 
-/* ── Staggered entrance ── */
+/* ── Staggered top-down entrance ── */
 .onboarding-showcase-card:nth-child(1) {
-  animation-delay: 0.06s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 1);
 }
 .onboarding-showcase-card:nth-child(2) {
-  animation-delay: 0.12s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 2);
 }
 .onboarding-showcase-card:nth-child(3) {
-  animation-delay: 0.18s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 3);
 }
 .onboarding-showcase-card:nth-child(4) {
-  animation-delay: 0.24s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 4);
 }
 .onboarding-showcase-card:nth-child(5) {
-  animation-delay: 0.3s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 5);
 }
 
 /* First card attention pulse */
@@ -2547,11 +2602,13 @@
 @keyframes showcaseCardIn {
   from {
     opacity: 0;
-    transform: translateX(10px);
+    transform: translate3d(0, var(--onboarding-reveal-text-translate), 0);
+    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
+    filter: blur(0);
   }
 }
 
@@ -3146,17 +3203,20 @@
   font-size: 12px;
   font-weight: 500;
   backdrop-filter: blur(8px);
-  animation: fadeSlideIn 0.3s ease both;
+  animation: fadeSlideIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) both;
 }
 
 @keyframes fadeSlideIn {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translate3d(0, var(--onboarding-reveal-text-translate), 0);
+    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
+    filter: blur(0);
   }
 }
 
@@ -4089,7 +4149,7 @@
 
 /* Fade out mock windows when leaving phase */
 .onboarding-dialogue[data-leaving="true"] .onboarding-mock-windows {
-  animation: momentFadeOut 0.4s ease-out forwards;
+  animation: momentFadeOut var(--onboarding-duration-fade) ease-out forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4106,12 +4166,22 @@
     animation: none;
     opacity: 1;
     transform: none;
+    filter: none;
   }
 
   .onboarding-legal-footer--new-session {
     animation: none;
     opacity: 0.48;
     transform: none;
+    filter: none;
+  }
+
+  .onboarding-moment--ripple .onboarding-choices,
+  .onboarding-moment--ripple .onboarding-choices[data-visible="true"] {
+    transition: none;
+    transform: none;
+    filter: none;
+    opacity: 1;
   }
 
   .onboarding-dialogue[data-phase="browser"]
@@ -4131,6 +4201,8 @@
   .onboarding-text--fade-in-delayed {
     animation: none;
     opacity: 0.9;
+    transform: none;
+    filter: none;
   }
 
   .onboarding-dialogue {
@@ -4171,23 +4243,24 @@
     background 0.25s ease,
     border-color 0.25s ease;
   opacity: 0.7;
-  animation: onboardingBrowserListIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: onboardingBrowserListIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) both;
 }
 
 .onboarding-permission-card:nth-child(1) {
-  animation-delay: 0.1s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 1);
 }
 .onboarding-permission-card:nth-child(2) {
-  animation-delay: 0.2s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 2);
 }
 .onboarding-permission-card:nth-child(3) {
-  animation-delay: 0.3s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 3);
 }
 .onboarding-permission-card:nth-child(4) {
-  animation-delay: 0.4s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 4);
 }
 .onboarding-permission-card:nth-child(5) {
-  animation-delay: 0.5s;
+  animation-delay: calc(var(--onboarding-stagger-step) * 5);
 }
 
 .onboarding-permission-card[data-granted] {
