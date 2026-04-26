@@ -1,5 +1,5 @@
 /**
- * Shell tools: Bash plus Codex-style exec_command/write_stdin handlers.
+ * Shell tools: platform shell plus Codex-style exec_command/write_stdin handlers.
  */
 
 import { spawn } from "child_process";
@@ -8,7 +8,7 @@ import os from "os";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
 import { readdir, stat } from "fs/promises";
-import { resolveGitDir, setupEnvironment } from "dugite";
+import { setupEnvironment } from "dugite";
 import {
   fileChange,
   type FileChangeRecord,
@@ -582,6 +582,13 @@ export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
 };
 
+const buildShellCommand = (command: string, state: ShellState): string => {
+  if (process.platform === "win32") {
+    return command;
+  }
+  return buildProtectedCommand(command, state);
+};
+
 const buildShellEnv = (
   envOverrides?: Record<string, string>,
   options?: {
@@ -616,73 +623,6 @@ const buildShellEnv = (
   return setupEnvironment(mergedEnv).env;
 };
 
-const getWin32GitSubfolder = () => {
-  if (process.arch === "x64") {
-    return "mingw64";
-  }
-  if (process.arch === "arm64") {
-    return "clangarm64";
-  }
-  return "mingw32";
-};
-
-const WINDOWS_GIT_BASH_CANDIDATES = [
-  "C:\\Program Files\\Git\\bin\\bash.exe",
-  "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
-  "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-  "C:\\Program Files (x86)\\Git\\usr\\bin\\bash.exe",
-];
-
-const resolveWindowsBash = (): string | null => {
-  try {
-    const resolvedGitDir = resolveGitDir(
-      process.env.LOCAL_GIT_DIRECTORY?.trim(),
-    );
-    const dugiteCandidates = [
-      path.join(resolvedGitDir, getWin32GitSubfolder(), "bin", "bash.exe"),
-      path.join(
-        resolvedGitDir,
-        getWin32GitSubfolder(),
-        "usr",
-        "bin",
-        "bash.exe",
-      ),
-      path.join(resolvedGitDir, "bin", "bash.exe"),
-      path.join(resolvedGitDir, "usr", "bin", "bash.exe"),
-    ];
-    for (const candidate of dugiteCandidates) {
-      if (existsSync(candidate)) {
-        return candidate;
-      }
-    }
-  } catch {
-    // Fall back to configured/system Git Bash locations.
-  }
-
-  const configured = process.env.STELLA_GIT_BASH?.trim();
-  if (configured && existsSync(configured)) {
-    return configured;
-  }
-
-  for (const candidate of WINDOWS_GIT_BASH_CANDIDATES) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  const pathEntries = (process.env.PATH ?? "")
-    .split(path.delimiter)
-    .filter(Boolean);
-  for (const entry of pathEntries) {
-    const candidate = path.join(entry, "bash.exe");
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-};
-
 // macOS ships /bin/bash on every install. Linux's FHS guarantees /bin/bash
 // for any system that has bash at all. Some Stella launch contexts (notably
 // the Electron app launched via Finder/Dock with a stripped GUI environment)
@@ -712,15 +652,10 @@ const resolveShellLaunch = (
     return { shell: resolveUnixBash(), args: ["-lc", command] };
   }
 
-  const bashPath = resolveWindowsBash();
-  if (!bashPath) {
-    return {
-      error:
-        "Git Bash was not found on this Windows machine. Install Git for Windows or add bash.exe to PATH.",
-    };
-  }
-
-  return { shell: bashPath, args: ["-lc", command] };
+  return {
+    shell: process.env.ComSpec || process.env.COMSPEC || "cmd.exe",
+    args: ["/d", "/s", "/c", command],
+  };
 };
 
 type SpawnedShell = ReturnType<typeof spawn>;
@@ -926,8 +861,8 @@ export const startShell = (
   externalCandidateSnapshots?: ExternalCandidateSnapshot[],
 ) => {
   const id = crypto.randomUUID();
-  const protectedCommand = buildProtectedCommand(command, state);
-  const launch = resolveShellLaunch(protectedCommand);
+  const shellCommand = buildShellCommand(command, state);
+  const launch = resolveShellLaunch(shellCommand);
 
   if ("error" in launch) {
     const record: ManagedShellRecord = {
@@ -1029,8 +964,8 @@ export const runShell = async (
   timeoutMs: number,
   envOverrides?: Record<string, string>,
 ) => {
-  const protectedCommand = buildProtectedCommand(command, state);
-  const launch = resolveShellLaunch(protectedCommand);
+  const shellCommand = buildShellCommand(command, state);
+  const launch = resolveShellLaunch(shellCommand);
 
   if ("error" in launch) {
     return launch.error;
