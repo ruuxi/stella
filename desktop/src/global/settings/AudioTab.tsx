@@ -326,7 +326,7 @@ export function AudioTab() {
         {audioOutputDevices.length > 0 ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">Speaker</div>
+              <div className="settings-row-label">Output device</div>
               <div className="settings-row-sublabel">
                 Pick the speaker or headphones to use.
               </div>
