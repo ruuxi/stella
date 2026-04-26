@@ -10,6 +10,17 @@
   flex-shrink: 0;
 }
 
+.connect-signin-pill {
+  margin-top: 14px;
+}
+
+.connect-grid-card:disabled,
+.connect-grid-card[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .connect-hero-tagline {
   text-align: center;
   max-width: 340px;

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,7 @@ import { INTEGRATIONS } from "./integration-configs";
 import { IntegrationGridCard, IntegrationDetailArea } from "./IntegrationCard";
 import { PhoneAccessConnectCard } from "@/global/settings/PhoneAccessCard";
 import { ConnectHeroAnimation } from "./ConnectHeroAnimation";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import "./ConnectDialog.css";
 
 interface ConnectDialogProps {
@@ -34,6 +36,19 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
   const [selectedProvider, setSelectedProvider] = useState<string | undefined>(
     undefined,
   );
+  const navigate = useNavigate();
+  const { hasConnectedAccount } = useAuthSessionState();
+  const isSignedIn = hasConnectedAccount;
+
+  const handleSignIn = useCallback(() => {
+    void navigate({
+      to: ".",
+      search: (prev: Record<string, unknown> | undefined) => ({
+        ...(prev ?? {}),
+        dialog: "auth",
+      }),
+    });
+  }, [navigate]);
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -94,6 +109,15 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
                 it to get things done right on your computer.
               </p>
               <ConnectHeroAnimation />
+              {!isSignedIn && (
+                <button
+                  type="button"
+                  className="pill-btn pill-btn--primary connect-signin-pill"
+                  onClick={handleSignIn}
+                >
+                  Sign in to Stella to connect
+                </button>
+              )}
             </div>
           )}
           <div className="connect-dialog-main">
@@ -110,6 +134,8 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
                   className="connect-grid-card connect-grid-card--wide"
                   onClick={cardClickHandlers["phone"]}
                   type="button"
+                  disabled={!isSignedIn}
+                  aria-disabled={!isSignedIn || undefined}
                 >
                   <span className="connect-grid-card-icon">{PHONE_ICON}</span>
                   <span className="connect-grid-card-name">Connect to Stella App</span>
@@ -122,6 +148,7 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
                       integration={integration}
                       isSelected={false}
                       onClick={cardClickHandlers[integration.provider]}
+                      disabled={!isSignedIn}
                     />
                   ))}
                 </div>
