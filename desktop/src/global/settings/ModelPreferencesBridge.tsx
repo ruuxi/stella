@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
-import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import {
   buildModelDefaultsMap,
   buildResolvedModelDefaultsMap,
@@ -30,27 +29,25 @@ function parseModelOverrides(
 }
 
 export const ModelPreferencesBridge = () => {
-  const { hasConnectedAccount } = useAuthSessionState();
-  const shouldQueryPreferences = hasConnectedAccount ? {} : "skip";
   const serverOverrides = useQuery(
     api.data.preferences.getModelOverrides,
-    shouldQueryPreferences,
+    {},
   ) as Record<string, string> | undefined;
   const modelDefaults = useQuery(
     api.data.preferences.getModelDefaults,
-    shouldQueryPreferences,
+    {},
   ) as ModelDefaultEntry[] | undefined;
   const generalAgentEngine = useQuery(
     api.data.preferences.getGeneralAgentEngine,
-    shouldQueryPreferences,
+    {},
   ) as "default" | "claude_code_local" | undefined;
   const selfModAgentEngine = useQuery(
     api.data.preferences.getSelfModAgentEngine,
-    shouldQueryPreferences,
+    {},
   ) as "default" | "claude_code_local" | undefined;
   const maxAgentConcurrency = useQuery(
     api.data.preferences.getMaxAgentConcurrency,
-    shouldQueryPreferences,
+    {},
   ) as number | undefined;
 
   const defaultModels = useMemo(
@@ -69,7 +66,7 @@ export const ModelPreferencesBridge = () => {
 
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
-    if (!systemApi?.syncLocalModelPreferences || !hasConnectedAccount) return;
+    if (!systemApi?.syncLocalModelPreferences) return;
     if (
       modelDefaults === undefined ||
       serverOverrides === undefined ||
@@ -91,7 +88,6 @@ export const ModelPreferencesBridge = () => {
   }, [
     defaultModels,
     generalAgentEngine,
-    hasConnectedAccount,
     maxAgentConcurrency,
     modelDefaults,
     modelOverrides,

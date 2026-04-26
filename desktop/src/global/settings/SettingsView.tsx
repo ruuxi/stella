@@ -1252,32 +1252,30 @@ function ChronicleSettingsCard() {
 // ---------------------------------------------------------------------------
 
 function ModelConfigSection() {
-  const { hasConnectedAccount } = useAuthSessionState();
-  const shouldQueryPreferences = hasConnectedAccount ? {} : "skip";
   const remoteOverrides = useQuery(
     api.data.preferences.getModelOverrides,
-    shouldQueryPreferences,
+    {},
   ) as Record<string, string> | undefined;
   const modelDefaults = useQuery(
     api.data.preferences.getModelDefaults,
-    shouldQueryPreferences,
+    {},
   ) as ModelDefaultEntry[] | undefined;
   const setOverride = useMutation(api.data.preferences.setModelOverride);
   const clearOverride = useMutation(api.data.preferences.clearModelOverride);
   const generalAgentEngine = useQuery(
     api.data.preferences.getGeneralAgentEngine,
-    shouldQueryPreferences,
+    {},
   ) as "default" | "claude_code_local" | undefined;
   const setGeneralAgentEngine = useMutation(
     api.data.preferences.setGeneralAgentEngine,
   );
   const selfModAgentEngine = useQuery(
     api.data.preferences.getSelfModAgentEngine,
-    shouldQueryPreferences,
+    {},
   ) as "default" | "claude_code_local" | undefined;
   const maxAgentConcurrency = useQuery(
     api.data.preferences.getMaxAgentConcurrency,
-    shouldQueryPreferences,
+    {},
   ) as number | undefined;
   const setMaxAgentConcurrency = useMutation(
     api.data.preferences.setMaxAgentConcurrency,
@@ -1332,14 +1330,11 @@ function ModelConfigSection() {
     useState(false);
 
   const runtimePreferencesLoaded =
-    hasConnectedAccount &&
     generalAgentEngine !== undefined &&
     selfModAgentEngine !== undefined &&
     maxAgentConcurrency !== undefined;
   const modelPreferencesLoaded =
-    hasConnectedAccount &&
-    modelDefaults !== undefined &&
-    remoteOverrides !== undefined;
+    modelDefaults !== undefined && remoteOverrides !== undefined;
 
   const pendingLocalOverrides = useMemo(() => {
     const next: Record<string, string | null> = {};
@@ -1594,11 +1589,6 @@ function ModelConfigSection() {
         <p className="settings-card-desc">
           Choose how Stella runs background tasks on your computer.
         </p>
-        {!hasConnectedAccount ? (
-          <p className="settings-card-desc">
-            Sign in to change these settings.
-          </p>
-        ) : null}
         {runtimeError ? (
           <p
             className="settings-card-desc settings-card-desc--error"
@@ -1637,11 +1627,7 @@ function ModelConfigSection() {
                 value="loading"
                 disabled
               >
-                <option value="loading">
-                  {hasConnectedAccount
-                    ? "Loading saved setting..."
-                    : "Sign in required"}
-                </option>
+                <option value="loading">Loading saved setting...</option>
               </NativeSelect>
             )}
           </div>
@@ -1675,11 +1661,7 @@ function ModelConfigSection() {
                 value="loading"
                 disabled
               >
-                <option value="loading">
-                  {hasConnectedAccount
-                    ? "Loading saved setting..."
-                    : "Sign in required"}
-                </option>
+                <option value="loading">Loading saved setting...</option>
               </NativeSelect>
             )}
           </div>
@@ -1704,11 +1686,6 @@ function ModelConfigSection() {
           Pick which AI model Stella uses for each kind of task. Leave on
           Default for our recommendation.
         </p>
-        {!hasConnectedAccount ? (
-          <p className="settings-card-desc">
-            Sign in to change model settings.
-          </p>
-        ) : null}
         {modelConfigError ? (
           <p
             className="settings-card-desc settings-card-desc--error"
@@ -1717,7 +1694,7 @@ function ModelConfigSection() {
             {modelConfigError}
           </p>
         ) : null}
-        {hasConnectedAccount && !modelPreferencesLoaded ? (
+        {!modelPreferencesLoaded ? (
           <p className="settings-card-desc">Loading saved settings...</p>
         ) : null}
         {modelPreferencesLoaded &&
