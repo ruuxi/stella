@@ -28,6 +28,7 @@ export type RadialCaptureBridge = {
 export type RadialOverlayBridge = {
   showRadial: (options?: {
     compactFocused?: boolean
+    miniAlwaysOnTop?: boolean
   }) => void
   hideRadial: () => void
   updateRadialCursor: (x: number, y: number) => void
@@ -38,6 +39,8 @@ export type RadialWindowBridge = {
   isCompactMode: () => boolean
   getLastActiveWindowMode: () => 'full' | 'mini'
   getLastFocusedWindowMode: () => 'full' | 'mini'
+  isMiniShowing: () => boolean
+  isMiniAlwaysOnTop: () => boolean
   isWindowFocused: () => boolean
   showWindow: (target: 'full' | 'mini') => void
   minimizeWindow: () => void
@@ -161,7 +164,10 @@ export class RadialGestureService {
         this.restoreOrClearTransientContext()
         updateUiState({ mode: 'chat' })
         capture.broadcastChatContext()
-        if (win.isCompactMode() && win.isWindowFocused()) {
+        const shouldCloseMini =
+          (win.isCompactMode() && win.isWindowFocused()) ||
+          (win.isMiniShowing() && win.isMiniAlwaysOnTop())
+        if (shouldCloseMini) {
           win.minimizeWindow()
         } else {
           win.showWindow('mini')
@@ -222,6 +228,7 @@ export class RadialGestureService {
         const compactFocused = win.isCompactMode() && windowFocused
         overlay.showRadial({
           compactFocused,
+          miniAlwaysOnTop: win.isMiniShowing() && win.isMiniAlwaysOnTop(),
         })
         const cursorPoint = screen.getCursorScreenPoint()
         this.scheduleRadialContextCapture(cursorPoint)
