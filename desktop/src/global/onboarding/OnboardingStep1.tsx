@@ -28,14 +28,14 @@ import { OnboardingMemoryPhase } from "./OnboardingMemoryPhase";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 
 const STEP_TITLES: Partial<Record<Phase, string>> = {
-  browser: "Let me get to know you.",
-  creation: "I can change myself.",
-  theme: "How should I look?",
-  personality: "How should I talk?",
+  browser: "Let Stella get to know you.",
+  creation: "Stella can change.",
+  theme: "How should Stella look?",
+  personality: "How should Stella talk?",
   "shortcuts-global": "Anywhere on your desktop.",
   "shortcuts-local": "Inside Stella.",
   "double-tap": "Tap twice. Summon Stella.",
-  memory: "Help me remember.",
+  memory: "Help Stella remember.",
 };
 
 export interface OnboardingStep1Props {
@@ -233,10 +233,10 @@ export const OnboardingStep1 = ({
         >
           <div className="onboarding-ripple-content">
             <div className="onboarding-text onboarding-text--fade-in">
-              I'm an AI that runs on your computer.
+              Stella is an AI that runs on your computer.
             </div>
             <div className="onboarding-text onboarding-text--fade-in-delayed">
-              I'm not made for everyone. I'm made for you.
+              Stella isn't for everyone. Stella is for you.
             </div>
           </div>
           <div
