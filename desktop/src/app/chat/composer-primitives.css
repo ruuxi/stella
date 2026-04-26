@@ -95,11 +95,12 @@
 .chat-composer-icon-button--mic {
   background: transparent;
   border: none;
-  color: var(--text-strong);
+  color: var(--text-base);
 }
 
 .chat-composer-icon-button--mic:hover:not(:disabled) {
-  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  color: var(--text-strong);
 }
 
 .chat-composer-icon-button--mic:disabled {
