@@ -150,6 +150,7 @@ export type ElectronUiApi = {
   hardReset: () => Promise<{ ok: boolean }>;
   morphStart: () => Promise<{ ok: boolean }>;
   morphComplete: () => Promise<{ ok: boolean }>;
+  setOnboardingPresentation: (active: boolean) => Promise<{ ok: boolean }>;
 };
 
 export type ElectronCaptureApi = {

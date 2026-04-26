@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from "electron";
+import { BrowserWindow, ipcMain, screen } from "electron";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import { IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE } from "../../src/shared/contracts/ipc-channels.js";
 import type { UiState } from "../types.js";
@@ -76,6 +76,52 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     if (!win || process.platform !== "darwin") return;
     win.setWindowButtonVisibility(Boolean(visible));
   });
+
+  // Onboarding presentation: while onboarding is active we expand the
+  // (transparent + frameless) main window to cover the current display so
+  // the renderer's radial fog mask has room to fade fully to transparent
+  // well inside the window bounds — the user can't perceive a window
+  // rectangle, only the floating fog. Exit restores the standard size,
+  // re-centered on the same display.
+  const DEFAULT_WIDTH = 1400;
+  const DEFAULT_HEIGHT = 940;
+  ipcMain.handle(
+    "window:setOnboardingPresentation",
+    (event, active: boolean) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return { ok: false };
+      const display = screen.getDisplayMatching(win.getBounds());
+      const work = display.workArea;
+      if (active) {
+        if (process.platform === "darwin") {
+          // Simple fullscreen covers the menubar + dock without animating
+          // into a new Space, and is cheap to toggle off.
+          if (!win.isSimpleFullScreen()) win.setSimpleFullScreen(true);
+          win.setWindowButtonVisibility(false);
+        } else if (process.platform === "win32") {
+          if (!win.isFullScreen()) win.setFullScreen(true);
+        } else {
+          win.setBounds(display.bounds, false);
+        }
+      } else {
+        if (process.platform === "darwin") {
+          if (win.isSimpleFullScreen()) win.setSimpleFullScreen(false);
+          win.setWindowButtonVisibility(true);
+        } else if (process.platform === "win32") {
+          if (win.isFullScreen()) win.setFullScreen(false);
+        }
+        const width = Math.min(DEFAULT_WIDTH, work.width);
+        const height = Math.min(DEFAULT_HEIGHT, work.height);
+        const x = work.x + Math.round((work.width - width) / 2);
+        const y = work.y + Math.round((work.height - height) / 2);
+        // `animate: true` is honored on macOS — the window smoothly contracts
+        // from the work-area size back to the centered default, in sync with
+        // the renderer's fog fade-out. Other platforms just snap.
+        win.setBounds({ x, y, width, height }, process.platform === "darwin");
+      }
+      return { ok: true };
+    },
+  );
 
   ipcMain.handle("ui:getState", () => options.uiState);
 

@@ -215,9 +215,7 @@ const css = `
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
+    background: color-mix(in oklch, var(--background) 88%, var(--foreground) 4%);
     overflow: hidden;
     position: relative;
     z-index: 2;
@@ -345,7 +343,6 @@ const css = `
       color-mix(in oklch, var(--primary) 6%, var(--glass-bg)) 0%,
       var(--glass-bg) 100%
     );
-    backdrop-filter: var(--glass-blur);
     border-right: 1px solid color-mix(in oklch, var(--primary) 18%, transparent);
   }
   .sam-sidebar-modern {
@@ -577,9 +574,7 @@ const css = `
     padding: 6px 22px;
     min-width: 88px;
     text-align: center;
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
+    background: color-mix(in oklch, var(--background) 90%, var(--foreground) 4%);
     border: 1px solid var(--border-strong);
     border-radius: 999px;
     color: var(--text-base);
@@ -626,8 +621,7 @@ const css = `
     position: relative;
     padding: 12px 14px;
     border-radius: var(--radius-lg, 8px);
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
+    background: color-mix(in oklch, var(--background) 90%, var(--foreground) 4%);
     border: 1px solid var(--border-strong);
     overflow: hidden;
   }
@@ -897,8 +891,7 @@ const css = `
     padding: 6px 22px;
     min-width: 88px;
     text-align: center;
-    background: rgba(255, 252, 246, 0.55);
-    backdrop-filter: blur(6px);
+    background: rgba(255, 252, 246, 0.82);
     border: 1px solid rgba(139, 105, 75, 0.25);
     border-radius: 999px;
     color: #8b6240;
@@ -1171,9 +1164,7 @@ const css = `
     padding: 9px 16px 9px 13px;
     border-radius: 999px;
     border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
-    background: color-mix(in oklch, var(--background) 82%, transparent);
-    backdrop-filter: blur(16px) saturate(1.2);
-    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    background: color-mix(in oklch, var(--background) 92%, transparent);
     font-family: inherit;
     font-size: 13px;
     font-weight: 600;

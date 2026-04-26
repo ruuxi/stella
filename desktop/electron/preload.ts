@@ -178,6 +178,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("morph:start") as Promise<{ ok: boolean }>,
     morphComplete: () =>
       ipcRenderer.invoke("morph:complete") as Promise<{ ok: boolean }>,
+    setOnboardingPresentation: (active: boolean) =>
+      ipcRenderer.invoke("window:setOnboardingPresentation", active) as Promise<{
+        ok: boolean;
+      }>,
   },
 
   capture: {

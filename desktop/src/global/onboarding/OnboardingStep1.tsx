@@ -193,6 +193,7 @@ export const OnboardingStep1 = ({
   onEnterSplit,
   onSelectionChange,
   onDemoChange,
+  onPhaseChange,
   isAuthenticated,
 }: OnboardingStep1Props) => {
   const [phase, setPhase] = useState<Phase>(initialPhase);
@@ -247,6 +248,10 @@ export const OnboardingStep1 = ({
       timeoutRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    onPhaseChange?.(phase);
+  }, [onPhaseChange, phase]);
 
   useEffect(() => {
     const hasAny =

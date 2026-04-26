@@ -2,7 +2,7 @@
  * Onboarding flow: Start -> Auth -> Intro (center) -> split layout steps.
  */
 
-import { lazy, Suspense, useCallback, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
@@ -13,6 +13,7 @@ import {
   type StellaAnimationHandle,
 } from "@/shell/ascii-creature/StellaAnimation";
 import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
+import type { Phase } from "@/global/onboarding/use-onboarding-state";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import type { LegalDocument } from "@/global/legal/legal-text";
@@ -93,6 +94,20 @@ export function useOnboardingOverlay() {
   const [onboardingKey, setOnboardingKey] = useState(0);
   const stellaAnimationRef = useRef<StellaAnimationHandle | null>(null);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // While onboarding is active, expand the (transparent) main window to cover
+  // the current display so the renderer's radial fog mask fades to full
+  // transparency well inside the window bounds — no perceivable rectangle.
+  // Trigger the restore at the START of the exit phase (`onboardingExiting`
+  // flips true ~600ms before `onboardingDone`) so the animated window resize
+  // runs concurrently with the fog fade-out, giving a single coordinated
+  // transition rather than a snap once onboarding completes.
+  useEffect(() => {
+    const setPresentation = window.electronAPI?.ui.setOnboardingPresentation;
+    if (typeof setPresentation !== "function") return;
+    const fullscreen = !(onboardingDone || onboardingExiting);
+    void setPresentation(fullscreen);
+  }, [onboardingDone, onboardingExiting]);
 
   const triggerFlash = useCallback(() => {
     stellaAnimationRef.current?.triggerFlash();
@@ -199,7 +214,9 @@ export function OnboardingView({
   onDiscoveryConfirm,
   onSelectionChange,
   onDemoChange,
+  onPhaseChange,
   activeDemo,
+  stellaAnimationPaused = false,
 }: {
   hasExpanded: boolean;
   onboardingDone: boolean;
@@ -222,7 +239,9 @@ export function OnboardingView({
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
   onDemoChange?: (demo: "default" | null) => void;
+  onPhaseChange?: (phase: Phase) => void;
   activeDemo?: OnboardingDemo;
+  stellaAnimationPaused?: boolean;
 }) {
   const showRuntimeGate = isPreparingRuntime || Boolean(runtimeError)
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(null);
@@ -262,6 +281,7 @@ export function OnboardingView({
           width={70}
           height={39}
           initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
+          paused={stellaAnimationPaused}
         />
       </div>
       {(showRuntimeGate || !onboardingDone) &&
@@ -290,6 +310,7 @@ export function OnboardingView({
             onEnterSplit={handleEnterSplit}
             onSelectionChange={onSelectionChange}
             onDemoChange={onDemoChange}
+            onPhaseChange={onPhaseChange}
             isAuthenticated={isAuthenticated}
           />
         ) : (

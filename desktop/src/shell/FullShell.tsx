@@ -11,6 +11,7 @@ import { PageSidebarProvider } from "@/context/page-sidebar";
 import { useTheme } from "@/context/theme-context";
 import { useUiState } from "@/context/ui-state";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
+import type { Phase as OnboardingPhase } from "@/global/onboarding/use-onboarding-state";
 import { useDiscoveryFlow } from "@/global/onboarding/DiscoveryFlow";
 import {
   OnboardingView,
@@ -36,8 +37,11 @@ export const FullShell = () => {
   const { gradientMode, gradientColor } = useTheme();
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
+  const [onboardingDemoMorphing, setOnboardingDemoMorphing] = useState(false);
+  const [stellaHiddenByPhase, setStellaHiddenByPhase] = useState(false);
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDemoRef = useRef<OnboardingDemo>(null);
+  const fogDefsRef = useRef<SVGSVGElement | null>(null);
   const onboarding = useOnboardingOverlay();
   const {
     runtimeStatus,
@@ -96,11 +100,111 @@ export const FullShell = () => {
     };
   }, []);
 
+  const handleOnboardingPhaseChange = useCallback((phase: OnboardingPhase) => {
+    setStellaHiddenByPhase(
+      phase === "shortcuts-global" || phase === "shortcuts-local",
+    );
+  }, []);
+
+  useEffect(() => {
+    const fogDefs = fogDefsRef.current;
+    if (!fogDefs) return;
+
+    // Pause the fog drift during creation-phase morphs and during the
+    // onboarding exit transition (so the fade-out reads as a calm dissolve
+    // rather than a moving texture being clipped to nothing).
+    if (onboardingDemoMorphing || onboarding.onboardingExiting) {
+      fogDefs.pauseAnimations();
+    } else {
+      fogDefs.unpauseAnimations();
+    }
+  }, [onboardingDemoMorphing, onboarding.onboardingExiting]);
+
   const appReady = onboarding.onboardingDone;
   const showOnboardingDemos = activeDemo || demoClosing;
+  const pauseOnboardingMotion =
+    onboardingDemoMorphing || onboarding.onboardingExiting;
+  const pauseStellaAnimation =
+    pauseOnboardingMotion ||
+    Boolean(activeDemo) ||
+    (!appReady && stellaHiddenByPhase);
 
   return (
-    <div className="window-shell full">
+    <div
+      className="window-shell full"
+      data-window-mode={appReady ? "app" : "onboarding"}
+      data-onboarding-exiting={
+        !appReady && onboarding.onboardingExiting ? "true" : undefined
+      }
+    >
+      {!appReady ? (
+        <svg
+          ref={fogDefsRef}
+          className="onboarding-fog-defs"
+          width="0"
+          height="0"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <defs>
+            <filter
+              id="stella-fog-distort"
+              x="-15%"
+              y="-15%"
+              width="130%"
+              height="130%"
+              colorInterpolationFilters="sRGB"
+            >
+              {/* Filter values are tuned for a 600x400 source element
+               * (see .window-shell.full[data-window-mode="onboarding"]::after).
+               * The CSS-scale multiplier on that element is roughly 3x on a
+               * typical window, so baseFrequency is 3x the original "screen
+               * pixel" tuning and displacement scale is 1/3 — giving the
+               * same on-screen noise wavelength and warp distance as before
+               * while filtering ~9x fewer pixels. */}
+              {/* Linear interpolation + closed-loop values keep motion
+               * continuous: spline ease-in-out caused zero-velocity
+               * "dwell" frames at every keyframe, which read as the fog
+               * going briefly static. Each leg below covers a similar
+               * 2D distance in (freqX, freqY) / displacement space so
+               * apparent speed stays roughly constant throughout the
+               * loop, with no near-stationary segment. */}
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.018 0.027"
+                numOctaves="2"
+                seed="7"
+                result="fogNoise"
+              >
+                <animate
+                  attributeName="baseFrequency"
+                  dur="29s"
+                  values="0.018 0.027;0.026 0.022;0.022 0.034;0.014 0.030;0.018 0.027"
+                  keyTimes="0;0.25;0.5;0.75;1"
+                  calcMode="linear"
+                  repeatCount="indefinite"
+                />
+              </feTurbulence>
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="fogNoise"
+                scale="18.33"
+                xChannelSelector="R"
+                yChannelSelector="G"
+              >
+                <animate
+                  attributeName="scale"
+                  dur="19s"
+                  values="17;23;14;20;17"
+                  keyTimes="0;0.25;0.5;0.75;1"
+                  calcMode="linear"
+                  repeatCount="indefinite"
+                />
+              </feDisplacementMap>
+            </filter>
+          </defs>
+        </svg>
+      ) : null}
       <ShiftingGradient
         mode={gradientMode}
         colorMode={gradientColor}
@@ -132,6 +236,7 @@ export const FullShell = () => {
               hasDiscoverySelections={onboarding.hasDiscoverySelections}
               hasStarted={onboarding.hasStarted}
               stellaAnimationRef={onboarding.stellaAnimationRef}
+              stellaAnimationPaused={pauseStellaAnimation}
               onboardingKey={onboarding.onboardingKey}
               triggerFlash={onboarding.triggerFlash}
               startBirthAnimation={onboarding.startBirthAnimation}
@@ -142,6 +247,7 @@ export const FullShell = () => {
               onDiscoveryConfirm={handleDiscoveryConfirm}
               onSelectionChange={onboarding.setHasDiscoverySelections}
               onDemoChange={handleDemoChange}
+              onPhaseChange={handleOnboardingPhaseChange}
               activeDemo={activeDemo}
             />
             <div
@@ -151,7 +257,10 @@ export const FullShell = () => {
               aria-hidden={!showOnboardingDemos}
             >
               <Suspense fallback={null}>
-                <OnboardingCanvas activeDemo={activeDemo} />
+                <OnboardingCanvas
+                  activeDemo={activeDemo}
+                  onMorphingChange={setOnboardingDemoMorphing}
+                />
               </Suspense>
             </div>
           </div>

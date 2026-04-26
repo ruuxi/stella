@@ -1,4 +1,4 @@
-import { BrowserWindow, nativeTheme, type RenderProcessGoneDetails } from 'electron'
+import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
 import { resolveAppIconPath } from '../app-icon.js'
 import { createSharedWebPreferences } from './shared-window-preferences.js'
 import type { ShellWindowDidFailLoadDetails } from './shell-window-factory.js'
@@ -25,7 +25,6 @@ export class FullWindowController {
       mode: 'full',
       createWindow: () => {
         const isMac = process.platform === 'darwin'
-        const isWindows = process.platform === 'win32'
         const windowIcon = !isMac ? resolveAppIconPath(this.options.electronDir) : undefined
 
         return new BrowserWindow({
@@ -33,11 +32,17 @@ export class FullWindowController {
           height: 940,
           minWidth: 400,
           minHeight: 300,
-          frame: isMac,
-          titleBarStyle: isMac ? 'hiddenInset' : undefined,
+          // Transparent + frameless so the renderer can feather the window's
+          // edges (fog effect) during onboarding, and round its corners during
+          // normal use. On macOS we keep the traffic lights via
+          // `titleBarStyle: 'hidden'`, which is compatible with `frame: false`
+          // and `transparent: true`.
+          frame: false,
+          transparent: true,
+          backgroundColor: '#00000000',
+          hasShadow: true,
+          titleBarStyle: isMac ? 'hidden' : undefined,
           trafficLightPosition: isMac ? { x: 16, y: 13 } : undefined,
-          ...(isWindows || process.platform === 'linux' ? { frame: false } : {}),
-          backgroundColor: nativeTheme.shouldUseDarkColors ? '#161616' : '#f2f4f8',
           icon: windowIcon,
           webPreferences: createSharedWebPreferences({
             preloadPath: this.options.preloadPath,
