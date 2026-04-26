@@ -3,7 +3,6 @@ import "./home.css";
 
 type HomeContentProps = {
   onDismissHome?: () => void;
-  hasMessages?: boolean;
   children?: ReactNode;
 };
 
@@ -99,11 +98,10 @@ function useGreeting(): string {
 
 export function HomeContent({
   onDismissHome,
-  hasMessages,
   children,
 }: HomeContentProps) {
   const greeting = useGreeting();
-  const showViewMessages = Boolean(hasMessages && onDismissHome);
+  const showViewMessages = Boolean(onDismissHome);
   const [showSidebarHint] = useState(shouldShowSidebarHint);
 
   useEffect(() => {

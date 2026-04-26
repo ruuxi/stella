@@ -181,17 +181,13 @@ export const ChatColumn = memo(function ChatColumn({
   );
 
   if (shouldShowHomeContent && onSuggestionClick) {
-    const hasMessages = conversation.events.length > 0;
     return (
       <div
         className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}
         {...dropHandlers}
       >
         <DropOverlay visible={isDragOver} variant="surface" />
-        <HomeContent
-          onDismissHome={onDismissHome}
-          hasMessages={hasMessages}
-        >
+        <HomeContent onDismissHome={onDismissHome}>
           <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
             {composerElement}
           </div>
