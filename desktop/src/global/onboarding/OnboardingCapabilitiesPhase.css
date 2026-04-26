@@ -1,0 +1,1657 @@
+/* ──────────────────────────────────────────────────────────────────────
+ * OnboardingCapabilitiesPhase — auto-cycling "what Stella can do" tour.
+ *
+ * Each scene crossfades over a fixed-aspect stage that mirrors the real
+ * Stella surface (sidebar + italic wordmark + pill composer). Scenes are
+ * stacked in the same grid cell so transitions are CSS opacity/blur only.
+ * ────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --cap-frame-radius: 22px;
+  --cap-stage-aspect: 16 / 7.7;
+  --cap-excel: oklch(0.66 0.16 145);
+  --cap-word: oklch(0.62 0.18 245);
+  --cap-ppt: oklch(0.7 0.18 35);
+  --cap-web: oklch(0.7 0.16 295);
+}
+
+.onboarding-cap-step {
+  width: 100%;
+  max-width: none;
+  align-items: center;
+  gap: 14px;
+  /* The capabilities phase is full-width like creation — let it fill the
+   * stage rather than being clamped to the 540px right-pane content. */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.onboarding-cap-step > .onboarding-step-desc {
+  display: none;
+}
+
+.onboarding-cap-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, calc(100vw - 80px));
+  max-width: 1180px;
+  border-radius: var(--cap-frame-radius);
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background:
+    radial-gradient(
+      120% 80% at 50% 0%,
+      color-mix(in oklch, var(--foreground) 5%, transparent),
+      transparent 70%
+    ),
+    color-mix(in oklch, var(--background) 96%, white 4%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 32%, transparent),
+    0 32px 80px color-mix(in oklch, black 14%, transparent);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Slim progress bar pinned to the top of the frame. Resets per scene
+ * via the keyed span (React remounts on `sceneKey` change). */
+.onboarding-cap-frame__progress {
+  position: relative;
+  width: 100%;
+  height: 2px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  overflow: hidden;
+}
+
+.onboarding-cap-frame__progress-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--foreground) 50%, transparent),
+    color-mix(in oklch, var(--foreground) 80%, transparent)
+  );
+  transform-origin: left center;
+  animation: capProgress linear forwards;
+}
+
+@keyframes capProgress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* ── Stage (scene canvas) ─────────────────────────────────────────── */
+
+.onboarding-cap-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--cap-stage-aspect);
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  isolation: isolate;
+}
+
+.onboarding-cap-scene {
+  grid-row: 1;
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(12px, 1.5vw, 20px);
+  opacity: 0;
+  transform: scale(0.985);
+  /* Single layer-level blur for the crossfade. We deliberately avoid
+   * stacking blur on the children (chat bubbles, app cards, etc.) — a
+   * blurred parent already softens its descendants, and per-element
+   * filter animations multiply the GPU's per-frame work. */
+  filter: blur(6px);
+  transition:
+    opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  overflow: hidden;
+  will-change: opacity, transform, filter;
+  backface-visibility: hidden;
+}
+
+.onboarding-cap-scene[data-active] {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
+}
+
+/* ── Caption ──────────────────────────────────────────────────────── */
+
+.onboarding-cap-caption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 24px 14px;
+  text-align: center;
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  animation: capCaptionFadeIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes capCaptionFadeIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.onboarding-cap-caption__tag {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.45;
+}
+
+.onboarding-cap-caption__title {
+  margin: 0;
+  font-size: clamp(20px, 1.8vw, 24px);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--foreground);
+  opacity: 0.94;
+  line-height: 1.25;
+}
+
+.onboarding-cap-caption__body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.65;
+  max-width: 56rem;
+}
+
+/* ── Dots (scene navigator) ───────────────────────────────────────── */
+
+.onboarding-cap-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 0 12px;
+}
+
+.onboarding-cap-dots__dot {
+  width: 22px;
+  height: 4px;
+  border-radius: 4px;
+  border: none;
+  padding: 0;
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  cursor: pointer;
+  transition: background 0.2s ease, width 0.3s ease;
+}
+
+.onboarding-cap-dots__dot[data-completed] {
+  background: color-mix(in oklch, var(--foreground) 22%, transparent);
+}
+
+.onboarding-cap-dots__dot[data-active] {
+  background: color-mix(in oklch, var(--foreground) 55%, transparent);
+  width: 32px;
+}
+
+.onboarding-cap-dots__dot:hover {
+  background: color-mix(in oklch, var(--foreground) 35%, transparent);
+}
+
+/* ── Continue button ──────────────────────────────────────────────── */
+
+.onboarding-cap-continue[data-emphasized] {
+  opacity: 1 !important;
+  border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  animation: capContinuePulse 2.2s ease-in-out 0.2s 1;
+}
+
+@keyframes capContinuePulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--foreground) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in oklch, var(--foreground) 8%, transparent);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Stella shell mock — shared chrome reused by Creation, Productivity,
+ * Store, Together, and the "Full" Modes scene. Mirrors the real app:
+ * sidebar (brand + nav + footer) + italic Cormorant wordmark.
+ * ────────────────────────────────────────────────────────────────────── */
+
+.onboarding-cap-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  border-radius: 16px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+  background:
+    radial-gradient(
+      120% 90% at 80% 0%,
+      color-mix(in oklch, var(--foreground) 4%, transparent),
+      transparent 55%
+    ),
+    color-mix(in oklch, var(--background) 98%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 24%, transparent),
+    0 18px 40px color-mix(in oklch, black 10%, transparent);
+  overflow: hidden;
+  font-family: var(--font-family-sans, "Manrope", system-ui, sans-serif);
+  transition: filter 0.45s ease;
+}
+
+.onboarding-cap-shell[data-variant="themed"] {
+  background:
+    radial-gradient(
+      130% 100% at 100% 0%,
+      color-mix(in oklch, oklch(0.82 0.06 145) 22%, transparent),
+      transparent 60%
+    ),
+    color-mix(in oklch, var(--background) 96%, oklch(0.82 0.06 145) 4%);
+}
+
+.onboarding-cap-shell__sidebar {
+  width: 132px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 12px;
+  border-right: 1px solid
+    color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+}
+
+.onboarding-cap-shell__brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--foreground);
+  opacity: 0.55;
+  padding: 4px 8px 16px;
+}
+
+.onboarding-cap-shell__brand svg {
+  opacity: 0.7;
+}
+
+.onboarding-cap-shell__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.onboarding-cap-shell__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+
+.onboarding-cap-shell__nav-item[data-active] {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  opacity: 0.92;
+}
+
+.onboarding-cap-shell__nav-item--new {
+  color: oklch(0.65 0.16 145);
+  opacity: 0;
+  transform: translateX(-4px);
+  animation: capNavItemIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 1.6s forwards;
+}
+
+@keyframes capNavItemIn {
+  to {
+    opacity: 0.95;
+    transform: translateX(0);
+  }
+}
+
+.onboarding-cap-shell__footer {
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-top: 6px;
+}
+
+.onboarding-cap-shell__footer span {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.onboarding-cap-shell__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 22px 18px;
+  gap: 14px;
+  position: relative;
+}
+
+.onboarding-cap-shell__title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.onboarding-cap-shell__wordmark {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 30px;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  opacity: 0.85;
+}
+
+.onboarding-cap-shell__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: oklch(0.62 0.18 235);
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 12%, transparent);
+  border: 1px solid color-mix(in oklch, oklch(0.62 0.18 235) 25%, transparent);
+}
+
+.onboarding-cap-shell__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Chat bubbles ─────────────────────────────────────────────────── */
+
+.onboarding-cap-bubble {
+  align-self: flex-start;
+  max-width: 78%;
+  padding: 9px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--foreground);
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  font-family: var(--font-family-sans, "Manrope", system-ui, sans-serif);
+}
+
+.onboarding-cap-bubble[data-visible] {
+  animation: capBubbleIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Inner elements use opacity + translate only — no per-element filter blur.
+ * The scene-level crossfade already softens its children, and stacking 10+
+ * concurrent blur animations inside an already-blurred parent is what was
+ * making the reveal feel laggy. Translate+opacity composite for free. */
+@keyframes capBubbleIn {
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.onboarding-cap-bubble[data-role="user"] {
+  align-self: flex-end;
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 16%, transparent);
+  border: 1px solid color-mix(in oklch, oklch(0.62 0.18 235) 22%, transparent);
+  border-bottom-right-radius: 6px;
+}
+
+.onboarding-cap-bubble[data-role="assistant"] {
+  align-self: flex-start;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-bottom-left-radius: 6px;
+  opacity: 0.92;
+}
+
+.onboarding-cap-bubble__wand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--foreground);
+  opacity: 0.7;
+}
+
+/* ── Pill composer ────────────────────────────────────────────────── */
+
+.onboarding-cap-composer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+}
+
+.onboarding-cap-composer__add,
+.onboarding-cap-composer__send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.onboarding-cap-composer__add {
+  border: 1.4px solid color-mix(in oklch, var(--foreground) 35%, transparent);
+  color: color-mix(in oklch, var(--foreground) 60%, transparent);
+}
+
+.onboarding-cap-composer__input {
+  flex: 1;
+  font-size: 12px;
+  color: color-mix(in oklch, var(--foreground) 38%, transparent);
+}
+
+.onboarding-cap-composer__send {
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 22%, transparent);
+  color: color-mix(in oklch, oklch(0.55 0.18 235) 80%, var(--foreground));
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Scene 1 — Creation
+ * ────────────────────────────────────────────────────────────────────── */
+
+.onboarding-cap-creation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  width: 100%;
+}
+
+.onboarding-cap-creation__artifact {
+  display: flex;
+  justify-content: flex-start;
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition-delay: 1.8s;
+}
+
+.onboarding-cap-creation__artifact[data-visible] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.onboarding-cap-creation__habit {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, oklch(0.65 0.16 145) 30%, transparent);
+  background: color-mix(in oklch, oklch(0.82 0.08 145) 10%, var(--background));
+}
+
+.onboarding-cap-creation__habit-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: oklch(0.55 0.16 145);
+  margin-bottom: 4px;
+}
+
+.onboarding-cap-creation__habit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--foreground);
+  opacity: 0.85;
+}
+
+.onboarding-cap-creation__habit-row span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: oklch(0.7 0.15 145);
+}
+
+.onboarding-cap-creation__habit-row[data-pending] span {
+  background: transparent;
+  border: 1.5px solid color-mix(in oklch, var(--foreground) 30%, transparent);
+}
+
+.onboarding-cap-creation__habit-row[data-pending] {
+  opacity: 0.5;
+}
+
+.onboarding-cap-creation__habit-row svg {
+  margin-left: auto;
+  opacity: 0.7;
+  color: oklch(0.55 0.16 145);
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Scene 2 — Productivity
+ * ────────────────────────────────────────────────────────────────────── */
+
+.onboarding-cap-productivity {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  width: 100%;
+}
+
+.onboarding-cap-productivity__row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.onboarding-cap-app-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--cap-accent) 22%, transparent);
+  background: color-mix(in oklch, var(--cap-accent) 6%, var(--background));
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+}
+
+.onboarding-cap-app-card[data-visible] {
+  animation: capCardIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes capCardIn {
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.onboarding-cap-app-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--cap-accent) 18%, transparent);
+  color: var(--cap-accent);
+  flex-shrink: 0;
+}
+
+.onboarding-cap-app-card__meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.onboarding-cap-app-card__name {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--foreground);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.onboarding-cap-app-card__bar {
+  position: relative;
+  height: 4px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--cap-accent) 12%, transparent);
+  overflow: hidden;
+}
+
+.onboarding-cap-app-card__bar-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--cap-accent);
+  transform-origin: left center;
+  transform: scaleX(0);
+  animation: capBarFill 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes capBarFill {
+  to { transform: scaleX(1); }
+}
+
+.onboarding-cap-app-card__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--cap-accent);
+  color: white;
+  opacity: 0;
+  animation: capCheckIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) 2.1s forwards;
+}
+
+@keyframes capCheckIn {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Scene 3 — Connection (phone <-> desktop)
+ * ────────────────────────────────────────────────────────────────────── */
+
+.onboarding-cap-connection {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(170px, 210px) auto 1fr;
+  gap: clamp(20px, 3vw, 40px);
+  align-items: center;
+  justify-content: center;
+}
+
+.onboarding-cap-phone {
+  position: relative;
+  width: auto;
+  height: min(100%, 380px);
+  max-width: 210px;
+  aspect-ratio: 9 / 19;
+  border-radius: 36px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+  background: color-mix(in oklch, var(--background) 92%, black 8%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 22%, transparent),
+    0 18px 40px color-mix(in oklch, black 16%, transparent);
+  padding: 22px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(10px) scale(0.96);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.onboarding-cap-phone[data-visible] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.onboarding-cap-phone__notch {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 14px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 90%, transparent);
+}
+
+.onboarding-cap-phone__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 8px;
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.onboarding-cap-phone__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 25%, transparent);
+  color: oklch(0.55 0.18 235);
+}
+
+.onboarding-cap-phone__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--foreground);
+  opacity: 0.85;
+}
+
+.onboarding-cap-phone__messages {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 4px;
+  overflow: hidden;
+  justify-content: flex-end;
+}
+
+.onboarding-cap-phone__msg {
+  max-width: 84%;
+  padding: 7px 10px;
+  border-radius: 16px;
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0;
+  transform: translate3d(0, 6px, 0);
+}
+
+.onboarding-cap-phone__msg[data-visible] {
+  animation: capBubbleIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.onboarding-cap-phone__msg[data-role="user"] {
+  align-self: flex-end;
+  background: oklch(0.62 0.18 235);
+  color: white;
+  border-bottom-right-radius: 6px;
+}
+
+.onboarding-cap-phone__msg[data-role="assistant"] {
+  align-self: flex-start;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+  border-bottom-left-radius: 6px;
+}
+
+.onboarding-cap-phone__composer {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  font-size: 11px;
+  color: color-mix(in oklch, var(--foreground) 40%, transparent);
+}
+
+.onboarding-cap-bridge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: oklch(0.62 0.18 235);
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.5s ease 0.6s, transform 0.5s ease 0.6s;
+}
+
+.onboarding-cap-bridge[data-visible] {
+  opacity: 0.85;
+  transform: translateX(0);
+}
+
+.onboarding-cap-bridge__line {
+  position: relative;
+  display: inline-block;
+  width: clamp(40px, 8vw, 80px);
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, oklch(0.62 0.18 235) 60%, transparent),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: capBridgeFlow 1.6s linear infinite;
+}
+
+@keyframes capBridgeFlow {
+  from { background-position: 0% 0%; }
+  to { background-position: -200% 0%; }
+}
+
+.onboarding-cap-desktop {
+  width: 100%;
+  max-width: 440px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--background) 97%, transparent);
+  box-shadow: 0 18px 40px color-mix(in oklch, black 12%, transparent);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(8px);
+  transition: opacity 0.6s ease 0.4s, transform 0.6s ease 0.4s;
+}
+
+.onboarding-cap-desktop[data-visible] {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.onboarding-cap-desktop__bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+.onboarding-cap-desktop__bar span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.onboarding-cap-desktop__bar span:nth-child(1) { background: oklch(0.74 0.16 75); }
+.onboarding-cap-desktop__bar span:nth-child(2) { background: oklch(0.74 0.16 240); }
+.onboarding-cap-desktop__bar span:nth-child(3) { background: oklch(0.78 0.16 150); }
+
+.onboarding-cap-desktop__bar strong {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--foreground);
+  opacity: 0.6;
+}
+
+.onboarding-cap-desktop__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 18px;
+}
+
+.onboarding-cap-desktop__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--foreground);
+  opacity: 0;
+  transform: translate3d(-6px, 0, 0);
+  animation: capStepIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes capStepIn {
+  to {
+    opacity: 0.78;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.onboarding-cap-desktop__step svg {
+  flex-shrink: 0;
+  opacity: 0.65;
+  color: oklch(0.62 0.18 235);
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Scene 4 — Store
+ * ────────────────────────────────────────────────────────────────────── */
+
+.onboarding-cap-store {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  width: 100%;
+}
+
+.onboarding-cap-store__header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.onboarding-cap-store__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+  opacity: 0.85;
+}
+
+.onboarding-cap-store__subtitle {
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.55;
+}
+
+.onboarding-cap-store__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  flex: 1;
+}
+
+.onboarding-cap-store__card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--background) 96%, var(--foreground) 4%);
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+}
+
+.onboarding-cap-store__card[data-visible] {
+  animation: capCardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.onboarding-cap-store__card[data-action="publish"] {
+  border-color: color-mix(in oklch, oklch(0.65 0.16 145) 30%, transparent);
+  background: color-mix(in oklch, oklch(0.82 0.08 145) 8%, var(--background));
+}
+
+.onboarding-cap-store__card[data-action="install"] {
+  border-color: color-mix(in oklch, oklch(0.62 0.18 235) 30%, transparent);
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 8%, var(--background));
+}
+
+.onboarding-cap-store__card-art {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.onboarding-cap-store__card[data-action="publish"] .onboarding-cap-store__card-art {
+  background: color-mix(in oklch, oklch(0.65 0.16 145) 22%, transparent);
+  color: oklch(0.5 0.16 145);
+  opacity: 1;
+}
+
+.onboarding-cap-store__card[data-action="install"] .onboarding-cap-store__card-art {
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 22%, transparent);
+  color: oklch(0.55 0.18 235);
+  opacity: 1;
+}
+
+.onboarding-cap-store__card-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.onboarding-cap-store__card-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--foreground);
+  opacity: 0.88;
+}
+
+.onboarding-cap-store__card-author {
+  font-size: 10px;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+
+.onboarding-cap-store__card-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.onboarding-cap-store__card[data-action="publish"] .onboarding-cap-store__card-tag {
+  color: oklch(0.5 0.16 145);
+  background: color-mix(in oklch, oklch(0.65 0.16 145) 14%, transparent);
+}
+
+.onboarding-cap-store__card[data-action="install"] .onboarding-cap-store__card-tag {
+  color: oklch(0.55 0.18 235);
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 14%, transparent);
+}
+
+.onboarding-cap-store__card-tag[data-quiet] {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  opacity: 0.5;
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Scene 5 — Together
+ * ────────────────────────────────────────────────────────────────────── */
+
+.onboarding-cap-together {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  width: 100%;
+}
+
+.onboarding-cap-together__people {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.onboarding-cap-together__avatar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--foreground);
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.onboarding-cap-together__avatar[data-color="a"] {
+  border-color: color-mix(in oklch, oklch(0.62 0.18 235) 35%, transparent);
+  color: oklch(0.55 0.18 235);
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 10%, transparent);
+}
+
+.onboarding-cap-together__avatar[data-color="b"] {
+  border-color: color-mix(in oklch, oklch(0.7 0.18 35) 35%, transparent);
+  color: oklch(0.6 0.18 35);
+  background: color-mix(in oklch, oklch(0.7 0.18 35) 10%, transparent);
+}
+
+.onboarding-cap-together__avatar[data-color="stella"] {
+  border-color: color-mix(in oklch, oklch(0.78 0.13 295) 35%, transparent);
+  color: oklch(0.55 0.16 295);
+  background: color-mix(in oklch, oklch(0.78 0.13 295) 10%, transparent);
+}
+
+.onboarding-cap-together__chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.onboarding-cap-together__friend-msg {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.onboarding-cap-together__friend-msg [data-name] {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: oklch(0.6 0.18 35);
+}
+
+.onboarding-cap-together__cursors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.onboarding-cap-together__cursor {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  opacity: 0.85;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.18));
+}
+
+.onboarding-cap-together__cursor[data-color="a"] {
+  background: oklch(0.62 0.18 235);
+  top: 30%;
+  left: 65%;
+  animation: capCursorA 6s ease-in-out infinite;
+}
+
+.onboarding-cap-together__cursor[data-color="b"] {
+  background: oklch(0.7 0.18 35);
+  top: 60%;
+  left: 30%;
+  animation: capCursorB 6s ease-in-out infinite;
+}
+
+@keyframes capCursorA {
+  0%, 100% { transform: rotate(-45deg) translate(0, 0); }
+  50% { transform: rotate(-45deg) translate(-30px, 20px); }
+}
+
+@keyframes capCursorB {
+  0%, 100% { transform: rotate(-45deg) translate(0, 0); }
+  50% { transform: rotate(-45deg) translate(40px, -25px); }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Scene 6 — Modes
+ * ────────────────────────────────────────────────────────────────────── */
+
+.onboarding-cap-modes {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1.7fr 1fr 1fr;
+  gap: clamp(12px, 1.6vw, 20px);
+}
+
+.onboarding-cap-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  opacity: 0;
+  transform: translate3d(0, 10px, 0);
+  animation: capModeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes capModeIn {
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.onboarding-cap-mode[data-visible] {
+  /* placeholder — animation already runs on enter */
+}
+
+.onboarding-cap-mode__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.55;
+}
+
+.onboarding-cap-modes__bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.onboarding-cap-mode--full .onboarding-cap-shell {
+  flex: 1;
+}
+
+.onboarding-cap-mini {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--background) 96%, transparent);
+  box-shadow: 0 12px 30px color-mix(in oklch, black 10%, transparent);
+  overflow: hidden;
+}
+
+.onboarding-cap-mini__bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground) 6%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--foreground);
+  opacity: 0.85;
+}
+
+.onboarding-cap-mini__actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 6px;
+  opacity: 0.4;
+}
+
+.onboarding-cap-mini__messages {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  flex: 1;
+  overflow: hidden;
+  justify-content: flex-end;
+}
+
+.onboarding-cap-mini__msg {
+  padding: 6px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--foreground);
+}
+
+.onboarding-cap-mini__msg[data-role="user"] {
+  align-self: flex-end;
+  max-width: 80%;
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 14%, transparent);
+}
+
+.onboarding-cap-mini__msg[data-role="assistant"] {
+  align-self: flex-start;
+  max-width: 90%;
+  opacity: 0.75;
+}
+
+.onboarding-cap-mini__composer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin: 0 8px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  font-size: 10px;
+  color: color-mix(in oklch, var(--foreground) 38%, transparent);
+}
+
+.onboarding-cap-mini__composer span {
+  flex: 1;
+}
+
+.onboarding-cap-voice {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklch, oklch(0.62 0.18 235) 18%, transparent);
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 5%, var(--background));
+}
+
+.onboarding-cap-voice__ring {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  border-radius: 999px;
+  border: 2px solid oklch(0.62 0.18 235 / 0.3);
+  animation: capVoicePulse 2s ease-out infinite;
+}
+
+@keyframes capVoicePulse {
+  from {
+    transform: scale(0.5);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.onboarding-cap-voice__mic {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: oklch(0.62 0.18 235);
+  color: white;
+  box-shadow: 0 4px 16px oklch(0.62 0.18 235 / 0.35);
+  z-index: 1;
+}
+
+.onboarding-cap-voice__caption {
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+  color: oklch(0.55 0.18 235);
+  font-style: italic;
+  z-index: 1;
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Scene 7 — Actions (browser + desktop cleanup)
+ * ────────────────────────────────────────────────────────────────────── */
+
+.onboarding-cap-actions {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: clamp(14px, 2vw, 24px);
+}
+
+.onboarding-cap-actions__browser {
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--background) 97%, transparent);
+  box-shadow: 0 18px 40px color-mix(in oklch, black 10%, transparent);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.onboarding-cap-actions__browser[data-visible] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.onboarding-cap-actions__browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.onboarding-cap-actions__browser-bar span:nth-child(1),
+.onboarding-cap-actions__browser-bar span:nth-child(2),
+.onboarding-cap-actions__browser-bar span:nth-child(3) {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.onboarding-cap-actions__browser-bar span:nth-child(1) { background: oklch(0.74 0.16 75); }
+.onboarding-cap-actions__browser-bar span:nth-child(2) { background: oklch(0.74 0.16 240); }
+.onboarding-cap-actions__browser-bar span:nth-child(3) { background: oklch(0.78 0.16 150); }
+
+.onboarding-cap-actions__url {
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--foreground);
+  opacity: 0.65;
+}
+
+.onboarding-cap-actions__browser-body {
+  position: relative;
+  flex: 1;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.onboarding-cap-actions__rest {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.onboarding-cap-actions__rest-name {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 22px;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--foreground);
+  opacity: 0.85;
+  letter-spacing: -0.01em;
+}
+
+.onboarding-cap-actions__rest-meta {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--foreground);
+  opacity: 0.55;
+}
+
+.onboarding-cap-actions__time-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.onboarding-cap-actions__time {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--foreground);
+  opacity: 0;
+  transform: translate3d(0, 6px, 0);
+  animation: capCardIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.onboarding-cap-actions__time[data-stella-click] {
+  position: relative;
+  background: oklch(0.62 0.18 235);
+  border-color: oklch(0.62 0.18 235);
+  color: white;
+  animation:
+    capCardIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+    capStellaClick 0.6s ease-out 1.7s 1;
+}
+
+@keyframes capStellaClick {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.62 0.18 235 / 0); }
+  50% { box-shadow: 0 0 0 8px oklch(0.62 0.18 235 / 0.18); }
+}
+
+.onboarding-cap-actions__confirm {
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: oklch(0.65 0.16 145);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: capCardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.onboarding-cap-actions__cursor {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: oklch(0.62 0.18 235);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+  top: 65%;
+  left: 25%;
+  opacity: 0;
+}
+
+.onboarding-cap-actions__cursor[data-visible] {
+  animation: capActionsCursor 2.4s cubic-bezier(0.4, 0, 0.2, 1) 0.6s forwards;
+}
+
+@keyframes capActionsCursor {
+  0% {
+    opacity: 0;
+    top: 80%;
+    left: 10%;
+  }
+  20% {
+    opacity: 1;
+  }
+  60% {
+    top: 65%;
+    left: 38%;
+    opacity: 1;
+  }
+  100% {
+    top: 78%;
+    left: 30%;
+    opacity: 0;
+  }
+}
+
+.onboarding-cap-actions__desktop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--background) 97%, transparent);
+  box-shadow: 0 12px 30px color-mix(in oklch, black 8%, transparent);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.5s ease 0.2s, transform 0.5s ease 0.2s;
+}
+
+.onboarding-cap-actions__desktop[data-visible] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.onboarding-cap-actions__desktop-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.55;
+}
+
+.onboarding-cap-actions__file-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.onboarding-cap-actions__file {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  animation:
+    capCardIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+    capFileSweep 0.5s cubic-bezier(0.5, 0, 0.5, 1) forwards;
+  animation-delay: var(--delay, 0ms), calc(1100ms + var(--delay, 0ms));
+}
+
+@keyframes capFileSweep {
+  to {
+    opacity: 0.5;
+    transform: translate3d(20px, 30px, 0) scale(0.9);
+  }
+}
+
+.onboarding-cap-actions__folders {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px dashed color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.onboarding-cap-actions__folder {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklch, oklch(0.7 0.16 80) 25%, transparent);
+  background: color-mix(in oklch, oklch(0.84 0.12 80) 12%, var(--background));
+  font-size: 10px;
+  font-weight: 600;
+  color: oklch(0.5 0.16 60);
+  opacity: 0;
+  transform: translateY(6px);
+  animation: capCardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Reduced motion — keep disclosure but kill loops.
+ * ────────────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-cap-frame__progress-fill,
+  .onboarding-cap-bridge__line,
+  .onboarding-cap-voice__ring,
+  .onboarding-cap-together__cursor,
+  .onboarding-cap-actions__cursor,
+  .onboarding-cap-actions__time[data-stella-click] {
+    animation: none !important;
+  }
+
+  .onboarding-cap-scene {
+    transition: opacity 0.2s ease;
+    transform: none;
+    filter: none;
+  }
+}

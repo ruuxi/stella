@@ -84,9 +84,15 @@ type PendingAskStellaRequest = {
  */
 function RootLayout() {
   const { state } = useUiState();
-  const conversationId = state.conversationId;
   const matchRoute = useMatchRoute();
   const isOnChatRoute = Boolean(matchRoute({ to: "/chat" }));
+  const routerConversationId = useRouterState({
+    select: (s) =>
+      s.location.pathname === "/chat"
+        ? ((s.location.search as { c?: string }).c ?? null)
+        : null,
+  });
+  const conversationId = routerConversationId ?? state.conversationId;
   const router = useRouter();
 
   // Restore the last persisted location exactly once. We read synchronously

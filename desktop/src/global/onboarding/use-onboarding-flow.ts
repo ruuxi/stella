@@ -129,7 +129,7 @@ export function useOnboardingFlow({
   const continueIntro = useCallback(() => {
     onInteract?.();
     onEnterSplit?.();
-    transitionTo("permissions");
+    transitionTo("capabilities");
   }, [onEnterSplit, onInteract, transitionTo]);
 
   return {

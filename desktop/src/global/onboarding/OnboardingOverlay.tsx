@@ -1,211 +1,42 @@
 /**
  * Onboarding flow: Start -> Auth -> Intro (center) -> split layout steps.
+ *
+ * This module is the heavy "view" half of the onboarding overlay. It is
+ * lazy-loaded by FullShell as a single onboarding chunk that pulls in
+ * every phase component, the StellaAnimation creature, the legal dialog,
+ * and all onboarding CSS. Once the chunk has loaded, every transition
+ * inside the flow is synchronous — there are no nested Suspense
+ * boundaries below this point.
+ *
+ * The hook half (`useOnboardingOverlay`) lives in `use-onboarding-overlay.ts`
+ * so FullShell can read onboarding state (`onboardingDone`, etc.) without
+ * importing this view tree into the main bundle. Returning users — for
+ * whom `appReady === true` at first paint — never fetch this chunk.
  */
 
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { useAction } from "convex/react";
-import { api } from "@/convex/api";
-import { clearCachedToken } from "@/global/auth/services/auth-token";
-import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { useState } from "react";
 import { OnboardingStep1 } from "@/global/onboarding/OnboardingStep1";
 import {
   StellaAnimation,
   type StellaAnimationHandle,
 } from "@/shell/ascii-creature/StellaAnimation";
-import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
 import type { Phase } from "@/global/onboarding/onboarding-flow";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import type { LegalDocument } from "@/global/legal/legal-text";
+import { LegalDialog } from "@/global/legal/LegalDialog";
+import { CREATURE_INITIAL_SIZE } from "@/global/onboarding/use-onboarding-overlay";
 
-const LegalDialog = lazy(() =>
-  import("@/global/legal/LegalDialog").then((m) => ({
-    default: m.LegalDialog,
-  })),
-);
-
-const CREATURE_INITIAL_SIZE = 0.22;
+// IMPORTANT: this module is the lazy "onboarding chunk". Do NOT re-export
+// the `useOnboardingOverlay` hook from here — FullShell needs to call
+// the hook synchronously to read `onboardingDone`, and re-exporting from
+// a heavy module risks pulling the view tree (StellaStep1, all phases,
+// StellaAnimation, LegalDialog) into the main bundle. Always import the
+// hook directly from `@/global/onboarding/use-onboarding-overlay`.
 
 export type OnboardingOverlayProps = {
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
 };
-
-const deleteIndexedDatabase = (name: string) =>
-  new Promise<void>((resolve) => {
-    try {
-      const request = indexedDB.deleteDatabase(name);
-      request.onsuccess = () => resolve();
-      request.onerror = () => resolve();
-      request.onblocked = () => resolve();
-    } catch {
-      resolve();
-    }
-  });
-
-const clearLocalBrowserState = async () => {
-  clearCachedToken();
-
-  try {
-    localStorage.clear();
-  } catch {
-    /* best-effort browser state cleanup */
-  }
-
-  try {
-    sessionStorage.clear();
-  } catch {
-    /* best-effort browser state cleanup */
-  }
-
-  if (
-    typeof indexedDB !== "undefined" &&
-    typeof indexedDB.databases === "function"
-  ) {
-    try {
-      const databases = await indexedDB.databases();
-      const names = databases
-        .map((database) => database.name)
-        .filter(
-          (name): name is string => typeof name === "string" && name.length > 0,
-        );
-      await Promise.all(names.map(deleteIndexedDatabase));
-    } catch {
-      /* best-effort browser state cleanup */
-    }
-  }
-
-  if (typeof caches !== "undefined") {
-    try {
-      const cacheNames = await caches.keys();
-      await Promise.all(
-        cacheNames.map((cacheName) => caches.delete(cacheName)),
-      );
-    } catch {
-      /* best-effort browser state cleanup */
-    }
-  }
-};
-
-const clearLocalRuntimeState = async () => {
-  await clearLocalBrowserState();
-  await window.electronAPI?.ui.hardReset?.();
-};
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function useOnboardingOverlay() {
-  const {
-    completed: onboardingDone,
-    complete: completeOnboarding,
-    reset: resetOnboarding,
-  } = useOnboardingState();
-  const { hasConnectedAccount, isLoading: isAuthLoading } =
-    useAuthSessionState();
-  const resetUserData = useAction(api.reset.resetAllUserData);
-  const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
-  const [hasStarted, setHasStarted] = useState(() => onboardingDone);
-  const [splitMode, setSplitMode] = useState(false);
-  const [hasDiscoverySelections, setHasDiscoverySelections] = useState(false);
-  const [onboardingExiting, setOnboardingExiting] = useState(false);
-  const [onboardingKey, setOnboardingKey] = useState(0);
-  const stellaAnimationRef = useRef<StellaAnimationHandle | null>(null);
-  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // While onboarding is active, expand the (transparent) main window to cover
-  // the current display so the renderer's radial fog mask fades to full
-  // transparency well inside the window bounds — no perceivable rectangle.
-  // Trigger the restore at the START of the exit phase (`onboardingExiting`
-  // flips true ~600ms before `onboardingDone`) so the animated window resize
-  // runs concurrently with the fog fade-out, giving a single coordinated
-  // transition rather than a snap once onboarding completes.
-  useEffect(() => {
-    const setPresentation = window.electronAPI?.ui.setOnboardingPresentation;
-    if (typeof setPresentation !== "function") return;
-    const fullscreen = !(onboardingDone || onboardingExiting);
-    void setPresentation(fullscreen);
-  }, [onboardingDone, onboardingExiting]);
-
-  const triggerFlash = useCallback(() => {
-    stellaAnimationRef.current?.triggerFlash();
-  }, []);
-
-  const startOnboarding = useCallback(() => {
-    setHasStarted(true);
-    setHasExpanded(true);
-    stellaAnimationRef.current?.startBirth();
-  }, []);
-
-  const handleEnterSplit = useCallback(() => {
-    setSplitMode(true);
-  }, []);
-
-  const handleCompleteOnboarding = useCallback(() => {
-    setOnboardingExiting(true);
-    exitTimerRef.current = setTimeout(() => {
-      setSplitMode(false);
-      completeOnboarding();
-    }, 600);
-  }, [completeOnboarding]);
-
-  const handleResetOnboarding = useCallback(() => {
-    if (exitTimerRef.current) {
-      clearTimeout(exitTimerRef.current);
-      exitTimerRef.current = null;
-    }
-    setHasExpanded(false);
-    setHasStarted(false);
-    setSplitMode(false);
-    setOnboardingExiting(false);
-    setOnboardingKey((k) => k + 1);
-    stellaAnimationRef.current?.reset(CREATURE_INITIAL_SIZE);
-    resetOnboarding();
-
-    const finishLocalReset = async () => {
-      try {
-        await clearLocalRuntimeState();
-      } catch (error) {
-        console.error(error);
-      }
-      window.location.reload();
-    };
-
-    if (!hasConnectedAccount) {
-      void finishLocalReset();
-      return;
-    }
-
-    resetUserData()
-      .catch(console.error)
-      .finally(() => {
-        void finishLocalReset();
-      });
-  }, [hasConnectedAccount, resetOnboarding, resetUserData]);
-
-  return {
-    onboardingDone,
-    onboardingExiting,
-    completeOnboarding: handleCompleteOnboarding,
-    isAuthenticated: hasConnectedAccount,
-    isAuthLoading,
-    hasExpanded,
-    hasStarted,
-    splitMode,
-    hasDiscoverySelections,
-    setHasDiscoverySelections,
-    onboardingKey,
-    stellaAnimationRef,
-    triggerFlash,
-    startOnboarding,
-    handleEnterSplit,
-    handleResetOnboarding,
-  };
-}
 
 export function OnboardingView({
   hasExpanded,
@@ -269,14 +100,12 @@ export function OnboardingView({
       data-split={splitMode}
       data-exiting={onboardingExiting || undefined}
     >
-      <Suspense fallback={null}>
-        <LegalDialog
-          document={activeLegalDoc}
-          onOpenChange={(open) => {
-            if (!open) setActiveLegalDoc(null);
-          }}
-        />
-      </Suspense>
+      <LegalDialog
+        document={activeLegalDoc}
+        onOpenChange={(open) => {
+          if (!open) setActiveLegalDoc(null);
+        }}
+      />
       <div
         className="new-session-title"
         data-expanded={hasExpanded ? "true" : "false"}
