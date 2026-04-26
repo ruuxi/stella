@@ -65,6 +65,8 @@ const SOCIAL_SESSION_TOOL_NAMES = new Set([
 
 const USER_FACING_AGENT_TOOL_NAMES = new Set(["askQuestion"]);
 
+const WORKER_ONLY_TOOL_NAMES = new Set(["MCP"]);
+
 export const createToolHost = ({
   stellaRoot,
   stellaBrowserBinPath: _stellaBrowserBinPath,
@@ -240,7 +242,9 @@ export const createToolHost = ({
 
   const getToolCatalog = (agentType?: string) =>
     Array.from(toolCatalog.values()).filter((tool) =>
-      agentType === AGENT_IDS.SOCIAL_SESSION
+      WORKER_ONLY_TOOL_NAMES.has(tool.name) && agentType !== AGENT_IDS.GENERAL
+        ? false
+        : agentType === AGENT_IDS.SOCIAL_SESSION
         ? SOCIAL_SESSION_TOOL_NAMES.has(tool.name)
         : agentType === AGENT_IDS.ORCHESTRATOR ||
           (agentType === AGENT_IDS.STORE &&

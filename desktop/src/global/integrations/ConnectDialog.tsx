@@ -43,9 +43,9 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
   const handleSignIn = useCallback(() => {
     void navigate({
       to: ".",
-      search: (prev: Record<string, unknown> | undefined) => ({
+      search: (prev) => ({
         ...(prev ?? {}),
-        dialog: "auth",
+        dialog: "auth" as const,
       }),
     });
   }, [navigate]);
@@ -160,4 +160,3 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
     </Dialog>
   );
 };
-
