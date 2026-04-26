@@ -209,6 +209,7 @@ export function OnboardingView({
   onPhaseChange,
   activeDemo,
   stellaAnimationPaused = false,
+  stellaAnimationHidden = false,
 }: {
   hasExpanded: boolean;
   onboardingDone: boolean;
@@ -233,6 +234,7 @@ export function OnboardingView({
   onPhaseChange?: (phase: Phase) => void;
   activeDemo?: OnboardingDemo;
   stellaAnimationPaused?: boolean;
+  stellaAnimationHidden?: boolean;
 }) {
   const showRuntimeGate = isPreparingRuntime || Boolean(runtimeError)
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(null);
@@ -251,23 +253,25 @@ export function OnboardingView({
       >
         Stella
       </div>
-      <div
-        className="onboarding-stella-animation"
-        onClick={triggerFlash}
-        data-expanded={hasExpanded ? "true" : "false"}
-        data-split={splitMode}
-        data-has-selections={hasDiscoverySelections || undefined}
-        data-demo-active={activeDemo || undefined}
-        title="Click to sparkle"
-      >
-        <StellaAnimation
-          ref={stellaAnimationRef}
-          width={70}
-          height={39}
-          initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
-          paused={stellaAnimationPaused}
-        />
-      </div>
+      {!stellaAnimationHidden ? (
+        <div
+          className="onboarding-stella-animation"
+          onClick={triggerFlash}
+          data-expanded={hasExpanded ? "true" : "false"}
+          data-split={splitMode}
+          data-has-selections={hasDiscoverySelections || undefined}
+          data-demo-active={activeDemo || undefined}
+          title="Click to sparkle"
+        >
+          <StellaAnimation
+            ref={stellaAnimationRef}
+            width={70}
+            height={39}
+            initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
+            paused={stellaAnimationPaused || stellaAnimationHidden}
+          />
+        </div>
+      ) : null}
       {(showRuntimeGate || !onboardingDone) &&
         (isPreparingRuntime || isAuthLoading ? (
           <div className="onboarding-moment onboarding-moment--auth">

@@ -113,7 +113,7 @@ export const OnboardingStep1 = ({
   );
   const [expressionStyle, setExpressionStyle] = useState<
     "emotes" | "emoji" | "none" | null
-  >(null);
+  >("none");
   const [visualPrefs, setVisualPrefs] = useState(() => readVisualPrefs());
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
