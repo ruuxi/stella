@@ -44,7 +44,8 @@ const getVisualPrefsWindow = (): VisualPrefsWindow | null => {
   };
   if (!candidate.window) return null;
   return {
-    ...candidate.window,
+    localStorage: candidate.window.localStorage,
+    dispatchEvent: candidate.window.dispatchEvent?.bind(candidate.window),
     CustomEvent: candidate.window.CustomEvent ?? candidate.CustomEvent,
   };
 };

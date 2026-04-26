@@ -1622,6 +1622,15 @@
   margin-top: 4px;
 }
 
+.onboarding-look-section .onboarding-step-label {
+  font-size: clamp(18px, 2.5vw, 24px);
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  opacity: 0.9;
+  line-height: 1.4;
+  text-transform: none;
+}
+
 /* ═══ Personality preview ═══ */
 
 .onboarding-personality-preview {

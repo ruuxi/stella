@@ -11,7 +11,10 @@ import { PageSidebarProvider } from "@/context/page-sidebar";
 import { useTheme } from "@/context/theme-context";
 import { useUiState } from "@/context/ui-state";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
-import type { Phase as OnboardingPhase } from "@/global/onboarding/use-onboarding-state";
+import {
+  SPLIT_STEP_ORDER,
+  type Phase as OnboardingPhase,
+} from "@/global/onboarding/use-onboarding-state";
 import { useDiscoveryFlow } from "@/global/onboarding/DiscoveryFlow";
 import {
   OnboardingView,
@@ -30,6 +33,8 @@ const OnboardingCanvas = lazy(() =>
     default: module.OnboardingCanvas,
   })),
 );
+
+const CREATION_PHASE_INDEX = SPLIT_STEP_ORDER.indexOf("creation");
 
 export const FullShell = () => {
   const { state, updateState } = useUiState();
@@ -101,8 +106,9 @@ export const FullShell = () => {
   }, []);
 
   const handleOnboardingPhaseChange = useCallback((phase: OnboardingPhase) => {
+    const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
     setStellaHiddenByPhase(
-      phase === "shortcuts-global" || phase === "shortcuts-local",
+      CREATION_PHASE_INDEX >= 0 && splitIndex >= CREATION_PHASE_INDEX,
     );
   }, []);
 
@@ -237,6 +243,7 @@ export const FullShell = () => {
               hasStarted={onboarding.hasStarted}
               stellaAnimationRef={onboarding.stellaAnimationRef}
               stellaAnimationPaused={pauseStellaAnimation}
+              stellaAnimationHidden={stellaHiddenByPhase}
               onboardingKey={onboarding.onboardingKey}
               triggerFlash={onboarding.triggerFlash}
               startOnboarding={onboarding.startOnboarding}
