@@ -69,6 +69,7 @@ export function OnboardingThemePhase({
   const [showAppearance, setShowAppearance] = useState(false);
   const [showGradientStyle, setShowGradientStyle] = useState(false);
   const [showGradientColor, setShowGradientColor] = useState(false);
+  const [hasSelectedGradientColor, setHasSelectedGradientColor] = useState(false);
 
   const handleSelectTheme = useCallback(
     (id: string) => {
@@ -93,6 +94,17 @@ export function OnboardingThemePhase({
     },
     [onSelectGradientMode],
   );
+
+  const handleSelectGradientColor = useCallback(
+    (color: "relative" | "strong") => {
+      onSelectGradientColor(color);
+      setHasSelectedGradientColor(true);
+    },
+    [onSelectGradientColor],
+  );
+
+  const canContinue =
+    showAppearance && showGradientStyle && showGradientColor && hasSelectedGradientColor;
 
   return (
     <div className="onboarding-step-content">
@@ -142,15 +154,15 @@ export function OnboardingThemePhase({
             "Gradient Color",
             ["relative", "strong"] as const,
             gradientColor,
-            onSelectGradientColor,
+            handleSelectGradientColor,
           )}
         </div>
       </div>
 
       <button
         className="onboarding-confirm"
-        data-visible={true}
-        disabled={splitTransitionActive}
+        data-visible={canContinue || undefined}
+        disabled={splitTransitionActive || !canContinue}
         onClick={onContinue}
       >
         Continue

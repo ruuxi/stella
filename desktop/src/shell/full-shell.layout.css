@@ -745,9 +745,9 @@
     calc(-50% + var(--stella-shift-x)),
     calc(-50% + var(--stella-shift-y))
   );
-  z-index: 12;
-  width: min(630px, 46vw);
-  height: clamp(120px, 22vh, 220px);
+  z-index: 4;
+  width: min(420px, 34vw);
+  height: clamp(92px, 16vh, 160px);
   cursor: pointer;
   pointer-events: auto;
   -webkit-app-region: no-drag;
@@ -766,8 +766,8 @@
 .onboarding-stella-animation[data-split="true"] {
   --stella-shift-x: clamp(-350px, -25vw, 0px);
   --stella-shift-y: min(10vh, 95px);
-  width: min(280px, 24vw);
-  height: clamp(84px, 15vh, 150px);
+  width: min(190px, 17vw);
+  height: clamp(64px, 10vh, 104px);
   transition:
     transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
