@@ -31,9 +31,9 @@ import type { LegalDocument } from "@/global/legal/legal-text";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import { NativeSelect } from "@/ui/native-select";
+import { Switch } from "@/ui/switch";
 import { Keybind } from "@/ui/keybind";
 import { AudioTab } from "@/global/settings/AudioTab";
-import { ConnectionsTab } from "@/global/settings/ConnectionsTab";
 import { SettingsPanel } from "@/global/settings/SettingsPanel";
 import { SETTINGS_TABS, type SettingsTab } from "@/global/settings/settings-tabs";
 import {
@@ -2086,66 +2086,68 @@ function ApiKeysSection() {
 
   return (
     <div className="settings-card">
-      <h3 className="settings-card-title">API keys</h3>
+      <h3 className="settings-card-title">API keys &amp; OAuth</h3>
       <p className="settings-card-desc">
-        Add your own API keys to talk to a model provider directly. Keys stay
-        on this device. Stella uses its built-in access unless you turn this on.
+        Add your own API keys. Talk to your providers directly. Keys stay on
+        this device.
       </p>
       {credentialsError ? (
         <p className="settings-card-desc">{credentialsError}</p>
       ) : null}
       <div className="settings-row">
         <div className="settings-row-info">
-          <div className="settings-row-label">Use my API key</div>
+          <div className="settings-row-label">
+            Sign in to another provider or use my API key
+          </div>
           <div className="settings-row-sublabel">
-            When off, Stella uses its built-in access.
+            Use Anthropic, OpenAI, and other providers directly. When off,
+            Stella uses its built-in access.
           </div>
         </div>
         <div className="settings-row-control">
-          <label className="settings-toggle-row">
-            <input
-              type="checkbox"
-              checked={useLocalKeys}
+          <Switch
+            checked={useLocalKeys}
+            disabled={isSavingRoutingPreference}
+            onCheckedChange={(checked) =>
+              void saveRoutingPreference({
+                enabled: checked,
+                provider: selectedProvider,
+              })
+            }
+            hideLabel
+          />
+        </div>
+      </div>
+      {useLocalKeys ? (
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Provider</div>
+            <div className="settings-row-sublabel">
+              Which provider Stella routes through.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <NativeSelect
+              className="settings-model-select"
+              value={selectedProvider}
               disabled={isSavingRoutingPreference}
               onChange={(event) =>
                 void saveRoutingPreference({
-                  enabled: event.currentTarget.checked,
-                  provider: selectedProvider,
+                  enabled: useLocalKeys,
+                  provider: event.currentTarget.value,
                 })
               }
-            />
-            <span>{useLocalKeys ? "On" : "Off"}</span>
-          </label>
-        </div>
-      </div>
-      <div className="settings-row">
-        <div className="settings-row-info">
-          <div className="settings-row-label">Provider</div>
-          <div className="settings-row-sublabel">
-            Stella only uses this provider when API key use is on.
+            >
+              {LLM_PROVIDERS.map((provider) => (
+                <option key={provider.key} value={provider.key}>
+                  {provider.label}
+                </option>
+              ))}
+            </NativeSelect>
           </div>
         </div>
-        <div className="settings-row-control">
-          <NativeSelect
-            className="settings-model-select"
-            value={selectedProvider}
-            disabled={isSavingRoutingPreference}
-            onChange={(event) =>
-              void saveRoutingPreference({
-                enabled: useLocalKeys,
-                provider: event.currentTarget.value,
-              })
-            }
-          >
-            {LLM_PROVIDERS.map((provider) => (
-              <option key={provider.key} value={provider.key}>
-                {provider.label}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-      </div>
-      {LLM_PROVIDERS.map((provider) => {
+      ) : null}
+      {useLocalKeys && LLM_PROVIDERS.map((provider) => {
         const credential = getCredentialForProvider(provider.key);
         const oauthProvider = getOauthProviderForProvider(provider.key);
         const oauthCredential = getOauthCredentialForProvider(provider.key);
@@ -2364,10 +2366,8 @@ export const SettingsScreen = ({
               />
             ) : activeTab === "models" ? (
               <ModelsTab />
-            ) : activeTab === "audio" ? (
-              <AudioTab />
             ) : (
-              <ConnectionsTab />
+              <AudioTab />
             )}
           </SettingsPanel>
         </div>
