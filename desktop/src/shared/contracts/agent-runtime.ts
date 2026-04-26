@@ -3,6 +3,7 @@ export const AGENT_IDS = {
   SCHEDULE: "schedule",
   STORE: "store",
   GENERAL: "general",
+  SOCIAL_SESSION: "social_session",
   OFFLINE_RESPONDER: "offline_responder",
   EXPLORE: "explore",
   DREAM: "dream",
@@ -107,9 +108,27 @@ const BUILTIN_AGENT_DEFINITIONS = [
     localCliWorkingDirectory: "frontend",
     agentEnginePreference: "general",
     modelSettings: {
-      description: "Single execution agent that works from files, manuals, and tools",
+      description:
+        "Single execution agent that works from files, manuals, and tools",
       order: 1,
     },
+  },
+  {
+    id: AGENT_IDS.SOCIAL_SESSION,
+    name: "Social Session",
+    description:
+      "Works inside a shared Stella Together folder with a path-scoped file tool surface.",
+    activityLabel: "Collaborating",
+    bundledCore: true,
+    runsAsSubagent: false,
+    includeInAgentRoster: false,
+    usesLocalCliRuntime: false,
+    promptRole: "subagent",
+    includesStellaDocumentation: false,
+    controlsSelfModHmr: false,
+    localCliWorkingDirectory: null,
+    agentEnginePreference: "general",
+    modelSettings: null,
   },
   {
     id: AGENT_IDS.OFFLINE_RESPONDER,
@@ -207,8 +226,11 @@ export const BUNDLED_CORE_AGENT_IDS = Object.freeze(
 
 export const MODEL_SETTINGS_AGENTS = Object.freeze(
   BUILTIN_AGENT_DEFINITIONS.filter(
-    (entry): entry is BuiltInAgentDefinition & { modelSettings: AgentModelSettings } =>
-      entry.modelSettings !== null,
+    (
+      entry,
+    ): entry is BuiltInAgentDefinition & {
+      modelSettings: AgentModelSettings;
+    } => entry.modelSettings !== null,
   )
     .sort((a, b) => a.modelSettings.order - b.modelSettings.order)
     .map((entry) => ({
@@ -249,9 +271,8 @@ export const isLocalCliAgentId = (
 export const isOrchestratorAgentType = (agentType: string): boolean =>
   getAgentDefinition(agentType)?.promptRole === "orchestrator";
 
-export const shouldIncludeStellaDocumentation = (
-  agentType: string,
-): boolean => getAgentDefinition(agentType)?.includesStellaDocumentation ?? false;
+export const shouldIncludeStellaDocumentation = (agentType: string): boolean =>
+  getAgentDefinition(agentType)?.includesStellaDocumentation ?? false;
 
 // All IPC stream event types. RUN_FINISHED is the single terminal event for
 // a run; per-agent lifecycle is the AGENT_* family below.
@@ -283,7 +304,8 @@ export const TASK_LIFECYCLE_EVENT_TYPES = [
   AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED,
 ] as const;
 
-export type TaskLifecycleEventType = (typeof TASK_LIFECYCLE_EVENT_TYPES)[number];
+export type TaskLifecycleEventType =
+  (typeof TASK_LIFECYCLE_EVENT_TYPES)[number];
 
 export const TASK_LIFECYCLE_TERMINAL_TYPES = [
   AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED,
@@ -312,9 +334,16 @@ export const isTaskLifecycleTerminalType = (
 // Single status enum used by every layer that tracks a task's lifecycle
 // state: TaskItem (UI), ConversationTaskSnapshot (IPC resume), and the
 // runtime LocalAgentManager.
-export type TaskLifecycleStatus = "running" | "completed" | "error" | "canceled";
+export type TaskLifecycleStatus =
+  | "running"
+  | "completed"
+  | "error"
+  | "canceled";
 
-export type TerminalTaskLifecycleStatus = Exclude<TaskLifecycleStatus, "running">;
+export type TerminalTaskLifecycleStatus = Exclude<
+  TaskLifecycleStatus,
+  "running"
+>;
 
 export type TaskLifecycleFeedEventType =
   | typeof AGENT_STREAM_EVENT_TYPES.AGENT_REASONING
@@ -333,8 +362,8 @@ export const shouldIgnoreTerminalTaskFeedEvent = (args: {
     return false;
   }
   return (
-    args.eventType !== AGENT_STREAM_EVENT_TYPES.AGENT_STARTED
-    && !isTaskLifecycleTerminalType(args.eventType)
+    args.eventType !== AGENT_STREAM_EVENT_TYPES.AGENT_STARTED &&
+    !isTaskLifecycleTerminalType(args.eventType)
   );
 };
 

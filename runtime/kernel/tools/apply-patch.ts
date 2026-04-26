@@ -174,8 +174,10 @@ const parsePatch = (input: string): FileOp[] => {
           const head = candidate[0];
           const body = candidate.slice(1);
           if (head === "+") hunk.lines.push({ kind: "add", text: body });
-          else if (head === "-") hunk.lines.push({ kind: "remove", text: body });
-          else if (head === " ") hunk.lines.push({ kind: "context", text: body });
+          else if (head === "-")
+            hunk.lines.push({ kind: "remove", text: body });
+          else if (head === " ")
+            hunk.lines.push({ kind: "context", text: body });
           else {
             throw new Error(
               `apply_patch: hunk lines must start with '+', '-', or ' '. Saw: '${candidate}'`,
@@ -192,9 +194,7 @@ const parsePatch = (input: string): FileOp[] => {
         hunks.push(hunk);
       }
       if (hunks.length === 0) {
-        throw new Error(
-          `apply_patch: Update File '${filePath}' has no hunks.`,
-        );
+        throw new Error(`apply_patch: Update File '${filePath}' has no hunks.`);
       }
       ops.push({
         kind: "update",
@@ -241,7 +241,7 @@ const fuzzyChar = (ch: string): string => {
     case "\u201D":
     case "\u201E":
     case "\u201F":
-      return "\"";
+      return '"';
     case "\u00A0":
     case "\u2002":
     case "\u2003":
@@ -267,14 +267,22 @@ const fuzzyNormalize = (text: string): string => {
   return out;
 };
 
-const matchExact = (lines: string[], pattern: string[], at: number): boolean => {
+const matchExact = (
+  lines: string[],
+  pattern: string[],
+  at: number,
+): boolean => {
   for (let j = 0; j < pattern.length; j++) {
     if (lines[at + j] !== pattern[j]) return false;
   }
   return true;
 };
 
-const matchTrimEnd = (lines: string[], pattern: string[], at: number): boolean => {
+const matchTrimEnd = (
+  lines: string[],
+  pattern: string[],
+  at: number,
+): boolean => {
   for (let j = 0; j < pattern.length; j++) {
     if ((lines[at + j] ?? "").trimEnd() !== (pattern[j] ?? "").trimEnd()) {
       return false;
@@ -292,9 +300,15 @@ const matchTrim = (lines: string[], pattern: string[], at: number): boolean => {
   return true;
 };
 
-const matchFuzzy = (lines: string[], pattern: string[], at: number): boolean => {
+const matchFuzzy = (
+  lines: string[],
+  pattern: string[],
+  at: number,
+): boolean => {
   for (let j = 0; j < pattern.length; j++) {
-    if (fuzzyNormalize(lines[at + j] ?? "") !== fuzzyNormalize(pattern[j] ?? "")) {
+    if (
+      fuzzyNormalize(lines[at + j] ?? "") !== fuzzyNormalize(pattern[j] ?? "")
+    ) {
       return false;
     }
   }
@@ -343,7 +357,9 @@ const oldLinesOf = (hunk: Hunk): string[] =>
   hunk.lines.filter((entry) => entry.kind !== "add").map((entry) => entry.text);
 
 const newLinesOf = (hunk: Hunk): string[] =>
-  hunk.lines.filter((entry) => entry.kind !== "remove").map((entry) => entry.text);
+  hunk.lines
+    .filter((entry) => entry.kind !== "remove")
+    .map((entry) => entry.text);
 
 type Replacement = { startIdx: number; oldLen: number; newLines: string[] };
 
@@ -384,7 +400,12 @@ const computeReplacements = (
 
     let pattern = oldLines;
     let replacementLines = newLines;
-    let found = seekSequence(fileLines, pattern, cursor, hunk.isEndOfFile === true);
+    let found = seekSequence(
+      fileLines,
+      pattern,
+      cursor,
+      hunk.isEndOfFile === true,
+    );
 
     // Codex retry: if the pattern's last line is the empty sentinel that
     // represents the file's terminating newline, drop it (and the matching
@@ -516,6 +537,22 @@ const resolveApplyPatchCwd = (
   context?: ToolContext,
 ): string => {
   const argCwd = args.workdir ?? args.working_directory ?? args.cwd;
+  if (context?.toolWorkspaceRoot && context.toolWorkspaceRoot.trim()) {
+    const root = path.resolve(context.toolWorkspaceRoot);
+    if (typeof argCwd === "string" && argCwd.trim()) {
+      const requested = expandHomePath(argCwd.trim());
+      const resolved = path.isAbsolute(requested)
+        ? path.resolve(requested)
+        : path.resolve(root, requested);
+      if (!isPathInsideRoot(resolved, root)) {
+        throw new Error(
+          "apply_patch workdir is outside the shared session workspace.",
+        );
+      }
+      return resolved;
+    }
+    return root;
+  }
   if (typeof argCwd === "string" && argCwd.trim()) {
     return path.resolve(expandHomePath(argCwd.trim()));
   }
@@ -523,6 +560,38 @@ const resolveApplyPatchCwd = (
     return context.stellaRoot;
   }
   return process.cwd();
+};
+
+const isPathInsideRoot = (candidate: string, root: string): boolean => {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+};
+
+const ensurePatchOpsWithinRoot = (
+  ops: FileOp[],
+  root: string,
+): ToolResult | null => {
+  const normalizedRoot = path.resolve(root);
+  for (const op of ops) {
+    if (!isPathInsideRoot(path.resolve(op.path), normalizedRoot)) {
+      return {
+        error: `apply_patch path is outside the shared session workspace: ${op.path}`,
+      };
+    }
+    if (
+      "moveTo" in op &&
+      op.moveTo &&
+      !isPathInsideRoot(path.resolve(op.moveTo), normalizedRoot)
+    ) {
+      return {
+        error: `apply_patch move target is outside the shared session workspace: ${op.moveTo}`,
+      };
+    }
+  }
+  return null;
 };
 
 const resolveOp = <T extends FileOp>(op: T, cwd: string): T => {
@@ -549,6 +618,13 @@ export const handleApplyPatch = async (
   try {
     const cwd = resolveApplyPatchCwd(args, context);
     const ops = parsePatch(patch).map((op) => resolveOp(op, cwd));
+    if (context?.toolWorkspaceRoot && context.toolWorkspaceRoot.trim()) {
+      const scopeError = ensurePatchOpsWithinRoot(
+        ops,
+        context.toolWorkspaceRoot,
+      );
+      if (scopeError) return scopeError;
+    }
     const results: Array<{ kind: string; path: string; movedTo?: string }> = [];
     for (const op of ops) {
       switch (op.kind) {

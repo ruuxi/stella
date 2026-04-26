@@ -1,11 +1,7 @@
 import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import { canResolveRunnerLlmRoute } from "./model-selection.js";
 import { sanitizeStellaBase } from "./shared.js";
-import type {
-  AgentHealth,
-  ChatPayload,
-  RunnerContext,
-} from "./types.js";
+import type { AgentHealth, ChatPayload, RunnerContext } from "./types.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
@@ -25,19 +21,19 @@ export type NormalizedOrchestratorRunInput = {
   promptMessages?: RuntimePromptMessage[];
   attachments: RuntimeAttachmentRef[];
   agentType: string;
+  toolWorkspaceRoot?: string;
 };
 
 const normalizeAttachments = (
   attachments: ChatPayload["attachments"],
 ): RuntimeAttachmentRef[] =>
   Array.isArray(attachments)
-    ? attachments.filter(
-        (attachment): attachment is RuntimeAttachmentRef =>
-          Boolean(
-            attachment &&
-              typeof attachment.url === "string" &&
-              attachment.url.trim().length > 0,
-          ),
+    ? attachments.filter((attachment): attachment is RuntimeAttachmentRef =>
+        Boolean(
+          attachment &&
+            typeof attachment.url === "string" &&
+            attachment.url.trim().length > 0,
+        ),
       )
     : [];
 
@@ -85,7 +81,9 @@ export const normalizeChatRunInput = (
   promptMessages: Array.isArray(payload.promptMessages)
     ? payload.promptMessages
         .filter(
-          (message): message is NonNullable<ChatPayload["promptMessages"]>[number] =>
+          (
+            message,
+          ): message is NonNullable<ChatPayload["promptMessages"]>[number] =>
             Boolean(
               message &&
                 typeof message.text === "string" &&
@@ -94,7 +92,9 @@ export const normalizeChatRunInput = (
         )
         .map((message) => ({
           text: message.text.trim(),
-          ...(message.uiVisibility ? { uiVisibility: message.uiVisibility } : {}),
+          ...(message.uiVisibility
+            ? { uiVisibility: message.uiVisibility }
+            : {}),
           ...(message.messageType ? { messageType: message.messageType } : {}),
         }))
     : undefined,
@@ -106,9 +106,13 @@ export const normalizeAutomationRunInput = (payload: {
   conversationId: string;
   userPrompt: string;
   agentType?: string;
+  toolWorkspaceRoot?: string;
 }): NormalizedOrchestratorRunInput => ({
   conversationId: payload.conversationId.trim(),
   userPrompt: payload.userPrompt.trim(),
   attachments: [],
   agentType: payload.agentType ?? AGENT_IDS.ORCHESTRATOR,
+  ...(payload.toolWorkspaceRoot?.trim()
+    ? { toolWorkspaceRoot: payload.toolWorkspaceRoot.trim() }
+    : {}),
 });

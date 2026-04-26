@@ -646,10 +646,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             console.warn(
               "[self-mod-hmr] Direct apply failed; discarding Vite self-mod state before releasing runtime reload pause.",
             );
-            await discardFailedApplyState(
-              applyResult,
-              "direct apply failure",
-            );
+            await discardFailedApplyState(applyResult, "direct apply failure");
             pendingApplyBatches.delete(transitionId);
             await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds);
             for (const runId of applyResult.restartRelevantRunIds) {
@@ -724,8 +721,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       storeApi: {
         listLocalCommits: async (limit) =>
           await storeModService.listLocalCommits(limit),
-        listPackages: async () =>
-          await ensureRunner().listStorePackages(),
+        listPackages: async () => await ensureRunner().listStorePackages(),
         getPackage: async (packageId) =>
           await ensureRunner().getStorePackage(packageId),
         listPackageReleases: async (packageId) =>
@@ -1237,8 +1233,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
                 result: details ?? ev.resultPreview,
                 resultPreview: ev.resultPreview,
                 ...(details ? details : {}),
-                ...(ev.fileChanges?.length ? { fileChanges: ev.fileChanges } : {}),
-                ...(ev.producedFiles?.length ? { producedFiles: ev.producedFiles } : {}),
+                ...(ev.fileChanges?.length
+                  ? { fileChanges: ev.fileChanges }
+                  : {}),
+                ...(ev.producedFiles?.length
+                  ? { producedFiles: ev.producedFiles }
+                  : {}),
                 ...(ev.agentType ? { agentType: ev.agentType } : {}),
               },
             });
@@ -1293,7 +1293,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               ev.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED &&
               ev.agentType === AGENT_IDS.GENERAL
             ) {
-              const notificationText = ev.description?.trim() || "Task complete";
+              const notificationText =
+                ev.description?.trim() || "Task complete";
               void peer
                 .request(METHOD_NAMES.HOST_NOTIFICATION_SHOW, {
                   title: notificationText,
@@ -1304,7 +1305,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
                   logger.debug("agent-completion-notification-failed", {
                     conversationId: payload.conversationId,
                     agentId: ev.agentId,
-                    error: error instanceof Error ? error.message : String(error),
+                    error:
+                      error instanceof Error ? error.message : String(error),
                   });
                 });
             }
@@ -1530,6 +1532,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           conversationId: string;
           userPrompt: string;
           agentType?: string;
+          toolWorkspaceRoot?: string;
         },
       );
     },
@@ -1686,11 +1689,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_CANDIDATE_RELEASE,
     async (params) => {
       const payload = params as StorePublishCandidateArgs;
-      const candidate = await ensureStoreModService().buildPublishCandidateBundle({
-        requestText: payload.requestText,
-        selectedCommitHashes: payload.selectedCommitHashes,
-        existingPackageId: payload.existingPackageId,
-      });
+      const candidate =
+        await ensureStoreModService().buildPublishCandidateBundle({
+          requestText: payload.requestText,
+          selectedCommitHashes: payload.selectedCommitHashes,
+          existingPackageId: payload.existingPackageId,
+        });
       return await ensureRunner().publishStoreCandidateRelease({
         requestText: candidate.requestText,
         selectedCommitHashes: candidate.selectedCommitHashes,
@@ -1833,9 +1837,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         | undefined;
       const transitionId = payload?.transitionId?.trim();
       if (!transitionId) {
-        throw new Error(
-          "INTERNAL_WORKER_RESUME_HMR requires a transitionId.",
-        );
+        throw new Error("INTERNAL_WORKER_RESUME_HMR requires a transitionId.");
       }
       const pending = pendingApplyBatches.get(transitionId);
       if (!pending) {
@@ -1861,7 +1863,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         );
         await discardFailedApplyState(pending.applyResult, "apply failure");
         pendingApplyBatches.delete(transitionId);
-        await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds);
+        await releaseRuntimeReloadFor(
+          pending.applyResult.restartRelevantRunIds,
+        );
         for (const runId of pending.applyResult.restartRelevantRunIds) {
           selfModRunRootIds.delete(runId);
         }
@@ -2231,13 +2235,15 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     async (params) => {
       const trigger =
         (
-          params as {
-            trigger?:
-              | "manual"
-              | "subagent_finalize"
-              | "chronicle_summary"
-              | "startup_catchup";
-          } | undefined
+          params as
+            | {
+                trigger?:
+                  | "manual"
+                  | "subagent_finalize"
+                  | "chronicle_summary"
+                  | "startup_catchup";
+              }
+            | undefined
         )?.trigger ?? "manual";
       return await ensureRunner().triggerDreamNow(trigger);
     },

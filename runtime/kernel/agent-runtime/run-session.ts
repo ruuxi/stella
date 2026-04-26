@@ -23,6 +23,7 @@ type SessionOptions = Pick<
   | "toolCatalog"
   | "deviceId"
   | "stellaRoot"
+  | "toolWorkspaceRoot"
   | "store"
   | "toolExecutor"
   | "hookEmitter"
@@ -45,7 +46,8 @@ export type RuntimeExecutionSession = {
 export const createRuntimeExecutionSession = (
   opts: SessionOptions,
 ): RuntimeExecutionSession => {
-  const runId = opts.runId ?? `${opts.runIdPrefix ?? "local"}:${crypto.randomUUID()}`;
+  const runId =
+    opts.runId ?? `${opts.runIdPrefix ?? "local"}:${crypto.randomUUID()}`;
   const threadKey = buildRunThreadKey({
     conversationId: opts.conversationId,
     agentType: opts.agentType,
@@ -71,6 +73,7 @@ export const createRuntimeExecutionSession = (
     agentType: opts.agentType,
     deviceId: opts.deviceId,
     stellaRoot: opts.stellaRoot,
+    toolWorkspaceRoot: opts.toolWorkspaceRoot,
     agentDepth: opts.agentContext.agentDepth ?? 0,
     maxAgentDepth: opts.agentContext.maxAgentDepth,
     toolsAllowlist: opts.agentContext.toolsAllowlist,

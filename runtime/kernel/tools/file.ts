@@ -29,19 +29,37 @@ export function setFileToolsConfig(config: FileToolsConfig) {
   fileToolsConfig.stellaRoot = config.stellaRoot;
 }
 
+const isPathInsideRoot = (candidate: string, root: string): boolean => {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+};
+
 export const resolveFilePath = (
   rawPath: unknown,
   context?: ToolContext,
 ): string => {
   const expandedPath = expandHomePath(String(rawPath ?? ""));
-  if (path.isAbsolute(expandedPath)) {
-    return expandedPath;
+  const scopedRoot = context?.toolWorkspaceRoot?.trim()
+    ? path.resolve(context.toolWorkspaceRoot)
+    : null;
+  const resolvedPath = path.isAbsolute(expandedPath)
+    ? path.resolve(expandedPath)
+    : path.resolve(
+        scopedRoot ??
+          context?.stellaRoot ??
+          fileToolsConfig.stellaRoot ??
+          process.cwd(),
+        expandedPath,
+      );
+
+  if (scopedRoot && !isPathInsideRoot(resolvedPath, scopedRoot)) {
+    throw new Error("Path is outside the shared session workspace.");
   }
 
-  const basePath =
-    context?.stellaRoot ?? fileToolsConfig.stellaRoot ?? process.cwd();
-
-  return path.resolve(basePath, expandedPath);
+  return resolvedPath;
 };
 
 export const readTextFile = async (
@@ -155,7 +173,9 @@ export const replaceTextInFile = async (
     baseContent.substring(matchResult.index + matchResult.matchLength);
 
   if (baseContent === replaced) {
-    throw new Error("old_string and new_string are identical — no changes made.");
+    throw new Error(
+      "old_string and new_string are identical — no changes made.",
+    );
   }
 
   const final = bom + restoreLineEndings(replaced, originalEnding);
@@ -169,7 +189,10 @@ export const handleRead = async (
   context?: ToolContext,
 ): Promise<ToolResult> => {
   try {
-    const { path: filePath, content } = await readTextFile(args.file_path, context);
+    const { path: filePath, content } = await readTextFile(
+      args.file_path,
+      context,
+    );
     const offset = Number(args.offset ?? 1);
     const limit = Number(args.limit ?? 2000);
     const formatted = formatWithLineNumbers(content, offset, limit);
@@ -195,9 +218,7 @@ export const handleWrite = async (
     );
     return {
       result: created ? `Created ${filePath}` : `Wrote ${filePath}`,
-      fileChanges: [
-        fileChange(filePath, { type: created ? "add" : "update" }),
-      ],
+      fileChanges: [fileChange(filePath, { type: created ? "add" : "update" })],
     };
   } catch (error) {
     return { error: `Error writing file: ${(error as Error).message}` };

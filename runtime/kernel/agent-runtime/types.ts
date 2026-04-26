@@ -178,6 +178,7 @@ export type BaseRunOptions = {
   store: RuntimeStore;
   abortSignal?: AbortSignal;
   stellaRoot?: string;
+  toolWorkspaceRoot?: string;
   selfModMonitor?: SelfModMonitor | null;
   hookEmitter?: HookEmitter;
   displayHtml?: (html: string) => void;
@@ -186,9 +187,7 @@ export type BaseRunOptions = {
 
 export type OrchestratorRunOptions = BaseRunOptions & {
   callbacks: RuntimeRunCallbacks;
-  onExecutionSessionCreated?: (
-    session: RuntimeExecutionSessionHandle,
-  ) => void;
+  onExecutionSessionCreated?: (session: RuntimeExecutionSessionHandle) => void;
   /**
    * Memory-review user-turn counter AFTER incrementing for this run, threaded
    * from prepareOrchestratorRun. Consumed by finalizeOrchestratorSuccess to

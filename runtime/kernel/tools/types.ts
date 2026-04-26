@@ -30,6 +30,7 @@ export type ToolContext = {
   rootRunId?: string;
   agentType?: string;
   stellaRoot?: string;
+  toolWorkspaceRoot?: string;
   storageMode?: "cloud" | "local";
   agentId?: string;
   cloudAgentId?: string;
@@ -126,7 +127,11 @@ export type AgentToolSnapshot = {
   result?: string;
   error?: string;
   recentActivity?: string[];
-  messages?: Array<{ from: "orchestrator" | "subagent"; text: string; timestamp: number }>;
+  messages?: Array<{
+    from: "orchestrator" | "subagent";
+    text: string;
+    timestamp: number;
+  }>;
 };
 
 export type AgentToolApi = {
@@ -135,7 +140,10 @@ export type AgentToolApi = {
     activeThreads?: RuntimeThreadRecord[];
   }>;
   getAgent: (threadId: string) => Promise<AgentToolSnapshot | null>;
-  cancelAgent: (threadId: string, reason?: string) => Promise<{ canceled: boolean }>;
+  cancelAgent: (
+    threadId: string,
+    reason?: string,
+  ) => Promise<{ canceled: boolean }>;
   sendAgentMessage?: (
     threadId: string,
     message: string,
@@ -210,7 +218,9 @@ export type StoreToolApi = {
   /** Load one existing package by stable id. */
   getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
   /** Release history for a package, newest first. */
-  listPackageReleases: (packageId: string) => Promise<StorePackageReleaseRecord[]>;
+  listPackageReleases: (
+    packageId: string,
+  ) => Promise<StorePackageReleaseRecord[]>;
   /**
    * Publish a commit-based release. The runtime owns the actual upload to
    * the Stella backend; the agent just supplies the picked commits +

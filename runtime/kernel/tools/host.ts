@@ -56,9 +56,14 @@ const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
   "askQuestion",
 ]);
 
-const USER_FACING_AGENT_TOOL_NAMES = new Set([
-  "askQuestion",
+const SOCIAL_SESSION_TOOL_NAMES = new Set([
+  "Read",
+  "Grep",
+  "apply_patch",
+  "multi_tool_use_parallel",
 ]);
+
+const USER_FACING_AGENT_TOOL_NAMES = new Set(["askQuestion"]);
 
 export const createToolHost = ({
   stellaRoot,
@@ -234,11 +239,13 @@ export const createToolHost = ({
   };
 
   const getToolCatalog = (agentType?: string) =>
-    Array.from(toolCatalog.values()).filter(
-      (tool) =>
-        agentType === AGENT_IDS.ORCHESTRATOR ||
-        (agentType === AGENT_IDS.STORE && USER_FACING_AGENT_TOOL_NAMES.has(tool.name)) ||
-        !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
+    Array.from(toolCatalog.values()).filter((tool) =>
+      agentType === AGENT_IDS.SOCIAL_SESSION
+        ? SOCIAL_SESSION_TOOL_NAMES.has(tool.name)
+        : agentType === AGENT_IDS.ORCHESTRATOR ||
+          (agentType === AGENT_IDS.STORE &&
+            USER_FACING_AGENT_TOOL_NAMES.has(tool.name)) ||
+          !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
     );
 
   return {
