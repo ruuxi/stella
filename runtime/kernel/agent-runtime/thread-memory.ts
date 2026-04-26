@@ -339,7 +339,7 @@ export const persistThreadCustomMessage = (
 
 const getPlatformShellPrompt = (): string | null => {
   if (process.platform === "win32") {
-    return "On Windows, Bash runs in Git Bash. Prefer POSIX commands and /c/... style paths over C:\\ paths when using Bash.";
+    return "On Windows, use the native command shell and Windows paths. Prefer PowerShell when it is the clearer fit for the task.";
   }
   if (process.platform === "darwin") {
     return "On macOS, use standard POSIX shell commands and native /Users/... paths when using Bash.";

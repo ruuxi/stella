@@ -31,7 +31,7 @@ export const createExecCommandTool = (
       shell: {
         type: "string",
         description:
-          "Shell binary to launch. Defaults to the user's default shell.",
+          "Shell binary to launch. Defaults to Stella's platform shell.",
       },
       tty: {
         type: "boolean",
