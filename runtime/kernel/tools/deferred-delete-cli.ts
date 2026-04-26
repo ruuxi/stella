@@ -116,7 +116,8 @@ export const extractPowerShellDeleteTargets = (command: string) => {
 
   while (statementMatch) {
     const statement = statementMatch[1] ?? "";
-    const pathParamRegex = /-(?:LiteralPath|Path)\s+([^;\n|]+)/gi;
+    const pathParamRegex =
+      /-(?:LiteralPath|Path)\s+("[^"]+"|'[^']+'|[^\s;\n|]+)/gi;
     let foundParamPath = false;
     let pathMatch = pathParamRegex.exec(statement);
     while (pathMatch) {
@@ -137,6 +138,7 @@ export const extractPowerShellDeleteTargets = (command: string) => {
           lowered === "rd" ||
           lowered === "rmdir" ||
           token.startsWith("-") ||
+          token.startsWith("/") ||
           token.startsWith("$")
         ) {
           continue;
@@ -150,6 +152,43 @@ export const extractPowerShellDeleteTargets = (command: string) => {
 
   return unique(targets);
 };
+
+export const extractWindowsCmdDeleteTargets = (command: string) => {
+  const targets: string[] = [];
+  const statementRegex = /(?:^|[&|;\n])\s*(?:del|erase|rd|rmdir)\b([^&|;\n]*)/gi;
+  let statementMatch = statementRegex.exec(command);
+
+  while (statementMatch) {
+    const statement = statementMatch[1] ?? "";
+    const tokens = tokenizeListLike(statement);
+    for (const token of tokens) {
+      const lowered = token.toLowerCase();
+      if (
+        lowered === "del" ||
+        lowered === "erase" ||
+        lowered === "rd" ||
+        lowered === "rmdir" ||
+        token.startsWith("/") ||
+        token.startsWith("-") ||
+        token.startsWith("%") ||
+        token.startsWith("$")
+      ) {
+        continue;
+      }
+      targets.push(token);
+    }
+
+    statementMatch = statementRegex.exec(command);
+  }
+
+  return unique(targets);
+};
+
+export const extractNativeWindowsDeleteTargets = (command: string) =>
+  unique([
+    ...extractWindowsCmdDeleteTargets(command),
+    ...extractPowerShellDeleteTargets(command),
+  ]);
 
 export const extractPythonDeleteTargets = (code: string) => {
   const targets: string[] = [];
