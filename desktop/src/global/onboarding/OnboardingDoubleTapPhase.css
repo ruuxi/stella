@@ -29,6 +29,9 @@
 
 .onboarding-dialogue[data-phase="double-tap"] .onboarding-split-title {
   text-align: center;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.18;
+  max-width: 760px;
 }
 
 .onboarding-doubletap-step {
@@ -42,27 +45,30 @@
 
 .onboarding-doubletap-step__lede {
   text-align: center;
-  max-width: 580px;
+  max-width: 760px;
   margin: 0 auto;
   flex-shrink: 0;
+  font-size: clamp(20px, 2.4vw, 26px);
+  line-height: 1.45;
+  opacity: 0.86;
 }
 
 .onboarding-doubletap-inline-kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
   border-radius: 6px;
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
   border-bottom-width: 2px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--foreground);
-  vertical-align: -2px;
+  vertical-align: -3px;
 }
 
 /* ─── Stage / desktop mock ─────────────────────────────────────────── */
