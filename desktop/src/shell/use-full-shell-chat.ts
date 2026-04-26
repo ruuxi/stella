@@ -62,6 +62,7 @@ export function useFullShellChat({
   })
   const [hasInteractedWithChatThisSession, setHasInteractedWithChatThisSession] =
     useState(false)
+  const [isHomeDismissed, setIsHomeDismissed] = useState(false)
   const [composerFocusRequestId, setComposerFocusRequestId] = useState(0)
   const prevOnChatRouteRef = useRef(isOnChatRoute)
   const { chatContext, setChatContext, selectedText, setSelectedText } =
@@ -102,6 +103,7 @@ export function useFullShellChat({
 
   const markHomeSessionInteraction = useCallback(() => {
     setHasInteractedWithChatThisSession(true)
+    setIsHomeDismissed(false)
   }, [])
 
   const sendContextlessMessage = useCallback(
@@ -170,11 +172,20 @@ export function useFullShellChat({
   })
 
   const firstStintOnChat = !leftChatOnce && isOnChatRoute
-  const showHomeContent = firstStintOnChat
+  const baseShowHomeContent = firstStintOnChat
     ? !hasMessages ||
       !hasInteractedWithChatThisSession ||
       idleBasedHome
     : idleBasedHome
+  // An explicit dismiss (the "Back to chat" link) overrides the default
+  // "no messages → show home" behavior; otherwise empty conversations could
+  // never escape the home overlay. Cleared on real interaction or on
+  // switching to a different conversation.
+  const showHomeContent = isHomeDismissed ? false : baseShowHomeContent
+
+  useEffect(() => {
+    setIsHomeDismissed(false)
+  }, [activeConversationId])
 
   useEffect(() => {
     if (prevOnChatRouteRef.current && !isOnChatRoute) {
@@ -194,16 +205,19 @@ export function useFullShellChat({
   }, [resetIdleTimer])
 
   const dismissHome = useCallback(() => {
-    resetIdleTimer()
-    markHomeSessionInteraction()
-  }, [resetIdleTimer, markHomeSessionInteraction])
+    setIsHomeDismissed(true)
+  }, [])
 
   const showHome = useCallback(() => {
+    setIsHomeDismissed(false)
     forceShowHome()
   }, [forceShowHome])
 
   useEffect(() => {
-    const handler = () => forceShowHome()
+    const handler = () => {
+      setIsHomeDismissed(false)
+      forceShowHome()
+    }
     window.addEventListener(STELLA_SHOW_HOME_EVENT, handler)
     return () => window.removeEventListener(STELLA_SHOW_HOME_EVENT, handler)
   }, [forceShowHome])
