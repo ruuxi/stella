@@ -16,10 +16,7 @@ import {
   type Phase as OnboardingPhase,
 } from "@/global/onboarding/onboarding-flow";
 import { useDiscoveryFlow } from "@/global/onboarding/DiscoveryFlow";
-import {
-  OnboardingView,
-  useOnboardingOverlay,
-} from "@/global/onboarding/OnboardingOverlay";
+import { useOnboardingOverlay } from "@/global/onboarding/use-onboarding-overlay";
 import { useBootstrapState } from "@/systems/boot/bootstrap-state";
 import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
@@ -28,6 +25,36 @@ import { AskStellaSelectionChip } from "./selection/AskStellaSelectionChip";
 import "./full-shell.layout.css";
 import "./mobile.css";
 
+/* Onboarding is loaded as a single dynamic chunk that contains the entire
+ * flow: every phase component, the StellaAnimation creature, the legal
+ * dialog, the demo canvas, and all onboarding CSS. The chunk is preloaded
+ * eagerly the moment we know `!appReady` (see useEffect below) so the
+ * flow feels synchronous to the user; once it has resolved, every
+ * in-flow transition is a normal sync render — there are NO Suspense
+ * boundaries below this point.
+ *
+ * Returning users (`appReady === true` at first paint) never fetch this
+ * chunk. After completion the React subtree unmounts and the lazy import
+ * is never re-evaluated, so onboarding code is genuinely gone for the
+ * remainder of the session and absent from the next cold start. */
+const onboardingChunkPromise: { current: Promise<unknown> | null } = {
+  current: null,
+};
+const loadOnboardingChunk = () => {
+  if (!onboardingChunkPromise.current) {
+    onboardingChunkPromise.current = Promise.all([
+      import("@/global/onboarding/OnboardingOverlay"),
+      import("@/global/onboarding/OnboardingCanvas"),
+    ]);
+  }
+  return onboardingChunkPromise.current;
+};
+
+const OnboardingView = lazy(() =>
+  import("@/global/onboarding/OnboardingOverlay").then((module) => ({
+    default: module.OnboardingView,
+  })),
+);
 const OnboardingCanvas = lazy(() =>
   import("@/global/onboarding/OnboardingCanvas").then((module) => ({
     default: module.OnboardingCanvas,
@@ -94,6 +121,17 @@ export const FullShell = () => {
     });
   }, [onboarding.onboardingDone, updateState]);
 
+  // Kick off the onboarding chunk as soon as we know we'll need it. This
+  // runs in parallel with auth bootstrap, so by the time the user clicks
+  // "Start Stella" the entire flow is already resident — no mid-flow
+  // chunk fetches, no Suspense fallbacks visible to the user. Once
+  // `onboardingDone` flips true the import promise simply persists in
+  // memory until the FullShell tree unmounts; React never re-fetches.
+  useEffect(() => {
+    if (onboarding.onboardingDone) return;
+    void loadOnboardingChunk();
+  }, [onboarding.onboardingDone]);
+
   useEffect(() => {
     return () => {
       if (demoCloseTimerRef.current) {
@@ -131,6 +169,19 @@ export const FullShell = () => {
     pauseOnboardingMotion ||
     Boolean(activeDemo) ||
     (!appReady && stellaHiddenByPhase);
+
+  useEffect(() => {
+    if (!appReady) return;
+    if (activeConversationId) return;
+    if (runtimeStatus !== "ready") return;
+
+    // Bootstrap can finish while RouterProvider is still unmounted during
+    // onboarding. If the handoff ever loses the conversation id, kick the
+    // light bootstrap loop once more after the real app tree mounts instead
+    // of leaving the chat runtime stuck in its initial loading state until a
+    // process relaunch.
+    retryRuntimeBootstrap();
+  }, [activeConversationId, appReady, retryRuntimeBootstrap, runtimeStatus]);
 
   return (
     <div
@@ -227,45 +278,45 @@ export const FullShell = () => {
             data-split={onboarding.splitMode || undefined}
             data-demo={showOnboardingDemos || undefined}
           >
-            <OnboardingView
-              hasExpanded={onboarding.hasExpanded}
-              onboardingDone={onboarding.onboardingDone}
-              onboardingExiting={onboarding.onboardingExiting}
-              isAuthenticated={onboarding.isAuthenticated}
-              isAuthLoading={onboarding.isAuthLoading}
-              isPreparingRuntime={runtimeStatus === "preparing"}
-              runtimeError={runtimeStatus === "failed" ? runtimeError : null}
-              splitMode={onboarding.splitMode}
-              hasDiscoverySelections={onboarding.hasDiscoverySelections}
-              hasStarted={onboarding.hasStarted}
-              stellaAnimationRef={onboarding.stellaAnimationRef}
-              stellaAnimationPaused={pauseStellaAnimation}
-              stellaAnimationHidden={stellaHiddenByPhase}
-              onboardingKey={onboarding.onboardingKey}
-              triggerFlash={onboarding.triggerFlash}
-              startOnboarding={onboarding.startOnboarding}
-              completeOnboarding={onboarding.completeOnboarding}
-              handleEnterSplit={onboarding.handleEnterSplit}
-              onRetryRuntime={retryRuntimeBootstrap}
-              onDiscoveryConfirm={handleDiscoveryConfirm}
-              onSelectionChange={onboarding.setHasDiscoverySelections}
-              onDemoChange={handleDemoChange}
-              onPhaseChange={handleOnboardingPhaseChange}
-              activeDemo={activeDemo}
-            />
-            <div
-              className="onboarding-demo-area"
-              data-visible={showOnboardingDemos ? true : undefined}
-              data-closing={demoClosing || undefined}
-              aria-hidden={!showOnboardingDemos}
-            >
-              <Suspense fallback={null}>
+            <Suspense fallback={null}>
+              <OnboardingView
+                hasExpanded={onboarding.hasExpanded}
+                onboardingDone={onboarding.onboardingDone}
+                onboardingExiting={onboarding.onboardingExiting}
+                isAuthenticated={onboarding.isAuthenticated}
+                isAuthLoading={onboarding.isAuthLoading}
+                isPreparingRuntime={runtimeStatus === "preparing"}
+                runtimeError={runtimeStatus === "failed" ? runtimeError : null}
+                splitMode={onboarding.splitMode}
+                hasDiscoverySelections={onboarding.hasDiscoverySelections}
+                hasStarted={onboarding.hasStarted}
+                stellaAnimationRef={onboarding.stellaAnimationRef}
+                stellaAnimationPaused={pauseStellaAnimation}
+                stellaAnimationHidden={stellaHiddenByPhase}
+                onboardingKey={onboarding.onboardingKey}
+                triggerFlash={onboarding.triggerFlash}
+                startOnboarding={onboarding.startOnboarding}
+                completeOnboarding={onboarding.completeOnboarding}
+                handleEnterSplit={onboarding.handleEnterSplit}
+                onRetryRuntime={retryRuntimeBootstrap}
+                onDiscoveryConfirm={handleDiscoveryConfirm}
+                onSelectionChange={onboarding.setHasDiscoverySelections}
+                onDemoChange={handleDemoChange}
+                onPhaseChange={handleOnboardingPhaseChange}
+                activeDemo={activeDemo}
+              />
+              <div
+                className="onboarding-demo-area"
+                data-visible={showOnboardingDemos ? true : undefined}
+                data-closing={demoClosing || undefined}
+                aria-hidden={!showOnboardingDemos}
+              >
                 <OnboardingCanvas
                   activeDemo={activeDemo}
                   onMorphingChange={setOnboardingDemoMorphing}
                 />
-              </Suspense>
-            </div>
+              </div>
+            </Suspense>
           </div>
         )}
       </div>

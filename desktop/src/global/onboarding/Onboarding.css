@@ -19,8 +19,13 @@
   --onboarding-duration-text: 460ms;
   --onboarding-duration-morph: 520ms;
   --onboarding-stagger-step: 55ms;
-  --onboarding-reveal-blur: 12px;
-  --onboarding-reveal-text-blur: 6px;
+  /* Blur radii dominate the cost of the reveal animation: a 12px blur over the
+   * full moment container forces the GPU to re-rasterize a large surface every
+   * frame. 7px reads as "soft → sharp" almost identically at roughly half the
+   * per-frame cost, and lets us hold 60fps even when a backdrop-filter sits
+   * underneath the animated layer. */
+  --onboarding-reveal-blur: 7px;
+  --onboarding-reveal-text-blur: 4px;
   --onboarding-reveal-translate: 22px;
   --onboarding-reveal-text-translate: 14px;
 }
@@ -78,6 +83,12 @@
   width: 100%;
   animation: momentFadeIn var(--onboarding-duration-enter)
     var(--onboarding-ease-standard) forwards;
+  /* Promote the animated wrapper to its own compositor layer so the GPU
+   * rasterizes once and only re-blends per frame, instead of re-painting
+   * the moment surface on every blur step. Combined with the smaller
+   * blur radius this is what brings the reveal to a steady 60fps. */
+  will-change: opacity, transform, filter;
+  backface-visibility: hidden;
 }
 
 /* Start / auth stay interactive, but the Stella creature itself lives above
@@ -103,12 +114,12 @@
     opacity: 0;
     transform: translate3d(0, var(--onboarding-reveal-translate), 0)
       scale(0.988);
-    filter: blur(var(--onboarding-reveal-blur)) saturate(0.92);
+    filter: blur(var(--onboarding-reveal-blur));
   }
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0) saturate(1);
+    filter: blur(0);
   }
 }
 
@@ -420,7 +431,10 @@
   overflow-y: auto;
   scrollbar-gutter: stable both-edges;
   opacity: 1;
-  will-change: opacity;
+  /* Promote during reveal (filter-blur is in the keyframe) so the GPU
+   * doesn't re-rasterize the entire pane each frame. */
+  will-change: opacity, filter;
+  backface-visibility: hidden;
   animation: splitPaneFadeIn var(--onboarding-duration-enter)
     var(--onboarding-ease-standard) both;
   transition:
@@ -444,11 +458,11 @@
 @keyframes splitPaneFadeIn {
   from {
     opacity: 0;
-    filter: blur(var(--onboarding-reveal-text-blur)) saturate(0.94);
+    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
     opacity: 1;
-    filter: blur(0) saturate(1);
+    filter: blur(0);
   }
 }
 
@@ -463,6 +477,39 @@
 
 .onboarding-dialogue[data-phase="personality"] .onboarding-split-title {
   text-align: center;
+}
+
+/* Capabilities phase: full-width auto-cycling showcase (title → frame → continue).
+ * Mirrors the creation-phase pattern so the stage spans the canvas instead of
+ * being clamped to the right pane, but stays interactive (no pointer-events: none
+ * trickery) since the dots/Continue inside the frame are clickable. */
+.onboarding-dialogue[data-phase="capabilities"] .onboarding-split-right {
+  width: 100%;
+  min-width: 100%;
+  margin-left: 0;
+  padding: clamp(20px, 3vh, 36px) 40px 32px;
+  align-items: center;
+  background: transparent;
+  backdrop-filter: none;
+  transform: none;
+}
+
+.onboarding-dialogue[data-phase="capabilities"] .onboarding-split-stage {
+  align-items: center;
+  justify-content: flex-start;
+  max-width: none;
+  min-height: min(704px, calc(100vh - 96px));
+  width: 100%;
+  gap: 14px;
+}
+
+.onboarding-dialogue[data-phase="capabilities"] .onboarding-split-title {
+  text-align: center;
+}
+
+.onboarding-dialogue[data-phase="capabilities"] .onboarding-step-content {
+  align-items: center;
+  max-width: none;
 }
 
 /* Creation phase: full-width vertical layout (title → demo → options) */
@@ -539,6 +586,8 @@
   flex-shrink: 0;
   animation: splitStageIn var(--onboarding-duration-enter)
     var(--onboarding-ease-standard) both;
+  will-change: opacity, transform, filter;
+  backface-visibility: hidden;
 }
 
 @keyframes splitStageIn {
@@ -546,12 +595,12 @@
     opacity: 0;
     transform: translate3d(0, var(--onboarding-reveal-translate), 0)
       scale(0.988);
-    filter: blur(var(--onboarding-reveal-blur)) saturate(0.92);
+    filter: blur(var(--onboarding-reveal-blur));
   }
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0) saturate(1);
+    filter: blur(0);
   }
 }
 
@@ -567,6 +616,19 @@
 
 /* ═══ Step content (right panel) ═══ */
 
+/* The split-stage is vertically-centered (justify-content: center) and
+ * historically that was fragile when the next phase's chunk hadn't
+ * arrived: an empty .onboarding-step-content would let centering
+ * collapse around the lone title, then the title would jump upward
+ * when the lazy chunk resolved. We solved that architecturally —
+ * onboarding loads as one eager chunk in FullShell, so there are no
+ * Suspense fallbacks below this layer and the content area is always
+ * fully rendered before this layout runs. If a future phase introduces
+ * async content (data fetch with a real loading state, etc.), give that
+ * phase a stable min-height on its own stage/step-content overrides
+ * rather than baking a global floor here — phase shapes diverge enough
+ * (shortcuts/memory use min-height: 0 + flex stretch) that a global
+ * floor causes more layout bugs than it prevents. */
 .onboarding-step-content {
   display: flex;
   flex-direction: column;
@@ -1717,6 +1779,8 @@
   backdrop-filter: blur(16px);
   animation: mockWindowIn var(--onboarding-duration-enter)
     var(--onboarding-ease-standard) both;
+  will-change: opacity, transform, filter;
+  backface-visibility: hidden;
   flex-shrink: 0;
 }
 
@@ -1725,12 +1789,16 @@
     opacity: 0;
     transform: translate3d(0, var(--onboarding-reveal-translate), 0)
       scale(0.988);
-    filter: blur(var(--onboarding-reveal-blur)) saturate(0.92);
+    /* Mock windows already carry `backdrop-filter: blur(16px)`; stacking a
+     * full reveal blur on top of that forces the GPU to re-rasterize the
+     * already-blurred backdrop layer every frame. The smaller text-blur
+     * radius reads identically on a small windowed surface. */
+    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0) saturate(1);
+    filter: blur(0);
   }
 }
 

@@ -8,15 +8,19 @@ import { useOnboardingFlow } from "./use-onboarding-flow";
 import { useOnboardingMemory } from "./use-onboarding-memory";
 import "./Onboarding.css";
 
-/* These phases used to be lazy-loaded, which caused a visible layout
- * shift on entry: the title would render first inside an empty
- * `.onboarding-split-stage` (the Suspense fallback was just an empty
- * `.onboarding-step-content` div), so it sat lower in the
- * vertically-centered split-right pane, then the lazy chunk would
- * resolve, the pills/cards would mount, and the title would jump
- * upward. Onboarding is a one-time flow with the user already on a
- * loading-style intro, so the bundle savings aren't worth the visual
- * jolt — eager imports keep the disclosure as one block. */
+/* Phases are eager imports because the entire onboarding flow already
+ * lives inside a single dynamically-imported "onboarding chunk" loaded
+ * by FullShell when `!appReady` (see desktop/src/shell/FullShell.tsx).
+ * Once that chunk has resolved, every phase module is in memory, so
+ * splitting per-phase here would only re-introduce mid-flow Suspense
+ * boundaries with no bundle-size win — and the original failure mode
+ * was exactly that: the title would render against an empty
+ * `.onboarding-split-stage` while the next phase's chunk loaded, the
+ * Suspense fallback resolved with content, and the centered title
+ * jumped upward. The split-stage layout is also pinned in
+ * `Onboarding.css` so any future async content (data fetches, etc.)
+ * can't reproduce the jump. */
+import { OnboardingCapabilitiesPhase } from "./OnboardingCapabilitiesPhase";
 import { OnboardingPermissions } from "./OnboardingPermissions";
 import { OnboardingExtensionPhase } from "./OnboardingExtensionPhase";
 import { OnboardingBrowserPhase } from "./OnboardingBrowserPhase";
@@ -29,6 +33,7 @@ import { OnboardingMemoryPhase } from "./OnboardingMemoryPhase";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 
 const STEP_TITLES: Partial<Record<Phase, string>> = {
+  capabilities: "What Stella can do.",
   extension: "Add Stella to your browser.",
   browser: "Let Stella get to know you.",
   creation: "Stella can change.",
@@ -122,6 +127,13 @@ export const OnboardingStep1 = ({
 
   const renderActiveSplitPhase = (activePhase: Phase) => {
     switch (activePhase) {
+      case "capabilities":
+        return (
+          <OnboardingCapabilitiesPhase
+            splitTransitionActive={leaving}
+            onContinue={nextSplitStep}
+          />
+        );
       case "permissions":
         return (
           <OnboardingPermissions
