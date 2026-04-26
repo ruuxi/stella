@@ -623,6 +623,18 @@ export class OverlayWindowController {
     })
   }
 
+  suspendRegionCaptureForScreenshot() {
+    if (!this.activeRegionCapture) return
+    this.overlayWindow.fadeOut()
+  }
+
+  restoreRegionCaptureAfterScreenshot() {
+    if (!this.activeRegionCapture) return
+    this.overlayWindow.setFocusable(true)
+    this.overlayWindow.show({ focus: true })
+    this.overlayWindow.setIgnoreMouseEvents(false)
+  }
+
   endRegionCapture() {
     this.hideSurface({
       setInactive: () => {

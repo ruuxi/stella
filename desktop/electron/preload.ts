@@ -222,12 +222,50 @@ contextBridge.exposeInMainWorld("electronAPI", {
       width: number;
       height: number;
     }) => ipcRenderer.send("region:select", payload),
+    prepareRegionSelection: (payload: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }) =>
+      ipcRenderer.invoke("region:prepareSelection", payload) as Promise<{
+        screenshot: {
+          dataUrl: string;
+          width: number;
+          height: number;
+        } | null;
+        window: null;
+      } | null>,
+    commitPreparedRegionCapture: (result: {
+      screenshot: {
+        dataUrl: string;
+        width: number;
+        height: number;
+      } | null;
+      window: {
+        app: string;
+        title: string;
+        bounds: { x: number; y: number; width: number; height: number };
+      } | null;
+    } | null) => ipcRenderer.send("region:commitPrepared", result),
     submitRegionClick: (point: { x: number; y: number }) =>
       ipcRenderer.send("region:click", point),
     getWindowCapture: (point: { x: number; y: number }) =>
       ipcRenderer.invoke("region:getWindowCapture", point) as Promise<{
         bounds: { x: number; y: number; width: number; height: number };
         thumbnail: string;
+        result: {
+          screenshot: {
+            dataUrl: string;
+            width: number;
+            height: number;
+          } | null;
+          window: {
+            app: string;
+            title: string;
+            bounds: { x: number; y: number; width: number; height: number };
+          } | null;
+        };
       } | null>,
     cancelRegion: () => ipcRenderer.send("region:cancel"),
     cursorDisplayInfo: () =>

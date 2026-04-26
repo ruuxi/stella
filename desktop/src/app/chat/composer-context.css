@@ -400,6 +400,40 @@ button.mini-context-chip:hover {
   max-width: min(320px, 45vw);
 }
 
+/* Window chip with an inline screenshot thumbnail: combine the screenshot
+ * thumb stack with the app/title label as one card-shaped chip. The
+ * wrapper's pill shape is overridden to a rounded card so the column
+ * layout reads as a single unit instead of a stretched pill. */
+.chat-composer-context-chip--window[data-with-thumb="true"],
+.composer-context-chip--window[data-with-thumb="true"],
+.chat-composer-context-chip--screenshot[data-region-card="true"],
+.composer-context-chip--screenshot[data-region-card="true"],
+.mini-context-chip--screenshot[data-region-card="true"] {
+  padding: 4px 6px 6px;
+  border-radius: 10px;
+}
+
+.chat-composer-context-window-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.2;
+}
+
+.chat-composer-context-window-thumb {
+  width: 56px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+}
+
+.chat-composer-context-region-thumb {
+  width: 72px;
+  height: 54px;
+}
+
 .mini-context-text {
   max-width: 200px;
 }

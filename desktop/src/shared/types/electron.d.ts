@@ -192,11 +192,48 @@ export type ElectronCaptureApi = {
     width: number;
     height: number;
   }) => void;
+  prepareRegionSelection: (payload: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => Promise<{
+    screenshot: {
+      dataUrl: string;
+      width: number;
+      height: number;
+    } | null;
+    window: null;
+  } | null>;
+  commitPreparedRegionCapture: (result: {
+    screenshot: {
+      dataUrl: string;
+      width: number;
+      height: number;
+    } | null;
+    window: {
+      app: string;
+      title: string;
+      bounds: { x: number; y: number; width: number; height: number };
+    } | null;
+  } | null) => void;
   submitRegionClick: (point: { x: number; y: number }) => void;
   pageDataUrl: () => Promise<string | null>;
   getWindowCapture: (point: { x: number; y: number }) => Promise<{
     bounds: { x: number; y: number; width: number; height: number };
     thumbnail: string;
+    result: {
+      screenshot: {
+        dataUrl: string;
+        width: number;
+        height: number;
+      } | null;
+      window: {
+        app: string;
+        title: string;
+        bounds: { x: number; y: number; width: number; height: number };
+      } | null;
+    };
   } | null>;
   cursorDisplayInfo: () => Promise<{
     x: number;

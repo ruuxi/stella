@@ -1,14 +1,33 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { getElectronApi } from "@/platform/electron/electron";
 import { runVacuumEffect } from "./region-capture-vacuum";
 
 type Point = { x: number; y: number };
 
+type PreparedRegionCaptureResult = {
+  screenshot: {
+    dataUrl: string;
+    width: number;
+    height: number;
+  } | null;
+  window: {
+    app: string;
+    title: string;
+    bounds: { x: number; y: number; width: number; height: number };
+  } | null;
+};
+
 type VacuumState = {
   clickPoint: Point;
   bounds: { x: number; y: number; width: number; height: number };
   thumbnail: string;
-  regionSelection?: { x: number; y: number; width: number; height: number };
+  result: PreparedRegionCaptureResult;
 };
 
 const MIN_SELECTION_SIZE = 6;
@@ -20,6 +39,7 @@ export function RegionCapture() {
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
   const [vacuum, setVacuum] = useState<VacuumState | null>(null);
+  const [isPreparingCapture, setIsPreparingCapture] = useState(false);
   /** After the vacuum animation, keep the dim layer off until the overlay closes (avoids a flash while IPC runs). */
   const [dimSuppressedAfterVacuum, setDimSuppressedAfterVacuum] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,6 +90,7 @@ export function RegionCapture() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        setIsPreparingCapture(false);
         captureApi?.cancelRegion?.();
         clearWindowPreview();
         clearSelection();
@@ -90,12 +111,9 @@ export function RegionCapture() {
 
     runVacuumEffect(canvasRef.current, thumbnail, cx, cy).then(() => {
       if (cancelled) return;
-      if (vacuum.regionSelection) {
-        captureApi?.submitRegionSelection?.(vacuum.regionSelection);
-      } else {
-        captureApi?.submitRegionClick?.(clickPoint);
-      }
+      captureApi?.commitPreparedRegionCapture?.(vacuum.result);
       setDimSuppressedAfterVacuum(true);
+      setIsPreparingCapture(false);
       setVacuum(null);
     });
     return () => {
@@ -105,6 +123,7 @@ export function RegionCapture() {
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
+    setIsPreparingCapture(false);
     captureApi?.cancelRegion?.();
     clearWindowPreview();
     clearSelection();
@@ -113,6 +132,7 @@ export function RegionCapture() {
   const handleMouseDown = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
+    setIsPreparingCapture(false);
     clearWindowPreview();
     setStartPoint({ x: event.clientX, y: event.clientY });
     setCurrentPoint({ x: event.clientX, y: event.clientY });
@@ -154,6 +174,7 @@ export function RegionCapture() {
       resolvedSelection.width < MIN_SELECTION_SIZE ||
       resolvedSelection.height < MIN_SELECTION_SIZE
     ) {
+      setIsPreparingCapture(true);
       clearSelection();
       const getWindowCapture = captureApi?.getWindowCapture;
       if (!getWindowCapture) {
@@ -162,6 +183,7 @@ export function RegionCapture() {
       }
       const capture = await getWindowCapture(endPoint);
       if (capture) {
+        setIsPreparingCapture(false);
         setVacuum({ clickPoint: endPoint, ...capture });
       } else {
         captureApi?.submitRegionClick?.(endPoint);
@@ -172,16 +194,18 @@ export function RegionCapture() {
       x: resolvedSelection.x + Math.round(resolvedSelection.width / 2),
       y: resolvedSelection.y + Math.round(resolvedSelection.height / 2),
     };
+    setIsPreparingCapture(true);
     clearSelection();
-    const getWindowCapture = captureApi?.getWindowCapture;
-    if (getWindowCapture) {
-      const capture = await getWindowCapture(centerPoint);
-      if (capture) {
+    const prepareRegionSelection = captureApi?.prepareRegionSelection;
+    if (prepareRegionSelection) {
+      const result = await prepareRegionSelection(resolvedSelection);
+      if (result?.screenshot) {
+        setIsPreparingCapture(false);
         setVacuum({
           clickPoint: centerPoint,
           bounds: resolvedSelection,
-          thumbnail: capture.thumbnail,
-          regionSelection: resolvedSelection,
+          thumbnail: result.screenshot.dataUrl,
+          result,
         });
         return;
       }
@@ -197,7 +221,7 @@ export function RegionCapture() {
       onMouseUp={handleMouseUp}
       onContextMenu={handleContextMenu}
     >
-      {!selection && !vacuum && !dimSuppressedAfterVacuum && (
+      {!selection && !vacuum && !isPreparingCapture && !dimSuppressedAfterVacuum && (
         <div className="region-capture-dim" />
       )}
       {selection && (
