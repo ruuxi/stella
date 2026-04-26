@@ -138,6 +138,10 @@ export const handleStorePublishCommits = async (
   if (!description) {
     return { error: "description is required." };
   }
+  const category =
+    args.category === "agents" || args.category === "stella"
+      ? args.category
+      : "stella";
   const releaseNotes =
     typeof args.releaseNotes === "string" && args.releaseNotes.trim().length > 0
       ? args.releaseNotes.trim()
@@ -155,6 +159,7 @@ export const handleStorePublishCommits = async (
     const release = await api.publishCommitsAsRelease({
       packageId,
       commitHashes,
+      category,
       displayName,
       description,
       ...(releaseNotes ? { releaseNotes } : {}),

@@ -299,6 +299,12 @@ export type StoreOperations = {
   ) => Promise<StorePackageReleaseRecord | null>;
   createFirstStoreRelease: (args: StorePublishArgs) => Promise<StorePackageReleaseRecord>;
   createStoreReleaseUpdate: (args: StorePublishArgs) => Promise<StorePackageReleaseRecord>;
+  publishStoreCandidateRelease: (
+    args: import("../../protocol/index.js").StorePublishCandidateArgs & {
+      commits: import("../../contracts/index.js").StorePublishCandidateCommit[];
+      files: import("../../contracts/index.js").StorePublishCandidateFile[];
+    },
+  ) => Promise<StorePackageReleaseRecord>;
 };
 
 export type RunnerPublicApi = {
@@ -343,6 +349,7 @@ export type RunnerPublicApi = {
   getStorePackageRelease: StoreOperations["getStorePackageRelease"];
   createFirstStoreRelease: StoreOperations["createFirstStoreRelease"];
   createStoreReleaseUpdate: StoreOperations["createStoreReleaseUpdate"];
+  publishStoreCandidateRelease: StoreOperations["publishStoreCandidateRelease"];
   handleLocalChat: (
     payload: ChatPayload,
     callbacks: AgentCallbacks,

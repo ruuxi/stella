@@ -702,6 +702,11 @@ export type ElectronStoreApi = {
     packageId: string;
     releaseNumber: number;
   }) => Promise<StorePackageReleaseRecord | null>;
+  publishCandidateRelease: (payload: {
+    requestText: string;
+    selectedCommitHashes: string[];
+    existingPackageId?: string;
+  }) => Promise<StorePackageReleaseRecord>;
   listInstalledMods: () => Promise<InstalledStoreModRecord[]>;
   installRelease: (payload: {
     packageId: string;

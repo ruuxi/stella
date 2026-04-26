@@ -24,6 +24,9 @@ import {
   enforceActionRateLimit,
   RATE_VERY_EXPENSIVE,
 } from "../lib/rate_limits";
+import {
+  normalizeStoreCategory,
+} from "../lib/store_artifacts";
 
 type StorePublishResult = Infer<typeof store_publish_result_validator>;
 
@@ -44,6 +47,7 @@ const create_release_args_validator = {
 
 const create_first_release_args_validator = {
   ...create_release_args_validator,
+  category: v.optional(v.union(v.literal("agents"), v.literal("stella"))),
   displayName: v.string(),
   description: v.string(),
 };
@@ -141,6 +145,7 @@ const normalizeManifest = (
     includedBatchIds: string[];
     includedCommitHashes: string[];
     changedFiles: string[];
+    category?: "agents" | "stella";
     artifactHash?: string;
     summary?: string;
   },
@@ -178,6 +183,7 @@ const normalizeManifest = (
     includedBatchIds,
     includedCommitHashes,
     changedFiles,
+    ...(manifest.category ? { category: normalizeStoreCategory(manifest.category) } : {}),
     ...(artifactHash ? { artifactHash } : {}),
     ...(summary ? { summary } : {}),
   };
@@ -324,6 +330,7 @@ export const createFirstReleaseRecord = internalMutation({
   args: {
     ownerId: v.string(),
     packageId: v.string(),
+    category: v.optional(v.union(v.literal("agents"), v.literal("stella"))),
     displayName: v.string(),
     description: v.string(),
     releaseNotes: v.optional(v.string()),
@@ -343,9 +350,11 @@ export const createFirstReleaseRecord = internalMutation({
     }
 
     const now = Date.now();
+    const category = normalizeStoreCategory(args.category ?? args.manifest.category);
     const packageRef = await ctx.db.insert("store_packages", {
       ownerId: args.ownerId,
       packageId: args.packageId,
+      category,
       displayName: args.displayName,
       description: args.description,
       latestReleaseNumber: 0,
@@ -542,6 +551,7 @@ export const createFirstRelease = action({
       "Too many store package releases. Please wait before publishing again.",
     );
     const packageId = normalizePackageId(args.packageId);
+    const category = normalizeStoreCategory(args.category ?? args.manifest.category);
     const displayName = normalizeRequiredText(args.displayName, "displayName", 120);
     const description = normalizeRequiredText(args.description, "description", 4000);
     const releaseNotes = normalizeOptionalText(

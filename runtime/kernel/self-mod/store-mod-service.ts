@@ -7,6 +7,7 @@ import type {
   StoreReleaseBlueprintBatch,
   StoreReleaseBlueprintFile,
   StoreReleaseManifest,
+  StorePublishCandidateBundle,
 } from "../../contracts/index.js";
 import { StoreModStore } from "../storage/store-mod-store.js";
 import {
@@ -61,6 +62,7 @@ export type FinalizedSelfModCommit = {
 type PublishReleaseArgs = {
   packageId: string;
   releaseNumber: number;
+  category?: StoreReleaseManifest["category"];
   displayName: string;
   description: string;
   releaseNotes?: string;
@@ -343,6 +345,54 @@ export class StoreModService {
     }
   }
 
+  async buildPublishCandidateBundle(args: {
+    requestText: string;
+    selectedCommitHashes: string[];
+    existingPackageId?: string;
+  }): Promise<StorePublishCandidateBundle> {
+    const selectedCommitHashes = Array.from(
+      new Set(args.selectedCommitHashes.map((hash) => hash.trim()).filter(Boolean)),
+    );
+    if (selectedCommitHashes.length === 0) {
+      throw new Error("At least one change must be selected to publish.");
+    }
+    await assertStellaSelfModCommits({
+      repoRoot: this.repoRoot,
+      commitHashes: selectedCommitHashes,
+    });
+    const orderedHashes = await orderCommitHashesChronologically({
+      repoRoot: this.repoRoot,
+      commitHashes: selectedCommitHashes,
+    });
+    const commits = await Promise.all(
+      orderedHashes.map(async (commitHash) => {
+        const reference = await getCommitReference({
+          repoRoot: this.repoRoot,
+          commitHash,
+        });
+        return {
+          ...reference,
+          shortHash: commitHash.slice(0, 12),
+        };
+      }),
+    );
+    const files = normalizeFileList(commits.flatMap((commit) => commit.files));
+    const snapshots = await getCommitSelectionSnapshots({
+      repoRoot: this.repoRoot,
+      commitHashes: orderedHashes,
+      files,
+    });
+    return {
+      requestText: args.requestText,
+      selectedCommitHashes: orderedHashes,
+      commits,
+      files: snapshots,
+      ...(trimOrUndefined(args.existingPackageId)
+        ? { existingPackageId: trimOrUndefined(args.existingPackageId) }
+        : {}),
+    };
+  }
+
   getInstalledModByPackageId(packageId: string): InstalledStoreModRecord | null {
     return this.store.getInstalledModByPackageId(packageId);
   }
@@ -361,6 +411,7 @@ export class StoreModService {
     commitHashes: string[];
     packageId: string;
     releaseNumber: number;
+    category?: StoreReleaseManifest["category"];
     displayName: string;
     description: string;
     releaseNotes?: string;
@@ -386,6 +437,7 @@ export class StoreModService {
     const artifact = await this.buildReleaseArtifactFromCommits({
       packageId,
       releaseNumber,
+      category: args.category,
       displayName,
       description,
       releaseNotes: args.releaseNotes?.trim(),
@@ -448,6 +500,7 @@ export class StoreModService {
   private async buildReleaseArtifactFromCommits(args: {
     packageId: string;
     releaseNumber: number;
+    category?: StoreReleaseManifest["category"];
     displayName: string;
     description: string;
     releaseNotes?: string;
@@ -495,6 +548,7 @@ export class StoreModService {
     const manifest: StoreReleaseManifest = {
       packageId: args.packageId,
       releaseNumber: args.releaseNumber,
+      category: args.category ?? "stella",
       displayName: args.displayName,
       description: args.description,
       ...(args.releaseNotes ? { releaseNotes: args.releaseNotes } : {}),
