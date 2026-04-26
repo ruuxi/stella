@@ -141,7 +141,7 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     }
 
     const wm = options.windowManager;
-    const targetWindowMode = wm.getLastActiveWindowMode();
+    const targetWindowMode = wm.getLastFocusedWindowMode();
     wm.minimizeWindow();
 
     const result = await options.captureService.startRegionCapture();

@@ -173,6 +173,8 @@ export const createBootstrapServices = (options: {
       isCompactMode: () => state.windowManager?.isCompactMode() ?? false,
       getLastActiveWindowMode: () =>
         state.windowManager?.getLastActiveWindowMode() ?? "full",
+      getLastFocusedWindowMode: () =>
+        state.windowManager?.getLastFocusedWindowMode() ?? "full",
       isWindowFocused: () => state.windowManager?.isWindowFocused() ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),
       minimizeWindow: () => state.windowManager?.minimizeWindow(),
