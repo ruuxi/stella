@@ -206,6 +206,14 @@ export type ElectronCaptureApi = {
     scaleFactor: number;
   }>;
   cancelRegion: () => void;
+  /**
+   * Composer "+ menu" capture entry point. Mirrors the radial dial's
+   * "capture" wedge: minimizes the active Stella window, opens the region
+   * overlay (click=window, drag=region), merges the result into
+   * `chatContext`, then restores the window. Resolves with `{ cancelled }`
+   * if the user dismissed the overlay (Esc / right-click).
+   */
+  beginRegionCapture: () => Promise<{ ok: true } | { cancelled: true }>;
 };
 
 export type ElectronRadialApi = {
@@ -731,6 +739,32 @@ export type ElectronStoreApi = {
     packageId: string;
     revertedCommits: string[];
   }>;
+  listConnectors: () => Promise<StellaConnectorSummary[]>;
+  installConnector: (marketplaceKey: string) => Promise<{
+    installedServers: Array<{
+      id: string;
+      displayName: string;
+      transport: string;
+      url?: string;
+      auth?: string;
+    }>;
+    oauth?: Array<{ tokenKey: string }>;
+  }>;
+};
+
+export type StellaConnectorSummary = {
+  id: string;
+  displayName: string;
+  description?: string;
+  marketplaceKey: string;
+  category?: string;
+  appIds: string[];
+  mcpServers: string[];
+  officialSource?: string;
+  integrationPath?: string;
+  auth?: string;
+  status: "queued" | "official-mcp" | "official-api" | "implemented" | "blocked";
+  installed: boolean;
 };
 
 export type ElectronSocialSessionsApi = {

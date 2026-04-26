@@ -240,6 +240,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
     pageDataUrl: () =>
       ipcRenderer.invoke("capture:pageDataUrl") as Promise<string | null>,
+    beginRegionCapture: () =>
+      ipcRenderer.invoke("capture:beginRegionCapture") as Promise<
+        { ok: true } | { cancelled: true }
+      >,
   },
 
   radial: {
@@ -1100,6 +1104,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("store:installRelease", payload),
     uninstallPackage: (packageId: string) =>
       ipcRenderer.invoke("store:uninstallMod", { packageId }),
+    listConnectors: () => ipcRenderer.invoke("store:listConnectors"),
+    installConnector: (marketplaceKey: string) =>
+      ipcRenderer.invoke("store:installConnector", { marketplaceKey }),
   },
 
   localChat: {

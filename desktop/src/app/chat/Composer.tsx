@@ -6,8 +6,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { ComposerContextRow, ComposerSuggestionContextRow } from "./ComposerContextRow";
+import { ComposerAddMenu } from "./ComposerAddMenu";
 import {
-  ComposerAddButton,
   ComposerMicButton,
   ComposerStopButton,
   ComposerSubmitButton,
@@ -39,7 +39,6 @@ type ComposerProps = {
   conversationId: string | null;
   onSend: () => void;
   onStop: () => void;
-  onAdd?: () => void;
 };
 
 export function Composer({
@@ -55,7 +54,6 @@ export function Composer({
   conversationId,
   onSend,
   onStop,
-  onAdd,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -126,10 +124,11 @@ export function Composer({
               onSend();
             }}
           >
-            <ComposerAddButton
+            <ComposerAddMenu
               className="composer-add-button"
               title="Add"
-              onClick={onAdd}
+              setChatContext={setChatContext}
+              disabled={isStreaming}
             />
 
             {dictation.isRecording ? (
@@ -167,10 +166,11 @@ export function Composer({
 
                 <div className="composer-toolbar">
                   <div className="composer-toolbar-left">
-                    <ComposerAddButton
+                    <ComposerAddMenu
                       className="composer-add-button composer-add-button--toolbar"
                       title="Add"
-                      onClick={onAdd}
+                      setChatContext={setChatContext}
+                      disabled={isStreaming}
                     />
                   </div>
 

@@ -16,8 +16,8 @@ import {
   ComposerContextRow,
   ComposerSuggestionContextRow,
 } from "@/app/chat/ComposerContextRow";
+import { ComposerAddMenu } from "@/app/chat/ComposerAddMenu";
 import {
-  ComposerAddButton,
   ComposerMicButton,
   ComposerSubmitButton,
   ComposerStopButton,
@@ -76,7 +76,6 @@ interface ChatSidebarProps {
     selectedText?: string | null,
   ) => void;
   onStop?: () => void;
-  onAdd?: () => void;
   onOpenChange?: (open: boolean) => void;
   /**
    * Right-click handler for the panel surface. In the mini window the
@@ -105,7 +104,6 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       isInitialLoading,
       onSend,
       onStop,
-      onAdd,
       onOpenChange,
       onContextMenu,
     },
@@ -356,10 +354,11 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
                       handleSubmit(event);
                     }}
                   >
-                    <ComposerAddButton
+                    <ComposerAddMenu
                       className="composer-add-button"
                       title="Add"
-                      onClick={onAdd}
+                      setChatContext={setChatContext}
+                      disabled={isStreaming}
                     />
 
                     {dictation.isRecording ? (
@@ -397,10 +396,11 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
 
                         <div className="composer-toolbar">
                           <div className="composer-toolbar-left">
-                            <ComposerAddButton
+                            <ComposerAddMenu
                               className="composer-add-button composer-add-button--toolbar"
                               title="Add"
-                              onClick={onAdd}
+                              setChatContext={setChatContext}
+                              disabled={isStreaming}
                             />
                           </div>
 
