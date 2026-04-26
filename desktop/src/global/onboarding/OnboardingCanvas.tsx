@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { StellaAppMock } from "./panels/StellaAppMock";
 import {
   EMPTY_SECTION_TOGGLES,
@@ -10,26 +11,24 @@ import {
  * OnboardingCanvas — renders the live demo shown during the "creation"
  * onboarding phase.
  *
- * The creation phase shows an interactive `StellaAppMock` whose individual
- * sections (sidebar, header, messages, composer) can each be toggled into a
- * "modern" variant via floating pills rendered on the demo itself. Each
- * toggle is wrapped in the onboarding morph animation: native (Electron IPC)
- * when available, with a CSS blur fallback otherwise — so every change feels
- * like a single "transformation moment".
+ * The creation phase is manually driven: floating pills inside the mock let the
+ * user pick which part of Stella changes. No timer or morph loop runs here,
+ * because the phase copy explicitly asks the user to click a pill.
  */
 export type OnboardingDemo = "default" | null;
 
-/** Onboarding-only morph timings — keep in sync with the overlay's morph feel. */
-const ONBOARDING_MORPH_PAINT_SETTLE_MS = 200;
-/** CSS fallback + `animationDuration` — matches `onboardingMorphFallback` in Onboarding.css. */
-const ONBOARDING_MORPH_CSS_DURATION_MS = 400;
-const CSS_FALLBACK_SWAP_AT_MS = Math.round(ONBOARDING_MORPH_CSS_DURATION_MS / 2);
-const NATIVE_MORPH_RETRY_MS = 80;
-const NATIVE_MORPH_MAX_ATTEMPTS = 6;
+const MORPH_STATE_SETTLE_MS = 520;
 
-const wait = (ms: number) =>
+const waitForPaint = () =>
   new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+
+const wait = (durationMs: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, durationMs);
   });
 
 interface OnboardingCanvasProps {
@@ -41,99 +40,75 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
   activeDemo,
   onMorphingChange,
 }) => {
-  const [toggles, setToggles] =
-    useState<SectionToggles>(EMPTY_SECTION_TOGGLES);
-  const [cssMorphing, setCssMorphing] = useState(false);
-  const morphInFlightRef = useRef(false);
-  const pendingToggleRef = useRef<SectionKey | null>(null);
+  const [activeSection, setActiveSection] = useState<SectionKey | null>(null);
+  const [pillsDisabled, setPillsDisabled] = useState(false);
+  const morphingRef = useRef(false);
 
-  const startNativeMorph = useCallback(async () => {
-    const morphApi = window.electronAPI?.ui;
-    if (typeof morphApi?.morphStart !== "function") {
-      return null;
-    }
+  useEffect(() => {
+    onMorphingChange?.(false);
+  }, [activeDemo, onMorphingChange]);
 
-    for (let attempt = 0; attempt < NATIVE_MORPH_MAX_ATTEMPTS; attempt += 1) {
-      const started = await morphApi.morphStart();
-      if (started?.ok) {
-        return morphApi;
-      }
-      if (attempt < NATIVE_MORPH_MAX_ATTEMPTS - 1) {
-        await wait(NATIVE_MORPH_RETRY_MS);
-      }
-    }
+  const handleToggleSection = useCallback(
+    (section: SectionKey) => {
+      if (morphingRef.current) return;
 
-    return null;
-  }, []);
+      const nextSection = activeSection === section ? null : section;
+      const morphApi = window.electronAPI?.ui;
 
-  const runMorphRef = useRef<(section: SectionKey) => Promise<void>>(
-    async () => {},
-  );
-
-  const runMorph = useCallback(
-    async (section: SectionKey) => {
-      if (morphInFlightRef.current) {
-        // Coalesce rapid clicks: keep only the most recent.
-        pendingToggleRef.current = section;
+      if (!morphApi) {
+        setActiveSection(nextSection);
         return;
       }
 
-      morphInFlightRef.current = true;
+      morphingRef.current = true;
+      setPillsDisabled(true);
       onMorphingChange?.(true);
 
-      const applyToggle = () => {
-        setToggles((prev) => ({ ...prev, [section]: !prev[section] }));
-      };
+      void (async () => {
+        try {
+          const started = await morphApi
+            .morphStart()
+            .catch(() => ({ ok: false }));
 
-      try {
-        const morphApi = await startNativeMorph();
+          if (!started.ok) {
+            setActiveSection(nextSection);
+            return;
+          }
 
-        if (morphApi) {
-          applyToggle();
-          await wait(ONBOARDING_MORPH_PAINT_SETTLE_MS);
-          await morphApi.morphComplete();
-        } else {
-          setCssMorphing(true);
-          await new Promise<void>((resolve) => {
-            setTimeout(applyToggle, CSS_FALLBACK_SWAP_AT_MS);
-            setTimeout(resolve, ONBOARDING_MORPH_CSS_DURATION_MS);
+          flushSync(() => {
+            setActiveSection(nextSection);
           });
-          setCssMorphing(false);
+          await waitForPaint();
+          await wait(MORPH_STATE_SETTLE_MS);
+
+          await morphApi.morphComplete().catch(() => ({ ok: false }));
+        } finally {
+          morphingRef.current = false;
+          setPillsDisabled(false);
+          onMorphingChange?.(false);
         }
-      } finally {
-        onMorphingChange?.(false);
-        morphInFlightRef.current = false;
-      }
-
-      const pending = pendingToggleRef.current;
-      pendingToggleRef.current = null;
-      if (pending !== null) {
-        void runMorphRef.current(pending);
-      }
+      })();
     },
-    [onMorphingChange, startNativeMorph],
+    [activeSection, onMorphingChange],
   );
-
-  useEffect(() => {
-    runMorphRef.current = runMorph;
-  }, [runMorph]);
 
   if (!activeDemo) return null;
 
+  const toggles: SectionToggles = {
+    ...EMPTY_SECTION_TOGGLES,
+    ...(activeSection ? { [activeSection]: true } : {}),
+  };
+
   return (
-    <div
-      className={`onboarding-canvas ${cssMorphing ? "onboarding-canvas-morphing" : ""}`}
-      style={
-        cssMorphing
-          ? { animationDuration: `${ONBOARDING_MORPH_CSS_DURATION_MS}ms` }
-          : undefined
-      }
-    >
-      <StellaAppMock
-        interactive
-        toggles={toggles}
-        onToggleSection={runMorph}
-      />
+    <div className="onboarding-canvas">
+      <div className="selfmod-layout">
+        <StellaAppMock
+          interactive
+          toggles={toggles}
+          onToggleSection={handleToggleSection}
+          pillsDisabled={pillsDisabled}
+        />
+      </div>
     </div>
   );
 };
