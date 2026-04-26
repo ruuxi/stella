@@ -43,6 +43,7 @@ type OverlayState = {
   radialVisible: boolean;
   radialPosition: { x: number; y: number } | null;
   radialCompactFocused: boolean;
+  radialMiniAlwaysOnTop: boolean;
   windowHighlightBounds: WindowBounds | null;
   windowHighlightTone: WindowHighlightTone;
   regionCaptureActive: boolean;
@@ -60,6 +61,7 @@ type OverlayAction =
       type: "radial:show";
       position?: { x: number; y: number };
       compactFocused?: boolean;
+      miniAlwaysOnTop?: boolean;
     }
   | { type: "radial:hide" }
   | {
@@ -91,6 +93,7 @@ const initialState: OverlayState = {
   radialVisible: false,
   radialPosition: null,
   radialCompactFocused: false,
+  radialMiniAlwaysOnTop: false,
   windowHighlightBounds: null,
   windowHighlightTone: "default",
   regionCaptureActive: false,
@@ -121,6 +124,7 @@ function overlayReducer(
         radialVisible: true,
         radialPosition: nextPosition,
         radialCompactFocused: action.compactFocused ?? false,
+        radialMiniAlwaysOnTop: action.miniAlwaysOnTop ?? false,
       };
     }
     case "radial:hide":
@@ -129,6 +133,7 @@ function overlayReducer(
             ...state,
             radialVisible: false,
             radialCompactFocused: false,
+            radialMiniAlwaysOnTop: false,
           }
         : state;
     case "overlay:windowHighlight":
@@ -241,6 +246,7 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
           screenX?: number;
           screenY?: number;
           compactFocused?: boolean;
+          miniAlwaysOnTop?: boolean;
         },
       ) => {
         if (radialHideTimerRef.current) {
@@ -255,11 +261,13 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
             type: "radial:show",
             position: { x: data.screenX, y: data.screenY },
             compactFocused: data.compactFocused,
+            miniAlwaysOnTop: data.miniAlwaysOnTop,
           });
         } else {
           dispatch({
             type: "radial:show",
             compactFocused: data.compactFocused,
+            miniAlwaysOnTop: data.miniAlwaysOnTop,
           });
         }
       },
@@ -742,7 +750,11 @@ export function OverlayRoot() {
           pointerEvents: state.radialVisible ? "auto" : "none",
         }}
       >
-        <RadialDial miniVisible={state.radialCompactFocused} />
+        <RadialDial
+          closeChatWedge={
+            state.radialCompactFocused || state.radialMiniAlwaysOnTop
+          }
+        />
       </div>
 
       {state.regionCaptureActive && (

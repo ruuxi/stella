@@ -41,9 +41,9 @@ const OUTER_RADIUS = 125
 const WEDGE_ANGLE = 90
 const DEAD_ZONE_RADIUS = 30
 
-const getWedges = (compactAndFocused: boolean) =>
+const getWedges = (closeChatWedge: boolean) =>
   BASE_WEDGES.map((wedge) => {
-    if (wedge.id === 'chat' && compactAndFocused) {
+    if (wedge.id === 'chat' && closeChatWedge) {
       return { ...wedge, label: 'Close', icon: X, enabled: true }
     }
     return { ...wedge, enabled: true }
@@ -315,15 +315,15 @@ function useRadialIPC(
 }
 
 export function RadialDial({
-  miniVisible = false,
+  closeChatWedge = false,
 }: {
-  miniVisible?: boolean
+  closeChatWedge?: boolean
 }) {
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
   const [phase, setPhase] = useState<Phase>('hidden')
   const [contentVisible, setContentVisible] = useState(false)
   const { colors } = useTheme()
-  const wedges = useMemo(() => getWedges(miniVisible), [miniVisible])
+  const wedges = useMemo(() => getWedges(closeChatWedge), [closeChatWedge])
   const wedgeLayout = useMemo(
     () => wedges.map((wedge, index) => ({
       ...wedge,

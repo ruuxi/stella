@@ -532,7 +532,7 @@ export class OverlayWindowController {
   private radialHideTimeout: ReturnType<typeof setTimeout> | null = null
   private static readonly CLOSE_ANIM_FALLBACK = 350
 
-  showRadial(options?: { compactFocused?: boolean }) {
+  showRadial(options?: { compactFocused?: boolean; miniAlwaysOnTop?: boolean }) {
     if (this.radialHideTimeout) {
       clearTimeout(this.radialHideTimeout)
       this.radialHideTimeout = null
@@ -563,6 +563,7 @@ export class OverlayWindowController {
       screenX: localX,
       screenY: localY,
       compactFocused: options?.compactFocused ?? false,
+      miniAlwaysOnTop: options?.miniAlwaysOnTop ?? false,
     }
 
     this.overlayWindow.send('radial:show', payload)
