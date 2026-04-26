@@ -100,6 +100,7 @@ export class WindowManager {
   private readonly fullWindowController: FullWindowController
   private readonly miniWindowController: MiniWindowController
   private readonly observedWindows = new WeakSet<BrowserWindow>()
+  private lastFocusedWindowMode: ShellWindowMode = 'full'
   private lastActiveWindowMode: ShellWindowMode = 'full'
   private miniWindowBounds: Bounds | null = null
   private miniShouldRestoreExternalApp = false
@@ -313,6 +314,10 @@ export class WindowManager {
     return this.lastActiveWindowMode
   }
 
+  getLastFocusedWindowMode() {
+    return this.lastFocusedWindowMode
+  }
+
   isWindowFocused() {
     return this.getFocusedShellWindow() !== null
   }
@@ -462,6 +467,7 @@ export class WindowManager {
 
     this.observedWindows.add(window)
     window.on('focus', () => {
+      this.lastFocusedWindowMode = mode
       this.setLastActiveWindowMode(mode)
     })
     window.on('show', () => {
@@ -611,7 +617,10 @@ export class WindowManager {
     if (mode === 'mini') {
       if (process.platform === 'darwin') {
         app.dock?.show()
-        app.show()
+        // Do not call `app.show()` here. On macOS it unhides every owned
+        // BrowserWindow, which can briefly surface the full shell when the
+        // user is only restoring the mini (notably after radial capture).
+        app.focus({ steal: true })
         window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
         if (this.miniAlwaysOnTop) {
           window.setAlwaysOnTop(true, 'screen-saver')
@@ -628,7 +637,6 @@ export class WindowManager {
         if (this.miniAlwaysOnTop) {
           window.setAlwaysOnTop(true, 'screen-saver')
         }
-        app.focus({ steal: true })
         window.focus()
         return
       }

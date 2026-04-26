@@ -37,6 +37,7 @@ export type RadialOverlayBridge = {
 export type RadialWindowBridge = {
   isCompactMode: () => boolean
   getLastActiveWindowMode: () => 'full' | 'mini'
+  getLastFocusedWindowMode: () => 'full' | 'mini'
   isWindowFocused: () => boolean
   showWindow: (target: 'full' | 'mini') => void
   minimizeWindow: () => void
@@ -130,7 +131,7 @@ export class RadialGestureService {
         capture.cancelRadialContextCapture()
         updateUiState({ mode: 'chat' })
         overlay.hideRadial()
-        const targetWindowMode = win.getLastActiveWindowMode()
+        const targetWindowMode = win.getLastFocusedWindowMode()
         win.minimizeWindow()
         const regionCapture = await capture.startRegionCapture()
         if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
