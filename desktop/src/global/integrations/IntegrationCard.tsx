@@ -348,12 +348,14 @@ type IntegrationGridCardProps = {
   integration: Integration;
   isSelected: boolean;
   onClick: () => void;
+  disabled?: boolean;
 };
 
 function IntegrationGridCardComponent({
   integration,
   isSelected,
   onClick,
+  disabled,
 }: IntegrationGridCardProps) {
   const isConnected = useIntegrationConnectionStatus(integration.provider);
 
@@ -362,6 +364,8 @@ function IntegrationGridCardComponent({
       className={`connect-grid-card${isSelected ? " connect-grid-card-selected" : ""}`}
       onClick={onClick}
       type="button"
+      disabled={disabled}
+      aria-disabled={disabled || undefined}
     >
       <span className="connect-grid-card-icon">{integration.icon}</span>
       <span className="connect-grid-card-name">{integration.displayName}</span>
