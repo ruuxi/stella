@@ -38,12 +38,13 @@ void main() {
   vec4 col = texture2D(u_tex, clamp(uv, 0.0, 1.0));
   col *= inB;
 
-  // Shrinking visible radius — edges go transparent as content vacuums inward
+  // Shrinking visible radius — edges go transparent as content vacuums inward.
   float fadeR = max(1.0 - u_strength * u_strength * 3.0, 0.02);
   col.a *= 1.0 - smoothstep(fadeR * 0.5, fadeR, nc);
 
-  // Darken core — center fades out
-  col *= max(1.0 - u_strength * u_strength * (1.0 - nc), 0.0);
+  // Center fade — let the core dissolve via alpha instead of darkening RGB,
+  // so the animation collapses into transparency rather than a black point.
+  col.a *= max(1.0 - u_strength * u_strength * (1.0 - nc), 0.0);
 
   gl_FragColor = col;
 }`;
