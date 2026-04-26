@@ -20,6 +20,104 @@
   padding: 0;
 }
 
+/* The Electron BrowserWindow is transparent + frameless. The renderer is
+ * responsible for the visible window shape:
+ *
+ *   - In normal app mode, we round the corners so the window reads as a
+ *     modern macOS surface rather than a hard rectangle against the desktop.
+ *
+ *   - During onboarding, we soften the entire window with a radial mask so
+ *     the edges fade out into the desktop like fog — no hard window border
+ *     visible, just Stella's gradient drifting in space.
+ *
+ * The mask is applied with a smooth ease so transitioning between modes
+ * (e.g. when onboarding completes) feels like the fog clearing rather than a
+ * snap.
+ */
+.window-shell.full {
+  border-radius: 12px;
+  transition:
+    -webkit-mask-image 600ms ease,
+    mask-image 600ms ease,
+    border-radius 600ms ease;
+}
+
+.window-shell.full[data-window-mode="onboarding"] {
+  border-radius: 0;
+}
+
+/* Black vignette overlay: instead of the window pixels fading to transparent
+ * (showing the desktop), we now fade the rendered scene to opaque black so
+ * onboarding feels like a full-screen blackout with content lit up in the
+ * center. The vignette sits between the ShiftingGradient (z-index 0) and
+ * the onboarding content (z-index 5+), so the gradient backdrop fades
+ * smoothly to black at the edges while the centered onboarding UI stays
+ * unaffected. The same dense smoothstep + fractal-noise dither used by
+ * the previous fog mask is applied here to break up alpha banding. */
+.window-shell.full[data-window-mode="onboarding"]::after {
+  content: "";
+  position: absolute;
+  /* Fixed source size: the SVG displacement filter only ever runs over
+   * 600x400 = 240k pixels regardless of monitor resolution, then we
+   * CSS-scale the filtered output up to cover the window plus overscan.
+   * On a 1800x1200 window this is ~9x fewer filtered pixels than the
+   * previous full-bleed implementation. */
+  width: 600px;
+  height: 400px;
+  left: 50%;
+  top: 50%;
+  /* Center, then stretch to cover the window plus a 110px overscan on
+   * each side so the displacement warp has solid black to pull from and
+   * never reveals the desktop at the corners. */
+  transform: translate(-50%, -50%)
+    scale(
+      calc((100vw + 220px) / 600px),
+      calc((100vh + 220px) / 400px)
+    );
+  transform-origin: 50% 50%;
+  /* Promote to its own GPU compositor layer so fog repaints stay
+   * isolated from the gradient underneath and the onboarding UI above. */
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  /* Fade target — overridden to 0 during the exit transition so the fog
+   * dissolves in lockstep with the animated window resize. */
+  opacity: 1;
+  transition: opacity 540ms cubic-bezier(0.32, 0.04, 0.32, 1);
+  z-index: 1;
+  pointer-events: none;
+  /* Long, slow falloff in source-box space (percentages of the 600x400
+   * source). After the X/Y CSS scale the on-screen ellipse fills the
+   * window, matching the previous 70vw x 68vh radial. */
+  background-image: radial-gradient(
+    ellipse 60% 58% at 50% 50%,
+    rgba(0, 0, 0, 0) 50%,
+    rgba(0, 0, 0, 0.007) 53%,
+    rgba(0, 0, 0, 0.028) 56%,
+    rgba(0, 0, 0, 0.063) 59%,
+    rgba(0, 0, 0, 0.110) 62%,
+    rgba(0, 0, 0, 0.169) 65%,
+    rgba(0, 0, 0, 0.240) 68%,
+    rgba(0, 0, 0, 0.320) 71%,
+    rgba(0, 0, 0, 0.409) 74%,
+    rgba(0, 0, 0, 0.500) 77%,
+    rgba(0, 0, 0, 0.591) 80%,
+    rgba(0, 0, 0, 0.680) 83%,
+    rgba(0, 0, 0, 0.760) 86%,
+    rgba(0, 0, 0, 0.831) 89%,
+    rgba(0, 0, 0, 0.890) 92%,
+    rgba(0, 0, 0, 0.937) 94%,
+    rgba(0, 0, 0, 0.972) 96%,
+    rgba(0, 0, 0, 0.993) 98%,
+    rgba(0, 0, 0, 1) 100%
+  );
+  /* Distort the perfect ellipse into an organic, flowing fog boundary. */
+  filter: url(#stella-fog-distort);
+}
+
+.window-shell.full[data-window-mode="onboarding"][data-onboarding-exiting="true"]::after {
+  opacity: 0;
+}
+
 /* Header - minimal, positioned at top */
 .window-header {
   position: absolute;
@@ -334,7 +432,17 @@
 }
 
 .onboarding-layout {
-  flex: 1;
+  /* Bound the onboarding "stage" so the layout is consistent across every
+   * display size — small laptops, normal monitors, 4K, ultrawide, Studio
+   * Display, etc. The Electron window now covers the entire display, so
+   * without this cap, every percentage-based position inside (Stella
+   * creature, split-right column, dialogue placement) would scale with
+   * the screen and the scene would look completely different on a 13"
+   * laptop vs. a 5K monitor. With the cap, all interior percentages
+   * refer to a virtual ~1400×950 stage centered in the window. */
+  width: min(100%, 1400px);
+  height: min(100%, 950px);
+  margin: auto;
   display: flex;
   min-height: 0;
   position: relative;
@@ -358,10 +466,7 @@
   z-index: 4;
   transition:
     opacity 0.35s ease,
-    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-    left 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-    right 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-    width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .onboarding-demo-area[data-visible="true"] {
@@ -376,8 +481,10 @@
   pointer-events: none;
 }
 
-/* Full-screen demo: centered with room for title at top and options at bottom */
-.onboarding-layout[data-demo] .onboarding-demo-area[data-visible="true"] {
+/* Full-screen demo: set final geometry as soon as the demo phase is active,
+ * then animate only opacity/transform. That preserves the reveal while
+ * avoiding layout-property transitions. */
+.onboarding-layout[data-demo] .onboarding-demo-area {
   left: 10%;
   right: 10%;
   top: 14%;
@@ -385,8 +492,10 @@
   width: auto;
   padding-right: 0;
   box-sizing: border-box;
+}
+
+.onboarding-layout[data-demo] .onboarding-demo-area[data-visible="true"] {
   transform: translateX(0);
-  overflow: visible;
 }
 
 .onboarding-layout[data-demo] .onboarding-demo-area[data-visible="true"]::before {
@@ -623,21 +732,25 @@
 }
 
 .onboarding-stella-animation {
+  --stella-shift-x: 0px;
+  --stella-shift-y: 0px;
   position: absolute;
   top: 35%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(
+    calc(-50% + var(--stella-shift-x)),
+    calc(-50% + var(--stella-shift-y))
+  );
   z-index: 5;
   width: 100%;
   height: 35%;
   max-width: 630px;
   cursor: pointer;
   transition:
-    top 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-    left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+  will-change: transform, opacity;
 }
 
 .onboarding-stella-animation[data-expanded="true"] {
@@ -646,14 +759,11 @@
 
 /* Split mode: animation moves to left half, centered vertically */
 .onboarding-stella-animation[data-split="true"] {
-  left: 25%;
-  top: 45%;
+  --stella-shift-x: clamp(-350px, -25vw, 0px);
+  --stella-shift-y: min(10vh, 95px);
   max-width: 280px;
   height: 21%;
-  transform: translate(-50%, -50%) scale(1);
   transition:
-    top 0.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-    left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -661,7 +771,7 @@
 
 /* With selections: shift animation up to make room for mock windows */
 .onboarding-stella-animation[data-split="true"][data-has-selections] {
-  top: 18%;
+  --stella-shift-y: clamp(-162px, -17vh, 0px);
 }
 
 /* Fade Stella when a full demo is active */
@@ -670,8 +780,6 @@
   pointer-events: none;
   transition:
     opacity 0.5s ease,
-    top 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-    left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -684,8 +792,6 @@
   pointer-events: none;
   transition:
     opacity 0.5s ease,
-    top 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-    left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);

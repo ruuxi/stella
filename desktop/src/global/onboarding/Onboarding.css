@@ -381,6 +381,13 @@
     backdrop-filter var(--onboarding-duration-fade) ease;
 }
 
+.onboarding-dialogue[data-phase="permissions"] .onboarding-split-right,
+.onboarding-dialogue[data-phase="browser"] .onboarding-split-right,
+.onboarding-dialogue[data-phase="theme"] .onboarding-split-right,
+.onboarding-dialogue[data-phase="personality"] .onboarding-split-right {
+  transform: translateX(clamp(-200px, -9vw, -120px));
+}
+
 @keyframes splitPaneFadeIn {
   from {
     opacity: 0;

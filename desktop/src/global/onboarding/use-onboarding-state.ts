@@ -71,6 +71,7 @@ export interface OnboardingStep1Props {
   onDiscoveryConfirm?: (categories: DiscoveryCategory[]) => void;
   onEnterSplit?: () => void;
   onDemoChange?: (demo: "default" | null) => void;
+  onPhaseChange?: (phase: Phase) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
   themeConfirmed?: boolean;
   hasSelectedTheme?: boolean;

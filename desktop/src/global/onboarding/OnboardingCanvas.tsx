@@ -34,10 +34,12 @@ const wait = (ms: number) =>
 
 interface OnboardingCanvasProps {
   activeDemo: OnboardingDemo;
+  onMorphingChange?: (isMorphing: boolean) => void;
 }
 
 export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
   activeDemo,
+  onMorphingChange,
 }) => {
   const [toggles, setToggles] =
     useState<SectionToggles>(EMPTY_SECTION_TOGGLES);
@@ -77,27 +79,31 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
       }
 
       morphInFlightRef.current = true;
+      onMorphingChange?.(true);
 
       const applyToggle = () => {
         setToggles((prev) => ({ ...prev, [section]: !prev[section] }));
       };
 
-      const morphApi = await startNativeMorph();
+      try {
+        const morphApi = await startNativeMorph();
 
-      if (morphApi) {
-        applyToggle();
-        await wait(ONBOARDING_MORPH_PAINT_SETTLE_MS);
-        await morphApi.morphComplete();
-      } else {
-        setCssMorphing(true);
-        await new Promise<void>((resolve) => {
-          setTimeout(applyToggle, CSS_FALLBACK_SWAP_AT_MS);
-          setTimeout(resolve, ONBOARDING_MORPH_CSS_DURATION_MS);
-        });
-        setCssMorphing(false);
+        if (morphApi) {
+          applyToggle();
+          await wait(ONBOARDING_MORPH_PAINT_SETTLE_MS);
+          await morphApi.morphComplete();
+        } else {
+          setCssMorphing(true);
+          await new Promise<void>((resolve) => {
+            setTimeout(applyToggle, CSS_FALLBACK_SWAP_AT_MS);
+            setTimeout(resolve, ONBOARDING_MORPH_CSS_DURATION_MS);
+          });
+          setCssMorphing(false);
+        }
+      } finally {
+        onMorphingChange?.(false);
+        morphInFlightRef.current = false;
       }
-
-      morphInFlightRef.current = false;
 
       const pending = pendingToggleRef.current;
       pendingToggleRef.current = null;
@@ -105,7 +111,7 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
         void runMorphRef.current(pending);
       }
     },
-    [startNativeMorph],
+    [onMorphingChange, startNativeMorph],
   );
 
   useEffect(() => {
