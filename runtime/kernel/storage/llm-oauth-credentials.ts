@@ -76,6 +76,9 @@ const decodeCredentials = (
 ): OAuthCredentials | null => {
   try {
     const raw = unprotectValue(credentialScope(provider), valueProtected);
+    if (!raw) {
+      return null;
+    }
     const parsed = JSON.parse(raw) as OAuthCredentials;
     if (
       parsed &&
