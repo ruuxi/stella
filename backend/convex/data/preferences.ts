@@ -1,8 +1,6 @@
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
-import { hasModelConfig, resolveManagedModelAudience } from "../agent/model";
-import { listStellaDefaultSelections } from "../stella_models";
 import {
   enforceMutationRateLimit,
   RATE_SETTINGS,
@@ -19,14 +17,6 @@ const accountModeValidator = v.union(v.literal("private_local"), v.literal("conn
 const ACCOUNT_MODE_KEY = "account_mode";
 const syncModeValidator = v.union(v.literal("on"), v.literal("off"));
 const SYNC_MODE_KEY = "sync_mode";
-const generalAgentEngineValidator = v.union(
-  v.literal("default"),
-  v.literal("codex_local"),
-  v.literal("claude_code_local"),
-);
-export const GENERAL_AGENT_ENGINE_KEY = "general_agent_engine";
-export const SELF_MOD_AGENT_ENGINE_KEY = "self_mod_agent_engine";
-export const MAX_AGENT_CONCURRENCY_KEY = "max_agent_concurrency";
 export const PREFERRED_BROWSER_KEY = "preferred_browser";
 const preferredBrowserValidator = v.union(
   v.literal("arc"),
@@ -46,21 +36,6 @@ const normalizeAccountMode = (
 
 export const normalizeSyncMode = (value: string | null | undefined): "on" | "off" =>
   value === "on" ? "on" : "off";
-
-export const normalizeGeneralAgentEngine = (
-  value: string | null | undefined,
-): "default" | "codex_local" | "claude_code_local" => {
-  if (value === "codex_local") return "codex_local";
-  if (value === "claude_code_local") return "claude_code_local";
-  return "default";
-};
-
-export const normalizeMaxAgentConcurrency = (value: string | null | undefined): number => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 1) return 24;
-  const rounded = Math.floor(parsed);
-  return rounded < 1 ? 24 : Math.min(24, rounded);
-};
 
 export const upsertPreferenceRecord = async (
   ctx: MutationCtx,
@@ -220,209 +195,6 @@ export const getSyncModeForOwner = internalQuery({
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", SYNC_MODE_KEY))
       .unique();
     return normalizeSyncMode(record?.value ?? null);
-  },
-});
-
-export const getGeneralAgentEngine = query({
-  args: {},
-  returns: generalAgentEngineValidator,
-  handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
-    const record = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", GENERAL_AGENT_ENGINE_KEY))
-      .unique();
-    return normalizeGeneralAgentEngine(record?.value ?? null);
-  },
-});
-
-export const setGeneralAgentEngine = mutation({
-  args: {
-    engine: generalAgentEngineValidator,
-  },
-  returns: generalAgentEngineValidator,
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
-    await upsertPreferenceRecord(ctx, ownerId, GENERAL_AGENT_ENGINE_KEY, args.engine);
-    return args.engine;
-  },
-});
-
-export const getSelfModAgentEngine = query({
-  args: {},
-  returns: generalAgentEngineValidator,
-  handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
-    const record = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) =>
-        q.eq("ownerId", ownerId).eq("key", SELF_MOD_AGENT_ENGINE_KEY),
-      )
-      .unique();
-    return normalizeGeneralAgentEngine(record?.value ?? null);
-  },
-});
-
-export const setSelfModAgentEngine = mutation({
-  args: {
-    engine: generalAgentEngineValidator,
-  },
-  returns: generalAgentEngineValidator,
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
-    await upsertPreferenceRecord(ctx, ownerId, SELF_MOD_AGENT_ENGINE_KEY, args.engine);
-    return args.engine;
-  },
-});
-
-export const getMaxAgentConcurrency = query({
-  args: {},
-  returns: v.number(),
-  handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
-    const record = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) =>
-        q.eq("ownerId", ownerId).eq("key", MAX_AGENT_CONCURRENCY_KEY),
-      )
-      .unique();
-    return normalizeMaxAgentConcurrency(record?.value ?? null);
-  },
-});
-
-export const setMaxAgentConcurrency = mutation({
-  args: {
-    value: v.number(),
-  },
-  returns: v.number(),
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
-    const normalized = normalizeMaxAgentConcurrency(String(args.value));
-    await upsertPreferenceRecord(ctx, ownerId, MAX_AGENT_CONCURRENCY_KEY, String(normalized));
-    return normalized;
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Model overrides — stored as user_preferences with key "model_config:{agentType}"
-// ---------------------------------------------------------------------------
-
-const MODEL_CONFIG_PREFIX = "model_config:";
-
-/** Cap on the number of model override prefs returned in a single query. */
-const MAX_MODEL_OVERRIDES = 200;
-
-export const getModelOverrides = query({
-  args: {},
-  returns: v.record(v.string(), v.string()),
-  handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
-    // Use a key range scan over the `by_ownerId_and_key` index so we touch
-    // only `model_config:*` rows instead of overfetching the user's full
-    // preference set and JS-filtering. `\uffff` is the highest unicode code
-    // point so `[prefix, prefix + "\uffff")` covers every key with that
-    // prefix.
-    const records = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) =>
-        q
-          .eq("ownerId", ownerId)
-          .gte("key", MODEL_CONFIG_PREFIX)
-          .lt("key", `${MODEL_CONFIG_PREFIX}\uffff`),
-      )
-      .take(MAX_MODEL_OVERRIDES);
-
-    const overrides: Record<string, string> = {};
-    for (const record of records) {
-      const agentType = record.key.slice(MODEL_CONFIG_PREFIX.length);
-      if (!hasModelConfig(agentType)) {
-        continue;
-      }
-      overrides[agentType] = record.value;
-    }
-    return overrides;
-  },
-});
-
-export const getModelDefaults = query({
-  args: {},
-  returns: v.array(
-    v.object({
-      agentType: v.string(),
-      model: v.string(),
-      resolvedModel: v.string(),
-    }),
-  ),
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return listStellaDefaultSelections("anonymous");
-    }
-
-    const ownerId = identity.tokenIdentifier;
-    const profile = await ctx.db
-      .query("billing_profiles")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-      .unique();
-    const plan = (profile?.activePlan as "free" | "go" | "pro" | "plus" | "ultra" | undefined) ?? "free";
-
-    return listStellaDefaultSelections(
-      resolveManagedModelAudience({
-        plan,
-        isAnonymous: (identity as Record<string, unknown>).isAnonymous === true,
-      }),
-    );
-  },
-});
-
-export const setModelOverride = mutation({
-  args: {
-    agentType: v.string(),
-    model: v.string(),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    if (!hasModelConfig(args.agentType)) {
-      throw new ConvexError({
-        code: "INVALID_ARGUMENT",
-        message: `Unknown agent type: ${args.agentType}`,
-      });
-    }
-    if (args.model.length > 200) {
-      throw new ConvexError({
-        code: "INVALID_ARGUMENT",
-        message: "Model override exceeds maximum allowed length of 200 characters",
-      });
-    }
-    const ownerId = await requireUserId(ctx);
-    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
-    const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
-    await upsertPreferenceRecord(ctx, ownerId, key, args.model);
-    return null;
-  },
-});
-
-export const clearModelOverride = mutation({
-  args: {
-    agentType: v.string(),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
-    const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
-      .unique();
-
-    if (existing) {
-      await ctx.db.delete(existing._id);
-    }
-    return null;
   },
 });
 
