@@ -17,6 +17,7 @@ import { ThemePicker } from "@/global/settings/ThemePicker";
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
+import { DisplayTabBar } from "@/shell/display/DisplayTabBar";
 import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
 
 export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
@@ -105,7 +106,7 @@ export const ShellTopBar = () => {
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
   const isMiniWindow = useWindowType() === "mini";
-  const { panelOpen, panelExpanded } = useDisplayTabs();
+  const { tabs, panelOpen, panelExpanded } = useDisplayTabs();
   const [miniAlwaysOnTop, setMiniAlwaysOnTopState] = useState(true);
 
   const toggleSidebar = useCallback(() => {
@@ -190,6 +191,9 @@ export const ShellTopBar = () => {
           <ArrowRight size={15} strokeWidth={1.75} />
         </button>
       </div>
+      <div className="shell-topbar-tabs">
+        {tabs.length > 0 ? <DisplayTabBar /> : null}
+      </div>
       <div className="shell-topbar-right">
         {isMiniWindow ? (
           <button
@@ -252,7 +256,7 @@ export const ShellTopBar = () => {
             </button>
           )}
         </div>
-        {!isMac ? <WindowControls /> : null}
+        {!isMac && isMiniWindow ? <WindowControls /> : null}
       </div>
     </header>
   );
