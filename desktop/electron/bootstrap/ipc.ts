@@ -154,6 +154,9 @@ export const registerBootstrapIpcHandlers = (
     setRadialTriggerKey: (triggerKey) => {
       services.radialGestureService.setRadialTriggerKey(triggerKey);
     },
+    setMiniDoubleTapModifier: (modifier) => {
+      services.radialGestureService.setMiniDoubleTapModifier(modifier);
+    },
     ensureRadialGestureOnMac: () => {
       services.radialGestureService.start();
     },

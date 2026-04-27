@@ -40,6 +40,10 @@ import {
   type RadialTriggerCode,
 } from "../../src/shared/lib/radial-trigger.js";
 import {
+  normalizeMiniDoubleTapModifier,
+  type MiniDoubleTapModifier,
+} from "../../src/shared/lib/mini-double-tap.js";
+import {
   IPC_APP_QUIT_FOR_RESTART,
   IPC_AUTH_CONSUME_PENDING_CALLBACK,
   IPC_AUTH_RUNTIME_REFRESH_COMPLETE,
@@ -56,9 +60,11 @@ import {
   IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_SHELL_SAVE_FILE_AS,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_MODELS,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
@@ -185,6 +191,8 @@ type SystemHandlersOptions = {
   onPermissionGranted?: (kind: MacPermissionKind) => void;
   /** Update the radial-trigger key on the gesture service when prefs change. */
   setRadialTriggerKey: (triggerKey: RadialTriggerCode) => void;
+  /** Update the mini double-tap modifier on the gesture service when prefs change. */
+  setMiniDoubleTapModifier: (modifier: MiniDoubleTapModifier) => void;
   /** When Accessibility is granted (e.g. user enabled it in System Settings), ensure hooks are running. */
   ensureRadialGestureOnMac?: () => void;
 };
@@ -856,6 +864,47 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
       options.setRadialTriggerKey(nextTriggerKey);
       return { triggerKey: nextTriggerKey };
+    },
+  );
+
+  ipcMain.handle(IPC_PREFERENCES_GET_MINI_DOUBLE_TAP, (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
+      )
+    ) {
+      throw new Error(
+        "Blocked untrusted preferences:getMiniDoubleTap request.",
+      );
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return "Alt";
+    return loadLocalPreferences(stellaRoot).miniDoubleTapModifier;
+  });
+
+  ipcMain.handle(
+    IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
+    (event, modifier: string) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted preferences:setMiniDoubleTap request.",
+        );
+      }
+      const nextModifier = normalizeMiniDoubleTapModifier(modifier);
+      const stellaRoot = options.getStellaRoot();
+      if (stellaRoot) {
+        const prefs = loadLocalPreferences(stellaRoot);
+        prefs.miniDoubleTapModifier = nextModifier;
+        saveLocalPreferences(stellaRoot, prefs);
+      }
+      options.setMiniDoubleTapModifier(nextModifier);
+      return { modifier: nextModifier };
     },
   );
 

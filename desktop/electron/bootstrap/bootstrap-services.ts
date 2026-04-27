@@ -143,6 +143,11 @@ export const createBootstrapServices = (options: {
       if (!stellaRoot) return DEFAULT_RADIAL_TRIGGER_CODE;
       return loadLocalPreferences(stellaRoot).radialTriggerKey;
     },
+    getMiniDoubleTapModifier: () => {
+      const stellaRoot = state.stellaRoot;
+      if (!stellaRoot) return "Alt";
+      return loadLocalPreferences(stellaRoot).miniDoubleTapModifier;
+    },
     shouldEnable: () =>
       !uiStateService.state.suppressNativeRadialDuringOnboarding &&
       (process.platform !== "darwin" ||

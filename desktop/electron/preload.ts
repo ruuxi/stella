@@ -6,6 +6,7 @@ import type {
 } from "../src/shared/contracts/boundary.js";
 import type { TaskLifecycleStatus } from "../src/shared/contracts/agent-runtime.js";
 import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
+import type { MiniDoubleTapModifier } from "../src/shared/lib/mini-double-tap.js";
 import type { OfficePreviewSnapshot } from "../src/shared/contracts/office-preview.js";
 import {
   IPC_BROWSER_FETCH_JSON,
@@ -43,9 +44,11 @@ import {
   IPC_BACKUP_RUN_NOW,
   IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_PREFERENCES_GET_MODELS,
+  IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_MODELS,
+  IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_SHELL_SAVE_FILE_AS,
@@ -477,6 +480,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
         activeShortcut: string;
         error?: string;
       }>,
+    getRtcShortcut: () =>
+      ipcRenderer.invoke("voice-rtc:getShortcut") as Promise<string>,
   },
 
   dictation: {
@@ -803,6 +808,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
         IPC_PREFERENCES_SET_RADIAL_TRIGGER,
         triggerKey,
       ) as Promise<{ triggerKey: RadialTriggerCode }>,
+    getMiniDoubleTapModifier: () =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
+      ) as Promise<MiniDoubleTapModifier>,
+    setMiniDoubleTapModifier: (modifier: MiniDoubleTapModifier) =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
+        modifier,
+      ) as Promise<{ modifier: MiniDoubleTapModifier }>,
     getBackupStatus: () => ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),
     backUpNow: () => ipcRenderer.invoke(IPC_BACKUP_RUN_NOW),
     listBackups: (limit?: number) =>

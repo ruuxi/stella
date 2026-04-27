@@ -69,6 +69,7 @@ import type {
   RestoreBackupResult as SharedRestoreBackupResult,
 } from "../contracts/backup";
 import type { RadialTriggerCode as SharedRadialTriggerCode } from "@/shared/lib/radial-trigger";
+import type { MiniDoubleTapModifier as SharedMiniDoubleTapModifier } from "@/shared/lib/mini-double-tap";
 
 export type ChatContext = SharedChatContext;
 export type ChatContextFile = SharedChatContextFile;
@@ -117,6 +118,7 @@ export type BackupStatusSnapshot = SharedBackupStatusSnapshot;
 export type BackupSummary = SharedBackupSummary;
 export type RestoreBackupResult = SharedRestoreBackupResult;
 export type RadialTriggerCode = SharedRadialTriggerCode;
+export type MiniDoubleTapModifier = SharedMiniDoubleTapModifier;
 export type RadialWedge = "capture" | "chat" | "add" | "voice" | "dismiss";
 export type VoiceShortcutRegistrationResult = {
   ok: boolean;
@@ -417,6 +419,7 @@ export type ElectronVoiceApi = {
   setRtcShortcut: (
     shortcut: string,
   ) => Promise<VoiceShortcutRegistrationResult>;
+  getRtcShortcut: () => Promise<string>;
 };
 
 export type ElectronDictationApi = {
@@ -602,6 +605,10 @@ export type ElectronSystemApi = {
   setRadialTriggerKey: (
     triggerKey: RadialTriggerCode,
   ) => Promise<{ triggerKey: RadialTriggerCode }>;
+  getMiniDoubleTapModifier: () => Promise<MiniDoubleTapModifier>;
+  setMiniDoubleTapModifier: (
+    modifier: MiniDoubleTapModifier,
+  ) => Promise<{ modifier: MiniDoubleTapModifier }>;
   getBackupStatus: () => Promise<BackupStatusSnapshot>;
   backUpNow: () => Promise<BackupNowResult>;
   listBackups: (limit?: number) => Promise<BackupSummary[]>;
