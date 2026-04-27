@@ -347,14 +347,36 @@ const getPlatformShellPrompt = (): string | null => {
   return null;
 };
 
-const hasShellToolGuidance = (
+const hasToolGuidance = (
   context: LocalAgentContext,
+  toolNames: string[],
 ): boolean => {
   const toolsAllowlist = context.toolsAllowlist;
   if (!Array.isArray(toolsAllowlist) || toolsAllowlist.length === 0) {
     return true;
   }
-  return toolsAllowlist.includes("Bash");
+  return toolNames.some((toolName) => toolsAllowlist.includes(toolName));
+};
+
+const hasShellToolGuidance = (
+  context: LocalAgentContext,
+): boolean => {
+  return hasToolGuidance(context, ["Bash", "exec_command"]);
+};
+
+const buildFileEditingPrompt = (
+  context: LocalAgentContext,
+): string | null => {
+  if (!hasToolGuidance(context, ["apply_patch"])) {
+    return null;
+  }
+
+  return [
+    "File edits:",
+    "- Prefer `apply_patch` for source and text-file edits so changes are tracked as structured patches.",
+    "- Use `exec_command` for read-only inspection, builds/tests, package-manager commands, and commands that create external artifacts.",
+    "- Do not use shell heredocs or `cat > file` for source edits when `apply_patch` can express the change.",
+  ].join("\n");
 };
 
 export const buildSystemPrompt = (
@@ -364,6 +386,11 @@ export const buildSystemPrompt = (
 
   if (context.dynamicContext?.trim()) {
     sections.push(context.dynamicContext.trim());
+  }
+
+  const fileEditingPrompt = buildFileEditingPrompt(context);
+  if (fileEditingPrompt) {
+    sections.push(fileEditingPrompt);
   }
 
   const platformShellPrompt = getPlatformShellPrompt();

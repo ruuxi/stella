@@ -1,8 +1,38 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSystemPrompt,
   buildHistorySource,
   buildStartupPromptMessages,
 } from "../../../../../runtime/kernel/agent-runtime/thread-memory.js";
+
+describe("buildSystemPrompt", () => {
+  it("adds structured file-editing guidance when apply_patch is available", () => {
+    const prompt = buildSystemPrompt({
+      systemPrompt: "system",
+      dynamicContext: "",
+      maxAgentDepth: 1,
+      threadHistory: [],
+      toolsAllowlist: ["exec_command", "apply_patch"],
+    });
+
+    expect(prompt).toContain("Prefer `apply_patch`");
+    expect(prompt).toContain("Do not use shell heredocs");
+    expect(prompt).toContain("standard POSIX shell commands");
+  });
+
+  it("omits file-editing guidance when apply_patch is unavailable", () => {
+    const prompt = buildSystemPrompt({
+      systemPrompt: "system",
+      dynamicContext: "",
+      maxAgentDepth: 1,
+      threadHistory: [],
+      toolsAllowlist: ["exec_command"],
+    });
+
+    expect(prompt).not.toContain("Prefer `apply_patch`");
+    expect(prompt).toContain("standard POSIX shell commands");
+  });
+});
 
 describe("buildStartupPromptMessages", () => {
   it("injects memory snapshots when the runner marks the turn for re-injection", async () => {
