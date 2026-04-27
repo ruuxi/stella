@@ -119,6 +119,7 @@ export const IPC_VOICE_WEB_SEARCH = "voice:webSearch" as const;
 export const IPC_VOICE_GET_RUNTIME_STATE = "voice:getRuntimeState" as const;
 export const IPC_VOICE_RUNTIME_STATE = "voice:runtimeState" as const;
 export const IPC_VOICE_RTC_SET_SHORTCUT = "voice-rtc:setShortcut" as const;
+export const IPC_VOICE_RTC_GET_SHORTCUT = "voice-rtc:getShortcut" as const;
 
 // ── Dictation ───────────────────────────────────────────────────────────────
 
@@ -182,6 +183,10 @@ export const IPC_PREFERENCES_GET_RADIAL_TRIGGER =
   "preferences:getRadialTrigger" as const;
 export const IPC_PREFERENCES_SET_RADIAL_TRIGGER =
   "preferences:setRadialTrigger" as const;
+export const IPC_PREFERENCES_GET_MINI_DOUBLE_TAP =
+  "preferences:getMiniDoubleTap" as const;
+export const IPC_PREFERENCES_SET_MINI_DOUBLE_TAP =
+  "preferences:setMiniDoubleTap" as const;
 export const IPC_BACKUP_GET_STATUS = "backup:getStatus" as const;
 export const IPC_BACKUP_RUN_NOW = "backup:runNow" as const;
 export const IPC_BACKUP_LIST = "backup:list" as const;

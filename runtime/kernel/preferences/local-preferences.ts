@@ -13,6 +13,11 @@ import {
   normalizeRadialTriggerCode,
   type RadialTriggerCode,
 } from "../../../desktop/src/shared/lib/radial-trigger.js";
+import {
+  DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
+  normalizeMiniDoubleTapModifier,
+  type MiniDoubleTapModifier,
+} from "../../../desktop/src/shared/lib/mini-double-tap.js";
 
 type AgentEngine = "default" | "claude_code_local";
 
@@ -41,6 +46,10 @@ export type LocalPreferences = {
   radialTriggerKey: RadialTriggerCode;
   /** Global accelerator used for OS-wide and in-app dictation. Empty disables it. */
   dictationShortcut: string;
+  /** Global accelerator used to open the voice agent. Empty disables it. */
+  voiceRtcShortcut: string;
+  /** Modifier key double-tap used to toggle the mini window. Off disables it. */
+  miniDoubleTapModifier: MiniDoubleTapModifier;
 };
 
 export type LocalModelPreferencesSnapshot = Pick<
@@ -68,6 +77,8 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   syncMode: "off",
   radialTriggerKey: DEFAULT_RADIAL_TRIGGER_CODE,
   dictationShortcut: "Control+M",
+  voiceRtcShortcut: "CommandOrControl+Shift+D",
+  miniDoubleTapModifier: DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
 };
 
 let _cached: LocalPreferences | null = null;
@@ -109,6 +120,13 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         typeof parsed.dictationShortcut === "string"
           ? parsed.dictationShortcut
           : DEFAULT_PREFERENCES.dictationShortcut,
+      voiceRtcShortcut:
+        typeof parsed.voiceRtcShortcut === "string"
+          ? parsed.voiceRtcShortcut
+          : DEFAULT_PREFERENCES.voiceRtcShortcut,
+      miniDoubleTapModifier: normalizeMiniDoubleTapModifier(
+        parsed.miniDoubleTapModifier,
+      ),
     };
     _cached = prefs;
     _cachedMtime = stat.mtimeMs;

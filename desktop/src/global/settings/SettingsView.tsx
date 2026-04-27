@@ -47,6 +47,16 @@ import { AudioTab } from "@/global/settings/AudioTab";
 import { SettingsPanel } from "@/global/settings/SettingsPanel";
 import { SETTINGS_TABS, type SettingsTab } from "@/global/settings/settings-tabs";
 import {
+  getRadialTriggerLabel,
+  getRadialTriggerOptions,
+  type RadialTriggerCode,
+} from "@/shared/lib/radial-trigger";
+import {
+  getMiniDoubleTapModifierLabel,
+  MINI_DOUBLE_TAP_MODIFIER_OPTIONS,
+  type MiniDoubleTapModifier,
+} from "@/shared/lib/mini-double-tap";
+import {
   useDesktopPermissions,
   type DesktopPermissionStatus,
 } from "@/global/permissions/use-desktop-permissions";
@@ -273,6 +283,314 @@ function keyboardEventToAccelerator(event: KeyboardEvent): string | null {
 // General Settings Sections
 // ---------------------------------------------------------------------------
 
+type ShortcutAction = "dictation" | "voice";
+
+const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
+  dictation: "Dictation",
+  voice: "Voice agent",
+};
+
+function ShortcutsSettingsTab() {
+  const platform = window.electronAPI?.platform;
+  const radialOptions = useMemo(() => getRadialTriggerOptions(platform), [
+    platform,
+  ]);
+  const [shortcuts, setShortcuts] = useState<Record<ShortcutAction, string>>({
+    dictation: "Control+M",
+    voice: "CommandOrControl+Shift+D",
+  });
+  const [radialTriggerKey, setRadialTriggerKey] =
+    useState<RadialTriggerCode>("SystemChord");
+  const [miniDoubleTapModifier, setMiniDoubleTapModifier] =
+    useState<MiniDoubleTapModifier>("Alt");
+  const [loaded, setLoaded] = useState(false);
+  const [savingShortcut, setSavingShortcut] = useState<ShortcutAction | null>(
+    null,
+  );
+  const [capturingShortcut, setCapturingShortcut] =
+    useState<ShortcutAction | null>(null);
+  const [shortcutError, setShortcutError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [dictationShortcut, voiceShortcut, radialKey, miniModifier] =
+          await Promise.all([
+            window.electronAPI?.dictation?.getShortcut?.() ??
+              Promise.resolve("Control+M"),
+            window.electronAPI?.voice?.getRtcShortcut?.() ??
+              Promise.resolve("CommandOrControl+Shift+D"),
+            window.electronAPI?.system?.getRadialTriggerKey?.() ??
+              Promise.resolve("SystemChord" as RadialTriggerCode),
+            window.electronAPI?.system?.getMiniDoubleTapModifier?.() ??
+              Promise.resolve("Alt" as MiniDoubleTapModifier),
+          ]);
+        if (cancelled) return;
+        setShortcuts({
+          dictation: dictationShortcut,
+          voice: voiceShortcut,
+        });
+        setRadialTriggerKey(radialKey);
+        setMiniDoubleTapModifier(miniModifier);
+        setShortcutError(null);
+      } catch (error) {
+        if (!cancelled) {
+          setShortcutError(
+            getSettingsErrorMessage(error, "Failed to load shortcuts."),
+          );
+        }
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const saveShortcut = useCallback(
+    async (action: ShortcutAction, shortcut: string) => {
+      const setShortcut =
+        action === "dictation"
+          ? window.electronAPI?.dictation?.setShortcut
+          : window.electronAPI?.voice?.setRtcShortcut;
+      if (!setShortcut) {
+        setShortcutError("Shortcuts are unavailable in this window.");
+        return;
+      }
+
+      setSavingShortcut(action);
+      setShortcutError(null);
+      try {
+        const result = await setShortcut(shortcut);
+        setShortcuts((current) => ({
+          ...current,
+          [action]: result.activeShortcut,
+        }));
+        if (!result.ok) {
+          const message = result.error ?? "That shortcut is unavailable.";
+          setShortcutError(message);
+          showToast({
+            title: "Shortcut unavailable",
+            description: message,
+            variant: "error",
+          });
+          return;
+        }
+        showToast({
+          title: shortcut
+            ? `${SHORTCUT_LABELS[action]} shortcut updated`
+            : `${SHORTCUT_LABELS[action]} shortcut cleared`,
+          description: shortcut
+            ? `Press ${formatShortcutForDisplay(shortcut).join(" + ")} to start ${action === "dictation" ? "dictation" : "the voice agent"}.`
+            : `${SHORTCUT_LABELS[action]} is disabled until you set a new shortcut.`,
+        });
+      } catch (error) {
+        const message = getSettingsErrorMessage(
+          error,
+          "Failed to update shortcut.",
+        );
+        setShortcutError(message);
+        showToast({
+          title: "Shortcut update failed",
+          description: message,
+          variant: "error",
+        });
+      } finally {
+        setSavingShortcut(null);
+        setCapturingShortcut(null);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!capturingShortcut) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (event.key === "Escape") {
+        setCapturingShortcut(null);
+        return;
+      }
+
+      const accelerator = keyboardEventToAccelerator(event);
+      if (!accelerator) return;
+      void saveShortcut(capturingShortcut, accelerator);
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [capturingShortcut, saveShortcut]);
+
+  const saveRadialTrigger = useCallback(async (triggerKey: RadialTriggerCode) => {
+    const api = window.electronAPI?.system;
+    if (!api?.setRadialTriggerKey) return;
+    setShortcutError(null);
+    try {
+      const result = await api.setRadialTriggerKey(triggerKey);
+      setRadialTriggerKey(result.triggerKey);
+      showToast({
+        title: "Radial dial shortcut updated",
+        description: `Hold ${getRadialTriggerLabel(result.triggerKey, platform)} to open the radial dial.`,
+      });
+    } catch (error) {
+      setShortcutError(
+        getSettingsErrorMessage(error, "Failed to update radial dial shortcut."),
+      );
+    }
+  }, [platform]);
+
+  const saveMiniDoubleTap = useCallback(
+    async (modifier: MiniDoubleTapModifier) => {
+      const api = window.electronAPI?.system;
+      if (!api?.setMiniDoubleTapModifier) return;
+      setShortcutError(null);
+      try {
+        const result = await api.setMiniDoubleTapModifier(modifier);
+        setMiniDoubleTapModifier(result.modifier);
+        showToast({
+          title: "Mini window shortcut updated",
+          description:
+            result.modifier === "Off"
+              ? "Double-tap is disabled."
+              : `Double-tap ${getMiniDoubleTapModifierLabel(result.modifier, platform)} to open the mini window.`,
+        });
+      } catch (error) {
+        setShortcutError(
+          getSettingsErrorMessage(error, "Failed to update mini window shortcut."),
+        );
+      }
+    },
+    [platform],
+  );
+
+  const renderShortcutRow = (
+    action: ShortcutAction,
+    description: string,
+  ) => (
+    <div className="settings-row">
+      <div className="settings-row-info">
+        <div className="settings-row-label">{SHORTCUT_LABELS[action]}</div>
+        <div className="settings-row-sublabel">{description}</div>
+      </div>
+      <div className="settings-row-control">
+        <Keybind keys={formatShortcutForDisplay(shortcuts[action])} />
+        <Button
+          type="button"
+          variant="ghost"
+          className="settings-btn"
+          disabled={
+            !loaded ||
+            savingShortcut !== null ||
+            capturingShortcut !== null
+          }
+          onClick={() => setCapturingShortcut(action)}
+        >
+          {capturingShortcut === action ? "Press keys..." : "Change"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="settings-btn"
+          disabled={
+            !loaded ||
+            savingShortcut !== null ||
+            capturingShortcut !== null ||
+            !shortcuts[action]
+          }
+          onClick={() => void saveShortcut(action, "")}
+        >
+          Clear
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="settings-tab-content">
+      <div className="settings-card">
+        <h3 className="settings-card-title">Shortcuts</h3>
+        <p className="settings-card-desc">
+          Change how Stella opens, listens, and starts voice.
+        </p>
+        {shortcutError ? (
+          <p
+            className="settings-card-desc settings-card-desc--error"
+            role="alert"
+          >
+            {shortcutError}
+          </p>
+        ) : null}
+        {renderShortcutRow(
+          "dictation",
+          "Starts in the active Stella composer, or opens OS-wide dictation when another app is focused.",
+        )}
+        {renderShortcutRow(
+          "voice",
+          "Starts or stops Stella's live voice agent.",
+        )}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Radial dial</div>
+            <div className="settings-row-sublabel">
+              Opens the wedge menu for capture, chat, voice, and quick actions.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <NativeSelect
+              className="settings-runtime-select"
+              value={radialTriggerKey}
+              disabled={!loaded}
+              aria-label="Radial dial shortcut"
+              onChange={(event) =>
+                void saveRadialTrigger(event.target.value as RadialTriggerCode)
+              }
+            >
+              {radialOptions.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Mini window</div>
+            <div className="settings-row-sublabel">
+              Double-tap a modifier key to open or dismiss the mini chat.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <NativeSelect
+              className="settings-runtime-select"
+              value={miniDoubleTapModifier}
+              disabled={!loaded}
+              aria-label="Mini window shortcut"
+              onChange={(event) =>
+                void saveMiniDoubleTap(
+                  event.target.value as MiniDoubleTapModifier,
+                )
+              }
+            >
+              {MINI_DOUBLE_TAP_MODIFIER_OPTIONS.map((modifier) => (
+                <option key={modifier} value={modifier}>
+                  {getMiniDoubleTapModifierLabel(modifier, platform)}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BasicSettingsTab() {
   const platform = window.electronAPI?.platform;
   const initialPermissionStatus = useMemo<DesktopPermissionStatus>(
@@ -306,51 +624,6 @@ function BasicSettingsTab() {
     restartKinds: SETTINGS_PERMISSION_RESTART_KINDS,
     errorMessage: formatPermissionLoadError,
   });
-  const [dictationShortcut, setDictationShortcut] = useState("Control+M");
-  const [dictationShortcutLoaded, setDictationShortcutLoaded] = useState(false);
-  const [isCapturingDictationShortcut, setIsCapturingDictationShortcut] =
-    useState(false);
-  const [isSavingDictationShortcut, setIsSavingDictationShortcut] =
-    useState(false);
-  const [dictationShortcutError, setDictationShortcutError] = useState<
-    string | null
-  >(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const dictationApi = window.electronAPI?.dictation;
-    if (!dictationApi?.getShortcut) {
-      setDictationShortcutLoaded(true);
-      return;
-    }
-    void dictationApi
-      .getShortcut()
-      .then((shortcut) => {
-        if (!cancelled) {
-          setDictationShortcut(shortcut);
-          setDictationShortcutError(null);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setDictationShortcutError(
-            getSettingsErrorMessage(
-              error,
-              "Failed to load dictation shortcut.",
-            ),
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setDictationShortcutLoaded(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const handlePermissionEnable = useCallback(
     async (kind: "accessibility" | "screen") => {
@@ -377,133 +650,8 @@ function BasicSettingsTab() {
     }
   }, [restartAfterPermissionChange, setPermissionsError]);
 
-  const saveDictationShortcut = useCallback(async (shortcut: string) => {
-    const dictationApi = window.electronAPI?.dictation;
-    if (!dictationApi?.setShortcut) {
-      setDictationShortcutError("Dictation shortcuts are unavailable in this window.");
-      return;
-    }
-
-    setIsSavingDictationShortcut(true);
-    setDictationShortcutError(null);
-    try {
-      const result = await dictationApi.setShortcut(shortcut);
-      setDictationShortcut(result.activeShortcut);
-      if (!result.ok) {
-        setDictationShortcutError(result.error ?? "That shortcut is unavailable.");
-        showToast({
-          title: "Shortcut unavailable",
-          description: result.error ?? "That shortcut is already in use.",
-          variant: "error",
-        });
-        return;
-      }
-      showToast({
-        title: shortcut ? "Dictation shortcut updated" : "Dictation shortcut cleared",
-        description: shortcut
-          ? `Press ${formatShortcutForDisplay(shortcut).join(" + ")} to start dictation.`
-          : "Global dictation is disabled until you set a new shortcut.",
-      });
-    } catch (error) {
-      const message = getSettingsErrorMessage(
-        error,
-        "Failed to update dictation shortcut.",
-      );
-      setDictationShortcutError(message);
-      showToast({
-        title: "Shortcut update failed",
-        description: message,
-        variant: "error",
-      });
-    } finally {
-      setIsSavingDictationShortcut(false);
-      setIsCapturingDictationShortcut(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isCapturingDictationShortcut) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (event.key === "Escape") {
-        setIsCapturingDictationShortcut(false);
-        return;
-      }
-
-      const accelerator = keyboardEventToAccelerator(event);
-      if (!accelerator) return;
-      void saveDictationShortcut(accelerator);
-    };
-
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [isCapturingDictationShortcut, saveDictationShortcut]);
-
   return (
     <div className="settings-tab-content">
-      <div className="settings-card">
-        <h3 className="settings-card-title">Shortcuts</h3>
-        <p className="settings-card-desc">
-          {platform === "darwin"
-            ? "Hold ⌘ and right-click anywhere on your screen to open Stella."
-            : "Hold Ctrl and right-click anywhere on your screen to open Stella."}
-        </p>
-        <p className="settings-card-desc">
-          {platform === "darwin"
-            ? "Or tap ⌥ Option twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."
-            : "Or tap Alt twice — fast — to summon the mini window from anywhere. Tap it twice again to tuck it away."}
-        </p>
-        {dictationShortcutError ? (
-          <p
-            className="settings-card-desc settings-card-desc--error"
-            role="alert"
-          >
-            {dictationShortcutError}
-          </p>
-        ) : null}
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">Dictation</div>
-            <div className="settings-row-sublabel">
-              Starts in the active Stella composer, or opens OS-wide dictation
-              when another app is focused.
-            </div>
-          </div>
-          <div className="settings-row-control">
-            <Keybind keys={formatShortcutForDisplay(dictationShortcut)} />
-            <Button
-              type="button"
-              variant="ghost"
-              className="settings-btn"
-              disabled={
-                !dictationShortcutLoaded ||
-                isSavingDictationShortcut ||
-                isCapturingDictationShortcut
-              }
-              onClick={() => setIsCapturingDictationShortcut(true)}
-            >
-              {isCapturingDictationShortcut ? "Press keys..." : "Change"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="settings-btn"
-              disabled={
-                !dictationShortcutLoaded ||
-                isSavingDictationShortcut ||
-                isCapturingDictationShortcut ||
-                !dictationShortcut
-              }
-              onClick={() => void saveDictationShortcut("")}
-            >
-              Clear
-            </Button>
-          </div>
-        </div>
-      </div>
       {platform === "darwin" ? (
         <div className="settings-card">
           <h3 className="settings-card-title">Permissions</h3>
@@ -2616,6 +2764,8 @@ export const SettingsScreen = ({
           <SettingsPanel>
             {activeTab === "basic" ? (
               <BasicSettingsTab />
+            ) : activeTab === "shortcuts" ? (
+              <ShortcutsSettingsTab />
             ) : activeTab === "memory" ? (
               <div className="settings-tab-content">
                 <ChronicleSettingsCard />

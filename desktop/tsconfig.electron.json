@@ -19,6 +19,7 @@
     "src/shared/contracts/**/*",
     "src/shared/ai/**/*",
     "src/shared/lib/convex-urls.ts",
+    "src/shared/lib/mini-double-tap.ts",
     "src/shared/lib/radial-trigger.ts",
     "src/shared/stella-api.ts",
     "src/convex/api.ts",

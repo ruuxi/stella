@@ -4,13 +4,28 @@ import {
   isRadialTriggerPressed,
   type RadialTriggerCode,
 } from '../../src/shared/lib/radial-trigger.js'
+import {
+  DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
+  type MiniDoubleTapModifier,
+} from '../../src/shared/lib/mini-double-tap.js'
 
 // uIOhook keycodes for the Option/Alt key (left + right). On macOS this is
 // the Option key; on Windows/Linux it is the Alt key. Mapped from
 // `UiohookKey.Alt` (56) and `UiohookKey.AltRight` (3640).
 const LEFT_ALT = 56
 const RIGHT_ALT = 3640
-const ALT_KEYS: ReadonlySet<number> = new Set([LEFT_ALT, RIGHT_ALT])
+const LEFT_META = 3675
+const RIGHT_META = 3676
+const LEFT_CONTROL = 29
+const RIGHT_CONTROL = 3613
+const LEFT_SHIFT = 42
+const RIGHT_SHIFT = 54
+const MODIFIER_KEYCODES: Record<Exclude<MiniDoubleTapModifier, 'Off'>, ReadonlySet<number>> = {
+  Alt: new Set([LEFT_ALT, RIGHT_ALT]),
+  Control: new Set([LEFT_CONTROL, RIGHT_CONTROL]),
+  Command: new Set([LEFT_META, RIGHT_META]),
+  Shift: new Set([LEFT_SHIFT, RIGHT_SHIFT]),
+}
 
 const LEFT_MOUSE_BUTTON = 1
 
@@ -74,13 +89,26 @@ type MouseHookEvents = {
  * `DOUBLE_TAP_WINDOW_MS`" — any other key pressed in between cancels the
  * sequence so we don't false-trigger while typing.
  */
-class DoubleTapAltDetector {
+class DoubleTapModifierDetector {
   private state: 'idle' | 'first-down' | 'first-up' = 'idle'
   private firstTapUpAt = 0
 
-  constructor(private readonly fire: () => void) {}
+  constructor(
+    private modifier: MiniDoubleTapModifier,
+    private readonly fire: () => void,
+  ) {}
 
-  notifyAltKeydown(now: number) {
+  setModifier(modifier: MiniDoubleTapModifier) {
+    this.modifier = modifier
+    this.reset()
+  }
+
+  isModifierKey(keycode: number) {
+    if (this.modifier === 'Off') return false
+    return MODIFIER_KEYCODES[this.modifier]?.has(keycode) ?? false
+  }
+
+  notifyModifierKeydown(now: number) {
     if (this.state === 'first-up') {
       if (now - this.firstTapUpAt <= DOUBLE_TAP_WINDOW_MS) {
         this.reset()
@@ -91,7 +119,7 @@ class DoubleTapAltDetector {
     this.state = 'first-down'
   }
 
-  notifyAltKeyup(now: number) {
+  notifyModifierKeyup(now: number) {
     if (this.state === 'first-down') {
       this.state = 'first-up'
       this.firstTapUpAt = now
@@ -131,17 +159,18 @@ export class MouseHookManager {
   private pressedKeycodes = new Set<number>()
   private radialActive = false
   private radialTriggerKey: RadialTriggerCode
-  private readonly doubleTapDetector: DoubleTapAltDetector | null
+  private readonly doubleTapDetector: DoubleTapModifierDetector | null
   private lastLeftDownPoint: { x: number; y: number } | null = null
 
   constructor(
     events: MouseHookEvents,
     radialTriggerKey: RadialTriggerCode = DEFAULT_RADIAL_TRIGGER_CODE,
+    miniDoubleTapModifier: MiniDoubleTapModifier = DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
   ) {
     this.events = events
     this.radialTriggerKey = radialTriggerKey
     this.doubleTapDetector = events.onDoubleTapModifier
-      ? new DoubleTapAltDetector(events.onDoubleTapModifier)
+      ? new DoubleTapModifierDetector(miniDoubleTapModifier, events.onDoubleTapModifier)
       : null
   }
 
@@ -185,6 +214,10 @@ export class MouseHookManager {
     this.radialTriggerKey = radialTriggerKey
   }
 
+  setMiniDoubleTapModifier(modifier: MiniDoubleTapModifier) {
+    this.doubleTapDetector?.setModifier(modifier)
+  }
+
   isRadialActive() {
     return this.radialActive
   }
@@ -226,8 +259,8 @@ export class MouseHookManager {
     // Suppress auto-repeat (the OS resends keydown while a key is held).
     if (wasAlreadyDown) return
 
-    if (ALT_KEYS.has(event.keycode)) {
-      this.doubleTapDetector.notifyAltKeydown(Date.now())
+    if (this.doubleTapDetector.isModifierKey(event.keycode)) {
+      this.doubleTapDetector.notifyModifierKeydown(Date.now())
     } else {
       // Any other key pressed during the gesture cancels it — the user is
       // clearly typing/triggering something else, not double-tapping Option.
@@ -245,8 +278,8 @@ export class MouseHookManager {
     }
 
     if (!this.doubleTapDetector) return
-    if (ALT_KEYS.has(event.keycode)) {
-      this.doubleTapDetector.notifyAltKeyup(Date.now())
+    if (this.doubleTapDetector.isModifierKey(event.keycode)) {
+      this.doubleTapDetector.notifyModifierKeyup(Date.now())
     }
   }
 

@@ -4,6 +4,7 @@ import { MouseHookManager, type LeftMouseUpEvent } from '../input/mouse-hook.js'
 import { calculateSelectedWedge, type RadialWedge } from '../radial-wedge.js'
 import type { ChatContext } from '../../src/shared/contracts/boundary.js'
 import type { RadialTriggerCode } from '../../src/shared/lib/radial-trigger.js'
+import type { MiniDoubleTapModifier } from '../../src/shared/lib/mini-double-tap.js'
 
 const RADIAL_CONTEXT_CAPTURE_DELAY_MS = 180
 
@@ -48,6 +49,7 @@ export type RadialWindowBridge = {
 
 type RadialGestureDeps = {
   getRadialTriggerKey: () => RadialTriggerCode
+  getMiniDoubleTapModifier: () => MiniDoubleTapModifier
   shouldEnable: () => boolean
   capture: RadialCaptureBridge
   overlay: RadialOverlayBridge
@@ -76,12 +78,14 @@ export class RadialGestureService {
   private startedInCompactMode = false
   private contextBeforeGesture: ChatContext | null = null
   private radialTriggerKey: RadialTriggerCode
+  private miniDoubleTapModifier: MiniDoubleTapModifier
   private readonly deps: RadialGestureDeps
   private scheduledRadialCaptureTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(deps: RadialGestureDeps) {
     this.deps = deps
     this.radialTriggerKey = deps.getRadialTriggerKey()
+    this.miniDoubleTapModifier = deps.getMiniDoubleTapModifier()
   }
 
   private clearScheduledRadialCapture() {
@@ -212,9 +216,11 @@ export class RadialGestureService {
 
     const { capture, overlay, window: win } = this.deps
     this.radialTriggerKey = this.deps.getRadialTriggerKey()
+    this.miniDoubleTapModifier = this.deps.getMiniDoubleTapModifier()
 
     if (this.mouseHook) {
       this.mouseHook.setRadialTriggerKey(this.radialTriggerKey)
+      this.mouseHook.setMiniDoubleTapModifier(this.miniDoubleTapModifier)
       // Retry hook startup after macOS Accessibility changes land. uIOhook can
       // fail once while TCC is still updating, and we do not want to require a
       // full app restart before the radial works again.
@@ -291,7 +297,7 @@ export class RadialGestureService {
             this.deps.onLeftMouseUp?.(event)
           }
         : undefined,
-    }, this.radialTriggerKey)
+    }, this.radialTriggerKey, this.miniDoubleTapModifier)
 
     this.mouseHook.start()
   }
@@ -312,5 +318,10 @@ export class RadialGestureService {
   setRadialTriggerKey(radialTriggerKey: RadialTriggerCode) {
     this.radialTriggerKey = radialTriggerKey
     this.mouseHook?.setRadialTriggerKey(radialTriggerKey)
+  }
+
+  setMiniDoubleTapModifier(modifier: MiniDoubleTapModifier) {
+    this.miniDoubleTapModifier = modifier
+    this.mouseHook?.setMiniDoubleTapModifier(modifier)
   }
 }

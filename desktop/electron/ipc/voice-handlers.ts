@@ -6,6 +6,10 @@ import type { OverlayWindowController } from "../windows/overlay-window.js";
 import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 import { applyShortcutRegistration } from "./shortcut-registration.js";
 import type { VoiceRuntimeSnapshot } from "../../../runtime/contracts/index.js";
+import {
+  loadLocalPreferences,
+  saveLocalPreferences,
+} from "../../../runtime/kernel/preferences/local-preferences.js";
 
 type VoiceHandlersOptions = {
   uiState: UiState;
@@ -16,7 +20,10 @@ type VoiceHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
   getOverlayController?: () => OverlayWindowController | null;
+  getStellaRoot?: () => string | null;
 };
+
+const DEFAULT_VOICE_RTC_SHORTCUT = "CommandOrControl+Shift+D";
 
 const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
   sessionState: "idle",
@@ -75,9 +82,23 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     options.broadcastUiState();
   };
 
+  const loadConfiguredShortcut = () => {
+    const stellaRoot = options.getStellaRoot?.();
+    if (!stellaRoot) return DEFAULT_VOICE_RTC_SHORTCUT;
+    return loadLocalPreferences(stellaRoot).voiceRtcShortcut;
+  };
+
+  const saveConfiguredShortcut = (shortcut: string) => {
+    const stellaRoot = options.getStellaRoot?.();
+    if (!stellaRoot) return;
+    const prefs = loadLocalPreferences(stellaRoot);
+    prefs.voiceRtcShortcut = shortcut;
+    saveLocalPreferences(stellaRoot, prefs);
+  };
+
   const initialVoiceRtcShortcut = applyShortcutRegistration({
     label: "Voice realtime",
-    requestedShortcut: "CommandOrControl+Shift+D",
+    requestedShortcut: loadConfiguredShortcut(),
     currentShortcut: currentVoiceRtcShortcut,
     callback: toggleVoiceRtc,
   });
@@ -96,9 +117,13 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     currentVoiceRtcShortcut = result.activeShortcut;
     if (!result.ok) {
       console.warn("[voice]", result.error);
+    } else {
+      saveConfiguredShortcut(result.activeShortcut);
     }
     return result;
   });
+
+  ipcMain.handle("voice-rtc:getShortcut", () => currentVoiceRtcShortcut);
 
   ipcMain.on(
     "voice:persistTranscript",
