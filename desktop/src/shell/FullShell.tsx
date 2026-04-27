@@ -71,6 +71,8 @@ export const FullShell = () => {
   const [demoClosing, setDemoClosing] = useState(false);
   const [onboardingDemoMorphing, setOnboardingDemoMorphing] = useState(false);
   const [stellaHiddenByPhase, setStellaHiddenByPhase] = useState(false);
+  const [onboardingPhase, setOnboardingPhase] =
+    useState<OnboardingPhase>("intro");
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDemoRef = useRef<OnboardingDemo>(null);
   const fogDefsRef = useRef<SVGSVGElement | null>(null);
@@ -141,6 +143,7 @@ export const FullShell = () => {
   }, []);
 
   const handleOnboardingPhaseChange = useCallback((phase: OnboardingPhase) => {
+    setOnboardingPhase(phase);
     const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
     setStellaHiddenByPhase(
       CREATION_PHASE_INDEX >= 0 && splitIndex >= CREATION_PHASE_INDEX,
@@ -190,6 +193,7 @@ export const FullShell = () => {
       data-onboarding-exiting={
         !appReady && onboarding.onboardingExiting ? "true" : undefined
       }
+      data-onboarding-phase={!appReady ? onboardingPhase : undefined}
     >
       {!appReady ? (
         <svg
