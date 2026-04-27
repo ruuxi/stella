@@ -37,9 +37,9 @@ export class FullWindowController {
           // normal use. On macOS we keep the traffic lights via
           // `titleBarStyle: 'hidden'`, which is compatible with `frame: false`
           // and `transparent: true`.
-          frame: false,
-          transparent: true,
-          backgroundColor: '#00000000',
+          frame: !isMac,
+          transparent: isMac,
+          backgroundColor: isMac ? '#00000000' : '#101016',
           hasShadow: true,
           titleBarStyle: isMac ? 'hidden' : undefined,
           trafficLightPosition: isMac ? { x: 16, y: 13 } : undefined,

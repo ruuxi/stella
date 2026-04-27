@@ -23,7 +23,6 @@ import {
   useDisplayTabs,
 } from "./display/tab-store";
 import { payloadToTabSpec } from "./display/payload-to-tab-spec";
-import { DisplayTabBar } from "./display/DisplayTabBar";
 import "./display-sidebar.css";
 
 export interface DisplaySidebarHandle {
@@ -87,7 +86,7 @@ export const DisplaySidebar = forwardRef<
   DisplaySidebarHandle,
   DisplaySidebarProps
 >(function DisplaySidebar({ onOpenChange }, ref) {
-  const { panelOpen, panelExpanded, panelWidth, tabs } = useDisplayTabs();
+  const { panelOpen, panelExpanded, panelWidth } = useDisplayTabs();
   const activeTab = useActiveDisplayTab();
   const asideRef = useRef<HTMLElement | null>(null);
 
@@ -246,8 +245,6 @@ export const DisplaySidebar = forwardRef<
         />
       )}
       <div className="display-sidebar-inner">
-        {tabs.length > 0 && <DisplayTabBar />}
-
         <div className="display-sidebar__active">
           {panelOpen && activeTab ? (
             <DeferredDisplayContent

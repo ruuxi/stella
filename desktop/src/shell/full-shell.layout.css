@@ -301,7 +301,7 @@
   z-index: 75;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   color: var(--text-base);
   background: transparent;
   -webkit-app-region: drag;
@@ -312,6 +312,7 @@
 .shell-topbar-left {
   width: var(--shell-topbar-left-width);
   min-width: var(--shell-topbar-left-width);
+  flex-shrink: 0;
   height: 100%;
   display: flex;
   align-items: center;
@@ -435,12 +436,48 @@
   -webkit-app-region: no-drag;
 }
 
+.shell-topbar-tabs {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.shell-topbar-tabs .display-sidebar__tabbar {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.shell-topbar-tabs .display-sidebar__tab {
+  min-height: 28px;
+  max-width: 220px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 3px 5px 3px 8px;
+}
+
+.shell-topbar-tabs .display-sidebar__tab--active {
+  border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+  background: transparent;
+}
+
+.shell-topbar-tabs .display-sidebar__tab-title {
+  max-width: 145px;
+}
+
 .shell-topbar-right {
   height: 100%;
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
+  flex-shrink: 0;
   padding-right: 8px;
   -webkit-app-region: no-drag;
 }
@@ -905,6 +942,10 @@
   }
 
   .shell-topbar-history-btn {
+    display: none;
+  }
+
+  .shell-topbar-tabs {
     display: none;
   }
 
