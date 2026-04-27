@@ -6,7 +6,7 @@ import {
   useEffect,
   useMemo,
 } from "react";
-import { useAction } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { PageSidebar } from "@/context/page-sidebar";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
@@ -606,6 +606,11 @@ function BasicSettingsTab() {
 
 function BackupSettingsTab() {
   const { hasConnectedAccount } = useAuthSessionState();
+  const [billingNowMs] = useState(() => Date.now());
+  const billingStatus = useQuery(api.billing.getSubscriptionStatus, {
+    now: billingNowMs,
+  });
+  const setRemoteSyncMode = useMutation(api.data.preferences.setSyncMode);
   const [syncMode, setSyncMode] = useState<"on" | "off">("off");
   const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot | null>(
     null,
@@ -618,6 +623,9 @@ function BackupSettingsTab() {
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(
     null,
   );
+  const isBillingStatusLoading = hasConnectedAccount && billingStatus === undefined;
+  const isBackupUpgradeRequired =
+    hasConnectedAccount && billingStatus !== undefined && billingStatus.plan === "free";
 
   const loadBackupState = useCallback(async () => {
     const systemApi = window.electronAPI?.system;
@@ -681,10 +689,25 @@ function BackupSettingsTab() {
         setBackupError("Backup settings are unavailable in this window.");
         return;
       }
+      if (nextMode === "on" && !hasConnectedAccount) {
+        setBackupError("Sign in and choose a Stella plan to turn on backups.");
+        return;
+      }
+      if (nextMode === "on" && isBillingStatusLoading) {
+        setBackupError("Checking your Stella plan before turning on backups.");
+        return;
+      }
+      if (nextMode === "on" && isBackupUpgradeRequired) {
+        setBackupError("Backups require an active Stella subscription.");
+        return;
+      }
       setBackupError(null);
       setSyncMode(nextMode);
       setIsSavingSyncMode(true);
       try {
+        if (hasConnectedAccount) {
+          await setRemoteSyncMode({ mode: nextMode });
+        }
         await systemApi.setLocalSyncMode(nextMode);
         await loadBackupState();
       } catch (error) {
@@ -696,7 +719,15 @@ function BackupSettingsTab() {
         setIsSavingSyncMode(false);
       }
     },
-    [isSavingSyncMode, loadBackupState, syncMode],
+    [
+      hasConnectedAccount,
+      isBackupUpgradeRequired,
+      isBillingStatusLoading,
+      isSavingSyncMode,
+      loadBackupState,
+      setRemoteSyncMode,
+      syncMode,
+    ],
   );
 
   const handleBackupNow = useCallback(async () => {
@@ -781,6 +812,11 @@ function BackupSettingsTab() {
             {backupError}
           </p>
         ) : null}
+        {isBackupUpgradeRequired ? (
+          <p className="settings-card-desc">
+            Backups are included with any paid Stella plan.
+          </p>
+        ) : null}
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Automatic backups</div>
@@ -801,7 +837,7 @@ function BackupSettingsTab() {
               className="settings-runtime-select"
               value={syncMode}
               onChange={(event) => void handleSyncModeChange(event.target.value)}
-              disabled={!backupLoaded || isSavingSyncMode}
+              disabled={!backupLoaded || isSavingSyncMode || isBillingStatusLoading}
             >
               <option value="off">Off</option>
               <option value="on">Automatic hourly backups</option>

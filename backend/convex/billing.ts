@@ -771,6 +771,32 @@ export const getBillingProfileByOwner = internalQuery({
     .unique(),
 });
 
+export const assertPaidSubscriptionForOwner = internalQuery({
+  args: {
+    ownerId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const profile = await ctx.db
+      .query("billing_profiles")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
+      .unique();
+
+    if (
+      !profile
+      || profile.activePlan === "free"
+      || !ACTIVE_SUBSCRIPTION_STATUSES.has(profile.subscriptionStatus)
+    ) {
+      throw new ConvexError({
+        code: "SUBSCRIPTION_REQUIRED",
+        message: "Backups require an active Stella subscription.",
+      });
+    }
+
+    return null;
+  },
+});
+
 export const linkStripeCustomerToOwner = internalMutation({
   args: {
     ownerId: v.string(),

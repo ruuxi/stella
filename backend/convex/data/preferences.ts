@@ -12,6 +12,11 @@ import {
  * churn more than ~one update per second.
  */
 const PREFERENCE_RATE_SCOPE = "user_preferences_set";
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set([
+  "active",
+  "trialing",
+  "past_due",
+]);
 
 const accountModeValidator = v.union(v.literal("private_local"), v.literal("connected"));
 const ACCOUNT_MODE_KEY = "account_mode";
@@ -153,6 +158,22 @@ export const setSyncMode = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     await enforceMutationRateLimit(ctx, PREFERENCE_RATE_SCOPE, ownerId, RATE_SETTINGS);
+    if (args.mode === "on") {
+      const billingProfile = await ctx.db
+        .query("billing_profiles")
+        .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+        .unique();
+      if (
+        !billingProfile
+        || billingProfile.activePlan === "free"
+        || !ACTIVE_SUBSCRIPTION_STATUSES.has(billingProfile.subscriptionStatus)
+      ) {
+        throw new ConvexError({
+          code: "SUBSCRIPTION_REQUIRED",
+          message: "Backups require an active Stella subscription.",
+        });
+      }
+    }
     await upsertPreferenceRecord(ctx, ownerId, SYNC_MODE_KEY, args.mode);
     return args.mode;
   },
