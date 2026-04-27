@@ -26,6 +26,8 @@ const REQUEST_TIMEOUT_MS = 1_500;
 // fast than block the agent.
 const TRACK_MAX_WAIT_MS = 5_000;
 const APPLY_MAX_WAIT_MS = 10_000;
+const GENERATED_ROUTE_TREE_PATH = "desktop/src/routeTree.gen.ts";
+const ROUTES_DIR_PREFIX = "desktop/src/routes/";
 
 type HmrControllerOptions = {
   getDevServerUrl: () => string;
@@ -177,6 +179,31 @@ const readSnapshotContent = (
   } catch {
     return { deleted: true };
   }
+};
+
+const expandGeneratedDependentPaths = (
+  repoRoot: string,
+  repoRelativePaths: Iterable<string>,
+): { paths: string[]; deferSnapshotPaths: Set<string> } => {
+  const expanded = new Set(repoRelativePaths);
+  const deferSnapshotPaths = new Set<string>();
+  for (const repoRelativePath of expanded) {
+    if (
+      repoRelativePath.startsWith(ROUTES_DIR_PREFIX) &&
+      repoRelativePath !== GENERATED_ROUTE_TREE_PATH
+    ) {
+      const generatedRouteTree = toSelfModRelevantKey(
+        path.resolve(repoRoot, GENERATED_ROUTE_TREE_PATH),
+        repoRoot,
+      );
+      if (generatedRouteTree) {
+        expanded.add(generatedRouteTree);
+        deferSnapshotPaths.add(generatedRouteTree);
+      }
+      break;
+    }
+  }
+  return { paths: [...expanded], deferSnapshotPaths };
 };
 
 const buildAppliedRuns = (
@@ -470,22 +497,33 @@ export const createSelfModHmrController = (
         const key = toSelfModRelevantKey(absPath, options.repoRoot);
         if (key) repoRelative.push(key);
       }
-      if (repoRelative.length === 0) return;
+      const {
+        paths: expandedRepoRelative,
+        deferSnapshotPaths,
+      } = expandGeneratedDependentPaths(
+        options.repoRoot,
+        repoRelative,
+      );
+      if (expandedRepoRelative.length === 0) return;
       if (tracker.getRunStatus(runId) !== "active") return;
       const captureSnapshot = recordOptions?.captureSnapshot !== false;
       const touchedPaths = touchedPathsByRun.get(runId);
-      const alreadyOwnedPaths = repoRelative.filter((repoRelativePath) =>
-        tracker
-          .getOwners(repoRelativePath)
-          .some((owner) => owner.runId === runId),
+      const alreadyOwnedPaths = expandedRepoRelative.filter(
+        (repoRelativePath) =>
+          tracker
+            .getOwners(repoRelativePath)
+            .some((owner) => owner.runId === runId),
       );
       if (captureSnapshot && touchedPaths) {
         for (const repoRelativePath of alreadyOwnedPaths) {
           touchedPaths.add(repoRelativePath);
+          if (deferSnapshotPaths.has(repoRelativePath)) {
+            continue;
+          }
           snapshotPathForRun(runId, repoRelativePath);
         }
       }
-      const newlyOwnedPaths = repoRelative.filter(
+      const newlyOwnedPaths = expandedRepoRelative.filter(
         (repoRelativePath) => !alreadyOwnedPaths.includes(repoRelativePath),
       );
       const viteTrackablePaths = newlyOwnedPaths.filter(isViteTrackablePath);
@@ -501,7 +539,7 @@ export const createSelfModHmrController = (
       if (touchedPaths && tracker.getRunStatus(runId) === "active") {
         for (const repoRelativePath of newlyOwnedPaths) {
           touchedPaths.add(repoRelativePath);
-          if (captureSnapshot) {
+          if (captureSnapshot && !deferSnapshotPaths.has(repoRelativePath)) {
             snapshotPathForRun(runId, repoRelativePath);
           }
         }
