@@ -6,7 +6,11 @@ import {
   shutdownClaudeCodeRuntime,
 } from "../integrations/claude-code-session-runtime.js";
 import { createRunEventRecorder } from "./run-events.js";
-import { buildRuntimeSystemPrompt, buildSubagentSystemPrompt, createUserPromptMessage } from "./run-preparation.js";
+import {
+  buildRuntimeSystemPrompt,
+  buildSubagentSystemPrompt,
+  createUserPromptMessage,
+} from "./run-preparation.js";
 import { executeRuntimeToolCall, getRuntimeToolMetadata } from "./tool-adapters.js";
 import {
   finalizeOrchestratorError,
@@ -23,7 +27,9 @@ import {
 } from "./response-target.js";
 import { now, resolveLocalCliCwd, textFromUnknown } from "./shared.js";
 import {
+  buildOrchestratorPromptMessages,
   buildRunThreadKey,
+  buildSubagentPromptMessages,
   persistAssistantReply,
   persistThreadPayloadMessage,
 } from "./thread-memory.js";
@@ -34,6 +40,7 @@ import type {
   SubagentRunOptions,
   SubagentRunResult,
 } from "./types.js";
+import type { RuntimePromptMessage } from "../../protocol/index.js";
 import {
   isLocalCliAgentId,
 } from "../../../desktop/src/shared/contracts/agent-runtime.js";
@@ -98,10 +105,40 @@ const persistUserPrompt = (opts: BaseRunOptions, threadKey: string) => {
   });
 };
 
+const formatClaudePromptMessage = (
+  message: RuntimePromptMessage,
+  index: number,
+): string => {
+  const messageType = message.messageType ?? "user";
+  const visibility = message.uiVisibility ?? "visible";
+  const customType = message.customType?.trim();
+  const attrs = [
+    `index="${index + 1}"`,
+    `type="${messageType}"`,
+    `visibility="${visibility}"`,
+    ...(customType
+      ? [`customType="${customType.replaceAll('"', "&quot;")}"`]
+      : []),
+  ].join(" ");
+  return `<message ${attrs}>\n${message.text.trim()}\n</message>`;
+};
+
+export const buildClaudePromptFromMessages = (
+  promptMessages: RuntimePromptMessage[],
+): string =>
+  [
+    "Stella is providing this turn as ordered prompt messages.",
+    'Messages with visibility="hidden" are runtime context for you only; do not quote or reveal them unless the user explicitly asks about the relevant fact.',
+    ...promptMessages.map(formatClaudePromptMessage),
+  ]
+    .filter((section) => section.trim().length > 0)
+    .join("\n\n");
+
 const runClaudeHostedTurn = async (args: {
   opts: BaseRunOptions;
   runId: string;
   systemPrompt: string;
+  promptMessages: RuntimePromptMessage[];
   callbacks?: Partial<RuntimeRunCallbacks>;
   responseTargetTracker?: ReturnType<typeof createOrchestratorResponseTargetTracker>;
 }) => {
@@ -117,6 +154,9 @@ const runClaudeHostedTurn = async (args: {
     conversationId: args.opts.conversationId,
     agentType: args.opts.agentType,
     userMessageId: args.opts.userMessageId,
+    uiVisibility: args.opts.uiVisibility,
+    getResponseTarget: () =>
+      args.responseTargetTracker?.resolve() ?? args.opts.responseTarget,
   });
   runEvents.recordRunStart();
   persistUserPrompt(args.opts, threadKey);
@@ -144,20 +184,16 @@ const runClaudeHostedTurn = async (args: {
     sessionKey,
     persistedSessionId,
     modelId: args.opts.agentContext.model ?? args.opts.resolvedLlm.model.id,
-    prompt: args.opts.userPrompt,
+    prompt: buildClaudePromptFromMessages(args.promptMessages),
     systemPrompt: args.systemPrompt,
     cwd: localCliCwd,
     attachments: args.opts.attachments,
     tools: toolMetadata,
     abortSignal: args.opts.abortSignal,
     onStatusChange: (status) => {
-      args.callbacks?.onStatus?.({
-        runId: args.runId,
-        agentType: args.opts.agentType,
-        seq: Date.now(),
-        statusState: status.state,
-        statusText: status.text,
-      });
+      args.callbacks?.onStatus?.(
+        runEvents.recordStatus(status.text, status.state),
+      );
     },
     executeTool: async (toolCallId, toolName, toolArgs, signal) => {
       args.responseTargetTracker?.noteToolStart(toolName, toolArgs);
@@ -187,6 +223,7 @@ const runClaudeHostedTurn = async (args: {
         agentType: args.opts.agentType,
         deviceId: args.opts.deviceId,
         stellaRoot: args.opts.stellaRoot,
+        toolWorkspaceRoot: args.opts.toolWorkspaceRoot,
         agentDepth: args.opts.agentContext.agentDepth ?? 0,
         maxAgentDepth: args.opts.agentContext.maxAgentDepth,
         allowedToolNames: args.opts.agentContext.toolsAllowlist,
@@ -240,7 +277,7 @@ const runClaudeHostedTurn = async (args: {
 export const runExternalOrchestratorTurn = async (
   opts: OrchestratorRunOptions,
 ): Promise<string | null> => {
-  if (!shouldUseClaudeCodeRuntime(opts) || opts.promptMessages?.length) {
+  if (!shouldUseClaudeCodeRuntime(opts)) {
     return null;
   }
 
@@ -257,10 +294,18 @@ export const runExternalOrchestratorTurn = async (
 
   try {
     const systemPrompt = await buildRuntimeSystemPrompt(opts);
+    const promptMessages = await buildOrchestratorPromptMessages({
+      context: opts.agentContext,
+      userPrompt: opts.userPrompt,
+      promptMessages: opts.promptMessages,
+      stellaHome: opts.stellaHome,
+      stellaRoot: opts.stellaRoot,
+    });
     const result = await runClaudeHostedTurn({
       opts,
       runId,
       systemPrompt,
+      promptMessages,
       callbacks: opts.callbacks,
       responseTargetTracker,
     });
@@ -319,10 +364,18 @@ export const runExternalSubagentTurn = async (
   const runId = opts.runId ?? `local:sub:${crypto.randomUUID()}`;
 
   try {
+    const promptMessages = await buildSubagentPromptMessages({
+      context: opts.agentContext,
+      userPrompt: opts.userPrompt,
+      promptMessages: opts.promptMessages,
+      stellaHome: opts.stellaHome,
+      stellaRoot: opts.stellaRoot,
+    });
     const result = await runClaudeHostedTurn({
       opts,
       runId,
       systemPrompt: buildSubagentSystemPrompt(opts),
+      promptMessages,
       callbacks: opts.callbacks,
     });
     return await finalizeSubagentSuccess({

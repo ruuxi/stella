@@ -5,6 +5,7 @@ import {
   isClaudeCodeModel,
   parseClaudeCodeDecision,
 } from "../../../../../runtime/kernel/integrations/claude-code-session-runtime.js";
+import { buildClaudePromptFromMessages } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
 
 describe("claude-code-session-runtime", () => {
   it("builds a Stella-hosted tool contract prompt", () => {
@@ -100,5 +101,32 @@ describe("claude-code-session-runtime", () => {
         subtype: "message",
       }),
     ).toBeNull();
+  });
+
+  it("preserves ordered hidden and visible prompt messages for Claude Code", () => {
+    const prompt = buildClaudePromptFromMessages([
+      {
+        text: "<system_reminder>Use the active thread.</system_reminder>",
+        messageType: "message",
+        uiVisibility: "hidden",
+        customType: "runtime.orchestrator_reminder",
+      },
+      {
+        text: "What should I do next?",
+      },
+    ]);
+
+    expect(prompt).toContain("ordered prompt messages");
+    expect(prompt).toContain('index="1"');
+    expect(prompt).toContain('type="message"');
+    expect(prompt).toContain('visibility="hidden"');
+    expect(prompt).toContain('customType="runtime.orchestrator_reminder"');
+    expect(prompt).toContain(
+      "<system_reminder>Use the active thread.</system_reminder>",
+    );
+    expect(prompt).toContain('index="2"');
+    expect(prompt).toContain('type="user"');
+    expect(prompt).toContain('visibility="visible"');
+    expect(prompt).toContain("What should I do next?");
   });
 });
