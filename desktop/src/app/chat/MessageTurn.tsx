@@ -40,7 +40,7 @@ export type TurnViewModel = {
   /**
    * Primary artifact this turn produced (or read), if any. When set the
    * UI renders an "end-resource" pill below the assistant content; click
-   * opens the matching Display sidebar tab. Mirrors Codex's per-turn
+   * opens the matching workspace panel tab. Mirrors Codex's per-turn
    * artifact card.
    */
   resourcePayload?: DisplayPayload;

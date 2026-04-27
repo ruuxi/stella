@@ -6,7 +6,7 @@
  * `DisplayPayload` the sidebar can render.
  *
  * Decoupling production from materialization is what makes "all generated
- * media auto-shows in the Display sidebar" robust: it doesn't matter who
+ * media auto-shows in the workspace panel" robust: it doesn't matter who
  * `curl`'d the managed media API — every job lives in `media_jobs` keyed by
  * `ownerId`, this hook drains the queue, and downstream UI subscribes to a
  * single payload stream.
@@ -61,7 +61,7 @@ const materializedJobs: Set<string> = new Set(loadFromStorage())
 /**
  * Mark a jobId as already-handled so the materializer skips it. Use this
  * from any UI that materializes its own jobs (e.g. MediaStudio) so we don't
- * double-download or pop the Display sidebar over the user's active surface.
+ * double-download or pop the workspace panel over the user's active surface.
  */
 export const markMediaJobMaterialized = (jobId: string): void => {
   if (materializedJobs.has(jobId)) return

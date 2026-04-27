@@ -1,5 +1,5 @@
 /**
- * Display sidebar tab manager — type definitions.
+ * workspace panel tab manager — type definitions.
  *
  * Modeled after the right-side panel in the Codex desktop app: a generic
  * tabs container where each tab carries its own viewer component, dedups by
@@ -12,9 +12,10 @@ import type { ReactNode } from "react";
  * Discriminator for the kind of content a tab is showing. Used for icons,
  * grouping, and click-handler routing. Mirrors `ArtifactTabContent`'s
  * `importKind` in Codex but keeps Stella-specific variants (html, video,
- * audio, model3d, download, text) since the Display sidebar fans out wider.
+ * audio, model3d, download, text) since the workspace panel fans out wider.
  */
 export type DisplayTabKind =
+  | "chat"
   | "html"
   | "image"
   | "pdf"

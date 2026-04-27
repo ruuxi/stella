@@ -5,10 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  forwardRef,
-  useImperativeHandle,
 } from "react";
-import { createPortal } from "react-dom";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
 import type { ChatColumnScroll } from "@/app/chat/chat-column-types";
 import { useChatScrollManagement } from "@/shell/use-chat-scroll-management";
@@ -52,12 +49,12 @@ export interface ChatSidebarOpenOptions {
   prefillText?: string;
 }
 
-export interface ChatSidebarHandle {
-  open(options?: ChatSidebarOpenOptions): void;
-  close(): void;
-}
+export type ChatPanelOpenRequest = ChatSidebarOpenOptions & {
+  id: number;
+};
 
-interface ChatSidebarProps {
+interface ChatPanelTabProps {
+  openRequest?: ChatPanelOpenRequest | null;
   events: EventRecord[];
   streamingText: string;
   reasoningText: string;
@@ -76,20 +73,11 @@ interface ChatSidebarProps {
     selectedText?: string | null,
   ) => void;
   onStop?: () => void;
-  onOpenChange?: (open: boolean) => void;
-  /**
-   * Right-click handler for the panel surface. In the mini window the
-   * chat sidebar covers the entire content area, so the root-level
-   * `StellaContextMenu` (which only wraps `.content-area`) is hidden
-   * behind it; wiring `onContextMenu` here gives the user the same
-   * right-click toggle on the visible surface.
-   */
-  onContextMenu?: (event: React.MouseEvent) => void;
 }
 
-export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
-  function ChatSidebar(
+export function ChatPanelTab(
     {
+      openRequest,
       events,
       streamingText,
       reasoningText,
@@ -104,12 +92,8 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       isInitialLoading,
       onSend,
       onStop,
-      onOpenChange,
-      onContextMenu,
-    },
-    ref,
+    }: ChatPanelTabProps,
   ) {
-    const [isOpen, setIsOpen] = useState(false);
     const [inputText, setInputText] = useState("");
     const [sidebarExpanded, setSidebarExpanded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -214,54 +198,33 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     const dictation = useDictation({
       message: inputText,
       setMessage: setInputText,
-      disabled: isStreaming || !isOpen,
+      disabled: isStreaming,
     });
 
-    useImperativeHandle(ref, () => ({
-      open(options: ChatSidebarOpenOptions = {}) {
-        if (options.chatContext !== undefined) {
-          setChatContext(options.chatContext);
-        }
-        if (typeof options.prefillText === "string") {
-          setInputText(options.prefillText);
-        }
-        setIsOpen(true);
-      },
-      close() {
-        setIsOpen(false);
-        setInputText("");
-        setChatContext(null);
-        setSelectedText(null);
-        setSidebarExpanded(false);
-      },
-    }), [setChatContext, setSelectedText]);
-
     useEffect(() => {
-      onOpenChange?.(isOpen);
-    }, [isOpen, onOpenChange]);
-
-    useEffect(() => {
-      if (isOpen && inputRef.current) {
-        inputRef.current.focus();
+      if (!openRequest) return;
+      if (openRequest.chatContext !== undefined) {
+        setChatContext(openRequest.chatContext);
       }
-    }, [isOpen]);
+      if (typeof openRequest.prefillText === "string") {
+        setInputText(openRequest.prefillText);
+      }
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }, [openRequest, setChatContext]);
 
     useEffect(() => {
-      if (!isOpen) return;
-
       const handleKeyDown = (event: KeyboardEvent) => {
         if (event.key === "Escape") {
-          setIsOpen(false);
           setInputText("");
         }
       };
 
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [isOpen]);
+    }, []);
 
     useAnimatedComposerShell({
-      active: isOpen,
+      active: true,
       shellRef,
       contentRef: shellContentRef,
       formRef,
@@ -291,15 +254,10 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       selectedText,
     });
 
-    const portalTarget =
-      document.querySelector(".full-body") ?? document.body;
-
-    return createPortal(
-      <aside
-        className={`chat-sidebar${isOpen ? " chat-sidebar--open" : ""}`}
-        aria-hidden={!isOpen}
+    return (
+      <div
+        className="chat-panel-tab"
         {...dropHandlers}
-        {...(onContextMenu ? { onContextMenu } : {})}
       >
         <div className="chat-sidebar-inner">
           <DropOverlay visible={isDragOver} variant="sidebar" />
@@ -444,8 +402,6 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
             onClose={() => setPreviewScreenshotIndex(null)}
           />
         )}
-      </aside>,
-      portalTarget,
+      </div>
     );
-  },
-);
+}

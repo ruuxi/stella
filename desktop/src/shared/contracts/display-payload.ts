@@ -8,7 +8,7 @@ export type DisplayFileArtifactKind =
   | "delimited-table";
 
 /**
- * Tagged union for everything the Display sidebar can show.
+ * Tagged union for everything the workspace panel can show.
  *
  * - `html`   — freeform HTML produced by the agent's `Display` tool.
  *              Morphdom-applied into the sidebar (existing behavior).

@@ -72,7 +72,7 @@ export function ComposerContextRow({
 
 // ---------------------------------------------------------------------------
 // Suggestion chips — auto-detected context Stella offers but hasn't yet
-// attached. Rendered floating ABOVE the composer shell (the chat sidebar
+// attached. Rendered floating ABOVE the composer shell (the panel chat
 // opts into this; the full-shell composer doesn't use it today).
 // ---------------------------------------------------------------------------
 

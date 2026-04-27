@@ -1,5 +1,5 @@
 /**
- * Auto-detected context chip strip for the chat sidebar composer.
+ * Auto-detected context chip strip for the panel chat composer.
  *
  * Maintains LANE_COUNT stable lanes. The order doesn't churn just because
  * the underlying recent-apps list rotates — a lane only changes when its

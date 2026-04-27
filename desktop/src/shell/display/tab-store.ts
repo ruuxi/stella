@@ -1,5 +1,5 @@
 /**
- * Singleton store backing the Display sidebar's tab manager.
+ * Singleton store backing the workspace panel's tab manager.
  *
  * Exposed as a small custom store rather than a React context because the
  * tab list is mutated from many non-React surfaces — the Convex media
