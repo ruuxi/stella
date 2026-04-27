@@ -498,7 +498,7 @@ function selfModHmrControl(): Plugin {
 
   return {
     name: 'stella-self-mod-hmr-control',
-    enforce: 'post',
+    enforce: 'pre',
     resolveId(source, importer) {
       return resolveSelfModOverlayImportPath(
         source,
