@@ -17,6 +17,7 @@
   --shell-sidebar-width: 170px;
   --shell-sidebar-rail-width: 82px;
   --shell-topbar-left-width: var(--shell-sidebar-width);
+  --shell-topbar-panel-controls-width: 76px;
   padding: 0;
 }
 
@@ -340,34 +341,141 @@
   height: 100%;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   -webkit-app-region: no-drag;
 }
 
-.shell-topbar-tabs .display-sidebar__tabbar {
-  flex: 1;
+.shell-topbar-tablist {
+  flex: 0 1
+    calc(
+      var(--display-panel-width, clamp(380px, 34vw, 520px)) -
+        var(--shell-topbar-panel-controls-width)
+    );
   min-width: 0;
+  max-width: calc(
+    var(--display-panel-width, clamp(380px, 34vw, 520px)) -
+      var(--shell-topbar-panel-controls-width)
+  );
   height: 100%;
-  padding: 0 4px;
+  display: flex;
   align-items: center;
+  gap: 4px;
+  padding: 0 4px;
   overflow-x: auto;
   overflow-y: visible;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent)
+    transparent;
+  /* Slides in/out in lockstep with the display panel
+     (`.display-sidebar` uses width 320ms cubic-bezier(0.22, 1, 0.36, 1)). */
+  transition:
+    max-width 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    flex-basis 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease;
+  will-change: max-width, flex-basis;
 }
 
-.shell-topbar-tabs .display-sidebar__tab {
+.shell-topbar:not([data-display-open="true"]) .shell-topbar-tablist {
+  flex-basis: 0;
+  max-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-topbar-tablist {
+    transition: none;
+  }
+}
+
+.shell-topbar-tablist::-webkit-scrollbar {
+  height: 4px;
+}
+
+.shell-topbar-tablist::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 18%, transparent);
+  border-radius: 2px;
+}
+
+.shell-topbar-tab {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   min-height: 28px;
   max-width: 220px;
+  padding: 3px 5px 3px 8px;
   border: 1px solid transparent;
   border-radius: 7px;
-  padding: 3px 5px 3px 8px;
+  font-size: 12.5px;
+  color: var(--text-base);
+  background: transparent;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
 }
 
-.shell-topbar-tabs .display-sidebar__tab--active {
+.shell-topbar-tab:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.shell-topbar-tab--active {
   border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
   background: transparent;
+  color: var(--text-strong);
 }
 
-.shell-topbar-tabs .display-sidebar__tab-title {
+.shell-topbar-tab__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.shell-topbar-tab__title {
   max-width: 145px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.shell-topbar-tab__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  opacity: 0.55;
+  transition:
+    opacity 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.shell-topbar-tab__close:hover {
+  opacity: 1;
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 
 .shell-topbar-right {
@@ -376,6 +484,7 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  margin-left: auto;
   padding-right: 8px;
   -webkit-app-region: no-drag;
 }
@@ -806,10 +915,6 @@
   }
 
   .shell-topbar-history-btn {
-    display: none;
-  }
-
-  .shell-topbar-tabs {
     display: none;
   }
 
