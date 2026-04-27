@@ -23,9 +23,9 @@ const MENU_ACTION: {
   resultBody: string;
 } = {
   id: "open-chat",
-  resultTitle: "Chat sidebar opened",
+  resultTitle: "Chat tab opened",
   resultBody:
-    "Right-click anywhere inside Stella to open the chat sidebar. If it\u2019s already open, right-click again to close it.",
+    "Right-click anywhere inside Stella to open the workspace panel. If it\u2019s already open, right-click again to close it.",
 };
 
 export function OnboardingShortcutsPhase({

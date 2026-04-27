@@ -61,7 +61,7 @@
 
 /* ── Mini window: full-width takeover ───────────────────────────────
    Mirrors the chat-sidebar's compact-mode pattern (chat-sidebar.css ~L34).
-   In the mini window the chat sidebar already covers the content area;
+   In the mini window the panel chat already covers the content area;
    when the user right-clicks to summon the display panel we want it to
    replace the chat surface entirely instead of slicing it. */
 @media (max-width: 600px) {
@@ -85,7 +85,7 @@
     transition: none;
   }
 
-  /* Hide both the chat outlet AND the open chat sidebar so the display
+  /* Hide both the chat outlet AND the open panel chat so the display
      panel cleanly owns the available space next to the icon rail. */
   .full-body:has(.display-sidebar--open) .content-area,
   .full-body:has(.display-sidebar--open) .chat-sidebar {

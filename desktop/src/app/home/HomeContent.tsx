@@ -145,7 +145,7 @@ export function HomeContent({
 
       {showSidebarHint && (
         <div className="home-sidebar-hint" role="status">
-          Right-click to open the display sidebar
+          Right-click to open the workspace panel
         </div>
       )}
     </div>

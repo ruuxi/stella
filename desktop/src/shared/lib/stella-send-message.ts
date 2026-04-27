@@ -1,4 +1,4 @@
-import { dispatchOpenSidebarChat } from "@/shared/lib/stella-orb-chat";
+import { dispatchOpenPanelChat } from "@/shared/lib/stella-orb-chat";
 
 export const STELLA_SEND_MESSAGE_EVENT = "stella:send-message";
 export const WORKSPACE_CREATION_TRIGGER_KIND = "workspace_creation_request";
@@ -41,8 +41,8 @@ export function toStellaMessageMetadata(
 }
 
 export function dispatchStellaSendMessage(detail: StellaSendMessageDetail) {
-  // Ensure the sidebar chat is open so the user sees the response.
-  dispatchOpenSidebarChat();
+  // Ensure the panel chat is open so the user sees the response.
+  dispatchOpenPanelChat();
   window.dispatchEvent(
     new CustomEvent<StellaSendMessageDetail>(STELLA_SEND_MESSAGE_EVENT, {
       detail,

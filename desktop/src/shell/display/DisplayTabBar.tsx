@@ -1,5 +1,5 @@
 /**
- * Tab strip rendered at the top of the Display sidebar. Mirrors the
+ * Tab strip rendered at the top of the workspace panel. Mirrors the
  * Codex right-panel UI: horizontal scroll, left→right insertion order,
  * close-on-X, click-to-activate.
  *

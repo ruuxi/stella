@@ -267,6 +267,28 @@ const IdeasIcon = ({ size = 18, style }: IconProps) => (
   </svg>
 );
 
+const ChatIcon = ({ size = 18, style }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={style}
+  >
+    <path
+      d="M5 5.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-4.5 3v-3H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"
+      stroke="currentColor"
+      strokeOpacity="0.7"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="currentColor"
+      fillOpacity="0.08"
+    />
+  </svg>
+);
+
 export const DisplayTabIcon = ({
   kind,
   size,
@@ -277,6 +299,8 @@ export const DisplayTabIcon = ({
   style?: CSSProperties;
 }) => {
   switch (kind) {
+    case "chat":
+      return <ChatIcon size={size} style={style} />;
     case "image":
       return <ImageIcon size={size} style={style} />;
     case "pdf":

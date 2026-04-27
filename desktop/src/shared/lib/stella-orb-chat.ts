@@ -41,35 +41,30 @@ export function clearRequestSignInAfterOnboarding(): void {
   }
 }
 
-export const STELLA_OPEN_SIDEBAR_CHAT_EVENT = "stella:open-sidebar-chat";
-export const STELLA_CLOSE_SIDEBAR_CHAT_EVENT = "stella:close-sidebar-chat";
-export const STELLA_OPEN_DISPLAY_SIDEBAR_EVENT = "stella:open-display-sidebar";
-export const STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT = "stella:close-display-sidebar";
+export const STELLA_OPEN_PANEL_CHAT_EVENT = "stella:open-panel-chat";
+export const STELLA_CLOSE_PANEL_EVENT = "stella:close-panel";
+export const STELLA_OPEN_WORKSPACE_PANEL_EVENT = "stella:open-workspace-panel";
 
-export type StellaOpenSidebarChatDetail = {
+export type StellaOpenPanelChatDetail = {
   chatContext?: ChatContext | null;
-  /** Optional text to prefill in the sidebar composer (e.g. a clicked suggestion). */
+  /** Optional text to prefill in the panel composer (e.g. a clicked suggestion). */
   prefillText?: string;
 };
 
-export function dispatchOpenSidebarChat(detail: StellaOpenSidebarChatDetail = {}) {
+export function dispatchOpenPanelChat(detail: StellaOpenPanelChatDetail = {}) {
   window.dispatchEvent(
-    new CustomEvent<StellaOpenSidebarChatDetail>(STELLA_OPEN_SIDEBAR_CHAT_EVENT, {
+    new CustomEvent<StellaOpenPanelChatDetail>(STELLA_OPEN_PANEL_CHAT_EVENT, {
       detail,
     }),
   );
 }
 
-export function dispatchCloseSidebarChat() {
-  window.dispatchEvent(new CustomEvent(STELLA_CLOSE_SIDEBAR_CHAT_EVENT));
+export function dispatchClosePanel() {
+  window.dispatchEvent(new CustomEvent(STELLA_CLOSE_PANEL_EVENT));
 }
 
-export function dispatchOpenDisplaySidebar() {
-  window.dispatchEvent(new CustomEvent(STELLA_OPEN_DISPLAY_SIDEBAR_EVENT));
-}
-
-export function dispatchCloseDisplaySidebar() {
-  window.dispatchEvent(new CustomEvent(STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT));
+export function dispatchOpenWorkspacePanel() {
+  window.dispatchEvent(new CustomEvent(STELLA_OPEN_WORKSPACE_PANEL_EVENT));
 }
 
 export const STELLA_SHOW_HOME_EVENT = "stella:show-home";

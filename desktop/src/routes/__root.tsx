@@ -22,15 +22,15 @@ import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { IdeasTabContent } from "@/app/home/IdeasTabContent";
 import { useMediaMaterializer } from "@/app/media/use-media-materializer";
 import {
-  ChatSidebar,
-  type ChatSidebarHandle,
+  ChatPanelTab,
+  type ChatPanelOpenRequest,
 } from "@/shell/ChatSidebar";
 import {
   DisplaySidebar,
   type DisplaySidebarHandle,
 } from "@/shell/DisplaySidebar";
 import { ShellTopBar } from "@/shell/ShellTopBar";
-import { displayTabs } from "@/shell/display/tab-store";
+import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
@@ -44,19 +44,17 @@ import {
   writePersistedLastLocation,
 } from "@/shared/lib/last-location";
 import {
-  STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT,
-  STELLA_CLOSE_SIDEBAR_CHAT_EVENT,
-  STELLA_OPEN_DISPLAY_SIDEBAR_EVENT,
-  STELLA_OPEN_SIDEBAR_CHAT_EVENT,
-  type StellaOpenSidebarChatDetail,
+  STELLA_CLOSE_PANEL_EVENT,
+  STELLA_OPEN_WORKSPACE_PANEL_EVENT,
+  STELLA_OPEN_PANEL_CHAT_EVENT,
+  type StellaOpenPanelChatDetail,
 } from "@/shared/lib/stella-orb-chat";
 import {
   clearRequestSignInAfterOnboarding,
   consumeRequestSignInAfterOnboarding,
-  dispatchCloseDisplaySidebar,
-  dispatchCloseSidebarChat,
-  dispatchOpenDisplaySidebar,
-  dispatchOpenSidebarChat,
+  dispatchClosePanel,
+  dispatchOpenWorkspacePanel,
+  dispatchOpenPanelChat,
 } from "@/shared/lib/stella-orb-chat";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import {
@@ -69,17 +67,46 @@ const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
 
 const DEFAULT_DISPLAY_TAB_ID = "ideas:default";
+const CHAT_PANEL_TAB_ID = "chat";
 
 type PendingAskStellaRequest = {
   id: number;
   text: string;
 };
 
+function RootChatPanelTab({
+  openRequest,
+}: {
+  openRequest: ChatPanelOpenRequest | null;
+}) {
+  const chat = useChatRuntime();
+
+  return (
+    <ChatPanelTab
+      openRequest={openRequest}
+      events={chat.conversation.events}
+      streamingText={chat.conversation.streamingText}
+      reasoningText={chat.conversation.reasoningText}
+      streamingResponseTarget={chat.conversation.streamingResponseTarget}
+      isStreaming={chat.conversation.isStreaming}
+      runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
+      pendingUserMessageId={chat.conversation.pendingUserMessageId}
+      selfModMap={chat.conversation.selfModMap}
+      liveTasks={chat.conversation.streaming.liveTasks}
+      hasOlderEvents={chat.conversation.hasOlderEvents}
+      isLoadingOlder={chat.conversation.isLoadingOlder}
+      isInitialLoading={chat.conversation.isInitialLoading}
+      onSend={chat.conversation.sendMessageWithContext}
+      onStop={chat.conversation.cancelCurrentStream}
+    />
+  );
+}
+
 /**
- * The root route owns the app chrome — sidebar, floating ChatSidebar /
- * DisplaySidebar overlays, dialogs, welcome — plus an `<Outlet />` where the
+ * The root route owns the app chrome — sidebar, workspace panel, dialogs,
+ * welcome — plus an `<Outlet />` where the
  * active route renders. Chat runtime state is hoisted into a provider so
- * both the chat route and the floating sidebars consume the same hook
+ * both the chat route and the workspace panel consume the same hook
  * output.
  */
 function RootLayout() {
@@ -162,17 +189,14 @@ function RootChrome() {
   const { state } = useUiState();
   const conversationId = state.conversationId;
   const chat = useChatRuntime();
+  const { panelOpen } = useDisplayTabs();
 
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
-  const [isSidebarChatOpen, setIsSidebarChatOpen] = useState(false);
-  const [isDisplaySidebarOpen, setIsDisplaySidebarOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const sidebarRef = useRef<ChatSidebarHandle>(null);
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
   const latestDisplayPayloadRef = useRef<DisplayPayload | null>(null);
-  const preferredPanelRef = useRef<"chat" | "display">("display");
 
   const { hasConnectedAccount, isLoading: isAuthLoading } =
     useAuthSessionState();
@@ -248,7 +272,7 @@ function RootChrome() {
   }, []);
 
   // When the user starts a "new app" flow from the sidebar, the prompt goes
-  // into the floating ChatSidebar (opened below). The main chat column would
+  // into the workspace panel chat. The main chat column would
   // otherwise still show the home overlay (suggestions / categories), which
   // distracts from the workspace-creation conversation. Pre-router this was
   // achieved by switching the active view to a stub "app" view; we now
@@ -272,69 +296,31 @@ function RootChrome() {
     [closeDialog],
   );
 
-  const handleContextMenuOpenSidebarChat = useCallback(() => {
-    if (isOnChatRoute) {
-      dispatchOpenDisplaySidebar();
-      return;
-    }
-    dispatchOpenSidebarChat();
-  }, [isOnChatRoute]);
-
-  const handleContextMenuCloseSidebarChat = useCallback(() => {
-    if (isOnChatRoute) {
-      dispatchCloseDisplaySidebar();
-      return;
-    }
-    dispatchCloseSidebarChat();
-  }, [isOnChatRoute]);
-
-  const isContextMenuPanelOpen = isOnChatRoute
-    ? isDisplaySidebarOpen
-    : isSidebarChatOpen;
-
-  const handleSidebarOpenChange = useCallback((open: boolean) => {
-    if (open) preferredPanelRef.current = "chat";
-    setIsSidebarChatOpen(open);
+  const openChatPanel = useCallback((detail: StellaOpenPanelChatDetail = {}) => {
+    const request: ChatPanelOpenRequest = { id: Date.now(), ...detail };
+    displayTabs.openTab({
+      id: CHAT_PANEL_TAB_ID,
+      kind: "chat",
+      title: "Chat",
+      render: () => createElement(RootChatPanelTab, { openRequest: request }),
+    });
   }, []);
 
-  const handleDisplayOpenChange = useCallback((open: boolean) => {
-    if (open) preferredPanelRef.current = "display";
-    setIsDisplaySidebarOpen(open);
-  }, []);
-
-  useEffect(() => {
+  const handleContextMenuOpenPanel = useCallback(() => {
     if (isOnChatRoute) {
-      sidebarRef.current?.close();
+      dispatchOpenWorkspacePanel();
+      return;
     }
+    dispatchOpenPanelChat();
   }, [isOnChatRoute]);
 
-  useEffect(() => {
-    if (!isDisplaySidebarOpen || !isSidebarChatOpen) return;
-    if (preferredPanelRef.current === "chat") {
-      displaySidebarRef.current?.close();
-    } else {
-      sidebarRef.current?.close();
-    }
-  }, [isDisplaySidebarOpen, isSidebarChatOpen]);
+  const handleContextMenuClosePanel = useCallback(() => {
+    dispatchClosePanel();
+  }, []);
 
-  // In the mini window the chat sidebar covers `.content-area`, so the
-  // root-level `StellaContextMenu` is unreachable. Forward right-clicks
-  // on the chat sidebar surface to the same display-sidebar toggle the
-  // context menu uses on the full window.
-  const handleChatSidebarContextMenu = useCallback(
-    (event: React.MouseEvent) => {
-      if (state.window !== "mini") return;
-      event.preventDefault();
-      if (isDisplaySidebarOpen) {
-        dispatchCloseDisplaySidebar();
-      } else {
-        dispatchOpenDisplaySidebar();
-      }
-    },
-    [isDisplaySidebarOpen, state.window],
-  );
+  const isContextMenuPanelOpen = panelOpen;
 
-  // Forward pending ask-Stella requests into the right-side ChatSidebar.
+  // Forward pending ask-Stella requests into the panel chat.
   // We deliberately clear the queued request from this effect — the state
   // here is acting as a one-shot mailbox, not derived state. The cascade is
   // bounded (one render to null), so the lint rule is suppressed here.
@@ -347,26 +333,22 @@ function RootChrome() {
       triggerKind: WORKSPACE_CREATION_TRIGGER_KIND,
       triggerSource: "sidebar",
     });
-    preferredPanelRef.current = "chat";
-    displaySidebarRef.current?.close();
-    sidebarRef.current?.open();
+    openChatPanel();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-shot consumer (see comment above).
     handlePendingAskStellaHandled(pendingAskStellaRequest.id);
-  }, [handlePendingAskStellaHandled, pendingAskStellaRequest]);
+  }, [handlePendingAskStellaHandled, openChatPanel, pendingAskStellaRequest]);
 
-  // Push payloads into the Display sidebar.
+  // Push payloads into the workspace panel.
   //
-  // - `media` payloads always open the sidebar (a generated image/video/audio
+  // - `media` payloads always open the panel (a generated image/video/audio
   //   is the user's main goal in that moment; surfacing it is non-negotiable).
   //   Producers running on the active surface itself (e.g. a future
   //   `MediaStudio` page) should pass `suppress` to the materializer.
   // - For everything else (html / office / pdf), keep the existing behavior:
   //   open on the chat home pane, hot-update elsewhere so we don't steal
   //   focus mid-conversation.
-  // - In the mini window the chat is the entire surface, so opening the
-  //   display panel would cover everything. We register every payload
-  //   passively (`ds.update`) and let the user summon the panel via the
-  //   right-click context menu — same gesture as the full window.
+  // - In the mini window, register payloads passively (`ds.update`) and let
+  //   the user summon the panel via the right-click context menu.
   const isMiniWindow = state.window === "mini";
   const routeDisplayPayload = useCallback(
     (payload: DisplayPayload) => {
@@ -378,14 +360,10 @@ function RootChrome() {
         return;
       }
       if (payload.kind === "media") {
-        preferredPanelRef.current = "display";
-        sidebarRef.current?.close();
         ds.open(payload);
         return;
       }
       if (chat.showHomeContent && isOnChatRoute) {
-        preferredPanelRef.current = "display";
-        sidebarRef.current?.close();
         ds.open(payload);
       } else {
         ds.update(payload);
@@ -404,8 +382,8 @@ function RootChrome() {
   }, [routeDisplayPayload]);
 
   // Owner-scoped materializer: any media job (this conversation, another
-  // device, the agent, the studio, …) gets downloaded into
-  // `state/media/outputs/` and surfaced in the Display sidebar.
+  // device, the agent, the studio, ...) gets downloaded into
+  // `state/media/outputs/` and surfaced in the workspace panel.
   useMediaMaterializer({ onMaterialized: routeDisplayPayload });
 
   // Global Cmd/Ctrl+Shift+M (or any dictation accelerator the user picks)
@@ -422,38 +400,21 @@ function RootChrome() {
     });
   }, []);
 
-  // Window-event wiring for the floating sidebars (orb → open sidebar chat,
-  // context menu → open display, IPC from main when the mini chat is opened).
+  // Window-event wiring for the workspace panel.
   useEffect(() => {
     const handleOpen = (event: Event) => {
-      const detail = (event as CustomEvent<StellaOpenSidebarChatDetail>)
+      const detail = (event as CustomEvent<StellaOpenPanelChatDetail>)
         .detail;
-      const chatContext = detail?.chatContext;
-      const prefillText = detail?.prefillText;
-
-      preferredPanelRef.current = "chat";
-      displaySidebarRef.current?.close();
-
-      if (chatContext === undefined && prefillText === undefined) {
-        sidebarRef.current?.open();
-        return;
-      }
-
-      sidebarRef.current?.open({
-        ...(chatContext !== undefined ? { chatContext } : {}),
-        ...(prefillText !== undefined ? { prefillText } : {}),
-      });
+      openChatPanel(detail ?? {});
     };
 
-    const handleClose = () => sidebarRef.current?.close();
+    const handleClose = () => displayTabs.setPanelOpen(false);
 
     const handleOpenDisplay = () => {
-      preferredPanelRef.current = "display";
-      sidebarRef.current?.close();
       // Prefer reopening whatever tabs are already in the manager; only
       // fall back to re-routing the last payload when nothing has been
       // opened yet this session. If there is no display payload yet, seed
-      // the panel with Ideas so the display sidebar is always openable.
+      // the panel with Ideas so the workspace panel is always openable.
       if (displayTabs.getSnapshot().tabs.length > 0) {
         displayTabs.setPanelOpen(true);
         return;
@@ -471,39 +432,27 @@ function RootChrome() {
       displaySidebarRef.current?.open(payload);
     };
 
-    const handleCloseDisplay = () => displaySidebarRef.current?.close();
-
-    window.addEventListener(STELLA_OPEN_SIDEBAR_CHAT_EVENT, handleOpen);
-    window.addEventListener(STELLA_CLOSE_SIDEBAR_CHAT_EVENT, handleClose);
+    window.addEventListener(STELLA_OPEN_PANEL_CHAT_EVENT, handleOpen);
+    window.addEventListener(STELLA_CLOSE_PANEL_EVENT, handleClose);
     window.addEventListener(
-      STELLA_OPEN_DISPLAY_SIDEBAR_EVENT,
+      STELLA_OPEN_WORKSPACE_PANEL_EVENT,
       handleOpenDisplay,
-    );
-    window.addEventListener(
-      STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT,
-      handleCloseDisplay,
     );
 
     const cleanupIpcOpen = window.electronAPI?.ui.onOpenChatSidebar?.(() => {
-      preferredPanelRef.current = "chat";
-      displaySidebarRef.current?.close();
-      sidebarRef.current?.open();
+      openChatPanel();
     });
 
     return () => {
-      window.removeEventListener(STELLA_OPEN_SIDEBAR_CHAT_EVENT, handleOpen);
-      window.removeEventListener(STELLA_CLOSE_SIDEBAR_CHAT_EVENT, handleClose);
+      window.removeEventListener(STELLA_OPEN_PANEL_CHAT_EVENT, handleOpen);
+      window.removeEventListener(STELLA_CLOSE_PANEL_EVENT, handleClose);
       window.removeEventListener(
-        STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT,
-        handleCloseDisplay,
-      );
-      window.removeEventListener(
-        STELLA_OPEN_DISPLAY_SIDEBAR_EVENT,
+        STELLA_OPEN_WORKSPACE_PANEL_EVENT,
         handleOpenDisplay,
       );
       cleanupIpcOpen?.();
     };
-  }, []);
+  }, [openChatPanel]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 600px)");
@@ -531,10 +480,7 @@ function RootChrome() {
         <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
       )}
 
-      <ShellTopBar
-        isChatOpen={isSidebarChatOpen}
-        showChatButton={!isOnChatRoute}
-      />
+      <ShellTopBar />
 
       <Sidebar
         className={drawerOpen ? "sidebar--drawer-open" : undefined}
@@ -548,8 +494,8 @@ function RootChrome() {
 
       <StellaContextMenu
         isOpen={isContextMenuPanelOpen}
-        onOpen={handleContextMenuOpenSidebarChat}
-        onClose={handleContextMenuCloseSidebarChat}
+        onOpen={handleContextMenuOpenPanel}
+        onClose={handleContextMenuClosePanel}
       >
         <div className="content-area">
           <button
@@ -577,29 +523,8 @@ function RootChrome() {
         </div>
       </StellaContextMenu>
 
-      <ChatSidebar
-        ref={sidebarRef}
-        events={chat.conversation.events}
-        streamingText={chat.conversation.streamingText}
-        reasoningText={chat.conversation.reasoningText}
-        streamingResponseTarget={chat.conversation.streamingResponseTarget}
-        isStreaming={chat.conversation.isStreaming}
-        runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
-        pendingUserMessageId={chat.conversation.pendingUserMessageId}
-        selfModMap={chat.conversation.selfModMap}
-        liveTasks={chat.conversation.streaming.liveTasks}
-        hasOlderEvents={chat.conversation.hasOlderEvents}
-        isLoadingOlder={chat.conversation.isLoadingOlder}
-        isInitialLoading={chat.conversation.isInitialLoading}
-        onSend={chat.conversation.sendMessageWithContext}
-        onStop={chat.conversation.cancelCurrentStream}
-        onOpenChange={handleSidebarOpenChange}
-        onContextMenu={handleChatSidebarContextMenu}
-      />
-
       <DisplaySidebar
         ref={displaySidebarRef}
-        onOpenChange={handleDisplayOpenChange}
       />
 
       <FullShellDialogs

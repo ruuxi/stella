@@ -2,14 +2,14 @@
  * AskStellaSelectionChip — floating "Ask Stella" pill that appears above
  * any text selection inside the Stella renderer.
  *
- * Click → opens the sidebar chat with the selection attached as a
+ * Click opens the panel chat with the selection attached as a
  * SelectedTextChip via the standard chat-context broadcast (mirrors the
  * radial gesture's path).
  *
  * Hidden in any of the following surfaces (where a chip would either be
  * redundant or actively get in the user's way):
  *   - The composer textarea / chip strip
- *   - The chat sidebar
+ *   - The panel chat
  *   - Any input/textarea/contenteditable
  *   - Anything marked `[data-stella-chrome]`
  *
@@ -20,7 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router } from "@/router";
-import { dispatchOpenSidebarChat } from "@/shared/lib/stella-orb-chat";
+import { dispatchOpenPanelChat } from "@/shared/lib/stella-orb-chat";
 import "./ask-stella-selection-chip.css";
 
 const PILL_HEIGHT = 28;
@@ -42,6 +42,7 @@ const SELECTION_HIDE_SELECTORS = [
   "[contenteditable='']",
   "[contenteditable]:not([contenteditable='false'])",
   ".composer",
+  ".chat-panel-tab",
   ".chat-sidebar",
   ".chat-sidebar-shell",
   "[data-stella-chrome]",
@@ -200,7 +201,7 @@ export function AskStellaSelectionChip() {
       }
 
       if (router.state.location.pathname !== "/chat") {
-        dispatchOpenSidebarChat();
+        dispatchOpenPanelChat();
       }
 
       window.setTimeout(() => {

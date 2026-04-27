@@ -1,3 +1,11 @@
+.chat-panel-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .chat-sidebar {
   display: flex;
   flex-direction: column;
@@ -29,7 +37,7 @@
 
 /* In the mini window the chat panel takes up the full content area instead
    of being a constrained side rail. The content area (home, workspace,
-   etc.) hides while the chat sidebar is open so the chat surface owns the
+   etc.) hides while the panel chat is open so the chat surface owns the
    remaining width next to the icon rail. */
 @media (max-width: 600px) {
   .chat-sidebar--open {
@@ -71,6 +79,17 @@
   border-left: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
   border-radius: 0 0 0 32px;
   overflow: hidden;
+}
+
+.chat-panel-tab .chat-sidebar-inner {
+  min-width: 0;
+  width: 100%;
+  border-left: none;
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
 }
 
 /* Scroll + composer sit above the contained shifting gradient */

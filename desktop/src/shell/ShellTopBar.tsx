@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Maximize2,
-  MessageSquare,
   Minimize2,
   Minus,
   PanelRight,
@@ -18,11 +17,7 @@ import { ThemePicker } from "@/global/settings/ThemePicker";
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
-import {
-  dispatchCloseSidebarChat,
-  dispatchOpenDisplaySidebar,
-  dispatchOpenSidebarChat,
-} from "@/shared/lib/stella-orb-chat";
+import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
 
 export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
 
@@ -105,15 +100,7 @@ const SidebarToggleIcon = () => (
   </svg>
 );
 
-type ShellTopBarProps = {
-  isChatOpen?: boolean;
-  showChatButton?: boolean;
-};
-
-export const ShellTopBar = ({
-  isChatOpen = false,
-  showChatButton = false,
-}: ShellTopBarProps) => {
+export const ShellTopBar = () => {
   const navigate = useNavigate();
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
@@ -128,14 +115,6 @@ export const ShellTopBar = ({
   const openSettings = useCallback(() => {
     void navigate({ to: "/settings" });
   }, [navigate]);
-
-  const toggleChatSidebar = useCallback(() => {
-    if (isChatOpen) {
-      dispatchCloseSidebarChat();
-    } else {
-      dispatchOpenSidebarChat();
-    }
-  }, [isChatOpen]);
 
   useEffect(() => {
     if (!isMiniWindow) return;
@@ -233,18 +212,6 @@ export const ShellTopBar = ({
           </button>
         ) : null}
         <div className="shell-topbar-display-controls">
-          {showChatButton ? (
-            <button
-              type="button"
-              className="shell-topbar-icon-btn"
-              onClick={toggleChatSidebar}
-              aria-label={isChatOpen ? "Close chat" : "Open chat"}
-              aria-pressed={isChatOpen}
-              title={isChatOpen ? "Close chat" : "Open chat"}
-            >
-              <MessageSquare size={14} strokeWidth={1.75} />
-            </button>
-          ) : null}
           {panelOpen ? (
             <>
               <button
@@ -267,8 +234,8 @@ export const ShellTopBar = ({
                 type="button"
                 className="shell-topbar-icon-btn"
                 onClick={() => displayTabs.setPanelOpen(false)}
-                aria-label="Close display panel"
-                title="Close display panel"
+                aria-label="Close workspace panel"
+                title="Close workspace panel"
               >
                 <X size={16} strokeWidth={1.85} />
               </button>
@@ -277,9 +244,9 @@ export const ShellTopBar = ({
             <button
               type="button"
               className="shell-topbar-icon-btn"
-              onClick={dispatchOpenDisplaySidebar}
-              aria-label="Open display panel"
-              title="Open display panel"
+              onClick={dispatchOpenWorkspacePanel}
+              aria-label="Open workspace panel"
+              title="Open workspace panel"
             >
               <PanelRight size={14} strokeWidth={1.75} />
             </button>

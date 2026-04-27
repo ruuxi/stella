@@ -1,5 +1,5 @@
 /**
- * Renders a `DisplayPayload { kind: "media" }` inside the Display sidebar.
+ * Renders a `DisplayPayload { kind: "media" }` inside the workspace panel.
  * Loads each file via `display.readFile` (the same privileged IPC the PDF
  * viewer uses) and turns the bytes into a Blob URL so videos/audio can
  * stream rather than living entirely in a base64 string.

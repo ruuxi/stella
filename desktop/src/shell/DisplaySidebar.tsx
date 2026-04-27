@@ -75,7 +75,7 @@ const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
 };
 
 /**
- * Display sidebar shell.
+ * workspace panel shell.
  *
  * Stateful tab list lives in the singleton `displayTabs` store so that
  * non-React surfaces (Convex materializer, IPC handlers, chat resource

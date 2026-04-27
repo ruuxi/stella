@@ -449,7 +449,7 @@ export default function MediaStudio() {
       }
 
       // Tell the global materializer to skip this job — MediaStudio will
-      // present the result inline. Without this the Display sidebar would
+      // present the result inline. Without this the workspace panel would
       // pop open over the studio when the job completes. We mark up-front
       // (not on success) to avoid a race where the materializer's
       // subscription fires first.

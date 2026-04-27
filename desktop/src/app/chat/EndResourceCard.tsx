@@ -3,7 +3,7 @@
  *
  * Matches Codex's `wde` component: a clickable badge that points at the
  * primary file the agent edited, generated, or read in the turn. Click
- * opens (or re-activates) the matching tab in the Display sidebar via
+ * opens (or re-activates) the matching tab in the workspace panel via
  * the singleton `displayTabs` store.
  */
 
@@ -93,7 +93,7 @@ export const EndResourceCard = ({ payload }: { payload: DisplayPayload }) => {
       <span className="end-resource-card__text">
         <span className="end-resource-card__label">{label}</span>
         <span className="end-resource-card__action" aria-hidden>
-          Open in sidebar
+          Open in panel
         </span>
       </span>
     </button>

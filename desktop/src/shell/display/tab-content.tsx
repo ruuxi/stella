@@ -1,5 +1,5 @@
 /**
- * Per-kind viewer components used by the Display sidebar's tab manager.
+ * Per-kind viewer components used by the workspace panel's tab manager.
  *
  * Each component is a thin wrapper that delegates to the existing card UI
  * (MediaPreviewCard sub-renderers, OfficePreviewCard, PdfViewerCard,

@@ -974,7 +974,7 @@ export type ElectronScreenGuideApi = {
 
 export type ElectronDisplayApi = {
   /**
-   * Subscribes to runtime-driven Display sidebar updates.
+   * Subscribes to runtime-driven workspace panel updates.
    *
    * Payload is either a raw HTML string (legacy: emitted by the agent's
    * `Display` tool) or a structured `DisplayPayload` object describing what
