@@ -302,6 +302,18 @@ export type MessageTurn = {
   assistantMessage?: EventRecord
   toolEvents: EventRecord[]
   steps: StepItem[]
+  /**
+   * Additional assistant messages that semantically continue this turn.
+   *
+   * This holds standalone assistant messages that arrive WITHOUT a preceding
+   * visible user message — typically the orchestrator's reply to an
+   * `agent_terminal_notice` (a sub-agent finished) or its reply to a hidden
+   * `askQuestion` response message. Splitting those into a new synthetic turn
+   * caused the latest user bubble to lose the `.session-turn--last-turn`
+   * `100cqh` reading area, collapsing the empty space below the pinned user
+   * message. Keeping them in the same turn preserves the layout.
+   */
+  trailingAssistantMessages?: EventRecord[]
 }
 
 // Group events into message turns
@@ -325,13 +337,17 @@ export function groupEventsIntoTurns(events: EventRecord[]): MessageTurn[] {
       if (currentTurn && !currentTurn.assistantMessage) {
         // Attach to existing turn
         currentTurn.assistantMessage = event
+      } else if (currentTurn) {
+        // Continuation assistant message inside the same user-initiated turn
+        // (e.g. orchestrator reply to an agent_terminal_notice or to a hidden
+        // askQuestion answer). See `trailingAssistantMessages` doc above.
+        currentTurn.trailingAssistantMessages = [
+          ...(currentTurn.trailingAssistantMessages ?? []),
+          event,
+        ]
       } else {
-        if (currentTurn) {
-          turns.push(currentTurn)
-          currentTurn = null
-        }
-        // Standalone assistant message (e.g., welcome message)
-        // Create a synthetic turn with an empty user message
+        // Standalone assistant message with no prior user message in this
+        // thread (e.g. welcome message). Create a synthetic turn.
         turns.push({
           id: event._id,
           userMessage: {

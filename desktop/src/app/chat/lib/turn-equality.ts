@@ -105,8 +105,25 @@ export const streamingPropsEqual = (
     a.reasoningText === b.reasoningText &&
     Boolean(a.isStreaming) === Boolean(b.isStreaming) &&
     (a.pendingUserMessageId ?? null) === (b.pendingUserMessageId ?? null) &&
-    Boolean(a.replaceAssistant) === Boolean(b.replaceAssistant)
+    Boolean(a.replaceAssistant) === Boolean(b.replaceAssistant) &&
+    Boolean(a.appendAsTrailing) === Boolean(b.appendAsTrailing)
   );
+};
+
+const trailingAssistantBlocksEqual = (
+  a: TurnViewModel["trailingAssistantBlocks"],
+  b: TurnViewModel["trailingAssistantBlocks"],
+): boolean => {
+  const left = a ?? [];
+  const right = b ?? [];
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i].id !== right[i].id) return false;
+    if (left[i].text !== right[i].text) return false;
+    if (left[i].enableEmotes !== right[i].enableEmotes) return false;
+  }
+  return true;
 };
 
 export const askQuestionPayloadEqual = (
@@ -226,4 +243,8 @@ export const turnViewModelEqual = (
       (b.officePreviewRef?.sessionId ?? null) &&
     resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
     askQuestionPayloadEqual(a.askQuestion, b.askQuestion) &&
-    selfModAppliedEqual(a.selfModApplied, b.selfModApplied));
+    selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
+    trailingAssistantBlocksEqual(
+      a.trailingAssistantBlocks,
+      b.trailingAssistantBlocks,
+    ));
