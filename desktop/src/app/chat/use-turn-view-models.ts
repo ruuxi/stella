@@ -12,7 +12,7 @@ import {
 } from '@/app/chat/lib/stable-rows'
 import { turnViewModelEqual } from '@/app/chat/lib/turn-equality'
 import { useDeveloperResourcePreviewsEnabled } from '@/shared/lib/developer-resource-previews'
-import type { TurnViewModel } from './MessageTurn'
+import type { TrailingAssistantBlock, TurnViewModel } from './MessageTurn'
 import {
   getDisplayMessageText,
   getDisplayUserText,
@@ -326,6 +326,22 @@ export function useTurnViewModels(opts: {
       const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
         getMessagePayload(turn.assistantMessage),
       )
+      const trailingAssistantBlocks: TrailingAssistantBlock[] | undefined =
+        turn.trailingAssistantMessages?.length
+          ? turn.trailingAssistantMessages
+              .map((msg): TrailingAssistantBlock | null => {
+                const text = getDisplayMessageText(msg)
+                if (!text.trim()) return null
+                return {
+                  id: msg._id,
+                  text,
+                  enableEmotes: isOrchestratorChatMessagePayload(
+                    getMessagePayload(msg),
+                  ),
+                }
+              })
+              .filter((b): b is TrailingAssistantBlock => b !== null)
+          : undefined
       const askQuestionPayload = getAskQuestionPayload(turn.toolEvents)
       const askQuestionSelections = answeredAskQuestions.get(turn.id)
       const askQuestionTargetAgentId =
@@ -356,6 +372,9 @@ export function useTurnViewModels(opts: {
         webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
         officePreviewRef: getOfficePreviewRef(turn.toolEvents),
         ...(resourcePayload ? { resourcePayload } : {}),
+        ...(trailingAssistantBlocks && trailingAssistantBlocks.length > 0
+          ? { trailingAssistantBlocks }
+          : {}),
         ...(askQuestionPayload
           ? {
               askQuestion: {
@@ -410,12 +429,39 @@ export function useTurnViewModels(opts: {
   }, [baseTurns, selfModMap])
   /* eslint-enable react-hooks/refs */
 
-  const streamingTargetTurnId = useMemo(() => {
+  type StreamingAttach = {
+    turnId: string
+    /**
+     * - 'inline': fills the assistant area of `pendingUserMessageId`'s turn.
+     * - 'replace': replaces the assistant content of a turn whose
+     *   `assistantResponseTarget` matches the streaming target.
+     * - 'append': renders as a trailing assistant block on an existing turn,
+     *   without disturbing its existing assistant area. Used when the
+     *   stream's target has no matching turn (e.g. hidden askQuestion answer
+     *   or an `agent_terminal_notice` with no prior matching reply).
+     */
+    mode: 'inline' | 'replace' | 'append'
+  }
+
+  const streamingAttach = useMemo<StreamingAttach | null>(() => {
+    const lastTurnId = turns.length > 0 ? turns[turns.length - 1].id : null
+
     if (
       streamingResponseTarget?.type !== 'agent_turn' &&
       streamingResponseTarget?.type !== 'agent_terminal_notice'
     ) {
-      return pendingUserMessageId ?? null
+      if (pendingUserMessageId) {
+        const hasMatchingTurn = turns.some(
+          (turn) => turn.id === pendingUserMessageId,
+        )
+        if (hasMatchingTurn) {
+          return { turnId: pendingUserMessageId, mode: 'inline' }
+        }
+      }
+      // No visible pending user turn (e.g. hidden askQuestion answer) —
+      // attach as a trailing block on the last turn so the pinned reading
+      // area below the latest user bubble stays intact.
+      return lastTurnId ? { turnId: lastTurnId, mode: 'append' } : null
     }
 
     const targetAgentId = streamingResponseTarget.agentId
@@ -427,12 +473,14 @@ export function useTurnViewModels(opts: {
           responseTarget.type === 'agent_terminal_notice') &&
         responseTarget.agentId === targetAgentId
       ) {
-        return turn.id
+        return { turnId: turn.id, mode: 'replace' }
       }
     }
 
-    return pendingUserMessageId ?? null
+    return lastTurnId ? { turnId: lastTurnId, mode: 'append' } : null
   }, [pendingUserMessageId, streamingResponseTarget, turns])
+
+  const streamingTargetTurnId = streamingAttach?.turnId ?? null
 
   const processedStreamingText = streamingText
   const processedReasoningText = reasoningText
@@ -457,8 +505,7 @@ export function useTurnViewModels(opts: {
     processedStreamingText,
     processedReasoningText,
     streamingTargetTurnId,
-    isReplacingAssistant:
-      Boolean(streamingTargetTurnId) &&
-      streamingTargetTurnId !== pendingUserMessageId,
+    streamingAttachMode: streamingAttach?.mode ?? 'inline',
+    isReplacingAssistant: streamingAttach?.mode === 'replace',
   }
 }

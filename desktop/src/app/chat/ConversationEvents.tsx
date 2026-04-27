@@ -43,6 +43,7 @@ function MessageList({
   isStreaming,
   pendingUserMessageId,
   streamingTargetTurnId,
+  streamingAttachMode,
   isReplacingAssistant,
   onOpenAttachment,
   showStandaloneStreaming,
@@ -55,6 +56,7 @@ function MessageList({
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   streamingTargetTurnId?: string | null;
+  streamingAttachMode?: 'inline' | 'replace' | 'append';
   isReplacingAssistant?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
   showStandaloneStreaming: boolean;
@@ -119,6 +121,7 @@ function MessageList({
                     isStreaming,
                     pendingUserMessageId,
                     replaceAssistant: Boolean(isReplacingAssistant),
+                    appendAsTrailing: streamingAttachMode === 'append',
                   }
                 : undefined
             }
@@ -173,6 +176,7 @@ export const ConversationEvents = memo(function ConversationEvents({
     processedStreamingText,
     processedReasoningText,
     streamingTargetTurnId,
+    streamingAttachMode,
     isReplacingAssistant,
   } = useTurnViewModels({
     events,
@@ -228,6 +232,7 @@ export const ConversationEvents = memo(function ConversationEvents({
         isStreaming={isStreaming}
         pendingUserMessageId={pendingUserMessageId}
         streamingTargetTurnId={streamingTargetTurnId}
+        streamingAttachMode={streamingAttachMode}
         isReplacingAssistant={isReplacingAssistant}
         onOpenAttachment={onOpenAttachment}
         liveTasks={liveTasks}

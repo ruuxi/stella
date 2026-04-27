@@ -24,6 +24,12 @@ import {
   turnViewModelEqual,
 } from "@/app/chat/lib/turn-equality";
 
+export type TrailingAssistantBlock = {
+  id: string;
+  text: string;
+  enableEmotes: boolean;
+};
+
 export type TurnViewModel = {
   id: string;
   userText: string;
@@ -46,6 +52,12 @@ export type TurnViewModel = {
   resourcePayload?: DisplayPayload;
   selfModApplied?: SelfModApplied;
   askQuestion?: AskQuestionState;
+  /**
+   * Additional assistant blocks that continue this turn — see
+   * `MessageTurn.trailingAssistantMessages`. Rendered after the main assistant
+   * area so the original turn keeps its `.session-turn--last-turn` reading area.
+   */
+  trailingAssistantBlocks?: TrailingAssistantBlock[];
 };
 
 export type StreamingTurnProps = {
@@ -54,6 +66,13 @@ export type StreamingTurnProps = {
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   replaceAssistant?: boolean;
+  /**
+   * When true, the streaming text is rendered AFTER the existing assistant
+   * area + trailing blocks rather than replacing the assistant content. Used
+   * for orchestrator continuations (e.g. agent_terminal_notice replies and
+   * hidden askQuestion answers) that semantically continue the same turn.
+   */
+  appendAsTrailing?: boolean;
 };
 
 const getAttachmentLabel = (attachment: Attachment, index: number) => {
@@ -170,12 +189,18 @@ export const TurnItem = memo(function TurnItem({
   const hasStreamingContent = Boolean(streaming?.streamingText?.trim().length);
   const hasReasoningContent = Boolean(streaming?.reasoningText?.trim().length);
   const isReplacingAssistant = Boolean(streaming?.replaceAssistant);
+  const isAppendingStreaming = Boolean(streaming?.appendAsTrailing);
   const shouldShowStreamingAssistant = Boolean(
     Boolean(streaming) &&
+      !isAppendingStreaming &&
       (isReplacingAssistant
         ? hasStreamingContent || hasReasoningContent
         : !hasAssistantContent &&
           (hasStreamingContent || hasReasoningContent || streaming?.isStreaming)),
+  );
+  const shouldShowAppendedStreaming = Boolean(
+    isAppendingStreaming &&
+      (hasStreamingContent || hasReasoningContent || streaming?.isStreaming),
   );
 
   const shouldShowAssistantArea =
@@ -377,6 +402,37 @@ export const TurnItem = memo(function TurnItem({
             )}
           </div>
         </GrowIn>
+      )}
+
+      {turn.trailingAssistantBlocks?.map((block) => (
+        <div key={block.id} className="event-item assistant">
+          <Markdown
+            text={block.text}
+            cacheKey={`assistant-trailing-${block.id}`}
+            enableEmotes={block.enableEmotes}
+          />
+        </div>
+      ))}
+
+      {shouldShowAppendedStreaming && streaming && (
+        <div className="event-item assistant streaming">
+          {hasReasoningContent && streaming.reasoningText && (
+            <ReasoningSection
+              content={streaming.reasoningText}
+              isStreaming={Boolean(
+                streaming.isStreaming && !hasStreamingContent,
+              )}
+            />
+          )}
+          {hasStreamingContent && streaming.streamingText && (
+            <Markdown
+              text={streaming.streamingText}
+              cacheKey={`assistant-trailing-stream-${turn.id}`}
+              isAnimating={streaming.isStreaming}
+              enableEmotes={true}
+            />
+          )}
+        </div>
       )}
 
       {turn.askQuestion && <AskQuestionBubble payload={turn.askQuestion} />}
