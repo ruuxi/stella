@@ -664,14 +664,6 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   font-family: var(--font-family-sans, "Manrope", sans-serif);
 }
 
-.display-file-preview--placeholder {
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  text-align: center;
-  padding: 24px;
-}
-
 .display-file-preview__header {
   flex-shrink: 0;
   display: flex;
