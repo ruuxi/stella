@@ -153,6 +153,13 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 
 	/**
+	 * Refreshes an API key after a provider auth failure.
+	 *
+	 * Contract: must not throw or reject. Return undefined when no replacement key is available.
+	 */
+	refreshApiKey?: () => Promise<string | undefined> | string | undefined;
+
+	/**
 	 * Returns steering messages to inject into the conversation mid-run.
 	 *
 	 * Called after each tool execution to check for user interruptions.

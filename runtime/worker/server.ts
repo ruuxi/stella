@@ -677,6 +677,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         chatStore.getOrCreateDefaultConversationId(),
       requestCredential: async (payload) =>
         await peer.request(METHOD_NAMES.HOST_CREDENTIALS_REQUEST, payload),
+      requestRuntimeAuthRefresh: async (payload) =>
+        await peer.request(METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH, payload),
       displayHtml: async (html) => {
         await peer.request(METHOD_NAMES.HOST_DISPLAY_UPDATE, { html });
       },

@@ -117,6 +117,18 @@ export const createStellaHostRunner = (
 ): RunnerPublicApi => {
   const context = createRunnerContext(options);
   const convexSession = createConvexSession(context);
+  if (options.requestRuntimeAuthRefresh) {
+    context.requestRuntimeAuthRefresh = async (payload) => {
+      const result = await options.requestRuntimeAuthRefresh?.(payload);
+      if (result?.token) {
+        convexSession.setAuthToken(result.token);
+      }
+      if (result) {
+        convexSession.setHasConnectedAccount(result.hasConnectedAccount);
+      }
+      return result ?? { authenticated: false, token: null, hasConnectedAccount: false };
+    };
+  }
   context.state.webSearch = convexSession.webSearch;
 
   const storeOperations = createStoreOperations(context, {

@@ -62,6 +62,24 @@ function buildInitialAssistant(model: Model<"stella">): AssistantMessage {
   };
 }
 
+const isAuthFailure = (response: Response, body: string): boolean => {
+  if (response.status === 401 || response.status === 403) return true;
+  return /\b(token expired|expired token|unauthenticated|unauthorized|invalid token)\b/i.test(body);
+};
+
+const readStellaErrorMessage = async (response: Response): Promise<string> => {
+  let errorMessage = `Stella runtime error: ${response.status} ${response.statusText}`;
+  try {
+    const text = await response.text();
+    if (text.trim()) {
+      errorMessage = text.trim();
+    }
+  } catch {
+    // Ignore body parse failures.
+  }
+  return errorMessage;
+};
+
 function processStellaProxyEvent(
   proxyEvent: StellaAssistantMessageEvent,
   partial: AssistantMessage,
@@ -262,29 +280,35 @@ export const streamStella: (
         payload = nextPayload as Record<string, unknown>;
       }
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${options?.apiKey || ""}`,
-          "Content-Type": "application/json",
-          ...model.headers,
-          ...options?.headers,
-        },
-        body: JSON.stringify(payload),
-        signal: options?.signal,
-      });
+      const request = async (apiKey: string | undefined): Promise<Response> =>
+        await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey || ""}`,
+            "Content-Type": "application/json",
+            ...model.headers,
+            ...options?.headers,
+          },
+          body: JSON.stringify(payload),
+          signal: options?.signal,
+        });
+
+      let response = await request(options?.apiKey);
 
       if (!response.ok) {
-        let errorMessage = `Stella runtime error: ${response.status} ${response.statusText}`;
-        try {
-          const text = await response.text();
-          if (text.trim()) {
-            errorMessage = text.trim();
+        let errorMessage = await readStellaErrorMessage(response);
+        if (isAuthFailure(response, errorMessage) && options?.refreshApiKey) {
+          const nextApiKey = (await options.refreshApiKey())?.trim();
+          if (nextApiKey && nextApiKey !== options.apiKey?.trim()) {
+            response = await request(nextApiKey);
+            if (!response.ok) {
+              errorMessage = await readStellaErrorMessage(response);
+            }
           }
-        } catch {
-          // Ignore body parse failures.
         }
-        throw new Error(errorMessage);
+        if (!response.ok) {
+          throw new Error(errorMessage);
+        }
       }
 
       if (!response.body) {
