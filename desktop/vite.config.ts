@@ -441,6 +441,8 @@ function selfModHmrControl(): Plugin {
   const appliedOverlay = new Map<string, { content: string; mtime: number }>()
   const shellSnapshotPaths = new Set<string>()
   const suppressedHotUpdatePaths = new Set<string>()
+  let suppressedClientMessages = 0
+  let clientUpdateReleaseDepth = 0
   let shellMutationDepth = 0
 
   const isClientUpdatePaused = () =>
@@ -494,6 +496,28 @@ function selfModHmrControl(): Plugin {
     appliedOverlay.clear()
     shellSnapshotPaths.clear()
     suppressedHotUpdatePaths.clear()
+    suppressedClientMessages = 0
+  }
+
+  const shouldSuppressClientMessage = (payload: unknown): boolean => {
+    if (!isClientUpdatePaused() || clientUpdateReleaseDepth > 0) return false
+    if (!payload || typeof payload !== 'object') return false
+    const type = (payload as { type?: unknown }).type
+    return (
+      type === 'update' ||
+      type === 'full-reload' ||
+      type === 'prune' ||
+      type === 'error'
+    )
+  }
+
+  const withClientUpdateRelease = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    clientUpdateReleaseDepth += 1
+    try {
+      return await fn()
+    } finally {
+      clientUpdateReleaseDepth = Math.max(0, clientUpdateReleaseDepth - 1)
+    }
   }
 
   return {
@@ -530,6 +554,15 @@ function selfModHmrControl(): Plugin {
       return html
     },
     configureServer(server) {
+      const sendClientMessage = server.ws.send.bind(server.ws)
+      server.ws.send = ((payload: unknown, ...args: unknown[]) => {
+        if (shouldSuppressClientMessage(payload)) {
+          suppressedClientMessages += 1
+          return
+        }
+        return sendClientMessage(payload as never, ...(args as never[]))
+      }) as typeof server.ws.send
+
       const readJsonBody = async (
         req: import('node:http').IncomingMessage,
       ): Promise<Record<string, unknown>> => {
@@ -591,7 +624,8 @@ function selfModHmrControl(): Plugin {
           suppressClientFullReload?: boolean
           forceClientFullReload?: boolean
         },
-      ): Promise<{ appliedPaths: number; reloadedModules: number }> => {
+      ): Promise<{ appliedPaths: number; reloadedModules: number }> =>
+        withClientUpdateRelease(async () => {
         let reloadedModules = 0
         let appliedPaths = 0
         const suppressClientFullReload =
@@ -661,7 +695,7 @@ function selfModHmrControl(): Plugin {
         }
 
         return { appliedPaths, reloadedModules }
-      }
+        })
 
       server.middlewares.use(async (req, res, next) => {
         if (!req.url || !req.url.startsWith(SELF_MOD_HMR_ENDPOINT_BASE)) {
@@ -689,6 +723,7 @@ function selfModHmrControl(): Plugin {
             shellSnapshotPaths: shellSnapshotPaths.size,
             appliedOverlayPaths: appliedOverlay.size,
             suppressedHotUpdatePaths: suppressedHotUpdatePaths.size,
+            suppressedClientMessages,
             shellMutationDepth,
           })
           return
