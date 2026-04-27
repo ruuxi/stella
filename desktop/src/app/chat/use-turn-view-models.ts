@@ -11,6 +11,7 @@ import {
   type StableTurnRowsState,
 } from '@/app/chat/lib/stable-rows'
 import { turnViewModelEqual } from '@/app/chat/lib/turn-equality'
+import { useDeveloperResourcePreviewsEnabled } from '@/shared/lib/developer-resource-previews'
 import type { TurnViewModel } from './MessageTurn'
 import {
   getDisplayMessageText,
@@ -221,6 +222,8 @@ export function useTurnViewModels(opts: {
   streamingResponseTarget?: AgentResponseTarget | null
   selfModMap?: Record<string, SelfModAppliedData>
 }) {
+  const developerResourcePreviewsEnabled =
+    useDeveloperResourcePreviewsEnabled()
   const {
     events,
     maxItems,
@@ -331,6 +334,7 @@ export function useTurnViewModels(opts: {
         turn.toolEvents,
         assistantText,
         getTurnCwd(turn.toolEvents),
+        { developerResourcesEnabled: developerResourcePreviewsEnabled },
       )
 
       return {
@@ -377,7 +381,7 @@ export function useTurnViewModels(opts: {
     )
     baseTurnsStableRef.current = next
     return next.result
-  }, [answeredAskQuestions, slicedTurns])
+  }, [answeredAskQuestions, developerResourcePreviewsEnabled, slicedTurns])
 
   const turns = useMemo(() => {
     let candidate: TurnViewModel[]

@@ -14,6 +14,8 @@ export type DisplayFileArtifactKind =
  *              Morphdom-applied into the sidebar (existing behavior).
  * - `office` — docx/xlsx/pptx live-preview produced by `stella-office preview`.
  *              Renders the existing OfficePreviewCard (iframe + auto-refresh).
+ * - `markdown` — local Markdown / MDX files rendered in the panel.
+ * - `source-diff` — developer-gated code-file change preview.
  * - `file-artifact` — a previewable local file without an existing live
  *              preview ref. The sidebar resolves it into the right viewer.
  * - `pdf`    — local PDF file rendered with react-pdf in the renderer.
@@ -28,6 +30,19 @@ export type DisplayFileArtifactKind =
 export type DisplayPayload =
   | { kind: "html"; html: string }
   | { kind: "office"; previewRef: OfficePreviewRef; title?: string }
+  | {
+      kind: "markdown";
+      filePath: string;
+      title?: string;
+      createdAt?: number;
+    }
+  | {
+      kind: "source-diff";
+      filePath: string;
+      title?: string;
+      patch?: string;
+      createdAt?: number;
+    }
   | {
       kind: "file-artifact";
       filePath: string;
@@ -92,6 +107,18 @@ export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
   if (value.kind === "office") {
     return isOfficePreviewRef((value as { previewRef?: unknown }).previewRef);
   }
+  if (value.kind === "markdown" || value.kind === "source-diff") {
+    const createdAt = (value as { createdAt?: unknown }).createdAt;
+    return (
+      typeof (value as { filePath?: unknown }).filePath === "string" &&
+      ((value as { title?: unknown }).title === undefined ||
+        typeof (value as { title?: unknown }).title === "string") &&
+      ((value as { patch?: unknown }).patch === undefined ||
+        typeof (value as { patch?: unknown }).patch === "string") &&
+      (createdAt === undefined ||
+        (typeof createdAt === "number" && Number.isFinite(createdAt)))
+    );
+  }
   if (value.kind === "file-artifact") {
     const artifactKind = (value as { artifactKind?: unknown }).artifactKind;
     const createdAt = (value as { createdAt?: unknown }).createdAt;
@@ -136,6 +163,9 @@ export const getDisplayPayloadTitle = (payload: DisplayPayload): string => {
   if (payload.kind === "html") return "Display";
   if (payload.kind === "office") {
     return payload.title ?? payload.previewRef.title;
+  }
+  if (payload.kind === "markdown" || payload.kind === "source-diff") {
+    return payload.title ?? payload.filePath.split("/").pop() ?? "File";
   }
   if (payload.kind === "file-artifact") {
     return payload.title ?? payload.filePath.split("/").pop() ?? "File";

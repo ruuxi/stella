@@ -14,6 +14,8 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { getDisplayPayloadTitle } from "@/shared/contracts/display-payload";
 import {
   HtmlTabContent,
+  MarkdownTabContent,
+  SourceDiffTabContent,
   ImageTabContent,
   PdfTabContent,
   OfficeTabContent,
@@ -51,6 +53,35 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
         kind: "html",
         title,
         render: () => createElement(HtmlTabContent, { html: payload.html }),
+      };
+
+    case "markdown":
+      return {
+        id: `markdown:${payload.filePath}`,
+        kind: "markdown",
+        title,
+        tooltip: payload.filePath,
+        metadata: { kind: "markdown", filePath: payload.filePath },
+        render: () =>
+          createElement(MarkdownTabContent, {
+            filePath: payload.filePath,
+            ...(payload.title ? { title: payload.title } : {}),
+          }),
+      };
+
+    case "source-diff":
+      return {
+        id: `source-diff:${payload.filePath}:${payload.createdAt ?? 0}`,
+        kind: "source-diff",
+        title,
+        tooltip: payload.filePath,
+        metadata: { kind: "source-diff", filePath: payload.filePath },
+        render: () =>
+          createElement(SourceDiffTabContent, {
+            filePath: payload.filePath,
+            ...(payload.title ? { title: payload.title } : {}),
+            ...(payload.patch ? { patch: payload.patch } : {}),
+          }),
       };
 
     case "office": {

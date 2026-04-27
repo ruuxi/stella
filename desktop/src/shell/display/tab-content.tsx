@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 import { PdfViewerCard } from "@/app/chat/PdfViewerCard";
+import { Markdown } from "@/app/chat/Markdown";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { applyMorphdomHtml } from "@/shell/apply-morphdom-html";
@@ -278,6 +279,226 @@ export const PdfTabContent = ({
     <PdfViewerCard filePath={filePath} {...(title ? { title } : {})} />
   </div>
 );
+
+const decodeTextBytes = (bytes: Uint8Array | null): string =>
+  bytes ? textDecoder.decode(bytes) : "";
+
+export const MarkdownTabContent = ({
+  filePath,
+  title,
+}: {
+  filePath: string;
+  title?: string;
+}) => {
+  const { bytes, error, loading } = useDisplayFileBytes(
+    filePath,
+    "Markdown preview requires the Stella desktop app.",
+  );
+  const markdown = useMemo(() => decodeTextBytes(bytes), [bytes]);
+  const { actionStatus, handleSave, handleCopy } = useFilePreviewActions({
+    sourcePath: filePath,
+    copyText: markdown,
+    suggestedName: title ?? filePath.split(/[\\/]/).pop() ?? "document.md",
+  });
+
+  return (
+    <div className="display-sidebar__rich display-sidebar__rich--markdown">
+      <section className="display-file-preview display-file-preview--markdown">
+        <header className="display-file-preview__header">
+          <div className="display-file-preview__title-group">
+            <span className="display-file-preview__eyebrow">Markdown</span>
+            <div className="display-file-preview__title" title={filePath}>
+              {title ?? filePath.split(/[\\/]/).pop() ?? "Markdown"}
+            </div>
+          </div>
+          <div className="display-file-preview__actions">
+            <button type="button" onClick={handleSave}>
+              Save
+            </button>
+            <button type="button" onClick={handleCopy}>
+              Copy
+            </button>
+            {actionStatus && <span>{actionStatus}</span>}
+          </div>
+        </header>
+        <div className="display-markdown-viewer">
+          {error ? (
+            <div className="display-file-preview__error">{error}</div>
+          ) : loading ? (
+            <div className="display-file-preview__empty">Loading...</div>
+          ) : markdown.trim().length === 0 ? (
+            <div className="display-file-preview__empty">No content found.</div>
+          ) : (
+            <Markdown text={markdown} />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+};
+
+type DiffLine = {
+  kind: "add" | "delete" | "context" | "meta";
+  text: string;
+};
+
+type DiffSection = {
+  title: string;
+  lines: DiffLine[];
+};
+
+const parseApplyPatchPreview = (patch: string): DiffSection[] => {
+  const sections: DiffSection[] = [];
+  let current: DiffSection | null = null;
+  const ensure = (title: string) => {
+    if (!current || current.title !== title) {
+      current = { title, lines: [] };
+      sections.push(current);
+    }
+    return current;
+  };
+
+  for (const rawLine of patch.replace(/\r\n/g, "\n").split("\n")) {
+    if (rawLine.startsWith("*** Add File: ")) {
+      ensure(rawLine.slice("*** Add File: ".length));
+      continue;
+    }
+    if (rawLine.startsWith("*** Update File: ")) {
+      ensure(rawLine.slice("*** Update File: ".length));
+      continue;
+    }
+    if (rawLine.startsWith("*** Delete File: ")) {
+      ensure(rawLine.slice("*** Delete File: ".length));
+      continue;
+    }
+    if (!current) continue;
+    const section: DiffSection = current;
+    if (rawLine.startsWith("@@") || rawLine.startsWith("*** Move to: ")) {
+      section.lines.push({ kind: "meta", text: rawLine });
+      continue;
+    }
+    if (rawLine.startsWith("+")) {
+      section.lines.push({ kind: "add", text: rawLine.slice(1) });
+      continue;
+    }
+    if (rawLine.startsWith("-")) {
+      section.lines.push({ kind: "delete", text: rawLine.slice(1) });
+      continue;
+    }
+    if (rawLine.startsWith(" ")) {
+      section.lines.push({ kind: "context", text: rawLine.slice(1) });
+    }
+  }
+  return sections.filter((section) => section.lines.length > 0);
+};
+
+const buildGeneratedFilePreview = (
+  filePath: string,
+  text: string,
+): DiffSection[] => [
+  {
+    title: filePath,
+    lines: text
+      .split("\n")
+      .map((line): DiffLine => ({ kind: "add", text: line })),
+  },
+];
+
+const DiffRows = ({ sections }: { sections: DiffSection[] }) => (
+  <div className="display-diff-viewer__files">
+    {sections.map((section, sectionIndex) => (
+      <section
+        key={`${section.title}:${sectionIndex}`}
+        className="display-diff-file"
+      >
+        <header className="display-diff-file__header" title={section.title}>
+          {section.title}
+        </header>
+        <div className="display-diff-file__body">
+          {section.lines.map((line, lineIndex) => (
+            <div
+              key={`${lineIndex}:${line.kind}:${line.text}`}
+              className={`display-diff-line display-diff-line--${line.kind}`}
+            >
+              <span className="display-diff-line__marker">
+                {line.kind === "add"
+                  ? "+"
+                  : line.kind === "delete"
+                    ? "-"
+                    : line.kind === "meta"
+                      ? "@"
+                      : " "}
+              </span>
+              <code>{line.text || " "}</code>
+            </div>
+          ))}
+        </div>
+      </section>
+    ))}
+  </div>
+);
+
+export const SourceDiffTabContent = ({
+  filePath,
+  title,
+  patch,
+}: {
+  filePath: string;
+  title?: string;
+  patch?: string;
+}) => {
+  const { bytes, error, loading } = useDisplayFileBytes(
+    filePath,
+    "Code preview requires the Stella desktop app.",
+  );
+  const fileText = useMemo(() => decodeTextBytes(bytes), [bytes]);
+  const sections = useMemo(() => {
+    if (patch?.trim()) {
+      const parsed = parseApplyPatchPreview(patch);
+      if (parsed.length > 0) return parsed;
+    }
+    if (!bytes) return [];
+    return buildGeneratedFilePreview(filePath, fileText);
+  }, [bytes, filePath, fileText, patch]);
+  const { actionStatus, handleSave, handleCopy } = useFilePreviewActions({
+    sourcePath: filePath,
+    copyText: patch?.trim() || fileText,
+    suggestedName: title ?? filePath.split(/[\\/]/).pop() ?? "changes.diff",
+  });
+
+  return (
+    <div className="display-sidebar__rich display-sidebar__rich--diff">
+      <section className="display-file-preview display-file-preview--diff">
+        <header className="display-file-preview__header">
+          <div className="display-file-preview__title-group">
+            <span className="display-file-preview__eyebrow">Changes</span>
+            <div className="display-file-preview__title" title={filePath}>
+              {title ?? filePath.split(/[\\/]/).pop() ?? "Changes"}
+            </div>
+          </div>
+          <div className="display-file-preview__actions">
+            <button type="button" onClick={handleSave}>
+              Save
+            </button>
+            <button type="button" onClick={handleCopy}>
+              Copy
+            </button>
+            {actionStatus && <span>{actionStatus}</span>}
+          </div>
+        </header>
+        {error ? (
+          <div className="display-file-preview__error">{error}</div>
+        ) : loading ? (
+          <div className="display-file-preview__empty">Loading...</div>
+        ) : sections.length === 0 ? (
+          <div className="display-file-preview__empty">No changes found.</div>
+        ) : (
+          <DiffRows sections={sections} />
+        )}
+      </section>
+    </div>
+  );
+};
 
 export const ImageTabContent = ({
   filePaths,

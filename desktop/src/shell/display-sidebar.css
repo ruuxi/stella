@@ -360,6 +360,113 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   padding: 12px;
 }
 
+.display-sidebar__rich--markdown,
+.display-sidebar__rich--diff {
+  padding: 12px;
+}
+
+.display-file-preview--markdown,
+.display-file-preview--diff {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.display-markdown-viewer {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 20px 24px;
+}
+
+.display-markdown-viewer .markdown {
+  max-width: 760px;
+  color: var(--text-base);
+}
+
+.display-markdown-viewer .markdown pre {
+  overflow-x: auto;
+}
+
+.display-diff-viewer__files {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.display-diff-file {
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--background) 72%, transparent);
+}
+
+.display-diff-file + .display-diff-file {
+  margin-top: 10px;
+}
+
+.display-diff-file__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
+  background: color-mix(in oklch, var(--glass-bg) 92%, var(--background));
+  color: var(--text-strong);
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.display-diff-file__body {
+  overflow-x: auto;
+}
+
+.display-diff-line {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  min-width: max-content;
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-base);
+}
+
+.display-diff-line__marker {
+  user-select: none;
+  text-align: center;
+  color: var(--text-weak);
+  border-right: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+}
+
+.display-diff-line code {
+  display: block;
+  padding: 0 10px;
+  white-space: pre;
+}
+
+.display-diff-line--add {
+  background: color-mix(in oklch, #16a34a 13%, transparent);
+}
+
+.display-diff-line--add .display-diff-line__marker {
+  color: #16a34a;
+}
+
+.display-diff-line--delete {
+  background: color-mix(in oklch, #dc2626 12%, transparent);
+}
+
+.display-diff-line--delete .display-diff-line__marker {
+  color: #dc2626;
+}
+
+.display-diff-line--meta {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-weak);
+}
+
 /* ── Codex-style office artifact panels ─────────────────────────── */
 
 .display-artifact-panel {

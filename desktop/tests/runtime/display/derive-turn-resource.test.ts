@@ -322,6 +322,138 @@ describe("deriveTurnResource", () => {
     ).toBeNull();
   });
 
+  it("surfaces markdown files without developer previews enabled", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "w1",
+          type: "tool_result",
+          timestamp: 1,
+          payload: {
+            toolName: "apply_patch",
+            fileChanges: [{ path: "/out/notes.md", kind: { type: "add" } }],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "markdown",
+      filePath: "/out/notes.md",
+      title: "notes.md",
+      createdAt: 1,
+    });
+  });
+
+  it("omits developer files until developer previews are enabled", () => {
+    const events = [
+      event({
+        _id: "w1",
+        type: "tool_result",
+        timestamp: 1,
+        payload: {
+          toolName: "apply_patch",
+          fileChanges: [{ path: "/out/app.ts", kind: { type: "update" } }],
+        },
+      }),
+    ];
+    expect(deriveTurnResource(events)).toBeNull();
+    expect(
+      deriveTurnResource(events, "", undefined, {
+        developerResourcesEnabled: true,
+      }),
+    ).toEqual({
+      kind: "source-diff",
+      filePath: "/out/app.ts",
+      title: "app.ts",
+      createdAt: 1,
+    });
+  });
+
+  it("carries apply_patch input into developer diff payloads", () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: app.ts",
+      "@@",
+      "-old",
+      "+new",
+      "*** End Patch",
+    ].join("\n");
+    expect(
+      deriveTurnResource(
+        [
+          event({
+            _id: "q1",
+            type: "tool_request",
+            timestamp: 1,
+            requestId: "call-1",
+            payload: { toolName: "apply_patch", args: { input: patch } },
+          }),
+          event({
+            _id: "r1",
+            type: "tool_result",
+            timestamp: 2,
+            requestId: "call-1",
+            payload: {
+              toolName: "apply_patch",
+              fileChanges: [{ path: "/out/app.ts", kind: { type: "update" } }],
+            },
+          }),
+        ],
+        "",
+        undefined,
+        { developerResourcesEnabled: true },
+      ),
+    ).toEqual({
+      kind: "source-diff",
+      filePath: "/out/app.ts",
+      title: "app.ts",
+      patch,
+      createdAt: 2,
+    });
+  });
+
+  it("matches apply_patch input when tool_result stores requestId in payload", () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: app.ts",
+      "@@",
+      "-old",
+      "+new",
+      "*** End Patch",
+    ].join("\n");
+    expect(
+      deriveTurnResource(
+        [
+          event({
+            _id: "q1",
+            type: "tool_request",
+            timestamp: 1,
+            requestId: "call-1",
+            payload: { toolName: "apply_patch", args: { input: patch } },
+          }),
+          event({
+            _id: "r1",
+            type: "tool_result",
+            timestamp: 2,
+            payload: {
+              toolName: "apply_patch",
+              requestId: "call-1",
+              fileChanges: [{ path: "/out/app.ts", kind: { type: "update" } }],
+            },
+          }),
+        ],
+        "",
+        undefined,
+        { developerResourcesEnabled: true },
+      ),
+    ).toEqual({
+      kind: "source-diff",
+      filePath: "/out/app.ts",
+      title: "app.ts",
+      patch,
+      createdAt: 2,
+    });
+  });
+
   it("falls back to a markdown-cited file when no tool emitted fileChanges", () => {
     expect(
       deriveTurnResource(

@@ -3,11 +3,13 @@ import { useCallback, useState } from "react";
 type UseFilePreviewActionsOptions = {
   sourcePath: string;
   suggestedName: string;
+  copyText?: string;
 };
 
 export const useFilePreviewActions = ({
   sourcePath,
   suggestedName,
+  copyText,
 }: UseFilePreviewActionsOptions) => {
   const [actionStatus, setActionStatus] = useState<string | null>(null);
 
@@ -21,9 +23,9 @@ export const useFilePreviewActions = ({
   }, [sourcePath, suggestedName]);
 
   const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(sourcePath);
+    await navigator.clipboard.writeText(copyText ?? sourcePath);
     setActionStatus("Copied");
-  }, [sourcePath]);
+  }, [copyText, sourcePath]);
 
   return {
     actionStatus,
