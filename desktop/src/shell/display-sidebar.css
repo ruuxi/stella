@@ -3,13 +3,15 @@
   overflow: hidden;
   height: 100%;
   width: 0;
-  opacity: 0;
   margin-left: auto;
   order: 999;
   position: relative;
-  transition:
-    width 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* Width-only slide. We deliberately do NOT animate opacity here:
+     a fading parent composites the subtree as translucent, which makes
+     the inner panel's `backdrop-filter` blur visibly ramp up from
+     washed-out to full strength over the transition. The `overflow:
+     hidden` clip already produces a clean reveal. */
+  transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: width;
   /* Scope layout/paint to this subtree so width-driven reflows don't
      cascade into siblings (and vice-versa). Crucial during the slide
@@ -19,7 +21,6 @@
 
 .display-sidebar--open {
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
-  opacity: 1;
 }
 
 /* Expanded mode: panel takes the full content area. Pair this with the
@@ -117,6 +118,13 @@
   -webkit-backdrop-filter: var(--glass-blur);
   border-left: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
   border-radius: 0 0 0 32px;
+  /* Promote the inner to its own compositing layer so the
+     backdrop-filter buffer is allocated up-front instead of being
+     prepared frame-by-frame as the outer's width grows. Without this,
+     the blur visibly "catches up" a few frames into the open animation.
+     `translateZ(0)` is preferred over `will-change: backdrop-filter`
+     because it has stable cross-browser GPU-promotion behavior. */
+  transform: translateZ(0);
   /* Isolate paint/layout so backdrop-filter recomputation and content
      reflows stay inside the panel. */
   contain: layout paint;
