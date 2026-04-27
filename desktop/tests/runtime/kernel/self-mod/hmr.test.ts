@@ -141,6 +141,64 @@ describe("self-mod HMR controller", () => {
     }
   });
 
+  it("includes the generated route tree when a route file changes", async () => {
+    const root = makeTempRoot();
+    const routePath = path.join(root, "desktop/src/routes/snake.tsx");
+    const routeTreePath = path.join(root, "desktop/src/routeTree.gen.ts");
+    mkdirSync(path.dirname(routePath), { recursive: true });
+    writeFileSync(routePath, "export const Route = null;\n");
+    writeFileSync(routeTreePath, "export const routeTree = 'generated';\n");
+    const controller = createSelfModHmrController({
+      enabled: false,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+
+    await controller.beginRun("run-a");
+    await controller.recordWrite("run-a", [routePath]);
+    const result = controller.finalize("run-a");
+
+    expect(result.appliedRuns).toHaveLength(1);
+    expect(result.appliedRuns[0]!.paths).toEqual([
+      "desktop/src/routes/snake.tsx",
+      "desktop/src/routeTree.gen.ts",
+    ]);
+    expect(result.appliedRuns[0]!.files).toEqual([
+      {
+        path: "desktop/src/routes/snake.tsx",
+        content: "export const Route = null;\n",
+      },
+      {
+        path: "desktop/src/routeTree.gen.ts",
+        content: "export const routeTree = 'generated';\n",
+      },
+    ]);
+  });
+
+  it("captures the generated route tree at finalize time", async () => {
+    const root = makeTempRoot();
+    const routePath = path.join(root, "desktop/src/routes/snake.tsx");
+    const routeTreePath = path.join(root, "desktop/src/routeTree.gen.ts");
+    mkdirSync(path.dirname(routePath), { recursive: true });
+    writeFileSync(routePath, "export const Route = null;\n");
+    writeFileSync(routeTreePath, "export const routeTree = 'stale';\n");
+    const controller = createSelfModHmrController({
+      enabled: false,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+
+    await controller.beginRun("run-a");
+    await controller.recordWrite("run-a", [routePath]);
+    writeFileSync(routeTreePath, "export const routeTree = 'fresh';\n");
+    const result = controller.finalize("run-a");
+
+    expect(result.appliedRuns[0]!.files).toContainEqual({
+      path: "desktop/src/routeTree.gen.ts",
+      content: "export const routeTree = 'fresh';\n",
+    });
+  });
+
   it("untracks a path if the run finalizes while Vite tracking is in flight", async () => {
     const originalFetch = globalThis.fetch;
     const root = makeTempRoot();
