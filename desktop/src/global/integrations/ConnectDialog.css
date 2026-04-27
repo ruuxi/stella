@@ -340,28 +340,6 @@
    Shared styles (retained from original)
    ============================================ */
 
-.connect-instructions {
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  color: var(--text-weak);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.connect-dialog .connect-instructions {
-  line-height: 1.65;
-}
-
-/* Link code display (bot-based) */
-.connect-code-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 42px;
-}
-
 .connect-code {
   font-family: var(--font-family-mono, "IBM Plex Mono", monospace);
   font-size: 22px;
@@ -434,41 +412,6 @@
   border-radius: var(--radius-md, 10px);
 }
 
-/* QR code layout — QR on left, code + meta on right */
-.connect-qr-code-row {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-}
-
-.connect-qr-code {
-  width: 100px;
-  height: 100px;
-  border-radius: 10px;
-  flex-shrink: 0;
-}
-
-.connect-skeleton-qr {
-  width: 100px;
-  height: 100px;
-}
-
-.connect-qr-side {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-
-.connect-qr-meta {
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  color: var(--text-weak);
-  line-height: 1.45;
-}
-
 /* Error state */
 .connect-error {
   font-size: 12px;
@@ -520,12 +463,6 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   text-align: center;
-}
-
-.connect-code-entry {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
 }
 
 /* Phone pairing — centered layout filling the detail card */

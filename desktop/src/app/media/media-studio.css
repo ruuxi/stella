@@ -475,14 +475,12 @@
   border-color: color-mix(in oklch, var(--ms-fg) 35%, transparent);
 }
 
-.ms-strip-folder svg,
-.ms-strip-folder-icon {
+.ms-strip-folder svg {
   color: var(--ms-muted);
   transition: color 0.15s;
 }
 
-.ms-strip-folder:hover svg,
-.ms-strip-folder:hover .ms-strip-folder-icon {
+.ms-strip-folder:hover svg {
   color: var(--ms-fg);
 }
 
@@ -595,8 +593,6 @@
   gap: 1rem;
   justify-content: center;
 }
-
-.ms-output-image-link { display: block; }
 
 .ms-output-image {
   max-width: 100%;

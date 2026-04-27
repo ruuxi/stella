@@ -6,59 +6,16 @@
   min-height: 0;
 }
 
-.chat-sidebar {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  overflow: hidden;
-  height: 100%;
-  width: 0;
-  opacity: 0;
-  margin-left: auto;
-  order: 999;
-  position: relative;
-  /* Match inner panel so absolutely positioned layers (e.g. preview) clip to the same curve */
-  border-radius: 0 0 0 32px;
-  transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1),
-              opacity 240ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: width;
-}
-
-.chat-sidebar--open {
-  width: clamp(380px, 34vw, 520px);
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-sidebar {
-    transition: none;
-  }
-}
-
 /* In the mini window the chat panel takes up the full content area instead
    of being a constrained side rail. The content area (home, workspace,
    etc.) hides while the panel chat is open so the chat surface owns the
    remaining width next to the icon rail. */
 @media (max-width: 600px) {
-  .chat-sidebar--open {
-    width: 100%;
-    flex: 1;
-  }
-
   .chat-sidebar-inner {
     min-width: 0;
     width: 100%;
     border-left: none;
     border-radius: 0;
-  }
-
-  .chat-sidebar {
-    border-radius: 0;
-    margin-left: 0;
-  }
-
-  .full-body:has(.chat-sidebar--open) .content-area {
-    display: none;
   }
 
   .chat-sidebar-composer {

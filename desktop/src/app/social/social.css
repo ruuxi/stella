@@ -259,12 +259,6 @@
   opacity: 0.5;
 }
 
-.social-chat-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .social-session-panel {
   display: flex;
   flex-direction: column;

@@ -156,21 +156,6 @@
   align-items: stretch;
 }
 
-.settings-toggle-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 30px;
-  font-size: 12px;
-  color: var(--text);
-}
-
-.settings-toggle-row input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--accent);
-}
-
 /* ---- Model Controls ---- */
 
 [data-component="native-select"] {

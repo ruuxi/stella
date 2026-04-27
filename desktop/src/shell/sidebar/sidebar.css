@@ -227,93 +227,6 @@
   text-overflow: ellipsis;
 }
 
-.sidebar-nav-item--project {
-  gap: 10px;
-}
-
-.sidebar-project-copy {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sidebar-project-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sidebar-project-meta {
-  font-size: 11px;
-  line-height: 1.2;
-  color: var(--text-weaker);
-  text-transform: capitalize;
-}
-
-.sidebar-nav-section-label {
-  margin-top: 10px;
-  margin-bottom: 4px;
-  padding: 0 16px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-weaker);
-  opacity: 0.85;
-}
-
-.sidebar-nav-loading {
-  padding: 6px 16px;
-  font-size: 12px;
-  color: var(--text-weaker);
-}
-
-.sidebar-page-status {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-.sidebar-page-status--ready {
-  width: 8px;
-  height: 8px;
-  background: color-mix(in oklch, var(--interactive) 75%, var(--foreground));
-}
-
-.sidebar-page-status--failed {
-  color: color-mix(in oklch, var(--foreground) 70%, #ef4444 55%);
-}
-
-.sidebar-page-status--running {
-  border: 2px solid color-mix(in oklch, var(--foreground) 18%, transparent);
-  border-top-color: color-mix(in oklch, var(--foreground) 58%, transparent);
-  animation: sidebar-page-spin 0.9s linear infinite;
-}
-
-.sidebar-nav-item--loading .sidebar-nav-label {
-  opacity: 0.88;
-}
-
-@keyframes sidebar-page-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.sidebar-spinner {
-  animation: sidebar-page-spin 0.9s linear infinite;
-}
-
-.sidebar-nav-item--generating {
-  pointer-events: none;
-  opacity: 0.72;
-}
-
 /* Footer — pinned to bottom for global apps + account */
 .sidebar-footer {
   display: flex;
@@ -321,35 +234,6 @@
   gap: 4px;
   padding: 12px;
   border-top: 1px solid var(--border-weak);
-}
-
-.sidebar-footer-item {
-  display: flex;
-  align-items: center;
-}
-
-.sidebar-icon-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  border: none;
-  color: var(--text-weak);
-  cursor: default;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.sidebar-icon-button:hover {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--text-strong);
-}
-
-.sidebar-icon-button:active {
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
 /* ── Account row: avatar (initials) + Upgrade / current-plan pill ── */
