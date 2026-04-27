@@ -1,7 +1,6 @@
 /**
- * Tab strip rendered at the top of the workspace panel. Mirrors the
- * Codex right-panel UI: horizontal scroll, left→right insertion order,
- * close-on-X, click-to-activate.
+ * Workspace-tab strip rendered in ShellTopBar. Horizontal scroll,
+ * left-to-right insertion order, close-on-X, click-to-activate.
  *
  * Reorder-by-drag is intentionally out of scope for the current tab strip.
  */
@@ -20,14 +19,14 @@ export const DisplayTabBar = () => {
   if (tabs.length === 0) return null;
 
   return (
-    <div className="display-sidebar__tabbar" role="tablist">
+    <div className="shell-topbar-tablist" role="tablist">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
         return (
           <div
             key={tab.id}
-            className={`display-sidebar__tab${
-              isActive ? " display-sidebar__tab--active" : ""
+            className={`shell-topbar-tab${
+              isActive ? " shell-topbar-tab--active" : ""
             }`}
             role="tab"
             aria-selected={isActive}
@@ -35,15 +34,15 @@ export const DisplayTabBar = () => {
           >
             <button
               type="button"
-              className="display-sidebar__tab-button"
+              className="shell-topbar-tab__button"
               onClick={() => displayTabs.activateTab(tab.id)}
             >
               <DisplayTabIcon kind={tab.kind} size={20} />
-              <span className="display-sidebar__tab-title">{tab.title}</span>
+              <span className="shell-topbar-tab__title">{tab.title}</span>
             </button>
             <button
               type="button"
-              className="display-sidebar__tab-close"
+              className="shell-topbar-tab__close"
               aria-label={`Close ${tab.title}`}
               onClick={(e) => {
                 e.stopPropagation();

@@ -1,5 +1,5 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -106,7 +106,7 @@ export const ShellTopBar = () => {
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
   const isMiniWindow = useWindowType() === "mini";
-  const { tabs, panelOpen, panelExpanded } = useDisplayTabs();
+  const { tabs, panelOpen, panelExpanded, panelWidth } = useDisplayTabs();
   const [miniAlwaysOnTop, setMiniAlwaysOnTopState] = useState(true);
 
   const toggleSidebar = useCallback(() => {
@@ -137,8 +137,17 @@ export const ShellTopBar = () => {
       .catch(() => setMiniAlwaysOnTopState(!next));
   }, [miniAlwaysOnTop]);
 
+  const tabsStyle: CSSProperties | undefined =
+    panelWidth != null
+      ? ({ "--display-panel-width": `${panelWidth}px` } as CSSProperties)
+      : undefined;
+
   return (
-    <header className="shell-topbar" data-platform={isMac ? "mac" : "other"}>
+    <header
+      className="shell-topbar"
+      data-platform={isMac ? "mac" : "other"}
+      data-display-open={panelOpen ? "true" : "false"}
+    >
       <div className="shell-topbar-left">
         <button
           type="button"
@@ -191,7 +200,7 @@ export const ShellTopBar = () => {
           <ArrowRight size={15} strokeWidth={1.75} />
         </button>
       </div>
-      <div className="shell-topbar-tabs">
+      <div className="shell-topbar-tabs" style={tabsStyle}>
         {tabs.length > 0 ? <DisplayTabBar /> : null}
       </div>
       <div className="shell-topbar-right">
