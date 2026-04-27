@@ -3,6 +3,7 @@ import { getOrCreateLocalConversationId } from '@/app/chat/services/local-chat-s
 import { useUiState } from '@/context/ui-state'
 import { configurePiRuntime, getOrCreateDeviceId } from '@/platform/electron/device'
 import { router } from '@/router'
+import { readPersistedLastLocation } from '@/shared/lib/last-location'
 import { useBootstrapState } from './bootstrap-state'
 
 const CONVERSATION_BOOTSTRAP_TIMEOUT_MS = 45_000
@@ -12,6 +13,9 @@ const wait = (ms: number) =>
   new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms)
   })
+
+const isChatLocation = (location: string | null) =>
+  !location || location === '/' || location === '/chat' || location.startsWith('/chat?')
 
 export const useConversationBootstrap = () => {
   const { setConversationId } = useUiState()
@@ -48,23 +52,27 @@ export const useConversationBootstrap = () => {
               return
             }
 
-            // Promote the bootstrapped conversation into the chat route's
-            // `?c=<id>` search param. UiState still mirrors it for callers
-            // that haven't migrated to the router yet (Phase 7 cleanup).
+            // UiState mirrors the active conversation for callers that haven't
+            // migrated to the router yet (Phase 7 cleanup). Only promote it
+            // into `/chat?c=<id>` when the saved startup destination is chat;
+            // otherwise the bootstrap races the route restore and pulls the
+            // user back to home on every launch.
             setConversationId(localConversationId)
-            try {
-              await router.navigate({
-                to: '/chat',
-                search: (prev: { c?: string } | undefined) => ({
-                  ...(prev ?? {}),
-                  c: localConversationId,
-                }),
-                replace: true,
-              })
-            } catch {
-              // Router isn't mounted until onboarding completes. UiState
-              // still carries the id, so the chat route picks it up via
-              // the bootstrap-effect when it later mounts.
+            if (isChatLocation(readPersistedLastLocation())) {
+              try {
+                await router.navigate({
+                  to: '/chat',
+                  search: (prev: { c?: string } | undefined) => ({
+                    ...(prev ?? {}),
+                    c: localConversationId,
+                  }),
+                  replace: true,
+                })
+              } catch {
+                // Router isn't mounted until onboarding completes. UiState
+                // still carries the id, so the chat route picks it up via
+                // the bootstrap-effect when it later mounts.
+              }
             }
             markReady()
             return
