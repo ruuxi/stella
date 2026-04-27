@@ -220,6 +220,7 @@ type ApplyPayload = {
   }
 }
 type TrackPayload = { paths?: unknown }
+type PausePayload = { runId?: unknown; runIds?: unknown }
 const SELF_MOD_HMR_AUTH_TOKEN = process.env.STELLA_SELF_MOD_HMR_TOKEN ?? ''
 
 export const resolveSelfModHmrAbsolutePath = (repoRelative: string): string | null => {
@@ -434,11 +435,29 @@ const collectShellSnapshotFiles = (): string[] => {
  *   - GET  /status         (debug introspection)
  */
 function selfModHmrControl(): Plugin {
+  const pausedRunIds = new Set<string>()
   const inFlightPaths = new Set<string>()
   const prePeriodSnapshot = new Map<string, string>()
   const appliedOverlay = new Map<string, { content: string; mtime: number }>()
   const shellSnapshotPaths = new Set<string>()
+  const suppressedHotUpdatePaths = new Set<string>()
   let shellMutationDepth = 0
+
+  const isClientUpdatePaused = () =>
+    pausedRunIds.size > 0 || shellMutationDepth > 0
+
+  const pauseRun = (runId: string) => {
+    if (runId.length > 0) pausedRunIds.add(runId)
+  }
+
+  const releaseRuns = (runIds: string[]) => {
+    for (const runId of runIds) {
+      pausedRunIds.delete(runId)
+    }
+    if (!isClientUpdatePaused()) {
+      suppressedHotUpdatePaths.clear()
+    }
+  }
 
   const trackPath = (absPath: string) => {
     if (inFlightPaths.has(absPath)) return
@@ -469,10 +488,12 @@ function selfModHmrControl(): Plugin {
   }
 
   const clearAllState = () => {
+    pausedRunIds.clear()
     inFlightPaths.clear()
     prePeriodSnapshot.clear()
     appliedOverlay.clear()
     shellSnapshotPaths.clear()
+    suppressedHotUpdatePaths.clear()
   }
 
   return {
@@ -581,6 +602,7 @@ function selfModHmrControl(): Plugin {
         const seenModules = new Set<import('vite').ModuleNode>()
 
         for (const run of runs) {
+          releaseRuns([run.runId])
           for (const file of run.files) {
             const absPath = file.absPath
             untrackPath(absPath)
@@ -661,11 +683,46 @@ function selfModHmrControl(): Plugin {
         if (req.method === 'GET' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/status`) {
           sendJson(200, {
             ok: true,
-            paused: inFlightPaths.size > 0 || shellMutationDepth > 0,
+            paused: isClientUpdatePaused() || inFlightPaths.size > 0,
+            pausedRuns: pausedRunIds.size,
             inFlightPaths: inFlightPaths.size,
             shellSnapshotPaths: shellSnapshotPaths.size,
             appliedOverlayPaths: appliedOverlay.size,
+            suppressedHotUpdatePaths: suppressedHotUpdatePaths.size,
             shellMutationDepth,
+          })
+          return
+        }
+
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/pause-client-updates`) {
+          const payload = (await readJsonBody(req)) as PausePayload
+          const runId = typeof payload.runId === 'string' ? payload.runId : ''
+          if (!runId) {
+            sendJson(400, { ok: false, error: 'runId required' })
+            return
+          }
+          pauseRun(runId)
+          sendJson(200, {
+            ok: true,
+            paused: true,
+            pausedRuns: pausedRunIds.size,
+          })
+          return
+        }
+
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/release-client-updates`) {
+          const payload = (await readJsonBody(req)) as PausePayload
+          const runIds = collectStringArray(payload.runIds)
+          if (runIds.length === 0) {
+            const runId = typeof payload.runId === 'string' ? payload.runId : ''
+            if (runId) runIds.push(runId)
+          }
+          releaseRuns(runIds)
+          sendJson(200, {
+            ok: true,
+            paused: isClientUpdatePaused(),
+            pausedRuns: pausedRunIds.size,
+            suppressedHotUpdatePaths: suppressedHotUpdatePaths.size,
           })
           return
         }
@@ -810,10 +867,12 @@ function selfModHmrControl(): Plugin {
 
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/force-resume`) {
           const shouldReload =
+            pausedRunIds.size > 0 ||
             inFlightPaths.size > 0 ||
             prePeriodSnapshot.size > 0 ||
             appliedOverlay.size > 0 ||
             shellSnapshotPaths.size > 0 ||
+            suppressedHotUpdatePaths.size > 0 ||
             shellMutationDepth > 0
           clearAllState()
           shellMutationDepth = 0
@@ -829,11 +888,12 @@ function selfModHmrControl(): Plugin {
     },
     async handleHotUpdate(ctx) {
       const key = normalizeIdKey(ctx.file)
-      if (shellMutationDepth > 0) {
-        // Shell commands can mutate source without declaring exact target
-        // paths up front. Keep raw watcher events hidden until the command
-        // result reports its changed files and the worker can track/apply
-        // those paths through the normal overlay pipeline.
+      if (isClientUpdatePaused()) {
+        // While any self-mod run is active, Stella owns when client updates
+        // become visible. The worker releases finalized runs from inside the
+        // morph cover via /apply, while still leaving other active runs
+        // suppressed.
+        suppressedHotUpdatePaths.add(key)
         return []
       }
       if (inFlightPaths.has(key)) {

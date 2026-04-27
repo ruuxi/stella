@@ -384,10 +384,6 @@ export type ElectronOverlayApi = {
   morphDone: (transitionId: string) => void;
 };
 
-export type ElectronMorphApi = {
-  rendererPainted: () => void;
-};
-
 export type ElectronThemeApi = {
   onChange: (
     callback: (event: unknown, data: { key: string; value: string }) => void,
@@ -1013,7 +1009,6 @@ export type ElectronApi = {
   capture: ElectronCaptureApi;
   radial: ElectronRadialApi;
   overlay: ElectronOverlayApi;
-  morph: ElectronMorphApi;
   screenGuide: ElectronScreenGuideApi;
   theme: ElectronThemeApi;
   voice: ElectronVoiceApi;

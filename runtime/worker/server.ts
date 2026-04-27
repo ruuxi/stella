@@ -420,6 +420,14 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         `[self-mod-hmr] Vite self-mod state may remain pinned after ${reason}.`,
       );
     }
+    await controller
+      .releaseRuns(applyResult.restartRelevantRunIds)
+      .catch((error) => {
+        console.warn(
+          `[self-mod-hmr] Failed to release Vite client update pauses after ${reason}:`,
+          (error as Error).message,
+        );
+      });
   };
 
   const emitRunEvent = (event: AgentEventPayload) => {
@@ -801,6 +809,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             // (e.g., the orchestrator skipped tracking for this run).
             // Nothing to apply — just release the reload pause that
             // beginRun installed.
+            await selfModHmrController.releaseRuns([runId]).catch((error) => {
+              console.warn(
+                "[self-mod-hmr] Failed to release Vite client update pause:",
+                (error as Error).message,
+              );
+            });
             await releaseRuntimeReloadFor([runId]);
             selfModRunRootIds.delete(runId);
             return;
@@ -812,6 +826,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               // The run finalized with no tracked source writes. There is
               // no renderer batch to apply, but beginRun still installed a
               // runtime-reload pause that must be released.
+              await selfModHmrController.releaseRuns([runId]).catch((error) => {
+                console.warn(
+                  "[self-mod-hmr] Failed to release Vite client update pause:",
+                  (error as Error).message,
+                );
+              });
               await releaseRuntimeReloadFor([runId]);
               selfModRunRootIds.delete(runId);
               return;
@@ -827,6 +847,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           storeModService.cancelSelfModRun(runId);
 
           if (!selfModHmrController.hasRun(runId)) {
+            await selfModHmrController.releaseRuns([runId]).catch((error) => {
+              console.warn(
+                "[self-mod-hmr] Failed to release Vite client update pause:",
+                (error as Error).message,
+              );
+            });
             await releaseRuntimeReloadFor([runId]);
             selfModRunRootIds.delete(runId);
             return;

@@ -480,7 +480,7 @@ export const createAgentOrchestration = (
         // Register the run with the contention tracker before any writes can
         // arrive. recordWrite is a no-op on unknown runs to avoid resurrecting
         // already-finalized runs, so beginRun must precede writes.
-        context.selfModHmrController?.beginRun(runId);
+        await context.selfModHmrController?.beginRun(runId);
         await Promise.resolve(
           context.selfModLifecycle!.beginRun({
             runId,

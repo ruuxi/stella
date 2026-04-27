@@ -5,6 +5,7 @@ import { expandHomePath } from "./utils.js";
 const SHELL_TOKEN_PATTERN = /"([^"]+)"|'([^']+)'|([^\s;&|<>]+)/g;
 const EMBEDDED_PATH_PATTERN =
   /(?:~(?:[\\/][^\s"';&|<>),]*)?|\.{1,2}[\\/][^\s"';&|<>),]*|\/[^\s"';&|<>),]*|[A-Za-z]:[\\/][^\s"';&|<>),]*)/g;
+const SUBSTITUTION_EXPRESSION_PATTERN = /^[a-z]*s([^\w\s]).*\1.*\1[a-z]*$/i;
 
 export const resolveToolPath = (
   rawPath: unknown,
@@ -42,6 +43,7 @@ export const inferShellMentionedPaths = (
   for (const match of command.matchAll(SHELL_TOKEN_PATTERN)) {
     const token = match[1] ?? match[2] ?? match[3] ?? "";
     if (!token || token.startsWith("-")) continue;
+    if (SUBSTITUTION_EXPRESSION_PATTERN.test(token)) continue;
     if (
       path.isAbsolute(token) ||
       token.startsWith("~/") ||
