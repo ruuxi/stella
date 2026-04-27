@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../src/shell/display/tab-content", () => ({
   HtmlTabContent: () => null,
+  MarkdownTabContent: () => null,
+  SourceDiffTabContent: () => null,
   ImageTabContent: () => null,
   PdfTabContent: () => null,
   OfficeTabContent: () => null,
@@ -15,6 +17,8 @@ vi.mock("../../../src/shell/display/tab-content", () => ({
 }));
 vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
   HtmlTabContent: () => null,
+  MarkdownTabContent: () => null,
+  SourceDiffTabContent: () => null,
   ImageTabContent: () => null,
   PdfTabContent: () => null,
   OfficeTabContent: () => null,
@@ -91,5 +95,29 @@ describe("payloadToTabSpec", () => {
       title: "data.csv",
     };
     expect(payloadToTabSpec(payload).kind).toBe("office-spreadsheet");
+  });
+
+  it("maps markdown files to markdown tabs", () => {
+    const payload: DisplayPayload = {
+      kind: "markdown",
+      filePath: "/tmp/notes.md",
+      title: "notes.md",
+    };
+    const spec = payloadToTabSpec(payload);
+    expect(spec.id).toBe("markdown:/tmp/notes.md");
+    expect(spec.kind).toBe("markdown");
+  });
+
+  it("maps developer file changes to source diff tabs", () => {
+    const payload: DisplayPayload = {
+      kind: "source-diff",
+      filePath: "/tmp/app.ts",
+      title: "app.ts",
+      patch: "*** Begin Patch\n*** End Patch",
+      createdAt: 7,
+    };
+    const spec = payloadToTabSpec(payload);
+    expect(spec.id).toBe("source-diff:/tmp/app.ts:7");
+    expect(spec.kind).toBe("source-diff");
   });
 });

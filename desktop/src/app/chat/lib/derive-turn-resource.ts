@@ -36,11 +36,17 @@ import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 import {
   kindForPath,
   basenameOf,
+  extensionOf,
   fileArtifactPayloadForPath,
+  isDeveloperResourceExtension,
   pickPrimaryEditedPath,
 } from "@/shell/display/path-to-viewer";
 import type { EventRecord } from "./event-transforms";
-import { isAgentCompletedEvent, isToolResult } from "./event-transforms";
+import {
+  isAgentCompletedEvent,
+  isToolRequest,
+  isToolResult,
+} from "./event-transforms";
 
 const asNonEmptyString = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -191,9 +197,20 @@ const imageGenPayloadsByPath = (
 const buildPayloadFromBarePath = (
   filePath: string,
   createdAt: number,
-  options?: { produced?: boolean },
+  options?: {
+    produced?: boolean;
+    developerResourcesEnabled?: boolean;
+    patch?: string;
+  },
 ): DisplayPayload | null => {
   switch (kindForPath(filePath)) {
+    case "markdown":
+      return {
+        kind: "markdown",
+        filePath,
+        title: basenameOf(filePath),
+        createdAt,
+      };
     case "office-document":
     case "office-spreadsheet":
     case "office-slides":
@@ -228,12 +245,52 @@ const buildPayloadFromBarePath = (
         createdAt,
       };
     default:
-      // Office files opened from bare paths still require a preview
-      // session ref. Markdown / text fallbacks are unsupported by the
-      // viewers today, so we deliberately skip them rather than render
-      // an end-resource pill that does nothing.
+      if (
+        options?.developerResourcesEnabled === true &&
+        isDeveloperResourceExtension(extensionOf(filePath))
+      ) {
+        return {
+          kind: "source-diff",
+          filePath,
+          title: basenameOf(filePath),
+          ...(options.patch ? { patch: options.patch } : {}),
+          createdAt,
+        };
+      }
+      // Office files opened from bare edit paths still require a preview
+      // session ref. Plain text fallbacks are unsupported by the viewers
+      // today, so skip them rather than render a pill that does nothing.
       return null;
   }
+};
+
+const patchInputForToolCall = (
+  toolEvents: EventRecord[],
+  toolCallId: string | undefined,
+): string | undefined => {
+  if (!toolCallId) return undefined;
+  const request = toolEvents.find(
+    (event) =>
+      isToolRequest(event) &&
+      event.payload.toolName === "apply_patch" &&
+      event.requestId === toolCallId,
+  );
+  const args = request && isToolRequest(request) ? request.payload.args : null;
+  const input = args?.input ?? args?.patch;
+  return typeof input === "string" && input.trim().length > 0
+    ? input
+    : undefined;
+};
+
+const requestIdForEvent = (event: EventRecord): string | undefined => {
+  if (typeof event.requestId === "string" && event.requestId.trim()) {
+    return event.requestId;
+  }
+  const payloadRequestId = (event.payload as { requestId?: unknown } | undefined)
+    ?.requestId;
+  return typeof payloadRequestId === "string" && payloadRequestId.trim()
+    ? payloadRequestId
+    : undefined;
 };
 
 /**
@@ -296,6 +353,7 @@ export const deriveTurnResource = (
   toolEvents: EventRecord[],
   assistantText: string = "",
   turnCwd?: string,
+  options?: { developerResourcesEnabled?: boolean },
 ): DisplayPayload | null => {
   if (toolEvents.length === 0 && !assistantText) return null;
 
@@ -337,9 +395,17 @@ export const deriveTurnResource = (
       editedSeen.add(resolved.path);
       editedPaths.push(resolved.path);
       if (!payloadByPath.has(resolved.path)) {
+        const patch =
+          isToolResult(event) && event.payload.toolName === "apply_patch"
+            ? patchInputForToolCall(toolEvents, requestIdForEvent(event))
+            : undefined;
         const inferred = buildPayloadFromBarePath(
           resolved.path,
           resolved.timestamp,
+          {
+            developerResourcesEnabled: options?.developerResourcesEnabled,
+            ...(patch ? { patch } : {}),
+          },
         );
         if (inferred) {
           payloadByPath.set(resolved.path, inferred);
@@ -366,7 +432,10 @@ export const deriveTurnResource = (
         const inferred = buildPayloadFromBarePath(
           resolved.path,
           resolved.timestamp,
-          { produced: true },
+          {
+            produced: true,
+            developerResourcesEnabled: options?.developerResourcesEnabled,
+          },
         );
         if (inferred) {
           payloadByPath.set(resolved.path, inferred);
@@ -402,7 +471,9 @@ export const deriveTurnResource = (
   const candidatePaths = [...editedPaths, ...producedPaths, ...referencedPaths];
   if (candidatePaths.length === 0) return null;
 
-  const primary = pickPrimaryEditedPath(candidatePaths);
+  const primary = pickPrimaryEditedPath(candidatePaths, {
+    includeDeveloperResources: options?.developerResourcesEnabled,
+  });
   if (!primary) return null;
 
   const directPayload = payloadByPath.get(primary);
@@ -410,5 +481,7 @@ export const deriveTurnResource = (
 
   const fallbackTimestamp =
     toolEvents[toolEvents.length - 1]?.timestamp ?? Date.now();
-  return buildPayloadFromBarePath(primary, fallbackTimestamp);
+  return buildPayloadFromBarePath(primary, fallbackTimestamp, {
+    developerResourcesEnabled: options?.developerResourcesEnabled,
+  });
 };

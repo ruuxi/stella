@@ -22,6 +22,8 @@ const TYPE_COLORS = {
   sheet: "#16a34a",
   slides: "#ea580c",
   html: "#0891b2",
+  markdown: "#2563eb",
+  diff: "#16a34a",
   image: "#7c3aed",
   video: "#e11d48",
   audio: "#9333ea",
@@ -245,6 +247,31 @@ const TextIcon = (props: IconProps) => (
   </Sheet>
 );
 
+const MarkdownIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <TypeBadge color={TYPE_COLORS.markdown} label="MD" />
+  </Sheet>
+);
+
+const DiffIcon = (props: IconProps) => (
+  <Sheet {...props}>
+    <g
+      transform="translate(5 11.6)"
+      stroke={TYPE_COLORS.diff}
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    >
+      <path d="M1 2H11" />
+      <path d="M1 6H11" />
+      <path d="M3 0V4" />
+      <path d="M5 2H1" />
+      <path d="M7 6H11" />
+    </g>
+  </Sheet>
+);
+
 const IdeasIcon = ({ size = 18, style }: IconProps) => (
   <svg
     width={size}
@@ -313,6 +340,10 @@ export const DisplayTabIcon = ({
       return <SlidesIcon size={size} style={style} />;
     case "html":
       return <HtmlIcon size={size} style={style} />;
+    case "markdown":
+      return <MarkdownIcon size={size} style={style} />;
+    case "source-diff":
+      return <DiffIcon size={size} style={style} />;
     case "video":
       return <VideoIcon size={size} style={style} />;
     case "audio":

@@ -38,6 +38,40 @@ const DELIMITED_TABLE_EXTS = new Set(["csv", "tsv"]);
 const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "m4v"]);
 const AUDIO_EXTS = new Set(["mp3", "wav", "ogg", "m4a", "flac"]);
 const MODEL3D_EXTS = new Set(["glb", "gltf", "obj", "stl"]);
+const MARKDOWN_EXTS = new Set(["md", "mdx"]);
+const DEVELOPER_RESOURCE_EXTS = new Set([
+  "c",
+  "cc",
+  "cpp",
+  "cs",
+  "css",
+  "go",
+  "h",
+  "hpp",
+  "html",
+  "java",
+  "js",
+  "jsx",
+  "json",
+  "kt",
+  "mjs",
+  "php",
+  "py",
+  "rb",
+  "rs",
+  "scss",
+  "sh",
+  "sql",
+  "svelte",
+  "swift",
+  "toml",
+  "ts",
+  "tsx",
+  "vue",
+  "xml",
+  "yaml",
+  "yml",
+]);
 
 /**
  * Extensions whose mere appearance in a turn's edited-paths list should
@@ -62,10 +96,8 @@ const PREFERRED_RESOURCE_EXTS = new Set<string>([
  */
 const FALLBACK_RESOURCE_EXTS = new Set<string>([
   ...PREFERRED_RESOURCE_EXTS,
-  "md",
-  "mdx",
+  ...MARKDOWN_EXTS,
   "txt",
-  "json",
 ]);
 
 /** Lowercased extension (without dot) or `null` for paths without one. */
@@ -108,6 +140,7 @@ export const kindForExtension = (
   if (OFFICE_DOC_EXTS.has(extension)) return "office-document";
   if (OFFICE_SHEET_EXTS.has(extension)) return "office-spreadsheet";
   if (OFFICE_SLIDES_EXTS.has(extension)) return "office-slides";
+  if (MARKDOWN_EXTS.has(extension)) return "markdown";
   if (VIDEO_EXTS.has(extension)) return "video";
   if (AUDIO_EXTS.has(extension)) return "audio";
   if (MODEL3D_EXTS.has(extension)) return "model3d";
@@ -145,6 +178,13 @@ export const fileArtifactPayloadForPath = (
     : null;
 };
 
+export const isMarkdownExtension = (extension: string | null): boolean =>
+  extension != null && MARKDOWN_EXTS.has(extension);
+
+export const isDeveloperResourceExtension = (
+  extension: string | null,
+): boolean => extension != null && DEVELOPER_RESOURCE_EXTS.has(extension);
+
 /**
  * Codex-style primary-path picker for a turn.
  *
@@ -156,13 +196,15 @@ export const fileArtifactPayloadForPath = (
  *   2. If any path's extension is in `PREFERRED_RESOURCE_EXTS` (Office/PDF/
  *      media/3D), return the **first** such — this prioritizes a single
  *      "interesting" artifact when the turn touched many files.
- *   3. Otherwise, if the turn touched exactly one unique path **and** its
- *      extension is in the broader `FALLBACK_RESOURCE_EXTS` set, return
- *      that.
- *   4. Otherwise return `null`.
+ *   3. Otherwise, return the first markdown file; markdown is readable enough
+ *      to surface even alongside developer-only paths.
+ *   4. Otherwise, if the turn touched exactly one unique path **and** its
+ *      extension is in the broader `FALLBACK_RESOURCE_EXTS` set, return that.
+ *   5. Otherwise return `null`.
  */
 export const pickPrimaryEditedPath = (
   candidatePaths: string[],
+  options?: { includeDeveloperResources?: boolean },
 ): string | null => {
   if (candidatePaths.length === 0) return null;
 
@@ -184,10 +226,19 @@ export const pickPrimaryEditedPath = (
   });
   if (preferred) return preferred;
 
+  const markdown = unique.find((p) => isMarkdownExtension(extensionOf(p)));
+  if (markdown) return markdown;
+
   if (unique.length === 1) {
     const only = unique[0]!;
     const ext = extensionOf(only);
     if (ext != null && FALLBACK_RESOURCE_EXTS.has(ext)) {
+      return only;
+    }
+    if (
+      options?.includeDeveloperResources === true &&
+      isDeveloperResourceExtension(ext)
+    ) {
       return only;
     }
   }
@@ -202,6 +253,10 @@ export const pickPrimaryEditedPath = (
 export const tabIdForPath = (filePath: string): string => {
   const kind = kindForPath(filePath);
   if (kind === "pdf") return `pdf:${filePath}`;
+  if (kind === "markdown") return `markdown:${filePath}`;
+  if (isDeveloperResourceExtension(extensionOf(filePath))) {
+    return `source-diff:${filePath}`;
+  }
   if (
     kind === "office-document" ||
     kind === "office-spreadsheet" ||

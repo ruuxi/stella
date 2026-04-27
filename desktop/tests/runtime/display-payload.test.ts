@@ -55,6 +55,23 @@ describe("normalizeDisplayPayload", () => {
     expect(normalizeDisplayPayload(payload)).toBe(payload);
   });
 
+  it("passes through markdown and source diff payloads", () => {
+    const markdown: DisplayPayload = {
+      kind: "markdown",
+      filePath: "/tmp/notes.md",
+      title: "notes.md",
+    };
+    const sourceDiff: DisplayPayload = {
+      kind: "source-diff",
+      filePath: "/tmp/app.ts",
+      patch: "*** Begin Patch\n*** End Patch",
+      createdAt: 1,
+    };
+    expect(normalizeDisplayPayload(markdown)).toBe(markdown);
+    expect(normalizeDisplayPayload(sourceDiff)).toBe(sourceDiff);
+  });
+
+
   it("passes through valid media payloads", () => {
     const image: DisplayPayload = {
       kind: "media",
@@ -134,6 +151,18 @@ describe("normalizeDisplayPayload", () => {
       }),
     ).toBe("report.docx");
 
+    expect(
+      getDisplayPayloadTitle({
+        kind: "markdown",
+        filePath: "/a/b/notes.md",
+      }),
+    ).toBe("notes.md");
+    expect(
+      getDisplayPayloadTitle({
+        kind: "source-diff",
+        filePath: "/a/b/app.ts",
+      }),
+    ).toBe("app.ts");
     expect(
       getDisplayPayloadTitle({
         kind: "pdf",

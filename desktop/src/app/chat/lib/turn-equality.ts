@@ -162,6 +162,21 @@ export const resourcePayloadEqual = (
         a.previewRef.sourcePath ===
         (b as { previewRef: OfficePreviewRef }).previewRef.sourcePath
       );
+    case "markdown": {
+      const bb = b as Extract<DisplayPayload, { kind: "markdown" }>;
+      return (
+        a.filePath === bb.filePath &&
+        (a.createdAt ?? null) === (bb.createdAt ?? null)
+      );
+    }
+    case "source-diff": {
+      const bb = b as Extract<DisplayPayload, { kind: "source-diff" }>;
+      return (
+        a.filePath === bb.filePath &&
+        (a.patch ?? null) === (bb.patch ?? null) &&
+        (a.createdAt ?? null) === (bb.createdAt ?? null)
+      );
+    }
     case "file-artifact": {
       const bb = b as Extract<DisplayPayload, { kind: "file-artifact" }>;
       return (

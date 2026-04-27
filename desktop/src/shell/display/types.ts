@@ -17,6 +17,8 @@ import type { ReactNode } from "react";
 export type DisplayTabKind =
   | "chat"
   | "html"
+  | "markdown"
+  | "source-diff"
   | "image"
   | "pdf"
   | "office-document"

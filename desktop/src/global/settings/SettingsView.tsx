@@ -60,6 +60,10 @@ import {
   useDesktopPermissions,
   type DesktopPermissionStatus,
 } from "@/global/permissions/use-desktop-permissions";
+import {
+  setDeveloperResourcePreviewsEnabled,
+  useDeveloperResourcePreviewsEnabled,
+} from "@/shared/lib/developer-resource-previews";
 import "@/global/settings/settings.css";
 
 const LegalDialog = lazy(() =>
@@ -593,6 +597,8 @@ function ShortcutsSettingsTab() {
 
 function BasicSettingsTab() {
   const platform = window.electronAPI?.platform;
+  const developerResourcePreviewsEnabled =
+    useDeveloperResourcePreviewsEnabled();
   const initialPermissionStatus = useMemo<DesktopPermissionStatus>(
     () => ({
       accessibility: platform === "darwin" ? false : true,
@@ -652,6 +658,28 @@ function BasicSettingsTab() {
 
   return (
     <div className="settings-tab-content">
+      <div className="settings-card">
+        <h3 className="settings-card-title">Chat previews</h3>
+        <p className="settings-card-desc">
+          Choose which work files Stella can show directly in chat.
+        </p>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Developer file previews</div>
+            <div className="settings-row-sublabel">
+              Show code changes in chat and open them in the side panel.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <Switch
+              checked={developerResourcePreviewsEnabled}
+              onCheckedChange={(checked) =>
+                setDeveloperResourcePreviewsEnabled(Boolean(checked))
+              }
+            />
+          </div>
+        </div>
+      </div>
       {platform === "darwin" ? (
         <div className="settings-card">
           <h3 className="settings-card-title">Permissions</h3>
