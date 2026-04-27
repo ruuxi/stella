@@ -90,6 +90,13 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     (event, active: boolean) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       if (!win) return { ok: false };
+      // Onboarding presentation only applies to the full window. The mini
+      // renderer also mounts FullShell and historically drove this IPC,
+      // which animated the mini toward the work-area centre clamped by its
+      // max bounds — visible as a creep/grow after first summon.
+      if (win === options.windowManager.getMiniWindow()) {
+        return { ok: false };
+      }
       const display = screen.getDisplayMatching(win.getBounds());
       const work = display.workArea;
       if (active) {

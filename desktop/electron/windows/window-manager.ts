@@ -283,9 +283,9 @@ export class WindowManager {
     return window
   }
 
-  private createMiniWindow() {
+  private createMiniWindow(initialBounds?: Bounds) {
     this.cancelMiniIdleDestroy()
-    const window = this.miniWindowController.create()
+    const window = this.miniWindowController.create(initialBounds)
     this.observeShellWindow(window, 'mini')
     return window
   }
@@ -671,8 +671,15 @@ export class WindowManager {
     if (target === 'mini') {
       if (!this.options.isAppReady()) return
 
-      const miniWindow = this.createMiniWindow()
+      // Compute the destination bounds BEFORE constructing the panel so it
+      // materializes in place. If we let `BrowserWindow` cascade-default and
+      // then `setBounds` afterwards, macOS panels can paint one frame at the
+      // cascade location (forced visible by the `setAlwaysOnTop` /
+      // `setVisibleOnAllWorkspaces` calls in mini-window's `afterCreate`)
+      // before snapping to the right spot, which surfaces as a visible jump
+      // on first summon.
       const targetBounds = this.getPreferredMiniBounds()
+      const miniWindow = this.createMiniWindow(targetBounds)
       this.miniShouldRestoreExternalApp =
         process.platform === 'darwin' && this.getFocusedShellWindow() === null
 
@@ -691,6 +698,10 @@ export class WindowManager {
       if (miniWindow.isMinimized()) {
         miniWindow.restore()
       }
+      // Re-apply bounds for the case where `createMiniWindow` returned an
+      // already-existing panel (the constructor's `x`/`y` only takes effect
+      // on the first construction). For a fresh panel this is a no-op snap
+      // to the same coords we baked in.
       miniWindow.setBounds(targetBounds)
       this.focusAndRaise(miniWindow, 'mini')
       this.setLastActiveWindowMode('mini')
