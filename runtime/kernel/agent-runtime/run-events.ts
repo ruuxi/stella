@@ -146,13 +146,16 @@ export const createRunEventRecorder = ({
       };
     },
 
-    recordStatus(statusText: string): RuntimeStatusEvent {
+    recordStatus(
+      statusText: string,
+      statusState: RuntimeStatusEvent["statusState"] = "running",
+    ): RuntimeStatusEvent {
       const seq = nextSeq();
       return {
         runId,
         agentType,
         seq,
-        statusState: "running",
+        statusState,
         statusText,
         ...(uiVisibility ? { uiVisibility } : {}),
       };
