@@ -66,8 +66,16 @@ const getOwnerIdFromRequest = async (
 const requireBackupOwner = async (
   ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
   origin: string | null,
+  options?: {
+    requireSubscription?: boolean;
+  },
 ): Promise<{ ownerId: string } | { response: Response }> => {
   const ownerId = await getOwnerIdFromRequest(ctx);
+  if (options?.requireSubscription) {
+    await ctx.runQuery(internal.billing.assertPaidSubscriptionForOwner, {
+      ownerId,
+    });
+  }
   const rateLimit = await consumeWebhookRateLimit(ctx, {
     scope: "backups_owner",
     key: ownerId,
@@ -104,6 +112,7 @@ const toErrorResponse = (
     const status =
       code === "UNAUTHENTICATED" ? 401
         : code === "UNAUTHORIZED" ? 403
+          : code === "SUBSCRIPTION_REQUIRED" ? 402
           : code === "NOT_FOUND" ? 404
             : code === "CONFLICT" ? 409
               : 400;
@@ -155,7 +164,9 @@ export const registerBackupRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         try {
-          const owner = await requireBackupOwner(ctx, origin);
+          const owner = await requireBackupOwner(ctx, origin, {
+            requireSubscription: true,
+          });
           if ("response" in owner) return owner.response;
           const ownerId = owner.ownerId;
           const sourceDeviceId = getRequiredDeviceId(request);
@@ -218,7 +229,9 @@ export const registerBackupRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         try {
-          const owner = await requireBackupOwner(ctx, origin);
+          const owner = await requireBackupOwner(ctx, origin, {
+            requireSubscription: true,
+          });
           if ("response" in owner) return owner.response;
           const ownerId = owner.ownerId;
           const sourceDeviceId = getRequiredDeviceId(request);
@@ -264,7 +277,9 @@ export const registerBackupRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         try {
-          const owner = await requireBackupOwner(ctx, origin);
+          const owner = await requireBackupOwner(ctx, origin, {
+            requireSubscription: true,
+          });
           if ("response" in owner) return owner.response;
           const ownerId = owner.ownerId;
           const sourceDeviceId = getRequiredDeviceId(request);
