@@ -6,7 +6,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   flex-shrink: 0;
 }
 
@@ -23,15 +23,19 @@
 
 .connect-hero-tagline {
   text-align: center;
-  max-width: 340px;
+  max-width: 400px;
   margin: 0;
-  padding: 12px 0 0;
+  padding: 10px 0 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   letter-spacing: -0.01em;
   line-height: 1.55;
   color: var(--text-base);
+}
+
+.connect-dialog .connect-hero-animation {
+  height: 118px;
 }
 
 /* ============================================
@@ -40,6 +44,7 @@
    ============================================ */
 
 [data-slot="dialog-content"].connect-dialog {
+  --connect-dialog-pad-x: 24px;
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -52,22 +57,23 @@
 }
 
 .connect-dialog [data-slot="dialog-header"] {
-  padding: 20px 20px 20px 28px;
+  padding: 18px 20px 18px var(--connect-dialog-pad-x);
   border-bottom: 1px solid var(--border-weak);
 }
 
 /* Taller modal footprint; grid + detail share the same body box (overrides data-fit auto height) */
 [data-component="dialog"][data-fit]:has([data-slot="dialog-content"].connect-dialog)
   [data-slot="dialog-container"] {
-  height: min(calc(100vh - 16px), 680px);
-  min-height: 620px;
+  --dialog-width: 560px;
+  height: min(calc(100vh - 16px), 620px);
+  min-height: min(calc(100vh - 16px), 620px);
 }
 
 /* Body fills space below header; main pane stays one size when switching views */
 .connect-dialog [data-slot="dialog-body"] {
   flex: 1;
   min-height: 0;
-  padding: 8px 28px 32px;
+  padding: 8px var(--connect-dialog-pad-x) 24px;
 }
 
 .connect-dialog-main {
@@ -76,10 +82,15 @@
   display: flex;
   flex-direction: column;
   flex-wrap: nowrap;
-  gap: 24px;
+  gap: 16px;
   overflow-x: hidden;
   overflow-y: auto;
   width: 100%;
+}
+
+.connect-dialog:not([data-has-selection]) [data-slot="dialog-body"],
+.connect-dialog:not([data-has-selection]) .connect-dialog-main {
+  overflow: hidden;
 }
 
 /* Section title — matches .sidebar-nav-section-label */
@@ -104,8 +115,8 @@
   margin-bottom: 0;
   justify-content: flex-start;
   text-align: left;
-  padding: 24px 24px;
-  gap: 18px;
+  padding: 16px 18px;
+  gap: 14px;
   border-radius: 14px;
   background: color-mix(in srgb, var(--card) 20%, transparent);
   border: 1px solid var(--border-weak);
@@ -125,8 +136,8 @@
 }
 
 .connect-grid-card--wide .connect-grid-card-icon {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   color: var(--interactive, var(--primary));
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   border-radius: var(--radius-md);
@@ -142,7 +153,7 @@
   flex: 1;
   min-width: 0;
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(1.15rem, 2.5vw, 1.35rem);
+  font-size: 1.15rem;
   font-weight: 450;
   font-style: italic;
   letter-spacing: -0.03em;
@@ -155,7 +166,7 @@
 .connect-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
+  gap: 8px 10px;
 }
 
 /* Grid card — sidebar .sidebar-nav-item family */
@@ -178,7 +189,8 @@
 }
 
 .connect-grid-card:not(.connect-grid-card--wide) {
-  padding: 14px 18px;
+  min-height: 48px;
+  padding: 10px 14px;
   border-radius: var(--radius-md);
 }
 

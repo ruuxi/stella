@@ -43,7 +43,7 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
   const handleSignIn = useCallback(() => {
     void navigate({
       to: ".",
-      search: (prev) => ({
+      search: (prev: Record<string, unknown> | undefined) => ({
         ...(prev ?? {}),
         dialog: "auth" as const,
       }),
@@ -81,7 +81,11 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent fit className="connect-dialog">
+      <DialogContent
+        fit
+        className="connect-dialog"
+        data-has-selection={hasSelection || undefined}
+      >
         <DialogHeader>
           {hasSelection ? (
             <button
