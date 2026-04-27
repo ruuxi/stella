@@ -63,6 +63,13 @@ export interface StreamOptions {
 	signal?: AbortSignal;
 	apiKey?: string;
 	/**
+	 * Refreshes a short-lived API key after an auth failure.
+	 *
+	 * Providers that support retrying auth failures call this at most once for a
+	 * request and use the returned key for the retry.
+	 */
+	refreshApiKey?: () => Promise<string | undefined> | string | undefined;
+	/**
 	 * Provider-specific extra body fields forwarded by the Stella runtime
 	 * proxy provider. Other providers ignore this.
 	 */

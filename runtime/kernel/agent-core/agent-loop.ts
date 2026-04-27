@@ -258,6 +258,15 @@ async function streamAssistantResponse(
 	const response = await streamFunction(config.model, llmContext, {
 		...config,
 		apiKey: resolvedApiKey,
+		refreshApiKey: config.refreshApiKey
+			? async () => {
+					try {
+						return await config.refreshApiKey?.();
+					} catch {
+						return undefined;
+					}
+				}
+			: undefined,
 		signal,
 	});
 

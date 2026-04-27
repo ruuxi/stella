@@ -463,6 +463,12 @@ export const createAgentOrchestration = (
         site: {
           baseUrl: context.state.convexSiteUrl,
           getAuthToken: () => context.state.authToken?.trim(),
+          refreshAuthToken: async () => {
+            const result = await context.requestRuntimeAuthRefresh?.({
+              source: "stella_provider",
+            });
+            return result?.authenticated ? result.token : null;
+          },
         },
       });
       const runnerCallbacks =

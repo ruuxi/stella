@@ -363,6 +363,9 @@ export const createRuntimeAgent = (args: {
     convertToLlm: PI_AGENT_MESSAGE_FILTER,
     transformContext: buildDefaultTransformContext(args.resolvedLlm),
     getApiKey: () => args.resolvedLlm.getApiKey(),
+    refreshApiKey: args.resolvedLlm.refreshApiKey
+      ? () => args.resolvedLlm.refreshApiKey?.()
+      : undefined,
     onPayload: createBeforeProviderPayloadTransform(
       args.hookEmitter,
       args.agentType,

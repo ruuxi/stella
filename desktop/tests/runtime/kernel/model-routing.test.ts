@@ -66,6 +66,13 @@ describe("resolveLlmRoute", () => {
     getAuthToken: () => "stella-token",
   };
 
+  const jwtWithExpiry = (expiresAtMs: number) => {
+    const payload = Buffer.from(
+      JSON.stringify({ exp: Math.floor(expiresAtMs / 1000) }),
+    ).toString("base64url");
+    return `header.${payload}.signature`;
+  };
+
   it("uses Stella when local API key usage is off even if matching keys exist", async () => {
     credentials.set("openai", "openai-key");
     credentials.set("openrouter", "openrouter-key");
@@ -83,6 +90,28 @@ describe("resolveLlmRoute", () => {
     expect(resolved.route).toBe("stella");
     expect(resolved.model.provider).toBe("stella");
     expect(resolved.model.id).toBe("stella/openai/gpt-5.1-codex");
+  });
+
+  it("refreshes near-expiry Stella tokens before model calls", async () => {
+    const refreshAuthToken = vi.fn(async () => "fresh-stella-token");
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
+      modelName: "openai/gpt-5.1-codex",
+      agentType: "general",
+      site: {
+        baseUrl: "https://stella.example.test",
+        getAuthToken: () => jwtWithExpiry(Date.now() + 10_000),
+        refreshAuthToken,
+      },
+    });
+
+    expect(resolved.route).toBe("stella");
+    await expect(resolved.getApiKey()).resolves.toBe("fresh-stella-token");
+    expect(refreshAuthToken).toHaveBeenCalledTimes(1);
   });
 
   it("uses the selected local provider when local API key usage is enabled", async () => {

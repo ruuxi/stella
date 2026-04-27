@@ -9,6 +9,12 @@ import type { RunnerContext } from "./types.js";
 export const createRunnerSiteConfig = (context: RunnerContext) => ({
   baseUrl: context.state.convexSiteUrl,
   getAuthToken: () => context.state.authToken?.trim(),
+  refreshAuthToken: async () => {
+    const result = await context.requestRuntimeAuthRefresh?.({
+      source: "stella_provider",
+    });
+    return result?.authenticated ? result.token : null;
+  },
 });
 
 export const resolveRunnerLlmRoute = (
@@ -34,4 +40,3 @@ export const canResolveRunnerLlmRoute = (
     agentType,
     site: createRunnerSiteConfig(context),
   });
-

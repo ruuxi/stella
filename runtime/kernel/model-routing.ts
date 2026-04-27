@@ -23,6 +23,7 @@ export type ResolvedLlmRoute = {
   model: Model<Api>;
   route: "direct-provider" | "direct-gateway" | "stella";
   getApiKey: () => Promise<string | undefined> | string | undefined;
+  refreshApiKey?: () => Promise<string | undefined> | string | undefined;
 };
 
 export const getResolvedLlmApiKey = async (

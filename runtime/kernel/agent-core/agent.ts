@@ -93,6 +93,7 @@ export interface AgentOptions {
 	 * Useful for expiring tokens (e.g., GitHub Copilot OAuth).
 	 */
 	getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
+	refreshApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 
 	/**
 	 * Inspect or replace provider payloads before they are sent.
@@ -157,6 +158,7 @@ export class Agent {
 	public streamFn: StreamFn;
 	private _sessionId?: string;
 	public getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
+	public refreshApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 	private _onPayload?: SimpleStreamOptions["onPayload"];
 	private runningPrompt?: Promise<void>;
 	private resolveRunningPrompt?: () => void;
@@ -182,6 +184,7 @@ export class Agent {
 		this.streamFn = opts.streamFn || streamSimple;
 		this._sessionId = opts.sessionId;
 		this.getApiKey = opts.getApiKey;
+		this.refreshApiKey = opts.refreshApiKey;
 		this._onPayload = opts.onPayload;
 		this._thinkingBudgets = opts.thinkingBudgets;
 		this._transport = opts.transport ?? "sse";
@@ -599,6 +602,15 @@ export class Agent {
 				? async (provider) => {
 						try {
 							return await this.getApiKey?.(provider);
+						} catch {
+							return undefined;
+						}
+					}
+				: undefined,
+			refreshApiKey: this.refreshApiKey
+				? async () => {
+						try {
+							return await this.refreshApiKey?.(model.provider);
 						} catch {
 							return undefined;
 						}
