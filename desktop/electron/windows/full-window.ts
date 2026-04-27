@@ -30,8 +30,8 @@ export class FullWindowController {
         return new BrowserWindow({
           width: 1400,
           height: 940,
-          minWidth: 400,
-          minHeight: 300,
+          minWidth: 880,
+          minHeight: 620,
           // Transparent + frameless so the renderer can feather the window's
           // edges (fog effect) during onboarding, and round its corners during
           // normal use. On macOS we keep the traffic lights via

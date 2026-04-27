@@ -23,8 +23,24 @@ type MiniWindowControllerOptions = {
   onClosed?: () => void
 }
 
+export type MiniWindowInitialBounds = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export class MiniWindowController {
   private readonly controller: ShellWindowController
+  /**
+   * Bounds to bake into the next `BrowserWindow` construction. Set by
+   * `WindowManager.showWindow("mini")` immediately before `create()` so the
+   * NSPanel materializes at the final position — without this, AppKit picks a
+   * cascade default and `afterCreate`'s `setAlwaysOnTop`/`setVisibleOnAllWorkspaces`
+   * can paint one frame there before our post-construct `setBounds` snaps it
+   * over, which surfaces as a visible jump on first summon.
+   */
+  private nextInitialBounds: MiniWindowInitialBounds | null = null
 
   constructor(private readonly options: MiniWindowControllerOptions) {
     this.controller = new ShellWindowController(options, {
@@ -32,12 +48,15 @@ export class MiniWindowController {
       createWindow: () => {
         const isMac = process.platform === 'darwin'
         const windowIcon = !isMac ? resolveAppIconPath(this.options.electronDir) : undefined
+        const initial = this.nextInitialBounds
 
         return new BrowserWindow({
-          width: MINI_SHELL_SIZE.width,
-          height: MINI_SHELL_SIZE.height,
-          minWidth: 400,
-          minHeight: 300,
+          x: initial?.x,
+          y: initial?.y,
+          width: initial?.width ?? MINI_SHELL_SIZE.width,
+          height: initial?.height ?? MINI_SHELL_SIZE.height,
+          minWidth: 420,
+          minHeight: 560,
           maxWidth: MINI_SHELL_MAX_SIZE.width,
           maxHeight: MINI_SHELL_MAX_SIZE.height,
           ...(isMac ? { type: 'panel' as const } : {}),
@@ -65,8 +84,13 @@ export class MiniWindowController {
     return this.controller.getWindow()
   }
 
-  create() {
-    return this.controller.create()
+  create(initialBounds?: MiniWindowInitialBounds) {
+    this.nextInitialBounds = initialBounds ?? null
+    try {
+      return this.controller.create()
+    } finally {
+      this.nextInitialBounds = null
+    }
   }
 
   reloadMainWindow() {

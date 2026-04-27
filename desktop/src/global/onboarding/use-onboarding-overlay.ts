@@ -14,6 +14,7 @@ import { api } from "@/convex/api";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
+import { useWindowType } from "@/shared/hooks/use-window-type";
 import type { StellaAnimationHandle } from "@/shell/ascii-creature/StellaAnimation";
 
 export const CREATURE_INITIAL_SIZE = 0.22;
@@ -96,6 +97,7 @@ export function useOnboardingOverlay() {
   const [onboardingKey, setOnboardingKey] = useState(0);
   const stellaAnimationRef = useRef<StellaAnimationHandle | null>(null);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const windowType = useWindowType();
 
   // While onboarding is active, expand the (transparent) main window to cover
   // the current display so the renderer's radial fog mask fades to full
@@ -104,12 +106,20 @@ export function useOnboardingOverlay() {
   // flips true ~600ms before `onboardingDone`) so the animated window resize
   // runs concurrently with the fog fade-out, giving a single coordinated
   // transition rather than a snap once onboarding completes.
+  //
+  // Onboarding only ever runs in the full window — the mini and overlay
+  // renderers also mount `FullShell` and would otherwise drive this IPC,
+  // which is sized for the full window (DEFAULT_WIDTH/HEIGHT 1400×940). On
+  // the mini it animates a resize toward the work-area centre clamped by
+  // the mini's maxWidth/maxHeight, which manifests as the panel visibly
+  // growing/sliding from its summon location after first show.
   useEffect(() => {
+    if (windowType !== "full") return;
     const setPresentation = window.electronAPI?.ui.setOnboardingPresentation;
     if (typeof setPresentation !== "function") return;
     const fullscreen = !(onboardingDone || onboardingExiting);
     void setPresentation(fullscreen);
-  }, [onboardingDone, onboardingExiting]);
+  }, [onboardingDone, onboardingExiting, windowType]);
 
   const triggerFlash = useCallback(() => {
     stellaAnimationRef.current?.triggerFlash();
