@@ -33,8 +33,11 @@ const sseResponse = () =>
   );
 
 describe("streamStella auth retry", () => {
+  const originalFetch = globalThis.fetch;
+
   afterEach(() => {
-    vi.unstubAllGlobals();
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
   });
 
   it("refreshes the API key and retries once after an auth failure", async () => {
@@ -42,7 +45,7 @@ describe("streamStella auth retry", () => {
       .fn()
       .mockResolvedValueOnce(new Response("Token expired 7 seconds ago", { status: 401 }))
       .mockResolvedValueOnce(sseResponse());
-    vi.stubGlobal("fetch", fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     const events = [];
     for await (const event of streamStella(model, context, {
