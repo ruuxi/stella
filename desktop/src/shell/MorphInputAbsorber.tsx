@@ -9,20 +9,6 @@ const COVERED_PHASES: ReadonlySet<SelfModHmrState["phase"]> = new Set([
 ]);
 
 /**
- * Tells main "the renderer painted a real frame" — runs after the next two
- * animation frames so we see one composited frame post-React-commit before
- * signaling. Single rAF would fire just before the upcoming paint, which
- * still includes whatever the renderer hadn't committed yet.
- */
-const signalRendererPaintedAfterNextPaint = () => {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      window.electronAPI?.morph?.rendererPainted?.();
-    });
-  });
-};
-
-/**
  * Renders an invisible click + key absorber while the morph cover is up in the
  * overlay window. Without this, mouse and keyboard events pass through to the
  * main window's DOM — which has just been reshuffled by HMR while the user was
@@ -32,12 +18,6 @@ const signalRendererPaintedAfterNextPaint = () => {
  *
  * Only active during phases where the overlay is visually covering the
  * window; `idle` and `paused` leave the UI live and interactive.
- *
- * Also doubles as the host for the "renderer painted" signal that the morph
- * orchestration uses in place of a fixed settle delay (see `hmr-morph.ts`).
- * One signal fires on initial mount (covers the post-full-reload case where
- * a fresh renderer needs to announce it's drawn) and one per Vite HMR
- * `afterUpdate` event (covers the soft module-reload case).
  */
 export function MorphInputAbsorber() {
   const [covered, setCovered] = useState(false);
@@ -48,20 +28,6 @@ export function MorphInputAbsorber() {
     });
     return () => {
       off?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    // Initial-mount signal — covers full-reload (the renderer is fresh, so
-    // the orchestration's pending paint listener hears from this side once
-    // we've put pixels on screen).
-    signalRendererPaintedAfterNextPaint();
-
-    if (!import.meta.hot) return;
-    const onAfterUpdate = () => signalRendererPaintedAfterNextPaint();
-    import.meta.hot.on("vite:afterUpdate", onAfterUpdate);
-    return () => {
-      import.meta.hot?.off("vite:afterUpdate", onAfterUpdate);
     };
   }, []);
 

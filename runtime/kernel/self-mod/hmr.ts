@@ -230,7 +230,7 @@ const buildApplyResult = (
 };
 
 export type SelfModHmrController = {
-  beginRun: (runId: string) => void;
+  beginRun: (runId: string) => Promise<void>;
   /**
    * Records a write by the given run. Absolute paths are normalized via the
    * shared path-relevance filter; out-of-scope paths are silently dropped.
@@ -276,6 +276,7 @@ export type SelfModHmrController = {
    * than forceResumeAll so unrelated active runs keep their isolation state.
    */
   discard: (appliedRuns: AppliedRun[]) => Promise<boolean>;
+  releaseRuns: (runIds: string[]) => Promise<boolean>;
   beginShellMutationGuard: () => Promise<boolean>;
   endShellMutationGuard: () => Promise<boolean>;
   /**
@@ -329,6 +330,31 @@ export const createSelfModHmrController = (
     if (!tracked) {
       throw new Error("Failed to pin self-mod HMR paths before write.");
     }
+  };
+
+  const pauseClientUpdates = async (runId: string): Promise<void> => {
+    if (!options.enabled) return;
+    const paused = await postWithRetry({
+      getDevServerUrl: options.getDevServerUrl,
+      path: `${HMR_ENDPOINT_BASE}/pause-client-updates`,
+      maxWaitMs: TRACK_MAX_WAIT_MS,
+      body: { runId },
+      authToken: options.authToken,
+    });
+    if (!paused) {
+      throw new Error("Failed to pause self-mod HMR client updates.");
+    }
+  };
+
+  const releaseClientUpdates = async (runIds: string[]): Promise<boolean> => {
+    if (runIds.length === 0 || !options.enabled) return true;
+    return await postWithRetry({
+      getDevServerUrl: options.getDevServerUrl,
+      path: `${HMR_ENDPOINT_BASE}/release-client-updates`,
+      maxWaitMs: TRACK_MAX_WAIT_MS,
+      body: { runIds },
+      authToken: options.authToken,
+    });
   };
 
   const untrackPaths = async (paths: string[]): Promise<void> => {
@@ -425,9 +451,17 @@ export const createSelfModHmrController = (
   };
 
   return {
-    beginRun(runId) {
+    async beginRun(runId) {
       tracker.beginRun(runId);
       touchedPathsByRun.set(runId, new Set());
+      try {
+        await pauseClientUpdates(runId);
+      } catch (error) {
+        tracker.cancel(runId);
+        touchedPathsByRun.delete(runId);
+        finalizedSnapshotsByRun.delete(runId);
+        throw error;
+      }
     },
 
     async recordWrite(runId, absolutePaths, recordOptions) {
@@ -494,6 +528,7 @@ export const createSelfModHmrController = (
       if (decision.releasedPaths.length > 0) {
         await untrackPaths(decision.releasedPaths);
       }
+      await releaseClientUpdates([runId]);
       return { ...result, releasedPaths: [...decision.releasedPaths] };
     },
 
@@ -505,6 +540,10 @@ export const createSelfModHmrController = (
 
     async discard(appliedRuns) {
       return await sendDiscard(appliedRuns);
+    },
+
+    async releaseRuns(runIds) {
+      return await releaseClientUpdates(runIds);
     },
 
     async beginShellMutationGuard() {

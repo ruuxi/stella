@@ -51,9 +51,13 @@ describe("self-mod HMR controller", () => {
 
   it("reports track failure when the Vite endpoint cannot pin paths", async () => {
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn(
-      async () => new Response("forbidden", { status: 403 }),
-    ) as typeof fetch;
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/pause-client-updates")) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response("forbidden", { status: 403 });
+    }) as typeof fetch;
     const root = makeTempRoot();
     const filePath = path.join(root, "desktop/src/foo.tsx");
     mkdirSync(path.dirname(filePath), { recursive: true });
@@ -65,7 +69,7 @@ describe("self-mod HMR controller", () => {
     });
 
     try {
-      controller.beginRun("run-a");
+      await controller.beginRun("run-a");
       await expect(controller.recordWrite("run-a", [filePath])).rejects.toThrow(
         "Failed to pin self-mod HMR paths before write.",
       );
@@ -91,10 +95,13 @@ describe("self-mod HMR controller", () => {
     });
 
     try {
-      controller.beginRun("run-a");
+      await controller.beginRun("run-a");
       expect(controller.finalize("run-a").appliedRuns).toEqual([]);
       await controller.recordWrite("run-a", [filePath]);
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]![0])).toContain(
+        "/__stella/self-mod/hmr/pause-client-updates",
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -116,10 +123,13 @@ describe("self-mod HMR controller", () => {
     });
 
     try {
-      controller.beginRun("run-a");
+      await controller.beginRun("run-a");
       await controller.recordWrite("run-a", [packageJsonPath]);
       const result = controller.finalize("run-a");
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]![0])).toContain(
+        "/__stella/self-mod/hmr/pause-client-updates",
+      );
       expect(result.appliedRuns).toHaveLength(1);
       expect(result.appliedRuns[0]!.paths).toEqual(["package.json"]);
       expect(result.appliedRuns[0]!.restartRelevantPaths).toEqual([
@@ -154,9 +164,10 @@ describe("self-mod HMR controller", () => {
     });
 
     try {
-      controller.beginRun("run-a");
+      await controller.beginRun("run-a");
       await controller.recordWrite("run-a", [filePath]);
       expect(requestedPaths).toEqual([
+        "/__stella/self-mod/hmr/pause-client-updates",
         "/__stella/self-mod/hmr/track-paths",
         "/__stella/self-mod/hmr/untrack-paths",
       ]);
@@ -286,7 +297,7 @@ describe("self-mod HMR controller", () => {
       repoRoot: root,
     });
 
-    controller.beginRun("run-a");
+    await controller.beginRun("run-a");
     await controller.recordWrite("run-a", [filePath], {
       captureSnapshot: false,
     });
@@ -325,7 +336,7 @@ describe("self-mod HMR controller", () => {
     });
 
     try {
-      controller.beginRun("run-a");
+      await controller.beginRun("run-a");
       await controller.recordWrite("run-a", [oldPath], {
         captureSnapshot: false,
       });
@@ -362,8 +373,8 @@ describe("self-mod HMR controller", () => {
       repoRoot: root,
     });
 
-    controller.beginRun("run-a");
-    controller.beginRun("run-b");
+    await controller.beginRun("run-a");
+    await controller.beginRun("run-b");
     await controller.recordWrite("run-a", [filePath]);
     await controller.recordWrite("run-b", [filePath]);
 
@@ -395,7 +406,7 @@ describe("self-mod HMR controller", () => {
       repoRoot: root,
     });
 
-    controller.beginRun("run-a");
+    await controller.beginRun("run-a");
     unlinkSync(filePath);
     await controller.recordWrite("run-a", [filePath]);
     const result = controller.finalize("run-a");
@@ -421,8 +432,8 @@ describe("self-mod HMR controller", () => {
       repoRoot: root,
     });
 
-    controller.beginRun("run-a");
-    controller.beginRun("run-b");
+    await controller.beginRun("run-a");
+    await controller.beginRun("run-b");
     unlinkSync(filePath);
     await controller.recordWrite("run-a", [filePath]);
     await controller.recordWrite("run-b", [filePath]);
@@ -453,8 +464,8 @@ describe("self-mod HMR controller", () => {
       repoRoot: root,
     });
 
-    controller.beginRun("run-a");
-    controller.beginRun("run-b");
+    await controller.beginRun("run-a");
+    await controller.beginRun("run-b");
 
     writeFileSync(filePath, "export const value = 'a';\n");
     await controller.recordWrite("run-a", [filePath]);

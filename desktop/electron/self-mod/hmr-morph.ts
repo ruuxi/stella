@@ -11,14 +11,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ipcMain, type BrowserWindow } from "electron";
+import { setTimeout as delay } from "node:timers/promises";
+import type { BrowserWindow } from "electron";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
-import { IPC_MORPH_RENDERER_PAINTED } from "../../src/shared/contracts/ipc-channels.js";
 import {
   MORPH_DONE_TIMEOUT_MS,
-  MORPH_FULL_RELOAD_PAINT_FALLBACK_MS,
   MORPH_OVERLAY_READY_TIMEOUT_MS,
-  MORPH_SOFT_HMR_PAINT_FALLBACK_MS,
+  MORPH_RENDERER_SETTLE_DELAY_MS,
 } from "../../src/shared/contracts/morph-timing.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 import {
@@ -76,36 +75,12 @@ export function createHmrTransitionController(deps: {
       MORPH_DONE_TIMEOUT_MS,
     );
 
-  /**
-   * Wait for the main-window renderer to confirm a real paint after the most
-   * recent change. Replaces the old fixed `setTimeout` settle — the renderer
-   * subscribes to `vite:afterUpdate` and signals after a double-rAF, so we
-   * wait exactly as long as React + the browser actually need rather than
-   * guessing 200ms. The timeout is a fallback for the renderer being
-   * unreachable (production build, crashed, etc.).
-   *
-   * Must be called BEFORE the action that triggers the paint (e.g.
-   * `resumeHmr` or `reloadIgnoringCache`) so the listener doesn't miss a
-   * fast paint that fires before we attach.
-   */
-  const waitForRendererPainted = (timeoutMs: number): Promise<boolean> => {
+  const waitForRendererSettle = async (): Promise<void> => {
     const startedAt = performance.now();
-    return new Promise((resolve) => {
-      let settled = false;
-      const settle = (signaled: boolean) => {
-        if (settled) return;
-        settled = true;
-        ipcMain.removeListener(IPC_MORPH_RENDERER_PAINTED, handler);
-        clearTimeout(timer);
-        logMorphTiming("rendererPainted", {
-          durationMs: Math.round(performance.now() - startedAt),
-          signaled,
-        });
-        resolve(signaled);
-      };
-      const handler = () => settle(true);
-      const timer = setTimeout(() => settle(false), timeoutMs);
-      ipcMain.on(IPC_MORPH_RENDERER_PAINTED, handler);
+    await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
+    logMorphTiming("rendererSettle", {
+      durationMs: Math.round(performance.now() - startedAt),
+      delayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
     });
   };
 
@@ -144,17 +119,14 @@ export function createHmrTransitionController(deps: {
         opts.requiresFullReload &&
         windowForReload != null &&
         !windowForReload.isDestroyed();
-      const paintedPromise = canReload
-        ? waitForRendererPainted(MORPH_FULL_RELOAD_PAINT_FALLBACK_MS)
-        : null;
       try {
         await opts.applyBatch({
           suppressClientFullReload: canReload,
         });
         if (canReload) {
           windowForReload.webContents.reloadIgnoringCache();
-          await paintedPromise;
         }
+        await waitForRendererSettle();
       } finally {
         opts.reportState?.(IDLE_HMR_STATE);
       }
@@ -219,18 +191,6 @@ export function createHmrTransitionController(deps: {
           requiresFullReload: opts.requiresFullReload,
         });
 
-        // Pre-register the paint listener BEFORE the action that triggers
-        // the paint, otherwise a fast soft-HMR can paint before we attach
-        // and we'd wait the full fallback for nothing. One listener covers
-        // both soft HMR (signaled via `vite:afterUpdate`) and full reload
-        // (signaled by the new renderer's initial-mount hook); whichever
-        // signal arrives first wins.
-        const paintedPromise = waitForRendererPainted(
-          opts.requiresFullReload
-            ? MORPH_FULL_RELOAD_PAINT_FALLBACK_MS
-            : MORPH_SOFT_HMR_PAINT_FALLBACK_MS,
-        );
-
         await opts.applyBatch({
           suppressClientFullReload: opts.requiresFullReload,
         });
@@ -242,23 +202,11 @@ export function createHmrTransitionController(deps: {
             requiresFullReload: true,
           });
           fullWindow.webContents.reloadIgnoringCache();
-          // `did-finish-load` is implied by the paint signal (the new
-          // renderer can't run JS until navigation completes), so we
-          // don't need a separate `waitForWindowLoad` here.
-          await paintedPromise;
+          await waitForRendererSettle();
           return true;
         }
 
-        // Soft HMR — `paintedPromise` covers both pure module reloads
-        // (signaled via `vite:afterUpdate`) AND Vite secretly upgrading
-        // a soft update to a full reload (signaled by the new renderer's
-        // initial-mount hook), so we don't need the old `did-start-loading`
-        // detector. The cost of dropping that detector is that we no
-        // longer flip the cover phase from "applying" to "reloading"
-        // when Vite stealth-reloads — input-blocking is the same in both
-        // and the only consumer of the distinction was a data-attribute
-        // for tests.
-        await paintedPromise;
+        await waitForRendererSettle();
         return false;
       })();
 

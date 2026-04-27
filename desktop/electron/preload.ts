@@ -22,7 +22,6 @@ import {
   IPC_DISCOVERY_LIST_BROWSER_PROFILES,
   IPC_DISCOVERY_WRITE_CORE_MEMORY,
   IPC_DISCOVERY_WRITE_KNOWLEDGE,
-  IPC_MORPH_RENDERER_PAINTED,
   IPC_OFFICE_PREVIEW_LIST,
   IPC_OFFICE_PREVIEW_START,
   IPC_OFFICE_PREVIEW_UPDATE,
@@ -391,13 +390,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("overlay:morphReady", { transitionId }),
     morphDone: (transitionId: string) =>
       ipcRenderer.send("overlay:morphDone", { transitionId }),
-  },
-
-  morph: {
-    /** Signal that the main-window renderer has painted a frame after an
-     *  HMR update or reload. Used by the morph orchestration to know when
-     *  to capture the new state instead of waiting on a fixed setTimeout. */
-    rendererPainted: () => ipcRenderer.send(IPC_MORPH_RENDERER_PAINTED),
   },
 
   theme: {
