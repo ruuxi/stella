@@ -440,6 +440,39 @@
   gap: 12px;
 }
 
+.connect-phone-input-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.connect-phone-dial {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 12px 28px 12px 12px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-strong);
+  background-color: color-mix(in srgb, var(--background) 60%, transparent);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-weak) 50%),
+    linear-gradient(135deg, var(--text-weak) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-md, 10px);
+  cursor: pointer;
+}
+
+.connect-phone-dial:focus {
+  outline: none;
+  border-color: var(--border-base);
+  background-color: color-mix(in srgb, var(--background) 80%, transparent);
+}
+
 .connect-phone-input,
 .connect-code-input {
   flex: 1;
