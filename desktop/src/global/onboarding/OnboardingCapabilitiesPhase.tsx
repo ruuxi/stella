@@ -134,37 +134,92 @@ export function OnboardingCapabilitiesPhase({
   const sceneIndexRef = useRef(0);
   const completedRef = useRef(false);
 
+  // Honor reduced-motion: skip the auto-cycle entirely; dots remain
+  // functional so the user can still navigate between scenes manually.
+  const prefersReducedMotion = useMemo(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }, []);
+
   const goToScene = useCallback((next: number) => {
     sceneIndexRef.current = next;
     setSceneIndex(next);
     setVisitCount((v) => v + 1);
   }, []);
 
+  // Auto-cycle with visibility-aware pause/resume + split-transition pause.
+  // We track the elapsed time on the active scene so when the window hides
+  // (or the user is leaving the phase) we can resume where we left off
+  // instead of either skipping ahead via coalesced timeouts or restarting.
   useEffect(() => {
+    if (prefersReducedMotion) return;
+
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let sceneStartedAt = 0;
+    let remainingMs = SCENES[sceneIndexRef.current].durationMs;
+    let paused = false;
 
-    const schedule = (i: number) => {
-      const scene = SCENES[i];
-      timer = setTimeout(() => {
-        if (cancelled) return;
-        const next = (i + 1) % SCENES.length;
-        if (next === 0 && !completedRef.current) {
-          completedRef.current = true;
-          setCompletedFirstCycle(true);
-        }
-        goToScene(next);
-        schedule(next);
-      }, scene.durationMs);
+    const clearTimer = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
     };
 
-    schedule(sceneIndexRef.current);
+    const advance = () => {
+      if (cancelled) return;
+      const i = sceneIndexRef.current;
+      const next = (i + 1) % SCENES.length;
+      if (next === 0 && !completedRef.current) {
+        completedRef.current = true;
+        setCompletedFirstCycle(true);
+      }
+      remainingMs = SCENES[next].durationMs;
+      goToScene(next);
+      sceneStartedAt = Date.now();
+      timer = setTimeout(advance, remainingMs);
+    };
+
+    const pause = () => {
+      if (paused || cancelled) return;
+      paused = true;
+      const elapsed = Date.now() - sceneStartedAt;
+      remainingMs = Math.max(0, remainingMs - elapsed);
+      clearTimer();
+    };
+
+    const resume = () => {
+      if (!paused || cancelled) return;
+      paused = false;
+      sceneStartedAt = Date.now();
+      timer = setTimeout(advance, remainingMs);
+    };
+
+    const isHidden = () =>
+      typeof document !== "undefined" &&
+      document.visibilityState === "hidden";
+
+    sceneStartedAt = Date.now();
+    if (isHidden() || splitTransitionActive) {
+      paused = true;
+    } else {
+      timer = setTimeout(advance, remainingMs);
+    }
+
+    const onVisibility = () => {
+      if (cancelled) return;
+      if (isHidden() || splitTransitionActive) pause();
+      else resume();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      clearTimer();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [goToScene]);
+  }, [goToScene, prefersReducedMotion, splitTransitionActive]);
 
   const activeScene = SCENES[sceneIndex];
   const sceneKey = `${activeScene.id}-${visitCount}`;

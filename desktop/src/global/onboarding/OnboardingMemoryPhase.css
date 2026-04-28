@@ -179,6 +179,13 @@
   border-radius: 50%;
   background: oklch(0.72 0.16 145);
   box-shadow: 0 0 6px oklch(0.72 0.16 145 / 0.7);
+}
+
+/* Scope always-running pulse to the memory phase so it only paints
+ * while this phase is mounted; component lifecycle already enforces
+ * this in practice but keeping the CSS scoped prevents accidental
+ * background paints from any future portal/remount of the mock. */
+.onboarding-dialogue[data-phase="memory"] .onboarding-memory-mock__pill-dot {
   animation: memoryPillPulse 2.4s ease-in-out infinite;
 }
 
@@ -338,6 +345,9 @@
   border-radius: 50%;
   background: var(--foreground);
   opacity: 0.55;
+}
+
+.onboarding-dialogue[data-phase="memory"] .onboarding-memory-mock__typing span {
   animation: memoryTypingDot 1s ease-in-out infinite;
 }
 

@@ -159,7 +159,7 @@
   text-decoration-color: oklch(from var(--foreground) l c h / 0.2);
   text-underline-offset: 6px;
   text-decoration-thickness: 1px;
-  animation: startButtonFade 2.4s ease-in-out 1.5s infinite;
+  animation: startButtonFade 2.4s ease-in-out 1.5s 5;
 }
 
 .onboarding-start-button:hover,
@@ -1776,10 +1776,10 @@
   border-radius: 8px;
   overflow: hidden;
   background: color-mix(in oklch, var(--background) 70%, transparent);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(12px);
   animation: mockWindowIn var(--onboarding-duration-enter)
     var(--onboarding-ease-standard) both;
-  will-change: opacity, transform, filter;
+  will-change: opacity, transform;
   backface-visibility: hidden;
   flex-shrink: 0;
 }
@@ -1789,16 +1789,15 @@
     opacity: 0;
     transform: translate3d(0, var(--onboarding-reveal-translate), 0)
       scale(0.988);
-    /* Mock windows already carry `backdrop-filter: blur(16px)`; stacking a
-     * full reveal blur on top of that forces the GPU to re-rasterize the
-     * already-blurred backdrop layer every frame. The smaller text-blur
-     * radius reads identically on a small windowed surface. */
-    filter: blur(var(--onboarding-reveal-text-blur));
+    /* Mock windows already carry their own `backdrop-filter: blur(12px)`;
+     * stacking a `filter: blur()` on the same element during the reveal
+     * forces the GPU to re-rasterize the already-blurred backdrop layer
+     * every frame. Resolve disclosure with opacity + transform only —
+     * the backdrop blur itself reads as the "soft" entry. */
   }
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
   }
 }
 
@@ -2015,7 +2014,7 @@
   .onboarding-showcase-card-indicator {
   opacity: 1;
   transform: scale(1);
-  animation: showcaseDotPulse 2s ease-in-out infinite;
+  animation: showcaseDotPulse 2s ease-in-out 5;
 }
 
 /* ── Card text ── */
@@ -2322,7 +2321,7 @@
   border-radius: 21px;
   border: 2px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   pointer-events: none;
-  animation: surfacePulse 2s ease-in-out 0.6s infinite;
+  animation: surfacePulse 2s ease-in-out 0.6s 5;
   z-index: 1;
 }
 
@@ -2531,7 +2530,7 @@
     0 1px 0 color-mix(in oklch, white 60%, transparent) inset,
     -8px 0 24px color-mix(in oklch, black 14%, transparent),
     0 18px 32px color-mix(in oklch, black 12%, transparent);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(12px);
   animation: sidebarSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
   z-index: 4;
   overflow: hidden;
@@ -3018,4 +3017,45 @@
   .onboarding-extension-card
   .onboarding-permission-card__action {
   font-size: 14px;
+}
+
+/* ═══ Top-level reduced-motion overrides ═══
+ *
+ * Catch-all for the cost-heavy animations declared throughout this file.
+ * Disables blur-based entrance animations (collapsing them to a plain
+ * instant fade-in), drops `filter: blur()` on enter states, and stops
+ * the always-running attention pulses so users with reduced-motion
+ * preferences pay zero animation cost. Keep this block last so it
+ * wins specificity ties with the per-phase rules above. */
+@keyframes onboardingInstantFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-moment,
+  .onboarding-split-right,
+  .onboarding-split-stage,
+  .onboarding-mock-window,
+  .onboarding-showcase-card,
+  .onboarding-showcase-card:first-child {
+    animation-name: onboardingInstantFadeIn !important;
+    animation-duration: var(--onboarding-duration-fade) !important;
+    animation-timing-function: ease-out !important;
+    animation-iteration-count: 1 !important;
+    animation-fill-mode: both !important;
+    filter: none !important;
+    transform: none !important;
+  }
+
+  .onboarding-start-button,
+  .onboarding-shortcut-surface::after,
+  .onboarding-showcase-card[data-active="true"]
+    .onboarding-showcase-card-indicator {
+    animation: none !important;
+  }
 }

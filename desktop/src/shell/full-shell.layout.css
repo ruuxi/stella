@@ -79,9 +79,13 @@
       calc((100vh + 220px) / 400px)
     );
   transform-origin: 50% 50%;
-  /* Promote to its own GPU compositor layer so fog repaints stay
-   * isolated from the gradient underneath and the onboarding UI above. */
-  will-change: transform, opacity;
+  /* Promote to its own GPU compositor layer so the exit-fade repaint
+   * stays isolated from the gradient underneath and the onboarding UI
+   * above. The transform only changes on the discrete `theme` phase
+   * switch — not per frame — so we only hint `opacity` here and let
+   * the browser allocate a transform layer ad-hoc during that one
+   * transition rather than holding a permanent transform layer. */
+  will-change: opacity;
   backface-visibility: hidden;
   /* Fade target — overridden to 0 during the exit transition so the fog
    * dissolves in lockstep with the animated window resize. */
@@ -92,14 +96,19 @@
   z-index: 1;
   pointer-events: none;
   /* Colour: each layer carries its own radial alpha falloff (transparent
-   * at center, opaque at the rim) using the same dense smoothstep curve
-   * as the previous black vignette. We stack hue-biased tints from off-
-   * center positions on top of a deep-violet base layer so the rim
-   * reads as a soft chromatic aberration rather than flat black. We
-   * keep the falloff baked into background-image (rather than using
-   * mask-image) because Chromium freezes SVG filter animations on a
-   * masked layer — and the conic warp from #stella-fog-distort needs
-   * to keep breathing. */
+   * at center, opaque at the rim) using a dense smoothstep curve so the
+   * gradient does not band on 8-bit displays. The previous version
+   * stacked five gradients (four hue-biased tints + base violet); we
+   * collapse to three — one deep-violet base that owns the falloff
+   * shape plus a magenta tint pulled to the upper-left rim and a
+   * cyan tint pulled to the lower-right rim. Two cross-diagonal tints
+   * are enough to read as chromatic aberration once the displacement
+   * warp breaks the boundary; the dropped amber/teal layers sat under
+   * those tints and made almost no perceptual difference at these
+   * alpha values. We keep the falloff baked into background-image
+   * (rather than using mask-image) because Chromium freezes SVG
+   * filter animations on a masked layer — and the displacement warp
+   * from #stella-fog-distort needs to keep breathing. */
   background-image:
     /* Magenta/rose tint pulled toward the upper-left rim. */
     radial-gradient(
@@ -120,24 +129,6 @@
       rgba(50, 150, 225, 0.32) 80%,
       rgba(40, 130, 215, 0.50) 90%,
       rgba(30, 110, 200, 0.66) 100%
-    ),
-    /* Warm amber/violet tint pulled toward the upper-right rim. */
-    radial-gradient(
-      ellipse 90% 86% at 72% 32%,
-      rgba(255, 170, 110, 0) 48%,
-      rgba(240, 140, 100, 0.04) 60%,
-      rgba(220, 110, 110, 0.12) 72%,
-      rgba(190, 80, 130, 0.24) 84%,
-      rgba(160, 60, 150, 0.40) 100%
-    ),
-    /* Teal/green tint pulled toward the lower-left rim. */
-    radial-gradient(
-      ellipse 90% 86% at 28% 72%,
-      rgba(110, 240, 200, 0) 48%,
-      rgba(90, 210, 190, 0.04) 60%,
-      rgba(70, 180, 190, 0.12) 72%,
-      rgba(50, 150, 200, 0.24) 84%,
-      rgba(40, 120, 200, 0.40) 100%
     ),
     /* Base layer — deep violet that fully covers the rim with the
      * original alpha falloff curve so the corners stay solid (no
@@ -166,6 +157,18 @@
     );
   /* Distort the perfect ellipse into an organic, flowing fog boundary. */
   filter: url(#stella-fog-distort);
+}
+
+/* Reduced-motion fallback: skip the SVG displacement filter entirely
+ * (which is the dominant per-frame GPU/CPU cost of the onboarding
+ * overlay) and fall back to the static stacked-gradient ellipse. The
+ * boundary becomes a clean ellipse instead of an organic fog edge,
+ * which is the right trade-off when the user has explicitly asked for
+ * less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .window-shell.full[data-window-mode="onboarding"]::after {
+    filter: none;
+  }
 }
 
 .window-shell.full[data-window-mode="onboarding"][data-onboarding-phase="theme"]::after {
