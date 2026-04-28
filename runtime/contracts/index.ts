@@ -288,6 +288,17 @@ export type StoreReleaseManifest = {
   commitHashes: string[];
   files: string[];
   createdAt: number;
+  /**
+   * Square icon URL the backend authored at publish time (FAL `icon`
+   * capability). Optional — the renderer falls back to a deterministic
+   * gradient + monogram when missing.
+   */
+  iconUrl?: string;
+  /**
+   * Author display name snapshotted at publish time so the Store stays
+   * usable for signed-out browsers and survives author renames.
+   */
+  authorDisplayName?: string;
 };
 
 export type StorePackageRecord = {
@@ -298,6 +309,9 @@ export type StorePackageRecord = {
   latestReleaseNumber: number;
   createdAt: number;
   updatedAt: number;
+  iconUrl?: string;
+  authorDisplayName?: string;
+  featured?: boolean;
 };
 
 export type StorePackageReleaseRecord = {
@@ -359,6 +373,8 @@ export type StorePublishDraft = {
     subject: string;
     files: string[];
   }>;
+  iconUrl?: string;
+  authorDisplayName?: string;
 };
 
 export type SelfModHmrPhase =

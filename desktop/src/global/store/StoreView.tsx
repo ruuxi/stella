@@ -9,11 +9,14 @@ import type {
 } from "@/shared/types/electron"
 import { showToast } from "@/ui/toast"
 import ChevronLeft from "lucide-react/dist/esm/icons/chevron-left"
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right"
 import Clock from "lucide-react/dist/esm/icons/clock"
 import Layers from "lucide-react/dist/esm/icons/layers"
 import Sparkles from "lucide-react/dist/esm/icons/sparkles"
 import Package from "lucide-react/dist/esm/icons/package"
 import Plug from "lucide-react/dist/esm/icons/plug"
+import Search from "lucide-react/dist/esm/icons/search"
+import Check from "lucide-react/dist/esm/icons/check"
 import { useSelfModTaintMonitor } from "@/systems/boot/use-self-mod-taint-monitor"
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogBody, DialogCloseButton } from "@/ui/dialog"
 import { Button } from "@/ui/button"
@@ -22,7 +25,7 @@ import "@/global/integrations/credential-modal.css"
 import "./store.css"
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Display helpers
 // ---------------------------------------------------------------------------
 
 const GRADIENTS = [
@@ -38,14 +41,12 @@ const GRADIENTS = [
 
 function hashString(value: string): number {
   let h = 0
-  for (const ch of value) {
-    h = ((h << 5) - h + ch.charCodeAt(0)) | 0
-  }
+  for (const ch of value) h = ((h << 5) - h + ch.charCodeAt(0)) | 0
   return Math.abs(h)
 }
 
 function getGradient(name: string): string {
-  return GRADIENTS[hashString(name) % GRADIENTS.length]
+  return GRADIENTS[hashString(name) % GRADIENTS.length]!
 }
 
 function getInitial(name: string): string {
@@ -98,13 +99,10 @@ function useStoreApi() {
   return window.electronAPI?.store ?? null
 }
 
-// The Store catalog calls reach Convex through the Electron runtime. When the
-// renderer hasn't connected an account yet (or the runtime simply doesn't have
-// a Convex deployment URL set), those calls reject with messages like
-// "Authentication required" or "Not connected to Convex. Sign in or set
-// STELLA_CONVEX_URL.". Surfacing the raw text reads as "you must log in to
-// browse the Store", which we explicitly want to avoid — fall back to the
-// empty-state instead.
+// Calls into the Store catalog hit Convex through the runtime. When the user
+// hasn't connected an account yet the runtime rejects with an "auth required"
+// or "not connected" message; we silence those into an empty state instead of
+// presenting them as scary errors. Genuine failures still surface.
 function isAuthOrConnectivityErrorMessage(message: string): boolean {
   const normalized = message.toLowerCase()
   return (
@@ -170,12 +168,6 @@ function useStorePackages() {
   return { packages, installed, installedMap, loading, error, reload: load }
 }
 
-/**
- * Flat list of recent self-mod commits surfaced from the runtime. Each
- * commit is one agent-authored change to Stella's own code (renderer,
- * runtime, electron, etc.). The standalone backend Store agent uses this list
- * plus the user's Store request to assemble a publishable release draft.
- */
 function useLocalCommits(limit = 60) {
   const api = useStoreApi()
   const [commits, setCommits] = useState<LocalGitCommitRecord[]>([])
@@ -283,30 +275,85 @@ function usePackageDetail(packageId: string | null) {
 }
 
 // ---------------------------------------------------------------------------
-// Placeholder Image
+// Artwork: real backend-generated icon with gradient/monogram fallback
 // ---------------------------------------------------------------------------
 
-function PlaceholderImage({
+function PackageArtwork({
+  iconUrl,
   name,
   className,
   letterClassName,
 }: {
+  iconUrl?: string
   name: string
   className?: string
   letterClassName?: string
 }) {
+  // Track failures locally so a 404 / CORS issue degrades to the deterministic
+  // gradient on this render (rather than showing a broken image icon).
+  const [failed, setFailed] = useState(false)
+  const showImage = Boolean(iconUrl) && !failed
+
   return (
     <div
-      className={className}
+      className={`store-artwork ${className ?? ""}`}
       style={{ background: getGradient(name) }}
     >
-      <span className={letterClassName}>{getInitial(name)}</span>
+      {showImage ? (
+        <img
+          src={iconUrl}
+          alt=""
+          className="store-artwork-img"
+          onError={() => setFailed(true)}
+          draggable={false}
+          loading="lazy"
+        />
+      ) : (
+        <span className={letterClassName}>{getInitial(name)}</span>
+      )}
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Skeleton
+// Author display
+// ---------------------------------------------------------------------------
+
+function AuthorChip({
+  name,
+  variant = "card",
+}: {
+  name?: string
+  variant?: "card" | "featured" | "detail"
+}) {
+  if (!name) return null
+  const initial = getInitial(name)
+  if (variant === "featured") {
+    return (
+      <div className="store-featured-author">
+        <span className="store-featured-author-avatar">{initial}</span>
+        <span>by {name}</span>
+      </div>
+    )
+  }
+  if (variant === "detail") {
+    return (
+      <div className="store-detail-author">
+        <span className="store-detail-author-avatar">{initial}</span>
+        <span>by {name}</span>
+      </div>
+    )
+  }
+  return (
+    <div className="store-card-author">
+      <span className="store-card-author-avatar">{initial}</span>
+      <span>by {name}</span>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton + status + empty state
 // ---------------------------------------------------------------------------
 
 function SkeletonGrid() {
@@ -324,10 +371,6 @@ function SkeletonGrid() {
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Empty States
-// ---------------------------------------------------------------------------
 
 function EmptyState({
   icon,
@@ -348,12 +391,11 @@ function EmptyState({
 }
 
 // ---------------------------------------------------------------------------
-// Store Card
+// Cards
 // ---------------------------------------------------------------------------
 
 function StoreCard({
-  name,
-  description,
+  pkg,
   actionLabel,
   actionVariant,
   actionDisabled,
@@ -361,8 +403,7 @@ function StoreCard({
   onAction,
   onClick,
 }: {
-  name: string
-  description: string
+  pkg: StorePackageRecord
   actionLabel: string
   actionVariant: string
   actionDisabled?: boolean
@@ -372,14 +413,15 @@ function StoreCard({
 }) {
   return (
     <div className="store-card" onClick={onClick}>
-      <PlaceholderImage
-        name={name}
+      <PackageArtwork
+        iconUrl={pkg.iconUrl}
+        name={pkg.displayName}
         className="store-card-image"
         letterClassName="store-card-image-letter"
       />
       <div className="store-card-body">
         <div className="store-card-top">
-          <span className="store-card-name">{name}</span>
+          <span className="store-card-name">{pkg.displayName}</span>
           <button
             className="store-action-btn"
             data-variant={actionVariant}
@@ -392,16 +434,13 @@ function StoreCard({
             {actionLabel}
           </button>
         </div>
-        <div className="store-card-desc">{description}</div>
+        <div className="store-card-desc">{pkg.description}</div>
+        <AuthorChip name={pkg.authorDisplayName} />
         {meta && <div className="store-card-meta">{meta}</div>}
       </div>
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Featured Card
-// ---------------------------------------------------------------------------
 
 function FeaturedCard({
   pkg,
@@ -422,12 +461,24 @@ function FeaturedCard({
         className="store-featured-bg"
         style={{ background: getGradient(pkg.displayName) }}
       />
+      {pkg.iconUrl ? (
+        // Render the real icon as a soft, blurred backdrop so the hero stays
+        // ownable by the package's actual artwork without losing the eyebrow
+        // legibility the dark gradient provides.
+        <img
+          src={pkg.iconUrl}
+          alt=""
+          className="store-artwork-img store-featured-img"
+          draggable={false}
+        />
+      ) : null}
       <div className="store-featured-overlay" />
       <div className="store-featured-content">
         <div className="store-featured-text">
           <div className="store-featured-label">Featured</div>
           <div className="store-featured-name">{pkg.displayName}</div>
           <div className="store-featured-desc">{pkg.description}</div>
+          <AuthorChip name={pkg.authorDisplayName} variant="featured" />
         </div>
         <button
           className="store-action-btn store-action-btn--lg"
@@ -444,10 +495,6 @@ function FeaturedCard({
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Added-to-Stella Row
-// ---------------------------------------------------------------------------
 
 function AddedRow({
   installed,
@@ -483,14 +530,12 @@ function AddedRow({
               className="store-added-chip"
               onClick={() => onSelect(mod.packageId)}
             >
-              <div
+              <PackageArtwork
+                iconUrl={pkg?.iconUrl}
+                name={name}
                 className="store-added-chip-icon"
-                style={{ background: getGradient(name) }}
-              >
-                <span className="store-added-chip-letter">
-                  {getInitial(name)}
-                </span>
-              </div>
+                letterClassName="store-added-chip-letter"
+              />
               <span className="store-added-chip-name">{name}</span>
             </div>
           )
@@ -498,6 +543,82 @@ function AddedRow({
       </div>
     </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Discover toolbar (search + category filter)
+// ---------------------------------------------------------------------------
+
+type DiscoverFilter = "all" | "stella" | "agents"
+
+const DISCOVER_FILTERS: Array<{ id: DiscoverFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "stella", label: "Stella" },
+  { id: "agents", label: "Agents" },
+]
+
+function DiscoverToolbar({
+  query,
+  onQuery,
+  filter,
+  onFilter,
+}: {
+  query: string
+  onQuery: (value: string) => void
+  filter: DiscoverFilter
+  onFilter: (next: DiscoverFilter) => void
+}) {
+  return (
+    <div className="store-toolbar">
+      <div className="store-search">
+        <Search size={14} className="store-search-icon" />
+        <input
+          className="store-search-input"
+          placeholder="Search the Store"
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          spellCheck={false}
+          autoComplete="off"
+        />
+      </div>
+      <div className="store-filter">
+        {DISCOVER_FILTERS.map((entry) => (
+          <button
+            key={entry.id}
+            className="store-filter-pill"
+            data-active={filter === entry.id || undefined}
+            onClick={() => onFilter(entry.id)}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function matchesPackageQuery(pkg: StorePackageRecord, q: string): boolean {
+  if (!q) return true
+  const needle = q.trim().toLowerCase()
+  if (!needle) return true
+  return (
+    pkg.displayName.toLowerCase().includes(needle) ||
+    pkg.description.toLowerCase().includes(needle) ||
+    (pkg.authorDisplayName?.toLowerCase().includes(needle) ?? false)
+  )
+}
+
+function pickFeaturedPackage(
+  packages: StorePackageRecord[],
+): StorePackageRecord | null {
+  if (packages.length === 0) return null
+  // Prefer an editorially flagged package — otherwise fall back to the most
+  // recently updated. Sort defensively so order doesn't depend on whether the
+  // backend already orders by updatedAt.
+  const editorial = packages
+    .filter((pkg) => pkg.featured === true)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  return editorial[0] ?? packages.slice().sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null
 }
 
 // ---------------------------------------------------------------------------
@@ -522,6 +643,8 @@ function DiscoverTab({
   onInstall: (packageId: string) => Promise<void>
 }) {
   const [working, setWorking] = useState<string | null>(null)
+  const [query, setQuery] = useState("")
+  const [filter, setFilter] = useState<DiscoverFilter>("all")
 
   const handleInstall = useCallback(
     async (packageId: string) => {
@@ -555,38 +678,57 @@ function DiscoverTab({
     )
   }
 
-  const featured = packages[0]
-  const rest = packages.slice(1)
-  const featuredIsAdded = installedMap.has(featured.packageId)
-  const featuredIsWorking = working === featured.packageId
+  const filtered = packages.filter((pkg) => {
+    if (filter !== "all") {
+      const category = pkg.category ?? "stella"
+      if (category !== filter) return false
+    }
+    return matchesPackageQuery(pkg, query)
+  })
+
+  const featured = pickFeaturedPackage(packages)
+  // When the user is searching or filtering, drop the hero so the results
+  // don't get visually overshadowed by a (now-irrelevant) feature pick.
+  const showFeatured =
+    featured !== null && filter === "all" && query.trim() === ""
+  const rest = filtered.filter((pkg) => !showFeatured || pkg.packageId !== featured!.packageId)
 
   return (
     <>
-      <FeaturedCard
-        pkg={featured}
-        isAdded={featuredIsAdded}
-        isWorking={featuredIsWorking}
-        onAction={() => {
-          if (featuredIsAdded) {
-            onSelect(featured.packageId)
-            return
-          }
-          void handleInstall(featured.packageId)
-        }}
-        onClick={() => onSelect(featured.packageId)}
+      <DiscoverToolbar
+        query={query}
+        onQuery={setQuery}
+        filter={filter}
+        onFilter={setFilter}
       />
 
-      <AddedRow
-        installed={installed}
-        packages={packages}
-        onSelect={onSelect}
-      />
+      {showFeatured && featured ? (
+        <FeaturedCard
+          pkg={featured}
+          isAdded={installedMap.has(featured.packageId)}
+          isWorking={working === featured.packageId}
+          onAction={() => {
+            if (installedMap.has(featured.packageId)) {
+              onSelect(featured.packageId)
+              return
+            }
+            void handleInstall(featured.packageId)
+          }}
+          onClick={() => onSelect(featured.packageId)}
+        />
+      ) : null}
 
-      {rest.length > 0 && (
+      {filter === "all" && query.trim() === "" ? (
+        <AddedRow installed={installed} packages={packages} onSelect={onSelect} />
+      ) : null}
+
+      {rest.length > 0 ? (
         <div className="store-section">
           <div className="store-section-header">
-            <span className="store-section-title">All Add-ons</span>
-            <span className="store-section-count">{packages.length}</span>
+            <span className="store-section-title">
+              {query.trim() === "" && filter === "all" ? "All Add-ons" : "Results"}
+            </span>
+            <span className="store-section-count">{rest.length}</span>
           </div>
           <div className="store-grid">
             {rest.map((pkg) => {
@@ -595,14 +737,9 @@ function DiscoverTab({
               return (
                 <StoreCard
                   key={pkg.packageId}
-                  name={pkg.displayName}
-                  description={pkg.description}
-                  actionLabel={
-                    isWorking ? "Adding..." : isAdded ? "Added" : "Get"
-                  }
-                  actionVariant={
-                    isWorking ? "working" : isAdded ? "added" : "get"
-                  }
+                  pkg={pkg}
+                  actionLabel={isWorking ? "Adding..." : isAdded ? "Added" : "Get"}
+                  actionVariant={isWorking ? "working" : isAdded ? "added" : "get"}
                   actionDisabled={isAdded || isWorking}
                   meta={`Version ${pkg.latestReleaseNumber}`}
                   onAction={() => void handleInstall(pkg.packageId)}
@@ -612,383 +749,73 @@ function DiscoverTab({
             })}
           </div>
         </div>
+      ) : (
+        // Search/filter narrowed everything away — show a soft empty state
+        // rather than a blank page beneath the toolbar.
+        (query.trim() !== "" || filter !== "all") && (
+          <EmptyState
+            icon={<Search size={32} />}
+            title="No matches"
+            description="Try a different search or category."
+          />
+        )
       )}
     </>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Publish draft flow
+// Updates Tab
 // ---------------------------------------------------------------------------
 
-function buildPublishPrompt(commits: LocalGitCommitRecord[]): string {
-  const lines: string[] = []
-  if (commits.length === 1) {
-    const single = commits[0]!
-    lines.push("Publish this change to the Stella Store:")
-    lines.push("")
-    lines.push(`- ${single.shortHash} ${single.subject}`)
-    if (single.body) {
-      const trimmed = single.body.split("\n").slice(0, 4).join(" ")
-      lines.push(`  ${trimmed}`)
-    }
-  } else {
-    lines.push("Publish these changes to the Stella Store as one mod:")
-    lines.push("")
-    for (const commit of commits) {
-      lines.push(`- ${commit.shortHash} ${commit.subject}`)
-    }
-  }
-  return lines.join("\n")
+type UpdateEntry = {
+  pkg: StorePackageRecord
+  installed: InstalledStoreModRecord
 }
 
-function buildUpdatePrompt(pkg: StorePackageRecord): string {
-  return [
-    `Update my "${pkg.displayName}" Stella Store mod.`,
-    "",
-    `Package ID: ${pkg.packageId}`,
-    `Current version: ${pkg.latestReleaseNumber}`,
-    "",
-    "Look at recent self-mod commits and the existing release history, pick the relevant changes for this mod, confirm with me if anything is ambiguous, then publish a new version.",
-  ].join("\n")
-}
-
-type PublishDialogTarget = {
-  commits: LocalGitCommitRecord[]
-  existingPackage?: StorePackageRecord
-}
-
-function PublishReviewDialog({
-  target,
-  open,
-  onCancel,
-  onPublished,
-}: {
-  target: PublishDialogTarget | null
-  open: boolean
-  onCancel: () => void
-  onPublished?: () => Promise<void> | void
-}) {
-  const [requestText, setRequestText] = useState("")
-  const [draft, setDraft] = useState<StorePublishDraft | null>(null)
-  const [preparing, setPreparing] = useState(false)
-  const [publishing, setPublishing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!target) return
-    setRequestText(
-      target.existingPackage
-        ? buildUpdatePrompt(target.existingPackage)
-        : buildPublishPrompt(target.commits),
-    )
-    setDraft(null)
-    setError(null)
-    setPreparing(false)
-    setPublishing(false)
-  }, [target])
-
-  const selectedCommitHashes = useMemo(
-    () => target?.commits.map((commit) => commit.commitHash) ?? [],
-    [target],
-  )
-
-  const handlePrepare = useCallback(async () => {
-    if (!target) return
-    const api = window.electronAPI?.store
-    if (!api?.prepareCandidateRelease) return
-    const trimmed = requestText.trim()
-    if (!trimmed) {
-      setError("Tell the Store agent what this should become.")
-      return
-    }
-    try {
-      setPreparing(true)
-      setError(null)
-      const nextDraft = await api.prepareCandidateRelease({
-        requestText: trimmed,
-        selectedCommitHashes,
-        ...(target.existingPackage
-          ? { existingPackageId: target.existingPackage.packageId }
-          : {}),
-      })
-      setDraft(nextDraft)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't prepare this release")
-    } finally {
-      setPreparing(false)
-    }
-  }, [requestText, selectedCommitHashes, target])
-
-  const handlePublish = useCallback(async () => {
-    if (!target || !draft) return
-    const api = window.electronAPI?.store
-    if (!api?.publishPreparedRelease) return
-    try {
-      setPublishing(true)
-      setError(null)
-      const release = await api.publishPreparedRelease({
-        requestText: requestText.trim(),
-        selectedCommitHashes,
-        ...(target.existingPackage
-          ? { existingPackageId: target.existingPackage.packageId }
-          : {}),
-        draft,
-      })
-      showToast({
-        title: `Published ${release.manifest.displayName}.`,
-        variant: "success",
-      })
-      await onPublished?.()
-      onCancel()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't publish this release")
-      setPublishing(false)
-    }
-  }, [draft, onCancel, onPublished, requestText, selectedCommitHashes, target])
-
-  const fileCount = draft
-    ? new Set(draft.selectedChanges.flatMap((change) => change.files)).size
-    : 0
-
-  return (
-    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onCancel() : undefined)}>
-      <DialogContent fit className="credential-modal-content">
-        <DialogCloseButton className="credential-modal-close" />
-        <DialogBody className="credential-modal-body">
-          <div className="credential-modal-hero">
-            <div className="credential-modal-icon">
-              <Package size={20} />
-            </div>
-            <DialogTitle className="credential-modal-headline">
-              Add to Store
-            </DialogTitle>
-            <DialogDescription className="credential-modal-sub">
-              Review what the Store agent prepares before publishing.
-            </DialogDescription>
-          </div>
-
-          <div className="credential-modal-form">
-            <TextField
-              label="What should this be?"
-              multiline
-              rows={4}
-              value={requestText}
-              onChange={(event) => {
-                setRequestText(event.target.value)
-                setDraft(null)
-              }}
-              placeholder="Describe what this should become in the Store."
-              autoFocus
-            />
-
-            {draft ? (
-              <div className="store-publish-review">
-                <div className="store-publish-review-top">
-                  <div>
-                    <div className="store-publish-review-title">
-                      {draft.displayName}
-                    </div>
-                    <div className="store-publish-review-sub">
-                      {draft.category === "agents" ? "Agent capability" : "Stella add-on"} · Version {draft.releaseNumber}
-                    </div>
-                  </div>
-                  <span className="store-section-count">
-                    {draft.commitHashes.length} changes
-                  </span>
-                </div>
-                <div className="store-card-desc">{draft.description}</div>
-                {draft.releaseNotes ? (
-                  <div className="store-card-meta">{draft.releaseNotes}</div>
-                ) : null}
-                <div className="store-card-meta">
-                  {fileCount === 1 ? "1 file included" : `${fileCount} files included`}
-                </div>
-                <div className="store-publish-change-list">
-                  {draft.selectedChanges.map((change) => (
-                    <div key={change.commitHash} className="store-publish-change">
-                      {change.shortHash ? `${change.shortHash} ` : ""}
-                      {change.subject}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {error ? <div className="credential-modal-error">{error}</div> : null}
-
-            <div className="credential-modal-actions">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={onCancel}
-                disabled={preparing || publishing}
-                className="pill-btn pill-btn--lg credential-modal-cancel"
-              >
-                Cancel
-              </Button>
-              {!draft ? (
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={() => void handlePrepare()}
-                  disabled={preparing}
-                  className="pill-btn pill-btn--primary pill-btn--lg credential-modal-submit"
-                >
-                  {preparing ? "Preparing..." : "Prepare"}
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={() => void handlePublish()}
-                  disabled={publishing}
-                  className="pill-btn pill-btn--primary pill-btn--lg credential-modal-submit"
-                >
-                  {publishing ? "Publishing..." : "Publish"}
-                </Button>
-              )}
-            </div>
-          </div>
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// My Creations Tab — flat commit list
-// ---------------------------------------------------------------------------
-
-function describeFiles(commit: LocalGitCommitRecord): string {
-  if (commit.fileCount === 0) return "Internal change"
-  if (commit.fileCount === 1) return "1 file changed"
-  return `${commit.fileCount} files changed`
-}
-
-function CommitRow({
-  commit,
-  selected,
-  onToggle,
-  onPublish,
-}: {
-  commit: LocalGitCommitRecord
-  selected: boolean
-  onToggle: () => void
-  onPublish: () => Promise<void>
-}) {
-  const [expanded, setExpanded] = useState(false)
-  return (
-    <div
-      className="store-card"
-      data-store-commit
-      data-selected={selected || undefined}
-    >
-      <div className="store-card-body">
-        <div className="store-card-top">
-          <label
-            className="store-card-name"
-            style={{ display: "flex", alignItems: "center", gap: 10 }}
-          >
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={onToggle}
-              aria-label={`Select ${commit.subject}`}
-            />
-            <span>{commit.subject}</span>
-          </label>
-          <button
-            className="store-action-btn"
-            data-variant="share"
-            onClick={(e) => {
-              e.stopPropagation()
-              void onPublish()
-            }}
-          >
-            Publish
-          </button>
-        </div>
-        {commit.body && (
-          <div className="store-card-desc">
-            {commit.body.split("\n").slice(0, 2).join(" ")}
-          </div>
-        )}
-        <div
-          className="store-card-meta"
-          style={{ display: "flex", alignItems: "center", gap: 12 }}
-        >
-          <span>{formatTimeAgo(commit.timestampMs)}</span>
-          <span aria-hidden>·</span>
-          <button
-            type="button"
-            className="store-card-meta"
-            style={{
-              background: "transparent",
-              border: 0,
-              padding: 0,
-              cursor: commit.fileCount > 0 ? "pointer" : "default",
-              color: "inherit",
-            }}
-            onClick={() => commit.fileCount > 0 && setExpanded((v) => !v)}
-            aria-expanded={expanded}
-          >
-            {describeFiles(commit)}
-            {commit.fileCount > 0 && (expanded ? " ▴" : " ▾")}
-          </button>
-        </div>
-        {expanded && commit.files.length > 0 && (
-          <div
-            className="store-card-meta"
-            style={{
-              marginTop: 6,
-              fontFamily:
-                "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace",
-              fontSize: 11,
-              lineHeight: 1.5,
-              opacity: 0.75,
-              wordBreak: "break-all",
-            }}
-          >
-            {commit.files.join("\n")}
-            {commit.fileCount > commit.files.length && (
-              <div>… and {commit.fileCount - commit.files.length} more</div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function CreationsTab({
-  commits,
+function UpdatesTab({
+  packages,
+  installed,
   loading,
   error,
+  onSelect,
+  onUpdate,
 }: {
-  commits: LocalGitCommitRecord[]
+  packages: StorePackageRecord[]
+  installed: InstalledStoreModRecord[]
   loading: boolean
   error: string | null
+  onSelect: (packageId: string) => void
+  onUpdate: (packageId: string, releaseNumber: number) => Promise<void>
 }) {
-  const [selected, setSelected] = useState<Set<string>>(() => new Set())
-  const [publishTarget, setPublishTarget] = useState<PublishDialogTarget | null>(null)
+  const [working, setWorking] = useState<string | null>(null)
 
-  const toggle = useCallback((commitHash: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(commitHash)) {
-        next.delete(commitHash)
-      } else {
-        next.add(commitHash)
+  const updates: UpdateEntry[] = useMemo(() => {
+    const pkgMap = new Map<string, StorePackageRecord>()
+    for (const pkg of packages) pkgMap.set(pkg.packageId, pkg)
+    const result: UpdateEntry[] = []
+    for (const mod of installed) {
+      if (mod.state !== "installed") continue
+      const pkg = pkgMap.get(mod.packageId)
+      if (!pkg) continue
+      if (pkg.latestReleaseNumber > mod.releaseNumber) {
+        result.push({ pkg, installed: mod })
       }
-      return next
-    })
-  }, [])
+    }
+    return result.sort((a, b) => b.pkg.updatedAt - a.pkg.updatedAt)
+  }, [packages, installed])
 
-  const handlePublish = useCallback((target: LocalGitCommitRecord[]) => {
-    if (target.length === 0) return
-    setPublishTarget({ commits: target })
-  }, [])
+  const handleUpdate = useCallback(
+    async (packageId: string, releaseNumber: number) => {
+      setWorking(packageId)
+      try {
+        await onUpdate(packageId, releaseNumber)
+      } finally {
+        setWorking(null)
+      }
+    },
+    [onUpdate],
+  )
 
   if (loading) return <SkeletonGrid />
 
@@ -1000,74 +827,73 @@ function CreationsTab({
     )
   }
 
-  if (commits.length === 0) {
+  if (updates.length === 0) {
     return (
       <EmptyState
-        icon={<Sparkles size={32} />}
-        title="No creations yet"
-        description="Ask Stella to customize your experience, and the changes will show up here."
+        icon={<Check size={32} />}
+        title="You're all caught up"
+        description="Updates for the add-ons you've added will appear here."
       />
     )
   }
 
-  const selectedCommits = commits.filter((c) => selected.has(c.commitHash))
-
   return (
-    <>
-      <div className="store-section">
-        <div
-          className="store-section-header"
-          style={{ display: "flex", alignItems: "center", gap: 12 }}
-        >
-          <span className="store-section-title">Your Creations</span>
-          <span className="store-section-count">{commits.length}</span>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            <button
-              className="store-action-btn"
-              data-variant={selectedCommits.length > 0 ? "share" : "added"}
-              disabled={selectedCommits.length === 0}
-              onClick={() => handlePublish(selectedCommits)}
-            >
-              Publish selected
-              {selectedCommits.length > 0 ? ` (${selectedCommits.length})` : ""}
-            </button>
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          {commits.map((commit) => (
-            <CommitRow
-              key={commit.commitHash}
-              commit={commit}
-              selected={selected.has(commit.commitHash)}
-              onToggle={() => toggle(commit.commitHash)}
-              onPublish={() => Promise.resolve(handlePublish([commit]))}
-            />
-          ))}
-        </div>
+    <div className="store-section">
+      <div className="store-section-header">
+        <span className="store-section-title">Updates</span>
+        <span className="store-section-count">{updates.length}</span>
       </div>
-      <PublishReviewDialog
-        open={publishTarget !== null}
-        target={publishTarget}
-        onCancel={() => setPublishTarget(null)}
-        onPublished={() => setSelected(new Set())}
-      />
-    </>
+      <div className="store-update-list">
+        {updates.map(({ pkg, installed: install }) => {
+          const isWorking = working === pkg.packageId
+          return (
+            <div
+              key={pkg.packageId}
+              className="store-update-row"
+              onClick={() => onSelect(pkg.packageId)}
+            >
+              <PackageArtwork
+                iconUrl={pkg.iconUrl}
+                name={pkg.displayName}
+                className="store-update-art"
+                letterClassName="store-update-art-letter"
+              />
+              <div className="store-update-body">
+                <div className="store-update-name">{pkg.displayName}</div>
+                <div className="store-update-version">
+                  Version {pkg.latestReleaseNumber} · You have {install.releaseNumber}
+                </div>
+                <div className="store-update-notes">{pkg.description}</div>
+              </div>
+              <button
+                className="store-action-btn"
+                data-variant={isWorking ? "working" : "get"}
+                disabled={isWorking}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void handleUpdate(pkg.packageId, pkg.latestReleaseNumber)
+                }}
+              >
+                {isWorking ? "Updating..." : "Update"}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
+// ---------------------------------------------------------------------------
+// Connect tab
+// ---------------------------------------------------------------------------
+
 function connectorStatusLabel(connector: StellaConnectorSummary): string {
   if (connector.installed) return "Connected"
-  if (connector.requiresCredential) return "Key"
-  if (connector.status === "official-mcp") return "Ready"
-  if (connector.status === "official-api") return "API"
-  return "Researching"
+  if (connector.requiresCredential) return "Needs API key"
+  if (connector.status === "official-mcp") return "Ready to add"
+  if (connector.status === "official-api") return "Web service"
+  return "Coming soon"
 }
 
 function ConnectTab({
@@ -1123,15 +949,23 @@ function ConnectTab({
         {connectors.map((connector) => {
           const ready = connector.executable === true
           const isWorking = working === connector.marketplaceKey
+          // ConnectTab uses StoreCard but synthesizes a package-shaped object
+          // — connectors don't have iconUrl yet; they fall back to gradient.
+          const synthesized: StorePackageRecord = {
+            packageId: connector.id,
+            displayName: connector.displayName,
+            description:
+              connector.description ??
+              connector.integrationPath ??
+              "Connect this service to Stella.",
+            latestReleaseNumber: 0,
+            createdAt: 0,
+            updatedAt: 0,
+          }
           return (
             <StoreCard
               key={connector.id}
-              name={connector.displayName}
-              description={
-                connector.description ??
-                connector.integrationPath ??
-                "Connect this service to Stella."
-              }
+              pkg={synthesized}
               actionLabel={
                 isWorking
                   ? "Adding..."
@@ -1297,7 +1131,501 @@ function ConnectorCredentialDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Package Detail View
+// Publish flow
+// ---------------------------------------------------------------------------
+
+function buildPublishPrompt(commits: LocalGitCommitRecord[]): string {
+  const lines: string[] = []
+  if (commits.length === 1) {
+    const single = commits[0]!
+    lines.push("Publish this change to the Stella Store:")
+    lines.push("")
+    lines.push(`- ${single.shortHash} ${single.subject}`)
+    if (single.body) {
+      const trimmed = single.body.split("\n").slice(0, 4).join(" ")
+      lines.push(`  ${trimmed}`)
+    }
+  } else {
+    lines.push("Publish these changes to the Stella Store as one mod:")
+    lines.push("")
+    for (const commit of commits) {
+      lines.push(`- ${commit.shortHash} ${commit.subject}`)
+    }
+  }
+  return lines.join("\n")
+}
+
+function buildUpdatePrompt(pkg: StorePackageRecord): string {
+  return [
+    `Update my "${pkg.displayName}" Stella Store mod.`,
+    "",
+    `Package ID: ${pkg.packageId}`,
+    `Current version: ${pkg.latestReleaseNumber}`,
+    "",
+    "Look at recent self-mod commits and the existing release history, pick the relevant changes for this mod, confirm with me if anything is ambiguous, then publish a new version.",
+  ].join("\n")
+}
+
+type PublishDialogTarget = {
+  commits: LocalGitCommitRecord[]
+  existingPackage?: StorePackageRecord
+}
+
+function PublishReviewDialog({
+  target,
+  open,
+  onCancel,
+  onPublished,
+}: {
+  target: PublishDialogTarget | null
+  open: boolean
+  onCancel: () => void
+  onPublished?: () => Promise<void> | void
+}) {
+  const [requestText, setRequestText] = useState("")
+  const [draft, setDraft] = useState<StorePublishDraft | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!target) return
+    setRequestText(
+      target.existingPackage
+        ? buildUpdatePrompt(target.existingPackage)
+        : buildPublishPrompt(target.commits),
+    )
+    setDraft(null)
+    setError(null)
+    setPreparing(false)
+    setPublishing(false)
+  }, [target])
+
+  const selectedCommitHashes = useMemo(
+    () => target?.commits.map((commit) => commit.commitHash) ?? [],
+    [target],
+  )
+
+  const handlePrepare = useCallback(async () => {
+    if (!target) return
+    const api = window.electronAPI?.store
+    if (!api?.prepareCandidateRelease) return
+    const trimmed = requestText.trim()
+    if (!trimmed) {
+      setError("Tell the Store agent what this should become.")
+      return
+    }
+    try {
+      setPreparing(true)
+      setError(null)
+      const nextDraft = await api.prepareCandidateRelease({
+        requestText: trimmed,
+        selectedCommitHashes,
+        ...(target.existingPackage
+          ? { existingPackageId: target.existingPackage.packageId }
+          : {}),
+      })
+      setDraft(nextDraft)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't prepare this release")
+    } finally {
+      setPreparing(false)
+    }
+  }, [requestText, selectedCommitHashes, target])
+
+  const handlePublish = useCallback(async () => {
+    if (!target || !draft) return
+    const api = window.electronAPI?.store
+    if (!api?.publishPreparedRelease) return
+    try {
+      setPublishing(true)
+      setError(null)
+      const release = await api.publishPreparedRelease({
+        requestText: requestText.trim(),
+        selectedCommitHashes,
+        ...(target.existingPackage
+          ? { existingPackageId: target.existingPackage.packageId }
+          : {}),
+        draft,
+      })
+      showToast({
+        title: `Published ${release.manifest.displayName}.`,
+        variant: "success",
+      })
+      await onPublished?.()
+      onCancel()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't publish this release")
+      setPublishing(false)
+    }
+  }, [draft, onCancel, onPublished, requestText, selectedCommitHashes, target])
+
+  const fileCount = draft
+    ? new Set(draft.selectedChanges.flatMap((change) => change.files)).size
+    : 0
+
+  const isUpdate = Boolean(target?.existingPackage)
+  const headline = isUpdate
+    ? `Publish update to ${target!.existingPackage!.displayName}`
+    : "Publish to Store"
+  const subtext = isUpdate
+    ? "Review the next version before it goes out."
+    : "Review what the Store agent prepares before publishing."
+  const submitLabel = isUpdate
+    ? publishing
+      ? "Publishing update..."
+      : "Publish update"
+    : publishing
+      ? "Publishing..."
+      : "Publish"
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onCancel() : undefined)}>
+      <DialogContent fit className="credential-modal-content">
+        <DialogCloseButton className="credential-modal-close" />
+        <DialogBody className="credential-modal-body">
+          <div className="credential-modal-hero">
+            <div className="credential-modal-icon">
+              <Package size={20} />
+            </div>
+            <DialogTitle className="credential-modal-headline">
+              {headline}
+            </DialogTitle>
+            <DialogDescription className="credential-modal-sub">
+              {subtext}
+            </DialogDescription>
+          </div>
+
+          <div className="credential-modal-form">
+            <TextField
+              label="What should this be?"
+              multiline
+              rows={4}
+              value={requestText}
+              onChange={(event) => {
+                setRequestText(event.target.value)
+                setDraft(null)
+              }}
+              placeholder="Describe what this should become in the Store."
+              autoFocus
+            />
+
+            {draft ? (
+              <div className="store-publish-review">
+                <div className="store-publish-review-top">
+                  <div className="store-publish-review-heading">
+                    {draft.iconUrl ? (
+                      <PackageArtwork
+                        iconUrl={draft.iconUrl}
+                        name={draft.displayName}
+                        className="store-update-art"
+                        letterClassName="store-update-art-letter"
+                      />
+                    ) : null}
+                    <div>
+                      <div className="store-publish-review-title">
+                        {draft.displayName}
+                      </div>
+                      <div className="store-publish-review-sub">
+                        {draft.category === "agents" ? "Agent capability" : "Stella add-on"}
+                        {" · Version "}
+                        {draft.releaseNumber}
+                        {draft.authorDisplayName ? ` · by ${draft.authorDisplayName}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="store-section-count">
+                    {draft.commitHashes.length} changes
+                  </span>
+                </div>
+                <div className="store-card-desc">{draft.description}</div>
+                {draft.releaseNotes ? (
+                  <div className="store-card-meta">{draft.releaseNotes}</div>
+                ) : null}
+                <div className="store-card-meta">
+                  {fileCount === 1 ? "1 file included" : `${fileCount} files included`}
+                </div>
+                <div className="store-publish-change-list">
+                  {draft.selectedChanges.map((change) => (
+                    <div key={change.commitHash} className="store-publish-change">
+                      {change.shortHash ? `${change.shortHash} ` : ""}
+                      {change.subject}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {error ? <div className="credential-modal-error">{error}</div> : null}
+
+            <div className="credential-modal-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onCancel}
+                disabled={preparing || publishing}
+                className="pill-btn pill-btn--lg credential-modal-cancel"
+              >
+                Cancel
+              </Button>
+              {!draft ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => void handlePrepare()}
+                  disabled={preparing}
+                  className="pill-btn pill-btn--primary pill-btn--lg credential-modal-submit"
+                >
+                  {preparing ? "Preparing..." : "Prepare"}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => void handlePublish()}
+                  disabled={publishing}
+                  className="pill-btn pill-btn--primary pill-btn--lg credential-modal-submit"
+                >
+                  {submitLabel}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Your Mods tab — owned packages + recent uncommitted-to-mod changes
+// ---------------------------------------------------------------------------
+
+function describeFiles(commit: LocalGitCommitRecord): string {
+  if (commit.fileCount === 0) return "Internal change"
+  if (commit.fileCount === 1) return "1 file changed"
+  return `${commit.fileCount} files changed`
+}
+
+function CommitRow({
+  commit,
+  selected,
+  onToggle,
+  onPublish,
+}: {
+  commit: LocalGitCommitRecord
+  selected: boolean
+  onToggle: () => void
+  onPublish: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="store-commit-card" data-selected={selected || undefined}>
+      <div className="store-commit-top">
+        <label className="store-commit-label">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            aria-label={`Select ${commit.subject}`}
+          />
+          <span className="store-commit-subject">{commit.subject}</span>
+        </label>
+        <button
+          className="store-action-btn"
+          data-variant="share"
+          onClick={(e) => {
+            e.stopPropagation()
+            onPublish()
+          }}
+        >
+          Publish
+        </button>
+      </div>
+      {commit.body ? (
+        <div className="store-card-desc">
+          {commit.body.split("\n").slice(0, 2).join(" ")}
+        </div>
+      ) : null}
+      <div className="store-commit-meta">
+        <span>{formatTimeAgo(commit.timestampMs)}</span>
+        <span aria-hidden>·</span>
+        <button
+          type="button"
+          className="store-commit-meta-button"
+          disabled={commit.fileCount === 0}
+          onClick={() => commit.fileCount > 0 && setExpanded((v) => !v)}
+          aria-expanded={expanded}
+        >
+          {describeFiles(commit)}
+          {commit.fileCount > 0 ? (expanded ? " ▴" : " ▾") : ""}
+        </button>
+      </div>
+      {expanded && commit.files.length > 0 ? (
+        <div className="store-commit-files">
+          {commit.files.join("\n")}
+          {commit.fileCount > commit.files.length ? (
+            <div>… and {commit.fileCount - commit.files.length} more</div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function YourModsTab({
+  packages,
+  packagesLoading,
+  packagesError,
+  commits,
+  commitsLoading,
+  commitsError,
+  onSelectPackage,
+  onPublishUpdate,
+  onOpenPublish,
+}: {
+  packages: StorePackageRecord[]
+  packagesLoading: boolean
+  packagesError: string | null
+  commits: LocalGitCommitRecord[]
+  commitsLoading: boolean
+  commitsError: string | null
+  onSelectPackage: (packageId: string) => void
+  onPublishUpdate: (pkg: StorePackageRecord) => void
+  onOpenPublish: (commits: LocalGitCommitRecord[]) => void
+}) {
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [recentExpanded, setRecentExpanded] = useState(true)
+
+  const toggle = useCallback((commitHash: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(commitHash)) next.delete(commitHash)
+      else next.add(commitHash)
+      return next
+    })
+  }, [])
+
+  const selectedCommits = useMemo(
+    () => commits.filter((c) => selected.has(c.commitHash)),
+    [commits, selected],
+  )
+
+  const ownedSorted = useMemo(
+    () => packages.slice().sort((a, b) => b.updatedAt - a.updatedAt),
+    [packages],
+  )
+
+  if (packagesLoading) return <SkeletonGrid />
+  if (packagesError) {
+    return (
+      <div className="store-status" data-variant="error">
+        {packagesError}
+      </div>
+    )
+  }
+
+  const hasOwned = ownedSorted.length > 0
+  const hasCommits = commits.length > 0
+
+  return (
+    <>
+      <div className="store-section">
+        <div className="store-section-header">
+          <span className="store-section-title">Your Mods</span>
+          <span className="store-section-count">{ownedSorted.length}</span>
+        </div>
+
+        {hasOwned ? (
+          <div className="store-grid">
+            {ownedSorted.map((pkg) => (
+              <StoreCard
+                key={pkg.packageId}
+                pkg={pkg}
+                actionLabel="Update"
+                actionVariant="share"
+                actionDisabled={false}
+                meta={`Version ${pkg.latestReleaseNumber} · Updated ${formatTimeAgo(pkg.updatedAt)}`}
+                onAction={() => onPublishUpdate(pkg)}
+                onClick={() => onSelectPackage(pkg.packageId)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="store-mods-empty-block">
+            <div className="store-mods-empty-title">Nothing published yet</div>
+            <div className="store-mods-empty-desc">
+              Ask Stella to customize itself, then publish those changes from the list below.
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="store-recent-changes">
+        <div className="store-recent-changes-head">
+          <button
+            type="button"
+            className="store-recent-changes-toggle"
+            onClick={() => setRecentExpanded((v) => !v)}
+            aria-expanded={recentExpanded}
+          >
+            {recentExpanded ? (
+              <ChevronLeft
+                size={14}
+                className="store-recent-changes-chevron"
+                data-expanded
+              />
+            ) : (
+              <ChevronRight size={14} className="store-recent-changes-chevron" />
+            )}
+            Recent changes available to publish
+            <span className="store-section-count">{commits.length}</span>
+          </button>
+          {selectedCommits.length > 0 ? (
+            <button
+              className="store-action-btn store-recent-changes-action"
+              data-variant="share"
+              onClick={() => onOpenPublish(selectedCommits)}
+            >
+              Publish {selectedCommits.length} selected
+            </button>
+          ) : null}
+        </div>
+
+        {recentExpanded ? (
+          commitsLoading ? (
+            <SkeletonGrid />
+          ) : commitsError ? (
+            <div className="store-status" data-variant="error">
+              {commitsError}
+            </div>
+          ) : !hasCommits ? (
+            <EmptyState
+              icon={<Sparkles size={32} />}
+              title="No recent changes"
+              description="When Stella modifies itself, those changes show up here so you can package them."
+            />
+          ) : (
+            <div className="store-recent-changes-list">
+              {commits.map((commit) => (
+                <CommitRow
+                  key={commit.commitHash}
+                  commit={commit}
+                  selected={selected.has(commit.commitHash)}
+                  onToggle={() => toggle(commit.commitHash)}
+                  onPublish={() => onOpenPublish([commit])}
+                />
+              ))}
+            </div>
+          )
+        ) : null}
+      </div>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Package Detail
 // ---------------------------------------------------------------------------
 
 function PackageDetailView({
@@ -1313,7 +1641,7 @@ function PackageDetailView({
   onBack: () => void
   onInstall: (packageId: string) => Promise<void>
   onRemove: (packageId: string) => Promise<void>
-  onPublishUpdate: (pkg: StorePackageRecord) => Promise<void>
+  onPublishUpdate: (pkg: StorePackageRecord) => void
 }) {
   const { pkg, releases, loading, error } = usePackageDetail(packageId)
   const [working, setWorking] = useState(false)
@@ -1363,6 +1691,9 @@ function PackageDetailView({
     )
   }
 
+  const latestRelease = releases[0]
+  const latestNotes = latestRelease ? getReleaseNotes(latestRelease) : undefined
+
   return (
     <div className="store-detail">
       <button className="store-detail-back" onClick={onBack}>
@@ -1371,7 +1702,8 @@ function PackageDetailView({
       </button>
 
       <div className="store-detail-hero">
-        <PlaceholderImage
+        <PackageArtwork
+          iconUrl={pkg.iconUrl}
           name={pkg.displayName}
           className="store-detail-image"
           letterClassName="store-detail-image-letter"
@@ -1379,7 +1711,8 @@ function PackageDetailView({
         <div className="store-detail-info">
           <div className="store-detail-name">{pkg.displayName}</div>
           <div className="store-detail-desc">{pkg.description}</div>
-          <div className="store-detail-meta">
+          <AuthorChip name={pkg.authorDisplayName} variant="detail" />
+          <div className="store-detail-meta store-detail-meta--spaced">
             <span className="store-detail-meta-item">
               <Layers size={13} />
               Version {pkg.latestReleaseNumber}
@@ -1393,7 +1726,7 @@ function PackageDetailView({
             <button
               className="store-action-btn store-action-btn--lg"
               data-variant="share"
-              onClick={() => void onPublishUpdate(pkg)}
+              onClick={() => onPublishUpdate(pkg)}
             >
               Publish update
             </button>
@@ -1420,13 +1753,24 @@ function PackageDetailView({
         </div>
       </div>
 
-      {releases.length > 0 && (
+      {latestNotes ? (
+        <div className="store-whats-new">
+          <div className="store-whats-new-eyebrow">What's New</div>
+          <div className="store-whats-new-version">
+            Version {latestRelease!.releaseNumber}
+            {latestRelease ? ` · ${formatDate(latestRelease.createdAt)}` : ""}
+          </div>
+          <div className="store-whats-new-body">{latestNotes}</div>
+        </div>
+      ) : null}
+
+      {releases.length > 1 ? (
         <>
           <hr className="store-detail-divider" />
           <div className="store-detail-section">
             <div className="store-detail-section-title">Version History</div>
             <div className="store-version-list">
-              {releases.map((release) => {
+              {releases.slice(1).map((release) => {
                 const notes = getReleaseNotes(release)
                 const fileCount = getFileCount(release)
                 return (
@@ -1434,12 +1778,10 @@ function PackageDetailView({
                     <div className="store-version-label">
                       Version {release.releaseNumber}
                     </div>
-                    {notes && (
-                      <div className="store-version-notes">{notes}</div>
-                    )}
+                    {notes ? <div className="store-version-notes">{notes}</div> : null}
                     <div className="store-version-date">
                       {formatDate(release.createdAt)}
-                      {fileCount > 0 && ` \u00B7 ${fileCount} items customized`}
+                      {fileCount > 0 ? ` \u00B7 ${fileCount} items customized` : ""}
                     </div>
                   </div>
                 )
@@ -1447,7 +1789,7 @@ function PackageDetailView({
             </div>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -1456,7 +1798,14 @@ function PackageDetailView({
 // Store View (main export)
 // ---------------------------------------------------------------------------
 
-type StoreTab = "discover" | "connect" | "creations"
+type StoreTab = "discover" | "updates" | "connect" | "your-mods"
+
+const STORE_TABS: Array<{ id: StoreTab; label: string }> = [
+  { id: "discover", label: "Discover" },
+  { id: "updates", label: "Updates" },
+  { id: "connect", label: "Connect" },
+  { id: "your-mods", label: "Your Mods" },
+]
 
 export function StoreView() {
   useSelfModTaintMonitor()
@@ -1491,6 +1840,7 @@ export function StoreView() {
     loading: commitsLoading,
     error: commitsError,
   } = useLocalCommits()
+
   const {
     connectors,
     loading: connectorsLoading,
@@ -1499,11 +1849,11 @@ export function StoreView() {
   } = useStoreConnectors()
 
   const handleInstall = useCallback(
-    async (packageId: string) => {
+    async (packageId: string, releaseNumber?: number) => {
       const api = window.electronAPI?.store
       if (!api) return
       try {
-        await api.installRelease({ packageId })
+        await api.installRelease({ packageId, ...(releaseNumber ? { releaseNumber } : {}) })
         showToast({ title: "Added to Stella!", variant: "success" })
         await reloadPackages()
       } catch (err) {
@@ -1536,23 +1886,36 @@ export function StoreView() {
     [reloadPackages],
   )
 
-  const handlePublishUpdate = useCallback(async (pkg: StorePackageRecord) => {
-    if (commits.length === 0) {
-      showToast({
-        title: "No recent changes are available to publish.",
-        variant: "error",
-      })
-      return
-    }
-    setPublishTarget({ commits, existingPackage: pkg })
-  }, [commits])
+  const handlePublishUpdate = useCallback(
+    (pkg: StorePackageRecord) => {
+      if (commits.length === 0) {
+        showToast({
+          title: "No recent changes are available to publish.",
+          variant: "error",
+        })
+        return
+      }
+      setPublishTarget({ commits, existingPackage: pkg })
+    },
+    [commits],
+  )
+
+  const handleOpenPublish = useCallback(
+    (target: LocalGitCommitRecord[]) => {
+      if (target.length === 0) return
+      setPublishTarget({ commits: target })
+    },
+    [],
+  )
 
   const handleInstallConnector = useCallback(
     async (marketplaceKey: string) => {
       const api = window.electronAPI?.store
       if (!api?.installConnector) return
       try {
-        const connector = connectors.find((entry) => entry.marketplaceKey === marketplaceKey)
+        const connector = connectors.find(
+          (entry) => entry.marketplaceKey === marketplaceKey,
+        )
         if (!connector) return
         if (connector.requiresCredential || (connector.configFields?.length ?? 0) > 0) {
           setCredentialConnector(connector)
@@ -1589,7 +1952,28 @@ export function StoreView() {
     [credentialConnector, reloadConnectors],
   )
 
-  // Detail view
+  // Single, top-level dialog instances. Earlier the publish dialog was
+  // duplicated across the detail and main branches with the same state, which
+  // worked but made it easy to drift the two copies. One mount only.
+  const dialogs = (
+    <>
+      <ConnectorCredentialDialog
+        connector={credentialConnector}
+        open={Boolean(credentialConnector)}
+        onSubmit={handleSubmitConnectorCredential}
+        onCancel={() => setCredentialConnector(null)}
+      />
+      <PublishReviewDialog
+        open={publishTarget !== null}
+        target={publishTarget}
+        onCancel={() => setPublishTarget(null)}
+        onPublished={reloadPackages}
+      />
+    </>
+  )
+
+  // Detail view replaces the entire content area but reuses the same root +
+  // dialogs so the user can publish/install from inside it.
   if (selectedPackageId) {
     return (
       <div className="store-root" ref={rootRef}>
@@ -1603,12 +1987,7 @@ export function StoreView() {
             onPublishUpdate={handlePublishUpdate}
           />
         </div>
-        <PublishReviewDialog
-          open={publishTarget !== null}
-          target={publishTarget}
-          onCancel={() => setPublishTarget(null)}
-          onPublished={reloadPackages}
-        />
+        {dialogs}
       </div>
     )
   }
@@ -1619,34 +1998,23 @@ export function StoreView() {
         <div className="store-header-inner">
           <h1 className="store-title">Store</h1>
           <div className="store-tabs">
-          <button
-            className="store-tab"
-            data-active={tab === "discover" || undefined}
-            onClick={() => setTab("discover")}
-          >
-            Discover
-          </button>
-          <button
-            className="store-tab"
-            data-active={tab === "connect" || undefined}
-            onClick={() => setTab("connect")}
-          >
-            Connect
-          </button>
-          <button
-            className="store-tab"
-            data-active={tab === "creations" || undefined}
-              onClick={() => setTab("creations")}
-            >
-              My Creations
-            </button>
+            {STORE_TABS.map((entry) => (
+              <button
+                key={entry.id}
+                className="store-tab"
+                data-active={tab === entry.id || undefined}
+                onClick={() => setTab(entry.id)}
+              >
+                {entry.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
       <div className="store-scroll">
-          {tab === "discover" ? (
-            <DiscoverTab
+        {tab === "discover" ? (
+          <DiscoverTab
             packages={packages}
             installed={installed}
             installedMap={installedMap}
@@ -1654,34 +2022,39 @@ export function StoreView() {
             error={packagesError}
             onSelect={setSelectedPackageId}
             onInstall={handleInstall}
-            />
-          ) : tab === "connect" ? (
-            <ConnectTab
-              connectors={connectors}
-              loading={connectorsLoading}
-              error={connectorsError}
-              onInstall={handleInstallConnector}
-            />
-          ) : (
-            <CreationsTab
+          />
+        ) : tab === "updates" ? (
+          <UpdatesTab
+            packages={packages}
+            installed={installed}
+            loading={packagesLoading}
+            error={packagesError}
+            onSelect={setSelectedPackageId}
+            onUpdate={handleInstall}
+          />
+        ) : tab === "connect" ? (
+          <ConnectTab
+            connectors={connectors}
+            loading={connectorsLoading}
+            error={connectorsError}
+            onInstall={handleInstallConnector}
+          />
+        ) : (
+          <YourModsTab
+            packages={packages}
+            packagesLoading={packagesLoading}
+            packagesError={packagesError}
             commits={commits}
-            loading={commitsLoading}
-            error={commitsError}
+            commitsLoading={commitsLoading}
+            commitsError={commitsError}
+            onSelectPackage={setSelectedPackageId}
+            onPublishUpdate={handlePublishUpdate}
+            onOpenPublish={handleOpenPublish}
           />
         )}
       </div>
-      <ConnectorCredentialDialog
-        connector={credentialConnector}
-        open={Boolean(credentialConnector)}
-        onSubmit={handleSubmitConnectorCredential}
-        onCancel={() => setCredentialConnector(null)}
-      />
-      <PublishReviewDialog
-        open={publishTarget !== null}
-        target={publishTarget}
-        onCancel={() => setPublishTarget(null)}
-        onPublished={reloadPackages}
-      />
+
+      {dialogs}
     </div>
   )
 }

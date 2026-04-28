@@ -43,6 +43,8 @@ const create_release_args_validator = {
   manifest: store_release_manifest_validator,
   artifactBody: v.string(),
   artifactContentType: v.optional(v.string()),
+  iconUrl: v.optional(v.string()),
+  authorDisplayName: v.optional(v.string()),
 };
 
 const create_first_release_args_validator = {
@@ -148,6 +150,8 @@ const normalizeManifest = (
     category?: "agents" | "stella";
     artifactHash?: string;
     summary?: string;
+    iconUrl?: string;
+    authorDisplayName?: string;
   },
 ) => {
   const includedBatchIds = normalizeStringArray(
@@ -178,6 +182,12 @@ const normalizeManifest = (
     "manifest.summary",
     MAX_MANIFEST_SUMMARY_LENGTH,
   );
+  const iconUrl = normalizeOptionalText(manifest.iconUrl, "manifest.iconUrl", 2048);
+  const authorDisplayName = normalizeOptionalText(
+    manifest.authorDisplayName,
+    "manifest.authorDisplayName",
+    120,
+  );
 
   return {
     includedBatchIds,
@@ -186,6 +196,8 @@ const normalizeManifest = (
     ...(manifest.category ? { category: normalizeStoreCategory(manifest.category) } : {}),
     ...(artifactHash ? { artifactHash } : {}),
     ...(summary ? { summary } : {}),
+    ...(iconUrl ? { iconUrl } : {}),
+    ...(authorDisplayName ? { authorDisplayName } : {}),
   };
 };
 
@@ -339,6 +351,8 @@ export const createFirstReleaseRecord = internalMutation({
     artifactUrl: v.union(v.null(), v.string()),
     artifactContentType: v.string(),
     artifactSize: v.number(),
+    iconUrl: v.optional(v.string()),
+    authorDisplayName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await getPackageByPackageId(ctx, args.packageId);
@@ -360,6 +374,10 @@ export const createFirstReleaseRecord = internalMutation({
       latestReleaseNumber: 0,
       createdAt: now,
       updatedAt: now,
+      ...(args.iconUrl ? { iconUrl: args.iconUrl } : {}),
+      ...(args.authorDisplayName
+        ? { authorDisplayName: args.authorDisplayName }
+        : {}),
     });
 
     const releaseRef = await ctx.db.insert("store_package_releases", {
@@ -408,6 +426,8 @@ export const createUpdateReleaseRecord = internalMutation({
     artifactUrl: v.union(v.null(), v.string()),
     artifactContentType: v.string(),
     artifactSize: v.number(),
+    iconUrl: v.optional(v.string()),
+    authorDisplayName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const pkg = await getOwnedPackageByPackageId(ctx, args.ownerId, args.packageId);
@@ -448,10 +468,17 @@ export const createUpdateReleaseRecord = internalMutation({
       createdAt: now,
     });
 
+    // Refresh the package row's surface metadata to whatever this release
+    // provides. Icons and author names are intentionally allowed to change
+    // across releases (e.g. a re-themed mod gets a new icon next time).
     await ctx.db.patch(pkg._id, {
       latestReleaseNumber: nextReleaseNumber,
       latestReleaseId: releaseRef,
       updatedAt: now,
+      ...(args.iconUrl ? { iconUrl: args.iconUrl } : {}),
+      ...(args.authorDisplayName
+        ? { authorDisplayName: args.authorDisplayName }
+        : {}),
     });
 
     const updatedPackage = await ctx.db.get(pkg._id);
@@ -588,6 +615,10 @@ export const createFirstRelease = action({
       artifactUrl,
       artifactContentType,
       artifactSize: blob.size,
+      ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
+      ...(manifest.authorDisplayName
+        ? { authorDisplayName: manifest.authorDisplayName }
+        : {}),
     });
   },
 });
@@ -647,6 +678,10 @@ export const createUpdateRelease = action({
       artifactUrl,
       artifactContentType,
       artifactSize: blob.size,
+      ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
+      ...(manifest.authorDisplayName
+        ? { authorDisplayName: manifest.authorDisplayName }
+        : {}),
     });
   },
 });

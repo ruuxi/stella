@@ -2,7 +2,7 @@ import { action, type ActionCtx } from "../_generated/server";
 import { api } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
 import { z } from "zod";
-import { requireSensitiveUserIdAction } from "../auth";
+import { requireSensitiveUserIdentityAction } from "../auth";
 import { resolveManagedModelConfigs } from "../agent/model_resolver";
 import {
   assistantText,
@@ -20,6 +20,7 @@ import {
   buildStorePublishPrompt,
   STORE_PUBLISH_SYSTEM_PROMPT,
 } from "../prompts/store_publish";
+import { generateStoreIconUrl } from "../lib/store_icon";
 
 const MAX_COMMITS = 50;
 const MAX_FILES = 512;
@@ -32,6 +33,8 @@ type ExistingStorePackage = {
   displayName: string;
   description: string;
   latestReleaseNumber: number;
+  iconUrl?: string;
+  authorDisplayName?: string;
 };
 
 const candidateCommitValidator = v.object({
@@ -152,17 +155,30 @@ const resolveExistingPackage = async (
   const existingPackageId = existingPackageIdArg
     ? normalizePackageId(existingPackageIdArg)
     : undefined;
-  const existingPackage: ExistingStorePackage | null = existingPackageId
+  const rawExisting = existingPackageId
     ? await ctx.runQuery(api.data.store_packages.getPackage, {
         packageId: existingPackageId,
-      }) as ExistingStorePackage | null
+      })
     : null;
-  if (existingPackageId && !existingPackage) {
+  if (existingPackageId && !rawExisting) {
     throw new ConvexError({
       code: "NOT_FOUND",
       message: "Store package not found",
     });
   }
+  const existingPackage: ExistingStorePackage | null = rawExisting
+    ? {
+        packageId: rawExisting.packageId,
+        ...(rawExisting.category ? { category: rawExisting.category } : {}),
+        displayName: rawExisting.displayName,
+        description: rawExisting.description,
+        latestReleaseNumber: rawExisting.latestReleaseNumber,
+        ...(rawExisting.iconUrl ? { iconUrl: rawExisting.iconUrl } : {}),
+        ...(rawExisting.authorDisplayName
+          ? { authorDisplayName: rawExisting.authorDisplayName }
+          : {}),
+      }
+    : null;
   return { existingPackageId, existingPackage };
 };
 
@@ -262,6 +278,20 @@ const buildDraftFromDecision = (args: {
   };
 };
 
+const resolveAuthorDisplayName = (identity: {
+  name?: string;
+  email?: string;
+}): string | undefined => {
+  const name = identity.name?.trim();
+  if (name) return name;
+  const email = identity.email?.trim();
+  if (email) {
+    const localPart = email.split("@")[0]?.trim();
+    if (localPart) return localPart;
+  }
+  return undefined;
+};
+
 const prepareDraft = async (
   ctx: ActionCtx,
   args: {
@@ -284,8 +314,9 @@ const prepareDraft = async (
     }>;
     existingPackageId?: string;
   },
-  ownerId: string,
+  identity: { tokenIdentifier: string; name?: string; email?: string },
 ) => {
+  const ownerId = identity.tokenIdentifier;
   const requestText = validateCandidateInput(args);
   const { existingPackageId, existingPackage } = await resolveExistingPackage(
     ctx,
@@ -352,6 +383,7 @@ const publishDraft = async (
       releaseNumber: number;
     };
     existingPackage: ExistingStorePackage | null;
+    identity: { name?: string; email?: string };
   },
 ) => {
   const packageId = args.draft.existingPackageId
@@ -365,13 +397,26 @@ const publishDraft = async (
     ? args.existingPackage.latestReleaseNumber + 1
     : 1;
 
+  const displayName = args.existingPackage?.displayName ?? args.draft.displayName.trim();
+  const description = args.existingPackage?.description ?? args.draft.description.trim();
+  const iconUrl =
+    await generateStoreIconUrl({
+      displayName,
+      description,
+      category,
+    }) || args.existingPackage?.iconUrl;
+  const authorDisplayName =
+    args.existingPackage?.authorDisplayName ?? resolveAuthorDisplayName(args.identity);
+
   const artifact = buildStoreReleaseArtifactFromCandidate({
     packageId,
     releaseNumber,
     category,
-    displayName: args.existingPackage?.displayName ?? args.draft.displayName.trim(),
-    description: args.existingPackage?.description ?? args.draft.description.trim(),
+    displayName,
+    description,
     releaseNotes: args.draft.releaseNotes?.trim(),
+    ...(iconUrl ? { iconUrl } : {}),
+    ...(authorDisplayName ? { authorDisplayName } : {}),
     candidate: {
       ...args.candidate,
       selectedCommitHashes: commitHashes,
@@ -390,6 +435,8 @@ const publishDraft = async (
         ...(artifact.manifest.releaseNotes
           ? { summary: artifact.manifest.releaseNotes }
           : {}),
+        ...(iconUrl ? { iconUrl } : {}),
+        ...(authorDisplayName ? { authorDisplayName } : {}),
       },
       artifactBody: JSON.stringify(artifact),
       artifactContentType: "application/json",
@@ -399,8 +446,8 @@ const publishDraft = async (
   return await ctx.runAction(api.data.store_packages.createFirstRelease, {
     packageId,
     category,
-    displayName: args.draft.displayName.trim(),
-    description: args.draft.description.trim(),
+    displayName,
+    description,
     releaseNotes: args.draft.releaseNotes?.trim(),
     manifest: {
       includedBatchIds: artifact.manifest.batchIds,
@@ -410,11 +457,21 @@ const publishDraft = async (
       ...(artifact.manifest.releaseNotes
         ? { summary: artifact.manifest.releaseNotes }
         : {}),
+      ...(iconUrl ? { iconUrl } : {}),
+      ...(authorDisplayName ? { authorDisplayName } : {}),
     },
     artifactBody: JSON.stringify(artifact),
     artifactContentType: "application/json",
   });
 };
+
+const identityFromAction = (
+  identity: Awaited<ReturnType<typeof requireSensitiveUserIdentityAction>>,
+): { tokenIdentifier: string; name?: string; email?: string } => ({
+  tokenIdentifier: identity.tokenIdentifier,
+  ...(typeof identity.name === "string" ? { name: identity.name } : {}),
+  ...(typeof identity.email === "string" ? { email: identity.email } : {}),
+});
 
 export const prepareCandidateRelease = action({
   args: {
@@ -425,8 +482,8 @@ export const prepareCandidateRelease = action({
     existingPackageId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<unknown> => {
-    const ownerId = await requireSensitiveUserIdAction(ctx);
-    const { draft } = await prepareDraft(ctx, args, ownerId);
+    const identity = await requireSensitiveUserIdentityAction(ctx);
+    const { draft } = await prepareDraft(ctx, args, identityFromAction(identity));
     return draft;
   },
 });
@@ -441,7 +498,7 @@ export const publishPreparedRelease = action({
     draft: publishDraftValidator,
   },
   handler: async (ctx, args): Promise<unknown> => {
-    await requireSensitiveUserIdAction(ctx);
+    const identity = await requireSensitiveUserIdentityAction(ctx);
     const requestText = validateCandidateInput(args);
     const { existingPackageId, existingPackage } = await resolveExistingPackage(
       ctx,
@@ -456,6 +513,7 @@ export const publishPreparedRelease = action({
       candidate,
       draft: args.draft,
       existingPackage,
+      identity: identityFromAction(identity),
     });
   },
 });
@@ -469,12 +527,17 @@ export const publishCandidateRelease = action({
     existingPackageId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<unknown> => {
-    const ownerId = await requireSensitiveUserIdAction(ctx);
-    const { candidate, existingPackage, draft } = await prepareDraft(ctx, args, ownerId);
+    const identity = await requireSensitiveUserIdentityAction(ctx);
+    const { candidate, existingPackage, draft } = await prepareDraft(
+      ctx,
+      args,
+      identityFromAction(identity),
+    );
     return await publishDraft(ctx, {
       candidate,
       draft,
       existingPackage,
+      identity: identityFromAction(identity),
     });
   },
 });

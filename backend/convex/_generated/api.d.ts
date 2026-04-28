@@ -101,6 +101,7 @@ import type * as lib_rate_limits from "../lib/rate_limits.js";
 import type * as lib_redaction from "../lib/redaction.js";
 import type * as lib_retry_fetch from "../lib/retry_fetch.js";
 import type * as lib_store_artifacts from "../lib/store_artifacts.js";
+import type * as lib_store_icon from "../lib/store_icon.js";
 import type * as lib_store_release_reviews from "../lib/store_release_reviews.js";
 import type * as lib_text_utils from "../lib/text_utils.js";
 import type * as lib_thread_compaction from "../lib/thread_compaction.js";
@@ -273,6 +274,7 @@ declare const fullApi: ApiFromModules<{
   "lib/redaction": typeof lib_redaction;
   "lib/retry_fetch": typeof lib_retry_fetch;
   "lib/store_artifacts": typeof lib_store_artifacts;
+  "lib/store_icon": typeof lib_store_icon;
   "lib/store_release_reviews": typeof lib_store_release_reviews;
   "lib/text_utils": typeof lib_text_utils;
   "lib/thread_compaction": typeof lib_thread_compaction;
