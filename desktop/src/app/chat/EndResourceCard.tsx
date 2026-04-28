@@ -31,6 +31,8 @@ const labelForPayload = (payload: DisplayPayload): string => {
       return basenameOf(payload.filePath);
     case "pdf":
       return basenameOf(payload.filePath);
+    case "trash":
+      return getDisplayPayloadTitle(payload);
     case "media":
       switch (payload.asset.kind) {
         case "image":
