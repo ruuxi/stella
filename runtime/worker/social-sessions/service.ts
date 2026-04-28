@@ -576,18 +576,9 @@ export class SocialSessionService {
         isActiveHost: isActiveHostForSession,
       });
 
-      // Spin up the per-session Vite dev server on the active host. The
-      // manager is idempotent — repeated calls reuse the running child.
-      if (isActiveHostForSession) {
-        void this.previewManager
-          .ensureStarted(summary.session._id, localFolderPath)
-          .catch((error) => {
-            // eslint-disable-next-line no-console
-            console.warn("[social-sessions] preview server start failed", {
-              sessionId: summary.session._id,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
+      const activeSession = this.activeSessions.get(summary.session._id);
+      if (activeSession) {
+        void this.ensurePreviewForSession(activeSession);
       }
     }
 
@@ -644,6 +635,7 @@ export class SocialSessionService {
       await this.processPendingHostTurns(client);
       for (const session of this.activeSessions.values()) {
         await this.applyRemoteFileOps(client, session);
+        void this.ensurePreviewForSession(session);
         if (session.isActiveHost) {
           await this.syncHostWorkspace(client, session);
         }
@@ -875,6 +867,24 @@ export class SocialSessionService {
         lastAppliedOrdinal: session.lastAppliedFileOpOrdinal,
       },
     );
+  }
+
+  private async ensurePreviewForSession(session: SessionRuntime): Promise<void> {
+    try {
+      await fs.access(path.join(session.localFolderPath, "package.json"));
+    } catch {
+      return;
+    }
+
+    await this.previewManager
+      .ensureStarted(session.sessionId, session.localFolderPath)
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn("[social-sessions] preview server start failed", {
+          sessionId: session.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
   }
 
   private async syncHostWorkspace(

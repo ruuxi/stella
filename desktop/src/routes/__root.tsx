@@ -338,8 +338,8 @@ function RootChrome() {
 
   // Push payloads into the workspace panel.
   //
-  // - `media` payloads always open the panel (a generated image/video/audio
-  //   is the user's main goal in that moment; surfacing it is non-negotiable).
+  // - `media` and `url` payloads always open the panel (generated artifacts
+  //   and live previews are the user's main goal in that moment).
   //   Producers running on the active surface itself (e.g. a future
   //   `MediaStudio` page) should pass `suppress` to the materializer.
   // - For everything else (html / office / pdf), keep the existing behavior:
@@ -357,7 +357,7 @@ function RootChrome() {
         ds.update(payload);
         return;
       }
-      if (payload.kind === "media") {
+      if (payload.kind === "media" || payload.kind === "url") {
         ds.open(payload);
         return;
       }
