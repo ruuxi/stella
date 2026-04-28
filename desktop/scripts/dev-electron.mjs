@@ -2,7 +2,9 @@ import { execFileSync, execSync, spawn } from 'node:child_process'
 import {
   copyFileSync,
   existsSync,
+  closeSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   writeFileSync,
@@ -547,13 +549,8 @@ watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
 })
 
 mkdirSync(stellaStateDir, { recursive: true })
-rootWatcher = watch(stellaStateDir, (_eventType, filename) => {
-  if (
-    typeof filename !== 'string' ||
-    filename !== path.basename(runtimeReloadStateFile)
-  ) {
-    return
-  }
+closeSync(openSync(runtimeReloadStateFile, 'a'))
+rootWatcher = watch(runtimeReloadStateFile, () => {
   flushDeferredRestartIfReady()
 })
 

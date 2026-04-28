@@ -65,6 +65,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerMemoryHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaStatePath: lifecycle.getStellaStatePath,
     getController: () => state.chronicleController,
     setController: (controller) => {
       state.chronicleController = controller;
@@ -75,6 +76,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerChronicleHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaStatePath: lifecycle.getStellaStatePath,
     getController: () => state.chronicleController,
     setController: (controller) => {
       state.chronicleController = controller;
@@ -122,6 +124,7 @@ export const registerBootstrapIpcHandlers = (
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaStatePath: lifecycle.getStellaStatePath,
     externalLinkService: services.externalLinkService,
     ensurePrivilegedActionApproval: (action, message, detail, event) =>
       services.securityPolicyService.ensureApproval(
@@ -172,6 +175,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerBrowserHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaStatePath: lifecycle.getStellaStatePath,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -191,6 +195,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerOfficePreviewHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaStatePath: lifecycle.getStellaStatePath,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -226,6 +231,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerStoreHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaStatePath: lifecycle.getStellaStatePath,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
@@ -234,6 +240,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerFashionHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaStatePath: lifecycle.getStellaStatePath,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
@@ -256,12 +263,14 @@ export const registerBootstrapIpcHandlers = (
     getStellaHostRunner: lifecycle.getRunner,
     getBroadcastToMobile: lazyMobileBroadcast,
     getOverlayController: () => state.overlayController ?? null,
+    getStellaStatePath: lifecycle.getStellaStatePath,
   });
 
   registerDictationHandlers({
     windowManager: state.windowManager!,
     getOverlayController: () => state.overlayController ?? null,
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaStatePath: lifecycle.getStellaStatePath,
   });
 
   stopCapturing();

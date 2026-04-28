@@ -44,6 +44,7 @@ type DictationHandlersOptions = {
   windowManager: WindowManager;
   getOverlayController: () => OverlayWindowController | null;
   getStellaRoot: () => string | null;
+  getStellaStatePath: () => string | null;
 };
 
 const isUsableWindow = (
@@ -200,13 +201,13 @@ export const registerDictationHandlers = (options: DictationHandlersOptions) => 
   };
 
   const loadConfiguredShortcut = () => {
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) return DEFAULT_DICTATION_SHORTCUT;
     return loadLocalPreferences(stellaRoot).dictationShortcut;
   };
 
   const saveConfiguredShortcut = (shortcut: string) => {
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) return;
     const prefs = loadLocalPreferences(stellaRoot);
     prefs.dictationShortcut = shortcut;

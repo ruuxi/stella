@@ -104,7 +104,6 @@ const SNAPSHOT_IGNORED_DIRS = new Set([
   "coverage",
   ".cache",
   "electron-user-data",
-  "state/electron-user-data",
 ]);
 
 const APPROX_BYTES_PER_TOKEN = 4;
@@ -598,7 +597,7 @@ const buildShellCommand = (command: string, state: ShellState): string => {
   return buildProtectedCommand(command, state);
 };
 
-const resolveStellaHomeFromState = (state: ShellState): string | undefined => {
+const resolveStellaStatePathFromState = (state: ShellState): string | undefined => {
   const stateRoot = path.resolve(state.secretStateRoot);
   if (path.basename(stateRoot) === "state") {
     return path.dirname(stateRoot);
@@ -616,7 +615,7 @@ const maybeSweepDeferredDeletes = (state: ShellState) => {
   }
   state.lastDeferredDeleteSweepAt = now;
   void purgeExpiredDeferredDeletes({
-    stellaHome: resolveStellaHomeFromState(state),
+    stellaHome: resolveStellaStatePathFromState(state),
     now,
   }).catch(() => undefined);
 };
@@ -640,7 +639,7 @@ const maybeTrashNativeWindowsDeletes = async (
     cwd,
     force: /(?:^|\s)(?:\/q|\/f|-force)\b/i.test(command),
     source: "shell:windows-native",
-    stellaHome: resolveStellaHomeFromState(state),
+    stellaHome: resolveStellaStatePathFromState(state),
     requestId: context?.requestId,
     agentType: context?.agentType,
     conversationId: context?.conversationId,

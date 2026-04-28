@@ -40,6 +40,7 @@ const createTestHost = async (): Promise<TestHostContext> => {
 
   const host = createToolHost({
     stellaRoot: rootPath,
+    stellaStatePath: rootPath,
     agentApi: {
       createAgent: async (request) => {
         createdTasks.push({

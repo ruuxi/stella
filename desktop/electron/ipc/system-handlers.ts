@@ -175,6 +175,7 @@ type SystemHandlersOptions = {
     listener: (runner: StellaHostRunner | null) => void,
   ) => () => void;
   getStellaRoot: () => string | null;
+  getStellaStatePath: () => string | null;
   externalLinkService: ExternalLinkService;
   ensurePrivilegedActionApproval: (
     action: string,
@@ -847,7 +848,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted preferences:getSyncMode request.");
     }
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) return "off";
     return getSyncMode(stellaRoot);
   });
@@ -861,7 +862,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted preferences:setSyncMode request.");
     }
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) return;
     const prefs = loadLocalPreferences(stellaRoot);
     prefs.syncMode = mode === "off" ? "off" : "on";
@@ -880,7 +881,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getRadialTrigger request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) return DEFAULT_RADIAL_TRIGGER_CODE;
     return loadLocalPreferences(stellaRoot).radialTriggerKey;
   });
@@ -899,7 +900,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const nextTriggerKey = normalizeRadialTriggerCode(triggerKey);
-      const stellaRoot = options.getStellaRoot();
+      const stellaRoot = options.getStellaStatePath();
       if (stellaRoot) {
         const prefs = loadLocalPreferences(stellaRoot);
         prefs.radialTriggerKey = nextTriggerKey;
@@ -921,7 +922,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getMiniDoubleTap request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) return "Alt";
     return loadLocalPreferences(stellaRoot).miniDoubleTapModifier;
   });
@@ -940,7 +941,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const nextModifier = normalizeMiniDoubleTapModifier(modifier);
-      const stellaRoot = options.getStellaRoot();
+      const stellaRoot = options.getStellaStatePath();
       if (stellaRoot) {
         const prefs = loadLocalPreferences(stellaRoot);
         prefs.miniDoubleTapModifier = nextModifier;
@@ -960,7 +961,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted preferences:getPreventSleep request.");
     }
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) return false;
     return getPreventComputerSleep(stellaRoot);
   });
@@ -979,7 +980,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const nextEnabled = enabled === true;
-      const stellaRoot = options.getStellaRoot();
+      const stellaRoot = options.getStellaStatePath();
       if (stellaRoot) {
         const prefs = loadLocalPreferences(stellaRoot);
         prefs.preventComputerSleep = nextEnabled;
@@ -1001,7 +1002,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getLocalModelPreferences request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) {
       return null;
     }
@@ -1021,7 +1022,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           "Blocked untrusted preferences:setLocalModelPreferences request.",
         );
       }
-      const stellaRoot = options.getStellaRoot();
+      const stellaRoot = options.getStellaStatePath();
       if (!stellaRoot) return null;
 
       const nextDefaultModels = sanitizeStringRecord(payload?.defaultModels);
@@ -1076,7 +1077,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted credential request.");
     }
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) {
       return [];
     }
@@ -1107,7 +1108,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted OAuth credential request.");
     }
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) {
       return [];
     }
@@ -1125,7 +1126,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted OAuth login request.");
       }
-      const stellaRoot = options.getStellaRoot();
+      const stellaRoot = options.getStellaStatePath();
       if (!stellaRoot) {
         throw new Error("Local Stella root is unavailable.");
       }
@@ -1173,7 +1174,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted OAuth credential delete.");
       }
-      const stellaRoot = options.getStellaRoot();
+      const stellaRoot = options.getStellaStatePath();
       if (!stellaRoot) {
         return { removed: false };
       }
@@ -1193,7 +1194,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted credential preference request.");
     }
-    const stellaRoot = options.getStellaRoot();
+    const stellaRoot = options.getStellaStatePath();
     if (!stellaRoot) {
       return { enabled: false, provider: "openai" };
     }
@@ -1215,7 +1216,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted credential preference write.");
       }
-      const stellaRoot = options.getStellaRoot();
+      const stellaRoot = options.getStellaStatePath();
       if (!stellaRoot) {
         throw new Error("Local Stella root is unavailable.");
       }
@@ -1250,7 +1251,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted credential write.");
       }
-      const stellaRoot = options.getStellaRoot();
+      const stellaRoot = options.getStellaStatePath();
       if (!stellaRoot) {
         throw new Error("Local Stella root is unavailable.");
       }
@@ -1273,7 +1274,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted credential delete.");
       }
-      const stellaRoot = options.getStellaRoot();
+      const stellaRoot = options.getStellaStatePath();
       if (!stellaRoot) {
         return { removed: false };
       }

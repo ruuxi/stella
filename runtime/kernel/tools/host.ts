@@ -14,7 +14,6 @@
  * extension-injected ToolDefinitions) sit alongside in the same map.
  */
 
-import path from "node:path";
 import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 
 import type {
@@ -90,10 +89,13 @@ export const createToolHost = ({
   queryConvex,
   memoryStore,
 }: ToolHostOptions) => {
+  if (!stellaStatePath) {
+    throw new Error("createToolHost requires stellaStatePath.");
+  }
   const stateRoot = stellaStatePath;
   const toolCatalog = new Map<string, ToolMetadata>();
 
-  setFileToolsConfig({ stellaRoot });
+  setFileToolsConfig({ stellaRoot, stellaStatePath: stateRoot });
 
   const shellState: ShellState = createShellState(stateRoot, {
     stellaBrowserBinPath: _stellaBrowserBinPath,

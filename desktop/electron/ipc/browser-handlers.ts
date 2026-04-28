@@ -33,6 +33,7 @@ type BrowserCookie = {
 
 type BrowserHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaStatePath: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -193,12 +194,12 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "media:saveOutput")) {
         return { ok: false, error: "Blocked untrusted request." };
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
+      const stellaStatePath = options.getStellaStatePath();
+      if (!stellaStatePath) {
         return { ok: false, error: "Stella root not initialized" };
       }
       try {
-        const dir = path.join(resolveStellaStatePath(stellaRoot), "media", "outputs");
+        const dir = path.join(resolveStellaStatePath(stellaStatePath), "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = path.join(dir, payload.fileName);
         const safeUrl = await normalizeUrlForPrivilegedRendererFetch(payload.url);
@@ -225,9 +226,9 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "media:getStellaMediaDir")) {
         return null;
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) return null;
-      return path.join(resolveStellaStatePath(stellaRoot), "media");
+      const stellaStatePath = options.getStellaStatePath();
+      if (!stellaStatePath) return null;
+      return path.join(resolveStellaStatePath(stellaStatePath), "media");
     },
   );
 };
