@@ -264,6 +264,24 @@ pub async fn launch_desktop(
 }
 
 #[tauri::command]
+pub async fn check_for_update(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<OkResult, String> {
+    let mut installer = state.installer.lock().await;
+    let result = setup::check_for_update(&mut installer, &state.context, &app).await;
+    Ok(OkResult { ok: result.is_ok() })
+}
+
+#[tauri::command]
+pub async fn apply_update(state: State<'_, AppState>, app: AppHandle) -> Result<OkResult, String> {
+    let mut installer = state.installer.lock().await;
+    stop_desktop_by_path(&installer.install_path);
+    let result = setup::apply_update(&mut installer, &state.context, &app).await;
+    Ok(OkResult { ok: result.is_ok() })
+}
+
+#[tauri::command]
 pub async fn show_launcher_window(app: AppHandle) -> Result<OkResult, String> {
     show_main_window(&app);
     Ok(OkResult { ok: true })

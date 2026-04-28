@@ -46,8 +46,34 @@ pub enum InstallerPhase {
     Checking,
     Ready,
     Installing,
+    Updating,
     Complete,
     Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateStatus {
+    Idle,
+    Checking,
+    Available,
+    Updating,
+    Complete,
+    Conflict,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInfo {
+    pub status: UpdateStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_tag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_tag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    pub conflicts: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +103,7 @@ pub struct InstallerState {
     pub run_after_install: bool,
     pub can_launch: bool,
     pub installed: bool,
+    pub update: UpdateInfo,
     pub disk: DiskInfo,
 }
 
@@ -105,6 +132,10 @@ pub struct Settings {
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
     pub version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub desktop_release_tag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub desktop_archive_sha256: Option<String>,
     pub platform: String,
     pub installed_at: String,
     pub install_path: String,

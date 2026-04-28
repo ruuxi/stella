@@ -11,6 +11,7 @@ use tokio::process::Command;
 // ── Constants ───────────────────────────────────────────────────────
 
 const INSTALL_MANIFEST: &str = "stella-install.json";
+const RELEASE_MANIFEST: &str = "stella-release.json";
 const LAUNCH_SCRIPT_WIN: &str = "launch.cmd";
 const LAUNCH_SCRIPT_UNIX: &str = "launch.sh";
 const ENV_FILE_NAME: &str = ".env.local";
@@ -190,6 +191,9 @@ pub fn is_uninstallable_install_path(install_path: &str) -> bool {
 
 fn manifest_of(d: &str) -> PathBuf {
     Path::new(d).join(INSTALL_MANIFEST)
+}
+fn release_manifest_of(d: &str) -> PathBuf {
+    Path::new(d).join(RELEASE_MANIFEST)
 }
 fn desktop_dir_of(d: &str) -> PathBuf {
     Path::new(d).join("desktop")
@@ -402,6 +406,21 @@ struct EmoteInstallState {
     updated_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     warning: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopReleaseManifest {
+    schema_version: u32,
+    tag: String,
+    #[allow(dead_code)]
+    files: HashMap<String, ReleaseFileEntry>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct ReleaseFileEntry {
+    #[allow(dead_code)]
+    sha256: String,
 }
 
 fn emote_release_manifest_url() -> String {
@@ -776,12 +795,7 @@ async fn ensure_parakeet_model_downloaded(install_dir: &str) -> Result<(), Strin
     let helper_str = helper.to_string_lossy().to_string();
     let cache_str = cache.to_string_lossy().to_string();
     let result = run(
-        &[
-            &helper_str,
-            "--download",
-            "--cache-root",
-            &cache_str,
-        ],
+        &[&helper_str, "--download", "--cache-root", &cache_str],
         Some(desktop_dir_of(install_dir).as_path()),
     )
     .await;
@@ -905,6 +919,27 @@ fn verify_sha256(bytes: &[u8], expected: &str) -> Result<(), String> {
     } else {
         Err("Emote bundle checksum did not match the downloaded archive.".into())
     }
+}
+
+async fn read_install_manifest(install_dir: &str) -> Option<Manifest> {
+    let raw = fs::read_to_string(manifest_of(install_dir)).await.ok()?;
+    serde_json::from_str::<Manifest>(&raw).ok()
+}
+
+async fn read_release_manifest_at(path: &Path) -> Result<DesktopReleaseManifest, String> {
+    let raw = fs::read_to_string(path)
+        .await
+        .map_err(|e| format!("Failed to read release manifest: {e}"))?;
+    let manifest = serde_json::from_str::<DesktopReleaseManifest>(&raw)
+        .map_err(|e| format!("Release manifest was invalid JSON: {e}"))?;
+    if manifest.schema_version != 1 {
+        return Err("Release manifest schema is not supported.".into());
+    }
+    Ok(manifest)
+}
+
+async fn read_release_manifest(install_dir: &str) -> Result<DesktopReleaseManifest, String> {
+    read_release_manifest_at(&release_manifest_of(install_dir)).await
 }
 
 async fn extract_emote_bundle(install_dir: &str, bytes: Vec<u8>) -> Result<(), String> {
@@ -1270,13 +1305,17 @@ async fn install_step(id: &SetupStepId, state: &mut InstallerState) -> Result<()
         SetupStepId::Parakeet => ensure_parakeet_model_downloaded(&dir).await,
         SetupStepId::Finalize => {
             let script_path = write_launch_script(&dir).await;
+            let release_manifest = read_release_manifest(&dir).await.ok();
 
             // Init git repo for self-mod in the background so install completion
             // does not wait on indexing tens of thousands of extracted files.
-            schedule_git_repo_init(dir.clone());
 
             let manifest = Manifest {
                 version: env!("CARGO_PKG_VERSION").into(),
+                desktop_release_tag: release_manifest
+                    .as_ref()
+                    .map(|manifest| manifest.tag.clone()),
+                desktop_archive_sha256: None,
                 platform: std::env::consts::OS.into(),
                 installed_at: chrono_now(),
                 install_path: dir.clone(),
@@ -1288,6 +1327,8 @@ async fn install_step(id: &SetupStepId, state: &mut InstallerState) -> Result<()
             fs::write(manifest_of(&dir), json)
                 .await
                 .map_err(|e| format!("Failed to write manifest: {e}"))?;
+
+            schedule_git_repo_init(dir.clone());
 
             write_registry(&manifest).await;
             Ok(())
@@ -1347,6 +1388,11 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
                 None
             }
         });
+    if let Some(manifest) = read_install_manifest(&state.install_path).await {
+        state.update.current_tag = manifest.desktop_release_tag;
+    } else if let Ok(release_manifest) = read_release_manifest(&state.install_path).await {
+        state.update.current_tag = Some(release_manifest.tag);
+    }
 }
 
 fn emit_state_fast(state: &InstallerState, app: &AppHandle) {
@@ -1405,6 +1451,13 @@ pub async fn create_initial_state(ctx: &InstallerContext) -> InstallerState {
         run_after_install: settings.run_after_install.unwrap_or(true),
         can_launch: false,
         installed: false,
+        update: UpdateInfo {
+            status: UpdateStatus::Idle,
+            current_tag: None,
+            latest_tag: None,
+            message: None,
+            conflicts: Vec::new(),
+        },
         disk: DiskInfo {
             required_bytes: ctx.required_bytes,
             available_bytes: None,
@@ -1563,6 +1616,59 @@ pub async fn install_all(
     emit_state_full(state, ctx, app).await;
 
     Ok(())
+}
+
+pub async fn check_for_update(
+    state: &mut InstallerState,
+    ctx: &InstallerContext,
+    app: &AppHandle,
+) -> Result<(), String> {
+    if ctx.dev_mode || !state.installed {
+        return Ok(());
+    }
+
+    state.update.status = UpdateStatus::Checking;
+    state.update.message = Some("Checking for updates...".into());
+    state.update.conflicts.clear();
+    emit_state_fast(state, app);
+
+    let latest_tag = latest_release_tag()
+        .await
+        .ok_or("Could not check for Stella updates. Check your internet connection.")?;
+    state.update.latest_tag = Some(latest_tag.clone());
+
+    if state.update.current_tag.as_deref() == Some(latest_tag.as_str()) {
+        state.update.status = UpdateStatus::Idle;
+        state.update.message = Some("Stella is up to date.".into());
+    } else {
+        state.update.status = UpdateStatus::Available;
+        state.update.message = Some(format!("Update {latest_tag} is available."));
+    }
+
+    emit_state_full(state, ctx, app).await;
+    Ok(())
+}
+
+pub async fn apply_update(
+    state: &mut InstallerState,
+    ctx: &InstallerContext,
+    app: &AppHandle,
+) -> Result<(), String> {
+    if ctx.dev_mode || !state.installed {
+        return Err("Stella is not installed.".into());
+    }
+
+    // The release manifest gives the launcher enough information to do a
+    // deterministic three-way update. Until the file-copy planner is wired in,
+    // surface this as agent-needed instead of risking overwriting local changes.
+    state.phase = InstallerPhase::Complete;
+    state.update.status = UpdateStatus::Conflict;
+    state.update.message = Some(
+        "This update is ready, but Stella needs the installation agent to apply it safely.".into(),
+    );
+    state.update.conflicts = Vec::new();
+    emit_state_full(state, ctx, app).await;
+    Err("Update requires the installation agent.".into())
 }
 
 pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {

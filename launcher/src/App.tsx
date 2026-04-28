@@ -31,6 +31,7 @@ function App() {
   const [installPathDraft, setInstallPathDraft] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [desktopRunning, setDesktopRunning] = useState(false);
   const desktopWasRunningRef = useRef(false);
 
@@ -72,6 +73,18 @@ function App() {
     const id = setInterval(poll, 1000);
     return () => clearInterval(id);
   }, [state?.phase]);
+
+  useEffect(() => {
+    if (!state || state.phase !== "complete" || state.devMode || !state.installed) {
+      return;
+    }
+    const check = () => {
+      void invoke("check_for_update").catch(() => {});
+    };
+    check();
+    const id = setInterval(check, 6 * 60 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [state?.phase, state?.devMode, state?.installed]);
 
   const commitInstallPath = useCallback(async () => {
     if (!state) return;
@@ -124,6 +137,15 @@ function App() {
 
   const handleOpenFolder = useCallback(async () => {
     await invoke("open_install_location");
+  }, []);
+
+  const handleUpdate = useCallback(async () => {
+    setUpdating(true);
+    try {
+      await invoke("apply_update");
+    } finally {
+      setUpdating(false);
+    }
   }, []);
 
   const handleUninstall = useCallback(async () => {
@@ -198,7 +220,10 @@ function App() {
   }
 
   const isSetup = state.phase === "ready" || state.phase === "error";
-  const isWorking = state.phase === "installing" || state.phase === "checking";
+  const isWorking =
+    state.phase === "installing" ||
+    state.phase === "checking" ||
+    state.phase === "updating";
   const isComplete = state.phase === "complete";
 
   const canInstall =
@@ -422,6 +447,19 @@ function App() {
                 {state.warningMessage}
               </div>
             )}
+            {state.update.status === "available" && (
+              <div className="banner banner-warn" style={{ marginTop: 16 }}>
+                {state.update.latestTag
+                  ? `Update ${state.update.latestTag} is ready.`
+                  : "A Stella update is ready."}
+              </div>
+            )}
+            {state.update.status === "conflict" && (
+              <div className="banner banner-warn" style={{ marginTop: 16 }}>
+                {state.update.message ??
+                  "Stella needs the installation agent to apply this update."}
+              </div>
+            )}
             {state.errorMessage && (
               <div className="banner banner-error" style={{ marginTop: 16 }}>
                 {state.errorMessage}
@@ -448,20 +486,33 @@ function App() {
           <button type="button" className="btn-primary" disabled>
             {state.phase === "checking"
               ? "Checking..."
+              : state.phase === "updating"
+                ? "Updating..."
               : `Installing · ${progress}%`}
           </button>
         )}
 
         {isComplete && (
           <>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={!state.canLaunch || desktopRunning || uninstalling}
-              onClick={() => void handleLaunch()}
-            >
-              {desktopRunning ? "Launching..." : "Launch Stella"}
-            </button>
+            {state.update.status === "available" ? (
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={updating || uninstalling}
+                onClick={() => void handleUpdate()}
+              >
+                {updating ? "Updating..." : "Update Stella"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!state.canLaunch || desktopRunning || uninstalling}
+                onClick={() => void handleLaunch()}
+              >
+                {desktopRunning ? "Launching..." : "Launch Stella"}
+              </button>
+            )}
             <div className="footer-links">
               <button
                 type="button"

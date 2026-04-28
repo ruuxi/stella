@@ -154,6 +154,8 @@ fn main() {
             commands::set_run_after_install,
             commands::start_install,
             commands::launch_desktop,
+            commands::check_for_update,
+            commands::apply_update,
             commands::show_launcher_window,
             commands::stop_desktop,
             commands::is_desktop_running,
