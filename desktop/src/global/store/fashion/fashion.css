@@ -23,7 +23,6 @@
   position: relative;
   height: 100%;
   width: 100%;
-  background: var(--background);
   animation: fashion-fade-in 0.32s ease both;
 }
 

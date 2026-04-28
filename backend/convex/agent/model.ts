@@ -59,6 +59,7 @@ export const MODEL_MODES = [
   "smart",
   "best",
   "sota",
+  "fashion",
   "reasoning",
   "synthesis",
   "media",
@@ -203,6 +204,17 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     },
   },
 
+  fashion: {
+    model: "openai/gpt-5.5",
+    fallbackMode: "best",
+    managedGatewayProvider: "openrouter",
+    temperature: 1.0,
+    maxOutputTokens: 32768,
+    providerOptions: {
+      ...gatewayOptions("openrouter"),
+    },
+  },
+
   reasoning: {
     model: "openai/gpt-5.4-mini",
     fallbackMode: "smart",
@@ -260,7 +272,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
   [AGENT_IDS.ORCHESTRATOR]: "sota",
   [AGENT_IDS.GENERAL]: "sota",
-  [AGENT_IDS.FASHION]: "sota",
+  [AGENT_IDS.FASHION]: "fashion",
 
   schedule: "standard",
   synthesis: "synthesis",
