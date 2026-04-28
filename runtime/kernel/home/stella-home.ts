@@ -80,11 +80,15 @@ export const resolveStellaRoot = (app?: App, explicitRoot?: string): string => {
     : path.resolve(__dirname, "..", "..", "..");
 };
 
-export const resolveRuntimeStatePath = (app?: App, explicitRoot?: string): string =>
-  resolveStellaStatePath(undefined, explicitRoot);
+export const resolveRuntimeStatePath = (app?: App, explicitRoot?: string): string => {
+  if (explicitRoot?.trim()) {
+    return path.join(resolveStellaRoot(app, explicitRoot), "state");
+  }
+  return resolveStellaStatePath();
+};
 
 export const resolveStellaStatePath = (
-  stellaRootOrStateRoot?: string,
+  stellaStatePath?: string,
   explicitStatePath?: string,
 ): string => {
   const normalizedExplicitStatePath = explicitStatePath?.trim();
@@ -102,18 +106,12 @@ export const resolveStellaStatePath = (
     return path.resolve(envDataRoot);
   }
 
-  const normalizedRoot = stellaRootOrStateRoot?.trim();
+  const normalizedRoot = stellaStatePath?.trim();
   if (!normalizedRoot) {
     return resolveDefaultStellaDataRoot();
   }
 
-  const resolvedRoot = path.resolve(normalizedRoot);
-  const basename = path.basename(resolvedRoot);
-  if (basename === DEFAULT_STELLA_DATA_DIRNAME || basename === "state") {
-    return resolvedRoot;
-  }
-
-  return path.join(resolvedRoot, "state");
+  return path.resolve(normalizedRoot);
 };
 
 export const resolveStellaHome = async (
@@ -130,7 +128,7 @@ export const resolveStellaHome = async (
   const workspaceAppsPath = path.join(workspacePath, "apps");
 
   process.env.STELLA_ROOT = stellaRoot;
-  process.env.STELLA_HOME = statePath;
+  process.env.STELLA_HOME = stellaRoot;
   process.env.STELLA_DATA_ROOT = statePath;
   process.env.STELLA_STATE = statePath;
 

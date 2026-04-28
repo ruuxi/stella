@@ -21,6 +21,7 @@ import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home
 
 type StoreHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaStatePath: () => string | null;
   getStellaHostRunner: () => StellaHostRunner | null;
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
@@ -31,8 +32,8 @@ type StoreHandlersOptions = {
   ) => boolean;
 };
 
-const listInstalledThemes = async (stellaRoot: string) => {
-  const themesDir = path.join(resolveStellaStatePath(stellaRoot), "themes");
+const listInstalledThemes = async (stellaStatePath: string) => {
+  const themesDir = path.join(resolveStellaStatePath(stellaStatePath), "themes");
   try {
     const files = await fs.readdir(themesDir);
     const themes = [];
@@ -71,11 +72,11 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
   };
 
   ipcMain.handle("theme:listInstalled", async () => {
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) {
+    const stellaStatePath = options.getStellaStatePath();
+    if (!stellaStatePath) {
       return [];
     }
-    return await listInstalledThemes(stellaRoot);
+    return await listInstalledThemes(stellaStatePath);
   });
 
   ipcMain.handle("store:listLocalCommits", async (event, payload?: { limit?: number }) => {
@@ -170,46 +171,46 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
 
   ipcMain.handle("store:listConnectors", async (event) => {
     assertPrivilegedRequest(options, event, "store:listConnectors");
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return [];
-    return await listStellaConnectors(stellaRoot);
+    const stellaStatePath = options.getStellaStatePath();
+    if (!stellaStatePath) return [];
+    return await listStellaConnectors(stellaStatePath);
   });
 
   ipcMain.handle(
     "store:installConnector",
     async (event, payload: { marketplaceKey: string; credential?: string; config?: Record<string, string> }) => {
       assertPrivilegedRequest(options, event, "store:installConnector");
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
-        throw new Error("Stella root is unavailable.");
+      const stellaStatePath = options.getStellaStatePath();
+      if (!stellaStatePath) {
+        throw new Error("Stella state is unavailable.");
       }
       const installed = await installOfficialConnector(
-        stellaRoot,
+        stellaStatePath,
         payload.marketplaceKey,
         payload.config ?? {},
       );
       const oauthResults = [];
       for (const target of [...installed.servers, ...installed.apis]) {
         if (target.auth?.type !== "none" && target.auth?.tokenKey && payload.credential) {
-          await saveMcpAccessToken(stellaRoot, target.auth.tokenKey, payload.credential);
+          await saveMcpAccessToken(stellaStatePath, target.auth.tokenKey, payload.credential);
         }
       }
       for (const [key, value] of Object.entries(payload.config ?? {})) {
         if (value) {
-          await saveMcpAccessToken(stellaRoot, key, value);
+          await saveMcpAccessToken(stellaStatePath, key, value);
         }
       }
       for (const server of installed.servers) {
         if (server.transport !== "streamable_http" || !server.url) continue;
         if (server.auth?.type !== "oauth" || !server.auth.tokenKey) continue;
         try {
-          oauthResults.push(await connectMcpOAuth(stellaRoot, {
+          oauthResults.push(await connectMcpOAuth(stellaStatePath, {
             tokenKey: server.auth.tokenKey,
             resourceUrl: server.url,
             openUrl: (url) => shell.openExternal(url),
           }));
         } catch (error) {
-          await removeOfficialConnector(stellaRoot, payload.marketplaceKey);
+          await removeOfficialConnector(stellaStatePath, payload.marketplaceKey);
           throw error;
         }
       }

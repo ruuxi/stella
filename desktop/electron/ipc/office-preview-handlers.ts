@@ -17,6 +17,7 @@ import { listOfficePreviewSnapshots } from "../bootstrap/office-preview-bridge.j
 
 type OfficePreviewHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaStatePath: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -172,7 +173,7 @@ export const registerOfficePreviewHandlers = (
       const sessionId = randomUUID();
       const title = path.basename(sourcePath);
       const ref: OfficePreviewRef = { sessionId, title, sourcePath };
-      const stateRoot = resolveStellaStatePath(stellaRoot);
+      const stateRoot = resolveStellaStatePath(options.getStellaStatePath() ?? stellaRoot);
       const sessionDir = path.join(stateRoot, PREVIEW_ROOT_DIRNAME, sessionId);
       const startedAt = Date.now();
       await writeManifest(sessionDir, ref, format, "starting", startedAt);

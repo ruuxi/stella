@@ -89,6 +89,7 @@ export const createBootstrapServices = (options: {
   const backupService = new BackupService({
     stellaRoot: config.stellaRoot,
     getStellaRoot: () => state.stellaRoot,
+    getStellaStatePath: () => state.stellaStatePath,
     getRunner: () => lifecycle.getRunner(),
     getAuthToken: () => authService.getAuthToken(),
     getConvexSiteUrl: () => authService.getConvexSiteUrl(),

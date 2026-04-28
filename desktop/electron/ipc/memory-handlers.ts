@@ -36,6 +36,7 @@ import { hasMacPermission } from "../utils/macos-permissions.js";
 
 export type MemoryHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaStatePath: () => string | null;
   getController: () => ChronicleController | null;
   setController: (controller: ChronicleController | null) => void;
   assertPrivilegedSender: (
@@ -52,10 +53,10 @@ type StellaConfig = {
 };
 
 const writeDreamPatch = async (
-  stellaRoot: string,
+  stellaStatePath: string,
   patch: DreamConfigPatch,
 ): Promise<void> => {
-  const configPath = path.join(resolveStellaStatePath(stellaRoot), "config.json");
+  const configPath = path.join(resolveStellaStatePath(stellaStatePath), "config.json");
   let current: StellaConfig = {};
   try {
     const raw = await fs.readFile(configPath, "utf-8");
@@ -76,7 +77,7 @@ const ensureController = (
 ): ChronicleController | null => {
   const existing = options.getController();
   if (existing) return existing;
-  const root = options.getStellaRoot();
+  const root = options.getStellaStatePath();
   if (!root) return null;
   const next = new ChronicleControllerCtor(root);
   options.setController(next);
@@ -148,7 +149,7 @@ export const registerMemoryHandlers = (
         throw new Error("Blocked untrusted memory:setEnabled request.");
       }
       const controller = ensureController(options);
-      const root = options.getStellaRoot();
+      const root = options.getStellaStatePath();
       if (!controller || !root) {
         return {
           ok: false,
@@ -215,7 +216,7 @@ export const registerMemoryHandlers = (
       throw new Error("Blocked untrusted memory:promotePending request.");
     }
     const controller = ensureController(options);
-    const root = options.getStellaRoot();
+    const root = options.getStellaStatePath();
     if (!controller || !root) {
       return {
         ok: false,

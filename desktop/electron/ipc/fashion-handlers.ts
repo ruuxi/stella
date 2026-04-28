@@ -39,6 +39,7 @@ import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type FashionHandlerOptions = PrivilegedIpcOptions & {
   getStellaRoot: () => string | null;
+  getStellaStatePath: () => string | null;
   getStellaHostRunner: () => StellaHostRunner | null;
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
@@ -62,12 +63,13 @@ const EXT_MIME_MAP: Record<string, string> = {
   heic: "image/heic",
 };
 
-const fashionDir = (root: string) => path.join(resolveStellaStatePath(root), "fashion");
-const tryOnDir = (root: string) => path.join(fashionDir(root), "try-on");
-const mediaOutputsDir = (root: string) =>
-  path.join(resolveStellaStatePath(root), "media", "outputs");
-const hiddenFashionConversationId = (root: string) =>
-  `fashion:${Buffer.from(root).toString("base64url").slice(0, 24)}`;
+const fashionDir = (stellaStatePath: string) =>
+  path.join(resolveStellaStatePath(stellaStatePath), "fashion");
+const tryOnDir = (stellaStatePath: string) => path.join(fashionDir(stellaStatePath), "try-on");
+const mediaOutputsDir = (stellaStatePath: string) =>
+  path.join(resolveStellaStatePath(stellaStatePath), "media", "outputs");
+const hiddenFashionConversationId = (stellaStatePath: string) =>
+  `fashion:${Buffer.from(stellaStatePath).toString("base64url").slice(0, 24)}`;
 
 const normalizeStringArray = (value: unknown): string[] | undefined => {
   if (!Array.isArray(value)) return undefined;
@@ -201,7 +203,7 @@ const getBodyPhotoInfo = async (
 
 export const registerFashionHandlers = (options: FashionHandlerOptions) => {
   const requireRoot = () => {
-    const root = options.getStellaRoot();
+    const root = options.getStellaStatePath();
     if (!root) throw new Error("Stella root not initialized.");
     return root;
   };

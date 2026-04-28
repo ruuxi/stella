@@ -75,10 +75,13 @@ export const createBootstrapResetFlows = (
       appSession.clearCache(),
     ]);
 
-    const stellaRoot = state.stellaStatePath ?? state.stellaRoot ?? config.stellaRoot;
+    const stellaStatePath = state.stellaStatePath;
+    if (!stellaStatePath) {
+      throw new Error("Cannot hard reset before Stella state is initialized.");
+    }
     await Promise.allSettled(
       config.hardResetMutableHomePaths.map((relativePath) =>
-        fs.rm(path.join(stellaRoot, relativePath), {
+        fs.rm(path.join(stellaStatePath, relativePath), {
           recursive: true,
           force: true,
         }),
@@ -95,12 +98,12 @@ export const createBootstrapResetFlows = (
   resetLocalMessages: async () => {
     const { state } = context;
 
-    if (!state.stellaStatePath && !state.stellaRoot) {
-      return { ok: true };
+    if (!state.stellaStatePath) {
+      throw new Error("Cannot reset messages before Stella state is initialized.");
     }
 
     await shutdownBootstrapRuntime(context);
-    await resetMessageStorage(state.stellaStatePath ?? state.stellaRoot!);
+    await resetMessageStorage(state.stellaStatePath);
     await options.initializeStellaHostRunner();
 
     broadcastLocalChatUpdated(context);

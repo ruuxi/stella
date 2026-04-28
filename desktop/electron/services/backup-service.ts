@@ -25,7 +25,7 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
-const getStateRoot = (stellaHomePath: string) => resolveStellaStatePath(stellaHomePath);
+
 
 const BACKUP_INTERVAL_MS = 60 * 60 * 1000;
 const BUSY_RETRY_DELAY_MS = 60 * 1000;
@@ -62,6 +62,7 @@ const STATE_DIRECTORY_SKIP_PREFIXES = new Set([
 type BackupServiceDeps = {
   stellaRoot: string;
   getStellaRoot: () => string | null;
+  getStellaStatePath: () => string | null;
   getRunner: () => StellaHostRunner | null;
   getAuthToken: () => Promise<string | null>;
   getConvexSiteUrl: () => string | null;
@@ -923,6 +924,14 @@ export class BackupService {
     }
   }
 
+  private getStateRoot(): string {
+    const statePath = this.deps.getStellaStatePath();
+    if (!statePath) {
+      throw new Error("Stella state is unavailable.");
+    }
+    return resolveStellaStatePath(statePath);
+  }
+
   private async collectEntries(args: {
     stellaHomePath: string;
     tempRoot: string;
@@ -933,7 +942,7 @@ export class BackupService {
     const sqliteEntry = await this.collectSqliteEntry(args);
     const stateEntries = await this.collectDirectoryEntries({
       ...args,
-      rootPath: getStateRoot(args.stellaHomePath),
+      rootPath: this.getStateRoot(),
       scope: "state",
       shouldSkip: (relativePath, isDirectory) => {
         if (!relativePath) return false;
@@ -1044,7 +1053,7 @@ export class BackupService {
     tempRoot: string;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry | null> {
-    const sqlitePath = path.join(getStateRoot(args.stellaHomePath), "stella.sqlite");
+    const sqlitePath = path.join(this.getStateRoot(), "stella.sqlite");
     if (!(await fileExists(sqlitePath))) {
       return null;
     }
@@ -1548,12 +1557,14 @@ export class BackupService {
     );
     await this.restoreScopedDirectory({
       rootPath: path.join(args.stellaHomePath, "workspace"),
+      scope: "workspace",
       entries: workspaceEntries,
       stagedObjectsDir: args.stagedObjectsDir,
       shouldSkip: () => false,
     });
     await this.restoreScopedDirectory({
-      rootPath: getStateRoot(args.stellaHomePath),
+      rootPath: this.getStateRoot(),
+      scope: "state",
       entries: stateEntries.filter((entry) => !isPreservedStatePath(entry.path.slice("state/".length))),
       stagedObjectsDir: args.stagedObjectsDir,
       shouldSkip: shouldSkipStatePath,
@@ -1574,7 +1585,7 @@ export class BackupService {
     }
 
     if (sqliteEntry) {
-      const sqliteTarget = path.join(getStateRoot(args.stellaHomePath), "stella.sqlite");
+      const sqliteTarget = path.join(this.getStateRoot(), "stella.sqlite");
       await ensurePrivateDir(path.dirname(sqliteTarget));
       await removeFileIfExists(`${sqliteTarget}-shm`);
       await removeFileIfExists(`${sqliteTarget}-wal`);
@@ -1614,15 +1625,18 @@ export class BackupService {
 
   private async restoreScopedDirectory(args: {
     rootPath: string;
+    scope: BackupManifestEntry["scope"];
     entries: BackupManifestEntry[];
     stagedObjectsDir: string;
     shouldSkip: (relativePath: string, isDirectory: boolean) => boolean;
   }) {
     await ensurePrivateDir(args.rootPath);
-    const scopePrefix = path.basename(args.rootPath);
+    const scopePrefix = `${args.scope}/`;
     const snapshotEntries = args.entries.map((entry) => ({
       ...entry,
-      relativePath: normalizePath(entry.path.slice(`${scopePrefix}/`.length)),
+      relativePath: normalizePath(entry.path.startsWith(scopePrefix)
+        ? entry.path.slice(scopePrefix.length)
+        : entry.path),
     }));
     const snapshotPaths = new Set(snapshotEntries.map((entry) => entry.relativePath));
     const currentFiles = await walkFiles(args.rootPath, args.shouldSkip);
@@ -1690,13 +1704,13 @@ export class BackupService {
 
   private async readSyncMode(stellaHomePath: string): Promise<"on" | "off"> {
     const prefs = await readJsonFile<{ syncMode?: string }>(
-      path.join(getStateRoot(stellaHomePath), "preferences.json"),
+      path.join(this.getStateRoot(), "preferences.json"),
     );
     return prefs?.syncMode === "on" ? "on" : "off";
   }
 
   private getBackupsRoot(stellaHomePath: string) {
-    return path.join(getStateRoot(stellaHomePath), "backups");
+    return path.join(this.getStateRoot(), "backups");
   }
 
   private getBackupConfigPath(stellaHomePath: string) {
