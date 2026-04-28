@@ -17,6 +17,9 @@ const graphWatchRoots = [
   "desktop/src/convex",
   "desktop/src/prompts",
 ];
+const runtimeStaticAssetRoots = [
+  "runtime/extensions/stella-runtime/agents",
+];
 const mainEntryRoots = [
   "desktop/electron",
   "runtime",
@@ -147,6 +150,25 @@ const startBuildContexts = async () => {
   return contexts;
 };
 
+const copyRuntimeStaticAssets = async () => {
+  await Promise.all(
+    runtimeStaticAssetRoots.map(async (rootRelativePath) => {
+      const sourceDir = path.join(repoRootDir, rootRelativePath);
+      const targetDir = path.join(desktopDir, outdir, rootRelativePath);
+      try {
+        await fsPromises.cp(sourceDir, targetDir, {
+          recursive: true,
+          force: true,
+        });
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          throw error;
+        }
+      }
+    }),
+  );
+};
+
 const disposeBuildContexts = async () => {
   const contextsToDispose = buildContexts;
   buildContexts = [];
@@ -161,6 +183,7 @@ const rebuildGraph = async () => {
   console.log("[electron-build] Refreshing watch graph");
   await disposeBuildContexts();
   buildContexts = await startBuildContexts();
+  await copyRuntimeStaticAssets();
 };
 
 const scheduleGraphRefresh = () => {
@@ -182,6 +205,17 @@ const scheduleGraphRefresh = () => {
   }, 150);
 };
 
+const scheduleAssetCopy = () => {
+  if (shuttingDown) {
+    return;
+  }
+  rebuildChain = rebuildChain
+    .catch(() => undefined)
+    .then(async () => {
+      await copyRuntimeStaticAssets();
+    });
+};
+
 const startRootWatchers = () => {
   for (const root of graphWatchRoots) {
     const absoluteRoot = path.join(repoRootDir, root);
@@ -194,12 +228,17 @@ const startRootWatchers = () => {
       (eventType, filename) => {
         if (
           eventType !== "rename" ||
-          typeof filename !== "string" ||
-          !filename.endsWith(".ts")
+          typeof filename !== "string"
         ) {
           return;
         }
-        scheduleGraphRefresh();
+        if (filename.endsWith(".ts")) {
+          scheduleGraphRefresh();
+          return;
+        }
+        if (filename.endsWith(".md")) {
+          scheduleAssetCopy();
+        }
       },
     );
     rootWatchers.push(watcher);
@@ -241,6 +280,7 @@ const shutdown = async (exitCode) => {
 
 await cleanOutdir();
 buildContexts = await startBuildContexts();
+await copyRuntimeStaticAssets();
 startRootWatchers();
 
 process.once("SIGINT", () => {
