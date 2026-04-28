@@ -33,6 +33,7 @@ export const fashion_outfit_product_validator = v.object({
 const fashionProfileFields = {
   ownerId: v.string(),
   displayName: v.optional(v.string()),
+  gender: v.optional(v.string()),
   sizes: v.optional(fashion_sizes_validator),
   stylePreferences: v.optional(v.string()),
   hasBodyPhoto: v.boolean(),

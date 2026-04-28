@@ -35,6 +35,7 @@ import {
 import { isShopifyUcpConfigured } from "../lib/shopify_ucp";
 
 const MAX_DISPLAY_NAME = 80;
+const MAX_GENDER = 80;
 const MAX_PREFERENCES = 4000;
 const MAX_PROMPT = 2000;
 const MAX_THEME_LABEL = 120;
@@ -145,6 +146,7 @@ export const getProfile = query({
 export const setProfile = mutation({
   args: {
     displayName: v.optional(v.string()),
+    gender: v.optional(v.string()),
     sizes: v.optional(fashion_sizes_validator),
     stylePreferences: v.optional(v.string()),
   },
@@ -160,6 +162,7 @@ export const setProfile = mutation({
     );
 
     const displayName = optionalText(args.displayName, "displayName", MAX_DISPLAY_NAME);
+    const gender = optionalText(args.gender, "gender", MAX_GENDER);
     const stylePreferences = optionalText(
       args.stylePreferences,
       "stylePreferences",
@@ -173,6 +176,7 @@ export const setProfile = mutation({
     if (existing) {
       await ctx.db.patch(existing._id, {
         ...(displayName !== undefined ? { displayName } : { displayName: undefined }),
+        ...(gender !== undefined ? { gender } : { gender: undefined }),
         ...(hasSizes ? { sizes } : { sizes: undefined }),
         ...(stylePreferences !== undefined
           ? { stylePreferences }
@@ -187,6 +191,7 @@ export const setProfile = mutation({
     const id = await ctx.db.insert("fashion_profiles", {
       ownerId,
       ...(displayName !== undefined ? { displayName } : {}),
+      ...(gender !== undefined ? { gender } : {}),
       ...(hasSizes ? { sizes } : {}),
       ...(stylePreferences !== undefined ? { stylePreferences } : {}),
       hasBodyPhoto: false,
@@ -838,7 +843,11 @@ export const updateCheckoutSession = internalMutation({
 // Surfaced for the orchestrator-spawned fashion agent so it doesn't have to
 // rebuild like-context from raw model state.
 export type FashionContextSummary = {
-  profile: { sizes?: Record<string, string>; stylePreferences?: string } | null;
+  profile: {
+    gender?: string;
+    sizes?: Record<string, string>;
+    stylePreferences?: string;
+  } | null;
   recentLikes: Array<{ productId: string; title: string; vendor?: string }>;
   cart: Array<{ productId: string; title: string; quantity: number }>;
   recentOutfitProductIds: string[];
@@ -850,6 +859,7 @@ export const getOrchestratorContextInternal = internalQuery({
     profile: v.union(
       v.null(),
       v.object({
+        gender: v.optional(v.string()),
         sizes: v.optional(fashion_sizes_validator),
         stylePreferences: v.optional(v.string()),
       }),
@@ -896,6 +906,7 @@ export const getOrchestratorContextInternal = internalQuery({
     return {
       profile: profile
         ? {
+            ...(profile.gender ? { gender: profile.gender } : {}),
             ...(profile.sizes ? { sizes: profile.sizes } : {}),
             ...(profile.stylePreferences
               ? { stylePreferences: profile.stylePreferences }

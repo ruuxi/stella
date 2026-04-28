@@ -25,6 +25,14 @@ const SIZE_FIELDS: Array<{ key: string; label: string; placeholder: string }> = 
   { key: "ring", label: "Ring", placeholder: "8" },
 ];
 
+const GENDER_OPTIONS = [
+  { value: "", label: "Select one" },
+  { value: "women", label: "Women" },
+  { value: "men", label: "Men" },
+  { value: "unisex", label: "Unisex / no preference" },
+  { value: "nonbinary", label: "Non-binary" },
+];
+
 const useLocalImageDataUrl = (filePath: string | undefined) => {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
 
@@ -239,6 +247,7 @@ const OutfitStage = ({
 };
 
 const ProfileSheet = ({
+  initialGender,
   initialSizes,
   initialPrefs,
   hasBodyPhoto,
@@ -248,22 +257,29 @@ const ProfileSheet = ({
   onClose,
   saving,
 }: {
+  initialGender: string;
   initialSizes: Record<string, string>;
   initialPrefs: string;
   hasBodyPhoto: boolean;
   bodyPhotoDataUrl: string | null;
   onPickPhoto: () => void;
-  onSave: (sizes: Record<string, string>, stylePreferences: string) => void;
+  onSave: (
+    gender: string,
+    sizes: Record<string, string>,
+    stylePreferences: string,
+  ) => void;
   onClose: () => void;
   saving: boolean;
 }) => {
+  const [gender, setGender] = useState(initialGender);
   const [sizes, setSizes] = useState<Record<string, string>>(initialSizes);
   const [prefs, setPrefs] = useState(initialPrefs);
 
   useEffect(() => {
+    setGender(initialGender);
     setSizes(initialSizes);
     setPrefs(initialPrefs);
-  }, [initialSizes, initialPrefs]);
+  }, [initialGender, initialSizes, initialPrefs]);
 
   return (
     <div
@@ -277,8 +293,8 @@ const ProfileSheet = ({
           <div>
             <div className="fashion-sheet-title">Your style profile</div>
             <div className="fashion-sheet-subtitle">
-              One full-body photo powers the try-ons. Sizes and notes are
-              optional. Your photo stays on this Mac.
+              One full-body photo powers the try-ons. Gender guides product
+              searches, and your photo stays on this Mac.
             </div>
           </div>
           <button
@@ -311,6 +327,21 @@ const ProfileSheet = ({
           </button>
 
           <div className="fashion-fields">
+            <div>
+              <label className="fashion-field-label">Gender</label>
+              <select
+                className="fashion-size-input"
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+              >
+                {GENDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label className="fashion-field-label">Sizes</label>
               <div className="fashion-size-grid">
@@ -350,9 +381,9 @@ const ProfileSheet = ({
                 const t = v.trim();
                 if (t) cleaned[k] = t;
               }
-              onSave(cleaned, prefs.trim());
+              onSave(gender.trim(), cleaned, prefs.trim());
             }}
-            disabled={saving}
+            disabled={saving || !gender.trim()}
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -566,11 +597,16 @@ export const FashionTab = () => {
   }, [mutations, refreshBodyPhotoPreview]);
 
   const handleSaveProfile = useCallback(
-    async (sizes: Record<string, string>, stylePreferences: string) => {
+    async (
+      gender: string,
+      sizes: Record<string, string>,
+      stylePreferences: string,
+    ) => {
       setSavingProfile(true);
       try {
         const hasSizes = Object.keys(sizes).length > 0;
         await mutations.setProfile({
+          ...(gender ? { gender } : {}),
           ...(hasSizes ? { sizes } : {}),
           ...(stylePreferences ? { stylePreferences } : {}),
         });
@@ -581,7 +617,8 @@ export const FashionTab = () => {
     [mutations],
   );
 
-  const onboardingComplete = !!profile?.hasBodyPhoto;
+  const hasGender = typeof profile?.gender === "string" && profile.gender.length > 0;
+  const onboardingComplete = !!profile?.hasBodyPhoto && hasGender;
   const canGenerate = onboardingComplete && !!bodyPhotoPath;
 
   const handleGenerate = useCallback(async () => {
@@ -746,6 +783,7 @@ export const FashionTab = () => {
   }, [cart, checkoutAction]);
 
   const initialSizes = useMemo(() => profile?.sizes ?? {}, [profile?.sizes]);
+  const initialGender = profile?.gender ?? "";
   const initialPrefs = profile?.stylePreferences ?? "";
 
   // --- Feature gate: Shopify not configured ---
@@ -773,24 +811,34 @@ export const FashionTab = () => {
   // --- Empty / pre-onboarding states (full-bleed, no card) ---
   let body: React.ReactNode;
   if (!onboardingComplete) {
+    const needsPhoto = !profile?.hasBodyPhoto;
     body = (
       <div className="fashion-blank">
         <div className="fashion-blank-inner">
           <div className="fashion-blank-eyebrow">Fashion</div>
           <div className="fashion-blank-title">
-            Add a body photo to see looks made for you.
+            {needsPhoto
+              ? "Add a body photo to see looks made for you."
+              : "Add your style profile to guide searches."}
           </div>
           <div className="fashion-blank-subtitle">
-            One full-body photo is all Stella needs. It stays on this Mac, and
-            sizes are optional.
+            {needsPhoto
+              ? "One full-body photo is all Stella needs. It stays on this Mac."
+              : "Choose the department Stella should search so the products match you."}
           </div>
           <button
             type="button"
             className="fashion-blank-cta"
-            onClick={() => void handlePickPhoto()}
-            disabled={pickingPhoto}
+            onClick={() => {
+              if (needsPhoto) {
+                void handlePickPhoto();
+              } else {
+                setSheetOpen(true);
+              }
+            }}
+            disabled={needsPhoto && pickingPhoto}
           >
-            {pickingPhoto ? "Choosing…" : "Choose photo"}
+            {needsPhoto ? (pickingPhoto ? "Choosing…" : "Choose photo") : "Open profile"}
           </button>
         </div>
       </div>
@@ -902,6 +950,7 @@ export const FashionTab = () => {
 
       {sheetOpen ? (
         <ProfileSheet
+          initialGender={initialGender}
           initialSizes={initialSizes}
           initialPrefs={initialPrefs}
           hasBodyPhoto={!!profile?.hasBodyPhoto}

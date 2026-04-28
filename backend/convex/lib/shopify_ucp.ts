@@ -307,6 +307,48 @@ const findVariantId = (entry: Record<string, unknown>): string => {
 const findPrice = (
   entry: Record<string, unknown>,
 ): { price?: number; currency?: string } => {
+  const normalizePriceAmount = (
+    amount: unknown,
+    currency: unknown,
+    source: Record<string, unknown>,
+  ): number | undefined => {
+    const numericAmount =
+      typeof amount === "string" && amount.trim()
+        ? Number(amount)
+        : typeof amount === "number"
+          ? amount
+          : undefined;
+    if (typeof numericAmount !== "number" || !Number.isFinite(numericAmount)) {
+      return undefined;
+    }
+
+    const sourceKeys = Object.keys(source).map((key) => key.toLowerCase());
+    const explicitMinorUnit = sourceKeys.some((key) =>
+      key.includes("cent") ||
+      key.includes("minor") ||
+      key === "unit_amount" ||
+      key === "amount_in_cents",
+    );
+    if (explicitMinorUnit) return numericAmount / 100;
+
+    // Shopify UCP search results have been observed returning whole-number
+    // minor-unit amounts in objects like `{ amount: 12900, currency: "USD" }`.
+    // Decimal strings such as "129.00" are already major units and pass through.
+    const hasDecimalString =
+      typeof amount === "string" && /[.,]\d{1,2}\s*$/.test(amount.trim());
+    const hasCurrency = isNonEmptyString(currency);
+    if (
+      hasCurrency &&
+      !hasDecimalString &&
+      Number.isInteger(numericAmount) &&
+      numericAmount >= 1000
+    ) {
+      return numericAmount / 100;
+    }
+
+    return numericAmount;
+  };
+
   const sources: unknown[] = [
     entry.price,
     entry.price_range,
@@ -316,7 +358,16 @@ const findPrice = (
   ];
   for (const source of sources) {
     if (typeof source === "number" && Number.isFinite(source)) {
-      return { price: source };
+      const currency =
+        entry.currency ??
+        entry.currency_code ??
+        entry.currencyCode;
+      const price =
+        Number.isInteger(source) && source >= 1000 ? source / 100 : source;
+      return {
+        price,
+        ...(isNonEmptyString(currency) ? { currency: currency.trim() } : {}),
+      };
     }
     if (source && typeof source === "object") {
       const record = source as Record<string, unknown>;
@@ -340,8 +391,8 @@ const findPrice = (
           ? (record.minimum as { currency_code?: unknown }).currency_code
           : undefined);
       const numericAmount =
-        typeof amount === "string" ? Number(amount) : amount;
-      if (typeof numericAmount === "number" && Number.isFinite(numericAmount)) {
+        normalizePriceAmount(amount, currency, record);
+      if (typeof numericAmount === "number") {
         return {
           price: numericAmount,
           ...(isNonEmptyString(currency) ? { currency: currency.trim() } : {}),

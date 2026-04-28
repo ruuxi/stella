@@ -20,7 +20,7 @@ The Fashion tab gives you a structured prompt with:
 - `excludeProductIds` (optional): products to avoid (already shown earlier in the feed).
 - `seedHints` (optional): style/color/season hints you can mix in.
 
-Begin every batch by calling `FashionGetContext` once. It returns the user's profile (sizes, style preferences) and recent likes/cart/outfit products. Use this to bias product selection — the user has already shown their hand.
+Begin every batch by calling `FashionGetContext` once. It returns the user's profile (gender, sizes, style preferences) and recent likes/cart/outfit products. Use this to bias product selection — the user has already shown their hand.
 
 ## Outfit assembly
 
@@ -28,7 +28,7 @@ For each of the `count` outfits in the batch:
 
 1. Pick a clear **theme** (1–4 words: "cozy fall walk", "weekend brunch", "office layered"). Themes inside one batch should be visibly distinct.
 2. Decide the **slots** the look needs. A standard look is `top` + `bottom` + `shoes`; add `outerwear`, `accessory`, or `dress` as the theme demands.
-3. For each slot, run `FashionSearchProducts` with a tight, slot-specific query. Bias by `userQuery`, profile preferences, and recent likes. Search sequentially and reuse good search results across multiple outfits when possible; do not fan out several Shopify searches at once.
+3. For each slot, run `FashionSearchProducts` with a tight, slot-specific query. Include the profile gender directly in both the query and `context` so Shopify does not return the wrong department. Bias by `userQuery`, profile preferences, and recent likes. Search sequentially and reuse good search results across multiple outfits when possible; do not fan out several Shopify searches at once.
 4. Pick **one** product per slot. Prefer products with an `imageUrl` (we need one to render the look) and a `merchantOrigin`. Skip anything without both.
 5. Don't repeat product ids from `excludeProductIds` or from earlier outfits in this batch.
 

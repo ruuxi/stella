@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
@@ -16,13 +16,21 @@ import Sparkles from "lucide-react/dist/esm/icons/sparkles"
 import Package from "lucide-react/dist/esm/icons/package"
 import Plug from "lucide-react/dist/esm/icons/plug"
 import Search from "lucide-react/dist/esm/icons/search"
-import Check from "lucide-react/dist/esm/icons/check"
 import { useSelfModTaintMonitor } from "@/systems/boot/use-self-mod-taint-monitor"
+import { PageSidebar } from "@/context/page-sidebar"
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogBody, DialogCloseButton } from "@/ui/dialog"
 import { Button } from "@/ui/button"
 import { TextField } from "@/ui/text-field"
 import "@/global/integrations/credential-modal.css"
 import { FashionTab } from "./fashion/FashionTab"
+import {
+  DEFAULT_STORE_TAB,
+  STORE_TAB_GROUP_LABELS,
+  STORE_TAB_GROUP_ORDER,
+  STORE_TABS,
+  type StoreTab,
+  type StoreTabGroup,
+} from "./store-tabs"
 import "./store.css"
 
 // ---------------------------------------------------------------------------
@@ -818,7 +826,11 @@ function UpdatesTab({
     [onUpdate],
   )
 
-  if (loading) return <SkeletonGrid />
+  // Updates is rendered as a section above the Installed library, so when
+  // there's nothing to do we render nothing — no "all caught up" empty
+  // state to clutter the page. Errors still surface so the user knows
+  // why updates aren't loading.
+  if (loading) return null
 
   if (error) {
     return (
@@ -828,15 +840,7 @@ function UpdatesTab({
     )
   }
 
-  if (updates.length === 0) {
-    return (
-      <EmptyState
-        icon={<Check size={32} />}
-        title="You're all caught up"
-        description="Updates for the add-ons you've added will appear here."
-      />
-    )
-  }
+  if (updates.length === 0) return null
 
   return (
     <div className="store-section">
@@ -922,7 +926,10 @@ function ConnectTab({
     [onInstall],
   )
 
-  if (loading) return <SkeletonGrid />
+  // Integrations renders as a section beneath the Discover feed, so when
+  // there's nothing available we render nothing. The Discover feed above
+  // already covers the "page is empty" case with its own empty state.
+  if (loading) return null
   if (error) {
     return (
       <div className="store-status" data-variant="error">
@@ -930,20 +937,12 @@ function ConnectTab({
       </div>
     )
   }
-  if (connectors.length === 0) {
-    return (
-      <EmptyState
-        icon={<Plug size={32} />}
-        title="No connectors found"
-        description="Stella Connect will show supported services here."
-      />
-    )
-  }
+  if (connectors.length === 0) return null
 
   return (
     <div className="store-section">
       <div className="store-section-header">
-        <span className="store-section-title">Connect</span>
+        <span className="store-section-title">Integrations</span>
         <span className="store-section-count">{connectors.length}</span>
       </div>
       <div className="store-grid">
@@ -1533,7 +1532,7 @@ function YourModsTab({
     <>
       <div className="store-section">
         <div className="store-section-header">
-          <span className="store-section-title">Your Mods</span>
+          <span className="store-section-title">Installed</span>
           <span className="store-section-count">{ownedSorted.length}</span>
         </div>
 
@@ -1799,34 +1798,31 @@ function PackageDetailView({
 // Store View (main export)
 // ---------------------------------------------------------------------------
 
-type StoreTab = "discover" | "fashion" | "updates" | "connect" | "your-mods"
+interface StoreViewProps {
+  /** Optional controlled active tab. Defaults to the first tab when absent. */
+  activeTab?: StoreTab
+  /** Notified whenever the user picks a tab (deep-linked via the route). */
+  onActiveTabChange?: (tab: StoreTab) => void
+}
 
-const STORE_TABS: Array<{ id: StoreTab; label: string }> = [
-  { id: "discover", label: "Discover" },
-  { id: "fashion", label: "Fashion" },
-  { id: "updates", label: "Updates" },
-  { id: "connect", label: "Connect" },
-  { id: "your-mods", label: "Your Mods" },
-]
-
-export function StoreView() {
+export function StoreView({ activeTab: activeTabProp, onActiveTabChange }: StoreViewProps = {}) {
   useSelfModTaintMonitor()
 
-  const [tab, setTab] = useState<StoreTab>("discover")
+  const [selectedTab, setSelectedTab] = useState<StoreTab>(DEFAULT_STORE_TAB)
+  const tab = activeTabProp ?? selectedTab
+
+  const handleTabClick = useCallback(
+    (next: StoreTab) => {
+      if (activeTabProp === undefined) setSelectedTab(next)
+      onActiveTabChange?.(next)
+    },
+    [activeTabProp, onActiveTabChange],
+  )
+
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
   const [publishTarget, setPublishTarget] = useState<PublishDialogTarget | null>(null)
-  const [scrolled, setScrolled] = useState(false)
   const [credentialConnector, setCredentialConnector] =
     useState<StellaConnectorSummary | null>(null)
-  const rootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const el = rootRef.current
-    if (!el) return
-    const onScroll = () => setScrolled(el.scrollTop > 4)
-    el.addEventListener("scroll", onScroll, { passive: true })
-    return () => el.removeEventListener("scroll", onScroll)
-  }, [])
 
   const {
     packages,
@@ -1974,92 +1970,94 @@ export function StoreView() {
     </>
   )
 
-  // Detail view replaces the entire content area but reuses the same root +
-  // dialogs so the user can publish/install from inside it.
-  if (selectedPackageId) {
-    return (
-      <div className="store-root" ref={rootRef}>
-        <div className="store-scroll">
-          <PackageDetailView
-            packageId={selectedPackageId}
-            installedMap={installedMap}
-            onBack={() => setSelectedPackageId(null)}
-            onInstall={handleInstall}
-            onRemove={handleRemove}
-            onPublishUpdate={handlePublishUpdate}
-          />
-        </div>
-        {dialogs}
-      </div>
-    )
-  }
+  const groupedTabs: Array<{ group: StoreTabGroup; tabs: typeof STORE_TABS }> = STORE_TAB_GROUP_ORDER
+    .map((group) => ({
+      group,
+      tabs: STORE_TABS.filter((entry) => entry.group === group),
+    }))
+    .filter((entry) => entry.tabs.length > 0)
 
   return (
-    <div className="store-root" ref={rootRef} data-tab={tab}>
-      <div className="store-header" data-scrolled={scrolled || undefined}>
-        <div className="store-header-inner">
-          <h1 className="store-title">Store</h1>
-          <div className="store-tabs">
-            {STORE_TABS.map((entry) => (
+    <>
+      <PageSidebar title="Store">
+        {groupedTabs.map(({ group, tabs }) => (
+          <div key={group} className="sidebar-page-section">
+            <div className="sidebar-section-label">
+              {STORE_TAB_GROUP_LABELS[group]}
+            </div>
+            {tabs.map((entry) => (
               <button
-                key={entry.id}
-                className="store-tab"
-                data-active={tab === entry.id || undefined}
-                onClick={() => setTab(entry.id)}
+                key={entry.key}
+                type="button"
+                className={`sidebar-nav-item${tab === entry.key ? " sidebar-nav-item--active" : ""}`}
+                onClick={() => handleTabClick(entry.key)}
               >
-                {entry.label}
+                <span className="sidebar-nav-label">{entry.label}</span>
               </button>
             ))}
           </div>
+        ))}
+      </PageSidebar>
+
+      <div className="store-root" data-tab={selectedPackageId ? "discover" : tab}>
+        <div className="store-scroll">
+          {selectedPackageId ? (
+            <PackageDetailView
+              packageId={selectedPackageId}
+              installedMap={installedMap}
+              onBack={() => setSelectedPackageId(null)}
+              onInstall={handleInstall}
+              onRemove={handleRemove}
+              onPublishUpdate={handlePublishUpdate}
+            />
+          ) : tab === "discover" ? (
+            <>
+              <DiscoverTab
+                packages={packages}
+                installed={installed}
+                installedMap={installedMap}
+                loading={packagesLoading}
+                error={packagesError}
+                onSelect={setSelectedPackageId}
+                onInstall={handleInstall}
+              />
+              <ConnectTab
+                connectors={connectors}
+                loading={connectorsLoading}
+                error={connectorsError}
+                onInstall={handleInstallConnector}
+              />
+            </>
+          ) : tab === "fashion" ? (
+            <FashionTab />
+          ) : (
+            <>
+              <UpdatesTab
+                packages={packages}
+                installed={installed}
+                loading={packagesLoading}
+                error={packagesError}
+                onSelect={setSelectedPackageId}
+                onUpdate={handleInstall}
+              />
+              <YourModsTab
+                packages={packages}
+                packagesLoading={packagesLoading}
+                packagesError={packagesError}
+                commits={commits}
+                commitsLoading={commitsLoading}
+                commitsError={commitsError}
+                onSelectPackage={setSelectedPackageId}
+                onPublishUpdate={handlePublishUpdate}
+                onOpenPublish={handleOpenPublish}
+              />
+            </>
+          )}
         </div>
-      </div>
 
-      <div className="store-scroll">
-        {tab === "discover" ? (
-          <DiscoverTab
-            packages={packages}
-            installed={installed}
-            installedMap={installedMap}
-            loading={packagesLoading}
-            error={packagesError}
-            onSelect={setSelectedPackageId}
-            onInstall={handleInstall}
-          />
-        ) : tab === "fashion" ? (
-          <FashionTab />
-        ) : tab === "updates" ? (
-          <UpdatesTab
-            packages={packages}
-            installed={installed}
-            loading={packagesLoading}
-            error={packagesError}
-            onSelect={setSelectedPackageId}
-            onUpdate={handleInstall}
-          />
-        ) : tab === "connect" ? (
-          <ConnectTab
-            connectors={connectors}
-            loading={connectorsLoading}
-            error={connectorsError}
-            onInstall={handleInstallConnector}
-          />
-        ) : (
-          <YourModsTab
-            packages={packages}
-            packagesLoading={packagesLoading}
-            packagesError={packagesError}
-            commits={commits}
-            commitsLoading={commitsLoading}
-            commitsError={commitsError}
-            onSelectPackage={setSelectedPackageId}
-            onPublishUpdate={handlePublishUpdate}
-            onOpenPublish={handleOpenPublish}
-          />
-        )}
+        {dialogs}
       </div>
-
-      {dialogs}
-    </div>
+    </>
   )
 }
 

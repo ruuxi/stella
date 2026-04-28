@@ -502,6 +502,7 @@ export const fashionGetOrchestratorContext = action({
     profile: v.union(
       v.null(),
       v.object({
+        gender: v.optional(v.string()),
         sizes: v.optional(v.record(v.string(), v.string())),
         stylePreferences: v.optional(v.string()),
       }),
@@ -523,7 +524,11 @@ export const fashionGetOrchestratorContext = action({
     recentOutfitProductIds: v.array(v.string()),
   }),
   handler: async (ctx): Promise<{
-    profile: { sizes?: Record<string, string>; stylePreferences?: string } | null;
+    profile: {
+      gender?: string;
+      sizes?: Record<string, string>;
+      stylePreferences?: string;
+    } | null;
     recentLikes: Array<{ productId: string; title: string; vendor?: string }>;
     cart: Array<{ productId: string; title: string; quantity: number }>;
     recentOutfitProductIds: string[];

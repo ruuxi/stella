@@ -277,7 +277,11 @@ export type FashionOutfitProductInput = {
 };
 
 export type FashionContextSummary = {
-  profile: { sizes?: Record<string, string>; stylePreferences?: string } | null;
+  profile: {
+    gender?: string;
+    sizes?: Record<string, string>;
+    stylePreferences?: string;
+  } | null;
   recentLikes: Array<{ productId: string; title: string; vendor?: string }>;
   cart: Array<{ productId: string; title: string; quantity: number }>;
   recentOutfitProductIds: string[];

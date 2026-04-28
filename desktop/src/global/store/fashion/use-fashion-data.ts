@@ -5,6 +5,7 @@ export type FashionProfile = {
   _id: string;
   ownerId: string;
   displayName?: string;
+  gender?: string;
   sizes?: Record<string, string>;
   stylePreferences?: string;
   hasBodyPhoto: boolean;

@@ -156,6 +156,32 @@
   min-height: 0;
 }
 
+/* ── Grouped page-sidebar sections ────────────────────────────────────
+   Pages with multiple universes (e.g. Store: "Stella Store" + "Shop")
+   wrap each group in `.sidebar-page-section` and prefix it with a
+   small uppercase `.sidebar-section-label`. Apple's Music sidebar uses
+   the same separator pattern between Library and the streaming feed. */
+
+.sidebar-page-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-page-section + .sidebar-page-section {
+  margin-top: 14px;
+}
+
+.sidebar-section-label {
+  padding: 6px 16px 4px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+  user-select: none;
+}
+
 .sidebar-nav-item {
   display: flex;
   align-items: center;
