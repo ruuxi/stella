@@ -31,6 +31,7 @@ const PCM_WORKLET_NAME = "stella-dictation-pcm-capture";
 const PCM_WORKLET_URL = "/dictation-pcm-worklet.js";
 export const DICTATION_SUPER_FAST_KEY = "stella-dictation-super-fast";
 export const DICTATION_ENHANCE_KEY = "stella-dictation-enhance";
+export const DICTATION_LOCAL_KEY = "stella-dictation-local";
 /** Cap a single dictation segment so the upload stays well under the
  *  backend's 14 MB base64 audio limit. 16 kHz int16 mono = 32 KB/s, so
  *  ~3 minutes of speech ≈ 5.7 MB raw → ~7.6 MB base64 → safely under. */
@@ -82,8 +83,16 @@ export function isDictationEnhanceEnabled(): boolean {
   return localStorage.getItem(DICTATION_ENHANCE_KEY) === "true";
 }
 
+export function isLocalDictationEnabled(): boolean {
+  return localStorage.getItem(DICTATION_LOCAL_KEY) === "true";
+}
+
 export function setDictationEnhancePreference(enabled: boolean): void {
   localStorage.setItem(DICTATION_ENHANCE_KEY, enabled ? "true" : "false");
+}
+
+export function setLocalDictationPreference(enabled: boolean): void {
+  localStorage.setItem(DICTATION_LOCAL_KEY, enabled ? "true" : "false");
 }
 
 export function setDictationSuperFastPreference(enabled: boolean): void {
@@ -216,6 +225,7 @@ export async function ensureDictationSuperFastWarm(): Promise<void> {
 
 export async function warmLocalDictationModel(): Promise<void> {
   if (window.electronAPI?.platform !== "darwin") return;
+  if (!isLocalDictationEnabled()) return;
   await window.electronAPI.dictation?.warmLocal?.();
 }
 
@@ -473,6 +483,7 @@ export class InworldDictationSession {
     const audioBase64 = bytesToBase64(wavBytes);
     if (
       window.electronAPI?.platform === "darwin" &&
+      isLocalDictationEnabled() &&
       window.electronAPI.dictation?.transcribeLocal
     ) {
       try {
