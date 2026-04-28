@@ -4,7 +4,6 @@ import type { Attachment } from "@/app/chat/lib/event-transforms";
 import {
   AssistantMessageRow,
   PendingAskQuestionRow,
-  StreamingTailRow,
   UserMessageRow,
   type EventRowViewModel,
 } from "./MessageRow";
@@ -72,16 +71,16 @@ export const ConversationEvents = memo(function ConversationEvents({
     acknowledgeGoogleWorkspaceAuthRequired();
   }, []);
 
-  const { rows, lastUserRowIndex, pendingAskQuestion, showStreamingTail } =
-    useEventRows({
-      events,
-      maxItems,
-      isStreaming,
-      pendingUserMessageId,
-      selfModMap,
-    });
+  const { rows, lastUserRowIndex, pendingAskQuestion } = useEventRows({
+    events,
+    maxItems,
+    isStreaming,
+    pendingUserMessageId,
+    streamingText,
+    selfModMap,
+  });
 
-  if (isLoadingHistory && rows.length === 0 && !showStreamingTail) {
+  if (isLoadingHistory && rows.length === 0) {
     return (
       <div className="event-list" data-loading-history="true">
         <div className="event-history-status" role="status" aria-live="polite">
@@ -99,7 +98,7 @@ export const ConversationEvents = memo(function ConversationEvents({
     );
   }
 
-  if (rows.length === 0 && !showStreamingTail) {
+  if (rows.length === 0) {
     return (
       <div className="event-list" data-empty="true">
         <div className="event-empty">Start a conversation</div>
@@ -129,18 +128,11 @@ export const ConversationEvents = memo(function ConversationEvents({
 
       {olderRows.map((row) => renderRow(row, onOpenAttachment))}
 
-      {(tailRows.length > 0 || showStreamingTail || pendingAskQuestion) && (
+      {(tailRows.length > 0 || pendingAskQuestion) && (
         <div className="event-row-region event-row-region--tail">
           {tailRows.map((row) => renderRow(row, onOpenAttachment))}
           {pendingAskQuestion && (
             <PendingAskQuestionRow payload={pendingAskQuestion} />
-          )}
-          {showStreamingTail && (
-            <StreamingTailRow
-              streamingText={streamingText}
-              isStreaming={isStreaming}
-              pendingUserMessageId={pendingUserMessageId}
-            />
           )}
         </div>
       )}

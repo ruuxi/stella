@@ -218,6 +218,8 @@ const assistantRowEqual = (
 ): boolean =>
   a.id === b.id &&
   a.text === b.text &&
+  a.cacheKey === b.cacheKey &&
+  Boolean(a.isAnimating) === Boolean(b.isAnimating) &&
   a.emotesEnabled === b.emotesEnabled &&
   JSON.stringify(a.responseTarget ?? null) ===
     JSON.stringify(b.responseTarget ?? null) &&
