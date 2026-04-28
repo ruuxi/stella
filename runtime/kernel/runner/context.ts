@@ -475,6 +475,7 @@ export const buildAgentContext = async (
     agentType: string;
     runId: string;
     threadId?: string;
+    toolWorkspaceRoot?: string;
     selfModMetadata?: {
       packageId?: string;
       releaseNumber?: number;
@@ -535,6 +536,16 @@ export const buildAgentContext = async (
   const isSelfModTask = Boolean(args.selfModMetadata);
 
   const dynamicContextSections: string[] = [];
+  if (args.toolWorkspaceRoot?.trim()) {
+    dynamicContextSections.push(
+      [
+        "## Shared Session Workspace",
+        `Workspace root: ${args.toolWorkspaceRoot.trim()}`,
+        "Use relative paths unless an absolute path under this workspace is already shown by a tool.",
+        "File tools are restricted to this workspace root.",
+      ].join("\n"),
+    );
+  }
   const reminderState =
     args.agentType === AGENT_IDS.ORCHESTRATOR && activeThreadsPrompt
       ? context.runtimeStore.getOrchestratorReminderState(args.conversationId)

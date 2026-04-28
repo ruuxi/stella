@@ -18,6 +18,7 @@ type BuildAgentContext = (args: {
   agentType: string;
   runId: string;
   threadId?: string;
+  toolWorkspaceRoot?: string;
   shouldInjectDynamicMemory?: boolean;
 }) => Promise<LocalAgentContext>;
 
@@ -92,6 +93,7 @@ export const prepareOrchestratorRun = async (args: {
     conversationId: args.conversationId,
     agentType: args.agentType,
     runId: args.runId,
+    ...(args.toolWorkspaceRoot ? { toolWorkspaceRoot: args.toolWorkspaceRoot } : {}),
     ...(shouldInjectDynamicMemory ? { shouldInjectDynamicMemory: true } : {}),
   });
   const resolvedLlm = resolveRunnerLlmRoute(
