@@ -222,12 +222,9 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     fallbackMode: "standard",
     managedGatewayProvider: "openrouter",
     temperature: 1.0,
-    maxOutputTokens: 9500,
+    maxOutputTokens: 15000,
     providerOptions: {
       ...gatewayOptions("openrouter"),
-      openai: {
-        reasoningEffort: "low",
-      },
     },
   },
 
