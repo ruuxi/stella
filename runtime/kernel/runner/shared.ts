@@ -10,6 +10,7 @@ import {
   readConfiguredConvexUrl as sanitizeConvexDeploymentUrl,
   readConfiguredStellaBaseUrl as sanitizeStellaBase,
 } from "../convex-urls.js";
+import { resolveStellaStatePath } from "../home/stella-home.js";
 import { isOrchestratorAgentType } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 
 export const DEFAULT_MAX_AGENT_DEPTH = 8;
@@ -44,9 +45,10 @@ export const defaultPromptForAgentType = (agentType: string): string => {
 };
 
 export const readCoreMemory = (stellaHome: string): string | undefined => {
+  const stateRoot = resolveStellaStatePath(stellaHome);
   const candidatePaths = [
-    path.join(stellaHome, "state", "core-memory.md"),
-    path.join(stellaHome, "state", "CORE_MEMORY.MD"),
+    path.join(stateRoot, "core-memory.md"),
+    path.join(stateRoot, "CORE_MEMORY.MD"),
   ];
   for (const filePath of candidatePaths) {
     try {

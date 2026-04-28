@@ -6,6 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import type { RuntimeHealthSnapshot } from "../../../runtime/protocol/index.js";
+import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
   ensurePrivateDir,
@@ -23,6 +24,8 @@ import type {
 } from "../../src/shared/contracts/backup.js";
 
 const execFileAsync = promisify(execFile);
+
+const getStateRoot = (stellaHomePath: string) => resolveStellaStatePath(stellaHomePath);
 
 const BACKUP_INTERVAL_MS = 60 * 60 * 1000;
 const BUSY_RETRY_DELAY_MS = 60 * 1000;
@@ -930,7 +933,7 @@ export class BackupService {
     const sqliteEntry = await this.collectSqliteEntry(args);
     const stateEntries = await this.collectDirectoryEntries({
       ...args,
-      rootPath: path.join(args.stellaHomePath, "state"),
+      rootPath: getStateRoot(args.stellaHomePath),
       scope: "state",
       shouldSkip: (relativePath, isDirectory) => {
         if (!relativePath) return false;
@@ -1041,7 +1044,7 @@ export class BackupService {
     tempRoot: string;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry | null> {
-    const sqlitePath = path.join(args.stellaHomePath, "state", "stella.sqlite");
+    const sqlitePath = path.join(getStateRoot(args.stellaHomePath), "stella.sqlite");
     if (!(await fileExists(sqlitePath))) {
       return null;
     }
@@ -1550,7 +1553,7 @@ export class BackupService {
       shouldSkip: () => false,
     });
     await this.restoreScopedDirectory({
-      rootPath: path.join(args.stellaHomePath, "state"),
+      rootPath: getStateRoot(args.stellaHomePath),
       entries: stateEntries.filter((entry) => !isPreservedStatePath(entry.path.slice("state/".length))),
       stagedObjectsDir: args.stagedObjectsDir,
       shouldSkip: shouldSkipStatePath,
@@ -1571,7 +1574,7 @@ export class BackupService {
     }
 
     if (sqliteEntry) {
-      const sqliteTarget = path.join(args.stellaHomePath, "state", "stella.sqlite");
+      const sqliteTarget = path.join(getStateRoot(args.stellaHomePath), "stella.sqlite");
       await ensurePrivateDir(path.dirname(sqliteTarget));
       await removeFileIfExists(`${sqliteTarget}-shm`);
       await removeFileIfExists(`${sqliteTarget}-wal`);
@@ -1687,13 +1690,13 @@ export class BackupService {
 
   private async readSyncMode(stellaHomePath: string): Promise<"on" | "off"> {
     const prefs = await readJsonFile<{ syncMode?: string }>(
-      path.join(stellaHomePath, "state", "preferences.json"),
+      path.join(getStateRoot(stellaHomePath), "preferences.json"),
     );
     return prefs?.syncMode === "on" ? "on" : "off";
   }
 
   private getBackupsRoot(stellaHomePath: string) {
-    return path.join(stellaHomePath, "state", "backups");
+    return path.join(getStateRoot(stellaHomePath), "backups");
   }
 
   private getBackupConfigPath(stellaHomePath: string) {

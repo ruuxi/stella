@@ -38,6 +38,7 @@ import {
   type ResolvedLlmRoute,
 } from "../model-routing.js";
 import { createRuntimeLogger } from "../debug.js";
+import { resolveStellaStatePath } from "../home/stella-home.js";
 
 const logger = createRuntimeLogger("memory.chronicle-summarizer");
 
@@ -68,13 +69,13 @@ type StellaConfig = {
 };
 
 const chronicleStateDir = (stellaHome: string): string =>
-  path.join(stellaHome, "state", "chronicle");
+  path.join(resolveStellaStatePath(stellaHome), "chronicle");
 
 const capturesPath = (stellaHome: string): string =>
   path.join(chronicleStateDir(stellaHome), "captures.jsonl");
 
 const chronicleExtensionDir = (stellaHome: string): string =>
-  path.join(stellaHome, "state", "memories_extensions", "chronicle");
+  path.join(resolveStellaStatePath(stellaHome), "memories_extensions", "chronicle");
 
 const summaryFilePath = (
   stellaHome: string,
@@ -135,7 +136,7 @@ const ensureInstructions = async (stellaHome: string): Promise<void> => {
 const isChronicleEnabled = async (stellaHome: string): Promise<boolean> => {
   try {
     const raw = await fsp.readFile(
-      path.join(stellaHome, "state", "config.json"),
+      path.join(resolveStellaStatePath(stellaHome), "config.json"),
       "utf-8",
     );
     const parsed = JSON.parse(raw) as StellaConfig;
@@ -146,7 +147,7 @@ const isChronicleEnabled = async (stellaHome: string): Promise<boolean> => {
 };
 
 const lockDir = (stellaHome: string, window: ChronicleSummaryWindow): string =>
-  path.join(stellaHome, "state", "locks", `chronicle-summary-${window}`);
+  path.join(resolveStellaStatePath(stellaHome), "locks", `chronicle-summary-${window}`);
 
 const acquireLock = (
   stellaHome: string,

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import type {
   OfficePreviewFormat,
   OfficePreviewSnapshot,
@@ -40,7 +41,7 @@ const asNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
 const resolvePreviewRoot = (stellaRoot: string) =>
-  path.join(stellaRoot, "state", PREVIEW_ROOT_DIRNAME);
+  path.join(resolveStellaStatePath(stellaRoot), PREVIEW_ROOT_DIRNAME);
 
 const readSnapshotFromSessionDir = async (
   sessionDir: string,

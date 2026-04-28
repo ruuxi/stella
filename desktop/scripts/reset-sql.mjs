@@ -13,7 +13,7 @@ const main = async () => {
 
   console.log(
     [
-      '[reset-sql] Removed Stella SQLite under state/ (stella.sqlite + -shm + -wal).',
+      '[reset-sql] Removed Stella SQLite from ~/.stella (stella.sqlite + -shm + -wal).',
       `Target: ${stellaStatePath}`,
       ...formatStoppedProcessLines(stopped),
     ].filter(Boolean).join('\n'),

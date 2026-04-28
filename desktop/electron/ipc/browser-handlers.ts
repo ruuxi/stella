@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import { getStellaBrowserBridgeEnv } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
+import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import { resolveStellaBrowserRoot } from "../utils/stella-browser-paths.js";
 import {
   normalizeUrlForPrivilegedRendererFetch,
@@ -197,7 +198,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         return { ok: false, error: "Stella root not initialized" };
       }
       try {
-        const dir = path.join(stellaRoot, "state", "media", "outputs");
+        const dir = path.join(resolveStellaStatePath(stellaRoot), "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = path.join(dir, payload.fileName);
         const safeUrl = await normalizeUrlForPrivilegedRendererFetch(payload.url);
@@ -226,7 +227,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       }
       const stellaRoot = options.getStellaRoot();
       if (!stellaRoot) return null;
-      return path.join(stellaRoot, "state", "media");
+      return path.join(resolveStellaStatePath(stellaRoot), "media");
     },
   );
 };

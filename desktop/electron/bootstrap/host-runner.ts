@@ -1,4 +1,3 @@
-import path from "path";
 import { Notification } from "electron";
 import {
   getOrCreateDeviceIdentity,
@@ -196,14 +195,15 @@ const connectHostRunner = async (context: BootstrapContext) => {
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   const { lifecycle, services, state } = context;
   const stellaRoot = state.stellaRoot;
-  if (!stellaRoot || !state.stellaWorkspacePath) {
+  const stellaStatePath = state.stellaStatePath;
+  if (!stellaRoot || !stellaStatePath || !state.stellaWorkspacePath) {
     throw new Error("Stella root is not initialized.");
   }
 
   await services.securityPolicyService.loadPolicy();
 
   const loadDeviceIdentity = async () =>
-    await getOrCreateDeviceIdentity(path.join(stellaRoot, "state"));
+    await getOrCreateDeviceIdentity(stellaStatePath);
 
   clearHostRunnerSubscriptions(context);
   context.state.officePreviewBridgeStop?.();
@@ -217,6 +217,7 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
         isDev: context.config.isDev,
         platform: process.platform,
         stellaRoot,
+        stellaStatePath,
         stellaWorkspacePath: state.stellaWorkspacePath,
       },
       hostHandlers: createHostRunnerHandlers(context, { loadDeviceIdentity }),

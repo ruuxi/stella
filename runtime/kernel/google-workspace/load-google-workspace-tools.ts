@@ -8,6 +8,7 @@
 
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { resolveStellaStatePath } from "../home/stella-home.js";
 import { createRuntimeLogger } from "../debug.js";
 import {
   GOOGLE_WORKSPACE_TOOL_ALLOWLIST,
@@ -186,7 +187,7 @@ export const loadGoogleWorkspaceTools = async (options: {
   callTool: GoogleWorkspaceCallToolFn | null;
   hasStoredCredentials: boolean;
 }> => {
-  const root = path.join(options.stellaRoot, "state", "google-workspace");
+  const root = path.join(resolveStellaStatePath(options.stellaRoot), "google-workspace");
   await mkdir(root, { recursive: true, mode: 0o700 });
   setGoogleWorkspaceProjectRoot(root);
 

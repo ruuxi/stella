@@ -4,6 +4,7 @@ import type {
   DiscoveryCategory,
   DiscoveryKnowledgeSeedPayload,
 } from "../../desktop/src/shared/contracts/discovery.js";
+import { resolveStellaStatePath } from "../kernel/home/stella-home.js";
 
 const USER_PROFILE_SLUG = "user-profile";
 const USER_PROFILE_TITLE = "User Profile";
@@ -45,16 +46,16 @@ const knowledgePages: KnowledgePageDef[] = [
 const normalizeContent = (value: string): string => value.trim().replace(/\n{3,}/g, "\n\n");
 
 const topicDir = (stellaHome: string) =>
-  path.join(stellaHome, "state", "skills", USER_PROFILE_SLUG);
+  path.join(resolveStellaStatePath(stellaHome), "skills", USER_PROFILE_SLUG);
 
 const rawDiscoveryDir = (stellaHome: string) =>
-  path.join(stellaHome, "state", "raw", RAW_DISCOVERY_DIR);
+  path.join(resolveStellaStatePath(stellaHome), "raw", RAW_DISCOVERY_DIR);
 
 const skillsIndexPath = (stellaHome: string) =>
-  path.join(stellaHome, "state", "skills", "index.md");
+  path.join(resolveStellaStatePath(stellaHome), "skills", "index.md");
 
 const registryPath = (stellaHome: string) =>
-  path.join(stellaHome, "state", "registry.md");
+  path.join(resolveStellaStatePath(stellaHome), "registry.md");
 
 const rawRelPath = (fileName: string) =>
   `../../raw/${RAW_DISCOVERY_DIR}/${fileName}`;

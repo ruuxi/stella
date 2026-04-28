@@ -302,6 +302,7 @@ export type RuntimeInitializeParams = {
   protocolVersion: string;
   isDev: boolean;
   stellaRoot: string;
+  stellaStatePath: string;
   stellaWorkspacePath: string;
 };
 
@@ -568,6 +569,7 @@ export const initializeParamsSchema = Type.Object({
   protocolVersion: Type.String({ minLength: 1 }),
   isDev: Type.Boolean(),
   stellaRoot: Type.String({ minLength: 1 }),
+  stellaStatePath: Type.String({ minLength: 1 }),
   stellaWorkspacePath: Type.String({ minLength: 1 }),
 });
 

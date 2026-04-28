@@ -12,6 +12,7 @@ import { UiStateService } from "../services/ui-state-service.js";
 import { getDevServerUrl } from "../dev-url.js";
 import { hasMacPermission } from "../utils/macos-permissions.js";
 import { loadLocalPreferences } from "../../../runtime/kernel/preferences/local-preferences.js";
+import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import { setPreventComputerSleep } from "../ipc/system-handlers.js";
 import { DEFAULT_RADIAL_TRIGGER_CODE } from "../../src/shared/lib/radial-trigger.js";
 import type { ChatContext } from "../../src/shared/contracts/boundary.js";
@@ -44,7 +45,7 @@ export const createBootstrapServices = (options: {
   });
 
   setPreventComputerSleep(
-    loadLocalPreferences(config.stellaRoot).preventComputerSleep,
+    loadLocalPreferences(resolveStellaStatePath()).preventComputerSleep,
   );
 
   const credentialService = new CredentialService({

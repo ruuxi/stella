@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { extractFrontmatter } from "../frontmatter.js";
+import { resolveStellaStatePath } from "../home/stella-home.js";
 
 export const INLINE_SKILL_CATALOG_THRESHOLD = 50;
 
@@ -54,7 +55,7 @@ const parseLooseHeader = (
 };
 
 const listSkillDirectoryIds = async (stellaRoot: string): Promise<string[]> => {
-  const skillsRoot = path.join(stellaRoot, "state", SKILLS_DIR_NAME);
+  const skillsRoot = path.join(resolveStellaStatePath(stellaRoot), SKILLS_DIR_NAME);
   let entries;
   try {
     entries = await fs.readdir(skillsRoot, { withFileTypes: true });
@@ -106,7 +107,7 @@ const readSkillCatalogEntry = async (
 export const listSkillCatalogEntries = async (
   stellaRoot: string,
 ): Promise<SkillCatalogEntry[]> => {
-  const skillsRoot = path.join(stellaRoot, "state", SKILLS_DIR_NAME);
+  const skillsRoot = path.join(resolveStellaStatePath(stellaRoot), SKILLS_DIR_NAME);
   const skillIds = await listSkillDirectoryIds(stellaRoot);
   return await Promise.all(
     skillIds.map((skillId) => readSkillCatalogEntry(skillsRoot, skillId)),
@@ -145,7 +146,7 @@ const renderInlineSkillCatalogBlock = (
     "- If a task matches a skill description, open its `SKILL.md` first.",
   );
   lines.push(
-    '- If a skill tells you to run `scripts/program.ts`, do it as a plain shell command with `exec_command`, e.g. `exec_command({ cmd: "bun /abs/path/to/state/skills/<name>/scripts/program.ts" })`.',
+    '- If a skill tells you to run `scripts/program.ts`, do it as a plain shell command with `exec_command`, e.g. `exec_command({ cmd: "bun \\"$STELLA_STATE/skills/<name>/scripts/program.ts\\"" })`.',
   );
   lines.push(
     "- When you finish a non-trivial reusable workflow, consider saving it as a new skill under `state/skills/`.",
@@ -164,8 +165,8 @@ const renderPlaceholderSkillCatalogBlock = (totalSkills: number): string =>
     "- Automatic Explore fallback may surface the relevant skill paths before a General task starts.",
     "## How to use skills",
     "- If automatic findings point to a skill, open its `SKILL.md` first.",
-    '- If you already know a likely skill path, inspect it directly with `exec_command`, for example `exec_command({ cmd: "sed -n \'1,220p\' /abs/path/to/state/skills/<name>/SKILL.md" })`.',
-    '- If a skill tells you to run `scripts/program.ts`, do it as a plain shell command with `exec_command`, e.g. `exec_command({ cmd: "bun /abs/path/to/state/skills/<name>/scripts/program.ts" })`.',
+    '- If you already know a likely skill path, inspect it directly with `exec_command`, for example `exec_command({ cmd: "sed -n \'1,220p\' \\"$STELLA_STATE/skills/<name>/SKILL.md\\"" })`.',
+    '- If a skill tells you to run `scripts/program.ts`, do it as a plain shell command with `exec_command`, e.g. `exec_command({ cmd: "bun \\"$STELLA_STATE/skills/<name>/scripts/program.ts\\"" })`.',
     "</skills>",
   ].join("\n");
 

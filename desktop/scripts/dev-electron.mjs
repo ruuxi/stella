@@ -11,6 +11,7 @@ import {
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { homedir } from 'node:os'
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import waitOn from 'wait-on'
@@ -25,7 +26,8 @@ const desktopDir = resolve(scriptDir, '..')
 const repoRootDir = resolve(desktopDir, '..')
 let electronBinary = require('electron')
 const watchedDir = path.join(desktopDir, 'dist-electron')
-const runtimeReloadStateFile = path.join(repoRootDir, '.stella-runtime-reload-state.json')
+const stellaStateDir = resolve(process.env.STELLA_STATE || process.env.STELLA_DATA_ROOT || path.join(homedir(), '.stella'))
+const runtimeReloadStateFile = path.join(stellaStateDir, '.stella-runtime-reload-state.json')
 const devRuntimeRoot = path.join(desktopDir, DEV_MACOS_RUNTIME_DIR_NAME)
 const prebuiltDisclaimBinary = path.join(
   desktopDir,
@@ -544,7 +546,8 @@ watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
   scheduleRestart()
 })
 
-rootWatcher = watch(repoRootDir, (_eventType, filename) => {
+mkdirSync(stellaStateDir, { recursive: true })
+rootWatcher = watch(stellaStateDir, (_eventType, filename) => {
   if (
     typeof filename !== 'string' ||
     filename !== path.basename(runtimeReloadStateFile)

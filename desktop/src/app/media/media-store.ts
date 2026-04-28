@@ -138,7 +138,7 @@ export function extractOutput(output: unknown): OutputMedia {
   return { kind: "unknown" }
 }
 
-/* ── Save output files to desktop/state ── */
+/* ── Save output files to ~/.stella ── */
 
 export async function saveOutputToStella(
   output: OutputMedia,

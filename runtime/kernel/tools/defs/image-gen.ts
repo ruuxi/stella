@@ -1,6 +1,6 @@
 /**
  * `image_gen` tool — generate a still image through Stella's managed media
- * gateway. The result is saved under `state/media/outputs/` and surfaced in
+ * gateway. The result is saved under `~/.stella/media/outputs/` and surfaced in
  * the sidebar; the model should not download or open it itself.
  */
 
@@ -23,7 +23,7 @@ export const createImageGenTool = (
   return {
     name: "image_gen",
     description:
-      "Generate a still image through Stella's managed media gateway. The result is saved under state/media/outputs/ and shown in the sidebar; do not download or open it yourself. Required: prompt.",
+      "Generate a still image through Stella's managed media gateway. The result is saved under `~/.stella/media/outputs/` and shown in the sidebar; do not download or open it yourself. Required: prompt.",
     promptSnippet: "Generate a still image via Stella's managed media gateway",
     parameters: {
       type: "object",

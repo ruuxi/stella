@@ -73,6 +73,7 @@ const SUBAGENT_USER_FACING_TOOL_NAMES: Record<string, ReadonlySet<string>> = {
 
 export const createToolHost = ({
   stellaRoot,
+  stellaStatePath,
   stellaBrowserBinPath: _stellaBrowserBinPath,
   stellaOfficeBinPath: _stellaOfficeBinPath,
   stellaUiCliPath: _stellaUiCliPath,
@@ -89,7 +90,7 @@ export const createToolHost = ({
   queryConvex,
   memoryStore,
 }: ToolHostOptions) => {
-  const stateRoot = path.join(stellaRoot, "state");
+  const stateRoot = stellaStatePath;
   const toolCatalog = new Map<string, ToolMetadata>();
 
   setFileToolsConfig({ stellaRoot });
@@ -132,6 +133,7 @@ export const createToolHost = ({
   // the model sees.
   const builtinTools: BuiltinToolDefinition[] = buildBuiltinTools({
     stellaRoot,
+    stellaStatePath,
     stellaBrowserBinPath: _stellaBrowserBinPath,
     stellaOfficeBinPath: _stellaOfficeBinPath,
     stellaUiCliPath: _stellaUiCliPath,

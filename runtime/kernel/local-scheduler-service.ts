@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
+import { resolveStellaStatePath } from './home/stella-home.js'
 import { Cron } from 'croner'
 import {
   ensurePrivateDirSync,
@@ -529,8 +530,7 @@ export class LocalSchedulerService {
 
   constructor(private readonly options: LocalSchedulerServiceOptions) {
     this.statePath = path.join(
-      options.stellaHome,
-      'state',
+      resolveStellaStatePath(options.stellaHome),
       'local-scheduler.json',
     )
   }

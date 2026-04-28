@@ -30,6 +30,7 @@ export type ToolContext = {
   rootRunId?: string;
   agentType?: string;
   stellaRoot?: string;
+  stellaStatePath?: string;
   toolWorkspaceRoot?: string;
   storageMode?: "cloud" | "local";
   agentId?: string;
@@ -158,6 +159,7 @@ export type AgentToolApi = {
 
 export type ToolHostOptions = {
   stellaRoot: string;
+  stellaStatePath: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;
