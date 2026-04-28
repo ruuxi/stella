@@ -4,6 +4,12 @@ import { runVacuumEffect } from "./region-capture-vacuum";
 import { makeCaptureThumbnail } from "./capture-thumbnail";
 import { RADIAL_WEDGES } from "./data";
 
+const CAPTURE_THUMBNAIL = makeCaptureThumbnail();
+const VOICE_BARS = Array.from({ length: 24 }, (_, i) => ({
+  key: i,
+  style: { animationDelay: `${i * 60}ms` },
+}));
+
 function CaptureVacuumCanvas({
   active,
   wedgeKey,
@@ -17,7 +23,9 @@ function CaptureVacuumCanvas({
     if (!active) return;
     const el = canvasRef.current;
     if (!el) return;
-    void runVacuumEffect(el, makeCaptureThumbnail(), 0.5, 0.5);
+    const controller = new AbortController();
+    void runVacuumEffect(el, CAPTURE_THUMBNAIL, 0.5, 0.5, controller.signal);
+    return () => controller.abort();
   }, [active, wedgeKey]);
 
   return <canvas ref={canvasRef} className="radial-result-vacuum" />;
@@ -174,7 +182,10 @@ export function RadialDialVisual({
           <div className="radial-desktop-mock__result radial-desktop-mock__result--visible">
             {activeWedge.id === "capture" && (
               <>
-                <CaptureVacuumCanvas active={isActive} wedgeKey={selectedIndex} />
+                <CaptureVacuumCanvas
+                  active={isActive}
+                  wedgeKey={selectedIndex}
+                />
                 <div className="radial-result-minishell radial-result-minishell--capture">
                   <div className="radial-result-minishell__badge">
                     Captured: Figma — Homepage redesign
@@ -194,8 +205,8 @@ export function RadialDialVisual({
                   allrecipes.com — Thai basil chicken
                 </div>
                 <div className="radial-result-minishell__bubble radial-result-minishell__bubble--stella">
-                  I can see you&apos;re reading a recipe. Need help with substitutions
-                  or measurements?
+                  I can see you&apos;re reading a recipe. Need help with
+                  substitutions or measurements?
                 </div>
                 <div className="radial-result-minishell__composer">
                   <Search size={13} />
@@ -228,8 +239,8 @@ export function RadialDialVisual({
               <div className="radial-result-voice">
                 <div className="radial-result-voice__wave">
                   <div className="radial-result-voice__bars">
-                    {Array.from({ length: 24 }).map((_, i) => (
-                      <span key={i} style={{ animationDelay: `${i * 60}ms` }} />
+                    {VOICE_BARS.map((bar) => (
+                      <span key={bar.key} style={bar.style} />
                     ))}
                   </div>
                 </div>
@@ -238,7 +249,8 @@ export function RadialDialVisual({
                     Voice transcription
                   </div>
                   <div className="radial-result-minishell__bubble radial-result-minishell__bubble--user">
-                    &ldquo;Add the quarterly budget numbers to my meeting notes&rdquo;
+                    &ldquo;Add the quarterly budget numbers to my meeting
+                    notes&rdquo;
                   </div>
                   <div className="radial-result-minishell__composer">
                     <Search size={13} />
