@@ -72,9 +72,7 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
       messages: MessageDoc[];
     }> = [];
 
-    const ordered = [...messages].reverse();
-
-    for (const msg of ordered) {
+    for (const msg of messages) {
       const last = groups[groups.length - 1];
       if (
         last &&
