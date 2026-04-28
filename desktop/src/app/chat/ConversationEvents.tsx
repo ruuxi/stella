@@ -1,18 +1,17 @@
-import { memo, useMemo, useCallback, useSyncExternalStore } from "react";
-import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
+import { memo, useCallback, useSyncExternalStore } from "react";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { Attachment } from "@/app/chat/lib/event-transforms";
 import {
-  TurnItem,
-  StreamingIndicator,
-  type TurnViewModel,
-} from "./MessageTurn";
+  AssistantMessageRow,
+  PendingAskQuestionRow,
+  StreamingTailRow,
+  UserMessageRow,
+  type EventRowViewModel,
+} from "./MessageRow";
 import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCard";
 import { GrowIn } from "@/app/chat/GrowIn";
-import { useTurnViewModels } from "./use-turn-view-models";
-import type {
-  AgentResponseTarget,
-  SelfModAppliedData,
-} from "@/app/chat/streaming/streaming-types";
+import { useEventRows } from "./use-event-rows";
+import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import {
   acknowledgeGoogleWorkspaceAuthRequired,
   getGoogleWorkspaceAuthRequired,
@@ -23,142 +22,46 @@ type Props = {
   events: EventRecord[];
   maxItems?: number;
   streamingText?: string;
+  /** Reasoning UI was removed; this prop is accepted for back-compat with
+   * call sites but no longer rendered. */
   reasoningText?: string;
-  streamingResponseTarget?: AgentResponseTarget | null;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   selfModMap?: Record<string, SelfModAppliedData>;
-  liveTasks?: TaskItem[];
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
 };
 
-function MessageList({
-  turns,
-  showStreaming,
-  streamingText,
-  reasoningText,
-  isStreaming,
-  pendingUserMessageId,
-  streamingTargetTurnId,
-  streamingAttachMode,
-  isReplacingAssistant,
-  onOpenAttachment,
-  showStandaloneStreaming,
-  liveTasks,
-}: {
-  turns: TurnViewModel[];
-  showStreaming: boolean;
-  streamingText?: string;
-  reasoningText?: string;
-  isStreaming?: boolean;
-  pendingUserMessageId?: string | null;
-  streamingTargetTurnId?: string | null;
-  streamingAttachMode?: 'inline' | 'replace' | 'append';
-  isReplacingAssistant?: boolean;
-  onOpenAttachment?: (attachment: Attachment) => void;
-  showStandaloneStreaming: boolean;
-  liveTasks?: TaskItem[];
-}) {
-  const shouldShowTaskReasoning = useCallback(
-    (task: TaskItem) =>
-      task.status === "running" && Boolean(task.reasoningText?.trim()),
-    [],
-  );
-
-  const taskReasoningByAnchorTurnId = useMemo(() => {
-    if (!liveTasks?.length) return null;
-    const map = new Map<
-      string,
-      { text: string; description: string }
-    >();
-    for (const task of liveTasks) {
-      const reasoningText = task.reasoningText?.trim();
-      if (
-        shouldShowTaskReasoning(task)
-        && task.anchorTurnId
-        && reasoningText
-        && !map.has(task.anchorTurnId)
-      ) {
-        map.set(task.anchorTurnId, {
-          text: reasoningText,
-          description: task.description?.trim() ?? "",
-        });
-      }
-    }
-    return map.size > 0 ? map : null;
-  }, [liveTasks, shouldShowTaskReasoning]);
-
-  return (
-    <>
-      {turns.map((turn, index) => {
-        const shouldAttachStreaming =
-          showStreaming &&
-          Boolean(streamingTargetTurnId) &&
-          turn.id === streamingTargetTurnId;
-
-        const taskReasoning =
-          taskReasoningByAnchorTurnId?.get(turn.id)
-          ?? (turn.assistantMessageId
-            ? taskReasoningByAnchorTurnId?.get(turn.assistantMessageId)
-            : undefined);
-
-        return (
-          <TurnItem
-            key={turn.id}
-            turn={turn}
-            isLastTurn={index === turns.length - 1 && !showStandaloneStreaming}
-            onOpenAttachment={onOpenAttachment}
-            taskReasoningText={taskReasoning?.text}
-            taskReasoningDescription={taskReasoning?.description}
-            streaming={
-              shouldAttachStreaming
-                ? {
-                    streamingText,
-                    reasoningText,
-                    isStreaming,
-                    pendingUserMessageId,
-                    replaceAssistant: Boolean(isReplacingAssistant),
-                    appendAsTrailing: streamingAttachMode === 'append',
-                  }
-                : undefined
-            }
-          />
-        );
-      })}
-
-      {showStandaloneStreaming && (
-        <StreamingIndicator
-          streamingText={streamingText}
-          reasoningText={reasoningText}
-          isStreaming={isStreaming}
-          pendingUserMessageId={pendingUserMessageId}
-        />
-      )}
-    </>
-  );
-}
+const renderRow = (
+  row: EventRowViewModel,
+  onOpenAttachment?: (attachment: Attachment) => void,
+) => {
+  if (row.kind === "user") {
+    return (
+      <UserMessageRow
+        key={row.id}
+        row={row}
+        onOpenAttachment={onOpenAttachment}
+      />
+    );
+  }
+  return <AssistantMessageRow key={row.id} row={row} />;
+};
 
 export const ConversationEvents = memo(function ConversationEvents({
   events,
   maxItems,
   streamingText,
-  reasoningText,
-  streamingResponseTarget,
   isStreaming,
   pendingUserMessageId,
   selfModMap,
-  liveTasks,
   hasOlderEvents,
   isLoadingOlder,
   isLoadingHistory,
   onOpenAttachment,
 }: Props) {
-  // Subscribe to the app-level sticky `googleWorkspace:authRequired` store
-  // (see `GoogleWorkspaceAuthListener`). This lets the connect card surface
-  // even if the IPC fired while the user was on a non-chat route.
   const showGwsConnect = useSyncExternalStore(
     subscribeGoogleWorkspaceAuthRequired,
     getGoogleWorkspaceAuthRequired,
@@ -169,27 +72,16 @@ export const ConversationEvents = memo(function ConversationEvents({
     acknowledgeGoogleWorkspaceAuthRequired();
   }, []);
 
-  const {
-    turns,
-    showStreaming,
-    showStandaloneStreaming,
-    processedStreamingText,
-    processedReasoningText,
-    streamingTargetTurnId,
-    streamingAttachMode,
-    isReplacingAssistant,
-  } = useTurnViewModels({
-    events,
-    maxItems,
-    streamingText,
-    reasoningText,
-    streamingResponseTarget,
-    isStreaming,
-    pendingUserMessageId,
-    selfModMap,
-  });
+  const { rows, lastUserRowIndex, pendingAskQuestion, showStreamingTail } =
+    useEventRows({
+      events,
+      maxItems,
+      isStreaming,
+      pendingUserMessageId,
+      selfModMap,
+    });
 
-  if (isLoadingHistory && turns.length === 0 && !showStreaming) {
+  if (isLoadingHistory && rows.length === 0 && !showStreamingTail) {
     return (
       <div className="event-list" data-loading-history="true">
         <div className="event-history-status" role="status" aria-live="polite">
@@ -207,13 +99,25 @@ export const ConversationEvents = memo(function ConversationEvents({
     );
   }
 
-  if (turns.length === 0 && !showStreaming) {
+  if (rows.length === 0 && !showStreamingTail) {
     return (
       <div className="event-list" data-empty="true">
         <div className="event-empty">Start a conversation</div>
       </div>
     );
   }
+
+  /*
+   * Tail region wrapper: gives the latest user message + everything after
+   * it a `100cqh` reading area, so when `scrollTurnToPinTop` aligns the
+   * user bubble to the viewport top there is enough room below for the
+   * assistant reply to fill the viewport. Mirrors the old
+   * `.session-turn--last-turn` behavior, but moved to a single wrapper
+   * around the linear tail rather than a per-turn container.
+   */
+  const tailStart = lastUserRowIndex >= 0 ? lastUserRowIndex : rows.length;
+  const olderRows = rows.slice(0, tailStart);
+  const tailRows = rows.slice(tailStart);
 
   return (
     <div className="event-list">
@@ -223,25 +127,27 @@ export const ConversationEvents = memo(function ConversationEvents({
         </div>
       )}
 
-      <MessageList
-        turns={turns}
-        showStreaming={showStreaming}
-        showStandaloneStreaming={showStandaloneStreaming}
-        streamingText={processedStreamingText}
-        reasoningText={processedReasoningText}
-        isStreaming={isStreaming}
-        pendingUserMessageId={pendingUserMessageId}
-        streamingTargetTurnId={streamingTargetTurnId}
-        streamingAttachMode={streamingAttachMode}
-        isReplacingAssistant={isReplacingAssistant}
-        onOpenAttachment={onOpenAttachment}
-        liveTasks={liveTasks}
-      />
+      {olderRows.map((row) => renderRow(row, onOpenAttachment))}
+
+      {(tailRows.length > 0 || showStreamingTail || pendingAskQuestion) && (
+        <div className="event-row-region event-row-region--tail">
+          {tailRows.map((row) => renderRow(row, onOpenAttachment))}
+          {pendingAskQuestion && (
+            <PendingAskQuestionRow payload={pendingAskQuestion} />
+          )}
+          {showStreamingTail && (
+            <StreamingTailRow
+              streamingText={streamingText}
+              isStreaming={isStreaming}
+              pendingUserMessageId={pendingUserMessageId}
+            />
+          )}
+        </div>
+      )}
 
       <GrowIn animate={true} show={showGwsConnect}>
         <GoogleWorkspaceConnectCard onConnected={handleGwsConnected} />
       </GrowIn>
-
     </div>
   );
 });

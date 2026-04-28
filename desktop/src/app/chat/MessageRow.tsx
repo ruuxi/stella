@@ -1,0 +1,304 @@
+/**
+ * Linear chat row components.
+ *
+ * Each persisted message renders as a single row in chronological order,
+ * with no per-turn user/assistant grouping. Tool-derived artifacts
+ * (web-search badge, office preview, end-resource pill, self-mod undo,
+ * ask-question bubble) attach to the assistant row that immediately
+ * followed the producing tool events. Streaming renders as a single
+ * tail row at the end of the timeline.
+ *
+ * Reasoning text is intentionally NOT rendered anywhere in this surface
+ * (the underlying data still flows through state for model history).
+ */
+import { memo } from "react";
+import type {
+  Attachment,
+  ChannelEnvelope,
+} from "@/app/chat/lib/event-transforms";
+import { Markdown } from "@/app/chat/Markdown";
+import { EndResourceCard } from "@/app/chat/EndResourceCard";
+import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
+import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
+import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
+import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
+import type { DisplayPayload } from "@/shared/contracts/display-payload";
+import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
+import {
+  AskQuestionBubble,
+  type AskQuestionState,
+} from "@/app/chat/AskQuestionBubble";
+import { UserMessageBody } from "@/app/chat/UserMessageBody";
+import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
+import { eventRowEqual } from "@/app/chat/lib/row-equality";
+
+export type UserRowViewModel = {
+  kind: "user";
+  id: string;
+  text: string;
+  windowLabel?: string;
+  windowPreviewImageUrl?: string;
+  attachments: Attachment[];
+  channelEnvelope?: ChannelEnvelope;
+};
+
+export type AssistantRowViewModel = {
+  kind: "assistant";
+  id: string;
+  text: string;
+  emotesEnabled: boolean;
+  responseTarget?: AgentResponseTarget;
+  webSearchBadgeHtml?: string;
+  officePreviewRef?: OfficePreviewRef;
+  resourcePayload?: DisplayPayload;
+  selfModApplied?: SelfModApplied;
+  askQuestion?: AskQuestionState;
+};
+
+export type EventRowViewModel = UserRowViewModel | AssistantRowViewModel;
+
+const getAttachmentLabel = (attachment: Attachment, index: number) => {
+  if (attachment.name) return attachment.name;
+  if (attachment.kind) {
+    const normalized = attachment.kind.replace(/[_-]+/g, " ").trim();
+    if (normalized.length > 0) {
+      return normalized[0].toUpperCase() + normalized.slice(1);
+    }
+  }
+  if (attachment.mimeType) return attachment.mimeType;
+  return `Attachment ${index + 1}`;
+};
+
+const formatChannelKind = (kind: ChannelEnvelope["kind"]) => {
+  if (kind === "message") return "message";
+  if (kind === "reaction") return "reaction";
+  if (kind === "edit") return "edited";
+  if (kind === "delete") return "deleted";
+  return "system";
+};
+
+const formatProvider = (provider: string) =>
+  provider
+    .replace(/[_-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+
+const summarizeReactions = (envelope: ChannelEnvelope): string | null => {
+  const reactions = envelope.reactions ?? [];
+  if (reactions.length === 0) return null;
+  const labels = reactions.slice(0, 3).map((reaction) => {
+    const prefix = reaction.action === "remove" ? "-" : "+";
+    return `${prefix}${reaction.emoji}`;
+  });
+  const suffix = reactions.length > 3 ? ` +${reactions.length - 3}` : "";
+  return `Reactions ${labels.join(" ")}${suffix}`;
+};
+
+const WebSearchBadge = () => (
+  <div className="event-search-badge">
+    <span className="event-search-badge-label">Search briefing</span>
+  </div>
+);
+
+type UserRowProps = {
+  row: UserRowViewModel;
+  onOpenAttachment?: (attachment: Attachment) => void;
+};
+
+export const UserMessageRow = memo(
+  function UserMessageRow({ row, onOpenAttachment }: UserRowProps) {
+    const { text, windowLabel, attachments, channelEnvelope } = row;
+    const windowPreviewImageUrl = sanitizeAttachmentImageUrl(
+      row.windowPreviewImageUrl,
+    );
+    const reactionSummary = channelEnvelope
+      ? summarizeReactions(channelEnvelope)
+      : null;
+    const hasChannelMeta = Boolean(channelEnvelope?.provider);
+
+    return (
+      <div className="event-row event-row--user" data-turn-id={row.id}>
+        <div className="event-item user">
+          {windowLabel && (
+            <span className="event-window-badge-hovercard">
+              <span
+                className="event-window-badge"
+                tabIndex={windowPreviewImageUrl ? 0 : undefined}
+              >
+                {windowLabel}
+              </span>
+              {windowPreviewImageUrl && (
+                <div className="event-window-preview" role="tooltip">
+                  <img
+                    src={windowPreviewImageUrl}
+                    alt="Window content preview"
+                    className="event-window-preview-img"
+                  />
+                </div>
+              )}
+            </span>
+          )}
+          {hasChannelMeta && (
+            <div className="event-channel-meta">
+              {channelEnvelope?.provider && (
+                <span className="event-channel-badge provider">
+                  {formatProvider(channelEnvelope.provider)}
+                </span>
+              )}
+              {channelEnvelope && channelEnvelope.kind !== "message" && (
+                <span className="event-channel-badge kind">
+                  {formatChannelKind(channelEnvelope.kind)}
+                </span>
+              )}
+              {channelEnvelope && reactionSummary && (
+                <span className="event-channel-badge reaction">
+                  {reactionSummary}
+                </span>
+              )}
+            </div>
+          )}
+          {text.trim() && <UserMessageBody text={text} />}
+          {attachments.length > 0 && (
+            <div className="event-attachments">
+              {attachments.map((attachment, index) => {
+                const safeUrl = sanitizeAttachmentImageUrl(attachment.url);
+                if (safeUrl) {
+                  return (
+                    <img
+                      key={attachment.id ?? `${index}`}
+                      src={safeUrl}
+                      alt="Attachment"
+                      className="event-attachment"
+                      onClick={() => onOpenAttachment?.(attachment)}
+                      role={onOpenAttachment ? "button" : undefined}
+                      tabIndex={onOpenAttachment ? 0 : undefined}
+                      onKeyDown={(eventKey) => {
+                        if (
+                          onOpenAttachment &&
+                          (eventKey.key === "Enter" || eventKey.key === " ")
+                        ) {
+                          onOpenAttachment(attachment);
+                        }
+                      }}
+                    />
+                  );
+                }
+                return (
+                  <div
+                    key={attachment.id ?? `${index}`}
+                    className="event-attachment-fallback"
+                  >
+                    {getAttachmentLabel(attachment, index)}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.onOpenAttachment === next.onOpenAttachment &&
+    eventRowEqual(prev.row, next.row),
+);
+
+type AssistantRowProps = {
+  row: AssistantRowViewModel;
+};
+
+export const AssistantMessageRow = memo(
+  function AssistantMessageRow({ row }: AssistantRowProps) {
+    const text = row.text;
+    const hasText = text.trim().length > 0;
+    const hasWebSearchBadge = Boolean(row.webSearchBadgeHtml?.trim());
+    const hasOfficePreview = Boolean(row.officePreviewRef);
+    const hasResource = Boolean(row.resourcePayload);
+    const hasSelfMod = Boolean(row.selfModApplied);
+    const hasAskQuestion = Boolean(row.askQuestion);
+
+    if (
+      !hasText &&
+      !hasWebSearchBadge &&
+      !hasOfficePreview &&
+      !hasResource &&
+      !hasSelfMod &&
+      !hasAskQuestion
+    ) {
+      return null;
+    }
+
+    return (
+      <div className="event-row event-row--assistant">
+        <div className="event-item assistant">
+          {hasWebSearchBadge && <WebSearchBadge />}
+          {hasText && (
+            <Markdown
+              text={text}
+              cacheKey={`assistant-${row.id}`}
+              enableEmotes={row.emotesEnabled}
+            />
+          )}
+          {row.officePreviewRef && (
+            <OfficePreviewCard previewRef={row.officePreviewRef} />
+          )}
+          {row.resourcePayload && (
+            <EndResourceCard payload={row.resourcePayload} />
+          )}
+          {row.selfModApplied && (
+            <SelfModUndoButton selfModApplied={row.selfModApplied} />
+          )}
+        </div>
+        {row.askQuestion && <AskQuestionBubble payload={row.askQuestion} />}
+      </div>
+    );
+  },
+  (prev, next) => eventRowEqual(prev.row, next.row),
+);
+
+export const StreamingTailRow = memo(function StreamingTailRow({
+  streamingText,
+  isStreaming,
+  pendingUserMessageId,
+}: {
+  streamingText?: string;
+  isStreaming?: boolean;
+  pendingUserMessageId?: string | null;
+}) {
+  const text = streamingText ?? "";
+  const hasText = text.trim().length > 0;
+  if (!hasText && !isStreaming) return null;
+
+  return (
+    <div className="event-row event-row--assistant">
+      <div className="event-item assistant streaming">
+        {hasText && (
+          <Markdown
+            text={text}
+            cacheKey={
+              pendingUserMessageId
+                ? `streaming-${pendingUserMessageId}`
+                : undefined
+            }
+            isAnimating={isStreaming}
+            enableEmotes={true}
+          />
+        )}
+      </div>
+    </div>
+  );
+});
+
+export const PendingAskQuestionRow = memo(function PendingAskQuestionRow({
+  payload,
+}: {
+  payload: AskQuestionState;
+}) {
+  return (
+    <div className="event-row event-row--assistant">
+      <AskQuestionBubble payload={payload} />
+    </div>
+  );
+});
