@@ -29,6 +29,7 @@ import { OnboardingThemePhase } from "./OnboardingThemePhase";
 import { OnboardingPersonalityPhase } from "./OnboardingPersonalityPhase";
 import { OnboardingShortcutsPhase } from "./OnboardingShortcutsPhase";
 import { OnboardingDoubleTapPhase } from "./OnboardingDoubleTapPhase";
+import { OnboardingVoicePhase } from "./OnboardingVoicePhase";
 import { OnboardingMemoryPhase } from "./OnboardingMemoryPhase";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 
@@ -42,6 +43,7 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
   "shortcuts-global": "Anywhere on your desktop.",
   "shortcuts-local": "Inside Stella.",
   "double-tap": "Tap twice. Summon Stella.",
+  voice: "Speak instead of type.",
   memory: "Help Stella remember.",
 };
 
@@ -223,6 +225,13 @@ export const OnboardingStep1 = ({
       case "double-tap":
         return (
           <OnboardingDoubleTapPhase
+            splitTransitionActive={leaving}
+            onContinue={nextSplitStep}
+          />
+        );
+      case "voice":
+        return (
+          <OnboardingVoicePhase
             splitTransitionActive={leaving}
             onContinue={nextSplitStep}
           />
