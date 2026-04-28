@@ -420,7 +420,9 @@ fn register_uninstall(exe_path: &Path, install_dir: &Path) {
 
         for (name, reg_type, data) in entries {
             let _ = silent_cmd("reg")
-                .args(["add", reg_key, "/v", name, "/t", reg_type, "/d", &data, "/f"])
+                .args([
+                    "add", reg_key, "/v", name, "/t", reg_type, "/d", &data, "/f",
+                ])
                 .output();
         }
     }
