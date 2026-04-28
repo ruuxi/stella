@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+} from "react";
 
 import {
   formatPrice,
@@ -197,7 +204,9 @@ const OutfitStage = ({
         </div>
         <div className="fashion-stage-status" data-state={outfit.status}>
           {outfit.status === "ready"
-            ? `${products.length} pieces`
+            ? products.length === 0
+              ? "Try-on"
+              : `${products.length} pieces`
             : outfit.status === "generating"
               ? "Generating"
               : "Failed"}
@@ -515,7 +524,12 @@ export const FashionTab = () => {
   const [savingProfile, setSavingProfile] = useState(false);
   const [pickingPhoto, setPickingPhoto] = useState(false);
   const [prompt, setPrompt] = useState("");
+  const [tryOnImagePaths, setTryOnImagePaths] = useState<string[]>([]);
+  const [tryOnImageUrls, setTryOnImageUrls] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [pickingTryOn, setPickingTryOn] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
   const [bodyPhotoPath, setBodyPhotoPath] = useState<string | null>(null);
@@ -621,6 +635,157 @@ export const FashionTab = () => {
   const onboardingComplete = !!profile?.hasBodyPhoto && hasGender;
   const canGenerate = onboardingComplete && !!bodyPhotoPath;
 
+  /**
+   * Pull http(s) image URLs out of the prompt text so the user can paste a
+   * link inline instead of fishing for an "attach URL" button. Anything that
+   * looks like an image URL (.png/.jpg/.jpeg/.webp/.gif/.heic, optional
+   * query string) gets promoted to an attachment chip and stripped from the
+   * remaining text. Other URLs stay in the prompt verbatim.
+   */
+  const extractImageUrlsFromPrompt = useCallback(
+    (text: string): { remaining: string; urls: string[] } => {
+      const urlRe =
+        /https?:\/\/[^\s<>"']+\.(?:png|jpe?g|webp|gif|heic)(?:\?[^\s<>"']*)?/gi;
+      const urls = Array.from(new Set(text.match(urlRe) ?? []));
+      const remaining = text.replace(urlRe, " ").replace(/\s+/g, " ").trim();
+      return { remaining, urls };
+    },
+    [],
+  );
+
+  const handlePickTryOnImages = useCallback(async () => {
+    const api = (window as {
+      electronAPI?: {
+        fashion?: {
+          pickTryOnImages?: () => Promise<{
+            canceled: boolean;
+            paths: string[];
+          }>;
+        };
+      };
+    }).electronAPI;
+    if (!api?.fashion?.pickTryOnImages) return;
+    setPickingTryOn(true);
+    try {
+      const result = await api.fashion.pickTryOnImages();
+      if (result.canceled || result.paths.length === 0) return;
+      setTryOnImagePaths((prev) => Array.from(new Set([...prev, ...result.paths])));
+    } finally {
+      setPickingTryOn(false);
+    }
+  }, []);
+
+  const handleRemoveAttachment = useCallback(
+    (kind: "path" | "url", value: string) => {
+      if (kind === "path") {
+        setTryOnImagePaths((prev) => prev.filter((entry) => entry !== value));
+      } else {
+        setTryOnImageUrls((prev) => prev.filter((entry) => entry !== value));
+      }
+    },
+    [],
+  );
+
+  // ── Drag-and-drop ────────────────────────────────────────────────────
+  // The whole Fashion page is a drop zone for clothes images. We keep an
+  // enter/leave counter so child re-enters don't flicker the overlay.
+  // Dropped items route to the same try-on attachments as the + button:
+  //   * Real on-disk image files → tryOnImagePaths (resolved via the
+  //     preload's `webUtils.getPathForFile` shim).
+  //   * Image URLs (dragged from a webpage as text/uri-list or text/plain)
+  //     → tryOnImageUrls.
+  const dragHasFiles = useCallback((event: ReactDragEvent<HTMLElement>) => {
+    const items = event.dataTransfer?.items;
+    if (!items) return false;
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      if (!item) continue;
+      if (item.kind === "file") return true;
+      if (item.kind === "string" && /(uri-list|plain)/i.test(item.type))
+        return true;
+    }
+    return false;
+  }, []);
+
+  const handleDragEnter = useCallback(
+    (event: ReactDragEvent<HTMLElement>) => {
+      if (!canGenerate) return;
+      if (!dragHasFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragCounterRef.current += 1;
+      if (dragCounterRef.current === 1) setIsDragOver(true);
+    },
+    [canGenerate, dragHasFiles],
+  );
+
+  const handleDragOver = useCallback(
+    (event: ReactDragEvent<HTMLElement>) => {
+      if (!canGenerate) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    },
+    [canGenerate],
+  );
+
+  const handleDragLeave = useCallback(
+    (event: ReactDragEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      dragCounterRef.current -= 1;
+      if (dragCounterRef.current <= 0) {
+        dragCounterRef.current = 0;
+        setIsDragOver(false);
+      }
+    },
+    [],
+  );
+
+  const handleDrop = useCallback(
+    async (event: ReactDragEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+      if (!canGenerate) return;
+
+      const api = (window as {
+        electronAPI?: {
+          fashion?: { getDroppedFilePath?: (file: File) => string };
+        };
+      }).electronAPI;
+      const getPath = api?.fashion?.getDroppedFilePath;
+
+      const droppedFiles = Array.from(event.dataTransfer?.files ?? []);
+      const newPaths: string[] = [];
+      for (const file of droppedFiles) {
+        if (!file.type.startsWith("image/")) continue;
+        const filePath = getPath?.(file);
+        if (filePath) newPaths.push(filePath);
+      }
+      if (newPaths.length > 0) {
+        setTryOnImagePaths((prev) =>
+          Array.from(new Set([...prev, ...newPaths])),
+        );
+      }
+
+      const uriListRaw = event.dataTransfer?.getData("text/uri-list") ?? "";
+      const plainRaw = event.dataTransfer?.getData("text/plain") ?? "";
+      const candidateUrls = `${uriListRaw}\n${plainRaw}`
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => /^https?:\/\//i.test(line));
+      const imageUrlRe =
+        /\.(?:png|jpe?g|webp|gif|heic)(?:\?[^\s<>"']*)?$/i;
+      const newUrls = candidateUrls.filter((url) => imageUrlRe.test(url));
+      if (newUrls.length > 0) {
+        setTryOnImageUrls((prev) => Array.from(new Set([...prev, ...newUrls])));
+      }
+    },
+    [canGenerate],
+  );
+
   const handleGenerate = useCallback(async () => {
     if (!canGenerate) return;
     setGenerating(true);
@@ -635,31 +800,70 @@ export const FashionTab = () => {
               excludeProductIds?: string[];
               seedHints?: string[];
             }) => Promise<{ threadId?: string; batchId: string }>;
+            startTryOn?: (payload: {
+              prompt?: string;
+              batchId?: string;
+              imagePaths?: string[];
+              imageUrls?: string[];
+            }) => Promise<{
+              threadId?: string;
+              batchId: string;
+              imagePaths: string[];
+              imageUrls: string[];
+            }>;
           };
         };
       }).electronAPI;
-      if (!api?.fashion?.startOutfitBatch) {
+      if (!api?.fashion?.startOutfitBatch || !api?.fashion?.startTryOn) {
         throw new Error("Fashion runtime is not available.");
       }
-      const batchId = `fashion-${Date.now().toString(36)}`;
-      const excludeProductIds = Array.from(
-        new Set(
-          (outfits ?? []).flatMap((outfit) =>
-            outfit.products.map((product) => product.productId),
+
+      // Pull any image URLs out of the prompt text first so a user who just
+      // pasted a link still triggers the Try-On path even though they never
+      // touched the + button.
+      const { remaining, urls: detectedUrls } = extractImageUrlsFromPrompt(prompt);
+      const allUrls = Array.from(new Set([...tryOnImageUrls, ...detectedUrls]));
+      const useTryOn = tryOnImagePaths.length > 0 || allUrls.length > 0;
+
+      if (useTryOn) {
+        const batchId = `tryon-${Date.now().toString(36)}`;
+        await api.fashion.startTryOn({
+          prompt: remaining,
+          batchId,
+          imagePaths: tryOnImagePaths,
+          imageUrls: allUrls,
+        });
+      } else {
+        const batchId = `fashion-${Date.now().toString(36)}`;
+        const excludeProductIds = Array.from(
+          new Set(
+            (outfits ?? []).flatMap((outfit) =>
+              outfit.products.map((product) => product.productId),
+            ),
           ),
-        ),
-      );
-      await api.fashion.startOutfitBatch({
-        prompt: prompt.trim() || "Generate a fresh fashion feed batch.",
-        batchId,
-        count: 5,
-        excludeProductIds,
-      });
+        );
+        await api.fashion.startOutfitBatch({
+          prompt: remaining || "Generate a fresh fashion feed batch.",
+          batchId,
+          count: 5,
+          excludeProductIds,
+        });
+      }
+
       setPrompt("");
+      setTryOnImagePaths([]);
+      setTryOnImageUrls([]);
     } finally {
       setTimeout(() => setGenerating(false), 800);
     }
-  }, [canGenerate, outfits, prompt]);
+  }, [
+    canGenerate,
+    extractImageUrlsFromPrompt,
+    outfits,
+    prompt,
+    tryOnImagePaths,
+    tryOnImageUrls,
+  ]);
 
   const likedVariantIds = useMemo(
     () => new Set((likes ?? []).map((l) => l.variantId)),
@@ -894,8 +1098,28 @@ export const FashionTab = () => {
   }
 
   return (
-    <div className="fashion-root">
+    <div
+      className="fashion-root"
+      data-drag-over={isDragOver || undefined}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={(e) => void handleDrop(e)}
+    >
       {body}
+
+      {isDragOver ? (
+        <div className="fashion-drop-overlay" aria-hidden>
+          <div className="fashion-drop-overlay-inner">
+            <div className="fashion-drop-overlay-title">
+              Drop to try it on
+            </div>
+            <div className="fashion-drop-overlay-subtitle">
+              Images of clothes — files or links from your browser
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showProfileButton ? (
         <button
@@ -915,9 +1139,64 @@ export const FashionTab = () => {
 
       {hasOutfits && canGenerate ? (
         <div className="fashion-prompt-dock">
+          {tryOnImagePaths.length > 0 || tryOnImageUrls.length > 0 ? (
+            <div className="fashion-prompt-attachments">
+              {tryOnImageUrls.map((url) => (
+                <div
+                  key={`url-${url}`}
+                  className="fashion-prompt-attachment"
+                  title={url}
+                >
+                  <img src={url} alt="" />
+                  <button
+                    type="button"
+                    className="fashion-prompt-attachment-x"
+                    onClick={() => handleRemoveAttachment("url", url)}
+                    aria-label="Remove attachment"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {tryOnImagePaths.map((p) => {
+                const name = p.split(/[/\\]/).pop() ?? p;
+                return (
+                  <div
+                    key={`path-${p}`}
+                    className="fashion-prompt-attachment fashion-prompt-attachment--file"
+                    title={p}
+                  >
+                    <span className="fashion-prompt-attachment-name">{name}</span>
+                    <button
+                      type="button"
+                      className="fashion-prompt-attachment-x"
+                      onClick={() => handleRemoveAttachment("path", p)}
+                      aria-label="Remove attachment"
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="fashion-prompt-attach"
+            onClick={() => void handlePickTryOnImages()}
+            disabled={pickingTryOn}
+            aria-label="Attach clothes images"
+            title="Attach clothes images to try on"
+          >
+            +
+          </button>
           <input
             className="fashion-prompt-input"
-            placeholder="Describe a vibe — or leave blank"
+            placeholder={
+              tryOnImagePaths.length > 0 || tryOnImageUrls.length > 0
+                ? "Try these clothes on — add notes (optional)"
+                : "Describe a vibe — or drop / paste a clothes image"
+            }
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => {
@@ -933,7 +1212,11 @@ export const FashionTab = () => {
             onClick={() => void handleGenerate()}
             disabled={generating}
           >
-            {generating ? "…" : "Generate"}
+            {generating
+              ? "…"
+              : tryOnImagePaths.length > 0 || tryOnImageUrls.length > 0
+                ? "Try on"
+                : "Generate"}
           </button>
         </div>
       ) : null}

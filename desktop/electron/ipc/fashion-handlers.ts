@@ -25,7 +25,9 @@ import {
   IPC_FASHION_GET_BODY_PHOTO_INFO,
   IPC_FASHION_GET_LOCAL_IMAGE_DATA_URL,
   IPC_FASHION_PICK_AND_SAVE_BODY_PHOTO,
+  IPC_FASHION_PICK_TRY_ON_IMAGES,
   IPC_FASHION_START_OUTFIT_BATCH,
+  IPC_FASHION_START_TRY_ON,
 } from "../../src/shared/contracts/ipc-channels.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
@@ -60,6 +62,7 @@ const EXT_MIME_MAP: Record<string, string> = {
 };
 
 const fashionDir = (root: string) => path.join(root, "state", "fashion");
+const tryOnDir = (root: string) => path.join(fashionDir(root), "try-on");
 const mediaOutputsDir = (root: string) =>
   path.join(root, "state", "media", "outputs");
 const hiddenFashionConversationId = (root: string) =>
@@ -120,12 +123,64 @@ const assertAllowedLocalImagePath = (root: string, rawPath: unknown): string => 
   const absolutePath = path.resolve(rawPath.trim());
   const allowedRoots = [
     fashionDir(root),
+    tryOnDir(root),
     mediaOutputsDir(root),
   ].map((entry) => path.resolve(entry));
   if (!allowedRoots.some((allowedRoot) => isPathInside(absolutePath, allowedRoot))) {
     throw new Error("Image path is outside Fashion's allowed local image folders.");
   }
   return absolutePath;
+};
+
+const HTTP_URL_RE = /^https?:\/\//i;
+
+const normalizeImageUrls = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    if (!HTTP_URL_RE.test(trimmed)) continue;
+    out.push(trimmed);
+  }
+  return out;
+};
+
+/**
+ * Copy each user-picked image into `state/fashion/try-on/<batchId>/N.<ext>`
+ * so the runtime can reference it via `image_gen` referenceImagePaths
+ * without granting it ad-hoc filesystem access. Source paths can sit
+ * anywhere on disk; the destination is always under Fashion's allowed
+ * local-image roots.
+ */
+const stashTryOnImagePaths = async (
+  root: string,
+  batchId: string,
+  rawPaths: unknown,
+): Promise<string[]> => {
+  if (!Array.isArray(rawPaths)) return [];
+  const paths: string[] = [];
+  for (const entry of rawPaths) {
+    if (typeof entry === "string" && entry.trim()) paths.push(entry.trim());
+  }
+  if (paths.length === 0) return [];
+  const dir = path.join(tryOnDir(root), batchId);
+  await fs.mkdir(dir, { recursive: true });
+  const out: string[] = [];
+  for (let index = 0; index < paths.length; index += 1) {
+    const sourcePath = paths[index]!;
+    const ext = path.extname(sourcePath).slice(1).toLowerCase();
+    const normalizedExt = SUPPORTED_EXTENSIONS.includes(
+      ext as (typeof SUPPORTED_EXTENSIONS)[number],
+    )
+      ? ext
+      : "png";
+    const destPath = path.join(dir, `${index}.${normalizedExt}`);
+    await fs.copyFile(sourcePath, destPath);
+    out.push(destPath);
+  }
+  return out;
 };
 
 const getBodyPhotoInfo = async (
@@ -251,6 +306,116 @@ export const registerFashionHandlers = (options: FashionHandlerOptions) => {
 
   registerPrivilegedHandle(
     options,
+    IPC_FASHION_PICK_TRY_ON_IMAGES,
+    async (event: IpcMainInvokeEvent) => {
+      const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+      const dialogOptions = {
+        title: "Pick clothes images",
+        properties: ["openFile", "multiSelections"] as Array<
+          "openFile" | "multiSelections"
+        >,
+        filters: [
+          {
+            name: "Image",
+            extensions: [...SUPPORTED_EXTENSIONS],
+          },
+        ],
+      };
+      const result = ownerWindow
+        ? await dialog.showOpenDialog(ownerWindow, dialogOptions)
+        : await dialog.showOpenDialog(dialogOptions);
+      if (result.canceled || result.filePaths.length === 0) {
+        return { canceled: true, paths: [] as string[] } as const;
+      }
+      return { canceled: false, paths: result.filePaths } as const;
+    },
+  );
+
+  registerPrivilegedHandle(
+    options,
+    IPC_FASHION_START_TRY_ON,
+    async (_event: IpcMainInvokeEvent, payload?: Record<string, unknown>) => {
+      const root = requireRoot();
+      const found = await findExistingBodyPhoto(root);
+      if (!found) {
+        throw new Error("Add a body photo before trying on clothes.");
+      }
+
+      const promptText =
+        typeof payload?.prompt === "string" ? payload.prompt.trim() : "";
+      const batchId =
+        typeof payload?.batchId === "string" && payload.batchId.trim()
+          ? payload.batchId.trim()
+          : `tryon-${Date.now().toString(36)}`;
+
+      const stashedPaths = await stashTryOnImagePaths(
+        root,
+        batchId,
+        payload?.imagePaths,
+      );
+      const imageUrls = normalizeImageUrls(payload?.imageUrls);
+
+      if (stashedPaths.length === 0 && imageUrls.length === 0) {
+        throw new Error(
+          "Attach at least one image of the clothes you want to try on.",
+        );
+      }
+
+      const referencePathLines = stashedPaths
+        .map((p, i) => `  - ref_${i + 1}: ${p}`)
+        .join("\n");
+      const referenceUrlLines = imageUrls
+        .map((u, i) => `  - url_${i + 1}: ${u}`)
+        .join("\n");
+
+      const promptLines = [
+        "TRY-ON MODE — render exactly one outfit image and stop.",
+        "Do NOT call FashionGetContext, FashionSearchProducts, or any product lookup. The user has already supplied the clothing references.",
+        "",
+        promptText
+          ? `User request: ${promptText}`
+          : "User request: put these clothes on the person in the body photo.",
+        "",
+        "Inputs:",
+        `- bodyPhotoPath: ${found.absolutePath}`,
+        `- batchId: ${batchId}`,
+        stashedPaths.length > 0
+          ? `- attachmentImagePaths:\n${referencePathLines}`
+          : "",
+        imageUrls.length > 0
+          ? `- attachmentImageUrls:\n${referenceUrlLines}`
+          : "",
+        "",
+        "Steps:",
+        "1. Call FashionCreateOutfit with batchId, ordinal=0, themeLabel='Try-on', themeDescription set to a one-line summary of the user request, products=[] (empty array — there are no shoppable products in try-on mode), and tryOnPrompt set to the prompt you'll feed image_gen.",
+        "2. Call image_gen with profile='fast', aspectRatio='3:4', referenceImagePaths=[bodyPhotoPath, ...attachmentImagePaths], referenceImageUrls=attachmentImageUrls.",
+        "   The prompt MUST include: 'studio photo on a clean white background, full body, natural pose, the same person as the first reference image, wearing the clothes from the remaining reference images.'",
+        "3. Read the image_gen `Saved image paths:` line and call FashionMarkOutfitReady with tryOnImagePath set to image_1's absolute path.",
+        "4. If image_gen fails, call FashionMarkOutfitFailed with a one-line errorMessage. Stop after a single render — do not retry, do not generate more outfits.",
+      ].filter(Boolean);
+
+      const runner = await waitForRunner();
+      const result = await runner.createBackgroundAgent({
+        conversationId: hiddenFashionConversationId(root),
+        description: "Render a Fashion try-on",
+        prompt: promptLines.join("\n"),
+        agentType: "fashion",
+      });
+      const threadId =
+        (result as { threadId?: string; agentId?: string }).threadId ??
+        (result as { threadId?: string; agentId?: string }).agentId;
+
+      return {
+        threadId,
+        batchId,
+        imagePaths: stashedPaths,
+        imageUrls,
+      };
+    },
+  );
+
+  registerPrivilegedHandle(
+    options,
     IPC_FASHION_START_OUTFIT_BATCH,
     async (_event: IpcMainInvokeEvent, payload?: Record<string, unknown>) => {
       const root = requireRoot();
@@ -292,7 +457,7 @@ export const registerFashionHandlers = (options: FashionHandlerOptions) => {
           : "",
         "",
         "Always begin by calling `FashionGetContext` once. Then assemble each outfit slot-by-slot with `FashionSearchProducts`, register it via `FashionCreateOutfit`, render it via `image_gen` (with the body photo path as the first reference image and product imageUrls as the remaining references), and finalize via `FashionMarkOutfitReady` / `FashionMarkOutfitFailed`.",
-        "The try-on image must show the user wearing the selected clothes on a clean white background. The Fashion tab will render the generated image and surround it with the actual product images.",
+        "The try-on image must show the user wearing the selected clothes on a clean white studio background. The Fashion tab will render the generated image and surround it with the actual product images.",
       ].filter(Boolean);
 
       const runner = await waitForRunner();

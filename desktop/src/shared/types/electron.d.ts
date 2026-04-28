@@ -865,6 +865,23 @@ export type ElectronFashionApi = {
     excludeProductIds?: string[];
     seedHints?: string[];
   }) => Promise<{ threadId?: string; batchId: string }>;
+  pickTryOnImages: () => Promise<
+    | { canceled: true; paths: string[] }
+    | { canceled: false; paths: string[] }
+  >;
+  /** Returns the absolute on-disk path for a dropped File, or "" if unavailable. */
+  getDroppedFilePath: (file: File) => string;
+  startTryOn: (payload: {
+    prompt?: string;
+    batchId?: string;
+    imagePaths?: string[];
+    imageUrls?: string[];
+  }) => Promise<{
+    threadId?: string;
+    batchId: string;
+    imagePaths: string[];
+    imageUrls: string[];
+  }>;
 };
 
 export type ElectronSocialSessionsApi = {
