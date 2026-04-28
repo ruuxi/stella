@@ -1,9 +1,19 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import { IPC_DISPLAY_READ_FILE } from "../../src/shared/contracts/ipc-channels.js";
+import {
+  IPC_DISPLAY_READ_FILE,
+  IPC_DISPLAY_TRASH_FORCE_DELETE,
+  IPC_DISPLAY_TRASH_LIST,
+} from "../../src/shared/contracts/ipc-channels.js";
+import {
+  listDeferredDeletes,
+  purgeAllDeferredDeletes,
+  purgeDeferredDelete,
+} from "../../../runtime/kernel/tools/deferred-delete.js";
 
 type DisplayHandlersOptions = {
+  getStellaRoot: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -80,6 +90,14 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 const ALLOWED_EXTENSIONS = new Set(Object.keys(MIME_BY_EXTENSION));
 
 export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
+  const requireStellaRoot = () => {
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) {
+      throw new Error("Stella root is unavailable.");
+    }
+    return stellaRoot;
+  };
+
   ipcMain.handle(
     IPC_DISPLAY_READ_FILE,
     async (event, payload?: { filePath?: unknown }) => {
@@ -117,6 +135,33 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
         sizeBytes: stats.size,
         mimeType: MIME_BY_EXTENSION[extension] ?? "application/octet-stream",
       };
+    },
+  );
+
+  ipcMain.handle(IPC_DISPLAY_TRASH_LIST, async (event) => {
+    if (!options.assertPrivilegedSender(event, IPC_DISPLAY_TRASH_LIST)) {
+      throw new Error(`Blocked untrusted ${IPC_DISPLAY_TRASH_LIST} request.`);
+    }
+    return await listDeferredDeletes({ stellaHome: requireStellaRoot() });
+  });
+
+  ipcMain.handle(
+    IPC_DISPLAY_TRASH_FORCE_DELETE,
+    async (event, payload?: { id?: unknown; all?: unknown }) => {
+      if (
+        !options.assertPrivilegedSender(event, IPC_DISPLAY_TRASH_FORCE_DELETE)
+      ) {
+        throw new Error(
+          `Blocked untrusted ${IPC_DISPLAY_TRASH_FORCE_DELETE} request.`,
+        );
+      }
+
+      const stellaHome = requireStellaRoot();
+      if (payload?.all === true) {
+        return await purgeAllDeferredDeletes({ stellaHome });
+      }
+      const id = typeof payload?.id === "string" ? payload.id : "";
+      return await purgeDeferredDelete(id, { stellaHome });
     },
   );
 };

@@ -1025,3 +1025,105 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   line-height: 1.55;
   white-space: pre-wrap;
 }
+
+/* ── Trash tab ──────────────────────────────────────────────────── */
+
+.display-sidebar__rich--trash {
+  padding: 12px;
+}
+
+.display-file-preview--trash {
+  gap: 8px;
+}
+
+.display-trash__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.display-trash__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+.display-trash__row:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.display-trash__row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.display-trash__name {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.display-trash__path {
+  color: var(--text-weak);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.display-trash__meta {
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-weak);
+  font-size: 11px;
+}
+
+.display-trash__sep {
+  opacity: 0.5;
+}
+
+.display-trash__row-actions {
+  flex-shrink: 0;
+}
+
+.display-trash__row-actions button,
+.display-trash__close {
+  appearance: none;
+  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-base);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 9px;
+}
+
+.display-trash__row-actions button:hover:not(:disabled),
+.display-trash__close:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.display-trash__row-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

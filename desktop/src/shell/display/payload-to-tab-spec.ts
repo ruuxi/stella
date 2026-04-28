@@ -27,6 +27,7 @@ import {
   Model3dTabContent,
   DownloadTabContent,
   TextTabContent,
+  TrashTabContent,
 } from "./tab-content";
 import type { DisplayTabSpec } from "./types";
 import { basenameOf, kindForPath } from "./path-to-viewer";
@@ -155,6 +156,15 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
             filePath: payload.filePath,
             ...(payload.title ? { title: payload.title } : {}),
           }),
+      };
+
+    case "trash":
+      return {
+        id: "trash:deferred-delete",
+        kind: "trash",
+        title,
+        metadata: { kind: "trash", createdAt: payload.createdAt },
+        render: () => createElement(TrashTabContent),
       };
 
     case "media": {

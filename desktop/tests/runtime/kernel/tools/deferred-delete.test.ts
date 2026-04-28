@@ -13,6 +13,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   getDeferredDeletePaths,
+  listDeferredDeletes,
+  purgeAllDeferredDeletes,
+  purgeDeferredDelete,
   purgeExpiredDeferredDeletes,
   trashPathsForDeferredDelete,
 } from "../../../../../runtime/kernel/tools/deferred-delete.js";
@@ -129,6 +132,43 @@ describe("deferred-delete trash", () => {
     expect(await readFile(freshResult.trashed[0]!.trashPath, "utf-8")).toBe(
       "new",
     );
+  });
+
+  it("lists and force-deletes deferred trash records", async () => {
+    const stellaHome = await createTempDir();
+    const first = path.join(stellaHome, "first.txt");
+    const second = path.join(stellaHome, "second.txt");
+    await writeFile(first, "one", "utf-8");
+    await writeFile(second, "two", "utf-8");
+
+    const firstResult = await trashPathsForDeferredDelete([first], {
+      source: "test",
+      stellaHome,
+    });
+    const secondResult = await trashPathsForDeferredDelete([second], {
+      source: "test",
+      stellaHome,
+    });
+
+    const list = await listDeferredDeletes({ stellaHome });
+    expect(list.errors).toEqual([]);
+    expect(list.items.map((item) => item.id).sort()).toEqual(
+      [firstResult.trashed[0]!.id, secondResult.trashed[0]!.id].sort(),
+    );
+
+    const one = await purgeDeferredDelete(firstResult.trashed[0]!.id, {
+      stellaHome,
+    });
+    expect(one).toMatchObject({ checked: 1, purged: 1, skipped: 0 });
+    await expect(
+      readFile(firstResult.trashed[0]!.trashPath, "utf-8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+
+    const all = await purgeAllDeferredDeletes({ stellaHome });
+    expect(all).toMatchObject({ checked: 1, purged: 1, skipped: 0 });
+    await expect(
+      readFile(secondResult.trashed[0]!.trashPath, "utf-8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 

@@ -196,6 +196,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerDisplayHandlers({
+    getStellaRoot: lifecycle.getStellaRoot,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

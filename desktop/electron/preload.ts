@@ -22,6 +22,8 @@ import {
   IPC_DISCOVERY_LIST_BROWSER_PROFILES,
   IPC_DISCOVERY_WRITE_CORE_MEMORY,
   IPC_DISCOVERY_WRITE_KNOWLEDGE,
+  IPC_DISPLAY_TRASH_FORCE_DELETE,
+  IPC_DISPLAY_TRASH_LIST,
   IPC_OFFICE_PREVIEW_LIST,
   IPC_OFFICE_PREVIEW_START,
   IPC_OFFICE_PREVIEW_UPDATE,
@@ -156,6 +158,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
         sizeBytes: number;
         mimeType: string;
       }>,
+    listTrash: () => ipcRenderer.invoke(IPC_DISPLAY_TRASH_LIST),
+    forceDeleteTrash: (payload: { id?: string; all?: boolean }) =>
+      ipcRenderer.invoke(IPC_DISPLAY_TRASH_FORCE_DELETE, payload),
   },
 
   officePreview: {
