@@ -47,11 +47,13 @@ import {
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_MODELS,
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_SHELL_SAVE_FILE_AS,
   IPC_SYSTEM_OPEN_FDA,
@@ -826,6 +828,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setPreventComputerSleep: (enabled: boolean) =>
       ipcRenderer.invoke(
         IPC_PREFERENCES_SET_PREVENT_SLEEP,
+        enabled,
+      ) as Promise<{ enabled: boolean }>,
+    getSoundNotificationsEnabled: () =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
+      ) as Promise<boolean>,
+    setSoundNotificationsEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
         enabled,
       ) as Promise<{ enabled: boolean }>,
     getBackupStatus: () => ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),

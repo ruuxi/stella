@@ -614,6 +614,15 @@ function BasicSettingsTab() {
   const [preventSleepError, setPreventSleepError] = useState<string | null>(
     null,
   );
+  const [soundNotificationsEnabled, setSoundNotificationsEnabled] =
+    useState(true);
+  const [soundNotificationsLoaded, setSoundNotificationsLoaded] =
+    useState(false);
+  const [isSavingSoundNotifications, setIsSavingSoundNotifications] =
+    useState(false);
+  const [soundNotificationsError, setSoundNotificationsError] = useState<
+    string | null
+  >(null);
   const initialPermissionStatus = useMemo<DesktopPermissionStatus>(
     () => ({
       accessibility: platform === "darwin" ? false : true,
@@ -650,6 +659,35 @@ function BasicSettingsTab() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const enabled =
+          await window.electronAPI?.system?.getSoundNotificationsEnabled?.();
+        if (!cancelled) {
+          setSoundNotificationsEnabled(enabled !== false);
+          setSoundNotificationsError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSoundNotificationsError(
+            getSettingsErrorMessage(
+              error,
+              "Failed to load sound notification setting.",
+            ),
+          );
+        }
+      } finally {
+        if (!cancelled) setSoundNotificationsLoaded(true);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handlePreventSleepChange = useCallback(
     async (checked: boolean) => {
       const systemApi = window.electronAPI?.system;
@@ -675,6 +713,38 @@ function BasicSettingsTab() {
       }
     },
     [preventComputerSleep],
+  );
+
+  const handleSoundNotificationsChange = useCallback(
+    async (checked: boolean) => {
+      const systemApi = window.electronAPI?.system;
+      if (!systemApi?.setSoundNotificationsEnabled) {
+        setSoundNotificationsError(
+          "Sound notification settings are unavailable in this window.",
+        );
+        return;
+      }
+
+      const previous = soundNotificationsEnabled;
+      setSoundNotificationsEnabled(checked);
+      setSoundNotificationsError(null);
+      setIsSavingSoundNotifications(true);
+      try {
+        const result = await systemApi.setSoundNotificationsEnabled(checked);
+        setSoundNotificationsEnabled(result.enabled);
+      } catch (error) {
+        setSoundNotificationsEnabled(previous);
+        setSoundNotificationsError(
+          getSettingsErrorMessage(
+            error,
+            "Failed to update sound notification setting.",
+          ),
+        );
+      } finally {
+        setIsSavingSoundNotifications(false);
+      }
+    },
+    [soundNotificationsEnabled],
   );
   const formatPermissionLoadError = useCallback(
     (error: unknown) =>
@@ -802,6 +872,40 @@ function BasicSettingsTab() {
                 setLocalSocialCensorEnabled(enabled);
                 setSocialCensorEnabled(enabled);
               }}
+              hideLabel
+            />
+          </div>
+        </div>
+      </div>
+      <div className="settings-card">
+        <h3 className="settings-card-title">Notifications</h3>
+        <p className="settings-card-desc">
+          Choose how Stella lets you know when background work finishes.
+        </p>
+        {soundNotificationsError ? (
+          <p
+            className="settings-card-desc settings-card-desc--error"
+            role="alert"
+          >
+            {soundNotificationsError}
+          </p>
+        ) : null}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Sound notifications</div>
+            <div className="settings-row-sublabel">
+              Play a sound when Stella finishes an agent run.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <Switch
+              checked={soundNotificationsEnabled}
+              disabled={
+                !soundNotificationsLoaded || isSavingSoundNotifications
+              }
+              onCheckedChange={(checked) =>
+                void handleSoundNotificationsChange(Boolean(checked))
+              }
               hideLabel
             />
           </div>

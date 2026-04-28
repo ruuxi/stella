@@ -186,6 +186,10 @@ export const IPC_PREFERENCES_GET_PREVENT_SLEEP =
   "preferences:getPreventSleep" as const;
 export const IPC_PREFERENCES_SET_PREVENT_SLEEP =
   "preferences:setPreventSleep" as const;
+export const IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS =
+  "preferences:getSoundNotifications" as const;
+export const IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS =
+  "preferences:setSoundNotifications" as const;
 export const IPC_BACKUP_GET_STATUS = "backup:getStatus" as const;
 export const IPC_BACKUP_RUN_NOW = "backup:runNow" as const;
 export const IPC_BACKUP_LIST = "backup:list" as const;
