@@ -512,6 +512,25 @@ body {
 	cursor: not-allowed;
 }
 
+.link-btn--with-spinner {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.link-btn--with-spinner:disabled {
+	opacity: 0.8;
+}
+
+.link-spinner {
+	width: 10px;
+	height: 10px;
+	border: 1.25px solid var(--border);
+	border-top-color: currentColor;
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+
 .link-danger:hover:not(:disabled) {
 	color: var(--red);
 }

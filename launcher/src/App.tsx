@@ -30,6 +30,7 @@ function App() {
   const [state, setState] = useState<InstallerState | null>(null);
   const [installPathDraft, setInstallPathDraft] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
   const [desktopRunning, setDesktopRunning] = useState(false);
   const desktopWasRunningRef = useRef(false);
 
@@ -132,7 +133,12 @@ function App() {
       )
     )
       return;
-    await invoke("uninstall_stella");
+    setUninstalling(true);
+    try {
+      await invoke("uninstall_stella");
+    } finally {
+      setUninstalling(false);
+    }
   }, [state?.installPath]);
 
   /* ── Derived ─────────────────────────────────────────────────── */
@@ -451,7 +457,7 @@ function App() {
             <button
               type="button"
               className="btn-primary"
-              disabled={!state.canLaunch || desktopRunning}
+              disabled={!state.canLaunch || desktopRunning || uninstalling}
               onClick={() => void handleLaunch()}
             >
               {desktopRunning ? "Launching..." : "Launch Stella"}
@@ -461,16 +467,19 @@ function App() {
                 type="button"
                 className="link-btn"
                 onClick={() => void handleOpenFolder()}
+                disabled={uninstalling}
               >
                 Open folder
               </button>
               {state.installed && !desktopRunning && !state.devMode && (
                 <button
                   type="button"
-                  className="link-btn link-danger"
+                  className="link-btn link-danger link-btn--with-spinner"
                   onClick={() => void handleUninstall()}
+                  disabled={uninstalling}
                 >
-                  Uninstall
+                  {uninstalling && <span className="link-spinner" />}
+                  {uninstalling ? "Uninstalling..." : "Uninstall"}
                 </button>
               )}
             </div>
