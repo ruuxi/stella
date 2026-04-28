@@ -44,6 +44,17 @@ function midPoint(index: number) {
   return polar(mid, (INNER_RADIUS + OUTER_RADIUS) / 2);
 }
 
+const WEDGE_GEOMETRY = RADIAL_WEDGES.map((wedge, index) => {
+  const start = index * WEDGE_ANGLE;
+  const end = start + WEDGE_ANGLE;
+  return {
+    wedge,
+    index,
+    mid: midPoint(index),
+    path: wedgePath(start, end),
+  };
+});
+
 export function RadialDialInteractive({
   selectedIndex,
   onSelect,
@@ -75,12 +86,9 @@ export function RadialDialInteractive({
           </radialGradient>
         </defs>
 
-        {RADIAL_WEDGES.map((wedge, index) => {
-          const start = index * WEDGE_ANGLE;
-          const end = start + WEDGE_ANGLE;
+        {WEDGE_GEOMETRY.map(({ wedge, index, mid, path }) => {
           const isSelected = index === selectedIndex;
           const Icon = wedge.icon;
-          const mid = midPoint(index);
 
           return (
             <g
@@ -101,10 +109,7 @@ export function RadialDialInteractive({
                 }
               }}
             >
-              <path
-                d={wedgePath(start, end)}
-                className="radial-dial-interactive__wedge-fill"
-              />
+              <path d={path} className="radial-dial-interactive__wedge-fill" />
               <foreignObject
                 x={mid.x - 28}
                 y={mid.y - 22}

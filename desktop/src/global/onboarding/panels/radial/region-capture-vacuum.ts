@@ -68,8 +68,14 @@ export async function runVacuumEffect(
   thumbnailUrl: string,
   centerX: number,
   centerY: number,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: false });
+  if (signal?.aborted) return;
+
+  const gl = canvas.getContext("webgl", {
+    alpha: true,
+    premultipliedAlpha: false,
+  });
   if (!gl) return;
 
   let img: HTMLImageElement;
@@ -78,6 +84,7 @@ export async function runVacuumEffect(
   } catch {
     return;
   }
+  if (signal?.aborted) return;
 
   canvas.width = img.width;
   canvas.height = img.height;
@@ -96,7 +103,11 @@ export async function runVacuumEffect(
 
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+    gl.STATIC_DRAW,
+  );
   const pos = gl.getAttribLocation(prog, "a_pos");
   gl.enableVertexAttribArray(pos);
   gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
@@ -118,7 +129,37 @@ export async function runVacuumEffect(
 
   return new Promise<void>((resolve) => {
     const start = performance.now();
+    let rafId = 0;
+    let done = false;
+
+    const cleanup = () => {
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.deleteTexture(tex);
+      gl.deleteBuffer(buf);
+      gl.deleteProgram(prog);
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+    };
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      signal?.removeEventListener("abort", finish);
+      cleanup();
+      resolve();
+    };
+
+    if (signal?.aborted) {
+      finish();
+      return;
+    }
+
+    signal?.addEventListener("abort", finish, { once: true });
+
     const frame = (now: number) => {
+      if (done) return;
       const t = Math.min((now - start) / DURATION, 1);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
@@ -126,19 +167,12 @@ export async function runVacuumEffect(
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
       if (t < 0.85) {
-        requestAnimationFrame(frame);
+        rafId = requestAnimationFrame(frame);
       } else {
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.deleteTexture(tex);
-        gl.deleteBuffer(buf);
-        gl.deleteProgram(prog);
-        gl.deleteShader(vs);
-        gl.deleteShader(fs);
-        resolve();
+        finish();
       }
     };
 
-    requestAnimationFrame(frame);
+    rafId = requestAnimationFrame(frame);
   });
 }

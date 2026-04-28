@@ -29,6 +29,7 @@ import {
   Users,
   Wand2,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import "./OnboardingCapabilitiesPhase.css";
 
@@ -57,6 +58,63 @@ type Scene = {
 
 const SCENE_DURATION_MS = 5400;
 const LONG_SCENE_DURATION_MS = 6200;
+
+const PRODUCTIVITY_APPS: Array<{
+  id: string;
+  Icon: LucideIcon;
+  label: string;
+  color: string;
+}> = [
+  {
+    id: "excel",
+    Icon: FileSpreadsheet,
+    label: "Q3-revenue.xlsx",
+    color: "var(--cap-excel)",
+  },
+  {
+    id: "word",
+    Icon: FileText,
+    label: "Proposal.docx",
+    color: "var(--cap-word)",
+  },
+  {
+    id: "ppt",
+    Icon: Presentation,
+    label: "Board deck.pptx",
+    color: "var(--cap-ppt)",
+  },
+  { id: "web", Icon: Globe, label: "yourname.com", color: "var(--cap-web)" },
+];
+
+const STORE_ITEMS: Array<{
+  name: string;
+  author: string;
+  action: "publish" | "install" | "browse";
+  Icon: LucideIcon;
+}> = [
+  { name: "Habit tracker", author: "by you", action: "publish", Icon: Check },
+  { name: "Recipe box", author: "by @maya", action: "install", Icon: Download },
+  {
+    name: "Mood journal",
+    author: "by @rahul",
+    action: "browse",
+    Icon: Sparkles,
+  },
+  { name: "Workout plan", author: "by @leo", action: "browse", Icon: Sparkles },
+];
+
+const ACTION_TIME_SLOTS = ["7:00", "7:30", "8:00", "8:30", "9:00"];
+const ACTION_DESKTOP_FILES = [
+  { name: "IMG_4209.jpg", delay: 400 },
+  { name: "invoice.pdf", delay: 560 },
+  { name: "notes.md", delay: 720 },
+  { name: "cat.gif", delay: 880 },
+];
+const ACTION_FOLDERS = [
+  { name: "Photos", delay: "1300ms" },
+  { name: "Receipts", delay: "1450ms" },
+  { name: "Notes", delay: "1600ms" },
+];
 
 const SCENES: Scene[] = [
   {
@@ -131,11 +189,14 @@ export function OnboardingCapabilitiesPhase({
   const [sceneIndex, setSceneIndex] = useState(0);
   const [visitCount, setVisitCount] = useState(0);
   const [completedFirstCycle, setCompletedFirstCycle] = useState(false);
+  const [stageHovered, setStageHovered] = useState(false);
   const sceneIndexRef = useRef(0);
   const completedRef = useRef(false);
+  const pauseRef = useRef<() => void>(() => {});
+  const resumeRef = useRef<() => void>(() => {});
 
-  // Honor reduced-motion: skip the auto-cycle entirely; dots remain
-  // functional so the user can still navigate between scenes manually.
+  // Honor reduced-motion: skip the auto-cycle entirely; the word nav stays
+  // functional so the user can still step between scenes manually.
   const prefersReducedMotion = useMemo(() => {
     if (typeof window === "undefined" || !window.matchMedia) return false;
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -147,10 +208,13 @@ export function OnboardingCapabilitiesPhase({
     setVisitCount((v) => v + 1);
   }, []);
 
-  // Auto-cycle with visibility-aware pause/resume + split-transition pause.
-  // We track the elapsed time on the active scene so when the window hides
-  // (or the user is leaving the phase) we can resume where we left off
-  // instead of either skipping ahead via coalesced timeouts or restarting.
+  // Auto-cycle with visibility-aware pause/resume. We track elapsed time on
+  // the active scene so when the cycle is paused (window hidden, mid-phase
+  // transition, or pointer hovering the mock) we resume where we left off
+  // rather than skipping ahead or restarting. Pause/resume are exposed via
+  // refs so external triggers (hover, splitTransitionActive) can poke the
+  // same timer without re-running the effect — re-running would reset the
+  // remaining-time bookkeeping and visually jolt the underline progress.
   useEffect(() => {
     if (prefersReducedMotion) return;
 
@@ -196,12 +260,14 @@ export function OnboardingCapabilitiesPhase({
       timer = setTimeout(advance, remainingMs);
     };
 
+    pauseRef.current = pause;
+    resumeRef.current = resume;
+
     const isHidden = () =>
-      typeof document !== "undefined" &&
-      document.visibilityState === "hidden";
+      typeof document !== "undefined" && document.visibilityState === "hidden";
 
     sceneStartedAt = Date.now();
-    if (isHidden() || splitTransitionActive) {
+    if (isHidden()) {
       paused = true;
     } else {
       timer = setTimeout(advance, remainingMs);
@@ -209,7 +275,7 @@ export function OnboardingCapabilitiesPhase({
 
     const onVisibility = () => {
       if (cancelled) return;
-      if (isHidden() || splitTransitionActive) pause();
+      if (isHidden()) pause();
       else resume();
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -217,24 +283,28 @@ export function OnboardingCapabilitiesPhase({
     return () => {
       cancelled = true;
       clearTimer();
+      pauseRef.current = () => {};
+      resumeRef.current = () => {};
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [goToScene, prefersReducedMotion, splitTransitionActive]);
+  }, [goToScene, prefersReducedMotion]);
+
+  // External pause sources: split transition (phase change) and pointer
+  // hover over the mock. Both call into the same pause/resume bookkeeping
+  // so the underline animation freezes/resumes in lockstep.
+  const externallyPaused = splitTransitionActive || stageHovered;
+  useEffect(() => {
+    if (externallyPaused) {
+      pauseRef.current();
+    } else {
+      resumeRef.current();
+    }
+  }, [externallyPaused]);
 
   const activeScene = SCENES[sceneIndex];
   const sceneKey = `${activeScene.id}-${visitCount}`;
   const isLastScene = sceneIndex === SCENES.length - 1;
   const continueEmphasized = completedFirstCycle || isLastScene;
-
-  const dots = useMemo(
-    () =>
-      SCENES.map((scene, i) => ({
-        id: scene.id,
-        active: i === sceneIndex,
-        completed: completedFirstCycle || i < sceneIndex,
-      })),
-    [completedFirstCycle, sceneIndex],
-  );
 
   const handleSelectScene = useCallback(
     (i: number) => {
@@ -245,49 +315,65 @@ export function OnboardingCapabilitiesPhase({
 
   return (
     <div className="onboarding-step-content onboarding-cap-step">
-      <div className="onboarding-cap-frame">
-        <div className="onboarding-cap-frame__progress" aria-hidden="true">
-          <span
-            key={sceneKey}
-            className="onboarding-cap-frame__progress-fill"
-            style={{ animationDuration: `${activeScene.durationMs}ms` }}
-          />
-        </div>
-
-        <div className="onboarding-cap-stage" data-scene={activeScene.id}>
+      <div
+        className="onboarding-cap-frame"
+        data-paused={externallyPaused || undefined}
+      >
+        <div
+          className="onboarding-cap-stage"
+          data-scene={activeScene.id}
+          onMouseEnter={() => setStageHovered(true)}
+          onMouseLeave={() => setStageHovered(false)}
+        >
           <div key={sceneKey} className="onboarding-cap-scene" data-active>
             {activeScene.render(true)}
           </div>
         </div>
 
         <div className="onboarding-cap-caption" key={`caption-${sceneKey}`}>
-          <span className="onboarding-cap-caption__tag">
-            {activeScene.category}
-          </span>
-          <h3 className="onboarding-cap-caption__title">
-            {activeScene.title}
-          </h3>
+          <h3 className="onboarding-cap-caption__title">{activeScene.title}</h3>
           <p className="onboarding-cap-caption__body">{activeScene.caption}</p>
         </div>
 
         <div
-          className="onboarding-cap-dots"
+          className="onboarding-cap-words"
           role="tablist"
           aria-label="Capability scenes"
         >
-          {dots.map((dot, i) => (
-            <button
-              key={dot.id}
-              type="button"
-              role="tab"
-              aria-selected={dot.active}
-              className="onboarding-cap-dots__dot"
-              data-active={dot.active || undefined}
-              data-completed={dot.completed || undefined}
-              onClick={() => handleSelectScene(i)}
-              aria-label={`Show ${SCENES[i].category}`}
-            />
-          ))}
+          {SCENES.map((scene, i) => {
+            const active = i === sceneIndex;
+            const completed = completedFirstCycle || i < sceneIndex;
+            return (
+              <button
+                key={scene.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className="onboarding-cap-words__word"
+                data-active={active || undefined}
+                data-completed={completed || undefined}
+                onClick={() => handleSelectScene(i)}
+              >
+                <span className="onboarding-cap-words__label">
+                  {scene.category}
+                </span>
+                <span
+                  className="onboarding-cap-words__track"
+                  aria-hidden="true"
+                >
+                  {active ? (
+                    <span
+                      key={sceneKey}
+                      className="onboarding-cap-words__fill"
+                      style={{
+                        animationDuration: `${activeScene.durationMs}ms`,
+                      }}
+                    />
+                  ) : null}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -322,10 +408,7 @@ function StellaShell({
   badge?: string;
 }) {
   return (
-    <div
-      className="onboarding-cap-shell"
-      data-variant={variant ?? "default"}
-    >
+    <div className="onboarding-cap-shell" data-variant={variant ?? "default"}>
       <div className="onboarding-cap-shell__sidebar">
         <div className="onboarding-cap-shell__brand">
           <Sparkles size={12} />
@@ -418,10 +501,14 @@ function PillComposer({ placeholder }: { placeholder: string }) {
 
 function CreationScene({ active }: { active: boolean }) {
   return (
-    <StellaShell highlightSidebar={active ? "habits" : null} variant={active ? "themed" : "default"}>
+    <StellaShell
+      highlightSidebar={active ? "habits" : null}
+      variant={active ? "themed" : "default"}
+    >
       <div className="onboarding-cap-creation">
         <ChatBubble role="user" active={active} delay={120}>
-          Add a habit tracker, give yourself a softer voice, and use the moss theme.
+          Add a habit tracker, give yourself a softer voice, and use the moss
+          theme.
         </ChatBubble>
         <ChatBubble role="assistant" active={active} delay={1200}>
           <span className="onboarding-cap-bubble__wand">
@@ -457,46 +544,48 @@ function CreationScene({ active }: { active: boolean }) {
 /* ── Scene 2: Productivity ─────────────────────────────────────────── */
 
 function ProductivityScene({ active }: { active: boolean }) {
-  const apps = [
-    { id: "excel", icon: <FileSpreadsheet size={16} />, label: "Q3-revenue.xlsx", color: "var(--cap-excel)" },
-    { id: "word", icon: <FileText size={16} />, label: "Proposal.docx", color: "var(--cap-word)" },
-    { id: "ppt", icon: <Presentation size={16} />, label: "Board deck.pptx", color: "var(--cap-ppt)" },
-    { id: "web", icon: <Globe size={16} />, label: "yourname.com", color: "var(--cap-web)" },
-  ];
   return (
     <StellaShell>
       <div className="onboarding-cap-productivity">
         <ChatBubble role="user" active={active} delay={120}>
-          Update the Q3 revenue sheet, draft the board proposal, build matching slides, and put it all on my website.
+          Update the Q3 revenue sheet, draft the board proposal, build matching
+          slides, and put it all on my website.
         </ChatBubble>
         <div className="onboarding-cap-productivity__row">
-          {apps.map((app, i) => (
-            <div
-              key={app.id}
-              className="onboarding-cap-app-card"
-              data-visible={active || undefined}
-              style={
-                {
-                  "--cap-accent": app.color,
-                  animationDelay: `${600 + i * 240}ms`,
-                } as CSSProperties
-              }
-            >
-              <div className="onboarding-cap-app-card__icon">{app.icon}</div>
-              <div className="onboarding-cap-app-card__meta">
-                <span className="onboarding-cap-app-card__name">{app.label}</span>
-                <div className="onboarding-cap-app-card__bar">
-                  <span
-                    className="onboarding-cap-app-card__bar-fill"
-                    style={{ animationDelay: `${800 + i * 240}ms` }}
-                  />
+          {PRODUCTIVITY_APPS.map((app, i) => {
+            const Icon = app.Icon;
+            return (
+              <div
+                key={app.id}
+                className="onboarding-cap-app-card"
+                data-visible={active || undefined}
+                style={
+                  {
+                    "--cap-accent": app.color,
+                    animationDelay: `${600 + i * 240}ms`,
+                  } as CSSProperties
+                }
+              >
+                <div className="onboarding-cap-app-card__icon">
+                  <Icon size={16} />
+                </div>
+                <div className="onboarding-cap-app-card__meta">
+                  <span className="onboarding-cap-app-card__name">
+                    {app.label}
+                  </span>
+                  <div className="onboarding-cap-app-card__bar">
+                    <span
+                      className="onboarding-cap-app-card__bar-fill"
+                      style={{ animationDelay: `${800 + i * 240}ms` }}
+                    />
+                  </div>
+                </div>
+                <div className="onboarding-cap-app-card__check">
+                  <Check size={12} />
                 </div>
               </div>
-              <div className="onboarding-cap-app-card__check">
-                <Check size={12} />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <ChatBubble role="assistant" active={active} delay={2800}>
           Updated the spreadsheet, wrote the doc, and pushed your site live.
@@ -511,10 +600,7 @@ function ProductivityScene({ active }: { active: boolean }) {
 function ConnectionScene({ active }: { active: boolean }) {
   return (
     <div className="onboarding-cap-connection">
-      <div
-        className="onboarding-cap-phone"
-        data-visible={active || undefined}
-      >
+      <div className="onboarding-cap-phone" data-visible={active || undefined}>
         <div className="onboarding-cap-phone__notch" />
         <div className="onboarding-cap-phone__header">
           <span className="onboarding-cap-phone__avatar">
@@ -523,10 +609,20 @@ function ConnectionScene({ active }: { active: boolean }) {
           <span className="onboarding-cap-phone__name">Stella</span>
         </div>
         <div className="onboarding-cap-phone__messages">
-          <div className="onboarding-cap-phone__msg" data-role="user" data-visible={active || undefined} style={{ animationDelay: "200ms" }}>
+          <div
+            className="onboarding-cap-phone__msg"
+            data-role="user"
+            data-visible={active || undefined}
+            style={{ animationDelay: "200ms" }}
+          >
             Hey, my flight just landed — can you confirm dinner tonight at 8?
           </div>
-          <div className="onboarding-cap-phone__msg" data-role="assistant" data-visible={active || undefined} style={{ animationDelay: "1500ms" }}>
+          <div
+            className="onboarding-cap-phone__msg"
+            data-role="assistant"
+            data-visible={active || undefined}
+            style={{ animationDelay: "1500ms" }}
+          >
             On it. Pinging your desk now.
           </div>
         </div>
@@ -541,7 +637,10 @@ function ConnectionScene({ active }: { active: boolean }) {
         <ArrowRight size={14} />
       </div>
 
-      <div className="onboarding-cap-desktop" data-visible={active || undefined}>
+      <div
+        className="onboarding-cap-desktop"
+        data-visible={active || undefined}
+      >
         <div className="onboarding-cap-desktop__bar">
           <span />
           <span />
@@ -549,13 +648,22 @@ function ConnectionScene({ active }: { active: boolean }) {
           <strong>Mac · Stella</strong>
         </div>
         <div className="onboarding-cap-desktop__body">
-          <div className="onboarding-cap-desktop__step" style={{ animationDelay: "1800ms" }}>
+          <div
+            className="onboarding-cap-desktop__step"
+            style={{ animationDelay: "1800ms" }}
+          >
             <Globe size={11} /> Opening opentable.com
           </div>
-          <div className="onboarding-cap-desktop__step" style={{ animationDelay: "2400ms" }}>
+          <div
+            className="onboarding-cap-desktop__step"
+            style={{ animationDelay: "2400ms" }}
+          >
             <Check size={11} /> 8:00 PM · party of 2
           </div>
-          <div className="onboarding-cap-desktop__step" style={{ animationDelay: "3000ms" }}>
+          <div
+            className="onboarding-cap-desktop__step"
+            style={{ animationDelay: "3000ms" }}
+          >
             <Send size={11} /> Confirmation sent to your phone
           </div>
         </div>
@@ -567,12 +675,6 @@ function ConnectionScene({ active }: { active: boolean }) {
 /* ── Scene 4: Store ────────────────────────────────────────────────── */
 
 function StoreScene({ active }: { active: boolean }) {
-  const items = [
-    { name: "Habit tracker", author: "by you", action: "publish" as const, icon: <Check size={12} /> },
-    { name: "Recipe box", author: "by @maya", action: "install" as const, icon: <Download size={12} /> },
-    { name: "Mood journal", author: "by @rahul", action: "browse" as const, icon: <Sparkles size={12} /> },
-    { name: "Workout plan", author: "by @leo", action: "browse" as const, icon: <Sparkles size={12} /> },
-  ];
   return (
     <StellaShell highlightSidebar={active ? "store" : null}>
       <div className="onboarding-cap-store">
@@ -583,34 +685,43 @@ function StoreScene({ active }: { active: boolean }) {
           </span>
         </div>
         <div className="onboarding-cap-store__grid">
-          {items.map((item, i) => (
-            <div
-              key={item.name}
-              className="onboarding-cap-store__card"
-              data-visible={active || undefined}
-              data-action={item.action}
-              style={{ animationDelay: `${300 + i * 200}ms` }}
-            >
-              <div className="onboarding-cap-store__card-art">{item.icon}</div>
-              <div className="onboarding-cap-store__card-meta">
-                <span className="onboarding-cap-store__card-name">{item.name}</span>
-                <span className="onboarding-cap-store__card-author">{item.author}</span>
+          {STORE_ITEMS.map((item, i) => {
+            const Icon = item.Icon;
+            return (
+              <div
+                key={item.name}
+                className="onboarding-cap-store__card"
+                data-visible={active || undefined}
+                data-action={item.action}
+                style={{ animationDelay: `${300 + i * 200}ms` }}
+              >
+                <div className="onboarding-cap-store__card-art">
+                  <Icon size={12} />
+                </div>
+                <div className="onboarding-cap-store__card-meta">
+                  <span className="onboarding-cap-store__card-name">
+                    {item.name}
+                  </span>
+                  <span className="onboarding-cap-store__card-author">
+                    {item.author}
+                  </span>
+                </div>
+                {item.action === "publish" ? (
+                  <span className="onboarding-cap-store__card-tag">
+                    <Upload size={10} /> Publishing
+                  </span>
+                ) : item.action === "install" ? (
+                  <span className="onboarding-cap-store__card-tag">
+                    <ArrowDown size={10} /> Installing
+                  </span>
+                ) : (
+                  <span className="onboarding-cap-store__card-tag" data-quiet>
+                    Browse
+                  </span>
+                )}
               </div>
-              {item.action === "publish" ? (
-                <span className="onboarding-cap-store__card-tag">
-                  <Upload size={10} /> Publishing
-                </span>
-              ) : item.action === "install" ? (
-                <span className="onboarding-cap-store__card-tag">
-                  <ArrowDown size={10} /> Installing
-                </span>
-              ) : (
-                <span className="onboarding-cap-store__card-tag" data-quiet>
-                  Browse
-                </span>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </StellaShell>
@@ -640,7 +751,8 @@ function TogetherScene({ active }: { active: boolean }) {
 
         <div className="onboarding-cap-together__chat">
           <ChatBubble role="user" active={active} delay={200}>
-            Plan our trip to Lisbon — flights, a hotel near Alfama, and a food list.
+            Plan our trip to Lisbon — flights, a hotel near Alfama, and a food
+            list.
           </ChatBubble>
           <ChatBubble role="assistant" active={active} delay={1200}>
             <span className="onboarding-cap-bubble__wand">
@@ -738,8 +850,14 @@ function ModesScene({ active }: { active: boolean }) {
         </div>
         <div className="onboarding-cap-voice">
           <span className="onboarding-cap-voice__ring" />
-          <span className="onboarding-cap-voice__ring" style={{ animationDelay: "0.3s" }} />
-          <span className="onboarding-cap-voice__ring" style={{ animationDelay: "0.6s" }} />
+          <span
+            className="onboarding-cap-voice__ring"
+            style={{ animationDelay: "0.3s" }}
+          />
+          <span
+            className="onboarding-cap-voice__ring"
+            style={{ animationDelay: "0.6s" }}
+          />
           <span className="onboarding-cap-voice__mic">
             <Mic size={20} />
           </span>
@@ -771,14 +889,12 @@ function ActionsScene({ active }: { active: boolean }) {
         </div>
         <div className="onboarding-cap-actions__browser-body">
           <div className="onboarding-cap-actions__rest">
-            <div className="onboarding-cap-actions__rest-name">
-              Luna Cucina
-            </div>
+            <div className="onboarding-cap-actions__rest-name">Luna Cucina</div>
             <div className="onboarding-cap-actions__rest-meta">
               Italian · West Village · ⭐ 4.8
             </div>
             <div className="onboarding-cap-actions__time-row">
-              {["7:00", "7:30", "8:00", "8:30", "9:00"].map((t, i) => (
+              {ACTION_TIME_SLOTS.map((t, i) => (
                 <span
                   key={t}
                   className="onboarding-cap-actions__time"
@@ -805,17 +921,15 @@ function ActionsScene({ active }: { active: boolean }) {
         </div>
       </div>
 
-      <div className="onboarding-cap-actions__desktop" data-visible={active || undefined}>
+      <div
+        className="onboarding-cap-actions__desktop"
+        data-visible={active || undefined}
+      >
         <div className="onboarding-cap-actions__desktop-label">
           Desktop · cleaning up
         </div>
         <div className="onboarding-cap-actions__file-row">
-          {[
-            { name: "IMG_4209.jpg", delay: 400 },
-            { name: "invoice.pdf", delay: 560 },
-            { name: "notes.md", delay: 720 },
-            { name: "cat.gif", delay: 880 },
-          ].map((file) => (
+          {ACTION_DESKTOP_FILES.map((file) => (
             <span
               key={file.name}
               className="onboarding-cap-actions__file"
@@ -826,15 +940,15 @@ function ActionsScene({ active }: { active: boolean }) {
           ))}
         </div>
         <div className="onboarding-cap-actions__folders">
-          <span className="onboarding-cap-actions__folder" style={{ animationDelay: "1300ms" }}>
-            Photos
-          </span>
-          <span className="onboarding-cap-actions__folder" style={{ animationDelay: "1450ms" }}>
-            Receipts
-          </span>
-          <span className="onboarding-cap-actions__folder" style={{ animationDelay: "1600ms" }}>
-            Notes
-          </span>
+          {ACTION_FOLDERS.map((folder) => (
+            <span
+              key={folder.name}
+              className="onboarding-cap-actions__folder"
+              style={{ animationDelay: folder.delay }}
+            >
+              {folder.name}
+            </span>
+          ))}
         </div>
       </div>
     </div>

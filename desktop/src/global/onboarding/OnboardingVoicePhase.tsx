@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 import { getPlatform } from "@/platform/electron/platform";
+import { Keychord } from "./Keychord";
 import "./OnboardingVoicePhase.css";
 
 type VoicePhaseProps = {
@@ -41,16 +42,15 @@ export function OnboardingVoicePhase({
   onContinue,
 }: VoicePhaseProps) {
   const platform = getPlatform();
-  const talkKey =
-    TALK_KEY_BY_PLATFORM[platform] ?? TALK_KEY_BY_PLATFORM.darwin;
+  const talkKey = TALK_KEY_BY_PLATFORM[platform] ?? TALK_KEY_BY_PLATFORM.darwin;
   const dictateKey =
     DICTATE_KEY_BY_PLATFORM[platform] ?? DICTATE_KEY_BY_PLATFORM.darwin;
 
   return (
     <div className="onboarding-step-content onboarding-voice-step">
       <p className="onboarding-step-desc onboarding-voice-step__lede">
-        Two voice shortcuts that work anywhere on your computer — one to
-        talk with Stella, one to type with your voice in any app.
+        Two voice shortcuts that work anywhere on your computer — one to speak
+        with Stella, one to dictate into any app.
       </p>
 
       <div className="onboarding-voice-grid">
@@ -60,7 +60,7 @@ export function OnboardingVoicePhase({
             <header className="onboarding-voice-card__header">
               <div className="onboarding-voice-card__heading">
                 <span className="onboarding-voice-card__eyebrow">
-                  Talk with Stella
+                  Speak with Stella
                 </span>
                 <h3 className="onboarding-voice-card__title">
                   Have a real conversation.
@@ -69,19 +69,19 @@ export function OnboardingVoicePhase({
             </header>
 
             <div className="onboarding-voice-card__stage onboarding-voice-card__stage--talk">
-            {/* Faithful mock of `voice-overlay-creature`: the Stella
-                creature inside its white radial halo. */}
-            <div
-              className="onboarding-voice-overlay-creature"
-              aria-hidden="true"
-            >
-              <StellaAnimation
-                width={20}
-                height={20}
-                maxDpr={2}
-                voiceMode="listening"
-              />
-            </div>
+              {/* Faithful mock of `voice-overlay-creature`: the Stella
+                  creature inside its white radial halo. */}
+              <div
+                className="onboarding-voice-overlay-creature"
+                aria-hidden="true"
+              >
+                <StellaAnimation
+                  width={20}
+                  height={20}
+                  maxDpr={2}
+                  voiceMode="listening"
+                />
+              </div>
             </div>
 
             <p className="onboarding-voice-card__caption">
@@ -105,69 +105,69 @@ export function OnboardingVoicePhase({
             </header>
 
             <div className="onboarding-voice-card__stage onboarding-voice-card__stage--dictate">
-            {/* "Any app" surface — generic email draft to make it clear
-                this overlay floats above whatever the user is in, not
-                just Stella. */}
-            <div className="onboarding-voice-app" aria-hidden="true">
-              <div className="onboarding-voice-app__bar">
-                <span />
-                <span />
-                <span />
-                <strong>Mail — New message</strong>
+              {/* "Any app" surface — generic email draft to make it
+                  clear this overlay floats above whatever the user is
+                  in, not just Stella. */}
+              <div className="onboarding-voice-app" aria-hidden="true">
+                <div className="onboarding-voice-app__bar">
+                  <span />
+                  <span />
+                  <span />
+                  <strong>Mail — New message</strong>
+                </div>
+                <div className="onboarding-voice-app__body">
+                  <div className="onboarding-voice-app__field">
+                    <span className="onboarding-voice-app__label">To</span>
+                    <span className="onboarding-voice-app__value">
+                      alex@team.com
+                    </span>
+                  </div>
+                  <div className="onboarding-voice-app__field">
+                    <span className="onboarding-voice-app__label">Subject</span>
+                    <span className="onboarding-voice-app__value">
+                      Quick update
+                    </span>
+                  </div>
+                  <div className="onboarding-voice-app__editor">
+                    <span className="onboarding-voice-app__typed">
+                      Hey Alex — pushing the launch to next Tuesday so we have
+                      time to polish the deck.
+                    </span>
+                    <span className="onboarding-voice-app__caret" />
+                  </div>
+                </div>
               </div>
-              <div className="onboarding-voice-app__body">
-                <div className="onboarding-voice-app__field">
-                  <span className="onboarding-voice-app__label">To</span>
-                  <span className="onboarding-voice-app__value">
-                    alex@team.com
-                  </span>
-                </div>
-                <div className="onboarding-voice-app__field">
-                  <span className="onboarding-voice-app__label">Subject</span>
-                  <span className="onboarding-voice-app__value">
-                    Quick update
-                  </span>
-                </div>
-                <div className="onboarding-voice-app__editor">
-                  <span className="onboarding-voice-app__typed">
-                    Hey Alex — pushing the launch to next Tuesday so we have
-                    time to polish the deck.
-                  </span>
-                  <span className="onboarding-voice-app__caret" />
-                </div>
-              </div>
-            </div>
 
-            {/* Faithful mock of `.dictation-overlay` + DictationRecordingBar.
-                Static visual replica — no live audio in onboarding. */}
-            <div
-              className="onboarding-voice-dictation-overlay"
-              aria-hidden="true"
-            >
-              <FakeWaveform />
-              <span className="onboarding-voice-dictation-timer">0:04</span>
-              <button
-                type="button"
-                className="onboarding-voice-dictation-btn onboarding-voice-dictation-btn--cancel"
-                tabIndex={-1}
-                aria-label="Cancel dictation"
+              {/* Faithful mock of `.dictation-overlay` +
+                  DictationRecordingBar. Static visual replica — no
+                  live audio in onboarding. */}
+              <div
+                className="onboarding-voice-dictation-overlay"
+                aria-hidden="true"
               >
-                <CancelIcon />
-              </button>
-              <button
-                type="button"
-                className="onboarding-voice-dictation-btn onboarding-voice-dictation-btn--confirm"
-                tabIndex={-1}
-                aria-label="Stop dictation and transcribe"
-              >
-                <CheckIcon />
-              </button>
-            </div>
+                <FakeWaveform />
+                <span className="onboarding-voice-dictation-timer">0:04</span>
+                <button
+                  type="button"
+                  className="onboarding-voice-dictation-btn onboarding-voice-dictation-btn--cancel"
+                  tabIndex={-1}
+                  aria-label="Cancel dictation"
+                >
+                  <CancelIcon />
+                </button>
+                <button
+                  type="button"
+                  className="onboarding-voice-dictation-btn onboarding-voice-dictation-btn--confirm"
+                  tabIndex={-1}
+                  aria-label="Stop dictation and transcribe"
+                >
+                  <CheckIcon />
+                </button>
+              </div>
             </div>
 
             <p className="onboarding-voice-card__caption">
-              Works in any app — email, Notes, browser, anywhere your cursor
-              is.
+              Works in any app — email, Notes, browser, anywhere your cursor is.
             </p>
           </div>
         </article>
@@ -185,61 +185,33 @@ export function OnboardingVoicePhase({
   );
 }
 
-function Keychord({ glyphs, aria }: { glyphs: string[]; aria: string }) {
-  return (
-    <div className="onboarding-voice-keychord" role="img" aria-label={aria}>
-      {glyphs.map((glyph, i) => (
-        <span key={i} className="onboarding-voice-keychord__group">
-          {i > 0 ? (
-            <span className="onboarding-voice-keycap-sep" aria-hidden="true">
-              +
-            </span>
-          ) : null}
-          <span className="onboarding-voice-keycap">{glyph}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
 /* Animated waveform replica that visually matches the right-aligned
  * scrolling bars rendered to canvas in `DictationRecordingBar`. We use
  * lightweight DOM bars with phase-shifted CSS animations so the demo
  * doesn't need an audio capture session. */
 const WAVEFORM_BAR_COUNT = 56;
+const WAVEFORM_BARS = Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
+  const seed = (i * 37) % 100;
+  return {
+    key: i,
+    style: {
+      animationDelay: `${(seed % 100) * 12}ms`,
+      // Slightly lower amplitude for the leading (older) bars so the
+      // right-most "now" bars feel most active — same shape the real canvas
+      // renders.
+      "--bar-peak": `${30 + ((seed * 7) % 70)}%`,
+    } as CSSProperties,
+  };
+});
 
 function FakeWaveform() {
-  const seedsRef = useRef<number[]>([]);
-  const [, force] = useState(0);
-
-  if (seedsRef.current.length === 0) {
-    seedsRef.current = Array.from(
-      { length: WAVEFORM_BAR_COUNT },
-      (_, i) => (i * 37) % 100,
-    );
-  }
-
-  // Re-seed periodically so the waveform feels live. Cheap because each
-  // tick just bumps a state counter; bar phases come from inline CSS
-  // animations driven by the seed values.
-  useEffect(() => {
-    const id = window.setInterval(() => force((v) => v + 1), 1600);
-    return () => window.clearInterval(id);
-  }, []);
-
   return (
     <div className="onboarding-voice-waveform" aria-hidden="true">
-      {seedsRef.current.map((seed, i) => (
+      {WAVEFORM_BARS.map((bar) => (
         <span
-          key={i}
+          key={bar.key}
           className="onboarding-voice-waveform__bar"
-          style={{
-            animationDelay: `${(seed % 100) * 12}ms`,
-            // Slightly lower amplitude for the leading (older) bars so
-            // the right-most "now" bars feel most active — same shape
-            // the real canvas renders.
-            ["--bar-peak" as string]: `${30 + ((seed * 7) % 70)}%`,
-          }}
+          style={bar.style}
         />
       ))}
     </div>
