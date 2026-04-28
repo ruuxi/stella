@@ -311,6 +311,19 @@ export type StoreOperations = {
       files: import("../../contracts/index.js").StorePublishCandidateFile[];
     },
   ) => Promise<StorePackageReleaseRecord>;
+  prepareStoreCandidateRelease: (
+    args: import("../../protocol/index.js").StorePublishCandidateArgs & {
+      commits: import("../../contracts/index.js").StorePublishCandidateCommit[];
+      files: import("../../contracts/index.js").StorePublishCandidateFile[];
+    },
+  ) => Promise<import("../../contracts/index.js").StorePublishDraft>;
+  publishPreparedStoreRelease: (
+    args: import("../../protocol/index.js").StorePublishCandidateArgs & {
+      commits: import("../../contracts/index.js").StorePublishCandidateCommit[];
+      files: import("../../contracts/index.js").StorePublishCandidateFile[];
+      draft: import("../../contracts/index.js").StorePublishDraft;
+    },
+  ) => Promise<StorePackageReleaseRecord>;
 };
 
 export type RunnerPublicApi = {
@@ -356,6 +369,8 @@ export type RunnerPublicApi = {
   createFirstStoreRelease: StoreOperations["createFirstStoreRelease"];
   createStoreReleaseUpdate: StoreOperations["createStoreReleaseUpdate"];
   publishStoreCandidateRelease: StoreOperations["publishStoreCandidateRelease"];
+  prepareStoreCandidateRelease: StoreOperations["prepareStoreCandidateRelease"];
+  publishPreparedStoreRelease: StoreOperations["publishPreparedStoreRelease"];
   handleLocalChat: (
     payload: ChatPayload,
     callbacks: AgentCallbacks,

@@ -1231,6 +1231,37 @@ export class StellaRuntimeClient {
     );
   }
 
+  async prepareStoreCandidateRelease(payload: {
+    requestText: string;
+    selectedCommitHashes: string[];
+    existingPackageId?: string;
+  }) {
+    return await this.requestWorker(
+      METHOD_NAMES.STORE_PREPARE_CANDIDATE_RELEASE,
+      payload,
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
+  async publishPreparedStoreRelease(payload: {
+    requestText: string;
+    selectedCommitHashes: string[];
+    existingPackageId?: string;
+    draft: import("../contracts/index.js").StorePublishDraft;
+  }) {
+    return await this.requestWorker<StorePackageReleaseRecord>(
+      METHOD_NAMES.STORE_PUBLISH_PREPARED_RELEASE,
+      payload,
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
   async installStoreRelease(payload: { packageId: string; releaseNumber?: number }) {
     return await this.requestWorker<InstalledStoreModRecord>(
       METHOD_NAMES.INTERNAL_WORKER_INSTALL_STORE_RELEASE,

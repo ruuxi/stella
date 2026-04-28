@@ -6,6 +6,7 @@ import type {
   LocalGitCommitRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
+  StorePublishDraft,
 } from "../../src/shared/contracts/boundary.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
@@ -118,6 +119,35 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     ) =>
       await withStoreRunner(event, "store:publishCandidateRelease", async (runner) =>
         await runner.publishStoreCandidateRelease(payload) satisfies StorePackageReleaseRecord),
+  );
+
+  ipcMain.handle(
+    "store:prepareCandidateRelease",
+    async (
+      event,
+      payload: {
+        requestText: string;
+        selectedCommitHashes: string[];
+        existingPackageId?: string;
+      },
+    ) =>
+      await withStoreRunner(event, "store:prepareCandidateRelease", async (runner) =>
+        (await runner.prepareStoreCandidateRelease(payload)) as StorePublishDraft),
+  );
+
+  ipcMain.handle(
+    "store:publishPreparedRelease",
+    async (
+      event,
+      payload: {
+        requestText: string;
+        selectedCommitHashes: string[];
+        existingPackageId?: string;
+        draft: StorePublishDraft;
+      },
+    ) =>
+      await withStoreRunner(event, "store:publishPreparedRelease", async (runner) =>
+        await runner.publishPreparedStoreRelease(payload) satisfies StorePackageReleaseRecord),
   );
 
   ipcMain.handle(

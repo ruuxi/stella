@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
+  StorePublishDraft,
   InstalledStoreModRecord,
   LocalGitCommitRecord,
   StellaConnectorSummary,
@@ -172,8 +173,8 @@ function useStorePackages() {
 /**
  * Flat list of recent self-mod commits surfaced from the runtime. Each
  * commit is one agent-authored change to Stella's own code (renderer,
- * runtime, electron, etc.). The Store agent uses this list (plus git
- * history + the original conversation) to assemble a publishable release.
+ * runtime, electron, etc.). The standalone backend Store agent uses this list
+ * plus the user's Store request to assemble a publishable release draft.
  */
 function useLocalCommits(limit = 60) {
   const api = useStoreApi()
@@ -617,18 +618,9 @@ function DiscoverTab({
 }
 
 // ---------------------------------------------------------------------------
-// Publish prompt builder
+// Publish draft flow
 // ---------------------------------------------------------------------------
 
-/**
- * Build the canned prompt the Publish button hands off to the orchestrator.
- *
- * The orchestrator recognizes the publish framing and routes it to the
- * Store specialist via its `Store({ prompt })` tool. The prompt is plain
- * user-voice: which commits the user picked, with shape (single / multi /
- * update). The Store agent is the one that loads git, confirms metadata,
- * and publishes — so we deliberately don't over-spec the workflow here.
- */
 function buildPublishPrompt(commits: LocalGitCommitRecord[]): string {
   const lines: string[] = []
   if (commits.length === 1) {
@@ -659,6 +651,209 @@ function buildUpdatePrompt(pkg: StorePackageRecord): string {
     "",
     "Look at recent self-mod commits and the existing release history, pick the relevant changes for this mod, confirm with me if anything is ambiguous, then publish a new version.",
   ].join("\n")
+}
+
+type PublishDialogTarget = {
+  commits: LocalGitCommitRecord[]
+  existingPackage?: StorePackageRecord
+}
+
+function PublishReviewDialog({
+  target,
+  open,
+  onCancel,
+  onPublished,
+}: {
+  target: PublishDialogTarget | null
+  open: boolean
+  onCancel: () => void
+  onPublished?: () => Promise<void> | void
+}) {
+  const [requestText, setRequestText] = useState("")
+  const [draft, setDraft] = useState<StorePublishDraft | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!target) return
+    setRequestText(
+      target.existingPackage
+        ? buildUpdatePrompt(target.existingPackage)
+        : buildPublishPrompt(target.commits),
+    )
+    setDraft(null)
+    setError(null)
+    setPreparing(false)
+    setPublishing(false)
+  }, [target])
+
+  const selectedCommitHashes = useMemo(
+    () => target?.commits.map((commit) => commit.commitHash) ?? [],
+    [target],
+  )
+
+  const handlePrepare = useCallback(async () => {
+    if (!target) return
+    const api = window.electronAPI?.store
+    if (!api?.prepareCandidateRelease) return
+    const trimmed = requestText.trim()
+    if (!trimmed) {
+      setError("Tell the Store agent what this should become.")
+      return
+    }
+    try {
+      setPreparing(true)
+      setError(null)
+      const nextDraft = await api.prepareCandidateRelease({
+        requestText: trimmed,
+        selectedCommitHashes,
+        ...(target.existingPackage
+          ? { existingPackageId: target.existingPackage.packageId }
+          : {}),
+      })
+      setDraft(nextDraft)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't prepare this release")
+    } finally {
+      setPreparing(false)
+    }
+  }, [requestText, selectedCommitHashes, target])
+
+  const handlePublish = useCallback(async () => {
+    if (!target || !draft) return
+    const api = window.electronAPI?.store
+    if (!api?.publishPreparedRelease) return
+    try {
+      setPublishing(true)
+      setError(null)
+      const release = await api.publishPreparedRelease({
+        requestText: requestText.trim(),
+        selectedCommitHashes,
+        ...(target.existingPackage
+          ? { existingPackageId: target.existingPackage.packageId }
+          : {}),
+        draft,
+      })
+      showToast({
+        title: `Published ${release.manifest.displayName}.`,
+        variant: "success",
+      })
+      await onPublished?.()
+      onCancel()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't publish this release")
+      setPublishing(false)
+    }
+  }, [draft, onCancel, onPublished, requestText, selectedCommitHashes, target])
+
+  const fileCount = draft
+    ? new Set(draft.selectedChanges.flatMap((change) => change.files)).size
+    : 0
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onCancel() : undefined)}>
+      <DialogContent fit className="credential-modal-content">
+        <DialogCloseButton className="credential-modal-close" />
+        <DialogBody className="credential-modal-body">
+          <div className="credential-modal-hero">
+            <div className="credential-modal-icon">
+              <Package size={20} />
+            </div>
+            <DialogTitle className="credential-modal-headline">
+              Add to Store
+            </DialogTitle>
+            <DialogDescription className="credential-modal-sub">
+              Review what the Store agent prepares before publishing.
+            </DialogDescription>
+          </div>
+
+          <div className="credential-modal-form">
+            <TextField
+              label="What should this be?"
+              multiline
+              rows={4}
+              value={requestText}
+              onChange={(event) => {
+                setRequestText(event.target.value)
+                setDraft(null)
+              }}
+              placeholder="Describe what this should become in the Store."
+              autoFocus
+            />
+
+            {draft ? (
+              <div className="store-publish-review">
+                <div className="store-publish-review-top">
+                  <div>
+                    <div className="store-publish-review-title">
+                      {draft.displayName}
+                    </div>
+                    <div className="store-publish-review-sub">
+                      {draft.category === "agents" ? "Agent capability" : "Stella add-on"} · Version {draft.releaseNumber}
+                    </div>
+                  </div>
+                  <span className="store-section-count">
+                    {draft.commitHashes.length} changes
+                  </span>
+                </div>
+                <div className="store-card-desc">{draft.description}</div>
+                {draft.releaseNotes ? (
+                  <div className="store-card-meta">{draft.releaseNotes}</div>
+                ) : null}
+                <div className="store-card-meta">
+                  {fileCount === 1 ? "1 file included" : `${fileCount} files included`}
+                </div>
+                <div className="store-publish-change-list">
+                  {draft.selectedChanges.map((change) => (
+                    <div key={change.commitHash} className="store-publish-change">
+                      {change.shortHash ? `${change.shortHash} ` : ""}
+                      {change.subject}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {error ? <div className="credential-modal-error">{error}</div> : null}
+
+            <div className="credential-modal-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onCancel}
+                disabled={preparing || publishing}
+                className="pill-btn pill-btn--lg credential-modal-cancel"
+              >
+                Cancel
+              </Button>
+              {!draft ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => void handlePrepare()}
+                  disabled={preparing}
+                  className="pill-btn pill-btn--primary pill-btn--lg credential-modal-submit"
+                >
+                  {preparing ? "Preparing..." : "Prepare"}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => void handlePublish()}
+                  disabled={publishing}
+                  className="pill-btn pill-btn--primary pill-btn--lg credential-modal-submit"
+                >
+                  {publishing ? "Publishing..." : "Publish"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -776,6 +971,7 @@ function CreationsTab({
   error: string | null
 }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [publishTarget, setPublishTarget] = useState<PublishDialogTarget | null>(null)
 
   const toggle = useCallback((commitHash: string) => {
     setSelected((prev) => {
@@ -789,31 +985,10 @@ function CreationsTab({
     })
   }, [])
 
-  const handlePublish = useCallback(
-    async (target: LocalGitCommitRecord[]) => {
-      if (target.length === 0) return
-      const api = window.electronAPI?.store
-      if (!api?.publishCandidateRelease) return
-      const prompt = buildPublishPrompt(target)
-      try {
-        const release = await api.publishCandidateRelease({
-          requestText: prompt,
-          selectedCommitHashes: target.map((commit) => commit.commitHash),
-        })
-        showToast({
-          title: `Published ${release.manifest.displayName}.`,
-          variant: "success",
-        })
-        setSelected(new Set())
-      } catch (err) {
-        showToast({
-          title: err instanceof Error ? err.message : "Couldn't publish this right now",
-          variant: "error",
-        })
-      }
-    },
-    [],
-  )
+  const handlePublish = useCallback((target: LocalGitCommitRecord[]) => {
+    if (target.length === 0) return
+    setPublishTarget({ commits: target })
+  }, [])
 
   if (loading) return <SkeletonGrid />
 
@@ -838,44 +1013,52 @@ function CreationsTab({
   const selectedCommits = commits.filter((c) => selected.has(c.commitHash))
 
   return (
-    <div className="store-section">
-      <div
-        className="store-section-header"
-        style={{ display: "flex", alignItems: "center", gap: 12 }}
-      >
-        <span className="store-section-title">Your Creations</span>
-        <span className="store-section-count">{commits.length}</span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button
-            className="store-action-btn"
-            data-variant={selectedCommits.length > 0 ? "share" : "added"}
-            disabled={selectedCommits.length === 0}
-            onClick={() => void handlePublish(selectedCommits)}
-          >
-            Publish selected
-            {selectedCommits.length > 0 ? ` (${selectedCommits.length})` : ""}
-          </button>
+    <>
+      <div className="store-section">
+        <div
+          className="store-section-header"
+          style={{ display: "flex", alignItems: "center", gap: 12 }}
+        >
+          <span className="store-section-title">Your Creations</span>
+          <span className="store-section-count">{commits.length}</span>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <button
+              className="store-action-btn"
+              data-variant={selectedCommits.length > 0 ? "share" : "added"}
+              disabled={selectedCommits.length === 0}
+              onClick={() => handlePublish(selectedCommits)}
+            >
+              Publish selected
+              {selectedCommits.length > 0 ? ` (${selectedCommits.length})` : ""}
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          {commits.map((commit) => (
+            <CommitRow
+              key={commit.commitHash}
+              commit={commit}
+              selected={selected.has(commit.commitHash)}
+              onToggle={() => toggle(commit.commitHash)}
+              onPublish={() => Promise.resolve(handlePublish([commit]))}
+            />
+          ))}
         </div>
       </div>
-
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        {commits.map((commit) => (
-          <CommitRow
-            key={commit.commitHash}
-            commit={commit}
-            selected={selected.has(commit.commitHash)}
-            onToggle={() => toggle(commit.commitHash)}
-            onPublish={() => handlePublish([commit])}
-          />
-        ))}
-      </div>
-    </div>
+      <PublishReviewDialog
+        open={publishTarget !== null}
+        target={publishTarget}
+        onCancel={() => setPublishTarget(null)}
+        onPublished={() => setSelected(new Set())}
+      />
+    </>
   )
 }
 
@@ -1280,6 +1463,7 @@ export function StoreView() {
 
   const [tab, setTab] = useState<StoreTab>("discover")
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
+  const [publishTarget, setPublishTarget] = useState<PublishDialogTarget | null>(null)
   const [scrolled, setScrolled] = useState(false)
   const [credentialConnector, setCredentialConnector] =
     useState<StellaConnectorSummary | null>(null)
@@ -1353,34 +1537,15 @@ export function StoreView() {
   )
 
   const handlePublishUpdate = useCallback(async (pkg: StorePackageRecord) => {
-    const api = window.electronAPI?.store
-    if (!api?.publishCandidateRelease) return
-    const candidateHashes = commits.map((commit) => commit.commitHash)
-    if (candidateHashes.length === 0) {
+    if (commits.length === 0) {
       showToast({
         title: "No recent changes are available to publish.",
         variant: "error",
       })
       return
     }
-    try {
-      const release = await api.publishCandidateRelease({
-        requestText: buildUpdatePrompt(pkg),
-        selectedCommitHashes: candidateHashes,
-        existingPackageId: pkg.packageId,
-      })
-      showToast({
-        title: `Published ${pkg.displayName} version ${release.releaseNumber}.`,
-        variant: "success",
-      })
-      await reloadPackages()
-    } catch (err) {
-      showToast({
-        title: err instanceof Error ? err.message : "Couldn't publish this update right now",
-        variant: "error",
-      })
-    }
-  }, [commits, reloadPackages])
+    setPublishTarget({ commits, existingPackage: pkg })
+  }, [commits])
 
   const handleInstallConnector = useCallback(
     async (marketplaceKey: string) => {
@@ -1438,6 +1603,12 @@ export function StoreView() {
             onPublishUpdate={handlePublishUpdate}
           />
         </div>
+        <PublishReviewDialog
+          open={publishTarget !== null}
+          target={publishTarget}
+          onCancel={() => setPublishTarget(null)}
+          onPublished={reloadPackages}
+        />
       </div>
     )
   }
@@ -1504,6 +1675,12 @@ export function StoreView() {
         open={Boolean(credentialConnector)}
         onSubmit={handleSubmitConnectorCredential}
         onCancel={() => setCredentialConnector(null)}
+      />
+      <PublishReviewDialog
+        open={publishTarget !== null}
+        target={publishTarget}
+        onCancel={() => setPublishTarget(null)}
+        onPublished={reloadPackages}
       />
     </div>
   )

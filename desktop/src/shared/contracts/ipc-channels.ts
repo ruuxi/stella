@@ -253,6 +253,10 @@ export const IPC_STORE_LIST_PACKAGES = "store:listPackages" as const;
 export const IPC_STORE_GET_PACKAGE = "store:getPackage" as const;
 export const IPC_STORE_LIST_RELEASES = "store:listReleases" as const;
 export const IPC_STORE_GET_RELEASE = "store:getRelease" as const;
+export const IPC_STORE_PREPARE_CANDIDATE_RELEASE =
+  "store:prepareCandidateRelease" as const;
+export const IPC_STORE_PUBLISH_PREPARED_RELEASE =
+  "store:publishPreparedRelease" as const;
 export const IPC_STORE_LIST_INSTALLED = "store:listInstalledMods" as const;
 export const IPC_STORE_INSTALL_RELEASE = "store:installRelease" as const;
 export const IPC_STORE_UNINSTALL = "store:uninstallMod" as const;
