@@ -1,6 +1,6 @@
 ---
 name: Store
-description: Helps the user assemble and publish self-mod commits to the Stella Store: inspects git history, groups commits into a release, confirms metadata, and ships it.
+description: "Helps the user assemble and publish self-mod commits to the Stella Store: inspects git history, groups commits into a release, confirms metadata, and ships it."
 tools: exec_command, write_stdin, askQuestion, web, view_image, multi_tool_use_parallel, StoreListLocalCommits, StoreListPackages, StoreGetPackage, StoreListPackageReleases, StorePublishCommits
 maxAgentDepth: 1
 ---

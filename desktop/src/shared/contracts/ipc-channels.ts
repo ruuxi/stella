@@ -263,6 +263,25 @@ export const IPC_STORE_UNINSTALL = "store:uninstallMod" as const;
 export const IPC_STORE_LIST_CONNECTORS = "store:listConnectors" as const;
 export const IPC_STORE_INSTALL_CONNECTOR = "store:installConnector" as const;
 
+// ── Fashion ─────────────────────────────────────────────────────────────────
+//
+// The body photo intentionally does NOT round-trip through Convex storage —
+// we keep raw bytes on disk under `state/fashion/body.<ext>` and only persist
+// a `hasBodyPhoto` flag to the backend (see `backend/convex/data/fashion.ts`).
+// These IPC channels expose the local file lifecycle to the renderer.
+export const IPC_FASHION_PICK_AND_SAVE_BODY_PHOTO =
+  "fashion:pickAndSaveBodyPhoto" as const;
+export const IPC_FASHION_GET_BODY_PHOTO_INFO =
+  "fashion:getBodyPhotoInfo" as const;
+export const IPC_FASHION_GET_BODY_PHOTO_DATA_URL =
+  "fashion:getBodyPhotoDataUrl" as const;
+export const IPC_FASHION_DELETE_BODY_PHOTO =
+  "fashion:deleteBodyPhoto" as const;
+export const IPC_FASHION_START_OUTFIT_BATCH =
+  "fashion:startOutfitBatch" as const;
+export const IPC_FASHION_GET_LOCAL_IMAGE_DATA_URL =
+  "fashion:getLocalImageDataUrl" as const;
+
 // ── Local Chat ──────────────────────────────────────────────────────────────
 
 export const IPC_LOCAL_CHAT_GET_OR_CREATE_ID =

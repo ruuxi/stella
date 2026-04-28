@@ -1174,6 +1174,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("store:installConnector", { marketplaceKey, credential, config }),
   },
 
+  fashion: {
+    pickAndSaveBodyPhoto: () =>
+      ipcRenderer.invoke("fashion:pickAndSaveBodyPhoto"),
+    getBodyPhotoInfo: () => ipcRenderer.invoke("fashion:getBodyPhotoInfo"),
+    getBodyPhotoDataUrl: () =>
+      ipcRenderer.invoke("fashion:getBodyPhotoDataUrl"),
+    deleteBodyPhoto: () => ipcRenderer.invoke("fashion:deleteBodyPhoto"),
+    getLocalImageDataUrl: (path: string) =>
+      ipcRenderer.invoke("fashion:getLocalImageDataUrl", { path }),
+    startOutfitBatch: (payload: {
+      prompt?: string;
+      batchId?: string;
+      count?: number;
+      excludeProductIds?: string[];
+      seedHints?: string[];
+    }) => ipcRenderer.invoke("fashion:startOutfitBatch", payload),
+  },
+
   localChat: {
     getOrCreateDefaultConversationId: () =>
       ipcRenderer.invoke("localChat:getOrCreateDefaultConversationId"),

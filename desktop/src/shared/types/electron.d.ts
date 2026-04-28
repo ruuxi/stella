@@ -842,6 +842,31 @@ export type StellaConnectorSummary = {
   installed: boolean;
 };
 
+export type FashionBodyPhotoInfo = {
+  hasBodyPhoto: boolean;
+  absolutePath?: string;
+  mimeType?: string;
+  updatedAt?: number;
+};
+
+export type ElectronFashionApi = {
+  pickAndSaveBodyPhoto: () => Promise<
+    | { canceled: true }
+    | { canceled: false; info: FashionBodyPhotoInfo }
+  >;
+  getBodyPhotoInfo: () => Promise<FashionBodyPhotoInfo>;
+  getBodyPhotoDataUrl: () => Promise<string | null>;
+  deleteBodyPhoto: () => Promise<{ ok: true }>;
+  getLocalImageDataUrl: (path: string) => Promise<string>;
+  startOutfitBatch: (payload: {
+    prompt?: string;
+    batchId?: string;
+    count?: number;
+    excludeProductIds?: string[];
+    seedHints?: string[];
+  }) => Promise<{ threadId?: string; batchId: string }>;
+};
+
 export type ElectronSocialSessionsApi = {
   create: (payload: {
     roomId: string;
@@ -1101,6 +1126,7 @@ export type ElectronApi = {
   };
   schedule: ElectronScheduleApi;
   store: ElectronStoreApi;
+  fashion: ElectronFashionApi;
   socialSessions: ElectronSocialSessionsApi;
   localChat: ElectronLocalChatApi;
   googleWorkspace: ElectronGoogleWorkspaceApi;
