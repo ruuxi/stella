@@ -370,6 +370,7 @@ const startApp = () => {
       STELLA_DEV_INSECURE_PROTECTED_STORAGE: '1',
     },
     stdio: 'inherit',
+    detached: process.platform !== 'win32',
     windowsHide: true,
   })
 
@@ -428,15 +429,34 @@ const stopApp = async () => {
       resolveStop()
     }
 
+    const signalAppProcess = (signal) => {
+      if (!child.pid || child.exitCode !== null || child.signalCode !== null) {
+        return
+      }
+      if (process.platform !== 'win32') {
+        try {
+          process.kill(-child.pid, signal)
+          return
+        } catch {
+          // Fall back to the direct child below.
+        }
+      }
+      try {
+        child.kill(signal)
+      } catch {
+        // Ignore races during shutdown.
+      }
+    }
+
     child.once('exit', finish)
-    child.kill('SIGTERM')
+    signalAppProcess('SIGTERM')
 
     setTimeout(() => {
       if (settled) {
         return
       }
 
-      child.kill('SIGKILL')
+      signalAppProcess('SIGKILL')
       finish()
     }, forcedShutdownTimeoutMs).unref()
   })
