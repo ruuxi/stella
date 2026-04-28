@@ -234,7 +234,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                 const message = await completeManagedChat({
                   config: {
                     ...synthesisConfig,
-                    maxOutputTokens: 8000,
+                    maxOutputTokens: 30000,
                   },
                   context: {
                     systemPrompt,
