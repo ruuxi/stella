@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
@@ -108,6 +108,30 @@ function useStoreApi() {
   return window.electronAPI?.store ?? null
 }
 
+// Stale-while-revalidate cache shared across mounts. The Store route is
+// lazy-mounted, so without this every navigation back to /store would re-show
+// the skeleton and re-issue the same Convex roundtrip. We render the cached
+// snapshot immediately and only refetch in the background when the entry has
+// gone stale (TTL) — mutations still call reload() to bypass the cache.
+const STORE_CACHE_TTL_MS = 30_000
+
+type StoreCacheEntry<T> = { data: T; fetchedAt: number }
+
+const storeCache = new Map<string, StoreCacheEntry<unknown>>()
+
+function readStoreCache<T>(key: string): StoreCacheEntry<T> | null {
+  const entry = storeCache.get(key)
+  return (entry as StoreCacheEntry<T> | undefined) ?? null
+}
+
+function writeStoreCache<T>(key: string, data: T): void {
+  storeCache.set(key, { data, fetchedAt: Date.now() })
+}
+
+function isStoreCacheFresh(entry: StoreCacheEntry<unknown> | null): boolean {
+  return entry !== null && Date.now() - entry.fetchedAt < STORE_CACHE_TTL_MS
+}
+
 // Calls into the Store catalog hit Convex through the runtime. When the user
 // hasn't connected an account yet the runtime rejects with an "auth required"
 // or "not connected" message; we silence those into an empty state instead of
@@ -127,12 +151,30 @@ function isAuthOrConnectivityError(err: unknown): boolean {
   return isAuthOrConnectivityErrorMessage(err.message)
 }
 
+type PackagesCachePayload = {
+  packages: StorePackageRecord[]
+  installed: InstalledStoreModRecord[]
+}
+
 function useStorePackages() {
   const api = useStoreApi()
-  const [packages, setPackages] = useState<StorePackageRecord[]>([])
-  const [installed, setInstalled] = useState<InstalledStoreModRecord[]>([])
-  const [loading, setLoading] = useState(true)
+  const cached = readStoreCache<PackagesCachePayload>("packages")
+  const [packages, setPackages] = useState<StorePackageRecord[]>(
+    cached?.data.packages ?? [],
+  )
+  const [installed, setInstalled] = useState<InstalledStoreModRecord[]>(
+    cached?.data.installed ?? [],
+  )
+  const [loading, setLoading] = useState(cached === null)
   const [error, setError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const load = useCallback(async () => {
     if (!api) {
@@ -144,10 +186,16 @@ function useStorePackages() {
         api.listPackages(),
         api.listInstalledMods(),
       ])
+      writeStoreCache<PackagesCachePayload>("packages", {
+        packages: pkgs,
+        installed: mods,
+      })
+      if (!mountedRef.current) return
       setPackages(pkgs)
       setInstalled(mods)
       setError(null)
     } catch (err) {
+      if (!mountedRef.current) return
       if (isAuthOrConnectivityError(err)) {
         setPackages([])
         setInstalled([])
@@ -156,11 +204,12 @@ function useStorePackages() {
         setError(err instanceof Error ? err.message : "Something went wrong")
       }
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }, [api])
 
   useEffect(() => {
+    if (isStoreCacheFresh(readStoreCache<PackagesCachePayload>("packages"))) return
     void load()
   }, [load])
 
@@ -179,9 +228,19 @@ function useStorePackages() {
 
 function useLocalCommits(limit = 60) {
   const api = useStoreApi()
-  const [commits, setCommits] = useState<LocalGitCommitRecord[]>([])
-  const [loading, setLoading] = useState(true)
+  const cacheKey = `commits:${limit}`
+  const cached = readStoreCache<LocalGitCommitRecord[]>(cacheKey)
+  const [commits, setCommits] = useState<LocalGitCommitRecord[]>(cached?.data ?? [])
+  const [loading, setLoading] = useState(cached === null)
   const [error, setError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const load = useCallback(async () => {
     if (!api?.listLocalCommits) {
@@ -190,27 +249,42 @@ function useLocalCommits(limit = 60) {
     }
     try {
       const result = await api.listLocalCommits(limit)
+      writeStoreCache<LocalGitCommitRecord[]>(cacheKey, result)
+      if (!mountedRef.current) return
       setCommits(result)
       setError(null)
     } catch (err) {
+      if (!mountedRef.current) return
       setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
-  }, [api, limit])
+  }, [api, limit, cacheKey])
 
   useEffect(() => {
+    if (isStoreCacheFresh(readStoreCache<LocalGitCommitRecord[]>(cacheKey))) return
     void load()
-  }, [load])
+  }, [load, cacheKey])
 
   return { commits, loading, error, reload: load }
 }
 
 function useStoreConnectors() {
   const api = useStoreApi()
-  const [connectors, setConnectors] = useState<StellaConnectorSummary[]>([])
-  const [loading, setLoading] = useState(true)
+  const cached = readStoreCache<StellaConnectorSummary[]>("connectors")
+  const [connectors, setConnectors] = useState<StellaConnectorSummary[]>(
+    cached?.data ?? [],
+  )
+  const [loading, setLoading] = useState(cached === null)
   const [error, setError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const load = useCallback(async () => {
     if (!api?.listConnectors) {
@@ -219,16 +293,20 @@ function useStoreConnectors() {
     }
     try {
       const result = await api.listConnectors()
+      writeStoreCache<StellaConnectorSummary[]>("connectors", result)
+      if (!mountedRef.current) return
       setConnectors(result)
       setError(null)
     } catch (err) {
+      if (!mountedRef.current) return
       setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }, [api])
 
   useEffect(() => {
+    if (isStoreCacheFresh(readStoreCache<StellaConnectorSummary[]>("connectors"))) return
     void load()
   }, [load])
 
