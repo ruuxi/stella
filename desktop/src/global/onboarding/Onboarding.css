@@ -1352,10 +1352,16 @@
 }
 
 .onboarding-dialogue[data-phase="permissions"] .onboarding-step-label,
-.onboarding-dialogue[data-phase="theme"] .onboarding-step-label,
-.onboarding-dialogue[data-phase="personality"] .onboarding-step-label {
+.onboarding-dialogue[data-phase="theme"] .onboarding-step-label {
   font-size: 14px;
 }
+
+/* Personality's "How should I look?" sub-heading should read at the same
+ * size/weight as the phase title ("How should Stella talk?") so the two
+ * questions feel like peers instead of label/sub-label. The shared
+ * `.onboarding-look-section .onboarding-step-label` rule already sets
+ * the right type ramp; this just keeps the per-phase override above
+ * from clobbering it via source-order specificity. */
 
 .onboarding-dialogue[data-phase="permissions"] .onboarding-step-desc {
   font-size: 16px;
@@ -3176,28 +3182,24 @@
   }
 
   .onboarding-cap-frame {
-    /* Reserve ~310px for split padding (~80) + split title (~30) + caption
-     * (~78) + words (~36) + gaps (~24) + Continue (~50) + breathing room.
-     * Stage takes the rest of the frame after caption/words, so its width
-     * via `aspect-ratio: 16/7.7` is bounded by the available height. */
+    /* Reserve ~320px for split padding (~80) + cap title (~50) + words
+     * (~36) + body desc (~54) + gaps (~30) + Continue (~50) + breathing
+     * room. Stage width via `aspect-ratio: 16/7.7` is then bounded by
+     * the remaining vertical space. */
     width: min(
       1180px,
       calc(100vw - 80px),
-      calc((100vh - 310px) * 16 / 7.7)
+      calc((100vh - 320px) * 16 / 7.7)
     );
   }
 
-  .onboarding-cap-caption {
-    padding: 10px 20px;
-  }
-
-  .onboarding-cap-caption__title {
-    font-size: clamp(16px, 1.6vw, 20px);
+  .onboarding-cap-title {
+    font-size: clamp(18px, 2vw, 24px);
   }
 
   .onboarding-cap-caption__body {
-    font-size: 12px;
-    line-height: 1.4;
+    font-size: clamp(13px, 1.1vw, 15px);
+    line-height: 1.45;
   }
 
   .onboarding-cap-words {
@@ -3284,18 +3286,18 @@
     margin: 0;
   }
 
-  /* Capabilities — tighter still; caption body is hidden so we only
-   * reserve ~230px (smaller padding + title + words + Continue). */
+  /* Capabilities — tighter still; the body description is hidden so we
+   * only reserve ~250px (smaller padding + title + words + Continue). */
   .onboarding-cap-frame {
     width: min(
       1180px,
       calc(100vw - 60px),
-      calc((100vh - 230px) * 16 / 7.7)
+      calc((100vh - 250px) * 16 / 7.7)
     );
   }
 
-  .onboarding-cap-caption {
-    padding: 8px 16px 6px;
+  .onboarding-cap-title {
+    font-size: 16px;
   }
 
   .onboarding-cap-caption__body {

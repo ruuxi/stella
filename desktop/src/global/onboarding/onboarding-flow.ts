@@ -20,8 +20,8 @@ export type Phase =
 export const SPLIT_PHASES = new Set<Phase>([
   "capabilities",
   "permissions",
-  "extension",
   "browser",
+  "extension",
   "theme",
   "personality",
   "creation",
@@ -35,8 +35,8 @@ export const SPLIT_PHASES = new Set<Phase>([
 export const SPLIT_STEP_ORDER: Phase[] = [
   "capabilities",
   "permissions",
-  "extension",
   "browser",
+  "extension",
   "theme",
   "personality",
   "creation",

@@ -320,6 +320,30 @@ const css = `
   .sam-root[data-interactive="true"] { overflow: visible; }
   .sam-root * { box-sizing: border-box; }
 
+  /* Pre-interaction state for the creation phase: dim the mock chrome
+     so the floating transformation pills are unmistakably the call to
+     action. As soon as the user toggles their first section,
+     [data-any-active="true"] flips and the dim lifts so they can
+     actually appreciate the change they just made. The pills
+     themselves are siblings of .sam-sidebar/.sam-main inside .sam-root,
+     so :not(.sam-pill) keeps them at full brightness. */
+  .sam-root[data-interactive="true"][data-any-active="false"]
+    > :not(.sam-pill) {
+    opacity: 0.42;
+    filter: saturate(0.65);
+    transition:
+      opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+      filter 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .sam-root[data-interactive="true"][data-any-active="true"]
+    > :not(.sam-pill) {
+    opacity: 1;
+    filter: none;
+    transition:
+      opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+      filter 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   /* ──────────────────────────────────────────
      SIDEBAR — default: matches the real 170px
      '.sidebar' with brand + nav + footer.

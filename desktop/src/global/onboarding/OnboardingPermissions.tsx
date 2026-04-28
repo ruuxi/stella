@@ -167,10 +167,7 @@ export function OnboardingPermissions({
     <div className="onboarding-step-content">
       <div className="onboarding-step-label">Permissions</div>
       <p className="onboarding-step-desc">
-        Stella works best when these permissions are granted up front.
-        Accessibility powers the global ⌘/Ctrl + right-click shortcut and selected text, screen
-        capture powers vision tasks, and the microphone powers voice and wake
-        word.
+        Stella works best with a few things turned on up front.
       </p>
 
       <div className="onboarding-permissions-list">
