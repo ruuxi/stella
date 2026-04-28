@@ -811,6 +811,13 @@ export type CheckoutLineInput = {
   quantity: number;
 };
 
+const variantIdForCartPermalink = (variantId: string): string => {
+  const trimmed = variantId.trim();
+  const gidMatch = /^gid:\/\/shopify\/ProductVariant\/(\d+)$/i.exec(trimmed);
+  if (gidMatch?.[1]) return gidMatch[1];
+  return trimmed;
+};
+
 export type CheckoutSessionResult = {
   /** Upstream checkout/session id. */
   checkoutId: string;
@@ -971,7 +978,7 @@ export const buildCartPermalink = (args: {
     .filter((entry) => isNonEmptyString(entry.variantId) && Number.isFinite(entry.quantity))
     .map(
       (entry) =>
-        `${entry.variantId.trim()}:${Math.max(1, Math.floor(entry.quantity))}`,
+        `${variantIdForCartPermalink(entry.variantId)}:${Math.max(1, Math.floor(entry.quantity))}`,
     );
   if (segments.length === 0) return null;
   return `${base.origin}/cart/${segments.join(",")}`;
