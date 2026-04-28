@@ -421,7 +421,11 @@ function StoreCard({
   onClick?: () => void
 }) {
   return (
-    <div className="store-card" onClick={onClick}>
+    <div
+      className="store-card"
+      data-clickable={onClick ? "true" : undefined}
+      onClick={onClick}
+    >
       <PackageArtwork
         iconUrl={pkg.iconUrl}
         name={pkg.displayName}
@@ -893,14 +897,6 @@ function UpdatesTab({
 // Connect tab
 // ---------------------------------------------------------------------------
 
-function connectorStatusLabel(connector: StellaConnectorSummary): string {
-  if (connector.installed) return "Connected"
-  if (connector.requiresCredential) return "Needs API key"
-  if (connector.status === "official-mcp") return "Ready to add"
-  if (connector.status === "official-api") return "Web service"
-  return "Coming soon"
-}
-
 function ConnectTab({
   connectors,
   loading,
@@ -962,6 +958,8 @@ function ConnectTab({
             createdAt: 0,
             updatedAt: 0,
           }
+          const interactive = ready && !connector.installed && !isWorking
+          const trigger = () => void handleInstall(connector.marketplaceKey)
           return (
             <StoreCard
               key={connector.id}
@@ -981,14 +979,12 @@ function ConnectTab({
                   : connector.installed
                     ? "added"
                     : ready
-                      ? "get"
+                      ? "subtle"
                       : "added"
               }
               actionDisabled={connector.installed || isWorking || !ready}
-              meta={`${connectorStatusLabel(connector)}${
-                connector.auth ? ` · ${connector.auth}` : ""
-              }`}
-              onAction={() => void handleInstall(connector.marketplaceKey)}
+              onAction={trigger}
+              onClick={interactive ? trigger : undefined}
             />
           )
         })}
@@ -1125,6 +1121,57 @@ function ConnectorCredentialDialog({
             </div>
           </form>
         </DialogBody>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ConnectorConfirmDialog({
+  connector,
+  open,
+  installing,
+  onConfirm,
+  onCancel,
+}: {
+  connector: StellaConnectorSummary | null
+  open: boolean
+  installing: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  if (!connector) return null
+  return (
+    <Dialog open={open} onOpenChange={(next) => (!next ? onCancel() : undefined)}>
+      <DialogContent fit className="store-confirm-dialog" aria-describedby={undefined}>
+        <DialogTitle className="store-confirm-title">
+          Add {connector.displayName}?
+        </DialogTitle>
+        <DialogDescription className="store-confirm-description">
+          Stella will add {connector.displayName} to your connected
+          integrations. You can remove it any time.
+        </DialogDescription>
+        <div className="store-confirm-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            size="large"
+            className="pill-btn pill-btn--lg"
+            onClick={onCancel}
+            disabled={installing}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            size="large"
+            className="pill-btn pill-btn--primary pill-btn--lg"
+            onClick={onConfirm}
+            disabled={installing}
+          >
+            {installing ? "Adding..." : "Add"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -1823,6 +1870,9 @@ export function StoreView({ activeTab: activeTabProp, onActiveTabChange }: Store
   const [publishTarget, setPublishTarget] = useState<PublishDialogTarget | null>(null)
   const [credentialConnector, setCredentialConnector] =
     useState<StellaConnectorSummary | null>(null)
+  const [confirmConnector, setConfirmConnector] =
+    useState<StellaConnectorSummary | null>(null)
+  const [confirmInstalling, setConfirmInstalling] = useState(false)
 
   const {
     packages,
@@ -1919,9 +1969,7 @@ export function StoreView({ activeTab: activeTabProp, onActiveTabChange }: Store
           setCredentialConnector(connector)
           return
         }
-        await api.installConnector(marketplaceKey)
-        showToast({ title: "Connector added to Stella.", variant: "success" })
-        await reloadConnectors()
+        setConfirmConnector(connector)
       } catch (err) {
         showToast({
           title:
@@ -1930,8 +1978,29 @@ export function StoreView({ activeTab: activeTabProp, onActiveTabChange }: Store
         })
       }
     },
-    [connectors, reloadConnectors],
+    [connectors],
   )
+
+  const handleConfirmInstallConnector = useCallback(async () => {
+    if (!confirmConnector) return
+    const api = window.electronAPI?.store
+    if (!api?.installConnector) return
+    try {
+      setConfirmInstalling(true)
+      await api.installConnector(confirmConnector.marketplaceKey)
+      setConfirmConnector(null)
+      showToast({ title: "Connector added to Stella.", variant: "success" })
+      await reloadConnectors()
+    } catch (err) {
+      showToast({
+        title:
+          err instanceof Error ? err.message : "Couldn't add this connector",
+        variant: "error",
+      })
+    } finally {
+      setConfirmInstalling(false)
+    }
+  }, [confirmConnector, reloadConnectors])
 
   const handleSubmitConnectorCredential = useCallback(
     async ({ credential, config }: ConnectorCredentialPayload) => {
@@ -1960,6 +2029,15 @@ export function StoreView({ activeTab: activeTabProp, onActiveTabChange }: Store
         open={Boolean(credentialConnector)}
         onSubmit={handleSubmitConnectorCredential}
         onCancel={() => setCredentialConnector(null)}
+      />
+      <ConnectorConfirmDialog
+        connector={confirmConnector}
+        open={Boolean(confirmConnector)}
+        installing={confirmInstalling}
+        onConfirm={() => void handleConfirmInstallConnector()}
+        onCancel={() =>
+          confirmInstalling ? undefined : setConfirmConnector(null)
+        }
       />
       <PublishReviewDialog
         open={publishTarget !== null}
