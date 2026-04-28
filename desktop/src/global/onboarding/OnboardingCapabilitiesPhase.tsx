@@ -315,6 +315,13 @@ export function OnboardingCapabilitiesPhase({
 
   return (
     <div className="onboarding-step-content onboarding-cap-step">
+      <h3
+        className="onboarding-cap-title"
+        key={`title-${sceneKey}`}
+      >
+        {activeScene.title}
+      </h3>
+
       <div
         className="onboarding-cap-frame"
         data-paused={externallyPaused || undefined}
@@ -328,11 +335,6 @@ export function OnboardingCapabilitiesPhase({
           <div key={sceneKey} className="onboarding-cap-scene" data-active>
             {activeScene.render(true)}
           </div>
-        </div>
-
-        <div className="onboarding-cap-caption" key={`caption-${sceneKey}`}>
-          <h3 className="onboarding-cap-caption__title">{activeScene.title}</h3>
-          <p className="onboarding-cap-caption__body">{activeScene.caption}</p>
         </div>
 
         <div
@@ -376,6 +378,13 @@ export function OnboardingCapabilitiesPhase({
           })}
         </div>
       </div>
+
+      <p
+        className="onboarding-cap-caption__body"
+        key={`caption-${sceneKey}`}
+      >
+        {activeScene.caption}
+      </p>
 
       <button
         className="onboarding-confirm onboarding-cap-continue"

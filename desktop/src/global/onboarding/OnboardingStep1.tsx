@@ -34,10 +34,12 @@ import { OnboardingMemoryPhase } from "./OnboardingMemoryPhase";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 
 const STEP_TITLES: Partial<Record<Phase, string>> = {
-  capabilities: "What Stella can do.",
+  // capabilities renders its own per-scene title inside the phase so the
+  // changing line ("Text Stella from anywhere.", "Share what you make.", …)
+  // sits where the static step title would otherwise be.
   extension: "Add Stella to your browser.",
   browser: "Let Stella get to know you.",
-  creation: "Stella can change.",
+  creation: "Stella can change when you ask. Click the buttons to try.",
   theme: "How should Stella look?",
   personality: "How should Stella talk?",
   "shortcuts-global": "Anywhere on your desktop.",

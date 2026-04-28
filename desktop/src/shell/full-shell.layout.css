@@ -841,16 +841,21 @@
   cursor: pointer;
 }
 
-/* Split mode: animation moves to left half, centered vertically */
+/* Split mode: animation moves to left half, centered vertically.
+ * Keep the resize roughly in lockstep with the phase fade window
+ * (FADE_OUT_MS + FADE_GAP_MS = 380ms in use-onboarding-flow.ts) so the
+ * creature isn't still animating its width/height while the new
+ * capabilities phase tries to do its first paint — that overlap was
+ * the visible "lag" entering "What Stella can do." */
 .onboarding-stella-animation[data-split="true"] {
   --stella-shift-x: clamp(-350px, -25vw, 0px);
   --stella-shift-y: min(10vh, 95px);
   width: min(190px, 17vw);
   height: clamp(64px, 10vh, 104px);
   transition:
-    transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-    width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-    height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+    transform 0.55s cubic-bezier(0.25, 0.1, 0.25, 1),
+    width 0.55s cubic-bezier(0.25, 0.1, 0.25, 1),
+    height 0.55s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 /* With selections: shift animation up to make room for mock windows */

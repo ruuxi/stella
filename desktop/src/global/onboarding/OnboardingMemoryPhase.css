@@ -46,9 +46,12 @@
 
 .onboarding-memory-step__lede {
   text-align: center;
-  max-width: 560px;
+  max-width: 640px;
   margin: 0 auto;
   flex-shrink: 0;
+  font-size: clamp(16px, 1.4vw, 19px);
+  line-height: 1.55;
+  opacity: 0.88;
 }
 
 .onboarding-memory-grid {
