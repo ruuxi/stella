@@ -25,7 +25,7 @@ type OnboardingServiceRequestOptions = {
   includeDeviceId?: boolean;
 };
 
-const ONBOARDING_FETCH_TIMEOUT_MS = 180_000;
+const ONBOARDING_FETCH_TIMEOUT_MS = 300_000;
 
 const normalizeServicePath = (value: string) =>
   value.startsWith("/") ? value : `/${value}`;
