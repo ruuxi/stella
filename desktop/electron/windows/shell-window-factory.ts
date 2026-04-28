@@ -20,6 +20,7 @@ type ShellWindowFactoryOptions = {
   createWindow: () => BrowserWindow
   setupExternalLinkHandlers: (window: BrowserWindow) => void
   onDidStartLoading?: () => void
+  onDidFinishLoad?: () => void
   onRenderProcessGone?: (details: RenderProcessGoneDetails, window: BrowserWindow) => void
   onDidFailLoad?: (
     details: ShellWindowDidFailLoadDetails,
@@ -58,6 +59,10 @@ export const createShellWindow = (options: ShellWindowFactoryOptions) => {
 
   window.webContents.on('did-start-loading', () => {
     options.onDidStartLoading?.()
+  })
+
+  window.webContents.on('did-finish-load', () => {
+    options.onDidFinishLoad?.()
   })
 
   window.webContents.on('render-process-gone', (_event, details) => {

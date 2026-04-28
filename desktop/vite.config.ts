@@ -131,7 +131,14 @@ function devServerUrl(): Plugin {
       server.httpServer?.once('listening', () => {
         const addr = server.httpServer?.address()
         if (addr && typeof addr === 'object') {
-          fs.writeFileSync(DEV_URL_FILE, `http://localhost:${addr.port}`)
+          // Derive the URL from the actual bound address so the dev URL
+          // and the listener can never disagree. Hardcoding `localhost`
+          // here used to race against Chromium's resolver picking an
+          // address family the http server hadn't bound (e.g. Vite binds
+          // ::1 only, Chromium tries 127.0.0.1 first → ERR_CONNECTION_REFUSED).
+          const host =
+            addr.family === 'IPv6' ? `[${addr.address}]` : addr.address
+          fs.writeFileSync(DEV_URL_FILE, `http://${host}:${addr.port}`)
         }
       })
     },
@@ -1001,6 +1008,11 @@ export default defineConfig({
     ],
   },
   server: {
+    // Pin to IPv4 loopback and publish that exact address via the dev-url
+    // plugin above. With the default (`localhost`), Node 17+'s verbatim DNS
+    // order makes Vite bind IPv6-only on macOS, while Chromium may try IPv4
+    // first and surface intermittent ERR_CONNECTION_REFUSED on cold start.
+    host: '127.0.0.1',
     port: 57314,
     strictPort: false,
     forwardConsole: true,

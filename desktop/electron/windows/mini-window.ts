@@ -18,6 +18,7 @@ type MiniWindowControllerOptions = {
   getDevServerUrl: () => string
   setupExternalLinkHandlers: (window: BrowserWindow) => void
   onDidStartLoading?: () => void
+  onDidFinishLoad?: () => void
   onRenderProcessGone?: (details: RenderProcessGoneDetails, window: BrowserWindow) => void
   onDidFailLoad?: (details: ShellWindowDidFailLoadDetails, window: BrowserWindow) => void
   onClosed?: () => void

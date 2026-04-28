@@ -120,7 +120,7 @@ export class WindowManager {
       getDevServerUrl: options.getDevServerUrl,
       setupExternalLinkHandlers: (window) =>
         options.externalLinkService.setupExternalLinkHandlers(window),
-      onDidStartLoading: () => {
+      onDidFinishLoad: () => {
         this.resetTransientReloadStateOnSuccess('full')
       },
       onRenderProcessGone: (details) => {
@@ -155,7 +155,7 @@ export class WindowManager {
       getDevServerUrl: options.getDevServerUrl,
       setupExternalLinkHandlers: (window) =>
         options.externalLinkService.setupExternalLinkHandlers(window),
-      onDidStartLoading: () => {
+      onDidFinishLoad: () => {
         this.resetTransientReloadStateOnSuccess('mini')
       },
       onRenderProcessGone: (details) => {
@@ -252,20 +252,21 @@ export class WindowManager {
   }
 
   /**
-   * `did-start-loading` fires both on the failed attempt AND on the
-   * subsequent retry attempt; we only want to clear the budget when a
-   * load actually progresses past the initial connect. Realistically,
-   * once any new load has begun we can safely consider the previous
-   * window of failures resolved — the next failure within the reset
-   * window will rebuild the counter.
+   * Clears the retry budget only after a navigation actually finishes
+   * loading. Resetting on `did-start-loading` was wrong: the retry timer
+   * itself emits `did-start-loading` immediately when it calls
+   * `reloadMainWindow`, which would delete the state before the retry's
+   * `did-fail-load` arrived — so every failed retry would re-enter at
+   * `attempts = 1` and the bounded backoff/recovery-page fallback would
+   * never engage. `did-finish-load` is the only signal that means the
+   * page actually came up.
    */
   private resetTransientReloadStateOnSuccess(mode: ShellWindowMode) {
     const state = this.transientReloadStateByMode.get(mode)
     if (!state) return
-    // Don't clear if we're mid-retry (the timer is scheduled but hasn't
-    // fired yet) — the start-loading we're observing is the previous
-    // attempt's, not the retry's.
-    if (state.scheduledTimer) return
+    if (state.scheduledTimer) {
+      clearTimeout(state.scheduledTimer)
+    }
     this.transientReloadStateByMode.delete(mode)
   }
 
