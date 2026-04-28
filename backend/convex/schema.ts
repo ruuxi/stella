@@ -12,6 +12,7 @@ import { mediaSchema } from "./schema/media";
 import { socialSchema } from "./schema/social";
 import { backupsSchema } from "./schema/backups";
 import { fashionSchema } from "./schema/fashion";
+import { feedbackSchema } from "./schema/feedback";
 
 export default defineSchema({
   ...conversationsSchema,
@@ -27,5 +28,6 @@ export default defineSchema({
   ...socialSchema,
   ...backupsSchema,
   ...fashionSchema,
+  ...feedbackSchema,
 });
 
