@@ -297,6 +297,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             synthesisInput = body.formattedSignals!;
           }
 
+          console.log(
+            `[synthesize] Core memory synthesis starting. Input length: ${synthesisInput.length} chars`,
+          );
           const coreSynthesisStartedAt = Date.now();
           const synthesisMessage = await completeManagedChat({
             config: synthesisConfig,
@@ -331,12 +334,16 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           if (!coreMemory) {
             return errorResponse(500, "Failed to synthesize core memory", origin);
           }
+          console.log(
+            `[synthesize] Core memory synthesis complete in ${Date.now() - coreSynthesisStartedAt}ms. Output length: ${coreMemory.length} chars`,
+          );
 
           const welcomeConfig = await resolveModelConfig(ctx, "welcome", ownerId, {
             access: modelAccess,
             audience: ownerId ? undefined : "anonymous",
           });
 
+          console.log("[synthesize] Welcome and home suggestions starting");
           const welcomeStartedAt = Date.now();
           const suggestionsStartedAt = Date.now();
           const [welcomeResult, suggestionsResult] = await Promise.all([
@@ -385,6 +392,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               }))
               .catch(() => null),
           ]);
+          console.log(
+            `[synthesize] Welcome and home suggestions complete. Welcome: ${welcomeResult.durationMs}ms, suggestions: ${suggestionsResult?.durationMs ?? "failed"}ms`,
+          );
 
           if (ownerId) {
             await scheduleManagedUsage(ctx, {
