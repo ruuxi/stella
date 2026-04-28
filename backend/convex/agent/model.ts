@@ -198,7 +198,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     maxOutputTokens: 32768,
     providerOptions: {
       openai: {
-        reasoningEffort: "minimal",
+        reasoningEffort: "low",
       },
       ...gatewayOptions("openrouter"),
     },
