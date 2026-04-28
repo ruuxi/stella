@@ -99,6 +99,12 @@ async fn latest_release_tag() -> Option<String> {
     None
 }
 
+pub async fn latest_desktop_release_tag() -> Result<String, String> {
+    latest_release_tag()
+        .await
+        .ok_or("Could not check for Stella updates. Check your internet connection.".into())
+}
+
 // ── Path helpers ────────────────────────────────────────────────────
 
 fn home_dir() -> PathBuf {
@@ -1615,37 +1621,6 @@ pub async fn install_all(
     write_settings(ctx, state).await;
     emit_state_full(state, ctx, app).await;
 
-    Ok(())
-}
-
-pub async fn check_for_update(
-    state: &mut InstallerState,
-    ctx: &InstallerContext,
-    app: &AppHandle,
-) -> Result<(), String> {
-    if ctx.dev_mode || !state.installed {
-        return Ok(());
-    }
-
-    state.update.status = UpdateStatus::Checking;
-    state.update.message = Some("Checking for updates...".into());
-    state.update.conflicts.clear();
-    emit_state_fast(state, app);
-
-    let latest_tag = latest_release_tag()
-        .await
-        .ok_or("Could not check for Stella updates. Check your internet connection.")?;
-    state.update.latest_tag = Some(latest_tag.clone());
-
-    if state.update.current_tag.as_deref() == Some(latest_tag.as_str()) {
-        state.update.status = UpdateStatus::Idle;
-        state.update.message = Some("Stella is up to date.".into());
-    } else {
-        state.update.status = UpdateStatus::Available;
-        state.update.message = Some(format!("Update {latest_tag} is available."));
-    }
-
-    emit_state_full(state, ctx, app).await;
     Ok(())
 }
 

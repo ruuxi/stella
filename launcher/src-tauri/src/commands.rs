@@ -268,15 +268,60 @@ pub async fn check_for_update(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<OkResult, String> {
+    let current_tag = {
+        let mut installer = state.installer.lock().await;
+        if state.context.dev_mode || !installer.installed {
+            return Ok(OkResult { ok: true });
+        }
+
+        installer.update.status = UpdateStatus::Checking;
+        installer.update.message = Some("Checking for updates...".into());
+        installer.update.conflicts.clear();
+        let current_tag = installer.update.current_tag.clone();
+        let _ = app.emit(
+            "installer-state-update",
+            serde_json::json!({ "state": &*installer }),
+        );
+        current_tag
+    };
+
+    let latest_tag = setup::latest_desktop_release_tag().await;
+
     let mut installer = state.installer.lock().await;
-    let result = setup::check_for_update(&mut installer, &state.context, &app).await;
+    let result = match latest_tag {
+        Ok(latest_tag) => {
+            installer.update.latest_tag = Some(latest_tag.clone());
+            if current_tag.is_none() {
+                installer.update.status = UpdateStatus::Idle;
+                installer.update.message = Some(
+                    "Stella is installed, but this install does not have release metadata yet."
+                        .into(),
+                );
+            } else if current_tag.as_deref() == Some(latest_tag.as_str()) {
+                installer.update.status = UpdateStatus::Idle;
+                installer.update.message = Some("Stella is up to date.".into());
+            } else {
+                installer.update.status = UpdateStatus::Available;
+                installer.update.message = Some(format!("Update {latest_tag} is available."));
+            }
+            Ok(())
+        }
+        Err(err) => {
+            installer.update.status = UpdateStatus::Error;
+            installer.update.message = Some(err.clone());
+            Err(err)
+        }
+    };
+    let _ = app.emit(
+        "installer-state-update",
+        serde_json::json!({ "state": &*installer }),
+    );
     Ok(OkResult { ok: result.is_ok() })
 }
 
 #[tauri::command]
 pub async fn apply_update(state: State<'_, AppState>, app: AppHandle) -> Result<OkResult, String> {
     let mut installer = state.installer.lock().await;
-    stop_desktop_by_path(&installer.install_path);
     let result = setup::apply_update(&mut installer, &state.context, &app).await;
     Ok(OkResult { ok: result.is_ok() })
 }
