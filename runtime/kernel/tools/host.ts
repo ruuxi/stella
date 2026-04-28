@@ -14,6 +14,7 @@
  * extension-injected ToolDefinitions) sit alongside in the same map.
  */
 
+import path from "node:path";
 import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 
 import type {
@@ -72,7 +73,6 @@ const SUBAGENT_USER_FACING_TOOL_NAMES: Record<string, ReadonlySet<string>> = {
 
 export const createToolHost = ({
   stellaRoot,
-  stellaStatePath,
   stellaBrowserBinPath: _stellaBrowserBinPath,
   stellaOfficeBinPath: _stellaOfficeBinPath,
   stellaUiCliPath: _stellaUiCliPath,
@@ -89,13 +89,10 @@ export const createToolHost = ({
   queryConvex,
   memoryStore,
 }: ToolHostOptions) => {
-  if (!stellaStatePath) {
-    throw new Error("createToolHost requires stellaStatePath.");
-  }
-  const stateRoot = stellaStatePath;
+  const stateRoot = path.join(stellaRoot, "state");
   const toolCatalog = new Map<string, ToolMetadata>();
 
-  setFileToolsConfig({ stellaRoot, stellaStatePath: stateRoot });
+  setFileToolsConfig({ stellaRoot });
 
   const shellState: ShellState = createShellState(stateRoot, {
     stellaBrowserBinPath: _stellaBrowserBinPath,
@@ -135,7 +132,6 @@ export const createToolHost = ({
   // the model sees.
   const builtinTools: BuiltinToolDefinition[] = buildBuiltinTools({
     stellaRoot,
-    stellaStatePath,
     stellaBrowserBinPath: _stellaBrowserBinPath,
     stellaOfficeBinPath: _stellaOfficeBinPath,
     stellaUiCliPath: _stellaUiCliPath,

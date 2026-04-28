@@ -21,7 +21,6 @@ type VoiceHandlersOptions = {
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
   getOverlayController?: () => OverlayWindowController | null;
   getStellaRoot?: () => string | null;
-  getStellaStatePath?: () => string | null;
 };
 
 const DEFAULT_VOICE_RTC_SHORTCUT = "CommandOrControl+Shift+D";
@@ -84,13 +83,13 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   };
 
   const loadConfiguredShortcut = () => {
-    const stellaRoot = options.getStellaStatePath?.();
+    const stellaRoot = options.getStellaRoot?.();
     if (!stellaRoot) return DEFAULT_VOICE_RTC_SHORTCUT;
     return loadLocalPreferences(stellaRoot).voiceRtcShortcut;
   };
 
   const saveConfiguredShortcut = (shortcut: string) => {
-    const stellaRoot = options.getStellaStatePath?.();
+    const stellaRoot = options.getStellaRoot?.();
     if (!stellaRoot) return;
     const prefs = loadLocalPreferences(stellaRoot);
     prefs.voiceRtcShortcut = shortcut;

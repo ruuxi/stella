@@ -8,12 +8,10 @@ import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
 } from "../../../runtime/kernel/storage/database-init.js";
-import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import type { SqliteDatabase } from "../../../runtime/kernel/storage/shared.js";
 
 export type ChronicleHandlersOptions = {
   getStellaRoot: () => string | null;
-  getStellaStatePath: () => string | null;
   getController: () => ChronicleController | null;
   setController: (controller: ChronicleController | null) => void;
   assertPrivilegedSender: (event: IpcMainInvokeEvent, channel: string) => boolean;
@@ -32,9 +30,9 @@ const ensureController = (
 ): ChronicleController | null => {
   const existing = options.getController();
   if (existing) return existing;
-  const stellaStatePath = options.getStellaStatePath();
-  if (!stellaStatePath) return null;
-  const next = new ChronicleControllerCtor(stellaStatePath);
+  const root = options.getStellaRoot();
+  if (!root) return null;
+  const next = new ChronicleControllerCtor(root);
   options.setController(next);
   return next;
 };
@@ -115,9 +113,9 @@ export const registerChronicleHandlers = (
     ) {
       throw new Error("Blocked untrusted chronicle:openMemoriesFolder request.");
     }
-    const stellaStatePath = options.getStellaStatePath();
-    if (!stellaStatePath) return { ok: false } as const;
-    const dir = path.join(resolveStellaStatePath(stellaStatePath), "memories");
+    const root = options.getStellaRoot();
+    if (!root) return { ok: false } as const;
+    const dir = path.join(root, "state", "memories");
     try {
       await fs.mkdir(dir, { recursive: true });
     } catch {
@@ -138,8 +136,8 @@ export const registerChronicleHandlers = (
     if (!options.assertPrivilegedSender(event, "chronicle:wipeMemories")) {
       throw new Error("Blocked untrusted chronicle:wipeMemories request.");
     }
-    const stellaStatePath = options.getStellaStatePath();
-    if (!stellaStatePath) return { ok: false } as const;
+    const root = options.getStellaRoot();
+    if (!root) return { ok: false } as const;
     const controller = ensureController(options);
     let restartChronicle = false;
     if (controller) {
@@ -150,11 +148,10 @@ export const registerChronicleHandlers = (
         (rawStatus as Record<string, unknown>).running === true;
       await controller.stop();
     }
-    const stateRoot = resolveStellaStatePath(stellaStatePath);
-    const memoriesDir = path.join(stateRoot, "memories");
-    const extensionsDir = path.join(stateRoot, "memories_extensions");
-    const chronicleDir = path.join(stateRoot, "chronicle");
-    const dreamLockDir = path.join(stateRoot, "locks", "dream");
+    const memoriesDir = path.join(root, "state", "memories");
+    const extensionsDir = path.join(root, "state", "memories_extensions");
+    const chronicleDir = path.join(root, "state", "chronicle");
+    const dreamLockDir = path.join(root, "state", "locks", "dream");
     for (const target of [memoriesDir, extensionsDir, chronicleDir, dreamLockDir]) {
       try {
         await fs.rm(target, { recursive: true, force: true });
@@ -162,7 +159,7 @@ export const registerChronicleHandlers = (
         // best-effort
       }
     }
-    clearDreamThreadSummaries(stellaStatePath);
+    clearDreamThreadSummaries(root);
     if (restartChronicle && controller) {
       const result = await controller.start();
       if (!result.started) {

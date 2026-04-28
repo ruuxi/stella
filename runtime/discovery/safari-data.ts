@@ -9,7 +9,6 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { exec } from "child_process";
-import { resolveStellaStatePath } from "../kernel/home/stella-home.js";
 import type { SafariData, BookmarkEntry } from "./discovery-types.js";
 
 const log = (...args: unknown[]) => console.error("[safari-data]", ...args);
@@ -63,7 +62,7 @@ export const collectSafariHistory = async (
 
   try {
     // Copy the database to avoid lock issues
-    const cacheDir = path.join(resolveStellaStatePath(stellaHome), "cache");
+    const cacheDir = path.join(stellaHome, "state", "cache");
     await fs.mkdir(cacheDir, { recursive: true });
 
     copyPath = path.join(cacheDir, "safari_history.db");

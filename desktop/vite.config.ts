@@ -1,5 +1,4 @@
 import fs from "fs"
-import os from "os"
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite"
@@ -22,10 +21,7 @@ const STELLA_WORKSPACE_PANELS_DIR = path.resolve(
   'workspace',
   'panels',
 )
-const STELLA_SEED_STATE_DIR = path.resolve(__dirname, '..', 'state')
-const STELLA_DATA_DIR = path.resolve(
-  process.env.STELLA_STATE || process.env.STELLA_DATA_ROOT || path.join(os.homedir(), '.stella'),
-)
+const STELLA_STATE_DIR = path.resolve(__dirname, '..', 'state')
 const VITE_WORKSPACE_ROOT = searchForWorkspaceRoot(__dirname)
 
 const normalizeWatchedFilePath = (filePath: string) =>
@@ -1025,8 +1021,7 @@ export default defineConfig({
     },
     watch: {
       ignored: [
-        `${STELLA_SEED_STATE_DIR.replace(/\\/g, '/')}/**`,
-        `${STELLA_DATA_DIR.replace(/\\/g, '/')}/**`,
+        `${STELLA_STATE_DIR.replace(/\\/g, '/')}/**`,
         normalizeWatchedFilePath(DEV_URL_FILE),
         normalizeWatchedFilePath(SELF_MOD_RUNTIME_RELOAD_STATE_FILE),
       ],

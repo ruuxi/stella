@@ -1,7 +1,6 @@
 import { spawn, type ChildProcess, execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import { resolveNativeHelperPath } from "../native-helper-path.js";
 import { hasMacPermission, requestMacPermission } from "../utils/macos-permissions.js";
 
@@ -10,7 +9,7 @@ import { hasMacPermission, requestMacPermission } from "../utils/macos-permissio
  *
  * Responsibilities:
  *   - Resolve the binary location (dev + packaged)
- *   - Skip cleanly when disabled in `~/.stella/config.json` or when Screen
+ *   - Skip cleanly when disabled in `state/config.json` or when Screen
  *     Recording permission is not granted
  *   - Spawn the daemon as a detached process and remember the pid for
  *     status checks
@@ -41,10 +40,10 @@ const CHRONICLE_STARTUP_TIMEOUT_MS = 3_000;
 const CHRONICLE_STARTUP_POLL_MS = 150;
 const CHRONICLE_EXCLUDED_BUNDLE_IDS = ["com.stella.app", "com.github.Electron"];
 
-const readConfig = async (stellaStatePath: string): Promise<ChronicleConfig> => {
+const readConfig = async (stellaHome: string): Promise<ChronicleConfig> => {
   try {
     const raw = await fs.readFile(
-      path.join(resolveStellaStatePath(stellaStatePath), "config.json"),
+      path.join(stellaHome, "state", "config.json"),
       "utf-8",
     );
     const parsed = JSON.parse(raw) as StellaConfig;
@@ -55,10 +54,10 @@ const readConfig = async (stellaStatePath: string): Promise<ChronicleConfig> => 
 };
 
 const writeConfigPatch = async (
-  stellaStatePath: string,
+  stellaHome: string,
   patch: ChronicleConfig,
 ): Promise<void> => {
-  const configPath = path.join(resolveStellaStatePath(stellaStatePath), "config.json");
+  const configPath = path.join(stellaHome, "state", "config.json");
   let current: StellaConfig = {};
   try {
     const raw = await fs.readFile(configPath, "utf-8");
@@ -78,7 +77,7 @@ export class ChronicleController {
   private child: ChildProcess | null = null;
   private binPath: string | null = null;
 
-  constructor(private readonly stellaStatePath: string) {}
+  constructor(private readonly stellaHome: string) {}
 
   private resolveBin(): string | null {
     if (this.binPath) return this.binPath;
@@ -91,11 +90,10 @@ export class ChronicleController {
   ): Promise<string | null> {
     const bin = this.resolveBin();
     if (!bin) return null;
-    const stateRoot = resolveStellaStatePath(this.stellaStatePath);
     return await new Promise<string | null>((resolve) => {
       execFile(
         bin,
-        [command, "--root", stateRoot],
+        [command, "--root", this.stellaHome],
         { timeout: 5000 },
         (error, stdout) => {
           if (error) {
@@ -126,7 +124,7 @@ export class ChronicleController {
    * Screen Recording permission. Safe to call multiple times.
    */
   async start(): Promise<{ started: boolean; reason?: string }> {
-    const config = await readConfig(this.stellaStatePath);
+    const config = await readConfig(this.stellaHome);
     // Live Memory is opt-in: only start when the user has explicitly
     // enabled it. Missing config or `pendingEnable` (waiting on sign-in)
     // both keep the daemon dormant.
@@ -150,14 +148,14 @@ export class ChronicleController {
     }
 
     try {
-      await fs.mkdir(path.join(resolveStellaStatePath(this.stellaStatePath), "chronicle"), {
+      await fs.mkdir(path.join(this.stellaHome, "state", "chronicle"), {
         recursive: true,
       });
     } catch {
       // ignored — daemon will retry creating dirs
     }
 
-    const args = ["daemon", "--root", resolveStellaStatePath(this.stellaStatePath)];
+    const args = ["daemon", "--root", this.stellaHome];
     if (typeof config.intervalMs === "number" && config.intervalMs > 0) {
       args.push("--interval-ms", String(Math.floor(config.intervalMs)));
     }
@@ -205,7 +203,7 @@ export class ChronicleController {
   }
 
   async isEnabled(): Promise<boolean> {
-    const config = await readConfig(this.stellaStatePath);
+    const config = await readConfig(this.stellaHome);
     return config.enabled === true;
   }
 
@@ -215,7 +213,7 @@ export class ChronicleController {
    * Used by the renderer to render a "Sign in to start Live Memory" banner.
    */
   async isPendingEnable(): Promise<boolean> {
-    const config = await readConfig(this.stellaStatePath);
+    const config = await readConfig(this.stellaHome);
     return config.enabled !== true && config.pendingEnable === true;
   }
 
@@ -227,17 +225,17 @@ export class ChronicleController {
    */
   async setPendingEnable(pending: boolean): Promise<void> {
     if (pending) {
-      await writeConfigPatch(this.stellaStatePath, {
+      await writeConfigPatch(this.stellaHome, {
         enabled: false,
         pendingEnable: true,
       });
     } else {
-      await writeConfigPatch(this.stellaStatePath, { pendingEnable: false });
+      await writeConfigPatch(this.stellaHome, { pendingEnable: false });
     }
   }
 
   async status(): Promise<unknown | null> {
-    const config = await readConfig(this.stellaStatePath);
+    const config = await readConfig(this.stellaHome);
     const fps = 1000 / Math.max(config.intervalMs ?? DEFAULT_CHRONICLE_INTERVAL_MS, 1);
     const raw = await this.runCommand("status");
     if (!raw) {
@@ -286,7 +284,7 @@ export class ChronicleController {
   }> {
     if (!enabled) {
       // Explicit disable: also clear any staged "pending sign-in" intent.
-      await writeConfigPatch(this.stellaStatePath, {
+      await writeConfigPatch(this.stellaHome, {
         enabled: false,
         pendingEnable: false,
       });
@@ -299,7 +297,7 @@ export class ChronicleController {
       };
     }
     if (process.platform !== "darwin") {
-      await writeConfigPatch(this.stellaStatePath, {
+      await writeConfigPatch(this.stellaHome, {
         enabled: false,
         pendingEnable: false,
       });
@@ -314,7 +312,7 @@ export class ChronicleController {
     if (process.platform === "darwin" && !hasMacPermission("screen", false)) {
       const result = await requestMacPermission("screen");
       if (!result.granted) {
-        await writeConfigPatch(this.stellaStatePath, {
+        await writeConfigPatch(this.stellaHome, {
           enabled: false,
           pendingEnable: false,
         });
@@ -328,13 +326,13 @@ export class ChronicleController {
       }
     }
     // Promote: clear pending intent and mark enabled.
-    await writeConfigPatch(this.stellaStatePath, {
+    await writeConfigPatch(this.stellaHome, {
       enabled: true,
       pendingEnable: false,
     });
     const startResult = await this.start();
     if (!startResult.started) {
-      await writeConfigPatch(this.stellaStatePath, {
+      await writeConfigPatch(this.stellaHome, {
         enabled: false,
         pendingEnable: false,
       });

@@ -27,8 +27,6 @@ export class BootstrapLifecycleBindings
 
   readonly getStellaRoot = () => this.state.stellaRoot;
 
-  readonly getStellaStatePath = () => this.state.stellaStatePath;
-
   readonly setStellaRoot = (stellaRoot: string | null) => {
     this.state.stellaRoot = stellaRoot;
   };

@@ -1,7 +1,6 @@
 import { app } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
-import { resolveStellaStatePath } from "../../runtime/kernel/home/stella-home.js";
 import {
   AUTH_PROTOCOL,
   HARD_RESET_MUTABLE_HOME_PATHS,
@@ -40,7 +39,7 @@ const configureDevUserDataPath = () => {
     return;
   }
 
-  const devUserDataPath = path.join(resolveStellaStatePath(), "electron-user-data");
+  const devUserDataPath = path.join(stellaRoot, "state", "electron-user-data");
   app.setPath("userData", devUserDataPath);
   app.setPath("sessionData", path.join(devUserDataPath, "session-data"));
 };

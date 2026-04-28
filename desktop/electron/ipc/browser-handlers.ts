@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import { getStellaBrowserBridgeEnv } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
-import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import { resolveStellaBrowserRoot } from "../utils/stella-browser-paths.js";
 import {
   normalizeUrlForPrivilegedRendererFetch,
@@ -33,7 +32,6 @@ type BrowserCookie = {
 
 type BrowserHandlersOptions = {
   getStellaRoot: () => string | null;
-  getStellaStatePath: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -194,12 +192,12 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "media:saveOutput")) {
         return { ok: false, error: "Blocked untrusted request." };
       }
-      const stellaStatePath = options.getStellaStatePath();
-      if (!stellaStatePath) {
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
         return { ok: false, error: "Stella root not initialized" };
       }
       try {
-        const dir = path.join(resolveStellaStatePath(stellaStatePath), "media", "outputs");
+        const dir = path.join(stellaRoot, "state", "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = path.join(dir, payload.fileName);
         const safeUrl = await normalizeUrlForPrivilegedRendererFetch(payload.url);
@@ -226,9 +224,9 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "media:getStellaMediaDir")) {
         return null;
       }
-      const stellaStatePath = options.getStellaStatePath();
-      if (!stellaStatePath) return null;
-      return path.join(resolveStellaStatePath(stellaStatePath), "media");
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) return null;
+      return path.join(stellaRoot, "state", "media");
     },
   );
 };

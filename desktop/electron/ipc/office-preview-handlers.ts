@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import { arch, platform } from "node:os";
 import { spawn } from "node:child_process";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
@@ -17,7 +16,6 @@ import { listOfficePreviewSnapshots } from "../bootstrap/office-preview-bridge.j
 
 type OfficePreviewHandlersOptions = {
   getStellaRoot: () => string | null;
-  getStellaStatePath: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -173,7 +171,7 @@ export const registerOfficePreviewHandlers = (
       const sessionId = randomUUID();
       const title = path.basename(sourcePath);
       const ref: OfficePreviewRef = { sessionId, title, sourcePath };
-      const stateRoot = resolveStellaStatePath(options.getStellaStatePath() ?? stellaRoot);
+      const stateRoot = path.join(stellaRoot, "state");
       const sessionDir = path.join(stateRoot, PREVIEW_ROOT_DIRNAME, sessionId);
       const startedAt = Date.now();
       await writeManifest(sessionDir, ref, format, "starting", startedAt);

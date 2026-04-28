@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import { protectValue, unprotectValue } from "../shared/protected-storage.js";
 import { ensurePrivateDirSync, writePrivateFileSync } from "../shared/private-fs.js";
-import { resolveStellaStatePath } from "../home/stella-home.js";
 
 const LLM_CREDENTIALS_FILE = "llm_credentials.json";
 const LLM_CREDENTIAL_SCOPE_PREFIX = "llm-credential";
@@ -32,7 +31,7 @@ const normalizeProvider = (provider: string) => provider.trim().toLowerCase();
 const credentialScope = (provider: string) =>
   `${LLM_CREDENTIAL_SCOPE_PREFIX}:${normalizeProvider(provider)}`;
 
-const getStatePath = (stellaRoot: string) => resolveStellaStatePath(stellaRoot);
+const getStatePath = (stellaRoot: string) => path.join(stellaRoot, "state");
 
 export const getLlmCredentialStorePath = (stellaRoot: string) =>
   path.join(getStatePath(stellaRoot), LLM_CREDENTIALS_FILE);

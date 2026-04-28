@@ -1,6 +1,5 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { resolveStellaStatePath } from "../home/stella-home.js";
 
 import { TOOL_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import { dreamList, dreamMarkProcessed } from "../memory/dream-core.js";
@@ -54,8 +53,8 @@ const ensureDreamReadPath = async (
 ): Promise<string> => {
   const resolved = await resolveDreamToolPath(dream, filePath);
   const [memoriesRoot, extensionsRoot] = await Promise.all([
-    normalizePath(path.join(resolveStellaStatePath(dream.stellaHome), "memories")),
-    normalizePath(path.join(resolveStellaStatePath(dream.stellaHome), "memories_extensions")),
+    normalizePath(path.join(dream.stellaHome, "state", "memories")),
+    normalizePath(path.join(dream.stellaHome, "state", "memories_extensions")),
   ]);
   if (
     isWithinDirectory(resolved, memoriesRoot) ||

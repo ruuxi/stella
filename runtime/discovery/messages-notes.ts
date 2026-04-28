@@ -1,7 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
-import { resolveStellaStatePath } from "../kernel/home/stella-home.js";
 import type {
   MessagesNotesSignals,
   ContactFrequency,
@@ -41,7 +40,7 @@ async function collectIMessageMetadata(
   }
 
   const sourceDb = path.join(os.homedir(), "Library/Messages/chat.db");
-  const cacheDir = path.join(resolveStellaStatePath(stellaHome), "cache");
+  const cacheDir = path.join(stellaHome, "state", "cache");
   const cachedDb = path.join(cacheDir, "messages.db");
 
   try {
@@ -137,7 +136,7 @@ async function collectAppleNotes(stellaHome: string): Promise<NoteFolder[]> {
     os.homedir(),
     "Library/Group Containers/group.com.apple.notes/NoteStore.sqlite"
   );
-  const cacheDir = path.join(resolveStellaStatePath(stellaHome), "cache");
+  const cacheDir = path.join(stellaHome, "state", "cache");
   const cachedDb = path.join(cacheDir, "notes.db");
 
   try {
@@ -257,7 +256,7 @@ async function collectReminders(stellaHome: string): Promise<NoteFolder[]> {
     return [];
   }
 
-  const cacheDir = path.join(resolveStellaStatePath(stellaHome), "cache");
+  const cacheDir = path.join(stellaHome, "state", "cache");
   const cachedDb = path.join(cacheDir, "reminders.db");
 
   try {
@@ -307,7 +306,7 @@ async function collectCalendar(stellaHome: string): Promise<CalendarSummary[]> {
   }
 
   const sourceDb = path.join(os.homedir(), "Library/Calendars/Calendar.sqlitedb");
-  const cacheDir = path.join(resolveStellaStatePath(stellaHome), "cache");
+  const cacheDir = path.join(stellaHome, "state", "cache");
   const cachedDb = path.join(cacheDir, "calendar.db");
 
   try {
@@ -409,7 +408,7 @@ async function collectStickyNotes(stellaHome: string): Promise<NoteFolder[]> {
     }
 
     const sourceDb = path.join(packagesDir, stickyNotesDir, "LocalState/plum.sqlite");
-    const cacheDir = path.join(resolveStellaStatePath(stellaHome), "cache");
+    const cacheDir = path.join(stellaHome, "state", "cache");
     const cachedDb = path.join(cacheDir, "stickynotes.db");
 
     await fs.mkdir(cacheDir, { recursive: true });

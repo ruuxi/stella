@@ -19,7 +19,6 @@ const initializeBootstrapLocalState = async (context: BootstrapContext) => {
 
   lifecycle.setStellaRoot(stellaHome.stellaRoot);
   state.stellaRoot = stellaHome.stellaRoot;
-  state.stellaStatePath = stellaHome.statePath;
   state.stellaWorkspacePath = stellaHome.workspacePath;
   services.backupService.start();
 

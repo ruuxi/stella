@@ -376,7 +376,7 @@ EOF`,
 
   it("multi_tool_use_parallel rejects write_stdin (non-parallel-safe)", async () => {
     const root = await createTempDir();
-    const host = createToolHost({ stellaRoot: root, stellaStatePath: root });
+    const host = createToolHost({ stellaRoot: root });
 
     try {
       const result = await host.executeTool(
@@ -415,7 +415,7 @@ EOF`,
 
   it("multi_tool_use_parallel rejects apply_patch", async () => {
     const root = await createTempDir();
-    const host = createToolHost({ stellaRoot: root, stellaStatePath: root });
+    const host = createToolHost({ stellaRoot: root });
 
     try {
       const result = await host.executeTool(
@@ -453,7 +453,7 @@ EOF`,
 
   it("multi_tool_use_parallel rejects the full batch before starting valid siblings", async () => {
     const root = await createTempDir();
-    const host = createToolHost({ stellaRoot: root, stellaStatePath: root });
+    const host = createToolHost({ stellaRoot: root });
     const markerPath = path.join(root, "parallel-ran.txt");
 
     try {
@@ -501,7 +501,7 @@ EOF`,
 
   it("multi_tool_use_parallel runs independent tool calls", async () => {
     const root = await createTempDir();
-    const host = createToolHost({ stellaRoot: root, stellaStatePath: root });
+    const host = createToolHost({ stellaRoot: root });
 
     try {
       const result = await host.executeTool(
@@ -541,7 +541,6 @@ EOF`,
     const root = await createTempDir();
     const host = createToolHost({
       stellaRoot: root,
-      stellaStatePath: root,
       webSearch: async (query) => ({
         text: `results for ${query}`,
         results: [{ title: "Stella", url: "https://stella.sh", snippet: "assistant" }],
@@ -577,7 +576,6 @@ EOF`,
     const root = await createTempDir();
     const host = createToolHost({
       stellaRoot: root,
-      stellaStatePath: root,
       requestCredential: async (payload) => ({
         secretId: `secret:${payload.provider}`,
         provider: payload.provider,

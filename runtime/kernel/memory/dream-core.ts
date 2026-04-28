@@ -8,7 +8,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { ThreadSummariesStore } from "./thread-summaries-store.js";
-import { resolveStellaStatePath } from "../home/stella-home.js";
 
 export const DREAM_WATERMARK_FILE = "watermark.json";
 
@@ -39,10 +38,10 @@ export type DreamListResult = {
 };
 
 const memoriesDir = (stellaHome: string): string =>
-  path.join(resolveStellaStatePath(stellaHome), "memories");
+  path.join(stellaHome, "state", "memories");
 
 const extensionsDir = (stellaHome: string): string =>
-  path.join(resolveStellaStatePath(stellaHome), "memories_extensions");
+  path.join(stellaHome, "state", "memories_extensions");
 
 const watermarkPath = (stellaHome: string): string =>
   path.join(memoriesDir(stellaHome), DREAM_WATERMARK_FILE);

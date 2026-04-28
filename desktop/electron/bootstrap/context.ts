@@ -51,7 +51,6 @@ export type BootstrapState = {
   scheduleUpdateUnsubscribe: (() => void) | null;
   googleWorkspaceAuthRequiredUnsubscribe: (() => void) | null;
   stellaRoot: string | null;
-  stellaStatePath: string | null;
   stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
   stellaBrowserBridgeService: StellaBrowserBridgeResource | null;
@@ -171,7 +170,6 @@ export const createBootstrapContext = (
     scheduleUpdateUnsubscribe: null,
     googleWorkspaceAuthRequiredUnsubscribe: null,
     stellaRoot: null,
-    stellaStatePath: null,
     stellaWorkspacePath: null,
     stellaHostRunner: null,
     stellaBrowserBridgeService: null,

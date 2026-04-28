@@ -21,14 +21,12 @@ import { isBlockedPath } from "./command-safety.js";
 
 export type FileToolsConfig = {
   stellaRoot?: string;
-  stellaStatePath?: string;
 };
 
 const fileToolsConfig: FileToolsConfig = {};
 
 export function setFileToolsConfig(config: FileToolsConfig) {
   fileToolsConfig.stellaRoot = config.stellaRoot;
-  fileToolsConfig.stellaStatePath = config.stellaStatePath;
 }
 
 const isPathInsideRoot = (candidate: string, root: string): boolean => {
@@ -44,19 +42,6 @@ export const resolveFilePath = (
   context?: ToolContext,
 ): string => {
   const expandedPath = expandHomePath(String(rawPath ?? ""));
-  if (
-    !path.isAbsolute(expandedPath) &&
-    !context?.toolWorkspaceRoot?.trim() &&
-    (expandedPath === "state" || expandedPath.startsWith(`state${path.sep}`) || /^state[/\\]/u.test(expandedPath))
-  ) {
-    const stateRoot = context?.stellaStatePath ?? fileToolsConfig.stellaStatePath;
-    if (stateRoot) {
-      const stateRelativePath = expandedPath === "state"
-        ? ""
-        : expandedPath.replace(/^state[/\\]/u, "");
-      return path.resolve(stateRoot, stateRelativePath);
-    }
-  }
   const scopedRoot = context?.toolWorkspaceRoot?.trim()
     ? path.resolve(context.toolWorkspaceRoot)
     : null;

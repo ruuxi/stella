@@ -16,7 +16,7 @@ const createStateRoot = async (): Promise<string> => {
     os.tmpdir(),
     `stella-explore-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
-  await mkdir(rootPath, { recursive: true });
+  await mkdir(path.join(rootPath, "state"), { recursive: true });
   activeRoots.add(rootPath);
   return rootPath;
 };
@@ -34,7 +34,7 @@ describe("sanitizeExploreToolArgs", () => {
     const result = await sanitizeExploreToolArgs("Grep", { pattern: "skill" }, rootPath);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.args.path).toBe(rootPath);
+    expect(result.args.path).toBe(path.join(rootPath, "state"));
   });
 
   it("rejects Read paths outside state/", async () => {

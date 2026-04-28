@@ -179,14 +179,37 @@ fn perform_windows_uninstall(install_root: Option<&Path>) -> Result<(), String> 
                 );
             }
             commands::stop_desktop_by_path(&install_root_str);
-            std::fs::remove_dir_all(root)
-                .map_err(|e| format!("Failed to remove Stella install: {e}"))?;
+            remove_install_files_preserving_state_sync(root)?;
         }
     }
 
     remove_shortcuts();
     remove_registry_entry();
     schedule_self_delete()?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn remove_install_files_preserving_state_sync(root: &Path) -> Result<(), String> {
+    for entry in std::fs::read_dir(root)
+        .map_err(|e| format!("Failed to read Stella install directory: {e}"))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read Stella install entry: {e}"))?;
+        if entry.file_name() == "state" {
+            continue;
+        }
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("Failed to inspect Stella install entry: {e}"))?;
+        if file_type.is_dir() {
+            std::fs::remove_dir_all(&path)
+                .map_err(|e| format!("Failed to remove Stella directory: {e}"))?;
+        } else {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("Failed to remove Stella file: {e}"))?;
+        }
+    }
     Ok(())
 }
 

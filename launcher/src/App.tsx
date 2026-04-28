@@ -151,7 +151,7 @@ function App() {
   const handleUninstall = useCallback(async () => {
     if (
       !window.confirm(
-        `This will remove Stella and its data from:\n\n${state?.installPath ?? ""}\n\nContinue?`,
+        `This will remove Stella from:\n\n${state?.installPath ?? ""}\n\nYour state folder will be kept so your data is preserved.\n\nContinue?`,
       )
     )
       return;
