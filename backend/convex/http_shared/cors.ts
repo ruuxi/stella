@@ -29,6 +29,7 @@ const CORS_ALLOWED_ORIGINS = (() => {
 const isAllowedCorsOrigin = (origin: string | null) => {
   if (!origin) return true;
   if (origin.match(/^http:\/\/localhost(:\d+)?$/)) return true;
+  if (origin.match(/^http:\/\/127\.0\.0\.1(:\d+)?$/)) return true;
   if (origin.match(/^https:\/\/t-[a-z0-9]+\.stellatunnel\.com$/)) return true;
   return CORS_ALLOWED_ORIGINS.has(origin);
 };
