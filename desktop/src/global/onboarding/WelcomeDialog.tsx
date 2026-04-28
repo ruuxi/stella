@@ -9,7 +9,8 @@ import {
 } from "@/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { listLocalEvents } from "@/app/chat/services/local-chat-store";
-import { Compass, Smartphone } from "lucide-react";
+import { Compass, LogIn, Smartphone } from "lucide-react";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import "./welcome-dialog.css";
 
 const WELCOME_DIALOG_SEEN_KEY = "stella-welcome-dialog-seen";
@@ -49,12 +50,15 @@ function useWelcomeMessage(conversationId: string | null): string | null {
 type WelcomeDialogProps = {
   conversationId: string | null;
   onConnect: () => void;
+  onSignIn: () => void;
 };
 
 export function WelcomeDialog({
   conversationId,
   onConnect,
+  onSignIn,
 }: WelcomeDialogProps) {
+  const { hasConnectedAccount } = useAuthSessionState();
   const [open, setOpen] = useState(() => {
     try {
       return localStorage.getItem(WELCOME_DIALOG_SEEN_KEY) !== "true";
@@ -78,6 +82,11 @@ export function WelcomeDialog({
     handleClose();
     onConnect();
   }, [handleClose, onConnect]);
+
+  const handleSignIn = useCallback(() => {
+    handleClose();
+    onSignIn();
+  }, [handleClose, onSignIn]);
 
   if (!open) return null;
 
@@ -107,8 +116,9 @@ export function WelcomeDialog({
               <div className="welcome-dialog-card-text">
                 <h3>Personalized for you</h3>
                 <p>
-                  Tap any suggestion on the home screen to get started. They're
-                  tailored to you based on what you shared during setup.
+                  <strong>Right-click</strong> anywhere on the home screen to
+                  open the workspace panel and browse Ideas — tailored to you
+                  based on what you shared during setup.
                 </p>
               </div>
             </div>
@@ -132,6 +142,28 @@ export function WelcomeDialog({
               </div>
               <span className="welcome-dialog-card-arrow">&rsaquo;</span>
             </div>
+
+            {!hasConnectedAccount && (
+              <div
+                className="welcome-dialog-card welcome-dialog-card--interactive"
+                onClick={handleSignIn}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === "Enter" && handleSignIn()}
+              >
+                <div className="welcome-dialog-card-icon">
+                  <LogIn size={20} />
+                </div>
+                <div className="welcome-dialog-card-text">
+                  <h3>Sign in to Stella</h3>
+                  <p>
+                    Sign in to use the store, social features, AI features,
+                    and higher usage limits!
+                  </p>
+                </div>
+                <span className="welcome-dialog-card-arrow">&rsaquo;</span>
+              </div>
+            )}
           </div>
 
           <button

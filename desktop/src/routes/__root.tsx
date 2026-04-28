@@ -533,6 +533,7 @@ function RootChrome() {
       <WelcomeDialog
         conversationId={conversationId}
         onConnect={showConnectDialog}
+        onSignIn={showAuthDialog}
       />
     </>
   );
