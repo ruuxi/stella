@@ -207,12 +207,15 @@ function streamStoreReducer(
       }
       const activeRunId =
         state.activeRunIdByConversation[action.conversationId] ?? null
+      const nextTasksByRunId = { ...state.tasksByRunId }
+      delete nextTasksByRunId[action.runId]
       return {
         ...state,
         runsById: {
           ...state.runsById,
           [action.runId]: nextRun,
         },
+        tasksByRunId: nextTasksByRunId,
         activeRunIdByConversation:
           activeRunId === action.runId
             ? {
@@ -342,7 +345,12 @@ function streamStoreReducer(
     }
     case 'hydrate-conversation': {
       const nextRunsById = { ...state.runsById }
-      const nextTasksByRunId = { ...state.tasksByRunId }
+      const nextTasksByRunId = Object.fromEntries(
+        Object.entries(state.tasksByRunId).filter(([runId]) => {
+          const runRecord = state.runsById[runId]
+          return runRecord?.conversationId !== action.conversationId
+        }),
+      )
       for (const task of action.tasks) {
         // Hydrate tasks always come from resume snapshots which carry runId;
         // skip any oddballs that don't, since they can't be bucketed by run.
