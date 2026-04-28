@@ -1,9 +1,13 @@
 /* Message list — column-reverse viewport handles bottom-anchoring,
-   so no justify-content: flex-end or min-height: 100% needed. */
+   so no justify-content: flex-end or min-height: 100% needed. The list
+   is now a flat sequence of `.event-row` siblings (one per persisted
+   message) plus a single `.event-row-region--tail` wrapper around the
+   latest user message and everything after it (see comment further
+   down for why that wrapper exists). */
 .event-list {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   padding-top: 32px;
 }
 
@@ -14,12 +18,13 @@
   min-height: 100%;
 }
 
-/* Session turn - single message container */
-.session-turn {
+/* Per-event row container. Each visible message renders a single row
+   in chronological order — there is no per-turn user/assistant grouping. */
+.event-row {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   overflow-anchor: none;
 }
 
@@ -27,45 +32,52 @@
  * Render-time virtualization (no JS list lib).
  *
  * `content-visibility: auto` lets the browser skip layout, style, and
- * paint for any turn that isn't intersecting the viewport — the same
+ * paint for any row that isn't intersecting the viewport — the same
  * payoff @legendapp/list and react-window provide via JS windowing,
  * but browser-native and without disrupting the column-reverse
  * viewport, the mask-image fades, the custom scrollbar overlay,
  * `scrollTurnToPinTop`'s `[data-turn-id]` querySelector, or the
- * last-turn `100cqh` min-height that gives the freshly-streamed
- * assistant reply a full reading area.
+ * tail-region `100cqh` min-height that gives the latest exchange a
+ * full reading area.
  *
  * `contain-intrinsic-size: auto 200px` is the placeholder size used
  * while the row is hidden. After the row has been laid out once the
  * browser caches the real size and re-uses it.
- *
- * Scoped to `.chat-viewport-region` so it applies uniformly to BOTH the
- * full-shell viewport and the compact-surface viewport (sidebar/mini) —
- * the sidebar now wraps in the same `.chat-viewport-region` and uses the
- * same `useChatScrollManagement` hook (user-bubble pin-to-top, anchor
- * restore on resize), so the previous "unsettle on stream complete"
- * artifact in the sidebar is gone and CV virtualization can be used
- * everywhere.
  */
-.chat-viewport-region .session-turn {
+.chat-viewport-region .event-row {
   content-visibility: auto;
   contain-intrinsic-size: auto 200px;
 }
 
-.chat-viewport-region .session-turn--last-turn {
+/*
+ * Tail region: wraps the latest visible user message + every row after
+ * it (assistant continuations, the streaming tail, the pending
+ * askQuestion bubble). Stretches to `100cqh` so when
+ * `scrollTurnToPinTop` aligns the user bubble to the viewport top there
+ * is enough room below for the assistant reply to fill the viewport,
+ * regardless of how short the assistant content is. 100cqh = 100% of
+ * `.chat-viewport-region`'s height (the nearest size container —
+ * applies to both the full-chat and sidebar viewport-regions).
+ *
+ * `content-visibility: visible` keeps the tail laid out at all times so
+ * pin-to-top math (which reads `getBoundingClientRect()` on the user
+ * bubble) is stable across resizes.
+ */
+.event-row-region--tail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: calc(100cqh - 48px);
+}
+
+.chat-viewport-region .event-row-region--tail {
   content-visibility: visible;
   contain-intrinsic-size: none;
 }
 
-/*
- * Latest turn: stretch to fill the scroll viewport so the user bubble
- * can sit at the top with the assistant reply below, regardless of
- * window size. 100cqh = 100% of .chat-viewport-region's height (the
- * nearest size container — applies to both the full-chat and sidebar
- * viewport-regions).
- */
-.chat-viewport-region .session-turn--last-turn {
-  min-height: calc(100cqh - 48px);
+.chat-viewport-region .event-row-region--tail .event-row {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
 }
 
 .session-turn-header {

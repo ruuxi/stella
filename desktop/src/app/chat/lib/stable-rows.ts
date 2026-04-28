@@ -6,7 +6,7 @@
  * cloud path). Each fetch hands back a fresh `EventRecord[]` of fresh
  * objects, which would invalidate every downstream `useMemo` that depends
  * on the array — turn grouping, derived display state, the per-turn view
- * models passed to `<TurnItem>`. With long chats that's O(N) work per
+ * models passed to row components. With long chats that's O(N) work per
  * stream chunk and forces React to walk the full list on every keystroke
  * worth of streamed text.
  *
@@ -14,9 +14,9 @@
  * fix: keep a `byId` map across renders, reuse the prior reference for
  * any entry whose content hasn't changed, and reuse the entire result
  * array when nothing changed at all. Downstream `useMemo` chains then
- * bail out cheaply, and `<TurnItem>`'s `memo(..., areEqual)` short-
- * circuits on the `prev.turn === next.turn` early return inside
- * `turnViewModelEqual` rather than running a deep compare per turn.
+ * bail out cheaply, and each row component's `memo(..., areEqual)`
+ * short-circuits on the `prev.row === next.row` reference check rather
+ * than running a deep compare per row.
  */
 import type { EventRecord } from "@/shared/contracts/local-chat";
 
@@ -68,14 +68,14 @@ export type StableTurnRowsState<T extends { id: string }> = {
 };
 
 /**
- * Returns a stable `T[]` (typically `TurnViewModel[]` or its base form)
- * derived from `current`, reusing prior references for entries whose
- * content is shallow-equal under `isEqual`. Mirrors t3code's
+ * Returns a stable `T[]` (typically `EventRowViewModel[]`) derived from
+ * `current`, reusing prior references for entries whose content is
+ * shallow-equal under `isEqual`. Mirrors t3code's
  * `computeStableMessagesTimelineRows`.
  *
  * `isEqual` is called per-row only when the incoming reference differs
  * from the previously stored one; supply a fast field-wise comparison
- * (the chat pipeline reuses `turnViewModelEqual` from `MessageTurn`).
+ * (the chat pipeline uses `eventRowEqual` from `lib/row-equality`).
  */
 export const stabilizeTurnRows = <T extends { id: string }>(
   current: T[],

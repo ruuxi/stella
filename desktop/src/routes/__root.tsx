@@ -86,8 +86,6 @@ function RootChatPanelTab({
       openRequest={openRequest}
       events={chat.conversation.events}
       streamingText={chat.conversation.streamingText}
-      reasoningText={chat.conversation.reasoningText}
-      streamingResponseTarget={chat.conversation.streamingResponseTarget}
       isStreaming={chat.conversation.isStreaming}
       runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
       pendingUserMessageId={chat.conversation.pendingUserMessageId}

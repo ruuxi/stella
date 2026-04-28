@@ -1,11 +1,10 @@
 /**
- * Field-wise equality helpers for the turn view-model graph.
+ * Field-wise equality helpers for the linear chat row view-model graph.
  *
- * Lifted out of `MessageTurn.tsx` so non-component modules (notably the
- * `useTurnViewModels` stable-rows pipeline) can share the same comparator
- * tree the `TurnItem` `memo()` wrapper uses. Keeping these in a sibling
- * module also satisfies React Fast Refresh, which only allows component
- * files to re-export components.
+ * Lifted out of the row component file so the `useEventRows` stable-rows
+ * pipeline can share the same comparator that `<UserMessageRow>` /
+ * `<AssistantMessageRow>` `memo()` use, without dragging React component
+ * imports into the hook (Fast Refresh).
  */
 import type {
   Attachment,
@@ -16,9 +15,10 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
 import type { AskQuestionState } from "@/app/chat/AskQuestionBubble";
 import type {
-  StreamingTurnProps,
-  TurnViewModel,
-} from "@/app/chat/MessageTurn";
+  AssistantRowViewModel,
+  EventRowViewModel,
+  UserRowViewModel,
+} from "@/app/chat/MessageRow";
 
 export function attachmentsEqual(a: Attachment[], b: Attachment[]): boolean {
   if (a === b) return true;
@@ -89,39 +89,6 @@ export const selfModAppliedEqual = (
     if (a.files[i] !== b.files[i]) {
       return false;
     }
-  }
-  return true;
-};
-
-export const streamingPropsEqual = (
-  a: StreamingTurnProps | undefined,
-  b: StreamingTurnProps | undefined,
-): boolean => {
-  if (a === b) return true;
-  if (!a || !b) return a === b;
-
-  return (
-    a.streamingText === b.streamingText &&
-    a.reasoningText === b.reasoningText &&
-    Boolean(a.isStreaming) === Boolean(b.isStreaming) &&
-    (a.pendingUserMessageId ?? null) === (b.pendingUserMessageId ?? null) &&
-    Boolean(a.replaceAssistant) === Boolean(b.replaceAssistant) &&
-    Boolean(a.appendAsTrailing) === Boolean(b.appendAsTrailing)
-  );
-};
-
-const trailingAssistantBlocksEqual = (
-  a: TurnViewModel["trailingAssistantBlocks"],
-  b: TurnViewModel["trailingAssistantBlocks"],
-): boolean => {
-  const left = a ?? [];
-  const right = b ?? [];
-  if (left === right) return true;
-  if (left.length !== right.length) return false;
-  for (let i = 0; i < left.length; i += 1) {
-    if (left[i].id !== right[i].id) return false;
-    if (left[i].text !== right[i].text) return false;
-    if (left[i].enableEmotes !== right[i].enableEmotes) return false;
   }
   return true;
 };
@@ -221,30 +188,38 @@ export const resourcePayloadEqual = (
   }
 };
 
-export const turnViewModelEqual = (
-  a: TurnViewModel,
-  b: TurnViewModel,
+const userRowEqual = (a: UserRowViewModel, b: UserRowViewModel): boolean =>
+  a.id === b.id &&
+  a.text === b.text &&
+  (a.windowLabel ?? null) === (b.windowLabel ?? null) &&
+  (a.windowPreviewImageUrl ?? null) === (b.windowPreviewImageUrl ?? null) &&
+  attachmentsEqual(a.attachments, b.attachments) &&
+  channelEnvelopeEqual(a.channelEnvelope, b.channelEnvelope);
+
+const assistantRowEqual = (
+  a: AssistantRowViewModel,
+  b: AssistantRowViewModel,
 ): boolean =>
-  a === b ||
-  (a.id === b.id &&
-    a.userText === b.userText &&
-    (a.userWindowLabel ?? null) === (b.userWindowLabel ?? null) &&
-    (a.userWindowPreviewImageUrl ?? null) ===
-      (b.userWindowPreviewImageUrl ?? null) &&
-    attachmentsEqual(a.userAttachments, b.userAttachments) &&
-    channelEnvelopeEqual(a.userChannelEnvelope, b.userChannelEnvelope) &&
-    a.assistantText === b.assistantText &&
-    a.assistantMessageId === b.assistantMessageId &&
-    JSON.stringify(a.assistantResponseTarget ?? null) ===
-      JSON.stringify(b.assistantResponseTarget ?? null) &&
-    a.assistantEmotesEnabled === b.assistantEmotesEnabled &&
-    (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
-    (a.officePreviewRef?.sessionId ?? null) ===
-      (b.officePreviewRef?.sessionId ?? null) &&
-    resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
-    askQuestionPayloadEqual(a.askQuestion, b.askQuestion) &&
-    selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
-    trailingAssistantBlocksEqual(
-      a.trailingAssistantBlocks,
-      b.trailingAssistantBlocks,
-    ));
+  a.id === b.id &&
+  a.text === b.text &&
+  a.emotesEnabled === b.emotesEnabled &&
+  JSON.stringify(a.responseTarget ?? null) ===
+    JSON.stringify(b.responseTarget ?? null) &&
+  (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
+  (a.officePreviewRef?.sessionId ?? null) ===
+    (b.officePreviewRef?.sessionId ?? null) &&
+  resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
+  selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
+  askQuestionPayloadEqual(a.askQuestion, b.askQuestion);
+
+export const eventRowEqual = (
+  a: EventRowViewModel,
+  b: EventRowViewModel,
+): boolean => {
+  if (a === b) return true;
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "user" && b.kind === "user") return userRowEqual(a, b);
+  if (a.kind === "assistant" && b.kind === "assistant")
+    return assistantRowEqual(a, b);
+  return false;
+};

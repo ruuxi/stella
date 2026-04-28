@@ -31,10 +31,7 @@ import { DropOverlay } from "@/app/chat/DropOverlay";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
-import type {
-  AgentResponseTarget,
-  SelfModAppliedData,
-} from "@/app/chat/streaming/streaming-types";
+import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import { useCapturedChatContext } from "./use-captured-chat-context";
 import {
   updateComposerTextareaExpansion,
@@ -57,8 +54,6 @@ interface ChatPanelTabProps {
   openRequest?: ChatPanelOpenRequest | null;
   events: EventRecord[];
   streamingText: string;
-  reasoningText: string;
-  streamingResponseTarget?: AgentResponseTarget | null;
   isStreaming: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
@@ -80,8 +75,6 @@ export function ChatPanelTab(
       openRequest,
       events,
       streamingText,
-      reasoningText,
-      streamingResponseTarget,
       isStreaming,
       runtimeStatusText,
       pendingUserMessageId,
@@ -269,8 +262,6 @@ export function ChatPanelTab(
               scroll={sidebarScrollApi}
               events={events}
               streamingText={streamingText}
-              reasoningText={reasoningText}
-              streamingResponseTarget={streamingResponseTarget}
               isStreaming={isStreaming}
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}
