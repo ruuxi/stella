@@ -38,6 +38,13 @@ export const createStoreOperations = (
       latestReleaseNumber: record.latestReleaseNumber,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+      ...(typeof record.iconUrl === "string" && record.iconUrl
+        ? { iconUrl: record.iconUrl }
+        : {}),
+      ...(typeof record.authorDisplayName === "string" && record.authorDisplayName
+        ? { authorDisplayName: record.authorDisplayName }
+        : {}),
+      ...(record.featured === true ? { featured: true } : {}),
     };
   };
 
@@ -90,6 +97,16 @@ export const createStoreOperations = (
           (value): value is string => typeof value === "string",
         ),
         createdAt: record.createdAt,
+        ...(typeof manifest.iconUrl === "string" && manifest.iconUrl
+          ? { iconUrl: manifest.iconUrl }
+          : args.packageRecord.iconUrl
+            ? { iconUrl: args.packageRecord.iconUrl }
+            : {}),
+        ...(typeof manifest.authorDisplayName === "string" && manifest.authorDisplayName
+          ? { authorDisplayName: manifest.authorDisplayName }
+          : args.packageRecord.authorDisplayName
+            ? { authorDisplayName: args.packageRecord.authorDisplayName }
+            : {}),
       },
       storageKey: record.artifactStorageKey,
       ...(record.artifactUrl == null || typeof record.artifactUrl === "string"
@@ -105,6 +122,10 @@ export const createStoreOperations = (
     changedFiles: [...manifest.files],
     category: manifest.category,
     ...(manifest.releaseNotes ? { summary: manifest.releaseNotes } : {}),
+    ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
+    ...(manifest.authorDisplayName
+      ? { authorDisplayName: manifest.authorDisplayName }
+      : {}),
   });
 
   const listStorePackages = async (): Promise<StorePackageRecord[]> => {

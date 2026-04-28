@@ -30,6 +30,8 @@ export type StoreReleaseManifest = {
   commitHashes: string[];
   files: string[];
   createdAt: number;
+  iconUrl?: string;
+  authorDisplayName?: string;
 };
 
 export type StoreReleaseArtifact = {
@@ -283,6 +285,8 @@ export const buildStoreReleaseArtifactFromCandidate = (args: {
   displayName: string;
   description: string;
   releaseNotes?: string;
+  iconUrl?: string;
+  authorDisplayName?: string;
   candidate: StorePublishCandidateBundle;
 }): StoreReleaseArtifact => {
   const selectedHashes = Array.from(
@@ -339,6 +343,10 @@ export const buildStoreReleaseArtifactFromCandidate = (args: {
       commitHashes: ordered.map((commit) => commit.commitHash),
       files,
       createdAt: Date.now(),
+      ...(args.iconUrl ? { iconUrl: args.iconUrl } : {}),
+      ...(args.authorDisplayName
+        ? { authorDisplayName: args.authorDisplayName }
+        : {}),
     },
     applyGuidance: DEFAULT_BLUEPRINT_APPLY_GUIDANCE,
     batches,

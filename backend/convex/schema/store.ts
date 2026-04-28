@@ -8,6 +8,8 @@ export const store_release_manifest_validator = v.object({
   category: v.optional(v.union(v.literal("agents"), v.literal("stella"))),
   artifactHash: v.optional(v.string()),
   summary: v.optional(v.string()),
+  iconUrl: v.optional(v.string()),
+  authorDisplayName: v.optional(v.string()),
 });
 
 const storePackageFields = {
@@ -20,6 +22,10 @@ const storePackageFields = {
   latestReleaseId: v.optional(v.id("store_package_releases")),
   createdAt: v.number(),
   updatedAt: v.number(),
+  authorDisplayName: v.optional(v.string()),
+  iconUrl: v.optional(v.string()),
+  featured: v.optional(v.boolean()),
+  featuredAt: v.optional(v.number()),
 };
 
 const storePackageReleaseFields = {
@@ -57,7 +63,8 @@ export const storeSchema = {
   store_packages: defineTable(storePackageFields)
     .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"])
     .index("by_ownerId_and_packageId", ["ownerId", "packageId"])
-    .index("by_packageId", ["packageId"]),
+    .index("by_packageId", ["packageId"])
+    .index("by_featured_and_featuredAt", ["featured", "featuredAt"]),
 
   store_package_releases: defineTable(storePackageReleaseFields)
     .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])

@@ -165,6 +165,13 @@
   box-shadow: 0 2px 12px color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 
+.store-featured-img {
+  position: absolute;
+  inset: 0;
+  opacity: 0.55;
+  filter: blur(2px) saturate(1.05);
+}
+
 .store-featured:hover {
   transform: translateY(-2px) scale(1.005);
   box-shadow:
@@ -524,6 +531,10 @@
   color: var(--text-weaker);
 }
 
+.store-detail-meta--spaced {
+  margin-top: 12px;
+}
+
 .store-detail-meta-item {
   display: flex;
   align-items: center;
@@ -800,6 +811,12 @@
   gap: 16px;
 }
 
+.store-publish-review-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .store-publish-review-title {
   font-size: 15px;
   font-weight: 650;
@@ -827,4 +844,453 @@
   color: var(--text-base);
   font-size: 12px;
   line-height: 1.35;
+}
+
+/* --- Real Artwork (icon image with gradient fallback) --- */
+
+.store-artwork {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.store-artwork-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* --- Discover toolbar (search + category filter) --- */
+
+.store-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.store-search {
+  flex: 1;
+  min-width: 220px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.store-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-weaker);
+  pointer-events: none;
+}
+
+.store-search-input {
+  width: 100%;
+  padding: 8px 14px 8px 34px;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-strong);
+  transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
+}
+
+.store-search-input::placeholder {
+  color: var(--text-weaker);
+}
+
+.store-search-input:focus {
+  outline: none;
+  border-color: color-mix(in oklch, var(--interactive) 35%, transparent);
+  background: var(--background);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--interactive) 12%, transparent);
+}
+
+.store-filter {
+  display: flex;
+  gap: 1px;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.store-filter-pill {
+  padding: 4px 14px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 550;
+  font-family: inherit;
+  color: var(--text-weak);
+  cursor: default;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+  user-select: none;
+}
+
+.store-filter-pill:hover {
+  color: var(--text-base);
+}
+
+.store-filter-pill[data-active] {
+  background: var(--background);
+  color: var(--text-strong);
+  box-shadow:
+    0 0.5px 2px color-mix(in oklch, var(--foreground) 8%, transparent),
+    0 0 0 0.5px color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+:root[data-theme="dark"] .store-filter-pill[data-active] {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+/* --- Featured: author + tagline polish --- */
+
+.store-featured-author {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 550;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.store-featured-author-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* --- Card author chip (small, below description) --- */
+
+.store-card-author {
+  font-size: 11px;
+  color: var(--text-weaker);
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.store-card-author-avatar {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-weak);
+}
+
+/* --- Detail: author row + What's New section --- */
+
+.store-detail-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-weak);
+}
+
+.store-detail-author-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-base);
+}
+
+.store-whats-new {
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 5%, transparent);
+  margin-bottom: 22px;
+}
+
+.store-whats-new-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+  margin-bottom: 6px;
+}
+
+.store-whats-new-version {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-strong);
+  margin-bottom: 6px;
+}
+
+.store-whats-new-body {
+  font-size: 13px;
+  color: var(--text-base);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+/* --- Updates tab list --- */
+
+.store-update-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.store-update-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 5%, transparent);
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  cursor: default;
+}
+
+.store-update-row:hover {
+  background: color-mix(in oklch, var(--foreground) 3.5%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 9%, transparent);
+}
+
+.store-update-art {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 0.5px color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.store-update-art-letter {
+  font-size: 18px;
+  font-weight: 700;
+  color: white;
+  opacity: 0.9;
+}
+
+.store-update-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.store-update-name {
+  font-size: 14px;
+  font-weight: 620;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.store-update-version {
+  font-size: 12px;
+  color: var(--text-weak);
+  margin-top: 2px;
+}
+
+.store-update-notes {
+  font-size: 12px;
+  color: var(--text-weak);
+  line-height: 1.5;
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* --- Your Mods: recent-changes block --- */
+
+.store-mods-empty-block {
+  padding: 28px 22px;
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
+  border: 1px dashed color-mix(in oklch, var(--foreground) 8%, transparent);
+  text-align: center;
+}
+
+.store-mods-empty-title {
+  font-size: 14px;
+  font-weight: 620;
+  color: var(--text-base);
+  margin-bottom: 4px;
+}
+
+.store-mods-empty-desc {
+  font-size: 12px;
+  color: var(--text-weak);
+  line-height: 1.5;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.store-recent-changes {
+  margin-top: 28px;
+}
+
+.store-recent-changes-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 0 0 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-weak);
+  cursor: default;
+  transition: color 0.18s;
+}
+
+.store-recent-changes-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 14px;
+}
+
+.store-recent-changes-action {
+  margin-left: auto;
+}
+
+.store-recent-changes-chevron {
+  transition: transform 0.18s;
+}
+
+.store-recent-changes-chevron[data-expanded] {
+  transform: rotate(-90deg);
+}
+
+.store-recent-changes-toggle:hover {
+  color: var(--text-base);
+}
+
+.store-recent-changes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* --- Commit row (My Creations / Your Mods) — replaces inline styles --- */
+
+.store-commit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 5%, transparent);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.store-commit-card[data-selected] {
+  border-color: color-mix(in oklch, var(--interactive) 35%, transparent);
+  background: color-mix(in oklch, var(--interactive) 5%, transparent);
+}
+
+.store-commit-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.store-commit-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 620;
+  color: var(--text-strong);
+  cursor: default;
+}
+
+.store-commit-subject {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.store-commit-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-weaker);
+}
+
+.store-commit-meta-button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: default;
+  transition: color 0.18s;
+}
+
+.store-commit-meta-button:not(:disabled):hover {
+  color: var(--text-base);
+}
+
+.store-commit-files {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-weaker);
+  word-break: break-all;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+/* --- Section header with right-aligned action --- */
+
+.store-section-header--with-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.store-section-header-spacer {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
 }
