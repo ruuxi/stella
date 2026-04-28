@@ -7,9 +7,10 @@
  * same session, restarts crashed servers, and tears everything down on
  * service stop.
  *
- * Vite is started via `bun x vite` inside the per-session folder. The
- * caller must have `bun` on PATH. Each child runs as the leader of its
- * own process group on Unix so the whole tree can be killed.
+ * Dependencies are installed with `bun install`, then Vite is started via
+ * `bun x vite` inside the per-session folder. The caller must have `bun` on
+ * PATH. Each child runs as the leader of its own process group on Unix so the
+ * whole tree can be killed.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -49,6 +50,7 @@ export type PreviewServerManagerEvents = {
 
 const VITE_LOG_PREFIX = "[social-preview]";
 const URL_DISCOVERY_TIMEOUT_MS = 30_000;
+const INSTALL_TIMEOUT_MS = 120_000;
 const RESTART_BACKOFF_MS = 5_000;
 const STOP_GRACE_MS = 1_500;
 
@@ -159,7 +161,7 @@ const killChildProcessTree = async (child: ChildProcess) => {
 
 export class SocialPreviewServerManager {
   private entries = new Map<string, PreviewEntry>();
-  private stopped = false;
+  private stoppingAll = false;
 
   constructor(private readonly events: PreviewServerManagerEvents = {}) {}
 
@@ -173,7 +175,7 @@ export class SocialPreviewServerManager {
     sessionId: string,
     workspacePath: string,
   ): Promise<string | null> {
-    if (this.stopped) {
+    if (this.stoppingAll) {
       return null;
     }
 
@@ -229,9 +231,13 @@ export class SocialPreviewServerManager {
    * Stop every running dev server. Used at worker shutdown.
    */
   async shutdown(): Promise<void> {
-    this.stopped = true;
-    const sessionIds = [...this.entries.keys()];
-    await Promise.all(sessionIds.map((id) => this.stopSession(id)));
+    this.stoppingAll = true;
+    try {
+      const sessionIds = [...this.entries.keys()];
+      await Promise.all(sessionIds.map((id) => this.stopSession(id)));
+    } finally {
+      this.stoppingAll = false;
+    }
   }
 
   /**
@@ -290,7 +296,7 @@ export class SocialPreviewServerManager {
   }
 
   private async spawnVite(entry: PreviewEntry): Promise<string | null> {
-    if (this.stopped) {
+    if (this.stoppingAll) {
       entry.state = "stopped";
       return null;
     }
@@ -302,6 +308,16 @@ export class SocialPreviewServerManager {
         sessionId: entry.sessionId,
         workspacePath: entry.workspacePath,
       });
+      return null;
+    }
+
+    const installed = await this.ensureDependenciesInstalled(entry);
+    if (
+      !installed ||
+      this.stoppingAll ||
+      this.entries.get(entry.sessionId) !== entry ||
+      entry.state === "stopping"
+    ) {
       return null;
     }
 
@@ -403,7 +419,7 @@ export class SocialPreviewServerManager {
         entry.lastError = `Vite exited with code ${code}`;
       }
       this.events.onStopped?.(this.toSnapshot(entry));
-      if (!this.stopped && wasRunning) {
+      if (!this.stoppingAll && wasRunning) {
         this.scheduleRestart(entry);
       }
     });
@@ -420,17 +436,93 @@ export class SocialPreviewServerManager {
   }
 
   private scheduleRestart(entry: PreviewEntry) {
-    if (this.stopped) return;
+    if (this.stoppingAll) return;
     if (entry.restartTimer) return;
     entry.restartTimer = setTimeout(() => {
       entry.restartTimer = null;
       const stillTracked = this.entries.get(entry.sessionId);
-      if (!stillTracked || this.stopped) {
+      if (!stillTracked || this.stoppingAll) {
         return;
       }
       log("restarting vite after exit", { sessionId: entry.sessionId });
       void this.spawnVite(entry);
     }, RESTART_BACKOFF_MS);
     entry.restartTimer.unref?.();
+  }
+
+  private async ensureDependenciesInstalled(
+    entry: PreviewEntry,
+  ): Promise<boolean> {
+    const reactDir = path.join(entry.workspacePath, "node_modules", "react");
+    const viteDir = path.join(entry.workspacePath, "node_modules", "vite");
+    if ((await fileExists(reactDir)) && (await fileExists(viteDir))) {
+      return true;
+    }
+
+    log("installing workspace dependencies", {
+      sessionId: entry.sessionId,
+      workspacePath: entry.workspacePath,
+    });
+
+    const child = spawn("bun", ["install", "--silent"], {
+      cwd: entry.workspacePath,
+      env: { ...process.env, FORCE_COLOR: "0" },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      detached: process.platform !== "win32",
+    });
+    entry.child = child;
+
+    let output = "";
+    const appendOutput = (data: Buffer | string) => {
+      output += typeof data === "string" ? data : data.toString("utf8");
+      if (output.length > 4_000) {
+        output = output.slice(-4_000);
+      }
+    };
+    child.stdout?.on("data", appendOutput);
+    child.stderr?.on("data", appendOutput);
+
+    const exitCode = await new Promise<number | null>((resolve) => {
+      const timeout = setTimeout(() => {
+        void killChildProcessTree(child).finally(() => resolve(null));
+      }, INSTALL_TIMEOUT_MS);
+      timeout.unref?.();
+      child.once("exit", (code) => {
+        clearTimeout(timeout);
+        resolve(code);
+      });
+      child.once("error", () => {
+        clearTimeout(timeout);
+        resolve(null);
+      });
+    });
+    if (entry.child === child) {
+      entry.child = null;
+    }
+
+    if (
+      this.stoppingAll ||
+      this.entries.get(entry.sessionId) !== entry ||
+      entry.state === "stopping"
+    ) {
+      return false;
+    }
+
+    if (exitCode === 0) {
+      return true;
+    }
+
+    entry.state = "error";
+    entry.lastError =
+      exitCode === null
+        ? "Dependency install timed out or failed to start."
+        : `Dependency install failed with code ${exitCode}.`;
+    logWarn("workspace dependency install failed", {
+      sessionId: entry.sessionId,
+      error: entry.lastError,
+      output,
+    });
+    return false;
   }
 }
