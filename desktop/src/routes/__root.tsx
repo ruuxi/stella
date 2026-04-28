@@ -357,7 +357,11 @@ function RootChrome() {
         ds.update(payload);
         return;
       }
-      if (payload.kind === "media" || payload.kind === "url") {
+      if (
+        payload.kind === "media" ||
+        payload.kind === "url" ||
+        payload.kind === "trash"
+      ) {
         ds.open(payload);
         return;
       }
@@ -378,6 +382,28 @@ function RootChrome() {
       routeDisplayPayload(payload);
     });
   }, [routeDisplayPayload]);
+
+  // If the previous agent run left files in deferred-delete trash, seed the
+  // workspace panel with a stable tab without opening UI. The actual Trash tab
+  // UI is intentionally deferred; this just wires discovery and tab routing.
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI?.display
+      ?.listTrash?.()
+      ?.then((result: { items?: unknown[] } | null) => {
+        if (cancelled || !result || !Array.isArray(result.items)) return;
+        if (result.items.length === 0) return;
+        displaySidebarRef.current?.update({
+          kind: "trash",
+          title: "Trash",
+          createdAt: Date.now(),
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Owner-scoped materializer: any media job (this conversation, another
   // device, the agent, the studio, ...) gets downloaded into

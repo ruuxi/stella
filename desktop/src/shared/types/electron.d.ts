@@ -1056,6 +1056,26 @@ export type ElectronDisplayApi = {
   readFile: (
     filePath: string,
   ) => Promise<{ contentsBase64: string; sizeBytes: number; mimeType: string }>;
+  listTrash: () => Promise<{
+    items: Array<{
+      id: string;
+      source: string;
+      originalPath: string;
+      trashPath: string;
+      trashedAt: number;
+      purgeAfter: number;
+      requestId?: string;
+      agentType?: string;
+      conversationId?: string;
+    }>;
+    errors: string[];
+  }>;
+  forceDeleteTrash: (payload: { id?: string; all?: boolean }) => Promise<{
+    checked: number;
+    purged: number;
+    skipped: number;
+    errors: string[];
+  }>;
 };
 
 export type ElectronOfficePreviewApi = {

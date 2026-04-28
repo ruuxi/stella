@@ -22,6 +22,9 @@ export type DisplayFileArtifactKind =
  * - `media`  — generated media (image/video/audio/3d/text) materialized to
  *              `state/media/outputs/`. Emitted by the media materializer when
  *              any media job for the current owner succeeds.
+ * - `trash`  — Stella's deferred-delete trash. The actual UI is intentionally
+ *              owned by the future tab implementation; this payload wires the
+ *              display tab, list, and force-delete contracts.
  *
  * The IPC channel `display:update` carries either a raw HTML `string`
  * (legacy compatibility for the runtime worker's existing `displayHtml(html)`
@@ -62,6 +65,11 @@ export type DisplayPayload =
       createdAt?: number;
     }
   | { kind: "pdf"; filePath: string; title?: string }
+  | {
+      kind: "trash";
+      title?: string;
+      createdAt?: number;
+    }
   | {
       kind: "media";
       asset: MediaAsset;
@@ -153,6 +161,15 @@ export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
   if (value.kind === "pdf") {
     return typeof (value as { filePath?: unknown }).filePath === "string";
   }
+  if (value.kind === "trash") {
+    const createdAt = (value as { createdAt?: unknown }).createdAt;
+    return (
+      ((value as { title?: unknown }).title === undefined ||
+        typeof (value as { title?: unknown }).title === "string") &&
+      (createdAt === undefined ||
+        (typeof createdAt === "number" && Number.isFinite(createdAt)))
+    );
+  }
   if (value.kind === "media") {
     return (
       isMediaAsset((value as { asset?: unknown }).asset) &&
@@ -191,6 +208,9 @@ export const getDisplayPayloadTitle = (payload: DisplayPayload): string => {
   }
   if (payload.kind === "pdf") {
     return payload.title ?? payload.filePath.split("/").pop() ?? "Document";
+  }
+  if (payload.kind === "trash") {
+    return payload.title ?? "Trash";
   }
   // payload.kind === "media"
   if (payload.prompt) return payload.prompt;

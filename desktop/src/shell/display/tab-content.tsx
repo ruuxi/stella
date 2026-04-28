@@ -113,6 +113,8 @@ export const HtmlTabContent = ({ html }: { html: string }) => {
   );
 };
 
+export { TrashTabContent } from "./TrashTabContent";
+
 export const OfficeTabContent = ({
   previewRef,
 }: {

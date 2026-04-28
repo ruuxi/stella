@@ -44,6 +44,11 @@ export type DeferredDeleteSweepResult = {
   errors: string[];
 };
 
+export type DeferredDeleteListResult = {
+  items: DeferredDeleteRecord[];
+  errors: string[];
+};
+
 type DeferredDeletePaths = {
   stellaHome: string;
   baseDir: string;
@@ -340,6 +345,103 @@ const parseRecord = (raw: string): DeferredDeleteRecord | null => {
   } catch {
     return null;
   }
+};
+
+export const listDeferredDeletes = async (options?: {
+  stellaHome?: string;
+}): Promise<DeferredDeleteListResult> => {
+  const paths = getDeferredDeletePaths(options?.stellaHome);
+  const result: DeferredDeleteListResult = { items: [], errors: [] };
+
+  const metadataFiles = await fs.readdir(paths.itemsDir).catch(() => []);
+  for (const metadataFile of metadataFiles) {
+    if (!metadataFile.endsWith(".json")) {
+      continue;
+    }
+
+    const metadataPath = path.join(paths.itemsDir, metadataFile);
+    const raw = await fs.readFile(metadataPath, "utf-8").catch((error) => {
+      result.errors.push(
+        `Failed to read ${metadataFile}: ${(error as Error).message}`,
+      );
+      return null;
+    });
+    if (!raw) {
+      continue;
+    }
+
+    const record = parseRecord(raw);
+    if (!record) {
+      result.errors.push(`Invalid trash metadata: ${metadataFile}`);
+      continue;
+    }
+    result.items.push(record);
+  }
+
+  result.items.sort((a, b) => b.trashedAt - a.trashedAt);
+  return result;
+};
+
+export const purgeDeferredDelete = async (
+  id: string,
+  options?: { stellaHome?: string },
+): Promise<DeferredDeleteSweepResult> => {
+  const paths = getDeferredDeletePaths(options?.stellaHome);
+  const summary: DeferredDeleteSweepResult = {
+    checked: 0,
+    purged: 0,
+    skipped: 0,
+    errors: [],
+  };
+  const normalizedId = id.trim();
+  if (!normalizedId) {
+    summary.errors.push("Missing deferred-delete id.");
+    return summary;
+  }
+
+  const metadataPath = path.join(paths.itemsDir, `${normalizedId}.json`);
+  const raw = await fs.readFile(metadataPath, "utf-8").catch((error) => {
+    summary.errors.push((error as Error).message);
+    return null;
+  });
+  if (!raw) {
+    return summary;
+  }
+
+  summary.checked = 1;
+  const record = parseRecord(raw);
+  if (!record) {
+    await fs.rm(metadataPath, { force: true }).catch(() => {});
+    summary.errors.push(`Invalid trash metadata for ${normalizedId}.`);
+    return summary;
+  }
+
+  if (!isSubPath(record.trashPath, paths.trashDir)) {
+    summary.errors.push(
+      `Refusing to purge out-of-scope path for record ${record.id}: ${record.trashPath}`,
+    );
+    return summary;
+  }
+
+  try {
+    await fs.rm(record.trashPath, { recursive: true, force: true });
+    await fs.rm(metadataPath, { force: true });
+    summary.purged = 1;
+  } catch (error) {
+    summary.errors.push(
+      `Failed to purge ${record.trashPath}: ${(error as Error).message}`,
+    );
+  }
+  return summary;
+};
+
+export const purgeAllDeferredDeletes = async (options?: {
+  stellaHome?: string;
+}): Promise<DeferredDeleteSweepResult> => {
+  return await purgeExpiredDeferredDeletes({
+    stellaHome: options?.stellaHome,
+    now: Number.MAX_SAFE_INTEGER,
+  });
 };
 
 export const purgeExpiredDeferredDeletes = async (options?: {
