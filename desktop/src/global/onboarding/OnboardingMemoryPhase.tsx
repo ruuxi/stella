@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import "./OnboardingMemoryPhase.css";
 
 type MemoryPhaseProps = {
@@ -55,8 +55,7 @@ export function OnboardingMemoryPhase({
     <div className="onboarding-step-content onboarding-memory-step">
       <p className="onboarding-step-desc onboarding-memory-step__lede">
         Stella can quietly remember what you've been working on so you don't
-        have to repeat yourself. Off by default — turn it on whenever you
-        want.
+        have to repeat yourself. Off by default — turn it on whenever you want.
       </p>
 
       <div className="onboarding-memory-grid" key={animationKey}>
@@ -231,10 +230,13 @@ function MemoryComparisonMock({
                 {line.from === "assistant" && line.typingMs ? (
                   <span
                     className="onboarding-memory-mock__typing"
-                    style={{
-                      animationDelay: `${line.delayMs}ms`,
-                      animationDuration: `${line.typingMs}ms`,
-                    }}
+                    style={
+                      {
+                        animationDelay: `${line.delayMs}ms`,
+                        animationDuration: `${line.typingMs}ms`,
+                        "--typing-dot-count": Math.ceil(line.typingMs / 1000),
+                      } as CSSProperties
+                    }
                     aria-hidden="true"
                   >
                     <span />
@@ -247,9 +249,7 @@ function MemoryComparisonMock({
                   style={
                     line.from === "assistant" && line.typingMs
                       ? {
-                          animationDelay: `${
-                            line.delayMs + line.typingMs
-                          }ms`,
+                          animationDelay: `${line.delayMs + line.typingMs}ms`,
                         }
                       : { animationDelay: `${line.delayMs}ms` }
                   }

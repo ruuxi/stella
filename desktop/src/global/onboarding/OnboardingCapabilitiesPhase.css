@@ -183,7 +183,9 @@
   text-transform: uppercase;
   color: var(--foreground);
   opacity: 0.4;
-  transition: opacity 0.25s ease, color 0.25s ease;
+  transition:
+    opacity 0.25s ease,
+    color 0.25s ease;
 }
 
 .onboarding-cap-words__word[data-completed] .onboarding-cap-words__label {
@@ -234,8 +236,12 @@
 }
 
 @keyframes capWordFill {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 /* ── Continue button ──────────────────────────────────────────────── */
@@ -248,7 +254,8 @@
 }
 
 @keyframes capContinuePulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 0 0 color-mix(in oklch, var(--foreground) 0%, transparent);
   }
   50% {
@@ -301,8 +308,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 14px 12px;
-  border-right: 1px solid
-    color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-right: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
   background: color-mix(in oklch, var(--foreground) 2%, transparent);
 }
 
@@ -535,7 +541,9 @@
   justify-content: flex-start;
   opacity: 0;
   transform: translate3d(0, 8px, 0);
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
   transition-delay: 1.8s;
 }
 
@@ -686,7 +694,9 @@
 }
 
 @keyframes capBarFill {
-  to { transform: scaleX(1); }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 .onboarding-cap-app-card__check {
@@ -744,7 +754,9 @@
   flex-direction: column;
   opacity: 0;
   transform: translateY(10px) scale(0.96);
-  transition: opacity 0.6s ease, transform 0.6s ease;
+  transition:
+    opacity 0.6s ease,
+    transform 0.6s ease;
 }
 
 .onboarding-cap-phone[data-visible] {
@@ -846,7 +858,9 @@
   color: oklch(0.62 0.18 235);
   opacity: 0;
   transform: translateX(-8px);
-  transition: opacity 0.5s ease 0.6s, transform 0.5s ease 0.6s;
+  transition:
+    opacity 0.5s ease 0.6s,
+    transform 0.5s ease 0.6s;
 }
 
 .onboarding-cap-bridge[data-visible] {
@@ -878,8 +892,12 @@
 }
 
 @keyframes capBridgeFlow {
-  from { background-position: 0% 0%; }
-  to { background-position: -200% 0%; }
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: -200% 0%;
+  }
 }
 
 .onboarding-cap-desktop {
@@ -892,7 +910,9 @@
   overflow: hidden;
   opacity: 0;
   transform: translateX(8px);
-  transition: opacity 0.6s ease 0.4s, transform 0.6s ease 0.4s;
+  transition:
+    opacity 0.6s ease 0.4s,
+    transform 0.6s ease 0.4s;
 }
 
 .onboarding-cap-desktop[data-visible] {
@@ -917,9 +937,15 @@
   background: color-mix(in oklch, var(--foreground) 18%, transparent);
 }
 
-.onboarding-cap-desktop__bar span:nth-child(1) { background: oklch(0.74 0.16 75); }
-.onboarding-cap-desktop__bar span:nth-child(2) { background: oklch(0.74 0.16 240); }
-.onboarding-cap-desktop__bar span:nth-child(3) { background: oklch(0.78 0.16 150); }
+.onboarding-cap-desktop__bar span:nth-child(1) {
+  background: oklch(0.74 0.16 75);
+}
+.onboarding-cap-desktop__bar span:nth-child(2) {
+  background: oklch(0.74 0.16 240);
+}
+.onboarding-cap-desktop__bar span:nth-child(3) {
+  background: oklch(0.78 0.16 150);
+}
 
 .onboarding-cap-desktop__bar strong {
   margin-left: 4px;
@@ -1038,13 +1064,15 @@
   flex-shrink: 0;
 }
 
-.onboarding-cap-store__card[data-action="publish"] .onboarding-cap-store__card-art {
+.onboarding-cap-store__card[data-action="publish"]
+  .onboarding-cap-store__card-art {
   background: color-mix(in oklch, oklch(0.65 0.16 145) 22%, transparent);
   color: oklch(0.5 0.16 145);
   opacity: 1;
 }
 
-.onboarding-cap-store__card[data-action="install"] .onboarding-cap-store__card-art {
+.onboarding-cap-store__card[data-action="install"]
+  .onboarding-cap-store__card-art {
   background: color-mix(in oklch, oklch(0.62 0.18 235) 22%, transparent);
   color: oklch(0.55 0.18 235);
   opacity: 1;
@@ -1084,12 +1112,14 @@
   text-transform: uppercase;
 }
 
-.onboarding-cap-store__card[data-action="publish"] .onboarding-cap-store__card-tag {
+.onboarding-cap-store__card[data-action="publish"]
+  .onboarding-cap-store__card-tag {
   color: oklch(0.5 0.16 145);
   background: color-mix(in oklch, oklch(0.65 0.16 145) 14%, transparent);
 }
 
-.onboarding-cap-store__card[data-action="install"] .onboarding-cap-store__card-tag {
+.onboarding-cap-store__card[data-action="install"]
+  .onboarding-cap-store__card-tag {
   color: oklch(0.55 0.18 235);
   background: color-mix(in oklch, oklch(0.62 0.18 235) 14%, transparent);
 }
@@ -1212,13 +1242,23 @@
 }
 
 @keyframes capCursorA {
-  0%, 100% { transform: rotate(-45deg) translate(0, 0); }
-  50% { transform: rotate(-45deg) translate(-30px, 20px); }
+  0%,
+  100% {
+    transform: rotate(-45deg) translate(0, 0);
+  }
+  50% {
+    transform: rotate(-45deg) translate(-30px, 20px);
+  }
 }
 
 @keyframes capCursorB {
-  0%, 100% { transform: rotate(-45deg) translate(0, 0); }
-  50% { transform: rotate(-45deg) translate(40px, -25px); }
+  0%,
+  100% {
+    transform: rotate(-45deg) translate(0, 0);
+  }
+  50% {
+    transform: rotate(-45deg) translate(40px, -25px);
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -1439,7 +1479,9 @@
   overflow: hidden;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
 }
 
 .onboarding-cap-actions__browser[data-visible] {
@@ -1464,9 +1506,15 @@
   border-radius: 999px;
 }
 
-.onboarding-cap-actions__browser-bar span:nth-child(1) { background: oklch(0.74 0.16 75); }
-.onboarding-cap-actions__browser-bar span:nth-child(2) { background: oklch(0.74 0.16 240); }
-.onboarding-cap-actions__browser-bar span:nth-child(3) { background: oklch(0.78 0.16 150); }
+.onboarding-cap-actions__browser-bar span:nth-child(1) {
+  background: oklch(0.74 0.16 75);
+}
+.onboarding-cap-actions__browser-bar span:nth-child(2) {
+  background: oklch(0.74 0.16 240);
+}
+.onboarding-cap-actions__browser-bar span:nth-child(3) {
+  background: oklch(0.78 0.16 150);
+}
 
 .onboarding-cap-actions__url {
   margin-left: 8px;
@@ -1547,8 +1595,13 @@
 }
 
 @keyframes capStellaClick {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(0.62 0.18 235 / 0); }
-  50% { box-shadow: 0 0 0 8px oklch(0.62 0.18 235 / 0.18); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.62 0.18 235 / 0);
+  }
+  50% {
+    box-shadow: 0 0 0 8px oklch(0.62 0.18 235 / 0.18);
+  }
 }
 
 .onboarding-cap-actions__confirm {
@@ -1571,12 +1624,13 @@
   width: 14px;
   height: 14px;
   border-radius: 50% 50% 50% 0;
-  transform: rotate(-45deg);
   background: oklch(0.62 0.18 235);
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
   top: 65%;
   left: 25%;
   opacity: 0;
+  transform: translate3d(0, 0, 0) rotate(-45deg);
+  will-change: transform, opacity;
 }
 
 .onboarding-cap-actions__cursor[data-visible] {
@@ -1586,20 +1640,17 @@
 @keyframes capActionsCursor {
   0% {
     opacity: 0;
-    top: 80%;
-    left: 10%;
+    transform: translate3d(-72px, 36px, 0) rotate(-45deg);
   }
   20% {
     opacity: 1;
   }
   60% {
-    top: 65%;
-    left: 38%;
+    transform: translate3d(62px, 0, 0) rotate(-45deg);
     opacity: 1;
   }
   100% {
-    top: 78%;
-    left: 30%;
+    transform: translate3d(24px, 34px, 0) rotate(-45deg);
     opacity: 0;
   }
 }
@@ -1615,7 +1666,9 @@
   box-shadow: 0 12px 30px color-mix(in oklch, black 8%, transparent);
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s ease 0.2s, transform 0.5s ease 0.2s;
+  transition:
+    opacity 0.5s ease 0.2s,
+    transform 0.5s ease 0.2s;
 }
 
 .onboarding-cap-actions__desktop[data-visible] {
