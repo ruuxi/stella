@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
-import { systemPreferences } from 'electron'
+import { desktopCapturer, systemPreferences } from 'electron'
 import { runNativeHelper } from '../native-helper.js'
 
 type ScreenCapturePermissionsModule = {
@@ -34,33 +34,68 @@ export type MicrophonePermissionStatus =
   | 'unknown'
 
 const permissionCache = new Map<MacPermissionKind, boolean>()
-const MIC_PERMISSION_BUNDLE_IDS = ['com.stella.app', 'com.github.Electron'] as const
+const STELLA_BUNDLE_IDS = ['com.stella.app', 'com.github.Electron'] as const
+
+const TCC_SERVICE_BY_KIND: Record<
+  'accessibility' | 'screen' | 'microphone',
+  string
+> = {
+  accessibility: 'Accessibility',
+  screen: 'ScreenCapture',
+  microphone: 'Microphone',
+}
 
 const checkAccessibility = (prompt: boolean): boolean =>
   systemPreferences.isTrustedAccessibilityClient(prompt)
 
-const checkScreenRecordingFallback = (): boolean =>
+const checkScreenRecordingViaElectron = (): boolean =>
   systemPreferences.getMediaAccessStatus('screen') === 'granted'
 
-const checkScreenRecording = (): boolean => {
-  if (process.platform !== 'darwin') {
-    return checkScreenRecordingFallback()
-  }
+const checkScreenRecordingViaNativeModule = (): boolean | null => {
   const mod = getScreenCapturePermissions()
-  if (!mod) {
-    return checkScreenRecordingFallback()
-  }
-
+  if (!mod) return null
   try {
     return mod.hasScreenCapturePermission()
   } catch {
-    return checkScreenRecordingFallback()
+    return null
   }
+}
+
+const checkScreenRecording = (): boolean => {
+  if (process.platform !== 'darwin') {
+    return checkScreenRecordingViaElectron()
+  }
+  // Electron's getMediaAccessStatus is TCC-backed and reflects newly granted
+  // permissions immediately; the native module's CGPreflightScreenCaptureAccess
+  // is per-process and can keep reporting "denied" until the app is relaunched.
+  // OR them so a fresh grant flips us to "granted" without a restart.
+  if (checkScreenRecordingViaElectron()) return true
+  return checkScreenRecordingViaNativeModule() === true
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+/**
+ * Touch desktopCapturer from the Electron main process so macOS records the
+ * Stella.app bundle (not a child helper) as a screen-recording client. Without
+ * this, fresh installs may never show up in System Settings → Screen Recording.
+ */
+const registerStellaForScreenRecording = async () => {
+  try {
+    await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 1, height: 1 },
+      fetchWindowIcons: false,
+    })
+  } catch {
+    // If we don't yet have access this can throw; the side-effect of registering
+    // the bundle in TCC is what matters and that happens regardless.
+  }
+}
+
 const requestScreenRecording = async (): Promise<boolean> => {
+  await registerStellaForScreenRecording()
+
   const result = await runNativeHelper('screen_permission', ['request'], {
     timeout: 10_000,
   })
@@ -113,16 +148,31 @@ export const getMicrophonePermissionStatus = (): MicrophonePermissionStatus => {
   }
 }
 
-export const resetMacMicrophonePermissions = async (): Promise<boolean> => {
+export type ResettableMacPermissionKind =
+  | 'accessibility'
+  | 'screen'
+  | 'microphone'
+
+export const resetMacPermission = async (
+  kind: ResettableMacPermissionKind,
+): Promise<boolean> => {
   if (process.platform !== 'darwin') return false
 
+  const service = TCC_SERVICE_BY_KIND[kind]
   const results = await Promise.all(
-    MIC_PERMISSION_BUNDLE_IDS.map((bundleId) =>
-      runExecFile('tccutil', ['reset', 'Microphone', bundleId]),
+    STELLA_BUNDLE_IDS.map((bundleId) =>
+      runExecFile('tccutil', ['reset', service, bundleId]),
     ),
   )
-  return results.some(Boolean)
+  const ok = results.some(Boolean)
+  if (ok && (kind === 'accessibility' || kind === 'screen')) {
+    permissionCache.delete(kind)
+  }
+  return ok
 }
+
+export const resetMacMicrophonePermissions = (): Promise<boolean> =>
+  resetMacPermission('microphone')
 
 export const hasMacPermission = (kind: MacPermissionKind, prompt = false): boolean => {
   if (process.platform !== 'darwin') return true

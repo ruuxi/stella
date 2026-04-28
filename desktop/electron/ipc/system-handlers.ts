@@ -57,6 +57,7 @@ import {
   IPC_PERMISSIONS_GET_STATUS,
   IPC_PERMISSIONS_OPEN_SETTINGS,
   IPC_PERMISSIONS_REQUEST,
+  IPC_PERMISSIONS_RESET,
   IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_SHELL_SAVE_FILE_AS,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
@@ -76,8 +77,10 @@ import {
   getMicrophonePermissionStatus,
   requestMacPermission,
   resetMacMicrophonePermissions,
+  resetMacPermission,
   type MacPermissionKind,
   type MacPermissionSettingsKind,
+  type ResettableMacPermissionKind,
 } from "../utils/macos-permissions.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 
@@ -1256,6 +1259,37 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
 
     return { ok: await resetMacMicrophonePermissions() };
   });
+
+  ipcMain.handle(
+    IPC_PERMISSIONS_RESET,
+    async (event, payload: { kind?: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PERMISSIONS_RESET,
+        )
+      ) {
+        throw new Error("Blocked untrusted permissions:reset request.");
+      }
+      if (process.platform !== "darwin") {
+        return { ok: false };
+      }
+      const kind = asTrimmedString(payload?.kind) as ResettableMacPermissionKind;
+      if (!["accessibility", "screen", "microphone"].includes(kind)) {
+        return { ok: false };
+      }
+      const approved = await options.ensurePrivilegedActionApproval(
+        "permissions.reset",
+        `Reset ${kind} permission for Stella?`,
+        "Stella will need to ask for this permission again the next time you use a feature that requires it.",
+        event,
+      );
+      if (!approved) {
+        return { ok: false };
+      }
+      return { ok: await resetMacPermission(kind) };
+    },
+  );
 
   ipcMain.handle(
     IPC_PERMISSIONS_OPEN_SETTINGS,

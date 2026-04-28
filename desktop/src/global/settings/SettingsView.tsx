@@ -656,6 +656,33 @@ function BasicSettingsTab() {
     }
   }, [restartAfterPermissionChange, setPermissionsError]);
 
+  const [resettingPermission, setResettingPermission] = useState<
+    "accessibility" | "screen" | "microphone" | null
+  >(null);
+  const handlePermissionReset = useCallback(
+    async (kind: "accessibility" | "screen" | "microphone") => {
+      const reset = window.electronAPI?.system.resetPermission;
+      if (!reset) return;
+      setPermissionsError(null);
+      setResettingPermission(kind);
+      try {
+        const result = await reset(kind);
+        if (!result?.ok) {
+          setPermissionsError(
+            `Could not reset ${kind} permission. Stella may need to be reopened.`,
+          );
+        }
+      } catch (error) {
+        setPermissionsError(
+          getSettingsErrorMessage(error, `Failed to reset ${kind} permission.`),
+        );
+      } finally {
+        setResettingPermission(null);
+      }
+    },
+    [setPermissionsError],
+  );
+
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
@@ -721,6 +748,20 @@ function BasicSettingsTab() {
                     ? "Opening..."
                     : "Enable"}
               </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="settings-btn"
+                disabled={
+                  !permissionsLoaded
+                  || resettingPermission === "accessibility"
+                }
+                onClick={() => void handlePermissionReset("accessibility")}
+              >
+                {resettingPermission === "accessibility"
+                  ? "Resetting..."
+                  : "Reset"}
+              </Button>
             </div>
           </div>
           <div className="settings-row">
@@ -749,6 +790,49 @@ function BasicSettingsTab() {
                   : activePermissionAction === "screen"
                     ? "Opening..."
                     : "Enable"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="settings-btn"
+                disabled={
+                  !permissionsLoaded || resettingPermission === "screen"
+                }
+                onClick={() => void handlePermissionReset("screen")}
+              >
+                {resettingPermission === "screen" ? "Resetting..." : "Reset"}
+              </Button>
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Microphone</div>
+              <div className="settings-row-sublabel">
+                Used for voice and dictation. Reset if Stella was previously
+                denied and macOS won't prompt again.
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Button
+                type="button"
+                variant="ghost"
+                className="settings-btn"
+                disabled
+              >
+                {permissionStatus.microphone ? "Granted" : "Not granted"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="settings-btn"
+                disabled={
+                  !permissionsLoaded || resettingPermission === "microphone"
+                }
+                onClick={() => void handlePermissionReset("microphone")}
+              >
+                {resettingPermission === "microphone"
+                  ? "Resetting..."
+                  : "Reset"}
               </Button>
             </div>
           </div>
