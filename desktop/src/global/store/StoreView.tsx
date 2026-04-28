@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogBody, Dial
 import { Button } from "@/ui/button"
 import { TextField } from "@/ui/text-field"
 import "@/global/integrations/credential-modal.css"
+import { FashionTab } from "./fashion/FashionTab"
 import "./store.css"
 
 // ---------------------------------------------------------------------------
@@ -1798,10 +1799,11 @@ function PackageDetailView({
 // Store View (main export)
 // ---------------------------------------------------------------------------
 
-type StoreTab = "discover" | "updates" | "connect" | "your-mods"
+type StoreTab = "discover" | "fashion" | "updates" | "connect" | "your-mods"
 
 const STORE_TABS: Array<{ id: StoreTab; label: string }> = [
   { id: "discover", label: "Discover" },
+  { id: "fashion", label: "Fashion" },
   { id: "updates", label: "Updates" },
   { id: "connect", label: "Connect" },
   { id: "your-mods", label: "Your Mods" },
@@ -1993,7 +1995,7 @@ export function StoreView() {
   }
 
   return (
-    <div className="store-root" ref={rootRef}>
+    <div className="store-root" ref={rootRef} data-tab={tab}>
       <div className="store-header" data-scrolled={scrolled || undefined}>
         <div className="store-header-inner">
           <h1 className="store-title">Store</h1>
@@ -2023,6 +2025,8 @@ export function StoreView() {
             onSelect={setSelectedPackageId}
             onInstall={handleInstall}
           />
+        ) : tab === "fashion" ? (
+          <FashionTab />
         ) : tab === "updates" ? (
           <UpdatesTab
             packages={packages}

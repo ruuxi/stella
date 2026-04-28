@@ -38,11 +38,23 @@ export const createImageGenTool = (
           description:
             "Optional aspect ratio (e.g. '1:1', '16:9', '9:16', '4:3'). Defaults to the gateway's recommended ratio.",
         },
+        profile: {
+          type: "string",
+          enum: ["best", "fast"],
+          description:
+            "Optional model profile. Use 'fast' for Fashion try-ons and quick drafts.",
+        },
         referenceImagePaths: {
           type: "array",
           items: { type: "string" },
           description:
-            "Optional local image paths to use as references (style/character/scene continuity).",
+            "Optional local image paths to use as reference inputs. When any reference is provided the gateway switches from text_to_image to image_edit.",
+        },
+        referenceImageUrls: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional remote http(s) image URLs to use as reference inputs. Mix with referenceImagePaths when you have a local subject photo plus catalog product photos.",
         },
       },
       required: ["prompt"],

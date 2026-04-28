@@ -6,7 +6,7 @@
  * open-ended question when the answer space is small.
  *
  * Available to user-facing agents that drive the main chat surface
- * (orchestrator + store). Subagents that don't talk to the user
+ * (orchestrator, store). Subagents that don't talk to the user
  * directly (general/research-style runs) are denied so they don't try
  * to render bubbles in chats they don't own.
  */

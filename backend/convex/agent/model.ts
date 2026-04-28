@@ -260,6 +260,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
   [AGENT_IDS.ORCHESTRATOR]: "sota",
   [AGENT_IDS.GENERAL]: "sota",
+  [AGENT_IDS.FASHION]: "sota",
 
   schedule: "standard",
   synthesis: "synthesis",

@@ -180,6 +180,15 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
         docsUrl: falModelUrl("openai/gpt-image-2/edit"),
         isDefault: true,
       },
+      {
+        id: "fast",
+        name: "Fast",
+        description:
+          "OpenAI GPT Image 2 (edit) with low quality and automatic image sizing for faster iterations.",
+        provider: "fal",
+        endpointId: "openai/gpt-image-2/edit",
+        docsUrl: falModelUrl("openai/gpt-image-2/edit"),
+      },
     ],
   },
   {

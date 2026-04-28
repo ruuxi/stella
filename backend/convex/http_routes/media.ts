@@ -16,6 +16,7 @@ import {
   listMediaCapabilities,
   resolveMediaProfile,
   type MediaCapability,
+  type MediaProfile,
 } from "../media_catalog";
 import {
   createMediaGenerateAcceptedResponse,
@@ -149,11 +150,16 @@ const isGptImage2Endpoint = (endpointId: string): boolean =>
 
 const applyCapabilityDefaults = (args: {
   capability: MediaCapability;
+  profile?: MediaProfile;
   input: Record<string, unknown>;
 }): Record<string, unknown> => {
   const normalized = { ...args.input };
   if (args.capability.id === "icon") {
     normalized.image_size = { width: 512, height: 512 };
+  }
+  if (args.capability.id === "image_edit" && args.profile?.id === "fast") {
+    normalized.quality = "low";
+    normalized.image_size = "auto";
   }
   return normalized;
 };
@@ -277,6 +283,7 @@ const toMediaJobStatus = (upstreamStatus: string): MediaJobStatus => {
 
 export const applyConvenienceInput = (args: {
   capability: MediaCapability;
+  profile?: MediaProfile;
   input: Record<string, unknown>;
   prompt?: string;
   aspectRatio?: string;
@@ -322,6 +329,7 @@ export const applyConvenienceInput = (args: {
 
 const requireCapabilityInputs = (args: {
   capability: MediaCapability;
+  profile?: MediaProfile;
   prompt?: string;
   aspectRatio?: string;
   sourceUrl?: string;
@@ -440,6 +448,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           if (!resolved) return errorResponse(400, `Unknown capability or profile. See ${MEDIA_DOCS_URL}.`, origin);
           const validationError = requireCapabilityInputs({
             capability: resolved.capability,
+            profile: resolved.profile,
             prompt: body.prompt,
             aspectRatio: body.aspectRatio,
             sourceUrl: body.sourceUrl,
@@ -450,6 +459,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           if (validationError) return errorResponse(400, validationError, origin);
           const submissionInput = applyConvenienceInput({
             capability: resolved.capability,
+            profile: resolved.profile,
             input: body.input,
             prompt: body.prompt,
             aspectRatio: body.aspectRatio,

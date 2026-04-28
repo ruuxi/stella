@@ -67,6 +67,10 @@ const USER_FACING_AGENT_TOOL_NAMES = new Set(["askQuestion"]);
 
 const WORKER_ONLY_TOOL_NAMES = new Set(["MCP"]);
 
+const SUBAGENT_USER_FACING_TOOL_NAMES: Record<string, ReadonlySet<string>> = {
+  [AGENT_IDS.STORE]: USER_FACING_AGENT_TOOL_NAMES,
+};
+
 export const createToolHost = ({
   stellaRoot,
   stellaBrowserBinPath: _stellaBrowserBinPath,
@@ -77,6 +81,7 @@ export const createToolHost = ({
   agentApi,
   scheduleApi,
   storeApi,
+  fashionApi,
   extensionTools,
   displayHtml,
   webSearch,
@@ -135,6 +140,7 @@ export const createToolHost = ({
     agentApi,
     scheduleApi,
     storeApi,
+    fashionApi,
     extensionTools,
     displayHtml,
     webSearch,
@@ -240,17 +246,21 @@ export const createToolHost = ({
     killAllShells();
   };
 
-  const getToolCatalog = (agentType?: string) =>
-    Array.from(toolCatalog.values()).filter((tool) =>
-      WORKER_ONLY_TOOL_NAMES.has(tool.name) && agentType !== AGENT_IDS.GENERAL
-        ? false
-        : agentType === AGENT_IDS.SOCIAL_SESSION
-        ? SOCIAL_SESSION_TOOL_NAMES.has(tool.name)
-        : agentType === AGENT_IDS.ORCHESTRATOR ||
-          (agentType === AGENT_IDS.STORE &&
-            USER_FACING_AGENT_TOOL_NAMES.has(tool.name)) ||
-          !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
+  const getToolCatalog = (agentType?: string) => {
+    const subagentExtras = agentType
+      ? SUBAGENT_USER_FACING_TOOL_NAMES[agentType]
+      : undefined;
+    return Array.from(toolCatalog.values()).filter(
+      (tool) =>
+        WORKER_ONLY_TOOL_NAMES.has(tool.name) && agentType !== AGENT_IDS.GENERAL
+          ? false
+          : agentType === AGENT_IDS.SOCIAL_SESSION
+            ? SOCIAL_SESSION_TOOL_NAMES.has(tool.name)
+            : agentType === AGENT_IDS.ORCHESTRATOR ||
+              (subagentExtras !== undefined && subagentExtras.has(tool.name)) ||
+              !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
     );
+  };
 
   return {
     executeTool,

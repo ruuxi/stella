@@ -11,6 +11,7 @@ import { storeSchema } from "./schema/store";
 import { mediaSchema } from "./schema/media";
 import { socialSchema } from "./schema/social";
 import { backupsSchema } from "./schema/backups";
+import { fashionSchema } from "./schema/fashion";
 
 export default defineSchema({
   ...conversationsSchema,
@@ -25,5 +26,6 @@ export default defineSchema({
   ...mediaSchema,
   ...socialSchema,
   ...backupsSchema,
+  ...fashionSchema,
 });
 

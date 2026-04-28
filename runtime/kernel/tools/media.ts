@@ -48,6 +48,18 @@ export const IMAGE_GEN_JSON_SCHEMA = {
       description:
         "Maximum time to wait for completion before returning an error. Defaults to 180000.",
     },
+    referenceImagePaths: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional local image paths used as references. The runtime base64-encodes them and switches to the image_edit capability.",
+    },
+    referenceImageUrls: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional remote http(s) image URLs used as references. Mix with referenceImagePaths when you have a local subject photo plus remote product photos.",
+    },
   },
   required: ["prompt"],
 } as const;
@@ -187,6 +199,32 @@ const parseErrorResponse = async (response: Response): Promise<string> => {
   }
 };
 
+const HTTP_URL_RE = /^https?:\/\//i;
+
+const collectStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const entry of value) {
+    const trimmed = asNonEmptyString(entry);
+    if (trimmed) out.push(trimmed);
+  }
+  return out;
+};
+
+const mimeTypeFromPath = (filePath: string): string => {
+  const match = filePath.match(/\.([a-z0-9]{2,5})$/i);
+  return mimeTypeFromExtension(match?.[1]?.toLowerCase() ?? "png");
+};
+
+/** Read a local image file and convert it into a `data:` URI. */
+const readLocalImageAsDataUri = async (
+  filePath: string,
+): Promise<string> => {
+  const buffer = await fs.readFile(filePath);
+  const mimeType = mimeTypeFromPath(filePath);
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
+};
+
 const createImageGenHandler = (
   options: MediaToolOptions,
 ): ToolHandler => async (
@@ -226,7 +264,8 @@ const createImageGenHandler = (
 
   const input: Record<string, unknown> = {};
   const profile = asNonEmptyString(args.profile);
-  const aspectRatio = asNonEmptyString(args.aspect_ratio);
+  const aspectRatio =
+    asNonEmptyString(args.aspectRatio) ?? asNonEmptyString(args.aspect_ratio);
   const quality = asNonEmptyString(args.quality);
   if (quality) input.quality = quality;
   const outputFormat = asNonEmptyString(args.output_format);
@@ -236,6 +275,41 @@ const createImageGenHandler = (
   if (typeof numImages === "number" && Number.isFinite(numImages)) {
     input.num_images = Math.max(1, Math.min(numImages, 4));
   }
+
+  // Reference images: local paths get base64-encoded into data: URIs (so the
+  // body photo never lands in Convex storage), remote URLs are passed as-is.
+  // Any reference present switches the capability to image_edit (GPT Image 2
+  // edit endpoint) which expects an `image_urls` array on the input.
+  const referencePaths = collectStringList(args.referenceImagePaths);
+  const referenceUrlsRaw = collectStringList(args.referenceImageUrls);
+  const referenceUrls: string[] = [];
+  for (const url of referenceUrlsRaw) {
+    if (!HTTP_URL_RE.test(url) && !url.startsWith("data:")) {
+      return {
+        error: `referenceImageUrls entry is not a valid http(s)/data URL: ${url}`,
+      };
+    }
+    referenceUrls.push(url);
+  }
+  let imageUrls: string[] = [];
+  if (referencePaths.length > 0) {
+    try {
+      for (const filePath of referencePaths) {
+        imageUrls.push(await readLocalImageAsDataUri(filePath));
+      }
+    } catch (error) {
+      return {
+        error: `image_gen failed to read reference image: ${(error as Error).message}`,
+      };
+    }
+  }
+  imageUrls.push(...referenceUrls);
+
+  const useImageEdit = imageUrls.length > 0;
+  if (useImageEdit) {
+    input.image_urls = imageUrls;
+  }
+  const capability = useImageEdit ? "image_edit" : "text_to_image";
 
   let submitResponse: Response;
   try {
@@ -249,7 +323,7 @@ const createImageGenHandler = (
           "X-Device-ID": context.deviceId,
         },
         body: JSON.stringify({
-          capability: "text_to_image",
+          capability,
           prompt,
           ...(profile ? { profile } : {}),
           ...(aspectRatio ? { aspectRatio } : {}),
@@ -341,12 +415,15 @@ const createImageGenHandler = (
       const summary = `Generated ${downloads.length} image${
         downloads.length === 1 ? "" : "s"
       } for "${prompt}".`;
+      const savedPaths = downloads
+        .map((entry, index) => `image_${index + 1}: ${entry.filePath}`)
+        .join("\n");
       const details = {
         jobId,
         capability:
           asNonEmptyString(job.capability) ??
           asNonEmptyString(accepted.capability) ??
-          "text_to_image",
+          capability,
         profile:
           asNonEmptyString(job.profile) ??
           asNonEmptyString(accepted.profile) ??
@@ -356,7 +433,7 @@ const createImageGenHandler = (
         output: job.output,
       };
       return {
-        result: `${summary}\n${markers}`,
+        result: `${summary}\nSaved image paths:\n${savedPaths}\n${markers}`,
         details,
         fileChanges: downloads.map(({ filePath }) =>
           fileChange(filePath, { type: "add" }),
