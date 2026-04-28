@@ -50,6 +50,8 @@ export type LocalPreferences = {
   voiceRtcShortcut: string;
   /** Modifier key double-tap used to toggle the mini window. Off disables it. */
   miniDoubleTapModifier: MiniDoubleTapModifier;
+  /** Prevents the computer from sleeping while Stella is running. */
+  preventComputerSleep: boolean;
 };
 
 export type LocalModelPreferencesSnapshot = Pick<
@@ -79,6 +81,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   dictationShortcut: "Control+M",
   voiceRtcShortcut: "CommandOrControl+Shift+D",
   miniDoubleTapModifier: DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
+  preventComputerSleep: false,
 };
 
 let _cached: LocalPreferences | null = null;
@@ -127,6 +130,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       miniDoubleTapModifier: normalizeMiniDoubleTapModifier(
         parsed.miniDoubleTapModifier,
       ),
+      preventComputerSleep: parsed.preventComputerSleep === true,
     };
     _cached = prefs;
     _cachedMtime = stat.mtimeMs;
@@ -266,6 +270,12 @@ export const getSyncMode = (
   stellaHome: string,
 ): "on" | "off" => {
   return loadLocalPreferences(stellaHome).syncMode;
+};
+
+export const getPreventComputerSleep = (
+  stellaHome: string,
+): boolean => {
+  return loadLocalPreferences(stellaHome).preventComputerSleep;
 };
 
 // ── Normalization helpers ─────────────────────────────────────────────────

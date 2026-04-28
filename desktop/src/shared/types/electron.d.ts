@@ -209,18 +209,20 @@ export type ElectronCaptureApi = {
     } | null;
     window: null;
   } | null>;
-  commitPreparedRegionCapture: (result: {
-    screenshot: {
-      dataUrl: string;
-      width: number;
-      height: number;
-    } | null;
-    window: {
-      app: string;
-      title: string;
-      bounds: { x: number; y: number; width: number; height: number };
-    } | null;
-  } | null) => void;
+  commitPreparedRegionCapture: (
+    result: {
+      screenshot: {
+        dataUrl: string;
+        width: number;
+        height: number;
+      } | null;
+      window: {
+        app: string;
+        title: string;
+        bounds: { x: number; y: number; width: number; height: number };
+      } | null;
+    } | null,
+  ) => void;
   submitRegionClick: (point: { x: number; y: number }) => void;
   pageDataUrl: () => Promise<string | null>;
   getWindowCapture: (point: { x: number; y: number }) => Promise<{
@@ -610,6 +612,8 @@ export type ElectronSystemApi = {
   setMiniDoubleTapModifier: (
     modifier: MiniDoubleTapModifier,
   ) => Promise<{ modifier: MiniDoubleTapModifier }>;
+  getPreventComputerSleep: () => Promise<boolean>;
+  setPreventComputerSleep: (enabled: boolean) => Promise<{ enabled: boolean }>;
   getBackupStatus: () => Promise<BackupStatusSnapshot>;
   backUpNow: () => Promise<BackupNowResult>;
   listBackups: (limit?: number) => Promise<BackupSummary[]>;
@@ -851,8 +855,7 @@ export type FashionBodyPhotoInfo = {
 
 export type ElectronFashionApi = {
   pickAndSaveBodyPhoto: () => Promise<
-    | { canceled: true }
-    | { canceled: false; info: FashionBodyPhotoInfo }
+    { canceled: true } | { canceled: false; info: FashionBodyPhotoInfo }
   >;
   getBodyPhotoInfo: () => Promise<FashionBodyPhotoInfo>;
   getBodyPhotoDataUrl: () => Promise<string | null>;
@@ -866,8 +869,7 @@ export type ElectronFashionApi = {
     seedHints?: string[];
   }) => Promise<{ threadId?: string; batchId: string }>;
   pickTryOnImages: () => Promise<
-    | { canceled: true; paths: string[] }
-    | { canceled: false; paths: string[] }
+    { canceled: true; paths: string[] } | { canceled: false; paths: string[] }
   >;
   /** Returns the absolute on-disk path for a dropped File, or "" if unavailable. */
   getDroppedFilePath: (file: File) => string;

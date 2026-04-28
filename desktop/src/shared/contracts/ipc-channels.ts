@@ -182,6 +182,10 @@ export const IPC_PREFERENCES_GET_MINI_DOUBLE_TAP =
   "preferences:getMiniDoubleTap" as const;
 export const IPC_PREFERENCES_SET_MINI_DOUBLE_TAP =
   "preferences:setMiniDoubleTap" as const;
+export const IPC_PREFERENCES_GET_PREVENT_SLEEP =
+  "preferences:getPreventSleep" as const;
+export const IPC_PREFERENCES_SET_PREVENT_SLEEP =
+  "preferences:setPreventSleep" as const;
 export const IPC_BACKUP_GET_STATUS = "backup:getStatus" as const;
 export const IPC_BACKUP_RUN_NOW = "backup:runNow" as const;
 export const IPC_BACKUP_LIST = "backup:list" as const;
@@ -275,8 +279,7 @@ export const IPC_FASHION_GET_BODY_PHOTO_INFO =
   "fashion:getBodyPhotoInfo" as const;
 export const IPC_FASHION_GET_BODY_PHOTO_DATA_URL =
   "fashion:getBodyPhotoDataUrl" as const;
-export const IPC_FASHION_DELETE_BODY_PHOTO =
-  "fashion:deleteBodyPhoto" as const;
+export const IPC_FASHION_DELETE_BODY_PHOTO = "fashion:deleteBodyPhoto" as const;
 export const IPC_FASHION_START_OUTFIT_BATCH =
   "fashion:startOutfitBatch" as const;
 export const IPC_FASHION_START_TRY_ON = "fashion:startTryOn" as const;

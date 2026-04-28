@@ -12,6 +12,7 @@ import { UiStateService } from "../services/ui-state-service.js";
 import { getDevServerUrl } from "../dev-url.js";
 import { hasMacPermission } from "../utils/macos-permissions.js";
 import { loadLocalPreferences } from "../../../runtime/kernel/preferences/local-preferences.js";
+import { setPreventComputerSleep } from "../ipc/system-handlers.js";
 import { DEFAULT_RADIAL_TRIGGER_CODE } from "../../src/shared/lib/radial-trigger.js";
 import type { ChatContext } from "../../src/shared/contracts/boundary.js";
 import type {
@@ -41,6 +42,10 @@ export const createBootstrapServices = (options: {
   const securityPolicyService = new SecurityPolicyService({
     windowManagerTarget: lifecycle,
   });
+
+  setPreventComputerSleep(
+    loadLocalPreferences(config.stellaRoot).preventComputerSleep,
+  );
 
   const credentialService = new CredentialService({
     windowManagerTarget: lifecycle,
@@ -115,8 +120,7 @@ export const createBootstrapServices = (options: {
 
   const selectionWatcherService = new SelectionWatcherService({
     shouldEnable: () =>
-      process.platform !== "darwin" ||
-      hasMacPermission("accessibility", false),
+      process.platform !== "darwin" || hasMacPermission("accessibility", false),
     overlay: {
       showSelectionChip: (payload) => {
         state.overlayController?.showSelectionChip(payload);
@@ -127,8 +131,7 @@ export const createBootstrapServices = (options: {
     },
     window: {
       isStellaFocused: () => Boolean(BrowserWindow.getFocusedWindow()),
-      isMiniWindowVisible: () =>
-        state.windowManager?.isMiniShowing() ?? false,
+      isMiniWindowVisible: () => state.windowManager?.isMiniShowing() ?? false,
       routeSelectionToSidebar: (text) => {
         setChatContextSelectedText(text);
         showMiniChatTarget();
@@ -175,8 +178,7 @@ export const createBootstrapServices = (options: {
       showRadial: (opts) => state.overlayController?.showRadial(opts),
       hideRadial: () => state.overlayController?.hideRadial(),
       updateRadialCursor: () => state.overlayController?.updateRadialCursor(),
-      getRadialBounds: () =>
-        state.overlayController?.getRadialBounds() ?? null,
+      getRadialBounds: () => state.overlayController?.getRadialBounds() ?? null,
     },
     window: {
       isCompactMode: () => state.windowManager?.isCompactMode() ?? false,
@@ -185,8 +187,7 @@ export const createBootstrapServices = (options: {
       getLastFocusedWindowMode: () =>
         state.windowManager?.getLastFocusedWindowMode() ?? "full",
       isMiniShowing: () => state.windowManager?.isMiniShowing() ?? false,
-      isMiniAlwaysOnTop: () =>
-        state.windowManager?.isMiniAlwaysOnTop() ?? true,
+      isMiniAlwaysOnTop: () => state.windowManager?.isMiniAlwaysOnTop() ?? true,
       isWindowFocused: () => state.windowManager?.isWindowFocused() ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),
       minimizeWindow: () => state.windowManager?.minimizeWindow(),

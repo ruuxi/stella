@@ -45,10 +45,12 @@ import {
   IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
+  IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_MODELS,
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
+  IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_SHELL_SAVE_FILE_AS,
@@ -183,7 +185,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     morphComplete: () =>
       ipcRenderer.invoke("morph:complete") as Promise<{ ok: boolean }>,
     setOnboardingPresentation: (active: boolean) =>
-      ipcRenderer.invoke("window:setOnboardingPresentation", active) as Promise<{
+      ipcRenderer.invoke(
+        "window:setOnboardingPresentation",
+        active,
+      ) as Promise<{
         ok: boolean;
       }>,
   },
@@ -239,18 +244,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
         } | null;
         window: null;
       } | null>,
-    commitPreparedRegionCapture: (result: {
-      screenshot: {
-        dataUrl: string;
-        width: number;
-        height: number;
-      } | null;
-      window: {
-        app: string;
-        title: string;
-        bounds: { x: number; y: number; width: number; height: number };
-      } | null;
-    } | null) => ipcRenderer.send("region:commitPrepared", result),
+    commitPreparedRegionCapture: (
+      result: {
+        screenshot: {
+          dataUrl: string;
+          width: number;
+          height: number;
+        } | null;
+        window: {
+          app: string;
+          title: string;
+          bounds: { x: number; y: number; width: number; height: number };
+        } | null;
+      } | null,
+    ) => ipcRenderer.send("region:commitPrepared", result),
     submitRegionClick: (point: { x: number; y: number }) =>
       ipcRenderer.send("region:click", point),
     getWindowCapture: (point: { x: number; y: number }) =>
@@ -814,6 +821,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
         IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
         modifier,
       ) as Promise<{ modifier: MiniDoubleTapModifier }>,
+    getPreventComputerSleep: () =>
+      ipcRenderer.invoke(IPC_PREFERENCES_GET_PREVENT_SLEEP) as Promise<boolean>,
+    setPreventComputerSleep: (enabled: boolean) =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_PREVENT_SLEEP,
+        enabled,
+      ) as Promise<{ enabled: boolean }>,
     getBackupStatus: () => ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),
     backUpNow: () => ipcRenderer.invoke(IPC_BACKUP_RUN_NOW),
     listBackups: (limit?: number) =>
@@ -875,7 +889,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
         updatedAt: number;
       }>,
     deleteLlmOAuthCredential: (provider: string) =>
-      ipcRenderer.invoke("llmCredentials:deleteOAuth", { provider }) as Promise<{
+      ipcRenderer.invoke("llmCredentials:deleteOAuth", {
+        provider,
+      }) as Promise<{
         removed: boolean;
       }>,
     getLlmCredentialRoutingPreference: () =>
@@ -1171,7 +1187,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       credential?: string,
       config?: Record<string, string>,
     ) =>
-      ipcRenderer.invoke("store:installConnector", { marketplaceKey, credential, config }),
+      ipcRenderer.invoke("store:installConnector", {
+        marketplaceKey,
+        credential,
+        config,
+      }),
   },
 
   fashion: {
