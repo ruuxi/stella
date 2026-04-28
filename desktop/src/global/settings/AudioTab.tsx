@@ -10,9 +10,11 @@ import {
 import {
   isDictationEnhanceEnabled,
   isDictationSuperFastEnabled,
+  isLocalDictationEnabled,
   setDictationEnhancePreference,
   setDictationSuperFastModeEnabled,
   setDictationSuperFastPreference,
+  setLocalDictationPreference,
 } from "@/features/dictation/services/inworld-dictation";
 import { useMicrophoneRecovery } from "@/global/permissions/use-microphone-recovery";
 
@@ -31,6 +33,9 @@ export function AudioTab() {
   );
   const [enhanceDictation, setEnhanceDictation] = useState(() =>
     isDictationEnhanceEnabled(),
+  );
+  const [localDictation, setLocalDictation] = useState(() =>
+    isLocalDictationEnabled(),
   );
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>(
     [],
@@ -163,6 +168,11 @@ export function AudioTab() {
   const handleEnhanceDictationToggle = useCallback((checked: boolean) => {
     setEnhanceDictation(checked);
     setDictationEnhancePreference(checked);
+  }, []);
+
+  const handleLocalDictationToggle = useCallback((checked: boolean) => {
+    setLocalDictation(checked);
+    setLocalDictationPreference(checked);
   }, []);
 
   useEffect(() => {
@@ -311,6 +321,24 @@ export function AudioTab() {
               <Switch
                 checked={enhanceDictation}
                 onCheckedChange={handleEnhanceDictationToggle}
+                hideLabel
+              />
+            </div>
+          </div>
+        ) : null}
+        {platform === "darwin" && micEnabled ? (
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">On-device transcription</div>
+              <div className="settings-row-sublabel">
+                Use the local Parakeet model instead of Inworld. This can use
+                more memory on lower-end Macs.
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Switch
+                checked={localDictation}
+                onCheckedChange={handleLocalDictationToggle}
                 hideLabel
               />
             </div>
