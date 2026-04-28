@@ -13,6 +13,7 @@ export type ShellWindowControllerOptions = {
   getDevServerUrl: () => string
   setupExternalLinkHandlers: (window: BrowserWindow) => void
   onDidStartLoading?: () => void
+  onDidFinishLoad?: () => void
   onRenderProcessGone?: (details: RenderProcessGoneDetails, window: BrowserWindow) => void
   onDidFailLoad?: (details: ShellWindowDidFailLoadDetails, window: BrowserWindow) => void
   onClosed?: () => void
@@ -49,6 +50,7 @@ export class ShellWindowController {
       createWindow: this.config.createWindow,
       setupExternalLinkHandlers: this.options.setupExternalLinkHandlers,
       onDidStartLoading: this.options.onDidStartLoading,
+      onDidFinishLoad: this.options.onDidFinishLoad,
       onRenderProcessGone: this.options.onRenderProcessGone,
       onDidFailLoad: this.options.onDidFailLoad,
       onClosed: () => {
