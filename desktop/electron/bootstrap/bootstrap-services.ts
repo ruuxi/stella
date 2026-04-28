@@ -197,12 +197,12 @@ export const createBootstrapServices = (options: {
     isVoiceActive: () => uiStateService.state.isVoiceRtcActive,
     updateUiState: (partial) => uiStateService.update(partial),
     // Double-tap Option (macOS) / Alt (Windows / Linux) toggles the mini
-    // window: open from anywhere when hidden, dismiss when already focused.
+    // window: open from anywhere when hidden, dismiss when already visible.
     onDoubleTapModifier: () => {
       const wm = state.windowManager;
       if (!wm) return;
-      if (wm.isCompactMode() && wm.isWindowFocused()) {
-        wm.minimizeWindow();
+      if (wm.isMiniShowing()) {
+        wm.hideMiniWindow(false);
       } else {
         wm.showWindow("mini");
       }

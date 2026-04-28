@@ -85,17 +85,21 @@ export function OnboardingDoubleTapPhase({
     clearResetTimer();
   }, [clearResetTimer]);
 
-  const triggerSummon = useCallback(() => {
+  const toggleSummon = useCallback(() => {
     setHasSummoned(true);
-    setMiniVisible(true);
     clearSummonResetTimer();
-    // Auto-tuck the mock back so the user can practice again — the gesture
-    // is a toggle in the real product, but in the demo we want to invite
-    // a few repetitions without making them perform "tap to dismiss".
-    summonResetTimerRef.current = setTimeout(() => {
-      setMiniVisible(false);
-      summonResetTimerRef.current = null;
-    }, SUMMON_RESET_MS);
+    setMiniVisible((visible) => {
+      if (visible) {
+        return false;
+      }
+      // Auto-tuck the mock back so the user can practice again even if they
+      // don't perform the dismiss gesture.
+      summonResetTimerRef.current = setTimeout(() => {
+        setMiniVisible(false);
+        summonResetTimerRef.current = null;
+      }, SUMMON_RESET_MS);
+      return true;
+    });
   }, [clearSummonResetTimer]);
 
   useEffect(() => {
@@ -126,7 +130,7 @@ export function OnboardingDoubleTapPhase({
           firstUpAtRef.current = 0;
           setKeycapState("second");
           clearResetTimer();
-          triggerSummon();
+          toggleSummon();
           // Settle the second keycap pulse back to idle after a moment.
           resetTimerRef.current = setTimeout(() => {
             setKeycapState("idle");
@@ -180,7 +184,7 @@ export function OnboardingDoubleTapPhase({
     clearResetTimer,
     clearSummonResetTimer,
     resetKeycaps,
-    triggerSummon,
+    toggleSummon,
   ]);
 
   return (
