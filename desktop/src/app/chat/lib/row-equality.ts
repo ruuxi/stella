@@ -180,6 +180,13 @@ export const resourcePayloadEqual = (
         (a.tooltip ?? null) === (bb.tooltip ?? null)
       );
     }
+    case "trash": {
+      const bb = b as Extract<DisplayPayload, { kind: "trash" }>;
+      return (
+        (a.title ?? null) === (bb.title ?? null) &&
+        (a.createdAt ?? null) === (bb.createdAt ?? null)
+      );
+    }
     case "media": {
       const bb = b as Extract<DisplayPayload, { kind: "media" }>;
       if (a.asset.kind !== bb.asset.kind) return false;
