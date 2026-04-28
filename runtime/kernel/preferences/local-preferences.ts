@@ -56,6 +56,8 @@ export type LocalPreferences = {
   miniDoubleTapModifier: MiniDoubleTapModifier;
   /** Prevents the computer from sleeping while Stella is running. */
   preventComputerSleep: boolean;
+  /** Allows desktop notification sounds for agent completion. */
+  soundNotificationsEnabled: boolean;
 };
 
 export type LocalModelPreferencesSnapshot = Pick<
@@ -86,6 +88,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   voiceRtcShortcut: "CommandOrControl+Shift+D",
   miniDoubleTapModifier: DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
   preventComputerSleep: false,
+  soundNotificationsEnabled: true,
 };
 
 let _cached: LocalPreferences | null = null;
@@ -137,6 +140,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         parsed.miniDoubleTapModifier,
       ),
       preventComputerSleep: parsed.preventComputerSleep === true,
+      soundNotificationsEnabled: parsed.soundNotificationsEnabled !== false,
     };
     _cached = prefs;
     _cachedMtime = stat.mtimeMs;
@@ -268,6 +272,10 @@ export const getSyncMode = (stellaHome: string): "on" | "off" => {
 
 export const getPreventComputerSleep = (stellaHome: string): boolean => {
   return loadLocalPreferences(stellaHome).preventComputerSleep;
+};
+
+export const getSoundNotificationsEnabled = (stellaHome: string): boolean => {
+  return loadLocalPreferences(stellaHome).soundNotificationsEnabled;
 };
 
 // ── Normalization helpers ─────────────────────────────────────────────────

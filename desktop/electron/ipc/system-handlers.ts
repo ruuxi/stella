@@ -13,6 +13,7 @@ import path from "node:path";
 import {
   getLocalModelPreferences,
   getPreventComputerSleep,
+  getSoundNotificationsEnabled,
   getSyncMode,
   loadLocalPreferences,
   saveLocalPreferences,
@@ -70,11 +71,13 @@ import {
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_SYNC_MODE,
+  IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_MODELS,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_SYNC_MODE,
+  IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
 } from "../../src/shared/contracts/ipc-channels.js";
@@ -987,6 +990,46 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         saveLocalPreferences(stellaRoot, prefs);
       }
       setPreventComputerSleep(nextEnabled);
+      return { enabled: nextEnabled };
+    },
+  );
+
+  ipcMain.handle(IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS, (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
+      )
+    ) {
+      throw new Error(
+        "Blocked untrusted preferences:getSoundNotifications request.",
+      );
+    }
+    const stellaRoot = options.getStellaStatePath();
+    if (!stellaRoot) return true;
+    return getSoundNotificationsEnabled(stellaRoot);
+  });
+
+  ipcMain.handle(
+    IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
+    (event, enabled: boolean) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted preferences:setSoundNotifications request.",
+        );
+      }
+      const nextEnabled = enabled === true;
+      const stellaRoot = options.getStellaStatePath();
+      if (stellaRoot) {
+        const prefs = loadLocalPreferences(stellaRoot);
+        prefs.soundNotificationsEnabled = nextEnabled;
+        saveLocalPreferences(stellaRoot, prefs);
+      }
       return { enabled: nextEnabled };
     },
   );

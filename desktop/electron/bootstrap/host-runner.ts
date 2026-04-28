@@ -3,6 +3,7 @@ import {
   getOrCreateDeviceIdentity,
   signDeviceHeartbeat,
 } from "../../../runtime/kernel/home/device.js";
+import { getSoundNotificationsEnabled } from "../../../runtime/kernel/preferences/local-preferences.js";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import {
   createStellaHostRunner,
@@ -96,7 +97,16 @@ export const createHostRunnerHandlers = (
   },
   showNotification: ({ title, body, sound }) => {
     if (Notification.isSupported()) {
-      new Notification({ title, body, sound, silent: false }).show();
+      const statePath = context.state.stellaStatePath;
+      const soundEnabled = statePath
+        ? getSoundNotificationsEnabled(statePath)
+        : true;
+      new Notification({
+        title,
+        body,
+        sound: soundEnabled ? sound : undefined,
+        silent: !soundEnabled,
+      }).show();
     }
   },
   openExternal: async (url) => {

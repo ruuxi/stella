@@ -614,6 +614,10 @@ export type ElectronSystemApi = {
   ) => Promise<{ modifier: MiniDoubleTapModifier }>;
   getPreventComputerSleep: () => Promise<boolean>;
   setPreventComputerSleep: (enabled: boolean) => Promise<{ enabled: boolean }>;
+  getSoundNotificationsEnabled: () => Promise<boolean>;
+  setSoundNotificationsEnabled: (
+    enabled: boolean,
+  ) => Promise<{ enabled: boolean }>;
   getBackupStatus: () => Promise<BackupStatusSnapshot>;
   backUpNow: () => Promise<BackupNowResult>;
   listBackups: (limit?: number) => Promise<BackupSummary[]>;
