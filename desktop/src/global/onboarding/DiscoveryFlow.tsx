@@ -61,6 +61,10 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     if (!discoveryCategories || !activeConversationId) return;
     if (synthesizedRef.current) return;
     if (synthesizingRef.current) return;
+    if (discoveryCategories.length === 0) {
+      synthesizedRef.current = true;
+      return;
+    }
     synthesizingRef.current = true;
 
     const run = async () => {
