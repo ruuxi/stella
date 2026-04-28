@@ -14,7 +14,6 @@
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
-import { resolveStellaStatePath } from "../kernel/home/stella-home.js";
 
 const log = (...args: unknown[]) => console.error("[firefox-data]", ...args);
 
@@ -171,7 +170,7 @@ export const collectFirefoxData = async (
 
   // Copy the database (Firefox holds WAL lock while running)
   const sourcePath = path.join(profilePath, "places.sqlite");
-  const tempDir = path.join(resolveStellaStatePath(stellaHome), "tmp");
+  const tempDir = path.join(stellaHome, "state", "tmp");
   await fs.mkdir(tempDir, { recursive: true });
   const tempPath = path.join(tempDir, `firefox_places_${Date.now()}.sqlite`);
 

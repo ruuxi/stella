@@ -1,7 +1,6 @@
 import { anyApi } from "convex/server";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { resolveStellaStatePath } from "../home/stella-home.js";
 
 import type {
   ToolContext,
@@ -388,7 +387,8 @@ const createImageGenHandler = (
       }
 
       const outputDir = path.join(
-        resolveStellaStatePath(context.stellaStatePath ?? context.stellaRoot ?? process.cwd()),
+        context.stellaRoot ?? process.cwd(),
+        "state",
         "media",
         "outputs",
       );

@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { getOfficialConnector, OFFICIAL_CONNECTOR_DEFINITIONS, type OfficialConnectorDefinition } from "./official-connectors.js";
 import type { ApiConnectorConfig, ConnectorConfigField, McpServerConfig, StellaConnectorRecord } from "./types.js";
-import { resolveStellaStatePath } from "../home/stella-home.js";
 
 const safeName = (value: string) => {
   const name = value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
@@ -49,7 +48,7 @@ const getInterpolationConfig = (
 };
 
 export const getMcpStateRoot = (stellaRoot: string) =>
-  path.join(resolveStellaStatePath(stellaRoot), "mcp");
+  path.join(stellaRoot, "state", "mcp");
 
 export const getConfiguredServersPath = (stellaRoot: string) =>
   path.join(getMcpStateRoot(stellaRoot), "servers.json");

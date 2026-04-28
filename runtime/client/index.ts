@@ -154,7 +154,6 @@ export type StellaRuntimeClientOptions = {
 
 type WorkerInitializationState = {
   stellaRoot: string;
-  stellaStatePath: string;
   stellaWorkspacePath: string;
   authToken: string | null;
   convexUrl: string | null;
@@ -304,7 +303,7 @@ export class StellaRuntimeClient {
 
   private getRuntimeReloadStateFilePath() {
     return path.join(
-      this.options.initializeParams.stellaStatePath,
+      this.options.initializeParams.stellaRoot,
       SELF_MOD_RUNTIME_RELOAD_STATE_FILE,
     );
   }
@@ -1437,26 +1436,26 @@ export class StellaRuntimeClient {
 
   async coreMemoryExists() {
     const { coreMemoryExists } = await import("../discovery/browser-data.js");
-    return await coreMemoryExists(this.options.initializeParams.stellaStatePath);
+    return await coreMemoryExists(this.options.initializeParams.stellaRoot);
   }
 
   async discoveryKnowledgeExists() {
     const { discoveryKnowledgeExists } = await import(
       "../discovery/life-knowledge.js"
     );
-    return await discoveryKnowledgeExists(this.options.initializeParams.stellaStatePath);
+    return await discoveryKnowledgeExists(this.options.initializeParams.stellaRoot);
   }
 
   async writeCoreMemory(content: string) {
     const { writeCoreMemory } = await import("../discovery/browser-data.js");
-    await writeCoreMemory(this.options.initializeParams.stellaStatePath, content);
+    await writeCoreMemory(this.options.initializeParams.stellaRoot, content);
   }
 
   async writeDiscoveryKnowledge(payload: DiscoveryKnowledgeSeedPayload) {
     const { writeDiscoveryKnowledge } = await import(
       "../discovery/life-knowledge.js"
     );
-    await writeDiscoveryKnowledge(this.options.initializeParams.stellaStatePath, payload);
+    await writeDiscoveryKnowledge(this.options.initializeParams.stellaRoot, payload);
   }
 
   async detectPreferredBrowserProfile() {
@@ -1505,7 +1504,7 @@ export class StellaRuntimeClient {
     this.ensureHostRemoteTurnBridge();
 
     const scheduler = new LocalSchedulerService({
-      stellaHome: this.options.initializeParams.stellaStatePath,
+      stellaHome: this.options.initializeParams.stellaRoot,
       runnerTarget: {
         getRunner: () => ({
           runAutomationTurn: async (payload) =>
@@ -1659,7 +1658,6 @@ export class StellaRuntimeClient {
   private buildWorkerInitializationState(): WorkerInitializationState {
     return {
       stellaRoot: this.options.initializeParams.stellaRoot,
-      stellaStatePath: this.options.initializeParams.stellaStatePath,
       stellaWorkspacePath: this.options.initializeParams.stellaWorkspacePath,
       authToken: this.configCache.authToken ?? null,
       convexUrl: this.configCache.convexUrl ?? null,

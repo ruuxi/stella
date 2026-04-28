@@ -248,7 +248,6 @@ export const buildOrchestratorThreadHistory = (args: {
 export const createRunnerContext = ({
   deviceId,
   stellaRoot,
-  stellaStatePath,
   stellaBrowserBinPath,
   stellaOfficeBinPath,
   stellaUiCliPath,
@@ -316,7 +315,6 @@ export const createRunnerContext = ({
 
   const toolHost = createToolHost({
     stellaRoot,
-    stellaStatePath,
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaUiCliPath,
@@ -431,7 +429,6 @@ export const createRunnerContext = ({
     convexApi: anyApi,
     deviceId,
     stellaRoot,
-    stellaStatePath,
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaUiCliPath,
@@ -506,8 +503,8 @@ export const getConfiguredModel = (
   agentType: string,
   agent?: ParsedAgentLike,
 ): string | undefined => {
-  const modelFromPrefs = getModelOverride(context.stellaStatePath, agentType);
-  const defaultModel = getDefaultModel(context.stellaStatePath, agentType);
+  const modelFromPrefs = getModelOverride(context.stellaRoot, agentType);
+  const defaultModel = getDefaultModel(context.stellaRoot, agentType);
   return modelFromPrefs ?? defaultModel ?? agent?.model;
 };
 
@@ -603,10 +600,10 @@ export const buildAgentContext = async (
     args.agentType === AGENT_IDS.ORCHESTRATOR ||
     args.agentType === AGENT_IDS.GENERAL
   ) {
-    dynamicContextSections.push(await renderSkillCatalogBlock(context.stellaStatePath));
+    dynamicContextSections.push(await renderSkillCatalogBlock(context.stellaRoot));
   }
   if (args.agentType === AGENT_IDS.GENERAL) {
-    const connectors = await listStellaConnectors(context.stellaStatePath);
+    const connectors = await listStellaConnectors(context.stellaRoot);
     const installed = connectors.filter((connector) => connector.installed);
     const available = connectors.filter(
       (connector) => !connector.installed && connector.status === "official-mcp",
@@ -656,19 +653,19 @@ export const buildAgentContext = async (
     toolsAllowlist,
     model,
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
-    coreMemory: readCoreMemory(context.stellaStatePath),
+    coreMemory: readCoreMemory(context.stellaRoot),
     ...(memorySnapshot ? { memorySnapshot } : {}),
     ...(shouldInjectDynamicMemory ? { shouldInjectDynamicMemory: true } : {}),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine:
       isSelfModTask
-        ? getSelfModAgentEngine(context.stellaStatePath)
+        ? getSelfModAgentEngine(context.stellaRoot)
         : enginePref === "general"
-        ? getGeneralAgentEngine(context.stellaStatePath)
+        ? getGeneralAgentEngine(context.stellaRoot)
         : undefined,
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)
-      ? getMaxAgentConcurrency(context.stellaStatePath)
+      ? getMaxAgentConcurrency(context.stellaRoot)
       : undefined,
   };
 };

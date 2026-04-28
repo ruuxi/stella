@@ -6,17 +6,8 @@ export const resolveStatePath = () => {
   if (process.env.STELLA_UI_STATE_DIR) {
     return process.env.STELLA_UI_STATE_DIR;
   }
-  if (process.env.STELLA_STATE) {
-    return path.resolve(process.env.STELLA_STATE);
-  }
-  if (process.env.STELLA_DATA_ROOT) {
-    return path.resolve(process.env.STELLA_DATA_ROOT);
-  }
   if (process.env.STELLA_HOME) {
-    const resolvedHome = path.resolve(process.env.STELLA_HOME);
-    return path.basename(resolvedHome) === ".stella" || path.basename(resolvedHome) === "state"
-      ? resolvedHome
-      : path.resolve(resolvedHome, "state");
+    return path.resolve(process.env.STELLA_HOME, "state");
   }
   if (process.env.STELLA_ROOT) {
     return path.resolve(process.env.STELLA_ROOT, "state");

@@ -8,7 +8,7 @@
  *   2. Dream protocol   — periodically consolidates captures + thread
  *                         summaries into long-lived memories.
  *
- * Both are gated by `~/.stella/config.json`. Onboarding only ever shows ONE
+ * Both are gated by `state/config.json`. Onboarding only ever shows ONE
  * toggle, so this handler keeps the two concerns in lockstep:
  *
  *   - `enable: true,  pending: true`  → user opted in but isn't signed in
@@ -29,14 +29,12 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import type { ChronicleController } from "../services/chronicle-controller.js";
 import { ChronicleController as ChronicleControllerCtor } from "../services/chronicle-controller.js";
 import { hasMacPermission } from "../utils/macos-permissions.js";
 
 export type MemoryHandlersOptions = {
   getStellaRoot: () => string | null;
-  getStellaStatePath: () => string | null;
   getController: () => ChronicleController | null;
   setController: (controller: ChronicleController | null) => void;
   assertPrivilegedSender: (
@@ -53,10 +51,10 @@ type StellaConfig = {
 };
 
 const writeDreamPatch = async (
-  stellaStatePath: string,
+  stellaRoot: string,
   patch: DreamConfigPatch,
 ): Promise<void> => {
-  const configPath = path.join(resolveStellaStatePath(stellaStatePath), "config.json");
+  const configPath = path.join(stellaRoot, "state", "config.json");
   let current: StellaConfig = {};
   try {
     const raw = await fs.readFile(configPath, "utf-8");
@@ -77,7 +75,7 @@ const ensureController = (
 ): ChronicleController | null => {
   const existing = options.getController();
   if (existing) return existing;
-  const root = options.getStellaStatePath();
+  const root = options.getStellaRoot();
   if (!root) return null;
   const next = new ChronicleControllerCtor(root);
   options.setController(next);
@@ -149,7 +147,7 @@ export const registerMemoryHandlers = (
         throw new Error("Blocked untrusted memory:setEnabled request.");
       }
       const controller = ensureController(options);
-      const root = options.getStellaStatePath();
+      const root = options.getStellaRoot();
       if (!controller || !root) {
         return {
           ok: false,
@@ -216,7 +214,7 @@ export const registerMemoryHandlers = (
       throw new Error("Blocked untrusted memory:promotePending request.");
     }
     const controller = ensureController(options);
-    const root = options.getStellaStatePath();
+    const root = options.getStellaRoot();
     if (!controller || !root) {
       return {
         ok: false,

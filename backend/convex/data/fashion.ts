@@ -2,7 +2,7 @@
  * Fashion-tab CRUD: profiles, generated outfits, likes, cart, checkout sessions.
  *
  * The body photo itself is *not* stored on the backend — it lives only in
- * `~/.stella/fashion/body.{ext}` on the user's machine. We persist a `hasBodyPhoto`
+ * `state/fashion/body.{ext}` on the user's machine. We persist a `hasBodyPhoto`
  * flag plus mime-type/timestamp so the UI knows what shape the on-disk asset
  * should be without ever round-tripping bytes through Convex storage.
  */

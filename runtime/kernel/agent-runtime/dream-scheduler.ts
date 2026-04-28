@@ -27,7 +27,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { resolveStellaStatePath } from "../home/stella-home.js";
 
 import { completeSimple, readAssistantText } from "../../ai/stream.js";
 import type {
@@ -85,7 +84,7 @@ const stateFor = (stellaHome: string): DreamRuntimeState => {
 };
 
 const lockDir = (stellaHome: string): string =>
-  path.join(resolveStellaStatePath(stellaHome), "locks", "dream");
+  path.join(stellaHome, "state", "locks", "dream");
 
 const acquireLock = (stellaHome: string): (() => void) | null => {
   const dir = lockDir(stellaHome);
@@ -126,7 +125,7 @@ const acquireLock = (stellaHome: string): (() => void) | null => {
 };
 
 const readDreamConfig = (stellaHome: string): DreamConfig => {
-  const configPath = path.join(resolveStellaStatePath(stellaHome), "config.json");
+  const configPath = path.join(stellaHome, "state", "config.json");
   try {
     const raw = fs.readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(raw) as { dream?: Partial<DreamConfig> };
@@ -134,7 +133,7 @@ const readDreamConfig = (stellaHome: string): DreamConfig => {
     return {
       // Dream is opt-in: only run when the user has explicitly turned on
       // Live Memory during onboarding (or via Settings). The onboarding
-      // toggle writes `dream.enabled: true` to `~/.stella/config.json`; until
+      // toggle writes `dream.enabled: true` to `state/config.json`; until
       // then we no-op so the background scheduler never tries to resolve
       // a model route that isn't there.
       enabled: dream.enabled === true,

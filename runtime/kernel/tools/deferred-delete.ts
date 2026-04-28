@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
-import { resolveStellaRoot, resolveStellaStatePath } from "../home/stella-home.js";
+import { resolveStellaRoot } from "../home/stella-home.js";
 
 export const DEFERRED_DELETE_RETENTION_MS = 24 * 60 * 60 * 1000;
 
@@ -62,7 +62,7 @@ export const getDeferredDeletePaths = (
   stellaHomeOverride?: string,
 ): DeferredDeletePaths => {
   const stellaHome = getStellaHome(stellaHomeOverride);
-  const baseDir = path.join(resolveStellaStatePath(stellaHome), DEFERRED_DELETE_DIR);
+  const baseDir = path.join(stellaHome, "state", DEFERRED_DELETE_DIR);
   return {
     stellaHome,
     baseDir,

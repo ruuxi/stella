@@ -384,7 +384,7 @@ export const createAgentOrchestration = (
 ) => {
   context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
-    getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaStatePath),
+    getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaRoot),
     resolveTaskThread: ({ conversationId, agentType, threadId }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
@@ -457,7 +457,7 @@ export const createAgentOrchestration = (
         Boolean(effectiveSelfModMetadata) && Boolean(context.selfModLifecycle);
 
       const resolvedLlm = resolveLlmRoute({
-        stellaRoot: context.stellaStatePath,
+        stellaRoot: context.stellaRoot,
         modelName: agentContext.model,
         agentType,
         site: {
@@ -725,7 +725,7 @@ export const createAgentOrchestration = (
           toolCatalog: context.toolHost.getToolCatalog(agentType),
           toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,
-          stellaHome: context.stellaStatePath,
+          stellaHome: context.stellaRoot,
           resolvedLlm,
           store: context.runtimeStore,
           abortSignal,
@@ -832,7 +832,7 @@ export const createAgentOrchestration = (
                     "Tools are not available while writing a commit subject.",
                 }),
                 deviceId: context.deviceId,
-                stellaHome: context.stellaStatePath,
+                stellaHome: context.stellaRoot,
                 resolvedLlm,
                 store: context.runtimeStore,
                 suppressCompletionSideEffects: true,

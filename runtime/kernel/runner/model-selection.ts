@@ -23,7 +23,7 @@ export const resolveRunnerLlmRoute = (
   modelName: string | undefined,
 ): ResolvedLlmRoute =>
   resolveLlmRoute({
-    stellaRoot: context.stellaStatePath,
+    stellaRoot: context.stellaRoot,
     modelName,
     agentType,
     site: createRunnerSiteConfig(context),
@@ -35,7 +35,7 @@ export const canResolveRunnerLlmRoute = (
   agentType = AGENT_IDS.ORCHESTRATOR,
 ): boolean =>
   canResolveLlmRoute({
-    stellaRoot: context.stellaStatePath,
+    stellaRoot: context.stellaRoot,
     modelName,
     agentType,
     site: createRunnerSiteConfig(context),

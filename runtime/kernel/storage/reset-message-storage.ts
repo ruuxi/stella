@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import { resolveStellaStatePath } from "../home/stella-home.js";
 
 const SQLITE_BASENAMES = [
   "stella.sqlite",
@@ -9,7 +8,7 @@ const SQLITE_BASENAMES = [
 ] as const;
 
 export const resetMessageStorage = async (stellaHome: string): Promise<void> => {
-  const stateRoot = resolveStellaStatePath(stellaHome);
+  const stateRoot = path.join(stellaHome, "state");
 
   await Promise.allSettled([
     ...SQLITE_BASENAMES.map((basename) =>

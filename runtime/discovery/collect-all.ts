@@ -33,7 +33,6 @@ import {
   ensurePrivateDir,
   writePrivateFile,
 } from "../kernel/home/private-fs.js";
-import { resolveStellaStatePath } from "../kernel/home/stella-home.js";
 
 import type { AllUserSignals, AllUserSignalsResult } from "./types.js";
 import type { DiscoveryCategory } from "../../desktop/src/shared/contracts/discovery.js";
@@ -73,7 +72,7 @@ const persistSelectedCategories = async (
   categories: DiscoveryCategory[],
 ): Promise<void> => {
   try {
-    const stateDir = resolveStellaStatePath(stellaHome);
+    const stateDir = path.join(stellaHome, "state");
     const statePath = path.join(stateDir, DISCOVERY_CATEGORIES_STATE_FILE);
     await ensurePrivateDir(stateDir);
     await writePrivateFile(

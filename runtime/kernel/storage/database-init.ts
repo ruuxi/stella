@@ -1,7 +1,6 @@
 import path from "path";
 import type { SqliteDatabase } from "./shared.js";
 import { ensurePrivateDirSync } from "../shared/private-fs.js";
-import { resolveStellaStatePath } from "../home/stella-home.js";
 
 const DB_FILE = "stella.sqlite";
 
@@ -67,7 +66,7 @@ const ensureStoreModInstallsTable = (db: SqliteDatabase) => {
 };
 
 export const ensureDatabaseStateRoot = (stellaHome: string) => {
-  const stateRoot = resolveStellaStatePath(stellaHome);
+  const stateRoot = path.join(stellaHome, "state");
   ensurePrivateDirSync(stateRoot);
   return stateRoot;
 };

@@ -300,7 +300,7 @@ export const createStellaHostRunner = (
           undefined,
         );
         return await maybeSpawnDreamRun({
-          stellaHome: context.stellaStatePath,
+          stellaHome: context.stellaRoot,
           store: context.runtimeStore,
           resolvedLlm,
           trigger,
@@ -334,7 +334,7 @@ export const createStellaHostRunner = (
           undefined,
         );
         return await runChronicleSummary({
-          stellaHome: context.stellaStatePath,
+          stellaHome: context.stellaRoot,
           window,
           resolvedLlm,
         });

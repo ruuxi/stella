@@ -1,13 +1,12 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, promises as fs } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const desktopDir = resolve(scriptDir, '..', '..');
 export const repoRootDir = resolve(desktopDir, '..');
-export const stellaStatePath = resolve(process.env.STELLA_STATE || process.env.STELLA_DATA_ROOT || resolve(homedir(), '.stella'));
+export const stellaStatePath = resolve(repoRootDir, 'state');
 
 const runnerScriptPath = resolve(desktopDir, 'scripts', 'electron-dev-runner.mjs');
 const runnerPidFilePath = resolve(desktopDir, '.electron-dev-runner.pid');
@@ -38,7 +37,6 @@ export const stellaStateRuntimePaths = [
   'core-memory.md',
   'device.json',
   'local-scheduler.json',
-  '.stella-runtime-reload-state.json',
   'stella.sqlite',
   'stella.sqlite-shm',
   'stella.sqlite-wal',

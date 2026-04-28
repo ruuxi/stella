@@ -33,7 +33,7 @@ export const createRuntimeInitialization = (
 
     const loadGeneration = googleWorkspaceToolsLoadGeneration;
     const loadPromise = loadGoogleWorkspaceTools({
-      stellaRoot: context.stellaStatePath,
+      stellaRoot: context.stellaRoot,
       onAuthRequired: deps.onGoogleWorkspaceAuthRequired,
       onAuthStateChanged: (authenticated) => {
         context.state.googleWorkspaceAuthenticated = authenticated;

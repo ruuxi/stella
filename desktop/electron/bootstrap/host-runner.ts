@@ -1,3 +1,4 @@
+import path from "path";
 import { Notification } from "electron";
 import {
   getOrCreateDeviceIdentity,
@@ -97,9 +98,9 @@ export const createHostRunnerHandlers = (
   },
   showNotification: ({ title, body, sound }) => {
     if (Notification.isSupported()) {
-      const statePath = context.state.stellaStatePath;
-      const soundEnabled = statePath
-        ? getSoundNotificationsEnabled(statePath)
+      const stellaRoot = context.state.stellaRoot;
+      const soundEnabled = stellaRoot
+        ? getSoundNotificationsEnabled(stellaRoot)
         : true;
       new Notification({
         title,
@@ -205,15 +206,14 @@ const connectHostRunner = async (context: BootstrapContext) => {
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   const { lifecycle, services, state } = context;
   const stellaRoot = state.stellaRoot;
-  const stellaStatePath = state.stellaStatePath;
-  if (!stellaRoot || !stellaStatePath || !state.stellaWorkspacePath) {
+  if (!stellaRoot || !state.stellaWorkspacePath) {
     throw new Error("Stella root is not initialized.");
   }
 
   await services.securityPolicyService.loadPolicy();
 
   const loadDeviceIdentity = async () =>
-    await getOrCreateDeviceIdentity(stellaStatePath);
+    await getOrCreateDeviceIdentity(path.join(stellaRoot, "state"));
 
   clearHostRunnerSubscriptions(context);
   context.state.officePreviewBridgeStop?.();
@@ -227,7 +227,6 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
         isDev: context.config.isDev,
         platform: process.platform,
         stellaRoot,
-        stellaStatePath,
         stellaWorkspacePath: state.stellaWorkspacePath,
       },
       hostHandlers: createHostRunnerHandlers(context, { loadDeviceIdentity }),

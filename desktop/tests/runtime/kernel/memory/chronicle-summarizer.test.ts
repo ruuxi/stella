@@ -60,7 +60,7 @@ const writeCaptures = async (
     addedLines: string[];
   }>,
 ): Promise<void> => {
-  const dir = path.join(rootPath, "chronicle");
+  const dir = path.join(rootPath, "state", "chronicle");
   await mkdir(dir, { recursive: true });
   const lines = entries.map((entry) =>
     JSON.stringify({
@@ -81,7 +81,7 @@ const writeChronicleConfig = async (
   rootPath: string,
   enabled: boolean,
 ): Promise<void> => {
-  const configPath = path.join(rootPath, "config.json");
+  const configPath = path.join(rootPath, "state", "config.json");
   await mkdir(path.dirname(configPath), { recursive: true });
   await writeFile(
     configPath,
@@ -306,6 +306,7 @@ describe("chronicle-summarizer", () => {
     const instructions = await readFile(
       path.join(
         rootPath,
+        "state",
         "memories_extensions",
         "chronicle",
         "instructions.md",

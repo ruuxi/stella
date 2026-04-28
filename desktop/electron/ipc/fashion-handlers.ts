@@ -3,7 +3,7 @@
  *
  * The user's body photo is intentionally local-only — we never round-trip raw
  * bytes through Convex storage. The renderer asks the user to pick an image
- * file, this layer copies it into `~/.stella/fashion/body.<ext>`, and the
+ * file, this layer copies it into `state/fashion/body.<ext>`, and the
  * Convex backend only learns there is a body photo (via `setBodyPhotoFlag`,
  * called separately from the renderer through the Convex client).
  *
@@ -18,7 +18,6 @@ import {
   dialog,
   type IpcMainInvokeEvent,
 } from "electron";
-import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 
 import {
   IPC_FASHION_DELETE_BODY_PHOTO,
@@ -39,7 +38,6 @@ import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type FashionHandlerOptions = PrivilegedIpcOptions & {
   getStellaRoot: () => string | null;
-  getStellaStatePath: () => string | null;
   getStellaHostRunner: () => StellaHostRunner | null;
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
@@ -63,13 +61,12 @@ const EXT_MIME_MAP: Record<string, string> = {
   heic: "image/heic",
 };
 
-const fashionDir = (stellaStatePath: string) =>
-  path.join(resolveStellaStatePath(stellaStatePath), "fashion");
-const tryOnDir = (stellaStatePath: string) => path.join(fashionDir(stellaStatePath), "try-on");
-const mediaOutputsDir = (stellaStatePath: string) =>
-  path.join(resolveStellaStatePath(stellaStatePath), "media", "outputs");
-const hiddenFashionConversationId = (stellaStatePath: string) =>
-  `fashion:${Buffer.from(stellaStatePath).toString("base64url").slice(0, 24)}`;
+const fashionDir = (root: string) => path.join(root, "state", "fashion");
+const tryOnDir = (root: string) => path.join(fashionDir(root), "try-on");
+const mediaOutputsDir = (root: string) =>
+  path.join(root, "state", "media", "outputs");
+const hiddenFashionConversationId = (root: string) =>
+  `fashion:${Buffer.from(root).toString("base64url").slice(0, 24)}`;
 
 const normalizeStringArray = (value: unknown): string[] | undefined => {
   if (!Array.isArray(value)) return undefined;
@@ -151,7 +148,7 @@ const normalizeImageUrls = (value: unknown): string[] => {
 };
 
 /**
- * Copy each user-picked image into `~/.stella/fashion/try-on/<batchId>/N.<ext>`
+ * Copy each user-picked image into `state/fashion/try-on/<batchId>/N.<ext>`
  * so the runtime can reference it via `image_gen` referenceImagePaths
  * without granting it ad-hoc filesystem access. Source paths can sit
  * anywhere on disk; the destination is always under Fashion's allowed
@@ -203,7 +200,7 @@ const getBodyPhotoInfo = async (
 
 export const registerFashionHandlers = (options: FashionHandlerOptions) => {
   const requireRoot = () => {
-    const root = options.getStellaStatePath();
+    const root = options.getStellaRoot();
     if (!root) throw new Error("Stella root not initialized.");
     return root;
   };

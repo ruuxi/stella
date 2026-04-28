@@ -274,7 +274,7 @@ export const IPC_STORE_INSTALL_CONNECTOR = "store:installConnector" as const;
 // ── Fashion ─────────────────────────────────────────────────────────────────
 //
 // The body photo intentionally does NOT round-trip through Convex storage —
-// we keep raw bytes on disk under `~/.stella/fashion/body.<ext>` and only persist
+// we keep raw bytes on disk under `state/fashion/body.<ext>` and only persist
 // a `hasBodyPhoto` flag to the backend (see `backend/convex/data/fashion.ts`).
 // These IPC channels expose the local file lifecycle to the renderer.
 export const IPC_FASHION_PICK_AND_SAVE_BODY_PHOTO =

@@ -381,7 +381,7 @@ function RootChrome() {
 
   // Owner-scoped materializer: any media job (this conversation, another
   // device, the agent, the studio, ...) gets downloaded into
-  // `~/.stella/media/outputs/` and surfaced in the workspace panel.
+  // `state/media/outputs/` and surfaced in the workspace panel.
   useMediaMaterializer({ onMaterialized: routeDisplayPayload });
 
   // Global Cmd/Ctrl+Shift+M (or any dictation accelerator the user picks)

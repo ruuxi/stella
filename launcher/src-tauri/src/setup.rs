@@ -877,9 +877,30 @@ async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
 
         std::fs::create_dir_all(&install_path).map_err(|e| format!("mkdir failed: {e}"))?;
 
-        archive
-            .unpack(&install_path)
-            .map_err(|e| format!("tar extract failed: {e}"))?;
+        for entry in archive
+            .entries()
+            .map_err(|e| format!("tar read failed: {e}"))?
+        {
+            let mut entry = entry.map_err(|e| format!("tar entry read failed: {e}"))?;
+            let relative_path = entry
+                .path()
+                .map_err(|e| format!("tar entry path failed: {e}"))?
+                .to_path_buf();
+            let is_state_entry = relative_path
+                .components()
+                .find_map(|component| match component {
+                    std::path::Component::Normal(value) => Some(value == "state"),
+                    _ => None,
+                })
+                .unwrap_or(false);
+            let target_path = Path::new(&install_path).join(&relative_path);
+            if is_state_entry && target_path.exists() {
+                continue;
+            }
+            entry
+                .unpack_in(&install_path)
+                .map_err(|e| format!("tar extract failed: {e}"))?;
+        }
 
         Ok::<(), String>(())
     })
@@ -887,6 +908,36 @@ async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
     .map_err(|e| format!("Extract task failed: {e}"))??;
 
     log_install(install_dir, "Extraction complete").await;
+    Ok(())
+}
+
+async fn remove_install_files_preserving_state(install_path: &str) -> Result<(), String> {
+    let mut entries = fs::read_dir(install_path)
+        .await
+        .map_err(|e| format!("Failed to read Stella install directory: {e}"))?;
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| format!("Failed to read Stella install entry: {e}"))?
+    {
+        if entry.file_name() == "state" {
+            continue;
+        }
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .await
+            .map_err(|e| format!("Failed to inspect Stella install entry: {e}"))?;
+        if file_type.is_dir() {
+            fs::remove_dir_all(&path)
+                .await
+                .map_err(|e| format!("Failed to remove Stella directory: {e}"))?;
+        } else {
+            fs::remove_file(&path)
+                .await
+                .map_err(|e| format!("Failed to remove Stella file: {e}"))?;
+        }
+    }
     Ok(())
 }
 
@@ -1668,9 +1719,7 @@ pub async fn uninstall(state: &mut InstallerState) -> Result<(), String> {
                 "Refusing to remove a folder that does not look like a Stella install.".into(),
             );
         }
-        fs::remove_dir_all(&state.install_path)
-            .await
-            .map_err(|e| e.to_string())?;
+        remove_install_files_preserving_state(&state.install_path).await?;
     }
 
     remove_registry().await;
@@ -1766,5 +1815,25 @@ mod tests {
 
         write_install_shape(&dir.path);
         assert!(is_uninstallable_install_path(&dir.path.to_string_lossy()));
+    }
+
+    #[test]
+    fn remove_install_files_preserving_state_keeps_state_only() {
+        let dir = TestDir::new("preserve-state");
+        write_install_shape(&dir.path);
+        fs::create_dir_all(dir.path.join("state")).expect("create state dir");
+        fs::write(dir.path.join("state").join("stella.sqlite"), "db").expect("write state file");
+        fs::write(dir.path.join("launch.sh"), "#!/bin/sh\n").expect("write launch script");
+
+        tauri::async_runtime::block_on(remove_install_files_preserving_state(
+            &dir.path.to_string_lossy(),
+        ))
+        .expect("remove install files");
+
+        assert!(dir.path.exists());
+        assert!(dir.path.join("state").join("stella.sqlite").exists());
+        assert!(!dir.path.join("desktop").exists());
+        assert!(!dir.path.join("package.json").exists());
+        assert!(!dir.path.join("launch.sh").exists());
     }
 }

@@ -199,7 +199,7 @@ export const launchPreparedOrchestratorRun = (args: {
         onUpdate,
       ),
     deviceId: context.deviceId,
-    stellaHome: context.stellaStatePath,
+    stellaHome: context.stellaRoot,
     resolvedLlm: prepared.resolvedLlm,
     store: context.runtimeStore,
     abortSignal: prepared.abortController.signal,

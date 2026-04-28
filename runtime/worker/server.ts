@@ -67,7 +67,6 @@ import { createRuntimeLogger } from "../kernel/debug.js";
 
 type WorkerInitializationState = {
   stellaRoot: string;
-  stellaStatePath: string;
   stellaWorkspacePath: string;
   authToken: string | null;
   convexUrl: string | null;
@@ -572,7 +571,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     await releasePendingApplyBatches("worker initialization");
     state.init = init;
 
-    const db = createDesktopDatabase(init.stellaStatePath);
+    const db = createDesktopDatabase(init.stellaRoot);
     const chatStore = new ChatStore(db);
     const runtimeStore = chatStore as RuntimeStore;
     const storeModStore = new StoreModStore(db);
@@ -675,7 +674,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     const runnerOptions: StellaHostRunnerOptions = {
       deviceId: deviceIdentity.deviceId,
       stellaRoot: init.stellaRoot,
-      stellaStatePath: init.stellaStatePath,
       runtimeStore,
       listLocalChatEvents: (conversationId, maxItems) =>
         chatStore.listEvents(conversationId, maxItems),
@@ -2116,7 +2114,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         (params as
           | { selectedBrowser?: string; selectedProfile?: string }
           | undefined) ?? {};
-      const data = await collectBrowserData(state.init.stellaStatePath, {
+      const data = await collectBrowserData(state.init.stellaRoot, {
         selectedBrowser: payload.selectedBrowser as
           | import("../discovery/browser-data.js").BrowserType
           | undefined,
@@ -2141,7 +2139,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             }
           | undefined) ?? {};
       return await collectAllSignals(
-        state.init.stellaStatePath,
+        state.init.stellaRoot,
         payload.categories as
           | import("../../desktop/src/shared/contracts/discovery.js").DiscoveryCategory[]
           | undefined,
