@@ -1,4 +1,5 @@
-import { Mic, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 import { getPlatform } from "@/platform/electron/platform";
 import "./OnboardingVoicePhase.css";
 
@@ -24,17 +25,16 @@ const DICTATE_KEY_BY_PLATFORM: Record<string, KeyLabel> = {
 /**
  * Onboarding "voice" phase.
  *
- * Teaches the two voice shortcuts that work from anywhere on the
- * computer:
- *   - ⌘⇧D: open a voice conversation with Stella (she listens and
- *     replies out loud)
- *   - ⌃M: dictation — speak and the words are typed wherever the
- *     cursor is, in *any* app, not just Stella
+ * Teaches the two voice shortcuts. Each card mirrors the *actual*
+ * overlay surface the user will see when they fire the shortcut so
+ * the demo doubles as a visual primer:
  *
- * The two are visually distinct (chat bubbles vs. text-being-typed
- * inside a generic app window) so the difference reads at a glance,
- * but the chrome / typography reuses the rest of the onboarding panel
- * language.
+ *   - ⌘⇧D: the voice creature in its white radial halo
+ *     (`VoiceOverlay` / `voice-overlay-creature`).
+ *   - ⌃M: the dictation pill bar with waveform + timer + cancel/confirm
+ *     (`DictationOverlay` / `dictation-overlay` + `DictationRecordingBar`),
+ *     floating over a generic "any app" surface so it's clear the
+ *     bar appears wherever the user is typing — not just inside Stella.
  */
 export function OnboardingVoicePhase({
   splitTransitionActive,
@@ -55,56 +55,59 @@ export function OnboardingVoicePhase({
 
       <div className="onboarding-voice-grid">
         <article className="onboarding-voice-card" data-variant="talk">
-          <header className="onboarding-voice-card__header">
-            <div className="onboarding-voice-card__heading">
-              <span className="onboarding-voice-card__eyebrow">
-                Talk with Stella
-              </span>
-              <h3 className="onboarding-voice-card__title">
-                Have a real conversation.
-              </h3>
-            </div>
-            <Keychord aria={talkKey.aria} glyphs={talkKey.glyphs} />
-          </header>
+          <Keychord aria={talkKey.aria} glyphs={talkKey.glyphs} />
+          <div className="onboarding-voice-card__body">
+            <header className="onboarding-voice-card__header">
+              <div className="onboarding-voice-card__heading">
+                <span className="onboarding-voice-card__eyebrow">
+                  Talk with Stella
+                </span>
+                <h3 className="onboarding-voice-card__title">
+                  Have a real conversation.
+                </h3>
+              </div>
+            </header>
 
-          <div className="onboarding-voice-card__stage">
-            <div className="onboarding-voice-orb" aria-hidden="true">
-              <span className="onboarding-voice-orb__ring" />
-              <span className="onboarding-voice-orb__ring onboarding-voice-orb__ring--lg" />
-              <span className="onboarding-voice-orb__core">
-                <Sparkles size={16} />
-              </span>
+            <div className="onboarding-voice-card__stage onboarding-voice-card__stage--talk">
+            {/* Faithful mock of `voice-overlay-creature`: the Stella
+                creature inside its white radial halo. */}
+            <div
+              className="onboarding-voice-overlay-creature"
+              aria-hidden="true"
+            >
+              <StellaAnimation
+                width={20}
+                height={20}
+                maxDpr={2}
+                voiceMode="listening"
+              />
             </div>
-            <div className="onboarding-voice-bubbles" aria-hidden="true">
-              <div className="onboarding-voice-bubble onboarding-voice-bubble--user">
-                What's on my plate today?
-              </div>
-              <div className="onboarding-voice-bubble onboarding-voice-bubble--assistant">
-                Three meetings and the launch draft. Want me to read the
-                first email out loud?
-              </div>
             </div>
+
+            <p className="onboarding-voice-card__caption">
+              Stella listens and replies out loud — like a phone call.
+            </p>
           </div>
-
-          <p className="onboarding-voice-card__caption">
-            Stella listens and replies out loud — like a phone call.
-          </p>
         </article>
 
         <article className="onboarding-voice-card" data-variant="dictate">
-          <header className="onboarding-voice-card__header">
-            <div className="onboarding-voice-card__heading">
-              <span className="onboarding-voice-card__eyebrow">
-                Dictate anywhere
-              </span>
-              <h3 className="onboarding-voice-card__title">
-                Speak. Stella types.
-              </h3>
-            </div>
-            <Keychord aria={dictateKey.aria} glyphs={dictateKey.glyphs} />
-          </header>
+          <Keychord aria={dictateKey.aria} glyphs={dictateKey.glyphs} />
+          <div className="onboarding-voice-card__body">
+            <header className="onboarding-voice-card__header">
+              <div className="onboarding-voice-card__heading">
+                <span className="onboarding-voice-card__eyebrow">
+                  Dictate anywhere
+                </span>
+                <h3 className="onboarding-voice-card__title">
+                  Speak. Stella types.
+                </h3>
+              </div>
+            </header>
 
-          <div className="onboarding-voice-card__stage">
+            <div className="onboarding-voice-card__stage onboarding-voice-card__stage--dictate">
+            {/* "Any app" surface — generic email draft to make it clear
+                this overlay floats above whatever the user is in, not
+                just Stella. */}
             <div className="onboarding-voice-app" aria-hidden="true">
               <div className="onboarding-voice-app__bar">
                 <span />
@@ -134,17 +137,39 @@ export function OnboardingVoicePhase({
                 </div>
               </div>
             </div>
-            <div className="onboarding-voice-mic" aria-hidden="true">
-              <span className="onboarding-voice-mic__pulse" />
-              <Mic size={14} />
-              <span className="onboarding-voice-mic__label">Listening…</span>
-            </div>
-          </div>
 
-          <p className="onboarding-voice-card__caption">
-            Works in any app — email, Notes, browser, anywhere your cursor
-            is.
-          </p>
+            {/* Faithful mock of `.dictation-overlay` + DictationRecordingBar.
+                Static visual replica — no live audio in onboarding. */}
+            <div
+              className="onboarding-voice-dictation-overlay"
+              aria-hidden="true"
+            >
+              <FakeWaveform />
+              <span className="onboarding-voice-dictation-timer">0:04</span>
+              <button
+                type="button"
+                className="onboarding-voice-dictation-btn onboarding-voice-dictation-btn--cancel"
+                tabIndex={-1}
+                aria-label="Cancel dictation"
+              >
+                <CancelIcon />
+              </button>
+              <button
+                type="button"
+                className="onboarding-voice-dictation-btn onboarding-voice-dictation-btn--confirm"
+                tabIndex={-1}
+                aria-label="Stop dictation and transcribe"
+              >
+                <CheckIcon />
+              </button>
+            </div>
+            </div>
+
+            <p className="onboarding-voice-card__caption">
+              Works in any app — email, Notes, browser, anywhere your cursor
+              is.
+            </p>
+          </div>
         </article>
       </div>
 
@@ -162,16 +187,96 @@ export function OnboardingVoicePhase({
 
 function Keychord({ glyphs, aria }: { glyphs: string[]; aria: string }) {
   return (
-    <div
-      className="onboarding-voice-keychord"
-      role="img"
-      aria-label={aria}
-    >
+    <div className="onboarding-voice-keychord" role="img" aria-label={aria}>
       {glyphs.map((glyph, i) => (
-        <span key={i} className="onboarding-voice-keycap">
-          {glyph}
+        <span key={i} className="onboarding-voice-keychord__group">
+          {i > 0 ? (
+            <span className="onboarding-voice-keycap-sep" aria-hidden="true">
+              +
+            </span>
+          ) : null}
+          <span className="onboarding-voice-keycap">{glyph}</span>
         </span>
       ))}
     </div>
+  );
+}
+
+/* Animated waveform replica that visually matches the right-aligned
+ * scrolling bars rendered to canvas in `DictationRecordingBar`. We use
+ * lightweight DOM bars with phase-shifted CSS animations so the demo
+ * doesn't need an audio capture session. */
+const WAVEFORM_BAR_COUNT = 56;
+
+function FakeWaveform() {
+  const seedsRef = useRef<number[]>([]);
+  const [, force] = useState(0);
+
+  if (seedsRef.current.length === 0) {
+    seedsRef.current = Array.from(
+      { length: WAVEFORM_BAR_COUNT },
+      (_, i) => (i * 37) % 100,
+    );
+  }
+
+  // Re-seed periodically so the waveform feels live. Cheap because each
+  // tick just bumps a state counter; bar phases come from inline CSS
+  // animations driven by the seed values.
+  useEffect(() => {
+    const id = window.setInterval(() => force((v) => v + 1), 1600);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <div className="onboarding-voice-waveform" aria-hidden="true">
+      {seedsRef.current.map((seed, i) => (
+        <span
+          key={i}
+          className="onboarding-voice-waveform__bar"
+          style={{
+            animationDelay: `${(seed % 100) * 12}ms`,
+            // Slightly lower amplitude for the leading (older) bars so
+            // the right-most "now" bars feel most active — same shape
+            // the real canvas renders.
+            ["--bar-peak" as string]: `${30 + ((seed * 7) % 70)}%`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CancelIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="6" y1="18" x2="18" y2="6" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="5 12 10 17 19 7" />
+    </svg>
   );
 }
