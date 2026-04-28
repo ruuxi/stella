@@ -36,7 +36,12 @@ export function OnboardingShortcutsPhase({
   const menuSurfaceRef = useRef<HTMLDivElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [localResult, setLocalResult] = useState<MenuActionId | null>(null);
+  const [radialActivated, setRadialActivated] = useState(false);
   const localResultCard = localResult ? MENU_ACTION : null;
+
+  const handleRadialActivated = useCallback(() => {
+    setRadialActivated(true);
+  }, []);
 
   const handleMenuContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -55,9 +60,11 @@ export function OnboardingShortcutsPhase({
   useEffect(() => {
     setSidebarOpen(false);
     setLocalResult(null);
+    setRadialActivated(false);
   }, [mode]);
 
-  const finishVisible = mode === "global" ? true : localResult !== null;
+  const finishVisible =
+    mode === "global" ? radialActivated : localResult !== null;
 
   return (
     <div className="onboarding-step-content onboarding-shortcuts-phase">
@@ -70,7 +77,7 @@ export function OnboardingShortcutsPhase({
       <div className="onboarding-shortcuts-grid">
         {mode === "global" ? (
           <section className="onboarding-shortcut-demo onboarding-shortcut-demo--radial">
-            <RadialDialDemo />
+            <RadialDialDemo onActivated={handleRadialActivated} />
           </section>
         ) : (
           <section className="onboarding-shortcut-demo">

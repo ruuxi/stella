@@ -398,29 +398,31 @@
 .onboarding-doubletap-keycaps {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 100px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
-  background: color-mix(in oklch, var(--background) 88%, white 4%);
+  gap: 8px;
   flex-shrink: 0;
 }
 
+/* Matches the shared `.onboarding-keychord__cap` look so the chord
+ * vocabulary stays consistent across phases. We keep this as its own
+ * class (rather than reusing the shared component) because the demo
+ * pulses each cap independently as the user taps. */
 .onboarding-doubletap-keycap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 36px;
-  height: 36px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
-  border-bottom-width: 2px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: color-mix(in oklch, var(--background) 88%, white 4%);
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+  border-bottom-width: 3px;
+  box-shadow: 0 2px 6px color-mix(in oklch, black 6%, transparent);
   font-family: inherit;
-  font-size: 15px;
+  font-size: 19px;
   font-weight: 600;
   color: var(--foreground);
+  letter-spacing: 0;
   transition:
     transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
     background 0.18s ease,

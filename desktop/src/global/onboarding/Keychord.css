@@ -1,0 +1,98 @@
+/* Shared keychord visual. The look is the voice-phase Mac-key chord:
+ * raised cap with a thicker bottom border, neutral background, and a
+ * small `+` separator between groups. Two sizes — `default` for hero
+ * prompts and `compact` for dense card layouts. */
+
+.onboarding-keychord {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.onboarding-keychord__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onboarding-keychord__group + .onboarding-keychord__group {
+  margin-left: 8px;
+}
+
+.onboarding-keychord__cap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: color-mix(in oklch, var(--background) 88%, white 4%);
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+  border-bottom-width: 3px;
+  box-shadow: 0 2px 6px color-mix(in oklch, black 6%, transparent);
+  font-family: inherit;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--foreground);
+  letter-spacing: 0;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.onboarding-keychord__sep {
+  font-size: 14px;
+  color: var(--foreground);
+  opacity: 0.45;
+  user-select: none;
+}
+
+/* Compact variant — keeps the same proportions and bottom-border weight,
+ * just smaller, for places where the chord lives inside a denser card. */
+.onboarding-keychord[data-size="compact"] .onboarding-keychord__cap {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 9px;
+  border-radius: 7px;
+  border-bottom-width: 2px;
+  font-size: 14px;
+}
+
+.onboarding-keychord[data-size="compact"] .onboarding-keychord__group {
+  gap: 6px;
+}
+
+.onboarding-keychord[data-size="compact"] .onboarding-keychord__group + .onboarding-keychord__group {
+  margin-left: 6px;
+}
+
+.onboarding-keychord[data-size="compact"] .onboarding-keychord__sep {
+  font-size: 12px;
+}
+
+/* Highlight when the user just pressed the chord — same primary tint
+ * the double-tap demo used for its keycap pulse. */
+.onboarding-keychord[data-highlight] .onboarding-keychord__cap {
+  background: color-mix(
+    in oklch,
+    var(--primary, oklch(0.62 0.18 235)) 16%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklch,
+    var(--primary, oklch(0.62 0.18 235)) 38%,
+    transparent
+  );
+  box-shadow:
+    0 0 0 4px
+      color-mix(
+        in oklch,
+        var(--primary, oklch(0.62 0.18 235)) 12%,
+        transparent
+      );
+  transform: translateY(1px) scale(0.97);
+}

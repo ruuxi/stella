@@ -132,48 +132,8 @@
   letter-spacing: -0.01em;
 }
 
-.onboarding-voice-keychord {
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  flex-shrink: 0;
+.onboarding-voice-card .onboarding-keychord {
   align-self: center;
-}
-
-.onboarding-voice-keychord__group {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.onboarding-voice-keychord__group + .onboarding-voice-keychord__group {
-  margin-left: 8px;
-}
-
-.onboarding-voice-keycap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  height: 44px;
-  padding: 0 12px;
-  border-radius: 9px;
-  background: color-mix(in oklch, var(--background) 88%, white 4%);
-  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
-  border-bottom-width: 3px;
-  box-shadow: 0 2px 6px color-mix(in oklch, black 6%, transparent);
-  font-family: inherit;
-  font-size: 19px;
-  font-weight: 600;
-  color: var(--foreground);
-  letter-spacing: 0;
-}
-
-.onboarding-voice-keycap-sep {
-  font-size: 14px;
-  color: var(--foreground);
-  opacity: 0.45;
-  user-select: none;
 }
 
 .onboarding-voice-card__stage {
