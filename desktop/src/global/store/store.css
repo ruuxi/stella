@@ -228,6 +228,10 @@
     0 2px 6px color-mix(in oklch, var(--foreground) 3%, transparent);
 }
 
+.store-card[data-clickable="true"] {
+  cursor: pointer;
+}
+
 /* --- Card Image --- */
 
 .store-card-image {
@@ -363,6 +367,17 @@
 .store-action-btn[data-variant="remove"] {
   background: color-mix(in oklch, var(--destructive) 8%, transparent);
   color: var(--destructive);
+}
+
+.store-action-btn[data-variant="subtle"] {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-weak);
+}
+
+.store-action-btn[data-variant="subtle"]:hover:not(:disabled) {
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 
 .store-action-btn[data-variant="working"] {
@@ -1224,4 +1239,35 @@
   margin-left: auto;
   display: flex;
   gap: 8px;
+}
+
+/* --- Connector confirm dialog --- */
+[data-slot="dialog-content"].store-confirm-dialog {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+  padding: 24px 28px 20px;
+}
+
+.store-confirm-title {
+  font-size: 16px;
+  font-weight: 620;
+  color: var(--text-strong);
+  margin: 0 0 6px;
+}
+
+.store-confirm-description {
+  margin: 0;
+  color: var(--text-base);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.store-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
 }
