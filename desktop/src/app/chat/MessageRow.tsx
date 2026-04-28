@@ -5,8 +5,15 @@
  * with no per-turn user/assistant grouping. Tool-derived artifacts
  * (web-search badge, office preview, end-resource pill, self-mod undo,
  * ask-question bubble) attach to the assistant row that immediately
- * followed the producing tool events. Streaming renders as a single
- * tail row at the end of the timeline.
+ * followed the producing tool events.
+ *
+ * Streaming is NOT a separate row: while a turn is in flight,
+ * `useEventRows` synthesizes (or augments) a single assistant row keyed
+ * by the user message id being responded to, then overlays the streaming
+ * buffer onto its `text` and flips `isAnimating`. When the persisted
+ * `assistant_message` lands, the same row keeps its identity (same React
+ * key, same Markdown `cacheKey`) and just swaps its data source — no
+ * unmount, no Streamdown re-parse, no flash.
  *
  * Reasoning text is intentionally NOT rendered anywhere in this surface
  * (the underlying data still flows through state for model history).
@@ -44,8 +51,21 @@ export type UserRowViewModel = {
 
 export type AssistantRowViewModel = {
   kind: "assistant";
+  /**
+   * React key for this row. Stable across the streaming → persisted
+   * transition: a row that responds to user message `U` keeps the same
+   * `id` whether it's a placeholder fed by the streaming buffer, or the
+   * persisted `assistant_message` that eventually replaces it.
+   */
   id: string;
   text: string;
+  /**
+   * Stable Streamdown cache key. Same value across the streaming → persisted
+   * swap so the markdown parse cache is reused.
+   */
+  cacheKey: string;
+  /** True while the runtime is still streaming text into this row. */
+  isAnimating?: boolean;
   emotesEnabled: boolean;
   responseTarget?: AgentResponseTarget;
   webSearchBadgeHtml?: string;
@@ -231,13 +251,18 @@ export const AssistantMessageRow = memo(
     }
 
     return (
-      <div className="event-row event-row--assistant">
-        <div className="event-item assistant">
+      <div
+        className={`event-row event-row--assistant${row.isAnimating ? " event-row--streaming" : ""}`}
+      >
+        <div
+          className={`event-item assistant${row.isAnimating ? " streaming" : ""}`}
+        >
           {hasWebSearchBadge && <WebSearchBadge />}
           {hasText && (
             <Markdown
               text={text}
-              cacheKey={`assistant-${row.id}`}
+              cacheKey={row.cacheKey}
+              isAnimating={row.isAnimating}
               enableEmotes={row.emotesEnabled}
             />
           )}
@@ -257,39 +282,6 @@ export const AssistantMessageRow = memo(
   },
   (prev, next) => eventRowEqual(prev.row, next.row),
 );
-
-export const StreamingTailRow = memo(function StreamingTailRow({
-  streamingText,
-  isStreaming,
-  pendingUserMessageId,
-}: {
-  streamingText?: string;
-  isStreaming?: boolean;
-  pendingUserMessageId?: string | null;
-}) {
-  const text = streamingText ?? "";
-  const hasText = text.trim().length > 0;
-  if (!hasText && !isStreaming) return null;
-
-  return (
-    <div className="event-row event-row--assistant">
-      <div className="event-item assistant streaming">
-        {hasText && (
-          <Markdown
-            text={text}
-            cacheKey={
-              pendingUserMessageId
-                ? `streaming-${pendingUserMessageId}`
-                : undefined
-            }
-            isAnimating={isStreaming}
-            enableEmotes={true}
-          />
-        )}
-      </div>
-    </div>
-  );
-});
 
 export const PendingAskQuestionRow = memo(function PendingAskQuestionRow({
   payload,

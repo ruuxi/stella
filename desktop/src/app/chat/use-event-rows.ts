@@ -188,6 +188,12 @@ type UseEventRowsOptions = {
   maxItems?: number
   isStreaming?: boolean
   pendingUserMessageId?: string | null
+  /**
+   * Live streaming buffer for the in-flight assistant reply. Overlaid
+   * onto the assistant row that responds to `pendingUserMessageId` so
+   * there is no separate "streaming tail" row to swap in/out at finish.
+   */
+  streamingText?: string
   selfModMap?: Record<string, SelfModAppliedData>
 }
 
@@ -197,9 +203,10 @@ export type UseEventRowsResult = {
   lastUserRowIndex: number
   /** Pending askQuestion that has no inline assistant row to attach to. */
   pendingAskQuestion: AskQuestionState | null
-  /** Whether to render the streaming tail row. */
-  showStreamingTail: boolean
 }
+
+const assistantKeyFor = (userMessageId: string) =>
+  `assistant-for-${userMessageId}`
 
 export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
   const developerResourcePreviewsEnabled =
@@ -209,26 +216,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     maxItems,
     isStreaming,
     pendingUserMessageId,
+    streamingText,
     selfModMap,
   } = opts
-
-  const hasAssistantReply = useMemo(
-    () =>
-      Boolean(
-        pendingUserMessageId &&
-          events.some(
-            (event) =>
-              event.type === 'assistant_message' &&
-              (event.payload as { userMessageId?: string } | null)
-                ?.userMessageId === pendingUserMessageId,
-          ),
-      ),
-    [events, pendingUserMessageId],
-  )
-
-  const showStreamingTail = Boolean(
-    !hasAssistantReply && isStreaming,
-  )
 
   const displayEvents = useMemo(
     () => filterEventsForUiDisplay(events),
@@ -282,6 +272,14 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
 
   const allRows = useMemo<EventRowViewModel[]>(() => {
     const computed: EventRowViewModel[] = []
+    /**
+     * Tracks the first assistant row seen per `userMessageId` so it
+     * "owns" the stable `assistant-for-<uid>` key. Any later assistant
+     * messages tied to the same user turn (e.g. agent terminal notices)
+     * fall back to their own event id.
+     */
+    const primaryAssistantByUserMessageId = new Set<string>()
+    let pendingAssistantWasProjected = false
 
     for (const event of displayEvents) {
       if (isUserMessage(event)) {
@@ -312,12 +310,46 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       }
 
       if (isAssistantMessage(event)) {
-        const text = getDisplayMessageText(event)
+        const persistedText = getDisplayMessageText(event)
+        const payload = getMessagePayload(event)
+        const replyToUserMessageId =
+          typeof payload?.userMessageId === 'string' &&
+          payload.userMessageId.length > 0
+            ? payload.userMessageId
+            : undefined
+        const isPrimaryReply =
+          replyToUserMessageId !== undefined &&
+          !primaryAssistantByUserMessageId.has(replyToUserMessageId)
+        if (isPrimaryReply && replyToUserMessageId) {
+          primaryAssistantByUserMessageId.add(replyToUserMessageId)
+        }
+        const isPendingReply =
+          isPrimaryReply &&
+          replyToUserMessageId !== undefined &&
+          replyToUserMessageId === pendingUserMessageId
+        if (isPendingReply) {
+          pendingAssistantWasProjected = true
+        }
+        // While streaming, prefer the live buffer if it's longer than
+        // what's been persisted so far (the persisted message generally
+        // arrives in one shot at finish, but this handles the rare case
+        // where partial text lands earlier without flickering shorter).
+        const overlayStreaming =
+          isPendingReply && Boolean(isStreaming) && Boolean(streamingText)
+        const text =
+          overlayStreaming &&
+          streamingText &&
+          streamingText.length > persistedText.length
+            ? streamingText
+            : persistedText
+        const isAnimating = Boolean(isPendingReply && isStreaming)
+        const stableKey =
+          isPrimaryReply && replyToUserMessageId
+            ? assistantKeyFor(replyToUserMessageId)
+            : event._id
         const toolEvents = segmentedToolEvents.get(event._id) ?? []
         const responseTarget = responseTargetByAssistantId.get(event._id)
-        const emotesEnabled = isOrchestratorChatMessagePayload(
-          getMessagePayload(event),
-        )
+        const emotesEnabled = isOrchestratorChatMessagePayload(payload)
         const resourcePayload = deriveTurnResource(
           toolEvents,
           text,
@@ -344,8 +376,10 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const selfModApplied = selfModMap?.[event._id]
         const row: AssistantRowViewModel = {
           kind: 'assistant',
-          id: event._id,
+          id: stableKey,
           text,
+          cacheKey: stableKey,
+          ...(isAnimating ? { isAnimating: true } : {}),
           emotesEnabled,
           ...(responseTarget ? { responseTarget } : {}),
           ...(getWebSearchBadgeHtml(toolEvents)
@@ -362,14 +396,41 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       }
     }
 
+    /**
+     * No persisted assistant_message has landed yet for the in-flight
+     * user turn. Synthesize a placeholder row, keyed identically to the
+     * persisted row that will eventually replace it, so React reuses
+     * the same component instance (and Streamdown the same parse cache)
+     * across the swap — no flash, no remount.
+     */
+    if (
+      pendingUserMessageId &&
+      !pendingAssistantWasProjected &&
+      (Boolean(isStreaming) || Boolean(streamingText && streamingText.length > 0))
+    ) {
+      const stableKey = assistantKeyFor(pendingUserMessageId)
+      const placeholder: AssistantRowViewModel = {
+        kind: 'assistant',
+        id: stableKey,
+        text: streamingText ?? '',
+        cacheKey: stableKey,
+        emotesEnabled: true,
+        ...(isStreaming ? { isAnimating: true } : {}),
+      }
+      computed.push(placeholder)
+    }
+
     return computed
   }, [
     askQuestion,
     developerResourcePreviewsEnabled,
     displayEvents,
+    isStreaming,
+    pendingUserMessageId,
     responseTargetByAssistantId,
     segmentedToolEvents,
     selfModMap,
+    streamingText,
   ])
 
   /* eslint-disable react-hooks/refs --
@@ -405,6 +466,5 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     rows: slicedRows,
     lastUserRowIndex,
     pendingAskQuestion: askQuestion.pending,
-    showStreamingTail,
   }
 }
