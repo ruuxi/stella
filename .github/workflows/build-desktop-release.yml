@@ -30,6 +30,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
+            .gitignore
             package.json
             bun.lock
             desktop
@@ -52,13 +53,54 @@ jobs:
           rm -rf release-root
           mkdir -p release-root/state/outputs
 
-          cp package.json bun.lock release-root/
+          cp .gitignore package.json bun.lock release-root/
           cp -R desktop runtime release-root/
           cp state/DREAM.md state/registry.md release-root/state/
           cp -R state/skills release-root/state/
           cp state/outputs/README.md release-root/state/outputs/README.md
 
+          node <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readdirSync, statSync, readFileSync, writeFileSync } = require("node:fs");
+          const { join, relative, sep } = require("node:path");
+
+          const root = "release-root";
+          const files = {};
+
+          function walk(dir) {
+            for (const entry of readdirSync(dir)) {
+              const path = join(dir, entry);
+              const stat = statSync(path);
+              if (stat.isDirectory()) {
+                walk(path);
+                continue;
+              }
+              const rel = relative(root, path).split(sep).join("/");
+              const bytes = readFileSync(path);
+              files[rel] = {
+                sha256: createHash("sha256").update(bytes).digest("hex"),
+                size: stat.size,
+              };
+            }
+          }
+
+          walk(root);
+          writeFileSync(
+            join(root, "stella-release.json"),
+            `${JSON.stringify({
+              schemaVersion: 1,
+              tag: `desktop-v${process.env.STELLA_DESKTOP_VERSION}`,
+              version: process.env.STELLA_DESKTOP_VERSION,
+              platform: process.env.STELLA_DESKTOP_PLATFORM,
+              files,
+            }, null, 2)}\n`,
+          );
+          NODE
+
           tar --zstd -cf "stella-desktop-${{ matrix.platform }}.tar.zst" -C release-root .
+        env:
+          STELLA_DESKTOP_VERSION: ${{ steps.version.outputs.version }}
+          STELLA_DESKTOP_PLATFORM: ${{ matrix.platform }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

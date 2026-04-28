@@ -27,7 +27,17 @@ export type InstallerPhase =
   | "checking"
   | "ready"
   | "installing"
+  | "updating"
   | "complete"
+  | "error";
+
+export type UpdateStatus =
+  | "idle"
+  | "checking"
+  | "available"
+  | "updating"
+  | "complete"
+  | "conflict"
   | "error";
 
 export type InstallerState = {
@@ -43,6 +53,13 @@ export type InstallerState = {
   runAfterInstall: boolean;
   canLaunch: boolean;
   installed: boolean;
+  update: {
+    status: UpdateStatus;
+    currentTag?: string;
+    latestTag?: string;
+    message?: string;
+    conflicts: string[];
+  };
   disk: {
     requiredBytes: number;
     availableBytes: number | null;
