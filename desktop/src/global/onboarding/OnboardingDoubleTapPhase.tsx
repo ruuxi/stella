@@ -312,8 +312,8 @@ export function OnboardingDoubleTapPhase({
 
       <button
         className="onboarding-confirm"
-        data-visible={true}
-        disabled={splitTransitionActive}
+        data-visible={hasSummoned}
+        disabled={splitTransitionActive || !hasSummoned}
         onClick={onContinue}
       >
         Continue
