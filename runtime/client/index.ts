@@ -99,7 +99,17 @@ export type RuntimeHostHandlers = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
-  displayUpdate: (html: string) => Promise<void> | void;
+  /**
+   * Push a display update to the renderer. The payload is either a raw
+   * HTML string (legacy, used by the agent's `Display` tool) or a
+   * structured payload object that the renderer hands to its workspace
+   * panel tab manager. The host handler is responsible for forwarding
+   * whatever it receives to the IPC `display:update` channel as-is so
+   * the renderer can normalize it.
+   */
+  displayUpdate: (payload: string | Record<string, unknown>) =>
+    | Promise<void>
+    | void;
   showNotification?: (payload: {
     title: string;
     body: string;
@@ -159,15 +169,21 @@ const DEVICE_HEARTBEAT_INTERVAL_MS = 30_000;
 
 type RemoteTurnAuthSource = HostRuntimeAuthRefreshParams["source"];
 
-const parseDisplayUpdateParams = (params: unknown): string => {
+const parseDisplayUpdateParams = (
+  params: unknown,
+): string | Record<string, unknown> => {
   if (typeof params === "string") return params;
-  if (
-    params &&
-    typeof params === "object" &&
-    "html" in params &&
-    typeof (params as HostDisplayUpdateParams).html === "string"
-  ) {
-    return (params as HostDisplayUpdateParams).html;
+  if (params && typeof params === "object") {
+    const record = params as Record<string, unknown>;
+    if (typeof record.html === "string") {
+      return record.html;
+    }
+    if (record.payload && typeof record.payload === "object") {
+      return record.payload as Record<string, unknown>;
+    }
+    if (typeof record.kind === "string") {
+      return record;
+    }
   }
   throw new Error("Invalid host display update payload.");
 };

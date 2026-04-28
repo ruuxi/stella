@@ -14,6 +14,7 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { getDisplayPayloadTitle } from "@/shared/contracts/display-payload";
 import {
   HtmlTabContent,
+  UrlTabContent,
   MarkdownTabContent,
   SourceDiffTabContent,
   ImageTabContent,
@@ -53,6 +54,20 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
         kind: "html",
         title,
         render: () => createElement(HtmlTabContent, { html: payload.html }),
+      };
+
+    case "url":
+      return {
+        id: payload.tabId,
+        kind: "url",
+        title,
+        ...(payload.tooltip ? { tooltip: payload.tooltip } : {}),
+        metadata: { kind: "url", url: payload.url },
+        render: () =>
+          createElement(UrlTabContent, {
+            url: payload.url,
+            title,
+          }),
       };
 
     case "markdown":

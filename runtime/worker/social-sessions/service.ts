@@ -20,6 +20,11 @@ import {
   resolveSessionLocalFolder,
   scanSessionWorkspace,
 } from "./fs.js";
+import { ensureSocialWorkspaceTemplate } from "./template.js";
+import {
+  SocialPreviewServerManager,
+  type PreviewSnapshot,
+} from "./preview-server.js";
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -156,6 +161,12 @@ type SocialSessionServiceDeps = {
   getChatStore: () => SocialSessionChatEventsApi | null;
   getStore: () => SocialSessionSyncStoreApi | null;
   onLocalChatUpdated?: () => void;
+  /**
+   * Push a structured payload to the desktop display panel. Used to open
+   * a "Social" preview tab pointing at the per-session Vite dev server
+   * URL once it is listening.
+   */
+  pushDisplayPayload?: (payload: Record<string, unknown>) => void;
 };
 
 const TICK_INTERVAL_MS = 2_500;
@@ -194,8 +205,26 @@ export class SocialSessionService {
   private lastError: string | null = null;
   private lastSyncAt: number | null = null;
   private suspendedForUnauthorized = false;
+  /** Sessions that have already had the workspace template materialized this process. */
+  private templateInitializedSessions = new Set<string>();
+  /**
+   * Per-session Vite dev server lifecycle. The first time we observe an
+   * active session we ensure the dev server is running; once Vite reports
+   * its URL we push a "Social" tab to the desktop display panel.
+   */
+  private readonly previewManager: SocialPreviewServerManager;
+  /** Sessions for which we have already pushed the display tab open command. */
+  private displayedSessions = new Set<string>();
 
-  constructor(private readonly deps: SocialSessionServiceDeps) {}
+  constructor(private readonly deps: SocialSessionServiceDeps) {
+    this.previewManager = new SocialPreviewServerManager({
+      onUrlAvailable: (snapshot) => this.handlePreviewReady(snapshot),
+      onStopped: (snapshot) => {
+        // Allow re-displaying the tab next time the preview restarts.
+        this.displayedSessions.delete(snapshot.sessionId);
+      },
+    });
+  }
 
   private clearSuspension() {
     this.suspendedForUnauthorized = false;
@@ -426,6 +455,9 @@ export class SocialSessionService {
     this.reconcileSessionsPromise = null;
     this.activeSessions.clear();
     this.processingTurnId = null;
+    this.templateInitializedSessions.clear();
+    this.displayedSessions.clear();
+    void this.previewManager.shutdown().catch(() => undefined);
     this.clearSuspension();
     this.disposeClient();
   }
@@ -434,6 +466,9 @@ export class SocialSessionService {
     this.suspendedForUnauthorized = true;
     this.lastError = CONNECTED_ACCOUNT_REQUIRED_MESSAGE;
     this.activeSessions.clear();
+    this.templateInitializedSessions.clear();
+    this.displayedSessions.clear();
+    void this.previewManager.shutdown().catch(() => undefined);
     this.sessionsUnsubscribe?.();
     this.sessionsUnsubscribe = null;
     this.disposeClient();
@@ -498,6 +533,33 @@ export class SocialSessionService {
         );
       await fs.mkdir(localFolderPath, { recursive: true });
       const role = toSessionRole(summary);
+      const isActiveHostForSession =
+        role === "host" &&
+        Boolean(deviceId) &&
+        summary.session.hostDeviceId === deviceId;
+
+      // Only the active host materializes the workspace template; followers
+      // pick up the files via the normal Convex file-op sync. This avoids
+      // race conditions where two clients both try to write template files.
+      if (
+        isActiveHostForSession &&
+        !this.templateInitializedSessions.has(summary.session._id)
+      ) {
+        try {
+          await ensureSocialWorkspaceTemplate(localFolderPath);
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            "[social-sessions] failed to initialize workspace template",
+            {
+              sessionId: summary.session._id,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }
+        this.templateInitializedSessions.add(summary.session._id);
+      }
+
       const record = store.upsertSession({
         sessionId: summary.session._id,
         localFolderPath,
@@ -511,17 +573,60 @@ export class SocialSessionService {
         sessionConversationId: summary.session.conversationId,
         hostOwnerId: summary.session.hostOwnerId,
         hostDeviceId: summary.session.hostDeviceId,
-        isActiveHost:
-          role === "host" &&
-          Boolean(deviceId) &&
-          summary.session.hostDeviceId === deviceId,
+        isActiveHost: isActiveHostForSession,
       });
+
+      // Spin up the per-session Vite dev server on the active host. The
+      // manager is idempotent — repeated calls reuse the running child.
+      if (isActiveHostForSession) {
+        void this.previewManager
+          .ensureStarted(summary.session._id, localFolderPath)
+          .catch((error) => {
+            // eslint-disable-next-line no-console
+            console.warn("[social-sessions] preview server start failed", {
+              sessionId: summary.session._id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+      }
     }
 
     for (const sessionId of [...this.activeSessions.keys()]) {
       if (!nextIds.has(sessionId)) {
         this.activeSessions.delete(sessionId);
+        this.templateInitializedSessions.delete(sessionId);
+        this.displayedSessions.delete(sessionId);
+        void this.previewManager
+          .stopSession(sessionId)
+          .catch(() => undefined);
       }
+    }
+  }
+
+  private handlePreviewReady(snapshot: PreviewSnapshot): void {
+    if (!snapshot.url) return;
+    if (this.displayedSessions.has(snapshot.sessionId)) {
+      // Already opened in the current session; the URL is stable for the
+      // lifetime of the dev server, so no re-push is needed.
+      return;
+    }
+    const push = this.deps.pushDisplayPayload;
+    if (!push) return;
+    try {
+      push({
+        kind: "url",
+        url: snapshot.url,
+        title: "Social",
+        tabId: `social:${snapshot.sessionId}`,
+        tooltip: snapshot.url,
+      });
+      this.displayedSessions.add(snapshot.sessionId);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn("[social-sessions] failed to push display payload", {
+        sessionId: snapshot.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../src/shell/display/tab-content", () => ({
   HtmlTabContent: () => null,
+  UrlTabContent: () => null,
   MarkdownTabContent: () => null,
   SourceDiffTabContent: () => null,
   ImageTabContent: () => null,
@@ -17,6 +18,7 @@ vi.mock("../../../src/shell/display/tab-content", () => ({
 }));
 vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
   HtmlTabContent: () => null,
+  UrlTabContent: () => null,
   MarkdownTabContent: () => null,
   SourceDiffTabContent: () => null,
   ImageTabContent: () => null,
@@ -106,6 +108,21 @@ describe("payloadToTabSpec", () => {
     const spec = payloadToTabSpec(payload);
     expect(spec.id).toBe("markdown:/tmp/notes.md");
     expect(spec.kind).toBe("markdown");
+  });
+
+  it("maps url payloads to url tabs and preserves the stable tab id", () => {
+    const payload: DisplayPayload = {
+      kind: "url",
+      url: "http://127.0.0.1:53121/",
+      title: "Social",
+      tabId: "social:abc123",
+      tooltip: "http://127.0.0.1:53121/",
+    };
+    const spec = payloadToTabSpec(payload);
+    expect(spec.id).toBe("social:abc123");
+    expect(spec.kind).toBe("url");
+    expect(spec.title).toBe("Social");
+    expect(spec.tooltip).toBe("http://127.0.0.1:53121/");
   });
 
   it("maps developer file changes to source diff tabs", () => {

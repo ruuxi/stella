@@ -20,6 +20,8 @@ const labelForPayload = (payload: DisplayPayload): string => {
   switch (payload.kind) {
     case "html":
       return getDisplayPayloadTitle(payload);
+    case "url":
+      return payload.title;
     case "office":
       return basenameOf(payload.previewRef.sourcePath);
     case "markdown":
@@ -48,6 +50,8 @@ const labelForPayload = (payload: DisplayPayload): string => {
 
 const tooltipForPayload = (payload: DisplayPayload): string | undefined => {
   switch (payload.kind) {
+    case "url":
+      return payload.tooltip ?? payload.url;
     case "office":
       return payload.previewRef.sourcePath;
     case "markdown":

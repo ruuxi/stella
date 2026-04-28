@@ -89,8 +89,11 @@ export const createHostRunnerHandlers = (
     ),
   requestCredential: (payload) =>
     context.services.credentialService.requestCredential(payload),
-  displayUpdate: (html) => {
-    broadcastToWindows(context, "display:update", html);
+  displayUpdate: (payload) => {
+    // Forward the raw payload (string HTML or structured DisplayPayload
+    // object) to all windows. The renderer normalizes both shapes via
+    // `normalizeDisplayPayload`.
+    broadcastToWindows(context, "display:update", payload);
   },
   showNotification: ({ title, body, sound }) => {
     if (Notification.isSupported()) {

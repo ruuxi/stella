@@ -171,6 +171,15 @@ export const resourcePayloadEqual = (
     }
     case "pdf":
       return a.filePath === (b as { filePath: string }).filePath;
+    case "url": {
+      const bb = b as Extract<DisplayPayload, { kind: "url" }>;
+      return (
+        a.url === bb.url &&
+        a.title === bb.title &&
+        a.tabId === bb.tabId &&
+        (a.tooltip ?? null) === (bb.tooltip ?? null)
+      );
+    }
     case "media": {
       const bb = b as Extract<DisplayPayload, { kind: "media" }>;
       if (a.asset.kind !== bb.asset.kind) return false;
