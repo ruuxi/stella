@@ -14,6 +14,7 @@
  */
 
 #include <dlfcn.h>
+#include <errno.h>
 #include <signal.h>
 #include <spawn.h>
 #include <stdio.h>
@@ -25,6 +26,15 @@
 extern char **environ;
 
 typedef int (*disclaim_func_t)(posix_spawnattr_t *, int);
+
+static volatile sig_atomic_t child_pid = 0;
+
+static void forward_signal(int signal_number) {
+    pid_t pid = (pid_t)child_pid;
+    if (pid > 0) {
+        kill(pid, signal_number);
+    }
+}
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -61,8 +71,18 @@ int main(int argc, char *argv[]) {
         return ret;
     }
 
+    child_pid = pid;
+    signal(SIGTERM, forward_signal);
+    signal(SIGINT, forward_signal);
+    signal(SIGHUP, forward_signal);
+
     int status;
-    waitpid(pid, &status, 0);
+    while (waitpid(pid, &status, 0) == -1) {
+        if (errno != EINTR) {
+            perror("disclaim-spawn: waitpid");
+            return 1;
+        }
+    }
 
     if (WIFEXITED(status))
         return WEXITSTATUS(status);
