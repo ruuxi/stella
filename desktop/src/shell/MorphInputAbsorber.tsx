@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SelfModHmrState } from "../shared/contracts/boundary";
+
+const MAX_COVER_DURATION_MS = 12_000;
 
 const COVERED_PHASES: ReadonlySet<SelfModHmrState["phase"]> = new Set([
   "morph-forward",
@@ -21,15 +23,36 @@ const COVERED_PHASES: ReadonlySet<SelfModHmrState["phase"]> = new Set([
  */
 export function MorphInputAbsorber() {
   const [covered, setCovered] = useState(false);
+  const failsafeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearFailsafeTimer = () => {
+    if (failsafeTimerRef.current) {
+      clearTimeout(failsafeTimerRef.current);
+      failsafeTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     const off = window.electronAPI?.agent.onSelfModHmrState((state) => {
       setCovered(COVERED_PHASES.has(state.phase));
     });
     return () => {
+      clearFailsafeTimer();
       off?.();
     };
   }, []);
+
+  useEffect(() => {
+    clearFailsafeTimer();
+    if (!covered) return;
+
+    failsafeTimerRef.current = setTimeout(() => {
+      failsafeTimerRef.current = null;
+      setCovered(false);
+    }, MAX_COVER_DURATION_MS);
+
+    return clearFailsafeTimer;
+  }, [covered]);
 
   useEffect(() => {
     if (!covered) return;
