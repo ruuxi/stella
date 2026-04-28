@@ -23,7 +23,6 @@ Each skill is a folder. The folder name is the skill ID. Inside:
 
 - [blueprint-management](blueprint-management/SKILL.md) — feature packaging and sharing
 - [stella-desktop](stella-desktop/SKILL.md) — Stella's own Electron desktop app (processes, routing, sidebar apps, dialogs, UI state)
-- [user-profile](user-profile/SKILL.md) — user profile and context (populated by onboarding)
 
 ## Backlinks
 
