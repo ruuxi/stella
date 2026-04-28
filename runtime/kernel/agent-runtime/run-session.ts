@@ -22,6 +22,7 @@ type SessionOptions = Pick<
   | "agentContext"
   | "toolCatalog"
   | "deviceId"
+  | "stellaHome"
   | "stellaRoot"
   | "toolWorkspaceRoot"
   | "store"
@@ -73,6 +74,7 @@ export const createRuntimeExecutionSession = (
     agentType: opts.agentType,
     deviceId: opts.deviceId,
     stellaRoot: opts.stellaRoot,
+    stellaStatePath: opts.stellaHome,
     toolWorkspaceRoot: opts.toolWorkspaceRoot,
     agentDepth: opts.agentContext.agentDepth ?? 0,
     maxAgentDepth: opts.agentContext.maxAgentDepth,

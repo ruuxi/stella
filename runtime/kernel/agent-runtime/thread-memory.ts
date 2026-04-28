@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveStellaStatePath } from "../home/stella-home.js";
 import type {
   AssistantMessage,
   ImageContent,
@@ -508,7 +509,7 @@ const readRegistryContent = async (args: {
   const stellaHome = args.stellaHome?.trim();
   if (stellaHome) {
     const stellaHomeRegistry = await readOptionalTextFile(
-      path.join(stellaHome, "state", "registry.md"),
+      path.join(resolveStellaStatePath(stellaHome), "registry.md"),
     );
     if (stellaHomeRegistry) {
       return stellaHomeRegistry;
@@ -519,7 +520,7 @@ const readRegistryContent = async (args: {
   if (!stellaRoot) {
     return null;
   }
-  return await readOptionalTextFile(path.join(stellaRoot, "state", "registry.md"));
+  return await readOptionalTextFile(path.join(resolveStellaStatePath(stellaRoot), "registry.md"));
 };
 
 export const buildStartupPromptMessages = async (args: {

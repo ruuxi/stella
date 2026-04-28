@@ -53,6 +53,7 @@ import type { LocalChatAppendEventArgs } from "../storage/shared.js";
 export type StellaHostRunnerOptions = {
   deviceId: string;
   stellaRoot: string;
+  stellaStatePath: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;
@@ -258,6 +259,7 @@ export type RunnerContext = {
   convexApi: unknown;
   deviceId: string;
   stellaRoot: string;
+  stellaStatePath: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;

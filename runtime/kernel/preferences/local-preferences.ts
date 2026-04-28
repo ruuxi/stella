@@ -1,5 +1,5 @@
 /**
- * Local preferences — reads/writes `desktop/state/preferences.json`.
+ * Local preferences — reads/writes `~/.stella/preferences.json`.
  *
  * Serves as the local source of truth for user preferences. Model routing
  * preferences live here only; Convex does not own or sync them.
@@ -7,7 +7,11 @@
 
 import fs from "fs";
 import path from "path";
-import { ensurePrivateDirSync, writePrivateFileSync } from "../shared/private-fs.js";
+import {
+  ensurePrivateDirSync,
+  writePrivateFileSync,
+} from "../shared/private-fs.js";
+import { resolveStellaStatePath } from "../home/stella-home.js";
 import {
   DEFAULT_RADIAL_TRIGGER_CODE,
   normalizeRadialTriggerCode,
@@ -88,7 +92,7 @@ let _cached: LocalPreferences | null = null;
 let _cachedMtime: number | null = null;
 
 const prefsPath = (stellaHome: string) =>
-  path.join(stellaHome, "state", "preferences.json");
+  path.join(resolveStellaStatePath(stellaHome), "preferences.json");
 
 export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
   const filePath = prefsPath(stellaHome);
@@ -105,8 +109,10 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       ...DEFAULT_PREFERENCES,
       defaultModels: parsed.defaultModels ?? DEFAULT_PREFERENCES.defaultModels,
       resolvedDefaultModels:
-        parsed.resolvedDefaultModels ?? DEFAULT_PREFERENCES.resolvedDefaultModels,
-      modelOverrides: parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
+        parsed.resolvedDefaultModels ??
+        DEFAULT_PREFERENCES.resolvedDefaultModels,
+      modelOverrides:
+        parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
       localLlmKeysEnabled: parsed.localLlmKeysEnabled === true,
       localLlmProvider:
         typeof parsed.localLlmProvider === "string" &&
@@ -184,27 +190,19 @@ export const getLocalLlmProviderPreference = (
   };
 };
 
-export const getExpressionStyle = (
-  stellaHome: string,
-): string | undefined => {
+export const getExpressionStyle = (stellaHome: string): string | undefined => {
   return loadLocalPreferences(stellaHome).expressionStyle;
 };
 
-export const getGeneralAgentEngine = (
-  stellaHome: string,
-): AgentEngine => {
+export const getGeneralAgentEngine = (stellaHome: string): AgentEngine => {
   return loadLocalPreferences(stellaHome).generalAgentEngine;
 };
 
-export const getSelfModAgentEngine = (
-  stellaHome: string,
-): AgentEngine => {
+export const getSelfModAgentEngine = (stellaHome: string): AgentEngine => {
   return loadLocalPreferences(stellaHome).selfModAgentEngine;
 };
 
-export const getMaxAgentConcurrency = (
-  stellaHome: string,
-): number => {
+export const getMaxAgentConcurrency = (stellaHome: string): number => {
   return loadLocalPreferences(stellaHome).maxAgentConcurrency;
 };
 
@@ -259,30 +257,22 @@ export const updateLocalModelPreferences = (
  * Explore is meant to be a fast cheap pass over state/. Users who want to
  * spend more should set modelOverrides["explore"] explicitly.
  */
-export const getExploreModel = (
-  stellaHome: string,
-): string | undefined => {
+export const getExploreModel = (stellaHome: string): string | undefined => {
   const prefs = loadLocalPreferences(stellaHome);
   return prefs.modelOverrides["explore"] ?? prefs.defaultModels["explore"];
 };
 
-export const getSyncMode = (
-  stellaHome: string,
-): "on" | "off" => {
+export const getSyncMode = (stellaHome: string): "on" | "off" => {
   return loadLocalPreferences(stellaHome).syncMode;
 };
 
-export const getPreventComputerSleep = (
-  stellaHome: string,
-): boolean => {
+export const getPreventComputerSleep = (stellaHome: string): boolean => {
   return loadLocalPreferences(stellaHome).preventComputerSleep;
 };
 
 // ── Normalization helpers ─────────────────────────────────────────────────
 
-const normalizeEngine = (
-  value: unknown,
-): AgentEngine => {
+const normalizeEngine = (value: unknown): AgentEngine => {
   if (value === "claude_code_local") return "claude_code_local";
   return "default";
 };

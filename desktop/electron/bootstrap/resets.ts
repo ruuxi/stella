@@ -75,7 +75,7 @@ export const createBootstrapResetFlows = (
       appSession.clearCache(),
     ]);
 
-    const stellaRoot = state.stellaRoot ?? config.stellaRoot;
+    const stellaRoot = state.stellaStatePath ?? state.stellaRoot ?? config.stellaRoot;
     await Promise.allSettled(
       config.hardResetMutableHomePaths.map((relativePath) =>
         fs.rm(path.join(stellaRoot, relativePath), {
@@ -95,12 +95,12 @@ export const createBootstrapResetFlows = (
   resetLocalMessages: async () => {
     const { state } = context;
 
-    if (!state.stellaRoot) {
+    if (!state.stellaStatePath && !state.stellaRoot) {
       return { ok: true };
     }
 
     await shutdownBootstrapRuntime(context);
-    await resetMessageStorage(state.stellaRoot);
+    await resetMessageStorage(state.stellaStatePath ?? state.stellaRoot!);
     await options.initializeStellaHostRunner();
 
     broadcastLocalChatUpdated(context);

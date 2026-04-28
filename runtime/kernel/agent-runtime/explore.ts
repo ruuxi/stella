@@ -1,5 +1,5 @@
 /**
- * Explore - per-task scout that reads state/ before a General agent task runs.
+ * Explore - per-task scout that reads ~/.stella state before a General agent task runs.
  *
  * Stateless one-shot helper. Not a real subagent task: no SQLite thread, no
  * runtime_threads row, no run-events emitted, no UI surface. The result is
@@ -8,7 +8,7 @@
  *
  * The Explore agent has only Read and Grep available. It is constrained by
  * its system prompt (runtime/extensions/stella-runtime/agents/explore.md) to
- * `state/` and to a strict JSON output shape.
+ * the `~/.stella` state view and to a strict JSON output shape.
  *
  * Failures are graceful: a 30-second timeout, a missing model route, or any
  * tool/LLM error all produce an `<explore_findings status="unavailable">`
@@ -35,6 +35,7 @@ import { resolveAgent } from "../runner/context.js";
 import { createRunnerSiteConfig } from "../runner/model-selection.js";
 import { getExploreModel } from "../preferences/local-preferences.js";
 import { createRuntimeLogger } from "../debug.js";
+import { resolveStellaStatePath } from "../home/stella-home.js";
 import type { RunnerContext } from "../runner/types.js";
 
 const logger = createRuntimeLogger("agent-runtime.explore");
@@ -85,9 +86,12 @@ const resolveStateScopedPath = async (
   candidate: string,
   stellaRoot: string,
 ): Promise<string | null> => {
-  const stateRoot = path.resolve(stellaRoot, STATE_DIR_NAME);
+  const stateRoot = resolveStellaStatePath(stellaRoot);
+  const relativeCandidate = candidate === STATE_DIR_NAME
+    ? ""
+    : candidate.replace(/^state[/\\]/u, "");
   const resolvedCandidate = path.resolve(
-    path.isAbsolute(candidate) ? candidate : path.join(stellaRoot, candidate),
+    path.isAbsolute(candidate) ? candidate : path.join(stateRoot, relativeCandidate),
   );
   const [realStateRoot, realCandidate] = await Promise.all([
     maybeRealPath(stateRoot),
@@ -107,7 +111,7 @@ export const sanitizeExploreToolArgs = async (
   if (!stellaRoot.trim()) {
     return {
       ok: false,
-      error: "Explore requires a Stella root so it can stay inside state/.",
+      error: "Explore requires Stella state so it can stay inside state/.",
     };
   }
 
@@ -239,9 +243,9 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
 
   let resolvedLlm;
   try {
-    const modelName = getExploreModel(context.stellaRoot);
+    const modelName = getExploreModel(context.stellaStatePath);
     resolvedLlm = resolveLlmRoute({
-      stellaRoot: context.stellaRoot,
+      stellaRoot: context.stellaStatePath,
       modelName,
       agentType: AGENT_IDS.EXPLORE,
       site: createRunnerSiteConfig(context),
@@ -328,7 +332,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
           const sanitized = await sanitizeExploreToolArgs(
             toolCall.name as typeof EXPLORE_TOOL_NAMES[number],
             (toolCall.arguments as Record<string, unknown>) ?? {},
-            context.stellaRoot,
+            context.stellaStatePath,
           );
           if (!sanitized.ok) {
             messages.push(
@@ -344,7 +348,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
               deviceId: context.deviceId,
               requestId: `explore-${Date.now()}`,
               agentType: AGENT_IDS.EXPLORE,
-              stellaRoot: context.stellaRoot,
+              stellaRoot: context.stellaStatePath,
             },
             abortController.signal,
           );

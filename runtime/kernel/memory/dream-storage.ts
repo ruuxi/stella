@@ -9,6 +9,7 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { resolveStellaStatePath } from "../home/stella-home.js";
 
 export const MEMORY_FILE = "MEMORY.md";
 export const MEMORY_SUMMARY_FILE = "memory_summary.md";
@@ -66,7 +67,7 @@ const RAW_MEMORIES_TEMPLATE = `# Raw memories
 `;
 
 export const memoriesRoot = (stellaHome: string): string =>
-  path.join(stellaHome, "state", "memories");
+  path.join(resolveStellaStatePath(stellaHome), "memories");
 
 export const memoryFilePath = (stellaHome: string): string =>
   path.join(memoriesRoot(stellaHome), MEMORY_FILE);

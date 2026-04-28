@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess, execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import { resolveNativeHelperPath } from "../native-helper-path.js";
 import { hasMacPermission, requestMacPermission } from "../utils/macos-permissions.js";
 
@@ -9,7 +10,7 @@ import { hasMacPermission, requestMacPermission } from "../utils/macos-permissio
  *
  * Responsibilities:
  *   - Resolve the binary location (dev + packaged)
- *   - Skip cleanly when disabled in `state/config.json` or when Screen
+ *   - Skip cleanly when disabled in `~/.stella/config.json` or when Screen
  *     Recording permission is not granted
  *   - Spawn the daemon as a detached process and remember the pid for
  *     status checks
@@ -43,7 +44,7 @@ const CHRONICLE_EXCLUDED_BUNDLE_IDS = ["com.stella.app", "com.github.Electron"];
 const readConfig = async (stellaHome: string): Promise<ChronicleConfig> => {
   try {
     const raw = await fs.readFile(
-      path.join(stellaHome, "state", "config.json"),
+      path.join(resolveStellaStatePath(stellaHome), "config.json"),
       "utf-8",
     );
     const parsed = JSON.parse(raw) as StellaConfig;
@@ -57,7 +58,7 @@ const writeConfigPatch = async (
   stellaHome: string,
   patch: ChronicleConfig,
 ): Promise<void> => {
-  const configPath = path.join(stellaHome, "state", "config.json");
+  const configPath = path.join(resolveStellaStatePath(stellaHome), "config.json");
   let current: StellaConfig = {};
   try {
     const raw = await fs.readFile(configPath, "utf-8");
@@ -90,10 +91,11 @@ export class ChronicleController {
   ): Promise<string | null> {
     const bin = this.resolveBin();
     if (!bin) return null;
+    const stateRoot = resolveStellaStatePath(this.stellaHome);
     return await new Promise<string | null>((resolve) => {
       execFile(
         bin,
-        [command, "--root", this.stellaHome],
+        [command, "--root", stateRoot],
         { timeout: 5000 },
         (error, stdout) => {
           if (error) {
@@ -148,14 +150,14 @@ export class ChronicleController {
     }
 
     try {
-      await fs.mkdir(path.join(this.stellaHome, "state", "chronicle"), {
+      await fs.mkdir(path.join(resolveStellaStatePath(this.stellaHome), "chronicle"), {
         recursive: true,
       });
     } catch {
       // ignored — daemon will retry creating dirs
     }
 
-    const args = ["daemon", "--root", this.stellaHome];
+    const args = ["daemon", "--root", resolveStellaStatePath(this.stellaHome)];
     if (typeof config.intervalMs === "number" && config.intervalMs > 0) {
       args.push("--interval-ms", String(Math.floor(config.intervalMs)));
     }

@@ -4,6 +4,7 @@ import { getOAuthApiKey, getOAuthProvider } from "../../ai/utils/oauth/index.js"
 import type { OAuthCredentials } from "../../ai/utils/oauth/types.js";
 import { protectValue, unprotectValue } from "../shared/protected-storage.js";
 import { ensurePrivateDirSync, writePrivateFileSync } from "../shared/private-fs.js";
+import { resolveStellaStatePath } from "../home/stella-home.js";
 
 const LLM_OAUTH_CREDENTIALS_FILE = "llm_oauth_credentials.json";
 const LLM_OAUTH_SCOPE_PREFIX = "llm-oauth-credential";
@@ -33,7 +34,7 @@ const normalizeProvider = (provider: string) => provider.trim().toLowerCase();
 const credentialScope = (provider: string) =>
   `${LLM_OAUTH_SCOPE_PREFIX}:${normalizeProvider(provider)}`;
 
-const getStatePath = (stellaRoot: string) => path.join(stellaRoot, "state");
+const getStatePath = (stellaRoot: string) => resolveStellaStatePath(stellaRoot);
 
 export const getLlmOAuthCredentialStorePath = (stellaRoot: string) =>
   path.join(getStatePath(stellaRoot), LLM_OAUTH_CREDENTIALS_FILE);

@@ -8,6 +8,7 @@ import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
 } from "../../../runtime/kernel/storage/database-init.js";
+import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import type { SqliteDatabase } from "../../../runtime/kernel/storage/shared.js";
 
 export type ChronicleHandlersOptions = {
@@ -115,7 +116,7 @@ export const registerChronicleHandlers = (
     }
     const root = options.getStellaRoot();
     if (!root) return { ok: false } as const;
-    const dir = path.join(root, "state", "memories");
+    const dir = path.join(resolveStellaStatePath(root), "memories");
     try {
       await fs.mkdir(dir, { recursive: true });
     } catch {
@@ -148,10 +149,11 @@ export const registerChronicleHandlers = (
         (rawStatus as Record<string, unknown>).running === true;
       await controller.stop();
     }
-    const memoriesDir = path.join(root, "state", "memories");
-    const extensionsDir = path.join(root, "state", "memories_extensions");
-    const chronicleDir = path.join(root, "state", "chronicle");
-    const dreamLockDir = path.join(root, "state", "locks", "dream");
+    const stateRoot = resolveStellaStatePath(root);
+    const memoriesDir = path.join(stateRoot, "memories");
+    const extensionsDir = path.join(stateRoot, "memories_extensions");
+    const chronicleDir = path.join(stateRoot, "chronicle");
+    const dreamLockDir = path.join(stateRoot, "locks", "dream");
     for (const target of [memoriesDir, extensionsDir, chronicleDir, dreamLockDir]) {
       try {
         await fs.rm(target, { recursive: true, force: true });

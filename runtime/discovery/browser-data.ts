@@ -14,6 +14,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { exec } from "child_process";
+import { resolveStellaStatePath } from "../kernel/home/stella-home.js";
 import type {
   BrowserType,
   DomainVisit,
@@ -1001,7 +1002,7 @@ const copyHistoryDatabase = async (
   historyPath: string,
   StellaHome: string
 ): Promise<string> => {
-  const cacheDir = path.join(StellaHome, "state", "cache");
+  const cacheDir = path.join(resolveStellaStatePath(StellaHome), "cache");
   await fs.mkdir(cacheDir, { recursive: true });
 
   const timestamp = Date.now();
@@ -1305,9 +1306,10 @@ export const collectBrowserData = async (
  * Check if core memory already exists
  */
 export const coreMemoryExists = async (StellaHome: string): Promise<boolean> => {
+  const stateRoot = resolveStellaStatePath(StellaHome);
   const candidatePaths = [
-    path.join(StellaHome, "state", "core-memory.md"),
-    path.join(StellaHome, "state", "CORE_MEMORY.MD"),
+    path.join(stateRoot, "core-memory.md"),
+    path.join(stateRoot, "CORE_MEMORY.MD"),
   ];
   for (const coreMemoryPath of candidatePaths) {
     try {
@@ -1327,7 +1329,7 @@ export const writeCoreMemory = async (
   StellaHome: string,
   content: string
 ): Promise<void> => {
-  const statePath = path.join(StellaHome, "state");
+  const statePath = resolveStellaStatePath(StellaHome);
   await fs.mkdir(statePath, { recursive: true });
   const coreMemoryPath = path.join(statePath, "core-memory.md");
   await fs.writeFile(coreMemoryPath, content, "utf-8");

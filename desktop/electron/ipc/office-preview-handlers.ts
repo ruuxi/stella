@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 import { arch, platform } from "node:os";
 import { spawn } from "node:child_process";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
@@ -171,7 +172,7 @@ export const registerOfficePreviewHandlers = (
       const sessionId = randomUUID();
       const title = path.basename(sourcePath);
       const ref: OfficePreviewRef = { sessionId, title, sourcePath };
-      const stateRoot = path.join(stellaRoot, "state");
+      const stateRoot = resolveStellaStatePath(stellaRoot);
       const sessionDir = path.join(stateRoot, PREVIEW_ROOT_DIRNAME, sessionId);
       const startedAt = Date.now();
       await writeManifest(sessionDir, ref, format, "starting", startedAt);

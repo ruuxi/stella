@@ -20,7 +20,7 @@ export type DisplayFileArtifactKind =
  *              preview ref. The sidebar resolves it into the right viewer.
  * - `pdf`    — local PDF file rendered with react-pdf in the renderer.
  * - `media`  — generated media (image/video/audio/3d/text) materialized to
- *              `state/media/outputs/`. Emitted by the media materializer when
+ *              `~/.stella/media/outputs/`. Emitted by the media materializer when
  *              any media job for the current owner succeeds.
  *
  * The IPC channel `display:update` carries either a raw HTML `string`

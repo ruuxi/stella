@@ -17,6 +17,7 @@ import {
   removeOfficialConnector,
 } from "../../../runtime/kernel/mcp/state.js";
 import { connectMcpOAuth, saveMcpAccessToken } from "../../../runtime/kernel/mcp/oauth.js";
+import { resolveStellaStatePath } from "../../../runtime/kernel/home/stella-home.js";
 
 type StoreHandlersOptions = {
   getStellaRoot: () => string | null;
@@ -31,7 +32,7 @@ type StoreHandlersOptions = {
 };
 
 const listInstalledThemes = async (stellaRoot: string) => {
-  const themesDir = path.join(stellaRoot, "state", "themes");
+  const themesDir = path.join(resolveStellaStatePath(stellaRoot), "themes");
   try {
     const files = await fs.readdir(themesDir);
     const themes = [];
