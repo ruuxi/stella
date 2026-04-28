@@ -79,7 +79,8 @@
    * opaque background with a subtle radial tint so it reads as "the real app
    * window" sitting in front of the onboarding gradient, not a glass overlay. */
   background-color: var(--background);
-  background-image: radial-gradient(
+  background-image:
+    radial-gradient(
       120% 90% at 80% 0%,
       color-mix(in oklch, var(--primary, var(--foreground)) 8%, transparent),
       transparent 60%
@@ -100,7 +101,9 @@
    * windows where the grid can't grow. */
   min-height: 280px;
   position: relative;
-  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+  transition:
+    border-color 0.4s ease,
+    box-shadow 0.4s ease;
 }
 
 .onboarding-memory-mock[data-variant="on"] {
@@ -190,7 +193,8 @@
 }
 
 @keyframes memoryPillPulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.85;
     transform: scale(1);
   }
@@ -212,8 +216,7 @@
   flex-direction: column;
   gap: 4px;
   padding: 12px 8px;
-  border-right: 1px solid
-    color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-right: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
   background: color-mix(in oklch, var(--background) 88%, var(--foreground) 4%);
 }
 
@@ -275,8 +278,7 @@
   gap: 4px;
   opacity: 0;
   transform: translateY(4px);
-  animation: memoryLineIn 360ms
-    cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: memoryLineIn 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   max-width: 92%;
 }
 
@@ -306,8 +308,7 @@
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   color: var(--foreground);
   opacity: 0;
-  animation: memoryBubbleIn 280ms
-    cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: memoryBubbleIn 280ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .onboarding-memory-mock__line[data-from="user"]
@@ -348,7 +349,7 @@
 }
 
 .onboarding-dialogue[data-phase="memory"] .onboarding-memory-mock__typing span {
-  animation: memoryTypingDot 1s ease-in-out infinite;
+  animation: memoryTypingDot 1s ease-in-out var(--typing-dot-count, 1);
 }
 
 .onboarding-memory-mock__typing span:nth-child(2) {
@@ -376,7 +377,8 @@
 }
 
 @keyframes memoryTypingDot {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
     opacity: 0.4;
   }
@@ -409,8 +411,7 @@
   color: var(--foreground);
   opacity: 0.6;
   padding: 8px 12px 12px;
-  border-top: 1px solid
-    color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
   background: color-mix(in oklch, var(--background) 92%, white 8%);
 }
 
@@ -449,7 +450,9 @@
   font-weight: 500;
   letter-spacing: 0.04em;
   color: var(--foreground);
-  transition: border-color 0.25s ease, background 0.25s ease,
+  transition:
+    border-color 0.25s ease,
+    background 0.25s ease,
     transform 0.15s ease;
 }
 
@@ -478,7 +481,8 @@
   flex-shrink: 0;
 }
 
-.onboarding-memory-toggle[aria-checked="true"] .onboarding-memory-toggle__track {
+.onboarding-memory-toggle[aria-checked="true"]
+  .onboarding-memory-toggle__track {
   background: color-mix(in oklch, var(--foreground) 50%, transparent);
 }
 
@@ -494,7 +498,8 @@
   transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.onboarding-memory-toggle[aria-checked="true"] .onboarding-memory-toggle__thumb {
+.onboarding-memory-toggle[aria-checked="true"]
+  .onboarding-memory-toggle__thumb {
   transform: translateX(14px);
 }
 
@@ -518,7 +523,9 @@
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   transform: translateY(-4px);
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
   pointer-events: none;
 }
 

@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { flushSync } from "react-dom";
 import { StellaAppMock } from "./panels/StellaAppMock";
 import {
@@ -92,12 +98,15 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
     [activeSection, onMorphingChange],
   );
 
-  if (!activeDemo) return null;
+  const toggles: SectionToggles = useMemo(
+    () => ({
+      ...EMPTY_SECTION_TOGGLES,
+      ...(activeSection ? { [activeSection]: true } : {}),
+    }),
+    [activeSection],
+  );
 
-  const toggles: SectionToggles = {
-    ...EMPTY_SECTION_TOGGLES,
-    ...(activeSection ? { [activeSection]: true } : {}),
-  };
+  if (!activeDemo) return null;
 
   return (
     <div className="onboarding-canvas">
