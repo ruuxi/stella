@@ -1442,6 +1442,9 @@ const css = `
       color-mix(in oklch, var(--primary) 70%, transparent),
       color-mix(in oklch, var(--primary) 95%, transparent)
     );
+  }
+  /* Only animate the meter when the create-app section is active. */
+  .sam-body[data-create-app="true"] .sam-studio-meter-bar {
     animation: samStudioMeter 1.4s ease-in-out infinite alternate;
   }
   .sam-studio-meter-bar:nth-child(2) { animation-delay: 0.08s; }
@@ -1594,10 +1597,15 @@ const css = `
   }
   .sam-cozy-cat-body {
     transform-origin: 90px 100px;
-    animation: samCozyBreathe 3.6s ease-in-out infinite;
   }
   .sam-cozy-cat-tail {
     transform-origin: 140px 100px;
+  }
+  /* Only animate the cat when cozy mode (composer section) is active. */
+  .sam-root[data-cozy="true"] .sam-cozy-cat-body {
+    animation: samCozyBreathe 3.6s ease-in-out infinite;
+  }
+  .sam-root[data-cozy="true"] .sam-cozy-cat-tail {
     animation: samCozyTail 3.6s ease-in-out infinite;
   }
   .sam-cozy-cat::after {
@@ -1621,9 +1629,13 @@ const css = `
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
     z-index: 2;
   }
-  .sam-cozy-zzz-1 { top: 18px; left: 78px; font-size: 10px; opacity: 0.5; animation: samCozyFloat 3.2s ease-in-out 0.0s infinite; }
-  .sam-cozy-zzz-2 { top: 8px;  left: 86px; font-size: 13px; opacity: 0.65; animation: samCozyFloat 3.2s ease-in-out 0.7s infinite; }
-  .sam-cozy-zzz-3 { top: -2px; left: 96px; font-size: 17px; opacity: 0.78; animation: samCozyFloat 3.2s ease-in-out 1.4s infinite; }
+  .sam-cozy-zzz-1 { top: 18px; left: 78px; font-size: 10px; opacity: 0.5; }
+  .sam-cozy-zzz-2 { top: 8px;  left: 86px; font-size: 13px; opacity: 0.65; }
+  .sam-cozy-zzz-3 { top: -2px; left: 96px; font-size: 17px; opacity: 0.78; }
+  /* Only float the zzz's when cozy mode is active. */
+  .sam-root[data-cozy="true"] .sam-cozy-zzz-1 { animation: samCozyFloat 3.2s ease-in-out 0.0s infinite; }
+  .sam-root[data-cozy="true"] .sam-cozy-zzz-2 { animation: samCozyFloat 3.2s ease-in-out 0.7s infinite; }
+  .sam-root[data-cozy="true"] .sam-cozy-zzz-3 { animation: samCozyFloat 3.2s ease-in-out 1.4s infinite; }
   .sam-cozy-meta {
     display: flex;
     flex-direction: column;
@@ -1673,6 +1685,9 @@ const css = `
     color: #d4869a;
     font-size: 13px;
     line-height: 1;
+  }
+  /* Only beat the heart when cozy mode is active. */
+  .sam-root[data-cozy="true"] .sam-cozy-heart {
     animation: samCozyHeartbeat 1.4s ease-in-out infinite;
   }
 
@@ -1914,7 +1929,7 @@ const css = `
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.7) inset,
       0 18px 50px -28px rgba(139, 105, 75, 0.3);
-    backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(12px) saturate(140%);
   }
   .sam-mochi__pulse-row {
     display: grid;
@@ -1991,6 +2006,9 @@ const css = `
     border-radius: 2px;
     background: linear-gradient(0deg, rgba(212, 134, 154, 0.85), rgba(232, 154, 152, 0.95));
     transform-origin: bottom;
+  }
+  /* Only animate the purr meter when cozy mode is active. */
+  .sam-root[data-cozy="true"] .sam-mochi__purr-bar {
     animation: samMochiPurr 1.6s ease-in-out infinite alternate;
     animation-delay: calc(var(--purr-i) * 70ms);
   }
@@ -2130,8 +2148,8 @@ const css = `
     border-radius: 999px;
     border: 1.5px solid color-mix(in oklch, var(--foreground) 18%, transparent);
     background: color-mix(in oklch, var(--background) 82%, transparent);
-    backdrop-filter: blur(16px) saturate(1.2);
-    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    backdrop-filter: blur(12px) saturate(1.2);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
     font-family: inherit;
     font-size: 14px;
     font-weight: 650;
@@ -2174,6 +2192,11 @@ const css = `
   .sam-pill-icon { display: inline-flex; opacity: 0.85; }
   .sam-pill-icon svg { width: 16px; height: 16px; }
   .sam-pill[data-active="true"] .sam-pill-icon { opacity: 1; }
+  /* Pause the border pulse entirely when pills are disabled — pills are
+     non-interactive in this state and the pulse is just wasted GPU work. */
+  .sam-root[data-pills-disabled="true"] .sam-pill {
+    animation: samPillIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
   .sam-pill-label { line-height: 1; white-space: nowrap; }
   .sam-pill-check {
     display: inline-flex;
@@ -2725,6 +2748,7 @@ export function StellaAppMock({
         data-any-active={interactive ? String(anyActive) : undefined}
         data-cozy={toggles.composer || undefined}
         data-create-app={toggles.createApp || undefined}
+        data-pills-disabled={pillsDisabled || undefined}
       >
         {/* SIDEBAR ─────────────────────────────────────────────── */}
         <aside

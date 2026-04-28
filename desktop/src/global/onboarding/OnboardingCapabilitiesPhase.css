@@ -103,14 +103,22 @@
   /* Single layer-level blur for the crossfade. We deliberately avoid
    * stacking blur on the children (chat bubbles, app cards, etc.) — a
    * blurred parent already softens its descendants, and per-element
-   * filter animations multiply the GPU's per-frame work. */
-  filter: blur(6px);
+   * filter animations multiply the GPU's per-frame work.
+   *
+   * Perf: dropped the blur radius from 6px to 3px. Large-area filter
+   * animations are dominated by radius-squared GPU cost, so halving the
+   * radius is roughly a 4x reduction in per-frame work for the crossfade
+   * — and at this scale the visual softness is still convincing. */
+  filter: blur(3px);
   transition:
     opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
     transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
     filter 420ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
   overflow: hidden;
+  /* will-change is left on permanently because this element only exists
+   * while a scene is on stage (React unmounts on sceneKey change), so
+   * it is effectively scoped to the transition window already. */
   will-change: opacity, transform, filter;
   backface-visibility: hidden;
 }
@@ -835,6 +843,14 @@
     transparent
   );
   background-size: 200% 100%;
+}
+
+/* Infinite animations are scoped to the active scene so they don't burn
+ * GPU cycles after a scene cross-fades out. The runtime only renders the
+ * active scene today, but scoping defensively here means a future change
+ * that stacks scenes (or a stale [data-active] removal) won't silently
+ * leave loops ticking off-stage. */
+.onboarding-cap-scene[data-active] .onboarding-cap-bridge__line {
   animation: capBridgeFlow 1.6s linear infinite;
 }
 
@@ -1153,13 +1169,22 @@
   background: oklch(0.62 0.18 235);
   top: 30%;
   left: 65%;
-  animation: capCursorA 6s ease-in-out infinite;
 }
 
 .onboarding-cap-together__cursor[data-color="b"] {
   background: oklch(0.7 0.18 35);
   top: 60%;
   left: 30%;
+}
+
+/* Scoped — see comment on capBridgeFlow above. */
+.onboarding-cap-scene[data-active]
+  .onboarding-cap-together__cursor[data-color="a"] {
+  animation: capCursorA 6s ease-in-out infinite;
+}
+
+.onboarding-cap-scene[data-active]
+  .onboarding-cap-together__cursor[data-color="b"] {
   animation: capCursorB 6s ease-in-out infinite;
 }
 
@@ -1328,6 +1353,10 @@
   height: 80px;
   border-radius: 999px;
   border: 2px solid oklch(0.62 0.18 235 / 0.3);
+}
+
+/* Scoped — see comment on capBridgeFlow above. */
+.onboarding-cap-scene[data-active] .onboarding-cap-voice__ring {
   animation: capVoicePulse 2s ease-out infinite;
 }
 

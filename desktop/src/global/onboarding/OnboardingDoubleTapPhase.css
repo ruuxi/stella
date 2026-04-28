@@ -261,7 +261,7 @@
    * gesture feels like the same "summon" beat as the real product. */
   opacity: 0;
   transform: scale(0.6) translateY(12px);
-  filter: blur(14px);
+  filter: blur(12px);
   transition:
     opacity 0.32s cubic-bezier(0.16, 1, 0.3, 1),
     transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),

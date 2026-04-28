@@ -150,6 +150,12 @@ export const FullShell = () => {
     );
   }, []);
 
+  // Phases whose own animations dominate the frame budget; we keep the
+  // creature visible but pause its rAF canvas loop so the heavy phase
+  // gets the full frame budget. (`creation` and later are already covered
+  // by `stellaHiddenByPhase` above, which both hides AND pauses.)
+  const stellaPausedByHeavyPhase = onboardingPhase === "capabilities";
+
   useEffect(() => {
     const fogDefs = fogDefsRef.current;
     if (!fogDefs) return;
@@ -171,7 +177,8 @@ export const FullShell = () => {
   const pauseStellaAnimation =
     pauseOnboardingMotion ||
     Boolean(activeDemo) ||
-    (!appReady && stellaHiddenByPhase);
+    (!appReady && stellaHiddenByPhase) ||
+    (!appReady && stellaPausedByHeavyPhase);
 
   useEffect(() => {
     if (!appReady) return;
@@ -207,10 +214,10 @@ export const FullShell = () => {
           <defs>
             <filter
               id="stella-fog-distort"
-              x="-15%"
-              y="-15%"
-              width="130%"
-              height="130%"
+              x="-8%"
+              y="-8%"
+              width="116%"
+              height="116%"
               colorInterpolationFilters="sRGB"
             >
               {/* Filter values are tuned for a 600x400 source element
@@ -220,40 +227,39 @@ export const FullShell = () => {
                * pixel" tuning and displacement scale is 1/3 — giving the
                * same on-screen noise wavelength and warp distance as before
                * while filtering ~9x fewer pixels. */}
-              {/* Linear interpolation + closed-loop values keep motion
-               * continuous: spline ease-in-out caused zero-velocity
-               * "dwell" frames at every keyframe, which read as the fog
-               * going briefly static. Each leg below covers a similar
-               * 2D distance in (freqX, freqY) / displacement space so
-               * apparent speed stays roughly constant throughout the
-               * loop, with no near-stationary segment. */}
+              {/* Static, single-octave `turbulence` (not `fractalNoise`):
+               * the noise tile is generated once and reused every frame
+               * instead of re-rasterizing on the CPU per paint. The slow
+               * frequency drift the previous version animated was visually
+               * indistinguishable from a still pattern at this wavelength —
+               * the breathing motion users perceive comes from the
+               * displacement `scale` warp below, not from frequency drift.
+               * `numOctaves="1"` halves turbulence cost vs the previous 2.
+               * The filter region is also tightened (16% slack vs 30%) so
+               * the sampler covers fewer pixels. */}
               <feTurbulence
-                type="fractalNoise"
+                type="turbulence"
                 baseFrequency="0.018 0.027"
-                numOctaves="2"
+                numOctaves="1"
                 seed="7"
                 result="fogNoise"
-              >
-                <animate
-                  attributeName="baseFrequency"
-                  dur="29s"
-                  values="0.018 0.027;0.026 0.022;0.022 0.034;0.014 0.030;0.018 0.027"
-                  keyTimes="0;0.25;0.5;0.75;1"
-                  calcMode="linear"
-                  repeatCount="indefinite"
-                />
-              </feTurbulence>
+              />
+              {/* Only the displacement `scale` animates, and at a much
+               * slower 72s loop on a single channel — displacement is
+               * cheap because it reuses the precomputed noise tile, but
+               * slowing the keyframes still lowers per-frame work and
+               * keeps the boundary drift subtly organic. */}
               <feDisplacementMap
                 in="SourceGraphic"
                 in2="fogNoise"
-                scale="18.33"
+                scale="17"
                 xChannelSelector="R"
                 yChannelSelector="G"
               >
                 <animate
                   attributeName="scale"
-                  dur="19s"
-                  values="17;23;14;20;17"
+                  dur="72s"
+                  values="17;22;15;19;17"
                   keyTimes="0;0.25;0.5;0.75;1"
                   calcMode="linear"
                   repeatCount="indefinite"

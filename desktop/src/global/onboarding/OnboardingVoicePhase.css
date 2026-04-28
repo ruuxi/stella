@@ -363,6 +363,9 @@
   margin-left: 1px;
   background: var(--foreground);
   opacity: 0.7;
+}
+
+.onboarding-dialogue[data-phase="voice"] .onboarding-voice-app__caret {
   animation: voiceCaretBlink 1s steps(1, end) infinite;
 }
 
@@ -397,7 +400,7 @@
   box-shadow:
     0 18px 48px rgba(0, 0, 0, 0.18),
     0 2px 10px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(12px);
 }
 
 .onboarding-voice-waveform {
@@ -419,6 +422,13 @@
   border-radius: 1px;
   background: color-mix(in oklch, var(--foreground) 60%, transparent);
   transform-origin: center;
+}
+
+/* Scope the always-running waveform/caret animations to the voice phase
+ * so they only paint while this phase owns the screen. Component mount
+ * already gates them in practice; this keeps the CSS truthful and
+ * resilient to future re-mount/portal patterns. */
+.onboarding-dialogue[data-phase="voice"] .onboarding-voice-waveform__bar {
   animation: voiceWaveformBar 1.1s ease-in-out infinite;
 }
 
