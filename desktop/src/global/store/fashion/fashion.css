@@ -26,6 +26,60 @@
   animation: fashion-fade-in 0.32s ease both;
 }
 
+/* --- Drag-and-drop overlay --- */
+
+/* Soft inner ring while a drag is hovering. Apple-style: no permanent
+   chrome, only present while the user is actively interacting. */
+.fashion-root[data-drag-over]::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  z-index: 39;
+  border-radius: 28px;
+  border: 1.5px dashed color-mix(in oklch, var(--interactive) 50%, transparent);
+  background: color-mix(in oklch, var(--interactive) 6%, transparent);
+  pointer-events: none;
+  animation: fashion-fade-in 0.18s ease both;
+}
+
+.fashion-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: fashion-fade-in 0.18s ease both;
+}
+
+.fashion-drop-overlay-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  padding: 18px 26px;
+  border-radius: 18px;
+  background: color-mix(in oklch, var(--background) 92%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  box-shadow: 0 12px 36px color-mix(in oklch, var(--foreground) 14%, transparent);
+  text-align: center;
+}
+
+.fashion-drop-overlay-title {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+
+.fashion-drop-overlay-subtitle {
+  font-size: 12.5px;
+  color: var(--text-weak);
+}
+
 .fashion-feed {
   height: 100%;
   width: 100%;
@@ -324,15 +378,108 @@
   z-index: 18;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 6px;
   gap: 6px;
-  padding: 6px 6px 6px 16px;
-  border-radius: 999px;
+  padding: 6px 6px 6px 6px;
+  border-radius: 22px;
   background: color-mix(in oklch, var(--background) 78%, transparent);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
   box-shadow: 0 8px 28px color-mix(in oklch, var(--foreground) 8%, transparent);
-  width: min(560px, calc(100% - 48px));
+  width: min(620px, calc(100% - 48px));
+}
+
+.fashion-prompt-attach {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+  font-size: 18px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1;
+  cursor: default;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.fashion-prompt-attach:hover {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.fashion-prompt-attach:active { transform: scale(0.94); }
+.fashion-prompt-attach[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+.fashion-prompt-attachments {
+  order: -1;
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 4px 0;
+}
+
+.fashion-prompt-attachment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.fashion-prompt-attachment img {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  display: block;
+}
+
+.fashion-prompt-attachment--file {
+  padding: 0 26px 0 10px;
+  font-size: 12px;
+  color: var(--text-strong);
+  font-weight: 500;
+  max-width: 180px;
+}
+
+.fashion-prompt-attachment-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fashion-prompt-attachment-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--background) 70%, transparent);
+  color: var(--text-strong);
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  padding: 0;
+}
+
+.fashion-prompt-attachment-x:hover {
+  background: color-mix(in oklch, var(--foreground) 18%, transparent);
 }
 
 .fashion-prompt-input {

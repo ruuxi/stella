@@ -279,6 +279,9 @@ export const IPC_FASHION_DELETE_BODY_PHOTO =
   "fashion:deleteBodyPhoto" as const;
 export const IPC_FASHION_START_OUTFIT_BATCH =
   "fashion:startOutfitBatch" as const;
+export const IPC_FASHION_START_TRY_ON = "fashion:startTryOn" as const;
+export const IPC_FASHION_PICK_TRY_ON_IMAGES =
+  "fashion:pickTryOnImages" as const;
 export const IPC_FASHION_GET_LOCAL_IMAGE_DATA_URL =
   "fashion:getLocalImageDataUrl" as const;
 

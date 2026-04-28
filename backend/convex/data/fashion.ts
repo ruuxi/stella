@@ -381,12 +381,9 @@ export const insertOutfit = internalMutation({
     const stylePrompt = optionalText(args.stylePrompt, "stylePrompt", MAX_PROMPT);
     const tryOnPrompt = optionalText(args.tryOnPrompt, "tryOnPrompt", MAX_PROMPT);
 
-    if (args.products.length === 0) {
-      throw new ConvexError({
-        code: "INVALID_ARGUMENT",
-        message: "An outfit needs at least one product",
-      });
-    }
+    // Empty `products` is allowed: the user-driven Try-On flow registers an
+    // outfit that's just the rendered image (no shoppable products attached).
+    // The Shopify outfit-builder agent always submits ≥1 product.
     if (args.products.length > MAX_PRODUCTS_PER_OUTFIT) {
       throw new ConvexError({
         code: "INVALID_ARGUMENT",

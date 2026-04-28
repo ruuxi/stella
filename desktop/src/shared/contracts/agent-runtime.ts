@@ -98,7 +98,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     id: AGENT_IDS.FASHION,
     name: "Fashion",
     description:
-      "Builds outfit batches for the Fashion tab: searches the global Shopify catalog, picks cohesive pieces across slots, and renders the user wearing each look on a white background by combining their body photo with product images.",
+      "Builds outfit batches for the Fashion tab: searches the global Shopify catalog, picks cohesive pieces across slots, and renders the user wearing each look on a clean white studio background by combining their body photo with product images.",
     activityLabel: "Styling",
     bundledCore: true,
     runsAsSubagent: false,
