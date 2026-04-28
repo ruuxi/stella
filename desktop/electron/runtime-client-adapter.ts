@@ -831,6 +831,23 @@ export class RuntimeClientAdapter {
     return this.client.publishStoreCandidateRelease(args);
   }
 
+  prepareStoreCandidateRelease(args: {
+    requestText: string;
+    selectedCommitHashes: string[];
+    existingPackageId?: string;
+  }) {
+    return this.client.prepareStoreCandidateRelease(args);
+  }
+
+  publishPreparedStoreRelease(args: {
+    requestText: string;
+    selectedCommitHashes: string[];
+    existingPackageId?: string;
+    draft: import("../../runtime/contracts/index.js").StorePublishDraft;
+  }) {
+    return this.client.publishPreparedStoreRelease(args);
+  }
+
   installStoreRelease(args: { packageId: string; releaseNumber?: number }) {
     return this.client.installStoreRelease(args);
   }

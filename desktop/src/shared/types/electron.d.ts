@@ -33,6 +33,7 @@ import type {
   StoreReleaseManifest as SharedStoreReleaseManifest,
   StorePackageRecord as SharedStorePackageRecord,
   StorePackageReleaseRecord as SharedStorePackageReleaseRecord,
+  StorePublishDraft as SharedStorePublishDraft,
   InstalledStoreModRecord as SharedInstalledStoreModRecord,
   LocalGitCommitRecord as SharedLocalGitCommitRecord,
   SelfModHmrPhase as SharedSelfModHmrPhase,
@@ -92,6 +93,7 @@ export type StoreReleaseArtifact = SharedStoreReleaseArtifact;
 export type StoreReleaseManifest = SharedStoreReleaseManifest;
 export type StorePackageRecord = SharedStorePackageRecord;
 export type StorePackageReleaseRecord = SharedStorePackageReleaseRecord;
+export type StorePublishDraft = SharedStorePublishDraft;
 export type InstalledStoreModRecord = SharedInstalledStoreModRecord;
 export type LocalGitCommitRecord = SharedLocalGitCommitRecord;
 export type SelfModHmrPhase = SharedSelfModHmrPhase;
@@ -773,6 +775,17 @@ export type ElectronStoreApi = {
     requestText: string;
     selectedCommitHashes: string[];
     existingPackageId?: string;
+  }) => Promise<StorePackageReleaseRecord>;
+  prepareCandidateRelease: (payload: {
+    requestText: string;
+    selectedCommitHashes: string[];
+    existingPackageId?: string;
+  }) => Promise<StorePublishDraft>;
+  publishPreparedRelease: (payload: {
+    requestText: string;
+    selectedCommitHashes: string[];
+    existingPackageId?: string;
+    draft: StorePublishDraft;
   }) => Promise<StorePackageReleaseRecord>;
   listInstalledMods: () => Promise<InstalledStoreModRecord[]>;
   installRelease: (payload: {

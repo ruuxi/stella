@@ -269,6 +269,45 @@ export const createStoreOperations = (
       return releaseRecord;
     };
 
+  const prepareStoreCandidateRelease: StoreOperations["prepareStoreCandidateRelease"] =
+    async (args) => {
+      const client = deps.ensureStoreClient();
+      return (await client.action(
+        (
+          context.convexApi as {
+            data: { store_publish_agent: { prepareCandidateRelease: unknown } };
+          }
+        ).data.store_publish_agent.prepareCandidateRelease,
+        args,
+      )) as Awaited<ReturnType<StoreOperations["prepareStoreCandidateRelease"]>>;
+    };
+
+  const publishPreparedStoreRelease: StoreOperations["publishPreparedStoreRelease"] =
+    async (args) => {
+      const client = deps.ensureStoreClient();
+      const result = (await client.action(
+        (
+          context.convexApi as {
+            data: { store_publish_agent: { publishPreparedRelease: unknown } };
+          }
+        ).data.store_publish_agent.publishPreparedRelease,
+        args,
+      )) as {
+        package?: unknown;
+        release?: unknown;
+      } | unknown;
+
+      const releaseResult = result as { package?: unknown; release?: unknown };
+      const packageRecord = toSharedStorePackage(releaseResult.package);
+      const releaseRecord = packageRecord
+        ? toSharedStoreRelease({ release: releaseResult.release, packageRecord })
+        : null;
+      if (!releaseRecord) {
+        throw new Error("Store publish returned an invalid release payload.");
+      }
+      return releaseRecord;
+    };
+
   return {
     listStorePackages,
     getStorePackage,
@@ -277,5 +316,7 @@ export const createStoreOperations = (
     createFirstStoreRelease,
     createStoreReleaseUpdate,
     publishStoreCandidateRelease,
+    prepareStoreCandidateRelease,
+    publishPreparedStoreRelease,
   };
 };

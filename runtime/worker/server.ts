@@ -1714,6 +1714,53 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   );
 
   peer.registerRequestHandler(
+    METHOD_NAMES.STORE_PREPARE_CANDIDATE_RELEASE,
+    async (params) => {
+      const payload = params as StorePublishCandidateArgs;
+      const candidate =
+        await ensureStoreModService().buildPublishCandidateBundle({
+          requestText: payload.requestText,
+          selectedCommitHashes: payload.selectedCommitHashes,
+          existingPackageId: payload.existingPackageId,
+        });
+      return await ensureRunner().prepareStoreCandidateRelease({
+        requestText: candidate.requestText,
+        selectedCommitHashes: candidate.selectedCommitHashes,
+        commits: candidate.commits,
+        files: candidate.files,
+        ...(candidate.existingPackageId
+          ? { existingPackageId: candidate.existingPackageId }
+          : {}),
+      });
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.STORE_PUBLISH_PREPARED_RELEASE,
+    async (params) => {
+      const payload = params as StorePublishCandidateArgs & {
+        draft: import("../contracts/index.js").StorePublishDraft;
+      };
+      const candidate =
+        await ensureStoreModService().buildPublishCandidateBundle({
+          requestText: payload.requestText,
+          selectedCommitHashes: payload.selectedCommitHashes,
+          existingPackageId: payload.existingPackageId,
+        });
+      return await ensureRunner().publishPreparedStoreRelease({
+        requestText: candidate.requestText,
+        selectedCommitHashes: candidate.selectedCommitHashes,
+        commits: candidate.commits,
+        files: candidate.files,
+        draft: payload.draft,
+        ...(candidate.existingPackageId
+          ? { existingPackageId: candidate.existingPackageId }
+          : {}),
+      });
+    },
+  );
+
+  peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_CANDIDATE_RELEASE,
     async (params) => {
       const payload = params as StorePublishCandidateArgs;

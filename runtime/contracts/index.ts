@@ -344,6 +344,23 @@ export type StorePublishCandidateBundle = {
   existingPackageId?: string;
 };
 
+export type StorePublishDraft = {
+  packageId: string;
+  category: StorePackageCategory;
+  displayName: string;
+  description: string;
+  releaseNotes?: string;
+  commitHashes: string[];
+  existingPackageId?: string;
+  releaseNumber: number;
+  selectedChanges: Array<{
+    commitHash: string;
+    shortHash?: string;
+    subject: string;
+    files: string[];
+  }>;
+};
+
 export type SelfModHmrPhase =
   | "idle"
   | "paused"

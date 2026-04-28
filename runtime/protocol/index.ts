@@ -12,6 +12,7 @@ import type {
   SocialSessionServiceSnapshot,
   StorePackageRecord,
   StorePackageReleaseRecord,
+  StorePublishDraft,
   StoreReleaseArtifact,
 } from "../contracts/index.js";
 import type {
@@ -32,6 +33,7 @@ export type {
   SocialSessionServiceSnapshot,
   StorePackageRecord,
   StorePackageReleaseRecord,
+  StorePublishDraft,
   StoreReleaseArtifact,
 };
 
@@ -116,6 +118,8 @@ export const METHOD_NAMES = {
   STORE_CREATE_FIRST_RELEASE: "store.createFirstRelease",
   STORE_CREATE_RELEASE_UPDATE: "store.createReleaseUpdate",
   STORE_PUBLISH_CANDIDATE_RELEASE: "store.publishCandidateRelease",
+  STORE_PREPARE_CANDIDATE_RELEASE: "store.prepareCandidateRelease",
+  STORE_PUBLISH_PREPARED_RELEASE: "store.publishPreparedRelease",
   STORE_INSTALL_RELEASE: "store.installRelease",
   STORE_UNINSTALL_MOD: "store.uninstallMod",
   SCHEDULE_LIST_CRON_JOBS: "schedule.listCronJobs",
@@ -616,6 +620,12 @@ export type RuntimeStoreApi = {
   ) => Promise<StorePackageReleaseRecord>;
   publishCandidateRelease: (
     args: StorePublishCandidateArgs,
+  ) => Promise<StorePackageReleaseRecord>;
+  prepareCandidateRelease: (
+    args: StorePublishCandidateArgs,
+  ) => Promise<StorePublishDraft>;
+  publishPreparedRelease: (
+    args: StorePublishCandidateArgs & { draft: StorePublishDraft },
   ) => Promise<StorePackageReleaseRecord>;
 };
 
