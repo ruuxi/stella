@@ -471,6 +471,12 @@ export const createSession = mutation({
     );
     await requireRoomMembership(ctx, args.roomId, ownerId);
     const room = await getRoomDoc(ctx, args.roomId);
+    if (room.kind === "global") {
+      throw new ConvexError({
+        code: "FORBIDDEN",
+        message: "Shared Stella is not available in Global Chat.",
+      });
+    }
 
     const existing = room.stellaSessionId
       ? await ctx.db.get(room.stellaSessionId)

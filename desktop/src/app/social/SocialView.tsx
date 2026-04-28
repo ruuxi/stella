@@ -3,6 +3,8 @@ import { CollaborationIllustration } from "./CollaborationIllustration";
 import Users from "lucide-react/dist/esm/icons/users";
 import SquarePen from "lucide-react/dist/esm/icons/square-pen";
 import Copy from "lucide-react/dist/esm/icons/copy";
+import Globe from "lucide-react/dist/esm/icons/globe";
+import Pencil from "lucide-react/dist/esm/icons/pencil";
 import { Avatar } from "@/ui/avatar";
 import { showToast } from "@/ui/toast";
 import { getSocialActionErrorMessage } from "./social-errors";
@@ -49,6 +51,8 @@ function getRoomAvatar(
     }
     case "group":
       return { fallback: room.room.title ?? "G" };
+    case "global":
+      return { fallback: "Global" };
     default: {
       const exhaustiveCheck: never = room.room.kind;
       return exhaustiveCheck;
@@ -65,13 +69,16 @@ function hasUnread(room: SocialRoomSummary): boolean {
 export function SocialView({ onSignIn }: SocialViewProps) {
   const { profile, isSignedIn, ensureProfile, updateNickname } =
     useSocialProfile();
-  const { rooms, openDm, createGroup } = useSocialRooms();
+  const { rooms, openDm, createGroup, joinGlobalRoom, globalRoom } =
+    useSocialRooms();
 
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [editingNickname, setEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState("");
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
+  const [savingNickname, setSavingNickname] = useState(false);
   const [tagCopied, setTagCopied] = useState(false);
 
   useEffect(() => {
@@ -127,12 +134,67 @@ export function SocialView({ onSignIn }: SocialViewProps) {
   }, [profile]);
 
   const handleSaveNickname = useCallback(async () => {
-    const trimmed = nicknameInput.trim();
-    if (trimmed && trimmed !== profile!.nickname) {
-      await updateNickname(trimmed);
+    const trimmed = nicknameInput.trim().replace(/\s+/g, " ");
+    if (!profile) {
+      setEditingNickname(false);
+      return;
     }
-    setEditingNickname(false);
+    if (!trimmed) {
+      setNicknameError("Name can't be empty.");
+      return;
+    }
+    if (trimmed.length > 40) {
+      setNicknameError("Name is too long (40 characters max).");
+      return;
+    }
+    if (trimmed === profile.nickname) {
+      setEditingNickname(false);
+      setNicknameError(null);
+      return;
+    }
+    setSavingNickname(true);
+    try {
+      await updateNickname(trimmed);
+      setEditingNickname(false);
+      setNicknameError(null);
+    } catch (error) {
+      setNicknameError(
+        getSocialActionErrorMessage(
+          "Couldn't update your name. Please try again.",
+          error,
+        ),
+      );
+    } finally {
+      setSavingNickname(false);
+    }
   }, [nicknameInput, profile, updateNickname]);
+
+  const handleStartEditNickname = useCallback(() => {
+    if (!profile) return;
+    setNicknameInput(profile.nickname);
+    setNicknameError(null);
+    setEditingNickname(true);
+  }, [profile]);
+
+  const handleCancelEditNickname = useCallback(() => {
+    setEditingNickname(false);
+    setNicknameError(null);
+  }, []);
+
+  const handleOpenGlobalRoom = useCallback(async () => {
+    try {
+      const room = await joinGlobalRoom();
+      setActiveRoomId(room._id);
+    } catch (error) {
+      showToast({
+        variant: "error",
+        description: getSocialActionErrorMessage(
+          "Couldn't open Global Chat. Please try again.",
+          error,
+        ),
+      });
+    }
+  }, [joinGlobalRoom]);
 
   if (!isSignedIn) {
     return (
@@ -185,6 +247,36 @@ export function SocialView({ onSignIn }: SocialViewProps) {
         </div>
 
         <div className="social-room-list">
+          <button
+            type="button"
+            className="social-room-item social-room-item--global"
+            data-active={
+              (globalRoom && activeRoomId === globalRoom.room._id) || undefined
+            }
+            onClick={() => void handleOpenGlobalRoom()}
+          >
+            <div className="social-room-item-avatar social-room-item-avatar--global">
+              <Globe size={18} />
+            </div>
+            <div className="social-room-item-content">
+              <div className="social-room-item-row">
+                <span className="social-room-item-name">Global Chat</span>
+                {globalRoom?.room.latestMessageAt !== undefined && (
+                  <span className="social-room-item-time">
+                    {formatRoomTime(globalRoom.room.latestMessageAt)}
+                  </span>
+                )}
+              </div>
+              <span className="social-room-item-preview">
+                {globalRoom?.latestMessage?.body ??
+                  "Open chat with everyone on Stella"}
+              </span>
+            </div>
+            {globalRoom && hasUnread(globalRoom) && (
+              <span className="social-room-item-unread" />
+            )}
+          </button>
+
           {rooms.length === 0 ? (
             <div className="social-no-rooms">
               <div className="social-no-rooms-text">
@@ -250,54 +342,93 @@ export function SocialView({ onSignIn }: SocialViewProps) {
             />
             <div className="social-profile-info">
               {editingNickname ? (
-                <input
-                  className="social-composer-input"
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 500,
-                    padding: 0,
-                    minHeight: "auto",
-                    maxHeight: "none",
-                  }}
-                  value={nicknameInput}
-                  onChange={(e) => setNicknameInput(e.target.value)}
-                  onBlur={() => void handleSaveNickname()}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void handleSaveNickname();
-                    if (e.key === "Escape") setEditingNickname(false);
-                  }}
-                  autoFocus
-                />
+                <>
+                  <input
+                    className="social-profile-name-input"
+                    value={nicknameInput}
+                    maxLength={40}
+                    placeholder="Your name"
+                    onChange={(e) => {
+                      setNicknameInput(e.target.value);
+                      if (nicknameError) setNicknameError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void handleSaveNickname();
+                      }
+                      if (e.key === "Escape") handleCancelEditNickname();
+                    }}
+                    disabled={savingNickname}
+                    autoFocus
+                  />
+                  {nicknameError ? (
+                    <span className="social-profile-error">
+                      {nicknameError}
+                    </span>
+                  ) : (
+                    <span className="social-profile-tag">
+                      {profile.friendCode}
+                    </span>
+                  )}
+                </>
               ) : (
-                <span
-                  className="social-profile-name"
-                  title="Click to edit"
-                  onClick={() => {
-                    setNicknameInput(profile.nickname);
-                    setEditingNickname(true);
-                  }}
-                  style={{ cursor: "pointer" }}
-                >
-                  {profile.nickname}
-                </span>
+                <>
+                  <button
+                    type="button"
+                    className="social-profile-name social-profile-name-button"
+                    title="Edit your name"
+                    onClick={handleStartEditNickname}
+                  >
+                    {profile.nickname}
+                    <Pencil size={11} aria-hidden />
+                  </button>
+                  <span
+                    className="social-profile-tag"
+                    title={
+                      tagCopied
+                        ? "Copied!"
+                        : "Click to copy your friend code"
+                    }
+                    onClick={handleCopyTag}
+                  >
+                    {tagCopied ? "Copied!" : profile.friendCode}
+                  </span>
+                </>
               )}
-              <span
-                className="social-profile-tag"
-                title={tagCopied ? "Copied!" : "Click to copy your friend code"}
-                onClick={handleCopyTag}
-              >
-                {tagCopied ? "Copied!" : profile.friendCode}
-              </span>
             </div>
-            <button
-              type="button"
-              className="social-sidebar-action"
-              title="Copy friend code"
-              onClick={handleCopyTag}
-              style={{ width: 28, height: 28 }}
-            >
-              <Copy size={14} />
-            </button>
+            {editingNickname ? (
+              <div className="social-profile-edit-actions">
+                <button
+                  type="button"
+                  className="social-sidebar-action"
+                  title="Cancel"
+                  onClick={handleCancelEditNickname}
+                  disabled={savingNickname}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="social-sidebar-action social-sidebar-action--primary"
+                  title="Save"
+                  onClick={() => void handleSaveNickname()}
+                  disabled={savingNickname || nicknameInput.trim().length === 0}
+                >
+                  {savingNickname ? "Saving..." : "Save"}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="social-sidebar-action"
+                title="Copy friend code"
+                onClick={handleCopyTag}
+                style={{ width: 28, height: 28 }}
+              >
+                <Copy size={14} />
+              </button>
+            )}
           </div>
         )}
       </div>

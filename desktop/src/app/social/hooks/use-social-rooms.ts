@@ -4,10 +4,12 @@ import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import type { SocialProfile } from "./use-social-profile";
 
+export type SocialRoomKind = "dm" | "group" | "global";
+
 export type SocialRoomSummary = {
   room: {
     _id: string;
-    kind: "dm" | "group";
+    kind: SocialRoomKind;
     title?: string;
     stellaSessionId?: string;
     latestMessageAt?: number;
@@ -33,6 +35,12 @@ export function useSocialRooms() {
   const getOrCreateDmMutation = useMutation(api.social.rooms.getOrCreateDmRoom);
   const createGroupMutation = useMutation(api.social.rooms.createGroupRoom);
   const markReadMutation = useMutation(api.social.rooms.markRoomRead);
+  const joinGlobalMutation = useMutation(api.social.rooms.getOrJoinGlobalRoom);
+
+  const globalRoomSummary = useQuery(
+    api.social.rooms.getGlobalRoomSummary,
+    hasConnectedAccount ? {} : "skip",
+  ) as SocialRoomSummary | null | undefined;
 
   const openDm = useCallback(
     async (otherOwnerId: string) => {
@@ -55,10 +63,16 @@ export function useSocialRooms() {
     [markReadMutation],
   );
 
+  const joinGlobalRoom = useCallback(async () => {
+    return await joinGlobalMutation();
+  }, [joinGlobalMutation]);
+
   return {
     rooms: rooms ?? [],
     openDm,
     createGroup,
     markRead,
+    joinGlobalRoom,
+    globalRoom: globalRoomSummary ?? null,
   };
 }

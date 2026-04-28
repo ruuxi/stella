@@ -174,6 +174,26 @@
   flex-shrink: 0;
 }
 
+/* Pinned Global Chat entry */
+.social-room-item--global {
+  margin-bottom: 4px;
+}
+
+.social-room-item-avatar--global {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--social-fg) 6%, transparent);
+  color: var(--social-muted);
+}
+
+.social-room-item--global:hover .social-room-item-avatar--global {
+  color: var(--text-strong);
+}
+
 /* Profile Card */
 .social-profile-card {
   display: flex;
@@ -216,6 +236,96 @@
   opacity: 0.8;
 }
 
+/* Edit-name affordance on the profile card */
+.social-profile-name-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+  cursor: default;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.social-profile-name-button > svg {
+  flex-shrink: 0;
+  color: var(--social-muted);
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.social-profile-name-button:hover > svg,
+.social-profile-name-button:focus-visible > svg {
+  opacity: 0.85;
+}
+
+.social-profile-name-input {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in oklch, var(--social-fg) 25%, transparent);
+  padding: 1px 0 2px;
+  outline: none;
+  font-family: inherit;
+  width: 100%;
+  min-width: 0;
+}
+
+.social-profile-name-input:focus {
+  border-bottom-color: color-mix(in oklch, var(--social-fg) 45%, transparent);
+}
+
+.social-profile-name-input:disabled {
+  opacity: 0.6;
+}
+
+.social-profile-error {
+  font-size: 11px;
+  color: var(--destructive, #b91c1c);
+  line-height: 1.3;
+}
+
+.social-profile-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.social-profile-edit-actions .social-sidebar-action {
+  width: auto;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: 6px;
+  opacity: 0.7;
+}
+
+.social-profile-edit-actions .social-sidebar-action--primary {
+  opacity: 1;
+  color: var(--text-strong);
+  border: 1px solid color-mix(in oklch, var(--social-fg) 18%, transparent);
+}
+
+.social-profile-edit-actions .social-sidebar-action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* ============================================
    Chat Pane — message area + composer
    ============================================ */
@@ -235,6 +345,18 @@
   gap: 12px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--social-border);
+  flex-shrink: 0;
+}
+
+.social-chat-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--social-fg) 6%, transparent);
+  color: var(--social-muted);
   flex-shrink: 0;
 }
 
@@ -259,36 +381,77 @@
   opacity: 0.5;
 }
 
-.social-session-panel {
+/* Header pill — collapsed CTA when no Stella session is active */
+.social-stella-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--social-border);
+  background: transparent;
+  color: var(--social-fg);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.social-stella-pill:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--social-fg) 28%, transparent);
+  background: color-mix(in oklch, var(--social-fg) 3%, transparent);
+}
+
+.social-stella-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.social-stella-pill-logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+/* Compact one-line status bar for an active Stella session */
+.social-session-bar {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 24px;
   border-bottom: 1px solid var(--social-border);
   background: color-mix(in oklch, var(--social-fg) 2.5%, transparent);
 }
 
-.social-session-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+.social-session-bar-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
-.social-session-title {
-  font-family: var(--social-serif);
-  font-size: 1.05rem;
-  font-style: italic;
-  color: var(--text-strong);
-  letter-spacing: -0.02em;
+.social-session-header-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
 }
 
-.social-session-subtitle {
-  margin-top: 4px;
-  font-size: 12.5px;
-  line-height: 1.5;
+.social-session-header-hint {
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--social-muted);
-  max-width: 460px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .social-session-actions {
@@ -449,7 +612,6 @@
 
 .social-messages-container {
   width: 100%;
-  max-width: 640px;
   margin: 0 auto;
   padding: 24px 24px;
   display: flex;
@@ -491,11 +653,61 @@
   opacity: 0.5;
 }
 
+/* Inline friend-status chip next to a sender name (Global Chat only) */
+.social-friend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--social-border);
+  background: transparent;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--social-muted);
+  white-space: nowrap;
+  transition: opacity 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.social-friend-chip[data-status="friends"] {
+  color: color-mix(in oklch, var(--social-fg) 80%, #1f7a45 20%);
+  border-color: color-mix(in oklch, var(--social-fg) 14%, transparent);
+}
+
+.social-friend-chip[data-status="outgoing"],
+.social-friend-chip[data-status="incoming"] {
+  opacity: 0.7;
+}
+
+.social-friend-chip--action {
+  cursor: default;
+  color: var(--social-fg);
+  opacity: 0;
+}
+
+.social-message-sender:hover .social-friend-chip--action,
+.social-friend-chip--action:focus-visible,
+.social-friend-chip--action:disabled {
+  opacity: 0.85;
+}
+
+.social-friend-chip--action:hover:not(:disabled) {
+  opacity: 1;
+  border-color: color-mix(in oklch, var(--social-fg) 30%, transparent);
+}
+
+.social-friend-chip--action:disabled {
+  cursor: not-allowed;
+}
+
 .social-message-bubble {
-  padding: 10px 16px;
-  border-radius: 6px;
+  padding: 8px 14px;
+  border-radius: 18px;
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.4;
   color: var(--text-strong);
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -505,12 +717,55 @@
 }
 
 .social-message-bubble[data-role="self"] {
-  background: color-mix(in oklch, var(--social-fg) 6%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 14%,
+    transparent
+  );
+  color: var(--text-strong);
   margin-left: auto;
 }
 
 .social-message-bubble[data-role="other"] {
-  background: color-mix(in oklch, var(--social-fg) 4%, transparent);
+  background: color-mix(in oklch, var(--social-fg) 5%, transparent);
+}
+
+.social-message-bubble[data-role="stella"] {
+  background: color-mix(
+    in oklch,
+    oklch(0.7 0.13 320) 14%,
+    color-mix(in oklch, var(--social-fg) 4%, transparent)
+  );
+  border: 1px solid
+    color-mix(in oklch, oklch(0.7 0.13 320) 22%, transparent);
+  color: var(--text-strong);
+}
+
+.social-message-sender-name[data-stella] {
+  font-family: var(--social-serif);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  font-size: 14px;
+}
+
+.social-message-sender-avatar--stella {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: color-mix(in oklch, oklch(0.7 0.13 320) 18%, transparent);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.social-message-sender-avatar--stella > img {
+  width: 18px;
+  height: 18px;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .social-message-bubble[data-role="system"] {
@@ -524,12 +779,67 @@
   opacity: 0.6;
 }
 
+/* Composer stack — wraps the Tell Stella toggle above the composer */
+.social-composer-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+.social-stella-arm-button {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 12px 0 6px;
+  margin: 0 24px 0;
+  border-radius: 999px;
+  border: 1px solid var(--social-border);
+  background: transparent;
+  color: var(--social-muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease,
+    color 0.15s ease, transform 0.15s ease;
+}
+
+.social-stella-arm-button:hover {
+  border-color: color-mix(in oklch, var(--social-fg) 26%, transparent);
+  color: var(--social-fg);
+}
+
+.social-stella-arm-button-logo {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.social-stella-arm-button[data-active] {
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 12%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 36%,
+    transparent
+  );
+  color: var(--text-strong);
+}
+
 /* Composer */
 .social-composer {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: 12px 24px 20px;
+  padding: 8px 24px 20px;
   flex-shrink: 0;
 }
 
@@ -540,14 +850,87 @@
   align-items: flex-end;
   background: transparent;
   border: 1px solid var(--social-border);
-  border-radius: 6px;
-  padding: 6px 6px 6px 16px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 22px;
+  padding: 4px 6px 4px 16px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease,
+    background 0.2s ease;
 }
 
 .social-composer-input-wrap:focus-within {
   border-color: color-mix(in oklch, var(--social-fg) 25%, transparent);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--social-fg) 3%, transparent);
+}
+
+/* Composer is "armed" to send the next message to Stella */
+.social-composer-input-wrap[data-armed] {
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 7%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 32%,
+    transparent
+  );
+  padding-left: 8px;
+}
+
+.social-composer-input-wrap[data-armed]:focus-within {
+  border-color: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 50%,
+    transparent
+  );
+  box-shadow: 0 0 0 3px
+    color-mix(
+      in oklch,
+      var(--interactive, var(--primary, oklch(0.62 0.18 235))) 12%,
+      transparent
+    );
+}
+
+.social-composer-stella-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px 0 4px;
+  border-radius: 999px;
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 22%,
+    transparent
+  );
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text-strong);
+  flex-shrink: 0;
+  align-self: center;
+  margin-right: 8px;
+}
+
+.social-composer-stella-chip-logo {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.social-composer-send[data-armed]:not(:disabled) {
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 22%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 45%,
+    transparent
+  );
+  color: var(--text-strong);
 }
 
 .social-composer-input {
@@ -582,12 +965,16 @@
   width: 30px;
   height: 30px;
   flex-shrink: 0;
-  border-radius: 6px;
-  background: transparent;
-  border: 1px solid var(--social-border);
-  color: var(--social-fg);
+  border-radius: 50%;
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 18%,
+    transparent
+  );
+  border: none;
+  color: var(--text-strong);
   cursor: default;
-  transition: opacity 0.15s ease, border-color 0.15s ease;
+  transition: opacity 0.15s ease, background 0.15s ease, transform 0.1s ease;
 }
 
 .social-composer-send:disabled {
@@ -596,12 +983,15 @@
 }
 
 .social-composer-send:not(:disabled):hover {
-  opacity: 0.7;
-  border-color: color-mix(in oklch, var(--social-fg) 30%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 28%,
+    transparent
+  );
 }
 
 .social-composer-send:not(:disabled):active {
-  opacity: 1;
+  transform: scale(0.94);
 }
 
 /* ============================================
