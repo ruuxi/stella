@@ -503,12 +503,13 @@ function selfModHmrControl(): Plugin {
     if (!isClientUpdatePaused() || clientUpdateReleaseDepth > 0) return false
     if (!payload || typeof payload !== 'object') return false
     const type = (payload as { type?: unknown }).type
-    return (
-      type === 'update' ||
-      type === 'full-reload' ||
-      type === 'prune' ||
-      type === 'error'
-    )
+    // Only suppress messages that would visually leak in-flight self-mod
+    // state. `full-reload` and `error` are the renderer's only recovery
+    // channels: React-Refresh routinely follows an `update` with a
+    // `full-reload` when a boundary turns out not to be self-acceptable, and
+    // Vite emits `error` for transform/parse failures. Swallowing either
+    // turns a normal HMR edge case into a stuck renderer (recovery page).
+    return type === 'update' || type === 'prune'
   }
 
   const withClientUpdateRelease = async <T,>(fn: () => Promise<T>): Promise<T> => {

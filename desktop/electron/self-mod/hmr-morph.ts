@@ -17,7 +17,9 @@ import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import {
   MORPH_DONE_TIMEOUT_MS,
   MORPH_OVERLAY_READY_TIMEOUT_MS,
+  MORPH_POST_RELOAD_GRACE_MS,
   MORPH_RENDERER_SETTLE_DELAY_MS,
+  MORPH_RENDERER_SETTLE_HARD_CAP_MS,
 } from "../../src/shared/contracts/morph-timing.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 import {
@@ -75,12 +77,59 @@ export function createHmrTransitionController(deps: {
       MORPH_DONE_TIMEOUT_MS,
     );
 
-  const waitForRendererSettle = async (): Promise<void> => {
+  /**
+   * Holds the morph cover for at least `MORPH_RENDERER_SETTLE_DELAY_MS` so a
+   * quiet HMR has time to paint. If the renderer starts a navigation during
+   * that window — either an intentional `reloadIgnoringCache` from this
+   * controller or a late `{type:'full-reload'}` that Vite sent after we
+   * applied an HMR update (React-Refresh boundary bail-out) — the wait
+   * extends until `did-finish-load + MORPH_POST_RELOAD_GRACE_MS`, capped at
+   * `MORPH_RENDERER_SETTLE_HARD_CAP_MS`. Without this, a renderer that's
+   * mid-reload when the cover lifts shows a blank/half-painted page.
+   */
+  const waitForRendererSettle = async (
+    window: BrowserWindow | null,
+  ): Promise<void> => {
     const startedAt = performance.now();
-    await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
+    if (!window || window.isDestroyed()) {
+      await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
+      logMorphTiming("rendererSettle", {
+        durationMs: Math.round(performance.now() - startedAt),
+        delayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
+        reloadDetected: false,
+      });
+      return;
+    }
+    const wc = window.webContents;
+    let reloadDetected = false;
+    let resolveReloadDone: (() => void) | null = null;
+    const reloadDone = new Promise<void>((resolve) => {
+      resolveReloadDone = resolve;
+    });
+    const onStartLoading = () => {
+      reloadDetected = true;
+      const onFinish = () => {
+        setTimeout(() => resolveReloadDone?.(), MORPH_POST_RELOAD_GRACE_MS);
+      };
+      wc.once("did-finish-load", onFinish);
+    };
+    wc.on("did-start-loading", onStartLoading);
+    try {
+      await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
+      if (reloadDetected) {
+        const remainingCap = Math.max(
+          0,
+          MORPH_RENDERER_SETTLE_HARD_CAP_MS - MORPH_RENDERER_SETTLE_DELAY_MS,
+        );
+        await Promise.race([reloadDone, delay(remainingCap)]);
+      }
+    } finally {
+      wc.removeListener("did-start-loading", onStartLoading);
+    }
     logMorphTiming("rendererSettle", {
       durationMs: Math.round(performance.now() - startedAt),
       delayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
+      reloadDetected,
     });
   };
 
@@ -126,7 +175,7 @@ export function createHmrTransitionController(deps: {
         if (canReload) {
           windowForReload.webContents.reloadIgnoringCache();
         }
-        await waitForRendererSettle();
+        await waitForRendererSettle(windowForReload);
       } finally {
         opts.reportState?.(IDLE_HMR_STATE);
       }
@@ -202,11 +251,11 @@ export function createHmrTransitionController(deps: {
             requiresFullReload: true,
           });
           fullWindow.webContents.reloadIgnoringCache();
-          await waitForRendererSettle();
+          await waitForRendererSettle(fullWindow);
           return true;
         }
 
-        await waitForRendererSettle();
+        await waitForRendererSettle(fullWindow);
         return false;
       })();
 
