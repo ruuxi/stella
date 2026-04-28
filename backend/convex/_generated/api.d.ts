@@ -166,6 +166,7 @@ import type * as schema_store from "../schema/store.js";
 import type * as schema_telemetry from "../schema/telemetry.js";
 import type * as schema_users from "../schema/users.js";
 import type * as shared_validators from "../shared_validators.js";
+import type * as social_censor from "../social/censor.js";
 import type * as social_messages from "../social/messages.js";
 import type * as social_profiles from "../social/profiles.js";
 import type * as social_relationships from "../social/relationships.js";
@@ -344,6 +345,7 @@ declare const fullApi: ApiFromModules<{
   "schema/telemetry": typeof schema_telemetry;
   "schema/users": typeof schema_users;
   shared_validators: typeof shared_validators;
+  "social/censor": typeof social_censor;
   "social/messages": typeof social_messages;
   "social/profiles": typeof social_profiles;
   "social/relationships": typeof social_relationships;

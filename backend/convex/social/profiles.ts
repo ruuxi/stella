@@ -23,6 +23,7 @@ import {
   RATE_SETTINGS,
   RATE_STANDARD,
 } from "../lib/rate_limits";
+import { findBannedTerm } from "./censor";
 
 const optionalProfileValidator = v.union(v.null(), socialProfileValidator);
 
@@ -109,6 +110,42 @@ export const getProfileByFriendCode = query({
   },
 });
 
+/**
+ * Bulk-resolve public display info for an arbitrary set of owner ids. Used by
+ * the Global Chat pane to render sender names/avatars for messages whose
+ * authors aren't part of any small membership row set. Intentionally omits
+ * `friendCode` so a user's add-handle isn't exposed to everyone in a public
+ * room — friend requests in this surface go through `sendFriendRequestByOwnerId`.
+ */
+export const getProfilesByOwnerIds = query({
+  args: {
+    ownerIds: v.array(v.string()),
+  },
+  returns: v.array(
+    v.object({
+      ownerId: v.string(),
+      nickname: v.string(),
+      avatarUrl: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    await requireConnectedUserId(ctx);
+    const unique = [...new Set(args.ownerIds)].slice(0, 256);
+    const profiles = await Promise.all(
+      unique.map((ownerId) => getSocialProfileByOwnerId(ctx, ownerId)),
+    );
+    return profiles
+      .filter((profile): profile is NonNullable<typeof profile> =>
+        Boolean(profile),
+      )
+      .map((profile) => ({
+        ownerId: profile.ownerId,
+        nickname: profile.nickname,
+        avatarUrl: profile.avatarUrl,
+      }));
+  },
+});
+
 export const updateMyProfile = mutation({
   args: {
     nickname: v.optional(v.string()),
@@ -144,6 +181,13 @@ export const updateMyProfile = mutation({
         });
       }
       requireBoundedString(nickname, "nickname", 40);
+      if (findBannedTerm(nickname) !== null) {
+        throw new ConvexError({
+          code: "PROFANITY_BLOCKED",
+          message:
+            "That display name contains a banned word. Please pick a different one.",
+        });
+      }
       patch.nickname = nickname;
       patch.nicknameNormalized = normalizeNicknameKey(nickname);
     }

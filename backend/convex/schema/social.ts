@@ -11,6 +11,7 @@ export const socialRelationshipStatusValidator = v.union(
 export const socialRoomKindValidator = v.union(
   v.literal("dm"),
   v.literal("group"),
+  v.literal("global"),
 );
 
 export const socialRoomMemberRoleValidator = v.union(

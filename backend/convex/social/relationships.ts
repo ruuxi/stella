@@ -1,7 +1,9 @@
 import {
   mutation,
   query,
+  type MutationCtx,
 } from "../_generated/server";
+import type { Doc } from "../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import {
   socialProfileValidator,
@@ -98,6 +100,69 @@ export const listPendingRequests = query({
   },
 });
 
+/**
+ * Shared helper that produces (or revives) a pending friend-request row from
+ * the caller to `targetOwnerId`. The two `sendFriendRequest*` mutations both
+ * rate-limit + resolve their target profile before delegating here.
+ */
+const upsertPendingFriendRequest = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  targetOwnerId: string,
+): Promise<Doc<"social_relationships">> => {
+  if (targetOwnerId === ownerId) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: "You cannot friend yourself",
+    });
+  }
+
+  const existing = await loadRelationship(ctx, ownerId, targetOwnerId);
+  if (existing) {
+    if (existing.status === "accepted" || existing.status === "pending") {
+      return existing;
+    }
+    await ctx.db.patch(existing._id, {
+      requesterOwnerId: ownerId,
+      addresseeOwnerId: targetOwnerId,
+      initiatedByOwnerId: ownerId,
+      status: "pending",
+      updatedAt: Date.now(),
+      respondedAt: undefined,
+    });
+    const updated = await ctx.db.get(existing._id);
+    if (!updated) {
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: "Failed to update friend request",
+      });
+    }
+    return updated;
+  }
+
+  const now = Date.now();
+  const sorted = [ownerId, targetOwnerId].sort((a, b) => a.localeCompare(b));
+  const id = await ctx.db.insert("social_relationships", {
+    relationshipKey: getRelationshipKey(ownerId, targetOwnerId),
+    lowOwnerId: sorted[0]!,
+    highOwnerId: sorted[1]!,
+    requesterOwnerId: ownerId,
+    addresseeOwnerId: targetOwnerId,
+    initiatedByOwnerId: ownerId,
+    status: "pending",
+    createdAt: now,
+    updatedAt: now,
+  });
+  const created = await ctx.db.get(id);
+  if (!created) {
+    throw new ConvexError({
+      code: "INTERNAL_ERROR",
+      message: "Failed to create friend request",
+    });
+  }
+  return created;
+};
+
 export const sendFriendRequest = mutation({
   args: {
     friendCode: v.string(),
@@ -133,59 +198,48 @@ export const sendFriendRequest = mutation({
         message: "No user found for that friend code",
       });
     }
-    if (targetProfile.ownerId === ownerId) {
+
+    return await upsertPendingFriendRequest(ctx, ownerId, targetProfile.ownerId);
+  },
+});
+
+/**
+ * Sends a friend request directly to a known owner id (e.g. clicking a sender
+ * in Global Chat). The caller has not seen the target's friend code; we
+ * therefore only allow this when the target already has a social profile.
+ */
+export const sendFriendRequestByOwnerId = mutation({
+  args: {
+    targetOwnerId: v.string(),
+  },
+  returns: socialRelationshipValidator,
+  handler: async (ctx, args) => {
+    const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "social_send_friend_request",
+      ownerId,
+      RATE_VERY_EXPENSIVE,
+      "Too many friend requests. Please wait a minute before trying again.",
+    );
+    await ensureSocialProfileDoc(ctx, ownerId);
+
+    const targetOwnerId = args.targetOwnerId.trim();
+    if (!targetOwnerId) {
       throw new ConvexError({
         code: "INVALID_ARGUMENT",
-        message: "You cannot friend yourself",
+        message: "targetOwnerId is required",
       });
     }
-
-    const existing = await loadRelationship(ctx, ownerId, targetProfile.ownerId);
-    if (existing) {
-      if (existing.status === "accepted") {
-        return existing;
-      }
-      if (existing.status === "pending") {
-        return existing;
-      }
-      await ctx.db.patch(existing._id, {
-        requesterOwnerId: ownerId,
-        addresseeOwnerId: targetProfile.ownerId,
-        initiatedByOwnerId: ownerId,
-        status: "pending",
-        updatedAt: Date.now(),
-        respondedAt: undefined,
-      });
-      const updated = await ctx.db.get(existing._id);
-      if (!updated) {
-        throw new ConvexError({
-          code: "INTERNAL_ERROR",
-          message: "Failed to update friend request",
-        });
-      }
-      return updated;
-    }
-
-    const now = Date.now();
-    const id = await ctx.db.insert("social_relationships", {
-      relationshipKey: getRelationshipKey(ownerId, targetProfile.ownerId),
-      lowOwnerId: [ownerId, targetProfile.ownerId].sort((a, b) => a.localeCompare(b))[0]!,
-      highOwnerId: [ownerId, targetProfile.ownerId].sort((a, b) => a.localeCompare(b))[1]!,
-      requesterOwnerId: ownerId,
-      addresseeOwnerId: targetProfile.ownerId,
-      initiatedByOwnerId: ownerId,
-      status: "pending",
-      createdAt: now,
-      updatedAt: now,
-    });
-    const created = await ctx.db.get(id);
-    if (!created) {
+    const targetProfile = await getSocialProfileByOwnerId(ctx, targetOwnerId);
+    if (!targetProfile) {
       throw new ConvexError({
-        code: "INTERNAL_ERROR",
-        message: "Failed to create friend request",
+        code: "NOT_FOUND",
+        message: "User not found",
       });
     }
-    return created;
+
+    return await upsertPendingFriendRequest(ctx, ownerId, targetProfile.ownerId);
   },
 });
 

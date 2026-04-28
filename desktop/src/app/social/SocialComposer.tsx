@@ -2,9 +2,17 @@ import { useState, useRef, useCallback } from "react";
 
 type SocialComposerProps = {
   onSend: (body: string) => void;
+  /** When true, renders the Stella chip and accent tint (armed-for-Stella). */
+  armed?: boolean;
+  /** Override the default placeholder. */
+  placeholder?: string;
 };
 
-export function SocialComposer({ onSend }: SocialComposerProps) {
+export function SocialComposer({
+  onSend,
+  armed = false,
+  placeholder,
+}: SocialComposerProps) {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -18,13 +26,26 @@ export function SocialComposer({ onSend }: SocialComposerProps) {
     });
   }, [message, onSend]);
 
+  const resolvedPlaceholder =
+    placeholder ?? (armed ? "Tell Stella what you want..." : "Write a message...");
+
   return (
     <div className="social-composer">
-      <div className="social-composer-input-wrap">
+      <div className="social-composer-input-wrap" data-armed={armed || undefined}>
+        {armed && (
+          <span className="social-composer-stella-chip">
+            <img
+              src="stella-logo.svg"
+              alt=""
+              className="social-composer-stella-chip-logo"
+            />
+            Stella
+          </span>
+        )}
         <textarea
           ref={textareaRef}
           className="social-composer-input"
-          placeholder="Write a message..."
+          placeholder={resolvedPlaceholder}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={(e) => {
@@ -38,9 +59,10 @@ export function SocialComposer({ onSend }: SocialComposerProps) {
         <button
           type="button"
           className="social-composer-send"
+          data-armed={armed || undefined}
           disabled={!message.trim()}
           onClick={handleSend}
-          aria-label="Send"
+          aria-label={armed ? "Tell Stella" : "Send"}
         >
           <svg
             width="14"
