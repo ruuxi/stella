@@ -163,6 +163,7 @@ export const IPC_PERMISSIONS_OPEN_SETTINGS =
 export const IPC_PERMISSIONS_REQUEST = "permissions:request" as const;
 export const IPC_PERMISSIONS_RESET_MICROPHONE =
   "permissions:resetMicrophone" as const;
+export const IPC_PERMISSIONS_RESET = "permissions:reset" as const;
 export const IPC_SHELL_OPEN_EXTERNAL = "shell:openExternal" as const;
 export const IPC_SHELL_SHOW_IN_FOLDER = "shell:showItemInFolder" as const;
 export const IPC_SHELL_SAVE_FILE_AS = "shell:saveFileAs" as const;

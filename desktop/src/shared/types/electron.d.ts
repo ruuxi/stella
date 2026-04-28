@@ -583,6 +583,9 @@ export type ElectronSystemApi = {
     openedSettings?: boolean;
   }>;
   resetMicrophonePermission: () => Promise<{ ok: boolean }>;
+  resetPermission: (
+    kind: "accessibility" | "screen" | "microphone",
+  ) => Promise<{ ok: boolean }>;
   openExternal: (url: string) => void;
   showItemInFolder: (filePath: string) => void;
   saveFileAs: (

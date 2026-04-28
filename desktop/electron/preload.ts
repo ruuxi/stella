@@ -41,6 +41,7 @@ import {
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
+  IPC_PERMISSIONS_RESET,
   IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
@@ -770,6 +771,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
     resetMicrophonePermission: () =>
       ipcRenderer.invoke(IPC_PERMISSIONS_RESET_MICROPHONE) as Promise<{
+        ok: boolean;
+      }>,
+    resetPermission: (kind: string) =>
+      ipcRenderer.invoke(IPC_PERMISSIONS_RESET, { kind }) as Promise<{
         ok: boolean;
       }>,
     openExternal: (url: string) => ipcRenderer.send("shell:openExternal", url),
