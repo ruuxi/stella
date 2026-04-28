@@ -115,11 +115,21 @@ class OverlayWindow {
     })
 
     this.window.setAlwaysOnTop(true, 'screen-saver')
-    if (process.platform !== 'darwin') {
-      this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-    }
     if (process.platform === 'darwin') {
+      // Keep the overlay attached to the active Space on macOS. Without this,
+      // the hidden panel stays bound to whichever Space it first materialized
+      // on — when the radial is summoned from another Space, macOS jumps the
+      // user to that home Space (which looks blank because the overlay is
+      // fully transparent) instead of drawing the dial under the cursor.
+      // skipTransformProcessType keeps the process type stable so this call
+      // doesn't promote us out of accessory/agent state.
+      this.window.setVisibleOnAllWorkspaces(true, {
+        visibleOnFullScreen: true,
+        skipTransformProcessType: true,
+      })
       this.window.excludedFromShownWindowsMenu = true
+    } else {
+      this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     }
     this.window.setIgnoreMouseEvents(true, { forward: true })
 
