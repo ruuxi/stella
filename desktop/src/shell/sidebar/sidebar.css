@@ -395,6 +395,18 @@
   align-self: stretch;
 }
 
+/* Feedback dialog body wraps the textarea with the same horizontal rhythm as
+   the dialog header / description, so the input lines up with the title. */
+.sidebar-feedback-body {
+  padding: 8px 24px 4px;
+  align-self: stretch;
+}
+
+.sidebar-feedback-body textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
 .sidebar-confirm-actions [data-component="button"][data-tone="destructive"] {
   background-color: #ef4444;
   border-color: color-mix(in oklch, #ef4444 80%, var(--foreground));

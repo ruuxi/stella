@@ -1,6 +1,6 @@
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { ArrowLeft, LogOut } from "lucide-react";
+import { ArrowLeft, LogOut, MessageSquare } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -30,13 +30,16 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
+import { FeedbackDialog } from "./FeedbackDialog";
 import {
   CustomDevice as Device,
   CustomLogIn as LogIn,
   CustomPlusSquare as PlusSquare,
 } from "./SidebarIcons";
+import { useFeedbackPrompt } from "./use-feedback-prompt";
 import "./sidebar.css";
 
 /**
@@ -175,9 +178,10 @@ const planLabel = (
 interface AccountRowProps {
   onSignIn?: () => void;
   onUpgrade: () => void;
+  onOpenFeedback: () => void;
 }
 
-const AccountRow = ({ onSignIn, onUpgrade }: AccountRowProps) => {
+const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) => {
   const { user, hasConnectedAccount } = useCurrentUser();
   // Plans + the user's current tier are public-readable via the same backend
   // query the standalone Billing page uses; running it here lets the pill
@@ -189,20 +193,31 @@ const AccountRow = ({ onSignIn, onUpgrade }: AccountRowProps) => {
 
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
 
-  // Sign-out opens a confirm Dialog. Radix DropdownMenu restores focus to its
-  // trigger (the avatar) when it closes — if we mounted the Dialog during
-  // the item's onClick, the avatar would steal focus back from the Dialog.
-  // Deferring the open to `onCloseAutoFocus` (with `event.preventDefault()`)
-  // sidesteps that race; `pendingSignOutRef` flags that the close was
-  // intentional rather than a stray dismissal.
+  // Sign-out and Send-feedback both open a Dialog. Radix DropdownMenu restores
+  // focus to its trigger (the avatar) when it closes — if we mounted the
+  // Dialog during the item's onClick, the avatar would steal focus back from
+  // the Dialog. Deferring the open to `onCloseAutoFocus` (with
+  // `event.preventDefault()`) sidesteps that race; the pending refs flag
+  // which dialog the close was intended to open.
   const pendingSignOutRef = useRef(false);
+  const pendingFeedbackRef = useRef(false);
 
-  const handleDropdownCloseAutoFocus = useCallback((event: Event) => {
-    if (!pendingSignOutRef.current) return;
-    pendingSignOutRef.current = false;
-    event.preventDefault();
-    setSignOutConfirmOpen(true);
-  }, []);
+  const handleDropdownCloseAutoFocus = useCallback(
+    (event: Event) => {
+      if (pendingSignOutRef.current) {
+        pendingSignOutRef.current = false;
+        event.preventDefault();
+        setSignOutConfirmOpen(true);
+        return;
+      }
+      if (pendingFeedbackRef.current) {
+        pendingFeedbackRef.current = false;
+        event.preventDefault();
+        onOpenFeedback();
+      }
+    },
+    [onOpenFeedback],
+  );
 
   const handleConfirmSignOut = useCallback(() => {
     setSignOutConfirmOpen(false);
@@ -252,6 +267,17 @@ const AccountRow = ({ onSignIn, onUpgrade }: AccountRowProps) => {
           sideOffset={8}
           onCloseAutoFocus={handleDropdownCloseAutoFocus}
         >
+          <DropdownMenuItem
+            onClick={() => {
+              pendingFeedbackRef.current = true;
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <MessageSquare size={14} strokeWidth={1.75} />
+            </span>
+            Send feedback
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             data-variant="destructive"
             onClick={() => {
@@ -362,6 +388,34 @@ export const Sidebar = ({
     void navigate({ to: "/billing" });
   }, [navigate]);
 
+  // Auto-prompted feedback. The hook tracks active (visible + focused) time
+  // across the whole shell and flips `shouldPrompt` once the user has been
+  // active for ~30 minutes today AND it's been ≥24h since the last prompt.
+  // We mount the dialog at the Sidebar root (not inside `AccountRow`) so it
+  // still appears on routes that render a page-sidebar override.
+  const { shouldPrompt: shouldAutoPromptFeedback, acknowledge: acknowledgeFeedbackPrompt } =
+    useFeedbackPrompt();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackVariant, setFeedbackVariant] = useState<"manual" | "auto">(
+    "manual",
+  );
+
+  useEffect(() => {
+    if (!shouldAutoPromptFeedback) return;
+    if (feedbackOpen) return;
+    setFeedbackVariant("auto");
+    setFeedbackOpen(true);
+    // Ack immediately on auto-open so the cooldown starts now — even if the
+    // user dismisses without sending we don't want to re-prompt them this
+    // session (or for the next 24 hours).
+    acknowledgeFeedbackPrompt();
+  }, [shouldAutoPromptFeedback, feedbackOpen, acknowledgeFeedbackPrompt]);
+
+  const handleOpenFeedback = useCallback(() => {
+    setFeedbackVariant("manual");
+    setFeedbackOpen(true);
+  }, []);
+
   const sidebarClass = useMemo(() => {
     const parts = ["sidebar"];
     if (className) parts.push(className);
@@ -462,11 +516,21 @@ export const Sidebar = ({
                 </span>
                 <span className="sidebar-nav-label">Connect</span>
               </button>
-              <AccountRow onSignIn={onSignIn} onUpgrade={handleUpgrade} />
+              <AccountRow
+                onSignIn={onSignIn}
+                onUpgrade={handleUpgrade}
+                onOpenFeedback={handleOpenFeedback}
+              />
             </div>
           </>
         )}
       </div>
+      <FeedbackDialog
+        open={feedbackOpen}
+        onOpenChange={setFeedbackOpen}
+        variant={feedbackVariant}
+        onSubmitted={acknowledgeFeedbackPrompt}
+      />
     </aside>
   );
 };
