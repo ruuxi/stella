@@ -904,6 +904,14 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       onLocalChatUpdated: () => {
         peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
       },
+      pushDisplayPayload: (payload) => {
+        // Forward the structured display payload through the existing
+        // host display update bridge. The renderer normalizes it via
+        // `normalizeDisplayPayload` and routes it to the workspace panel.
+        void peer
+          .request(METHOD_NAMES.HOST_DISPLAY_UPDATE, { payload })
+          .catch(() => undefined);
+      },
     });
     socialSessionService.setConvexUrl(init.convexUrl);
     socialSessionService.setAuthToken(init.authToken);

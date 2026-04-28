@@ -24,6 +24,58 @@ type WithMediaMeta = {
   capability?: string;
 };
 
+/**
+ * Live URL preview tab. Used by the social-session preview server: an
+ * iframe pointed at the per-session Vite dev server. Includes a tiny
+ * reload affordance so participants can force a refresh after the
+ * session host edits files (Vite usually HMRs without it).
+ */
+export const UrlTabContent = ({
+  url,
+  title,
+}: {
+  url: string;
+  title: string;
+}) => {
+  const [reloadKey, setReloadKey] = useState(0);
+  return (
+    <div className="display-sidebar__rich display-sidebar__rich--url">
+      <header className="display-file-preview__header">
+        <div className="display-file-preview__title-group">
+          <span className="display-file-preview__eyebrow">Live preview</span>
+          <div className="display-file-preview__title" title={url}>
+            {title}
+          </div>
+        </div>
+        <div className="display-file-preview__actions">
+          <button
+            type="button"
+            onClick={() => setReloadKey((value) => value + 1)}
+          >
+            Reload
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              window.electronAPI?.system?.openExternal?.(url);
+            }}
+          >
+            Open in browser
+          </button>
+        </div>
+      </header>
+      <iframe
+        key={reloadKey}
+        src={url}
+        title={title}
+        className="display-url-iframe"
+        sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"
+        referrerPolicy="no-referrer"
+      />
+    </div>
+  );
+};
+
 export const HtmlTabContent = ({ html }: { html: string }) => {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {

@@ -29,6 +29,17 @@ export type DisplayFileArtifactKind =
  */
 export type DisplayPayload =
   | { kind: "html"; html: string }
+  | {
+      /**
+       * Live URL preview (e.g., per-social-session Vite dev server).
+       * Rendered as an iframe in its own dedicated tab.
+       */
+      kind: "url";
+      url: string;
+      title: string;
+      tabId: string;
+      tooltip?: string;
+    }
   | { kind: "office"; previewRef: OfficePreviewRef; title?: string }
   | {
       kind: "markdown";
@@ -104,6 +115,13 @@ export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
   if (value.kind === "html") {
     return typeof value.html === "string";
   }
+  if (value.kind === "url") {
+    return (
+      typeof (value as { url?: unknown }).url === "string" &&
+      typeof (value as { title?: unknown }).title === "string" &&
+      typeof (value as { tabId?: unknown }).tabId === "string"
+    );
+  }
   if (value.kind === "office") {
     return isOfficePreviewRef((value as { previewRef?: unknown }).previewRef);
   }
@@ -161,6 +179,7 @@ export const normalizeDisplayPayload = (
 /** Quick title helper for the sidebar header / external open. */
 export const getDisplayPayloadTitle = (payload: DisplayPayload): string => {
   if (payload.kind === "html") return "Display";
+  if (payload.kind === "url") return payload.title;
   if (payload.kind === "office") {
     return payload.title ?? payload.previewRef.title;
   }

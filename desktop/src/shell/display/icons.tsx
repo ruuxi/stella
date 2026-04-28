@@ -316,6 +316,37 @@ const ChatIcon = ({ size = 18, style }: IconProps) => (
   </svg>
 );
 
+const UrlIcon = ({ size = 18, style }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={style}
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="8"
+      stroke="currentColor"
+      strokeOpacity="0.7"
+      strokeWidth="1.5"
+      fill="currentColor"
+      fillOpacity="0.08"
+    />
+    <path
+      d="M4 12h16M12 4c2.5 2.5 3.8 5.4 3.8 8s-1.3 5.5-3.8 8M12 4c-2.5 2.5-3.8 5.4-3.8 8s1.3 5.5 3.8 8"
+      stroke="currentColor"
+      strokeOpacity="0.7"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
+  </svg>
+);
+
 export const DisplayTabIcon = ({
   kind,
   size,
@@ -340,6 +371,8 @@ export const DisplayTabIcon = ({
       return <SlidesIcon size={size} style={style} />;
     case "html":
       return <HtmlIcon size={size} style={style} />;
+    case "url":
+      return <UrlIcon size={size} style={style} />;
     case "markdown":
       return <MarkdownIcon size={size} style={style} />;
     case "source-diff":
