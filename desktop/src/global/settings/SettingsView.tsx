@@ -45,7 +45,10 @@ import {
 } from "@/ui/dialog";
 import { AudioTab } from "@/global/settings/AudioTab";
 import { SettingsPanel } from "@/global/settings/SettingsPanel";
-import { SETTINGS_TABS, type SettingsTab } from "@/global/settings/settings-tabs";
+import {
+  SETTINGS_TABS,
+  type SettingsTab,
+} from "@/global/settings/settings-tabs";
 import {
   getRadialTriggerLabel,
   getRadialTriggerOptions,
@@ -204,13 +207,7 @@ function formatBackupTimestamp(timestamp?: number) {
   return new Date(timestamp).toLocaleString();
 }
 
-const MODIFIER_KEYS = new Set([
-  "Control",
-  "Shift",
-  "Alt",
-  "Meta",
-  "Command",
-]);
+const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "Command"]);
 
 function formatShortcutForDisplay(shortcut: string): string[] {
   if (!shortcut) return ["Off"];
@@ -296,9 +293,10 @@ const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
 
 function ShortcutsSettingsTab() {
   const platform = window.electronAPI?.platform;
-  const radialOptions = useMemo(() => getRadialTriggerOptions(platform), [
-    platform,
-  ]);
+  const radialOptions = useMemo(
+    () => getRadialTriggerOptions(platform),
+    [platform],
+  );
   const [shortcuts, setShortcuts] = useState<Record<ShortcutAction, string>>({
     dictation: "Control+M",
     voice: "CommandOrControl+Shift+D",
@@ -431,23 +429,29 @@ function ShortcutsSettingsTab() {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [capturingShortcut, saveShortcut]);
 
-  const saveRadialTrigger = useCallback(async (triggerKey: RadialTriggerCode) => {
-    const api = window.electronAPI?.system;
-    if (!api?.setRadialTriggerKey) return;
-    setShortcutError(null);
-    try {
-      const result = await api.setRadialTriggerKey(triggerKey);
-      setRadialTriggerKey(result.triggerKey);
-      showToast({
-        title: "Radial dial shortcut updated",
-        description: `Hold ${getRadialTriggerLabel(result.triggerKey, platform)} to open the radial dial.`,
-      });
-    } catch (error) {
-      setShortcutError(
-        getSettingsErrorMessage(error, "Failed to update radial dial shortcut."),
-      );
-    }
-  }, [platform]);
+  const saveRadialTrigger = useCallback(
+    async (triggerKey: RadialTriggerCode) => {
+      const api = window.electronAPI?.system;
+      if (!api?.setRadialTriggerKey) return;
+      setShortcutError(null);
+      try {
+        const result = await api.setRadialTriggerKey(triggerKey);
+        setRadialTriggerKey(result.triggerKey);
+        showToast({
+          title: "Radial dial shortcut updated",
+          description: `Hold ${getRadialTriggerLabel(result.triggerKey, platform)} to open the radial dial.`,
+        });
+      } catch (error) {
+        setShortcutError(
+          getSettingsErrorMessage(
+            error,
+            "Failed to update radial dial shortcut.",
+          ),
+        );
+      }
+    },
+    [platform],
+  );
 
   const saveMiniDoubleTap = useCallback(
     async (modifier: MiniDoubleTapModifier) => {
@@ -466,17 +470,17 @@ function ShortcutsSettingsTab() {
         });
       } catch (error) {
         setShortcutError(
-          getSettingsErrorMessage(error, "Failed to update mini window shortcut."),
+          getSettingsErrorMessage(
+            error,
+            "Failed to update mini window shortcut.",
+          ),
         );
       }
     },
     [platform],
   );
 
-  const renderShortcutRow = (
-    action: ShortcutAction,
-    description: string,
-  ) => (
+  const renderShortcutRow = (action: ShortcutAction, description: string) => (
     <div className="settings-row">
       <div className="settings-row-info">
         <div className="settings-row-label">{SHORTCUT_LABELS[action]}</div>
@@ -489,9 +493,7 @@ function ShortcutsSettingsTab() {
           variant="ghost"
           className="settings-btn"
           disabled={
-            !loaded ||
-            savingShortcut !== null ||
-            capturingShortcut !== null
+            !loaded || savingShortcut !== null || capturingShortcut !== null
           }
           onClick={() => setCapturingShortcut(action)}
         >
@@ -599,6 +601,12 @@ function BasicSettingsTab() {
   const platform = window.electronAPI?.platform;
   const developerResourcePreviewsEnabled =
     useDeveloperResourcePreviewsEnabled();
+  const [preventComputerSleep, setPreventComputerSleep] = useState(false);
+  const [preventSleepLoaded, setPreventSleepLoaded] = useState(false);
+  const [isSavingPreventSleep, setIsSavingPreventSleep] = useState(false);
+  const [preventSleepError, setPreventSleepError] = useState<string | null>(
+    null,
+  );
   const initialPermissionStatus = useMemo<DesktopPermissionStatus>(
     () => ({
       accessibility: platform === "darwin" ? false : true,
@@ -608,9 +616,65 @@ function BasicSettingsTab() {
     }),
     [platform],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const enabled =
+          await window.electronAPI?.system?.getPreventComputerSleep?.();
+        if (!cancelled) {
+          setPreventComputerSleep(enabled === true);
+          setPreventSleepError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPreventSleepError(
+            getSettingsErrorMessage(error, "Failed to load power setting."),
+          );
+        }
+      } finally {
+        if (!cancelled) setPreventSleepLoaded(true);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handlePreventSleepChange = useCallback(
+    async (checked: boolean) => {
+      const systemApi = window.electronAPI?.system;
+      if (!systemApi?.setPreventComputerSleep) {
+        setPreventSleepError("Power settings are unavailable in this window.");
+        return;
+      }
+
+      const previous = preventComputerSleep;
+      setPreventComputerSleep(checked);
+      setPreventSleepError(null);
+      setIsSavingPreventSleep(true);
+      try {
+        const result = await systemApi.setPreventComputerSleep(checked);
+        setPreventComputerSleep(result.enabled);
+      } catch (error) {
+        setPreventComputerSleep(previous);
+        setPreventSleepError(
+          getSettingsErrorMessage(error, "Failed to update power setting."),
+        );
+      } finally {
+        setIsSavingPreventSleep(false);
+      }
+    },
+    [preventComputerSleep],
+  );
   const formatPermissionLoadError = useCallback(
     (error: unknown) =>
-      getSettingsErrorMessage(error, "Failed to load desktop permission status."),
+      getSettingsErrorMessage(
+        error,
+        "Failed to load desktop permission status.",
+      ),
     [],
   );
   const {
@@ -638,7 +702,10 @@ function BasicSettingsTab() {
         await requestWithSettingsFallback(kind);
       } catch (error) {
         setPermissionsError(
-          getSettingsErrorMessage(error, `Failed to update ${kind} permission.`),
+          getSettingsErrorMessage(
+            error,
+            `Failed to update ${kind} permission.`,
+          ),
         );
       }
     },
@@ -707,12 +774,45 @@ function BasicSettingsTab() {
           </div>
         </div>
       </div>
+      <div className="settings-card">
+        <h3 className="settings-card-title">Power</h3>
+        <p className="settings-card-desc">
+          Keep this computer awake while Stella is running.
+        </p>
+        {preventSleepError ? (
+          <p
+            className="settings-card-desc settings-card-desc--error"
+            role="alert"
+          >
+            {preventSleepError}
+          </p>
+        ) : null}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Prevent sleep</div>
+            <div className="settings-row-sublabel">
+              Stop macOS or Windows from putting the computer to sleep while
+              Stella is open.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <Switch
+              checked={preventComputerSleep}
+              disabled={!preventSleepLoaded || isSavingPreventSleep}
+              onCheckedChange={(checked) =>
+                void handlePreventSleepChange(Boolean(checked))
+              }
+              hideLabel
+            />
+          </div>
+        </div>
+      </div>
       {platform === "darwin" ? (
         <div className="settings-card">
           <h3 className="settings-card-title">Permissions</h3>
           <p className="settings-card-desc">
-            Stella will ask for these when you first use a feature. You can
-            also turn them on here.
+            Stella will ask for these when you first use a feature. You can also
+            turn them on here.
           </p>
           {permissionsError ? (
             <p
@@ -736,9 +836,9 @@ function BasicSettingsTab() {
                 variant="ghost"
                 className="settings-btn"
                 disabled={
-                  !permissionsLoaded
-                  || permissionStatus.accessibility
-                  || activePermissionAction === "accessibility"
+                  !permissionsLoaded ||
+                  permissionStatus.accessibility ||
+                  activePermissionAction === "accessibility"
                 }
                 onClick={() => void handlePermissionEnable("accessibility")}
               >
@@ -753,8 +853,7 @@ function BasicSettingsTab() {
                 variant="ghost"
                 className="settings-btn"
                 disabled={
-                  !permissionsLoaded
-                  || resettingPermission === "accessibility"
+                  !permissionsLoaded || resettingPermission === "accessibility"
                 }
                 onClick={() => void handlePermissionReset("accessibility")}
               >
@@ -769,8 +868,8 @@ function BasicSettingsTab() {
               <div className="settings-row-label">Screen Capture</div>
               <div className="settings-row-sublabel">
                 Lets Stella see your screen so it can help with what you're
-                looking at. You may need to quit and reopen Stella after
-                turning this on.
+                looking at. You may need to quit and reopen Stella after turning
+                this on.
               </div>
             </div>
             <div className="settings-row-control">
@@ -779,9 +878,9 @@ function BasicSettingsTab() {
                 variant="ghost"
                 className="settings-btn"
                 disabled={
-                  !permissionsLoaded
-                  || permissionStatus.screen
-                  || activePermissionAction === "screen"
+                  !permissionsLoaded ||
+                  permissionStatus.screen ||
+                  activePermissionAction === "screen"
                 }
                 onClick={() => void handlePermissionEnable("screen")}
               >
@@ -841,8 +940,8 @@ function BasicSettingsTab() {
               <div className="settings-row-info">
                 <div className="settings-row-label">Restart Stella</div>
                 <div className="settings-row-sublabel">
-                  Screen capture was just turned on. Quit and reopen Stella
-                  to finish setting it up.
+                  Screen capture was just turned on. Quit and reopen Stella to
+                  finish setting it up.
                 </div>
               </div>
               <div className="settings-row-control">
@@ -883,9 +982,12 @@ function BackupSettingsTab() {
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(
     null,
   );
-  const isBillingStatusLoading = hasConnectedAccount && billingStatus === undefined;
+  const isBillingStatusLoading =
+    hasConnectedAccount && billingStatus === undefined;
   const isBackupUpgradeRequired =
-    hasConnectedAccount && billingStatus !== undefined && billingStatus.plan === "free";
+    hasConnectedAccount &&
+    billingStatus !== undefined &&
+    billingStatus.plan === "free";
 
   const loadBackupState = useCallback(async () => {
     const systemApi = window.electronAPI?.system;
@@ -899,7 +1001,8 @@ function BackupSettingsTab() {
       setRemoteBackups([]);
       return;
     }
-    const nextSyncMode = (await systemApi.getLocalSyncMode()) === "on" ? "on" : "off";
+    const nextSyncMode =
+      (await systemApi.getLocalSyncMode()) === "on" ? "on" : "off";
     const nextStatus = await systemApi.getBackupStatus();
     const nextBackups = hasConnectedAccount
       ? await systemApi.listBackups(10)
@@ -1025,44 +1128,43 @@ function BackupSettingsTab() {
     }
   }, [loadBackupState]);
 
-  const handleRestoreBackup = useCallback(
-    async (snapshotId: string) => {
-      const systemApi = window.electronAPI?.system;
-      if (!systemApi?.restoreBackup) {
-        setBackupError("Restore is unavailable in this window.");
-        return;
-      }
-      setBackupError(null);
-      setRestoringSnapshotId(snapshotId);
-      try {
-        await systemApi.restoreBackup(snapshotId);
-        showToast({
-          title: "Restore prepared",
-          description: "Stella will restart to finish applying this backup.",
-        });
-      } catch (error) {
-        const message = getSettingsErrorMessage(error, "Failed to restore backup.");
-        setBackupError(message);
-        showToast({
-          title: "Restore failed",
-          description: message,
-          variant: "error",
-        });
-      } finally {
-        setRestoringSnapshotId(null);
-      }
-    },
-    [],
-  );
+  const handleRestoreBackup = useCallback(async (snapshotId: string) => {
+    const systemApi = window.electronAPI?.system;
+    if (!systemApi?.restoreBackup) {
+      setBackupError("Restore is unavailable in this window.");
+      return;
+    }
+    setBackupError(null);
+    setRestoringSnapshotId(snapshotId);
+    try {
+      await systemApi.restoreBackup(snapshotId);
+      showToast({
+        title: "Restore prepared",
+        description: "Stella will restart to finish applying this backup.",
+      });
+    } catch (error) {
+      const message = getSettingsErrorMessage(
+        error,
+        "Failed to restore backup.",
+      );
+      setBackupError(message);
+      showToast({
+        title: "Restore failed",
+        description: message,
+        variant: "error",
+      });
+    } finally {
+      setRestoringSnapshotId(null);
+    }
+  }, []);
 
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
         <h3 className="settings-card-title">Backups</h3>
         <p className="settings-card-desc">
-          Your data is encrypted on this device before it's uploaded.
-          Restoring a backup replaces your current Stella data and restarts
-          the app.
+          Your data is encrypted on this device before it's uploaded. Restoring
+          a backup replaces your current Stella data and restarts the app.
         </p>
         {backupError ? (
           <p
@@ -1081,10 +1183,12 @@ function BackupSettingsTab() {
           <div className="settings-row-info">
             <div className="settings-row-label">Automatic backups</div>
             <div className="settings-row-sublabel">
-              Last local backup: {formatBackupTimestamp(backupStatus?.lastSuccessAt)}
+              Last local backup:{" "}
+              {formatBackupTimestamp(backupStatus?.lastSuccessAt)}
             </div>
             <div className="settings-row-sublabel">
-              Last remote backup: {formatBackupTimestamp(backupStatus?.lastRemoteSuccessAt)}
+              Last remote backup:{" "}
+              {formatBackupTimestamp(backupStatus?.lastRemoteSuccessAt)}
             </div>
             {backupStatus?.lastRemoteError ? (
               <div className="settings-row-sublabel">
@@ -1096,8 +1200,12 @@ function BackupSettingsTab() {
             <NativeSelect
               className="settings-runtime-select"
               value={syncMode}
-              onChange={(event) => void handleSyncModeChange(event.target.value)}
-              disabled={!backupLoaded || isSavingSyncMode || isBillingStatusLoading}
+              onChange={(event) =>
+                void handleSyncModeChange(event.target.value)
+              }
+              disabled={
+                !backupLoaded || isSavingSyncMode || isBillingStatusLoading
+              }
             >
               <option value="off">Off</option>
               <option value="on">Automatic hourly backups</option>
@@ -1118,7 +1226,9 @@ function BackupSettingsTab() {
               variant="ghost"
               className="settings-btn"
               onClick={() => void handleBackupNow()}
-              disabled={!backupLoaded || isRunningBackup || Boolean(restoringSnapshotId)}
+              disabled={
+                !backupLoaded || isRunningBackup || Boolean(restoringSnapshotId)
+              }
             >
               {isRunningBackup ? "Backing Up..." : "Back Up Now"}
             </Button>
@@ -1165,7 +1275,8 @@ function BackupSettingsTab() {
                     className="settings-btn"
                     onClick={() => void handleRestoreBackup(backup.snapshotId)}
                     disabled={
-                      isRunningBackup || restoringSnapshotId === backup.snapshotId
+                      isRunningBackup ||
+                      restoringSnapshotId === backup.snapshotId
                     }
                   >
                     {restoringSnapshotId === backup.snapshotId
@@ -1194,11 +1305,14 @@ function AccountSettingsTab({
     useState<AccountDeleteAction | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const closeDeleteDialog = useCallback((open: boolean) => {
-    if (!open && !isDeleting) {
-      setPendingDeleteAction(null);
-    }
-  }, [isDeleting]);
+  const closeDeleteDialog = useCallback(
+    (open: boolean) => {
+      if (!open && !isDeleting) {
+        setPendingDeleteAction(null);
+      }
+    },
+    [isDeleting],
+  );
 
   const handleConfirmDelete = useCallback(async () => {
     if (!pendingDeleteAction || isDeleting) return;
@@ -1237,12 +1351,7 @@ function AccountSettingsTab({
       setIsDeleting(false);
       setPendingDeleteAction(null);
     }
-  }, [
-    hasConnectedAccount,
-    isDeleting,
-    pendingDeleteAction,
-    resetUserData,
-  ]);
+  }, [hasConnectedAccount, isDeleting, pendingDeleteAction, resetUserData]);
 
   const deleteDialogTitle =
     pendingDeleteAction === "account"
@@ -1491,9 +1600,9 @@ function ChronicleSettingsCard() {
   const [available, setAvailable] = useState<boolean>(true);
   const [status, setStatus] = useState<ChronicleStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<
-    null | "toggle" | "dream" | "wipe" | "open"
-  >(null);
+  const [busy, setBusy] = useState<null | "toggle" | "dream" | "wipe" | "open">(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -1508,7 +1617,9 @@ function ChronicleSettingsCard() {
       setStatus(result.status ?? null);
       setError(null);
     } catch (caught) {
-      setError(getSettingsErrorMessage(caught, "Failed to load Chronicle status."));
+      setError(
+        getSettingsErrorMessage(caught, "Failed to load Chronicle status."),
+      );
     } finally {
       setLoading(false);
     }
@@ -1532,7 +1643,9 @@ function ChronicleSettingsCard() {
         const message = formatChronicleEnableFailure(result);
         setError(message);
         showToast({
-          title: next ? "Could not enable Chronicle" : "Could not disable Chronicle",
+          title: next
+            ? "Could not enable Chronicle"
+            : "Could not disable Chronicle",
           description: message,
           variant: "error",
         });
@@ -1567,7 +1680,9 @@ function ChronicleSettingsCard() {
         variant: result.ok ? "success" : "error",
       });
     } catch (caught) {
-      setError(getSettingsErrorMessage(caught, "Failed to trigger Dream pass."));
+      setError(
+        getSettingsErrorMessage(caught, "Failed to trigger Dream pass."),
+      );
     } finally {
       setBusy(null);
     }
@@ -1647,11 +1762,7 @@ function ChronicleSettingsCard() {
             disabled={busy !== null || loading}
             onClick={() => handleToggle(!enabled)}
           >
-            {busy === "toggle"
-              ? "Working…"
-              : enabled
-                ? "Disable"
-                : "Enable"}
+            {busy === "toggle" ? "Working…" : enabled ? "Disable" : "Enable"}
           </Button>
         </div>
       </div>
@@ -1837,8 +1948,7 @@ function ModelConfigSection() {
     };
   }, []);
 
-  const runtimePreferencesLoaded =
-    modelPreferences !== null;
+  const runtimePreferencesLoaded = modelPreferences !== null;
   const modelPreferencesLoaded = modelDefaults !== undefined;
 
   const pendingLocalOverrides = useMemo(() => {
@@ -1900,7 +2010,10 @@ function ModelConfigSection() {
 
       setModelConfigError(null);
       setIsSavingModelPreferences(true);
-      setLocalOverrides((prev) => ({ ...prev, [agentType]: value === "" ? null : value }));
+      setLocalOverrides((prev) => ({
+        ...prev,
+        [agentType]: value === "" ? null : value,
+      }));
 
       try {
         const nextOverrides = { ...serverOverrides };
@@ -2017,12 +2130,7 @@ function ModelConfigSection() {
     }
 
     setIsSavingModelPreferences(false);
-  }, [
-    hasAnyOverride,
-    isSavingModelPreferences,
-    localOverrides,
-    overrides,
-  ]);
+  }, [hasAnyOverride, isSavingModelPreferences, localOverrides, overrides]);
 
   const handleAgentEngineChange = useCallback(
     async (_agentType: "general", value: string) => {
@@ -2058,10 +2166,7 @@ function ModelConfigSection() {
         setIsSavingRuntimePreference(false);
       }
     },
-    [
-      isSavingRuntimePreference,
-      localGeneralAgentEngine,
-    ],
+    [isSavingRuntimePreference, localGeneralAgentEngine],
   );
 
   const handleMaxAgentConcurrencyChange = useCallback(
@@ -2099,10 +2204,7 @@ function ModelConfigSection() {
         setIsSavingRuntimePreference(false);
       }
     },
-    [
-      isSavingRuntimePreference,
-      localMaxAgentConcurrency,
-    ],
+    [isSavingRuntimePreference, localMaxAgentConcurrency],
   );
 
   return (
@@ -2124,8 +2226,8 @@ function ModelConfigSection() {
           <div className="settings-row-info">
             <div className="settings-row-label">Engine</div>
             <div className="settings-row-sublabel">
-              Powers Stella's main assistant. Choosing Claude Code requires
-              the <code>claude</code> command installed on your computer.
+              Powers Stella's main assistant. Choosing Claude Code requires the{" "}
+              <code>claude</code> command installed on your computer.
             </div>
           </div>
           <div className="settings-row-control">
@@ -2223,15 +2325,16 @@ function ModelConfigSection() {
         {modelPreferencesLoaded &&
           configurableAgents.map((agent) => {
             const current = overrides[agent.key] ?? "";
-            const isDirectOverride = Boolean(current) && !isStellaSelection(current);
+            const isDirectOverride =
+              Boolean(current) && !isStellaSelection(current);
             const isCustomEditing = Object.prototype.hasOwnProperty.call(
               customModelDrafts,
               agent.key,
             );
             const selectValue =
               isDirectOverride || isCustomEditing ? "__custom__" : current;
-            const customDraft = customModelDrafts[agent.key] ??
-              (isDirectOverride ? current : "");
+            const customDraft =
+              customModelDrafts[agent.key] ?? (isDirectOverride ? current : "");
             const selectedStellaModel =
               isStellaSelection(current) &&
               current !== STELLA_DEFAULT_MODEL &&
@@ -2301,12 +2404,11 @@ function ModelConfigSection() {
                     }}
                     disabled={isSavingModelPreferences}
                   >
-                    <option value="">
-                      {defaultLabel}
-                    </option>
+                    <option value="">{defaultLabel}</option>
                     {selectedStellaModel ? (
                       <option value={selectedStellaModel}>
-                        {modelNamesById.get(selectedStellaModel) ?? selectedStellaModel}
+                        {modelNamesById.get(selectedStellaModel) ??
+                          selectedStellaModel}
                       </option>
                     ) : null}
                     {stellaModels
@@ -2480,7 +2582,9 @@ function ApiKeysSection() {
       setIsSavingRoutingPreference(true);
       try {
         const saved =
-          await window.electronAPI.system.setLlmCredentialRoutingPreference(next);
+          await window.electronAPI.system.setLlmCredentialRoutingPreference(
+            next,
+          );
         setUseLocalKeys(saved.enabled);
         setSelectedProvider(saved.provider || "openai");
       } catch (error) {
@@ -2600,7 +2704,9 @@ function ApiKeysSection() {
       );
     } catch (error) {
       setCredentialsError(
-        error instanceof Error ? error.message : "Failed to remove OAuth login.",
+        error instanceof Error
+          ? error.message
+          : "Failed to remove OAuth login.",
       );
     } finally {
       setOauthProviderInFlight(null);
@@ -2670,134 +2776,135 @@ function ApiKeysSection() {
           </div>
         </div>
       ) : null}
-      {useLocalKeys && LLM_PROVIDERS.map((provider) => {
-        const credential = getCredentialForProvider(provider.key);
-        const oauthProvider = getOauthProviderForProvider(provider.key);
-        const oauthCredential = getOauthCredentialForProvider(provider.key);
-        const isEditing = editingProvider === provider.key;
-        const isRemoving = removingProvider === provider.key;
-        const isOauthBusy = oauthProviderInFlight === provider.key;
-        return (
-          <div key={provider.key} className="settings-row">
-            <div className="settings-row-info">
-              <div className="settings-row-label">{provider.label}</div>
-              <div className="settings-row-sublabel">
-                {credential ? (
-                  <span className="settings-key-status">
-                    <span className="settings-key-dot settings-key-dot--active" />
-                    Key set
-                  </span>
-                ) : (
-                  <span className="settings-key-status">
-                    <span className="settings-key-dot settings-key-dot--inactive" />
-                    No key
-                  </span>
-                )}
-                {oauthCredential ? (
-                  <span className="settings-key-status">
-                    <span className="settings-key-dot settings-key-dot--active" />
-                    Signed in
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            <div className="settings-row-control">
-              {isEditing ? (
-                <div className="settings-key-input">
-                  <TextField
-                    label={`${provider.label} API key`}
-                    hideLabel={true}
-                    type="password"
-                    placeholder={provider.placeholder}
-                    value={keyInput}
-                    onChange={(e) => setKeyInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter")
-                        handleSave(provider.key, provider.label);
-                      if (e.key === "Escape") {
-                        setEditingProvider(null);
-                        setKeyInput("");
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <Button
-                    type="button"
-                    variant="primary"
-                    className="settings-btn settings-btn--primary"
-                    onClick={() => handleSave(provider.key, provider.label)}
-                    disabled={isSavingKey}
-                  >
-                    {isSavingKey ? "Saving..." : "Save"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="settings-btn"
-                    onClick={() => {
-                      setEditingProvider(null);
-                      setKeyInput("");
-                    }}
-                    disabled={isSavingKey}
-                  >
-                    Cancel
-                  </Button>
+      {useLocalKeys &&
+        LLM_PROVIDERS.map((provider) => {
+          const credential = getCredentialForProvider(provider.key);
+          const oauthProvider = getOauthProviderForProvider(provider.key);
+          const oauthCredential = getOauthCredentialForProvider(provider.key);
+          const isEditing = editingProvider === provider.key;
+          const isRemoving = removingProvider === provider.key;
+          const isOauthBusy = oauthProviderInFlight === provider.key;
+          return (
+            <div key={provider.key} className="settings-row">
+              <div className="settings-row-info">
+                <div className="settings-row-label">{provider.label}</div>
+                <div className="settings-row-sublabel">
+                  {credential ? (
+                    <span className="settings-key-status">
+                      <span className="settings-key-dot settings-key-dot--active" />
+                      Key set
+                    </span>
+                  ) : (
+                    <span className="settings-key-status">
+                      <span className="settings-key-dot settings-key-dot--inactive" />
+                      No key
+                    </span>
+                  )}
+                  {oauthCredential ? (
+                    <span className="settings-key-status">
+                      <span className="settings-key-dot settings-key-dot--active" />
+                      Signed in
+                    </span>
+                  ) : null}
                 </div>
-              ) : (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="settings-btn"
-                    onClick={() => {
-                      setEditingProvider(provider.key);
-                      setKeyInput("");
-                      setCredentialsError(null);
-                    }}
-                    disabled={isSavingKey || Boolean(removingProvider)}
-                  >
-                    {credential ? "Update key" : "Add key"}
-                  </Button>
-                  {credential && (
+              </div>
+              <div className="settings-row-control">
+                {isEditing ? (
+                  <div className="settings-key-input">
+                    <TextField
+                      label={`${provider.label} API key`}
+                      hideLabel={true}
+                      type="password"
+                      placeholder={provider.placeholder}
+                      value={keyInput}
+                      onChange={(e) => setKeyInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter")
+                          handleSave(provider.key, provider.label);
+                        if (e.key === "Escape") {
+                          setEditingProvider(null);
+                          setKeyInput("");
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      variant="primary"
+                      className="settings-btn settings-btn--primary"
+                      onClick={() => handleSave(provider.key, provider.label)}
+                      disabled={isSavingKey}
+                    >
+                      {isSavingKey ? "Saving..." : "Save"}
+                    </Button>
                     <Button
                       type="button"
                       variant="ghost"
-                      className="settings-btn settings-btn--danger"
-                      onClick={() => handleRemove(provider.key)}
-                      disabled={isRemoving || isSavingKey}
+                      className="settings-btn"
+                      onClick={() => {
+                        setEditingProvider(null);
+                        setKeyInput("");
+                      }}
+                      disabled={isSavingKey}
                     >
-                      {isRemoving ? "Removing..." : "Remove"}
+                      Cancel
                     </Button>
-                  )}
-                  {oauthProvider ? (
-                    oauthCredential ? (
+                  </div>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="settings-btn"
+                      onClick={() => {
+                        setEditingProvider(provider.key);
+                        setKeyInput("");
+                        setCredentialsError(null);
+                      }}
+                      disabled={isSavingKey || Boolean(removingProvider)}
+                    >
+                      {credential ? "Update key" : "Add key"}
+                    </Button>
+                    {credential && (
                       <Button
                         type="button"
                         variant="ghost"
                         className="settings-btn settings-btn--danger"
-                        onClick={() => handleOauthRemove(provider.key)}
-                        disabled={isOauthBusy || isSavingKey}
+                        onClick={() => handleRemove(provider.key)}
+                        disabled={isRemoving || isSavingKey}
                       >
-                        {isOauthBusy ? "Signing out..." : "Sign out"}
+                        {isRemoving ? "Removing..." : "Remove"}
                       </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="settings-btn"
-                        onClick={() => handleOauthLogin(provider.key)}
-                        disabled={isOauthBusy || isSavingKey}
-                      >
-                        {isOauthBusy ? "Opening..." : "Sign in"}
-                      </Button>
-                    )
-                  ) : null}
-                </>
-              )}
+                    )}
+                    {oauthProvider ? (
+                      oauthCredential ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="settings-btn settings-btn--danger"
+                          onClick={() => handleOauthRemove(provider.key)}
+                          disabled={isOauthBusy || isSavingKey}
+                        >
+                          {isOauthBusy ? "Signing out..." : "Sign out"}
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="settings-btn"
+                          onClick={() => handleOauthLogin(provider.key)}
+                          disabled={isOauthBusy || isSavingKey}
+                        >
+                          {isOauthBusy ? "Opening..." : "Sign in"}
+                        </Button>
+                      )
+                    ) : null}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
     </div>
   );
 }

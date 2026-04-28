@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  powerSaveBlocker,
   shell,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -11,6 +12,7 @@ import { copyFile, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   getLocalModelPreferences,
+  getPreventComputerSleep,
   getSyncMode,
   loadLocalPreferences,
   saveLocalPreferences,
@@ -31,7 +33,10 @@ import {
   listLocalLlmOAuthCredentials,
   saveLocalLlmOAuthCredential,
 } from "../../../runtime/kernel/storage/llm-oauth-credentials.js";
-import { getOAuthProvider, getOAuthProviders } from "../../../runtime/ai/utils/oauth/index.js";
+import {
+  getOAuthProvider,
+  getOAuthProviders,
+} from "../../../runtime/ai/utils/oauth/index.js";
 import type { RuntimeSocialSessionStatus } from "../../../runtime/protocol/index.js";
 import { isRuntimeUnavailableError } from "../../../runtime/protocol/rpc-peer.js";
 import {
@@ -63,10 +68,12 @@ import {
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_MODELS,
+  IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_MODELS,
+  IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
@@ -91,7 +98,10 @@ type ScreenCapturePermissionsModule = {
   openSystemPreferences: () => Promise<void>;
 };
 
-let _screenCapturePermissions: ScreenCapturePermissionsModule | null | undefined;
+let _screenCapturePermissions:
+  | ScreenCapturePermissionsModule
+  | null
+  | undefined;
 const getScreenCapturePermissions =
   (): ScreenCapturePermissionsModule | null => {
     if (_screenCapturePermissions !== undefined)
@@ -218,6 +228,27 @@ const sanitizeStringRecord = (value: unknown): Record<string, string> => {
     nextRecord[trimmedKey] = trimmedValue;
   }
   return nextRecord;
+};
+
+let preventSleepBlockerId: number | null = null;
+
+export const setPreventComputerSleep = (enabled: boolean) => {
+  if (enabled) {
+    if (
+      preventSleepBlockerId === null ||
+      !powerSaveBlocker.isStarted(preventSleepBlockerId)
+    ) {
+      preventSleepBlockerId = powerSaveBlocker.start("prevent-display-sleep");
+    }
+    return;
+  }
+
+  if (preventSleepBlockerId !== null) {
+    if (powerSaveBlocker.isStarted(preventSleepBlockerId)) {
+      powerSaveBlocker.stop(preventSleepBlockerId);
+    }
+    preventSleepBlockerId = null;
+  }
 };
 
 const createStoppedSocialSessionSnapshot = () => ({
@@ -489,7 +520,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           "auth:runtimeRefreshComplete",
         )
       ) {
-        throw new Error("Blocked untrusted auth:runtimeRefreshComplete request.");
+        throw new Error(
+          "Blocked untrusted auth:runtimeRefreshComplete request.",
+        );
       }
       const requestId =
         typeof payload?.requestId === "string" ? payload.requestId.trim() : "";
@@ -628,7 +661,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     async (
       event,
       payload: { sourcePath: string; defaultName?: string },
-    ): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> => {
+    ): Promise<{
+      ok: boolean;
+      path?: string;
+      canceled?: boolean;
+      error?: string;
+    }> => {
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
@@ -639,7 +677,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
 
       const sourcePath =
-        typeof payload?.sourcePath === "string" ? payload.sourcePath.trim() : "";
+        typeof payload?.sourcePath === "string"
+          ? payload.sourcePath.trim()
+          : "";
       if (!sourcePath) {
         return { ok: false, error: "Missing source file." };
       }
@@ -911,6 +951,45 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
+  ipcMain.handle(IPC_PREFERENCES_GET_PREVENT_SLEEP, (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_PREVENT_SLEEP,
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:getPreventSleep request.");
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return false;
+    return getPreventComputerSleep(stellaRoot);
+  });
+
+  ipcMain.handle(
+    IPC_PREFERENCES_SET_PREVENT_SLEEP,
+    (event, enabled: boolean) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PREFERENCES_SET_PREVENT_SLEEP,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted preferences:setPreventSleep request.",
+        );
+      }
+      const nextEnabled = enabled === true;
+      const stellaRoot = options.getStellaRoot();
+      if (stellaRoot) {
+        const prefs = loadLocalPreferences(stellaRoot);
+        prefs.preventComputerSleep = nextEnabled;
+        saveLocalPreferences(stellaRoot, prefs);
+      }
+      setPreventComputerSleep(nextEnabled);
+      return { enabled: nextEnabled };
+    },
+  );
+
   ipcMain.handle(IPC_PREFERENCES_GET_MODELS, (event) => {
     if (
       !options.externalLinkService.assertPrivilegedSender(
@@ -918,7 +997,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         IPC_PREFERENCES_GET_MODELS,
       )
     ) {
-      throw new Error("Blocked untrusted preferences:getLocalModelPreferences request.");
+      throw new Error(
+        "Blocked untrusted preferences:getLocalModelPreferences request.",
+      );
     }
     const stellaRoot = options.getStellaRoot();
     if (!stellaRoot) {
@@ -929,10 +1010,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
 
   ipcMain.handle(
     IPC_PREFERENCES_SET_MODELS,
-    (
-      event,
-      payload: Partial<LocalModelPreferencesSnapshot>,
-    ) => {
+    (event, payload: Partial<LocalModelPreferencesSnapshot>) => {
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
@@ -1248,9 +1326,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         IPC_PERMISSIONS_RESET_MICROPHONE,
       )
     ) {
-      throw new Error(
-        "Blocked untrusted permissions:resetMicrophone request.",
-      );
+      throw new Error("Blocked untrusted permissions:resetMicrophone request.");
     }
 
     if (process.platform !== "darwin") {
@@ -1274,7 +1350,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (process.platform !== "darwin") {
         return { ok: false };
       }
-      const kind = asTrimmedString(payload?.kind) as ResettableMacPermissionKind;
+      const kind = asTrimmedString(
+        payload?.kind,
+      ) as ResettableMacPermissionKind;
       if (!["accessibility", "screen", "microphone"].includes(kind)) {
         return { ok: false };
       }
@@ -1349,7 +1427,8 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         try {
           const scp = getScreenCapturePermissions();
           if (screenCapturePermissionsHasPrompted(scp)) {
-            const openedViaModule = await openScreenCaptureSystemPreferences(scp);
+            const openedViaModule =
+              await openScreenCaptureSystemPreferences(scp);
             if (openedViaModule) {
               openedSettings = true;
             } else {
