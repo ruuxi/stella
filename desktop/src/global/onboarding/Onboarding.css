@@ -3059,3 +3059,334 @@
     animation: none !important;
   }
 }
+
+/* ═══ Short-viewport rescale ═══
+ *
+ * On short windows several phases (permissions, theme, browser, capabilities,
+ * creation, double-tap, memory, shortcuts) stack a heavy "above" surface — a
+ * fixed-aspect frame, a tall mock canvas, or a column of cards — that pushes
+ * the Continue button below the fold or against fixed chrome (`.onboarding-
+ * phase-nav`). The split pane has `overflow-y: auto`, but requiring users to
+ * scroll just to find Continue reads as broken. Instead, we shrink the
+ * heavy content above when vertical space is tight: tighter pane padding,
+ * smaller gaps, and a height-aware width cap on the capabilities frame +
+ * lower floors on the creation canvas / mock windows. Two breakpoints:
+ *
+ *   ≤ 820px  — tighten paddings, gaps, and the largest illustrations.
+ *   ≤ 680px  — aggressive: shrink cards, drop section gaps, scale mocks.
+ *
+ * Targeted at viewport height only — width-based behavior is unchanged. */
+
+@media (max-height: 820px) {
+  .onboarding-split-right {
+    padding-top: clamp(28px, 3.5vh, 56px);
+    padding-bottom: clamp(28px, 3.5vh, 56px);
+  }
+
+  .onboarding-split-stage {
+    gap: 16px;
+    min-height: 0;
+  }
+
+  .onboarding-step-content {
+    gap: 14px;
+  }
+
+  .onboarding-section-title,
+  .onboarding-split-title {
+    font-size: clamp(16px, 2vw, 20px);
+    margin-top: 12px;
+  }
+
+  .onboarding-section-title:first-child {
+    margin-top: 0;
+  }
+
+  /* Permissions cards — reduce padding and font sizes so 3 cards fit. */
+  .onboarding-dialogue[data-phase="permissions"] .onboarding-permission-card {
+    padding: 10px 14px;
+    gap: 12px;
+  }
+
+  .onboarding-dialogue[data-phase="permissions"]
+    .onboarding-permission-card__title {
+    font-size: 14px;
+  }
+
+  .onboarding-dialogue[data-phase="permissions"]
+    .onboarding-permission-card__desc {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .onboarding-dialogue[data-phase="permissions"] .onboarding-step-desc {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .onboarding-permissions-list {
+    gap: 8px;
+    margin-top: 10px;
+    margin-bottom: 12px;
+  }
+
+  /* Browser phase — discovery rows are 4–5 deep with a reveal section. */
+  .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row {
+    padding: 12px 16px;
+    gap: 5px;
+  }
+
+  .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row-label {
+    font-size: 16px;
+  }
+
+  .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row-desc {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .onboarding-discovery-list {
+    gap: 6px;
+  }
+
+  /* Extension phase — large icon + card. */
+  .onboarding-dialogue[data-phase="extension"] .onboarding-extension-card {
+    padding: 14px 18px;
+    gap: 14px;
+    margin-top: 12px;
+  }
+
+  .onboarding-dialogue[data-phase="extension"] .onboarding-extension-card__icon {
+    width: 72px;
+    height: 72px;
+  }
+
+  /* Capabilities — height-bound the frame so the stage's 16/7.7 aspect
+   * doesn't dictate a height larger than the viewport allows. The third
+   * term in min() converts available vertical space into a width via the
+   * stage aspect ratio (≈80px reserved for caption + words + padding). */
+  .onboarding-dialogue[data-phase="capabilities"] .onboarding-split-right {
+    padding-top: clamp(14px, 2vh, 24px);
+    padding-bottom: 20px;
+  }
+
+  .onboarding-dialogue[data-phase="capabilities"] .onboarding-split-stage {
+    min-height: 0;
+    gap: 10px;
+  }
+
+  .onboarding-cap-frame {
+    /* Reserve ~310px for split padding (~80) + split title (~30) + caption
+     * (~78) + words (~36) + gaps (~24) + Continue (~50) + breathing room.
+     * Stage takes the rest of the frame after caption/words, so its width
+     * via `aspect-ratio: 16/7.7` is bounded by the available height. */
+    width: min(
+      1180px,
+      calc(100vw - 80px),
+      calc((100vh - 310px) * 16 / 7.7)
+    );
+  }
+
+  .onboarding-cap-caption {
+    padding: 10px 20px;
+  }
+
+  .onboarding-cap-caption__title {
+    font-size: clamp(16px, 1.6vw, 20px);
+  }
+
+  .onboarding-cap-caption__body {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .onboarding-cap-words {
+    padding: 2px 14px 10px;
+    gap: clamp(8px, 1.2vw, 18px);
+  }
+
+  /* Creation — the embedded canvas was floored at 860px and would
+   * exceed any window shorter than ~960px. Lower the floor so the
+   * Continue option below stays reachable; the canvas mock degrades
+   * gracefully because its inner layout is responsive. */
+  .onboarding-dialogue[data-phase="creation"] .onboarding-canvas {
+    height: clamp(420px, 88vh, 1080px);
+    min-height: clamp(420px, 88vh, 1080px);
+  }
+
+  .onboarding-dialogue[data-phase="creation"] .onboarding-split-stage {
+    min-height: 0;
+  }
+
+  .onboarding-step-content--creation {
+    transform: translateY(-32px);
+  }
+
+  /* Memory / double-tap / shortcuts mocks share a 280px floor that
+   * doesn't pay off on short windows — the mocks read fine smaller and
+   * the toggle/keycap row + Continue need the headroom. */
+  .onboarding-memory-mock,
+  .onboarding-doubletap-desktop,
+  .onboarding-shortcut-surface {
+    min-height: 200px;
+  }
+
+  .onboarding-dialogue[data-phase="memory"] .onboarding-split-right,
+  .onboarding-dialogue[data-phase="double-tap"] .onboarding-split-right {
+    padding-top: clamp(28px, 4vh, 56px);
+    padding-bottom: 28px;
+  }
+
+  .onboarding-memory-step,
+  .onboarding-doubletap-step {
+    gap: 16px;
+  }
+
+  .onboarding-doubletap-step__lede {
+    font-size: clamp(17px, 2vw, 22px);
+    line-height: 1.4;
+  }
+
+  .onboarding-doubletap-keycap {
+    min-width: 38px;
+    height: 38px;
+    font-size: 17px;
+  }
+
+  /* Theme — 4 stacked option groups. Tighten the row spacing only. */
+  .onboarding-dialogue[data-phase="theme"] .onboarding-theme-row {
+    margin-bottom: 4px;
+  }
+
+  .onboarding-dialogue[data-phase="theme"] .onboarding-theme-row .onboarding-pill,
+  .onboarding-dialogue[data-phase="theme"] .onboarding-theme-grid .onboarding-pill {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+}
+
+@media (max-height: 680px) {
+  .onboarding-split-right {
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+
+  .onboarding-split-stage {
+    gap: 12px;
+  }
+
+  .onboarding-step-content {
+    gap: 10px;
+  }
+
+  .onboarding-split-title {
+    font-size: 16px;
+    margin: 0;
+  }
+
+  /* Capabilities — tighter still; caption body is hidden so we only
+   * reserve ~230px (smaller padding + title + words + Continue). */
+  .onboarding-cap-frame {
+    width: min(
+      1180px,
+      calc(100vw - 60px),
+      calc((100vh - 230px) * 16 / 7.7)
+    );
+  }
+
+  .onboarding-cap-caption {
+    padding: 8px 16px 6px;
+  }
+
+  .onboarding-cap-caption__body {
+    display: none;
+  }
+
+  .onboarding-cap-words {
+    padding: 0 12px 8px;
+  }
+
+  .onboarding-dialogue[data-phase="capabilities"] .onboarding-split-right {
+    padding-top: 10px;
+    padding-bottom: 14px;
+  }
+
+  /* Creation — tighter floor still. */
+  .onboarding-dialogue[data-phase="creation"] .onboarding-canvas {
+    height: clamp(360px, 84vh, 1080px);
+    min-height: clamp(360px, 84vh, 1080px);
+  }
+
+  .onboarding-step-content--creation {
+    transform: translateY(-16px);
+    gap: 12px;
+  }
+
+  /* Mock floors drop further. */
+  .onboarding-memory-mock,
+  .onboarding-doubletap-desktop,
+  .onboarding-shortcut-surface {
+    min-height: 160px;
+  }
+
+  /* Permissions — drop optional meta lines so the 3 cards + button fit. */
+  .onboarding-dialogue[data-phase="permissions"] .onboarding-permission-card {
+    padding: 8px 12px;
+    gap: 10px;
+  }
+
+  .onboarding-dialogue[data-phase="permissions"]
+    .onboarding-permission-card__desc {
+    font-size: 11px;
+  }
+
+  .onboarding-dialogue[data-phase="permissions"]
+    .onboarding-permission-card__meta {
+    display: none;
+  }
+
+  .onboarding-dialogue[data-phase="permissions"] .onboarding-step-desc {
+    font-size: 12px;
+  }
+
+  /* Browser rows tighter still. */
+  .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row {
+    padding: 10px 14px;
+  }
+
+  .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row-label {
+    font-size: 14px;
+  }
+
+  .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row-desc {
+    font-size: 12px;
+  }
+
+  /* Extension — shrink the icon and copy. */
+  .onboarding-dialogue[data-phase="extension"] .onboarding-extension-card__icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+  }
+
+  .onboarding-dialogue[data-phase="extension"] .onboarding-step-desc {
+    font-size: 13px;
+  }
+
+  /* Double-tap — shrink the lede + keycaps. */
+  .onboarding-doubletap-step__lede {
+    font-size: 15px;
+    line-height: 1.4;
+  }
+
+  .onboarding-doubletap-keycap {
+    min-width: 32px;
+    height: 32px;
+    font-size: 15px;
+  }
+
+  .onboarding-doubletap-step,
+  .onboarding-memory-step {
+    gap: 12px;
+  }
+}
