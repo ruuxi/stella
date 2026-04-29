@@ -24,6 +24,13 @@ export const socialMessageKindValidator = v.union(
   v.literal("system"),
 );
 
+export const socialMessageModerationStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("clean"),
+  v.literal("censored"),
+  v.literal("failed"),
+);
+
 export const stellaSessionStatusValidator = v.union(
   v.literal("active"),
   v.literal("paused"),
@@ -109,12 +116,19 @@ export const socialSchema = {
     clientMessageId: v.optional(v.string()),
     kind: socialMessageKindValidator,
     body: v.string(),
+    originalBody: v.optional(v.string()),
+    moderationStatus: v.optional(socialMessageModerationStatusValidator),
+    moderatedAt: v.optional(v.number()),
     createdAt: v.number(),
     editedAt: v.optional(v.number()),
   })
     .index("by_roomId_and_createdAt", ["roomId", "createdAt"])
     .index("by_roomId_and_clientMessageId", ["roomId", "clientMessageId"])
-    .index("by_senderOwnerId_and_createdAt", ["senderOwnerId", "createdAt"]),
+    .index("by_senderOwnerId_and_createdAt", ["senderOwnerId", "createdAt"])
+    .index("by_moderationStatus_and_createdAt", [
+      "moderationStatus",
+      "createdAt",
+    ]),
 
   stella_sessions: defineTable({
     roomId: v.id("social_rooms"),

@@ -67,10 +67,6 @@ import {
   setDeveloperResourcePreviewsEnabled,
   useDeveloperResourcePreviewsEnabled,
 } from "@/shared/lib/developer-resource-previews";
-import {
-  getSocialCensorEnabled,
-  setSocialCensorEnabled,
-} from "@/app/social/social-censor";
 import "@/global/settings/settings.css";
 
 const LegalDialog = lazy(() =>
@@ -605,9 +601,6 @@ function BasicSettingsTab() {
   const platform = window.electronAPI?.platform;
   const developerResourcePreviewsEnabled =
     useDeveloperResourcePreviewsEnabled();
-  const [socialCensorEnabled, setLocalSocialCensorEnabled] = useState(
-    getSocialCensorEnabled,
-  );
   const [preventComputerSleep, setPreventComputerSleep] = useState(false);
   const [preventSleepLoaded, setPreventSleepLoaded] = useState(false);
   const [isSavingPreventSleep, setIsSavingPreventSleep] = useState(false);
@@ -847,32 +840,6 @@ function BasicSettingsTab() {
               onCheckedChange={(checked) =>
                 setDeveloperResourcePreviewsEnabled(Boolean(checked))
               }
-            />
-          </div>
-        </div>
-      </div>
-      <div className="settings-card">
-        <h3 className="settings-card-title">Social</h3>
-        <p className="settings-card-desc">
-          Choose how Stella shows public and group conversations on this device.
-        </p>
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">Hide offensive words</div>
-            <div className="settings-row-sublabel">
-              Masks slurs and explicit words in social chats. Messages are not
-              changed for anyone else.
-            </div>
-          </div>
-          <div className="settings-row-control">
-            <Switch
-              checked={socialCensorEnabled}
-              onCheckedChange={(checked) => {
-                const enabled = Boolean(checked);
-                setLocalSocialCensorEnabled(enabled);
-                setSocialCensorEnabled(enabled);
-              }}
-              hideLabel
             />
           </div>
         </div>

@@ -14,10 +14,6 @@ import { SocialComposer } from "./SocialComposer";
 import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import type { SocialProfile } from "./hooks/use-social-profile";
 import { useSocialFriends } from "./hooks/use-social-friends";
-import {
-  getSocialCensorEnabled,
-  maskBannedTerms,
-} from "./social-censor";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
 import Globe from "lucide-react/dist/esm/icons/globe";
 import UserPlus from "lucide-react/dist/esm/icons/user-plus";
@@ -74,7 +70,6 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
   const socialSessionsApi = window.electronAPI?.socialSessions;
   const isGlobalRoom = roomData?.room.kind === "global";
 
-  const [censorEnabled, setCensorEnabled] = useState(getSocialCensorEnabled);
   const [sessionLookupId, setSessionLookupId] = useState<string | null>(null);
   const { sessionSummary, turns } = useSocialSession(sessionLookupId);
   const [isStartingSession, setIsStartingSession] = useState(false);
@@ -97,16 +92,6 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
   const isHost = sessionSummary?.isHost === true;
   const sessionIsLive = activeSession?.status === "active";
   const stellaArmed = armedForStella && sessionIsLive;
-
-  useEffect(() => {
-    const handleChange = () => setCensorEnabled(getSocialCensorEnabled());
-    window.addEventListener("stella-social-censor-change", handleChange);
-    window.addEventListener("storage", handleChange);
-    return () => {
-      window.removeEventListener("stella-social-censor-change", handleChange);
-      window.removeEventListener("storage", handleChange);
-    };
-  }, []);
 
   // Disarm whenever the session can no longer accept Stella turns.
   useEffect(() => {
@@ -474,7 +459,7 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
             if (isSystem) {
               return group.messages.map((msg) => (
                 <div key={msg.id} className="social-message-bubble" data-role="system">
-                  {censorEnabled ? maskBannedTerms(msg.body) : msg.body}
+                  {msg.body}
                 </div>
               ));
             }
@@ -528,7 +513,7 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
                     data-role={role}
                     data-pending={msg.pending || undefined}
                   >
-                    {censorEnabled ? maskBannedTerms(msg.body) : msg.body}
+                    {msg.body}
                   </div>
                 ))}
               </div>

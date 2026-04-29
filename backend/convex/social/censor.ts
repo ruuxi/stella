@@ -105,28 +105,97 @@ function normalizeChar(ch: string): string {
 }
 
 function normalizedLetters(value: string) {
-  const letters: string[] = [];
+  const letters: { normalized: string; sourceIndex: number }[] = [];
   const input = value.replace(ZERO_WIDTH, "").toLowerCase();
   for (let i = 0; i < input.length; i += 1) {
     const normalized = normalizeChar(input[i]);
     if (/^[a-z]$/.test(normalized)) {
-      letters.push(normalized);
+      letters.push({ normalized, sourceIndex: i });
     }
   }
-  return letters.join("");
+  return letters;
+}
+
+function findStemRanges(
+  letters: { normalized: string; sourceIndex: number }[],
+  stem: string,
+): [number, number][] {
+  const ranges: [number, number][] = [];
+
+  for (let start = 0; start < letters.length; start += 1) {
+    if (letters[start].normalized !== stem[0]) continue;
+
+    let stemIndex = 1;
+    let letterIndex = start + 1;
+    let end = start;
+
+    while (letterIndex < letters.length && stemIndex < stem.length) {
+      const current = letters[letterIndex].normalized;
+      const expected = stem[stemIndex];
+      const previousExpected = stem[stemIndex - 1];
+
+      if (current === expected) {
+        end = letterIndex;
+        stemIndex += 1;
+        letterIndex += 1;
+        continue;
+      }
+
+      if (current === previousExpected) {
+        end = letterIndex;
+        letterIndex += 1;
+        continue;
+      }
+
+      break;
+    }
+
+    while (
+      stemIndex === stem.length &&
+      letterIndex < letters.length &&
+      letters[letterIndex].normalized === stem[stem.length - 1]
+    ) {
+      end = letterIndex;
+      letterIndex += 1;
+    }
+
+    if (stemIndex === stem.length) {
+      ranges.push([letters[start].sourceIndex, letters[end].sourceIndex]);
+    }
+  }
+
+  return ranges;
 }
 
 export function findBannedTerm(value: string): string | null {
-  const normalized = normalizedLetters(value);
-  if (!normalized) {
+  const letters = normalizedLetters(value);
+  if (letters.length === 0) {
     return null;
   }
 
   for (const stem of BANNED_STEMS) {
-    if (normalized.includes(stem)) {
+    if (findStemRanges(letters, stem).length > 0) {
       return stem;
     }
   }
 
   return null;
+}
+
+export function maskBannedTerms(value: string): string {
+  const letters = normalizedLetters(value);
+  if (letters.length === 0) return value;
+
+  const ranges: [number, number][] = [];
+  for (const stem of BANNED_STEMS) {
+    ranges.push(...findStemRanges(letters, stem));
+  }
+
+  if (ranges.length === 0) return value;
+  return Array.from(value, (ch, index) =>
+    ranges.some(([start, end]) => index >= start && index <= end) &&
+    /[^\s]/.test(ch)
+      ? "•"
+      : ch,
+  ).join("");
 }
