@@ -30,6 +30,28 @@ const NO_OP = () => {}
 
 /** Set when navigating away from chat; cleared on full app restart (new session). */
 const SESSION_LEFT_CHAT_KEY = 'stella_left_chat_once'
+const CHAT_HOME_SURFACE_STORAGE_KEY = 'stella.chatHomeSurface'
+
+type ChatHomeSurface = 'home' | 'chat'
+
+function readPersistedChatHomeSurface(): ChatHomeSurface | null {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return null
+    const raw = window.localStorage.getItem(CHAT_HOME_SURFACE_STORAGE_KEY)
+    return raw === 'home' || raw === 'chat' ? raw : null
+  } catch {
+    return null
+  }
+}
+
+function writePersistedChatHomeSurface(surface: ChatHomeSurface): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    window.localStorage.setItem(CHAT_HOME_SURFACE_STORAGE_KEY, surface)
+  } catch {
+    // Storage is best-effort; the chat route itself still restores normally.
+  }
+}
 
 const resetChatScroll = (
   resetScrollState: () => void,
@@ -62,9 +84,12 @@ export function useFullShellChat({
   })
   const [hasInteractedWithChatThisSession, setHasInteractedWithChatThisSession] =
     useState(false)
-  const [isHomeDismissed, setIsHomeDismissed] = useState(false)
+  const [isHomeDismissed, setIsHomeDismissed] = useState(
+    () => readPersistedChatHomeSurface() === 'chat',
+  )
   const [composerFocusRequestId, setComposerFocusRequestId] = useState(0)
   const prevOnChatRouteRef = useRef(isOnChatRoute)
+  const prevConversationIdRef = useRef(activeConversationId)
   const { chatContext, setChatContext, selectedText, setSelectedText } =
     useCapturedChatContext()
 
@@ -184,8 +209,18 @@ export function useFullShellChat({
   const showHomeContent = isHomeDismissed ? false : baseShowHomeContent
 
   useEffect(() => {
-    setIsHomeDismissed(false)
+    if (prevConversationIdRef.current === activeConversationId) return
+    const hadConversation = Boolean(prevConversationIdRef.current)
+    prevConversationIdRef.current = activeConversationId
+    if (hadConversation) {
+      setIsHomeDismissed(false)
+    }
   }, [activeConversationId])
+
+  useEffect(() => {
+    if (!isOnChatRoute) return
+    writePersistedChatHomeSurface(showHomeContent ? 'home' : 'chat')
+  }, [isOnChatRoute, showHomeContent])
 
   useEffect(() => {
     if (prevOnChatRouteRef.current && !isOnChatRoute) {
@@ -206,16 +241,19 @@ export function useFullShellChat({
 
   const dismissHome = useCallback(() => {
     setIsHomeDismissed(true)
+    writePersistedChatHomeSurface('chat')
   }, [])
 
   const showHome = useCallback(() => {
     setIsHomeDismissed(false)
+    writePersistedChatHomeSurface('home')
     forceShowHome()
   }, [forceShowHome])
 
   useEffect(() => {
     const handler = () => {
       setIsHomeDismissed(false)
+      writePersistedChatHomeSurface('home')
       forceShowHome()
     }
     window.addEventListener(STELLA_SHOW_HOME_EVENT, handler)
