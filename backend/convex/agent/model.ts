@@ -281,7 +281,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   synthesis: "synthesis",
   session_compaction_summary: "compact",
   thread_compaction_summary: "compact",
-  welcome: "standard",
+  welcome: "synthesis",
   mercury: "fast",
   music_prompt: "media",
   search_html: "fast",

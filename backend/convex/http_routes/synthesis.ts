@@ -252,11 +252,13 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                     }],
                   },
                 });
+                const analysis = assistantText(message);
+                const durationMs = Date.now() - startedAt;
 
                 return {
                   category,
-                  analysis: assistantText(message),
-                  durationMs: Date.now() - startedAt,
+                  analysis,
+                  durationMs,
                   usage: usageSummaryFromAssistant(message),
                   generated: true,
                 };
@@ -369,7 +371,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             completeManagedChat({
               config: {
                 ...welcomeConfig,
-                maxOutputTokens: 6096,
+                maxOutputTokens: 30000,
                 temperature: 0.7,
               },
               context: {
