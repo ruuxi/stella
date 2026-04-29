@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { SelfModHmrState } from "../../shared/contracts/boundary";
 import {
+  MORPH_FORWARD_RAMP_MS,
   MORPH_REVERSE_CROSSFADE_MS,
   MORPH_STEADY_STRENGTH,
 } from "../../shared/contracts/morph-timing";
@@ -397,13 +398,10 @@ export function MorphTransition() {
           flavor === "onboarding"
             ? ONBOARDING_MORPH_STEADY_STRENGTH
             : MORPH_STEADY_STRENGTH;
-        // HMR flavor: snap straight to steady state — at the cover durations
-        // we now run (~300-500ms hold), the wind-up tween 0→steady is too
-        // brief to register as motion, just stutters the first frames.
-        // Onboarding still tweens (over `ONBOARDING_MORPH_COVER_RAMP_MS`)
-        // because the demo has time for the buildup to read.
-        strengthRef.current =
-          flavor === "onboarding" ? 0 : steadyStrength;
+        // Both HMR and onboarding start from a clean still frame, then ease
+        // into ripple strength. HMR uses a shorter ramp so the whole cover
+        // reads as one S-curve: calm → active → calm.
+        strengthRef.current = 0;
         mixRef.current = 0;
         alphaRef.current = 1;
         setHmrState(IDLE_HMR_STATE);
@@ -438,16 +436,14 @@ export function MorphTransition() {
             () => signalMorphReady(data.transitionId),
           );
 
-          // HMR flavor already snapped to steady state above; only the
-          // onboarding flavor needs the deliberate wind-up tween.
-          if (flavor === "onboarding") {
-            void tweenRef(
-              strengthRef,
-              steadyStrength,
-              ONBOARDING_MORPH_COVER_RAMP_MS,
-              activeTweensRef,
-            );
-          }
+          void tweenRef(
+            strengthRef,
+            steadyStrength,
+            flavor === "onboarding"
+              ? ONBOARDING_MORPH_COVER_RAMP_MS
+              : MORPH_FORWARD_RAMP_MS,
+            activeTweensRef,
+          );
         });
       }),
     );
