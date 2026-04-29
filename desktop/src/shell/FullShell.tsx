@@ -74,6 +74,7 @@ export const FullShell = () => {
   const [stellaHiddenByPhase, setStellaHiddenByPhase] = useState(false);
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("intro");
+  const [hasEnteredApp, setHasEnteredApp] = useState(false);
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDemoRef = useRef<OnboardingDemo>(null);
   const fogDefsRef = useRef<SVGSVGElement | null>(null);
@@ -116,7 +117,7 @@ export const FullShell = () => {
   }, []);
 
   const startupReady = runtimeAuthReady && runtimeStatus === "ready";
-  const appReady = onboarding.onboardingDone && startupReady;
+  const appReady = onboarding.onboardingDone && (hasEnteredApp || startupReady);
   const isPreparingStartup =
     runtimeStatus === "preparing" ||
     (!runtimeAuthReady && authBootstrapStatus !== "failed");
@@ -135,9 +136,14 @@ export const FullShell = () => {
     retryRuntimeBootstrap();
   }, [authBootstrapStatus, retryRuntimeBootstrap]);
 
-  // The desktop app should not mount before auth has reached the runtime.
-  // Anonymous auth counts here; this only waits for a usable local session and
-  // host token handoff, not for the user to connect an account.
+  useEffect(() => {
+    if (!onboarding.onboardingDone || !startupReady) return;
+    setHasEnteredApp(true);
+  }, [onboarding.onboardingDone, startupReady]);
+
+  // The desktop app should not mount before auth has reached the runtime on
+  // startup. Once mounted, later sign-out/sign-in transitions keep the app
+  // visible while auth falls back to an anonymous local session.
   useEffect(() => {
     window.electronAPI?.ui.setAppReady?.(appReady);
   }, [appReady]);
