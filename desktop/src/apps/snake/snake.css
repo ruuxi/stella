@@ -82,13 +82,10 @@
 }
 
 .snake-board {
-  display: grid;
-  grid-template-columns: repeat(18, 1fr);
-  gap: 3px;
   aspect-ratio: 1;
-  padding: 12px;
   border-radius: 20px;
   outline: none;
+  overflow: hidden;
   background:
     radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 58%),
     color-mix(in srgb, var(--background) 76%, black 10%);
@@ -98,26 +95,29 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 35%, transparent);
 }
 
-.snake-cell {
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+.snake-board--three {
+  position: relative;
+  min-height: min(58vh, 560px);
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+  box-shadow:
+    inset 0 0 36px color-mix(in srgb, var(--primary) 16%, transparent),
+    0 18px 70px rgba(0, 0, 0, 0.28);
 }
 
-.snake-cell[data-snake="body"],
-.snake-cell[data-snake="head"] {
-  background: linear-gradient(135deg, #8cff7a, #20d66b);
-  box-shadow: 0 0 12px rgba(75, 255, 123, 0.34);
+.snake-board--three::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 22%),
+    radial-gradient(circle at 50% 10%, rgba(116, 98, 255, 0.24), transparent 42%);
 }
 
-.snake-cell[data-snake="head"] {
-  border-radius: 10px;
-  background: linear-gradient(135deg, #e6ff93, #35ec74);
-}
-
-.snake-cell[data-snake="food"] {
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #fff1a8, #ff4b6e 55%, #a50f42 100%);
-  box-shadow: 0 0 18px rgba(255, 75, 110, 0.56);
+.snake-board--three canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .snake-hint {
