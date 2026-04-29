@@ -44,4 +44,24 @@ describe("RuntimeClientAdapter config batching", () => {
       authToken: "fresh-token",
     });
   });
+
+  it("does not mark a completed startChat result as the active run", async () => {
+    const adapter = createAdapter();
+    const anyAdapter = adapter as any;
+    anyAdapter.client.startChat = vi.fn().mockResolvedValue({ runId: "run-1" });
+
+    await adapter.handleLocalChat(
+      {
+        conversationId: "conversation-1",
+        userPrompt: "hello",
+      },
+      {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+      },
+    );
+
+    expect(anyAdapter.activeRun).toBeNull();
+  });
 });

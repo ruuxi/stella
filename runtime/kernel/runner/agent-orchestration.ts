@@ -318,6 +318,7 @@ const buildLifecycleEventPayload = (
         description: event.description,
         agentType: event.agentType,
         ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
+        ...(event.statusText ? { statusText: event.statusText } : {}),
       };
     case "agent-completed":
       return {

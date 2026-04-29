@@ -574,10 +574,6 @@ export class RuntimeClientAdapter {
         ...payload,
         requestId,
       });
-      this.activeRun = {
-        runId: result.runId,
-        conversationId: payload.conversationId,
-      };
       this.localChatSessions.get(requestId)?.knownRunIds.add(result.runId);
       return result;
     } catch (error) {
