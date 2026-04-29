@@ -333,7 +333,9 @@ export const createSelfModHmrController = (
     phase: string,
     data: Record<string, unknown> = {},
   ): void => {
-    console.info("[self-mod-hmr:controller]", phase, data);
+    process.stderr.write(
+      `[self-mod-hmr:controller] ${phase} ${JSON.stringify(data)}\n`,
+    );
   };
 
   const snapshotPathForRun = (runId: string, repoRelativePath: string): void => {
