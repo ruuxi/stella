@@ -616,14 +616,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     // per-runId runtime-reload pauses.
     const dispatchApplyBatch = async (applyResult: ApplyResult) => {
       if (applyResult.appliedRuns.length === 0) {
-        process.stderr.write(
-          `[self-mod-hmr:worker] dispatchApplyBatch:skipped ${JSON.stringify({
-            reason: "no-applied-runs",
-            restartRelevantRunIds: applyResult.restartRelevantRunIds,
-            hasRestartRelevantPaths: applyResult.hasRestartRelevantPaths,
-            hasFullReloadRelevantPaths: applyResult.hasFullReloadRelevantPaths,
-          })}\n`,
-        );
         return;
       }
       const transitionId = crypto.randomUUID();
@@ -641,22 +633,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         applyResult,
         requiresFullReload,
       });
-      process.stderr.write(
-        `[self-mod-hmr:worker] dispatchApplyBatch ${JSON.stringify({
-          transitionId,
-          runIds: applyResult.restartRelevantRunIds,
-          stateRunIds,
-          requiresFullReload,
-          hasRestartRelevantPaths: applyResult.hasRestartRelevantPaths,
-          hasFullReloadRelevantPaths: applyResult.hasFullReloadRelevantPaths,
-          appliedRuns: applyResult.appliedRuns.map((run) => ({
-            runId: run.runId,
-            paths: run.paths,
-            restartRelevantPaths: run.restartRelevantPaths,
-            fullReloadRelevantPaths: run.fullReloadRelevantPaths,
-          })),
-        })}\n`,
-      );
       try {
         await peer.request(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, {
           transitionId,
@@ -1964,23 +1940,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           ? payload.runIds.filter((runId) => typeof runId === "string")
           : [];
         await releaseRuntimeReloadFor(staleRunIds);
-        process.stderr.write(
-          `[self-mod-hmr:worker] resume:unknownTransition ${JSON.stringify({
-            transitionId,
-            staleRunIds,
-          })}\n`,
-        );
         return { ok: false, reason: "unknown-transition" as const };
       }
       const controller = state.selfModHmrController;
-      process.stderr.write(
-        `[self-mod-hmr:worker] resume:start ${JSON.stringify({
-          transitionId,
-          runIds: pending.applyResult.restartRelevantRunIds,
-          options: payload?.options ?? null,
-          requiresFullReload: pending.requiresFullReload,
-        })}\n`,
-      );
       const applied = controller
         ? await controller
             .apply(pending.applyResult.appliedRuns, payload?.options)
@@ -2008,13 +1970,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       for (const runId of pending.applyResult.restartRelevantRunIds) {
         selfModRunRootIds.delete(runId);
       }
-      process.stderr.write(
-        `[self-mod-hmr:worker] resume:done ${JSON.stringify({
-          transitionId,
-          runIds: pending.applyResult.restartRelevantRunIds,
-          applied,
-        })}\n`,
-      );
       return { ok: applied };
     },
   );
