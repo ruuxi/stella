@@ -66,14 +66,6 @@ export const CustomStore = ({ size = 18, className = "", ...props }: IconProps) 
   </svg>
 );
 
-export const CustomSnake = ({ size = 18, className = "", ...props }: IconProps) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`custom-icon icon-snake ${className}`} {...props}>
-    <path className="snake-body" d="M17 5h-5a4 4 0 000 8h2a4 4 0 010 8H7" />
-    <path className="snake-tail" d="M7 21l-3-3 3-3" />
-    <circle className="snake-eye" cx="18" cy="5" r="1" fill="currentColor" stroke="none" />
-  </svg>
-);
-
 export const CustomDevice = ({ size = 18, className = "", ...props }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`custom-icon icon-device ${className}`} {...props}>
     <g className="device-body-group">
