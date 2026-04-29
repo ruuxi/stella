@@ -116,11 +116,10 @@ describe("orchestrator direct tool surface", () => {
     expect(generalTools.has("view_image")).toBe(true);
     expect(generalTools.has("image_gen")).toBe(true);
 
-    const storeTools = new Set(host.getToolCatalog("store").map((tool) => tool.name));
-    expect(storeTools.has("askQuestion")).toBe(true);
-    expect(storeTools.has("StoreListLocalCommits")).toBe(false);
-    expect(storeTools.has("StorePublishCommits")).toBe(false);
-    expect(storeTools.has("Store")).toBe(false);
+    // Store agent now lives on the backend — the local runtime exposes
+    // none of its tools and the orchestrator no longer has a `Store`
+    // delegation tool. Sanity-check that's still the case.
+    expect(orchestratorTools.has("Store")).toBe(false);
 
     const fashionTools = new Set(host.getToolCatalog("fashion").map((tool) => tool.name));
     expect(fashionTools.has("askQuestion")).toBe(false);
@@ -155,22 +154,6 @@ describe("orchestrator direct tool surface", () => {
       "Question tray rendered in chat",
     );
 
-    const storeResult = await host.executeTool(
-      "askQuestion",
-      {
-        questions: [
-          {
-            question: "Publish this selection?",
-            options: [{ label: "Publish" }, { label: "Cancel" }],
-          },
-        ],
-      },
-      makeToolContext("store"),
-    );
-
-    expect(storeResult.error).toBeUndefined();
-    expect(storeResult.result as string).toContain("same Store thread");
-
     const generalResult = await host.executeTool(
       "askQuestion",
       {
@@ -184,7 +167,7 @@ describe("orchestrator direct tool surface", () => {
       makeToolContext("general"),
     );
 
-    expect(generalResult.error).toContain("only available to user-facing agents");
+    expect(generalResult.error).toContain("only available to the orchestrator");
 
     const missingResult = await host.executeTool(
       "askQuestion",

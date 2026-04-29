@@ -47,7 +47,11 @@ export const resolveAgentNotReadyToast = (
   }
 }
 
-export const trySyncHostToken = async (): Promise<boolean> => {
+export const trySyncHostToken = async ({
+  hasConnectedAccount,
+}: {
+  hasConnectedAccount: boolean
+}): Promise<boolean> => {
   if (!window.electronAPI?.system.setAuthState) return false
 
   try {
@@ -58,10 +62,10 @@ export const trySyncHostToken = async (): Promise<boolean> => {
     await window.electronAPI.system.setAuthState({
       authenticated: true,
       token,
+      hasConnectedAccount,
     })
     return true
   } catch {
     return false
   }
 }
-

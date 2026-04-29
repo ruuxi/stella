@@ -239,6 +239,15 @@ export type LocalGitCommitRecord = {
   legacyFeatureTagged?: boolean;
   /** Optional package id this commit belongs to (only set for installs/updates). */
   packageId?: string;
+  /**
+   * Stella self-mod feature grouping. Surfaced as first-class fields so
+   * the Store side panel can resolve "which commits belong to this
+   * feature?" without re-parsing `body` (which strips Stella trailers
+   * before being returned).
+   */
+  featureId?: string;
+  featureTitle?: string;
+  parentPackageIds?: string[];
 };
 
 export type StoreReleaseBlueprintFile = {
@@ -265,7 +274,13 @@ export type StoreReleaseBlueprintBatch = {
   patch: string;
 };
 
-export type StorePackageCategory = "agents" | "stella";
+export type StorePackageCategory =
+  | "apps-games"
+  | "productivity"
+  | "customization"
+  | "skills-agents"
+  | "integrations"
+  | "other";
 
 export type StoreReleaseArtifact = {
   kind: "self_mod_blueprint";
@@ -304,6 +319,7 @@ export type StoreReleaseManifest = {
 export type StorePackageRecord = {
   packageId: string;
   category?: StorePackageCategory;
+  tags?: string[];
   displayName: string;
   description: string;
   latestReleaseNumber: number;
@@ -311,6 +327,7 @@ export type StorePackageRecord = {
   updatedAt: number;
   iconUrl?: string;
   authorDisplayName?: string;
+  authorHandle?: string;
   featured?: boolean;
 };
 
@@ -356,25 +373,6 @@ export type StorePublishCandidateBundle = {
   commits: StorePublishCandidateCommit[];
   files: StorePublishCandidateFile[];
   existingPackageId?: string;
-};
-
-export type StorePublishDraft = {
-  packageId: string;
-  category: StorePackageCategory;
-  displayName: string;
-  description: string;
-  releaseNotes?: string;
-  commitHashes: string[];
-  existingPackageId?: string;
-  releaseNumber: number;
-  selectedChanges: Array<{
-    commitHash: string;
-    shortHash?: string;
-    subject: string;
-    files: string[];
-  }>;
-  iconUrl?: string;
-  authorDisplayName?: string;
 };
 
 export type SelfModHmrPhase =

@@ -31,7 +31,8 @@ export type DisplayTabKind =
   | "download"
   | "text"
   | "ideas"
-  | "trash";
+  | "trash"
+  | "store";
 
 /**
  * Stable, dedup-able description of what a tab represents. Two specs with

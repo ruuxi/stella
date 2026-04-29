@@ -228,7 +228,12 @@ const assistantRowEqual = (
     (b.officePreviewRef?.sessionId ?? null) &&
   resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
-  askQuestionPayloadEqual(a.askQuestion, b.askQuestion);
+  askQuestionPayloadEqual(a.askQuestion, b.askQuestion) &&
+  // Compare a stable key for the custom slot (the ReactNode itself
+  // changes identity on each render of the Store thread). Surfaces
+  // that mount a custom slot must supply a key derived from the
+  // payload, not from the rendered node.
+  (a.customSlotKey ?? null) === (b.customSlotKey ?? null);
 
 export const eventRowEqual = (
   a: EventRowViewModel,

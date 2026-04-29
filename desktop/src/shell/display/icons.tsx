@@ -294,6 +294,39 @@ const IdeasIcon = ({ size = 18, style }: IconProps) => (
   </svg>
 );
 
+const StoreIcon = ({ size = 18, style }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={style}
+  >
+    {/* Shopping bag silhouette — matches the sidebar's `CustomStore` mark
+        so the display tab reads as "the same thing as Store" at a glance. */}
+    <path
+      d="M6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8z"
+      stroke="currentColor"
+      strokeOpacity="0.75"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="currentColor"
+      fillOpacity="0.08"
+    />
+    <path
+      d="M9 8V6a3 3 0 0 1 6 0v2"
+      stroke="currentColor"
+      strokeOpacity="0.75"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
+  </svg>
+);
+
 const ChatIcon = ({ size = 18, style }: IconProps) => (
   <svg
     width={size}
@@ -389,5 +422,9 @@ export const DisplayTabIcon = ({
       return <TextIcon size={size} style={style} />;
     case "ideas":
       return <IdeasIcon size={size} style={style} />;
+    case "store":
+      return <StoreIcon size={size} style={style} />;
+    case "trash":
+      return null;
   }
 };

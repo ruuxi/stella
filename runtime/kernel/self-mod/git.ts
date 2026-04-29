@@ -335,7 +335,7 @@ const getChangedFilesForCommit = async (
 };
 
 /** Batch version: returns a map of commitHash → normalized file paths. */
-const getChangedFilesForCommits = async (
+export const getChangedFilesForCommits = async (
   repoRoot: string,
   commitHashes: string[],
 ): Promise<Map<string, string[]>> => {
@@ -369,12 +369,29 @@ const STELLA_INTERNAL_TRAILERS = new Set([
   "Stella-Package-Id",
   "Stella-Release-Number",
   "Stella-Task",
+  "Stella-Feature-Id",
+  "Stella-Feature-Title",
+  "Stella-Parent-Package-Id",
 ]);
 
-const parseStellaCommitTrailers = (
+export type StellaCommitTrailers = {
+  conversationId?: string;
+  packageId?: string;
+  featureId?: string;
+  featureTitle?: string;
+  /**
+   * Multi-parent: a single feature group may legitimately extend more
+   * than one installed add-on (e.g. a theme that touches two mods).
+   * `Stella-Parent-Package-Id` is therefore allowed to repeat in a
+   * single commit body. Order is preserved as written.
+   */
+  parentPackageIds: string[];
+};
+
+export const parseStellaCommitTrailers = (
   body: string,
-): { conversationId?: string; packageId?: string } => {
-  const trailers: { conversationId?: string; packageId?: string } = {};
+): StellaCommitTrailers => {
+  const trailers: StellaCommitTrailers = { parentPackageIds: [] };
   const lines = body.split(/\r?\n/);
   for (const line of lines) {
     const match = line.match(TRAILER_LINE_REGEX);
@@ -386,10 +403,17 @@ const parseStellaCommitTrailers = (
       trailers.conversationId = trimmedValue;
     } else if (key === "Stella-Package-Id") {
       trailers.packageId = trimmedValue;
+    } else if (key === "Stella-Feature-Id") {
+      trailers.featureId = trimmedValue;
+    } else if (key === "Stella-Feature-Title") {
+      trailers.featureTitle = trimmedValue;
+    } else if (key === "Stella-Parent-Package-Id") {
+      trailers.parentPackageIds.push(trimmedValue);
     }
   }
   return trailers;
 };
+
 
 // Legacy commits from the pre-Phase-3 feature/batch scheme used a
 // `[feature:<id>, +N]` subject prefix. We strip it so the normalized
@@ -422,6 +446,15 @@ export type LocalGitCommitSummary = {
   conversationId?: string;
   legacyFeatureTagged?: boolean;
   packageId?: string;
+  /**
+   * Stella self-mod grouping trailers, surfaced as first-class fields so
+   * downstream consumers (the Store side panel's Publish flow) don't
+   * have to re-parse `body` — which has all `Stella-*` trailers stripped
+   * for human display before being returned.
+   */
+  featureId?: string;
+  featureTitle?: string;
+  parentPackageIds?: string[];
 };
 
 const FILE_PREVIEW_LIMIT = 12;
@@ -431,7 +464,7 @@ const FILE_PREVIEW_LIMIT = 12;
 // legacy `[feature:…]` tag, so non-Stella commits never reach the Store
 // UI or publish path.
 const STELLA_COMMIT_GREP_PATTERN =
-  "Stella-(Conversation|Package-Id|Release-Number|Task)|\\[feature:";
+  "Stella-(Conversation|Package-Id|Release-Number|Task|Feature-Id|Feature-Title|Parent-Package-Id)|\\[feature:";
 const STELLA_COMMIT_VERIFY_REGEX = new RegExp(STELLA_COMMIT_GREP_PATTERN);
 const STELLA_STORE_APPLY_TRAILER_REGEX =
   /^Stella-(Package-Id|Release-Number|Task):/m;
@@ -522,6 +555,11 @@ export const listRecentGitCommits = async (
       ...(trailers.conversationId ? { conversationId: trailers.conversationId } : {}),
       ...(legacyFeatureTagged ? { legacyFeatureTagged: true } : {}),
       ...(trailers.packageId ? { packageId: trailers.packageId } : {}),
+      ...(trailers.featureId ? { featureId: trailers.featureId } : {}),
+      ...(trailers.featureTitle ? { featureTitle: trailers.featureTitle } : {}),
+      ...(trailers.parentPackageIds.length > 0
+        ? { parentPackageIds: trailers.parentPackageIds }
+        : {}),
     });
     if (summaries.length >= safeLimit) {
       break;
@@ -637,6 +675,163 @@ export const listRecentGitFeatures = async (
     }
   }
 
+  return summaries;
+};
+
+/**
+ * Raw, parsed commit feed used by `feature-roster.ts` (and any other
+ * caller that wants to walk Stella self-mod history). Returns one entry
+ * per commit with subject + body (untouched - parsing of trailers is
+ * the caller's job, since different consumers want different fields).
+ *
+ * Cap defaults to 4_000 commits; even active users won't usually exceed
+ * that, and Stella can grow the cap if needed since this is a
+ * read-only walk that doesn't hit the working tree.
+ */
+export const listStellaFeatureCommitsRaw = async (
+  repoRoot: string,
+  limit = 4_000,
+): Promise<Array<{
+  hash: string;
+  timestampMs: number;
+  subject: string;
+  body: string;
+}>> => {
+  await assertGitRepository(repoRoot);
+  const safeLimit = Math.max(1, Math.min(20_000, Math.floor(limit)));
+  const format = `%H${LOG_FIELD_SEPARATOR}%ct${LOG_FIELD_SEPARATOR}%s${LOG_FIELD_SEPARATOR}%b${LOG_ENTRY_SEPARATOR}`;
+  const output = await runGit(repoRoot, [
+    "log",
+    `--max-count=${safeLimit}`,
+    "--extended-regexp",
+    `--grep=${STELLA_COMMIT_GREP_PATTERN}`,
+    `--pretty=format:${format}`,
+  ]);
+  const commits: Array<{
+    hash: string;
+    timestampMs: number;
+    subject: string;
+    body: string;
+  }> = [];
+  for (const record of output
+    .split(LOG_ENTRY_SEPARATOR)
+    .map((entry) => entry.trim())
+    .filter(Boolean)) {
+    const fields = record.split(LOG_FIELD_SEPARATOR);
+    if (fields.length < 4) continue;
+    const [hash, timestampSec, subject, body] = fields;
+    const timestampMs = Number(timestampSec) * 1000;
+    if (!hash || !Number.isFinite(timestampMs)) continue;
+    commits.push({
+      hash,
+      timestampMs,
+      subject: subject ?? "",
+      body: body ?? "",
+    });
+  }
+  return commits;
+};
+
+/**
+ * Build the same `LocalGitCommitSummary` shape `listRecentGitCommits`
+ * returns, but for a *targeted* commit selector — either a set of
+ * `Stella-Feature-Id` trailers or an explicit list of commit hashes.
+ *
+ * This sidesteps the recent-commit window mismatch (the side-panel
+ * roster keeps 90-day-old features, but the publish path used to slice
+ * only the latest 120 commits). We walk up to `scanLimit` Stella
+ * self-mod commits — the same window the roster scans — and only do
+ * file enumeration for matched commits, so this is cheap even at the
+ * 4_000 cap.
+ */
+export const listGitCommitsBySelector = async (
+  repoRoot: string,
+  selector: { featureIds?: string[]; commitHashes?: string[] },
+  scanLimit = 4_000,
+): Promise<LocalGitCommitSummary[]> => {
+  const featureIdSet = new Set(
+    (selector.featureIds ?? [])
+      .map((id) => id?.trim())
+      .filter((id): id is string => Boolean(id)),
+  );
+  const hashSet = new Set(
+    (selector.commitHashes ?? [])
+      .map((hash) => hash?.trim())
+      .filter((hash): hash is string => Boolean(hash)),
+  );
+  if (featureIdSet.size === 0 && hashSet.size === 0) return [];
+
+  await assertGitRepository(repoRoot);
+  const safeScanLimit = Math.max(1, Math.min(20_000, Math.floor(scanLimit)));
+  const format = `%H${LOG_FIELD_SEPARATOR}%h${LOG_FIELD_SEPARATOR}%ct${LOG_FIELD_SEPARATOR}%s${LOG_FIELD_SEPARATOR}%b${LOG_ENTRY_SEPARATOR}`;
+  const output = await runGit(repoRoot, [
+    "log",
+    `--max-count=${safeScanLimit}`,
+    "--extended-regexp",
+    `--grep=${STELLA_COMMIT_GREP_PATTERN}`,
+    `--pretty=format:${format}`,
+  ]);
+
+  const records = output
+    .split(LOG_ENTRY_SEPARATOR)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  const summaries: LocalGitCommitSummary[] = [];
+  for (const record of records) {
+    const fields = record.split(LOG_FIELD_SEPARATOR);
+    if (fields.length < 5) continue;
+    const [hash, shortHash, timestampSec, rawSubject, rawBody] = fields;
+    const timestampMs = Number(timestampSec) * 1000;
+    if (!hash || !Number.isFinite(timestampMs)) continue;
+
+    const fullCombined = `${rawSubject ?? ""}\n${rawBody ?? ""}`;
+    if (!isPublishableStellaSelfModCommitMessage(fullCombined)) continue;
+
+    const trailers = parseStellaCommitTrailers(rawBody ?? "");
+
+    const matchesHash = hashSet.has(hash);
+    const matchesFeature = trailers.featureId
+      ? featureIdSet.has(trailers.featureId)
+      : false;
+    if (!matchesHash && !matchesFeature) continue;
+
+    const cleanSubject = stripLegacyFeatureTagFromSubject(rawSubject ?? "");
+    const cleanBody = stripStellaTrailerLinesFromBody(rawBody ?? "");
+    LEGACY_FEATURE_TAG_REGEX.lastIndex = 0;
+    const legacyFeatureTagged = LEGACY_FEATURE_TAG_REGEX.test(fullCombined);
+    LEGACY_FEATURE_TAG_REGEX.lastIndex = 0;
+
+    let files: string[] = [];
+    let fileCount = 0;
+    try {
+      files = await getChangedFilesForCommit(repoRoot, hash);
+      fileCount = files.length;
+      if (files.length > FILE_PREVIEW_LIMIT) {
+        files = files.slice(0, FILE_PREVIEW_LIMIT);
+      }
+    } catch {
+      // best-effort
+    }
+
+    summaries.push({
+      commitHash: hash,
+      shortHash: shortHash ?? hash.slice(0, 7),
+      subject: cleanSubject || "Self mod update",
+      body: cleanBody,
+      timestampMs,
+      fileCount,
+      files,
+      ...(trailers.conversationId ? { conversationId: trailers.conversationId } : {}),
+      ...(legacyFeatureTagged ? { legacyFeatureTagged: true } : {}),
+      ...(trailers.packageId ? { packageId: trailers.packageId } : {}),
+      ...(trailers.featureId ? { featureId: trailers.featureId } : {}),
+      ...(trailers.featureTitle ? { featureTitle: trailers.featureTitle } : {}),
+      ...(trailers.parentPackageIds.length > 0
+        ? { parentPackageIds: trailers.parentPackageIds }
+        : {}),
+    });
+  }
   return summaries;
 };
 
@@ -796,8 +991,13 @@ export type GitMessageCommitArgs = {
   subject: string;
   /** Optional body paragraphs (free-form). */
   body?: string;
-  /** RFC 822-style commit trailers like { "Stella-Conversation": "<id>" }. */
-  trailers?: Record<string, string>;
+  /**
+   * RFC 822-style commit trailers like { "Stella-Conversation": "<id>" }.
+   * Pass an array as the value to emit the trailer multiple times
+   * (used for `Stella-Parent-Package-Id` when a feature extends
+   * more than one installed add-on).
+   */
+  trailers?: Record<string, string | string[]>;
   /**
    * When provided, commits only these working-tree paths through an isolated
    * temporary index, ignoring whatever else may be staged. Use this for
@@ -855,12 +1055,14 @@ export const commitGitMessage = async (
     throw new Error("commitGitMessage requires a non-empty subject.");
   }
 
-  const trailerLines = Object.entries(args.trailers ?? {})
-    .map(([key, value]) => {
-      const trimmedValue = value?.trim();
-      return trimmedValue ? formatTrailer(key, trimmedValue) : null;
-    })
-    .filter((entry): entry is string => Boolean(entry));
+  const trailerLines: string[] = [];
+  for (const [key, value] of Object.entries(args.trailers ?? {})) {
+    const values = Array.isArray(value) ? value : [value];
+    for (const entry of values) {
+      const trimmed = entry?.trim();
+      if (trimmed) trailerLines.push(formatTrailer(key, trimmed));
+    }
+  }
 
   const body = (args.body ?? "").replace(/\r\n/g, "\n").trim();
 

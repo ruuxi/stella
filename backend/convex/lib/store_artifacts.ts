@@ -1,6 +1,17 @@
 import { ConvexError } from "convex/values";
 
-export type StorePackageCategory = "agents" | "stella";
+/**
+ * Broad, user-facing browse category. The system never branches on
+ * this — Discover filters on it, and that's it. Sub-categorization
+ * is via the package row's free-form `tags` array.
+ */
+export type StorePackageCategory =
+  | "apps-games"
+  | "productivity"
+  | "customization"
+  | "skills-agents"
+  | "integrations"
+  | "other";
 
 export type StoreReleaseBlueprintBatch = {
   batchId: string;
@@ -19,6 +30,30 @@ export type StoreReleaseBlueprintFile = {
   referenceContentBase64?: string;
 };
 
+/**
+ * Reference to a parent add-on a release extends. Multi-parent
+ * arrays are supported because a single release can legitimately
+ * extend more than one installed add-on (e.g. a theme touching two).
+ *
+ * Mirrored on both the Convex release row + the artifact manifest so
+ * the install agent can read it from the artifact at install time
+ * without an extra round-trip.
+ */
+export type StoreReleaseParentRef = {
+  authorHandle: string;
+  packageId: string;
+  compatibleWithReleaseNumber: number;
+};
+
+/**
+ * Hint for the install agent about what surface area the release was
+ * authored against. Not a hard gate — the install agent adapts to the
+ * local tree.
+ */
+export type StoreReleaseAuthoredAgainst = {
+  stellaCommit?: string;
+};
+
 export type StoreReleaseManifest = {
   packageId: string;
   releaseNumber: number;
@@ -32,6 +67,8 @@ export type StoreReleaseManifest = {
   createdAt: number;
   iconUrl?: string;
   authorDisplayName?: string;
+  parent?: StoreReleaseParentRef[];
+  authoredAgainst?: StoreReleaseAuthoredAgainst;
 };
 
 export type StoreReleaseArtifact = {
@@ -68,7 +105,14 @@ export type StorePublishCandidateBundle = {
   existingPackageId?: string;
 };
 
-export const STORE_PACKAGE_CATEGORIES = ["agents", "stella"] as const;
+export const STORE_PACKAGE_CATEGORIES = [
+  "apps-games",
+  "productivity",
+  "customization",
+  "skills-agents",
+  "integrations",
+  "other",
+] as const;
 
 export const DEFAULT_BLUEPRINT_APPLY_GUIDANCE =
   "Treat this release blueprint as the reference implementation for the feature. " +
@@ -144,6 +188,17 @@ const stripSlashComments = (input: string): string => {
     }
 
     if (char === "/" && next === "/") {
+      // Don't eat URL-like text such as `url(https://example.com/x)`
+      // or bare `https://...` strings. A real line comment is preceded
+      // by whitespace/operator/punctuation, never by `:` — which is the
+      // protocol separator that marks a URL. Treating those as
+      // comments would silently truncate code/CSS in the published
+      // snapshot.
+      const prevChar = output.length > 0 ? output[output.length - 1] : "";
+      if (prevChar === ":") {
+        output += char;
+        continue;
+      }
       while (index < input.length && input[index] !== "\n") {
         index += 1;
       }
@@ -164,6 +219,10 @@ const stripHashComments = (input: string): string =>
     .split(/\r?\n/)
     .map((line) => {
       const trimmed = line.trimStart();
+      // Preserve shebangs (`#!/usr/bin/env node`, `#!/bin/bash`, …) —
+      // stripping them turns published shell/Python/etc. scripts into
+      // non-executable text and breaks the installed copy.
+      if (trimmed.startsWith("#!")) return line;
       if (trimmed.startsWith("#")) return "";
       return line;
     })
@@ -251,9 +310,13 @@ export const normalizeStoreCategory = (
   value: string | undefined,
 ): StorePackageCategory => {
   const normalized = value?.trim().toLowerCase();
-  return normalized && isStorePackageCategory(normalized)
-    ? normalized
-    : "stella";
+  if (normalized && isStorePackageCategory(normalized)) return normalized;
+  // Legacy values from the original two-bucket scheme map onto the
+  // closest broad category so we don't trip validators on existing
+  // call sites that still pass them in.
+  if (normalized === "agents") return "skills-agents";
+  if (normalized === "stella") return "other";
+  return "other";
 };
 
 const buildBlueprintFileChangeType = (args: {
@@ -287,6 +350,8 @@ export const buildStoreReleaseArtifactFromCandidate = (args: {
   releaseNotes?: string;
   iconUrl?: string;
   authorDisplayName?: string;
+  parent?: StoreReleaseParentRef[];
+  authoredAgainst?: StoreReleaseAuthoredAgainst;
   candidate: StorePublishCandidateBundle;
 }): StoreReleaseArtifact => {
   const selectedHashes = Array.from(
@@ -346,6 +411,10 @@ export const buildStoreReleaseArtifactFromCandidate = (args: {
       ...(args.iconUrl ? { iconUrl: args.iconUrl } : {}),
       ...(args.authorDisplayName
         ? { authorDisplayName: args.authorDisplayName }
+        : {}),
+      ...(args.parent && args.parent.length > 0 ? { parent: args.parent } : {}),
+      ...(args.authoredAgainst
+        ? { authoredAgainst: args.authoredAgainst }
         : {}),
     },
     applyGuidance: DEFAULT_BLUEPRINT_APPLY_GUIDANCE,

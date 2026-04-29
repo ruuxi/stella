@@ -67,9 +67,7 @@ const USER_FACING_AGENT_TOOL_NAMES = new Set(["askQuestion"]);
 
 const WORKER_ONLY_TOOL_NAMES = new Set(["MCP"]);
 
-const SUBAGENT_USER_FACING_TOOL_NAMES: Record<string, ReadonlySet<string>> = {
-  [AGENT_IDS.STORE]: USER_FACING_AGENT_TOOL_NAMES,
-};
+const SUBAGENT_USER_FACING_TOOL_NAMES: Record<string, ReadonlySet<string>> = {};
 
 export const createToolHost = ({
   stellaRoot,
@@ -80,7 +78,7 @@ export const createToolHost = ({
   requestCredential,
   agentApi,
   scheduleApi,
-  storeApi,
+  
   fashionApi,
   extensionTools,
   displayHtml,
@@ -139,7 +137,7 @@ export const createToolHost = ({
     requestCredential,
     agentApi,
     scheduleApi,
-    storeApi,
+    
     fashionApi,
     extensionTools,
     displayHtml,

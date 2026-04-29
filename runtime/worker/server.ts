@@ -12,7 +12,6 @@ import {
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
   type StorePublishArgs,
-  type StorePublishCandidateArgs,
   type RuntimeLocalAgentRequest,
 } from "../protocol/index.js";
 import {
@@ -40,6 +39,7 @@ import {
   getLastGitFeatureId,
   getGitHead,
   listRecentGitFeatures,
+  parseStellaCommitTrailers,
 } from "../kernel/self-mod/git.js";
 import {
   createSelfModHmrController,
@@ -48,6 +48,7 @@ import {
   type SelfModHmrController,
 } from "../kernel/self-mod/hmr.js";
 import { StoreModService } from "../kernel/self-mod/store-mod-service.js";
+import { buildFeatureRoster } from "../kernel/self-mod/feature-roster.js";
 import { revertGitCommits, revertGitFeature } from "../kernel/self-mod/git.js";
 import { createDesktopDatabase } from "../kernel/storage/database.js";
 import { ChatStore } from "../kernel/storage/chat-store.js";
@@ -736,31 +737,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             conversationId,
           }),
       },
-      storeApi: {
-        listLocalCommits: async (limit) =>
-          await storeModService.listLocalCommits(limit),
-        listPackages: async () => await ensureRunner().listStorePackages(),
-        getPackage: async (packageId) =>
-          await ensureRunner().getStorePackage(packageId),
-        listPackageReleases: async (packageId) =>
-          await ensureRunner().listStorePackageReleases(packageId),
-        publishCommitsAsRelease: async (input) => {
-          const liveRunner = ensureRunner();
-          const existing = await liveRunner.getStorePackage(input.packageId);
-          return await storeModService.publishCommitsAsRelease({
-            packageId: input.packageId,
-            commitHashes: input.commitHashes,
-            displayName: input.displayName,
-            description: input.description,
-            ...(input.releaseNotes ? { releaseNotes: input.releaseNotes } : {}),
-            releaseNumber: existing ? existing.latestReleaseNumber + 1 : 1,
-            publish: (publishArgs) =>
-              existing
-                ? liveRunner.createStoreReleaseUpdate(publishArgs)
-                : liveRunner.createFirstStoreRelease(publishArgs),
-          });
-        },
-      },
+      // Store agent moved to backend — no local agent surface.
       selfModMonitor: {
         getBaselineHead: getGitHead,
         detectAppliedSince: detectSelfModAppliedSince,
@@ -891,6 +868,11 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       onGoogleWorkspaceAuthRequired: () => {
         peer.notify(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, null);
       },
+      featureRosterProvider: async () =>
+        await buildFeatureRoster({
+          repoRoot: init.stellaRoot,
+          store: storeModStore,
+        }),
     };
 
     const runner = createStellaHostRunner(runnerOptions);
@@ -1729,71 +1711,76 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       await ensureRunner().createStoreReleaseUpdate(params as StorePublishArgs),
   );
 
+  // Backend Store agent owns publishing now. The runtime's only job is to
+  // produce the local bundle (commit metadata + patches + file snapshots)
+  // for a hand-picked commit selection — the renderer ships that directly
+  // to Convex `data.store_thread.confirmDraft`.
   peer.registerRequestHandler(
-    METHOD_NAMES.STORE_PREPARE_CANDIDATE_RELEASE,
+    METHOD_NAMES.STORE_THREAD_BUILD_BUNDLE,
     async (params) => {
-      const payload = params as StorePublishCandidateArgs;
-      const candidate =
-        await ensureStoreModService().buildPublishCandidateBundle({
-          requestText: payload.requestText,
-          selectedCommitHashes: payload.selectedCommitHashes,
-          existingPackageId: payload.existingPackageId,
-        });
-      return await ensureRunner().prepareStoreCandidateRelease({
-        requestText: candidate.requestText,
-        selectedCommitHashes: candidate.selectedCommitHashes,
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const payload = params as { commitHashes: string[] };
+      const service = ensureStoreModService();
+      const candidate = await service.buildPublishCandidateBundle({
+        requestText: "store-thread-confirm",
+        selectedCommitHashes: payload.commitHashes,
+      });
+      // Capture HEAD as the `authoredAgainst.stellaCommit` hint. Used by
+      // the install agent to know what surface area this release was
+      // built against — best-effort, ignored on failure.
+      let stellaCommit: string | null = null;
+      try {
+        stellaCommit = await getGitHead(state.init.stellaRoot);
+      } catch {
+        stellaCommit = null;
+      }
+      // Snapshot the user's *currently installed* version of each
+      // parent add-on referenced by `Stella-Parent-Package-Id`
+      // trailers. The backend prefers this over a fresh "latest"
+      // lookup so the published manifest records the release the
+      // change was actually authored against — not whatever happens
+      // to be the latest on the store at publish time.
+      const parentSlugs = new Set<string>();
+      for (const commit of candidate.commits) {
+        const trailers = parseStellaCommitTrailers(commit.body);
+        for (const slug of trailers.parentPackageIds) {
+          if (slug) parentSlugs.add(slug);
+        }
+      }
+      const installedParents: Array<{ packageId: string; releaseNumber: number }> = [];
+      for (const slug of parentSlugs) {
+        const installed = service.getInstalledModByPackageId(slug);
+        if (installed && installed.state === "installed") {
+          installedParents.push({
+            packageId: slug,
+            releaseNumber: installed.releaseNumber,
+          });
+        }
+      }
+      return {
         commits: candidate.commits,
         files: candidate.files,
-        ...(candidate.existingPackageId
-          ? { existingPackageId: candidate.existingPackageId }
-          : {}),
-      });
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.STORE_PUBLISH_PREPARED_RELEASE,
-    async (params) => {
-      const payload = params as StorePublishCandidateArgs & {
-        draft: import("../contracts/index.js").StorePublishDraft;
+        ...(stellaCommit ? { stellaCommit } : {}),
+        ...(installedParents.length > 0 ? { installedParents } : {}),
       };
-      const candidate =
-        await ensureStoreModService().buildPublishCandidateBundle({
-          requestText: payload.requestText,
-          selectedCommitHashes: payload.selectedCommitHashes,
-          existingPackageId: payload.existingPackageId,
-        });
-      return await ensureRunner().publishPreparedStoreRelease({
-        requestText: candidate.requestText,
-        selectedCommitHashes: candidate.selectedCommitHashes,
-        commits: candidate.commits,
-        files: candidate.files,
-        draft: payload.draft,
-        ...(candidate.existingPackageId
-          ? { existingPackageId: candidate.existingPackageId }
-          : {}),
-      });
     },
   );
 
+  // Feature roster reader: the side panel calls into this on mount and
+  // whenever it wants a fresh view. Same builder the commit-message LLM
+  // uses on the commit hot path, so the UI shows exactly what the
+  // grouping decision saw.
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_CANDIDATE_RELEASE,
-    async (params) => {
-      const payload = params as StorePublishCandidateArgs;
-      const candidate =
-        await ensureStoreModService().buildPublishCandidateBundle({
-          requestText: payload.requestText,
-          selectedCommitHashes: payload.selectedCommitHashes,
-          existingPackageId: payload.existingPackageId,
-        });
-      return await ensureRunner().publishStoreCandidateRelease({
-        requestText: candidate.requestText,
-        selectedCommitHashes: candidate.selectedCommitHashes,
-        commits: candidate.commits,
-        files: candidate.files,
-        ...(candidate.existingPackageId
-          ? { existingPackageId: candidate.existingPackageId }
-          : {}),
+    METHOD_NAMES.STORE_THREAD_LIST_FEATURE_ROSTER,
+    async () => {
+      if (!state.init || !state.storeModStore) {
+        throw new Error("Worker has not been initialized.");
+      }
+      return await buildFeatureRoster({
+        repoRoot: state.init.stellaRoot,
+        store: state.storeModStore,
       });
     },
   );
@@ -2166,6 +2153,20 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       return await ensureStoreModService().listLocalCommits(
         (params as { limit?: number } | undefined)?.limit,
       );
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS_BY_SELECTOR,
+    async (params) => {
+      const args =
+        (params as
+          | { featureIds?: string[]; commitHashes?: string[] }
+          | undefined) ?? {};
+      return await ensureStoreModService().listLocalCommitsBySelector({
+        ...(args.featureIds ? { featureIds: args.featureIds } : {}),
+        ...(args.commitHashes ? { commitHashes: args.commitHashes } : {}),
+      });
     },
   );
 

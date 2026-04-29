@@ -29,4 +29,24 @@ export const usersSchema = {
     conversationCount: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_ownerId", ["ownerId"]),
+
+  /**
+   * Public creator profile. One row per ownerId. `publicHandle` is the
+   * URL-stable slug used for `/c/:handle` and for `parent.authorHandle`
+   * references on releases. `displayName` is the user-pickable label
+   * shown on the creator page; defaults to the handle when empty.
+   *
+   * Uniqueness on `publicHandle` is enforced inside the `claimHandle`
+   * mutation by querying the `by_publicHandle` index in the same
+   * transaction (Convex indexes are not declarative unique constraints).
+   */
+  user_profiles: defineTable({
+    ownerId: v.string(),
+    publicHandle: v.string(),
+    displayName: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_publicHandle", ["publicHandle"]),
 };

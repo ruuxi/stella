@@ -1,15 +1,21 @@
+/**
+ * Home full-chat surface.
+ *
+ * Projects local `EventRecord[]` into row view models via `useEventRows`
+ * and mounts the shared `<ChatTimeline>`. Renders the Google Workspace
+ * connect card outside the timeline because it's a local-chat-only
+ * affordance — other surfaces (Store thread, sidebar) reuse the timeline
+ * without dragging in this dependency.
+ */
 import { memo, useCallback, useSyncExternalStore } from "react";
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import type { Attachment } from "@/app/chat/lib/event-transforms";
-import {
-  AssistantMessageRow,
-  PendingAskQuestionRow,
-  UserMessageRow,
-  type EventRowViewModel,
-} from "./MessageRow";
+import type {
+  Attachment,
+  EventRecord,
+} from "@/app/chat/lib/event-transforms";
 import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCard";
 import { GrowIn } from "@/app/chat/GrowIn";
 import { useEventRows } from "./use-event-rows";
+import { ChatTimeline } from "./ChatTimeline";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import {
   acknowledgeGoogleWorkspaceAuthRequired,
@@ -31,22 +37,6 @@ type Props = {
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
-};
-
-const renderRow = (
-  row: EventRowViewModel,
-  onOpenAttachment?: (attachment: Attachment) => void,
-) => {
-  if (row.kind === "user") {
-    return (
-      <UserMessageRow
-        key={row.id}
-        row={row}
-        onOpenAttachment={onOpenAttachment}
-      />
-    );
-  }
-  return <AssistantMessageRow key={row.id} row={row} />;
 };
 
 export const ConversationEvents = memo(function ConversationEvents({
@@ -80,66 +70,20 @@ export const ConversationEvents = memo(function ConversationEvents({
     selfModMap,
   });
 
-  if (isLoadingHistory && rows.length === 0) {
-    return (
-      <div className="event-list" data-loading-history="true">
-        <div className="event-history-status" role="status" aria-live="polite">
-          Loading conversation...
-        </div>
-        <div className="thread-placeholder" aria-hidden="true">
-          <div className="thread-line" />
-          <div className="thread-line short" />
-        </div>
-        <div className="thread-placeholder" aria-hidden="true">
-          <div className="thread-line short" />
-          <div className="thread-line" />
-        </div>
-      </div>
-    );
-  }
-
-  if (rows.length === 0) {
-    return (
-      <div className="event-list" data-empty="true">
-        <div className="event-empty">Start a conversation</div>
-      </div>
-    );
-  }
-
-  /*
-   * Tail region wrapper: gives the latest user message + everything after
-   * it a `100cqh` reading area, so when `scrollTurnToPinTop` aligns the
-   * user bubble to the viewport top there is enough room below for the
-   * assistant reply to fill the viewport. Mirrors the old
-   * `.session-turn--last-turn` behavior, but moved to a single wrapper
-   * around the linear tail rather than a per-turn container.
-   */
-  const tailStart = lastUserRowIndex >= 0 ? lastUserRowIndex : rows.length;
-  const olderRows = rows.slice(0, tailStart);
-  const tailRows = rows.slice(tailStart);
-
   return (
-    <div className="event-list">
-      {isLoadingOlder && hasOlderEvents && (
-        <div className="event-history-status" role="status" aria-live="polite">
-          Loading earlier messages...
-        </div>
-      )}
-
-      {olderRows.map((row) => renderRow(row, onOpenAttachment))}
-
-      {(tailRows.length > 0 || pendingAskQuestion) && (
-        <div className="event-row-region event-row-region--tail">
-          {tailRows.map((row) => renderRow(row, onOpenAttachment))}
-          {pendingAskQuestion && (
-            <PendingAskQuestionRow payload={pendingAskQuestion} />
-          )}
-        </div>
-      )}
-
-      <GrowIn animate={true} show={showGwsConnect}>
-        <GoogleWorkspaceConnectCard onConnected={handleGwsConnected} />
-      </GrowIn>
-    </div>
+    <ChatTimeline
+      rows={rows}
+      lastUserRowIndex={lastUserRowIndex}
+      pendingAskQuestion={pendingAskQuestion}
+      hasOlderEvents={hasOlderEvents}
+      isLoadingOlder={isLoadingOlder}
+      isLoadingHistory={isLoadingHistory}
+      onOpenAttachment={onOpenAttachment}
+      extraTail={
+        <GrowIn animate={true} show={showGwsConnect}>
+          <GoogleWorkspaceConnectCard onConnected={handleGwsConnected} />
+        </GrowIn>
+      }
+    />
   );
 });

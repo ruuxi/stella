@@ -1,10 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { StoreApp } from "@/apps/store/App";
-import { STORE_TAB_KEYS } from "@/global/store/store-tabs";
 
+// Accept any string for `tab` so legacy URLs (`?tab=installed`,
+// `?tab=publish`) still parse — `StoreApp` normalizes the value via
+// `normalizeStoreTab` before reading it.
 const StoreSearch = z.object({
-  tab: z.enum(STORE_TAB_KEYS).optional(),
+  tab: z.string().optional(),
+  // Deep-link to a specific add-on detail view. Used by creator pages
+  // and shareable links. `StoreApp` reads it and pushes it down to
+  // `StoreView` to set `selectedPackageId`.
+  package: z.string().optional(),
 });
 
 export const Route = createFileRoute("/store")({

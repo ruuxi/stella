@@ -164,7 +164,6 @@ export type ToolHostOptions = {
   stellaComputerCliPath?: string;
   agentApi?: AgentToolApi;
   scheduleApi?: ScheduleToolApi;
-  storeApi?: StoreToolApi;
   fashionApi?: FashionToolApi;
   extensionTools?: import("../extensions/types.js").ToolDefinition[];
   displayHtml?: (html: string) => void;
@@ -209,32 +208,6 @@ export type ToolHostOptions = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
-};
-
-export type StoreToolApi = {
-  /** Same flat list the renderer's "My creations" tab consumes. */
-  listLocalCommits: (limit?: number) => Promise<LocalGitCommitRecord[]>;
-  /** Existing packages owned by the user, for update flows. */
-  listPackages: () => Promise<StorePackageRecord[]>;
-  /** Load one existing package by stable id. */
-  getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
-  /** Release history for a package, newest first. */
-  listPackageReleases: (
-    packageId: string,
-  ) => Promise<StorePackageReleaseRecord[]>;
-  /**
-   * Publish a commit-based release. The runtime owns the actual upload to
-   * the Stella backend; the agent just supplies the picked commits +
-   * package metadata.
-   */
-  publishCommitsAsRelease: (input: {
-    packageId: string;
-    commitHashes: string[];
-    category?: StoreReleaseManifest["category"];
-    displayName: string;
-    description: string;
-    releaseNotes?: string;
-  }) => Promise<StorePackageReleaseRecord>;
 };
 
 export type FashionShopProduct = {
@@ -300,7 +273,7 @@ export type FashionCheckoutSessionResult = {
 /**
  * Fashion-tab Convex bridge.
  *
- * Mirrors `StoreToolApi`: a tight set of typed methods the Fashion subagent
+ * Mirrors `ScheduleToolApi`: a tight set of typed methods the Fashion subagent
  * (and the Fashion tab worker) calls into. Implementations live in the
  * runtime context layer and forward to `backend/convex/agent/local_runtime.ts`
  * so HTTP, auth, and rate-limits stay backend-side.

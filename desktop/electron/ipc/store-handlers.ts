@@ -6,8 +6,11 @@ import type {
   LocalGitCommitRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
-  StorePublishDraft,
 } from "../../src/shared/contracts/boundary.js";
+import type {
+  StoreThreadCommitCatalogEntry,
+  StoreThreadBundlePayload,
+} from "../../src/shared/types/electron.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 import { assertPrivilegedRequest } from "./privileged-ipc.js";
@@ -82,6 +85,25 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       await runner.listLocalCommits(payload?.limit) satisfies LocalGitCommitRecord[]);
   });
 
+  // Targeted lookup that walks the wide self-mod history (matching the
+  // feature roster's window) so the publish path + pick card can resolve
+  // commits older than the recent slice. Pass either feature ids,
+  // commit hashes, or both.
+  ipcMain.handle(
+    "store:listLocalCommitsBySelector",
+    async (event, payload: { featureIds?: string[]; commitHashes?: string[] }) => {
+      return await withStoreRunner(
+        event,
+        "store:listLocalCommitsBySelector",
+        async (runner) =>
+          await runner.listLocalCommitsBySelector({
+            ...(payload?.featureIds ? { featureIds: payload.featureIds } : {}),
+            ...(payload?.commitHashes ? { commitHashes: payload.commitHashes } : {}),
+          }) satisfies LocalGitCommitRecord[],
+      );
+    },
+  );
+
   ipcMain.handle("store:listPackages", async (event) => {
     return await withStoreRunner(event, "store:listPackages", async (runner) =>
       await runner.listStorePackages() satisfies StorePackageRecord[]);
@@ -107,47 +129,54 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       ) satisfies StorePackageReleaseRecord | null),
   );
 
+  // Build the lightweight commit catalog the backend Store agent reasons
+  // over. Identical to what `store:listLocalCommits` returns plus an
+  // explicit `fileCount` (`fileCount` is already on the record but we
+  // surface a stable shape) — this is the *backend-friendly* upload
+  // payload, not a UI list.
   ipcMain.handle(
-    "store:publishCandidateRelease",
-    async (
-      event,
-      payload: {
-        requestText: string;
-        selectedCommitHashes: string[];
-        existingPackageId?: string;
-      },
-    ) =>
-      await withStoreRunner(event, "store:publishCandidateRelease", async (runner) =>
-        await runner.publishStoreCandidateRelease(payload) satisfies StorePackageReleaseRecord),
+    "store-thread:buildCommitCatalog",
+    async (event, payload: { limit?: number }) =>
+      await withStoreRunner(event, "store-thread:buildCommitCatalog", async (runner) => {
+        const commits = await runner.listLocalCommits(payload?.limit);
+        const catalog: StoreThreadCommitCatalogEntry[] = commits.map((commit) => ({
+          commitHash: commit.commitHash,
+          shortHash: commit.shortHash,
+          subject: commit.subject,
+          body: commit.body,
+          timestampMs: commit.timestampMs,
+          files: commit.files,
+          fileCount: commit.fileCount,
+          ...(commit.featureId ? { featureId: commit.featureId } : {}),
+          ...(commit.parentPackageIds && commit.parentPackageIds.length > 0
+            ? { parentPackageIds: commit.parentPackageIds }
+            : {}),
+        }));
+        return catalog;
+      }),
   );
 
+  // Build the full publish bundle (commit metadata + patches + file
+  // snapshots) for the picked commit hashes. Called only at confirm
+  // time so the renderer never uploads file snapshots speculatively.
   ipcMain.handle(
-    "store:prepareCandidateRelease",
-    async (
-      event,
-      payload: {
-        requestText: string;
-        selectedCommitHashes: string[];
-        existingPackageId?: string;
-      },
-    ) =>
-      await withStoreRunner(event, "store:prepareCandidateRelease", async (runner) =>
-        (await runner.prepareStoreCandidateRelease(payload)) as StorePublishDraft),
+    "store-thread:buildBundle",
+    async (event, payload: { commitHashes: string[] }) =>
+      await withStoreRunner(event, "store-thread:buildBundle", async (runner) => {
+        const bundle = await runner.buildStoreThreadBundle(payload.commitHashes);
+        return bundle satisfies StoreThreadBundlePayload;
+      }),
   );
 
+  // Read the local feature roster (collapsed Stella self-mod commit
+  // groups + installed-add-on footprints). Powers the Store side
+  // panel's linear list and reuses exactly what the commit-message
+  // LLM saw, so the UI never disagrees with the system.
   ipcMain.handle(
-    "store:publishPreparedRelease",
-    async (
-      event,
-      payload: {
-        requestText: string;
-        selectedCommitHashes: string[];
-        existingPackageId?: string;
-        draft: StorePublishDraft;
-      },
-    ) =>
-      await withStoreRunner(event, "store:publishPreparedRelease", async (runner) =>
-        await runner.publishPreparedStoreRelease(payload) satisfies StorePackageReleaseRecord),
+    "store-thread:listFeatureRoster",
+    async (event) =>
+      await withStoreRunner(event, "store-thread:listFeatureRoster", async (runner) =>
+        await runner.listStoreFeatureRoster()),
   );
 
   ipcMain.handle(

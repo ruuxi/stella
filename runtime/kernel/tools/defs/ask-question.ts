@@ -5,28 +5,21 @@
  * a time; the user picks an option for each. Use this instead of an
  * open-ended question when the answer space is small.
  *
- * Available to user-facing agents that drive the main chat surface
- * (orchestrator, store). Subagents that don't talk to the user
- * directly (general/research-style runs) are denied so they don't try
- * to render bubbles in chats they don't own.
+ * Only the orchestrator (the user's main chat surface) is allowed to
+ * call this — subagents and backend-owned agents render their own UIs.
  */
 
 import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtime.js";
 import type { ToolContext, ToolDefinition, ToolResult } from "../types.js";
 
-const ASK_QUESTION_ALLOWED_AGENTS = new Set<string>([
-  AGENT_IDS.ORCHESTRATOR,
-  AGENT_IDS.STORE,
-]);
-
 const requireUserFacingAgent = (
   toolName: string,
   context: ToolContext,
 ): ToolResult | null =>
-  context.agentType && ASK_QUESTION_ALLOWED_AGENTS.has(context.agentType)
+  context.agentType === AGENT_IDS.ORCHESTRATOR
     ? null
     : {
-        error: `${toolName} is only available to user-facing agents (orchestrator, store).`,
+        error: `${toolName} is only available to the orchestrator.`,
       };
 
 export const askQuestionTool: ToolDefinition = {
@@ -121,12 +114,8 @@ export const askQuestionTool: ToolDefinition = {
       })
       .join("\n\n");
 
-    const followUpInstruction =
-      context.agentType === AGENT_IDS.STORE
-        ? "Question tray rendered in chat. Stop here and wait. The user's answer will be delivered back to this same Store thread as new input; do not publish or continue until then."
-        : "Question tray rendered in chat. Wait for the user to answer before continuing.";
     return {
-      result: `${followUpInstruction}\n\n${summary}`,
+      result: `Question tray rendered in chat. Wait for the user to answer before continuing.\n\n${summary}`,
     };
   },
 };

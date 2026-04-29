@@ -14,11 +14,7 @@ import { SocialComposer } from "./SocialComposer";
 import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import type { SocialProfile } from "./hooks/use-social-profile";
 import { useSocialFriends } from "./hooks/use-social-friends";
-import MessageSquare from "lucide-react/dist/esm/icons/message-square";
-import Globe from "lucide-react/dist/esm/icons/globe";
-import UserPlus from "lucide-react/dist/esm/icons/user-plus";
-import Check from "lucide-react/dist/esm/icons/check";
-import Clock from "lucide-react/dist/esm/icons/clock";
+import { Check, Clock, Globe, MessageSquare, UserPlus } from "lucide-react";
 
 type SocialChatPaneProps = {
   roomId: string;
