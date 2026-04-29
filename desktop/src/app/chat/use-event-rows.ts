@@ -97,10 +97,13 @@ const getCwd = (events: EventRecord[]): string | undefined => {
  *    full payload (with optional `submitted`/`selections`) keyed by the
  *    assistant message it should attach to. Includes both pending and
  *    answered questions.
- *  - `pendingWithoutAssistant`: the most recent pending askQuestion
- *    that has no preceding assistant message to attach to (e.g. the
- *    agent's first action was the question). Rendered as a standalone
- *    `<PendingAskQuestionRow>` at the tail.
+ *  - `standaloneByUserId`: askQuestions with no preceding assistant
+ *    message, keyed by the visible user message that triggered them.
+ *    Rendering them as rows immediately after that user message keeps
+ *    answered summaries exactly where the question appeared, even after
+ *    later assistant messages stream in.
+ *  - `pendingWithoutAnchor`: rare fallback for a question with neither
+ *    an assistant nor visible user anchor.
  *
  * Resolving the originating assistant skips agent-terminal-notice
  * messages so the bubble doesn't get parked on an "Agent completed"
@@ -112,7 +115,8 @@ const getCwd = (events: EventRecord[]): string | undefined => {
  */
 type AskQuestionDerivation = {
   payloadByAssistantId: Map<string, AskQuestionState>
-  pendingWithoutAssistant: AskQuestionState | null
+  standaloneByUserId: Map<string, AskQuestionState>
+  pendingWithoutAnchor: AskQuestionState | null
 }
 
 const isAskQuestionResponseMessage = (event: EventRecord): boolean => {
@@ -133,19 +137,23 @@ const deriveAskQuestions = (
   responseTargetByAssistantId: Map<string, AgentResponseTarget | undefined>,
 ): AskQuestionDerivation => {
   const payloadByAssistantId = new Map<string, AskQuestionState>()
-  let pendingWithoutAssistant: AskQuestionState | null = null
+  const standaloneByUserId = new Map<string, AskQuestionState>()
+  let pendingWithoutAnchor: AskQuestionState | null = null
 
   /** Originating assistant for the most recent unanswered question, if any. */
   let lastNonNoticeAssistantId: string | null = null
+  let lastVisibleUserId: string | null = null
   let pending:
     | {
         assistantId: string | null
+        userId: string | null
         payload: AskQuestionState
       }
     | null = null
 
   const finalize = (
     assistantId: string | null,
+    userId: string | null,
     payload: AskQuestionState,
     selections: Record<number, Selection> | null,
   ) => {
@@ -155,8 +163,10 @@ const deriveAskQuestions = (
     }
     if (assistantId) {
       payloadByAssistantId.set(assistantId, state)
+    } else if (userId) {
+      standaloneByUserId.set(userId, state)
     } else {
-      pendingWithoutAssistant = state
+      pendingWithoutAnchor = state
     }
   }
 
@@ -176,6 +186,7 @@ const deriveAskQuestions = (
         const selections = parseAskQuestionAnswersMessage(pending.payload, text)
         finalize(
           pending.assistantId,
+          pending.userId,
           pending.payload,
           selections,
         )
@@ -193,6 +204,7 @@ const deriveAskQuestions = (
       // discard the candidate.
       if (!isUiHiddenMessagePayload(getMessagePayload(event))) {
         lastNonNoticeAssistantId = null
+        lastVisibleUserId = event._id
       }
       continue
     }
@@ -207,15 +219,16 @@ const deriveAskQuestions = (
     const assistantId = lastNonNoticeAssistantId
     pending = {
       assistantId,
+      userId: assistantId ? null : lastVisibleUserId,
       payload: parsed,
     }
   }
 
   if (pending) {
-    finalize(pending.assistantId, pending.payload, null)
+    finalize(pending.assistantId, pending.userId, pending.payload, null)
   }
 
-  return { payloadByAssistantId, pendingWithoutAssistant }
+  return { payloadByAssistantId, standaloneByUserId, pendingWithoutAnchor }
 }
 
 type UseEventRowsOptions = {
@@ -236,7 +249,7 @@ export type UseEventRowsResult = {
   rows: EventRowViewModel[]
   /** Index in `rows` of the last visible user message (-1 if none). */
   lastUserRowIndex: number
-  /** Pending askQuestion that has no inline assistant row to attach to. */
+  /** Rare pending askQuestion with no row anchor. */
   pendingAskQuestion: AskQuestionState | null
 }
 
@@ -341,6 +354,18 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             : {}),
         }
         computed.push(row)
+        const standaloneAskQuestion = askQuestion.standaloneByUserId.get(event._id)
+        if (standaloneAskQuestion) {
+          const stableKey = `ask-question-for-${event._id}`
+          computed.push({
+            kind: 'assistant',
+            id: stableKey,
+            text: '',
+            cacheKey: stableKey,
+            emotesEnabled: true,
+            askQuestion: standaloneAskQuestion,
+          })
+        }
         continue
       }
 
@@ -484,6 +509,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
   return {
     rows: slicedRows,
     lastUserRowIndex,
-    pendingAskQuestion: askQuestion.pendingWithoutAssistant,
+    pendingAskQuestion: askQuestion.pendingWithoutAnchor,
   }
 }
