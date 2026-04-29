@@ -78,27 +78,36 @@ export function createHmrTransitionController(deps: {
     );
 
   /**
-   * Holds the morph cover for at least `MORPH_RENDERER_SETTLE_DELAY_MS` so a
-   * quiet HMR has time to paint. If the renderer starts a navigation during
-   * that window — either an intentional `reloadIgnoringCache` from this
-   * controller or a late `{type:'full-reload'}` that Vite sent after we
-   * applied an HMR update (React-Refresh boundary bail-out) — the wait
-   * extends until `did-finish-load + MORPH_POST_RELOAD_GRACE_MS`, capped at
-   * `MORPH_RENDERER_SETTLE_HARD_CAP_MS`. Without this, a renderer that's
-   * mid-reload when the cover lifts shows a blank/half-painted page.
+   * Arms the `did-start-loading` / `did-finish-load` listeners synchronously
+   * and returns a `wait()` that holds the morph cover for at least
+   * `MORPH_RENDERER_SETTLE_DELAY_MS`. If the renderer starts a navigation
+   * during that window — either an intentional `reloadIgnoringCache` we
+   * issue right after `arm()`, or a late `{type:'full-reload'}` that Vite
+   * sent after we applied an HMR update (React-Refresh boundary bail-out) —
+   * the wait extends until `did-finish-load + MORPH_POST_RELOAD_GRACE_MS`,
+   * capped at `MORPH_RENDERER_SETTLE_HARD_CAP_MS`.
+   *
+   * IMPORTANT: callers must arm first, then call `reloadIgnoringCache()`
+   * synchronously, then `await wait()`. Attaching the listener after the
+   * reload call races with Chromium's `did-start-loading` emission and we
+   * routinely missed the event (the log shows `reloadDetected:false` while
+   * a reload is plainly in flight, lifting the cover at the baseline 800ms).
    */
-  const waitForRendererSettle = async (
+  const armRendererSettle = (
     window: BrowserWindow | null,
-  ): Promise<void> => {
+  ): { wait: () => Promise<void> } => {
     const startedAt = performance.now();
     if (!window || window.isDestroyed()) {
-      await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
-      logMorphTiming("rendererSettle", {
-        durationMs: Math.round(performance.now() - startedAt),
-        delayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
-        reloadDetected: false,
-      });
-      return;
+      return {
+        wait: async () => {
+          await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
+          logMorphTiming("rendererSettle", {
+            durationMs: Math.round(performance.now() - startedAt),
+            delayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
+            reloadDetected: false,
+          });
+        },
+      };
     }
     const wc = window.webContents;
     let reloadDetected = false;
@@ -121,23 +130,27 @@ export function createHmrTransitionController(deps: {
       wc.once("did-finish-load", onFinish);
     };
     wc.on("did-start-loading", onStartLoading);
-    try {
-      await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
-      if (reloadDetected) {
-        const remainingCap = Math.max(
-          0,
-          MORPH_RENDERER_SETTLE_HARD_CAP_MS - MORPH_RENDERER_SETTLE_DELAY_MS,
-        );
-        await Promise.race([reloadDone, delay(remainingCap)]);
-      }
-    } finally {
-      wc.removeListener("did-start-loading", onStartLoading);
-    }
-    logMorphTiming("rendererSettle", {
-      durationMs: Math.round(performance.now() - startedAt),
-      delayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
-      reloadDetected,
-    });
+    return {
+      wait: async () => {
+        try {
+          await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
+          if (reloadDetected) {
+            const remainingCap = Math.max(
+              0,
+              MORPH_RENDERER_SETTLE_HARD_CAP_MS - MORPH_RENDERER_SETTLE_DELAY_MS,
+            );
+            await Promise.race([reloadDone, delay(remainingCap)]);
+          }
+        } finally {
+          wc.removeListener("did-start-loading", onStartLoading);
+        }
+        logMorphTiming("rendererSettle", {
+          durationMs: Math.round(performance.now() - startedAt),
+          delayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
+          reloadDetected,
+        });
+      },
+    };
   };
 
   const runTransition = async (opts: {
@@ -202,13 +215,16 @@ export function createHmrTransitionController(deps: {
           transitionId,
           canReload,
         });
+        // Arm before reloading so the did-start-loading listener can never
+        // miss the event Chromium emits in response to reloadIgnoringCache.
+        const settle = armRendererSettle(windowForReload);
         if (canReload) {
           windowForReload.webContents.reloadIgnoringCache();
           logMorphTiming("applyWithoutMorph:reloadIgnoringCache", {
             transitionId,
           });
         }
-        await waitForRendererSettle(windowForReload);
+        await settle.wait();
       } finally {
         opts.reportState?.(IDLE_HMR_STATE);
       }
@@ -292,13 +308,21 @@ export function createHmrTransitionController(deps: {
             paused: false,
             requiresFullReload: true,
           });
+          // Arm the settle listeners BEFORE reloadIgnoringCache so the
+          // did-start-loading event Chromium emits in response to the
+          // reload can't be missed by a late listener attach.
+          const settle = armRendererSettle(fullWindow);
           fullWindow.webContents.reloadIgnoringCache();
           logMorphTiming("reloadIgnoringCache", { transitionId });
-          await waitForRendererSettle(fullWindow);
+          await settle.wait();
           return true;
         }
 
-        await waitForRendererSettle(fullWindow);
+        // No intentional reload here, but late React-Refresh bail-outs may
+        // still trigger one — arm the listener so we extend the cover if
+        // they do.
+        const settle = armRendererSettle(fullWindow);
+        await settle.wait();
         return false;
       })();
 
