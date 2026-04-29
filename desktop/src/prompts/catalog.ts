@@ -248,6 +248,9 @@ Create an actionable profile in 1000-1500 tokens. An AI reading this should be a
 ## Output Format
 
 \`\`\`
+[identity]
+Name: <Use a directly evidenced personal name if available; otherwise "unknown". Evidence can come from account/profile data, contact/calendar/notes signals, browser/profile hints, device/user records, or Git identity. Do not prefer developer-only signals over stronger identity evidence.>
+
 [who]
 <2-3 sentences: what they do, what they are building, expertise level, primary domain.>
 
@@ -282,9 +285,10 @@ Format: "- area: specific details"
 
 1. Prefer actionable details over vague descriptions. Paths, app names, project names, service names, and tools matter.
 2. Preserve high-signal details from the input, especially top-tier signals.
-3. Include the full person, not just work, when the input supports it.
-4. NEVER hallucinate or infer. Every fact must come directly from the provided signals. If the data only shows a project name and path but not what it does, write just the name and path — do not guess its purpose. If you don't know what an app does, just list it without a description.
-5. Avoid generic filler. Every sentence should be specific to this user.
+3. Preserve the user's name in [identity] when any direct evidence supports it. Use the strongest available identity signal; Git identity is only one possible fallback, not an assumption that the user is a developer.
+4. Include the full person, not just work, when the input supports it.
+5. NEVER hallucinate or infer. Every fact must come directly from the provided signals. If the data only shows a project name and path but not what it does, write just the name and path — do not guess its purpose. If you don't know what an app does, just list it without a description.
+6. Avoid generic filler. Every sentence should be specific to this user.
 
 ## Skip
 - raw counts or statistics

@@ -183,7 +183,17 @@ export const collectAllUserSignals = async (
     tasks.apps = discoverApps();
     tasks.system = collectSystemSignals(StellaHome).catch((e) => {
       log("System signals collection failed:", e);
-      return { dockPins: [], appUsage: [], filesystem: { downloadsExtensions: {}, documentsFolders: [], desktopFileTypes: {} } };
+      return {
+        userIdentity: null,
+        dockPins: [],
+        appUsage: [],
+        filesystem: {
+          downloadsExtensions: {},
+          documentsFolders: [],
+          desktopFileTypes: {},
+        },
+        startupItems: [],
+      };
     });
     tasks.steam = collectSteamLibrary().catch((e) => {
       log("Steam library collection failed:", e);

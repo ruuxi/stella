@@ -230,16 +230,16 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   synthesis: {
-    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
+    model: "openai/gpt-5.4-mini",
     fallbackMode: "standard",
-    managedGatewayProvider: "fireworks",
+    managedGatewayProvider: "openrouter",
     temperature: 1.0,
     maxOutputTokens: 30000,
     providerOptions: {
       openai: {
         reasoningEffort: "low",
       },
-      ...gatewayOptions("fireworks"),
+      ...gatewayOptions("openrouter"),
     },
   },
 
@@ -281,7 +281,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   synthesis: "synthesis",
   session_compaction_summary: "compact",
   thread_compaction_summary: "compact",
-  welcome: "synthesis",
+  welcome: "fashion",
   mercury: "fast",
   music_prompt: "media",
   search_html: "fast",

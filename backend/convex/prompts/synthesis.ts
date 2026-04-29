@@ -24,7 +24,7 @@ export const buildCoreSynthesisUserMessage = (
 export const buildWelcomeMessagePrompt = (
   coreMemory: string,
   promptTemplate: string,
-): string => `${promptTemplate}\n\n${coreMemory}`;
+): string => promptTemplate.replace("{{coreMemory}}", coreMemory);
 
 export type HomeSuggestion = {
   category: "stella" | "task" | "explore" | "schedule";
@@ -35,4 +35,4 @@ export type HomeSuggestion = {
 export const buildHomeSuggestionsPrompt = (
   coreMemory: string,
   promptTemplate: string,
-): string => `${promptTemplate}\n\n${coreMemory}`;
+): string => promptTemplate.replace("{{coreMemory}}", coreMemory);
