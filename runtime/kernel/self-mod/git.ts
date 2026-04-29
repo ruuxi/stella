@@ -1,11 +1,14 @@
 import { promises as fs } from "fs";
+import { execFile } from "node:child_process";
 import os from "os";
 import path from "path";
+import { promisify } from "node:util";
 import { exec } from "dugite";
 
 const LOG_ENTRY_SEPARATOR = "\x1e";
 const LOG_FIELD_SEPARATOR = "\x1f";
 const DEFAULT_RECENT_COMMIT_LIMIT = 8;
+const execFileAsync = promisify(execFile);
 
 type GitLogCommit = {
   hash: string;
@@ -49,10 +52,10 @@ export type GitCustomCommitArgs = {
   subject: string;
   bodyLines?: string[];
   /**
-   * When provided, commits ONLY these working-tree paths (via
-   * `git commit --only -- <paths>`), ignoring whatever else may be
-   * staged. Use this for self-mod commits to prevent pre-existing
-   * staged user changes from being swept into an agent-authored commit.
+   * When provided, commits only these working-tree paths through an isolated
+   * temporary index, ignoring whatever else may be staged. Use this for
+   * self-mod commits to prevent pre-existing staged user changes from being
+   * swept into an agent-authored commit while still including new files.
    */
   paths?: string[];
 };
@@ -97,6 +100,63 @@ const runGit = async (
       : Buffer.from(result.stdout).toString("utf8").trim();
   const details = stderr || stdout || `exit code ${result.exitCode}`;
   throw new Error(`Git command failed (${args.join(" ")}): ${details}`);
+};
+
+const runGitWithEnv = async (
+  repoRoot: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<string> => {
+  try {
+    const result = await execFileAsync("git", args, {
+      cwd: repoRoot,
+      env: { ...process.env, ...env },
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return result.stdout.trim();
+  } catch (error) {
+    const err = error as {
+      stdout?: unknown;
+      stderr?: unknown;
+      code?: unknown;
+    };
+    const stderr = typeof err.stderr === "string" ? err.stderr.trim() : "";
+    const stdout = typeof err.stdout === "string" ? err.stdout.trim() : "";
+    const details = stderr || stdout || `exit code ${String(err.code)}`;
+    throw new Error(`Git command failed (${args.join(" ")}): ${details}`);
+  }
+};
+
+const runGitWithEnvStatus = async (
+  repoRoot: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+  try {
+    const result = await execFileAsync("git", args, {
+      cwd: repoRoot,
+      env: { ...process.env, ...env },
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return {
+      exitCode: 0,
+      stdout: result.stdout.trim(),
+      stderr: result.stderr.trim(),
+    };
+  } catch (error) {
+    const err = error as {
+      stdout?: unknown;
+      stderr?: unknown;
+      code?: unknown;
+    };
+    return {
+      exitCode: typeof err.code === "number" ? err.code : 1,
+      stdout: typeof err.stdout === "string" ? err.stdout.trim() : "",
+      stderr: typeof err.stderr === "string" ? err.stderr.trim() : "",
+    };
+  }
 };
 
 const assertGitRepository = async (repoRoot: string): Promise<void> => {
@@ -207,35 +267,49 @@ const hasStagedChanges = async (repoRoot: string): Promise<boolean> => {
   throw new Error(`Git command failed (diff --cached --quiet --exit-code): ${details}`);
 };
 
-const hasWorkingTreeChangesForPaths = async (
-  repoRoot: string,
-  paths: string[],
-): Promise<boolean> => {
-  if (paths.length === 0) return false;
-  const result = await exec(
-    ["diff", "--quiet", "--exit-code", "HEAD", "--", ...paths],
-    repoRoot,
-    { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
-  );
-  if (result.exitCode === 0) {
-    return false;
-  }
-  if (result.exitCode === 1) {
-    return true;
-  }
-  const details =
-    result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
-  throw new Error(
-    `Git command failed (diff --quiet HEAD -- <paths>): ${details}`,
-  );
-};
-
 export const stageGitPathsForCommit = async (
   repoRoot: string,
   paths: string[],
 ): Promise<void> => {
   if (paths.length === 0) return;
   await runGit(repoRoot, ["add", "--", ...paths]);
+};
+
+const commitPathScopedChanges = async (
+  repoRoot: string,
+  paths: string[],
+  commitArgs: string[],
+): Promise<string | null> => {
+  if (paths.length === 0) return null;
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "stella-git-index-"));
+  const indexPath = path.join(tempDir, "index");
+  const env = { GIT_INDEX_FILE: indexPath };
+  try {
+    await runGitWithEnv(repoRoot, ["read-tree", "HEAD"], env);
+    await runGitWithEnv(repoRoot, ["add", "--", ...paths], env);
+    const diff = await runGitWithEnvStatus(
+      repoRoot,
+      ["diff", "--cached", "--quiet", "--", ...paths],
+      env,
+    );
+    if (diff.exitCode === 0) {
+      return null;
+    }
+    if (diff.exitCode !== 1) {
+      const details = diff.stderr || diff.stdout || `exit code ${diff.exitCode}`;
+      throw new Error(
+        `Git command failed (diff --cached --quiet -- <paths>): ${details}`,
+      );
+    }
+
+    await runGitWithEnv(repoRoot, commitArgs, env);
+    // The temporary index produced the commit; refresh only these paths in the
+    // real index so unrelated staged user changes remain untouched.
+    await runGit(repoRoot, ["reset", "-q", "--", ...paths]);
+    return await getGitHead(repoRoot);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
 };
 
 export const getGitHead = async (repoRoot: string): Promise<string | null> => {
@@ -698,12 +772,7 @@ export const commitGitOperation = async (
 ): Promise<string | null> => {
   await assertGitRepository(args.repoRoot);
   const paths = normalizePathspecs(args.paths);
-  if (paths.length > 0) {
-    await stageGitPathsForCommit(args.repoRoot, paths);
-    if (!(await hasWorkingTreeChangesForPaths(args.repoRoot, paths))) {
-      return null;
-    }
-  } else if (!(await hasStagedChanges(args.repoRoot))) {
+  if (paths.length === 0 && !(await hasStagedChanges(args.repoRoot))) {
     return null;
   }
 
@@ -715,7 +784,7 @@ export const commitGitOperation = async (
     (args.bodyLines ?? []).join("\n"),
   ];
   if (paths.length > 0) {
-    commitArgs.push("--only", "--", ...paths);
+    return await commitPathScopedChanges(args.repoRoot, paths, commitArgs);
   }
   await runGit(args.repoRoot, commitArgs);
   return await getGitHead(args.repoRoot);
@@ -730,10 +799,10 @@ export type GitMessageCommitArgs = {
   /** RFC 822-style commit trailers like { "Stella-Conversation": "<id>" }. */
   trailers?: Record<string, string>;
   /**
-   * When provided, commits ONLY these working-tree paths (via
-   * `git commit --only -- <paths>`), ignoring whatever else may be
-   * staged. Use this for self-mod commits to prevent pre-existing
-   * staged user changes from being swept into an agent-authored commit.
+   * When provided, commits only these working-tree paths through an isolated
+   * temporary index, ignoring whatever else may be staged. Use this for
+   * self-mod commits to prevent pre-existing staged user changes from being
+   * swept into an agent-authored commit while still including new files.
    */
   paths?: string[];
 };
@@ -777,12 +846,7 @@ export const commitGitMessage = async (
 ): Promise<string | null> => {
   await assertGitRepository(args.repoRoot);
   const paths = normalizePathspecs(args.paths);
-  if (paths.length > 0) {
-    await stageGitPathsForCommit(args.repoRoot, paths);
-    if (!(await hasWorkingTreeChangesForPaths(args.repoRoot, paths))) {
-      return null;
-    }
-  } else if (!(await hasStagedChanges(args.repoRoot))) {
+  if (paths.length === 0 && !(await hasStagedChanges(args.repoRoot))) {
     return null;
   }
 
@@ -808,7 +872,7 @@ export const commitGitMessage = async (
     commitArgs.push("-m", trailerLines.join("\n"));
   }
   if (paths.length > 0) {
-    commitArgs.push("--only", "--", ...paths);
+    return await commitPathScopedChanges(args.repoRoot, paths, commitArgs);
   }
 
   await runGit(args.repoRoot, commitArgs);
