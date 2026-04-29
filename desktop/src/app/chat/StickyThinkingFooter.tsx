@@ -3,7 +3,7 @@ import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { WorkingIndicator } from "./WorkingIndicator";
 import "./indicators.css";
 
-const TASK_ROTATE_MS = 1800;
+const TASK_ROTATE_MS = 3000;
 
 type StickyThinkingFooterProps = {
   tasks: TaskItem[];
