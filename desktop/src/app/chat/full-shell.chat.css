@@ -127,6 +127,17 @@
   border-bottom-left-radius: 4px;
 }
 
+/*
+ * When the assistant row hosts only an askQuestion bubble (no chat
+ * text / tool artifacts), drop the 12px container padding so the
+ * bubble's own margins position it identically to how a fully-bodied
+ * assistant row places it as a sibling.
+ */
+.event-item.assistant.event-item--ask-question-only {
+  padding: 0;
+  gap: 0;
+}
+
 
 .event-item.system {
   background: color-mix(in srgb, var(--surface-inset) 10%, transparent);

@@ -16,7 +16,7 @@
   background: transparent;
   border-color: var(--border-weak);
   box-shadow: var(--shadow-xs-border);
-  opacity: 0.72;
+  opacity: 0.85;
 }
 
 .ask-question-bubble[data-submitted="true"] .ask-question-bubble__option,
@@ -85,7 +85,8 @@
 
 .ask-question-bubble__body {
   padding: 4px 16px 0;
-  height: 236px;
+  min-height: 96px;
+  max-height: 236px;
   overflow-y: auto;
   scrollbar-width: none;
   overscroll-behavior: contain;

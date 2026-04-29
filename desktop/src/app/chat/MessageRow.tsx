@@ -255,7 +255,7 @@ export const AssistantMessageRow = memo(
         className={`event-row event-row--assistant${row.isAnimating ? " event-row--streaming" : ""}`}
       >
         <div
-          className={`event-item assistant${row.isAnimating ? " streaming" : ""}`}
+          className={`event-item assistant${row.isAnimating ? " streaming" : ""}${!hasText && hasAskQuestion ? " event-item--ask-question-only" : ""}`}
         >
           {hasWebSearchBadge && <WebSearchBadge />}
           {hasText && (
@@ -275,8 +275,8 @@ export const AssistantMessageRow = memo(
           {row.selfModApplied && (
             <SelfModUndoButton selfModApplied={row.selfModApplied} />
           )}
+          {row.askQuestion && <AskQuestionBubble payload={row.askQuestion} />}
         </div>
-        {row.askQuestion && <AskQuestionBubble payload={row.askQuestion} />}
       </div>
     );
   },
@@ -290,7 +290,9 @@ export const PendingAskQuestionRow = memo(function PendingAskQuestionRow({
 }) {
   return (
     <div className="event-row event-row--assistant">
-      <AskQuestionBubble payload={payload} />
+      <div className="event-item assistant event-item--ask-question-only">
+        <AskQuestionBubble payload={payload} />
+      </div>
     </div>
   );
 });
