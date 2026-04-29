@@ -7,6 +7,7 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, Infer, v } from "convex/values";
 import {
   requireSensitiveUserIdAction,
@@ -14,6 +15,7 @@ import {
 } from "../auth";
 import { requireBoundedString } from "../shared_validators";
 import {
+  store_package_category_validator,
   store_package_release_validator,
   store_package_validator,
   store_publish_result_validator,
@@ -45,14 +47,51 @@ const create_release_args_validator = {
   artifactContentType: v.optional(v.string()),
   iconUrl: v.optional(v.string()),
   authorDisplayName: v.optional(v.string()),
+  // `authorHandle` is intentionally NOT a public arg — the action
+  // resolves it from `user_profiles` for the authenticated caller.
+  // Trusting an arg here would let a modified renderer impersonate
+  // another creator's handle in public discovery / `/c/:handle`.
 };
 
 const create_first_release_args_validator = {
   ...create_release_args_validator,
-  category: v.optional(v.union(v.literal("agents"), v.literal("stella"))),
+  category: v.optional(store_package_category_validator),
   displayName: v.string(),
   description: v.string(),
 };
+
+/**
+ * Resolve the caller's claimed creator handle from `user_profiles`.
+ * Used by every public release-creation path so the persisted
+ * `authorHandle` always reflects the authenticated caller — never
+ * a renderer-supplied value. Returns `undefined` when the user
+ * hasn't claimed a handle yet (the side panel prompts on first
+ * publish, but the action must still succeed without one).
+ */
+const resolveCallerAuthorHandle = async (
+  ctx: { runQuery: (fn: typeof internal.data.user_profiles.getHandleForOwnerInternal, args: { ownerId: string }) => Promise<string | null> },
+  ownerId: string,
+): Promise<string | undefined> => {
+  try {
+    const handle = await ctx.runQuery(
+      internal.data.user_profiles.getHandleForOwnerInternal,
+      { ownerId },
+    );
+    return handle ? handle.trim().toLowerCase() : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Denormalized lowercased text used as the searchField for the public
+ * Discover search index. We join `displayName` and `description` so a
+ * single substring search hits both. Refreshed on every release that
+ * changes surface metadata; otherwise the row's previous text stays
+ * authoritative.
+ */
+const buildPackageSearchText = (displayName: string, description: string): string =>
+  `${displayName} ${description}`.toLowerCase();
 
 const normalizePackageId = (value: string) => {
   const normalized = value.trim().toLowerCase();
@@ -142,16 +181,77 @@ const normalizeStringArray = (
   });
 };
 
+type ParentRefInput = {
+  authorHandle: string;
+  packageId: string;
+  compatibleWithReleaseNumber: number;
+};
+
+const MAX_PARENT_REFS = 8;
+
+const normalizeParentRefs = (
+  parents: ParentRefInput[] | undefined,
+): ParentRefInput[] | undefined => {
+  if (!parents || parents.length === 0) return undefined;
+  if (parents.length > MAX_PARENT_REFS) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `manifest.parent exceeds maximum of ${MAX_PARENT_REFS} references`,
+    });
+  }
+  const seen = new Set<string>();
+  const out: ParentRefInput[] = [];
+  for (const parent of parents) {
+    const handle = normalizeRequiredText(parent.authorHandle, "manifest.parent[].authorHandle", 64);
+    const packageId = normalizePackageId(parent.packageId);
+    const releaseNumber = normalizeReleaseNumber(parent.compatibleWithReleaseNumber);
+    const key = `${handle}/${packageId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      authorHandle: handle,
+      packageId,
+      compatibleWithReleaseNumber: releaseNumber,
+    });
+  }
+  return out.length > 0 ? out : undefined;
+};
+
+const normalizeAuthoredAgainst = (
+  value: { stellaCommit?: string } | undefined,
+):
+  | { stellaCommit?: string }
+  | undefined => {
+  if (!value) return undefined;
+  const stellaCommit = normalizeOptionalText(
+    value.stellaCommit,
+    "manifest.authoredAgainst.stellaCommit",
+    80,
+  );
+  if (!stellaCommit) return undefined;
+  return { stellaCommit };
+};
+
+type ManifestCategory =
+  | "apps-games"
+  | "productivity"
+  | "customization"
+  | "skills-agents"
+  | "integrations"
+  | "other";
+
 const normalizeManifest = (
   manifest: {
     includedBatchIds: string[];
     includedCommitHashes: string[];
     changedFiles: string[];
-    category?: "agents" | "stella";
+    category?: ManifestCategory;
     artifactHash?: string;
     summary?: string;
     iconUrl?: string;
     authorDisplayName?: string;
+    parent?: ParentRefInput[];
+    authoredAgainst?: { stellaCommit?: string };
   },
 ) => {
   const includedBatchIds = normalizeStringArray(
@@ -188,6 +288,8 @@ const normalizeManifest = (
     "manifest.authorDisplayName",
     120,
   );
+  const parent = normalizeParentRefs(manifest.parent);
+  const authoredAgainst = normalizeAuthoredAgainst(manifest.authoredAgainst);
 
   return {
     includedBatchIds,
@@ -198,6 +300,8 @@ const normalizeManifest = (
     ...(summary ? { summary } : {}),
     ...(iconUrl ? { iconUrl } : {}),
     ...(authorDisplayName ? { authorDisplayName } : {}),
+    ...(parent ? { parent } : {}),
+    ...(authoredAgainst ? { authoredAgainst } : {}),
   };
 };
 
@@ -296,6 +400,20 @@ export const getPackageByPackageIdInternal = internalQuery({
   },
 });
 
+/**
+ * Internal: cross-owner lookup by `packageId` alone. Used by the
+ * Store thread when resolving `Stella-Parent-Package-Id` trailers
+ * that point at add-ons published by other creators (the publishing
+ * user wouldn't necessarily have an owned row for them).
+ */
+export const getAnyPackageByPackageIdInternal = internalQuery({
+  args: { packageId: v.string() },
+  handler: async (ctx, args) => {
+    const normalizedPackageId = normalizePackageId(args.packageId);
+    return await getPackageByPackageId(ctx, normalizedPackageId);
+  },
+});
+
 export const listReleasesForPackageInternal = internalQuery({
   args: {
     ownerId: v.string(),
@@ -342,7 +460,7 @@ export const createFirstReleaseRecord = internalMutation({
   args: {
     ownerId: v.string(),
     packageId: v.string(),
-    category: v.optional(v.union(v.literal("agents"), v.literal("stella"))),
+    category: v.optional(store_package_category_validator),
     displayName: v.string(),
     description: v.string(),
     releaseNotes: v.optional(v.string()),
@@ -353,6 +471,7 @@ export const createFirstReleaseRecord = internalMutation({
     artifactSize: v.number(),
     iconUrl: v.optional(v.string()),
     authorDisplayName: v.optional(v.string()),
+    authorHandle: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await getPackageByPackageId(ctx, args.packageId);
@@ -371,6 +490,7 @@ export const createFirstReleaseRecord = internalMutation({
       category,
       displayName: args.displayName,
       description: args.description,
+      searchText: buildPackageSearchText(args.displayName, args.description),
       latestReleaseNumber: 0,
       createdAt: now,
       updatedAt: now,
@@ -378,6 +498,7 @@ export const createFirstReleaseRecord = internalMutation({
       ...(args.authorDisplayName
         ? { authorDisplayName: args.authorDisplayName }
         : {}),
+      ...(args.authorHandle ? { authorHandle: args.authorHandle } : {}),
     });
 
     const releaseRef = await ctx.db.insert("store_package_releases", {
@@ -392,6 +513,12 @@ export const createFirstReleaseRecord = internalMutation({
       artifactContentType: args.artifactContentType,
       artifactSize: args.artifactSize,
       createdAt: now,
+      ...(args.manifest.parent && args.manifest.parent.length > 0
+        ? { parent: args.manifest.parent }
+        : {}),
+      ...(args.manifest.authoredAgainst
+        ? { authoredAgainst: args.manifest.authoredAgainst }
+        : {}),
     });
 
     await ctx.db.patch(packageRef, {
@@ -428,6 +555,7 @@ export const createUpdateReleaseRecord = internalMutation({
     artifactSize: v.number(),
     iconUrl: v.optional(v.string()),
     authorDisplayName: v.optional(v.string()),
+    authorHandle: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const pkg = await getOwnedPackageByPackageId(ctx, args.ownerId, args.packageId);
@@ -466,6 +594,12 @@ export const createUpdateReleaseRecord = internalMutation({
       artifactContentType: args.artifactContentType,
       artifactSize: args.artifactSize,
       createdAt: now,
+      ...(args.manifest.parent && args.manifest.parent.length > 0
+        ? { parent: args.manifest.parent }
+        : {}),
+      ...(args.manifest.authoredAgainst
+        ? { authoredAgainst: args.manifest.authoredAgainst }
+        : {}),
     });
 
     // Refresh the package row's surface metadata to whatever this release
@@ -479,6 +613,7 @@ export const createUpdateReleaseRecord = internalMutation({
       ...(args.authorDisplayName
         ? { authorDisplayName: args.authorDisplayName }
         : {}),
+      ...(args.authorHandle ? { authorHandle: args.authorHandle } : {}),
     });
 
     const updatedPackage = await ctx.db.get(pkg._id);
@@ -505,6 +640,148 @@ export const listPackages = query({
     return await ctx.db
       .query("store_packages")
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
+      .order("desc")
+      .take(200);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Public discovery
+// ---------------------------------------------------------------------------
+
+const PUBLIC_BROWSE_PAGE_SIZE = 40;
+const PUBLIC_SEARCH_MAX_RESULTS = 60;
+
+export const listPublicPackages = query({
+  args: {
+    category: v.optional(store_package_category_validator),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: v.object({
+    page: v.array(store_package_validator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    // Cap `numItems` server-side so a misbehaving client can't ask for
+    // huge pages, but otherwise honour Convex's standard pagination
+    // shape so `usePaginatedQuery` can walk every page from the
+    // renderer.
+    const numItems = Math.min(
+      Math.max(args.paginationOpts.numItems, 1),
+      PUBLIC_BROWSE_PAGE_SIZE,
+    );
+    const indexed = args.category
+      ? ctx.db
+          .query("store_packages")
+          .withIndex("by_category_and_updatedAt", (q) =>
+            q.eq("category", args.category!),
+          )
+      : ctx.db.query("store_packages").withIndex("by_updatedAt");
+    return await indexed.order("desc").paginate({
+      cursor: args.paginationOpts.cursor,
+      numItems,
+    });
+  },
+});
+
+export const getPublicPackage = query({
+  args: { packageId: v.string() },
+  returns: v.union(store_package_validator, v.null()),
+  handler: async (ctx, args) => {
+    const normalizedPackageId = normalizePackageId(args.packageId);
+    return await getPackageByPackageId(ctx, normalizedPackageId);
+  },
+});
+
+export const getPublicPackagesByIds = query({
+  args: { packageIds: v.array(v.string()) },
+  returns: v.array(store_package_validator),
+  handler: async (ctx, args) => {
+    if (args.packageIds.length === 0) return [];
+    // Cap to keep this cheap (the side panel only ever asks for the
+    // user's installed-but-not-owned set, which is realistically small).
+    const uniqueIds = Array.from(
+      new Set(args.packageIds.map((id) => normalizePackageId(id))),
+    ).slice(0, 200);
+    const records = await Promise.all(
+      uniqueIds.map((id) => getPackageByPackageId(ctx, id)),
+    );
+    return records.filter(
+      (record): record is NonNullable<typeof record> => record !== null,
+    );
+  },
+});
+
+export const listPublicReleases = query({
+  args: { packageId: v.string() },
+  returns: v.array(store_package_release_validator),
+  handler: async (ctx, args) => {
+    const normalizedPackageId = normalizePackageId(args.packageId);
+    const pkg = await getPackageByPackageId(ctx, normalizedPackageId);
+    if (!pkg) return [];
+    return await ctx.db
+      .query("store_package_releases")
+      .withIndex("by_packageId_and_releaseNumber", (q) =>
+        q.eq("packageId", normalizedPackageId),
+      )
+      .order("desc")
+      .take(200);
+  },
+});
+
+export const getPublicRelease = query({
+  args: {
+    packageId: v.string(),
+    releaseNumber: v.number(),
+  },
+  returns: v.union(store_package_release_validator, v.null()),
+  handler: async (ctx, args) => {
+    const normalizedPackageId = normalizePackageId(args.packageId);
+    const releaseNumber = normalizeReleaseNumber(args.releaseNumber);
+    const pkg = await getPackageByPackageId(ctx, normalizedPackageId);
+    if (!pkg) return null;
+    return await getReleaseByPackageIdAndNumber(ctx, normalizedPackageId, releaseNumber);
+  },
+});
+
+export const searchPublicPackages = query({
+  args: {
+    query: v.string(),
+    category: v.optional(store_package_category_validator),
+  },
+  returns: v.array(store_package_validator),
+  handler: async (ctx, args) => {
+    const needle = args.query.trim().toLowerCase();
+    if (!needle) return [];
+    return await ctx.db
+      .query("store_packages")
+      .withSearchIndex("search_text", (q) => {
+        const base = q.search("searchText", needle);
+        return args.category ? base.eq("category", args.category) : base;
+      })
+      .take(PUBLIC_SEARCH_MAX_RESULTS);
+  },
+});
+
+export const listPackagesByAuthorHandle = query({
+  args: { handle: v.string() },
+  returns: v.array(store_package_validator),
+  handler: async (ctx, args) => {
+    const handle = args.handle.trim().toLowerCase();
+    if (!handle) return [];
+    // Resolve handle -> ownerId via `user_profiles`, then list owned
+    // packages. Two reads; both indexed.
+    const profile = await ctx.db
+      .query("user_profiles")
+      .withIndex("by_publicHandle", (q) => q.eq("publicHandle", handle))
+      .unique();
+    if (!profile) return [];
+    return await ctx.db
+      .query("store_packages")
+      .withIndex("by_ownerId_and_updatedAt", (q) =>
+        q.eq("ownerId", profile.ownerId),
+      )
       .order("desc")
       .take(200);
   },
@@ -604,6 +881,13 @@ export const createFirstRelease = action({
     const artifactStorageKey = await ctx.storage.store(blob);
     const artifactUrl = await ctx.storage.getUrl(artifactStorageKey);
 
+    // Resolve `authorHandle` server-side from `user_profiles`. This
+    // action is reachable from the renderer, so trusting an
+    // `args.authorHandle` would let a modified client publish a row
+    // that links to another creator's handle. Public discovery + the
+    // `/c/:handle` page treat this field as identity, so it must
+    // reflect the *caller's* claimed handle (or be empty).
+    const authorHandle = await resolveCallerAuthorHandle(ctx, ownerId);
     return await ctx.runMutation(internal.data.store_packages.createFirstReleaseRecord, {
       ownerId,
       packageId,
@@ -619,6 +903,7 @@ export const createFirstRelease = action({
       ...(manifest.authorDisplayName
         ? { authorDisplayName: manifest.authorDisplayName }
         : {}),
+      ...(authorHandle ? { authorHandle } : {}),
     });
   },
 });
@@ -669,6 +954,9 @@ export const createUpdateRelease = action({
     const artifactStorageKey = await ctx.storage.store(blob);
     const artifactUrl = await ctx.storage.getUrl(artifactStorageKey);
 
+    // See createFirstRelease — resolve handle server-side rather than
+    // trusting the renderer-supplied `args.authorHandle`.
+    const authorHandle = await resolveCallerAuthorHandle(ctx, ownerId);
     return await ctx.runMutation(internal.data.store_packages.createUpdateReleaseRecord, {
       ownerId,
       packageId,
@@ -682,6 +970,7 @@ export const createUpdateRelease = action({
       ...(manifest.authorDisplayName
         ? { authorDisplayName: manifest.authorDisplayName }
         : {}),
+      ...(authorHandle ? { authorHandle } : {}),
     });
   },
 });

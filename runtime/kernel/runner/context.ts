@@ -258,7 +258,7 @@ export const createRunnerContext = ({
   requestCredential,
   requestRuntimeAuthRefresh,
   scheduleApi,
-  storeApi,
+  
   fashionApi,
   displayHtml,
   runtimeStore,
@@ -266,6 +266,7 @@ export const createRunnerContext = ({
   appendLocalChatEvent,
   getDefaultConversationId,
   memoryStore,
+  featureRosterProvider,
 }: StellaHostRunnerOptions): RunnerContext => {
   const envProxyBaseUrl = sanitizeStellaBase(
     process.env.STELLA_LLM_PROXY_URL ?? null,
@@ -322,7 +323,7 @@ export const createRunnerContext = ({
     requestCredential,
     displayHtml,
     scheduleApi,
-    storeApi,
+    
     fashionApi: resolvedFashionApi,
     webSearch: async (query, searchOptions) => {
       const handler = context.state?.webSearch;
@@ -439,13 +440,14 @@ export const createRunnerContext = ({
     requestCredential,
     requestRuntimeAuthRefresh,
     scheduleApi,
-    storeApi,
+    
     fashionApi: resolvedFashionApi,
     displayHtml,
     runtimeStore,
     listLocalChatEvents,
     appendLocalChatEvent,
     getDefaultConversationId,
+    featureRosterProvider,
     paths: {
       extensionsPath: path.join(stellaRoot, "runtime", "extensions"),
     },

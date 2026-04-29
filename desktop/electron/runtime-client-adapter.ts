@@ -795,6 +795,13 @@ export class RuntimeClientAdapter {
     return this.client.listLocalCommits(limit);
   }
 
+  listLocalCommitsBySelector(args: {
+    featureIds?: string[];
+    commitHashes?: string[];
+  }) {
+    return this.client.listLocalCommitsBySelector(args);
+  }
+
   listInstalledMods() {
     return this.client.listInstalledMods();
   }
@@ -819,29 +826,12 @@ export class RuntimeClientAdapter {
     return this.client.createStoreReleaseUpdate(args);
   }
 
-  publishStoreCandidateRelease(args: {
-    requestText: string;
-    selectedCommitHashes: string[];
-    existingPackageId?: string;
-  }) {
-    return this.client.publishStoreCandidateRelease(args);
+  buildStoreThreadBundle(commitHashes: string[]) {
+    return this.client.buildStoreThreadBundle(commitHashes);
   }
 
-  prepareStoreCandidateRelease(args: {
-    requestText: string;
-    selectedCommitHashes: string[];
-    existingPackageId?: string;
-  }) {
-    return this.client.prepareStoreCandidateRelease(args);
-  }
-
-  publishPreparedStoreRelease(args: {
-    requestText: string;
-    selectedCommitHashes: string[];
-    existingPackageId?: string;
-    draft: import("../../runtime/contracts/index.js").StorePublishDraft;
-  }) {
-    return this.client.publishPreparedStoreRelease(args);
+  listStoreFeatureRoster() {
+    return this.client.listStoreFeatureRoster();
   }
 
   installStoreRelease(args: { packageId: string; releaseNumber?: number }) {

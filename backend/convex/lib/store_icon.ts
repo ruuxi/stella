@@ -24,12 +24,31 @@ const sleep = (ms: number): Promise<void> =>
 const buildIconPrompt = (args: {
   displayName: string;
   description: string;
-  category: "agents" | "stella";
+  category:
+    | "apps-games"
+    | "productivity"
+    | "customization"
+    | "skills-agents"
+    | "integrations"
+    | "other";
 }): string => {
-  const role =
-    args.category === "agents"
-      ? "an AI assistant capability"
-      : "a Stella desktop app feature";
+  const role = (() => {
+    switch (args.category) {
+      case "apps-games":
+        return "a Stella app or game";
+      case "productivity":
+        return "a productivity feature";
+      case "customization":
+        return "a customization or theme";
+      case "skills-agents":
+        return "an AI skill or agent";
+      case "integrations":
+        return "an integration or connector";
+      case "other":
+      default:
+        return "a Stella add-on";
+    }
+  })();
   // Apple-leaning visual brief: minimal, flat, friendly, single subject,
   // saturated solid background, no text, no UI chrome. Kept short so Flux
   // doesn't drift into busy compositions.
@@ -72,7 +91,13 @@ const extractFirstImageUrl = (output: unknown): string | undefined => {
 export const generateStoreIconUrl = async (args: {
   displayName: string;
   description: string;
-  category: "agents" | "stella";
+  category:
+    | "apps-games"
+    | "productivity"
+    | "customization"
+    | "skills-agents"
+    | "integrations"
+    | "other";
 }): Promise<string | undefined> => {
   const apiKey = getFalApiKey();
   if (!apiKey) return undefined;

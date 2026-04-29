@@ -1,4 +1,4 @@
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
@@ -19,6 +19,7 @@ import { useWindowType } from "@/shared/hooks/use-window-type";
 import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
 import { DisplayTabBar } from "@/shell/display/DisplayTabBar";
 import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
+import { ShellTopBarStoreTabs } from "@/shell/ShellTopBarStoreTabs";
 
 export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
 
@@ -107,6 +108,10 @@ export const ShellTopBar = () => {
   const isMac = getPlatform() === "darwin";
   const isMiniWindow = useWindowType() === "mini";
   const { tabs, panelOpen, panelExpanded, panelWidth } = useDisplayTabs();
+  // Only the Store route adapts the top bar — other routes keep the
+  // default layout (display tab strip on the right).
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const isStoreRoute = pathname === "/store" || pathname.startsWith("/store/");
   const [miniAlwaysOnTop, setMiniAlwaysOnTopState] = useState(true);
 
   const toggleSidebar = useCallback(() => {
@@ -200,6 +205,17 @@ export const ShellTopBar = () => {
           <ArrowRight size={15} strokeWidth={1.75} />
         </button>
       </div>
+      {/*
+       * Centered route-specific nav: rendered as an absolutely-positioned
+       * overlay so neither the left nor right cluster shifts when it
+       * appears/disappears. Today only Store uses it; other routes can
+       * mount their own component the same way later.
+       */}
+      {isStoreRoute ? (
+        <div className="shell-topbar-center">
+          <ShellTopBarStoreTabs />
+        </div>
+      ) : null}
       <div className="shell-topbar-tabs" style={tabsStyle}>
         {tabs.length > 0 ? <DisplayTabBar /> : null}
       </div>

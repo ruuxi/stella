@@ -19,7 +19,6 @@ import type { LocalContextEvent } from "../local-history.js";
 import type {
   FashionToolApi,
   ScheduleToolApi,
-  StoreToolApi,
   AgentToolRequest,
   AgentToolSnapshot,
   ToolContext,
@@ -81,14 +80,27 @@ export type StellaHostRunnerOptions = {
       mode?: "author" | "install" | "update";
       /**
        * Optional callback the lifecycle invokes (during author-mode runs)
-       * just before committing, to produce a human-readable commit subject.
-       * Resolves to null/empty string to fall back to the task description.
+       * just before committing, to produce a human-readable commit subject
+       * + grouping decision (which `Stella-Feature-Id` this commit belongs
+       * to, plus any installed add-on parents). The runtime layer wraps
+       * this with a single LLM call; returning `null` falls back to the
+       * task description and emits no grouping trailers.
        */
       commitMessageProvider?: (args: {
         taskDescription: string;
         files: string[];
         diffPreview: string;
-      }) => Promise<string | null>;
+        conversationId?: string;
+      }) => Promise<
+        | string
+        | {
+            subject: string;
+            featureId?: string;
+            featureTitle?: string;
+            parentPackageIds?: string[];
+          }
+        | null
+      >;
     }) => Promise<void> | void;
     cancelRun?: (runId: string) => Promise<void> | void;
   } | null;
@@ -103,7 +115,6 @@ export type StellaHostRunnerOptions = {
     source: RuntimeAuthRefreshSource;
   }) => Promise<HostRuntimeAuthRefreshResult>;
   scheduleApi?: ScheduleToolApi;
-  storeApi?: StoreToolApi;
   fashionApi?: FashionToolApi;
   displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
@@ -119,6 +130,16 @@ export type StellaHostRunnerOptions = {
   appendLocalChatEvent?: (args: LocalChatAppendEventArgs) => void;
   getDefaultConversationId?: () => string;
   onGoogleWorkspaceAuthRequired?: () => void;
+  /**
+   * Optional roster builder. Given access to local git history and the
+   * installed-add-on store, returns the feature roster + installed
+   * footprints used by the commit-message LLM (and the Store side
+   * panel). Wired in by the worker server - the runner stays
+   * decoupled from `StoreModService`.
+   */
+  featureRosterProvider?: () => Promise<
+    import("../self-mod/feature-roster.js").FeatureRoster
+  >;
 };
 
 export type ChatPayload = {
@@ -268,13 +289,13 @@ export type RunnerContext = {
   requestCredential?: StellaHostRunnerOptions["requestCredential"];
   requestRuntimeAuthRefresh?: StellaHostRunnerOptions["requestRuntimeAuthRefresh"];
   scheduleApi?: ScheduleToolApi;
-  storeApi?: StoreToolApi;
   fashionApi?: FashionToolApi;
   displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
   listLocalChatEvents?: StellaHostRunnerOptions["listLocalChatEvents"];
   appendLocalChatEvent?: StellaHostRunnerOptions["appendLocalChatEvent"];
   getDefaultConversationId?: StellaHostRunnerOptions["getDefaultConversationId"];
+  featureRosterProvider?: StellaHostRunnerOptions["featureRosterProvider"];
   paths: RunnerPaths;
   state: RunnerState;
   ensureGoogleWorkspaceToolsLoaded: () => Promise<void>;
@@ -308,25 +329,6 @@ export type StoreOperations = {
   ) => Promise<StorePackageReleaseRecord | null>;
   createFirstStoreRelease: (args: StorePublishArgs) => Promise<StorePackageReleaseRecord>;
   createStoreReleaseUpdate: (args: StorePublishArgs) => Promise<StorePackageReleaseRecord>;
-  publishStoreCandidateRelease: (
-    args: import("../../protocol/index.js").StorePublishCandidateArgs & {
-      commits: import("../../contracts/index.js").StorePublishCandidateCommit[];
-      files: import("../../contracts/index.js").StorePublishCandidateFile[];
-    },
-  ) => Promise<StorePackageReleaseRecord>;
-  prepareStoreCandidateRelease: (
-    args: import("../../protocol/index.js").StorePublishCandidateArgs & {
-      commits: import("../../contracts/index.js").StorePublishCandidateCommit[];
-      files: import("../../contracts/index.js").StorePublishCandidateFile[];
-    },
-  ) => Promise<import("../../contracts/index.js").StorePublishDraft>;
-  publishPreparedStoreRelease: (
-    args: import("../../protocol/index.js").StorePublishCandidateArgs & {
-      commits: import("../../contracts/index.js").StorePublishCandidateCommit[];
-      files: import("../../contracts/index.js").StorePublishCandidateFile[];
-      draft: import("../../contracts/index.js").StorePublishDraft;
-    },
-  ) => Promise<StorePackageReleaseRecord>;
 };
 
 export type RunnerPublicApi = {
@@ -371,9 +373,6 @@ export type RunnerPublicApi = {
   getStorePackageRelease: StoreOperations["getStorePackageRelease"];
   createFirstStoreRelease: StoreOperations["createFirstStoreRelease"];
   createStoreReleaseUpdate: StoreOperations["createStoreReleaseUpdate"];
-  publishStoreCandidateRelease: StoreOperations["publishStoreCandidateRelease"];
-  prepareStoreCandidateRelease: StoreOperations["prepareStoreCandidateRelease"];
-  publishPreparedStoreRelease: StoreOperations["publishPreparedStoreRelease"];
   handleLocalChat: (
     payload: ChatPayload,
     callbacks: AgentCallbacks,

@@ -1,10 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { CollaborationIllustration } from "./CollaborationIllustration";
-import Users from "lucide-react/dist/esm/icons/users";
-import SquarePen from "lucide-react/dist/esm/icons/square-pen";
-import Copy from "lucide-react/dist/esm/icons/copy";
-import Globe from "lucide-react/dist/esm/icons/globe";
-import Pencil from "lucide-react/dist/esm/icons/pencil";
+import { Copy, Globe, Pencil, SquarePen, Users } from "lucide-react";
 import { Avatar } from "@/ui/avatar";
 import { showToast } from "@/ui/toast";
 import { getSocialActionErrorMessage } from "./social-errors";

@@ -1167,6 +1167,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   store: {
     listLocalCommits: (limit?: number) =>
       ipcRenderer.invoke("store:listLocalCommits", { limit }),
+    listLocalCommitsBySelector: (args: {
+      featureIds?: string[];
+      commitHashes?: string[];
+    }) => ipcRenderer.invoke("store:listLocalCommitsBySelector", args),
     listPackages: () => ipcRenderer.invoke("store:listPackages"),
     getPackage: (packageId: string) =>
       ipcRenderer.invoke("store:getPackage", { packageId }),
@@ -1176,22 +1180,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
       packageId: string;
       releaseNumber: number;
     }) => ipcRenderer.invoke("store:getRelease", payload),
-    publishCandidateRelease: (payload: {
-      requestText: string;
-      selectedCommitHashes: string[];
-      existingPackageId?: string;
-    }) => ipcRenderer.invoke("store:publishCandidateRelease", payload),
-    prepareCandidateRelease: (payload: {
-      requestText: string;
-      selectedCommitHashes: string[];
-      existingPackageId?: string;
-    }) => ipcRenderer.invoke("store:prepareCandidateRelease", payload),
-    publishPreparedRelease: (payload: {
-      requestText: string;
-      selectedCommitHashes: string[];
-      existingPackageId?: string;
-      draft: unknown;
-    }) => ipcRenderer.invoke("store:publishPreparedRelease", payload),
+    // Build the lightweight commit catalog (no patches/snapshots) the
+    // backend Store agent reasons over. Called whenever the user opens
+    // the Publish view or hits "Refresh changes". Sized for a small
+    // payload — file snapshots are uploaded only at confirm time.
+    buildCommitCatalog: (limit?: number) =>
+      ipcRenderer.invoke("store-thread:buildCommitCatalog", { limit }),
+    // Build the full publish bundle (with file snapshots) for the picked
+    // commits. Called only when the user confirms a draft.
+    buildBundleForConfirm: (payload: {
+      commitHashes: string[];
+    }) => ipcRenderer.invoke("store-thread:buildBundle", payload),
+    listFeatureRoster: () => ipcRenderer.invoke("store-thread:listFeatureRoster"),
     listInstalledMods: () => ipcRenderer.invoke("store:listInstalledMods"),
     installRelease: (payload: { packageId: string; releaseNumber?: number }) =>
       ipcRenderer.invoke("store:installRelease", payload),

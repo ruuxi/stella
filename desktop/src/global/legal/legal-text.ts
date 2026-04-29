@@ -320,7 +320,7 @@ We implement reasonable security measures to protect data that does reach our in
 
 15. Your Rights and Choices
 
-Access and Control — Because Stella stores data locally, you have direct access to and control over your data at all times. You can view, export, or delete your local data by accessing Stella's data directory, use the in-app reset function to clear all local data, revoke connected integrations at any time, and delete your account, which removes your account information, billing profile, social data, and published mods from our backend.
+Access and Control — Because Stella stores data locally, you have direct access to and control over your data at all times. You can view, export, or delete your local data by accessing Stella's data directory, use the in-app reset function to clear all local data, revoke connected integrations at any time, and delete your account, which removes your account information, billing profile, social data, and published add-ons from our backend.
 
 Discovery Opt-Out — During onboarding, each discovery category is individually selectable. The most sensitive category (Messages & Notes) is disabled by default and requires explicit opt-in. You can skip discovery entirely.
 

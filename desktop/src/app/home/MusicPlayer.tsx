@@ -1,5 +1,4 @@
-import Play from "lucide-react/dist/esm/icons/play"
-import Square from "lucide-react/dist/esm/icons/square"
+import { Play, Square } from "lucide-react"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { preloadLyriaMusic, useLyriaMusic } from "@/features/music/hooks/use-lyria-music"
 import type { MusicMood } from "@/prompts/music"

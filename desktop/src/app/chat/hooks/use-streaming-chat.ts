@@ -21,6 +21,7 @@ export function useStreamingChat({
 }: UseStreamingChatOptions) {
   const activeConversationId = conversationId
   const {
+    isAuthenticated,
     isLocalStorage,
     storageMode,
   } = useChatStore()
@@ -40,6 +41,7 @@ export function useStreamingChat({
     resetStreamingState,
   } = useLocalAgentStream({
     activeConversationId,
+    hasConnectedAccount: isAuthenticated,
     storageMode,
   })
 

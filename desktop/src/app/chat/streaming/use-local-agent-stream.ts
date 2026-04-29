@@ -32,6 +32,7 @@ import {
 type UseLocalAgentStreamOptions = {
   activeConversationId: string | null
   storageMode: 'cloud' | 'local'
+  hasConnectedAccount: boolean
 }
 
 type StartStreamArgs = {
@@ -143,6 +144,14 @@ const initialStoreState: StreamStoreState = {
   tasksByRunId: {},
   requestToRunId: {},
 }
+
+const TOKEN_SYNC_RETRY_COUNT = 10
+const TOKEN_SYNC_RETRY_DELAY_MS = 500
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
 
 function streamStoreReducer(
   state: StreamStoreState,
@@ -495,6 +504,7 @@ const toTaskFromResumeSnapshot = (
 export function useLocalAgentStream({
   activeConversationId,
   storageMode,
+  hasConnectedAccount,
 }: UseLocalAgentStreamOptions) {
   const [storeState, dispatch] = useReducer(
     streamStoreReducer,
@@ -1078,15 +1088,27 @@ export function useLocalAgentStream({
           let nextHealth = health
           let reason = getAgentHealthReason(nextHealth)
 
-          if (!nextHealth?.ready && isTokenSyncIssue(reason)) {
-            const synced = await trySyncHostToken()
+          for (
+            let retryIndex = 0;
+            !nextHealth?.ready &&
+            isTokenSyncIssue(reason) &&
+            retryIndex < TOKEN_SYNC_RETRY_COUNT;
+            retryIndex += 1
+          ) {
+            const synced = await trySyncHostToken({ hasConnectedAccount })
             if (attemptId !== startAttemptRef.current) return
 
             if (synced && window.electronAPI?.agent.healthCheck) {
               nextHealth = await window.electronAPI.agent.healthCheck()
               if (attemptId !== startAttemptRef.current) return
               reason = getAgentHealthReason(nextHealth)
+              if (nextHealth?.ready || !isTokenSyncIssue(reason)) {
+                break
+              }
             }
+
+            await wait(TOKEN_SYNC_RETRY_DELAY_MS)
+            if (attemptId !== startAttemptRef.current) return
           }
 
           if (!nextHealth?.ready && isTokenSyncIssue(reason)) {
@@ -1134,7 +1156,12 @@ export function useLocalAgentStream({
           })
         })
     },
-    [activeConversationId, ensureAgentStreamSubscription, storageMode],
+    [
+      activeConversationId,
+      ensureAgentStreamSubscription,
+      hasConnectedAccount,
+      storageMode,
+    ],
   )
 
   const queueStream = useCallback(

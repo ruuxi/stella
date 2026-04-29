@@ -1,44 +1,42 @@
 /**
  * Store nav model.
  *
- * The Store screen has two distinct universes:
- *   - "Stella Store"  — things that change Stella itself (mods, integrations).
- *   - "Shop"          — actual shopping surfaces (Fashion today, more later).
- *
- * Each tab is a single PageSidebar entry, grouped under a section label so
- * the user reads the universe split before the individual destination —
- * mirroring how Apple's Music sidebar separates Library from Apple Music.
+ * The Store has two top-level destinations:
+ *   - "Discover" — browse + install add-ons. The Store side panel
+ *     (in the workspace panel) handles publishing, updating, and
+ *     library management — there is no separate "Installed" or
+ *     "Publish" tab anymore.
+ *   - "Fashion" — Shopify try-on flow.
  */
 
-export const STORE_TAB_KEYS = ["discover", "installed", "fashion"] as const;
+export const STORE_TAB_KEYS = ["discover", "fashion"] as const;
 
 export type StoreTab = (typeof STORE_TAB_KEYS)[number];
-
-export type StoreTabGroup = "stella-store" | "shop";
-
-export const STORE_TAB_GROUP_LABELS: Record<StoreTabGroup, string> = {
-  "stella-store": "Stella Store",
-  shop: "Shop",
-};
 
 export type StoreTabDefinition = {
   key: StoreTab;
   label: string;
-  group: StoreTabGroup;
 };
 
-/**
- * Discover folds in Integrations (a section of bonus things to add), and
- * Installed folds in Updates (a section above your library when items have
- * a newer release). The list stays at three top-level destinations so the
- * sidebar reads as decisively as the App Store's left rail.
- */
 export const STORE_TABS: StoreTabDefinition[] = [
-  { key: "discover", label: "Discover", group: "stella-store" },
-  { key: "installed", label: "Installed", group: "stella-store" },
-  { key: "fashion", label: "Fashion", group: "shop" },
+  { key: "discover", label: "Discover" },
+  { key: "fashion", label: "Fashion" },
 ];
 
-export const STORE_TAB_GROUP_ORDER: StoreTabGroup[] = ["stella-store", "shop"];
-
 export const DEFAULT_STORE_TAB: StoreTab = "discover";
+
+const LEGACY_STORE_TAB_KEYS = new Set(["installed", "publish"]);
+
+/**
+ * Convert any string (URL search param, localStorage value) into a
+ * valid current tab key. Legacy values (`"installed"`, `"publish"`)
+ * map to Discover; everything unknown also falls back to Discover.
+ */
+export const normalizeStoreTab = (value: unknown): StoreTab => {
+  if (typeof value !== "string") return DEFAULT_STORE_TAB;
+  if (LEGACY_STORE_TAB_KEYS.has(value)) return DEFAULT_STORE_TAB;
+  if ((STORE_TAB_KEYS as readonly string[]).includes(value)) {
+    return value as StoreTab;
+  }
+  return DEFAULT_STORE_TAB;
+};

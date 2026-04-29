@@ -195,6 +195,21 @@ export const displayTabs = {
     if (state.panelOpen === open) return;
     emit({ ...state, panelOpen: open });
   },
+  reorderTab(tabId: string, targetIndex: number): void {
+    const idx = findIndex(state, tabId);
+    if (idx === -1) return;
+    const boundedTarget = Math.max(
+      0,
+      Math.min(targetIndex, state.tabs.length - 1),
+    );
+    if (idx === boundedTarget) return;
+
+    const nextTabs = [...state.tabs];
+    const [tab] = nextTabs.splice(idx, 1);
+    if (!tab) return;
+    nextTabs.splice(boundedTarget, 0, tab);
+    emit({ ...state, tabs: nextTabs });
+  },
   /**
    * Toggle / set the "expand to fill" mode. While expanded, the panel
    * occupies the entire content area to the right of the rail; the chat
@@ -217,6 +232,18 @@ export const displayTabs = {
     if (state.panelWidth === width) return;
     writePersistedWidth(width);
     emit({ ...state, panelWidth: width });
+  },
+  reset(): void {
+    nextOrd = 1;
+    writePersistedExpanded(false);
+    writePersistedWidth(null);
+    emit({
+      tabs: [],
+      activeTabId: null,
+      panelOpen: false,
+      panelExpanded: false,
+      panelWidth: null,
+    });
   },
 };
 

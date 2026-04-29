@@ -58,6 +58,8 @@ const buildCommitMessagePrompt = (input: {
   taskDescription: string;
   files: string[];
   diffPreview: string;
+  rosterBlock?: string;
+  conversationId?: string;
 }): string => {
   const filesShown = input.files.slice(0, COMMIT_MESSAGE_MAX_FILES_IN_PROMPT);
   const filesOmitted = Math.max(0, input.files.length - filesShown.length);
@@ -76,25 +78,98 @@ const buildCommitMessagePrompt = (input: {
     ? `Diff (truncated):\n\`\`\`diff\n${trimmedDiff}\n\`\`\``
     : "Diff: (not available)";
 
-  return [
-    "Write the commit subject for the Stella changes you just made.",
+  const sections: string[] = [
+    "You are about to commit a small Stella self-modification.",
     "",
-    "Output a single short imperative sentence describing what changed and why.",
-    "Constraints:",
-    "- Plain English, friendly to a non-developer reader.",
-    "- No leading prefix like 'feat:' or 'fix:'.",
-    "- No trailing period.",
-    "- 12 words or fewer.",
-    "- One line only.",
-    "- Refer to user-visible behavior when possible.",
-    "- Respond with the subject only: no quotes, no explanation, no markdown.",
+    "Write a short user-friendly subject and decide which feature group this commit",
+    "belongs to. Features group commits that build the same user-visible thing across",
+    "multiple sessions, so the Store can present \"Snake game (5 changes)\" instead",
+    "of five raw commits.",
     "",
+    "Return JSON only. Do not wrap it in markdown. Output must parse with JSON.parse:",
+    "- All keys and string values quoted with double quotes.",
+    "- No trailing commas, no comments, no extra prose around the object.",
+    "",
+    "Required keys: \"subject\" (string), \"featureId\" (string), \"featureTitle\" (string), \"parentPackageIds\" (array of strings; [] when none).",
+    "",
+    "Example output (literal — copy this format, replace the values):",
+    "{\"subject\":\"Add multiplayer mode to snake game\",\"featureId\":\"feat:nB8x9k\",\"featureTitle\":\"Snake multiplayer\",\"parentPackageIds\":[\"snake-game\"]}",
+    "",
+    "Rules:",
+    "- `subject`: 12 words or fewer, plain English, friendly to a non-developer. No \"feat:\" / \"fix:\" prefixes. No trailing period.",
+    "- `featureId`: pick from existing features below when this commit continues one of them; otherwise invent a new id like `feat:<8 chars lowercase>`.",
+    "- `featureTitle`: short human title for the feature group; update it when the latest direction has shifted.",
+    "- `parentPackageIds`: only fill in when this work is visibly building on top of an installed add-on (e.g. adding multiplayer to an installed `snake-game`). Otherwise return `[]`. A commit can have multiple parents.",
+    "",
+  ];
+
+  if (input.rosterBlock) {
+    sections.push(input.rosterBlock, "");
+  }
+
+  sections.push(
     `Original task: ${input.taskDescription.trim() || "(no task description)"}`,
-    "",
-    filesBlock,
-    "",
-    diffBlock,
-  ].join("\n");
+  );
+  if (input.conversationId) {
+    sections.push(`Conversation: ${input.conversationId}`);
+  }
+  sections.push("", filesBlock, "", diffBlock);
+
+  return sections.join("\n");
+};
+
+const tryExtractCommitMessageJson = (raw: string): string | null => {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]+?)```/i);
+  const candidate = (fence?.[1] ?? trimmed).trim();
+  // Find the outermost JSON object even if the model added a sentence around it.
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  return candidate.slice(start, end + 1);
+};
+
+type CommitMessageDecision = {
+  subject: string;
+  featureId?: string;
+  featureTitle?: string;
+  parentPackageIds?: string[];
+};
+
+const parseCommitMessageDecision = (
+  raw: string,
+): CommitMessageDecision | null => {
+  const blob = tryExtractCommitMessageJson(raw);
+  if (!blob) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(blob);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const record = parsed as Record<string, unknown>;
+  const subjectRaw = typeof record.subject === "string" ? record.subject : "";
+  const subject = truncateForCommitSubject(subjectRaw);
+  if (!subject) return null;
+  const result: CommitMessageDecision = { subject };
+  if (typeof record.featureId === "string" && record.featureId.trim()) {
+    result.featureId = record.featureId.trim();
+  }
+  if (typeof record.featureTitle === "string" && record.featureTitle.trim()) {
+    result.featureTitle = record.featureTitle.trim();
+  }
+  if (Array.isArray(record.parentPackageIds)) {
+    const parents = record.parentPackageIds
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (parents.length > 0) {
+      result.parentPackageIds = Array.from(new Set(parents));
+    }
+  }
+  return result;
 };
 
 const collectFileChanges = (
@@ -805,9 +880,26 @@ export const createAgentOrchestration = (
               taskDescription: string;
               files: string[];
               diffPreview: string;
+              conversationId?: string;
             }) => {
               if (!agentId) {
                 return null;
+              }
+              // Best-effort roster: the prompt still works without it
+              // (the LLM will just always invent a new featureId), but
+              // grouping is the entire point of this call so we want it
+              // when available.
+              let rosterBlock: string | undefined;
+              if (context.featureRosterProvider) {
+                try {
+                  const roster = await context.featureRosterProvider();
+                  const { formatRosterForPrompt } = await import(
+                    "../self-mod/feature-roster.js"
+                  );
+                  rosterBlock = formatRosterForPrompt(roster);
+                } catch {
+                  rosterBlock = undefined;
+                }
               }
               const commitMessageRunId = `local:sub:${crypto.randomUUID()}`;
               const commitMessageContext = await deps.buildAgentContext({
@@ -825,7 +917,10 @@ export const createAgentOrchestration = (
                 agentId,
                 ...(rootRunId ? { rootRunId } : {}),
                 agentType,
-                userPrompt: buildCommitMessagePrompt(input),
+                userPrompt: buildCommitMessagePrompt({
+                  ...input,
+                  ...(rosterBlock ? { rosterBlock } : {}),
+                }),
                 uiVisibility: "hidden",
                 agentContext: commitMessageContext,
                 toolCatalog: [],
@@ -844,7 +939,13 @@ export const createAgentOrchestration = (
               if (result.error) {
                 return null;
               }
-              return truncateForCommitSubject(result.result) || null;
+              const decision = parseCommitMessageDecision(result.result);
+              if (decision) return decision;
+              // Fall back to plain-string contract: treat the whole reply
+              // as the subject so the commit still gets a sane title even
+              // when the model didn't return JSON.
+              const subject = truncateForCommitSubject(result.result);
+              return subject || null;
             };
             await Promise.resolve(
               context.selfModLifecycle!.finalizeRun({

@@ -28,11 +28,24 @@ export const createStoreOperations = (
     ) {
       return null;
     }
+    const validCategories = new Set([
+      "apps-games",
+      "productivity",
+      "customization",
+      "skills-agents",
+      "integrations",
+      "other",
+    ]);
+    const tags = Array.isArray(record.tags)
+      ? record.tags.filter((entry): entry is string => typeof entry === "string")
+      : undefined;
     return {
       packageId: record.packageId,
-      ...(record.category === "agents" || record.category === "stella"
-        ? { category: record.category }
+      ...(typeof record.category === "string"
+      && validCategories.has(record.category)
+        ? { category: record.category as StorePackageRecord["category"] }
         : {}),
+      ...(tags && tags.length > 0 ? { tags } : {}),
       displayName: record.displayName,
       description: record.description,
       latestReleaseNumber: record.latestReleaseNumber,
@@ -43,6 +56,9 @@ export const createStoreOperations = (
         : {}),
       ...(typeof record.authorDisplayName === "string" && record.authorDisplayName
         ? { authorDisplayName: record.authorDisplayName }
+        : {}),
+      ...(typeof record.authorHandle === "string" && record.authorHandle
+        ? { authorHandle: record.authorHandle }
         : {}),
       ...(record.featured === true ? { featured: true } : {}),
     };
@@ -72,6 +88,14 @@ export const createStoreOperations = (
     ) {
       return null;
     }
+    const validManifestCategories = new Set([
+      "apps-games",
+      "productivity",
+      "customization",
+      "skills-agents",
+      "integrations",
+      "other",
+    ]);
     return {
       packageId: record.packageId,
       releaseNumber: record.releaseNumber,
@@ -79,9 +103,10 @@ export const createStoreOperations = (
         packageId: record.packageId,
         releaseNumber: record.releaseNumber,
         category:
-          manifest.category === "agents" || manifest.category === "stella"
-            ? manifest.category
-            : "stella",
+          typeof manifest.category === "string"
+          && validManifestCategories.has(manifest.category)
+            ? (manifest.category as StorePackageRecord["category"] & string)
+            : "other",
         displayName: args.packageRecord.displayName,
         description: args.packageRecord.description,
         ...(typeof record.releaseNotes === "string"
@@ -143,6 +168,11 @@ export const createStoreOperations = (
       .filter((record): record is StorePackageRecord => Boolean(record));
   };
 
+  // The runner's package + release readers go through the *public*
+  // queries because the install pipeline must be able to fetch any
+  // creator's add-on, not just the current user's. The owner-filtered
+  // `listPackages` query still feeds "your add-ons" surfaces directly
+  // from the renderer.
   const getStorePackage = async (
     packageId: string,
   ): Promise<StorePackageRecord | null> => {
@@ -150,9 +180,9 @@ export const createStoreOperations = (
     const record = await client.query(
       (
         context.convexApi as {
-          data: { store_packages: { getPackage: unknown } };
+          data: { store_packages: { getPublicPackage: unknown } };
         }
-      ).data.store_packages.getPackage,
+      ).data.store_packages.getPublicPackage,
       { packageId },
     );
     return toSharedStorePackage(record);
@@ -169,9 +199,9 @@ export const createStoreOperations = (
     const records = (await client.query(
       (
         context.convexApi as {
-          data: { store_packages: { listReleases: unknown } };
+          data: { store_packages: { listPublicReleases: unknown } };
         }
-      ).data.store_packages.listReleases,
+      ).data.store_packages.listPublicReleases,
       { packageId },
     )) as unknown[];
     return records
@@ -191,9 +221,9 @@ export const createStoreOperations = (
     const record = await client.query(
       (
         context.convexApi as {
-          data: { store_packages: { getRelease: unknown } };
+          data: { store_packages: { getPublicRelease: unknown } };
         }
-      ).data.store_packages.getRelease,
+      ).data.store_packages.getPublicRelease,
       { packageId, releaseNumber },
     );
     return toSharedStoreRelease({ release: record, packageRecord });
@@ -264,71 +294,6 @@ export const createStoreOperations = (
     return releaseRecord;
   };
 
-  const publishStoreCandidateRelease: StoreOperations["publishStoreCandidateRelease"] =
-    async (args) => {
-      const client = deps.ensureStoreClient();
-      const result = (await client.action(
-        (
-          context.convexApi as {
-            data: { store_publish_agent: { publishCandidateRelease: unknown } };
-          }
-        ).data.store_publish_agent.publishCandidateRelease,
-        args,
-      )) as {
-        package?: unknown;
-        release?: unknown;
-      } | unknown;
-
-      const releaseResult = result as { package?: unknown; release?: unknown };
-      const packageRecord = toSharedStorePackage(releaseResult.package);
-      const releaseRecord = packageRecord
-        ? toSharedStoreRelease({ release: releaseResult.release, packageRecord })
-        : null;
-      if (!releaseRecord) {
-        throw new Error("Store publish returned an invalid release payload.");
-      }
-      return releaseRecord;
-    };
-
-  const prepareStoreCandidateRelease: StoreOperations["prepareStoreCandidateRelease"] =
-    async (args) => {
-      const client = deps.ensureStoreClient();
-      return (await client.action(
-        (
-          context.convexApi as {
-            data: { store_publish_agent: { prepareCandidateRelease: unknown } };
-          }
-        ).data.store_publish_agent.prepareCandidateRelease,
-        args,
-      )) as Awaited<ReturnType<StoreOperations["prepareStoreCandidateRelease"]>>;
-    };
-
-  const publishPreparedStoreRelease: StoreOperations["publishPreparedStoreRelease"] =
-    async (args) => {
-      const client = deps.ensureStoreClient();
-      const result = (await client.action(
-        (
-          context.convexApi as {
-            data: { store_publish_agent: { publishPreparedRelease: unknown } };
-          }
-        ).data.store_publish_agent.publishPreparedRelease,
-        args,
-      )) as {
-        package?: unknown;
-        release?: unknown;
-      } | unknown;
-
-      const releaseResult = result as { package?: unknown; release?: unknown };
-      const packageRecord = toSharedStorePackage(releaseResult.package);
-      const releaseRecord = packageRecord
-        ? toSharedStoreRelease({ release: releaseResult.release, packageRecord })
-        : null;
-      if (!releaseRecord) {
-        throw new Error("Store publish returned an invalid release payload.");
-      }
-      return releaseRecord;
-    };
-
   return {
     listStorePackages,
     getStorePackage,
@@ -336,8 +301,5 @@ export const createStoreOperations = (
     getStorePackageRelease,
     createFirstStoreRelease,
     createStoreReleaseUpdate,
-    publishStoreCandidateRelease,
-    prepareStoreCandidateRelease,
-    publishPreparedStoreRelease,
   };
 };

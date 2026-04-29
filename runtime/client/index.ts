@@ -1173,6 +1173,17 @@ export class StellaRuntimeClient {
     );
   }
 
+  async listLocalCommitsBySelector(args: {
+    featureIds?: string[];
+    commitHashes?: string[];
+  }) {
+    return await this.requestWorker<LocalGitCommitRecord[]>(
+      METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS_BY_SELECTOR,
+      args,
+      { ensureWorker: true, recordActivity: false },
+    );
+  }
+
   async listInstalledMods() {
     return await this.requestWorker<InstalledStoreModRecord[]>(
       METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED,
@@ -1235,14 +1246,27 @@ export class StellaRuntimeClient {
     );
   }
 
-  async publishStoreCandidateRelease(payload: {
-    requestText: string;
-    selectedCommitHashes: string[];
-    existingPackageId?: string;
-  }) {
-    return await this.requestWorker<StorePackageReleaseRecord>(
-      METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_CANDIDATE_RELEASE,
-      payload,
+  async buildStoreThreadBundle(commitHashes: string[]) {
+    return await this.requestWorker<{
+      commits: Array<{
+        commitHash: string;
+        shortHash?: string;
+        subject: string;
+        body: string;
+        timestampMs?: number;
+        files: string[];
+        patch: string;
+      }>;
+      files: Array<{
+        path: string;
+        deleted: boolean;
+        contentBase64?: string;
+      }>;
+      stellaCommit?: string;
+      installedParents?: Array<{ packageId: string; releaseNumber: number }>;
+    }>(
+      METHOD_NAMES.STORE_THREAD_BUILD_BUNDLE,
+      { commitHashes },
       {
         ensureWorker: true,
         recordActivity: true,
@@ -1250,30 +1274,12 @@ export class StellaRuntimeClient {
     );
   }
 
-  async prepareStoreCandidateRelease(payload: {
-    requestText: string;
-    selectedCommitHashes: string[];
-    existingPackageId?: string;
-  }) {
-    return await this.requestWorker(
-      METHOD_NAMES.STORE_PREPARE_CANDIDATE_RELEASE,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: true,
-      },
-    );
-  }
-
-  async publishPreparedStoreRelease(payload: {
-    requestText: string;
-    selectedCommitHashes: string[];
-    existingPackageId?: string;
-    draft: import("../contracts/index.js").StorePublishDraft;
-  }) {
-    return await this.requestWorker<StorePackageReleaseRecord>(
-      METHOD_NAMES.STORE_PUBLISH_PREPARED_RELEASE,
-      payload,
+  async listStoreFeatureRoster() {
+    return await this.requestWorker<
+      import("../kernel/self-mod/feature-roster.js").FeatureRoster
+    >(
+      METHOD_NAMES.STORE_THREAD_LIST_FEATURE_ROSTER,
+      {},
       {
         ensureWorker: true,
         recordActivity: true,

@@ -351,7 +351,7 @@ export const listOutfitsByBatch = query({
       .withIndex("by_ownerId_and_batchId", (q) =>
         q.eq("ownerId", ownerId).eq("batchId", batchId),
       )
-      .collect();
+      .take(MAX_OUTFITS_PER_BATCH);
   },
 });
 
@@ -399,7 +399,7 @@ export const insertOutfit = internalMutation({
       .withIndex("by_ownerId_and_batchId", (q) =>
         q.eq("ownerId", args.ownerId).eq("batchId", batchId),
       )
-      .collect();
+      .take(MAX_OUTFITS_PER_BATCH);
     if (existingForBatch.length >= MAX_OUTFITS_PER_BATCH) {
       throw new ConvexError({
         code: "INVALID_ARGUMENT",

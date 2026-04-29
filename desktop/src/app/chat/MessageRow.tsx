@@ -18,7 +18,7 @@
  * Reasoning text is intentionally NOT rendered anywhere in this surface
  * (the underlying data still flows through state for model history).
  */
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import type {
   Attachment,
   ChannelEnvelope,
@@ -73,6 +73,17 @@ export type AssistantRowViewModel = {
   resourcePayload?: DisplayPayload;
   selfModApplied?: SelfModApplied;
   askQuestion?: AskQuestionState;
+  /**
+   * Optional renderer for surface-specific row attachments (e.g. the Store
+   * thread's draft confirmation card). Mounted after the markdown body and
+   * before askQuestion.
+   *
+   * Identity-stable per `customSlotKey` — the row equality comparator only
+   * checks `customSlotKey` so re-rendering ancestors don't blow away the
+   * memoized row when the renderer closure identity churns.
+   */
+  customSlot?: ReactNode;
+  customSlotKey?: string;
 };
 
 export type EventRowViewModel = UserRowViewModel | AssistantRowViewModel;
@@ -238,6 +249,7 @@ export const AssistantMessageRow = memo(
     const hasResource = Boolean(row.resourcePayload);
     const hasSelfMod = Boolean(row.selfModApplied);
     const hasAskQuestion = Boolean(row.askQuestion);
+    const hasCustomSlot = Boolean(row.customSlot);
 
     if (
       !hasText &&
@@ -245,7 +257,8 @@ export const AssistantMessageRow = memo(
       !hasOfficePreview &&
       !hasResource &&
       !hasSelfMod &&
-      !hasAskQuestion
+      !hasAskQuestion &&
+      !hasCustomSlot
     ) {
       return null;
     }
@@ -275,6 +288,7 @@ export const AssistantMessageRow = memo(
           {row.selfModApplied && (
             <SelfModUndoButton selfModApplied={row.selfModApplied} />
           )}
+          {row.customSlot ? row.customSlot : null}
           {row.askQuestion && <AskQuestionBubble payload={row.askQuestion} />}
         </div>
       </div>

@@ -12,7 +12,6 @@ import type {
   SocialSessionServiceSnapshot,
   StorePackageRecord,
   StorePackageReleaseRecord,
-  StorePublishDraft,
   StoreReleaseArtifact,
 } from "../contracts/index.js";
 import type {
@@ -33,7 +32,6 @@ export type {
   SocialSessionServiceSnapshot,
   StorePackageRecord,
   StorePackageReleaseRecord,
-  StorePublishDraft,
   StoreReleaseArtifact,
 };
 
@@ -117,9 +115,8 @@ export const METHOD_NAMES = {
   STORE_GET_RELEASE: "store.getRelease",
   STORE_CREATE_FIRST_RELEASE: "store.createFirstRelease",
   STORE_CREATE_RELEASE_UPDATE: "store.createReleaseUpdate",
-  STORE_PUBLISH_CANDIDATE_RELEASE: "store.publishCandidateRelease",
-  STORE_PREPARE_CANDIDATE_RELEASE: "store.prepareCandidateRelease",
-  STORE_PUBLISH_PREPARED_RELEASE: "store.publishPreparedRelease",
+  STORE_THREAD_BUILD_BUNDLE: "store.thread.buildBundle",
+  STORE_THREAD_LIST_FEATURE_ROSTER: "store.thread.listFeatureRoster",
   STORE_INSTALL_RELEASE: "store.installRelease",
   STORE_UNINSTALL_MOD: "store.uninstallMod",
   SCHEDULE_LIST_CRON_JOBS: "schedule.listCronJobs",
@@ -183,8 +180,6 @@ export const METHOD_NAMES = {
     "internal.worker.createFirstStoreRelease",
   INTERNAL_WORKER_CREATE_STORE_RELEASE_UPDATE:
     "internal.worker.createStoreReleaseUpdate",
-  INTERNAL_WORKER_PUBLISH_STORE_CANDIDATE_RELEASE:
-    "internal.worker.publishStoreCandidateRelease",
   INTERNAL_WORKER_INSTALL_STORE_RELEASE: "internal.worker.installStoreRelease",
   INTERNAL_WORKER_UNINSTALL_STORE_MOD: "internal.worker.uninstallStoreMod",
   INTERNAL_WORKER_RESUME_HMR: "internal.worker.resumeHmr",
@@ -212,6 +207,8 @@ export const METHOD_NAMES = {
     "internal.worker.discovery.collectAllSignals",
   INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS:
     "internal.worker.storeMods.listLocalCommits",
+  INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS_BY_SELECTOR:
+    "internal.worker.storeMods.listLocalCommitsBySelector",
   INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED:
     "internal.worker.storeMods.listInstalledMods",
   INTERNAL_WORKER_SCHEDULE_LIST_CRON_JOBS:
@@ -609,12 +606,6 @@ export type StorePublishArgs = {
   artifact: StoreReleaseArtifact;
 };
 
-export type StorePublishCandidateArgs = {
-  requestText: string;
-  selectedCommitHashes: string[];
-  existingPackageId?: string;
-};
-
 export type RuntimeStoreApi = {
   listPackages: () => Promise<StorePackageRecord[]>;
   getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
@@ -628,15 +619,6 @@ export type RuntimeStoreApi = {
   ) => Promise<StorePackageReleaseRecord>;
   createReleaseUpdate: (
     args: StorePublishArgs,
-  ) => Promise<StorePackageReleaseRecord>;
-  publishCandidateRelease: (
-    args: StorePublishCandidateArgs,
-  ) => Promise<StorePackageReleaseRecord>;
-  prepareCandidateRelease: (
-    args: StorePublishCandidateArgs,
-  ) => Promise<StorePublishDraft>;
-  publishPreparedRelease: (
-    args: StorePublishCandidateArgs & { draft: StorePublishDraft },
   ) => Promise<StorePackageReleaseRecord>;
 };
 
