@@ -37,6 +37,7 @@ import {
   type AskQuestionState,
   type Selection,
 } from './AskQuestionBubble'
+import { isUiHiddenMessagePayload } from '@/app/chat/lib/message-display'
 
 const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   if (!event?.payload || typeof event.payload !== 'object') return null
@@ -88,19 +89,30 @@ const getCwd = (events: EventRecord[]): string | undefined => {
 }
 
 /**
- * Extract a pending askQuestion (one whose `tool_request` has not yet
- * been answered by an `ask_question_response` user message) plus a map
- * of answered selections keyed by the assistant message id that owned
- * the askQuestion (for inline rendering on the answered assistant row).
+ * Walk the event stream once and produce everything the chat surface
+ * needs to render askQuestion bubbles in a single, stable place per
+ * question:
  *
- * In the linear timeline an askQuestion sits under whichever assistant
- * message most recently preceded its `tool_request`. That assistant id
- * is what we key by.
+ *  - `payloadByAssistantId`: for every askQuestion we've seen, the
+ *    full payload (with optional `submitted`/`selections`) keyed by the
+ *    assistant message it should attach to. Includes both pending and
+ *    answered questions.
+ *  - `pendingWithoutAssistant`: the most recent pending askQuestion
+ *    that has no preceding assistant message to attach to (e.g. the
+ *    agent's first action was the question). Rendered as a standalone
+ *    `<PendingAskQuestionRow>` at the tail.
+ *
+ * Resolving the originating assistant skips agent-terminal-notice
+ * messages so the bubble doesn't get parked on an "Agent completed"
+ * row when there's a real chat reply available.
+ *
+ * The main chat does not infer routing from active sub-agents. A Store
+ * agent can use askQuestion only from its own Store-specific surface;
+ * the orchestrator chat answer path stays local to the current chat.
  */
 type AskQuestionDerivation = {
-  pending: AskQuestionState | null
-  answeredByAssistantId: Map<string, Record<number, Selection>>
   payloadByAssistantId: Map<string, AskQuestionState>
+  pendingWithoutAssistant: AskQuestionState | null
 }
 
 const isAskQuestionResponseMessage = (event: EventRecord): boolean => {
@@ -112,32 +124,48 @@ const isAskQuestionResponseMessage = (event: EventRecord): boolean => {
   )
 }
 
-const getAskQuestionTargetAgentId = (
+const isTerminalNoticeAssistant = (
   responseTarget: AgentResponseTarget | undefined,
-): string | undefined => {
-  if (
-    responseTarget?.type === 'agent_turn' ||
-    responseTarget?.type === 'agent_terminal_notice'
-  ) {
-    return responseTarget.agentId
-  }
-  return undefined
-}
+): boolean => responseTarget?.type === 'agent_terminal_notice'
 
 const deriveAskQuestions = (
   events: EventRecord[],
   responseTargetByAssistantId: Map<string, AgentResponseTarget | undefined>,
 ): AskQuestionDerivation => {
-  const answeredByAssistantId = new Map<string, Record<number, Selection>>()
   const payloadByAssistantId = new Map<string, AskQuestionState>()
-  let lastAssistantId: string | null = null
+  let pendingWithoutAssistant: AskQuestionState | null = null
+
+  /** Originating assistant for the most recent unanswered question, if any. */
+  let lastNonNoticeAssistantId: string | null = null
   let pending:
-    | { assistantId: string | null; payload: AskQuestionState }
+    | {
+        assistantId: string | null
+        payload: AskQuestionState
+      }
     | null = null
+
+  const finalize = (
+    assistantId: string | null,
+    payload: AskQuestionState,
+    selections: Record<number, Selection> | null,
+  ) => {
+    const state: AskQuestionState = {
+      ...payload,
+      ...(selections ? { submitted: true, selections } : {}),
+    }
+    if (assistantId) {
+      payloadByAssistantId.set(assistantId, state)
+    } else {
+      pendingWithoutAssistant = state
+    }
+  }
 
   for (const event of events) {
     if (isAssistantMessage(event)) {
-      lastAssistantId = event._id
+      const responseTarget = responseTargetByAssistantId.get(event._id)
+      if (!isTerminalNoticeAssistant(responseTarget)) {
+        lastNonNoticeAssistantId = event._id
+      }
       continue
     }
 
@@ -146,10 +174,25 @@ const deriveAskQuestions = (
         const text =
           typeof event.payload?.text === 'string' ? event.payload.text : ''
         const selections = parseAskQuestionAnswersMessage(pending.payload, text)
-        if (selections && pending.assistantId) {
-          answeredByAssistantId.set(pending.assistantId, selections)
-        }
+        finalize(
+          pending.assistantId,
+          pending.payload,
+          selections,
+        )
         pending = null
+        continue
+      }
+      // A visible user message marks a real turn boundary. A subsequent
+      // askQuestion belongs to *this* turn, not the previous turn's
+      // assistant message — drop the stale candidate so the bubble
+      // either attaches to a fresh assistant emitted later in this turn
+      // or, if the agent's first action is the question, falls through
+      // to the standalone PendingAskQuestionRow at the tail.
+      // Hidden user messages (system reminders, workspace creation
+      // requests, etc.) don't visually break the turn so they shouldn't
+      // discard the candidate.
+      if (!isUiHiddenMessagePayload(getMessagePayload(event))) {
+        lastNonNoticeAssistantId = null
       }
       continue
     }
@@ -161,26 +204,18 @@ const deriveAskQuestions = (
     if (payload?.toolName !== 'askQuestion') continue
     const parsed = parseAskQuestionArgs(payload.args)
     if (!parsed) continue
-    pending = { assistantId: lastAssistantId, payload: parsed }
-    if (lastAssistantId) {
-      payloadByAssistantId.set(lastAssistantId, parsed)
+    const assistantId = lastNonNoticeAssistantId
+    pending = {
+      assistantId,
+      payload: parsed,
     }
   }
 
-  let pendingState: AskQuestionState | null = null
   if (pending) {
-    const targetAgentId = pending.assistantId
-      ? getAskQuestionTargetAgentId(
-          responseTargetByAssistantId.get(pending.assistantId),
-        )
-      : undefined
-    pendingState = {
-      ...pending.payload,
-      ...(targetAgentId ? { targetAgentId } : {}),
-    }
+    finalize(pending.assistantId, pending.payload, null)
   }
 
-  return { pending: pendingState, answeredByAssistantId, payloadByAssistantId }
+  return { payloadByAssistantId, pendingWithoutAssistant }
 }
 
 type UseEventRowsOptions = {
@@ -356,23 +391,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           getCwd(toolEvents),
           { developerResourcesEnabled: developerResourcePreviewsEnabled },
         )
-        const askQuestionPayload = askQuestion.payloadByAssistantId.get(event._id)
-        const askQuestionSelections = askQuestion.answeredByAssistantId.get(
-          event._id,
-        )
-        const askQuestionTargetAgentId =
-          getAskQuestionTargetAgentId(responseTarget)
-        const askQuestionState: AskQuestionState | undefined = askQuestionPayload
-          ? {
-              ...askQuestionPayload,
-              ...(askQuestionTargetAgentId
-                ? { targetAgentId: askQuestionTargetAgentId }
-                : {}),
-              ...(askQuestionSelections
-                ? { submitted: true, selections: askQuestionSelections }
-                : {}),
-            }
-          : undefined
+        const askQuestionState = askQuestion.payloadByAssistantId.get(event._id)
         const selfModApplied = selfModMap?.[event._id]
         const row: AssistantRowViewModel = {
           kind: 'assistant',
@@ -465,6 +484,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
   return {
     rows: slicedRows,
     lastUserRowIndex,
-    pendingAskQuestion: askQuestion.pending,
+    pendingAskQuestion: askQuestion.pendingWithoutAssistant,
   }
 }

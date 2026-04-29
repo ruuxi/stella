@@ -37,7 +37,6 @@ export type Selection =
   | { kind: "skipped" };
 
 export type AskQuestionState = AskQuestionPayload & {
-  targetAgentId?: string;
   submitted?: boolean;
   selections?: Record<number, Selection>;
 };
@@ -175,6 +174,19 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
   );
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(Boolean(payload.submitted));
+
+  // External payload may flip to submitted when the answer message lands
+  // (or when a duplicate answer arrives via another surface). Keep the
+  // local state in sync without losing user interaction in flight.
+  useEffect(() => {
+    if (payload.submitted && !submitted) {
+      setSubmitted(true);
+      setEditingIndex(null);
+    }
+    if (payload.selections) {
+      setSelections((prev) => (prev === payload.selections ? prev : payload.selections!));
+    }
+  }, [payload.selections, payload.submitted, submitted]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const stepsRef = useRef<HTMLDivElement>(null);
   const stepRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -232,7 +244,6 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
             uiVisibility: "hidden",
             triggerKind: "ask_question_response",
             triggerSource: "ask-question-bubble",
-            targetAgentId: payload.targetAgentId,
           },
         }),
       );
