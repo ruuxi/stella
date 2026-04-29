@@ -20,6 +20,7 @@ import type {
   StartupItem,
   AppUsageSummary,
   FilesystemSignals,
+  UserIdentitySignal,
 } from "./discovery-types.js";
 
 const log = (...args: unknown[]) => console.error("[system-signals]", ...args);
@@ -59,6 +60,38 @@ const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
   const { Database } = await import("bun:sqlite");
   return new Database(dbPath, { readonly: true }) as SqliteDatabase;
 };
+
+// ---------------------------------------------------------------------------
+// User Identity
+// ---------------------------------------------------------------------------
+
+async function collectUserIdentity(): Promise<UserIdentitySignal | null> {
+  const identity: UserIdentitySignal = {};
+
+  try {
+    const info = os.userInfo();
+    if (info.username) identity.username = info.username;
+    if (info.homedir) identity.homeDirectory = info.homedir;
+  } catch {
+    identity.homeDirectory = os.homedir();
+  }
+
+  try {
+    if (os.platform() === "darwin") {
+      const fullName = await execAsync("id -F");
+      if (fullName) identity.fullName = fullName;
+    } else if (os.platform() === "win32") {
+      const fullName = await execAsync("powershell -NoProfile -Command \"[Environment]::UserName\"");
+      if (fullName) identity.fullName = fullName;
+    }
+  } catch {
+    // OS account display names are best-effort evidence, not required.
+  }
+
+  return identity.username || identity.fullName || identity.homeDirectory
+    ? identity
+    : null;
+}
 
 // ---------------------------------------------------------------------------
 // Dock Pins (macOS)
@@ -476,7 +509,8 @@ async function collectFilesystemSignals(): Promise<FilesystemSignals> {
 // ---------------------------------------------------------------------------
 
 export async function collectSystemSignals(stellaHome: string): Promise<SystemSignals> {
-  const [dockPins, appUsage, filesystem, startupItems] = await Promise.all([
+  const [userIdentity, dockPins, appUsage, filesystem, startupItems] = await Promise.all([
+    withTimeout(collectUserIdentity(), 2000, null),
     withTimeout(collectDockPins(), 3000, []),
     withTimeout(collectAppUsage(stellaHome), 10000, []),
     withTimeout(collectFilesystemSignals(), 5000, {
@@ -487,7 +521,7 @@ export async function collectSystemSignals(stellaHome: string): Promise<SystemSi
     withTimeout(collectStartupItems(), 3000, []),
   ]);
 
-  return { dockPins, appUsage, filesystem, startupItems };
+  return { userIdentity, dockPins, appUsage, filesystem, startupItems };
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +530,20 @@ export async function collectSystemSignals(stellaHome: string): Promise<SystemSi
 
 export function formatSystemSignalsForSynthesis(data: SystemSignals): string {
   const sections: string[] = [];
+
+  if (data.userIdentity) {
+    const identitySection = ["### OS Account Identity"];
+    if (data.userIdentity.fullName) {
+      identitySection.push(`Full Name: ${data.userIdentity.fullName}`);
+    }
+    if (data.userIdentity.username) {
+      identitySection.push(`Username: ${data.userIdentity.username}`);
+    }
+    if (data.userIdentity.homeDirectory) {
+      identitySection.push(`Home Directory: ${data.userIdentity.homeDirectory}`);
+    }
+    sections.push(identitySection.join("\n"));
+  }
 
   // Dock/Pinned Apps
   if (data.dockPins.length > 0) {

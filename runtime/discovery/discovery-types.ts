@@ -115,7 +115,14 @@ export type StartupItem = {
   path: string;
 };
 
+export type UserIdentitySignal = {
+  username?: string;
+  fullName?: string;
+  homeDirectory?: string;
+};
+
 export type SystemSignals = {
+  userIdentity: UserIdentitySignal | null;
   dockPins: DockPin[];
   appUsage: AppUsageSummary[];
   filesystem: FilesystemSignals;
