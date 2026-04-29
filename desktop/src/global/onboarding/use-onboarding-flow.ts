@@ -1,6 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
 
+// Permissions are macOS TCC concepts (Accessibility, Screen Capture);
+// on other platforms the cards are no-ops, so skip the phase entirely.
+const PLATFORM_SKIPPED_PHASES: ReadonlySet<Phase> =
+  typeof window !== "undefined" && window.electronAPI?.platform !== "darwin"
+    ? new Set<Phase>(["permissions"])
+    : new Set<Phase>();
+
+const advancePastSkipped = (index: number, direction: 1 | -1): number => {
+  let cursor = index;
+  while (
+    cursor >= 0 &&
+    cursor < SPLIT_STEP_ORDER.length &&
+    PLATFORM_SKIPPED_PHASES.has(SPLIT_STEP_ORDER[cursor])
+  ) {
+    cursor += direction;
+  }
+  return cursor;
+};
+
 const FADE_OUT_MS = 260;
 const FADE_GAP_MS = 120;
 const INTRO_CONTINUE_DELAY_MS = 1100;
@@ -108,9 +127,10 @@ export function useOnboardingFlow({
 
   const nextSplitStep = useCallback(() => {
     const index = SPLIT_STEP_ORDER.indexOf(phase);
-    if (index < SPLIT_STEP_ORDER.length - 1) {
+    const nextIndex = advancePastSkipped(index + 1, 1);
+    if (nextIndex < SPLIT_STEP_ORDER.length) {
       onInteract?.();
-      transitionTo(SPLIT_STEP_ORDER[index + 1]);
+      transitionTo(SPLIT_STEP_ORDER[nextIndex]);
       return;
     }
 
@@ -120,9 +140,10 @@ export function useOnboardingFlow({
 
   const prevSplitStep = useCallback(() => {
     const index = SPLIT_STEP_ORDER.indexOf(phase);
-    if (index > 0) {
+    const prevIndex = advancePastSkipped(index - 1, -1);
+    if (prevIndex >= 0) {
       onInteract?.();
-      transitionTo(SPLIT_STEP_ORDER[index - 1]);
+      transitionTo(SPLIT_STEP_ORDER[prevIndex]);
     }
   }, [onInteract, phase, transitionTo]);
 
