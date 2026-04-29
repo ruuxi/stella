@@ -329,15 +329,6 @@ export const createSelfModHmrController = (
     Map<string, string | null>
   >();
 
-  const log = (
-    phase: string,
-    data: Record<string, unknown> = {},
-  ): void => {
-    process.stderr.write(
-      `[self-mod-hmr:controller] ${phase} ${JSON.stringify(data)}\n`,
-    );
-  };
-
   const snapshotPathForRun = (runId: string, repoRelativePath: string): void => {
     let snapshot = finalizedSnapshotsByRun.get(runId);
     if (!snapshot) {
@@ -490,18 +481,12 @@ export const createSelfModHmrController = (
     async beginRun(runId) {
       tracker.beginRun(runId);
       touchedPathsByRun.set(runId, new Set());
-      log("beginRun", { runId, enabled: options.enabled });
       try {
         await pauseClientUpdates(runId);
-        log("clientPaused", { runId });
       } catch (error) {
         tracker.cancel(runId);
         touchedPathsByRun.delete(runId);
         finalizedSnapshotsByRun.delete(runId);
-        log("clientPauseFailed", {
-          runId,
-          error: (error as Error).message,
-        });
         throw error;
       }
     },
@@ -521,21 +506,10 @@ export const createSelfModHmrController = (
         repoRelative,
       );
       if (expandedRepoRelative.length === 0) {
-        log("recordWrite:ignored", {
-          runId,
-          inputPathCount: inputPaths.length,
-          reason: "no-self-mod-relevant-paths",
-        });
         return;
       }
       const runStatus = tracker.getRunStatus(runId);
       if (runStatus !== "active") {
-        log("recordWrite:ignored", {
-          runId,
-          status: runStatus,
-          paths: expandedRepoRelative,
-          reason: "run-not-active",
-        });
         return;
       }
       const captureSnapshot = recordOptions?.captureSnapshot !== false;
@@ -559,16 +533,6 @@ export const createSelfModHmrController = (
         (repoRelativePath) => !alreadyOwnedPaths.includes(repoRelativePath),
       );
       const viteTrackablePaths = newlyOwnedPaths.filter(isViteTrackablePath);
-      log("recordWrite", {
-        runId,
-        captureSnapshot,
-        inputPathCount: inputPaths.length,
-        paths: expandedRepoRelative,
-        newlyOwnedPaths,
-        alreadyOwnedPaths,
-        viteTrackablePaths,
-        deferredSnapshotPaths: [...deferSnapshotPaths],
-      });
       await trackPaths(viteTrackablePaths);
       if (tracker.getRunStatus(runId) !== "active") {
         const unownedPaths = viteTrackablePaths.filter(
@@ -592,19 +556,6 @@ export const createSelfModHmrController = (
       snapshotRun(runId);
       const decision = tracker.finalize(runId);
       const result = finishApplyResult(decision);
-      log("finalize", {
-        runId,
-        appliedRunCount: result.appliedRuns.length,
-        appliedRuns: result.appliedRuns.map((run) => ({
-          runId: run.runId,
-          paths: run.paths,
-          restartRelevantPaths: run.restartRelevantPaths,
-          fullReloadRelevantPaths: run.fullReloadRelevantPaths,
-        })),
-        restartRelevantRunIds: result.restartRelevantRunIds,
-        hasRestartRelevantPaths: result.hasRestartRelevantPaths,
-        hasFullReloadRelevantPaths: result.hasFullReloadRelevantPaths,
-      });
       if (!tracker.hasRun(runId)) {
         touchedPathsByRun.delete(runId);
         if (result.appliedRuns.every((run) => run.runId !== runId)) {
@@ -618,11 +569,6 @@ export const createSelfModHmrController = (
       dropRunState([runId]);
       const decision = tracker.cancel(runId);
       const result = finishApplyResult(decision);
-      log("cancel", {
-        runId,
-        appliedRunCount: result.appliedRuns.length,
-        releasedPaths: [...decision.releasedPaths],
-      });
       if (decision.releasedPaths.length > 0) {
         await untrackPaths(decision.releasedPaths);
       }
@@ -633,11 +579,6 @@ export const createSelfModHmrController = (
     async apply(appliedRuns, applyOptions) {
       if (appliedRuns.length === 0) return true;
       if (!options.enabled) return true;
-      log("apply:start", {
-        runIds: appliedRuns.map((run) => run.runId),
-        paths: appliedRuns.flatMap((run) => run.paths),
-        options: applyOptions ?? null,
-      });
       return await sendApply(appliedRuns, applyOptions);
     },
 
@@ -646,7 +587,6 @@ export const createSelfModHmrController = (
     },
 
     async releaseRuns(runIds) {
-      log("releaseRuns", { runIds });
       return await releaseClientUpdates(runIds);
     },
 
