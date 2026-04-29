@@ -56,6 +56,7 @@ export const MODEL_MODES = [
   "free",
   "compact",
   "fast",
+  "social_moderation",
   "smart",
   "best",
   "sota",
@@ -158,6 +159,17 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
       openai: {
         reasoningEffort: "medium",
       },
+      ...gatewayOptions("openrouter"),
+    },
+  },
+
+  social_moderation: {
+    model: "deepseek/deepseek-v4-flash",
+    fallbackMode: "fast",
+    managedGatewayProvider: "openrouter",
+    temperature: 0.7,
+    maxOutputTokens: 512,
+    providerOptions: {
       ...gatewayOptions("openrouter"),
     },
   },

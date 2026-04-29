@@ -114,6 +114,14 @@ export const socialMessageValidator = v.object({
   clientMessageId: v.optional(v.string()),
   kind: socialMessageKindValidator,
   body: v.string(),
+  originalBody: v.optional(v.string()),
+  moderationStatus: v.optional(v.union(
+    v.literal("pending"),
+    v.literal("clean"),
+    v.literal("censored"),
+    v.literal("failed"),
+  )),
+  moderatedAt: v.optional(v.number()),
   createdAt: v.number(),
   editedAt: v.optional(v.number()),
 });
