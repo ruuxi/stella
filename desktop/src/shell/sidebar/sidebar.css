@@ -382,29 +382,69 @@
   text-overflow: ellipsis;
 }
 
-/* ── Sign-out confirmation dialog ────────────────────────────────
-   Reuses the global Dialog primitive (portaled). Action row sits at
-   the bottom of the dialog with a ghost cancel + a destructive-tone
-   primary "Sign out" button. */
+/* ── Sidebar dialogs ───────────────────────────────────────────── */
+[data-slot="dialog-content"].sidebar-feedback-dialog,
+[data-slot="dialog-content"].sidebar-signout-dialog {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+  overflow: hidden;
+}
+
+.sidebar-feedback-dialog [data-slot="dialog-header"],
+.sidebar-signout-dialog [data-slot="dialog-header"] {
+  padding: 20px 20px 12px 28px;
+}
+
+.sidebar-feedback-dialog [data-slot="dialog-title"],
+.sidebar-signout-dialog [data-slot="dialog-title"] {
+  color: var(--text-strong, var(--foreground));
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(1.45rem, 2.6vw, 1.8rem);
+  font-weight: 450;
+  font-style: italic;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.sidebar-feedback-description,
+.sidebar-signout-description {
+  padding: 0 28px;
+  margin: 0;
+  color: var(--text-base);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+}
+
 .sidebar-confirm-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 4px 24px 20px;
+  gap: 10px;
+  padding: 4px 28px 24px;
   align-self: stretch;
 }
 
-/* Feedback dialog body wraps the textarea with the same horizontal rhythm as
-   the dialog header / description, so the input lines up with the title. */
 .sidebar-feedback-body {
-  padding: 8px 24px 4px;
+  padding: 16px 28px 10px;
   align-self: stretch;
+}
+
+.sidebar-feedback-body [data-slot="input-wrapper"] {
+  background: color-mix(in oklch, var(--foreground) 4%, var(--popover));
+  border-color: var(--border);
 }
 
 .sidebar-feedback-body textarea {
   min-height: 120px;
   resize: vertical;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .sidebar-confirm-actions [data-component="button"][data-tone="destructive"] {

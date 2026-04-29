@@ -5,6 +5,7 @@ import { Button } from "@/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogCloseButton,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -97,11 +98,14 @@ export const FeedbackDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent fit>
+      <DialogContent fit className="sidebar-feedback-dialog">
         <DialogHeader>
           <DialogTitle>{TITLE_BY_VARIANT[variant]}</DialogTitle>
+          <DialogCloseButton />
         </DialogHeader>
-        <DialogDescription>{DESCRIPTION_BY_VARIANT[variant]}</DialogDescription>
+        <DialogDescription className="sidebar-feedback-description">
+          {DESCRIPTION_BY_VARIANT[variant]}
+        </DialogDescription>
         <div className="sidebar-feedback-body">
           <TextField
             multiline
@@ -120,6 +124,7 @@ export const FeedbackDialog = ({
           <Button
             variant="ghost"
             size="large"
+            className="pill-btn pill-btn--lg"
             onClick={() => onOpenChange(false)}
             disabled={submitting}
           >
@@ -128,6 +133,7 @@ export const FeedbackDialog = ({
           <Button
             variant="primary"
             size="large"
+            className="pill-btn pill-btn--primary pill-btn--lg"
             onClick={() => {
               void handleSubmit();
             }}

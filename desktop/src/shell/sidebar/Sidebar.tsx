@@ -304,15 +304,22 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
         {pillLabel}
       </button>
       <Dialog open={signOutConfirmOpen} onOpenChange={setSignOutConfirmOpen}>
-        <DialogContent fit aria-describedby={undefined}>
+        <DialogContent
+          fit
+          className="sidebar-signout-dialog"
+          aria-describedby={undefined}
+        >
           <DialogHeader>
             <DialogTitle>Sign out of Stella?</DialogTitle>
           </DialogHeader>
-          <DialogDescription>Are you sure?</DialogDescription>
+          <DialogDescription className="sidebar-signout-description">
+            Are you sure?
+          </DialogDescription>
           <div className="sidebar-confirm-actions">
             <Button
               variant="ghost"
               size="large"
+              className="pill-btn pill-btn--lg"
               onClick={() => setSignOutConfirmOpen(false)}
             >
               Cancel
@@ -322,6 +329,7 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
               size="large"
               onClick={handleConfirmSignOut}
               data-tone="destructive"
+              className="pill-btn pill-btn--danger pill-btn--lg"
             >
               Sign out
             </Button>
