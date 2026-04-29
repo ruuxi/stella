@@ -841,21 +841,43 @@
   cursor: pointer;
 }
 
-/* Split mode: animation moves to left half, centered vertically.
- * Keep the resize roughly in lockstep with the phase fade window
- * (FADE_OUT_MS + FADE_GAP_MS = 380ms in use-onboarding-flow.ts) so the
- * creature isn't still animating its width/height while the new
- * capabilities phase tries to do its first paint — that overlap was
- * the visible "lag" entering "What Stella can do." */
+/* Split mode: fade the creature out in place, then snap it to the
+ * smaller left-hand position while invisible. The transform/size
+ * changes are deferred until after the opacity fade completes so the
+ * user only sees a fade, not a slide. The creature then sits parked
+ * (opacity 0) at the new position until a later phase wants to reveal
+ * it again. */
 .onboarding-stella-animation[data-split="true"] {
   --stella-shift-x: clamp(-350px, -25vw, 0px);
   --stella-shift-y: min(10vh, 95px);
   width: min(190px, 17vw);
   height: clamp(64px, 10vh, 104px);
+  opacity: 0;
+  pointer-events: none;
   transition:
-    transform 0.55s cubic-bezier(0.25, 0.1, 0.25, 1),
-    width 0.55s cubic-bezier(0.25, 0.1, 0.25, 1),
-    height 0.55s cubic-bezier(0.25, 0.1, 0.25, 1);
+    opacity 0.35s ease,
+    transform 0s linear 0.35s,
+    width 0s linear 0.35s,
+    height 0s linear 0.35s;
+}
+
+/* Permissions reveals the parked creature: fade it back in at the
+ * already-snapped left position. It stays visible from permissions
+ * through personality; the `creation` phase (and later) unmounts the
+ * element entirely via `stellaHiddenByPhase` in FullShell. */
+.new-session-view:has(.onboarding-dialogue[data-phase="permissions"])
+  .onboarding-stella-animation[data-split="true"],
+.new-session-view:has(.onboarding-dialogue[data-phase="browser"])
+  .onboarding-stella-animation[data-split="true"],
+.new-session-view:has(.onboarding-dialogue[data-phase="extension"])
+  .onboarding-stella-animation[data-split="true"],
+.new-session-view:has(.onboarding-dialogue[data-phase="theme"])
+  .onboarding-stella-animation[data-split="true"],
+.new-session-view:has(.onboarding-dialogue[data-phase="personality"])
+  .onboarding-stella-animation[data-split="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.5s ease;
 }
 
 /* With selections: shift animation up to make room for mock windows */
