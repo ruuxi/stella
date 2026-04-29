@@ -10,6 +10,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { PageSidebarProvider } from "@/context/page-sidebar";
 import { useTheme } from "@/context/theme-context";
 import { useUiState } from "@/context/ui-state";
+import { useAuthBootstrapState } from "@/global/auth/DesktopConvexAuthProvider";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import {
   SPLIT_STEP_ORDER,
@@ -77,6 +78,11 @@ export const FullShell = () => {
   const activeDemoRef = useRef<OnboardingDemo>(null);
   const fogDefsRef = useRef<SVGSVGElement | null>(null);
   const onboarding = useOnboardingOverlay();
+  const {
+    runtimeAuthReady,
+    status: authBootstrapStatus,
+    error: authBootstrapError,
+  } = useAuthBootstrapState();
   const { runtimeStatus, runtimeError, retryRuntimeBootstrap } =
     useBootstrapState();
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
@@ -109,19 +115,38 @@ export const FullShell = () => {
     }, 400);
   }, []);
 
-  // Once onboarding is complete, do not reuse the onboarding creature as a
-  // runtime startup screen. The app shell can mount while bootstrap prepares
-  // the active conversation; chat controls already handle a missing
-  // conversation id by staying disabled until bootstrap provides one.
+  const startupReady = runtimeAuthReady && runtimeStatus === "ready";
+  const appReady = onboarding.onboardingDone && startupReady;
+  const isPreparingStartup =
+    runtimeStatus === "preparing" ||
+    (!runtimeAuthReady && authBootstrapStatus !== "failed");
+  const startupError =
+    authBootstrapStatus === "failed"
+      ? authBootstrapError
+      : runtimeStatus === "failed"
+        ? runtimeError
+        : null;
+
+  const handleRetryStartup = useCallback(() => {
+    if (authBootstrapStatus === "failed") {
+      window.location.reload();
+      return;
+    }
+    retryRuntimeBootstrap();
+  }, [authBootstrapStatus, retryRuntimeBootstrap]);
+
+  // The desktop app should not mount before auth has reached the runtime.
+  // Anonymous auth counts here; this only waits for a usable local session and
+  // host token handoff, not for the user to connect an account.
   useEffect(() => {
-    window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone);
-  }, [onboarding.onboardingDone]);
+    window.electronAPI?.ui.setAppReady?.(appReady);
+  }, [appReady]);
 
   useEffect(() => {
     updateState({
-      suppressNativeRadialDuringOnboarding: !onboarding.onboardingDone,
+      suppressNativeRadialDuringOnboarding: !appReady,
     });
-  }, [onboarding.onboardingDone, updateState]);
+  }, [appReady, updateState]);
 
   // Kick off the onboarding chunk as soon as we know we'll need it. This
   // runs in parallel with auth bootstrap, so by the time the user clicks
@@ -130,9 +155,9 @@ export const FullShell = () => {
   // `onboardingDone` flips true the import promise simply persists in
   // memory until the FullShell tree unmounts; React never re-fetches.
   useEffect(() => {
-    if (onboarding.onboardingDone) return;
+    if (appReady) return;
     void loadOnboardingChunk();
-  }, [onboarding.onboardingDone]);
+  }, [appReady]);
 
   useEffect(() => {
     return () => {
@@ -170,7 +195,6 @@ export const FullShell = () => {
     }
   }, [onboardingDemoMorphing, onboarding.onboardingExiting]);
 
-  const appReady = onboarding.onboardingDone;
   const showOnboardingDemos = activeDemo || demoClosing;
   const pauseOnboardingMotion =
     onboardingDemoMorphing || onboarding.onboardingExiting;
@@ -294,9 +318,12 @@ export const FullShell = () => {
                 onboardingDone={onboarding.onboardingDone}
                 onboardingExiting={onboarding.onboardingExiting}
                 isAuthenticated={onboarding.isAuthenticated}
-                isAuthLoading={onboarding.isAuthLoading}
-                isPreparingRuntime={runtimeStatus === "preparing"}
-                runtimeError={runtimeStatus === "failed" ? runtimeError : null}
+                isAuthLoading={
+                  onboarding.isAuthLoading ||
+                  (!runtimeAuthReady && authBootstrapStatus !== "failed")
+                }
+                isPreparingRuntime={isPreparingStartup}
+                runtimeError={startupError}
                 splitMode={onboarding.splitMode}
                 hasDiscoverySelections={onboarding.hasDiscoverySelections}
                 hasStarted={onboarding.hasStarted}
@@ -308,7 +335,7 @@ export const FullShell = () => {
                 startOnboarding={onboarding.startOnboarding}
                 completeOnboarding={onboarding.completeOnboarding}
                 handleEnterSplit={onboarding.handleEnterSplit}
-                onRetryRuntime={retryRuntimeBootstrap}
+                onRetryRuntime={handleRetryStartup}
                 onDiscoveryConfirm={handleDiscoveryConfirm}
                 onSelectionChange={onboarding.setHasDiscoverySelections}
                 onDemoChange={handleDemoChange}
