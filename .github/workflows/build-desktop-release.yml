@@ -252,3 +252,66 @@ jobs:
           fi
 
           gh release upload "$tag" "${files[@]}" --clobber
+
+      - name: Publish desktop payloads to R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_PUBLIC_BASE_URL: https://pub-58708621bfa94e3bb92de37cde354c0d.r2.dev
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          release_dir="desktop/releases/${tag}"
+          manifest_path="$(mktemp)"
+
+          node - "$manifest_path" "$tag" "$R2_PUBLIC_BASE_URL" release-assets/stella-desktop-*.tar.zst <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync, statSync, writeFileSync } = require("node:fs");
+          const { basename } = require("node:path");
+
+          const [manifestPath, tag, publicBaseUrl, ...archivePaths] = process.argv.slice(2);
+          const assets = {};
+          for (const archivePath of archivePaths) {
+            const name = basename(archivePath);
+            const match = name.match(/^stella-desktop-(.+)\.tar\.zst$/);
+            if (!match) continue;
+            const platform = match[1];
+            const bytes = readFileSync(archivePath);
+            assets[platform] = {
+              url: `${publicBaseUrl.replace(/\/$/, "")}/desktop/releases/${tag}/${name}`,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              size: statSync(archivePath).size,
+            };
+          }
+          writeFileSync(
+            manifestPath,
+            `${JSON.stringify({
+              schemaVersion: 1,
+              tag,
+              assets,
+              publishedAt: new Date().toISOString(),
+            }, null, 2)}\n`,
+          );
+          NODE
+
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export AWS_DEFAULT_REGION="auto"
+
+          aws s3 cp "release-assets/" "s3://${R2_BUCKET}/${release_dir}/" \
+            --recursive \
+            --exclude "*" \
+            --include "stella-desktop-*.tar.zst" \
+            --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp "$manifest_path" "s3://${R2_BUCKET}/desktop/current.json" \
+            --content-type "application/json" \
+            --cache-control "no-cache" \
+            --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp "$manifest_path" "s3://${R2_BUCKET}/${release_dir}/manifest.json" \
+            --content-type "application/json" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --endpoint-url "$R2_ENDPOINT"
