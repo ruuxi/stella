@@ -186,7 +186,11 @@ function App() {
 
     const base = (completed / total) * 100;
     const stepWeight = 100 / total;
-    const inProgress = active ? stepWeight * 0.5 : 0;
+    const activeProgress =
+      typeof active?.progress === "number"
+        ? Math.max(0, Math.min(active.progress, 1))
+        : 0.5;
+    const inProgress = active ? stepWeight * activeProgress : 0;
 
     return {
       progress: Math.min(Math.round(base + inProgress), 99),

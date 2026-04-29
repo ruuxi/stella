@@ -36,6 +36,8 @@ pub struct SetupStep {
     pub status: SetupStepStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<f64>,
 }
 
 // ── Installer state ─────────────────────────────────────────────────

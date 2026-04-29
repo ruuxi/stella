@@ -1,11 +1,13 @@
 use crate::disk;
 use crate::shell::run;
 use crate::state::*;
+use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 use tokio::fs;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 // ── Constants ───────────────────────────────────────────────────────
@@ -23,6 +25,8 @@ VITE_SITE_URL=https://stella.sh\n\
 VITE_TWITCH_EMOTE_TWITCH_ID=40934651\n";
 
 const GITHUB_REPO: &str = "ruuxi/stella";
+const DEFAULT_DESKTOP_RELEASE_MANIFEST_URL: &str =
+    "https://pub-58708621bfa94e3bb92de37cde354c0d.r2.dev/desktop/current.json";
 const DEFAULT_EMOTE_RELEASE_MANIFEST_URL: &str =
     "https://pub-58708621bfa94e3bb92de37cde354c0d.r2.dev/emotes/current.json";
 const EMOTE_INSTALL_STATE_FILE: &str = "stella-emotes-install.json";
@@ -188,6 +192,29 @@ fn is_directory_empty(path: &Path) -> bool {
         Ok(mut entries) => entries.next().is_none(),
         Err(_) => false,
     }
+}
+
+fn is_state_only_install_dir(path: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return false;
+    };
+    let mut saw_state = false;
+    for entry in entries {
+        let Ok(entry) = entry else {
+            return false;
+        };
+        if entry.file_name() != "state" {
+            return false;
+        }
+        let Ok(file_type) = entry.file_type() else {
+            return false;
+        };
+        if !file_type.is_dir() {
+            return false;
+        }
+        saw_state = true;
+    }
+    saw_state
 }
 
 pub fn is_uninstallable_install_path(install_path: &str) -> bool {
@@ -373,7 +400,10 @@ fn location_error(p: &str) -> Option<String> {
         if !metadata.is_dir() {
             return Some("Install location must be a folder.".into());
         }
-        if !looks_like_stella_install_dir(&pb) && !is_directory_empty(&pb) {
+        if !looks_like_stella_install_dir(&pb)
+            && !is_directory_empty(&pb)
+            && !is_state_only_install_dir(&pb)
+        {
             return Some(format!(
                 "Stella needs its own `{INSTALL_DIR_NAME}` folder. Choose a parent folder or an existing Stella install."
             ));
@@ -401,6 +431,22 @@ struct EmoteReleaseManifest {
     sha256: Option<String>,
     #[serde(default)]
     sha256_url: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopDownloadManifest {
+    schema_version: u32,
+    tag: String,
+    assets: HashMap<String, DesktopDownloadAsset>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopDownloadAsset {
+    url: String,
+    sha256: String,
+    size: u64,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -435,6 +481,26 @@ fn emote_release_manifest_url() -> String {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_EMOTE_RELEASE_MANIFEST_URL.to_string())
+}
+
+fn desktop_release_manifest_url() -> String {
+    std::env::var("STELLA_DESKTOP_RELEASE_MANIFEST_URL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_DESKTOP_RELEASE_MANIFEST_URL.to_string())
+}
+
+fn desktop_platform_key() -> &'static str {
+    if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        "win-x64"
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "darwin-arm64"
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        "darwin-x64"
+    } else {
+        "linux-x64"
+    }
 }
 
 fn build_emote_install_state(
@@ -699,9 +765,43 @@ async fn install_bun_globally() -> bool {
     bun_on_path().await
 }
 
-async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
+fn format_bytes_compact(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    let value = bytes as f64;
+    if value >= GB {
+        format!("{:.1} GB", value / GB)
+    } else if value >= MB {
+        format!("{:.1} MB", value / MB)
+    } else if value >= KB {
+        format!("{:.1} KB", value / KB)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+fn set_step_progress(
+    state: &mut InstallerState,
+    app: &AppHandle,
+    id: &SetupStepId,
+    detail: impl Into<String>,
+    progress: Option<f64>,
+) {
+    if let Some(step) = state.steps.iter_mut().find(|s| &s.id == id) {
+        step.detail = Some(detail.into());
+        step.progress = progress.map(|value| value.clamp(0.0, 1.0));
+    }
+    emit_state_fast(state, app);
+}
+
+async fn install_payload_dependencies(
+    install_dir: &str,
+    state: &mut InstallerState,
+    app: &AppHandle,
+) -> Result<(), String> {
     let dir = Some(Path::new(install_dir));
-    let result = run(&["bun", "install", "--frozen-lockfile"], dir).await;
+    let result = run_bun_install_with_progress(install_dir, dir, state, app).await;
     if result.ok {
         // This addon is optional at runtime: the desktop app already falls back to
         // Electron/native-helper permission checks when the native module is missing.
@@ -744,6 +844,129 @@ async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
         };
 
         Err(format!("bun install failed: {summary}"))
+    }
+}
+
+async fn run_bun_install_with_progress(
+    install_dir: &str,
+    cwd: Option<&Path>,
+    state: &mut InstallerState,
+    app: &AppHandle,
+) -> crate::shell::RunResult {
+    let mut command = Command::new("bun");
+    command
+        .args(["install", "--frozen-lockfile"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .env("PATH", std::env::var("PATH").unwrap_or_default());
+    if let Some(dir) = cwd {
+        command.current_dir(dir);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt as _;
+        command.creation_flags(0x08000000);
+    }
+
+    set_step_progress(
+        state,
+        app,
+        &SetupStepId::Payload,
+        "Installing dependencies with Bun",
+        Some(0.82),
+    );
+    log_install(install_dir, "Installing desktop dependencies with Bun").await;
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(_) => {
+            return crate::shell::RunResult {
+                ok: false,
+                stdout: String::new(),
+                stderr: "spawn failed".into(),
+            };
+        }
+    };
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let (line_tx, mut line_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let stdout_line_tx = line_tx.clone();
+    let stdout_task = tokio::spawn(async move {
+        let mut collected = String::new();
+        if let Some(stdout) = stdout {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = stdout_line_tx.send(line.clone());
+                collected.push_str(&line);
+                collected.push('\n');
+            }
+        }
+        collected.trim().to_string()
+    });
+    let stderr_task = tokio::spawn(async move {
+        let mut collected = String::new();
+        if let Some(stderr) = stderr {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = line_tx.send(line.clone());
+                collected.push_str(&line);
+                collected.push('\n');
+            }
+        }
+        collected.trim().to_string()
+    });
+
+    let mut tick_count: u64 = 0;
+    let mut latest_line = String::new();
+    let status = loop {
+        while let Ok(line) = line_rx.try_recv() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                latest_line = trimmed.chars().take(120).collect();
+            }
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break Ok(status),
+            Ok(None) => {
+                tick_count += 1;
+                let elapsed = tick_count * 2;
+                let progress = 0.82 + (0.12 * (1.0 - (-(elapsed as f64) / 45.0).exp()));
+                let detail = if latest_line.is_empty() {
+                    format!("Installing dependencies with Bun ({elapsed}s)")
+                } else {
+                    format!("Bun: {latest_line}")
+                };
+                set_step_progress(
+                    state,
+                    app,
+                    &SetupStepId::Payload,
+                    detail,
+                    Some(progress),
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            Err(err) => break Err(err),
+        }
+    };
+
+    let stdout = stdout_task.await.unwrap_or_default();
+    let stderr = stderr_task.await.unwrap_or_default();
+    match status {
+        Ok(status) => crate::shell::RunResult {
+            ok: status.success(),
+            stdout,
+            stderr,
+        },
+        Err(_) => crate::shell::RunResult {
+            ok: false,
+            stdout,
+            stderr: if stderr.is_empty() {
+                "spawn failed".into()
+            } else {
+                stderr
+            },
+        },
     }
 }
 
@@ -819,32 +1042,44 @@ async fn ensure_parakeet_model_downloaded(install_dir: &str) -> Result<(), Strin
 
 // ── Tarball download + extract ──────────────────────────────────────
 
-async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
+async fn download_and_extract_release(
+    install_dir: &str,
+    state: &mut InstallerState,
+    app: &AppHandle,
+) -> Result<(), String> {
     let client = reqwest::Client::new();
     let latest_url = release_latest_download_url();
     log_install(install_dir, &format!("Downloading {latest_url}")).await;
+    set_step_progress(
+        state,
+        app,
+        &SetupStepId::Payload,
+        "Resolving Stella release",
+        Some(0.02),
+    );
 
-    let resp = client
-        .get(&latest_url)
-        .header("User-Agent", "stella-launcher")
-        .send()
-        .await
-        .map_err(|e| format!("Download failed: {e}"))?;
+    let r2_asset = match resolve_r2_desktop_asset(&client, install_dir).await {
+        Ok(asset) => Some(asset),
+        Err(err) => {
+            log_install(
+                install_dir,
+                &format!("R2 desktop manifest unavailable; falling back to GitHub: {err}"),
+            )
+            .await;
+            None
+        }
+    };
 
-    let resp = if resp.status().is_success() {
-        resp
-    } else if resp.status() == reqwest::StatusCode::NOT_FOUND {
-        let tag = latest_release_tag()
-            .await
-            .ok_or("Could not find a desktop release. Check your internet connection.")?;
-        let url = release_download_url(&tag);
-        log_install(
-            install_dir,
-            &format!("Latest release had no desktop asset; using tag {tag}: {url}"),
-        )
-        .await;
+    let (resp, expected_sha256, expected_size) = if let Some(asset) = r2_asset {
+        set_step_progress(
+            state,
+            app,
+            &SetupStepId::Payload,
+            "Connecting to Stella downloads",
+            Some(0.04),
+        );
         let resp = client
-            .get(&url)
+            .get(&asset.url)
             .header("User-Agent", "stella-launcher")
             .send()
             .await
@@ -852,21 +1087,105 @@ async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
         if !resp.status().is_success() {
             return Err(format!("Download failed: HTTP {}", resp.status()));
         }
-        resp
+        (resp, Some(asset.sha256), Some(asset.size))
     } else {
-        return Err(format!("Download failed: HTTP {}", resp.status()));
+        set_step_progress(
+            state,
+            app,
+            &SetupStepId::Payload,
+            "Connecting to GitHub",
+            Some(0.04),
+        );
+        let resp = client
+            .get(&latest_url)
+            .header("User-Agent", "stella-launcher")
+            .send()
+            .await
+            .map_err(|e| format!("Download failed: {e}"))?;
+
+        let resp = if resp.status().is_success() {
+            resp
+        } else if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            let tag = latest_release_tag()
+                .await
+                .ok_or("Could not find a desktop release. Check your internet connection.")?;
+            let url = release_download_url(&tag);
+            log_install(
+                install_dir,
+                &format!("Latest release had no desktop asset; using tag {tag}: {url}"),
+            )
+            .await;
+            set_step_progress(
+                state,
+                app,
+                &SetupStepId::Payload,
+                "Finding the desktop release",
+                Some(0.05),
+            );
+            let resp = client
+                .get(&url)
+                .header("User-Agent", "stella-launcher")
+                .send()
+                .await
+                .map_err(|e| format!("Download failed: {e}"))?;
+            if !resp.status().is_success() {
+                return Err(format!("Download failed: HTTP {}", resp.status()));
+            }
+            resp
+        } else {
+            return Err(format!("Download failed: HTTP {}", resp.status()));
+        };
+        (resp, None, None)
     };
 
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("Download failed: {e}"))?;
+    let total_bytes = resp.content_length().or(expected_size);
+    let mut downloaded: u64 = 0;
+    let mut chunks = Vec::new();
+    let mut stream = resp.bytes_stream();
+    let mut last_emit = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_secs(1))
+        .unwrap_or_else(std::time::Instant::now);
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Download failed: {e}"))?;
+        downloaded += chunk.len() as u64;
+        chunks.push(chunk);
+
+        if last_emit.elapsed() >= std::time::Duration::from_millis(300) {
+            let detail = if let Some(total) = total_bytes {
+                format!(
+                    "Downloading Stella {} of {}",
+                    format_bytes_compact(downloaded),
+                    format_bytes_compact(total)
+                )
+            } else {
+                format!("Downloading Stella {}", format_bytes_compact(downloaded))
+            };
+            let progress = total_bytes
+                .filter(|total| *total > 0)
+                .map(|total| 0.05 + ((downloaded as f64 / total as f64).min(1.0) * 0.65));
+            set_step_progress(state, app, &SetupStepId::Payload, detail, progress);
+            last_emit = std::time::Instant::now();
+        }
+    }
+
+    let bytes = chunks.concat();
+    if let Some(expected) = expected_sha256 {
+        verify_sha256(bytes.as_ref(), &expected)?;
+    }
 
     log_install(
         install_dir,
         &format!("Downloaded {} bytes, extracting...", bytes.len()),
     )
     .await;
+    set_step_progress(
+        state,
+        app,
+        &SetupStepId::Payload,
+        "Extracting Stella",
+        Some(0.72),
+    );
 
     // Decompress zstd then untar — do in blocking task to avoid blocking async runtime
     let install_path = install_dir.to_string();
@@ -908,6 +1227,13 @@ async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
     .map_err(|e| format!("Extract task failed: {e}"))??;
 
     log_install(install_dir, "Extraction complete").await;
+    set_step_progress(
+        state,
+        app,
+        &SetupStepId::Payload,
+        "Stella files extracted",
+        Some(0.8),
+    );
     Ok(())
 }
 
@@ -976,6 +1302,37 @@ fn verify_sha256(bytes: &[u8], expected: &str) -> Result<(), String> {
     } else {
         Err("Emote bundle checksum did not match the downloaded archive.".into())
     }
+}
+
+async fn resolve_r2_desktop_asset(
+    client: &reqwest::Client,
+    install_dir: &str,
+) -> Result<DesktopDownloadAsset, String> {
+    let manifest_url = desktop_release_manifest_url();
+    log_install(
+        install_dir,
+        &format!("Resolving desktop release manifest: {manifest_url}"),
+    )
+    .await;
+    let manifest_text = fetch_required_text(client, &manifest_url).await?;
+    let manifest: DesktopDownloadManifest = serde_json::from_str(&manifest_text)
+        .map_err(|e| format!("Desktop release manifest was invalid JSON: {e}"))?;
+    if manifest.schema_version != 1 {
+        return Err("Desktop release manifest schema is not supported.".into());
+    }
+    let platform = desktop_platform_key();
+    let asset = manifest.assets.get(platform).cloned().ok_or_else(|| {
+        format!("Desktop release manifest did not include an asset for {platform}.")
+    })?;
+    log_install(
+        install_dir,
+        &format!(
+            "Resolved desktop release {} for {platform}: {}",
+            manifest.tag, asset.url
+        ),
+    )
+    .await;
+    Ok(asset)
 }
 
 async fn read_install_manifest(install_dir: &str) -> Option<Manifest> {
@@ -1305,7 +1662,11 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
     }
 }
 
-async fn install_step(id: &SetupStepId, state: &mut InstallerState) -> Result<(), String> {
+async fn install_step(
+    id: &SetupStepId,
+    state: &mut InstallerState,
+    app: &AppHandle,
+) -> Result<(), String> {
     let dir = state.install_path.clone();
     match id {
         SetupStepId::Runtime => {
@@ -1320,10 +1681,16 @@ async fn install_step(id: &SetupStepId, state: &mut InstallerState) -> Result<()
         }
         SetupStepId::Payload => {
             let _ = fs::create_dir_all(&dir).await;
-            download_and_extract_release(&dir).await?;
+            download_and_extract_release(&dir, state, app).await?;
             write_default_env_file(&dir).await?;
-            log_install(&dir, "Installing desktop dependencies with Bun").await;
-            install_payload_dependencies(&dir).await?;
+            set_step_progress(
+                state,
+                app,
+                &SetupStepId::Payload,
+                "Writing app configuration",
+                Some(0.81),
+            );
+            install_payload_dependencies(&dir, state, app).await?;
             Ok(())
         }
         SetupStepId::Prepare => {
@@ -1408,6 +1775,7 @@ fn sync_step_list(state: &mut InstallerState) {
                 label: def.label.to_string(),
                 status: SetupStepStatus::Pending,
                 detail: None,
+                progress: None,
             });
         }
     }
@@ -1577,6 +1945,8 @@ pub async fn check_all(state: &mut InstallerState, ctx: &InstallerContext, app: 
             } else {
                 SetupStepStatus::Pending
             };
+            step.detail = None;
+            step.progress = None;
         }
 
         if !ok {
@@ -1640,10 +2010,11 @@ pub async fn install_all(
         if let Some(step) = state.steps.iter_mut().find(|s| s.id == def.id) {
             step.status = SetupStepStatus::Installing;
             step.detail = Some(def.label.to_string());
+            step.progress = None;
         }
         emit_state_fast(state, app);
 
-        let result = install_step(&def.id, state).await;
+        let result = install_step(&def.id, state, app).await;
 
         if let Err(err) = result {
             log_install(
@@ -1663,6 +2034,7 @@ pub async fn install_all(
 
         if let Some(step) = state.steps.iter_mut().find(|s| s.id == def.id) {
             step.status = SetupStepStatus::Done;
+            step.progress = None;
         }
         emit_state_fast(state, app);
     }
@@ -1806,6 +2178,15 @@ mod tests {
         let error = location_error(&dir.path.to_string_lossy()).expect("expected location error");
         assert!(error.contains("own"));
         assert!(error.contains(INSTALL_DIR_NAME));
+    }
+
+    #[test]
+    fn location_error_allows_state_only_install_dirs() {
+        let dir = TestDir::new("state-only");
+        fs::create_dir_all(dir.path.join("state")).expect("create state dir");
+        fs::write(dir.path.join("state").join("stella.sqlite"), "db").expect("write state file");
+
+        assert_eq!(location_error(&dir.path.to_string_lossy()), None);
     }
 
     #[test]

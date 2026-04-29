@@ -21,6 +21,7 @@ export type SetupStep = {
   label: string;
   status: SetupStepStatus;
   detail?: string;
+  progress?: number;
 };
 
 export type InstallerPhase =
