@@ -366,12 +366,16 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   // during init) and the INTERNAL_WORKER_RESUME_HMR handler (registered at
   // module load) can share it. The helper is stateless beyond the captured
   // `peer`.
-  const releaseRuntimeReloadFor = async (runIds: string[]) => {
+  const releaseRuntimeReloadFor = async (
+    runIds: string[],
+    options?: { allowDeferredReload?: boolean },
+  ) => {
     await Promise.all(
       runIds.map(async (runId) => {
         try {
           await peer.request(METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME, {
             runId,
+            allowDeferredReload: options?.allowDeferredReload !== false,
           });
         } catch (error) {
           console.warn(
@@ -680,14 +684,18 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             );
             await discardFailedApplyState(applyResult, "direct apply failure");
             pendingApplyBatches.delete(transitionId);
-            await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds);
+            await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds, {
+              allowDeferredReload: requiresFullReload,
+            });
             for (const runId of applyResult.restartRelevantRunIds) {
               selfModRunRootIds.delete(runId);
             }
             return;
           }
           pendingApplyBatches.delete(transitionId);
-          await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds);
+          await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds, {
+            allowDeferredReload: requiresFullReload,
+          });
           for (const runId of applyResult.restartRelevantRunIds) {
             selfModRunRootIds.delete(runId);
           }
@@ -1986,6 +1994,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         pendingApplyBatches.delete(transitionId);
         await releaseRuntimeReloadFor(
           pending.applyResult.restartRelevantRunIds,
+          { allowDeferredReload: pending.requiresFullReload },
         );
         for (const runId of pending.applyResult.restartRelevantRunIds) {
           selfModRunRootIds.delete(runId);
@@ -1993,7 +2002,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         return { ok: false, reason: "apply-failed" as const };
       }
       pendingApplyBatches.delete(transitionId);
-      await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds);
+      await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds, {
+        allowDeferredReload: pending.requiresFullReload,
+      });
       for (const runId of pending.applyResult.restartRelevantRunIds) {
         selfModRunRootIds.delete(runId);
       }

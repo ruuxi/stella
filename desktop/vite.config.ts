@@ -523,13 +523,38 @@ function selfModHmrControl(): Plugin {
     if (!isClientUpdatePaused() || clientUpdateReleaseDepth > 0) return false
     if (!payload || typeof payload !== 'object') return false
     const type = (payload as { type?: unknown }).type
-    // Only suppress messages that would visually leak in-flight self-mod
-    // state. `full-reload` and `error` are the renderer's only recovery
-    // channels: React-Refresh routinely follows an `update` with a
-    // `full-reload` when a boundary turns out not to be self-acceptable, and
-    // Vite emits `error` for transform/parse failures. Swallowing either
-    // turns a normal HMR edge case into a stuck renderer (recovery page).
-    return type === 'update' || type === 'prune'
+    // While a self-mod run is paused (and the apply pipeline isn't running),
+    // suppress everything that would visibly disturb the renderer:
+    //   - `update` / `prune`: in-flight HMR for files we own — would leak
+    //     pre-finalize WIP into the renderer.
+    //   - `full-reload`: most commonly emitted by Vite's dep optimizer once
+    //     a newly-imported package is registered (see
+    //     `optimized dependencies changed. reloading` in Vite's source) and
+    //     by config-dependency restarts. During a long agent run (e.g. the
+    //     agent runs `bun add three` then writes a file that imports
+    //     `three`) this used to yank the renderer to a fallback/recovery
+    //     state mid-run. The covered reload at finalize already brings up
+    //     the new module graph, so suppressing here is purely a UX win.
+    //
+    // For the dep-optimizer case specifically: `environment.hot === server.ws`
+    // for the client environment, so intercepting `server.ws.send` already
+    // catches BOTH `updateModules` page reloads and `optimizeDeps.fullReload`.
+    // Don't add a separate `environment.hot.send` intercept "for completeness"
+    // — that is the same channel.
+    //
+    // We deliberately do NOT suppress `error`. It doesn't navigate the page
+    // and hiding it would mask real transform/parse failures the user should
+    // still see in the renderer's overlay.
+    //
+    // React-Refresh recovery is preserved by `clientUpdateReleaseDepth > 0`
+    // gating us off entirely while `applyBatch` runs (and slightly past it,
+    // because Refresh's bail-out-then-`full-reload` round-trip is async).
+    //
+    // Concurrent-run edge case (accepted, not handled): if run A finalizes
+    // while run B is still paused, A's React-Refresh bail-out reload could
+    // be swallowed by B's pause window. Concurrent self-mod runs are rare,
+    // and the next finalize's `reloadIgnoringCache` recovers the renderer.
+    return type === 'update' || type === 'prune' || type === 'full-reload'
   }
 
   const withClientUpdateRelease = async <T,>(fn: () => Promise<T>): Promise<T> => {
@@ -1011,11 +1036,11 @@ function selfModHmrControl(): Plugin {
         }
 
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/force-resume`) {
+          const appliedOverlayPathsBeforeClear = appliedOverlay.size
           const shouldReload =
             pausedRunIds.size > 0 ||
             inFlightPaths.size > 0 ||
             prePeriodSnapshot.size > 0 ||
-            appliedOverlay.size > 0 ||
             shellSnapshotPaths.size > 0 ||
             suppressedHotUpdatePaths.size > 0 ||
             shellMutationDepth > 0
@@ -1024,7 +1049,10 @@ function selfModHmrControl(): Plugin {
           if (shouldReload) {
             server.ws.send({ type: 'full-reload', path: '*' })
           }
-          log('forceResume', { shouldReload })
+          log('forceResume', {
+            shouldReload,
+            clearedAppliedOverlayPaths: appliedOverlayPathsBeforeClear,
+          })
           sendJson(200, { ok: true, paused: false, reloaded: shouldReload })
           return
         }

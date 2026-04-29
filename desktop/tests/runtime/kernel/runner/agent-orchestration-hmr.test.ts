@@ -400,7 +400,10 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(controller.recordWrite).not.toHaveBeenCalled();
   });
 
-  it("uses the exec_command command alias for pre-write path inference", async () => {
+  it("guards a non-safe shell command but records no speculative pre-write paths", async () => {
+    // Shell-mentioned tokens are not evidence of a write. The shell mutation
+    // guard handles the desktop/src snapshot globally; only real
+    // fileChanges/producedFiles (returned by the tool) drive recordWrite.
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "shell_alias_write";
@@ -437,11 +440,7 @@ describe("agent orchestration self-mod HMR tracking", () => {
 
     expect(snapshot).toMatchObject({ status: "completed" });
     expect(controller.beginShellMutationGuard).toHaveBeenCalledTimes(1);
-    expect(controller.recordWrite).toHaveBeenCalledWith(
-      expect.any(String),
-      [path.join(root, "desktop/src/foo.tsx")],
-      { captureSnapshot: false },
-    );
+    expect(controller.recordWrite).not.toHaveBeenCalled();
   });
 
   it("kills still-running guarded shell sessions and cancels self-mod finalize", async () => {

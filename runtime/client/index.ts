@@ -333,7 +333,10 @@ export class StellaRuntimeClient {
     await this.persistRuntimeReloadPauseState();
   }
 
-  private async resumeRuntimeReloads(runId: string) {
+  private async resumeRuntimeReloads(
+    runId: string,
+    options?: { allowDeferredReload?: boolean },
+  ) {
     this.pausedRuntimeReloadRuns.delete(runId);
     await this.persistRuntimeReloadPauseState();
     if (this.pausedRuntimeReloadRuns.size > 0) {
@@ -341,7 +344,7 @@ export class StellaRuntimeClient {
     }
     const hadDeferredReload = this.deferredRuntimeReload;
     this.deferredRuntimeReload = false;
-    if (!hadDeferredReload) {
+    if (!hadDeferredReload || options?.allowDeferredReload === false) {
       return;
     }
     setTimeout(() => {
@@ -1781,11 +1784,16 @@ export class StellaRuntimeClient {
       return { ok: true };
     });
     peer.registerRequestHandler(METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME, async (params) => {
-      const payload = params as { runId?: string };
+      const payload = params as {
+        runId?: string;
+        allowDeferredReload?: boolean;
+      };
       if (!payload.runId) {
         throw new Error("HOST_RUNTIME_RELOAD_RESUME requires a runId.");
       }
-      await this.resumeRuntimeReloads(payload.runId);
+      await this.resumeRuntimeReloads(payload.runId, {
+        allowDeferredReload: payload.allowDeferredReload !== false,
+      });
       return { ok: true };
     });
     peer.registerRequestHandler(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, async (params) => {

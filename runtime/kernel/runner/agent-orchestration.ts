@@ -10,10 +10,7 @@ import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
 import { LocalAgentManager } from "../agents/local-agent-manager.js";
 import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
 import { isKnownSafeCommand } from "../tools/safe-commands.js";
-import {
-  inferShellMentionedPaths,
-  resolveToolPath,
-} from "../tools/path-inference.js";
+import { resolveToolPath } from "../tools/path-inference.js";
 import type {
   AgentToolRequest,
   ToolContext,
@@ -189,10 +186,14 @@ const inferPreWritePaths = (
     return resolved ? [resolved] : [];
   }
 
-  if (toolName === "exec_command") {
-    if (isReadOnlyShellCommand(args)) return [];
-    return inferShellMentionedPaths(args, context);
-  }
+  // exec_command intentionally has no pre-write path inference. Shell-mentioned
+  // tokens are speculative — they tell us what the command might touch, not
+  // what it actually wrote — and seeding them as writes makes finalize build
+  // an apply batch (and morph) for read-only or exploration commands. The
+  // shell mutation guard (beginShellMutationGuard) already snapshots all of
+  // desktop/src globally for the duration of a non-safe shell command, and
+  // post-tool recordToolWrites uses the tool's fileChanges/producedFiles to
+  // record only paths that were actually modified.
 
   return [];
 };
