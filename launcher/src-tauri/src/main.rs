@@ -17,9 +17,6 @@ use tauri::{
 };
 use tokio::sync::Mutex;
 
-#[cfg(target_os = "macos")]
-use tauri::ActivationPolicy;
-
 fn cli_dev_path_override() -> Option<String> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -88,12 +85,6 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            #[cfg(target_os = "macos")]
-            {
-                let _ = app.set_activation_policy(ActivationPolicy::Accessory);
-                let _ = app.set_dock_visibility(false);
-            }
-
             // Paths
             let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
             let default_install_path = dev_install_path

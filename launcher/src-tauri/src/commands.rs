@@ -5,6 +5,9 @@ use std::path::Path;
 use std::process::{Command as StdCommand, Stdio};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+#[cfg(target_os = "macos")]
+use tauri::ActivationPolicy;
+
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -93,10 +96,13 @@ fn spawn_detached(info: &LaunchInfo) -> bool {
 pub fn show_main_window(app: &AppHandle) {
     #[cfg(target_os = "macos")]
     {
+        let _ = app.set_activation_policy(ActivationPolicy::Regular);
+        let _ = app.set_dock_visibility(true);
         let _ = app.show();
     }
 
     if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_skip_taskbar(false);
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
@@ -117,7 +123,14 @@ pub fn show_main_window(app: &AppHandle) {
 
 fn hide_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_skip_taskbar(true);
         let _ = window.hide();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.set_dock_visibility(false);
+        let _ = app.set_activation_policy(ActivationPolicy::Accessory);
     }
 }
 
@@ -234,7 +247,9 @@ pub async fn start_install(state: State<'_, AppState>, app: AppHandle) -> Result
 
     if result.is_ok() && installer.run_after_install && installer.can_launch {
         if let Some(info) = setup::get_launch_info(&installer).await {
-            spawn_detached(&info);
+            if spawn_detached(&info) {
+                hide_main_window(&app);
+            }
         }
     }
 
@@ -249,6 +264,7 @@ pub async fn launch_desktop(
     let installer = state.installer.lock().await;
 
     if is_desktop_alive(&installer.install_path) {
+        hide_main_window(&app);
         return Ok(OkResult { ok: true });
     }
 
