@@ -105,6 +105,7 @@ type RuntimeAgentRecord = {
   attemptCount: number;
   restartRequested: boolean;
   terminalEventEmitted: boolean;
+  pendingStartStatusText?: string;
 };
 
 type FsLock = {
@@ -450,6 +451,7 @@ export class LocalAgentManager implements AgentToolApi {
     task.controller = new AbortController();
     task.restartRequested = false;
     task.terminalEventEmitted = false;
+    task.pendingStartStatusText = undefined;
   }
 
   private hydrateTaskFromRecord(
@@ -479,6 +481,7 @@ export class LocalAgentManager implements AgentToolApi {
       attemptCount: 0,
       restartRequested: false,
       terminalEventEmitted: false,
+      pendingStartStatusText: "Updating agent",
     };
   }
 
@@ -514,6 +517,8 @@ export class LocalAgentManager implements AgentToolApi {
       }
       this.runningCount += 1;
       task.status = "running";
+      const startStatusText = task.pendingStartStatusText;
+      task.pendingStartStatusText = undefined;
       this.persistTask(task);
       this.opts.onAgentEvent?.({
         type: "agent-started",
@@ -523,6 +528,7 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: task.agentType,
         description: task.description,
         parentAgentId: task.parentAgentId,
+        ...(startStatusText ? { statusText: startStatusText } : {}),
       });
       void this.executeTask(task)
         .catch(() => undefined)
@@ -857,6 +863,17 @@ export class LocalAgentManager implements AgentToolApi {
       local.status = "canceled";
       local.completedAt = Date.now();
       local.restartRequested = false;
+      local.pendingStartStatusText = undefined;
+      this.opts.onAgentEvent?.({
+        type: "agent-progress",
+        conversationId: local.conversationId,
+        rootRunId: local.rootRunId,
+        agentId: local.threadId,
+        agentType: local.agentType,
+        description: local.description,
+        parentAgentId: local.parentAgentId,
+        statusText: "Canceling agent",
+      });
       local.controller.abort(new Error(local.error));
       if (!local.terminalEventEmitted && (previousStatus === "pending" || previousStatus === "running")) {
         this.opts.onAgentEvent?.({
@@ -933,14 +950,17 @@ export class LocalAgentManager implements AgentToolApi {
         task.messageLog.splice(0, task.messageLog.length - LocalAgentManager.MAX_LOG_MESSAGES);
       }
       this.resetTaskForNextAttempt(task, text);
-      task.recentActivity = ["Applying task update from orchestrator."];
+      task.pendingStartStatusText = "Updating agent";
+      task.recentActivity = ["Updating agent from orchestrator."];
       this.opts.onAgentEvent?.({
         type: "agent-progress",
         conversationId: task.conversationId,
         rootRunId: task.rootRunId,
         agentId: task.threadId,
         agentType: task.agentType,
-        statusText: "Applying task update",
+        description: task.description,
+        parentAgentId: task.parentAgentId,
+        statusText: "Updating agent",
       });
       this.enqueueTask(task);
       return { delivered: true };
@@ -959,11 +979,11 @@ export class LocalAgentManager implements AgentToolApi {
 
     if (from === "orchestrator") {
       const statusText = interrupt
-        ? "Applying agent input"
+        ? "Updating agent"
         : "Queued agent input";
       task.recentActivity = [
         interrupt
-          ? `Agent input received: ${truncate(text, 200)}`
+          ? `Agent update received: ${truncate(text, 200)}`
           : `Agent input queued: ${truncate(text, 200)}`,
       ];
       this.opts.onAgentEvent?.({
@@ -972,6 +992,8 @@ export class LocalAgentManager implements AgentToolApi {
         rootRunId: task.rootRunId,
         agentId: task.threadId,
         agentType: task.agentType,
+        description: task.description,
+        parentAgentId: task.parentAgentId,
         statusText,
       });
 

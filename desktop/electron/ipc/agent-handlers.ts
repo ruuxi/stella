@@ -205,7 +205,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     switch (event.type) {
       case AGENT_STREAM_EVENT_TYPES.AGENT_STARTED:
         base.status = "running";
-        base.statusText = undefined;
+        base.statusText = event.statusText;
         base.reasoningText = "";
         base.result = undefined;
         base.error = undefined;
@@ -274,6 +274,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       if (activeRun?.runId === normalizedEvent.runId) {
         activeRunByConversation.delete(normalizedEvent.conversationId);
       }
+      tasksByRunId.delete(trackedRunId);
     } else {
       upsertTaskSnapshot(normalizedEvent);
     }

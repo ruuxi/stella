@@ -104,7 +104,12 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     await waitForTaskCompletion(manager, created.threadId);
 
     const types = lifecycleEvents.map((entry) => entry.type);
-    expect(types).toEqual(["agent-started", "agent-progress", "agent-canceled"]);
+    expect(types).toEqual([
+      "agent-started",
+      "agent-progress",
+      "agent-progress",
+      "agent-canceled",
+    ]);
 
     const canceled = lifecycleEvents.find(
       (entry) => entry.type === "agent-canceled",
@@ -113,9 +118,17 @@ describe("LocalAgentManager pause_agent cancellation", () => {
 
     // Anything fired by the agent loop after `cancelAgent` must NOT have
     // produced another `agent-progress` event.
+    expect(
+      lifecycleEvents.some(
+        (entry) =>
+          entry.type === "agent-progress" &&
+          entry.statusText === "Canceling agent",
+      ),
+    ).toBe(true);
+
     const progressCount = lifecycleEvents.filter(
       (entry) => entry.type === "agent-progress",
     ).length;
-    expect(progressCount).toBe(1);
+    expect(progressCount).toBe(2);
   });
 });

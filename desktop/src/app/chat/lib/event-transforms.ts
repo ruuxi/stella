@@ -95,6 +95,7 @@ export type AgentStartedEventPayload = {
   parentAgentId?: string
   agentDepth?: number
   maxAgentDepth?: number
+  statusText?: string
 }
 
 export type AgentCompletedEventPayload = {
@@ -360,6 +361,7 @@ export function extractTasksFromEvents(
         agentType: event.payload.agentType,
         status: 'running',
         parentAgentId: event.payload.parentAgentId,
+        statusText: event.payload.statusText,
         startedAtMs: event.timestamp,
         completedAtMs: undefined,
         lastUpdatedAtMs: event.timestamp,
