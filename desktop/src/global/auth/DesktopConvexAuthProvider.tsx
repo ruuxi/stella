@@ -1,5 +1,13 @@
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ConvexProviderWithAuth } from "convex/react";
 import { authClient } from "@/global/auth/lib/auth-client";
 import { getConvexToken, clearCachedToken } from "@/global/auth/services/auth-token";
@@ -9,6 +17,32 @@ const TOKEN_BOOTSTRAP_RETRY_MS = 3_000;
 const TOKEN_REFRESH_FALLBACK_MS = 3 * 60 * 1000;
 const TOKEN_REFRESH_MARGIN_MS = 45_000;
 const TOKEN_MIN_REFRESH_MS = 15_000;
+
+export type AuthBootstrapStatus =
+  | "loading_session"
+  | "creating_anonymous_session"
+  | "syncing_runtime_token"
+  | "ready"
+  | "failed";
+
+type AuthBootstrapState = {
+  status: AuthBootstrapStatus;
+  error: string | null;
+};
+
+type AuthBootstrapContextValue = AuthBootstrapState & {
+  runtimeAuthReady: boolean;
+};
+
+const AuthBootstrapContext = createContext<AuthBootstrapContextValue>({
+  status: "loading_session",
+  error: null,
+  runtimeAuthReady: false,
+});
+
+export function useAuthBootstrapState() {
+  return useContext(AuthBootstrapContext);
+}
 
 export const getHostTokenRefreshDelayMs = (token: string): number => {
   try {
@@ -56,7 +90,11 @@ function useDesktopConvexAuth() {
   );
 }
 
-function DesktopAuthRuntimeEffects() {
+function DesktopAuthRuntimeEffects({
+  setAuthBootstrapState,
+}: {
+  setAuthBootstrapState: (state: AuthBootstrapState) => void;
+}) {
   const session = authClient.useSession();
   const attemptedAnonAuthRef = useRef(false);
   const runtimeAuthRefreshHandlerRef = useRef<((args?: {
@@ -71,7 +109,10 @@ function DesktopAuthRuntimeEffects() {
   const isSessionPending = Boolean(session.isPending);
 
   useEffect(() => {
-    if (session.isPending) return;
+    if (session.isPending) {
+      setAuthBootstrapState({ status: "loading_session", error: null });
+      return;
+    }
 
     if (session.data) {
       attemptedAnonAuthRef.current = false;
@@ -80,11 +121,19 @@ function DesktopAuthRuntimeEffects() {
 
     if (attemptedAnonAuthRef.current) return;
     attemptedAnonAuthRef.current = true;
+    setAuthBootstrapState({
+      status: "creating_anonymous_session",
+      error: null,
+    });
 
     void authClient.signIn.anonymous().catch(() => {
       attemptedAnonAuthRef.current = false;
+      setAuthBootstrapState({
+        status: "failed",
+        error: "Stella could not create a local sign-in session.",
+      });
     });
-  }, [session.data, session.isPending]);
+  }, [session.data, session.isPending, setAuthBootstrapState]);
 
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
@@ -127,22 +176,36 @@ function DesktopAuthRuntimeEffects() {
     const systemApi = window.electronAPI?.system;
     if (!systemApi?.setAuthState) {
       runtimeAuthRefreshHandlerRef.current = null;
+      setAuthBootstrapState({
+        status: "failed",
+        error: "Stella could not connect auth to the desktop runtime.",
+      });
       return;
     }
 
     if (isSessionPending) {
       runtimeAuthRefreshHandlerRef.current = null;
+      setAuthBootstrapState({ status: "loading_session", error: null });
       return;
     }
 
     if (!hasSession) {
       runtimeAuthRefreshHandlerRef.current = null;
+      setAuthBootstrapState({
+        status: "creating_anonymous_session",
+        error: null,
+      });
       void systemApi.setAuthState({
         authenticated: false,
         hasConnectedAccount: false,
       });
       return;
     }
+
+    setAuthBootstrapState({
+      status: "syncing_runtime_token",
+      error: null,
+    });
 
     let cancelled = false;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -178,9 +241,15 @@ function DesktopAuthRuntimeEffects() {
         requestId,
       }: { forceRefreshToken?: boolean; requestId?: string } = {},
     ) => {
-      const token = (await getConvexToken({
-        forceRefresh: forceRefreshToken,
-      })) ?? undefined;
+      let token: string | undefined;
+      try {
+        token =
+          (await getConvexToken({
+            forceRefresh: forceRefreshToken,
+          })) ?? undefined;
+      } catch {
+        token = undefined;
+      }
       if (cancelled) return;
 
       if (token) {
@@ -201,6 +270,7 @@ function DesktopAuthRuntimeEffects() {
           });
         }
         scheduleRefresh(token);
+        setAuthBootstrapState({ status: "ready", error: null });
         return;
       }
 
@@ -216,6 +286,10 @@ function DesktopAuthRuntimeEffects() {
         });
       }
       if (!retryTimer) {
+        setAuthBootstrapState({
+          status: "syncing_runtime_token",
+          error: null,
+        });
         retryTimer = setTimeout(() => {
           retryTimer = null;
           void syncToken();
@@ -231,7 +305,7 @@ function DesktopAuthRuntimeEffects() {
       runtimeAuthRefreshHandlerRef.current = null;
       clearTimers();
     };
-  }, [hasConnectedAccount, hasSession, isSessionPending]);
+  }, [hasConnectedAccount, hasSession, isSessionPending, setAuthBootstrapState]);
 
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
@@ -251,10 +325,27 @@ function DesktopAuthRuntimeEffects() {
 }
 
 export function DesktopConvexAuthProvider({ children }: { children: ReactNode }) {
+  const [authBootstrapState, setAuthBootstrapState] =
+    useState<AuthBootstrapState>({
+      status: "loading_session",
+      error: null,
+    });
+  const authBootstrapValue = useMemo(
+    () => ({
+      ...authBootstrapState,
+      runtimeAuthReady: authBootstrapState.status === "ready",
+    }),
+    [authBootstrapState],
+  );
+
   return (
     <ConvexProviderWithAuth client={convexClient} useAuth={useDesktopConvexAuth}>
-      <DesktopAuthRuntimeEffects />
-      {children}
+      <AuthBootstrapContext.Provider value={authBootstrapValue}>
+        <DesktopAuthRuntimeEffects
+          setAuthBootstrapState={setAuthBootstrapState}
+        />
+        {children}
+      </AuthBootstrapContext.Provider>
     </ConvexProviderWithAuth>
   );
 }
