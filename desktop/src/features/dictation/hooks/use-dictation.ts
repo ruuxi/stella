@@ -39,6 +39,13 @@ interface UseDictationOptions {
   message: string;
   disabled?: boolean;
   onError?: (error: string) => void;
+  /**
+   * Invoked when `commitAndSend` finishes — i.e. the recording has stopped,
+   * any pending transcription has been appended to the composer message, and
+   * the caller should now submit the composer. Reads the latest `setMessage`
+   * via ref so it always sees the post-transcript value.
+   */
+  onCommit?: () => void;
 }
 
 interface UseDictationResult {
@@ -49,6 +56,12 @@ interface UseDictationResult {
   toggle: () => void;
   /** Stop recording without uploading or appending anything. */
   cancel: () => void;
+  /**
+   * Stop, transcribe (if necessary), and then fire `onCommit`. Used by the
+   * composer's send-arrow affordance so the user can dictate-and-submit in a
+   * single tap.
+   */
+  commitAndSend: () => void;
   /** Rolling buffer of recent input levels in 0..1, oldest first. */
   levels: number[];
   /** Elapsed time of the current recording, in milliseconds. */
@@ -68,6 +81,7 @@ export const useDictation = ({
   message,
   disabled = false,
   onError,
+  onCommit,
 }: UseDictationOptions): UseDictationResult => {
   const [state, setState] = useState<DictationSessionState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +93,15 @@ export const useDictation = ({
   const messageRef = useRef(message);
   const setMessageRef = useRef(setMessage);
   const onErrorRef = useRef(onError);
+  const onCommitRef = useRef(onCommit);
   const stateRef = useRef<DictationSessionState>("idle");
+  /**
+   * When true, the next time we land on idle (whether after a successful
+   * transcription or a no-audio short-circuit), we should fire `onCommit`.
+   * Cleared every time we either fire it or transition out of idle for a
+   * new recording.
+   */
+  const sendAfterCommitRef = useRef(false);
 
   useEffect(() => {
     messageRef.current = message;
@@ -92,6 +114,20 @@ export const useDictation = ({
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
+
+  useEffect(() => {
+    onCommitRef.current = onCommit;
+  }, [onCommit]);
+
+  const fireCommitIfPending = useCallback(() => {
+    if (!sendAfterCommitRef.current) return;
+    sendAfterCommitRef.current = false;
+    // Defer one frame so the parent re-renders with the appended transcript
+    // before its `onSend` closure reads `message` to submit.
+    requestAnimationFrame(() => {
+      onCommitRef.current?.();
+    });
+  }, []);
 
   useEffect(() => {
     stateRef.current = state;
@@ -126,6 +162,7 @@ export const useDictation = ({
   }, []);
 
   const cancel = useCallback(() => {
+    sendAfterCommitRef.current = false;
     const session = sessionRef.current;
     if (!session) return;
     setLevels([]);
@@ -156,6 +193,11 @@ export const useDictation = ({
           if (next === "idle" || next === "error") {
             sessionRef.current = null;
             setLevels([]);
+            // For success paths the inworld session emits `idle` before
+            // `onFinalTranscript`; defer to a microtask so commit fires
+            // after the transcript has been appended. For no-audio /
+            // error paths, no transcript ever arrives so we still fire.
+            queueMicrotask(fireCommitIfPending);
           }
         },
         onFinalTranscript: (transcript) => {
@@ -178,14 +220,33 @@ export const useDictation = ({
   const toggle = useCallback(() => {
     const current = stateRef.current;
     if (current === "listening") {
+      sendAfterCommitRef.current = false;
       void stop();
     } else if (current === "transcribing") {
       // Upload in flight — ignore presses until it resolves.
       return;
     } else {
+      sendAfterCommitRef.current = false;
       void start();
     }
   }, [start, stop]);
+
+  const commitAndSend = useCallback(() => {
+    const current = stateRef.current;
+    if (current === "listening") {
+      sendAfterCommitRef.current = true;
+      void stop();
+      return;
+    }
+    if (current === "transcribing") {
+      sendAfterCommitRef.current = true;
+      return;
+    }
+    // Already idle (or in an error state with no live session) — fire the
+    // commit immediately; the parent will submit whatever is in the
+    // composer right now.
+    onCommitRef.current?.();
+  }, [stop]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -218,6 +279,7 @@ export const useDictation = ({
     state,
     toggle,
     cancel,
+    commitAndSend,
     levels,
     elapsedMs,
     error,

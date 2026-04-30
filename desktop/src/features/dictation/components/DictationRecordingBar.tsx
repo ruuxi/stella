@@ -3,7 +3,10 @@
  * dictation is active. Lays out as flex children of the surrounding form so
  * the existing pill shell wraps it without any extra height contortions:
  *
- *   [waveform — flex 1]   [0:24]   [X]   [✓]
+ *   [waveform — flex 1]   [0:24]   [X]   [✓]   [↑ (optional)]
+ *
+ * The optional send arrow is only wired by the in-app composers — the
+ * global overlay (used to dictate into other apps) omits it.
  *
  * The waveform is drawn to a single <canvas> so we can repaint at the level
  * tick rate (~12 Hz) without re-rendering hundreds of DOM nodes.
@@ -18,6 +21,13 @@ type DictationRecordingBarProps = {
   elapsedMs: number;
   onCancel: () => void;
   onConfirm: () => void;
+  /**
+   * When provided, renders an arrow button to the right of the check that
+   * stops dictation and immediately submits the resulting message. Only the
+   * in-app composers pass this; the global overlay omits it because the
+   * transcript is being pasted into another application.
+   */
+  onSend?: () => void;
 };
 
 export function DictationRecordingBar({
@@ -25,6 +35,7 @@ export function DictationRecordingBar({
   elapsedMs,
   onCancel,
   onConfirm,
+  onSend,
 }: DictationRecordingBarProps) {
   return (
     <>
@@ -56,6 +67,20 @@ export function DictationRecordingBar({
       >
         <CheckIcon />
       </button>
+      {onSend && (
+        <button
+          type="button"
+          className={cn(
+            "chat-composer-icon-button composer-dictation-control",
+            "composer-dictation-control--send",
+          )}
+          onClick={onSend}
+          title="Stop, transcribe, and send"
+          aria-label="Stop dictation, transcribe, and send"
+        >
+          <SendIcon />
+        </button>
+      )}
     </>
   );
 }
@@ -184,6 +209,23 @@ function CheckIcon() {
       strokeLinejoin="round"
     >
       <polyline points="5 12 10 17 19 7" />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 19V5M5 12l7-7 7 7" />
     </svg>
   );
 }

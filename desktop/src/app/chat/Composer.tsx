@@ -63,10 +63,18 @@ export function Composer({
   const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
     useScreenshotPreview(chatContext);
 
+  const onSendRef = useRef(onSend);
+  useEffect(() => {
+    onSendRef.current = onSend;
+  }, [onSend]);
+
   const dictation = useDictation({
     message,
     setMessage,
     disabled: isStreaming,
+    onCommit: () => {
+      onSendRef.current();
+    },
   });
 
   const composerState = deriveComposerState({
@@ -137,6 +145,7 @@ export function Composer({
                 elapsedMs={dictation.elapsedMs}
                 onCancel={dictation.cancel}
                 onConfirm={dictation.toggle}
+                onSend={dictation.commitAndSend}
               />
             ) : (
               <>
