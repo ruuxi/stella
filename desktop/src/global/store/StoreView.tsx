@@ -1,6 +1,6 @@
-import { createElement, useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { useQuery, usePaginatedQuery } from "convex/react"
+import { useQuery, useMutation, usePaginatedQuery } from "convex/react"
 import { api } from "@/convex/api"
 import type {
   StorePackageRecord,
@@ -9,21 +9,53 @@ import type {
   StellaConnectorSummary,
 } from "@/shared/types/electron"
 import { showToast } from "@/ui/toast"
-import { ChevronLeft, Clock, Layers, Package, Plug, Search } from "lucide-react"
+import {
+  ChevronLeft,
+  Clock,
+  Layers,
+  MoreHorizontal,
+  Package,
+  Plug,
+  Search,
+  Share2,
+} from "lucide-react"
 import { useSelfModTaintMonitor } from "@/systems/boot/use-self-mod-taint-monitor"
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogBody, DialogCloseButton } from "@/ui/dialog"
 import { Button } from "@/ui/button"
 import { TextField } from "@/ui/text-field"
-import { displayTabs } from "@/shell/display/tab-store"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/ui/dropdown-menu"
+import { openStoreDisplayTab } from "@/shell/display/default-tabs"
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
 import "@/global/integrations/credential-modal.css"
 import { FashionTab } from "./fashion/FashionTab"
-import { StoreSidePanel } from "./StoreSidePanel"
+import { ShareAddonDialog } from "./ShareAddonDialog"
 import {
   DEFAULT_STORE_TAB,
   type StoreTab,
 } from "./store-tabs"
 import "./store.css"
+
+// Visibility tier handed down to owner controls. Treats undefined as
+// "public" so legacy rows render with the right radio selected.
+type AddonVisibility = "public" | "unlisted" | "private"
+const effectiveVisibility = (
+  v: AddonVisibility | undefined,
+): AddonVisibility => v ?? "public"
+
+type OwnerControls = {
+  visibility: AddonVisibility
+  onSetVisibility: (next: AddonVisibility) => Promise<void> | void
+  onDelete: () => Promise<void> | void
+}
 
 // ---------------------------------------------------------------------------
 // Display helpers
@@ -148,7 +180,7 @@ type PackagesCachePayload = {
   installed: InstalledStoreModRecord[]
 }
 
-function useStorePackages() {
+function useStorePackages(hasSession: boolean) {
   const api = useStoreApi()
   const cached = readStoreCache<PackagesCachePayload>("packages")
   const [packages, setPackages] = useState<StorePackageRecord[]>(
@@ -169,7 +201,10 @@ function useStorePackages() {
   }, [])
 
   const load = useCallback(async () => {
-    if (!api) {
+    if (!api || !hasSession) {
+      setPackages([])
+      setInstalled([])
+      setError(null)
       setLoading(false)
       return
     }
@@ -198,12 +233,16 @@ function useStorePackages() {
     } finally {
       if (mountedRef.current) setLoading(false)
     }
-  }, [api])
+  }, [api, hasSession])
 
   useEffect(() => {
+    if (!hasSession) {
+      void load()
+      return
+    }
     if (isStoreCacheFresh(readStoreCache<PackagesCachePayload>("packages"))) return
     void load()
-  }, [load])
+  }, [hasSession, load])
 
   const installedMap = useMemo(() => {
     const map = new Map<string, InstalledStoreModRecord>()
@@ -472,6 +511,8 @@ function StoreCard({
   meta,
   onAction,
   onClick,
+  onShare,
+  ownerControls,
 }: {
   pkg: StorePackageRecord
   actionLabel: string
@@ -480,6 +521,12 @@ function StoreCard({
   meta?: string
   onAction?: () => void
   onClick?: () => void
+  /** Optional Share affordance. When provided a Share icon button is
+   *  rendered inline beside the primary action button. */
+  onShare?: () => void
+  /** Owner-only kebab menu surfacing visibility + delete. Undefined for
+   *  cards the current user does not own. */
+  ownerControls?: OwnerControls
 }) {
   return (
     <div
@@ -495,24 +542,131 @@ function StoreCard({
       />
       <div className="store-card-body">
         <div className="store-card-top">
-          <span className="store-card-name">{pkg.displayName}</span>
-          <button
-            className="store-action-btn"
-            data-variant={actionVariant}
-            disabled={actionDisabled}
-            onClick={(e) => {
-              e.stopPropagation()
-              onAction?.()
-            }}
-          >
-            {actionLabel}
-          </button>
+          <span className="store-card-name">
+            {pkg.displayName}
+            {ownerControls
+            && ownerControls.visibility !== "public" ? (
+              <span
+                className="store-card-visibility-badge"
+                data-tier={ownerControls.visibility}
+              >
+                {ownerControls.visibility === "private" ? "Private" : "Unlisted"}
+              </span>
+            ) : null}
+          </span>
+          <div className="store-card-actions">
+            {onShare ? (
+              <button
+                type="button"
+                className="store-icon-btn"
+                aria-label="Share add-on"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onShare()
+                }}
+              >
+                <Share2 size={14} />
+              </button>
+            ) : null}
+            {ownerControls ? (
+              <CardOwnerMenu controls={ownerControls} packageName={pkg.displayName} />
+            ) : null}
+            <button
+              className="store-action-btn"
+              data-variant={actionVariant}
+              disabled={actionDisabled}
+              onClick={(e) => {
+                e.stopPropagation()
+                onAction?.()
+              }}
+            >
+              {actionLabel}
+            </button>
+          </div>
         </div>
         <div className="store-card-desc">{pkg.description}</div>
         <AuthorChip name={pkg.authorDisplayName} handle={pkg.authorHandle} />
         {meta && <div className="store-card-meta">{meta}</div>}
       </div>
     </div>
+  )
+}
+
+function CardOwnerMenu({
+  controls,
+  packageName,
+}: {
+  controls: OwnerControls
+  packageName: string
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        asChild
+        // Stop propagation so opening the menu doesn't also trigger the
+        // card's `onClick` (which would navigate to the detail view).
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="store-icon-btn"
+          aria-label={`More actions for ${packageName}`}
+        >
+          <MoreHorizontal size={14} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        sideOffset={6}
+        className="store-card-menu"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DropdownMenuLabel className="store-card-menu-label">Visibility</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={controls.visibility}
+          onValueChange={(value) => {
+            // Radix gives us `string`; we narrow to the visibility tier.
+            if (value === "public" || value === "unlisted" || value === "private") {
+              void controls.onSetVisibility(value)
+            }
+          }}
+        >
+          <DropdownMenuRadioItem value="public" className="store-card-menu-item">
+            <div className="store-card-menu-item-text">
+              <span className="store-card-menu-item-title">Public</span>
+              <span className="store-card-menu-item-sub">Listed on the Store</span>
+            </div>
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="unlisted" className="store-card-menu-item">
+            <div className="store-card-menu-item-text">
+              <span className="store-card-menu-item-title">Unlisted</span>
+              <span className="store-card-menu-item-sub">Anyone with the link</span>
+            </div>
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="private" className="store-card-menu-item">
+            <div className="store-card-menu-item-text">
+              <span className="store-card-menu-item-title">Private</span>
+              <span className="store-card-menu-item-sub">Only you</span>
+            </div>
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator className="store-card-menu-separator" />
+        <DropdownMenuItem
+          className="store-card-menu-item store-card-menu-item--danger"
+          onSelect={() => {
+            // Keep the destructive action explicitly confirmed — Radix
+            // closes the menu after `onSelect`, so the confirm fires
+            // cleanly out-of-tree.
+            const ok = window.confirm(
+              `Delete "${packageName}"? This cannot be undone. People who already installed it will keep their copy but won't get updates.`,
+            )
+            if (ok) void controls.onDelete()
+          }}
+        >
+          Delete add-on
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -718,6 +872,8 @@ function DiscoverTab({
   error,
   onSelect,
   onInstall,
+  onShare,
+  ownerControlsFor,
 }: {
   packages: StorePackageRecord[]
   installed: InstalledStoreModRecord[]
@@ -726,6 +882,8 @@ function DiscoverTab({
   error: string | null
   onSelect: (packageId: string) => void
   onInstall: (packageId: string) => Promise<void>
+  onShare: (pkg: StorePackageRecord) => void
+  ownerControlsFor: (pkg: StorePackageRecord) => OwnerControls | undefined
 }) {
   const [working, setWorking] = useState<string | null>(null)
   const [query, setQuery] = useState("")
@@ -829,6 +987,8 @@ function DiscoverTab({
                   meta={`Version ${pkg.latestReleaseNumber}`}
                   onAction={() => void handleInstall(pkg.packageId)}
                   onClick={() => onSelect(pkg.packageId)}
+                  onShare={() => onShare(pkg)}
+                  ownerControls={ownerControlsFor(pkg)}
                 />
               )
             })}
@@ -1145,12 +1305,16 @@ function PackageDetailView({
   onBack,
   onInstall,
   onRemove,
+  onShare,
+  ownerControlsFor,
 }: {
   packageId: string
   installedMap: Map<string, InstalledStoreModRecord>
   onBack: () => void
   onInstall: (packageId: string) => Promise<void>
   onRemove: (packageId: string) => Promise<void>
+  onShare: (pkg: StorePackageRecord) => void
+  ownerControlsFor: (pkg: StorePackageRecord) => OwnerControls | undefined
 }) {
   const { pkg, releases, loading, error } = usePackageDetail(packageId)
   const [working, setWorking] = useState(false)
@@ -1251,6 +1415,20 @@ function PackageDetailView({
                 {working ? "Adding..." : "Add to Stella"}
               </button>
             )}
+            <button
+              type="button"
+              className="store-icon-btn store-icon-btn--lg"
+              aria-label="Share add-on"
+              onClick={() => onShare(pkg)}
+            >
+              <Share2 size={16} />
+            </button>
+            {(() => {
+              const controls = ownerControlsFor(pkg)
+              return controls ? (
+                <CardOwnerMenu controls={controls} packageName={pkg.displayName} />
+              ) : null
+            })()}
           </div>
         </div>
       </div>
@@ -1341,6 +1519,7 @@ export function StoreView({
   const [confirmConnector, setConfirmConnector] =
     useState<StellaConnectorSummary | null>(null)
   const [confirmInstalling, setConfirmInstalling] = useState(false)
+  const { hasSession } = useAuthSessionState()
 
   const {
     installed,
@@ -1348,7 +1527,7 @@ export function StoreView({
     loading: ownerPackagesLoading,
     error: packagesError,
     reload: reloadPackages,
-  } = useStorePackages()
+  } = useStorePackages(hasSession)
 
   // Discover surfaces every public add-on (any creator), not just the
   // current user's own packages. Owner-only data above is still needed
@@ -1363,6 +1542,111 @@ export function StoreView({
     error: connectorsError,
     reload: reloadConnectors,
   } = useStoreConnectors()
+
+  // Owned-by-me set used to decide which cards render the owner kebab
+  // (visibility + delete). `listMyPackages` is owner-scoped and always
+  // returns every add-on the user owns regardless of its visibility, so
+  // the owner can manage hidden / private rows that are absent from
+  // Discover.
+  const myPackages = useQuery(
+    api.data.store_packages.listMyPackages,
+    hasSession ? {} : "skip",
+  ) as Array<{
+    packageId: string
+    visibility?: AddonVisibility
+  }> | undefined
+  const myPackageVisibility = useMemo(() => {
+    const map = new Map<string, AddonVisibility>()
+    for (const pkg of myPackages ?? []) {
+      map.set(pkg.packageId, effectiveVisibility(pkg.visibility))
+    }
+    return map
+  }, [myPackages])
+
+  const setVisibilityMutation = useMutation(
+    api.data.store_packages.setPackageVisibility,
+  )
+  const deletePackageMutation = useMutation(api.data.store_packages.deletePackage)
+
+  const handleSetVisibility = useCallback(
+    async (packageId: string, visibility: AddonVisibility) => {
+      try {
+        await setVisibilityMutation({ packageId, visibility })
+        showToast({
+          title:
+            visibility === "public"
+              ? "Listed on the Store"
+              : visibility === "unlisted"
+              ? "Unlisted (link only)"
+              : "Hidden from everyone",
+          variant: "success",
+        })
+        await reloadPackages()
+      } catch (err) {
+        showToast({
+          title:
+            err instanceof Error
+              ? err.message
+              : "Couldn't update visibility right now",
+          variant: "error",
+        })
+      }
+    },
+    [setVisibilityMutation, reloadPackages],
+  )
+
+  const handleDeletePackage = useCallback(
+    async (packageId: string) => {
+      try {
+        await deletePackageMutation({ packageId })
+        showToast({ title: "Add-on deleted", variant: "success" })
+        // If the user was viewing this add-on's detail view, fall back
+        // to the list rather than leaving them on a "404 / no longer
+        // available" placeholder.
+        if (selectedPackageId === packageId) {
+          setSelectedPackageId(null)
+          if (initialPackageId === packageId) {
+            void navigate({ to: "/store", search: { tab }, replace: true })
+          }
+        }
+        await reloadPackages()
+      } catch (err) {
+        showToast({
+          title:
+            err instanceof Error ? err.message : "Couldn't delete this add-on",
+          variant: "error",
+        })
+      }
+    },
+    [
+      deletePackageMutation,
+      reloadPackages,
+      selectedPackageId,
+      initialPackageId,
+      tab,
+      navigate,
+    ],
+  )
+
+  const ownerControlsFor = useCallback(
+    (pkg: StorePackageRecord): OwnerControls | undefined => {
+      const visibility = myPackageVisibility.get(pkg.packageId)
+      if (!visibility) return undefined
+      return {
+        visibility,
+        onSetVisibility: (next) => handleSetVisibility(pkg.packageId, next),
+        onDelete: () => handleDeletePackage(pkg.packageId),
+      }
+    },
+    [myPackageVisibility, handleSetVisibility, handleDeletePackage],
+  )
+
+  // Share-flow state: a single dialog mounted at the top level of the
+  // view; cards (and the detail view) toggle it by setting the package.
+  const [sharePkg, setSharePkg] = useState<StorePackageRecord | null>(null)
+  const handleShare = useCallback((pkg: StorePackageRecord) => {
+    setSharePkg(pkg)
+  }, [])
 
   const handleInstall = useCallback(
     async (packageId: string, releaseNumber?: number) => {
@@ -1465,6 +1749,17 @@ export function StoreView({
     [credentialConnector, reloadConnectors],
   )
 
+  const handleOpenStoreUpload = useCallback(() => {
+    if (!hasSession) {
+      showToast({
+        title: "Sign in to upload to the Store",
+        variant: "error",
+      })
+      return
+    }
+    openStoreDisplayTab()
+  }, [hasSession])
+
   // Single, top-level dialog instances. Earlier the publish dialog was
   // duplicated across the detail and main branches with the same state, which
   // worked but made it easy to drift the two copies. One mount only.
@@ -1485,35 +1780,32 @@ export function StoreView({
           confirmInstalling ? undefined : setConfirmConnector(null)
         }
       />
+      {sharePkg ? (
+        <ShareAddonDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setSharePkg(null)
+          }}
+          pkg={sharePkg}
+        />
+      ) : null}
     </>
   )
-
-  // Auto-open the Store side panel as a workspace-panel display tab
-  // whenever the user is on `/store` *and* has a Convex session. The
-  // panel subscribes to `data.store_thread.listMessages`, which calls
-  // `requireUserId` server-side, so mounting it for a signed-out
-  // visitor would throw and break public Discover browsing. Anonymous
-  // sessions count — they're real Convex identities.
-  const { hasSession } = useAuthSessionState()
-  useEffect(() => {
-    if (!hasSession) return
-    displayTabs.openTab({
-      id: "store:side-panel",
-      kind: "store",
-      title: "Store",
-      tooltip: "Your add-ons + recent changes",
-      render: () => createElement(StoreSidePanel),
-    })
-    return () => {
-      displayTabs.closeTab("store:side-panel")
-    }
-  }, [hasSession])
 
   // Fashion is full-bleed — its grid + snap-scroll owns the canvas.
   const isFullBleedTab = tab === "fashion"
 
   return (
     <div className="store-root" data-tab={selectedPackageId ? "discover" : tab}>
+      {!isFullBleedTab || selectedPackageId ? (
+        <button
+          type="button"
+          className="pill-btn pill-btn--primary store-upload-btn"
+          onClick={handleOpenStoreUpload}
+        >
+          Upload to Store
+        </button>
+      ) : null}
       {isFullBleedTab && !selectedPackageId ? (
         <FashionTab />
       ) : (
@@ -1537,6 +1829,8 @@ export function StoreView({
               }}
               onInstall={handleInstall}
               onRemove={handleRemove}
+              onShare={handleShare}
+              ownerControlsFor={ownerControlsFor}
             />
           ) : (
             <>
@@ -1548,6 +1842,8 @@ export function StoreView({
                 error={packagesError}
                 onSelect={setSelectedPackageId}
                 onInstall={handleInstall}
+                onShare={handleShare}
+                ownerControlsFor={ownerControlsFor}
               />
               <ConnectTab
                 connectors={connectors}

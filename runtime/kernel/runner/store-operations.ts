@@ -61,6 +61,11 @@ export const createStoreOperations = (
         ? { authorHandle: record.authorHandle }
         : {}),
       ...(record.featured === true ? { featured: true } : {}),
+      ...(record.visibility === "public"
+        || record.visibility === "unlisted"
+        || record.visibility === "private"
+        ? { visibility: record.visibility }
+        : {}),
     };
   };
 

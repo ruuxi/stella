@@ -329,6 +329,11 @@ export type StorePackageRecord = {
   authorDisplayName?: string;
   authorHandle?: string;
   featured?: boolean;
+  /**
+   * Visibility tier — see backend `store_package_visibility_validator`.
+   * Omitted = public (legacy rows + first-publish default).
+   */
+  visibility?: "public" | "unlisted" | "private";
 };
 
 export type StorePackageReleaseRecord = {

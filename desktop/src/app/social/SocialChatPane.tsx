@@ -15,6 +15,8 @@ import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import type { SocialProfile } from "./hooks/use-social-profile";
 import { useSocialFriends } from "./hooks/use-social-friends";
 import { Check, Clock, Globe, MessageSquare, UserPlus } from "lucide-react";
+import { AddonShareCard } from "@/global/store/AddonShareCard";
+import { parseShareLink } from "@/global/store/share-link";
 
 type SocialChatPaneProps = {
   roomId: string;
@@ -502,16 +504,28 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
                     </span>
                   </div>
                 )}
-                {group.messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className="social-message-bubble"
-                    data-role={role}
-                    data-pending={msg.pending || undefined}
-                  >
-                    {msg.body}
-                  </div>
-                ))}
+                {group.messages.map((msg) => {
+                  // Whole-body Stella share links render as an embedded
+                  // add-on card instead of a plain text bubble. The bubble
+                  // gets `data-embed` so the CSS strips its padding/bg
+                  // and lets the card become the message.
+                  const shareLink = parseShareLink(msg.body);
+                  return (
+                    <div
+                      key={msg.id}
+                      className="social-message-bubble"
+                      data-role={role}
+                      data-pending={msg.pending || undefined}
+                      data-embed={shareLink ? "addon-share" : undefined}
+                    >
+                      {shareLink ? (
+                        <AddonShareCard link={shareLink} variant="wide" />
+                      ) : (
+                        msg.body
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}

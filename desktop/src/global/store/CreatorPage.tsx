@@ -4,16 +4,20 @@
  * Reachable via `/c/:handle`. Author bylines on add-on cards link
  * here once the creator has claimed a handle (via `claimHandle`).
  */
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { useNavigate } from "@tanstack/react-router";
+import { Share2 } from "lucide-react";
 import { api } from "@/convex/api";
 import type { StorePackageRecord } from "@/shared/types/electron";
+import { ShareAddonDialog } from "./ShareAddonDialog";
 import "./store.css";
 
 type Props = { handle: string };
 
 export function CreatorPage({ handle }: Props) {
   const navigate = useNavigate();
+  const [sharePkg, setSharePkg] = useState<StorePackageRecord | null>(null);
   const profile = useQuery(api.data.user_profiles.getProfileByHandle, { handle }) as
     | { publicHandle: string; displayName?: string }
     | null
@@ -68,10 +72,10 @@ export function CreatorPage({ handle }: Props) {
       ) : (
         <div className="store-grid">
           {packages.map((pkg) => (
-            <button
-              type="button"
+            <div
               key={pkg.packageId}
               className="store-card"
+              data-clickable="true"
               onClick={() =>
                 void navigate({
                   to: "/store",
@@ -82,16 +86,39 @@ export function CreatorPage({ handle }: Props) {
               <div className="store-card-body">
                 <div className="store-card-top">
                   <span className="store-card-name">{pkg.displayName}</span>
+                  <div className="store-card-actions">
+                    <button
+                      type="button"
+                      className="store-icon-btn"
+                      aria-label="Share add-on"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSharePkg(pkg);
+                      }}
+                    >
+                      <Share2 size={14} />
+                    </button>
+                  </div>
                 </div>
                 <div className="store-card-desc">{pkg.description}</div>
                 <div className="store-card-meta">
                   Version {pkg.latestReleaseNumber}
                 </div>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}
+
+      {sharePkg ? (
+        <ShareAddonDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setSharePkg(null);
+          }}
+          pkg={sharePkg}
+        />
+      ) : null}
     </div>
   );
 }
