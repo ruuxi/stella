@@ -59,7 +59,9 @@ pub struct LauncherUpdateInfo {
     pub available: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    pub checking: bool,
     pub installing: bool,
+    pub last_checked_at_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }

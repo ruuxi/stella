@@ -35,7 +35,9 @@ export type InstallerPhase =
 export type LauncherUpdateInfo = {
   available: boolean;
   version?: string;
+  checking: boolean;
   installing: boolean;
+  lastCheckedAtMs: number;
   error?: string;
 };
 
