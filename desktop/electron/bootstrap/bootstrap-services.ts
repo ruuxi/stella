@@ -197,20 +197,6 @@ export const createBootstrapServices = (options: {
     deactivateVoiceModes: () => uiStateService.deactivateVoiceModes(),
     isVoiceActive: () => uiStateService.state.isVoiceRtcActive,
     updateUiState: (partial) => uiStateService.update(partial),
-    // Double-tap Option (macOS) / Alt (Windows / Linux) toggles the mini
-    // window. Close targets the mini directly so current full-window focus
-    // cannot accidentally bring the main shell forward.
-    onDoubleTapModifier: () => {
-      const wm = state.windowManager;
-      if (!wm) return;
-      if (wm.isMiniShowing()) {
-        wm.dismissMiniWindowFromGlobalToggle(false);
-      } else {
-        uiStateService.update({ mode: "chat" });
-        captureService.broadcastChatContext();
-        showMiniChatTarget();
-      }
-    },
     // Forward every left-mouse-up to the SelectionWatcher so it can ask the
     // native helper for the current selection and pop the "Ask Stella" pill.
     onLeftMouseUp: (event) => {
