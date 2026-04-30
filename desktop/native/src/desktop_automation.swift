@@ -660,18 +660,16 @@ let bundledAppInstructions: [String: String] = [
 
         ### Playing media
 
-        Spotify is web-view-backed. Synthesized coordinate clicks (especially `click_count >= 2`
-        on `x/y`) are silently dropped while Spotify is in the background, so do not try to
-        double-click a song row to play it — you will loop forever. Instead, find a labeled
-        action button in the AX tree and click it once by `element_index`:
+        Spotify is web-view-backed. The accessibility tree usually exposes the main content
+        (search, playlists, `Play <name>` buttons, song rows). When it does, click those by
+        `element_index`. When it doesn't, the visible Play button is still in the screenshot —
+        a single `computer_click({app, x, y})` on its pixel coordinates works fine, even with
+        Spotify in the background.
 
-        - To play the currently shown view (e.g. Liked Songs after navigating there), click the
-          main green `Play` button (look for an `AXButton` whose label is exactly `Play`).
-        - To play a specific playlist or item from a list, click its inline action button —
-          they're labeled `Play <name>` (e.g. `Play Liked Songs`, `Play Founders`,
-          `Play Your Top Songs 2025`). One single `element_index` click is enough.
-        - To toggle play/pause without changing the queue, click the same `Play` (or `Pause`)
-          element_index in the player chrome.
+        One thing to avoid: do not synthesize a double-click (`click_count: 2`) on `x/y` to
+        "open" a song row. Backgrounded Spotify silently drops those. Click a labeled `Play`
+        or `Play <name>` button instead, or single-click the row to focus it and press
+        `Return`/`Space`.
 
         Spotify doesn't immediately update after requesting playback, so the result from a click
         might indicate paused media or outdated media. Instead of acting again, first: run
@@ -6805,26 +6803,69 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
         bundleId: options.bundleId
     )
     configureMessagingTimeout(for: target)
-    let builder = SnapshotBuilder(
-        maxDepth: options.maxDepth,
-        maxNodes: options.maxNodes
-    )
 
     // Snapshot the app's currently relevant window roots. For Electron/CEF
     // hosts, `prepareTargetForAutomation(...)` enables manual accessibility
     // and `axChildren(...)` descends through webview container roles when
     // the app exposes meaningful descendants through the parent AX tree.
-    let roots = options.allWindows
-        ? allWindowRoots(for: target.axApp)
-        : snapshotRoots(for: target.axApp)
-    let nodes = roots.enumerated().compactMap { index, root in
-        builder.buildNode(
-            element: root,
-            depth: 0,
-            childPath: [index],
-            ancestry: [],
-            windowTitle: nil
+    //
+    // CEF/Electron apps publish their renderer's AX subtree lazily: the
+    // first snapshot after a process launch (or after the AX broker has
+    // been quiescent) returns only the native shell — window, traffic
+    // lights, menu bar — usually under ~30 nodes. Setting
+    // AXManualAccessibility a second time after a brief delay reliably
+    // wakes the broker, after which subsequent walks return the full
+    // ~1500-node tree. Without retry, the agent gets a "successful but
+    // useless" snapshot and dead-ends because no actionable elements
+    // (Play buttons, links, list rows, etc.) are exposed.
+    let isWebViewBacked = shouldEnableManualAccessibility(for: target.app)
+    let webViewSparseThreshold = 50
+    let maxRetries = isWebViewBacked ? 2 : 0
+    let retryDelay: TimeInterval = 0.30
+
+    func walk() -> (SnapshotBuilder, [SnapshotNode]) {
+        let builder = SnapshotBuilder(
+            maxDepth: options.maxDepth,
+            maxNodes: options.maxNodes
         )
+        let roots = options.allWindows
+            ? allWindowRoots(for: target.axApp)
+            : snapshotRoots(for: target.axApp)
+        let walked = roots.enumerated().compactMap { index, root in
+            builder.buildNode(
+                element: root,
+                depth: 0,
+                childPath: [index],
+                ancestry: [],
+                windowTitle: nil
+            )
+        }
+        return (builder, walked)
+    }
+
+    var (builder, nodes) = walk()
+    if isWebViewBacked, builder.currentNodeCount() < webViewSparseThreshold {
+        for attempt in 1...maxRetries {
+            trace(
+                "snapshot:webview-sparse pid=\(target.app.processIdentifier) "
+                + "nodes=\(builder.currentNodeCount()) attempt=\(attempt) "
+                + "wakingBroker=AXManualAccessibility"
+            )
+            _ = AXUIElementSetAttributeValue(
+                target.axApp,
+                "AXManualAccessibility" as CFString,
+                kCFBooleanTrue
+            )
+            Thread.sleep(forTimeInterval: retryDelay)
+            (builder, nodes) = walk()
+            if builder.currentNodeCount() >= webViewSparseThreshold {
+                trace(
+                    "snapshot:webview-recovered pid=\(target.app.processIdentifier) "
+                    + "nodes=\(builder.currentNodeCount()) attempt=\(attempt)"
+                )
+                break
+            }
+        }
     }
 
     let windowTitle = currentWindowTitle(for: target) ?? nodes.first?.title
