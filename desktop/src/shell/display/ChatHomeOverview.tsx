@@ -31,7 +31,11 @@ import {
   fileArtifactPayloadForPath,
 } from "./path-to-viewer";
 import { DisplayTabIcon } from "./icons";
-import type { TaskItem } from "@/app/chat/lib/event-transforms";
+import {
+  extractTasksFromEvents,
+  mergeFooterTasks,
+  type TaskItem,
+} from "@/app/chat/lib/event-transforms";
 import "./chat-home-overview.css";
 
 const MAX_FILES = 24;
@@ -81,8 +85,26 @@ const taskBadgeFor = (task: TaskItem): string => {
 
 export function ChatHomeOverview() {
   const chat = useChatRuntime();
-  const tasks = chat.conversation.streaming.liveTasks ?? [];
+  const liveTasks = chat.conversation.streaming.liveTasks ?? [];
   const events = chat.conversation.events;
+
+  // Build a full task history (running + completed/failed/canceled) by
+  // replaying conversation events and merging with the live snapshot —
+  // mirroring the footer-tasks merge so the chat home overview reflects
+  // the same set the runtime knows about, not just what's in flight.
+  const tasks = useMemo(() => {
+    const persisted = extractTasksFromEvents(events);
+    const merged = mergeFooterTasks(persisted, liveTasks);
+    // Pin running tasks to the top, then most recent activity first.
+    return [...merged].sort((a, b) => {
+      const aRunning = a.status === "running";
+      const bRunning = b.status === "running";
+      if (aRunning !== bRunning) return aRunning ? -1 : 1;
+      const aTime = a.completedAtMs ?? a.lastUpdatedAtMs ?? a.startedAtMs;
+      const bTime = b.completedAtMs ?? b.lastUpdatedAtMs ?? b.startedAtMs;
+      return bTime - aTime;
+    });
+  }, [events, liveTasks]);
 
   const files = useMemo<FileEntry[]>(() => {
     const seen = new Map<string, FileEntry>();

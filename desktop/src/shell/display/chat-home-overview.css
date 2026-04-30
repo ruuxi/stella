@@ -81,9 +81,19 @@
   color: var(--text-base);
 }
 
-.chat-home-overview__task[data-status="failed"] .chat-home-overview__task-status,
-.chat-home-overview__task[data-status="cancelled"] .chat-home-overview__task-status {
+.chat-home-overview__task[data-status="error"] .chat-home-overview__task-status,
+.chat-home-overview__task[data-status="canceled"] .chat-home-overview__task-status {
   color: color-mix(in oklch, var(--foreground) 55%, #c33);
+}
+
+/* Non-running history rows read as quieter so the eye snaps to anything
+   currently in flight first. */
+.chat-home-overview__task:not([data-status="running"]) {
+  opacity: 0.55;
+}
+
+.chat-home-overview__task:not([data-status="running"]):hover {
+  opacity: 0.85;
 }
 
 /* --- Files --------------------------------------------------- */
