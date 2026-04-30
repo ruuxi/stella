@@ -1716,7 +1716,16 @@ async fn install_step(
             }
             Ok(())
         }
-        SetupStepId::Parakeet => ensure_parakeet_model_downloaded(&dir).await,
+        SetupStepId::Parakeet => {
+            if let Err(err) = ensure_parakeet_model_downloaded(&dir).await {
+                let warning = format!(
+                    "Local dictation setup was skipped. Stella will still work, but on-device dictation may be unavailable. ({err})"
+                );
+                log_install(&dir, &format!("Parakeet install warning: {warning}")).await;
+                state.warning_message = Some(warning);
+            }
+            Ok(())
+        }
         SetupStepId::Finalize => {
             let script_path = write_launch_script(&dir).await;
             let release_manifest = read_release_manifest(&dir).await.ok();
