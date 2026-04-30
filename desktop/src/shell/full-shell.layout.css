@@ -378,7 +378,7 @@
      glides with the same easing when the panel toggles. While the user
      is actively dragging the resize handle, `body[data-display-resizing]`
      turns this off so the strip tracks the pointer 1:1. */
-  transition: left 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: left 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
 }
 
 /* Rail-collapsed sidebar narrows the left inset. */
@@ -465,12 +465,12 @@ body[data-display-resizing="true"] .shell-topbar-center {
   scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent)
     transparent;
   /* Slides in/out in lockstep with the display panel
-     (`.display-sidebar` uses width 320ms cubic-bezier(0.22, 1, 0.36, 1)). */
+     (`.display-sidebar` uses width 460ms cubic-bezier(0.32, 0.72, 0.16, 1)). */
   transition:
-    max-width 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    flex-basis 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    padding 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 180ms ease;
+    max-width 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    flex-basis 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    padding 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    opacity 220ms ease-out;
   will-change: max-width, flex-basis;
 }
 
@@ -489,7 +489,7 @@ body[data-display-resizing="true"] .shell-topbar-center {
   }
 }
 
-/* The 320ms transition above is sized for the panel's open/close
+/* The 460ms transition above is sized for the panel's open/close
    animation. During a live pointer-driven resize the panel width
    updates every frame, so the same transition would visibly lag the
    tab strip behind the drag. `DisplaySidebar` toggles this attribute
