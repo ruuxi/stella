@@ -1,0 +1,121 @@
+/* ============================================================
+   Chat home overview — the body of the Chat display tab while
+   the user is on home (`/chat`). Apple-leaning: quiet headings,
+   relaxed spacing, single text color rhythm, no decorative
+   dots or pill badges.
+   ============================================================ */
+
+.chat-home-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 22px 18px 28px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.chat-home-overview__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-home-overview__heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text-strong);
+}
+
+.chat-home-overview__empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-weak);
+}
+
+/* --- Activity ------------------------------------------------ */
+
+.chat-home-overview__tasks,
+.chat-home-overview__files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-home-overview__task {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 4px;
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-base);
+}
+
+.chat-home-overview__task:last-child {
+  border-bottom: none;
+}
+
+.chat-home-overview__task-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-strong);
+}
+
+.chat-home-overview__task-status {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-home-overview__task[data-status="running"] .chat-home-overview__task-status {
+  color: var(--text-base);
+}
+
+.chat-home-overview__task[data-status="failed"] .chat-home-overview__task-status,
+.chat-home-overview__task[data-status="cancelled"] .chat-home-overview__task-status {
+  color: color-mix(in oklch, var(--foreground) 55%, #c33);
+}
+
+/* --- Files --------------------------------------------------- */
+
+.chat-home-overview__file {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  margin: 0 -8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-base);
+  font-size: 13px;
+  text-align: left;
+  cursor: default;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.chat-home-overview__file:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-strong);
+}
+
+.chat-home-overview__file-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

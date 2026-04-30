@@ -8,6 +8,7 @@
 import type { CSSProperties } from "react";
 import { displayTabs, useDisplayTabs } from "./tab-store";
 import { DisplayTabIcon } from "./icons";
+import { DisplayTabAddMenu } from "./DisplayTabAddMenu";
 
 const closeIconStyle: CSSProperties = {
   width: 12,
@@ -16,7 +17,6 @@ const closeIconStyle: CSSProperties = {
 
 export const DisplayTabBar = () => {
   const { tabs, activeTabId } = useDisplayTabs();
-  if (tabs.length === 0) return null;
 
   return (
     <div className="shell-topbar-tablist" role="tablist">
@@ -65,6 +65,7 @@ export const DisplayTabBar = () => {
           </div>
         );
       })}
+      <DisplayTabAddMenu />
     </div>
   );
 };

@@ -349,6 +349,35 @@ const ChatIcon = ({ size = 18, style }: IconProps) => (
   </svg>
 );
 
+const TrashIcon = ({ size = 18, style }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={style}
+  >
+    <path
+      d="M5 7h14M9.5 7V5.5a1.5 1.5 0 0 1 1.5-1.5h2a1.5 1.5 0 0 1 1.5 1.5V7M7 7l1 12.2a2 2 0 0 0 2 1.8h4a2 2 0 0 0 2-1.8L17 7"
+      stroke="currentColor"
+      strokeOpacity="0.75"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="currentColor"
+      fillOpacity="0.08"
+    />
+    <path
+      d="M10.5 10.5v6M13.5 10.5v6"
+      stroke="currentColor"
+      strokeOpacity="0.55"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 const UrlIcon = ({ size = 18, style }: IconProps) => (
   <svg
     width={size}
@@ -425,6 +454,6 @@ export const DisplayTabIcon = ({
     case "store":
       return <StoreIcon size={size} style={style} />;
     case "trash":
-      return null;
+      return <TrashIcon size={size} style={style} />;
   }
 };

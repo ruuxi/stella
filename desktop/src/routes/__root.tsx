@@ -7,7 +7,6 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import {
-  createElement,
   startTransition,
   useCallback,
   useEffect,
@@ -19,12 +18,7 @@ import { ChatRuntimeProvider } from "@/context/chat-runtime";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
-import { IdeasTabContent } from "@/app/home/IdeasTabContent";
 import { useMediaMaterializer } from "@/app/media/use-media-materializer";
-import {
-  ChatPanelTab,
-  type ChatPanelOpenRequest,
-} from "@/shell/ChatSidebar";
 import {
   DisplaySidebar,
   type DisplaySidebarHandle,
@@ -62,43 +56,19 @@ import {
   WORKSPACE_CREATION_TRIGGER_KIND,
 } from "@/shared/lib/stella-send-message";
 import { DICTATION_TOGGLE_EVENT } from "@/features/dictation/hooks/use-dictation";
+import {
+  ensureChatDisplayTab,
+  openChatDisplayTab,
+  openIdeasDisplayTab,
+} from "@/shell/display/default-tabs";
 
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
-
-const DEFAULT_DISPLAY_TAB_ID = "ideas:default";
-const CHAT_PANEL_TAB_ID = "chat";
 
 type PendingAskStellaRequest = {
   id: number;
   text: string;
 };
-
-function RootChatPanelTab({
-  openRequest,
-}: {
-  openRequest: ChatPanelOpenRequest | null;
-}) {
-  const chat = useChatRuntime();
-
-  return (
-    <ChatPanelTab
-      openRequest={openRequest}
-      events={chat.conversation.events}
-      streamingText={chat.conversation.streamingText}
-      isStreaming={chat.conversation.isStreaming}
-      runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
-      pendingUserMessageId={chat.conversation.pendingUserMessageId}
-      selfModMap={chat.conversation.selfModMap}
-      liveTasks={chat.conversation.streaming.liveTasks}
-      hasOlderEvents={chat.conversation.hasOlderEvents}
-      isLoadingOlder={chat.conversation.isLoadingOlder}
-      isInitialLoading={chat.conversation.isInitialLoading}
-      onSend={chat.conversation.sendMessageWithContext}
-      onStop={chat.conversation.cancelCurrentStream}
-    />
-  );
-}
 
 /**
  * The root route owns the app chrome — sidebar, workspace panel, dialogs,
@@ -295,13 +265,15 @@ function RootChrome() {
   );
 
   const openChatPanel = useCallback((detail: StellaOpenPanelChatDetail = {}) => {
-    const request: ChatPanelOpenRequest = { id: Date.now(), ...detail };
-    displayTabs.openTab({
-      id: CHAT_PANEL_TAB_ID,
-      kind: "chat",
-      title: "Chat",
-      render: () => createElement(RootChatPanelTab, { openRequest: request }),
-    });
+    openChatDisplayTab({ id: Date.now(), ...detail });
+  }, []);
+
+  // Display tab rule: Chat is always present in the strip; its body
+  // adapts to the route inside `ChatDisplayTab` (home shows the activity
+  // / files overview, every other route shows the live chat panel).
+  // Tabs are otherwise sticky — only the user closes them.
+  useEffect(() => {
+    ensureChatDisplayTab();
   }, []);
 
   const handleContextMenuOpenPanel = useCallback(() => {
@@ -445,12 +417,7 @@ function RootChrome() {
       }
       const payload = latestDisplayPayloadRef.current;
       if (!payload) {
-        displayTabs.openTab({
-          id: DEFAULT_DISPLAY_TAB_ID,
-          kind: "ideas",
-          title: "Ideas",
-          render: () => createElement(IdeasTabContent),
-        });
+        openIdeasDisplayTab();
         return;
       }
       displaySidebarRef.current?.open(payload);

@@ -585,6 +585,48 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
   background: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 
+/* "+" affordance at the right of the tab strip — opens the
+   DisplayTabAddMenu dropdown. Same height as a tab row so the strip
+   stays visually balanced; subtle resting state, fills in on hover. */
+.shell-topbar-tab__add {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  opacity: 0.7;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
+  -webkit-app-region: no-drag;
+}
+
+.shell-topbar-tab__add:hover,
+.shell-topbar-tab__add[data-state="open"] {
+  opacity: 1;
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+[data-component="dropdown-menu-content"].display-tab-add-menu {
+  min-width: 180px;
+}
+
+.display-tab-add-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .shell-topbar-right {
   height: 100%;
   display: flex;
