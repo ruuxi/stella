@@ -13,6 +13,7 @@ import {
   listLocalEvents,
   subscribeToLocalChatUpdates,
 } from "@/app/chat/services/local-chat-store";
+import { showToast } from "@/ui/toast";
 import { countVisibleChatMessageEvents } from "../../../../../runtime/chat-event-visibility.js";
 import { useChatStore } from "@/context/chat-store";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
@@ -91,6 +92,7 @@ export const useConversationEventFeed = (
     count: 0,
     hasLoaded: false,
   }));
+  const lastLocalLoadToastAtRef = useRef(0);
   const [localRetryTick, setLocalRetryTick] = useState(0);
   const [scheduledEvents, setScheduledEvents] = useState<EventRecord[]>(EMPTY_EVENTS);
   const [scheduledEventCount, setScheduledEventCount] = useState(0);
@@ -174,9 +176,21 @@ export const useConversationEventFeed = (
           count,
           hasLoaded: true,
         });
-      } catch {
+      } catch (error) {
         if (cancelled) {
           return;
+        }
+        const now = Date.now();
+        if (now - lastLocalLoadToastAtRef.current > 10_000) {
+          lastLocalLoadToastAtRef.current = now;
+          showToast({
+            title: "Couldn’t load chat history",
+            description:
+              error instanceof Error && error.message
+                ? error.message
+                : "Stella will retry in a moment.",
+            variant: "error",
+          });
         }
         setLocalSnapshot({
           visitToken: localWindowVisitToken,

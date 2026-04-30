@@ -213,11 +213,9 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerLocalChatHandlers({
-    getStellaHostRunner: lifecycle.getRunner,
-    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
+    localChatHistoryService: services.localChatHistoryService,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
-    getBroadcastToMobile: lazyMobileBroadcast,
   });
 
   registerMorphHandlers({
