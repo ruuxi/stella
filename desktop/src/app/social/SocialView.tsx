@@ -4,6 +4,7 @@ import { Copy, Globe, Pencil, SquarePen, Users } from "lucide-react";
 import { Avatar } from "@/ui/avatar";
 import { showToast } from "@/ui/toast";
 import { getSocialActionErrorMessage } from "./social-errors";
+import { useSocialBadges } from "./hooks/use-social-badges";
 import { useSocialProfile } from "./hooks/use-social-profile";
 import { useSocialRooms, type SocialRoomSummary } from "./hooks/use-social-rooms";
 import { getSocialRoomDisplayName } from "./room-display";
@@ -67,6 +68,7 @@ export function SocialView({ onSignIn }: SocialViewProps) {
     useSocialProfile();
   const { rooms, openDm, createGroup, joinGlobalRoom, globalRoom } =
     useSocialRooms();
+  const { incomingFriendRequestCount } = useSocialBadges();
 
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [friendsOpen, setFriendsOpen] = useState(false);
@@ -225,11 +227,27 @@ export function SocialView({ onSignIn }: SocialViewProps) {
           <div className="social-sidebar-actions">
             <button
               type="button"
-              className="social-sidebar-action"
-              title="Friends"
+              className={`social-sidebar-action${incomingFriendRequestCount > 0 ? " social-sidebar-action--badge-host" : ""}`}
+              title={
+                incomingFriendRequestCount > 0
+                  ? `Friends (${incomingFriendRequestCount} new request${incomingFriendRequestCount === 1 ? "" : "s"})`
+                  : "Friends"
+              }
+              aria-label={
+                incomingFriendRequestCount > 0
+                  ? `Friends, ${incomingFriendRequestCount} new request${incomingFriendRequestCount === 1 ? "" : "s"}`
+                  : "Friends"
+              }
               onClick={() => setFriendsOpen(true)}
             >
               <Users size={18} />
+              {incomingFriendRequestCount > 0 && (
+                <span className="social-sidebar-action-badge" aria-hidden="true">
+                  {incomingFriendRequestCount > 99
+                    ? "99+"
+                    : incomingFriendRequestCount}
+                </span>
+              )}
             </button>
             <button
               type="button"

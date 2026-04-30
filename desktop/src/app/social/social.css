@@ -82,6 +82,30 @@
   opacity: 1;
 }
 
+.social-sidebar-action--badge-host {
+  position: relative;
+  overflow: visible;
+  opacity: 1;
+  color: var(--text-strong);
+}
+
+.social-sidebar-action-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
 /* Room List */
 .social-room-list {
   flex: 1;
