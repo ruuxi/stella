@@ -43,6 +43,7 @@ export type UserRowViewModel = {
   kind: "user";
   id: string;
   text: string;
+  sendAnimationState?: "preparing" | "entering";
   windowLabel?: string;
   windowPreviewImageUrl?: string;
   attachments: Attachment[];
@@ -150,7 +151,10 @@ export const UserMessageRow = memo(
     const hasChannelMeta = Boolean(channelEnvelope?.provider);
 
     return (
-      <div className="event-row event-row--user" data-turn-id={row.id}>
+      <div
+        className={`event-row event-row--user${row.sendAnimationState ? ` event-row--send-${row.sendAnimationState}` : ""}`}
+        data-turn-id={row.id}
+      >
         <div className="event-item user">
           {windowLabel && (
             <span className="event-window-badge-hovercard">

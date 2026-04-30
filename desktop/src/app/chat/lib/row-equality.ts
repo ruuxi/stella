@@ -207,6 +207,7 @@ export const resourcePayloadEqual = (
 const userRowEqual = (a: UserRowViewModel, b: UserRowViewModel): boolean =>
   a.id === b.id &&
   a.text === b.text &&
+  (a.sendAnimationState ?? null) === (b.sendAnimationState ?? null) &&
   (a.windowLabel ?? null) === (b.windowLabel ?? null) &&
   (a.windowPreviewImageUrl ?? null) === (b.windowPreviewImageUrl ?? null) &&
   attachmentsEqual(a.attachments, b.attachments) &&

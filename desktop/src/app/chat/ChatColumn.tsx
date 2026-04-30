@@ -28,9 +28,11 @@ export const ChatColumn = memo(function ChatColumn({
   onDismissHome,
 }: ChatColumnProps) {
   const pinnedTurnIdRef = useRef<string | null>(null);
+  const [readyAnimatedUserMessageId, setReadyAnimatedUserMessageId] = useState<string | null>(null);
 
   useEffect(() => {
     pinnedTurnIdRef.current = null;
+    setReadyAnimatedUserMessageId(null);
   }, [conversationId]);
 
   const pendingUserMessageId = conversation.streaming.pendingUserMessageId;
@@ -39,24 +41,34 @@ export const ChatColumn = memo(function ChatColumn({
   useLayoutEffect(() => {
     if (!pendingUserMessageId) {
       pinnedTurnIdRef.current = null;
+      setReadyAnimatedUserMessageId(null);
       return;
     }
     if (pinnedTurnIdRef.current === pendingUserMessageId) return;
 
     let attempts = 0;
+    let rafId: number | null = null;
+    let revealRafId: number | null = null;
     const maxAttempts = 36;
     const tick = () => {
       const ok = scrollTurnToPinTop(pendingUserMessageId);
       if (ok) {
         pinnedTurnIdRef.current = pendingUserMessageId;
+        revealRafId = requestAnimationFrame(() => {
+          setReadyAnimatedUserMessageId(pendingUserMessageId);
+        });
         return;
       }
       attempts += 1;
       if (attempts < maxAttempts) {
-        requestAnimationFrame(tick);
+        rafId = requestAnimationFrame(tick);
       }
     };
     tick();
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (revealRafId !== null) cancelAnimationFrame(revealRafId);
+    };
   }, [
     pendingUserMessageId,
     conversation.events.length,
@@ -212,6 +224,9 @@ export const ChatColumn = memo(function ChatColumn({
               streamingText={conversation.streaming.text}
               isStreaming={conversation.streaming.isStreaming}
               pendingUserMessageId={conversation.streaming.pendingUserMessageId}
+              pendingUserMessageReady={
+                readyAnimatedUserMessageId === conversation.streaming.pendingUserMessageId
+              }
               selfModMap={conversation.streaming.selfModMap}
               hasOlderEvents={conversation.history.hasOlderEvents}
               isLoadingOlder={conversation.history.isLoadingOlder}
