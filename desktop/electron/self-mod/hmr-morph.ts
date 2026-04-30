@@ -17,9 +17,8 @@ import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import {
   MORPH_DONE_TIMEOUT_MS,
   MORPH_OVERLAY_READY_TIMEOUT_MS,
-  MORPH_POST_RELOAD_GRACE_MS,
+  MORPH_RELOAD_SETTLE_DELAY_MS,
   MORPH_RENDERER_SETTLE_DELAY_MS,
-  MORPH_RENDERER_SETTLE_HARD_CAP_MS,
 } from "../../src/shared/contracts/morph-timing.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 import {
@@ -71,59 +70,20 @@ export function createHmrTransitionController(deps: {
     );
 
   /**
-   * Arms the `did-start-loading` / `did-finish-load` listeners synchronously
-   * and returns a `wait()` that holds the morph cover for at least
-   * `MORPH_RENDERER_SETTLE_DELAY_MS`. If the renderer starts a navigation
-   * during that window — either an intentional `reloadIgnoringCache` we
-   * issue right after `arm()`, or a late `{type:'full-reload'}` that Vite
-   * sent after we applied an HMR update (React-Refresh boundary bail-out) —
-   * the wait extends until `did-finish-load + MORPH_POST_RELOAD_GRACE_MS`,
-   * capped at `MORPH_RENDERER_SETTLE_HARD_CAP_MS`.
-   *
-   * IMPORTANT: callers must arm first, then call `reloadIgnoringCache()`
-   * synchronously, then `await wait()`. Attaching the listener after the
-   * reload call races with Chromium's `did-start-loading` emission and we
-   * routinely missed the event (the log shows `reloadDetected:false` while
-   * a reload is plainly in flight, lifting the cover at the baseline 800ms).
+   * Quiet HMR uses the short baseline wait. Covered reloads use a fixed
+   * longer wait so the morph reverse never depends on Electron load events
+   * that can be skipped during dev-server/runtime reinitialization.
    */
-  const armRendererSettle = (
-    window: BrowserWindow | null,
+  const createRendererSettle = (
+    options?: { expectReload?: boolean },
   ): { wait: () => Promise<void> } => {
-    if (!window || window.isDestroyed()) {
-      return {
-        wait: async () => {
-          await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
-        },
-      };
-    }
-    const wc = window.webContents;
-    let reloadDetected = false;
-    let resolveReloadDone: (() => void) | null = null;
-    const reloadDone = new Promise<void>((resolve) => {
-      resolveReloadDone = resolve;
-    });
-    const onStartLoading = () => {
-      reloadDetected = true;
-      const onFinish = () => {
-        setTimeout(() => resolveReloadDone?.(), MORPH_POST_RELOAD_GRACE_MS);
-      };
-      wc.once("did-finish-load", onFinish);
-    };
-    wc.on("did-start-loading", onStartLoading);
+    const settleDelayMs =
+      options?.expectReload === true
+        ? MORPH_RELOAD_SETTLE_DELAY_MS
+        : MORPH_RENDERER_SETTLE_DELAY_MS;
     return {
       wait: async () => {
-        try {
-          await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
-          if (reloadDetected) {
-            const remainingCap = Math.max(
-              0,
-              MORPH_RENDERER_SETTLE_HARD_CAP_MS - MORPH_RENDERER_SETTLE_DELAY_MS,
-            );
-            await Promise.race([reloadDone, delay(remainingCap)]);
-          }
-        } finally {
-          wc.removeListener("did-start-loading", onStartLoading);
-        }
+        await delay(settleDelayMs);
       },
     };
   };
@@ -169,9 +129,9 @@ export function createHmrTransitionController(deps: {
         });
         const shouldReload =
           canReload || applyResult?.requiresClientFullReload === true;
-        // Arm before reloading so the did-start-loading listener can never
-        // miss the event Chromium emits in response to reloadIgnoringCache.
-        const settle = armRendererSettle(windowForReload);
+        const settle = createRendererSettle({
+          expectReload: shouldReload,
+        });
         if (
           shouldReload &&
           windowForReload != null &&
@@ -251,19 +211,15 @@ export function createHmrTransitionController(deps: {
             paused: false,
             requiresFullReload: true,
           });
-          // Arm the settle listeners BEFORE reloadIgnoringCache so the
-          // did-start-loading event Chromium emits in response to the
-          // reload can't be missed by a late listener attach.
-          const settle = armRendererSettle(fullWindow);
+          const settle = createRendererSettle({
+            expectReload: true,
+          });
           fullWindow.webContents.reloadIgnoringCache();
           await settle.wait();
           return true;
         }
 
-        // No intentional reload here, but late React-Refresh bail-outs may
-        // still trigger one — arm the listener so we extend the cover if
-        // they do.
-        const settle = armRendererSettle(fullWindow);
+        const settle = createRendererSettle();
         await settle.wait();
         return false;
       })();
