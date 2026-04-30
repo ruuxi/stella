@@ -20,6 +20,7 @@ import type * as agent_model_execution from "../agent/model_execution.js";
 import type * as agent_model_failover from "../agent/model_failover.js";
 import type * as agent_model_resolver from "../agent/model_resolver.js";
 import type * as agent_prompt_builder from "../agent/prompt_builder.js";
+import type * as agent_task_summaries from "../agent/task_summaries.js";
 import type * as agent_tool_schemas from "../agent/tool_schemas.js";
 import type * as ai_proxy_data from "../ai_proxy_data.js";
 import type * as anon_cleanup from "../anon_cleanup.js";
@@ -200,6 +201,7 @@ declare const fullApi: ApiFromModules<{
   "agent/model_failover": typeof agent_model_failover;
   "agent/model_resolver": typeof agent_model_resolver;
   "agent/prompt_builder": typeof agent_prompt_builder;
+  "agent/task_summaries": typeof agent_task_summaries;
   "agent/tool_schemas": typeof agent_tool_schemas;
   ai_proxy_data: typeof ai_proxy_data;
   anon_cleanup: typeof anon_cleanup;

@@ -778,6 +778,17 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
   pointer-events: none;
 }
 
+.post-onboarding-startup-gate {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  -webkit-app-region: no-drag;
+}
+
 .content-area {
   flex: 1;
   min-width: 0;
