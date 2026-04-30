@@ -302,6 +302,24 @@ async function deliverExecutionUnavailable(
   });
 }
 
+async function isTargetDeviceStillFresh(
+  ctx: ActionCtx,
+  args: {
+    ownerId: string;
+    targetDeviceId?: string;
+  },
+): Promise<boolean> {
+  if (!args.targetDeviceId) {
+    return false;
+  }
+
+  const freshDevices = await ctx.runQuery(
+    internal.agent.device_resolver.listFreshDevicesForOwner,
+    { ownerId: args.ownerId, nowMs: Date.now() },
+  ) as Array<{ deviceId: string }>;
+  return freshDevices.some((device) => device.deviceId === args.targetDeviceId);
+}
+
 // ─── Per-request fallback (scheduled by message_pipeline) ───────────────────
 // Runs a few seconds after a remote_turn_request is inserted. This fast rescue
 // exists only for the mobile app's backend offline responder. Other connectors
@@ -316,6 +334,7 @@ export const rescueSingleTurn = internalAction({
     provider: v.string(),
     deliveryMeta: jsonValueValidator,
     userMessageId: v.optional(v.string()),
+    targetDeviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Check if desktop already claimed or fulfilled this request — both
@@ -334,6 +353,16 @@ export const rescueSingleTurn = internalAction({
     if (!shouldUseOfflineResponderForProvider(args.provider)) {
       console.log(
         `[rescue:trace] Skipping fast rescue for provider=${args.provider}; waiting for desktop claim or orphan watchdog.`,
+      );
+      return null;
+    }
+
+    if (await isTargetDeviceStillFresh(ctx, {
+      ownerId: args.ownerId,
+      targetDeviceId: args.targetDeviceId,
+    })) {
+      console.log(
+        `[rescue:trace] Skipping fast rescue for ${args.requestId}; target desktop is still online.`,
       );
       return null;
     }
@@ -683,6 +712,7 @@ export const scheduleRescue = internalMutation({
     provider: v.string(),
     deliveryMeta: jsonValueValidator,
     userMessageId: v.optional(v.string()),
+    targetDeviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await ctx.scheduler.runAfter(
@@ -696,6 +726,7 @@ export const scheduleRescue = internalMutation({
         provider: args.provider,
         deliveryMeta: args.deliveryMeta,
         userMessageId: args.userMessageId,
+        targetDeviceId: args.targetDeviceId,
       },
     );
   },
@@ -935,6 +966,16 @@ export const rescueOrphanedTurns = internalAction({
           if (!conversation) {
             console.error(
               `[watchdog] Conversation ${String(conversationId)} not found, skipping`,
+            );
+            continue;
+          }
+
+          if (await isTargetDeviceStillFresh(ctx, {
+            ownerId: conversation.ownerId,
+            targetDeviceId: orphan.targetDeviceId,
+          })) {
+            console.log(
+              `[watchdog] Skipping mobile fallback for ${orphan.requestId}; target desktop is still online.`,
             );
             continue;
           }

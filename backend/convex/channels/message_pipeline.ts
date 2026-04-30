@@ -664,6 +664,7 @@ export async function processIncomingMessage(
             provider: args.provider,
             deliveryMeta: clonedDeliveryMeta,
             ...(userMessageId ? { userMessageId: String(userMessageId) } : {}),
+            targetDeviceId: firstCandidate.targetDeviceId,
           },
         );
       }
