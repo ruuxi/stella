@@ -189,7 +189,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   best: {
-    model: "anthropic/claude-opus-4.6",
+    model: "anthropic/claude-opus-4.7",
     fallbackMode: "smart",
     managedGatewayProvider: "openrouter",
     temperature: 1.0,
@@ -285,8 +285,8 @@ const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<Model
 
 export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
-  [AGENT_IDS.ORCHESTRATOR]: "sota",
-  [AGENT_IDS.GENERAL]: "sota",
+  [AGENT_IDS.ORCHESTRATOR]: "best",
+  [AGENT_IDS.GENERAL]: "best",
   [AGENT_IDS.FASHION]: "fashion",
 
   schedule: "standard",
