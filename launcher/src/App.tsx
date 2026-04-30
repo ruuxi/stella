@@ -31,7 +31,6 @@ function App() {
   const [installPathDraft, setInstallPathDraft] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
-  const [updating, setUpdating] = useState(false);
   const [desktopRunning, setDesktopRunning] = useState(false);
   const desktopWasRunningRef = useRef(false);
 
@@ -73,18 +72,6 @@ function App() {
     const id = setInterval(poll, 1000);
     return () => clearInterval(id);
   }, [state?.phase]);
-
-  useEffect(() => {
-    if (!state || state.phase !== "complete" || state.devMode || !state.installed) {
-      return;
-    }
-    const check = () => {
-      void invoke("check_for_update").catch(() => {});
-    };
-    check();
-    const id = setInterval(check, 6 * 60 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [state?.phase, state?.devMode, state?.installed]);
 
   const commitInstallPath = useCallback(async () => {
     if (!state) return;
@@ -139,13 +126,10 @@ function App() {
     await invoke("open_install_location");
   }, []);
 
-  const handleUpdate = useCallback(async () => {
-    setUpdating(true);
+  const handleLauncherUpdate = useCallback(async () => {
     try {
-      await invoke("apply_update");
-    } finally {
-      setUpdating(false);
-    }
+      await invoke("apply_launcher_update");
+    } catch {}
   }, []);
 
   const handleUninstall = useCallback(async () => {
@@ -451,17 +435,16 @@ function App() {
                 {state.warningMessage}
               </div>
             )}
-            {state.update.status === "available" && (
+            {state.launcherUpdate.available && (
               <div className="banner banner-warn" style={{ marginTop: 16 }}>
-                {state.update.latestTag
-                  ? `Update ${state.update.latestTag} is ready.`
-                  : "A Stella update is ready."}
+                {state.launcherUpdate.version
+                  ? `Launcher update ${state.launcherUpdate.version} is available.`
+                  : "A launcher update is available."}
               </div>
             )}
-            {state.update.status === "conflict" && (
-              <div className="banner banner-warn" style={{ marginTop: 16 }}>
-                {state.update.message ??
-                  "Stella needs the installation agent to apply this update."}
+            {state.launcherUpdate.error && (
+              <div className="banner banner-error" style={{ marginTop: 16 }}>
+                {state.launcherUpdate.error}
               </div>
             )}
             {state.errorMessage && (
@@ -498,14 +481,16 @@ function App() {
 
         {isComplete && (
           <>
-            {state.update.status === "available" ? (
+            {state.launcherUpdate.available ? (
               <button
                 type="button"
                 className="btn-primary"
-                disabled={updating || uninstalling}
-                onClick={() => void handleUpdate()}
+                disabled={state.launcherUpdate.installing || uninstalling}
+                onClick={() => void handleLauncherUpdate()}
               >
-                {updating ? "Updating..." : "Update Stella"}
+                {state.launcherUpdate.installing
+                  ? "Updating launcher..."
+                  : "Update launcher"}
               </button>
             ) : (
               <button

@@ -53,29 +53,15 @@ pub enum InstallerPhase {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum UpdateStatus {
-    Idle,
-    Checking,
-    Available,
-    Updating,
-    Complete,
-    Conflict,
-    Error,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UpdateInfo {
-    pub status: UpdateStatus,
+pub struct LauncherUpdateInfo {
+    pub available: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_tag: Option<String>,
+    pub version: Option<String>,
+    pub installing: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub latest_tag: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    pub conflicts: Vec<String>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,7 +91,7 @@ pub struct InstallerState {
     pub run_after_install: bool,
     pub can_launch: bool,
     pub installed: bool,
-    pub update: UpdateInfo,
+    pub launcher_update: LauncherUpdateInfo,
     pub disk: DiskInfo,
 }
 
