@@ -29,7 +29,8 @@ export type SocialPendingRequests = {
 
 /** Backend returns a flat list with `direction`; older clients may still see `{ incoming, outgoing }`. */
 type PendingRequestRow = {
-  relationship: IncomingSocialFriendRequest["relationship"] & OutgoingSocialFriendRequest["relationship"];
+  relationship: IncomingSocialFriendRequest["relationship"] &
+    OutgoingSocialFriendRequest["relationship"];
   profile: SocialProfile;
   direction: "incoming" | "outgoing";
 };
@@ -74,12 +75,21 @@ export function useSocialFriends() {
     [pendingRequestsRaw],
   );
 
-  const sendRequestMutation = useMutation(api.social.relationships.sendFriendRequest);
+  const sendRequestMutation = useMutation(
+    api.social.relationships.sendFriendRequest,
+  );
   const sendRequestByOwnerIdMutation = useMutation(
     api.social.relationships.sendFriendRequestByOwnerId,
   );
-  const respondMutation = useMutation(api.social.relationships.respondToFriendRequest);
-  const removeFriendMutation = useMutation(api.social.relationships.removeFriend);
+  const respondMutation = useMutation(
+    api.social.relationships.respondToFriendRequest,
+  );
+  const markRequestsSeenMutation = useMutation(
+    api.social.relationships.markIncomingFriendRequestsSeen,
+  );
+  const removeFriendMutation = useMutation(
+    api.social.relationships.removeFriend,
+  );
 
   const sendFriendRequest = useCallback(
     async (friendCode: string) => {
@@ -116,17 +126,21 @@ export function useSocialFriends() {
     [removeFriendMutation],
   );
 
+  const markIncomingFriendRequestsSeen = useCallback(async () => {
+    return await markRequestsSeenMutation({});
+  }, [markRequestsSeenMutation]);
+
   return {
     friends: friends ?? [],
-    pendingRequests:
-      pendingRequests ?? {
-        incoming: [],
-        outgoing: [],
-      },
+    pendingRequests: pendingRequests ?? {
+      incoming: [],
+      outgoing: [],
+    },
     sendFriendRequest,
     sendFriendRequestByOwnerId,
     acceptRequest,
     declineRequest,
+    markIncomingFriendRequestsSeen,
     removeFriend,
   };
 }

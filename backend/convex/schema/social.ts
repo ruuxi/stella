@@ -58,6 +58,7 @@ export const socialSchema = {
     nicknameNormalized: v.string(),
     friendCode: v.string(),
     avatarUrl: v.optional(v.string()),
+    lastSeenIncomingFriendRequestAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

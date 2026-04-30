@@ -70,20 +70,27 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
 
   // Drive the unread badge: every time the room's newest visible message id
   // changes (open, new incoming message, send), bump `lastReadAt` on the
-  // server so this room drops out of the sidebar/Friends counts. Skipped for
-  // Global Chat since it's excluded from the badge anyway.
-  const newestMessageId = useMemo(() => {
+  // server so this room drops out of the sidebar/Friends counts. Empty rooms
+  // with a stale creation timestamp are marked read without a message id.
+  // Skipped for Global Chat since it's excluded from the numbered badge.
+  const readMarker = useMemo(() => {
     if (roomData?.room.kind === "global") return null;
-    if (!messages.length) return null;
-    return (messages as MessageDoc[])[messages.length - 1]._id;
-  }, [messages, roomData?.room.kind]);
+    if (messages.length) {
+      return { messageId: (messages as MessageDoc[])[messages.length - 1]._id };
+    }
+    const latestMessageAt = roomData?.room.latestMessageAt;
+    const lastReadAt = roomData?.membership.lastReadAt;
+    if (latestMessageAt === undefined) return null;
+    if (lastReadAt !== undefined && latestMessageAt <= lastReadAt) return null;
+    return {};
+  }, [messages, roomData?.membership.lastReadAt, roomData?.room.kind, roomData?.room.latestMessageAt]);
 
   useEffect(() => {
-    if (!newestMessageId) return;
-    void markRead(roomId, newestMessageId).catch(() => {
+    if (!readMarker) return;
+    void markRead(roomId, readMarker.messageId).catch(() => {
       // Read-marker writes are best-effort; the next render will retry.
     });
-  }, [roomId, newestMessageId, markRead]);
+  }, [roomId, readMarker, markRead]);
   const socialSessionsApi = window.electronAPI?.socialSessions;
   const isGlobalRoom = roomData?.room.kind === "global";
 
