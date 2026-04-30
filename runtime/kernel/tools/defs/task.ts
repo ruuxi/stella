@@ -55,7 +55,7 @@ export const createAgentTools = (
   {
     name: "send_input",
     description:
-      "Send a follow-up message to an existing sub-agent. By default (interrupt=true), the agent's current attempt is stopped and restarted with this message — use this to redirect work mid-flight. With interrupt=false, the message is queued and the agent finishes its current turn first. If the agent is paused or already completed, it is re-hydrated and resumed with this message.",
+      "Send a follow-up message to an existing sub-agent. By default (interrupt=true), pause the agent's current turn, apply this message, then let it continue with the update. With interrupt=false, queue the message so the agent sees it after its current turn completes. If the agent is paused or already completed, it resumes with this message.",
     parameters: {
       type: "object",
       properties: {
@@ -70,7 +70,7 @@ export const createAgentTools = (
         interrupt: {
           type: "boolean",
           description:
-            "When true (default), stop the agent's current attempt and apply this message immediately. When false, queue the message; the agent will see it after its current turn completes.",
+            "When true (default), pause the current turn and apply this message immediately. When false, queue the message; the agent will see it after its current turn completes.",
         },
       },
       required: ["thread_id", "message"],

@@ -110,7 +110,6 @@ describe("LocalAgentManager pause_agent cancellation", () => {
       "agent-progress",
       "agent-canceled",
     ]);
-
     const canceled = lifecycleEvents.find(
       (entry) => entry.type === "agent-canceled",
     );
@@ -122,7 +121,7 @@ describe("LocalAgentManager pause_agent cancellation", () => {
       lifecycleEvents.some(
         (entry) =>
           entry.type === "agent-progress" &&
-          entry.statusText === "Canceling agent",
+          entry.statusText === "Pausing",
       ),
     ).toBe(true);
 
@@ -130,5 +129,86 @@ describe("LocalAgentManager pause_agent cancellation", () => {
       (entry) => entry.type === "agent-progress",
     ).length;
     expect(progressCount).toBe(2);
+  });
+
+  it("emits the source lifecycle status text for queued and interrupting input", async () => {
+    const lifecycleEvents: AgentLifecycleEvent[] = [];
+    let started: (() => void) | null = null;
+    let finishRun: (() => void) | null = null;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const finishPromise = new Promise<void>((resolve) => {
+      finishRun = resolve;
+    });
+
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => {
+        started?.();
+        await Promise.race([
+          finishPromise,
+          new Promise<void>((resolve) => {
+            args.abortSignal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+          }),
+        ]);
+        return { runId: args.runId, result: "" };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "ok" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+      onAgentEvent: (event) => {
+        lifecycleEvents.push(event);
+      },
+    });
+
+    const created = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "demo",
+      prompt: "demo prompt",
+      agentType: "general",
+      storageMode: "local",
+    });
+
+    await startedPromise;
+    await manager.sendAgentMessage(
+      created.threadId,
+      "later",
+      "orchestrator",
+      { interrupt: false },
+    );
+    await manager.sendAgentMessage(
+      created.threadId,
+      "now",
+      "orchestrator",
+      { interrupt: true },
+    );
+
+    expect(
+      lifecycleEvents.some(
+        (event) =>
+          event.type === "agent-progress" &&
+          event.statusText === "Queued",
+      ),
+    ).toBe(true);
+    expect(
+      lifecycleEvents.some(
+        (event) =>
+          event.type === "agent-progress" &&
+          event.statusText === "Updating",
+      ),
+    ).toBe(true);
+
+    finishRun?.();
+    await waitForTaskCompletion(manager, created.threadId);
   });
 });

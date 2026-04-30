@@ -373,7 +373,7 @@ export class LocalAgentManager implements AgentToolApi {
     return [
       "Task update from orchestrator:",
       updateBlock,
-      "Your previous attempt was interrupted so you can apply this update immediately. Continue the same task and treat newer updates as higher priority than conflicting earlier instructions.",
+      "Your previous turn was paused so you can apply this update now. Continue the same task and treat newer updates as higher priority than conflicting earlier instructions.",
     ].join("\n\n");
   }
 
@@ -481,7 +481,7 @@ export class LocalAgentManager implements AgentToolApi {
       attemptCount: 0,
       restartRequested: false,
       terminalEventEmitted: false,
-      pendingStartStatusText: "Updating agent",
+      pendingStartStatusText: "Updating",
     };
   }
 
@@ -872,7 +872,7 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: local.agentType,
         description: local.description,
         parentAgentId: local.parentAgentId,
-        statusText: "Canceling agent",
+        statusText: "Pausing",
       });
       local.controller.abort(new Error(local.error));
       if (!local.terminalEventEmitted && (previousStatus === "pending" || previousStatus === "running")) {
@@ -950,8 +950,8 @@ export class LocalAgentManager implements AgentToolApi {
         task.messageLog.splice(0, task.messageLog.length - LocalAgentManager.MAX_LOG_MESSAGES);
       }
       this.resetTaskForNextAttempt(task, text);
-      task.pendingStartStatusText = "Updating agent";
-      task.recentActivity = ["Updating agent from orchestrator."];
+      task.pendingStartStatusText = "Updating";
+      task.recentActivity = ["Updating."];
       this.opts.onAgentEvent?.({
         type: "agent-progress",
         conversationId: task.conversationId,
@@ -960,7 +960,7 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: task.agentType,
         description: task.description,
         parentAgentId: task.parentAgentId,
-        statusText: "Updating agent",
+        statusText: "Updating",
       });
       this.enqueueTask(task);
       return { delivered: true };
@@ -979,12 +979,12 @@ export class LocalAgentManager implements AgentToolApi {
 
     if (from === "orchestrator") {
       const statusText = interrupt
-        ? "Updating agent"
-        : "Queued agent input";
+        ? "Updating"
+        : "Queued";
       task.recentActivity = [
         interrupt
-          ? `Agent update received: ${truncate(text, 200)}`
-          : `Agent input queued: ${truncate(text, 200)}`,
+          ? `Update received: ${truncate(text, 200)}`
+          : `Queued update: ${truncate(text, 200)}`,
       ];
       this.opts.onAgentEvent?.({
         type: "agent-progress",
