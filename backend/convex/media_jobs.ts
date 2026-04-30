@@ -179,6 +179,24 @@ const loadJobLogs = async (
 };
 
 const toViewerOwnerId = async (ctx: QueryCtx): Promise<string> => {
+  const ownerId = await toViewerOwnerIdOrNull(ctx);
+  if (!ownerId) {
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+  }
+  return ownerId;
+};
+
+/**
+ * Read-side variant: returns null when no identity is attached so subscribed
+ * queries can return empty/null instead of throwing into the React error
+ * boundary during sign-in / sign-out transitions.
+ */
+const toViewerOwnerIdOrNull = async (
+  ctx: QueryCtx,
+): Promise<string | null> => {
   const identity = await ctx.auth.getUserIdentity();
   if (identity?.tokenIdentifier) {
     return identity.tokenIdentifier;
@@ -186,10 +204,7 @@ const toViewerOwnerId = async (ctx: QueryCtx): Promise<string> => {
   if (isMediaPublicTestModeEnabled()) {
     return PUBLIC_MEDIA_TEST_OWNER_ID;
   }
-  throw new ConvexError({
-    code: "UNAUTHENTICATED",
-    message: "Authentication required",
-  });
+  return null;
 };
 
 const toInitialMediaJobStatus = (upstreamStatus: string): MediaJobStatus => {
@@ -252,7 +267,10 @@ export const getByJobId = query({
   },
   returns: v.union(v.null(), mediaJobResponseValidator),
   handler: async (ctx, args) => {
-    const ownerId = await toViewerOwnerId(ctx);
+    const ownerId = await toViewerOwnerIdOrNull(ctx);
+    if (!ownerId) {
+      return null;
+    }
     const job = await ctx.db
       .query("media_jobs")
       .withIndex("by_ownerId_and_jobId", (q) =>
@@ -294,7 +312,10 @@ export const listSucceededSince = query({
   },
   returns: v.array(mediaJobResponseValidator),
   handler: async (ctx, args) => {
-    const ownerId = await toViewerOwnerId(ctx);
+    const ownerId = await toViewerOwnerIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
     // Indexed on `(ownerId, status, completedAt)` so we read only succeeded
     // rows in completion order — no JS-side status filter and no over-fetch.

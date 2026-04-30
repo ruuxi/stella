@@ -27,7 +27,7 @@ import {
   normalizeRelativeSessionPath,
   getSocialSessionConversationId,
 } from "./shared";
-import { requireConnectedUserId } from "../auth";
+import { getConnectedUserIdOrNull, requireConnectedUserId } from "../auth";
 import { clampPageLimit, requireBoundedString } from "../shared_validators";
 import {
   enforceActionRateLimit,
@@ -409,7 +409,10 @@ export const listSessions = query({
   args: {},
   returns: v.array(roomSummaryValidator),
   handler: async (ctx) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     const memberships = await ctx.db
       .query("stella_session_members")
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
@@ -434,7 +437,10 @@ export const getSession = query({
   },
   returns: v.union(v.null(), roomSummaryValidator),
   handler: async (ctx, args) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return null;
+    }
     const membership = await ctx.db
       .query("stella_session_members")
       .withIndex("by_sessionId_and_ownerId", (q) =>
@@ -619,7 +625,10 @@ export const listTurns = query({
   },
   returns: v.array(stellaSessionTurnValidator),
   handler: async (ctx, args) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     await requireSessionMembership(ctx, args.sessionId, ownerId);
     const limit = clampPageLimit(args.limit, 100, MAX_TURN_LIMIT);
     const turns = await ctx.db
@@ -710,7 +719,10 @@ export const listPendingTurnsForHostDevice = query({
   },
   returns: v.array(hostTurnSummaryValidator),
   handler: async (ctx, args) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     const deviceId = args.deviceId.trim();
     // Indexed lookup on the exact host owner + device + status — replaces a
     // previous `.collect()` + JS filter over the owner's whole session list.
@@ -955,7 +967,10 @@ export const listWorkspaceFiles = query({
     continueCursor: v.string(),
   }),
   handler: async (ctx, args) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
     await requireSessionMembership(ctx, args.sessionId, ownerId);
     // Index keyed on (sessionId, deleted, relativePath) lets us skip
     // tombstoned rows entirely instead of scanning + JS-filtering.
@@ -1121,7 +1136,10 @@ export const listFileOps = query({
   },
   returns: v.array(sessionFileOpSummaryValidator),
   handler: async (ctx, args) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     await requireSessionMembership(ctx, args.sessionId, ownerId);
     const afterOrdinal = Math.max(0, Math.floor(args.afterOrdinal ?? 0));
     const limit = clampPageLimit(args.limit, 200, MAX_FILE_OP_LIMIT);

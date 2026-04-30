@@ -8,6 +8,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import {
+  getConnectedUserIdOrNull,
   isAnonymousIdentity,
   requireConnectedUserId,
   requireSensitiveUserId,
@@ -179,7 +180,10 @@ export const getPhoneAccessState = query({
   },
   returns: phoneAccessStateValidator,
   handler: async (ctx, args) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return { activePairing: null, pairedDevices: [] };
+    }
     const [activePairing, pairedDevices] = await Promise.all([
       loadMostRecentUnusedPairingSession(ctx, {
         ownerId,

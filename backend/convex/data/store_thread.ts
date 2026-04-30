@@ -3,6 +3,7 @@ import { api, internal } from "../_generated/api";
 import { ConvexError, v, type Infer } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import {
+  getUserIdOrNull,
   requireSensitiveUserIdentityAction,
   requireUserId,
 } from "../auth";
@@ -242,7 +243,10 @@ export const listMessages = query({
     catalogUploadedAt: v.optional(v.number()),
   }),
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return { threadId: null, messages: [] };
+    }
     const thread = await ctx.db
       .query("store_threads")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))

@@ -17,7 +17,11 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "../_generated/server";
-import { requireSensitiveUserId, requireUserId } from "../auth";
+import {
+  getUserIdOrNull,
+  requireSensitiveUserId,
+  requireUserId,
+} from "../auth";
 import { enforceMutationRateLimit, RATE_SENSITIVE } from "../lib/rate_limits";
 
 const HANDLE_REGEX = /^[a-z0-9](?:[a-z0-9_-]{1,30}[a-z0-9])$/;
@@ -81,7 +85,10 @@ export const getMyProfile = query({
     }),
   ),
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return null;
+    }
     return await findByOwnerId(ctx, ownerId);
   },
 });

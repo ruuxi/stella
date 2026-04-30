@@ -20,7 +20,11 @@ import {
   requireRoomMembership,
 } from './shared'
 import { requireBoundedString } from '../shared_validators'
-import { getConnectedUserIdOrNull, requireConnectedUserId } from '../auth'
+import {
+  getConnectedUserIdOrNull,
+  getUserIdOrNull,
+  requireConnectedUserId,
+} from '../auth'
 import {
   enforceMutationRateLimit,
   RATE_HOT_PATH,
@@ -287,7 +291,10 @@ export const getRoom = query({
   args: { roomId: v.id('social_rooms') },
   returns: optionalRoomSummaryValidator,
   handler: async (ctx, args) => {
-    const ownerId = await requireConnectedUserId(ctx)
+    const ownerId = await getConnectedUserIdOrNull(ctx)
+    if (!ownerId) {
+      return null
+    }
     const membership = await ctx.db
       .query('social_room_members')
       .withIndex('by_roomId_and_ownerId', (q) =>

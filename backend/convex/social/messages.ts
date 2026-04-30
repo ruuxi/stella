@@ -17,6 +17,7 @@ import {
   requireBoundedString,
 } from "../shared_validators";
 import {
+  getConnectedUserIdOrNull,
   requireConnectedUserId,
 } from "../auth";
 import {
@@ -57,7 +58,10 @@ export const listRoomMessages = query({
   },
   returns: v.array(socialMessageValidator),
   handler: async (ctx, args) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     await requireRoomMembership(ctx, args.roomId, ownerId);
     const limit = clampPageLimit(args.limit, 100, 500);
     const query = ctx.db
