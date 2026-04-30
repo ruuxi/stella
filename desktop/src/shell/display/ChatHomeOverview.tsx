@@ -134,7 +134,6 @@ function IdeasHomeSection() {
 
   const handleClick = (prompt: string) => {
     onSuggestionClick(prompt);
-    displayTabs.setPanelOpen(false);
   };
 
   if (!selectedCategory) return null;
