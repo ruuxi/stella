@@ -15,15 +15,17 @@ function roomHasUnread(room: SocialRoomSummary): boolean {
  * "rooms with at least one new message" — one badge unit per conversation.
  */
 export function useSocialBadges() {
-  const { rooms, globalRoom } = useSocialRooms();
+  const { rooms } = useSocialRooms();
   const { pendingRequests } = useSocialFriends();
 
   return useMemo(() => {
+    // Global Chat is intentionally excluded — it's a public firehose, so
+    // background traffic there shouldn't pull the user back into the app.
     let unreadRoomCount = 0;
     for (const room of rooms) {
+      if (room.room.kind === "global") continue;
       if (roomHasUnread(room)) unreadRoomCount += 1;
     }
-    if (globalRoom && roomHasUnread(globalRoom)) unreadRoomCount += 1;
 
     const incomingFriendRequestCount = pendingRequests.incoming.length;
 
@@ -32,5 +34,5 @@ export function useSocialBadges() {
       incomingFriendRequestCount,
       totalBadge: unreadRoomCount + incomingFriendRequestCount,
     };
-  }, [rooms, globalRoom, pendingRequests.incoming.length]);
+  }, [rooms, pendingRequests.incoming.length]);
 }
