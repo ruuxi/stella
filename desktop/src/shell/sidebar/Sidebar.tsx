@@ -431,6 +431,15 @@ export const Sidebar = ({
     return parts.join(" ");
   }, [className, railCollapsed]);
 
+  // Mirror the rail-collapsed state onto the document root so absolutely
+  // positioned chrome above the sidebar (e.g. the topbar's centered store
+  // tabs) can pick the correct width when computing offsets.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (railCollapsed) root.dataset.sidebarRail = "true";
+    else delete root.dataset.sidebarRail;
+  }, [railCollapsed]);
+
   // The brand row is a button so it can also be the rail-toggle target.
   // Wrapping the icon + (optionally hidden) text gives us a single focusable
   // surface that works both as "click to collapse" and "click to expand".

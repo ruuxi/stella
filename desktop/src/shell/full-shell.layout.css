@@ -354,13 +354,48 @@
    wide either side gets. */
 .shell-topbar-center {
   position: absolute;
-  left: 50%;
+  /* Center of the *visible* content area, not the full window. The
+     visible area is bracketed on the left by the sidebar/rail and on
+     the right by the display panel (when open), so the strip shifts
+     right by half the left width and left by half the right width.
+     Both inputs default to 0 and are filled in by the rules below. */
+  --shell-topbar-center-left-inset: var(--shell-sidebar-width);
+  --shell-topbar-center-right-inset: 0px;
+  left: calc(
+    50% +
+      (
+          var(--shell-topbar-center-left-inset) -
+            var(--shell-topbar-center-right-inset)
+        ) / 2
+  );
   top: 50%;
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   -webkit-app-region: no-drag;
   pointer-events: none;
+  /* Mirror the display panel's open/close timing so the center strip
+     glides with the same easing when the panel toggles. While the user
+     is actively dragging the resize handle, `body[data-display-resizing]`
+     turns this off so the strip tracks the pointer 1:1. */
+  transition: left 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Rail-collapsed sidebar narrows the left inset. */
+:root[data-sidebar-rail="true"] .shell-topbar-center {
+  --shell-topbar-center-left-inset: var(--shell-sidebar-rail-width);
+}
+
+/* Display panel is open → reserve its width on the right. */
+.shell-topbar[data-display-open="true"] .shell-topbar-center {
+  --shell-topbar-center-right-inset: var(
+    --display-panel-width,
+    clamp(380px, 34vw, 520px)
+  );
+}
+
+body[data-display-resizing="true"] .shell-topbar-center {
+  transition: none;
 }
 
 .shell-topbar-center > * {
@@ -452,6 +487,15 @@
   .shell-topbar-tablist {
     transition: none;
   }
+}
+
+/* The 320ms transition above is sized for the panel's open/close
+   animation. During a live pointer-driven resize the panel width
+   updates every frame, so the same transition would visibly lag the
+   tab strip behind the drag. `DisplaySidebar` toggles this attribute
+   for the duration of the gesture. */
+body[data-display-resizing="true"] .shell-topbar-tablist {
+  transition: none;
 }
 
 .shell-topbar-tablist::-webkit-scrollbar {
