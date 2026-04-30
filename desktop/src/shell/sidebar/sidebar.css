@@ -234,6 +234,7 @@
 }
 
 .sidebar-nav-icon {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -241,6 +242,26 @@
   height: 20px;
   flex-shrink: 0;
   color: var(--text-weak);
+}
+
+/* Red unread/notification pill anchored to the top-right of the nav icon.
+   Used by Social today; designed to scale 1–99+ without resizing the icon. */
+.sidebar-nav-badge {
+  position: absolute;
+  top: -5px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  letter-spacing: 0;
+  pointer-events: none;
 }
 
 .sidebar-nav-item:hover .sidebar-nav-icon {

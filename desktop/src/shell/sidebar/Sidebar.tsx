@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { AppMetadata } from "@/apps/_shared/app-metadata";
+import { useSocialBadges } from "@/app/social/hooks/use-social-badges";
 import { api } from "@/convex/api";
 import {
   useDefaultPageSidebarBack,
@@ -96,12 +97,16 @@ const writePersistedRail = (collapsed: boolean) => {
 
 interface AppNavItemProps {
   app: AppMetadata;
+  badgeCount?: number;
 }
 
-const AppNavItem = ({ app }: AppNavItemProps) => {
+const AppNavItem = ({ app, badgeCount = 0 }: AppNavItemProps) => {
   const matchRoute = useMatchRoute();
   const isActive = Boolean(matchRoute({ to: app.route }));
   const Icon = app.icon;
+
+  const showBadge = badgeCount > 0;
+  const badgeLabel = badgeCount > 99 ? "99+" : String(badgeCount);
 
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>) => {
@@ -118,11 +123,20 @@ const AppNavItem = ({ app }: AppNavItemProps) => {
       to={app.route}
       className={`sidebar-nav-item${isActive ? " sidebar-nav-item--active" : ""}`}
       onClick={handleClick}
-      title={app.label}
-      aria-label={app.label}
+      title={
+        showBadge ? `${app.label} (${badgeCount} unread)` : app.label
+      }
+      aria-label={
+        showBadge ? `${app.label}, ${badgeCount} unread` : app.label
+      }
     >
       <span className="sidebar-nav-icon">
         <Icon size={18} />
+        {showBadge && (
+          <span className="sidebar-nav-badge" aria-hidden="true">
+            {badgeLabel}
+          </span>
+        )}
       </span>
       <span className="sidebar-nav-label">{app.label}</span>
     </Link>
@@ -424,6 +438,12 @@ export const Sidebar = ({
     setFeedbackOpen(true);
   }, []);
 
+  const { totalBadge: socialBadge } = useSocialBadges();
+  const badgeCountForApp = useCallback(
+    (app: AppMetadata) => (app.id === "social" ? socialBadge : 0),
+    [socialBadge],
+  );
+
   const sidebarClass = useMemo(() => {
     const parts = ["sidebar"];
     if (className) parts.push(className);
@@ -494,7 +514,11 @@ export const Sidebar = ({
           <>
             <nav className="sidebar-nav">
               {TOP_APPS.map((app) => (
-                <AppNavItem key={app.id} app={app} />
+                <AppNavItem
+                  key={app.id}
+                  app={app}
+                  badgeCount={badgeCountForApp(app)}
+                />
               ))}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -519,7 +543,11 @@ export const Sidebar = ({
             </nav>
             <div className="sidebar-footer">
               {BOTTOM_APPS.map((app) => (
-                <AppNavItem key={app.id} app={app} />
+                <AppNavItem
+                  key={app.id}
+                  app={app}
+                  badgeCount={badgeCountForApp(app)}
+                />
               ))}
               <button
                 type="button"
