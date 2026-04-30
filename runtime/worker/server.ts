@@ -133,12 +133,6 @@ type AgentEventPayload = {
   responseTarget?: RuntimeAgentEventPayload["responseTarget"];
 };
 
-type TaskTurnMessageRecord = {
-  eventId: string;
-  timestamp: number;
-  userMessageId: string;
-};
-
 type WorkerState = {
   init: WorkerInitializationState | null;
   db: SqliteDatabase | null;
@@ -366,10 +360,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     deviceId: null,
     selfModHmrController: null,
   };
-  const taskTurnMessagesByConversation = new Map<
-    string,
-    Map<string, TaskTurnMessageRecord>
-  >();
   const pendingApplyBatches = new Map<string, PendingApplyBatch>();
   const selfModRunRootIds = new Map<string, string>();
 
@@ -468,15 +458,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     peer.notify(NOTIFICATION_NAMES.VOICE_SELF_MOD_HMR_STATE, payload);
   };
 
-  const getTaskTurnMessages = (conversationId: string) => {
-    let records = taskTurnMessagesByConversation.get(conversationId);
-    if (!records) {
-      records = new Map<string, TaskTurnMessageRecord>();
-      taskTurnMessagesByConversation.set(conversationId, records);
-    }
-    return records;
-  };
-
   const persistAssistantMessage = (args: {
     conversationId: string;
     text: string;
@@ -496,44 +477,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           },
         }
       : undefined;
-
-    const taskIdFromTarget =
-      args.responseTarget?.type === "agent_turn" ||
-      args.responseTarget?.type === "agent_terminal_notice"
-        ? (args.responseTarget as { agentId: string }).agentId
-        : undefined;
-
-    if (taskIdFromTarget) {
-      const taskTurnMessages = getTaskTurnMessages(args.conversationId);
-      const existing = taskTurnMessages.get(taskIdFromTarget);
-      const effectiveUserMessageId =
-        existing?.userMessageId ?? args.userMessageId;
-      const timestamp = existing?.timestamp ?? Date.now();
-      const stored = ensureChatStore().appendEvent({
-        conversationId: args.conversationId,
-        ...(existing?.eventId ? { eventId: existing.eventId } : {}),
-        type: "assistant_message",
-        requestId: effectiveUserMessageId,
-        timestamp,
-        payload: prepareStoredLocalChatPayload({
-          type: "assistant_message",
-          payload: {
-            text: trimmedText,
-            userMessageId: effectiveUserMessageId,
-            ...(runtimeMetadata ? { metadata: runtimeMetadata } : {}),
-          },
-          timestamp,
-          timezone: args.timezone,
-        }),
-      });
-      taskTurnMessages.set(taskIdFromTarget, {
-        eventId: stored._id,
-        timestamp: stored.timestamp,
-        userMessageId: effectiveUserMessageId,
-      });
-      peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-      return;
-    }
 
     ensureChatStore().appendEvent({
       conversationId: args.conversationId,
@@ -1427,14 +1370,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
                 timezone: payload.timezone,
                 responseTarget: ev.responseTarget,
               });
-              if (
-                ev.responseTarget?.type === "agent_turn" ||
-                ev.responseTarget?.type === "agent_terminal_notice"
-              ) {
-                getTaskTurnMessages(payload.conversationId).delete(
-                  (ev.responseTarget as { agentId: string }).agentId,
-                );
-              }
             }
             if (isHiddenRun) {
               if (lastVisibleRunId) {
