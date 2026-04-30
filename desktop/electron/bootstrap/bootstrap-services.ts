@@ -6,6 +6,7 @@ import { CaptureService } from "../services/capture-service.js";
 import { RadialGestureService } from "../services/radial-gesture-service.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
+import { LocalChatHistoryService } from "../services/local-chat-history-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
 import { SelectionWatcherService } from "../services/selection-watcher-service.js";
 import { UiStateService } from "../services/ui-state-service.js";
@@ -35,6 +36,17 @@ export const createBootstrapServices = (options: {
 
   const uiStateService = new UiStateService();
   const externalLinkService = new ExternalLinkService();
+  const localChatHistoryService = new LocalChatHistoryService({
+    stellaRoot: config.stellaRoot,
+    onUpdated: () => {
+      for (const window of options.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send("localChat:updated");
+        }
+      }
+      options.getMobileBroadcast()?.("localChat:updated", null);
+    },
+  });
   externalLinkService.setDevBuild(config.isDev);
   if (config.isDev) {
     externalLinkService.trustDevServerBaseUrl(getDevServerUrl());
@@ -211,6 +223,7 @@ export const createBootstrapServices = (options: {
     radialGestureService,
     credentialService,
     externalLinkService,
+    localChatHistoryService,
     securityPolicyService,
     selectionWatcherService,
     uiStateService,

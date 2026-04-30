@@ -57,6 +57,7 @@ export const createBootstrapResetFlows = (
 
     services.credentialService.cancelAll();
     await shutdownBootstrapRuntime(context, { stopScheduler: true });
+    services.localChatHistoryService.closeForReset();
 
     services.authService.setHostAuthState(false);
     state.appReady = false;
@@ -76,14 +77,18 @@ export const createBootstrapResetFlows = (
     ]);
 
     const stellaRoot = state.stellaRoot ?? config.stellaRoot;
-    await Promise.allSettled(
-      config.hardResetMutableHomePaths.map((relativePath) =>
-        fs.rm(path.join(stellaRoot, relativePath), {
-          recursive: true,
-          force: true,
-        }),
-      ),
-    );
+    try {
+      await Promise.allSettled(
+        config.hardResetMutableHomePaths.map((relativePath) =>
+          fs.rm(path.join(stellaRoot, relativePath), {
+            recursive: true,
+            force: true,
+          }),
+        ),
+      );
+    } finally {
+      services.localChatHistoryService.reopen();
+    }
 
     if (hadRunner) {
       await options.initializeStellaHostRunner();
@@ -93,14 +98,19 @@ export const createBootstrapResetFlows = (
     return { ok: true };
   },
   resetLocalMessages: async () => {
-    const { state } = context;
+    const { services, state } = context;
 
     if (!state.stellaRoot) {
       return { ok: true };
     }
 
     await shutdownBootstrapRuntime(context);
-    await resetMessageStorage(state.stellaRoot);
+    services.localChatHistoryService.closeForReset();
+    try {
+      await resetMessageStorage(state.stellaRoot);
+    } finally {
+      services.localChatHistoryService.reopen();
+    }
     await options.initializeStellaHostRunner();
 
     broadcastLocalChatUpdated(context);

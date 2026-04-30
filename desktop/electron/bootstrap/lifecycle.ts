@@ -70,6 +70,13 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
   );
   context.state.processRuntime.registerCleanup(
     "will-quit",
+    "local-chat-history-service",
+    () => {
+      context.services.localChatHistoryService.close();
+    },
+  );
+  context.state.processRuntime.registerCleanup(
+    "will-quit",
     "bootstrap-runtime",
     async () => {
       await shutdownBootstrapRuntime(context, { stopScheduler: true });

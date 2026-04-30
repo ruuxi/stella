@@ -3,30 +3,15 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
-import type { StellaHostRunner } from "../stella-host-runner.js";
-import { waitForConnectedRunner } from "./runtime-availability.js";
+import type { LocalChatHistoryService } from "../services/local-chat-history-service.js";
 
 type LocalChatHandlersOptions = {
-  getStellaHostRunner: () => StellaHostRunner | null;
-  onStellaHostRunnerChanged?: (
-    listener: (runner: StellaHostRunner | null) => void,
-  ) => () => void;
+  localChatHistoryService: LocalChatHistoryService;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
-  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
-
-const waitForRunner = async (
-  options: LocalChatHandlersOptions,
-  timeoutMs = 10_000,
-) =>
-  waitForConnectedRunner(options.getStellaHostRunner, {
-    timeoutMs,
-    unavailableMessage: "Runtime not available.",
-    onRunnerChanged: options.onStellaHostRunnerChanged,
-  });
 
 const assertPrivilegedRequest = (
   options: LocalChatHandlersOptions,
@@ -42,12 +27,10 @@ const withLocalChatClient = async <T>(
   options: LocalChatHandlersOptions,
   event: IpcMainEvent | IpcMainInvokeEvent,
   channel: string,
-  action: (
-    client: Awaited<ReturnType<typeof waitForRunner>>["client"],
-  ) => Promise<T>,
+  action: (client: LocalChatHistoryService) => T | Promise<T>,
 ) => {
   assertPrivilegedRequest(options, event, channel);
-  return await action((await waitForRunner(options)).client);
+  return await action(options.localChatHistoryService);
 };
 
 export const registerLocalChatHandlers = (
@@ -72,7 +55,7 @@ export const registerLocalChatHandlers = (
         windowBy?: "events" | "visible_messages";
       },
     ) => await withLocalChatClient(options, event, "localChat:listEvents", (client) =>
-      client.listLocalChatEvents({
+      client.listEvents({
         conversationId: payload?.conversationId ?? "",
         maxItems: payload?.maxItems,
         windowBy: payload?.windowBy,
@@ -91,7 +74,7 @@ export const registerLocalChatHandlers = (
       options,
       event,
       "localChat:getEventCount",
-      (client) => client.getLocalChatEventCount({
+      (client) => client.getEventCount({
         conversationId: payload?.conversationId ?? "",
         countBy: payload?.countBy,
       }),
@@ -131,7 +114,7 @@ export const registerLocalChatHandlers = (
       options,
       event,
       "localChat:listSyncMessages",
-      (client) => client.listLocalChatSyncMessages({
+      (client) => client.listSyncMessages({
         conversationId: payload?.conversationId ?? "",
         maxMessages: payload?.maxMessages,
       }),
@@ -149,7 +132,7 @@ export const registerLocalChatHandlers = (
       options,
       event,
       "localChat:getSyncCheckpoint",
-      (client) => client.getLocalChatSyncCheckpoint({
+      (client) => client.getSyncCheckpoint({
         conversationId: payload?.conversationId ?? "",
       }),
     ),
@@ -167,7 +150,7 @@ export const registerLocalChatHandlers = (
       options,
       event,
       "localChat:setSyncCheckpoint",
-      (client) => client.setLocalChatSyncCheckpoint({
+      (client) => client.setSyncCheckpoint({
         conversationId: payload?.conversationId ?? "",
         localMessageId: payload?.localMessageId ?? "",
       }),
