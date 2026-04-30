@@ -34,6 +34,7 @@ function App() {
   const [uninstalling, setUninstalling] = useState(false);
   const [reinstalling, setReinstalling] = useState(false);
   const [desktopRunning, setDesktopRunning] = useState(false);
+  const [upToDateFlash, setUpToDateFlash] = useState(false);
   const desktopWasRunningRef = useRef(false);
 
   const applyState = useCallback((nextState: InstallerState) => {
@@ -135,8 +136,13 @@ function App() {
   }, []);
 
   const handleCheckLauncherUpdate = useCallback(async () => {
+    setUpToDateFlash(false);
     try {
-      await invoke("check_launcher_update");
+      const updateAvailable = await invoke<boolean>("check_launcher_update");
+      if (!updateAvailable) {
+        setUpToDateFlash(true);
+        window.setTimeout(() => setUpToDateFlash(false), 4000);
+      }
     } catch {}
   }, []);
 
@@ -256,7 +262,7 @@ function App() {
   /* ── Render ──────────────────────────────────────────────────── */
 
   return (
-    <div className="shell">
+    <div className={`shell${isComplete ? " shell--complete" : ""}`}>
       <div className="drag-region" />
 
       {/* Brand header — always visible */}
@@ -266,7 +272,7 @@ function App() {
       </div>
 
       {/* Body */}
-      <main className="body">
+      <main className="body" key={state.phase}>
         {/* ── Ready / Error ───────────────────────────────── */}
         {isSetup && (
           <>
@@ -295,11 +301,26 @@ function App() {
                 />
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="btn-icon"
                   onClick={() => void handleBrowse()}
                   disabled={locationBusy || state.installPathLocked}
+                  aria-label="Choose folder"
+                  title="Choose folder"
                 >
-                  Browse
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M2 4.25C2 3.56 2.56 3 3.25 3h3.04c.33 0 .65.13.88.37l1.12 1.13h4.46c.69 0 1.25.56 1.25 1.25v6.5c0 .69-.56 1.25-1.25 1.25H3.25C2.56 13.5 2 12.94 2 12.25v-8z"
+                      stroke="currentColor"
+                      strokeWidth="1.25"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
                 </button>
               </div>
 
@@ -310,7 +331,7 @@ function App() {
                   <span className="field-hint">
                     {state.devMode
                       ? "Dev mode is using the path from STELLA_LAUNCHER_DEV or STELLA_LAUNCHER_DEV_PATH."
-                      : `Stella uses its own "stella" folder here \u00b7 ${formatBytes(state.disk.requiredBytes)} needed \u00b7 ${formatBytes(state.disk.availableBytes)} available`}
+                      : `${formatBytes(state.disk.requiredBytes)} needed \u00b7 ${formatBytes(state.disk.availableBytes)} available`}
                   </span>
                 )}
                 {!state.installPathLocked && (
@@ -453,15 +474,6 @@ function App() {
         {/* ── Complete ────────────────────────────────────── */}
         {isComplete && (
           <div className="complete-body">
-            {desktopRunning ? (
-              <span className="status-dot status-dot--running" />
-            ) : (
-              <span className="status-dot status-dot--stopped" />
-            )}
-            <p className="complete-title">
-              {desktopRunning ? "Stella is running" : "Stella is ready"}
-            </p>
-            <p className="complete-path">{state.installPath}</p>
             {state.warningMessage && (
               <div className="banner banner-warn" style={{ marginTop: 16 }}>
                 {state.warningMessage}
@@ -490,30 +502,35 @@ function App() {
 
       {/* Footer */}
       <footer className="footer">
-        {isSetup && !state.devMode && (
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={!canInstall}
-            onClick={() => void handleInstall()}
-          >
-            {state.phase === "error" ? "Retry" : "Install"}
-          </button>
+        {upToDateFlash && !state.launcherUpdate.available && (
+          <div className="banner banner-info">
+            You’re on the latest launcher.
+          </div>
         )}
+        <div className="footer-primary" key={`primary-${state.phase}`}>
+          {isSetup && !state.devMode && (
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={!canInstall}
+              onClick={() => void handleInstall()}
+            >
+              {state.phase === "error" ? "Retry" : "Install"}
+            </button>
+          )}
 
-        {isWorking && (
-          <button type="button" className="btn-primary" disabled>
-            {state.phase === "checking"
-              ? "Checking..."
-              : state.phase === "updating"
-                ? "Updating..."
-              : `Installing · ${progress}%`}
-          </button>
-        )}
+          {isWorking && (
+            <button type="button" className="btn-primary" disabled>
+              {state.phase === "checking"
+                ? "Checking..."
+                : state.phase === "updating"
+                  ? "Updating..."
+                  : `Installing · ${progress}%`}
+            </button>
+          )}
 
-        {isComplete && (
-          <>
-            {state.launcherUpdate.available ? (
+          {isComplete &&
+            (state.launcherUpdate.available ? (
               <button
                 type="button"
                 className="btn-primary"
@@ -533,8 +550,12 @@ function App() {
               >
                 {desktopRunning ? "Launching..." : "Launch Stella"}
               </button>
-            )}
-            <div className="footer-links">
+            ))}
+        </div>
+
+        {!state.devMode && !isWorking && (
+          <div className="footer-links">
+            {isComplete && (
               <button
                 type="button"
                 className="link-btn"
@@ -543,27 +564,28 @@ function App() {
               >
                 Open folder
               </button>
-              {!state.devMode && !state.launcherUpdate.available && (
-                <button
-                  type="button"
-                  className="link-btn"
-                  onClick={() => void handleCheckLauncherUpdate()}
-                  disabled={
-                    state.launcherUpdate.checking ||
-                    state.launcherUpdate.installing ||
-                    uninstalling ||
-                    reinstalling
-                  }
-                >
-                  {state.launcherUpdate.checking
-                    ? "Checking..."
-                    : state.launcherUpdate.lastCheckedAtMs > 0 &&
-                        !state.launcherUpdate.error
-                      ? "Up to date \u00b7 Check again"
-                      : "Check for updates"}
-                </button>
-              )}
-              {state.installed && !desktopRunning && !state.devMode && (
+            )}
+            {!state.launcherUpdate.available && (
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => void handleCheckLauncherUpdate()}
+                disabled={
+                  state.launcherUpdate.checking ||
+                  state.launcherUpdate.installing ||
+                  uninstalling ||
+                  reinstalling
+                }
+              >
+                {state.launcherUpdate.checking
+                  ? "Checking..."
+                  : state.launcherUpdate.lastCheckedAtMs > 0 &&
+                      !state.launcherUpdate.error
+                    ? "Up to date \u00b7 Update"
+                    : "Update"}
+              </button>
+            )}
+            {isComplete && state.installed && !desktopRunning && (
                 <>
                   <button
                     type="button"
@@ -585,8 +607,7 @@ function App() {
                   </button>
                 </>
               )}
-            </div>
-          </>
+          </div>
         )}
       </footer>
     </div>
