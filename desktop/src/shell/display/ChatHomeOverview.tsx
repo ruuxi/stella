@@ -70,9 +70,9 @@ const taskBadgeFor = (task: TaskItem): string => {
       return "Working";
     case "completed":
       return "Done";
-    case "failed":
+    case "error":
       return "Failed";
-    case "cancelled":
+    case "canceled":
       return "Stopped";
     default:
       return "";
@@ -81,7 +81,7 @@ const taskBadgeFor = (task: TaskItem): string => {
 
 export function ChatHomeOverview() {
   const chat = useChatRuntime();
-  const tasks = chat.conversation.streaming.liveTasks;
+  const tasks = chat.conversation.streaming.liveTasks ?? [];
   const events = chat.conversation.events;
 
   const files = useMemo<FileEntry[]>(() => {
