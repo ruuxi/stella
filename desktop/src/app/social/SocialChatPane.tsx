@@ -5,6 +5,7 @@ import { Avatar } from "@/ui/avatar";
 import { showToast } from "@/ui/toast";
 import { getSocialActionErrorMessage } from "./social-errors";
 import { useSocialMessages } from "./hooks/use-social-messages";
+import { useSocialRooms } from "./hooks/use-social-rooms";
 import { getSocialRoomDisplayName } from "./room-display";
 import {
   useSocialSession,
@@ -65,6 +66,24 @@ function getProfileForOwner(
 export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) {
   const roomData = useQuery(api.social.rooms.getRoom, { roomId }) as SocialRoomSummary | null;
   const { messages, sendMessage } = useSocialMessages(roomId);
+  const { markRead } = useSocialRooms();
+
+  // Drive the unread badge: every time the room's newest visible message id
+  // changes (open, new incoming message, send), bump `lastReadAt` on the
+  // server so this room drops out of the sidebar/Friends counts. Skipped for
+  // Global Chat since it's excluded from the badge anyway.
+  const newestMessageId = useMemo(() => {
+    if (roomData?.room.kind === "global") return null;
+    if (!messages.length) return null;
+    return (messages as MessageDoc[])[messages.length - 1]._id;
+  }, [messages, roomData?.room.kind]);
+
+  useEffect(() => {
+    if (!newestMessageId) return;
+    void markRead(roomId, newestMessageId).catch(() => {
+      // Read-marker writes are best-effort; the next render will retry.
+    });
+  }, [roomId, newestMessageId, markRead]);
   const socialSessionsApi = window.electronAPI?.socialSessions;
   const isGlobalRoom = roomData?.room.kind === "global";
 
