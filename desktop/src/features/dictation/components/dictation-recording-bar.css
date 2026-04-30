@@ -39,3 +39,11 @@
 .composer-dictation-control--confirm:hover:not(:disabled) {
   color: var(--primary, var(--text-strong));
 }
+
+.composer-dictation-control--send {
+  color: var(--text-strong);
+}
+
+.composer-dictation-control--send:hover:not(:disabled) {
+  color: var(--primary, var(--text-strong));
+}

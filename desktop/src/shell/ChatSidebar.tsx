@@ -188,10 +188,15 @@ export function ChatPanelTab(
       disabled: isStreaming,
     });
 
+    const submitFromDictationRef = useRef<() => void>(() => {});
+
     const dictation = useDictation({
       message: inputText,
       setMessage: setInputText,
       disabled: isStreaming,
+      onCommit: () => {
+        submitFromDictationRef.current();
+      },
     });
 
     useEffect(() => {
@@ -240,6 +245,23 @@ export function ChatPanelTab(
       },
       [inputText, chatContext, onSend, selectedText, setChatContext, setSelectedText],
     );
+
+    const submitFromDictation = useCallback(() => {
+      const { canSubmit, trimmedMessage } = deriveComposerState({
+        message: inputText,
+        chatContext,
+      });
+      if (!canSubmit) return;
+      onSend(trimmedMessage, chatContext, selectedText);
+      setInputText("");
+      setChatContext(null);
+      setSelectedText(null);
+      setSidebarExpanded(false);
+    }, [inputText, chatContext, onSend, selectedText, setChatContext, setSelectedText]);
+
+    useEffect(() => {
+      submitFromDictationRef.current = submitFromDictation;
+    }, [submitFromDictation]);
 
     const composerState = deriveComposerState({
       message: inputText,
@@ -316,6 +338,7 @@ export function ChatPanelTab(
                         elapsedMs={dictation.elapsedMs}
                         onCancel={dictation.cancel}
                         onConfirm={dictation.toggle}
+                        onSend={dictation.commitAndSend}
                       />
                     ) : (
                       <>
