@@ -418,6 +418,9 @@ pub async fn uninstall_stella(
 
     if result.is_ok() {
         setup::check_all(&mut installer, &state.context, &app).await;
+    } else if let Err(err) = &result {
+        installer.phase = InstallerPhase::Error;
+        installer.error_message = Some(err.clone());
     }
 
     let _ = app.emit(
