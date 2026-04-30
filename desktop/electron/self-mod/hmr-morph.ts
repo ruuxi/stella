@@ -59,13 +59,6 @@ const IDLE_HMR_STATE: SelfModHmrState = {
   requiresFullReload: false,
 };
 
-const logMorphTiming = (
-  phase: string,
-  data: Record<string, unknown> = {},
-): void => {
-  console.info("[stella:morph]", phase, data);
-};
-
 export function createHmrTransitionController(deps: {
   getFullWindow: () => BrowserWindow | null;
   getOverlayController: () => OverlayWindowController | null;
@@ -96,16 +89,10 @@ export function createHmrTransitionController(deps: {
   const armRendererSettle = (
     window: BrowserWindow | null,
   ): { wait: () => Promise<void> } => {
-    const startedAt = performance.now();
     if (!window || window.isDestroyed()) {
       return {
         wait: async () => {
           await delay(MORPH_RENDERER_SETTLE_DELAY_MS);
-          logMorphTiming("rendererSettle", {
-            durationMs: Math.round(performance.now() - startedAt),
-            delayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
-            window: "missing",
-          });
         },
       };
     }
@@ -117,14 +104,7 @@ export function createHmrTransitionController(deps: {
     });
     const onStartLoading = () => {
       reloadDetected = true;
-      logMorphTiming("rendererReloadStart", {
-        durationMs: Math.round(performance.now() - startedAt),
-      });
       const onFinish = () => {
-        logMorphTiming("rendererReloadFinish", {
-          durationMs: Math.round(performance.now() - startedAt),
-          graceMs: MORPH_POST_RELOAD_GRACE_MS,
-        });
         setTimeout(() => resolveReloadDone?.(), MORPH_POST_RELOAD_GRACE_MS);
       };
       wc.once("did-finish-load", onFinish);
@@ -141,12 +121,6 @@ export function createHmrTransitionController(deps: {
             );
             await Promise.race([reloadDone, delay(remainingCap)]);
           }
-          logMorphTiming("rendererSettle", {
-            durationMs: Math.round(performance.now() - startedAt),
-            delayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
-            reloadDetected,
-            hardCapMs: MORPH_RENDERER_SETTLE_HARD_CAP_MS,
-          });
         } finally {
           wc.removeListener("did-start-loading", onStartLoading);
         }
@@ -169,15 +143,6 @@ export function createHmrTransitionController(deps: {
     const fullWindow = deps.getFullWindow();
     const overlayController = deps.getOverlayController();
     const transitionId = randomUUID();
-    const transitionStartedAt = performance.now();
-    logMorphTiming("transitionStart", {
-      transitionId,
-      runIds: opts.runIds,
-      stateRunIds: opts.stateRunIds,
-      requiresFullReload: opts.requiresFullReload,
-      hasFullWindow: Boolean(fullWindow && !fullWindow.isDestroyed()),
-      hasOverlayController: Boolean(overlayController),
-    });
     const emitState = (state: SelfModHmrState) => {
       overlayController?.setMorphState(transitionId, state);
       opts.reportState?.(state);
@@ -189,11 +154,6 @@ export function createHmrTransitionController(deps: {
     const applyWithoutMorph = async (
       windowForReload: BrowserWindow | null,
     ) => {
-      logMorphTiming("applyWithoutMorph:start", {
-        transitionId,
-        requiresFullReload: opts.requiresFullReload,
-        hasWindow: Boolean(windowForReload && !windowForReload.isDestroyed()),
-      });
       opts.reportState?.({
         phase: opts.requiresFullReload ? "reloading" : "applying",
         paused: false,
@@ -217,20 +177,10 @@ export function createHmrTransitionController(deps: {
           windowForReload != null &&
           !windowForReload.isDestroyed()
         ) {
-          logMorphTiming("applyWithoutMorph:reload", {
-            transitionId,
-            canReload,
-            requiresClientFullReload:
-              applyResult?.requiresClientFullReload === true,
-          });
           windowForReload.webContents.reloadIgnoringCache();
         }
         await settle.wait();
       } finally {
-        logMorphTiming("applyWithoutMorph:done", {
-          transitionId,
-          durationMs: Math.round(performance.now() - transitionStartedAt),
-        });
         opts.reportState?.(IDLE_HMR_STATE);
       }
     };
@@ -251,12 +201,6 @@ export function createHmrTransitionController(deps: {
       overlayController.ensureReadyForMorph(),
       captureWindowDataUrl(fullWindow),
     ]);
-    logMorphTiming("preCapture", {
-      transitionId,
-      durationMs: Math.round(performance.now() - transitionStartedAt),
-      overlayReadyForMorph,
-      oldScreenshotBytes: oldScreenshot?.length ?? 0,
-    });
     if (!overlayReadyForMorph || !oldScreenshot) {
       await applyWithoutMorph(fullWindow);
       return;
@@ -280,20 +224,12 @@ export function createHmrTransitionController(deps: {
       bounds,
       fullWindow,
     );
-    logMorphTiming("morphForward:start", {
-      transitionId,
-      bounds,
-    });
 
     // Once the forward morph starts the overlay is visible — finish() MUST run
     // to clean it up, even if an error occurs mid-transition.
     try {
       const hmrDone = (async () => {
         await overlayReady;
-        logMorphTiming("overlayReady", {
-          transitionId,
-          durationMs: Math.round(performance.now() - transitionStartedAt),
-        });
 
         emitState({
           phase: "applying",
@@ -303,12 +239,6 @@ export function createHmrTransitionController(deps: {
 
         const applyResult = await opts.applyBatch({
           suppressClientFullReload: opts.requiresFullReload,
-        });
-        logMorphTiming("applyBatch:done", {
-          transitionId,
-          durationMs: Math.round(performance.now() - transitionStartedAt),
-          requiresClientFullReload:
-            applyResult?.requiresClientFullReload === true,
         });
 
         const requiresClientFullReload =
@@ -325,12 +255,6 @@ export function createHmrTransitionController(deps: {
           // did-start-loading event Chromium emits in response to the
           // reload can't be missed by a late listener attach.
           const settle = armRendererSettle(fullWindow);
-          logMorphTiming("reloadIgnoringCache", {
-            transitionId,
-            requiresFullReload: opts.requiresFullReload,
-            requiresClientFullReload:
-              applyResult?.requiresClientFullReload === true,
-          });
           fullWindow.webContents.reloadIgnoringCache();
           await settle.wait();
           return true;
@@ -352,18 +276,8 @@ export function createHmrTransitionController(deps: {
 
       const newScreenshot = await captureWindowDataUrl(fullWindow);
       if (!newScreenshot) {
-        logMorphTiming("postCapture:missing", {
-          transitionId,
-          durationMs: Math.round(performance.now() - transitionStartedAt),
-        });
         return;
       }
-      logMorphTiming("postCapture", {
-        transitionId,
-        durationMs: Math.round(performance.now() - transitionStartedAt),
-        newScreenshotBytes: newScreenshot.length,
-        requiresFullReload,
-      });
 
       emitState({
         phase: "morph-reverse",
@@ -375,21 +289,9 @@ export function createHmrTransitionController(deps: {
         newScreenshot,
         requiresFullReload,
       );
-      logMorphTiming("morphReverse:start", {
-        transitionId,
-        requiresFullReload,
-      });
 
       await waitForMorphDone(transitionId);
-      logMorphTiming("transitionDone", {
-        transitionId,
-        durationMs: Math.round(performance.now() - transitionStartedAt),
-      });
     } finally {
-      logMorphTiming("transitionFinish", {
-        transitionId,
-        durationMs: Math.round(performance.now() - transitionStartedAt),
-      });
       finish();
     }
   };

@@ -161,15 +161,6 @@ type PendingApplyBatch = {
   requiresFullReload: boolean;
 };
 
-const logSelfModHmrWorker = (
-  phase: string,
-  data: Record<string, unknown> = {},
-): void => {
-  process.stderr.write(
-    `[self-mod-hmr:worker] ${phase} ${JSON.stringify(data)}\n`,
-  );
-};
-
 // Resolve a runtime CLI bundled into desktop/dist-electron/runtime/kernel/cli/.
 // `import.meta.url` for this file at runtime is
 // `desktop/dist-electron/runtime/worker/server.js`, so we walk up to
@@ -570,12 +561,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     // per-runId runtime-reload pauses.
     const dispatchApplyBatch = async (applyResult: ApplyResult) => {
       if (applyResult.appliedRuns.length === 0) {
-        logSelfModHmrWorker("dispatchApplyBatch:skipped", {
-          reason: "no-applied-runs",
-          restartRelevantRunIds: applyResult.restartRelevantRunIds,
-          hasRestartRelevantPaths: applyResult.hasRestartRelevantPaths,
-          hasFullReloadRelevantPaths: applyResult.hasFullReloadRelevantPaths,
-        });
         return;
       }
       const transitionId = crypto.randomUUID();
@@ -592,20 +577,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       pendingApplyBatches.set(transitionId, {
         applyResult,
         requiresFullReload,
-      });
-      logSelfModHmrWorker("dispatchApplyBatch", {
-        transitionId,
-        runIds: applyResult.restartRelevantRunIds,
-        stateRunIds,
-        requiresFullReload,
-        appliedRuns: applyResult.appliedRuns.map((run) => ({
-          runId: run.runId,
-          paths: run.paths,
-          restartRelevantPaths: run.restartRelevantPaths,
-          fullReloadRelevantPaths: run.fullReloadRelevantPaths,
-        })),
-        hasRestartRelevantPaths: applyResult.hasRestartRelevantPaths,
-        hasFullReloadRelevantPaths: applyResult.hasFullReloadRelevantPaths,
       });
       try {
         await peer.request(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, {
@@ -627,12 +598,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             .apply(applyResult.appliedRuns, {
               forceClientFullReload: requiresFullReload,
             })
-            .catch((): HmrApplyResponse => ({ ok: false }));
+            .catch(() => ({ ok: false }));
           if (!applyResponse.ok) {
-            logSelfModHmrWorker("directApply:failed", {
-              transitionId,
-              requiresFullReload,
-            });
             console.warn(
               "[self-mod-hmr] Direct apply failed; discarding Vite self-mod state before releasing runtime reload pause.",
             );
@@ -646,12 +613,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             }
             return;
           }
-          logSelfModHmrWorker("directApply:done", {
-            transitionId,
-            requiresFullReload,
-            requiresClientFullReload:
-              applyResponse.requiresClientFullReload === true,
-          });
           pendingApplyBatches.delete(transitionId);
           await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds, {
             allowDeferredReload: requiresFullReload,
@@ -1901,19 +1862,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         const staleRunIds = Array.isArray(payload?.runIds)
           ? payload.runIds.filter((runId) => typeof runId === "string")
           : [];
-        logSelfModHmrWorker("resume:unknownTransition", {
-          transitionId,
-          staleRunIds,
-        });
         await releaseRuntimeReloadFor(staleRunIds);
         return { ok: false, reason: "unknown-transition" as const };
       }
-      logSelfModHmrWorker("resume:start", {
-        transitionId,
-        runIds: pending.applyResult.restartRelevantRunIds,
-        requiresFullReload: pending.requiresFullReload,
-        options: payload?.options,
-      });
       const controller = state.selfModHmrController;
       const applyResponse: HmrApplyResponse = controller
         ? await controller
@@ -1921,10 +1872,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             .catch(() => ({ ok: false }))
         : { ok: false };
       if (!applyResponse.ok) {
-        logSelfModHmrWorker("resume:applyFailed", {
-          transitionId,
-          requiresFullReload: pending.requiresFullReload,
-        });
         console.warn(
           "[self-mod-hmr] Apply failed; discarding Vite self-mod state before releasing runtime reload pause.",
         );
@@ -1946,12 +1893,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       for (const runId of pending.applyResult.restartRelevantRunIds) {
         selfModRunRootIds.delete(runId);
       }
-      logSelfModHmrWorker("resume:done", {
-        transitionId,
-        requiresFullReload: pending.requiresFullReload,
-        requiresClientFullReload:
-          applyResponse.requiresClientFullReload === true,
-      });
       return {
         ok: true,
         requiresClientFullReload: applyResponse.requiresClientFullReload === true,

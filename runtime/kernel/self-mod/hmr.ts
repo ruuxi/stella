@@ -384,12 +384,6 @@ export const createSelfModHmrController = (
     Map<string, string | null>
   >();
 
-  const log = (phase: string, data: Record<string, unknown> = {}): void => {
-    process.stderr.write(
-      `[self-mod-hmr:controller] ${phase} ${JSON.stringify(data)}\n`,
-    );
-  };
-
   const snapshotPathForRun = (runId: string, repoRelativePath: string): void => {
     let snapshot = finalizedSnapshotsByRun.get(runId);
     if (!snapshot) {
@@ -541,20 +535,14 @@ export const createSelfModHmrController = (
 
   return {
     async beginRun(runId) {
-      log("beginRun", { runId, enabled: options.enabled });
       tracker.beginRun(runId);
       touchedPathsByRun.set(runId, new Set());
       try {
         await pauseClientUpdates(runId);
-        log("clientPaused", { runId });
       } catch (error) {
         tracker.cancel(runId);
         touchedPathsByRun.delete(runId);
         finalizedSnapshotsByRun.delete(runId);
-        log("clientPauseFailed", {
-          runId,
-          error: (error as Error).message,
-        });
         throw error;
       }
     },
@@ -574,21 +562,10 @@ export const createSelfModHmrController = (
         repoRelative,
       );
       if (expandedRepoRelative.length === 0) {
-        log("recordWrite:ignored", {
-          runId,
-          reason: "no-relevant-paths",
-          inputCount: inputPaths.length,
-        });
         return;
       }
       const runStatus = tracker.getRunStatus(runId);
       if (runStatus !== "active") {
-        log("recordWrite:ignored", {
-          runId,
-          reason: "inactive-run",
-          runStatus,
-          repoRelative: expandedRepoRelative,
-        });
         return;
       }
       const captureSnapshot = recordOptions?.captureSnapshot !== false;
@@ -612,17 +589,6 @@ export const createSelfModHmrController = (
         (repoRelativePath) => !alreadyOwnedPaths.includes(repoRelativePath),
       );
       const viteTrackablePaths = newlyOwnedPaths.filter(isViteTrackablePath);
-      log("recordWrite", {
-        runId,
-        inputPaths,
-        repoRelative,
-        expandedRepoRelative,
-        newlyOwnedPaths,
-        alreadyOwnedPaths,
-        viteTrackablePaths,
-        captureSnapshot,
-        deferSnapshotPaths: [...deferSnapshotPaths],
-      });
       await trackPaths(viteTrackablePaths);
       if (tracker.getRunStatus(runId) !== "active") {
         const unownedPaths = viteTrackablePaths.filter(
@@ -646,19 +612,6 @@ export const createSelfModHmrController = (
       snapshotRun(runId);
       const decision = tracker.finalize(runId);
       const result = finishApplyResult(decision);
-      log("finalize", {
-        runId,
-        applyBatchRunIds: result.appliedRuns.map((run) => run.runId),
-        appliedRuns: result.appliedRuns.map((run) => ({
-          runId: run.runId,
-          paths: run.paths,
-          restartRelevantPaths: run.restartRelevantPaths,
-          fullReloadRelevantPaths: run.fullReloadRelevantPaths,
-        })),
-        restartRelevantRunIds: result.restartRelevantRunIds,
-        hasRestartRelevantPaths: result.hasRestartRelevantPaths,
-        hasFullReloadRelevantPaths: result.hasFullReloadRelevantPaths,
-      });
       if (!tracker.hasRun(runId)) {
         touchedPathsByRun.delete(runId);
         if (result.appliedRuns.every((run) => run.runId !== runId)) {
@@ -672,11 +625,6 @@ export const createSelfModHmrController = (
       dropRunState([runId]);
       const decision = tracker.cancel(runId);
       const result = finishApplyResult(decision);
-      log("cancel", {
-        runId,
-        releasedPaths: decision.releasedPaths,
-        appliedRunIds: result.appliedRuns.map((run) => run.runId),
-      });
       if (decision.releasedPaths.length > 0) {
         await untrackPaths(decision.releasedPaths);
       }
@@ -685,19 +633,9 @@ export const createSelfModHmrController = (
     },
 
     async apply(appliedRuns, applyOptions) {
-      log("apply:start", {
-        runIds: appliedRuns.map((run) => run.runId),
-        paths: appliedRuns.flatMap((run) => run.paths),
-        applyOptions,
-      });
       if (appliedRuns.length === 0) return { ok: true };
       if (!options.enabled) return { ok: true };
-      const response = await sendApply(appliedRuns, applyOptions);
-      log("apply:done", {
-        ok: response.ok,
-        requiresClientFullReload: response.requiresClientFullReload === true,
-      });
-      return response;
+      return await sendApply(appliedRuns, applyOptions);
     },
 
     async discard(appliedRuns) {
@@ -705,17 +643,14 @@ export const createSelfModHmrController = (
     },
 
     async releaseRuns(runIds) {
-      log("releaseRuns", { runIds });
       return await releaseClientUpdates(runIds);
     },
 
     async beginShellMutationGuard() {
-      log("beginShellMutationGuard");
       return await postGuard(`${HMR_ENDPOINT_BASE}/begin-shell-mutation`);
     },
 
     async endShellMutationGuard() {
-      log("endShellMutationGuard");
       return await postGuard(`${HMR_ENDPOINT_BASE}/end-shell-mutation`);
     },
 
@@ -732,7 +667,6 @@ export const createSelfModHmrController = (
       }
       touchedPathsByRun.clear();
       finalizedSnapshotsByRun.clear();
-      log("forceResumeAll", { heldOrActiveRunIds, enabled: options.enabled });
       if (!options.enabled) return true;
       return await postWithRetry({
         getDevServerUrl: options.getDevServerUrl,
