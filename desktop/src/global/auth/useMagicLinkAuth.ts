@@ -1,4 +1,15 @@
-import { useState, useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 import { getSetCookie } from "@convex-dev/better-auth/client/plugins";
 import { authClient } from "@/global/auth/lib/auth-client";
 import { readConfiguredConvexSiteUrl } from "@/shared/lib/convex-urls";
@@ -37,6 +48,8 @@ interface UseMagicLinkAuthResult {
   reset: () => void;
 }
 
+const MagicLinkAuthContext = createContext<UseMagicLinkAuthResult | null>(null);
+
 const getConvexSiteUrl = () => {
   const url = readConfiguredConvexSiteUrl(
     import.meta.env.VITE_CONVEX_SITE_URL as string | undefined,
@@ -47,7 +60,7 @@ const getConvexSiteUrl = () => {
   return url;
 };
 
-export const useMagicLinkAuth = (): UseMagicLinkAuthResult => {
+function useMagicLinkAuthState(): UseMagicLinkAuthResult {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -237,4 +250,17 @@ export const useMagicLinkAuth = (): UseMagicLinkAuthResult => {
     isResending,
     reset,
   };
+}
+
+export function MagicLinkAuthProvider({ children }: { children: ReactNode }) {
+  const value = useMagicLinkAuthState();
+  return createElement(MagicLinkAuthContext.Provider, { value }, children);
+}
+
+export const useMagicLinkAuth = (): UseMagicLinkAuthResult => {
+  const value = useContext(MagicLinkAuthContext);
+  if (!value) {
+    throw new Error("useMagicLinkAuth must be used within MagicLinkAuthProvider");
+  }
+  return value;
 };

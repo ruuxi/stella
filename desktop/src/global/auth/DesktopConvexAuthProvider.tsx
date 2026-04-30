@@ -10,6 +10,7 @@ import {
 } from "react";
 import { ConvexProviderWithAuth } from "convex/react";
 import { authClient } from "@/global/auth/lib/auth-client";
+import { MagicLinkAuthProvider } from "@/global/auth/useMagicLinkAuth";
 import { getConvexToken, clearCachedToken } from "@/global/auth/services/auth-token";
 import { convexClient } from "@/infra/convex-client";
 
@@ -341,10 +342,12 @@ export function DesktopConvexAuthProvider({ children }: { children: ReactNode })
   return (
     <ConvexProviderWithAuth client={convexClient} useAuth={useDesktopConvexAuth}>
       <AuthBootstrapContext.Provider value={authBootstrapValue}>
-        <DesktopAuthRuntimeEffects
-          setAuthBootstrapState={setAuthBootstrapState}
-        />
-        {children}
+        <MagicLinkAuthProvider>
+          <DesktopAuthRuntimeEffects
+            setAuthBootstrapState={setAuthBootstrapState}
+          />
+          {children}
+        </MagicLinkAuthProvider>
       </AuthBootstrapContext.Provider>
     </ConvexProviderWithAuth>
   );
