@@ -32,6 +32,7 @@ type Props = {
   reasoningText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
+  pendingUserMessageReady?: boolean;
   selfModMap?: Record<string, SelfModAppliedData>;
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
@@ -45,6 +46,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   streamingText,
   isStreaming,
   pendingUserMessageId,
+  pendingUserMessageReady = true,
   selfModMap,
   hasOlderEvents,
   isLoadingOlder,
@@ -61,7 +63,7 @@ export const ConversationEvents = memo(function ConversationEvents({
     acknowledgeGoogleWorkspaceAuthRequired();
   }, []);
 
-  const { rows, lastUserRowIndex, pendingAskQuestion } = useEventRows({
+  const { rows: projectedRows, lastUserRowIndex, pendingAskQuestion } = useEventRows({
     events,
     maxItems,
     isStreaming,
@@ -69,6 +71,16 @@ export const ConversationEvents = memo(function ConversationEvents({
     streamingText,
     selfModMap,
   });
+
+  const rows = pendingUserMessageId
+    ? projectedRows.map((row) => {
+        if (row.kind !== "user" || row.id !== pendingUserMessageId) return row;
+        return {
+          ...row,
+          sendAnimationState: pendingUserMessageReady ? "entering" : "preparing",
+        } as const;
+      })
+    : projectedRows;
 
   return (
     <ChatTimeline
