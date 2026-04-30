@@ -16,6 +16,7 @@ import {
   loadRelationship,
 } from "./shared";
 import {
+  getConnectedUserIdOrNull,
   requireConnectedUserId,
 } from "../auth";
 import {
@@ -54,7 +55,10 @@ export const listFriends = query({
   args: {},
   returns: v.array(socialFriendSummaryValidator),
   handler: async (ctx) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     const relationships = await listAcceptedRelationshipsForOwner(ctx, ownerId);
     const friends = await Promise.all(
       relationships.map(async (relationship) => {
@@ -70,7 +74,10 @@ export const listPendingRequests = query({
   args: {},
   returns: v.array(socialPendingRequestSummaryValidator),
   handler: async (ctx) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     // Pending lists are typically small; cap the scan to keep the query
     // bounded even for prolific senders/receivers.
     const MAX_PENDING_REQUESTS_PER_SIDE = 200;
