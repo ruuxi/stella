@@ -58,7 +58,6 @@ import { DICTATION_TOGGLE_EVENT } from "@/features/dictation/hooks/use-dictation
 import {
   ensureChatDisplayTab,
   openChatDisplayTab,
-  openIdeasDisplayTab,
 } from "@/shell/display/default-tabs";
 
 const NEW_APP_ASK_STELLA_PROMPT =
@@ -412,14 +411,14 @@ function RootChrome() {
       // Prefer reopening whatever tabs are already in the manager; only
       // fall back to re-routing the last payload when nothing has been
       // opened yet this session. If there is no display payload yet, seed
-      // the panel with Ideas so the workspace panel is always openable.
+      // the panel with Chat so the workspace panel is always openable.
       if (displayTabs.getSnapshot().tabs.length > 0) {
         displayTabs.setPanelOpen(true);
         return;
       }
       const payload = latestDisplayPayloadRef.current;
       if (!payload) {
-        openIdeasDisplayTab();
+        openChatPanel();
         return;
       }
       displaySidebarRef.current?.open(payload);

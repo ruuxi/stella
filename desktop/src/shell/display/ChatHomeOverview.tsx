@@ -16,9 +16,11 @@
  * not by closing/reopening the tab — selection and panel state never
  * change just because the user navigates.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
+import { useUiState } from "@/context/ui-state";
 import { useTaskProgressSummaries } from "@/app/chat/hooks/use-task-progress-summaries";
+import { usePersonalizedCategories } from "@/app/home/categories";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
@@ -104,6 +106,73 @@ function TaskProgressFeed({
         </li>
       ))}
     </ol>
+  );
+}
+
+function IdeasHomeSection() {
+  const { state } = useUiState();
+  const { onSuggestionClick } = useChatRuntime();
+  const categories = usePersonalizedCategories(state.conversationId);
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+
+  const selectedCategory = useMemo(() => {
+    if (categories.length === 0) return null;
+    return (
+      categories.find((category) => category.label === selectedLabel) ??
+      categories[0]
+    );
+  }, [categories, selectedLabel]);
+
+  useEffect(() => {
+    if (
+      selectedLabel &&
+      !categories.some((category) => category.label === selectedLabel)
+    ) {
+      setSelectedLabel(null);
+    }
+  }, [categories, selectedLabel]);
+
+  const handleClick = (prompt: string) => {
+    onSuggestionClick(prompt);
+    displayTabs.setPanelOpen(false);
+  };
+
+  if (!selectedCategory) return null;
+
+  return (
+    <section className="chat-home-overview__section chat-home-overview__section--ideas">
+      <h3 className="chat-home-overview__heading">Ideas</h3>
+      <div className="chat-home-overview__idea-tabs" role="tablist">
+        {categories.map((category) => {
+          const selected = category.label === selectedCategory.label;
+          return (
+            <button
+              key={category.label}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              className="chat-home-overview__idea-tab"
+              onClick={() => setSelectedLabel(category.label)}
+            >
+              {category.label}
+            </button>
+          );
+        })}
+      </div>
+      <ul className="chat-home-overview__ideas">
+        {selectedCategory.options.map((option) => (
+          <li key={option.label}>
+            <button
+              type="button"
+              className="chat-home-overview__idea"
+              onClick={() => handleClick(option.prompt)}
+            >
+              {option.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -253,6 +322,8 @@ export function ChatHomeOverview() {
           </ul>
         )}
       </section>
+
+      <IdeasHomeSection />
     </div>
   );
 }
