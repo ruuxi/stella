@@ -67,6 +67,8 @@ export const createHostRunnerHandlers = (
       ),
     );
   },
+  getActiveConversationId: () =>
+    context.services.uiStateService.state.conversationId?.trim() || null,
   getDeviceIdentity: async () => {
     const identity = await options.loadDeviceIdentity();
     return {
