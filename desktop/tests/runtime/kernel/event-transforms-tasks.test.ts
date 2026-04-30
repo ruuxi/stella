@@ -107,6 +107,24 @@ describe("extractTasksFromEvents", () => {
     expect(task.status).toBe("completed");
     expect(task.outputPreview).toBe("Done");
   });
+
+  it("preserves progress text when a later started event has no status", () => {
+    const events = [
+      event("1", 100, "agent-progress", {
+        agentId: "task-1",
+        statusText: "Reading files",
+      }),
+      event("2", 150, "agent-started", {
+        agentId: "task-1",
+        description: "Inspect settings",
+        agentType: "general",
+      }),
+    ];
+
+    const [task] = extractTasksFromEvents(events);
+    expect(task.description).toBe("Inspect settings");
+    expect(task.statusText).toBe("Reading files");
+  });
 });
 
 describe("extractStepsFromEvents", () => {

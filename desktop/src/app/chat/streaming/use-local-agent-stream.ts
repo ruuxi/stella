@@ -238,12 +238,19 @@ function streamStoreReducer(
       const runRecord = state.runsById[action.runId]
       const runTasks = state.tasksByRunId[action.runId] ?? {}
       const existing = runTasks[action.task.id]
+      const nextDescription =
+        action.task.description === 'Task' && existing?.description
+          ? existing.description
+          : action.task.description
       const nextTask: TaskItem = {
         ...action.task,
+        description: nextDescription,
         anchorTurnId: action.task.anchorTurnId ?? existing?.anchorTurnId,
         startedAtMs: existing?.startedAtMs ?? action.task.startedAtMs,
         statusText:
-          action.task.status === 'running' ? action.task.statusText : undefined,
+          action.task.status === 'running'
+            ? (action.task.statusText ?? existing?.statusText)
+            : undefined,
         reasoningText:
           typeof action.task.reasoningText === 'string'
             ? action.task.reasoningText
