@@ -29,13 +29,22 @@ export function getWorkingIndicatorDisplayStatus({
     }
     const taskText =
       task.status === "running"
-        ? (task.statusText ?? getDisplayableTaskDescription(task.description))
+        ? (getDisplayableTaskDescription(task.description) || task.statusText)
         : task.description;
     if (task.status === "completed") {
       return taskText ? `Done · ${taskText}` : "Done";
     }
     const label = getAgentLabel(task.agentType);
-    return taskText ? `${label} · ${taskText}` : label;
+    if (taskText) {
+      return `${label} · ${taskText}`;
+    }
+    // Task is running but has no usable subtitle yet (e.g. agent-started arrived
+    // before the first agent-progress and the description was generic). Prefer
+    // an orchestrator tool line over a bare "Working" label.
+    if (toolName) {
+      return `${label} · ${computeStatus({ toolName })}`;
+    }
+    return label;
   }
 
   return computeStatus({ toolName, isReasoning });

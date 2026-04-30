@@ -416,6 +416,8 @@ const buildLifecycleEventPayload = (
       return {
         agentId: event.agentId,
         statusText: event.statusText,
+        ...(event.description ? { description: event.description } : {}),
+        ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
       };
   }
 };

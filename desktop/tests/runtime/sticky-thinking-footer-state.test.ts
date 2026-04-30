@@ -24,15 +24,14 @@ const event = (
 const runningTask = (
   id: string,
   startedAtMs: number,
-  statusText: string,
+  description: string,
 ): TaskItem => ({
   id,
-  description: `Task ${id}`,
+  description,
   agentType: "general",
   status: "running",
   startedAtMs,
   lastUpdatedAtMs: startedAtMs,
-  statusText,
 });
 
 describe("getStickyThinkingFooterState", () => {
@@ -59,7 +58,7 @@ describe("getStickyThinkingFooterState", () => {
 
     expect(state.shouldRender).toBe(true);
     expect(state.activeTask?.id).toBe("agent-1");
-    expect(state.activeTask?.statusText).toBe("Using Shell");
+    expect(state.activeTask?.description).toBe("Using Shell");
     expect(state.status).toBeUndefined();
   });
 
@@ -116,7 +115,7 @@ describe("scripted agent/orchestrator footer scenarios", () => {
     expect(state.status).toBeUndefined();
   });
 
-  it("shows spawned agent status while orchestrator text streams", () => {
+  it("shows the spawned agent description while orchestrator text streams", () => {
     const footerTasks = getFooterTasksFromEvents(
       [
         event("1", 100, "agent-started", {
@@ -126,7 +125,7 @@ describe("scripted agent/orchestrator footer scenarios", () => {
         }),
         event("2", 150, "agent-progress", {
           agentId: "agent-1",
-          statusText: "Reading settings files",
+          statusText: "Using read",
         }),
       ],
       { nowMs: 200 },
@@ -139,7 +138,7 @@ describe("scripted agent/orchestrator footer scenarios", () => {
     });
 
     expect(getStickyThinkingFooterDisplayText({ state })).toBe(
-      "Working · Reading settings files",
+      "Working · Inspect settings",
     );
   });
 
