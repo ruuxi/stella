@@ -79,36 +79,75 @@ fn schedule_launcher_update_check(app: tauri::AppHandle) {
         .await;
 
         loop {
-            check_for_launcher_update(&app).await;
+            let _ = check_for_launcher_update(&app, false).await;
             tokio::time::sleep(std::time::Duration::from_secs(LAUNCHER_UPDATE_POLL_SECS)).await;
         }
     });
 }
 
-async fn check_for_launcher_update(app: &tauri::AppHandle) {
-    let Ok(updater) = app.updater() else {
-        return;
-    };
-    let Ok(Some(update)) = updater.check().await else {
-        return;
+pub async fn check_for_launcher_update(
+    app: &tauri::AppHandle,
+    surface_errors: bool,
+) -> Result<bool, String> {
+    let Some(app_state) = app.try_state::<AppState>() else {
+        return Err("Launcher state is not ready.".into());
     };
 
-    let Some(app_state) = app.try_state::<AppState>() else {
-        return;
-    };
-    let mut installer = app_state.installer.lock().await;
-    if installer.launcher_update.available
-        && installer.launcher_update.version.as_deref() == Some(update.version.as_str())
     {
-        return;
+        let mut installer = app_state.installer.lock().await;
+        installer.launcher_update.checking = true;
+        if surface_errors {
+            installer.launcher_update.error = None;
+        }
+        let _ = app.emit(
+            "installer-state-update",
+            serde_json::json!({ "state": &*installer }),
+        );
     }
-    installer.launcher_update.available = true;
-    installer.launcher_update.version = Some(update.version.clone());
-    installer.launcher_update.error = None;
+
+    let result: Result<Option<String>, String> = async {
+        let updater = app.updater().map_err(|e| e.to_string())?;
+        let maybe_update = updater.check().await.map_err(|e| e.to_string())?;
+        Ok(maybe_update.map(|update| update.version.clone()))
+    }
+    .await;
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    let mut installer = app_state.installer.lock().await;
+    installer.launcher_update.checking = false;
+    installer.launcher_update.last_checked_at_ms = now_ms;
+
+    let outcome = match result {
+        Ok(Some(version)) => {
+            installer.launcher_update.available = true;
+            installer.launcher_update.version = Some(version);
+            installer.launcher_update.error = None;
+            Ok(true)
+        }
+        Ok(None) => {
+            installer.launcher_update.available = false;
+            installer.launcher_update.version = None;
+            installer.launcher_update.error = None;
+            Ok(false)
+        }
+        Err(err) => {
+            if surface_errors {
+                installer.launcher_update.error = Some(err.clone());
+            }
+            Err(err)
+        }
+    };
+
     let _ = app.emit(
         "installer-state-update",
         serde_json::json!({ "state": &*installer }),
     );
+
+    outcome
 }
 
 fn main() {
@@ -202,6 +241,7 @@ fn main() {
             commands::set_run_after_install,
             commands::start_install,
             commands::launch_desktop,
+            commands::check_launcher_update,
             commands::apply_launcher_update,
             commands::show_launcher_window,
             commands::stop_desktop,

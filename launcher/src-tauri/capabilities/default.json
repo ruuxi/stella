@@ -6,6 +6,7 @@
     "core:default",
     "core:window:allow-close",
     "dialog:allow-open",
+    "dialog:allow-ask",
     "opener:default"
   ]
 }

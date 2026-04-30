@@ -312,6 +312,11 @@ pub async fn launch_desktop(
 }
 
 #[tauri::command]
+pub async fn check_launcher_update(app: AppHandle) -> Result<bool, String> {
+    crate::check_for_launcher_update(&app, true).await
+}
+
+#[tauri::command]
 pub async fn apply_launcher_update(
     state: State<'_, AppState>,
     app: AppHandle,

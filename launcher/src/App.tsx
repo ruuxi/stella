@@ -8,6 +8,7 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { ask } from "@tauri-apps/plugin-dialog";
 import type { InstallerState, SetupStep } from "./types";
 import stellaLogo from "./stella-logo.svg";
 
@@ -31,6 +32,7 @@ function App() {
   const [installPathDraft, setInstallPathDraft] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
+  const [reinstalling, setReinstalling] = useState(false);
   const [desktopRunning, setDesktopRunning] = useState(false);
   const desktopWasRunningRef = useRef(false);
 
@@ -132,20 +134,50 @@ function App() {
     } catch {}
   }, []);
 
+  const handleCheckLauncherUpdate = useCallback(async () => {
+    try {
+      await invoke("check_launcher_update");
+    } catch {}
+  }, []);
+
+  const handleReinstall = useCallback(async () => {
+    const confirmed = await ask(
+      "This will replace Stella with a fresh copy. Any customizations Stella has made to itself \u2014 mods, skills, and agent-edited code \u2014 will be reset.\n\nYour chats, memories, and settings will be kept.",
+      {
+        title: "Reinstall Stella?",
+        kind: "warning",
+        okLabel: "Reinstall",
+        cancelLabel: "Cancel",
+      },
+    );
+    if (!confirmed) return;
+    setReinstalling(true);
+    try {
+      await invoke("uninstall_stella");
+      await invoke("start_install");
+    } finally {
+      setReinstalling(false);
+    }
+  }, []);
+
   const handleUninstall = useCallback(async () => {
-    if (
-      !window.confirm(
-        `This will remove Stella from:\n\n${state?.installPath ?? ""}\n\nYour state folder will be kept so your data is preserved.\n\nContinue?`,
-      )
-    )
-      return;
+    const confirmed = await ask(
+      "This will remove the Stella app from your computer. Any customizations Stella has made to itself \u2014 mods, skills, and agent-edited code \u2014 will be lost.\n\nYour chats, memories, and settings will be kept on disk in case you reinstall later.",
+      {
+        title: "Uninstall Stella?",
+        kind: "warning",
+        okLabel: "Uninstall",
+        cancelLabel: "Cancel",
+      },
+    );
+    if (!confirmed) return;
     setUninstalling(true);
     try {
       await invoke("uninstall_stella");
     } finally {
       setUninstalling(false);
     }
-  }, [state?.installPath]);
+  }, []);
 
   /* ── Derived ─────────────────────────────────────────────────── */
 
@@ -507,20 +539,51 @@ function App() {
                 type="button"
                 className="link-btn"
                 onClick={() => void handleOpenFolder()}
-                disabled={uninstalling}
+                disabled={uninstalling || reinstalling}
               >
                 Open folder
               </button>
-              {state.installed && !desktopRunning && !state.devMode && (
+              {!state.devMode && !state.launcherUpdate.available && (
                 <button
                   type="button"
-                  className="link-btn link-danger link-btn--with-spinner"
-                  onClick={() => void handleUninstall()}
-                  disabled={uninstalling}
+                  className="link-btn"
+                  onClick={() => void handleCheckLauncherUpdate()}
+                  disabled={
+                    state.launcherUpdate.checking ||
+                    state.launcherUpdate.installing ||
+                    uninstalling ||
+                    reinstalling
+                  }
                 >
-                  {uninstalling && <span className="link-spinner" />}
-                  {uninstalling ? "Uninstalling..." : "Uninstall"}
+                  {state.launcherUpdate.checking
+                    ? "Checking..."
+                    : state.launcherUpdate.lastCheckedAtMs > 0 &&
+                        !state.launcherUpdate.error
+                      ? "Up to date \u00b7 Check again"
+                      : "Check for updates"}
                 </button>
+              )}
+              {state.installed && !desktopRunning && !state.devMode && (
+                <>
+                  <button
+                    type="button"
+                    className="link-btn link-btn--with-spinner"
+                    onClick={() => void handleReinstall()}
+                    disabled={uninstalling || reinstalling}
+                  >
+                    {reinstalling && <span className="link-spinner" />}
+                    {reinstalling ? "Reinstalling..." : "Reinstall"}
+                  </button>
+                  <button
+                    type="button"
+                    className="link-btn link-danger link-btn--with-spinner"
+                    onClick={() => void handleUninstall()}
+                    disabled={uninstalling || reinstalling}
+                  >
+                    {uninstalling && <span className="link-spinner" />}
+                    {uninstalling ? "Uninstalling..." : "Uninstall"}
+                  </button>
+                </>
               )}
             </div>
           </>
