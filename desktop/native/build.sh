@@ -7,28 +7,52 @@ cd "$(dirname "$0")"
 OUTPUT_DIR="out/darwin"
 mkdir -p "$OUTPUT_DIR"
 
+MACOS_MIN_VERSION="${MACOSX_DEPLOYMENT_TARGET:-14.0}"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+build_c_universal() {
+  local output="$1"
+  local source="$2"
+  shift 2
+
+  clang -O2 -target "arm64-apple-macosx$MACOS_MIN_VERSION" -o "$TMP_DIR/$output-arm64" "$source" "$@"
+  clang -O2 -target "x86_64-apple-macosx$MACOS_MIN_VERSION" -o "$TMP_DIR/$output-x64" "$source" "$@"
+  lipo -create -output "$OUTPUT_DIR/$output" "$TMP_DIR/$output-arm64" "$TMP_DIR/$output-x64"
+}
+
+build_swift_universal() {
+  local output="$1"
+  local source="$2"
+  shift 2
+
+  swiftc -O -target "arm64-apple-macosx$MACOS_MIN_VERSION" -o "$TMP_DIR/$output-arm64" "$source" "$@"
+  swiftc -O -target "x86_64-apple-macosx$MACOS_MIN_VERSION" -o "$TMP_DIR/$output-x64" "$source" "$@"
+  lipo -create -output "$OUTPUT_DIR/$output" "$TMP_DIR/$output-arm64" "$TMP_DIR/$output-x64"
+}
+
 echo "Building disclaim-spawn (macOS)..."
-clang -O2 -o "$OUTPUT_DIR/disclaim-spawn" ../scripts/disclaim-spawn.c
+build_c_universal "disclaim-spawn" "../scripts/disclaim-spawn.c"
 echo "Build successful: $OUTPUT_DIR/disclaim-spawn"
 
 echo "Building window_info (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/window_info" src/window_info.swift -framework CoreGraphics -framework AppKit -framework ScreenCaptureKit
+build_swift_universal "window_info" "src/window_info.swift" -framework CoreGraphics -framework AppKit -framework ScreenCaptureKit
 echo "Build successful: $OUTPUT_DIR/window_info"
 
 echo "Building selected_text (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/selected_text" src/selected_text.swift -framework ApplicationServices -framework AppKit -framework Carbon
+build_swift_universal "selected_text" "src/selected_text.swift" -framework ApplicationServices -framework AppKit -framework Carbon
 echo "Build successful: $OUTPUT_DIR/selected_text"
 
 echo "Building screen_permission (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/screen_permission" src/screen_permission.swift -framework CoreGraphics -framework Foundation
+build_swift_universal "screen_permission" "src/screen_permission.swift" -framework CoreGraphics -framework Foundation
 echo "Build successful: $OUTPUT_DIR/screen_permission"
 
 echo "Building window_ocr (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/window_ocr" src/window_ocr.swift -framework Vision -framework AppKit -framework Foundation
+build_swift_universal "window_ocr" "src/window_ocr.swift" -framework Vision -framework AppKit -framework Foundation
 echo "Build successful: $OUTPUT_DIR/window_ocr"
 
 echo "Building desktop_automation (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/desktop_automation" src/desktop_automation.swift \
+build_swift_universal "desktop_automation" "src/desktop_automation.swift" \
   -framework ApplicationServices \
   -framework AppKit \
   -framework Carbon \
@@ -39,7 +63,7 @@ swiftc -O -o "$OUTPUT_DIR/desktop_automation" src/desktop_automation.swift \
 echo "Build successful: $OUTPUT_DIR/desktop_automation"
 
 echo "Building home_apps (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/home_apps" src/home_apps.swift \
+build_swift_universal "home_apps" "src/home_apps.swift" \
   -framework AppKit \
   -framework ApplicationServices \
   -framework CoreGraphics \
@@ -47,7 +71,7 @@ swiftc -O -o "$OUTPUT_DIR/home_apps" src/home_apps.swift \
 echo "Build successful: $OUTPUT_DIR/home_apps"
 
 echo "Building home_capture (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/home_capture" src/home_capture.swift \
+build_swift_universal "home_capture" "src/home_capture.swift" \
   -framework AppKit \
   -framework CoreGraphics \
   -framework Foundation \
@@ -55,7 +79,7 @@ swiftc -O -o "$OUTPUT_DIR/home_capture" src/home_capture.swift \
 echo "Build successful: $OUTPUT_DIR/home_capture"
 
 echo "Building chronicle (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/chronicle" src/chronicle.swift \
+build_swift_universal "chronicle" "src/chronicle.swift" \
   -framework AppKit \
   -framework CoreGraphics \
   -framework Foundation \
