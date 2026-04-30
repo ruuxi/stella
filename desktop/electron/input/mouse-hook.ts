@@ -90,7 +90,7 @@ type MouseHookEvents = {
  * sequence so we don't false-trigger while typing.
  */
 class DoubleTapModifierDetector {
-  private state: 'idle' | 'first-down' | 'first-up' = 'idle'
+  private state: 'idle' | 'first-down' | 'first-up' | 'second-down' = 'idle'
   private firstTapUpAt = 0
 
   constructor(
@@ -111,10 +111,10 @@ class DoubleTapModifierDetector {
   notifyModifierKeydown(now: number) {
     if (this.state === 'first-up') {
       if (now - this.firstTapUpAt <= DOUBLE_TAP_WINDOW_MS) {
-        this.reset()
-        this.fire()
+        this.state = 'second-down'
         return
       }
+      this.reset()
     }
     this.state = 'first-down'
   }
@@ -123,6 +123,9 @@ class DoubleTapModifierDetector {
     if (this.state === 'first-down') {
       this.state = 'first-up'
       this.firstTapUpAt = now
+    } else if (this.state === 'second-down') {
+      this.reset()
+      this.fire()
     } else {
       this.reset()
     }
