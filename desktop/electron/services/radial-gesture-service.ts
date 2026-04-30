@@ -59,12 +59,6 @@ type RadialGestureDeps = {
   isVoiceActive: () => boolean
   updateUiState: (partial: Record<string, unknown>) => void
   /**
-   * Optional handler for the global "double-tap Option/Alt" gesture. Wired
-   * through the same uIOhook lifecycle that powers the radial trigger so
-   * we don't double-start the input hook.
-   */
-  onDoubleTapModifier?: () => void
-  /**
    * Optional handler for global left-mouse-up events. Wired through the
    * same uIOhook lifecycle so the selection watcher doesn't have to start
    * a second hook (which would clash with this one).
@@ -119,6 +113,16 @@ export class RadialGestureService {
     if (pendingChatContext !== null) {
       capture.clearTransientContext()
     }
+  }
+
+  private handleDoubleTapModifier() {
+    const { capture, window: win } = this.deps
+
+    this.startedInCompactMode = win.isCompactMode()
+    this.contextBeforeGesture = capture.getChatContextSnapshot()
+    capture.setRadialContextShouldCommit(false)
+
+    void this.handleSelection('chat')
   }
 
   private async handleSelection(wedge: RadialWedge) {
@@ -287,11 +291,9 @@ export class RadialGestureService {
         this.selectionCommitted = true
         void this.handleSelection(wedge)
       },
-      onDoubleTapModifier: this.deps.onDoubleTapModifier
-        ? () => {
-            this.deps.onDoubleTapModifier?.()
-          }
-        : undefined,
+      onDoubleTapModifier: () => {
+        this.handleDoubleTapModifier()
+      },
       onLeftMouseUp: this.deps.onLeftMouseUp
         ? (event) => {
             this.deps.onLeftMouseUp?.(event)
