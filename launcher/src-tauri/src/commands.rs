@@ -38,7 +38,29 @@ fn is_pid_alive(pid: u32) -> bool {
     {
         unsafe { libc::kill(pid as i32, 0) == 0 }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+
+        // 259 is STILL_ACTIVE / STATUS_PENDING — the value GetExitCodeProcess
+        // returns while the process is still running.
+        const STILL_ACTIVE: u32 = 259;
+
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                return false;
+            }
+            let mut exit_code: u32 = 0;
+            let ok = GetExitCodeProcess(handle, &mut exit_code);
+            CloseHandle(handle);
+            ok != 0 && exit_code == STILL_ACTIVE
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = pid;
         false
@@ -52,7 +74,17 @@ fn kill_pid_tree(pid: u32) {
             libc::kill(-(pid as i32), libc::SIGTERM);
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        let mut cmd = StdCommand::new("taskkill");
+        cmd.args(["/T", "/F", "/PID", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .stdin(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW);
+        let _ = cmd.status();
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = pid;
     }
