@@ -642,7 +642,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       console.debug("[system] shell:openExternal rate limited");
       return;
     }
-    void shell.openExternal(safeUrl);
+    void shell.openExternal(safeUrl).catch((error) => {
+      console.error("[system] failed to open external URL:", error);
+    });
   });
 
   ipcMain.on("shell:showItemInFolder", (event, filePath: string) => {
