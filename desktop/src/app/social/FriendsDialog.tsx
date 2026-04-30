@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   Dialog,
@@ -24,7 +24,11 @@ type StatusMessage = {
   text: string;
 };
 
-export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialogProps) {
+export function FriendsDialog({
+  open,
+  onOpenChange,
+  onStartChat,
+}: FriendsDialogProps) {
   const { profile } = useSocialProfile();
   const {
     friends,
@@ -32,16 +36,19 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
     sendFriendRequest,
     acceptRequest,
     declineRequest,
+    markIncomingFriendRequestsSeen,
     removeFriend,
   } = useSocialFriends();
 
   const [friendCode, setFriendCode] = useState("");
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [sending, setSending] = useState(false);
-  const [pendingChatOwnerId, setPendingChatOwnerId] = useState<string | null>(null);
-  const [pendingActionOwnerId, setPendingActionOwnerId] = useState<string | null>(
+  const [pendingChatOwnerId, setPendingChatOwnerId] = useState<string | null>(
     null,
   );
+  const [pendingActionOwnerId, setPendingActionOwnerId] = useState<
+    string | null
+  >(null);
 
   const handleAddFriend = useCallback(async () => {
     const code = friendCode.trim().toUpperCase();
@@ -94,6 +101,14 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
   }, [profile]);
 
   const { incoming, outgoing } = pendingRequests;
+
+  useEffect(() => {
+    if (!open) return;
+    if (incoming.length === 0) return;
+    void markIncomingFriendRequestsSeen().catch(() => {
+      // Best-effort notification marker; the next open will retry.
+    });
+  }, [incoming.length, markIncomingFriendRequestsSeen, open]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

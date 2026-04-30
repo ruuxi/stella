@@ -21,6 +21,7 @@ import {
 } from "../auth";
 import {
   enforceMutationRateLimit,
+  RATE_HOT_PATH,
   RATE_STANDARD,
   RATE_VERY_EXPENSIVE,
 } from "../lib/rate_limits";
@@ -104,6 +105,48 @@ export const listPendingRequests = query({
         }),
     );
     return entries.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  },
+});
+
+export const getUnseenIncomingFriendRequestCount = query({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const ownerId = await getConnectedUserIdOrNull(ctx);
+    if (!ownerId) {
+      return 0;
+    }
+    const profile = await getSocialProfileByOwnerId(ctx, ownerId);
+    const lastSeenAt = profile?.lastSeenIncomingFriendRequestAt ?? 0;
+    const MAX_PENDING_REQUESTS_PER_SIDE = 200;
+    const incoming = await ctx.db
+      .query("social_relationships")
+      .withIndex("by_addresseeOwnerId_and_status", (q) =>
+        q.eq("addresseeOwnerId", ownerId).eq("status", "pending"),
+      )
+      .take(MAX_PENDING_REQUESTS_PER_SIDE);
+    return incoming.filter((relationship) => relationship.createdAt > lastSeenAt)
+      .length;
+  },
+});
+
+export const markIncomingFriendRequestsSeen = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "social_mark_friend_requests_seen",
+      ownerId,
+      RATE_HOT_PATH,
+    );
+    const profile = await ensureSocialProfileDoc(ctx, ownerId);
+    await ctx.db.patch(profile._id, {
+      lastSeenIncomingFriendRequestAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    return null;
   },
 });
 

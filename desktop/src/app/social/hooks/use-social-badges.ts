@@ -1,5 +1,7 @@
 import { useMemo } from "react";
-import { useSocialFriends } from "./use-social-friends";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/api";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { useSocialRooms, type SocialRoomSummary } from "./use-social-rooms";
 
 function roomHasUnread(room: SocialRoomSummary): boolean {
@@ -15,8 +17,12 @@ function roomHasUnread(room: SocialRoomSummary): boolean {
  * "rooms with at least one new message" — one badge unit per conversation.
  */
 export function useSocialBadges() {
+  const { hasConnectedAccount } = useAuthSessionState();
   const { rooms } = useSocialRooms();
-  const { pendingRequests } = useSocialFriends();
+  const unseenIncomingFriendRequestCount = useQuery(
+    api.social.relationships.getUnseenIncomingFriendRequestCount,
+    hasConnectedAccount ? {} : "skip",
+  ) as number | undefined;
 
   return useMemo(() => {
     // Global Chat is intentionally excluded — it's a public firehose, so
@@ -27,12 +33,12 @@ export function useSocialBadges() {
       if (roomHasUnread(room)) unreadRoomCount += 1;
     }
 
-    const incomingFriendRequestCount = pendingRequests.incoming.length;
+    const incomingFriendRequestCount = unseenIncomingFriendRequestCount ?? 0;
 
     return {
       unreadRoomCount,
       incomingFriendRequestCount,
       totalBadge: unreadRoomCount + incomingFriendRequestCount,
     };
-  }, [rooms, pendingRequests.incoming.length]);
+  }, [rooms, unseenIncomingFriendRequestCount]);
 }

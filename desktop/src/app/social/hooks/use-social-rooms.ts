@@ -57,8 +57,11 @@ export function useSocialRooms() {
   );
 
   const markRead = useCallback(
-    async (roomId: string, messageId: string) => {
-      return await markReadMutation({ roomId, messageId });
+    async (roomId: string, messageId?: string) => {
+      return await markReadMutation({
+        roomId,
+        ...(messageId ? { messageId } : {}),
+      });
     },
     [markReadMutation],
   );

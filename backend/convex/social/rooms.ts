@@ -132,6 +132,7 @@ const createRoomMembership = async (
     ownerId,
     role,
     joinedAt: now,
+    lastReadAt: now,
     updatedAt: now,
   })
 }
