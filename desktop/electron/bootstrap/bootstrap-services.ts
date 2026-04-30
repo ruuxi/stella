@@ -198,18 +198,17 @@ export const createBootstrapServices = (options: {
     isVoiceActive: () => uiStateService.state.isVoiceRtcActive,
     updateUiState: (partial) => uiStateService.update(partial),
     // Double-tap Option (macOS) / Alt (Windows / Linux) toggles the mini
-    // window. Reuse the same close semantics as the radial chat wedge so the
-    // mini dismiss path stays consistent across the keyboard and radial flows.
+    // window. Close targets the mini directly so current full-window focus
+    // cannot accidentally bring the main shell forward.
     onDoubleTapModifier: () => {
       const wm = state.windowManager;
       if (!wm) return;
-      const shouldCloseMini =
-        (wm.isCompactMode() && wm.isWindowFocused()) ||
-        wm.isMiniShowing();
-      if (shouldCloseMini) {
-        wm.minimizeWindow();
+      if (wm.isMiniShowing()) {
+        wm.dismissMiniWindowFromGlobalToggle(false);
       } else {
-        wm.showWindow("mini");
+        uiStateService.update({ mode: "chat" });
+        captureService.broadcastChatContext();
+        showMiniChatTarget();
       }
     },
     // Forward every left-mouse-up to the SelectionWatcher so it can ask the
