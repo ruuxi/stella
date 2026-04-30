@@ -98,13 +98,8 @@ type AuthorizedStellaRequest = {
   requestedModel: string;
   resolvedModel: string;
   managedApi: ManagedProtocol;
-  serverModelConfig: {
-    model: string;
-    managedGatewayProvider?: ManagedGatewayProvider;
-    temperature?: number;
-    maxOutputTokens?: number;
-    providerOptions?: Record<string, Record<string, unknown>>;
-  };
+  serverModelConfig: ResolvedManagedServerModelConfig;
+  fallbackModelConfig?: ResolvedManagedServerModelConfig;
 };
 
 const STELLA_REQUEST_PASSTHROUGH_EXCLUSIONS = new Set([
@@ -200,6 +195,14 @@ type ResolvedStellaModelSelection = {
   requestedModel: string;
   resolvedModel: string;
   config: ModelConfig;
+};
+
+type ResolvedManagedServerModelConfig = {
+  model: string;
+  managedGatewayProvider: ManagedGatewayProvider;
+  temperature?: number;
+  maxOutputTokens?: number;
+  providerOptions?: Record<string, Record<string, unknown>>;
 };
 
 function resolveRequestedStellaModel(
@@ -734,8 +737,24 @@ async function authorizeStellaRequest(
   });
 
   console.log(
-    `[stella-provider] agent=${agentType} | requestedModel=${requestedModel} | resolvedModel=${resolvedModel} | gateway=${managedGatewayProvider} | api=${managedApi}`,
+    `[stella-provider] agent=${agentType} | requestedModel=${requestedModel} | resolvedModel=${resolvedModel} | fallbackModel=${config.fallback ?? "none"} | gateway=${managedGatewayProvider} | api=${managedApi}`,
   );
+
+  const fallbackModelConfig: ResolvedManagedServerModelConfig | undefined =
+    config.fallback
+      ? {
+          model: config.fallback,
+          managedGatewayProvider: resolveManagedGatewayProvider({
+            model: config.fallback,
+            configuredProvider: config.fallbackManagedGatewayProvider,
+          }),
+          temperature: config.temperature,
+          maxOutputTokens: config.maxOutputTokens,
+          providerOptions: config.fallbackProviderOptions as
+            | Record<string, Record<string, unknown>>
+            | undefined,
+        }
+      : undefined;
 
   return {
     ownerId,
@@ -751,6 +770,7 @@ async function authorizeStellaRequest(
       maxOutputTokens: config.maxOutputTokens,
       providerOptions: config.providerOptions as Record<string, Record<string, unknown>> | undefined,
     },
+    fallbackModelConfig,
   };
 }
 
@@ -763,13 +783,8 @@ async function createStreamingRuntimeResponse(args: {
   tokenEstimate: TokenEstimate;
   requestBody: StellaRequestBody;
   managedApi: ManagedProtocol;
-  serverModelConfig: {
-    model: string;
-    managedGatewayProvider?: ManagedGatewayProvider;
-    temperature?: number;
-    maxOutputTokens?: number;
-    providerOptions?: Record<string, Record<string, unknown>>;
-  };
+  serverModelConfig: ResolvedManagedServerModelConfig;
+  fallbackModelConfig?: ResolvedManagedServerModelConfig;
 }): Promise<Response> {
   const {
     request,
@@ -781,6 +796,7 @@ async function createStreamingRuntimeResponse(args: {
     requestBody,
     managedApi,
     serverModelConfig,
+    fallbackModelConfig,
   } = args;
   const origin = request.headers.get("origin");
   const responseHeaders: Record<string, string> = {
@@ -849,6 +865,7 @@ async function createStreamingRuntimeResponse(args: {
 
       const runtimeStream = streamManagedChat({
         config: serverModelConfig,
+        fallbackConfig: fallbackModelConfig,
         context: buildContextFromChatMessages(requestBody.messages, requestBody.tools),
         api: managedApi,
         request: buildManagedRuntimeRequest(requestBody, request.signal),
@@ -943,6 +960,11 @@ async function createStreamingRuntimeResponse(args: {
 
         if (event.type === "done") {
           const usage = usageSummaryFromAssistant(event.message);
+          const executedModel = event.message.model || modelId;
+          const fallbackUsed = executedModel !== modelId;
+          console.log(
+            `[stella-provider] completed agent=${agentType} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
+          );
           sendChunk(controller, {
             id: responseId,
             object: "chat.completion.chunk",
@@ -965,7 +987,7 @@ async function createStreamingRuntimeResponse(args: {
           await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
             ownerId,
             agentType,
-            model: modelId,
+            model: executedModel,
             durationMs: Date.now() - requestStartedAt,
             success: true,
             ...toManagedBillingUsage(event.message, tokenEstimate),
@@ -1179,13 +1201,8 @@ async function createNativeRuntimeResponse(args: {
   context: Context;
   nativeRequest: Record<string, unknown> | null;
   managedApi: ManagedProtocol;
-  serverModelConfig: {
-    model: string;
-    managedGatewayProvider?: ManagedGatewayProvider;
-    temperature?: number;
-    maxOutputTokens?: number;
-    providerOptions?: Record<string, Record<string, unknown>>;
-  };
+  serverModelConfig: ResolvedManagedServerModelConfig;
+  fallbackModelConfig?: ResolvedManagedServerModelConfig;
 }): Promise<Response> {
   const {
     request,
@@ -1198,6 +1215,7 @@ async function createNativeRuntimeResponse(args: {
     nativeRequest,
     managedApi,
     serverModelConfig,
+    fallbackModelConfig,
   } = args;
   const origin = request.headers.get("origin");
   const responseHeaders: Record<string, string> = {
@@ -1263,6 +1281,7 @@ async function createNativeRuntimeResponse(args: {
 
       const runtimeStream = streamManagedChat({
         config: serverModelConfig,
+        fallbackConfig: fallbackModelConfig,
         context,
         api: managedApi,
         request: buildManagedRuntimeRequestFromNativeRequest(nativeRequest, request.signal),
@@ -1280,10 +1299,15 @@ async function createNativeRuntimeResponse(args: {
         }
 
         if (event.type === "done") {
+          const executedModel = event.message.model || modelId;
+          const fallbackUsed = executedModel !== modelId;
+          console.log(
+            `[stella-provider] completed agent=${agentType} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
+          );
           await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
             ownerId,
             agentType,
-            model: modelId,
+            model: executedModel,
             durationMs: Date.now() - requestStartedAt,
             success: true,
             ...toManagedBillingUsage(event.message, tokenEstimate),
@@ -1440,6 +1464,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
     resolvedModel,
     managedApi,
     serverModelConfig,
+    fallbackModelConfig,
   } = authorized;
   const tokenEstimate = estimateRequestTokens(requestJson);
   const isStreaming = requestJson.stream === true;
@@ -1455,6 +1480,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
       requestBody: requestJson,
       managedApi,
       serverModelConfig,
+      fallbackModelConfig,
     });
   }
 
@@ -1462,6 +1488,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
   try {
     const message = await completeManagedChat({
       config: serverModelConfig,
+      fallbackConfig: fallbackModelConfig,
       context: buildContextFromChatMessages(requestJson.messages, requestJson.tools),
       api: managedApi,
       request: buildManagedRuntimeRequest(requestJson, request.signal),
@@ -1471,10 +1498,16 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
       throw new Error(message.errorMessage || "Stella completion failed");
     }
 
+    const executedModel = message.model || resolvedModel;
+    const fallbackUsed = executedModel !== resolvedModel;
+    console.log(
+      `[stella-provider] completed agent=${agentType} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
+    );
+
     await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
       ownerId,
       agentType,
-      model: resolvedModel,
+      model: executedModel,
       durationMs: Date.now() - startedAt,
       success: true,
       ...toManagedBillingUsage(message, tokenEstimate),
@@ -1484,7 +1517,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
       buildChatCompletionResponse({
         id: `chatcmpl_${startedAt}`,
         created: Math.floor(startedAt / 1000),
-        model: resolvedModel,
+        model: executedModel,
         message,
       }),
       200,
@@ -1523,6 +1556,7 @@ export const stellaProviderRuntime = httpAction(async (ctx, request) => {
     resolvedModel,
     managedApi,
     serverModelConfig,
+    fallbackModelConfig,
   } = authorized;
 
   const context = parseNativeContext(requestJson.context);
@@ -1548,6 +1582,7 @@ export const stellaProviderRuntime = httpAction(async (ctx, request) => {
     nativeRequest: asRecord(requestJson.request),
     managedApi,
     serverModelConfig,
+    fallbackModelConfig,
   });
 });
 

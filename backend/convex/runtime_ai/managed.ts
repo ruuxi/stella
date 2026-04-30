@@ -807,25 +807,74 @@ export async function completeManagedChat(args: {
     if (!args.fallbackConfig) {
       throw error;
     }
+    console.warn(
+      `[managed-model] primary model failed, attempting fallback | primary=${args.config.model} | fallback=${args.fallbackConfig.model} | error=${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
     return await execute(args.fallbackConfig);
   }
 }
 
 export function streamManagedChat(args: {
   config: ManagedModelConfig;
+  fallbackConfig?: ManagedModelConfig | null;
   context: Context;
   api?: ManagedProtocol;
   request?: ManagedCompletionRequest;
 }) {
-  const api = resolveManagedProtocol({ api: args.api, config: args.config });
-  return streamSimple(
-    buildManagedModel(args.config, api, args.request?.headers),
-    args.context,
-    buildSimpleOptions({
-      config: args.config,
-      request: args.request,
-    }),
-  );
+  const streamForConfig = (config: ManagedModelConfig) => {
+    const api = resolveManagedProtocol({ api: args.api, config });
+    return streamSimple(
+      buildManagedModel(config, api, args.request?.headers),
+      args.context,
+      buildSimpleOptions({
+        config,
+        request: args.request,
+      }),
+    );
+  };
+
+  const fallbackConfig = args.fallbackConfig ?? undefined;
+  if (!fallbackConfig) {
+    return streamForConfig(args.config);
+  }
+
+  return (async function* () {
+    let emittedOutput = false;
+    try {
+      for await (const event of streamForConfig(args.config)) {
+        if (event.type === "error" && !emittedOutput) {
+          console.warn(
+            `[managed-model] primary model failed before streaming output, attempting fallback | primary=${args.config.model} | fallback=${fallbackConfig.model} | error=${
+              event.error.errorMessage || event.reason
+            }`,
+          );
+          for await (const fallbackEvent of streamForConfig(fallbackConfig)) {
+            yield fallbackEvent;
+          }
+          return;
+        }
+
+        if (event.type !== "error") {
+          emittedOutput = true;
+        }
+        yield event;
+      }
+    } catch (error) {
+      if (emittedOutput) {
+        throw error;
+      }
+      console.warn(
+        `[managed-model] primary model failed before streaming output, attempting fallback | primary=${args.config.model} | fallback=${fallbackConfig.model} | error=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      for await (const fallbackEvent of streamForConfig(fallbackConfig)) {
+        yield fallbackEvent;
+      }
+    }
+  })();
 }
 
 export function assistantText(message: AssistantMessage): string {
