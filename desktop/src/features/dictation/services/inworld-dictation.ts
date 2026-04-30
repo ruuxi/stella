@@ -84,7 +84,7 @@ export function isDictationEnhanceEnabled(): boolean {
 }
 
 export function isLocalDictationEnabled(): boolean {
-  return localStorage.getItem(DICTATION_LOCAL_KEY) === "true";
+  return localStorage.getItem(DICTATION_LOCAL_KEY) !== "false";
 }
 
 export function setDictationEnhancePreference(enabled: boolean): void {
