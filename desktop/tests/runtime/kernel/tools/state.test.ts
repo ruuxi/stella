@@ -99,6 +99,36 @@ describe("state tools", () => {
     });
   });
 
+  it("replaces generic descriptions with prompt context", async () => {
+    let createdRequest: AgentToolRequest | null = null;
+    const ctx = createStateContext("/tmp", {
+      createAgent: async (request) => {
+        createdRequest = request;
+        return { threadId: "thread-1" };
+      },
+      getAgent: async () => null,
+      cancelAgent: async () => ({ canceled: false }),
+    });
+
+    await handleSpawnAgent(
+      ctx,
+      {
+        description: "Task",
+        prompt: "Inspect the working indicator behavior and fix the stale footer text.",
+      },
+      {
+        conversationId: "conversation-1",
+        deviceId: "device-1",
+        requestId: "request-1",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+      },
+    );
+
+    expect(createdRequest?.description).toBe(
+      "Inspect the working indicator behavior and fix the stale footer text.",
+    );
+  });
+
   it("forwards pause_agent to cancelAgent with the pause sentinel reason", async () => {
     const cancelCalls: Array<{ agentId: string; reason: string | undefined }> = [];
     const ctx = createStateContext("/tmp", {

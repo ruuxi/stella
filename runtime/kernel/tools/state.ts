@@ -27,6 +27,30 @@ const toOptionalString = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const isGenericAgentDescription = (value: string): boolean =>
+  /^(task|agent|work|help|do this|follow up)$/i.test(value.trim());
+
+const deriveAgentDescription = (
+  description: string,
+  prompt: string,
+): string => {
+  if (description && !isGenericAgentDescription(description)) {
+    return description;
+  }
+  const firstLine = prompt
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^task\s*:\s*/i, "");
+  if (!firstLine) {
+    return description;
+  }
+  return firstLine.length > 80 ? `${firstLine.slice(0, 77).trimEnd()}...` : firstLine;
+};
+
+const logWorkingIndicatorTrace = (label: string, payload: Record<string, unknown>): void => {
+  process.stderr.write(`${JSON.stringify({ label, ...payload })}\n`);
+};
+
 const buildOtherThreadsResult = (
   threads: Array<Pick<RuntimeThreadRecord, "threadId" | "description" | "lastUsedAt">>,
   currentThreadId: string,
@@ -150,16 +174,24 @@ export const handleSpawnAgent = async (
     };
   }
 
-  const description = toOptionalString(args.description);
-  if (!description) {
-    return { error: "description is required" };
-  }
   const prompt = toOptionalString(args.prompt);
   if (!prompt) {
     return { error: "prompt is required" };
   }
+  const rawDescription = toOptionalString(args.description);
+  if (!rawDescription) {
+    return { error: "description is required" };
+  }
+  const description = deriveAgentDescription(rawDescription, prompt);
 
   if (ctx.agentApi) {
+    logWorkingIndicatorTrace("[stella:working-indicator:spawn_agent]", {
+      conversationId: context.conversationId,
+      rawDescription,
+      description,
+      promptPreview: prompt.slice(0, 160),
+      rootRunId: context.rootRunId,
+    });
     const created = await ctx.agentApi.createAgent({
       conversationId: context.conversationId,
       description,
