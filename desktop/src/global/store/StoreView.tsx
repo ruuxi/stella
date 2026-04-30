@@ -1058,51 +1058,58 @@ function ConnectTab({
         <span className="store-section-title">Integrations</span>
         <span className="store-section-count">{connectors.length}</span>
       </div>
-      <div className="store-grid">
+      <div className="store-connector-list">
         {connectors.map((connector) => {
           const ready = connector.executable === true
           const isWorking = working === connector.marketplaceKey
-          // ConnectTab uses StoreCard but synthesizes a package-shaped object
-          // — connectors don't have iconUrl yet; they fall back to gradient.
-          const synthesized: StorePackageRecord = {
-            packageId: connector.id,
-            displayName: connector.displayName,
-            description:
-              connector.description ??
-              connector.integrationPath ??
-              "Connect this service to Stella.",
-            latestReleaseNumber: 0,
-            createdAt: 0,
-            updatedAt: 0,
-          }
+          const description =
+            connector.description ??
+            connector.integrationPath ??
+            "Connect this service to Stella."
           const interactive = ready && !connector.installed && !isWorking
           const trigger = () => void handleInstall(connector.marketplaceKey)
+          const actionLabel = isWorking
+            ? "Adding..."
+            : connector.installed
+              ? "Connected"
+              : ready
+                ? "Add"
+                : "Soon"
+          const actionVariant = isWorking
+            ? "working"
+            : connector.installed
+              ? "added"
+              : ready
+                ? "subtle"
+                : "added"
           return (
-            <StoreCard
+            <div
               key={connector.id}
-              pkg={synthesized}
-              actionLabel={
-                isWorking
-                  ? "Adding..."
-                  : connector.installed
-                    ? "Connected"
-                    : ready
-                      ? "Add"
-                      : "Soon"
-              }
-              actionVariant={
-                isWorking
-                  ? "working"
-                  : connector.installed
-                    ? "added"
-                    : ready
-                      ? "subtle"
-                      : "added"
-              }
-              actionDisabled={connector.installed || isWorking || !ready}
-              onAction={trigger}
+              className="store-connector-row"
+              data-clickable={interactive ? "true" : undefined}
               onClick={interactive ? trigger : undefined}
-            />
+            >
+              <PackageArtwork
+                name={connector.displayName}
+                className="store-connector-icon"
+                letterClassName="store-connector-icon-letter"
+              />
+              <div className="store-connector-text">
+                <span className="store-connector-name">{connector.displayName}</span>
+                <span className="store-connector-desc">{description}</span>
+              </div>
+              <button
+                className="store-action-btn"
+                data-variant={actionVariant}
+                disabled={connector.installed || isWorking || !ready}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  trigger()
+                }}
+              >
+                {actionLabel}
+              </button>
+            </div>
           )
         })}
       </div>
