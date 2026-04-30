@@ -450,6 +450,7 @@ function selfModHmrControl(): Plugin {
   const suppressedHotUpdatePaths = new Set<string>()
   let suppressedClientMessages = 0
   let clientUpdateReleaseDepth = 0
+  let clientFullReloadRequestedDuringApply = false
   let shellMutationDepth = 0
 
   const isClientUpdatePaused = () =>
@@ -589,6 +590,16 @@ function selfModHmrControl(): Plugin {
     configureServer(server) {
       const sendClientMessage = server.ws.send.bind(server.ws)
       server.ws.send = ((payload: unknown, ...args: unknown[]) => {
+        if (
+          clientUpdateReleaseDepth > 0 &&
+          payload &&
+          typeof payload === 'object' &&
+          (payload as { type?: unknown }).type === 'full-reload'
+        ) {
+          clientFullReloadRequestedDuringApply = true
+          suppressedClientMessages += 1
+          return
+        }
         if (shouldSuppressClientMessage(payload)) {
           suppressedClientMessages += 1
           return
@@ -657,8 +668,13 @@ function selfModHmrControl(): Plugin {
           suppressClientFullReload?: boolean
           forceClientFullReload?: boolean
         },
-      ): Promise<{ appliedPaths: number; reloadedModules: number }> =>
+      ): Promise<{
+        appliedPaths: number
+        reloadedModules: number
+        requiresClientFullReload: boolean
+      }> =>
         withClientUpdateRelease(async () => {
+        clientFullReloadRequestedDuringApply = false
         let reloadedModules = 0
         let appliedPaths = 0
         const suppressClientFullReload =
@@ -705,7 +721,11 @@ function selfModHmrControl(): Plugin {
           )
         }
         if (suppressClientFullReload) {
-          return { appliedPaths, reloadedModules }
+          return {
+            appliedPaths,
+            reloadedModules,
+            requiresClientFullReload: clientFullReloadRequestedDuringApply,
+          }
         }
 
         let reloadFailed = false
@@ -726,7 +746,14 @@ function selfModHmrControl(): Plugin {
         if (forceClientFullReload || reloadFailed) {
           server.ws.send({ type: 'full-reload', path: '*' })
         }
-        return { appliedPaths, reloadedModules }
+        return {
+          appliedPaths,
+          reloadedModules,
+          requiresClientFullReload:
+            forceClientFullReload ||
+            reloadFailed ||
+            clientFullReloadRequestedDuringApply,
+        }
         })
 
       server.middlewares.use(async (req, res, next) => {
@@ -879,6 +906,7 @@ function selfModHmrControl(): Plugin {
             runs: runs.length,
             appliedPaths: result.appliedPaths,
             reloadedModules: result.reloadedModules,
+            requiresClientFullReload: result.requiresClientFullReload,
             inFlightPaths: inFlightPaths.size,
             appliedOverlayPaths: appliedOverlay.size,
           })

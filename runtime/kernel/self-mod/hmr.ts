@@ -84,6 +84,11 @@ export type ApplyOptions = {
   forceClientFullReload?: boolean;
 };
 
+export type HmrApplyResponse = {
+  ok: boolean;
+  requiresClientFullReload?: boolean;
+};
+
 export type RecordWriteOptions = {
   /**
    * Pre-write tracking pins Vite's pre-period snapshot and records ownership,
@@ -156,6 +161,56 @@ const postWithRetry = async (args: {
   }
 
   return false;
+};
+
+const postJsonWithRetry = async <T>(args: {
+  getDevServerUrl: () => string;
+  path: string;
+  maxWaitMs: number;
+  body?: unknown;
+  authToken?: string;
+}): Promise<T | null> => {
+  const startedAt = Date.now();
+  let attempt = 0;
+
+  while (Date.now() - startedAt < args.maxWaitMs) {
+    attempt += 1;
+    const baseUrl = args.getDevServerUrl().replace(/\/+$/, "");
+    const target = `${baseUrl}${args.path}`;
+
+    try {
+      const response = await fetch(target, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(args.authToken
+            ? { "X-Stella-Self-Mod-Hmr-Token": args.authToken }
+            : {}),
+        },
+        body: args.body === undefined ? undefined : JSON.stringify(args.body),
+        signal: withTimeoutSignal(REQUEST_TIMEOUT_MS),
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        return null;
+      }
+
+      if (response.ok) {
+        return (await response.json().catch(() => null)) as T | null;
+      }
+
+      if (response.status === 404) {
+        return null;
+      }
+    } catch {
+      // Vite may be restarting (dependency install / optimize); retry until maxWait.
+    }
+
+    const backoffMs = Math.min(1_500, 250 * attempt);
+    await delay(backoffMs);
+  }
+
+  return null;
 };
 
 const partitionRestartPaths = (paths: string[]): string[] =>
@@ -296,7 +351,7 @@ export type SelfModHmrController = {
   apply: (
     appliedRuns: AppliedRun[],
     options?: ApplyOptions,
-  ) => Promise<boolean>;
+  ) => Promise<HmrApplyResponse>;
   /**
    * Clears Vite-side pins/overlays for an apply batch that failed after its
    * runs were released from the controller. This is intentionally narrower
@@ -398,9 +453,9 @@ export const createSelfModHmrController = (
   const sendApply = async (
     appliedRuns: AppliedRun[],
     applyOptions?: ApplyOptions,
-  ): Promise<boolean> => {
-    if (appliedRuns.length === 0 || !options.enabled) return true;
-    return await postWithRetry({
+  ): Promise<HmrApplyResponse> => {
+    if (appliedRuns.length === 0 || !options.enabled) return { ok: true };
+    const response = await postJsonWithRetry<HmrApplyResponse>({
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/apply`,
       maxWaitMs: APPLY_MAX_WAIT_MS,
@@ -414,6 +469,7 @@ export const createSelfModHmrController = (
       },
       authToken: options.authToken,
     });
+    return response?.ok ? response : { ok: false };
   };
 
   const sendDiscard = async (appliedRuns: AppliedRun[]): Promise<boolean> => {
@@ -577,8 +633,8 @@ export const createSelfModHmrController = (
     },
 
     async apply(appliedRuns, applyOptions) {
-      if (appliedRuns.length === 0) return true;
-      if (!options.enabled) return true;
+      if (appliedRuns.length === 0) return { ok: true };
+      if (!options.enabled) return { ok: true };
       return await sendApply(appliedRuns, applyOptions);
     },
 

@@ -47,7 +47,7 @@ export type HmrTransitionController = {
         suppressClientFullReload?: boolean;
         forceClientFullReload?: boolean;
       },
-    ) => Promise<void>;
+    ) => Promise<{ requiresClientFullReload?: boolean } | void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
   }) => Promise<void>;
@@ -136,7 +136,7 @@ export function createHmrTransitionController(deps: {
         suppressClientFullReload?: boolean;
         forceClientFullReload?: boolean;
       },
-    ) => Promise<void>;
+    ) => Promise<{ requiresClientFullReload?: boolean } | void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
   }): Promise<void> => {
@@ -164,13 +164,19 @@ export function createHmrTransitionController(deps: {
         windowForReload != null &&
         !windowForReload.isDestroyed();
       try {
-        await opts.applyBatch({
+        const applyResult = await opts.applyBatch({
           suppressClientFullReload: canReload,
         });
+        const shouldReload =
+          canReload || applyResult?.requiresClientFullReload === true;
         // Arm before reloading so the did-start-loading listener can never
         // miss the event Chromium emits in response to reloadIgnoringCache.
         const settle = armRendererSettle(windowForReload);
-        if (canReload) {
+        if (
+          shouldReload &&
+          windowForReload != null &&
+          !windowForReload.isDestroyed()
+        ) {
           windowForReload.webContents.reloadIgnoringCache();
         }
         await settle.wait();
@@ -231,11 +237,15 @@ export function createHmrTransitionController(deps: {
           requiresFullReload: opts.requiresFullReload,
         });
 
-        await opts.applyBatch({
+        const applyResult = await opts.applyBatch({
           suppressClientFullReload: opts.requiresFullReload,
         });
 
-        if (opts.requiresFullReload) {
+        const requiresClientFullReload =
+          opts.requiresFullReload ||
+          applyResult?.requiresClientFullReload === true;
+
+        if (requiresClientFullReload) {
           emitState({
             phase: "reloading",
             paused: false,

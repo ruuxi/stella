@@ -149,8 +149,12 @@ export const createHostRunnerHandlers = (
     const canReload =
       requiresFullReload && fullWindow != null && !fullWindow.isDestroyed();
     try {
-      await applyBatch({ suppressClientFullReload: canReload });
-      if (canReload) {
+      const applyResult = await applyBatch({ suppressClientFullReload: canReload });
+      if (
+        (canReload || applyResult?.requiresClientFullReload === true) &&
+        fullWindow != null &&
+        !fullWindow.isDestroyed()
+      ) {
         fullWindow.webContents.reloadIgnoringCache();
       }
     } finally {
