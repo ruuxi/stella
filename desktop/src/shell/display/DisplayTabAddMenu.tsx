@@ -5,7 +5,6 @@
  *   - Chat   → activates the panel chat tab (always available; on home it
  *              renders the activity / files overview).
  *   - Store  → opens the Store side panel tab.
- *   - Ideas  → opens the Ideas tab.
  *   - Trash  → opens the deferred-delete Trash tab.
  *
  * Content tabs (PDF, image, html…) are intentionally excluded — those
@@ -25,9 +24,7 @@ import { DisplayTabIcon } from "./icons";
 import type { DisplayTabKind } from "./types";
 import {
   CHAT_DISPLAY_TAB_ID,
-  IDEAS_DISPLAY_TAB_ID,
   openChatDisplayTab,
-  openIdeasDisplayTab,
   openStoreDisplayTab,
   openTrashDisplayTab,
   STORE_DISPLAY_TAB_ID,
@@ -64,10 +61,6 @@ export const DisplayTabAddMenu = () => {
     openOrActivate(STORE_DISPLAY_TAB_ID, openStoreDisplayTab);
   }, [openOrActivate]);
 
-  const openIdeas = useCallback(() => {
-    openOrActivate(IDEAS_DISPLAY_TAB_ID, openIdeasDisplayTab);
-  }, [openOrActivate]);
-
   const openTrash = useCallback(() => {
     openOrActivate(TRASH_DISPLAY_TAB_ID, openTrashDisplayTab);
   }, [openOrActivate]);
@@ -75,7 +68,6 @@ export const DisplayTabAddMenu = () => {
   const options: AddMenuOption[] = [
     { id: "chat", label: "Chat", kind: "chat", onSelect: openChat },
     { id: "store", label: "Store", kind: "store", onSelect: openStore },
-    { id: "ideas", label: "Ideas", kind: "ideas", onSelect: openIdeas },
     { id: "trash", label: "Trash", kind: "trash", onSelect: openTrash },
   ];
 

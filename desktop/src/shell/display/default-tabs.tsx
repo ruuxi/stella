@@ -2,7 +2,6 @@ import { createElement } from "react";
 import { useMatchRoute } from "@tanstack/react-router";
 import { ChatPanelTab, type ChatPanelOpenRequest } from "@/shell/ChatSidebar";
 import { useChatRuntime } from "@/context/use-chat-runtime";
-import { IdeasTabContent } from "@/app/home/IdeasTabContent";
 import { StoreSidePanel } from "@/global/store/StoreSidePanel";
 import { TrashTabContent } from "./TrashTabContent";
 import { ChatHomeOverview } from "./ChatHomeOverview";
@@ -10,7 +9,6 @@ import { displayTabs } from "./tab-store";
 import type { OpenTabOptions } from "./types";
 
 export const CHAT_DISPLAY_TAB_ID = "chat";
-export const IDEAS_DISPLAY_TAB_ID = "ideas:default";
 export const STORE_DISPLAY_TAB_ID = "store:side-panel";
 export const TRASH_DISPLAY_TAB_ID = "trash:deferred-delete";
 
@@ -80,15 +78,6 @@ export function openChatDisplayTab(
  */
 export function ensureChatDisplayTab(): void {
   openChatDisplayTab(null, { activate: false, openPanel: false });
-}
-
-export function openIdeasDisplayTab(): void {
-  displayTabs.openTab({
-    id: IDEAS_DISPLAY_TAB_ID,
-    kind: "ideas",
-    title: "Ideas",
-    render: () => createElement(IdeasTabContent),
-  });
 }
 
 export function openStoreDisplayTab(): void {

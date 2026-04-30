@@ -159,7 +159,7 @@ function IdeasHomeSection() {
           );
         })}
       </div>
-      <ul className="chat-home-overview__ideas">
+      <ul className="chat-home-overview__ideas chat-home-overview__section-body">
         {selectedCategory.options.map((option) => (
           <li key={option.label}>
             <button
@@ -260,6 +260,7 @@ export function ChatHomeOverview() {
     <div className="chat-home-overview">
       <section className="chat-home-overview__section">
         <h3 className="chat-home-overview__heading">Activity</h3>
+        <div className="chat-home-overview__section-body">
         {tasks.length === 0 ? (
           <p className="chat-home-overview__empty">Nothing in flight.</p>
         ) : (
@@ -291,10 +292,12 @@ export function ChatHomeOverview() {
             })}
           </ul>
         )}
+        </div>
       </section>
 
       <section className="chat-home-overview__section">
         <h3 className="chat-home-overview__heading">Recent files</h3>
+        <div className="chat-home-overview__section-body">
         {files.length === 0 ? (
           <p className="chat-home-overview__empty">
             Files Stella changes will show up here.
@@ -321,6 +324,7 @@ export function ChatHomeOverview() {
             ))}
           </ul>
         )}
+        </div>
       </section>
 
       <IdeasHomeSection />

@@ -6,18 +6,40 @@
    ============================================================ */
 
 .chat-home-overview {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 22px;
   padding: 22px 18px 28px;
   height: 100%;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chat-home-overview__section {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
+}
+
+.chat-home-overview__section-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.chat-home-overview__section-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-home-overview__section-body::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-radius: 3px;
+}
+
+.chat-home-overview__section--ideas {
+  /* Ideas owns its own row in the grid; no auto-margin needed. */
 }
 
 .chat-home-overview__heading {
@@ -38,7 +60,8 @@
 /* --- Activity ------------------------------------------------ */
 
 .chat-home-overview__tasks,
-.chat-home-overview__files {
+.chat-home-overview__files,
+.chat-home-overview__ideas {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -185,4 +208,62 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* --- Ideas --------------------------------------------------- */
+
+.chat-home-overview__idea-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  border-radius: 10px;
+}
+
+.chat-home-overview__idea-tab {
+  min-width: 0;
+  padding: 6px 4px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-weak);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: default;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.chat-home-overview__idea-tab:hover {
+  color: var(--text-base);
+}
+
+.chat-home-overview__idea-tab[aria-selected="true"] {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  color: var(--text-strong);
+}
+
+.chat-home-overview__idea {
+  width: 100%;
+  padding: 7px 10px;
+  margin: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: default;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.chat-home-overview__idea:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-strong);
 }
