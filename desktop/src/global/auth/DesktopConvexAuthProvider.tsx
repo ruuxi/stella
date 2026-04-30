@@ -66,19 +66,23 @@ function useDesktopConvexAuth() {
   const sessionUserId =
     (session.data as { user?: { id?: string } } | null | undefined)?.user?.id ??
     null;
+  const sessionIsAnonymous =
+    (session.data as { user?: { isAnonymous?: boolean | null } } | null | undefined)
+      ?.user?.isAnonymous === true;
 
   useEffect(() => {
     clearCachedToken();
-  }, [sessionUserId]);
+  }, [sessionIsAnonymous, sessionUserId]);
 
   const fetchAccessToken = useCallback(
     async ({ forceRefreshToken = false }: { forceRefreshToken?: boolean } = {}) => {
       return await getConvexToken({ forceRefresh: forceRefreshToken });
     },
-    // Intentionally keyed on sessionUserId so ConvexProviderWithAuth re-calls
-    // setAuth when the signed-in identity changes (e.g. anonymous → real account).
+    // Intentionally keyed on sessionUserId and sessionIsAnonymous so
+    // ConvexProviderWithAuth re-calls setAuth when the signed-in identity
+    // changes, including anonymous → real account links that preserve user.id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionUserId],
+    [sessionIsAnonymous, sessionUserId],
   );
 
   return useMemo(

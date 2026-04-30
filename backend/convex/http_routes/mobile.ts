@@ -1404,17 +1404,12 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           return errorResponse(500, "Failed to send sign-in email.", origin);
         }
 
-        // Clean up after expiry. This is best-effort: the email is already sent,
-        // so cleanup scheduling must not make the send request look like it failed.
-        try {
-          await ctx.scheduler.runAfter(
-            MAGIC_LINK_EXPIRY_MS + 30_000,
-            internal.mobile_auth.cleanupLinkRequest,
-            { requestId },
-          );
-        } catch (error) {
-          console.error("[mobile/auth] Failed to schedule link cleanup:", error);
-        }
+        // Clean up after expiry.
+        await ctx.scheduler.runAfter(
+          MAGIC_LINK_EXPIRY_MS + 30_000,
+          internal.mobile_auth.cleanupLinkRequest,
+          { requestId },
+        );
 
         return jsonResponse({ requestId }, 200, origin);
       }),

@@ -463,6 +463,16 @@ export const requireConnectedUserId = async (
   return identity.tokenIdentifier;
 };
 
+export const getConnectedUserIdOrNull = async (
+  ctx: QueryCtx | MutationCtx,
+) => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity || isAnonymousIdentity(identity)) {
+    return null;
+  }
+  return identity.tokenIdentifier;
+};
+
 export const requireConnectedUserIdAction = async (
   ctx: ActionCtx,
 ) => {

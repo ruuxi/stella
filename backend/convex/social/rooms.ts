@@ -20,7 +20,7 @@ import {
   requireRoomMembership,
 } from './shared'
 import { requireBoundedString } from '../shared_validators'
-import { requireConnectedUserId } from '../auth'
+import { getConnectedUserIdOrNull, requireConnectedUserId } from '../auth'
 import {
   enforceMutationRateLimit,
   RATE_HOT_PATH,
@@ -172,7 +172,10 @@ export const listRooms = query({
   args: {},
   returns: v.array(roomSummaryValidator),
   handler: async (ctx) => {
-    const ownerId = await requireConnectedUserId(ctx)
+    const ownerId = await getConnectedUserIdOrNull(ctx)
+    if (!ownerId) {
+      return []
+    }
     const memberships = await ctx.db
       .query('social_room_members')
       .withIndex('by_ownerId_and_updatedAt', (q) => q.eq('ownerId', ownerId))
@@ -198,7 +201,10 @@ export const getGlobalRoomSummary = query({
   args: {},
   returns: optionalRoomSummaryValidator,
   handler: async (ctx) => {
-    const ownerId = await requireConnectedUserId(ctx)
+    const ownerId = await getConnectedUserIdOrNull(ctx)
+    if (!ownerId) {
+      return null
+    }
     const room = await ctx.db
       .query('social_rooms')
       .withIndex('by_roomKey', (q) => q.eq('roomKey', GLOBAL_ROOM_KEY))

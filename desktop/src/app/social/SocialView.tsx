@@ -81,7 +81,9 @@ export function SocialView({ onSignIn }: SocialViewProps) {
 
   useEffect(() => {
     if (isSignedIn && !profile) {
-      void ensureProfile();
+      void ensureProfile().catch((error) => {
+        console.debug("[social] Skipped profile ensure during auth transition:", error);
+      });
     }
   }, [isSignedIn, profile, ensureProfile]);
 
