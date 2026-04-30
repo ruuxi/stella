@@ -108,6 +108,19 @@ export const store_thread_draft_payload_validator = v.object({
   cancelledAt: v.optional(v.number()),
 });
 
+// Visibility tier for a published add-on.
+//   - `public`   — appears in Discover, search, and the creator page
+//   - `unlisted` — accessible only by direct packageId (share link); hidden
+//                  from Discover, search, and the creator page. Anyone
+//                  with the link can install — there is no per-friend ACL.
+//   - `private`  — owner-only. Public queries return `null` / omit.
+// Treated as `public` when omitted (existing rows + first-publish default).
+export const store_package_visibility_validator = v.union(
+  v.literal("public"),
+  v.literal("unlisted"),
+  v.literal("private"),
+);
+
 // Broad, user-facing categories for browsing. The system never branches
 // on category — it's a discovery hint only. Add-ons can also carry up
 // to 5 free-form `tags` for sub-categorization.
@@ -144,6 +157,9 @@ const storePackageFields = {
   iconUrl: v.optional(v.string()),
   featured: v.optional(v.boolean()),
   featuredAt: v.optional(v.number()),
+  // Visibility tier — see `store_package_visibility_validator`.
+  // Omitted = `public` (existing rows + first-publish default).
+  visibility: v.optional(store_package_visibility_validator),
 };
 
 const storePackageReleaseFields = {
@@ -219,12 +235,24 @@ export const storeSchema = {
     // one based on whether the caller passed a category filter.
     .index("by_updatedAt", ["updatedAt"])
     .index("by_category_and_updatedAt", ["category", "updatedAt"])
+    // Visibility-filtered browse. Discover restricts to `public` rows;
+    // unlisted/private never appear in lists. Two indexes (with and
+    // without category) so the query can pick whichever matches the
+    // active filter.
+    .index("by_visibility_and_updatedAt", ["visibility", "updatedAt"])
+    .index("by_visibility_and_category_and_updatedAt", [
+      "visibility",
+      "category",
+      "updatedAt",
+    ])
     // Public Discover search. `searchText` is a denormalized lowercased
     // join of `displayName + description`, refreshed by
     // `data/store_packages.ts` whenever surface metadata changes.
+    // `visibility` is a filter field so search results can be scoped to
+    // public rows only.
     .searchIndex("search_text", {
       searchField: "searchText",
-      filterFields: ["category"],
+      filterFields: ["category", "visibility"],
     }),
 
   store_package_releases: defineTable(storePackageReleaseFields)

@@ -2,6 +2,7 @@ import {
   action,
   internalMutation,
   internalQuery,
+  mutation,
   query,
   type MutationCtx,
   type QueryCtx,
@@ -18,6 +19,7 @@ import {
   store_package_category_validator,
   store_package_release_validator,
   store_package_validator,
+  store_package_visibility_validator,
   store_publish_result_validator,
   store_release_manifest_validator,
 } from "../schema/store";
@@ -652,6 +654,20 @@ export const listPackages = query({
 const PUBLIC_BROWSE_PAGE_SIZE = 40;
 const PUBLIC_SEARCH_MAX_RESULTS = 60;
 
+// Effective visibility for a row, treating legacy/missing values as
+// `public`. Existing rows predate the `visibility` field — they should
+// continue to appear in Discover until the owner explicitly hides them.
+const effectiveVisibility = (
+  visibility: "public" | "unlisted" | "private" | undefined,
+): "public" | "unlisted" | "private" => visibility ?? "public";
+
+const isDirectLinkAccessible = (
+  visibility: "public" | "unlisted" | "private" | undefined,
+): boolean => {
+  const tier = effectiveVisibility(visibility);
+  return tier === "public" || tier === "unlisted";
+};
+
 export const listPublicPackages = query({
   args: {
     category: v.optional(store_package_category_validator),
@@ -661,6 +677,14 @@ export const listPublicPackages = query({
     page: v.array(store_package_validator),
     isDone: v.boolean(),
     continueCursor: v.string(),
+    splitCursor: v.optional(v.union(v.string(), v.null())),
+    pageStatus: v.optional(
+      v.union(
+        v.literal("SplitRecommended"),
+        v.literal("SplitRequired"),
+        v.null(),
+      ),
+    ),
   }),
   handler: async (ctx, args) => {
     // Cap `numItems` server-side so a misbehaving client can't ask for
@@ -671,6 +695,18 @@ export const listPublicPackages = query({
       Math.max(args.paginationOpts.numItems, 1),
       PUBLIC_BROWSE_PAGE_SIZE,
     );
+    // Discover only ever surfaces `public` rows. Unlisted is share-link
+     // -only; private is owner-only. The backfill helper
+     // `effectiveVisibility` treats legacy rows (no `visibility` field)
+     // as `public`, so existing rows continue to appear here until the
+     // owner explicitly hides them.
+     //
+     // We can't filter on `visibility === undefined` directly via index
+     // (Convex doesn't index missing fields with the same key as a
+     // literal value), so we use the visibility-aware index and
+     // post-filter the page for legacy rows. In practice almost every
+     // row carries `visibility: "public"` after the first save, so the
+     // index narrows correctly.
     const indexed = args.category
       ? ctx.db
           .query("store_packages")
@@ -678,10 +714,16 @@ export const listPublicPackages = query({
             q.eq("category", args.category!),
           )
       : ctx.db.query("store_packages").withIndex("by_updatedAt");
-    return await indexed.order("desc").paginate({
+    const result = await indexed.order("desc").paginate({
       cursor: args.paginationOpts.cursor,
       numItems,
     });
+    return {
+      ...result,
+      page: result.page.filter(
+        (pkg) => effectiveVisibility(pkg.visibility) === "public",
+      ),
+    };
   },
 });
 
@@ -690,7 +732,16 @@ export const getPublicPackage = query({
   returns: v.union(store_package_validator, v.null()),
   handler: async (ctx, args) => {
     const normalizedPackageId = normalizePackageId(args.packageId);
-    return await getPackageByPackageId(ctx, normalizedPackageId);
+    const record = await getPackageByPackageId(ctx, normalizedPackageId);
+    if (!record) return null;
+    // Direct-link reads succeed for `public` and `unlisted` (so the
+    // share-link UX works); `private` only resolves for the owner.
+    if (isDirectLinkAccessible(record.visibility)) return record;
+    const callerId = await ctx.auth.getUserIdentity();
+    if (callerId && record.ownerId === callerId.tokenIdentifier) {
+      return record;
+    }
+    return null;
   },
 });
 
@@ -707,9 +758,17 @@ export const getPublicPackagesByIds = query({
     const records = await Promise.all(
       uniqueIds.map((id) => getPackageByPackageId(ctx, id)),
     );
-    return records.filter(
-      (record): record is NonNullable<typeof record> => record !== null,
-    );
+    const callerIdentity = await ctx.auth.getUserIdentity();
+    const callerOwnerId = callerIdentity?.tokenIdentifier;
+    return records
+      .filter((record): record is NonNullable<typeof record> => record !== null)
+      // Direct-id lookups (e.g. "fetch the packages this user installed")
+      // include unlisted rows; private rows only come back when the
+      // caller owns them.
+      .filter((record) =>
+        isDirectLinkAccessible(record.visibility)
+          || (callerOwnerId !== undefined && record.ownerId === callerOwnerId),
+      );
   },
 });
 
@@ -720,6 +779,10 @@ export const listPublicReleases = query({
     const normalizedPackageId = normalizePackageId(args.packageId);
     const pkg = await getPackageByPackageId(ctx, normalizedPackageId);
     if (!pkg) return [];
+    if (!isDirectLinkAccessible(pkg.visibility)) {
+      const callerId = await ctx.auth.getUserIdentity();
+      if (!callerId || pkg.ownerId !== callerId.tokenIdentifier) return [];
+    }
     return await ctx.db
       .query("store_package_releases")
       .withIndex("by_packageId_and_releaseNumber", (q) =>
@@ -741,6 +804,10 @@ export const getPublicRelease = query({
     const releaseNumber = normalizeReleaseNumber(args.releaseNumber);
     const pkg = await getPackageByPackageId(ctx, normalizedPackageId);
     if (!pkg) return null;
+    if (!isDirectLinkAccessible(pkg.visibility)) {
+      const callerId = await ctx.auth.getUserIdentity();
+      if (!callerId || pkg.ownerId !== callerId.tokenIdentifier) return null;
+    }
     return await getReleaseByPackageIdAndNumber(ctx, normalizedPackageId, releaseNumber);
   },
 });
@@ -754,13 +821,20 @@ export const searchPublicPackages = query({
   handler: async (ctx, args) => {
     const needle = args.query.trim().toLowerCase();
     if (!needle) return [];
-    return await ctx.db
-      .query("store_packages")
-      .withSearchIndex("search_text", (q) => {
-        const base = q.search("searchText", needle);
-        return args.category ? base.eq("category", args.category) : base;
-      })
-      .take(PUBLIC_SEARCH_MAX_RESULTS);
+    // Search restricts to `public` via the `visibility` filter field,
+    // so unlisted/private add-ons never leak into Discover search.
+    // Legacy rows without `visibility` are post-filtered out (they
+    // shouldn't exist after the first edit, but be safe).
+    return (
+      await ctx.db
+        .query("store_packages")
+        .withSearchIndex("search_text", (q) => {
+          let base = q.search("searchText", needle);
+          base = base.eq("visibility", "public");
+          return args.category ? base.eq("category", args.category) : base;
+        })
+        .take(PUBLIC_SEARCH_MAX_RESULTS)
+    ).filter((pkg) => effectiveVisibility(pkg.visibility) === "public");
   },
 });
 
@@ -771,19 +845,119 @@ export const listPackagesByAuthorHandle = query({
     const handle = args.handle.trim().toLowerCase();
     if (!handle) return [];
     // Resolve handle -> ownerId via `user_profiles`, then list owned
-    // packages. Two reads; both indexed.
+    // packages. Two reads; both indexed. The handle page only shows
+    // `public` rows (unlisted/private are off-Discover by design); the
+    // owner sees their full collection via `listMyPackages`.
     const profile = await ctx.db
       .query("user_profiles")
       .withIndex("by_publicHandle", (q) => q.eq("publicHandle", handle))
       .unique();
     if (!profile) return [];
-    return await ctx.db
+    const owned = await ctx.db
       .query("store_packages")
       .withIndex("by_ownerId_and_updatedAt", (q) =>
         q.eq("ownerId", profile.ownerId),
       )
       .order("desc")
       .take(200);
+    return owned.filter(
+      (pkg) => effectiveVisibility(pkg.visibility) === "public",
+    );
+  },
+});
+
+// Owner-scoped variant of `listPackages` that always returns every
+// add-on the caller owns regardless of visibility. Used by the Store
+// "Your add-ons" surface so creators can manage hidden / private rows.
+export const listMyPackages = query({
+  args: {},
+  returns: v.array(store_package_validator),
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
+    return await ctx.db
+      .query("store_packages")
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
+      .order("desc")
+      .take(200);
+  },
+});
+
+// Owner-only: change an add-on's visibility tier. Idempotent — patching
+// to the same value is a no-op and bumps `updatedAt` so the side panel
+// refreshes.
+export const setPackageVisibility = mutation({
+  args: {
+    packageId: v.string(),
+    visibility: store_package_visibility_validator,
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const normalizedPackageId = normalizePackageId(args.packageId);
+    const pkg = await getOwnedPackageByPackageId(
+      ctx,
+      ownerId,
+      normalizedPackageId,
+    );
+    if (!pkg) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Add-on not found",
+      });
+    }
+    if (effectiveVisibility(pkg.visibility) === args.visibility) {
+      return null;
+    }
+    await ctx.db.patch(pkg._id, {
+      visibility: args.visibility,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+// Owner-only: hard-delete an add-on and every release it owns. Stored
+// artifacts are deleted from storage as well so the footprint is
+// reclaimed. There is no tombstone — installed users keep their local
+// copies but won't receive future updates and won't be able to fetch
+// the manifest. We accept that as the explicit cost of "Delete".
+export const deletePackage = mutation({
+  args: { packageId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const normalizedPackageId = normalizePackageId(args.packageId);
+    const pkg = await getOwnedPackageByPackageId(
+      ctx,
+      ownerId,
+      normalizedPackageId,
+    );
+    if (!pkg) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Add-on not found",
+      });
+    }
+    // Releases live in their own table. Walk them all and delete each
+    // along with its stored artifact. `take(1024)` is a safety cap; if
+    // a single add-on ever ships >1k releases the caller should fall
+    // back to a paginated tear-down (no current path needs that).
+    const releases = await ctx.db
+      .query("store_package_releases")
+      .withIndex("by_packageRef_and_releaseNumber", (q) =>
+        q.eq("packageRef", pkg._id),
+      )
+      .take(1024);
+    for (const release of releases) {
+      try {
+        await ctx.storage.delete(release.artifactStorageKey);
+      } catch {
+        // Best-effort: storage may already be GCed.
+      }
+      await ctx.db.delete(release._id);
+    }
+    await ctx.db.delete(pkg._id);
+    return null;
   },
 });
 

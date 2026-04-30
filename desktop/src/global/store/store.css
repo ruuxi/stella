@@ -28,6 +28,7 @@
   /* The shell topbar overlays the workspace area — subtract it so the
      scroll/flex math doesn't push surfaces (esp. the Publish composer)
      below the visible viewport. */
+  position: relative;
   height: calc(100vh - var(--shell-topbar-height, 38px));
   max-height: calc(100vh - var(--shell-topbar-height, 38px));
   overflow-y: auto;
@@ -37,6 +38,14 @@
 }
 
 .store-root::-webkit-scrollbar { display: none; }
+
+.store-upload-btn {
+  position: sticky;
+  top: 14px;
+  float: right;
+  z-index: 8;
+  margin: 14px 20px 0 0;
+}
 
 .store-scroll {
   padding: 28px 32px 48px;
@@ -1889,4 +1898,451 @@
 .store-creator-count {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+/* ── Store card share + owner controls ───────────────────────────── */
+
+.store-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.store-card-visibility-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  color: var(--text-weak);
+}
+.store-card-visibility-badge[data-tier="private"] {
+  background: color-mix(in oklch, var(--destructive, oklch(0.6 0.2 25)) 12%, transparent);
+  color: var(--destructive, oklch(0.6 0.2 25));
+}
+
+.store-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+  transition: background 0.15s, color 0.15s, transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+  flex-shrink: 0;
+}
+.store-icon-btn:hover {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  color: var(--text-strong);
+}
+.store-icon-btn:active {
+  transform: scale(0.92);
+}
+.store-icon-btn--lg {
+  width: 36px;
+  height: 36px;
+}
+
+/* Radix dropdown menu portal styling for the owner kebab. */
+.store-card-menu {
+  min-width: 220px;
+  padding: 6px;
+  border-radius: var(--radius-md, 10px);
+  background: var(--background, white);
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  box-shadow: 0 6px 24px color-mix(in oklch, black 18%, transparent);
+  font-size: 13px;
+  color: var(--text-strong);
+  z-index: 1000;
+}
+.store-card-menu-label {
+  padding: 6px 8px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-weaker);
+}
+.store-card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 26px;
+  border-radius: var(--radius-sm, 6px);
+  cursor: default;
+  outline: none;
+  position: relative;
+}
+.store-card-menu-item:hover,
+.store-card-menu-item[data-highlighted] {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+.store-card-menu-item [data-slot="dropdown-menu-item-indicator"] {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--interactive, oklch(0.62 0.2 250));
+}
+.store-card-menu-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.store-card-menu-item-title {
+  font-size: 13px;
+  color: var(--text-strong);
+}
+.store-card-menu-item-sub {
+  font-size: 11px;
+  color: var(--text-weaker);
+}
+.store-card-menu-item--danger {
+  color: var(--destructive, oklch(0.6 0.2 25));
+  padding-left: 8px;
+}
+.store-card-menu-item--danger:hover,
+.store-card-menu-item--danger[data-highlighted] {
+  background: color-mix(in oklch, var(--destructive, oklch(0.6 0.2 25)) 10%, transparent);
+}
+.store-card-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+/* ── Share dialog ────────────────────────────────────────────────── */
+
+.share-addon-dialog {
+  max-width: 420px;
+}
+.share-addon-private-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+}
+.share-addon-private-banner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+  flex-shrink: 0;
+}
+.share-addon-private-banner-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.share-addon-private-banner-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.share-addon-private-banner-sub {
+  font-size: 11.5px;
+  color: var(--text-weak);
+  line-height: 1.45;
+}
+
+.share-addon-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.share-addon-link {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 11.5px;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.share-addon-friends {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.share-addon-friends-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.share-addon-friends-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weaker);
+}
+.share-addon-empty {
+  padding: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-weaker);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-radius: var(--radius-md, 8px);
+}
+.share-addon-friend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.share-addon-friend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--radius-md, 8px);
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: default;
+  transition: background 0.15s;
+}
+.share-addon-friend-row:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+.share-addon-friend-row[data-selected] {
+  background: color-mix(in oklch, var(--interactive, oklch(0.62 0.2 250)) 12%, transparent);
+}
+.share-addon-friend-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-strong);
+}
+.share-addon-friend-check {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--interactive, oklch(0.62 0.2 250));
+}
+.share-addon-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* ── Embedded share card (rendered inside a social chat bubble) ────
+ *
+ * Visual language matches the credential / share dialogs: glass bg,
+ * border-weak, restrained typography, rounded corners. The card sits
+ * inside a chat bubble whose padding/background we strip so the embed
+ * IS the message — the bubble just provides positioning and the
+ * sender-time eyebrow above it. */
+
+.social-message-bubble[data-embed="addon-share"] {
+  padding: 0;
+  background: transparent;
+  border: none;
+  max-width: 380px;
+  width: 100%;
+}
+
+.addon-share-card {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  width: 100%;
+  padding: 14px;
+  border-radius: var(--radius-lg, 14px);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+  text-align: left;
+  cursor: default;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.18s ease;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  color: inherit;
+}
+.addon-share-card:hover {
+  border-color: color-mix(in oklch, var(--foreground) 18%, var(--border-weak));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px color-mix(in oklch, black 10%, transparent);
+}
+.addon-share-card:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.addon-share-card[data-loading] {
+  cursor: progress;
+  opacity: 0.7;
+}
+.addon-share-card[data-missing] {
+  opacity: 0.75;
+  cursor: default;
+}
+.addon-share-card[data-missing]:hover {
+  transform: none;
+  border-color: var(--border-weak);
+  box-shadow: none;
+}
+
+/* Artwork mirrors the dialog's circular-ish hero icon: 52px tile,
+ * generous radius, soft inner background that lets either a real icon
+ * or a single-letter fallback feel like one shape. */
+.addon-share-card-art {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg, 12px);
+  flex-shrink: 0;
+  object-fit: cover;
+  background: color-mix(in oklch, var(--foreground) 6%, var(--popover));
+}
+.addon-share-card-art--letter,
+.addon-share-card-art--missing {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 26px;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--text-strong, var(--foreground));
+  letter-spacing: -0.02em;
+}
+
+.addon-share-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  /* Distribute name/desc/meta evenly down the card so the byline
+     bottoms align with the artwork. */
+  justify-content: space-between;
+  padding: 1px 0;
+}
+
+/* Small uppercase eyebrow — same shape as `.share-addon-friends-header`
+ * uppercase labels and the dialog's "Add-on" hero affordance. Keeps
+ * the embed clearly branded as a Stella add-on, not a generic link. */
+.addon-share-card-eyebrow {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-foreground);
+  margin-bottom: 1px;
+}
+
+.addon-share-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong, var(--foreground));
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+.addon-share-card-desc {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+  margin-top: 2px;
+}
+.addon-share-card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  gap: 8px;
+}
+.addon-share-card-handle {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-weak, var(--muted-foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.addon-share-card-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-strong, var(--foreground));
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.addon-share-card:hover .addon-share-card-cta {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+/* Loading skeleton — same height as the resolved card so the chat
+ * doesn't reflow when the query lands. */
+.addon-share-card-line {
+  height: 11px;
+  border-radius: var(--radius-sm, 4px);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+.addon-share-card-line--name {
+  width: 60%;
+  margin-bottom: 6px;
+}
+.addon-share-card-line--desc {
+  width: 92%;
+  height: 9px;
+  margin-bottom: 4px;
+}
+
+/* Self-bubble subtle accent: when the user shared the link themselves
+ * (their own bubble), warm the embed border slightly so the message
+ * still reads as "from me" without breaking the card's neutral tone. */
+.social-message-bubble[data-embed="addon-share"][data-role="self"]
+  .addon-share-card {
+  border-color: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 22%,
+    var(--border-weak)
+  );
 }
