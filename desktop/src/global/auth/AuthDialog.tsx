@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   Dialog,
@@ -19,7 +19,6 @@ interface AuthDialogProps {
 
 export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
   const { hasConnectedAccount } = useAuthSessionState();
-  const [resetVersion, setResetVersion] = useState(0);
 
   useEffect(() => {
     if (hasConnectedAccount && open) {
@@ -27,15 +26,8 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
     }
   }, [hasConnectedAccount, open, onOpenChange]);
 
-  const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen) {
-      setResetVersion((current) => current + 1);
-    }
-    onOpenChange(newOpen);
-  };
-
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent fit className="auth-dialog-content">
         <VisuallyHidden asChild>
           <DialogTitle>Welcome to Stella</DialogTitle>
@@ -54,7 +46,6 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
             </p>
           </div>
           <MagicLinkAuthFlow
-            key={resetVersion}
             className="auth-dialog-flow"
             hideEmailLabel
             inputVariant="normal"
