@@ -63,7 +63,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlGMDRFRkJCMjY0Q0U4MzUKUldRMTZFd211KzhFbnorV1BVc1l0TUNOdHN6MGNrdzRnQkkwL0ZQVmc4RWdQaWFaVzlidFRrN3MK",
       "endpoints": [
-        "https://pub-58708621bfa94e3bb92de37cde354c0d.r2.dev/launcher/stable/latest.json"
+        "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/launcher/stable/latest.json"
       ],
       "windows": {
         "installMode": "passive"

@@ -17,7 +17,7 @@ const RELEASE_MANIFEST: &str = "stella-release.json";
 const LAUNCH_SCRIPT_WIN: &str = "launch.cmd";
 const LAUNCH_SCRIPT_UNIX: &str = "launch.sh";
 const ENV_FILE_NAME: &str = ".env.local";
-const ESTIMATED_INSTALL_BYTES: u64 = 512 * 1024 * 1024; // 512 MB
+const ESTIMATED_INSTALL_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GB
 const DEFAULT_ENV_FILE_CONTENTS: &str = "\
 VITE_CONVEX_URL=https://benevolent-minnow-586.convex.cloud\n\
 VITE_CONVEX_SITE_URL=https://cloud.stella.sh\n\
@@ -26,7 +26,7 @@ VITE_TWITCH_EMOTE_TWITCH_ID=40934651\n";
 
 const GITHUB_REPO: &str = "ruuxi/stella";
 const DEFAULT_DESKTOP_RELEASE_MANIFEST_URL: &str =
-    "https://pub-58708621bfa94e3bb92de37cde354c0d.r2.dev/desktop/current.json";
+    "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/desktop/current.json";
 const DEFAULT_EMOTE_RELEASE_MANIFEST_URL: &str =
     "https://pub-58708621bfa94e3bb92de37cde354c0d.r2.dev/emotes/current.json";
 const EMOTE_INSTALL_STATE_FILE: &str = "stella-emotes-install.json";
@@ -197,16 +197,23 @@ fn is_state_only_install_dir(path: &Path) -> bool {
         let Ok(entry) = entry else {
             return false;
         };
-        if entry.file_name() != "state" {
-            return false;
-        }
+        let name = entry.file_name();
         let Ok(file_type) = entry.file_type() else {
             return false;
         };
-        if !file_type.is_dir() {
-            return false;
+        if name == "state" {
+            if !file_type.is_dir() {
+                return false;
+            }
+            saw_state = true;
+            continue;
         }
-        saw_state = true;
+        // Launcher-owned debug artifact left behind by previous installs;
+        // safe to allow alongside state.
+        if file_type.is_file() && name == "stella-install.log" {
+            continue;
+        }
+        return false;
     }
     saw_state
 }
