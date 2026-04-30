@@ -126,14 +126,15 @@ export function useFullShellChat({
     sendMessageRef.current = sendMessage
   }, [sendMessage])
 
-  const markHomeSessionInteraction = useCallback(() => {
+  const enterChatSurfaceForInteraction = useCallback(() => {
     setHasInteractedWithChatThisSession(true)
-    setIsHomeDismissed(false)
+    setIsHomeDismissed(true)
+    writePersistedChatHomeSurface('chat')
   }, [])
 
   const sendContextlessMessage = useCallback(
     (text: string, metadata?: MessageMetadata) => {
-      markHomeSessionInteraction()
+      enterChatSurfaceForInteraction()
       void sendMessageRef.current({
         text,
         selectedText: null,
@@ -142,7 +143,7 @@ export function useFullShellChat({
         metadata,
       })
     },
-    [markHomeSessionInteraction],
+    [enterChatSurfaceForInteraction],
   )
 
   const sendAgentInputMessage = useCallback(
@@ -152,7 +153,7 @@ export function useFullShellChat({
         sendContextlessMessage(detail.text, metadata)
         return
       }
-      markHomeSessionInteraction()
+      enterChatSurfaceForInteraction()
       void window.electronAPI.agent
         .sendInput({
           conversationId: activeConversationId,
@@ -169,7 +170,7 @@ export function useFullShellChat({
           sendContextlessMessage(detail.text, metadata)
         })
     },
-    [activeConversationId, markHomeSessionInteraction, sendContextlessMessage],
+    [activeConversationId, enterChatSurfaceForInteraction, sendContextlessMessage],
   )
 
   const sendMessageWithContext = useCallback(
@@ -178,7 +179,7 @@ export function useFullShellChat({
       chatCtx?: import('@/shared/types/electron').ChatContext | null,
       selectedTextCtx?: string | null,
     ) => {
-      markHomeSessionInteraction()
+      enterChatSurfaceForInteraction()
       void sendMessageRef.current({
         text,
         selectedText: selectedTextCtx ?? null,
@@ -186,7 +187,7 @@ export function useFullShellChat({
         onClear: NO_OP,
       })
     },
-    [markHomeSessionInteraction],
+    [enterChatSurfaceForInteraction],
   )
 
   const hasMessages = events.length > 0
@@ -213,7 +214,9 @@ export function useFullShellChat({
     const hadConversation = Boolean(prevConversationIdRef.current)
     prevConversationIdRef.current = activeConversationId
     if (hadConversation) {
-      setIsHomeDismissed(false)
+      queueMicrotask(() => {
+        setIsHomeDismissed(false)
+      })
     }
   }, [activeConversationId])
 
@@ -295,7 +298,7 @@ export function useFullShellChat({
     if (showHomeContent) {
       setComposerFocusRequestId((id) => id + 1)
     }
-    markHomeSessionInteraction()
+    enterChatSurfaceForInteraction()
     resetIdleTimer()
     void sendMessage({
       text: message,
@@ -309,7 +312,7 @@ export function useFullShellChat({
     })
   }, [
     chatContext,
-    markHomeSessionInteraction,
+    enterChatSurfaceForInteraction,
     message,
     resetIdleTimer,
     selectedText,
