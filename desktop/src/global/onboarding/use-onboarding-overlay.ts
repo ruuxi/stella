@@ -136,10 +136,14 @@ export function useOnboardingOverlay() {
   }, []);
 
   const handleCompleteOnboarding = useCallback(() => {
+    if (exitTimerRef.current) return;
+
     setOnboardingExiting(true);
     exitTimerRef.current = setTimeout(() => {
       setSplitMode(false);
       completeOnboarding();
+      setOnboardingExiting(false);
+      exitTimerRef.current = null;
     }, 600);
   }, [completeOnboarding]);
 

@@ -129,6 +129,7 @@ export const FullShell = () => {
   const startupReady = runtimeAuthReady && runtimeStatus === "ready";
   const appReady = onboarding.onboardingDone && (hasEnteredApp || startupReady);
   const needsOnboarding = !onboarding.onboardingDone;
+  const showPostOnboardingStartupGate = onboarding.onboardingDone && !appReady;
   const isPreparingStartup =
     runtimeStatus === "preparing" ||
     (!runtimeAuthReady && authBootstrapStatus !== "failed");
@@ -333,7 +334,7 @@ export const FullShell = () => {
             <RouterProvider router={router} />
             <AskStellaSelectionChip />
           </PageSidebarProvider>
-        ) : needsOnboarding ? (
+        ) : needsOnboarding || showPostOnboardingStartupGate ? (
           <div
             className="onboarding-layout"
             data-split={onboarding.splitMode || undefined}
