@@ -20,20 +20,6 @@ const AUTO_REPAIR_SIGNATURE_KEY = "stella:auto-repair:last-signature";
 // eager chunk anyway), and the cost of missing the event is high.
 function App() {
   useEffect(() => {
-    const launch = document.getElementById("stella-launch");
-    if (!launch) return;
-
-    const frame = window.requestAnimationFrame(() => {
-      launch.dataset.exiting = "true";
-      window.setTimeout(() => {
-        launch.remove();
-      }, 260);
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
     const timer = window.setTimeout(() => {
       window.sessionStorage.removeItem(AUTO_REPAIR_SIGNATURE_KEY);
     }, 20_000);
