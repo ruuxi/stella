@@ -205,7 +205,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     switch (event.type) {
       case AGENT_STREAM_EVENT_TYPES.AGENT_STARTED:
         base.status = "running";
-        base.statusText = event.statusText;
+        base.statusText = event.statusText ?? current?.statusText;
         base.reasoningText = "";
         base.result = undefined;
         base.error = undefined;
@@ -223,7 +223,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       }
       case AGENT_STREAM_EVENT_TYPES.AGENT_PROGRESS:
         base.status = "running";
-        base.statusText = event.statusText;
+        base.statusText = event.statusText ?? current?.statusText;
         base.result = undefined;
         base.error = undefined;
         break;
@@ -249,6 +249,17 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
     runTasks.set(event.agentId, base);
     tasksByRunId.set(runId, runTasks);
+    console.log(
+      JSON.stringify({
+        label: "[stella:working-indicator:ipc-task-snapshot]",
+        type: event.type,
+        runId,
+        agentId: event.agentId,
+        description: base.description,
+        status: base.status,
+        statusText: base.statusText,
+      }),
+    );
   };
 
   const emitAgentEvent = (

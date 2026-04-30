@@ -36,7 +36,7 @@ export const createAgentTools = (
       properties: {
         description: {
           type: "string",
-          description: "Short summary shown in the task list.",
+          description: "One short, user-friendly sentence summarizing what this work is about.",
         },
         prompt: {
           type: "string",

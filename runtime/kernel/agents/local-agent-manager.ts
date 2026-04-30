@@ -326,6 +326,10 @@ export const AGENT_SHUTDOWN_CANCEL_REASON = "Canceled because Stella closed or r
 // otherwise replace the user-facing reply with an empty silence.
 export const AGENT_PAUSE_CANCEL_REASON = "Paused by orchestrator.";
 
+const logWorkingIndicatorTrace = (label: string, payload: Record<string, unknown>): void => {
+  process.stderr.write(`${JSON.stringify({ label, ...payload })}\n`);
+};
+
 export class LocalAgentManager implements AgentToolApi {
   private readonly defaultMaxConcurrent: number;
   private readonly opts: LocalAgentManagerOpts;
@@ -530,6 +534,13 @@ export class LocalAgentManager implements AgentToolApi {
         parentAgentId: task.parentAgentId,
         ...(startStatusText ? { statusText: startStatusText } : {}),
       });
+      logWorkingIndicatorTrace("[stella:working-indicator:agent-started]", {
+        threadId: task.threadId,
+        conversationId: task.conversationId,
+        rootRunId: task.rootRunId,
+        description: task.description,
+        statusText: startStatusText,
+      });
       void this.executeTask(task)
         .catch(() => undefined)
         .finally(() => {
@@ -629,6 +640,13 @@ export class LocalAgentManager implements AgentToolApi {
             rootRunId: task.rootRunId,
             agentId: task.threadId,
             agentType: task.agentType,
+            statusText: `Using ${ev.toolName}`,
+          });
+          logWorkingIndicatorTrace("[stella:working-indicator:agent-progress]", {
+            threadId: task.threadId,
+            conversationId: task.conversationId,
+            rootRunId: task.rootRunId,
+            description: task.description,
             statusText: `Using ${ev.toolName}`,
           });
         },
@@ -798,6 +816,14 @@ export class LocalAgentManager implements AgentToolApi {
       restartRequested: false,
       terminalEventEmitted: false,
     };
+    logWorkingIndicatorTrace("[stella:working-indicator:create-agent]", {
+      threadId,
+      conversationId: request.conversationId,
+      rootRunId: request.rootRunId,
+      description: request.description,
+      agentType: request.agentType,
+      parentAgentId: request.parentAgentId,
+    });
 
     // Create cloud record in background (non-blocking)
     // Store the promise so completion can await it before syncing status.

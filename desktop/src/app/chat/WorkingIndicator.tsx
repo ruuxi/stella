@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useUiState } from "@/context/ui-state";
 import { useWindowFocus } from "@/shared/hooks/use-window-focus";
 import { useWindowType } from "@/shared/hooks/use-window-type";
@@ -45,6 +45,26 @@ export function WorkingIndicator({
     tasks,
     isReasoning,
   });
+  const taskDebug = useMemo(
+    () =>
+      tasks?.map((task) => ({
+        id: task.id,
+        description: task.description,
+        status: task.status,
+        statusText: task.statusText,
+      })) ?? [],
+    [tasks],
+  );
+
+  useEffect(() => {
+    console.debug("[stella:working-indicator:display]", {
+      displayStatus,
+      status,
+      toolName,
+      isReasoning,
+      tasks: taskDebug,
+    });
+  }, [displayStatus, isReasoning, status, taskDebug, toolName]);
 
   return (
     <div className={cn("working-indicator", className)}>

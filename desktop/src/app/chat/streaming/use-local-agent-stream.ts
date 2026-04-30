@@ -870,6 +870,14 @@ export function useLocalAgentStream({
           if (!runId || !event.agentId) {
             return
           }
+          console.debug('[stella:working-indicator:event]', {
+            type: event.type,
+            runId,
+            agentId: event.agentId,
+            description: event.description,
+            statusText: event.statusText,
+            rootRunId: event.rootRunId,
+          })
 
           // Drop late progress/reasoning events for tasks that already
           // reached a terminal state. Only a fresh AGENT_STARTED may revive
