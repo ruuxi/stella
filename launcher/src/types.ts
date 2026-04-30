@@ -1,6 +1,7 @@
 export type SetupStepId =
   | "runtime"
   | "prepare"
+  | "parakeet"
   | "payload"
   | "deps"
   | "env"
