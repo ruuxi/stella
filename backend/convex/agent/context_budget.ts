@@ -50,6 +50,7 @@ const AUTO_COMPACT_THRESHOLD_PCT = parsePercent(
 );
 
 const MODEL_CONTEXT_WINDOW_HINTS: Record<string, number> = {
+  "anthropic/claude-opus-4.7": 200_000,
   "anthropic/claude-opus-4.6": 200_000,
   "anthropic/claude-sonnet-4": 200_000,
   "openai/gpt-5.3-codex": 400_000,
