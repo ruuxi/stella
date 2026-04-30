@@ -219,7 +219,7 @@ fn is_state_only_install_dir(path: &Path) -> bool {
 
 pub fn is_uninstallable_install_path(install_path: &str) -> bool {
     let path = Path::new(install_path);
-    path.is_dir() && looks_like_stella_install_dir(path)
+    path.is_dir() && (looks_like_stella_install_dir(path) || is_state_only_install_dir(path))
 }
 
 fn manifest_of(d: &str) -> PathBuf {
@@ -937,13 +937,7 @@ async fn run_bun_install_with_progress(
                 } else {
                     format!("Bun: {latest_line}")
                 };
-                set_step_progress(
-                    state,
-                    app,
-                    &SetupStepId::Payload,
-                    detail,
-                    Some(progress),
-                );
+                set_step_progress(state, app, &SetupStepId::Payload, detail, Some(progress));
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
             Err(err) => break Err(err),
@@ -2087,9 +2081,11 @@ pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {
 pub async fn uninstall(state: &mut InstallerState) -> Result<(), String> {
     if path_exists_str(&state.install_path).await {
         if !is_uninstallable_install_path(&state.install_path) {
-            return Err(
-                "Refusing to remove a folder that does not look like a Stella install.".into(),
-            );
+            let msg =
+                "Refusing to remove a folder that does not look like a Stella install.".to_string();
+            state.phase = InstallerPhase::Error;
+            state.error_message = Some(msg.clone());
+            return Err(msg);
         }
         remove_install_files_preserving_state(&state.install_path).await?;
     }
@@ -2098,6 +2094,7 @@ pub async fn uninstall(state: &mut InstallerState) -> Result<(), String> {
 
     state.installed = false;
     state.phase = InstallerPhase::Ready;
+    state.error_message = None;
     state.steps.clear();
     state.warning_message = None;
     sync_step_list(state);
@@ -2194,6 +2191,15 @@ mod tests {
         assert!(!is_uninstallable_install_path(&dir.path.to_string_lossy()));
 
         write_install_shape(&dir.path);
+        assert!(is_uninstallable_install_path(&dir.path.to_string_lossy()));
+    }
+
+    #[test]
+    fn uninstallable_install_path_allows_state_only_stella_dirs() {
+        let dir = TestDir::new("uninstallable-state-only");
+        fs::create_dir_all(dir.path.join("state")).expect("create state dir");
+        fs::write(dir.path.join("state").join("stella.sqlite"), "db").expect("write state file");
+
         assert!(is_uninstallable_install_path(&dir.path.to_string_lossy()));
     }
 
