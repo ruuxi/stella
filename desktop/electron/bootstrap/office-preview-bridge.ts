@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import type {
   OfficePreviewFormat,
   OfficePreviewSnapshot,
@@ -23,6 +25,7 @@ const PREVIEW_ROOT_DIRNAME = "office-previews";
 const SESSION_MANIFEST_NAME = "session.json";
 const SESSION_HTML_NAME = "preview.html";
 const POLL_INTERVAL_MS = 1_000;
+const execFileAsync = promisify(execFile);
 
 const isPreviewStatus = (value: unknown): value is OfficePreviewStatus =>
   value === "starting" ||
@@ -59,7 +62,10 @@ const readSnapshotFromSessionDir = async (
 
     let html = "";
     try {
-      html = await fs.readFile(path.join(sessionDir, SESSION_HTML_NAME), "utf-8");
+      html = await fs.readFile(
+        path.join(sessionDir, SESSION_HTML_NAME),
+        "utf-8",
+      );
     } catch {
       html = "";
     }
@@ -92,7 +98,9 @@ export const listOfficePreviewSnapshots = async (
   const snapshots = await Promise.all(
     entries
       .filter((entry) => entry.isDirectory())
-      .map((entry) => readSnapshotFromSessionDir(path.join(previewRoot, entry.name))),
+      .map((entry) =>
+        readSnapshotFromSessionDir(path.join(previewRoot, entry.name)),
+      ),
   );
 
   return snapshots
@@ -100,7 +108,94 @@ export const listOfficePreviewSnapshots = async (
     .sort((left, right) => left.updatedAt - right.updatedAt);
 };
 
-export const startOfficePreviewBridge = (context: BootstrapContext): (() => void) => {
+const waitForProcessExit = async (pid: number, timeoutMs = 2_500) => {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      process.kill(pid, 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } catch {
+      return;
+    }
+  }
+};
+
+const stopPreviewProcess = async (pid: number) => {
+  if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) {
+    return;
+  }
+
+  try {
+    if (process.platform === "win32") {
+      await execFileAsync("taskkill", ["/pid", String(pid), "/T", "/F"], {
+        windowsHide: true,
+      });
+      return;
+    }
+
+    try {
+      process.kill(-pid, "SIGTERM");
+    } catch {
+      process.kill(pid, "SIGTERM");
+    }
+
+    await waitForProcessExit(pid);
+
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      process.kill(pid, "SIGKILL");
+    }
+  } catch {
+    // Best-effort preview cleanup.
+  }
+};
+
+const findPreviewProcessIds = async (sessionId: string): Promise<number[]> => {
+  if (!sessionId.trim() || process.platform === "win32") {
+    return [];
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      "pgrep",
+      ["-f", `__run-preview-session.*--session ${sessionId}`],
+      { windowsHide: true },
+    );
+    return stdout
+      .split(/\s+/)
+      .map((value) => Number(value))
+      .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
+  } catch {
+    return [];
+  }
+};
+
+export const stopOfficePreviewSessions = async (stellaRoot: string) => {
+  const snapshots = await listOfficePreviewSnapshots(stellaRoot).catch(
+    () => [],
+  );
+  const activeSnapshots = snapshots.filter(
+    (snapshot) => snapshot.status === "starting" || snapshot.status === "ready",
+  );
+  const pidGroups = await Promise.all(
+    activeSnapshots.map((snapshot) =>
+      findPreviewProcessIds(snapshot.sessionId),
+    ),
+  );
+  const pids = [...new Set(pidGroups.flat())];
+  await Promise.allSettled(pids.map(stopPreviewProcess));
+};
+
+export const startOfficePreviewBridge = (
+  context: BootstrapContext,
+): (() => void) => {
   const stellaRoot = context.state.stellaRoot;
   if (!stellaRoot) {
     return () => {};

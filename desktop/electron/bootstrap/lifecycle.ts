@@ -16,6 +16,8 @@ export const initializeBootstrapSingleInstance = (
 };
 
 export const registerBootstrapLifecycle = (context: BootstrapContext) => {
+  let quitAfterCleanup = false;
+
   const handleFatalStartupFailure = async (error: unknown) => {
     const detail =
       error instanceof Error
@@ -33,7 +35,10 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
         title: "Stella",
         message: "Stella could not finish starting.",
         detail:
-          `Startup failed before the app UI could load.\n\n${detail}`.slice(0, 12_000),
+          `Startup failed before the app UI could load.\n\n${detail}`.slice(
+            0,
+            12_000,
+          ),
       });
 
       if (result.response === 0) {
@@ -75,7 +80,8 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
     context.state.windowManager?.onActivate();
   });
 
-  app.whenReady()
+  app
+    .whenReady()
     .then(async () => {
       if (app.isPackaged) {
         process.env.STELLA_APP_RESOURCES_PATH = process.resourcesPath;
@@ -95,12 +101,19 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
     app.quit();
   });
 
-  app.on("before-quit", () => {
-    context.state.isQuitting = true;
-    void context.state.processRuntime.runPhase("before-quit");
-  });
+  app.on("before-quit", (event) => {
+    if (quitAfterCleanup) {
+      return;
+    }
 
-  app.on("will-quit", () => {
-    void context.state.processRuntime.runPhase("will-quit");
+    event.preventDefault();
+    context.state.isQuitting = true;
+
+    void (async () => {
+      await context.state.processRuntime.runPhase("before-quit");
+      await context.state.processRuntime.runPhase("will-quit");
+      quitAfterCleanup = true;
+      app.exit(0);
+    })();
   });
 };
