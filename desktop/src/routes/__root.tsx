@@ -48,7 +48,6 @@ import {
   consumeRequestSignInAfterOnboarding,
   dispatchClosePanel,
   dispatchOpenWorkspacePanel,
-  dispatchOpenPanelChat,
 } from "@/shared/lib/stella-orb-chat";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import {
