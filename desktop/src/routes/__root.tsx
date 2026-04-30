@@ -239,12 +239,9 @@ function RootChrome() {
     );
   }, []);
 
-  // When the user starts a "new app" flow from the sidebar, the prompt goes
-  // into the workspace panel chat. The main chat column would
-  // otherwise still show the home overlay (suggestions / categories), which
-  // distracts from the workspace-creation conversation. Pre-router this was
-  // achieved by switching the active view to a stub "app" view; we now
-  // achieve the same by dismissing the home overlay when on `/chat`.
+  // When the user starts a "new app" flow from home, keep them on the full
+  // chat surface instead of opening the display panel's chat tab. Everywhere
+  // else, the side-panel chat remains the active surface for the flow.
   const handleNewAppAskStella = useCallback(() => {
     startTransition(() => {
       setPendingAskStellaRequest({
@@ -290,23 +287,33 @@ function RootChrome() {
 
   const isContextMenuPanelOpen = panelOpen;
 
-  // Forward pending ask-Stella requests into the panel chat.
+  // Forward pending ask-Stella requests into the appropriate chat surface.
   // We deliberately clear the queued request from this effect — the state
   // here is acting as a one-shot mailbox, not derived state. The cascade is
   // bounded (one render to null), so the lint rule is suppressed here.
   useEffect(() => {
     if (!pendingAskStellaRequest) return;
 
-    dispatchStellaSendMessage({
-      text: pendingAskStellaRequest.text,
-      uiVisibility: "hidden",
-      triggerKind: WORKSPACE_CREATION_TRIGGER_KIND,
-      triggerSource: "sidebar",
-    });
-    openChatPanel();
+    dispatchStellaSendMessage(
+      {
+        text: pendingAskStellaRequest.text,
+        uiVisibility: "hidden",
+        triggerKind: WORKSPACE_CREATION_TRIGGER_KIND,
+        triggerSource: "sidebar",
+      },
+      { openPanel: !isOnChatRoute },
+    );
+    if (!isOnChatRoute) {
+      openChatPanel();
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-shot consumer (see comment above).
     handlePendingAskStellaHandled(pendingAskStellaRequest.id);
-  }, [handlePendingAskStellaHandled, openChatPanel, pendingAskStellaRequest]);
+  }, [
+    handlePendingAskStellaHandled,
+    isOnChatRoute,
+    openChatPanel,
+    pendingAskStellaRequest,
+  ]);
 
   // Push payloads into the workspace panel.
   //
