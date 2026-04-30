@@ -122,9 +122,11 @@ fn main() {
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open_item, &separator, &quit_item])?;
 
-            TrayIconBuilder::new()
-                .menu(&menu)
-                .tooltip("Stella")
+            let mut tray_builder = TrayIconBuilder::new().menu(&menu).tooltip("Stella");
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            }
+            tray_builder
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "open" => {
                         commands::show_main_window(app);
