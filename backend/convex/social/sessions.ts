@@ -478,19 +478,49 @@ export const createSession = mutation({
       });
     }
 
-    const existing = room.stellaSessionId
-      ? await ctx.db.get(room.stellaSessionId)
-      : await resolveActiveRoomSession(ctx, room._id);
-    if (existing && existing.status !== "ended") {
-      return existing;
-    }
-
     const hostDeviceId = args.hostDeviceId.trim();
     if (!hostDeviceId) {
       throw new ConvexError({
         code: "INVALID_ARGUMENT",
         message: "hostDeviceId is required.",
       });
+    }
+
+    const existing = room.stellaSessionId
+      ? await ctx.db.get(room.stellaSessionId)
+      : await resolveActiveRoomSession(ctx, room._id);
+    if (existing && existing.status !== "ended") {
+      if (
+        existing.hostOwnerId === ownerId &&
+        existing.hostDeviceId !== hostDeviceId
+      ) {
+        const now = Date.now();
+        await ctx.db.patch(existing._id, {
+          hostDeviceId,
+          updatedAt: now,
+        });
+        const staleClaimedTurns = await ctx.db
+          .query("stella_session_turns")
+          .withIndex("by_sessionId_and_status_and_createdAt", (q) =>
+            q.eq("sessionId", existing._id).eq("status", "claimed"),
+          )
+          .take(MAX_SESSION_TURNS_COLLECT);
+        await Promise.all(
+          staleClaimedTurns
+            .filter((turn) => turn.claimedByDeviceId !== hostDeviceId)
+            .map((turn) =>
+              ctx.db.patch(turn._id, {
+                status: "queued",
+                claimedByDeviceId: undefined,
+                claimedAt: undefined,
+                updatedAt: now,
+              }),
+            ),
+        );
+        const updated = await ctx.db.get(existing._id);
+        return updated ?? existing;
+      }
+      return existing;
     }
 
     const workspaceSlug = sanitizeWorkspaceSlug(args.workspaceSlug);

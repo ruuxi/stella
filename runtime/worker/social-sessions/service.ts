@@ -36,6 +36,7 @@ type RemoteSessionSummary = {
     _id: string;
     hostOwnerId: string;
     hostDeviceId: string;
+    workspaceSlug: string;
     workspaceFolderName: string;
     conversationId: string;
     status: "active" | "paused" | "ended";
@@ -215,6 +216,8 @@ export class SocialSessionService {
   private readonly previewManager: SocialPreviewServerManager;
   /** Sessions for which we have already pushed the display tab open command. */
   private displayedSessions = new Set<string>();
+  /** Host-owned sessions already submitted for same-owner device reattachment. */
+  private reattachingHostSessions = new Set<string>();
 
   constructor(private readonly deps: SocialSessionServiceDeps) {
     this.previewManager = new SocialPreviewServerManager({
@@ -457,6 +460,7 @@ export class SocialSessionService {
     this.processingTurnId = null;
     this.templateInitializedSessions.clear();
     this.displayedSessions.clear();
+    this.reattachingHostSessions.clear();
     void this.previewManager.shutdown().catch(() => undefined);
     this.clearSuspension();
     this.disposeClient();
@@ -468,6 +472,7 @@ export class SocialSessionService {
     this.activeSessions.clear();
     this.templateInitializedSessions.clear();
     this.displayedSessions.clear();
+    this.reattachingHostSessions.clear();
     void this.previewManager.shutdown().catch(() => undefined);
     this.sessionsUnsubscribe?.();
     this.sessionsUnsubscribe = null;
@@ -533,6 +538,22 @@ export class SocialSessionService {
         );
       await fs.mkdir(localFolderPath, { recursive: true });
       const role = toSessionRole(summary);
+      if (
+        role === "host" &&
+        deviceId &&
+        summary.session.hostDeviceId !== deviceId &&
+        !this.reattachingHostSessions.has(summary.session._id)
+      ) {
+        this.reattachingHostSessions.add(summary.session._id);
+        void this.createSession({
+          roomId: summary.room._id,
+          workspaceLabel:
+            summary.session.workspaceFolderName || summary.session.workspaceSlug,
+        }).catch((error) => {
+          this.reattachingHostSessions.delete(summary.session._id);
+          this.handleSyncError(error);
+        });
+      }
       const isActiveHostForSession =
         role === "host" &&
         Boolean(deviceId) &&
