@@ -16,8 +16,9 @@
  * not by closing/reopening the tab — selection and panel state never
  * change just because the user navigates.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
+import { useTaskProgressSummaries } from "@/app/chat/hooks/use-task-progress-summaries";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
@@ -67,6 +68,44 @@ const taskLineFor = (task: TaskItem): string => {
   }
   return task.description;
 };
+
+type ProgressSummary = { id: string; text: string; createdAt: number };
+
+/**
+ * Sub-list rendered under a running task. Each entry is a 3-6 word phrase
+ * the cheap summarizer returned for the agent's most recent activity.
+ * Auto-scrolls to the newest entry, hides its scrollbar, and fades the
+ * top/bottom edges once the list overflows.
+ */
+function TaskProgressFeed({
+  summaries,
+  isRunning,
+}: {
+  summaries: ReadonlyArray<ProgressSummary>;
+  isRunning: boolean;
+}) {
+  const scrollRef = useRef<HTMLOListElement | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [summaries.length]);
+
+  return (
+    <ol
+      ref={scrollRef}
+      className={`chat-home-overview__task-feed${
+        isRunning ? "" : " chat-home-overview__task-feed--idle"
+      }`}
+    >
+      {summaries.map((summary) => (
+        <li key={summary.id} className="chat-home-overview__task-feed-item">
+          {summary.text}
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 const taskBadgeFor = (task: TaskItem): string => {
   switch (task.status) {
@@ -142,6 +181,8 @@ export function ChatHomeOverview() {
       .slice(0, MAX_FILES);
   }, [events]);
 
+  const summariesByAgent = useTaskProgressSummaries({ liveTasks, events });
+
   const handleOpenFile = (entry: FileEntry) => {
     displayTabs.openTab(payloadToTabSpec(entry.payload));
   };
@@ -154,20 +195,31 @@ export function ChatHomeOverview() {
           <p className="chat-home-overview__empty">Nothing in flight.</p>
         ) : (
           <ul className="chat-home-overview__tasks">
-            {tasks.map((task) => (
-              <li
-                key={task.id}
-                className="chat-home-overview__task"
-                data-status={task.status}
-              >
-                <span className="chat-home-overview__task-text">
-                  {taskLineFor(task)}
-                </span>
-                <span className="chat-home-overview__task-status">
-                  {taskBadgeFor(task)}
-                </span>
-              </li>
-            ))}
+            {tasks.map((task) => {
+              const summaries = summariesByAgent.get(task.id) ?? [];
+              return (
+                <li
+                  key={task.id}
+                  className="chat-home-overview__task"
+                  data-status={task.status}
+                >
+                  <div className="chat-home-overview__task-row">
+                    <span className="chat-home-overview__task-text">
+                      {taskLineFor(task)}
+                    </span>
+                    <span className="chat-home-overview__task-status">
+                      {taskBadgeFor(task)}
+                    </span>
+                  </div>
+                  {summaries.length > 0 && (
+                    <TaskProgressFeed
+                      summaries={summaries}
+                      isRunning={task.status === "running"}
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

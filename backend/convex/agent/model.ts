@@ -300,6 +300,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   store_thread: "sota",
   store_security_review: "sota",
   store_image_safety_review: "media",
+  task_summary: "social_moderation",
 
   // Memory pipeline (mirrors split: cheap extract / strong consolidate).
   // Stage 1 thread "extraction" is implicit today (General's final response is
