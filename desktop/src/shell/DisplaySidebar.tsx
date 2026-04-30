@@ -176,6 +176,11 @@ export const DisplaySidebar = forwardRef<
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
       aside?.classList.add("display-sidebar--resizing");
+      // Lets the topbar (which lives in a separate React tree above the
+      // panel) drop its open/close transition for the duration of the
+      // drag — otherwise the centered store tabs and right-aligned tab
+      // strip visibly lag the pointer.
+      document.body.dataset.displayResizing = "true";
 
       const onMove = (ev: PointerEvent) => {
         // Panel sits on the right edge, so dragging left increases width.
@@ -198,6 +203,7 @@ export const DisplaySidebar = forwardRef<
         document.body.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
         aside?.classList.remove("display-sidebar--resizing");
+        delete document.body.dataset.displayResizing;
       };
 
       window.addEventListener("pointermove", onMove);
