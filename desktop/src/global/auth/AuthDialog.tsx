@@ -55,7 +55,7 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
           </div>
           <MagicLinkAuthFlow
             key={resetVersion}
-            mode="inline"
+            className="auth-dialog-flow"
             hideEmailLabel
             inputVariant="normal"
             emailPlaceholder="you@example.com"
@@ -67,18 +67,12 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
             buttonSize="large"
             submitLabel="Continue"
             sendingLabel="Sending..."
+            resendLabel="Resend email"
+            extrasClassName="auth-dialog-extras"
+            extrasInnerClassName="auth-dialog-extras-inner"
             sentClassName="auth-dialog-sent"
-            sentMessage={
-              <>
-                <span className="auth-dialog-sent-title">Check your inbox</span>
-                <span className="auth-dialog-sent-body">
-                  We sent you a sign-in link. Open it on this device to finish
-                  signing in.
-                </span>
-              </>
-            }
-            retryClassName="pill-btn auth-dialog-retry"
-            retryLabel="Use a different email"
+            sentMessage="We sent a sign-in link. Open it on this device to finish."
+            openInboxClassName="pill-btn pill-btn--primary pill-btn--lg auth-dialog-open-inbox"
             errorClassName="auth-dialog-error"
           />
         </DialogBody>
