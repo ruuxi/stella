@@ -441,6 +441,17 @@ export class WindowManager {
     }
   }
 
+  dismissMiniWindowFromGlobalToggle(_animate: boolean) {
+    const miniWindow = this.getMiniWindow()
+    if (!miniWindow || miniWindow.isDestroyed()) return
+
+    if (process.platform === 'darwin' && this.getFocusedShellWindow() === null) {
+      this.miniShouldRestoreExternalApp = true
+    }
+
+    this.hideMiniWindow(_animate)
+  }
+
   private cancelMiniIdleDestroy() {
     if (!this.miniIdleDestroyTimer) {
       return
