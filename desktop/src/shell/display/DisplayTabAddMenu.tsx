@@ -4,7 +4,7 @@
  *
  *   - Chat   → activates the panel chat tab (always available; on home it
  *              renders the activity / files overview).
- *   - Store  → navigates to `/store`.
+ *   - Store  → opens the Store side panel tab.
  *   - Ideas  → opens the Ideas tab.
  *   - Trash  → opens the deferred-delete Trash tab.
  *
@@ -14,7 +14,6 @@
 
 import { Plus } from "lucide-react";
 import { useCallback, useMemo } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +28,9 @@ import {
   IDEAS_DISPLAY_TAB_ID,
   openChatDisplayTab,
   openIdeasDisplayTab,
+  openStoreDisplayTab,
   openTrashDisplayTab,
+  STORE_DISPLAY_TAB_ID,
   TRASH_DISPLAY_TAB_ID,
 } from "./default-tabs";
 
@@ -41,7 +42,6 @@ type AddMenuOption = {
 };
 
 export const DisplayTabAddMenu = () => {
-  const navigate = useNavigate();
   const { tabs } = useDisplayTabs();
   const knownIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
 
@@ -61,8 +61,8 @@ export const DisplayTabAddMenu = () => {
   }, [openOrActivate]);
 
   const openStore = useCallback(() => {
-    void navigate({ to: "/store", search: { tab: "discover" } });
-  }, [navigate]);
+    openOrActivate(STORE_DISPLAY_TAB_ID, openStoreDisplayTab);
+  }, [openOrActivate]);
 
   const openIdeas = useCallback(() => {
     openOrActivate(IDEAS_DISPLAY_TAB_ID, openIdeasDisplayTab);
