@@ -198,7 +198,7 @@ export const createComputerTools = (
     {
       name: "computer_click",
       description:
-        "Click an element of the target app. Strongly prefer element_index (a native accessibility click on a numbered element from the latest get_app_state) — it works reliably while the target app stays in the background. Use x/y only as a last resort, when the visible UI you need is not in the accessibility tree at all. Required: app.",
+        "Click an element of the target app. Both forms work while the target app stays in the background. Use element_index when the visible UI is exposed in the accessibility tree from the latest get_app_state — that's the most precise. Use x/y (screenshot pixel coordinates) when the element you need is visible in the screenshot but not addressable via element_index, which is common for web-view-backed apps (Spotify, Slack, Discord, Notion, Linear). Required: app.",
       parameters: {
         type: "object",
         properties: {
@@ -206,22 +206,22 @@ export const createComputerTools = (
           element_index: {
             type: "string",
             description:
-              "Numeric ID of the element to click, taken from the most recent get_app_state output. This is the preferred form; it dispatches an Accessibility press on the element and works while the app is in the background. To activate something (play a song, open a folder, submit a form), look for a verb-named button such as 'Play <name>', 'Open <name>', 'Submit', 'Send' before falling back to a coordinate click. Provide either element_index or x/y, not both.",
+              "Numeric ID of the element to click, taken from the most recent get_app_state output. Preferred when the element exists in the AX tree — it's labeled, deterministic, and resilient to layout shifts. Provide either element_index or x/y, not both.",
           },
           x: {
             type: "number",
             description:
-              "X pixel coordinate inside the most recent screenshot. Use only when nothing in the accessibility tree corresponds to what you need to click. Coordinate clicks (especially click_count >= 2) are not reliably accepted by web-view-backed apps such as Spotify, Slack, Discord, and Notion while those apps are in the background — prefer an element_index click on a labeled action button instead.",
+              "X pixel coordinate inside the most recent screenshot. Use this when the visible element you want is not in the accessibility tree (which is common for the main content area of web-view apps). A single x/y click works in the background; pair it with y. Provide either element_index or x/y, not both.",
           },
           y: {
             type: "number",
             description:
-              "Y pixel coordinate inside the most recent screenshot. Same caveats as x.",
+              "Y pixel coordinate inside the most recent screenshot. Pair with x.",
           },
           click_count: {
             type: "integer",
             description:
-              "Number of clicks (1 = single click, 2 = double click, ...). Default 1. Do not use click_count >= 2 with x/y to activate things in web-view apps (Spotify rows, Slack list items, Discord channels, etc.) — synthesized double-clicks to a backgrounded webview are silently dropped. Find a verb-named button and click it once via element_index instead.",
+              "Number of clicks (1 = single click, 2 = double click, ...). Default 1. Avoid click_count >= 2 against web-view apps (Spotify song rows, Slack list items, Discord channels, etc.) while they are in the background — synthesized double-clicks via x/y are silently dropped by those UIs. Look for a single-click affordance (play button, expand chevron) instead.",
           },
           mouse_button: {
             type: "string",
