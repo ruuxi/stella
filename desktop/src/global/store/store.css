@@ -1751,6 +1751,17 @@
   padding: 0;
 }
 
+.display-sidebar__rich--store > * {
+  flex: 0 0 auto;
+  min-height: initial;
+}
+
+.display-sidebar__rich--store > .store-side-panel-list,
+.display-sidebar__rich--store > .store-side-panel-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .store-side-panel-header {
   display: flex;
   align-items: center;
