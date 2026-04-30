@@ -45,6 +45,7 @@ import {
   createSelfModHmrController,
   type ApplyOptions,
   type ApplyResult,
+  type HmrApplyResponse,
   type SelfModHmrController,
 } from "../kernel/self-mod/hmr.js";
 import { StoreModService } from "../kernel/self-mod/store-mod-service.js";
@@ -650,12 +651,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         // the apply directly, but only release runtime-reload pauses after
         // Vite confirms it accepted the overlay update.
         if (pendingApplyBatches.has(transitionId)) {
-          const applied = await selfModHmrController
+          const applyResponse = await selfModHmrController
             .apply(applyResult.appliedRuns, {
               forceClientFullReload: requiresFullReload,
             })
-            .catch(() => false);
-          if (!applied) {
+            .catch(() => ({ ok: false }));
+          if (!applyResponse.ok) {
             console.warn(
               "[self-mod-hmr] Direct apply failed; discarding Vite self-mod state before releasing runtime reload pause.",
             );
@@ -1930,12 +1931,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         return { ok: false, reason: "unknown-transition" as const };
       }
       const controller = state.selfModHmrController;
-      const applied = controller
+      const applyResponse: HmrApplyResponse = controller
         ? await controller
             .apply(pending.applyResult.appliedRuns, payload?.options)
-            .catch(() => false)
-        : false;
-      if (!applied) {
+            .catch(() => ({ ok: false }))
+        : { ok: false };
+      if (!applyResponse.ok) {
         console.warn(
           "[self-mod-hmr] Apply failed; discarding Vite self-mod state before releasing runtime reload pause.",
         );
@@ -1957,7 +1958,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       for (const runId of pending.applyResult.restartRelevantRunIds) {
         selfModRunRootIds.delete(runId);
       }
-      return { ok: applied };
+      return {
+        ok: true,
+        requiresClientFullReload: applyResponse.requiresClientFullReload === true,
+      };
     },
   );
 

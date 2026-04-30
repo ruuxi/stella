@@ -141,7 +141,7 @@ export type RuntimeHostHandlers = {
         suppressClientFullReload?: boolean;
         forceClientFullReload?: boolean;
       },
-    ) => Promise<void>;
+    ) => Promise<{ requiresClientFullReload?: boolean } | void>;
     reportState?: (state: SelfModHmrState) => Promise<void> | void;
   }) => Promise<void> | void;
 };
@@ -1829,7 +1829,11 @@ export class StellaRuntimeClient {
           : runIds,
         requiresFullReload: Boolean(payload.requiresFullReload),
         applyBatch: async (options) => {
-          const result = await this.requestWorker<{ ok?: boolean; reason?: string }>(
+          const result = await this.requestWorker<{
+            ok?: boolean;
+            reason?: string;
+            requiresClientFullReload?: boolean;
+          }>(
             METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR,
             {
               transitionId: payload.transitionId,
@@ -1843,6 +1847,10 @@ export class StellaRuntimeClient {
               `Self-mod HMR apply failed${result.reason ? `: ${result.reason}` : ""}`,
             );
           }
+          return {
+            requiresClientFullReload:
+              result?.requiresClientFullReload === true,
+          };
         },
         reportState: async (state) => {
           const stateRunIds = Array.isArray(payload.stateRunIds)
