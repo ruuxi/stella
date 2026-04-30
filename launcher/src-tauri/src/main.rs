@@ -15,6 +15,11 @@ use tauri::{
     tray::TrayIconBuilder,
     Manager,
 };
+use tauri::Emitter;
+use tauri_plugin_updater::UpdaterExt;
+
+const LAUNCHER_UPDATE_INITIAL_DELAY_SECS: u64 = 5;
+const LAUNCHER_UPDATE_POLL_SECS: u64 = 6 * 60 * 60;
 use tokio::sync::Mutex;
 
 fn cli_dev_path_override() -> Option<String> {
@@ -62,6 +67,50 @@ fn dev_path_override() -> Option<String> {
     Some(repo_root.to_string_lossy().to_string())
 }
 
+fn schedule_launcher_update_check(app: tauri::AppHandle) {
+    if cfg!(debug_assertions) {
+        return;
+    }
+
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(
+            LAUNCHER_UPDATE_INITIAL_DELAY_SECS,
+        ))
+        .await;
+
+        loop {
+            check_for_launcher_update(&app).await;
+            tokio::time::sleep(std::time::Duration::from_secs(LAUNCHER_UPDATE_POLL_SECS)).await;
+        }
+    });
+}
+
+async fn check_for_launcher_update(app: &tauri::AppHandle) {
+    let Ok(updater) = app.updater() else {
+        return;
+    };
+    let Ok(Some(update)) = updater.check().await else {
+        return;
+    };
+
+    let Some(app_state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let mut installer = app_state.installer.lock().await;
+    if installer.launcher_update.available
+        && installer.launcher_update.version.as_deref() == Some(update.version.as_str())
+    {
+        return;
+    }
+    installer.launcher_update.available = true;
+    installer.launcher_update.version = Some(update.version.clone());
+    installer.launcher_update.error = None;
+    let _ = app.emit(
+        "installer-state-update",
+        serde_json::json!({ "state": &*installer }),
+    );
+}
+
 fn main() {
     if bootstrap::maybe_handle_uninstall() {
         return;
@@ -84,6 +133,8 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             // Paths
             let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -116,6 +167,10 @@ fn main() {
 
             app.manage(app_state);
 
+            if dev_install_path.is_none() {
+                schedule_launcher_update_check(app.handle().clone());
+            }
+
             // System tray
             let open_item = MenuItem::with_id(app, "open", "Open Stella", true, None::<&str>)?;
             let separator = PredefinedMenuItem::separator(app)?;
@@ -147,8 +202,7 @@ fn main() {
             commands::set_run_after_install,
             commands::start_install,
             commands::launch_desktop,
-            commands::check_for_update,
-            commands::apply_update,
+            commands::apply_launcher_update,
             commands::show_launcher_window,
             commands::stop_desktop,
             commands::is_desktop_running,

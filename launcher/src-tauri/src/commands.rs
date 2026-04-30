@@ -312,66 +312,53 @@ pub async fn launch_desktop(
 }
 
 #[tauri::command]
-pub async fn check_for_update(
+pub async fn apply_launcher_update(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<OkResult, String> {
-    let current_tag = {
-        let mut installer = state.installer.lock().await;
-        if state.context.dev_mode || !installer.installed {
-            return Ok(OkResult { ok: true });
-        }
+    use tauri_plugin_updater::UpdaterExt;
 
-        installer.update.status = UpdateStatus::Checking;
-        installer.update.message = Some("Checking for updates...".into());
-        installer.update.conflicts.clear();
-        let current_tag = installer.update.current_tag.clone();
+    {
+        let mut installer = state.installer.lock().await;
+        installer.launcher_update.installing = true;
+        installer.launcher_update.error = None;
         let _ = app.emit(
             "installer-state-update",
             serde_json::json!({ "state": &*installer }),
         );
-        current_tag
-    };
+    }
 
-    let latest_tag = setup::latest_desktop_release_tag().await;
+    let result: Result<(), String> = async {
+        let updater = app.updater().map_err(|e| e.to_string())?;
+        let update = updater
+            .check()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "No launcher update available.".to_string())?;
+        update
+            .download_and_install(|_, _| {}, || {})
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    .await;
 
-    let mut installer = state.installer.lock().await;
-    let result = match latest_tag {
-        Ok(latest_tag) => {
-            installer.update.latest_tag = Some(latest_tag.clone());
-            if current_tag.is_none() {
-                installer.update.status = UpdateStatus::Idle;
-                installer.update.message = Some(
-                    "Stella is installed, but this install does not have release metadata yet."
-                        .into(),
-                );
-            } else if current_tag.as_deref() == Some(latest_tag.as_str()) {
-                installer.update.status = UpdateStatus::Idle;
-                installer.update.message = Some("Stella is up to date.".into());
-            } else {
-                installer.update.status = UpdateStatus::Available;
-                installer.update.message = Some(format!("Update {latest_tag} is available."));
-            }
-            Ok(())
+    match result {
+        Ok(()) => {
+            app.request_restart();
+            Ok(OkResult { ok: true })
         }
         Err(err) => {
-            installer.update.status = UpdateStatus::Error;
-            installer.update.message = Some(err.clone());
+            let mut installer = state.installer.lock().await;
+            installer.launcher_update.installing = false;
+            installer.launcher_update.error = Some(err.clone());
+            let _ = app.emit(
+                "installer-state-update",
+                serde_json::json!({ "state": &*installer }),
+            );
             Err(err)
         }
-    };
-    let _ = app.emit(
-        "installer-state-update",
-        serde_json::json!({ "state": &*installer }),
-    );
-    Ok(OkResult { ok: result.is_ok() })
-}
-
-#[tauri::command]
-pub async fn apply_update(state: State<'_, AppState>, app: AppHandle) -> Result<OkResult, String> {
-    let mut installer = state.installer.lock().await;
-    let result = setup::apply_update(&mut installer, &state.context, &app).await;
-    Ok(OkResult { ok: result.is_ok() })
+    }
 }
 
 #[tauri::command]

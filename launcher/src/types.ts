@@ -32,14 +32,12 @@ export type InstallerPhase =
   | "complete"
   | "error";
 
-export type UpdateStatus =
-  | "idle"
-  | "checking"
-  | "available"
-  | "updating"
-  | "complete"
-  | "conflict"
-  | "error";
+export type LauncherUpdateInfo = {
+  available: boolean;
+  version?: string;
+  installing: boolean;
+  error?: string;
+};
 
 export type InstallerState = {
   steps: SetupStep[];
@@ -54,13 +52,7 @@ export type InstallerState = {
   runAfterInstall: boolean;
   canLaunch: boolean;
   installed: boolean;
-  update: {
-    status: UpdateStatus;
-    currentTag?: string;
-    latestTag?: string;
-    message?: string;
-    conflicts: string[];
-  };
+  launcherUpdate: LauncherUpdateInfo;
   disk: {
     requiredBytes: number;
     availableBytes: number | null;

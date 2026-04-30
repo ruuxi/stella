@@ -103,12 +103,6 @@ async fn latest_release_tag() -> Option<String> {
     None
 }
 
-pub async fn latest_desktop_release_tag() -> Result<String, String> {
-    latest_release_tag()
-        .await
-        .ok_or("Could not check for Stella updates. Check your internet connection.".into())
-}
-
 // ── Path helpers ────────────────────────────────────────────────────
 
 fn home_dir() -> PathBuf {
@@ -1329,11 +1323,6 @@ async fn resolve_r2_desktop_asset(
     Ok(asset)
 }
 
-async fn read_install_manifest(install_dir: &str) -> Option<Manifest> {
-    let raw = fs::read_to_string(manifest_of(install_dir)).await.ok()?;
-    serde_json::from_str::<Manifest>(&raw).ok()
-}
-
 async fn read_release_manifest_at(path: &Path) -> Result<DesktopReleaseManifest, String> {
     let raw = fs::read_to_string(path)
         .await
@@ -1807,11 +1796,6 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
                 None
             }
         });
-    if let Some(manifest) = read_install_manifest(&state.install_path).await {
-        state.update.current_tag = manifest.desktop_release_tag;
-    } else if let Ok(release_manifest) = read_release_manifest(&state.install_path).await {
-        state.update.current_tag = Some(release_manifest.tag);
-    }
 }
 
 fn emit_state_fast(state: &InstallerState, app: &AppHandle) {
@@ -1870,13 +1854,7 @@ pub async fn create_initial_state(ctx: &InstallerContext) -> InstallerState {
         run_after_install: settings.run_after_install.unwrap_or(true),
         can_launch: false,
         installed: false,
-        update: UpdateInfo {
-            status: UpdateStatus::Idle,
-            current_tag: None,
-            latest_tag: None,
-            message: None,
-            conflicts: Vec::new(),
-        },
+        launcher_update: LauncherUpdateInfo::default(),
         disk: DiskInfo {
             required_bytes: ctx.required_bytes,
             available_bytes: None,
@@ -2039,28 +2017,6 @@ pub async fn install_all(
     emit_state_full(state, ctx, app).await;
 
     Ok(())
-}
-
-pub async fn apply_update(
-    state: &mut InstallerState,
-    ctx: &InstallerContext,
-    app: &AppHandle,
-) -> Result<(), String> {
-    if ctx.dev_mode || !state.installed {
-        return Err("Stella is not installed.".into());
-    }
-
-    // The release manifest gives the launcher enough information to do a
-    // deterministic three-way update. Until the file-copy planner is wired in,
-    // surface this as agent-needed instead of risking overwriting local changes.
-    state.phase = InstallerPhase::Complete;
-    state.update.status = UpdateStatus::Conflict;
-    state.update.message = Some(
-        "This update is ready, but Stella needs the installation agent to apply it safely.".into(),
-    );
-    state.update.conflicts = Vec::new();
-    emit_state_full(state, ctx, app).await;
-    Err("Update requires the installation agent.".into())
 }
 
 pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {
