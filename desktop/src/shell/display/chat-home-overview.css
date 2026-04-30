@@ -48,13 +48,19 @@
 
 .chat-home-overview__task {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
   padding: 8px 4px;
   border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
   font-size: 13px;
   line-height: 1.4;
   color: var(--text-base);
+}
+
+.chat-home-overview__task-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
 }
 
 .chat-home-overview__task:last-child {
@@ -94,6 +100,57 @@
 
 .chat-home-overview__task:not([data-status="running"]):hover {
   opacity: 0.85;
+}
+
+/* --- Per-task progress feed --------------------------------- */
+/* Cheap-model summaries of what the agent is currently doing. The list
+   autoscrolls to the newest entry, hides its scrollbar, and fades the
+   first/last few pixels once it overflows so the cap doesn't read as a
+   hard cut. */
+.chat-home-overview__task-feed {
+  list-style: none;
+  margin: 0 0 0 2px;
+  padding: 4px 0 4px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 96px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  border-left: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-weak);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 14px,
+    #000 calc(100% - 14px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 14px,
+    #000 calc(100% - 14px),
+    transparent 100%
+  );
+}
+
+.chat-home-overview__task-feed::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-home-overview__task-feed--idle {
+  opacity: 0.7;
+}
+
+.chat-home-overview__task-feed-item {
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --- Files --------------------------------------------------- */
