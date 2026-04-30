@@ -198,12 +198,16 @@ export const createBootstrapServices = (options: {
     isVoiceActive: () => uiStateService.state.isVoiceRtcActive,
     updateUiState: (partial) => uiStateService.update(partial),
     // Double-tap Option (macOS) / Alt (Windows / Linux) toggles the mini
-    // window: open from anywhere when hidden, dismiss when already visible.
+    // window. Reuse the same close semantics as the radial chat wedge so the
+    // mini dismiss path stays consistent across the keyboard and radial flows.
     onDoubleTapModifier: () => {
       const wm = state.windowManager;
       if (!wm) return;
-      if (wm.isMiniShowing()) {
-        wm.hideMiniWindow(false);
+      const shouldCloseMini =
+        (wm.isCompactMode() && wm.isWindowFocused()) ||
+        wm.isMiniShowing();
+      if (shouldCloseMini) {
+        wm.minimizeWindow();
       } else {
         wm.showWindow("mini");
       }
