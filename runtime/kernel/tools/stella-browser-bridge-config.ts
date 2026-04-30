@@ -10,8 +10,8 @@ export const STELLA_BROWSER_BRIDGE_PORT = "39040";
 /** Chrome native messaging host name — must match extension `connectNative` and host manifest. */
 export const STELLA_NATIVE_MESSAGING_HOST_NAME = "com.stella.browser_bridge";
 
-/** Stable MV3 extension id (derived from manifest `key`). */
-export const STELLA_BROWSER_EXTENSION_ID = "cgbnommjhnegjicfpklioofjphobpgfi";
+/** Chrome Web Store extension id allowed to connect to the native messaging host. */
+export const STELLA_BROWSER_EXTENSION_ID = "kfnchfpocpmdblhfgcnpfaaebaioojnl";
 
 const readBridgeToken = (tokenPath: string): string | null => {
   try {
