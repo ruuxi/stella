@@ -1,4 +1,5 @@
 import { stopAllDesktopAutomationDaemons } from "../services/desktop-automation-cleanup.js";
+import { stopOfficePreviewSessions } from "./office-preview-bridge.js";
 import type { BootstrapContext } from "./context.js";
 
 export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
@@ -22,10 +23,16 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
   processRuntime.registerCleanup("before-quit", "mobile-bridge", async () => {
     await context.state.mobileBridgeResource?.stop();
   });
-  processRuntime.registerCleanup("before-quit", "office-preview-bridge", () => {
-    context.state.officePreviewBridgeStop?.();
-    context.state.officePreviewBridgeStop = null;
-  });
+  processRuntime.registerCleanup(
+    "before-quit",
+    "office-preview-bridge",
+    async () => {
+      context.state.officePreviewBridgeStop?.();
+      context.state.officePreviewBridgeStop = null;
+      const stellaRoot = context.state.stellaRoot ?? context.config.stellaRoot;
+      await stopOfficePreviewSessions(stellaRoot);
+    },
+  );
   processRuntime.registerCleanup(
     "before-quit",
     "chronicle-daemon",
