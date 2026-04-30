@@ -88,6 +88,7 @@ type RuntimeClientEvents = {
 export type RuntimeHostHandlers = {
   uiSnapshot: () => Promise<string>;
   uiAct: (params: HostUiActParams) => Promise<string>;
+  getActiveConversationId?: () => Promise<string | null> | string | null;
   getDeviceIdentity: () => Promise<HostDeviceIdentity>;
   signHeartbeatPayload: (signedAtMs: number) => Promise<HostHeartbeatSignature>;
   requestRuntimeAuthRefresh?: (
@@ -404,6 +405,12 @@ export class StellaRuntimeClient {
     }
     const fallbackDeviceId = this.deviceIdentity?.deviceId ?? "unknown";
     return `${process.platform}-${fallbackDeviceId.slice(0, 6)}`;
+  }
+
+  private async getActiveLocalConversationId() {
+    const activeConversationId =
+      (await this.options.hostHandlers.getActiveConversationId?.())?.trim() ?? "";
+    return activeConversationId || await this.getOrCreateDefaultConversationId();
   }
 
   private stopHostHeartbeatLoop() {
@@ -760,7 +767,7 @@ export class StellaRuntimeClient {
         const localConversationId =
           this.configCache.cloudSyncEnabled
             ? conversationId || await this.getOrCreateDefaultConversationId()
-            : await this.getOrCreateDefaultConversationId();
+            : await this.getActiveLocalConversationId();
         await this.appendLocalChatEvent({
           conversationId: localConversationId,
           type: "user_message",
