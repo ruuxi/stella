@@ -232,19 +232,6 @@ pub fn maybe_handle_uninstall() -> bool {
     }
 }
 
-pub fn refresh_launcher_uninstall_registration() {
-    #[cfg(target_os = "windows")]
-    {
-        let Ok(current_exe) = std::env::current_exe() else {
-            return;
-        };
-        let Some(current_dir) = current_exe.parent() else {
-            return;
-        };
-        register_uninstall(&current_exe, current_dir);
-    }
-}
-
 /// Check if we need to self-install. If so, install and re-launch.
 /// Returns `true` if the current process should exit (re-launch happened).
 pub fn ensure_installed() -> bool {

@@ -2095,7 +2095,6 @@ pub async fn uninstall(state: &mut InstallerState) -> Result<(), String> {
     }
 
     remove_registry().await;
-    crate::bootstrap::refresh_launcher_uninstall_registration();
 
     state.installed = false;
     state.phase = InstallerPhase::Ready;
