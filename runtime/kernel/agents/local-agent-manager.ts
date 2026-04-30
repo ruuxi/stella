@@ -640,6 +640,8 @@ export class LocalAgentManager implements AgentToolApi {
             rootRunId: task.rootRunId,
             agentId: task.threadId,
             agentType: task.agentType,
+            description: task.description,
+            parentAgentId: task.parentAgentId,
             statusText: `Using ${ev.toolName}`,
           });
           logWorkingIndicatorTrace("[stella:working-indicator:agent-progress]", {
