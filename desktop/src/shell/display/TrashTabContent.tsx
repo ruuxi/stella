@@ -5,10 +5,14 @@
  * for 24h before purging. This view lists the staged items and offers
  * per-row + bulk "Delete now" actions backed by the privileged IPC at
  * `displayTrash:list` / `displayTrash:forceDelete`.
+ *
+ * Visual language follows the broader display-tab style: quiet
+ * sentence-case heading, Finder-like rows, pill-btn actions, no
+ * decorative dots.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { displayTabs } from "./tab-store";
+import "./trash-tab.css";
 
 type TrashRecord = {
   id: string;
@@ -115,112 +119,87 @@ export const TrashTabContent = () => {
     [items],
   );
 
+  const subtitle =
+    sorted.length === 0
+      ? loading
+        ? "Loading…"
+        : "Nothing here right now."
+      : `${sorted.length} item${sorted.length === 1 ? "" : "s"} — auto-deleted in 24 hours.`;
+
   return (
-    <div
-      className="display-sidebar__rich display-sidebar__rich--trash"
-      data-display-tab="trash"
-    >
-      <section className="display-file-preview display-file-preview--trash">
-        <header className="display-file-preview__header">
-          <div className="display-file-preview__title-group">
-            <span className="display-file-preview__eyebrow">Trash</span>
-            <div className="display-file-preview__title">
-              {sorted.length === 0
-                ? "No items in trash"
-                : `${sorted.length} item${sorted.length === 1 ? "" : "s"} · auto-delete in 24h`}
-            </div>
-          </div>
-          <div className="display-file-preview__actions">
-            <button
-              type="button"
-              onClick={() => void refresh()}
-              disabled={loading || emptying}
-            >
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleEmptyAll()}
-              disabled={sorted.length === 0 || emptying}
-            >
-              {emptying ? "Emptying…" : "Empty trash"}
-            </button>
-          </div>
-        </header>
+    <div className="trash-tab" data-display-tab="trash">
+      <header className="trash-tab__header">
+        <div>
+          <h3 className="trash-tab__title">Trash</h3>
+          <p className="trash-tab__subtitle">{subtitle}</p>
+        </div>
+        <div className="trash-tab__header-actions">
+          <button
+            type="button"
+            className="pill-btn"
+            onClick={() => void refresh()}
+            disabled={loading || emptying}
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            className="pill-btn pill-btn--danger"
+            onClick={() => void handleEmptyAll()}
+            disabled={sorted.length === 0 || emptying}
+          >
+            {emptying ? "Emptying…" : "Empty trash"}
+          </button>
+        </div>
+      </header>
 
-        {errors.length > 0 && (
-          <div className="display-file-preview__error">
-            {errors.map((line, index) => (
-              <div key={index}>{line}</div>
-            ))}
-          </div>
-        )}
+      {errors.length > 0 && (
+        <div className="trash-tab__errors">
+          {errors.map((line, index) => (
+            <div key={index}>{line}</div>
+          ))}
+        </div>
+      )}
 
-        {loading ? (
-          <div className="display-file-preview__empty">Loading…</div>
-        ) : sorted.length === 0 ? (
-          <div className="display-file-preview__empty">
-            Stella's agent hasn't deleted any files recently. When it does,
-            they'll show here for 24 hours so you can recover or purge them.
-            <div style={{ marginTop: 12 }}>
-              <button
-                type="button"
-                onClick={() => displayTabs.setPanelOpen(false)}
-                className="display-trash__close"
-              >
-                Close panel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <ul className="display-trash__list">
-            {sorted.map((item) => {
-              const remaining = item.purgeAfter - now;
-              const expired = remaining <= 0;
-              return (
-                <li key={item.id} className="display-trash__row">
-                  <div className="display-trash__row-main">
-                    <div
-                      className="display-trash__name"
-                      title={item.originalPath}
-                    >
-                      {basenameOf(item.originalPath)}
-                    </div>
-                    <div
-                      className="display-trash__path"
-                      title={item.originalPath}
-                    >
-                      {dirnameOf(item.originalPath)}
-                    </div>
-                    <div className="display-trash__meta">
-                      <span>
-                        Trashed {formatRelative(now - item.trashedAt)} ago
-                      </span>
-                      <span className="display-trash__sep">·</span>
-                      <span>
-                        {expired
-                          ? "Pending purge"
-                          : `Auto-delete in ${formatRelative(remaining)}`}
-                      </span>
-                      <span className="display-trash__sep">·</span>
-                      <span>{item.source}</span>
-                    </div>
+      {sorted.length > 0 && (
+        <ul className="trash-tab__list">
+          {sorted.map((item) => {
+            const remaining = item.purgeAfter - now;
+            const expired = remaining <= 0;
+            const folder = dirnameOf(item.originalPath);
+            return (
+              <li key={item.id} className="trash-tab__row">
+                <div className="trash-tab__row-main">
+                  <div className="trash-tab__name" title={item.originalPath}>
+                    {basenameOf(item.originalPath)}
                   </div>
-                  <div className="display-trash__row-actions">
-                    <button
-                      type="button"
-                      onClick={() => void handleForceDelete(item.id)}
-                      disabled={busyId === item.id}
-                    >
-                      {busyId === item.id ? "Deleting…" : "Delete now"}
-                    </button>
+                  {folder && (
+                    <div className="trash-tab__path" title={item.originalPath}>
+                      {folder}
+                    </div>
+                  )}
+                  <div className="trash-tab__meta">
+                    <span>Trashed {formatRelative(now - item.trashedAt)} ago</span>
+                    <span>
+                      {expired
+                        ? "Pending purge"
+                        : `Auto-deletes in ${formatRelative(remaining)}`}
+                    </span>
                   </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                </div>
+                <button
+                  type="button"
+                  className="pill-btn pill-btn--danger trash-tab__row-action"
+                  onClick={() => void handleForceDelete(item.id)}
+                  disabled={busyId === item.id}
+                >
+                  {busyId === item.id ? "Deleting…" : "Delete now"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 };

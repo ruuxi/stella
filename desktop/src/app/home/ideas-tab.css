@@ -1,8 +1,8 @@
 .ideas-tab {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  padding: 24px 28px 32px;
+  gap: 26px;
+  padding: 22px 18px 28px;
   height: 100%;
   overflow-y: auto;
 }
@@ -10,17 +10,16 @@
 .ideas-tab__group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .ideas-tab__group-label {
   margin: 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-weak);
+  letter-spacing: -0.005em;
+  color: var(--text-strong);
 }
 
 .ideas-tab__options {
@@ -34,23 +33,25 @@
 
 .ideas-tab__option {
   width: 100%;
-  padding: 8px 10px;
-  margin-left: -10px;
+  padding: 7px 8px;
+  margin: 0 -8px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: 7px;
   color: var(--text-base);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 15px;
+  font-size: 13.5px;
   font-weight: 400;
   line-height: 1.4;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
   text-align: left;
   cursor: default;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 
 .ideas-tab__option:hover {
-  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
   color: var(--text-strong);
 }

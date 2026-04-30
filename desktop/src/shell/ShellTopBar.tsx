@@ -107,7 +107,7 @@ export const ShellTopBar = () => {
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
   const isMiniWindow = useWindowType() === "mini";
-  const { tabs, panelOpen, panelExpanded, panelWidth } = useDisplayTabs();
+  const { panelOpen, panelExpanded, panelWidth } = useDisplayTabs();
   // Only the Store route adapts the top bar — other routes keep the
   // default layout (display tab strip on the right).
   const pathname = useRouterState({ select: (state) => state.location.pathname });
@@ -217,7 +217,7 @@ export const ShellTopBar = () => {
         </div>
       ) : null}
       <div className="shell-topbar-tabs" style={tabsStyle}>
-        {tabs.length > 0 ? <DisplayTabBar /> : null}
+        <DisplayTabBar />
       </div>
       <div className="shell-topbar-right">
         {isMiniWindow ? (
