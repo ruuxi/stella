@@ -64,6 +64,16 @@ const OnboardingCanvas = lazy(() =>
 
 const CREATION_PHASE_INDEX = SPLIT_STEP_ORDER.indexOf("creation");
 
+const dismissLaunchSplash = () => {
+  const launch = document.getElementById("stella-launch");
+  if (!launch) return;
+
+  launch.dataset.exiting = "true";
+  window.setTimeout(() => {
+    launch.remove();
+  }, 260);
+};
+
 export const FullShell = () => {
   const { state, updateState } = useUiState();
   const activeConversationId = state.conversationId;
@@ -118,6 +128,7 @@ export const FullShell = () => {
 
   const startupReady = runtimeAuthReady && runtimeStatus === "ready";
   const appReady = onboarding.onboardingDone && (hasEnteredApp || startupReady);
+  const needsOnboarding = !onboarding.onboardingDone;
   const isPreparingStartup =
     runtimeStatus === "preparing" ||
     (!runtimeAuthReady && authBootstrapStatus !== "failed");
@@ -154,16 +165,26 @@ export const FullShell = () => {
     });
   }, [appReady, updateState]);
 
-  // Kick off the onboarding chunk as soon as we know we'll need it. This
-  // runs in parallel with auth bootstrap, so by the time the user clicks
-  // "Start Stella" the entire flow is already resident — no mid-flow
-  // chunk fetches, no Suspense fallbacks visible to the user. Once
-  // `onboardingDone` flips true the import promise simply persists in
-  // memory until the FullShell tree unmounts; React never re-fetches.
+  // Keep the static launch splash up for returning users until the real app is
+  // ready. First-run onboarding still preloads its own chunk, then dismisses
+  // the splash once the onboarding view is available.
   useEffect(() => {
-    if (appReady) return;
-    void loadOnboardingChunk();
-  }, [appReady]);
+    if (appReady) {
+      dismissLaunchSplash();
+      return;
+    }
+
+    if (onboarding.onboardingDone) return;
+
+    let cancelled = false;
+    void loadOnboardingChunk().finally(() => {
+      if (!cancelled) dismissLaunchSplash();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appReady, onboarding.onboardingDone]);
 
   useEffect(() => {
     return () => {
@@ -226,13 +247,13 @@ export const FullShell = () => {
   return (
     <div
       className="window-shell full"
-      data-window-mode={appReady ? "app" : "onboarding"}
+      data-window-mode={needsOnboarding ? "onboarding" : "app"}
       data-onboarding-exiting={
-        !appReady && onboarding.onboardingExiting ? "true" : undefined
+        needsOnboarding && onboarding.onboardingExiting ? "true" : undefined
       }
-      data-onboarding-phase={!appReady ? onboardingPhase : undefined}
+      data-onboarding-phase={needsOnboarding ? onboardingPhase : undefined}
     >
-      {!appReady ? (
+      {needsOnboarding ? (
         <svg
           ref={fogDefsRef}
           className="onboarding-fog-defs"
@@ -312,7 +333,7 @@ export const FullShell = () => {
             <RouterProvider router={router} />
             <AskStellaSelectionChip />
           </PageSidebarProvider>
-        ) : (
+        ) : needsOnboarding ? (
           <div
             className="onboarding-layout"
             data-split={onboarding.splitMode || undefined}
@@ -361,7 +382,7 @@ export const FullShell = () => {
               </div>
             </Suspense>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
