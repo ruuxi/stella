@@ -184,7 +184,7 @@ describe("orchestrator direct tool surface", () => {
     const orchestratorResult = await host.executeTool(
       "spawn_agent",
       {
-        description: "Add a notes page",
+        description: "Add a notes page.",
         prompt: "Build the requested notes experience.",
       },
       makeToolContext("orchestrator"),
@@ -198,7 +198,7 @@ describe("orchestrator direct tool surface", () => {
     });
     expect(createdTasks).toEqual([
       {
-        description: "Add a notes page",
+        description: "Add a notes page.",
         prompt: "Build the requested notes experience.",
         agentType: "general",
       },
