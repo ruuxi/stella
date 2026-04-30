@@ -274,12 +274,8 @@ function RootChrome() {
   }, []);
 
   const handleContextMenuOpenPanel = useCallback(() => {
-    if (isOnChatRoute) {
-      dispatchOpenWorkspacePanel();
-      return;
-    }
-    dispatchOpenPanelChat();
-  }, [isOnChatRoute]);
+    dispatchOpenWorkspacePanel();
+  }, []);
 
   const handleContextMenuClosePanel = useCallback(() => {
     dispatchClosePanel();
