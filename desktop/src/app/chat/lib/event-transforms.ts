@@ -355,13 +355,14 @@ export function extractTasksFromEvents(
 
   for (const event of events) {
     if (isAgentStartedEvent(event)) {
+      const previous = tasksById.get(event.payload.agentId)
       tasksById.set(event.payload.agentId, {
         id: event.payload.agentId,
         description: event.payload.description,
         agentType: event.payload.agentType,
         status: 'running',
         parentAgentId: event.payload.parentAgentId,
-        statusText: event.payload.statusText,
+        statusText: event.payload.statusText ?? previous?.statusText,
         startedAtMs: event.timestamp,
         completedAtMs: undefined,
         lastUpdatedAtMs: event.timestamp,

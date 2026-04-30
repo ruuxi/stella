@@ -207,6 +207,15 @@ describe("LocalAgentManager pause_agent cancellation", () => {
           event.statusText === "Updating",
       ),
     ).toBe(true);
+    const progressTexts = lifecycleEvents
+      .filter((event) => event.type === "agent-progress")
+      .map((event) => event.statusText);
+    expect(progressTexts).toEqual([
+      "Queued",
+      "demo",
+      "Updating",
+      "demo",
+    ]);
 
     finishRun?.();
     await waitForTaskCompletion(manager, created.threadId);

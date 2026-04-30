@@ -950,6 +950,7 @@ export class LocalAgentManager implements AgentToolApi {
         task.messageLog.splice(0, task.messageLog.length - LocalAgentManager.MAX_LOG_MESSAGES);
       }
       this.resetTaskForNextAttempt(task, text);
+      const resumeActivity = task.description;
       task.pendingStartStatusText = "Updating";
       task.recentActivity = ["Updating."];
       this.opts.onAgentEvent?.({
@@ -963,6 +964,16 @@ export class LocalAgentManager implements AgentToolApi {
         statusText: "Updating",
       });
       this.enqueueTask(task);
+      this.opts.onAgentEvent?.({
+        type: "agent-progress",
+        conversationId: task.conversationId,
+        rootRunId: task.rootRunId,
+        agentId: task.threadId,
+        agentType: task.agentType,
+        description: task.description,
+        parentAgentId: task.parentAgentId,
+        statusText: resumeActivity,
+      });
       return { delivered: true };
     }
 
@@ -978,6 +989,7 @@ export class LocalAgentManager implements AgentToolApi {
     }
 
     if (from === "orchestrator") {
+      const previousActivity = task.recentActivity[0] ?? task.description;
       const statusText = interrupt
         ? "Updating"
         : "Queued";
@@ -1006,6 +1018,17 @@ export class LocalAgentManager implements AgentToolApi {
         task.prompt = text;
         task.controller.abort(new Error(AGENT_INPUT_INTERRUPT_ERROR));
       }
+      this.opts.onAgentEvent?.({
+        type: "agent-progress",
+        conversationId: task.conversationId,
+        rootRunId: task.rootRunId,
+        agentId: task.threadId,
+        agentType: task.agentType,
+        description: task.description,
+        parentAgentId: task.parentAgentId,
+        statusText: previousActivity,
+      });
+      task.recentActivity = [previousActivity];
     }
 
     this.persistTask(task);
