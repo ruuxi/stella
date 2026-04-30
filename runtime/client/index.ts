@@ -758,7 +758,9 @@ export class StellaRuntimeClient {
       },
       runLocalTurn: async ({ conversationId, userPrompt, agentType }) => {
         const localConversationId =
-          conversationId || await this.getOrCreateDefaultConversationId();
+          this.configCache.cloudSyncEnabled
+            ? conversationId || await this.getOrCreateDefaultConversationId()
+            : await this.getOrCreateDefaultConversationId();
         await this.appendLocalChatEvent({
           conversationId: localConversationId,
           type: "user_message",
