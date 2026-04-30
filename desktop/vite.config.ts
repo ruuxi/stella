@@ -453,16 +453,11 @@ function selfModHmrControl(): Plugin {
   let clientFullReloadRequestedDuringApply = false
   let shellMutationDepth = 0
 
-  const log = (phase: string, data: Record<string, unknown> = {}) => {
-    console.info('[self-mod-hmr:vite]', phase, data)
-  }
-
   const isClientUpdatePaused = () =>
     pausedRunIds.size > 0 || shellMutationDepth > 0
 
   const pauseRun = (runId: string) => {
     if (runId.length > 0) pausedRunIds.add(runId)
-    log('pauseRun', { runId, pausedRuns: pausedRunIds.size })
   }
 
   const releaseRuns = (runIds: string[]) => {
@@ -472,13 +467,6 @@ function selfModHmrControl(): Plugin {
     if (!isClientUpdatePaused()) {
       suppressedHotUpdatePaths.clear()
     }
-    log('releaseRuns', {
-      runIds,
-      paused: isClientUpdatePaused(),
-      pausedRuns: pausedRunIds.size,
-      inFlightPaths: inFlightPaths.size,
-      appliedOverlayPaths: appliedOverlay.size,
-    })
   }
 
   const trackPath = (absPath: string) => {
@@ -489,19 +477,11 @@ function selfModHmrControl(): Plugin {
       // it's stable for the period — that's what the renderer needs.
       prePeriodSnapshot.set(absPath, readDiskOrEmpty(absPath))
     }
-    log('trackPath', {
-      path: path.relative(__dirname, absPath),
-      inFlightPaths: inFlightPaths.size,
-    })
   }
 
   const untrackPath = (absPath: string) => {
     inFlightPaths.delete(absPath)
     prePeriodSnapshot.delete(absPath)
-    log('untrackPath', {
-      path: path.relative(__dirname, absPath),
-      inFlightPaths: inFlightPaths.size,
-    })
   }
 
   const trackShellSnapshotPath = (absPath: string) => {
@@ -511,7 +491,6 @@ function selfModHmrControl(): Plugin {
   }
 
   const releaseShellSnapshotPaths = () => {
-    log('releaseShellSnapshotPaths', { count: shellSnapshotPaths.size })
     for (const absPath of shellSnapshotPaths) {
       untrackPath(absPath)
     }
@@ -526,8 +505,6 @@ function selfModHmrControl(): Plugin {
     shellSnapshotPaths.clear()
     suppressedHotUpdatePaths.clear()
     suppressedClientMessages = 0
-    clientFullReloadRequestedDuringApply = false
-    log('clearAllState')
   }
 
   const shouldSuppressClientMessage = (payload: unknown): boolean => {
@@ -621,42 +598,11 @@ function selfModHmrControl(): Plugin {
         ) {
           clientFullReloadRequestedDuringApply = true
           suppressedClientMessages += 1
-          log('ws:suppressedDuringApply', {
-            type: 'full-reload',
-            clientUpdateReleaseDepth,
-            suppressedClientMessages,
-          })
           return
         }
         if (shouldSuppressClientMessage(payload)) {
           suppressedClientMessages += 1
-          log('ws:suppressed', {
-            type:
-              payload && typeof payload === 'object'
-                ? (payload as { type?: unknown }).type
-                : undefined,
-            pausedRuns: pausedRunIds.size,
-            shellMutationDepth,
-            clientUpdateReleaseDepth,
-            suppressedClientMessages,
-          })
           return
-        }
-        if (payload && typeof payload === 'object') {
-          const type = (payload as { type?: unknown }).type
-          if (
-            type === 'update' ||
-            type === 'prune' ||
-            type === 'full-reload' ||
-            type === 'error'
-          ) {
-            log('ws:send', {
-              type,
-              pausedRuns: pausedRunIds.size,
-              shellMutationDepth,
-              clientUpdateReleaseDepth,
-            })
-          }
         }
         return sendClientMessage(payload as never, ...(args as never[]))
       }) as typeof server.ws.send
@@ -729,15 +675,6 @@ function selfModHmrControl(): Plugin {
       }> =>
         withClientUpdateRelease(async () => {
         clientFullReloadRequestedDuringApply = false
-        log('apply:start', {
-          runs: runs.map((run) => ({
-            runId: run.runId,
-            paths: run.files.map((file) => path.relative(__dirname, file.absPath)),
-          })),
-          options,
-          pausedRuns: pausedRunIds.size,
-          inFlightPaths: inFlightPaths.size,
-        })
         let reloadedModules = 0
         let appliedPaths = 0
         const suppressClientFullReload =
@@ -783,20 +720,7 @@ function selfModHmrControl(): Plugin {
             true,
           )
         }
-        log('apply:collectedModules', {
-          modulesToReload: modulesToReload.map((mod) => mod.url ?? mod.id),
-          suppressClientFullReload,
-          forceClientFullReload,
-        })
         if (suppressClientFullReload) {
-          log('apply:done', {
-            appliedPaths,
-            reloadedModules,
-            suppressClientFullReload,
-            requiresClientFullReload: clientFullReloadRequestedDuringApply,
-            inFlightPaths: inFlightPaths.size,
-            appliedOverlayPaths: appliedOverlay.size,
-          })
           return {
             appliedPaths,
             reloadedModules,
@@ -820,24 +744,8 @@ function selfModHmrControl(): Plugin {
         }
 
         if (forceClientFullReload || reloadFailed) {
-          log('apply:fullReload', {
-            forceClientFullReload,
-            reloadFailed,
-          })
           server.ws.send({ type: 'full-reload', path: '*' })
         }
-        log('apply:done', {
-          appliedPaths,
-          reloadedModules,
-          forceClientFullReload,
-          reloadFailed,
-          requiresClientFullReload:
-            forceClientFullReload ||
-            reloadFailed ||
-            clientFullReloadRequestedDuringApply,
-          inFlightPaths: inFlightPaths.size,
-          appliedOverlayPaths: appliedOverlay.size,
-        })
         return {
           appliedPaths,
           reloadedModules,
@@ -928,7 +836,6 @@ function selfModHmrControl(): Plugin {
             trackPath(abs)
             tracked += 1
           }
-          log('endpoint:track-paths', { requested: paths, tracked })
           sendJson(200, { ok: true, tracked, inFlightPaths: inFlightPaths.size })
           return
         }
@@ -944,7 +851,6 @@ function selfModHmrControl(): Plugin {
             untrackPath(abs)
             untracked += 1
           }
-          log('endpoint:untrack-paths', { requested: paths, untracked })
           sendJson(200, { ok: true, untracked, inFlightPaths: inFlightPaths.size })
           return
         }
@@ -995,14 +901,6 @@ function selfModHmrControl(): Plugin {
             forceClientFullReload:
               payload.options?.forceClientFullReload === true,
           })
-          log('endpoint:apply:done', {
-            runs: runs.length,
-            appliedPaths: result.appliedPaths,
-            reloadedModules: result.reloadedModules,
-            requiresClientFullReload: result.requiresClientFullReload,
-            inFlightPaths: inFlightPaths.size,
-            appliedOverlayPaths: appliedOverlay.size,
-          })
           sendJson(200, {
             ok: true,
             runs: runs.length,
@@ -1028,7 +926,6 @@ function selfModHmrControl(): Plugin {
             appliedOverlay.delete(abs)
             discarded += 1
           }
-          log('endpoint:discard', { requested: paths, discarded })
           sendJson(200, {
             ok: true,
             discarded,
@@ -1045,11 +942,6 @@ function selfModHmrControl(): Plugin {
             }
           }
           shellMutationDepth += 1
-          log('beginShellMutation', {
-            shellMutationDepth,
-            shellSnapshotPaths: shellSnapshotPaths.size,
-            inFlightPaths: inFlightPaths.size,
-          })
           sendJson(200, { ok: true, shellMutationDepth })
           return
         }
@@ -1059,11 +951,6 @@ function selfModHmrControl(): Plugin {
           if (shellMutationDepth === 0) {
             releaseShellSnapshotPaths()
           }
-          log('endShellMutation', {
-            shellMutationDepth,
-            shellSnapshotPaths: shellSnapshotPaths.size,
-            inFlightPaths: inFlightPaths.size,
-          })
           sendJson(200, {
             ok: true,
             shellMutationDepth,
@@ -1084,7 +971,6 @@ function selfModHmrControl(): Plugin {
           clearAllState()
           shellMutationDepth = 0
           if (shouldReload) {
-            log('forceResume:reload', { shouldReload })
             server.ws.send({ type: 'full-reload', path: '*' })
           }
           sendJson(200, { ok: true, paused: false, reloaded: shouldReload })
@@ -1102,21 +988,11 @@ function selfModHmrControl(): Plugin {
         // morph cover via /apply, while still leaving other active runs
         // suppressed.
         suppressedHotUpdatePaths.add(key)
-        log('hotUpdate:suppressedPaused', {
-          file: path.relative(__dirname, key),
-          pausedRuns: pausedRunIds.size,
-          shellMutationDepth,
-          suppressedHotUpdatePaths: suppressedHotUpdatePaths.size,
-        })
         return []
       }
       if (inFlightPaths.has(key)) {
         // Mid-run disk writes never propagate to the renderer; the apply
         // pipeline drives all visible HMR for tracked paths.
-        log('hotUpdate:suppressedInFlight', {
-          file: path.relative(__dirname, key),
-          inFlightPaths: inFlightPaths.size,
-        })
         return []
       }
       if (appliedOverlay.has(key)) {
@@ -1124,10 +1000,6 @@ function selfModHmrControl(): Plugin {
         // take control again. Otherwise load() would keep serving the last
         // applied overlay content and make the file appear stuck.
         appliedOverlay.delete(key)
-        log('hotUpdate:clearedOverlay', {
-          file: path.relative(__dirname, key),
-          appliedOverlayPaths: appliedOverlay.size,
-        })
       }
       return undefined
     },
