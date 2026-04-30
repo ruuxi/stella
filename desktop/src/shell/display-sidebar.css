@@ -6,11 +6,8 @@
   margin-left: auto;
   order: 999;
   position: relative;
-  /* Width-only slide. We deliberately do NOT animate opacity here:
-     a fading parent composites the subtree as translucent, which makes
-     the inner panel's `backdrop-filter` blur visibly ramp up from
-     washed-out to full strength over the transition. The `overflow:
-     hidden` clip already produces a clean reveal. */
+  /* Width-only slide. The `overflow: hidden` clip produces a clean reveal
+     without compositing the subtree through an opacity animation. */
   transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: width;
   /* Scope layout/paint to this subtree so width-driven reflows don't
@@ -113,20 +110,13 @@
      the "roll away" effect on close instead of letting content reflow. */
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
   min-width: 0;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: transparent;
   border-left: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
   border-radius: 0 0 0 32px;
-  /* Promote the inner to its own compositing layer so the
-     backdrop-filter buffer is allocated up-front instead of being
-     prepared frame-by-frame as the outer's width grows. Without this,
-     the blur visibly "catches up" a few frames into the open animation.
-     `translateZ(0)` is preferred over `will-change: backdrop-filter`
-     because it has stable cross-browser GPU-promotion behavior. */
+  /* Promote the inner to its own compositing layer for stable slide
+     animation during width changes. */
   transform: translateZ(0);
-  /* Isolate paint/layout so backdrop-filter recomputation and content
-     reflows stay inside the panel. */
+  /* Isolate paint/layout so content reflows stay inside the panel. */
   contain: layout paint;
   overflow: hidden;
 }
