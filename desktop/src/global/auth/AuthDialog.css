@@ -21,6 +21,11 @@
   align-items: stretch;
 }
 
+.auth-dialog-flow {
+  display: flex;
+  flex-direction: column;
+}
+
 .auth-dialog-hero {
   display: flex;
   flex-direction: column;
@@ -87,34 +92,45 @@
   text-align: center;
 }
 
-.auth-dialog-sent {
+/*
+ * Grow-in region for the post-send extras (sent message + Open Gmail).
+ * Uses the grid 0fr → 1fr trick so the height animates without measuring.
+ */
+.auth-dialog-extras {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 220ms ease,
+    margin-top 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.auth-dialog-extras[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin-top: 14px;
+}
+
+.auth-dialog-extras-inner {
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 16px 18px;
-  border-radius: var(--radius-lg, 12px);
-  background: color-mix(in oklch, var(--foreground) 4%, var(--popover));
-  border: 1px solid var(--border);
+  gap: 12px;
+}
+
+.auth-dialog-sent {
   text-align: center;
-}
-
-.auth-dialog-sent-title {
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
-  font-weight: var(--font-family-sans--emphasis-weight, 600);
-  letter-spacing: -0.01em;
-  color: var(--foreground);
-}
-
-.auth-dialog-sent-body {
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
   color: var(--muted-foreground);
+  padding: 0 4px;
 }
 
-.auth-dialog-retry {
-  align-self: center;
-  margin-top: 4px;
+.auth-dialog-open-inbox {
+  width: 100%;
+  justify-content: center;
 }
