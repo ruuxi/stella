@@ -16,6 +16,7 @@ import {
   requireBoundedString,
 } from "../shared_validators";
 import {
+  getConnectedUserIdOrNull,
   requireConnectedUserId,
 } from "../auth";
 import {
@@ -129,7 +130,10 @@ export const getProfilesByOwnerIds = query({
     }),
   ),
   handler: async (ctx, args) => {
-    await requireConnectedUserId(ctx);
+    const callerId = await getConnectedUserIdOrNull(ctx);
+    if (!callerId) {
+      return [];
+    }
     const unique = [...new Set(args.ownerIds)].slice(0, 256);
     const profiles = await Promise.all(
       unique.map((ownerId) => getSocialProfileByOwnerId(ctx, ownerId)),

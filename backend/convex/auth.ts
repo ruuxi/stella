@@ -473,6 +473,21 @@ export const getConnectedUserIdOrNull = async (
   return identity.tokenIdentifier;
 };
 
+/**
+ * Read-side helper: returns the caller's owner id (anonymous or connected),
+ * or `null` if no identity is attached. Use this in `query` handlers that
+ * back UI subscriptions so a transient signed-out / anonymous render between
+ * sessions returns empty data instead of throwing UNAUTHENTICATED into the
+ * React error boundary. Mutations and actions should keep using
+ * `requireUserId` / `requireConnectedUserId` to enforce auth strictly.
+ */
+export const getUserIdOrNull = async (
+  ctx: QueryCtx | MutationCtx,
+) => {
+  const identity = await ctx.auth.getUserIdentity();
+  return identity?.tokenIdentifier ?? null;
+};
+
 export const requireConnectedUserIdAction = async (
   ctx: ActionCtx,
 ) => {

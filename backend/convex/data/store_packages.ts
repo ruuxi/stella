@@ -11,6 +11,7 @@ import { internal } from "../_generated/api";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, Infer, v } from "convex/values";
 import {
+  getUserIdOrNull,
   requireSensitiveUserIdAction,
   requireUserId,
 } from "../auth";
@@ -638,7 +639,10 @@ export const listPackages = query({
   args: {},
   returns: v.array(store_package_validator),
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     return await ctx.db
       .query("store_packages")
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
@@ -873,7 +877,10 @@ export const listMyPackages = query({
   args: {},
   returns: v.array(store_package_validator),
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     return await ctx.db
       .query("store_packages")
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
@@ -967,7 +974,10 @@ export const getPackage = query({
   },
   returns: v.union(store_package_validator, v.null()),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return null;
+    }
     const normalizedPackageId = normalizePackageId(args.packageId);
     return await getOwnedPackageByPackageId(ctx, ownerId, normalizedPackageId);
   },
@@ -979,7 +989,10 @@ export const listReleases = query({
   },
   returns: v.array(store_package_release_validator),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     const normalizedPackageId = normalizePackageId(args.packageId);
     const pkg = await getOwnedPackageByPackageId(ctx, ownerId, normalizedPackageId);
     if (!pkg) {
@@ -1003,7 +1016,10 @@ export const getRelease = query({
   },
   returns: v.union(store_package_release_validator, v.null()),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return null;
+    }
     const normalizedPackageId = normalizePackageId(args.packageId);
     const releaseNumber = normalizeReleaseNumber(args.releaseNumber);
     const pkg = await getOwnedPackageByPackageId(ctx, ownerId, normalizedPackageId);

@@ -16,7 +16,7 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
-import { requireUserId } from "../auth";
+import { getUserIdOrNull, requireUserId } from "../auth";
 import {
   enforceMutationRateLimit,
   RATE_HOT_PATH,
@@ -138,7 +138,10 @@ export const getProfile = query({
   args: {},
   returns: v.union(v.null(), fashion_profile_validator),
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return null;
+    }
     return await getProfileForOwner(ctx, ownerId);
   },
 });
@@ -330,7 +333,10 @@ export const listOutfits = query({
   },
   returns: v.array(fashion_outfit_validator),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     const limit = Math.min(Math.max(Math.floor(args.limit ?? 60), 1), 200);
     return await ctx.db
       .query("fashion_outfits")
@@ -344,7 +350,10 @@ export const listOutfitsByBatch = query({
   args: { batchId: v.string() },
   returns: v.array(fashion_outfit_validator),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     const batchId = requiredText(args.batchId, "batchId", MAX_BATCH_ID);
     return await ctx.db
       .query("fashion_outfits")
@@ -524,7 +533,10 @@ export const listLikes = query({
   args: { limit: v.optional(v.number()) },
   returns: v.array(fashion_like_validator),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     const limit = Math.min(Math.max(Math.floor(args.limit ?? 100), 1), 500);
     return await ctx.db
       .query("fashion_likes")
@@ -627,7 +639,10 @@ export const listCart = query({
   args: {},
   returns: v.array(fashion_cart_item_validator),
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     return await ctx.db
       .query("fashion_cart_items")
       .withIndex("by_ownerId_and_addedAt", (q) => q.eq("ownerId", ownerId))

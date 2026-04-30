@@ -5,7 +5,11 @@ import { internal, components } from "./_generated/api";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { requireConversationOwner, requireUserId } from "./auth";
+import {
+  getUserIdOrNull,
+  requireConversationOwner,
+  requireUserId,
+} from "./auth";
 import { jsonValueValidator, optionalChannelEnvelopeValidator } from "./shared_validators";
 import { normalizeOptionalInt } from "./lib/number_utils";
 import {
@@ -801,7 +805,10 @@ export const subscribeRemoteTurnRequestsForDevice = query({
   },
   returns: v.array(eventValidator),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return [];
+    }
     const maxItems = normalizeOptionalInt({
       value: args.limit,
       defaultValue: 10,
@@ -870,7 +877,10 @@ export const isRemoteTurnClaimed = query({
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return false;
+    }
     const event = await findRemoteTurnRequest(ctx, args.requestId);
     if (!event) return false;
     const conversation = await ctx.db.get(event.conversationId);

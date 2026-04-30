@@ -11,6 +11,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
+  getUserIdOrNull,
   requireSensitiveUserIdentityAction,
   requireUserId,
 } from "./auth";
@@ -1568,7 +1569,10 @@ export const getCurrentPlan = query({
   args: {},
   returns: planValidator,
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await getUserIdOrNull(ctx);
+    if (!ownerId) {
+      return "free";
+    }
     const profile = await ctx.db
       .query("billing_profiles")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
