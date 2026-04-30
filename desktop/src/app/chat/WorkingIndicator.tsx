@@ -3,11 +3,10 @@ import { useUiState } from "@/context/ui-state";
 import { useWindowFocus } from "@/shared/hooks/use-window-focus";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { cn } from "@/shared/lib/utils";
-import { computeStatus } from "./status-utils";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
-import { getAgentLabel } from "./agent-labels";
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 import { TextShimmer } from "./TextShimmer";
+import { getWorkingIndicatorDisplayStatus } from "./working-indicator-state";
 import "./indicators.css";
 
 interface WorkingIndicatorProps {
@@ -38,29 +37,14 @@ export function WorkingIndicator({
     return () => cancelAnimationFrame(id);
   }, []);
 
-  let displayStatus: string;
   const activeTask = tasks?.[0];
   const shimmerActive = !activeTask || activeTask.status === "running";
-
-  if (status) {
-    displayStatus = status;
-  } else if (tasks && tasks.length > 0) {
-    const task = tasks[0];
-    const taskText =
-      task.status === "running"
-        ? (task.statusText ?? task.description)
-        : task.description;
-    if (task.status === "completed") {
-      displayStatus = taskText
-        ? `Task complete \u00b7 ${taskText}`
-        : "Task complete";
-    } else {
-      const label = getAgentLabel(task.agentType);
-      displayStatus = taskText ? `${label} \u00b7 ${taskText}` : label;
-    }
-  } else {
-    displayStatus = computeStatus({ toolName, isReasoning });
-  }
+  const displayStatus = getWorkingIndicatorDisplayStatus({
+    status,
+    toolName,
+    tasks,
+    isReasoning,
+  });
 
   return (
     <div className={cn("working-indicator", className)}>

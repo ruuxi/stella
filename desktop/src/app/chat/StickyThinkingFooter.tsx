@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { WorkingIndicator } from "./WorkingIndicator";
+import {
+  getStickyThinkingFooterState,
+  TASK_ROTATE_MS,
+} from "./sticky-thinking-footer-state";
 import "./indicators.css";
-
-const TASK_ROTATE_MS = 3000;
 
 type StickyThinkingFooterProps = {
   tasks: TaskItem[];
@@ -18,16 +20,18 @@ export function StickyThinkingFooter({
   isStreaming,
   status,
 }: StickyThinkingFooterProps) {
-  const runningTasks = useMemo(
-    () => tasks.filter((task) => task.status === "running"),
-    [tasks],
-  );
-  const completedTasks = useMemo(
-    () => tasks.filter((task) => task.status === "completed"),
-    [tasks],
-  );
-  const displayTasks = runningTasks.length > 0 ? runningTasks : completedTasks;
   const [activeIndex, setActiveIndex] = useState(0);
+  const footerState = useMemo(
+    () =>
+      getStickyThinkingFooterState({
+        tasks,
+        activeIndex,
+        isStreaming,
+        status,
+      }),
+    [activeIndex, isStreaming, status, tasks],
+  );
+  const { activeTask, displayTasks } = footerState;
 
   useEffect(() => {
     setActiveIndex(0);
@@ -45,12 +49,7 @@ export function StickyThinkingFooter({
     return () => window.clearInterval(intervalId);
   }, [displayTasks]);
 
-  const activeTask =
-    displayTasks.length > 0
-      ? displayTasks[activeIndex % displayTasks.length]
-      : null;
-
-  if (!activeTask && !isStreaming) {
+  if (!footerState.shouldRender) {
     return null;
   }
 
@@ -62,7 +61,7 @@ export function StickyThinkingFooter({
       >
         <WorkingIndicator
           className="sticky-thinking-footer__indicator"
-          status={status ?? undefined}
+          status={footerState.status}
           tasks={activeTask ? [activeTask] : undefined}
           toolName={runningTool}
           isReasoning={!activeTask}
