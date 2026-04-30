@@ -40,6 +40,8 @@ const SOCIAL_MODERATION_SYSTEM_PROMPT = [
   "Catch evasion such as repeated letters, leetspeak, separators, zero-width characters, and Unicode lookalikes.",
 ].join("\n");
 
+const GLOBAL_CHAT_DISABLED_ERROR = "Global Chat is disabled.";
+
 function parseModerationResponse(raw: string): "clean" | "censored" | null {
   const normalized = raw.trim().toUpperCase();
   if (normalized === "YES") return "censored";
@@ -63,6 +65,10 @@ export const listRoomMessages = query({
       return [];
     }
     await requireRoomMembership(ctx, args.roomId, ownerId);
+    const room = await ctx.db.get(args.roomId);
+    if (room?.kind === "global") {
+      return [];
+    }
     const limit = clampPageLimit(args.limit, 100, 500);
     const query = ctx.db
       .query("social_messages")
@@ -204,6 +210,13 @@ export const sendRoomMessage = mutation({
       "You're sending messages too fast. Please slow down.",
     );
     const membership = await requireRoomMembership(ctx, args.roomId, ownerId);
+    const room = await ctx.db.get(args.roomId);
+    if (room?.kind === "global") {
+      throw new ConvexError({
+        code: "FORBIDDEN",
+        message: GLOBAL_CHAT_DISABLED_ERROR,
+      });
+    }
 
     const body = args.body.trim();
     if (!body) {

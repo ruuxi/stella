@@ -46,10 +46,7 @@ const optionalRoomSummaryValidator = v.union(v.null(), roomSummaryValidator)
 // member-profile preview.
 const MAX_ROOM_MEMBERS_HYDRATED = 500
 
-// Well-known room key + title for the singleton public chat that any signed-in
-// user can join.
-const GLOBAL_ROOM_KEY = 'global'
-const GLOBAL_ROOM_TITLE = 'Global Chat'
+const GLOBAL_CHAT_DISABLED_ERROR = 'Global Chat is disabled.'
 
 type SocialProfileCache = Map<string, Promise<Doc<'social_profiles'> | null>>
 
@@ -78,9 +75,8 @@ const hydrateRoomSummary = async (
   if (!room) {
     return null
   }
-  // The global room is open to every signed-in user, so the membership table
-  // would grow without bound; skip member hydration there and let the chat UI
-  // resolve sender profiles on demand via `getProfilesByOwnerIds`.
+  // Global rooms have no bounded member preview, so resolve senders on demand
+  // if an older room summary is ever hydrated.
   const isGlobalRoom = room.kind === 'global'
   const [memberDocs, latestMessage] = await Promise.all([
     isGlobalRoom
@@ -210,23 +206,7 @@ export const getGlobalRoomSummary = query({
     if (!ownerId) {
       return null
     }
-    const room = await ctx.db
-      .query('social_rooms')
-      .withIndex('by_roomKey', (q) => q.eq('roomKey', GLOBAL_ROOM_KEY))
-      .unique()
-    if (!room || room.kind !== 'global') {
-      return null
-    }
-    const membership = await ctx.db
-      .query('social_room_members')
-      .withIndex('by_roomId_and_ownerId', (q) =>
-        q.eq('roomId', room._id).eq('ownerId', ownerId),
-      )
-      .unique()
-    if (!membership) {
-      return null
-    }
-    return await hydrateRoomSummary(ctx, room, membership)
+    return null
   },
 })
 
@@ -234,56 +214,11 @@ export const getOrJoinGlobalRoom = mutation({
   args: {},
   returns: socialRoomValidator,
   handler: async (ctx) => {
-    const ownerId = await requireConnectedUserId(ctx)
-    await enforceMutationRateLimit(
-      ctx,
-      'social_join_global_room',
-      ownerId,
-      RATE_STANDARD,
-      'Too many requests. Please slow down and try again.',
-    )
-    await ensureSocialProfileDoc(ctx, ownerId)
-
-    const existing = await ctx.db
-      .query('social_rooms')
-      .withIndex('by_roomKey', (q) => q.eq('roomKey', GLOBAL_ROOM_KEY))
-      .unique()
-    let room: Doc<'social_rooms'> | null = existing
-    const now = Date.now()
-    if (!room) {
-      const roomId = await ctx.db.insert('social_rooms', {
-        kind: 'global',
-        roomKey: GLOBAL_ROOM_KEY,
-        title: GLOBAL_ROOM_TITLE,
-        createdByOwnerId: ownerId,
-        createdAt: now,
-        updatedAt: now,
-        latestMessageAt: now,
-      })
-      room = await ctx.db.get(roomId)
-    }
-    if (!room) {
-      throw new ConvexError({
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to load Global Chat',
-      })
-    }
-
-    const membership = await ctx.db
-      .query('social_room_members')
-      .withIndex('by_roomId_and_ownerId', (q) =>
-        q.eq('roomId', room!._id).eq('ownerId', ownerId),
-      )
-      .unique()
-    if (!membership) {
-      // Anyone can join Global Chat; first joiner becomes a regular member.
-      // The very first message ever sent will create the singleton via the
-      // `createdByOwnerId` field above; ownership has no privileges here so
-      // we pin everyone to "member".
-      await createRoomMembership(ctx, room._id, ownerId, 'member')
-    }
-
-    return room
+    await requireConnectedUserId(ctx)
+    throw new ConvexError({
+      code: 'FORBIDDEN',
+      message: GLOBAL_CHAT_DISABLED_ERROR,
+    })
   },
 })
 
@@ -305,6 +240,9 @@ export const getRoom = query({
       return null
     }
     const room = await ctx.db.get(args.roomId)
+    if (room?.kind === 'global') {
+      return null
+    }
     return await hydrateRoomSummary(ctx, room, membership)
   },
 })
@@ -335,12 +273,12 @@ export const getOrCreateDmRoom = mutation({
     ensureRelationshipIsAccepted(relationship)
 
     const roomKey = `dm:${getRelationshipKey(ownerId, args.otherOwnerId)}`
-    const existing = await ctx.db
+    const room = await ctx.db
       .query('social_rooms')
       .withIndex('by_roomKey', (q) => q.eq('roomKey', roomKey))
       .unique()
-    if (existing) {
-      return existing
+    if (room) {
+      return room
     }
 
     const now = Date.now()
@@ -356,14 +294,14 @@ export const getOrCreateDmRoom = mutation({
       createRoomMembership(ctx, roomId, ownerId, 'owner'),
       createRoomMembership(ctx, roomId, args.otherOwnerId, 'member'),
     ])
-    const room = await ctx.db.get(roomId)
-    if (!room) {
+    const created = await ctx.db.get(roomId)
+    if (!created) {
       throw new ConvexError({
         code: 'INTERNAL_ERROR',
         message: 'Failed to create DM room',
       })
     }
-    return room
+    return created
   },
 })
 
@@ -539,6 +477,13 @@ export const markRoomRead = mutation({
       RATE_HOT_PATH,
     )
     const membership = await requireRoomMembership(ctx, args.roomId, ownerId)
+    const room = await ctx.db.get(args.roomId)
+    if (room?.kind === 'global') {
+      throw new ConvexError({
+        code: 'FORBIDDEN',
+        message: GLOBAL_CHAT_DISABLED_ERROR,
+      })
+    }
     await ctx.db.patch(membership._id, {
       ...(args.messageId ? { lastReadMessageId: args.messageId } : {}),
       lastReadAt: Date.now(),
