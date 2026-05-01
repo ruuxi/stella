@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import { SPLIT_PHASES, SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
 import { getPlatform } from "@/platform/electron/platform";
@@ -31,6 +31,7 @@ import { OnboardingShortcutsPhase } from "./OnboardingShortcutsPhase";
 import { OnboardingDoubleTapPhase } from "./OnboardingDoubleTapPhase";
 import { OnboardingVoicePhase } from "./OnboardingVoicePhase";
 import { OnboardingMemoryPhase } from "./OnboardingMemoryPhase";
+import { OnboardingEnterPhase } from "./OnboardingEnterPhase";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 
 const STEP_TITLES: Partial<Record<Phase, string>> = {
@@ -47,6 +48,7 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
   "double-tap": "Tap twice. Summon Stella.",
   voice: "Speak instead of type.",
   memory: "Help Stella remember.",
+  enter: "Stella is almost ready.",
 };
 
 export interface OnboardingStep1Props {
@@ -59,6 +61,8 @@ export interface OnboardingStep1Props {
   onPhaseChange?: (phase: Phase) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
   isAuthenticated?: boolean;
+  discoveryWelcomeExpected?: boolean;
+  discoveryWelcomeReady?: boolean;
 }
 
 export const OnboardingStep1 = ({
@@ -71,7 +75,13 @@ export const OnboardingStep1 = ({
   onDemoChange,
   onPhaseChange,
   isAuthenticated,
+  discoveryWelcomeExpected = false,
+  discoveryWelcomeReady = false,
 }: OnboardingStep1Props) => {
+  const skippedPhases = useMemo(
+    () => (discoveryWelcomeExpected ? undefined : new Set<Phase>(["enter"])),
+    [discoveryWelcomeExpected],
+  );
   const {
     phase,
     leaving,
@@ -85,6 +95,7 @@ export const OnboardingStep1 = ({
     onEnterSplit,
     onInteract,
     onPhaseChange,
+    skippedPhases,
   });
 
   const discovery = useOnboardingDiscovery({
@@ -244,6 +255,14 @@ export const OnboardingStep1 = ({
             splitTransitionActive={leaving}
             isAuthenticated={Boolean(isAuthenticated)}
             onContinue={handleMemoryContinue}
+          />
+        );
+      case "enter":
+        return (
+          <OnboardingEnterPhase
+            discoveryWelcomeReady={discoveryWelcomeReady}
+            splitTransitionActive={leaving}
+            onEnter={nextSplitStep}
           />
         );
       default:

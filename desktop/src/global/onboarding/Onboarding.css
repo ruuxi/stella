@@ -83,11 +83,6 @@
   width: 100%;
   animation: momentFadeIn var(--onboarding-duration-enter)
     var(--onboarding-ease-standard) forwards;
-  /* Promote the animated wrapper to its own compositor layer so the GPU
-   * rasterizes once and only re-blends per frame, instead of re-painting
-   * the moment surface on every blur step. Combined with the smaller
-   * blur radius this is what brings the reveal to a steady 60fps. */
-  will-change: opacity, transform, filter;
   backface-visibility: hidden;
 }
 

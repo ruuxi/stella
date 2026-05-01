@@ -39,6 +39,8 @@ type UseDiscoveryFlowOptions = {
   conversationId: string | null;
 };
 
+type DiscoveryWelcomeStatus = "idle" | "preparing" | "ready";
+
 export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
   const { hasConnectedAccount } = useAuthSessionState();
@@ -46,12 +48,16 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
   const [discoveryCategories, setDiscoveryCategories] = useState<
     DiscoveryCategory[] | null
   >(null);
+  const [welcomeStatus, setWelcomeStatus] =
+    useState<DiscoveryWelcomeStatus>("idle");
   const synthesizedRef = useRef(false);
   const synthesizingRef = useRef(false);
 
   const handleDiscoveryConfirm = useCallback(
     (categories: DiscoveryCategory[]) => {
-      setDiscoveryCategories(withBrowserDiscoveryCategory(categories));
+      const nextCategories = withBrowserDiscoveryCategory(categories);
+      setDiscoveryCategories(nextCategories);
+      setWelcomeStatus(nextCategories.length > 0 ? "preparing" : "ready");
     },
     [],
   );
@@ -63,21 +69,25 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     if (synthesizingRef.current) return;
     if (discoveryCategories.length === 0) {
       synthesizedRef.current = true;
+      setWelcomeStatus("ready");
       return;
     }
     synthesizingRef.current = true;
+    setWelcomeStatus("preparing");
 
     const run = async () => {
       let completed = false;
       try {
         const [coreMemoryExists, discoveryKnowledgeExists] = await Promise.all([
-          window.electronAPI?.discovery.checkCoreMemoryExists?.() ?? Promise.resolve(false),
+          window.electronAPI?.discovery.checkCoreMemoryExists?.() ??
+            Promise.resolve(false),
           window.electronAPI?.discovery.checkKnowledgeExists?.() ??
             Promise.resolve(false),
         ]);
         if (coreMemoryExists && discoveryKnowledgeExists) {
           completed = true;
           synthesizedRef.current = true;
+          setWelcomeStatus("ready");
           return;
         }
 
@@ -140,16 +150,27 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
             ? window.electronAPI.discovery.writeCoreMemory(
                 synthesisResult.coreMemory,
               )
-            : Promise.resolve({ ok: false, error: "Core memory write IPC is unavailable." }),
+            : Promise.resolve({
+                ok: false,
+                error: "Core memory write IPC is unavailable.",
+              }),
           window.electronAPI?.discovery.writeKnowledge
             ? window.electronAPI.discovery.writeKnowledge({
                 coreMemory: synthesisResult.coreMemory,
                 formattedSections: result.formattedSections,
                 ...(synthesisResult.categoryAnalyses
-                  ? { categoryAnalyses: synthesisResult.categoryAnalyses as Partial<Record<DiscoveryCategory, string>> }
+                  ? {
+                      categoryAnalyses:
+                        synthesisResult.categoryAnalyses as Partial<
+                          Record<DiscoveryCategory, string>
+                        >,
+                    }
                   : {}),
               })
-            : Promise.resolve({ ok: false, error: "Knowledge write IPC is unavailable." }),
+            : Promise.resolve({
+                ok: false,
+                error: "Knowledge write IPC is unavailable.",
+              }),
         ]);
 
         if (!coreMemoryWrite?.ok || !knowledgeWrite?.ok) {
@@ -179,6 +200,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
 
         completed = true;
         synthesizedRef.current = true;
+        setWelcomeStatus("ready");
       } catch (error) {
         reportDiscoveryFailure("Discovery failed unexpectedly.", error);
       } finally {
@@ -190,13 +212,11 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     };
 
     void run();
-  }, [
-    discoveryCategories,
-    hasConnectedAccount,
-    activeConversationId,
-  ]);
+  }, [discoveryCategories, hasConnectedAccount, activeConversationId]);
 
   return {
     handleDiscoveryConfirm,
+    discoveryWelcomeExpected: welcomeStatus !== "idle",
+    discoveryWelcomeReady: welcomeStatus === "ready",
   };
 }

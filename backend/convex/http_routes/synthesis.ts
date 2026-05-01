@@ -106,20 +106,13 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           body?.formattedSignals && typeof body.formattedSignals === "string";
 
         if (!hasFormattedSections && !hasFormattedSignals) {
-          return errorResponse(
-            400,
-            "formattedSections or formattedSignals is required",
-            origin,
-          );
+          return errorResponse(400, "formattedSections or formattedSignals is required", origin);
         }
 
         const coreMemorySystemPrompt = body.coreMemorySystemPrompt?.trim();
-        const coreMemoryUserPromptTemplate =
-          body.coreMemoryUserPromptTemplate?.trim();
-        const welcomeMessagePromptTemplate =
-          body.welcomeMessagePromptTemplate?.trim();
-        const homeSuggestionsPromptTemplate =
-          body.homeSuggestionsPromptTemplate?.trim();
+        const coreMemoryUserPromptTemplate = body.coreMemoryUserPromptTemplate?.trim();
+        const welcomeMessagePromptTemplate = body.welcomeMessagePromptTemplate?.trim();
+        const homeSuggestionsPromptTemplate = body.homeSuggestionsPromptTemplate?.trim();
         if (
           !coreMemorySystemPrompt ||
           !coreMemoryUserPromptTemplate ||
@@ -129,16 +122,12 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           return errorResponse(400, "Missing synthesis prompt payload", origin);
         }
 
-        const categoryAnalysisSystemPrompts =
-          body.categoryAnalysisSystemPrompts;
-        const categoryAnalysisUserPromptTemplate =
-          body.categoryAnalysisUserPromptTemplate?.trim();
+        const categoryAnalysisSystemPrompts = body.categoryAnalysisSystemPrompts;
+        const categoryAnalysisUserPromptTemplate = body.categoryAnalysisUserPromptTemplate?.trim();
 
         const apiKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar];
         if (!apiKey) {
-          console.error(
-            `[synthesize] Missing ${MANAGED_GATEWAY.apiKeyEnvVar} environment variable`,
-          );
+          console.error(`[synthesize] Missing ${MANAGED_GATEWAY.apiKeyEnvVar} environment variable`);
           return errorResponse(500, "Server configuration error", origin);
         }
 
@@ -148,8 +137,8 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             (identity as Record<string, unknown> | null)?.isAnonymous === true;
           const modelAccess = ownerId
             ? await resolveManagedModelAccess(ctx, ownerId, {
-                isAnonymous: isAnonymousIdentity,
-              })
+              isAnonymous: isAnonymousIdentity,
+            })
             : undefined;
 
           if (!identity && anonDeviceId) {
@@ -178,19 +167,19 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           }
 
           const usageBlocked =
-            modelAccess &&
-            !modelAccess.allowed &&
-            modelAccess.plan !== "free" &&
-            !isAnonymousIdentity;
+            modelAccess
+            && !modelAccess.allowed
+            && modelAccess.plan !== "free"
+            && !isAnonymousIdentity;
           if (usageBlocked) {
             return errorResponse(429, modelAccess.message, origin);
           }
 
           if (
-            ownerId &&
-            !isAnonymousIdentity &&
-            modelAccess &&
-            modelAccess.plan !== "free"
+            ownerId
+            && !isAnonymousIdentity
+            && modelAccess
+            && modelAccess.plan !== "free"
           ) {
             const rateLimit = await consumeWebhookRateLimit(ctx, {
               scope: "synthesize_owner",
@@ -200,22 +189,14 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               blockMs: SYNTHESIS_OWNER_RATE_WINDOW_MS,
             });
             if (!rateLimit.allowed) {
-              return withCors(
-                rateLimitResponse(rateLimit.retryAfterMs),
-                origin,
-              );
+              return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
             }
           }
 
-          const synthesisConfig = await resolveModelConfig(
-            ctx,
-            "synthesis",
-            ownerId,
-            {
-              access: modelAccess,
-              audience: ownerId ? undefined : "anonymous",
-            },
-          );
+          const synthesisConfig = await resolveModelConfig(ctx, "synthesis", ownerId, {
+            access: modelAccess,
+            audience: ownerId ? undefined : "anonymous",
+          });
 
           let synthesisInput: string;
           const categoryAnalysesMap: Record<string, string> = {};
@@ -236,63 +217,53 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               categoryKeys,
             );
 
-            const analysisResults: Array<{
-              category: string;
-              analysis: string;
-              durationMs: number;
-              usage: ReturnType<typeof usageSummaryFromAssistant> | undefined;
-              generated: boolean;
-            }> = [];
-            for (const category of categoryKeys) {
-              const systemPrompt = categoryAnalysisSystemPrompts[category];
-              if (!systemPrompt) {
-                analysisResults.push({
-                  category,
-                  analysis: sections[category],
-                  durationMs: 0,
-                  usage: undefined,
-                  generated: false,
-                });
-                continue;
-              }
+            const analysisResults = await Promise.all(
+              categoryKeys.map(async (category) => {
+                const systemPrompt = categoryAnalysisSystemPrompts[category];
+                if (!systemPrompt) {
+                  return {
+                    category,
+                    analysis: sections[category],
+                    durationMs: 0,
+                    usage: undefined,
+                    generated: false,
+                  };
+                }
 
-              const startedAt = Date.now();
-              const message = await completeManagedChat({
-                config: {
-                  ...synthesisConfig,
-                  maxOutputTokens: 12000,
-                },
-                context: {
-                  systemPrompt,
-                  messages: [
-                    {
+                const startedAt = Date.now();
+                const message = await completeManagedChat({
+                  config: {
+                    ...synthesisConfig,
+                    maxOutputTokens: 30000,
+                  },
+                  context: {
+                    systemPrompt,
+                    messages: [{
                       role: "user",
-                      content: [
-                        {
-                          type: "text",
-                          text: buildCategoryAnalysisUserMessage(
-                            category,
-                            sections[category],
-                            categoryAnalysisUserPromptTemplate,
-                          ),
-                        },
-                      ],
+                      content: [{
+                        type: "text",
+                        text: buildCategoryAnalysisUserMessage(
+                          category,
+                          sections[category],
+                          categoryAnalysisUserPromptTemplate,
+                        ),
+                      }],
                       timestamp: Date.now(),
-                    },
-                  ],
-                },
-              });
-              const analysis = assistantText(message);
-              const durationMs = Date.now() - startedAt;
+                    }],
+                  },
+                });
+                const analysis = assistantText(message);
+                const durationMs = Date.now() - startedAt;
 
-              analysisResults.push({
-                category,
-                analysis,
-                durationMs,
-                usage: usageSummaryFromAssistant(message),
-                generated: true,
-              });
-            }
+                return {
+                  category,
+                  analysis,
+                  durationMs,
+                  usage: usageSummaryFromAssistant(message),
+                  generated: true,
+                };
+              }),
+            );
 
             if (ownerId) {
               await Promise.all(
@@ -306,14 +277,12 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                       durationMs: result.durationMs,
                       success: true,
                       usage: result.usage,
-                    }),
-                  ),
+                    })),
               );
             }
 
-            const filteredResults = analysisResults.filter(
-              (result) => result.analysis.length > 0,
-            );
+            const filteredResults = analysisResults
+              .filter((result) => result.analysis.length > 0);
 
             synthesisInput = filteredResults
               .map((result) => result.analysis)
@@ -338,21 +307,17 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             config: synthesisConfig,
             context: {
               systemPrompt: coreMemorySystemPrompt,
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    {
-                      type: "text",
-                      text: buildCoreSynthesisUserMessage(
-                        synthesisInput,
-                        coreMemoryUserPromptTemplate,
-                      ),
-                    },
-                  ],
-                  timestamp: Date.now(),
-                },
-              ],
+              messages: [{
+                role: "user",
+                content: [{
+                  type: "text",
+                  text: buildCoreSynthesisUserMessage(
+                    synthesisInput,
+                    coreMemoryUserPromptTemplate,
+                  ),
+                }],
+                timestamp: Date.now(),
+              }],
             },
           });
 
@@ -369,82 +334,66 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
 
           const coreMemory = assistantText(synthesisMessage);
           if (!coreMemory) {
-            return errorResponse(
-              500,
-              "Failed to synthesize core memory",
-              origin,
-            );
+            return errorResponse(500, "Failed to synthesize core memory", origin);
           }
           console.log(
             `[synthesize] Core memory synthesis complete in ${Date.now() - coreSynthesisStartedAt}ms. Output length: ${coreMemory.length} chars`,
           );
 
-          const welcomeConfig = await resolveModelConfig(
-            ctx,
-            "welcome",
-            ownerId,
-            {
-              access: modelAccess,
-              audience: ownerId ? undefined : "anonymous",
-            },
-          );
+          const welcomeConfig = await resolveModelConfig(ctx, "welcome", ownerId, {
+            access: modelAccess,
+            audience: ownerId ? undefined : "anonymous",
+          });
 
           console.log("[synthesize] Welcome and home suggestions starting");
           const welcomeStartedAt = Date.now();
-          const welcomeMessageResult = await completeManagedChat({
-            config: welcomeConfig,
-            context: {
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    {
-                      type: "text",
-                      text: buildWelcomeMessagePrompt(
-                        coreMemory,
-                        welcomeMessagePromptTemplate,
-                      ),
-                    },
-                  ],
-                  timestamp: Date.now(),
-                },
-              ],
-            },
-          });
-          const welcomeResult = {
-            result: welcomeMessageResult,
-            durationMs: Date.now() - welcomeStartedAt,
-          };
           const suggestionsStartedAt = Date.now();
-          const suggestionsResult = await completeManagedChat({
-            config: {
-              ...welcomeConfig,
-              maxOutputTokens: 2000,
-              temperature: 0.7,
-            },
-            context: {
-              messages: [
-                {
+          const [welcomeResult, suggestionsResult] = await Promise.all([
+            completeManagedChat({
+              config: welcomeConfig,
+              context: {
+                messages: [{
                   role: "user",
-                  content: [
-                    {
-                      type: "text",
-                      text: buildHomeSuggestionsPrompt(
-                        coreMemory,
-                        homeSuggestionsPromptTemplate,
-                      ),
-                    },
-                  ],
+                  content: [{
+                    type: "text",
+                    text: buildWelcomeMessagePrompt(
+                      coreMemory,
+                      welcomeMessagePromptTemplate,
+                    ),
+                  }],
                   timestamp: Date.now(),
-                },
-              ],
-            },
-          })
-            .then((result) => ({
+                }],
+              },
+            }).then((result) => ({
               result,
-              durationMs: Date.now() - suggestionsStartedAt,
-            }))
-            .catch(() => null);
+              durationMs: Date.now() - welcomeStartedAt,
+            })),
+            completeManagedChat({
+              config: {
+                ...welcomeConfig,
+                maxOutputTokens: 30000,
+                temperature: 0.7,
+              },
+              context: {
+                messages: [{
+                  role: "user",
+                  content: [{
+                    type: "text",
+                    text: buildHomeSuggestionsPrompt(
+                      coreMemory,
+                      homeSuggestionsPromptTemplate,
+                    ),
+                  }],
+                  timestamp: Date.now(),
+                }],
+              },
+            })
+              .then((result) => ({
+                result,
+                durationMs: Date.now() - suggestionsStartedAt,
+              }))
+              .catch(() => null),
+          ]);
           console.log(
             `[synthesize] Welcome and home suggestions complete. Welcome: ${welcomeResult.durationMs}ms, suggestions: ${suggestionsResult?.durationMs ?? "failed"}ms`,
           );
@@ -472,8 +421,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           }
 
           const suggestionsText = getHomeSuggestionsText(suggestionsResult);
-          const suggestions =
-            parseHomeSuggestionsFromModelText(suggestionsText);
+          const suggestions = parseHomeSuggestionsFromModelText(
+            suggestionsText,
+          );
           if (!suggestions.length && suggestionsText) {
             console.warn(
               "[synthesize] Home suggestions: model output was not a usable JSON array",
@@ -483,8 +433,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
 
           const response: SynthesizeResponse = {
             coreMemory,
-            welcomeMessage:
-              assistantText(welcomeResult.result) || DEFAULT_WELCOME_MESSAGE,
+            welcomeMessage: assistantText(welcomeResult.result) || DEFAULT_WELCOME_MESSAGE,
             suggestions,
             ...(Object.keys(categoryAnalysesMap).length > 0
               ? { categoryAnalyses: categoryAnalysesMap }

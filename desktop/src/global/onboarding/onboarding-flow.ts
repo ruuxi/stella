@@ -14,6 +14,7 @@ export type Phase =
   | "shortcuts-local"
   | "double-tap"
   | "voice"
+  | "enter"
   | "complete"
   | "done";
 
@@ -30,6 +31,7 @@ export const SPLIT_PHASES = new Set<Phase>([
   "double-tap",
   "voice",
   "memory",
+  "enter",
 ]);
 
 export const SPLIT_STEP_ORDER: Phase[] = [
@@ -45,6 +47,7 @@ export const SPLIT_STEP_ORDER: Phase[] = [
   "double-tap",
   "voice",
   "memory",
+  "enter",
 ];
 
 export const DISCOVERY_CATEGORIES: {

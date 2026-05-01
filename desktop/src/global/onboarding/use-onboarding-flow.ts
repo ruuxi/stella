@@ -8,12 +8,16 @@ const PLATFORM_SKIPPED_PHASES: ReadonlySet<Phase> =
     ? new Set<Phase>(["permissions"])
     : new Set<Phase>();
 
-const advancePastSkipped = (index: number, direction: 1 | -1): number => {
+const advancePastSkipped = (
+  index: number,
+  direction: 1 | -1,
+  skippedPhases: ReadonlySet<Phase> = PLATFORM_SKIPPED_PHASES,
+): number => {
   let cursor = index;
   while (
     cursor >= 0 &&
     cursor < SPLIT_STEP_ORDER.length &&
-    PLATFORM_SKIPPED_PHASES.has(SPLIT_STEP_ORDER[cursor])
+    skippedPhases.has(SPLIT_STEP_ORDER[cursor])
   ) {
     cursor += direction;
   }
@@ -30,6 +34,7 @@ type UseOnboardingFlowArgs = {
   onEnterSplit?: () => void;
   onInteract?: () => void;
   onPhaseChange?: (phase: Phase) => void;
+  skippedPhases?: ReadonlySet<Phase>;
 };
 
 export function useOnboardingFlow({
@@ -38,6 +43,7 @@ export function useOnboardingFlow({
   onEnterSplit,
   onInteract,
   onPhaseChange,
+  skippedPhases,
 }: UseOnboardingFlowArgs) {
   const [phase, setPhase] = useState<Phase>(initialPhase);
   const [leaving, setLeaving] = useState(false);
@@ -127,7 +133,7 @@ export function useOnboardingFlow({
 
   const nextSplitStep = useCallback(() => {
     const index = SPLIT_STEP_ORDER.indexOf(phase);
-    const nextIndex = advancePastSkipped(index + 1, 1);
+    const nextIndex = advancePastSkipped(index + 1, 1, skippedPhases);
     if (nextIndex < SPLIT_STEP_ORDER.length) {
       onInteract?.();
       transitionTo(SPLIT_STEP_ORDER[nextIndex]);
@@ -136,16 +142,16 @@ export function useOnboardingFlow({
 
     onInteract?.();
     transitionTo("complete");
-  }, [onInteract, phase, transitionTo]);
+  }, [onInteract, phase, skippedPhases, transitionTo]);
 
   const prevSplitStep = useCallback(() => {
     const index = SPLIT_STEP_ORDER.indexOf(phase);
-    const prevIndex = advancePastSkipped(index - 1, -1);
+    const prevIndex = advancePastSkipped(index - 1, -1, skippedPhases);
     if (prevIndex >= 0) {
       onInteract?.();
       transitionTo(SPLIT_STEP_ORDER[prevIndex]);
     }
-  }, [onInteract, phase, transitionTo]);
+  }, [onInteract, phase, skippedPhases, transitionTo]);
 
   const continueIntro = useCallback(() => {
     onInteract?.();
