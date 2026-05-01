@@ -115,10 +115,10 @@ You can change your own system prompt, your own tools, your peers' prompts, and 
 
 ### Creating a new in-app "app" (sidebar entry + route)
 
-Stella uses TanStack Router with file-system routes under `desktop/src/routes/` and an `import.meta.glob` over `desktop/src/apps/<id>/metadata.ts` for sidebar discovery. `routeTree.gen.ts` is auto-generated — never edit it. To add a new app:
+Stella uses TanStack Router with file-system routes under `desktop/src/routes/` and an `import.meta.glob` over `desktop/src/app/<id>/metadata.ts` for sidebar discovery. `routeTree.gen.ts` is auto-generated — never edit it. To add a new app:
 
-1. `desktop/src/apps/<id>/App.tsx` — the route component. Self-contain UI, hooks, and styles inside this folder; reach into `shared/`, `ui/`, `context/`, `infra/`, etc. only when something is genuinely cross-cutting.
-2. `desktop/src/apps/<id>/metadata.ts` — `default export` an `AppMetadata` (`id`, `label`, `icon`, `route: "/<id>"`, `slot: "top" | "bottom"`, optional `order`, `hideFromSidebar`, `onActiveClick`). Icon comes from `@/shell/sidebar/SidebarIcons` or a new component matching that shape.
+1. `desktop/src/app/<id>/App.tsx` — the route component. Self-contain UI, hooks, and styles inside this folder; reach into `shared/`, `ui/`, `context/`, `infra/`, etc. only when something is genuinely cross-cutting.
+2. `desktop/src/app/<id>/metadata.ts` — `default export` an `AppMetadata` (`id`, `label`, `icon`, `route: "/<id>"`, `slot: "top" | "bottom"`, optional `order`, `hideFromSidebar`, `onActiveClick`). Icon comes from `@/shell/sidebar/SidebarIcons` or a new component matching that shape.
 3. `desktop/src/routes/<id>.tsx` — one-liner: `createFileRoute("/<id>")({ component: <id>App })`. Add a `validateSearch` zod schema only if the app needs query params.
 
 No sidebar registry edits, no manual `routeTree.gen.ts` edits.

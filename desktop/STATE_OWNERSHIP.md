@@ -35,7 +35,7 @@ initial sync.
 > can restore on the next launch — *not* through `UiState`/IPC, because no
 > other window cares. See `desktop/src/shared/lib/last-location.ts` and
 > the restore/persist effects in `desktop/src/routes/__root.tsx`. Adding a
-> new sidebar app is "drop a folder under `desktop/src/apps/<id>/`" — see
+> new sidebar app is "drop a folder under `desktop/src/app/<id>/`" — see
 > `state/skills/stella-desktop/SKILL.md`.
 
 
@@ -44,7 +44,7 @@ initial sync.
 This is the most complex piece of state because two subsystems interact:
 
 1. **Canonical source**: the chat route's `?c=<id>` search param
-   (`/chat?c=<id>`). The chat App (`apps/chat/App.tsx`) reads the param via
+   (`/chat?c=<id>`). The chat App (`app/chat/App.tsx`) reads the param via
    `useSearch({ from: '/chat' })`.
 2. **Cross-window mirror**: `useConversationBootstrap` writes the
    bootstrapped id into `UiState.conversationId` so the **voice overlay

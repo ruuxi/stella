@@ -7,7 +7,7 @@
  *
  * Persists the last-active tab to localStorage on every click so
  * clicking the sidebar's Store icon reopens to wherever the user was
- * last (mirrors `apps/store/App.tsx`).
+ * last (mirrors `app/store/App.tsx`).
  */
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback } from "react";

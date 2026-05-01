@@ -86,7 +86,7 @@ layout do it.
 This is exactly three files. **Do not edit the Sidebar component.** It picks
 the new app up automatically through `import.meta.glob`.
 
-### 1. `desktop/src/apps/<id>/metadata.ts`
+### 1. `desktop/src/app/<id>/metadata.ts`
 
 ```ts
 import { CustomLayout } from "@/shell/sidebar/SidebarIcons";
@@ -106,7 +106,7 @@ const metadata: AppMetadata = {
 export default metadata;
 ```
 
-### 2. `desktop/src/apps/<id>/App.tsx`
+### 2. `desktop/src/app/<id>/App.tsx`
 
 ```tsx
 import { lazy, Suspense } from "react";
@@ -139,7 +139,7 @@ export default NotesApp;
 
 ```tsx
 import { createFileRoute } from "@tanstack/react-router";
-import { NotesApp } from "@/apps/notes/App";
+import { NotesApp } from "@/app/notes/App";
 
 export const Route = createFileRoute("/notes")({
   component: NotesApp,
@@ -153,7 +153,7 @@ the sidebar. Run the runtime tests to confirm:
 cd desktop && bunx vitest@4.0.18 run --project runtime tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
 ```
 
-`tests/runtime/sidebar-discovery.test.ts` verifies every `apps/<id>/metadata.ts`
+`tests/runtime/sidebar-discovery.test.ts` verifies every `app/<id>/metadata.ts`
 is well-formed and has a matching `routes/<id>.tsx`. `route-smoke.test.ts`
 verifies the generated route tree references it.
 
@@ -164,7 +164,7 @@ Edit the route file:
 ```tsx
 import { z } from "zod";
 import { createFileRoute } from "@tanstack/react-router";
-import { NotesApp } from "@/apps/notes/App";
+import { NotesApp } from "@/app/notes/App";
 
 const NotesSearch = z.object({
   noteId: z.string().optional(),
@@ -240,7 +240,7 @@ need, prefer **plain React state** — neither.
 
 `useFullShellChat()` produces the chat conversation, composer, streaming, etc.
 That hook runs **once** in `__root.tsx` inside `<ChatRuntimeProvider>`. Both
-the chat route (`apps/chat/App.tsx`) and the floating sidebars
+the chat route (`app/chat/App.tsx`) and the floating sidebars
 (`ChatSidebar`, `DisplaySidebar`) consume it via `useChatRuntime()`. Don't
 mount `useFullShellChat` anywhere else — that would double-instantiate the
 streaming subscription.

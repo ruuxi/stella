@@ -1,15 +1,18 @@
 import type { ComponentType, SVGProps } from "react";
 
 /**
- * Per-app sidebar metadata. Each `desktop/src/apps/<id>/metadata.ts` file
+ * Per-app sidebar metadata. Each `desktop/src/app/<id>/metadata.ts` file
  * exports a default of this shape. The Sidebar discovers all metadata files
  * via a relative `import.meta.glob` (see `desktop/src/shell/sidebar/Sidebar.tsx`
  * — the glob pattern lives there) and renders one nav entry per app.
+ * Feature folders that omit `metadata.ts` (e.g. `home`, `media`, `workspace`)
+ * are skipped by the glob — sidebar presence is opt-in per feature.
  *
  * To add a new sidebar app, agents should:
- *   1. Create `desktop/src/apps/<id>/metadata.ts` (this shape).
- *   2. Create `desktop/src/apps/<id>/App.tsx` (the route component).
- *   3. Create `desktop/src/routes/<id>.tsx` (one-line file-system route).
+ *   1. Create `desktop/src/app/<id>/metadata.ts` (this shape).
+ *   2. Create `desktop/src/app/<id>/App.tsx` (the route component).
+ *   3. Create `desktop/src/routes/<id>.tsx` (file-system route, optionally
+ *      with a zod search-param validator).
  *
  * Vite + the TanStack Router plugin pick the new route up via HMR; the
  * sidebar reflects the new entry on the next render. No edits to the

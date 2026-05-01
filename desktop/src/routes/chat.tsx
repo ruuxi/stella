@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { ChatApp } from "@/apps/chat/App";
+import { ChatApp } from "@/app/chat/App";
 
 /**
  * `?c=<conversationId>` is the canonical chat-route search param. We use a

@@ -3,16 +3,24 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const APPS_DIR = fileURLToPath(new URL("../../src/apps", import.meta.url));
+const APPS_DIR = fileURLToPath(new URL("../../src/app", import.meta.url));
 const ROUTES_DIR = fileURLToPath(new URL("../../src/routes", import.meta.url));
 const ROUTE_TREE_PATH = fileURLToPath(
   new URL("../../src/routeTree.gen.ts", import.meta.url),
 );
 
+// Only feature folders with a `metadata.ts` are sidebar apps; matches the
+// runtime `import.meta.glob` filter.
 const listAppDirs = () =>
   readdirSync(APPS_DIR).filter((entry) => {
     if (entry.startsWith("_")) return false;
-    return statSync(join(APPS_DIR, entry)).isDirectory();
+    const full = join(APPS_DIR, entry);
+    if (!statSync(full).isDirectory()) return false;
+    try {
+      return statSync(join(full, "metadata.ts")).isFile();
+    } catch {
+      return false;
+    }
   });
 
 /**
@@ -71,7 +79,7 @@ describe("route smoke", () => {
         "utf-8",
       );
       const match = metaSource.match(/route:\s*["']([^"']+)["']/);
-      expect(match, `apps/${dirName}/metadata.ts must declare route: "..."`).toBeTruthy();
+      expect(match, `app/${dirName}/metadata.ts must declare route: "..."`).toBeTruthy();
       const route = match![1];
       expect(tree).toMatch(
         new RegExp(`['"\`]${route.replace(/\//g, "\\/")}['"\`]\\s*:\\s*typeof`),

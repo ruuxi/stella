@@ -3,15 +3,24 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const APPS_DIR = fileURLToPath(new URL("../../src/apps", import.meta.url));
+const APPS_DIR = fileURLToPath(new URL("../../src/app", import.meta.url));
 const ROUTES_DIR = fileURLToPath(new URL("../../src/routes", import.meta.url));
 
 const VALID_SLOTS = new Set(["top", "bottom"]);
 
+// Only feature folders that opt into the sidebar (i.e. ship a `metadata.ts`)
+// participate. `home`, `media`, `workspace`, etc. are sub-surfaces and are
+// silently skipped — same rule the runtime glob uses.
 const listAppDirs = () =>
   readdirSync(APPS_DIR).filter((entry) => {
     if (entry.startsWith("_")) return false;
-    return statSync(join(APPS_DIR, entry)).isDirectory();
+    const full = join(APPS_DIR, entry);
+    if (!statSync(full).isDirectory()) return false;
+    try {
+      return statSync(join(full, "metadata.ts")).isFile();
+    } catch {
+      return false;
+    }
   });
 
 describe("sidebar app discovery", () => {
@@ -23,13 +32,13 @@ describe("sidebar app discovery", () => {
     }
   });
 
-  it.each(appDirs)("`apps/%s/` exposes a well-formed metadata.ts", async (dirName) => {
+  it.each(appDirs)("`app/%s/` exposes a well-formed metadata.ts", async (dirName) => {
     const mod = (await import(join(APPS_DIR, dirName, "metadata.ts"))) as {
       default: unknown;
     };
     const metadata = mod.default as Record<string, unknown>;
 
-    expect(metadata, `apps/${dirName}/metadata.ts must export default`).toBeTruthy();
+    expect(metadata, `app/${dirName}/metadata.ts must export default`).toBeTruthy();
     expect(typeof metadata.id).toBe("string");
     expect(typeof metadata.label).toBe("string");
     expect(typeof metadata.route).toBe("string");
@@ -41,17 +50,17 @@ describe("sidebar app discovery", () => {
     expect((metadata.route as string).startsWith("/")).toBe(true);
 
     // The directory name *is* the app id. Diverging makes discovery + the
-    // routes/<id>.tsx convention quietly inconsistent (e.g. an `apps/chat`
+    // routes/<id>.tsx convention quietly inconsistent (e.g. an `app/chat`
     // folder declaring `id: "home"` would still appear in the sidebar but
     // would not match its directory or the route filename).
     expect(
       metadata.id,
-      `apps/${dirName}/metadata.ts must declare id: "${dirName}" (matches the directory name)`,
+      `app/${dirName}/metadata.ts must declare id: "${dirName}" (matches the directory name)`,
     ).toBe(dirName);
   });
 
   it.each(appDirs)(
-    "`apps/%s/`'s metadata.route has a matching `routes/<id>.tsx` shell",
+    "`app/%s/`'s metadata.route has a matching `routes/<id>.tsx` shell",
     async (dirName) => {
       const mod = (await import(join(APPS_DIR, dirName, "metadata.ts"))) as {
         default: { route: string };

@@ -4,7 +4,7 @@ import { ChatRuntimeContext } from '@/context/chat-runtime-context'
 
 /**
  * Hoists `useFullShellChat`'s output into a single Context so the chat
- * route (`apps/chat`) and the floating ChatSidebar / DisplaySidebar overlays
+ * route (`app/chat`) and the floating ChatSidebar / DisplaySidebar overlays
  * mounted by `__root.tsx` all consume the same conversation state. Running
  * the hook once also keeps Convex subscriptions deduplicated.
  *
