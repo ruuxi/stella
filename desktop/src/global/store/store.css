@@ -2208,6 +2208,13 @@
   align-self: start;
 }
 
+.store-install-confirm-copy {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-subtle);
+  margin-bottom: 4px;
+}
+
 @media (max-width: 700px) {
   .store-blueprint-dialog-body {
     grid-template-columns: 1fr;
