@@ -4,6 +4,7 @@ import { api } from "@/convex/api";
 import { AGENT_IDS } from "@/shared/contracts/agent-runtime";
 import {
   extractToolTitle,
+  extractTasksFromEvents,
   isAssistantMessage,
   isToolRequest,
   type EventRecord,
@@ -164,19 +165,24 @@ export function useTaskProgressSummaries(args: {
   const liveTasksRef = useRef(args.liveTasks);
   liveTasksRef.current = args.liveTasks;
 
-  // Drop state for tasks that left the live set (completed + scrolled out
-  // of the indicator window, canceled, failed, or replaced by a new run).
-  const liveAgentIds = useMemo(
-    () => new Set(args.liveTasks.map((t) => t.id)),
-    [args.liveTasks],
+  // Drop state only after a task has left both the live stream and the
+  // conversation's persisted task history. Completed tasks leave the live
+  // set quickly, but the overview may be opened later and should still show
+  // the phrases collected while the task was running.
+  const conversationAgentIds = useMemo(
+    () => new Set([
+      ...args.liveTasks.map((t) => t.id),
+      ...extractTasksFromEvents(args.events).map((t) => t.id),
+    ]),
+    [args.events, args.liveTasks],
   );
   useEffect(() => {
     for (const agentId of [...taskStates.keys()]) {
-      if (!liveAgentIds.has(agentId)) {
+      if (!conversationAgentIds.has(agentId)) {
         dropTask(agentId);
       }
     }
-  }, [liveAgentIds]);
+  }, [conversationAgentIds]);
 
   // Single shared interval drives summarization for every running general
   // task on this conversation. Avoids a per-task setInterval explosion.
