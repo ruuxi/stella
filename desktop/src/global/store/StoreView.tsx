@@ -15,6 +15,7 @@ import type {
 // `releaseNumber` + `packageId` which is what the UI actually reads.
 type InstalledStoreModRecord = StoreInstallRecord
 import { showToast } from "@/ui/toast"
+import { Markdown } from "@/app/chat/Markdown"
 import {
   ChevronLeft,
   Clock,
@@ -61,6 +62,11 @@ type OwnerControls = {
   visibility: AddonVisibility
   onSetVisibility: (next: AddonVisibility) => Promise<void> | void
   onDelete: () => Promise<void> | void
+}
+
+type PendingAddonInstall = {
+  pkg: StorePackageRecord
+  release: StorePackageReleaseRecord
 }
 
 // ---------------------------------------------------------------------------
@@ -1305,6 +1311,71 @@ function ConnectorConfirmDialog({
   )
 }
 
+function AddonInstallConfirmDialog({
+  pending,
+  installing,
+  onConfirm,
+  onCancel,
+}: {
+  pending: PendingAddonInstall | null
+  installing: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  if (!pending) return null
+  return (
+    <div className="store-blueprint-dialog">
+      <div className="store-blueprint-dialog-card">
+        <div className="store-blueprint-dialog-header">
+          <div className="store-blueprint-dialog-title">
+            Add {pending.pkg.displayName}?
+          </div>
+          <button
+            type="button"
+            className="store-blueprint-dialog-close"
+            onClick={onCancel}
+            disabled={installing}
+            title="Close"
+          >
+            ×
+          </button>
+        </div>
+        <div className="store-blueprint-dialog-body">
+          <div className="store-blueprint-dialog-viewer">
+            <Markdown
+              text={pending.release.blueprintMarkdown}
+              cacheKey={`${pending.pkg.packageId}:${pending.release.releaseNumber}`}
+              className="store-blueprint-dialog-markdown"
+            />
+          </div>
+          <div className="store-blueprint-dialog-actions">
+            <div className="store-install-confirm-copy">
+              Stella will implement this blueprint locally and commit the
+              resulting changes so you can remove it later.
+            </div>
+            <button
+              type="button"
+              className="pill-btn pill-btn-primary"
+              onClick={onConfirm}
+              disabled={installing}
+            >
+              {installing ? "Adding…" : "Add to Stella"}
+            </button>
+            <button
+              type="button"
+              className="pill-btn"
+              onClick={onCancel}
+              disabled={installing}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 // ---------------------------------------------------------------------------
 // Package Detail
@@ -1530,6 +1601,9 @@ export function StoreView({
   const [confirmConnector, setConfirmConnector] =
     useState<StellaConnectorSummary | null>(null)
   const [confirmInstalling, setConfirmInstalling] = useState(false)
+  const [pendingAddonInstall, setPendingAddonInstall] =
+    useState<PendingAddonInstall | null>(null)
+  const [addonInstalling, setAddonInstalling] = useState(false)
   const { hasSession } = useAuthSessionState()
 
   const {
@@ -1662,8 +1736,6 @@ export function StoreView({
   const convex = useConvex()
   const handleInstall = useCallback(
     async (packageId: string, releaseNumber?: number) => {
-      const electronStore = window.electronAPI?.store
-      if (!electronStore) return
       try {
         const pkg = await convex.query(api.data.store_packages.getPublicPackage, {
           packageId,
@@ -1682,14 +1754,7 @@ export function StoreView({
         if (!target) {
           throw new Error("No release available for this add-on.")
         }
-        await electronStore.installFromBlueprint({
-          packageId,
-          releaseNumber: target.releaseNumber,
-          displayName: pkg.displayName,
-          blueprintMarkdown: target.blueprintMarkdown,
-        })
-        showToast({ title: "Added to Stella!", variant: "success" })
-        await reloadPackages()
+        setPendingAddonInstall({ pkg, release: target })
       } catch (err) {
         showToast({
           title:
@@ -1698,8 +1763,34 @@ export function StoreView({
         })
       }
     },
-    [convex, reloadPackages],
+    [convex],
   )
+
+  const handleConfirmInstallAddon = useCallback(async () => {
+    if (!pendingAddonInstall) return
+    const electronStore = window.electronAPI?.store
+    if (!electronStore) return
+    setAddonInstalling(true)
+    try {
+      await electronStore.installFromBlueprint({
+        packageId: pendingAddonInstall.pkg.packageId,
+        releaseNumber: pendingAddonInstall.release.releaseNumber,
+        displayName: pendingAddonInstall.pkg.displayName,
+        blueprintMarkdown: pendingAddonInstall.release.blueprintMarkdown,
+      })
+      setPendingAddonInstall(null)
+      showToast({ title: "Added to Stella!", variant: "success" })
+      await reloadPackages()
+    } catch (err) {
+      showToast({
+        title:
+          err instanceof Error ? err.message : "Couldn't add this right now",
+        variant: "error",
+      })
+    } finally {
+      setAddonInstalling(false)
+    }
+  }, [pendingAddonInstall, reloadPackages])
 
   const handleRemove = useCallback(
     async (packageId: string) => {
@@ -1812,6 +1903,14 @@ export function StoreView({
         onConfirm={() => void handleConfirmInstallConnector()}
         onCancel={() =>
           confirmInstalling ? undefined : setConfirmConnector(null)
+        }
+      />
+      <AddonInstallConfirmDialog
+        pending={pendingAddonInstall}
+        installing={addonInstalling}
+        onConfirm={() => void handleConfirmInstallAddon()}
+        onCancel={() =>
+          addonInstalling ? undefined : setPendingAddonInstall(null)
         }
       />
       {sharePkg ? (
