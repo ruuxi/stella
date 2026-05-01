@@ -8,6 +8,7 @@ import { scheduleManagedUsage } from "./managed_billing";
 import {
   buildStoreImageSafetyReviewPrompt,
   buildStoreSecurityReviewPrompt,
+  STORE_BLUEPRINT_REVIEW_SYSTEM_PROMPT,
   STORE_IMAGE_SAFETY_REVIEW_SYSTEM_PROMPT,
   STORE_SECURITY_REVIEW_SYSTEM_PROMPT,
 } from "../prompts/store_reviews";
@@ -151,6 +152,14 @@ type ReviewableCodeFile = {
   changeType: "create" | "update" | "delete";
   contentText?: string;
   patchText?: string;
+  /**
+   * "blueprint" marks a Stella Store blueprint markdown document — it is
+   * instructions (plus embedded code snippets) that another user's local
+   * Stella agent will implement. The reviewer uses a framing that covers
+   * both the snippets AND the natural-language / prompt-injection risk
+   * surface. Undefined means a normal code file (legacy v1 release path).
+   */
+  kind?: "blueprint";
 };
 
 type ReviewableImageFile = {
@@ -389,7 +398,8 @@ const buildMarkdownBlueprintReview = (
   codeFiles: [{
     path: "blueprint.md",
     changeType: "update",
-    contentText: truncateWithNotice(blueprintMarkdown, MAX_CONTENT_TEXT_CHARS),
+    contentText: blueprintMarkdown,
+    kind: "blueprint",
   }],
   imageFiles: [],
 });
@@ -502,7 +512,9 @@ const reviewCodeFile = async (
     fallbackConfig,
     context: {
       systemPrompt: [
-        STORE_SECURITY_REVIEW_SYSTEM_PROMPT,
+        args.file.kind === "blueprint"
+          ? STORE_BLUEPRINT_REVIEW_SYSTEM_PROMPT
+          : STORE_SECURITY_REVIEW_SYSTEM_PROMPT,
         "",
         STORE_REVIEW_OUTPUT_INSTRUCTIONS,
       ].join("\n"),
@@ -519,6 +531,7 @@ const reviewCodeFile = async (
             changeType: args.file.changeType,
             contentText: args.file.contentText,
             patchText: args.file.patchText,
+            ...(args.file.kind === "blueprint" ? { kind: "blueprint" as const } : {}),
           }),
         }],
         timestamp: Date.now(),
