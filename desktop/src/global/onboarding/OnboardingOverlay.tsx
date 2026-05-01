@@ -61,6 +61,8 @@ export function OnboardingView({
   onDemoChange,
   onPhaseChange,
   activeDemo,
+  discoveryWelcomeExpected = false,
+  discoveryWelcomeReady = false,
   stellaAnimationPaused = false,
   stellaAnimationHidden = false,
 }: {
@@ -86,6 +88,8 @@ export function OnboardingView({
   onDemoChange?: (demo: "default" | null) => void;
   onPhaseChange?: (phase: Phase) => void;
   activeDemo?: OnboardingDemo;
+  discoveryWelcomeExpected?: boolean;
+  discoveryWelcomeReady?: boolean;
   stellaAnimationPaused?: boolean;
   stellaAnimationHidden?: boolean;
 }) {
@@ -159,6 +163,8 @@ export function OnboardingView({
             onDemoChange={onDemoChange}
             onPhaseChange={onPhaseChange}
             isAuthenticated={isAuthenticated}
+            discoveryWelcomeExpected={discoveryWelcomeExpected}
+            discoveryWelcomeReady={discoveryWelcomeReady}
           />
         ) : (
           <>
