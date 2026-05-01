@@ -126,6 +126,14 @@ pub struct Manifest {
     pub desktop_release_tag: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub desktop_archive_sha256: Option<String>,
+    /// Upstream GitHub commit SHA the tarball was built from. Updated by the
+    /// install-update agent after each successful manual update.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub desktop_release_commit: Option<String>,
+    /// SHA of the local `start` commit created by `init_git_repo` immediately
+    /// after extraction. Stable reference even after self-mod commits accumulate.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub desktop_install_base_commit: Option<String>,
     pub platform: String,
     pub installed_at: String,
     pub install_path: String,

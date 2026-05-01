@@ -466,6 +466,8 @@ struct EmoteInstallState {
 struct DesktopReleaseManifest {
     schema_version: u32,
     tag: String,
+    #[serde(default)]
+    commit: Option<String>,
     #[allow(dead_code)]
     files: HashMap<String, ReleaseFileEntry>,
 }
@@ -1544,6 +1546,39 @@ async fn init_git_repo(install_dir: &str) {
     #[cfg(target_os = "windows")]
     commit_command.creation_flags(0x08000000);
     let _ = commit_command.output().await;
+
+    // Capture the local "start" commit SHA so the install-update agent has a
+    // stable base reference even after self-mod commits accumulate.
+    let mut rev_parse_command = Command::new(&git_bin);
+    rev_parse_command
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&cwd)
+        .envs(&env);
+    #[cfg(target_os = "windows")]
+    rev_parse_command.creation_flags(0x08000000);
+    if let Ok(output) = rev_parse_command.output().await {
+        if output.status.success() {
+            let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !sha.is_empty() {
+                let _ = update_manifest_install_base_commit(install_dir, &sha).await;
+            }
+        }
+    }
+}
+
+async fn update_manifest_install_base_commit(install_dir: &str, sha: &str) -> Result<(), String> {
+    let manifest_path = manifest_of(install_dir);
+    let raw = fs::read_to_string(&manifest_path)
+        .await
+        .map_err(|e| format!("Failed to read install manifest: {e}"))?;
+    let mut manifest: Manifest = serde_json::from_str(&raw)
+        .map_err(|e| format!("Install manifest was invalid JSON: {e}"))?;
+    manifest.desktop_install_base_commit = Some(sha.to_string());
+    let json = serde_json::to_string_pretty(&manifest)
+        .map_err(|e| format!("Failed to serialize install manifest: {e}"))?;
+    fs::write(&manifest_path, json)
+        .await
+        .map_err(|e| format!("Failed to persist install manifest: {e}"))
 }
 
 fn schedule_git_repo_init(install_dir: String) {
@@ -1739,6 +1774,10 @@ async fn install_step(
                     .as_ref()
                     .map(|manifest| manifest.tag.clone()),
                 desktop_archive_sha256: None,
+                desktop_release_commit: release_manifest
+                    .as_ref()
+                    .and_then(|manifest| manifest.commit.clone()),
+                desktop_install_base_commit: None,
                 platform: std::env::consts::OS.into(),
                 installed_at: chrono_now(),
                 install_path: dir.clone(),

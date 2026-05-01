@@ -63,6 +63,8 @@ import {
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
+  IPC_UPDATES_GET_INSTALL_MANIFEST,
+  IPC_UPDATES_RECORD_APPLIED_COMMIT,
 } from "../src/shared/contracts/ipc-channels.js";
 import type { RuntimeSocialSessionStatus } from "../../runtime/protocol/index.js";
 
@@ -962,6 +964,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("credential:submit", payload),
     cancelCredential: (payload: { requestId: string }) =>
       ipcRenderer.invoke("credential:cancel", payload),
+  },
+
+  updates: {
+    getInstallManifest: () =>
+      ipcRenderer.invoke(IPC_UPDATES_GET_INSTALL_MANIFEST) as Promise<{
+        version: string;
+        platform: string;
+        installPath: string;
+        installedAt: string;
+        desktopReleaseTag: string | null;
+        desktopReleaseCommit: string | null;
+        desktopInstallBaseCommit: string | null;
+      } | null>,
+    recordAppliedCommit: (commit: string) =>
+      ipcRenderer.invoke(IPC_UPDATES_RECORD_APPLIED_COMMIT, {
+        commit,
+      }) as Promise<{
+        version: string;
+        platform: string;
+        installPath: string;
+        installedAt: string;
+        desktopReleaseTag: string | null;
+        desktopReleaseCommit: string | null;
+        desktopInstallBaseCommit: string | null;
+      } | null>,
   },
 
   onboarding: {

@@ -16,6 +16,7 @@ import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
 import { registerStoreHandlers } from "../ipc/store-handlers.js";
 import { registerSystemHandlers } from "../ipc/system-handlers.js";
 import { registerUiHandlers } from "../ipc/ui-handlers.js";
+import { registerUpdatesHandlers } from "../ipc/updates-handlers.js";
 import { registerVoiceHandlers } from "../ipc/voice-handlers.js";
 import { registerDictationHandlers } from "../ipc/dictation-handlers.js";
 import { startCapturingHandlers } from "../services/mobile-bridge/handler-registry.js";
@@ -242,6 +243,12 @@ export const registerBootstrapIpcHandlers = (
   registerGoogleWorkspaceHandlers({
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerUpdatesHandlers({
+    getStellaRoot: lifecycle.getStellaRoot,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

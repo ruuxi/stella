@@ -8,6 +8,7 @@ export const AGENT_IDS = {
   EXPLORE: "explore",
   DREAM: "dream",
   CHRONICLE: "chronicle",
+  INSTALL_UPDATE: "install_update",
 } as const;
 
 export type AgentId = (typeof AGENT_IDS)[keyof typeof AGENT_IDS];
@@ -184,6 +185,22 @@ const BUILTIN_AGENT_DEFINITIONS = [
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
     agentEnginePreference: null,
+    modelSettings: null,
+  },
+  {
+    id: AGENT_IDS.INSTALL_UPDATE,
+    name: "Install Update",
+    description:
+      "Manually applies upstream Stella commits to the user's local install. Walks the GitHub compare API and edits files via apply_patch instead of running git merge.",
+    activityLabel: "Updating",
+    bundledCore: true,
+    runsAsSubagent: false,
+    includeInAgentRoster: false,
+    usesLocalCliRuntime: true,
+    promptRole: "subagent",
+    controlsSelfModHmr: false,
+    localCliWorkingDirectory: "frontend",
+    agentEnginePreference: "general",
     modelSettings: null,
   },
 ] as const satisfies readonly AgentDefinition[];
