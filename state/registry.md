@@ -19,6 +19,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 - macOS desktop app automation: typed `computer_*` tools (no skill — schemas are self-documenting)
 - Electron app control: [electron](skills/electron/SKILL.md)
 - Modify Stella's own desktop app: [stella-desktop](skills/stella-desktop/SKILL.md)
+- User profile and context: [user-profile](skills/user-profile/SKILL.md)
 - Managed media API docs: [https://stella.sh/docs/media](https://stella.sh/docs/media) (the General agent prompt covers `image_gen` usage and when to read the docs)
 
 ## Reference Docs
