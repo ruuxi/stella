@@ -1,4 +1,8 @@
-export type Api = "openai-completions" | "openai-responses";
+export type Api =
+  | "openai-completions"
+  | "openai-responses"
+  | "anthropic-messages"
+  | "google-generative-ai";
 
 export type Provider = string;
 

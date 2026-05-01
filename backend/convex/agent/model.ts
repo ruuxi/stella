@@ -190,51 +190,47 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
 
   best: {
     model: "anthropic/claude-opus-4.7",
-    fallbackMode: "smart",
-    managedGatewayProvider: "openrouter",
+    fallbackMode: "free",
+    managedGatewayProvider: "anthropic",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
       openai: {
         reasoningEffort: "medium",
       },
-      ...gatewayOptions("openrouter"),
     },
   },
 
   sota: {
     model: "openai/gpt-5.5",
-    fallbackMode: "best",
-    managedGatewayProvider: "openrouter",
+    fallbackMode: "free",
+    managedGatewayProvider: "openai",
     temperature: 1.0,
     maxOutputTokens: 32768,
     providerOptions: {
       openai: {
         reasoningEffort: "low",
       },
-      ...gatewayOptions("fireworks"),
     },
   },
 
   fashion: {
     model: "openai/gpt-5.5",
-    fallbackMode: "best",
-    managedGatewayProvider: "openrouter",
+    fallbackMode: "free",
+    managedGatewayProvider: "openai",
     temperature: 1.0,
     maxOutputTokens: 32768,
     providerOptions: {
-      ...gatewayOptions("openrouter"),
     },
   },
 
   reasoning: {
     model: "openai/gpt-5.4-mini",
-    fallbackMode: "smart",
-    managedGatewayProvider: "openrouter",
+    fallbackMode: "free",
+    managedGatewayProvider: "openai",
     temperature: 1.0,
     maxOutputTokens: 16096,
     providerOptions: {
-      ...gatewayOptions("openrouter"),
       openai: {
         reasoningEffort: "medium",
       },
@@ -243,29 +239,27 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
 
   synthesis: {
     model: "openai/gpt-5.4-mini",
-    fallbackMode: "standard",
-    managedGatewayProvider: "openrouter",
+    fallbackMode: "free",
+    managedGatewayProvider: "openai",
     temperature: 1.0,
     maxOutputTokens: 30000,
     providerOptions: {
       openai: {
         reasoningEffort: "low",
       },
-      ...gatewayOptions("openrouter"),
     },
   },
 
   media: {
     model: "anthropic/claude-opus-4.6",
-    fallbackMode: "smart",
-    managedGatewayProvider: "openrouter",
+    fallbackMode: "free",
+    managedGatewayProvider: "anthropic",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
       openai: {
         reasoningEffort: "low",
       },
-      ...gatewayOptions("openrouter"),
     },
   },
 };

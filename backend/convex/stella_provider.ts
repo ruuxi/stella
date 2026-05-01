@@ -615,8 +615,15 @@ function resolveManagedProtocol(args: {
   managedGatewayProvider: ManagedGatewayProvider;
 }): ManagedProtocol {
   const normalizedModel = args.resolvedModel.trim().toLowerCase();
+  if (args.managedGatewayProvider === "anthropic") {
+    return "anthropic-messages";
+  }
+  if (args.managedGatewayProvider === "google") {
+    return "google-generative-ai";
+  }
   if (
     args.managedGatewayProvider === "fireworks"
+    || args.managedGatewayProvider === "openai"
     || normalizedModel.startsWith("openai/")
   ) {
     return "openai-responses";
