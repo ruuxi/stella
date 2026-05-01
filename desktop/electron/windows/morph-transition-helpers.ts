@@ -1,14 +1,15 @@
-import { ipcMain, type BrowserWindow } from "electron";
+import { ipcMain, type BrowserWindow, type Rectangle } from "electron";
 
 type MorphSignalChannel = "overlay:morphReady" | "overlay:morphDone";
 
 export async function captureWindowDataUrl(
   win: BrowserWindow,
+  rect?: Rectangle,
   onResult?: (ok: boolean, durationMs: number) => void,
 ): Promise<string | null> {
   const startedAt = performance.now();
   try {
-    const image = await win.webContents.capturePage();
+    const image = await win.webContents.capturePage(rect);
     onResult?.(true, Math.round(performance.now() - startedAt));
     return image.toDataURL();
   } catch {

@@ -37,6 +37,17 @@ const wait = (durationMs: number) =>
     window.setTimeout(resolve, durationMs);
   });
 
+const getElementRect = (element: HTMLElement | null) => {
+  if (!element) return undefined;
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+  };
+};
+
 interface OnboardingCanvasProps {
   activeDemo: OnboardingDemo;
   onMorphingChange?: (isMorphing: boolean) => void;
@@ -48,6 +59,7 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
 }) => {
   const [activeSection, setActiveSection] = useState<SectionKey | null>(null);
   const [pillsDisabled, setPillsDisabled] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const morphingRef = useRef(false);
 
   useEffect(() => {
@@ -72,8 +84,10 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
 
       void (async () => {
         try {
+          const rect = getElementRect(rootRef.current);
+          const morphPayload = rect ? { rect } : undefined;
           const started = await morphApi
-            .morphStart()
+            .morphStart(morphPayload)
             .catch(() => ({ ok: false }));
 
           if (!started.ok) {
@@ -87,7 +101,9 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
           await waitForPaint();
           await wait(MORPH_STATE_SETTLE_MS);
 
-          await morphApi.morphComplete().catch(() => ({ ok: false }));
+          await morphApi
+            .morphComplete(morphPayload)
+            .catch(() => ({ ok: false }));
         } finally {
           morphingRef.current = false;
           setPillsDisabled(false);
@@ -109,7 +125,7 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
   if (!activeDemo) return null;
 
   return (
-    <div className="onboarding-canvas">
+    <div ref={rootRef} className="onboarding-canvas">
       <div className="selfmod-layout">
         <StellaAppMock
           interactive

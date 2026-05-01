@@ -82,7 +82,8 @@
   border-radius: 14px;
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   background-color: var(--background);
-  background-image: radial-gradient(
+  background-image:
+    radial-gradient(
       120% 90% at 80% 0%,
       color-mix(in oklch, var(--primary, var(--foreground)) 8%, transparent),
       transparent 60%
@@ -155,8 +156,7 @@
   line-height: 1.45;
   color: var(--foreground);
   opacity: 0.7;
-  border-top: 1px solid
-    color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
   background: color-mix(in oklch, var(--background) 92%, white 8%);
   flex-shrink: 0;
 }
@@ -380,11 +380,12 @@
 .onboarding-voice-waveform__bar {
   --bar-peak: 60%;
   display: inline-block;
-  width: 2px;
-  height: var(--bar-peak);
-  border-radius: 1px;
+  width: 5px;
+  height: 100%;
+  border-radius: 3px;
   background: color-mix(in oklch, var(--foreground) 60%, transparent);
-  transform-origin: center;
+  transform: scaleY(calc(var(--bar-peak) / 100));
+  transform-origin: center bottom;
 }
 
 /* Scope the always-running waveform/caret animations to the voice phase

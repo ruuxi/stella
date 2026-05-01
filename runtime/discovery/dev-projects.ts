@@ -123,13 +123,17 @@ const hasUserCommits = async (
   const cmd = `git -C ${JSON.stringify(repoPath)} log ${authorArgs.map((a) => JSON.stringify(a)).join(" ")} --oneline -1 --since="${RECENCY_DAYS}.days.ago"`;
 
   return new Promise((resolve) => {
-    exec(cmd, { encoding: "utf-8", timeout: 5000, windowsHide: true }, (error, stdout) => {
-      if (error) {
-        resolve(false);
-        return;
-      }
-      resolve(stdout.trim().length > 0);
-    });
+    exec(
+      cmd,
+      { encoding: "utf-8", timeout: 5000, windowsHide: true },
+      (error, stdout) => {
+        if (error) {
+          resolve(false);
+          return;
+        }
+        resolve(stdout.trim().length > 0);
+      },
+    );
   });
 };
 
@@ -141,7 +145,12 @@ const execAsync = (command: string, timeoutMs = 10000): Promise<string> =>
   new Promise((resolve, reject) => {
     exec(
       command,
-      { encoding: "utf-8", maxBuffer: 1024 * 512, timeout: timeoutMs, windowsHide: true },
+      {
+        encoding: "utf-8",
+        maxBuffer: 1024 * 512,
+        timeout: timeoutMs,
+        windowsHide: true,
+      },
       (error, stdout) => {
         if (error) {
           reject(error);
@@ -215,7 +224,12 @@ const collectFromGitHubDesktop = async (): Promise<string[]> => {
       "repositories.json",
     );
   } else {
-    reposPath = path.join(home, ".config", "GitHub Desktop", "repositories.json");
+    reposPath = path.join(
+      home,
+      ".config",
+      "GitHub Desktop",
+      "repositories.json",
+    );
   }
 
   try {
@@ -224,9 +238,7 @@ const collectFromGitHubDesktop = async (): Promise<string[]> => {
     const content = await fs.readFile(reposPath, "utf-8");
     const repos: GHDesktopRepo[] = JSON.parse(content);
 
-    return repos
-      .filter((r) => r.path && !r.missing)
-      .map((r) => r.path!);
+    return repos.filter((r) => r.path && !r.missing).map((r) => r.path!);
   } catch {
     log("GitHub Desktop repos not found, skipping");
     return [];
@@ -276,8 +288,7 @@ const collectFromJetBrains = async (): Promise<string[]> => {
     // Find versioned IDE directories (e.g., "WebStorm2024.3", "IntelliJIdea2025.1")
     const ideDirs = entries.filter(
       (e) =>
-        e.isDirectory() &&
-        JETBRAINS_IDES.some((ide) => e.name.startsWith(ide)),
+        e.isDirectory() && JETBRAINS_IDES.some((ide) => e.name.startsWith(ide)),
     );
 
     for (const ideDir of ideDirs) {
@@ -346,7 +357,7 @@ export const collectDevProjects = async (): Promise<DevProject[]> => {
   // Deduplicate candidate paths
   const seen = new Set<string>();
   const candidatePaths: string[] = [];
-  for (const p of [...spotlightPaths, ...ghDesktopPaths, ...jetbrainsPaths]) {
+  for (const p of [...ghDesktopPaths, ...jetbrainsPaths, ...spotlightPaths]) {
     const normalized = p.toLowerCase().replace(/[\\/]+$/, "");
     if (seen.has(normalized)) continue;
     seen.add(normalized);
@@ -356,10 +367,15 @@ export const collectDevProjects = async (): Promise<DevProject[]> => {
   log(`${candidatePaths.length} unique candidate paths`);
 
   // Validate candidates in parallel (batched to avoid too many git processes)
-  const batchSize = 15;
+  const batchSize = 5;
   const results: DevProject[] = [];
+  const maxCandidates = 120;
 
-  for (let i = 0; i < candidatePaths.length; i += batchSize) {
+  for (
+    let i = 0;
+    i < Math.min(candidatePaths.length, maxCandidates);
+    i += batchSize
+  ) {
     const batch = candidatePaths.slice(i, i + batchSize);
 
     const batchResults = await Promise.all(
@@ -381,6 +397,9 @@ export const collectDevProjects = async (): Promise<DevProject[]> => {
     for (const result of batchResults) {
       if (result) results.push(result);
     }
+    if (results.length >= 30) {
+      break;
+    }
   }
 
   // Sort by most recent activity
@@ -389,7 +408,9 @@ export const collectDevProjects = async (): Promise<DevProject[]> => {
   // Limit to top 30
   const limited = results.slice(0, 30);
 
-  log(`Found ${limited.length} active projects with user commits (last ${RECENCY_DAYS} days)`);
+  log(
+    `Found ${limited.length} active projects with user commits (last ${RECENCY_DAYS} days)`,
+  );
 
   return limited;
 };

@@ -1,7 +1,7 @@
 /**
  * Collect All User Signals
  *
- * Orchestrates parallel collection of all user signal sources,
+ * Orchestrates bounded collection of all user signal sources,
  * organized into 4 onboarding-selectable categories:
  *
  * Category 1 (browsing_bookmarks): Browser history + bookmarks + Safari + Firefox
@@ -16,19 +16,58 @@ import {
   detectPreferredBrowserProfile,
   formatBrowserDataForSynthesis,
 } from "./browser-data.js";
-import { collectDevProjects, formatDevProjectsForSynthesis } from "./dev-projects.js";
-import { analyzeShellHistory, formatShellAnalysisForSynthesis } from "./shell-history.js";
-import { discoverApps, formatAppDiscoveryForSynthesis } from "./app-discovery.js";
-import { collectBrowserBookmarks, formatBrowserBookmarksForSynthesis } from "./browser-bookmarks.js";
-import { collectSafariData, formatSafariDataForSynthesis } from "./safari-data.js";
-import { filterLowSignalDomains, tierFormattedSignals } from "./signal-processing.js";
-import { collectDevEnvironment, formatDevEnvironmentForSynthesis } from "./dev-environment.js";
-import { collectSystemSignals, formatSystemSignalsForSynthesis } from "./system-signals.js";
-import { collectMessagesNotes, formatMessagesNotesForSynthesis } from "./messages-notes.js";
-import { collectEditorState, formatEditorStateForSynthesis } from "./editor-state.js";
-import { collectFirefoxData, formatFirefoxDataForSynthesis } from "./firefox-data.js";
-import { collectSteamLibrary, formatSteamLibraryForSynthesis } from "./steam-library.js";
-import { collectMusicLibrary, formatMusicLibraryForSynthesis } from "./music-library.js";
+import {
+  collectDevProjects,
+  formatDevProjectsForSynthesis,
+} from "./dev-projects.js";
+import {
+  analyzeShellHistory,
+  formatShellAnalysisForSynthesis,
+} from "./shell-history.js";
+import {
+  discoverApps,
+  formatAppDiscoveryForSynthesis,
+} from "./app-discovery.js";
+import {
+  collectBrowserBookmarks,
+  formatBrowserBookmarksForSynthesis,
+} from "./browser-bookmarks.js";
+import {
+  collectSafariData,
+  formatSafariDataForSynthesis,
+} from "./safari-data.js";
+import {
+  filterLowSignalDomains,
+  tierFormattedSignals,
+} from "./signal-processing.js";
+import {
+  collectDevEnvironment,
+  formatDevEnvironmentForSynthesis,
+} from "./dev-environment.js";
+import {
+  collectSystemSignals,
+  formatSystemSignalsForSynthesis,
+} from "./system-signals.js";
+import {
+  collectMessagesNotes,
+  formatMessagesNotesForSynthesis,
+} from "./messages-notes.js";
+import {
+  collectEditorState,
+  formatEditorStateForSynthesis,
+} from "./editor-state.js";
+import {
+  collectFirefoxData,
+  formatFirefoxDataForSynthesis,
+} from "./firefox-data.js";
+import {
+  collectSteamLibrary,
+  formatSteamLibraryForSynthesis,
+} from "./steam-library.js";
+import {
+  collectMusicLibrary,
+  formatMusicLibraryForSynthesis,
+} from "./music-library.js";
 import {
   ensurePrivateDir,
   writePrivateFile,
@@ -36,7 +75,13 @@ import {
 
 import type { AllUserSignals, AllUserSignalsResult } from "./types.js";
 import type { DiscoveryCategory } from "../../desktop/src/shared/contracts/discovery.js";
-import type { BrowserBookmarks, SafariData, DevEnvironmentSignals, SystemSignals, MessagesNotesSignals } from "./discovery-types.js";
+import type {
+  BrowserBookmarks,
+  SafariData,
+  DevEnvironmentSignals,
+  SystemSignals,
+  MessagesNotesSignals,
+} from "./discovery-types.js";
 import type { EditorStateSignals } from "./editor-state.js";
 import type { FirefoxSignals } from "./firefox-data.js";
 import type { SteamLibrarySignals } from "./steam-library.js";
@@ -105,7 +150,7 @@ type ExtendedUserSignals = AllUserSignals & {
 // ---------------------------------------------------------------------------
 
 /**
- * Collect all user signals in parallel, filtered by selected categories.
+ * Collect all user signals, filtered by selected categories.
  * When `selectedBrowser` is provided, only that browser's collectors run
  * (skips Firefox, Safari, and generic bookmarks scan for other browsers).
  */
@@ -115,13 +160,14 @@ export const collectAllUserSignals = async (
   selectedBrowser?: string | null,
   selectedProfile?: string | null,
 ): Promise<ExtendedUserSignals> => {
-  log("Starting parallel collection for categories:", categories);
+  log("Starting sequential collection for categories:", categories);
   if (selectedBrowser) log("Selected browser:", selectedBrowser);
   if (selectedProfile) log("Selected browser profile:", selectedProfile);
   const start = Date.now();
 
-  // Build list of promises based on selected categories
-  const tasks: Record<string, Promise<unknown>> = {};
+  // Build lazy tasks so selecting multiple categories does not launch every
+  // local database, filesystem, and browser collector at once during onboarding.
+  const tasks: Record<string, () => Promise<unknown>> = {};
 
   if (categories.includes("browsing_bookmarks")) {
     const shouldCollectChromium =
@@ -131,104 +177,139 @@ export const collectAllUserSignals = async (
         ? await detectPreferredBrowserProfile()
         : null;
     const selectedChromiumBrowser = selectedBrowser
-      ? ((selectedBrowser as BrowserType | undefined))
-      : preferredChromiumSelection?.browser ?? undefined;
+      ? (selectedBrowser as BrowserType | undefined)
+      : (preferredChromiumSelection?.browser ?? undefined);
     const selectedChromiumProfile = selectedBrowser
       ? selectedProfile
-      : preferredChromiumSelection?.profile ?? undefined;
+      : (preferredChromiumSelection?.profile ?? undefined);
 
     if (shouldCollectChromium && selectedChromiumBrowser) {
-      tasks.browser = collectBrowserData(StellaHome, {
-        selectedBrowser: selectedChromiumBrowser,
-        selectedProfile: selectedChromiumProfile,
-      });
-      tasks.bookmarks = collectBrowserBookmarks({
-        selectedBrowser: selectedChromiumBrowser,
-        selectedProfile: selectedChromiumProfile,
-      }).catch((e) => {
-        log("Bookmark collection failed:", e);
-        return null;
-      });
+      tasks.browser = () =>
+        collectBrowserData(StellaHome, {
+          selectedBrowser: selectedChromiumBrowser,
+          selectedProfile: selectedChromiumProfile,
+        });
+      tasks.bookmarks = () =>
+        collectBrowserBookmarks({
+          selectedBrowser: selectedChromiumBrowser,
+          selectedProfile: selectedChromiumProfile,
+        }).catch((e) => {
+          log("Bookmark collection failed:", e);
+          return null;
+        });
     }
 
     // Only run Firefox/Safari if no specific browser selected, or if that browser is selected
     if (!selectedBrowser || selectedBrowser === "firefox") {
-      tasks.firefox = collectFirefoxData(StellaHome).catch((e) => {
-        log("Firefox collection failed:", e);
-        return null;
-      });
+      tasks.firefox = () =>
+        collectFirefoxData(StellaHome).catch((e) => {
+          log("Firefox collection failed:", e);
+          return null;
+        });
     }
     if (!selectedBrowser || selectedBrowser === "safari") {
-      tasks.safari = collectSafariData(StellaHome).catch((e) => {
-        log("Safari collection failed:", e);
-        return null;
-      });
+      tasks.safari = () =>
+        collectSafariData(StellaHome).catch((e) => {
+          log("Safari collection failed:", e);
+          return null;
+        });
     }
   }
 
   if (categories.includes("dev_environment")) {
-    tasks.devProjects = collectDevProjects();
-    tasks.shell = analyzeShellHistory();
-    tasks.devEnv = collectDevEnvironment().catch((e) => {
-      log("Dev environment collection failed:", e);
-      return { gitConfig: null, dotfiles: [], runtimes: [], packageManagers: [], wslDetected: false };
-    });
-    tasks.editorState = collectEditorState().catch((e) => {
-      log("Editor state collection failed:", e);
-      return null;
-    });
+    tasks.devProjects = () => collectDevProjects();
+    tasks.shell = () => analyzeShellHistory();
+    tasks.devEnv = () =>
+      collectDevEnvironment().catch((e) => {
+        log("Dev environment collection failed:", e);
+        return {
+          gitConfig: null,
+          dotfiles: [],
+          runtimes: [],
+          packageManagers: [],
+          wslDetected: false,
+        };
+      });
+    tasks.editorState = () =>
+      collectEditorState().catch((e) => {
+        log("Editor state collection failed:", e);
+        return null;
+      });
   }
 
   if (categories.includes("apps_system")) {
-    tasks.apps = discoverApps();
-    tasks.system = collectSystemSignals(StellaHome).catch((e) => {
-      log("System signals collection failed:", e);
-      return {
-        userIdentity: null,
-        dockPins: [],
-        appUsage: [],
-        filesystem: {
-          downloadsExtensions: {},
-          documentsFolders: [],
-          desktopFileTypes: {},
-        },
-        startupItems: [],
-      };
-    });
-    tasks.steam = collectSteamLibrary().catch((e) => {
-      log("Steam library collection failed:", e);
-      return null;
-    });
-    tasks.music = collectMusicLibrary().catch((e) => {
-      log("Music library collection failed:", e);
-      return null;
-    });
+    tasks.apps = () => discoverApps();
+    tasks.system = () =>
+      collectSystemSignals(StellaHome).catch((e) => {
+        log("System signals collection failed:", e);
+        return {
+          userIdentity: null,
+          dockPins: [],
+          appUsage: [],
+          filesystem: {
+            downloadsExtensions: {},
+            documentsFolders: [],
+            desktopFileTypes: {},
+          },
+          startupItems: [],
+        };
+      });
+    tasks.steam = () =>
+      collectSteamLibrary().catch((e) => {
+        log("Steam library collection failed:", e);
+        return null;
+      });
+    tasks.music = () =>
+      collectMusicLibrary().catch((e) => {
+        log("Music library collection failed:", e);
+        return null;
+      });
   }
 
   if (categories.includes("messages_notes")) {
-    tasks.messagesNotes = collectMessagesNotes(StellaHome).catch((e) => {
-      log("Messages/notes collection failed:", e);
-      return { contacts: [], groupChats: [], noteFolders: [], calendars: [] };
-    });
+    tasks.messagesNotes = () =>
+      collectMessagesNotes(StellaHome).catch((e) => {
+        log("Messages/notes collection failed:", e);
+        return { contacts: [], groupChats: [], noteFolders: [], calendars: [] };
+      });
   }
 
-  // Run all tasks in parallel
   const keys = Object.keys(tasks);
-  const values = await Promise.all(Object.values(tasks));
   const results: Record<string, unknown> = {};
-  keys.forEach((key, i) => { results[key] = values[i]; });
+  for (const key of keys) {
+    results[key] = await tasks[key]();
+  }
 
   const elapsed = Date.now() - start;
   log(`Collection complete in ${elapsed}ms`);
 
   // Assemble the output
-  const appResult = results.apps as { apps: { name: string; executablePath: string; source: "running" | "recent"; lastUsed?: number }[] } | undefined;
+  const appResult = results.apps as
+    | {
+        apps: {
+          name: string;
+          executablePath: string;
+          source: "running" | "recent";
+          lastUsed?: number;
+        }[];
+      }
+    | undefined;
 
   return {
     // Existing signals (may be undefined if category not selected)
-    browser: (results.browser as AllUserSignals["browser"]) ?? { browser: null, clusterDomains: [], recentDomains: [], allTimeDomains: [], domainDetails: {} },
+    browser: (results.browser as AllUserSignals["browser"]) ?? {
+      browser: null,
+      clusterDomains: [],
+      recentDomains: [],
+      allTimeDomains: [],
+      domainDetails: {},
+    },
     devProjects: (results.devProjects as AllUserSignals["devProjects"]) ?? [],
-    shell: (results.shell as AllUserSignals["shell"]) ?? { topCommands: [], projectPaths: [], toolsUsed: [] },
+    shell: (results.shell as AllUserSignals["shell"]) ?? {
+      topCommands: [],
+      projectPaths: [],
+      toolsUsed: [],
+    },
     apps: appResult?.apps ?? [],
     // New signals
     bookmarks: results.bookmarks as BrowserBookmarks | null | undefined,
@@ -250,7 +331,10 @@ export const collectAllUserSignals = async (
 const formatSignalsForSynthesisWithSections = async (
   data: ExtendedUserSignals,
   categories: DiscoveryCategory[] = DEFAULT_CATEGORIES,
-): Promise<{ formatted: string; formattedSections: FormattedCategorySections }> => {
+): Promise<{
+  formatted: string;
+  formattedSections: FormattedCategorySections;
+}> => {
   const formattedSections: FormattedCategorySections = {};
 
   // --- Category 1: Browsing & Bookmarks ---
@@ -263,7 +347,9 @@ const formatSignalsForSynthesisWithSections = async (
     }
 
     if (data.bookmarks) {
-      const bookmarksSection = formatBrowserBookmarksForSynthesis(data.bookmarks);
+      const bookmarksSection = formatBrowserBookmarksForSynthesis(
+        data.bookmarks,
+      );
       if (bookmarksSection) categorySections.push(bookmarksSection);
     }
 
@@ -294,7 +380,9 @@ const formatSignalsForSynthesisWithSections = async (
     if (shellSection) categorySections.push(shellSection);
 
     if (data.devEnvironment) {
-      const devEnvSection = formatDevEnvironmentForSynthesis(data.devEnvironment);
+      const devEnvSection = formatDevEnvironmentForSynthesis(
+        data.devEnvironment,
+      );
       if (devEnvSection) categorySections.push(devEnvSection);
     }
 
@@ -347,7 +435,9 @@ const formatSignalsForSynthesisWithSections = async (
 
   const orderedSections = categories
     .map((category) => formattedSections[category])
-    .filter((section): section is string => Boolean(section && section.trim().length > 0));
+    .filter((section): section is string =>
+      Boolean(section && section.trim().length > 0),
+    );
 
   // Post-process: filter low-signal domains, then tier for synthesis priority
   let formatted = orderedSections.join("\n\n");
@@ -382,7 +472,8 @@ export const collectAllSignals = async (
       selectedBrowser,
       selectedProfile,
     );
-    const { formatted, formattedSections } = await formatSignalsForSynthesisWithSections(data, cats);
+    const { formatted, formattedSections } =
+      await formatSignalsForSynthesisWithSections(data, cats);
 
     return {
       data,

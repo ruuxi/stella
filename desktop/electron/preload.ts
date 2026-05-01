@@ -187,10 +187,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     reload: () => ipcRenderer.send("app:reload"),
     hardReset: () =>
       ipcRenderer.invoke("app:hardResetLocalState") as Promise<{ ok: boolean }>,
-    morphStart: () =>
-      ipcRenderer.invoke("morph:start") as Promise<{ ok: boolean }>,
-    morphComplete: () =>
-      ipcRenderer.invoke("morph:complete") as Promise<{ ok: boolean }>,
+    morphStart: (payload?: {
+      rect?: { x: number; y: number; width: number; height: number };
+    }) =>
+      ipcRenderer.invoke("morph:start", payload) as Promise<{ ok: boolean }>,
+    morphComplete: (payload?: {
+      rect?: { x: number; y: number; width: number; height: number };
+    }) =>
+      ipcRenderer.invoke("morph:complete", payload) as Promise<{ ok: boolean }>,
     setOnboardingPresentation: (active: boolean) =>
       ipcRenderer.invoke(
         "window:setOnboardingPresentation",
@@ -1188,10 +1192,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("store-thread:buildCommitCatalog", { limit }),
     // Build the full publish bundle (with file snapshots) for the picked
     // commits. Called only when the user confirms a draft.
-    buildBundleForConfirm: (payload: {
-      commitHashes: string[];
-    }) => ipcRenderer.invoke("store-thread:buildBundle", payload),
-    listFeatureRoster: () => ipcRenderer.invoke("store-thread:listFeatureRoster"),
+    buildBundleForConfirm: (payload: { commitHashes: string[] }) =>
+      ipcRenderer.invoke("store-thread:buildBundle", payload),
+    listFeatureRoster: () =>
+      ipcRenderer.invoke("store-thread:listFeatureRoster"),
     listInstalledMods: () => ipcRenderer.invoke("store:listInstalledMods"),
     installRelease: (payload: { packageId: string; releaseNumber?: number }) =>
       ipcRenderer.invoke("store:installRelease", payload),

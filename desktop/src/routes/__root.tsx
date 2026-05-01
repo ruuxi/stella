@@ -167,9 +167,9 @@ function RootChrome() {
   const { hasConnectedAccount, isLoading: isAuthLoading } =
     useAuthSessionState();
 
-  // Set when the user opted into Live Memory during onboarding without
-  // being signed in. We hold the request across the auth roundtrip so
-  // we can call `memory.promotePending()` immediately after sign-in.
+  // Set when the user opted into Live Memory during onboarding. We hold the
+  // request until the real app chrome mounts so the Chronicle/Dream sidecar
+  // starts after onboarding exits. Signed-out users still go through auth first.
   const memorySignInPendingRef = useRef(false);
 
   const isOnChatRoute = Boolean(matchRoute({ to: "/chat" }));
@@ -187,21 +187,22 @@ function RootChrome() {
     [navigate],
   );
 
-  const showAuthDialog = useCallback(() => setDialogSearch("auth"), [
-    setDialogSearch,
-  ]);
+  const showAuthDialog = useCallback(
+    () => setDialogSearch("auth"),
+    [setDialogSearch],
+  );
   const showConnectDialog = useCallback(
     () => setDialogSearch("connect"),
     [setDialogSearch],
   );
-  const closeDialog = useCallback(() => setDialogSearch(undefined), [
-    setDialogSearch,
-  ]);
+  const closeDialog = useCallback(
+    () => setDialogSearch(undefined),
+    [setDialogSearch],
+  );
 
-  // One-shot consumer for "user opted into Live Memory but isn't signed
-  // in yet" (set during onboarding). On first render after onboarding,
-  // we open the auth dialog and remember the intent in a ref so the
-  // auth-completion effect below can call `memory.promotePending()`.
+  // One-shot consumer for "user opted into Live Memory during onboarding".
+  // On first render after onboarding, promote immediately if signed in; otherwise
+  // open auth and remember the intent so auth completion can promote it.
   // We deliberately wait for the auth session to finish loading before
   // deciding — otherwise we'd flash the dialog on every refresh.
   useEffect(() => {
@@ -259,9 +260,12 @@ function RootChrome() {
     [closeDialog],
   );
 
-  const openChatPanel = useCallback((detail: StellaOpenPanelChatDetail = {}) => {
-    openChatDisplayTab({ id: Date.now(), ...detail });
-  }, []);
+  const openChatPanel = useCallback(
+    (detail: StellaOpenPanelChatDetail = {}) => {
+      openChatDisplayTab({ id: Date.now(), ...detail });
+    },
+    [],
+  );
 
   // Display tab rule: Chat is always present in the strip; its body
   // adapts to the route inside `ChatDisplayTab` (home shows the activity
@@ -400,8 +404,7 @@ function RootChrome() {
   // Window-event wiring for the workspace panel.
   useEffect(() => {
     const handleOpen = (event: Event) => {
-      const detail = (event as CustomEvent<StellaOpenPanelChatDetail>)
-        .detail;
+      const detail = (event as CustomEvent<StellaOpenPanelChatDetail>).detail;
       openChatPanel(detail ?? {});
     };
 
@@ -515,9 +518,7 @@ function RootChrome() {
         </div>
       </StellaContextMenu>
 
-      <DisplaySidebar
-        ref={displaySidebarRef}
-      />
+      <DisplaySidebar ref={displaySidebarRef} />
 
       <FullShellDialogs
         activeDialog={activeDialog ?? null}
