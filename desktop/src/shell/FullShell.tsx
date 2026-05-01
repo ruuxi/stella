@@ -190,8 +190,12 @@ function OnboardingExperience({
   // Phases whose own animations dominate the frame budget; we keep the
   // creature visible but pause its rAF canvas loop so the heavy phase
   // gets the full frame budget. (`creation` and later are already covered
-  // by `stellaHiddenByPhase` above, which both hides AND pauses.)
-  const stellaPausedByHeavyPhase = onboardingPhase === "capabilities";
+  // by `stellaHiddenByPhase` above, which both hides AND pauses.) The
+  // voice phase mounts its own 20×20 mock creature canvas in the
+  // dictation overlay, so two RAF loops would otherwise contest the
+  // main thread during the most show-offy phase.
+  const stellaPausedByHeavyPhase =
+    onboardingPhase === "capabilities" || onboardingPhase === "voice";
 
   useEffect(() => {
     const fogDefs = fogDefsRef.current;
@@ -411,6 +415,13 @@ export const FullShell = () => {
     retryRuntimeBootstrap();
   }, [authBootstrapStatus, retryRuntimeBootstrap]);
 
+  // Stable callback so the OnboardingExperience effect doesn't re-fire on
+  // every parent render and re-trigger `setHasEnteredApp(true)` after
+  // onboarding completes.
+  const handleEnteredApp = useCallback(() => {
+    setHasEnteredApp(true);
+  }, []);
+
   useEffect(() => {
     if (!onboardingDone || !startupReady) return;
     const timer = window.setTimeout(() => {
@@ -486,7 +497,7 @@ export const FullShell = () => {
             startupError={startupError}
             onShellStateChange={setOnboardingShellState}
             onRetryStartup={handleRetryStartup}
-            onEnteredApp={() => setHasEnteredApp(true)}
+            onEnteredApp={handleEnteredApp}
           />
         ) : (
           <PostOnboardingStartupGate

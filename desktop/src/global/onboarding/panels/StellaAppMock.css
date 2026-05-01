@@ -1,0 +1,2117 @@
+  .sam-root {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    position: relative;
+    font-family: var(--font-family-sans, "Manrope", system-ui, sans-serif);
+    color: var(--text-base);
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    border-radius: 12px;
+    border: 1px solid var(--border-base);
+    box-shadow: var(--shadow-md);
+    /* Mock-local gradient hint so the surface reads as "the real app"
+       even when the onboarding background sits behind it. */
+    background-image: radial-gradient(
+      120% 90% at 80% 0%,
+      color-mix(in oklch, var(--primary) 8%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      90% 80% at 0% 100%,
+      color-mix(in oklch, var(--accent, var(--primary)) 6%, transparent),
+      transparent 55%
+    );
+    background-color: var(--background);
+  }
+  .sam-root[data-interactive="true"] { overflow: visible; }
+  .sam-root * { box-sizing: border-box; }
+
+  /* Pre-interaction state for the creation phase: dim the mock chrome
+     so the floating transformation pills are unmistakably the call to
+     action. As soon as the user toggles their first section,
+     [data-any-active="true"] flips and the dim lifts so they can
+     actually appreciate the change they just made. The pills
+     themselves are siblings of .sam-sidebar/.sam-main inside .sam-root,
+     so :not(.sam-pill) keeps them at full brightness. */
+  .sam-root[data-interactive="true"][data-any-active="false"]
+    > :not(.sam-pill) {
+    opacity: 0.42;
+    filter: saturate(0.65);
+    transition:
+      opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+      filter 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .sam-root[data-interactive="true"][data-any-active="true"]
+    > :not(.sam-pill) {
+    opacity: 1;
+    filter: none;
+    transition:
+      opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+      filter 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* ──────────────────────────────────────────
+     SIDEBAR — default: matches the real 170px
+     '.sidebar' with brand + nav + footer.
+     ────────────────────────────────────────── */
+  .sam-sidebar {
+    width: 170px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    overflow: hidden;
+    position: relative;
+    z-index: 2;
+  }
+
+  .sam-sidebar-default {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+  }
+  .sam-sidebar[data-modern="true"] .sam-sidebar-default { display: none; }
+
+  .sam-sidebar-header {
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  .sam-sidebar-brand {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 92px;
+    padding: 0 14px;
+  }
+  .sam-sidebar-brand-glyph {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(calc(-50% - 38px), -50%);
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.42;
+    color: var(--foreground);
+  }
+  .sam-sidebar-brand-text {
+    color: var(--text-weaker);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    line-height: 1;
+    text-transform: uppercase;
+    transform: translateX(-4px);
+  }
+
+  .sam-sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 12px 12px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .sam-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: var(--radius-md, 6px);
+    background: transparent;
+    border: none;
+    color: var(--text-base);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    width: 100%;
+    cursor: default;
+  }
+  .sam-nav-item.active,
+  .sam-root:not([data-create-app]) .sam-nav-item--home,
+  .sam-root[data-create-app] .sam-nav-item--studio {
+    background: color-mix(in oklch, var(--foreground) 8%, transparent);
+    color: var(--text-strong);
+  }
+  .sam-nav-item.active .sam-nav-icon,
+  .sam-root:not([data-create-app]) .sam-nav-item--home .sam-nav-icon,
+  .sam-root[data-create-app] .sam-nav-item--studio .sam-nav-icon {
+    color: var(--primary);
+  }
+
+  /* "Music Studio" rail item — hidden until the user creates the app,
+     then slides in with a soft "New" tag to make the addition legible. */
+  .sam-nav-item--studio {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    position: relative;
+    transition:
+      max-height 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+      padding 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.35s ease 0.05s;
+  }
+  .sam-root[data-create-app] .sam-nav-item--studio {
+    max-height: 38px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .sam-nav-item-tag {
+    margin-left: auto;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--primary) 18%, transparent);
+    color: var(--primary);
+  }
+
+  .sam-nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    color: var(--text-weak);
+  }
+
+  .sam-sidebar-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border-top: 1px solid var(--border-weak);
+  }
+  .sam-footer-icons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 8px;
+    justify-items: center;
+    align-items: center;
+  }
+  .sam-icon-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: var(--text-weak);
+    border-radius: var(--radius-md, 6px);
+  }
+
+  /* SIDEBAR — modern: dense workspace with project list & badges. */
+  .sam-sidebar[data-modern="true"] {
+    width: 220px;
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--primary) 6%, var(--glass-bg)) 0%,
+      var(--glass-bg) 100%
+    );
+    backdrop-filter: var(--glass-blur);
+    border-right: 1px solid color-mix(in oklch, var(--primary) 18%, transparent);
+  }
+  .sam-sidebar-modern {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    padding: 16px 12px;
+    gap: 4px;
+    animation: samFadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .sam-sidebar[data-modern="true"] .sam-sidebar-modern { display: flex; }
+
+  .sam-modern-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius-md, 6px);
+    background: color-mix(in oklch, var(--foreground) 5%, transparent);
+    border: 1px solid var(--border-weak);
+    font-size: 12px;
+    color: var(--text-weak);
+    margin-bottom: 8px;
+  }
+  .sam-modern-search-kbd {
+    margin-left: auto;
+    padding: 1px 6px;
+    font-family: var(--font-family-mono, monospace);
+    font-size: 9.5px;
+    border-radius: 3px;
+    background: color-mix(in oklch, var(--foreground) 8%, transparent);
+    color: var(--text-weaker);
+  }
+  .sam-modern-section {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-weaker);
+    padding: 10px 10px 4px;
+  }
+  .sam-modern-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: var(--radius-md, 6px);
+    font-size: 12.5px;
+    color: var(--text-base);
+  }
+  .sam-modern-item-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--text-weak);
+  }
+  .sam-modern-item-badge {
+    margin-left: auto;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 9.5px;
+    font-weight: 600;
+    background: color-mix(in oklch, var(--primary) 18%, transparent);
+    color: var(--primary);
+  }
+  .sam-modern-item.active {
+    background: linear-gradient(
+      90deg,
+      color-mix(in oklch, var(--primary) 16%, transparent),
+      color-mix(in oklch, var(--primary) 4%, transparent)
+    );
+    color: var(--text-strong);
+    box-shadow: inset 2px 0 0 var(--primary);
+  }
+  .sam-modern-item.active .sam-modern-item-icon { color: var(--primary); }
+  .sam-modern-spacer { flex: 1; }
+
+  /* ──────────────────────────────────────────
+     MAIN COLUMN — wraps header + body + composer
+     Matches '.content-area' + '.full-body-main'.
+     ────────────────────────────────────────── */
+  .sam-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-left: 1px solid var(--border-weak);
+    border-top: 1px solid var(--border-weak);
+    position: relative;
+  }
+
+  /* HEADER — default: invisible (real app has no top bar on home). */
+  .sam-header {
+    height: 0;
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: height 0.3s ease;
+  }
+  .sam-header[data-modern="true"] {
+    height: 38px;
+    padding: 0;
+    display: flex;
+    align-items: stretch;
+    background: color-mix(in oklch, var(--foreground) 4%, transparent);
+    border-bottom: 1px solid var(--border-weak);
+    animation: samFadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+    overflow: hidden;
+  }
+  .sam-tabs {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    padding: 6px 6px 0;
+    gap: 1px;
+  }
+  .sam-tab {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px 7px 12px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-weak);
+    border-radius: 7px 7px 0 0;
+    border: 1px solid transparent;
+    border-bottom: none;
+    position: relative;
+    cursor: default;
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    background: transparent;
+  }
+  .sam-tab:not(.active):hover {
+    background: color-mix(in oklch, var(--foreground) 4%, transparent);
+    color: var(--text-base);
+  }
+  .sam-tab.active {
+    background: var(--background);
+    color: var(--text-strong);
+    border-color: var(--border-weak);
+    font-weight: 600;
+    margin-bottom: -1px;
+    z-index: 1;
+  }
+  .sam-tab.active::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 8px;
+    right: 8px;
+    height: 2px;
+    background: var(--primary);
+    border-radius: 0 0 2px 2px;
+  }
+  .sam-tab-icon {
+    width: 12px;
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--text-weak);
+  }
+  .sam-tab.active .sam-tab-icon { color: var(--primary); }
+  .sam-tab-label {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    letter-spacing: -0.005em;
+  }
+  .sam-tab-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 7px 8px 6px 6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    background: transparent;
+    border: 1px dashed color-mix(in oklch, var(--foreground) 22%, transparent);
+    color: var(--text-weak);
+    font-size: 13px;
+    font-weight: 500;
+    flex-shrink: 0;
+    align-self: center;
+    line-height: 1;
+  }
+
+  /* BODY — default: home content (centered title + category pills). */
+  .sam-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px 12px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .sam-body-default {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    width: 100%;
+    max-width: 540px;
+    flex: 1;
+  }
+  .sam-home-title {
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-size: clamp(1.4rem, 2.6vw, 2rem);
+    font-weight: 450;
+    font-style: italic;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+    color: var(--text-strong);
+    text-align: center;
+    margin: 0;
+    width: 100%;
+  }
+  .sam-home-categories {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .sam-home-category {
+    padding: 6px 22px;
+    min-width: 88px;
+    text-align: center;
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    color: var(--text-base);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: default;
+  }
+  .sam-home-category.active {
+    background: color-mix(in oklch, var(--foreground) 6%, var(--background));
+    color: var(--text-strong);
+  }
+  .sam-home-suggestions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 4px;
+    padding: 0 24px;
+  }
+  .sam-home-suggestion {
+    font-size: 14.5px;
+    font-weight: 500;
+    color: var(--text-base);
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+    text-align: center;
+  }
+
+  /* BODY — modern: cards-as-tools dashboard */
+  .sam-body[data-modern="true"] .sam-body-default { display: none; }
+  .sam-cards {
+    display: none;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    width: 100%;
+    max-width: 540px;
+    margin: auto 0;
+    animation: samFadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .sam-body[data-modern="true"] .sam-cards { display: grid; }
+
+  .sam-card {
+    position: relative;
+    padding: 12px 14px;
+    border-radius: var(--radius-lg, 8px);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-strong);
+    overflow: hidden;
+  }
+  .sam-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 32px; height: 2px;
+    background: var(--card-accent, var(--primary));
+    border-radius: 0 0 2px 0;
+  }
+  .sam-card-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .sam-card-head-icon {
+    width: 13px;
+    height: 13px;
+    color: var(--card-accent, var(--primary));
+  }
+  .sam-card-head-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--card-accent, var(--primary));
+  }
+  .sam-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-strong);
+    line-height: 1.35;
+    margin-bottom: 3px;
+  }
+  .sam-card-meta {
+    font-size: 10.5px;
+    color: var(--text-weak);
+  }
+  .sam-card-bar {
+    margin-top: 8px;
+    height: 4px;
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--foreground) 6%, transparent);
+    overflow: hidden;
+  }
+  .sam-card-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--card-accent, var(--primary));
+    opacity: 0.85;
+  }
+
+  /* ══════════════════════════════════════════
+     COZY THEME — when [data-cozy="true"] is set on .sam-root, the
+     entire mock retints to a warm tuxedo-cat palette and swaps in
+     parallel "Mochi" content for the sidebar, body, and composer.
+     This is the "personalize the whole app" demo: a single toggle
+     drastically transforms every surface, not just one panel.
+     ══════════════════════════════════════════ */
+  .sam-root[data-cozy="true"] {
+    background-color: #fbf2e1;
+    background-image:
+      radial-gradient(circle at 12% 22%, rgba(139, 105, 75, 0.08) 4px, transparent 5px),
+      radial-gradient(circle at 28% 78%, rgba(139, 105, 75, 0.06) 3px, transparent 4px),
+      radial-gradient(circle at 78% 28%, rgba(139, 105, 75, 0.07) 5px, transparent 6px),
+      radial-gradient(circle at 88% 72%, rgba(139, 105, 75, 0.05) 3px, transparent 4px),
+      radial-gradient(circle at 52% 52%, rgba(139, 105, 75, 0.04) 4px, transparent 5px),
+      radial-gradient(120% 90% at 80% 0%, rgba(232, 154, 152, 0.18), transparent 60%),
+      radial-gradient(90% 80% at 0% 100%, rgba(212, 134, 154, 0.12), transparent 55%),
+      linear-gradient(135deg, #fef3e2, #f5e1c4);
+    border-color: rgba(139, 105, 75, 0.25);
+  }
+  .sam-root[data-cozy="true"] .sam-main {
+    border-color: rgba(139, 105, 75, 0.2);
+  }
+
+  /* SIDEBAR — cozy override. Hides default + workspace-rail, shows
+     a warm-cream "Mochi's house" rail with cat-themed nav. */
+  .sam-root[data-cozy="true"] .sam-sidebar {
+    background: linear-gradient(180deg, #fef3e2 0%, #f4d9b8 100%);
+    border-right: 1px solid rgba(139, 105, 75, 0.25);
+    width: 184px;
+  }
+  .sam-root[data-cozy="true"] .sam-sidebar .sam-sidebar-default,
+  .sam-root[data-cozy="true"] .sam-sidebar .sam-sidebar-modern { display: none; }
+  .sam-sidebar-cozy {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    padding: 0;
+    color: #5c3d2e;
+    animation: samFadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .sam-root[data-cozy="true"] .sam-sidebar .sam-sidebar-cozy { display: flex; }
+
+  .sam-cozy-rail-header { height: 16px; flex-shrink: 0; }
+  .sam-cozy-rail-brand {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 92px;
+    padding: 0 14px;
+  }
+  .sam-cozy-rail-paw {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(calc(-50% - 38px), -50%);
+    width: 36px;
+    height: 36px;
+    color: #1c1c1c;
+    opacity: 0.85;
+  }
+  .sam-cozy-rail-name {
+    color: #8b6240;
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-size: 17px;
+    font-weight: 600;
+    font-style: italic;
+    letter-spacing: 0.06em;
+    line-height: 1;
+  }
+  .sam-cozy-rail-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 0 12px 12px;
+    flex: 1;
+    min-height: 0;
+  }
+  .sam-cozy-rail-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    color: #5c3d2e;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+  }
+  .sam-cozy-rail-item.active {
+    background: rgba(255, 252, 246, 0.6);
+    color: #1c1c1c;
+    font-weight: 600;
+    box-shadow:
+      inset 0 0 0 1px rgba(139, 105, 75, 0.2),
+      0 1px 2px rgba(139, 105, 75, 0.1);
+  }
+  .sam-cozy-rail-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: #b8845c;
+  }
+  .sam-cozy-rail-item.active .sam-cozy-rail-icon { color: #d4869a; }
+  .sam-cozy-rail-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-top: 1px solid rgba(139, 105, 75, 0.18);
+  }
+  .sam-cozy-rail-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #1c1c1c;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+    box-shadow: 0 0 0 2px rgba(255, 252, 246, 0.7);
+  }
+  .sam-cozy-rail-avatar svg { width: 100%; height: 100%; }
+  .sam-cozy-rail-meta { display: flex; flex-direction: column; min-width: 0; }
+  .sam-cozy-rail-meta-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #1c1c1c;
+    line-height: 1.2;
+  }
+  .sam-cozy-rail-meta-status {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #b8845c;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .sam-cozy-rail-pulse { display: none; }
+
+  /* HEADER — cozy retint when also toggled to "Tabs". */
+  .sam-root[data-cozy="true"] .sam-header[data-modern="true"] {
+    background: rgba(254, 243, 226, 0.7);
+    border-bottom: 1px solid rgba(139, 105, 75, 0.22);
+  }
+  .sam-root[data-cozy="true"] .sam-tab { color: #8b6240; }
+  .sam-root[data-cozy="true"] .sam-tab:not(.active):hover {
+    background: rgba(139, 105, 75, 0.06);
+    color: #5c3d2e;
+  }
+  .sam-root[data-cozy="true"] .sam-tab.active {
+    background: #fef3e2;
+    color: #1c1c1c;
+    border-color: rgba(139, 105, 75, 0.28);
+  }
+  .sam-root[data-cozy="true"] .sam-tab.active::before { background: #d4869a; }
+  .sam-root[data-cozy="true"] .sam-tab-icon { color: #b8845c; }
+  .sam-root[data-cozy="true"] .sam-tab.active .sam-tab-icon { color: #d4869a; }
+  .sam-root[data-cozy="true"] .sam-tab-add {
+    border-color: rgba(139, 105, 75, 0.28);
+    color: #b8845c;
+  }
+
+  /* BODY — cozy override. Hides default home + cards dashboard, shows
+     a warm "What can Mochi do for you today?" home. */
+  .sam-root[data-cozy="true"] .sam-body .sam-body-default,
+  .sam-root[data-cozy="true"] .sam-body .sam-cards { display: none; }
+  .sam-body-cozy {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    width: 100%;
+    max-width: 540px;
+    flex: 1;
+    animation: samFadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .sam-root[data-cozy="true"] .sam-body .sam-body-cozy { display: flex; }
+  .sam-cozy-home-title {
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-size: clamp(1.4rem, 2.6vw, 2rem);
+    font-weight: 450;
+    font-style: italic;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+    color: #5c3d2e;
+    text-align: center;
+    margin: 0;
+    width: 100%;
+  }
+  .sam-cozy-home-categories {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .sam-cozy-home-category {
+    padding: 6px 22px;
+    min-width: 88px;
+    text-align: center;
+    background: rgba(255, 252, 246, 0.55);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(139, 105, 75, 0.25);
+    border-radius: 999px;
+    color: #8b6240;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .sam-cozy-home-category.active {
+    background: #fef3e2;
+    color: #1c1c1c;
+    border-color: rgba(139, 105, 75, 0.4);
+    box-shadow: 0 1px 2px rgba(139, 105, 75, 0.15);
+  }
+  .sam-cozy-home-suggestions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    width: 100%;
+    margin-top: 4px;
+    padding: 0 24px;
+  }
+  .sam-cozy-home-suggestion {
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-size: 16px;
+    font-style: italic;
+    font-weight: 500;
+    color: #5c3d2e;
+    line-height: 1.4;
+    letter-spacing: -0.005em;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .sam-cozy-home-suggestion::before {
+    content: "\\2767";
+    color: #d4869a;
+    font-style: normal;
+    font-size: 11px;
+    flex-shrink: 0;
+    transform: translateY(-1px);
+  }
+
+  /* ══════════════════════════════════════════
+     MUSIC STUDIO — full-bleed created-app body.
+
+     When the user clicks "Create an app", the entire main column (header
+     space, body, composer) becomes the studio app. We hide the composer
+     row, drop the body's centered max-width, and let the studio fill
+     edge-to-edge so it reads as a real, custom-built app inside Stella —
+     not a small card pasted onto the home page.
+     ══════════════════════════════════════════ */
+  .sam-body[data-create-app="true"] .sam-body-default,
+  .sam-body[data-create-app="true"] .sam-cards,
+  .sam-body[data-create-app="true"] .sam-body-cozy { display: none; }
+
+  /* Strip the body's centered padding so the studio can fill the whole
+     main column; restore tasteful breathing room via the studio itself. */
+  .sam-body[data-create-app="true"] {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  .sam-main:has(.sam-body[data-create-app="true"]) .sam-composer-wrap {
+    display: none;
+  }
+
+  .sam-body-create {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    animation: samFadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .sam-body[data-create-app="true"] .sam-body-create { display: flex; }
+
+  .sam-studio {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 0;
+    width: 100%;
+    background:
+      radial-gradient(
+        110% 60% at 50% 0%,
+        color-mix(in oklch, var(--primary) 5%, transparent),
+        transparent 70%
+      ),
+      var(--background);
+    color: var(--text-base);
+  }
+
+  /* TOPBAR */
+  .sam-studio-topbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 22px 28px 18px;
+    border-bottom: 1px solid var(--border-weak);
+  }
+  .sam-studio-identity { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .sam-studio-eyebrow {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--primary);
+  }
+  .sam-studio-name {
+    margin: 0;
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-style: italic;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.025em;
+    line-height: 1;
+    color: var(--text-strong);
+  }
+  .sam-studio-meta {
+    display: flex;
+    align-items: stretch;
+    gap: 1px;
+    background: var(--border-weak);
+    border-radius: 10px;
+    padding: 1px;
+    overflow: hidden;
+  }
+  .sam-studio-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
+    padding: 7px 14px;
+    background: var(--background);
+    min-width: 56px;
+  }
+  .sam-studio-meta-label {
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-weaker);
+  }
+  .sam-studio-meta-value {
+    font-family: var(--font-family-mono, ui-monospace, monospace);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-strong);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* STAGE — arrange + inspector */
+  .sam-studio-stage {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .sam-studio-arrange {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .sam-studio-ruler {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    height: 26px;
+    padding-left: 124px;
+    border-bottom: 1px solid var(--border-weak);
+    background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
+  }
+  .sam-studio-ruler::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 124px;
+    border-right: 1px solid var(--border-weak);
+  }
+  .sam-studio-ruler-tick {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding-left: 6px;
+    border-left: 1px solid var(--border-weak);
+    font-family: var(--font-family-mono, ui-monospace, monospace);
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--text-weaker);
+    letter-spacing: 0.02em;
+  }
+  .sam-studio-ruler-tick:first-child { border-left: none; }
+  .sam-studio-playhead {
+    position: absolute;
+    left: calc(124px + (100% - 124px) * 0.18);
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: color-mix(in oklch, var(--primary) 75%, transparent);
+    z-index: 3;
+    pointer-events: none;
+  }
+  .sam-studio-playhead::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -3.5px;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 18%, transparent);
+  }
+
+  .sam-studio-tracks {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .sam-studio-track {
+    display: grid;
+    grid-template-columns: 124px 1fr;
+    align-items: stretch;
+    border-bottom: 1px solid var(--border-weak);
+    min-height: 0;
+  }
+  .sam-studio-track:last-child { border-bottom: none; }
+
+  .sam-studio-track-head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 8px;
+    padding: 10px 12px;
+    border-right: 1px solid var(--border-weak);
+    background: color-mix(in oklch, var(--foreground) 1.5%, transparent);
+  }
+  .sam-studio-track-name {
+    grid-column: 1;
+    grid-row: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-strong);
+    letter-spacing: -0.005em;
+  }
+  .sam-studio-track-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--studio-accent);
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--studio-accent) 22%, transparent);
+    flex-shrink: 0;
+  }
+  .sam-studio-track-instrument {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 9.5px;
+    font-weight: 500;
+    color: var(--text-weaker);
+    letter-spacing: 0.01em;
+  }
+  .sam-studio-track-controls {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .sam-studio-track-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid var(--border-strong);
+    background: var(--background);
+    font-family: var(--font-family-mono, ui-monospace, monospace);
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-weak);
+    letter-spacing: 0.02em;
+  }
+
+  .sam-studio-lane {
+    position: relative;
+    min-height: 64px;
+    overflow: hidden;
+    background:
+      linear-gradient(
+        90deg,
+        color-mix(in oklch, var(--foreground) 1%, transparent),
+        transparent 35%
+      );
+  }
+  .sam-studio-grid {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border-weak);
+    opacity: 0.6;
+  }
+  .sam-studio-region {
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    border-radius: 6px;
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--studio-accent) 22%, transparent),
+      color-mix(in oklch, var(--studio-accent) 14%, transparent)
+    );
+    border: 1px solid color-mix(in oklch, var(--studio-accent) 38%, transparent);
+    box-shadow:
+      0 1px 0 color-mix(in oklch, white 22%, transparent) inset,
+      0 4px 12px -8px color-mix(in oklch, var(--studio-accent) 50%, transparent);
+    color: var(--studio-accent);
+    overflow: hidden;
+    transform-origin: left center;
+    animation: samStudioRegion 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--region-delay);
+  }
+  .sam-studio-region-wave {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* INSPECTOR */
+  .sam-studio-inspector {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 18px 18px 18px 16px;
+    border-left: 1px solid var(--border-weak);
+    background: color-mix(in oklch, var(--foreground) 2%, transparent);
+    overflow: hidden;
+  }
+  .sam-studio-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: var(--background);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-md);
+  }
+  .sam-studio-card-eyebrow {
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--primary);
+  }
+  .sam-studio-card-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-strong);
+    line-height: 1.35;
+    letter-spacing: -0.005em;
+  }
+  .sam-studio-card-prompt {
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-style: italic;
+    font-size: 13px;
+    color: var(--text-weak);
+    line-height: 1.35;
+    letter-spacing: -0.005em;
+  }
+
+  .sam-studio-knobs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .sam-studio-knob {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .sam-studio-knob-dial {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    color: var(--primary);
+  }
+  .sam-studio-knob-dial svg { width: 100%; height: 100%; display: block; }
+  .sam-studio-knob-readout {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-family-mono, ui-monospace, monospace);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-strong);
+    font-variant-numeric: tabular-nums;
+  }
+  .sam-studio-knob-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-weak);
+  }
+
+  /* TRANSPORT */
+  .sam-studio-transport {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 14px 28px;
+    border-top: 1px solid var(--border-weak);
+    background: color-mix(in oklch, var(--foreground) 2%, transparent);
+  }
+  .sam-studio-transport-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sam-studio-tx {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    background: var(--background);
+    color: var(--text-base);
+  }
+  .sam-studio-tx--play {
+    width: 40px;
+    height: 40px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: var(--primary);
+    box-shadow: 0 6px 18px color-mix(in oklch, var(--primary) 38%, transparent);
+  }
+  .sam-studio-time {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    font-family: var(--font-family-mono, ui-monospace, monospace);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-strong);
+    letter-spacing: -0.01em;
+  }
+  .sam-studio-time-now { font-size: 14px; font-weight: 600; }
+  .sam-studio-time-sep { font-size: 12px; color: var(--text-weaker); }
+  .sam-studio-time-total { font-size: 12px; font-weight: 500; color: var(--text-weak); }
+
+  .sam-studio-meter {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 22px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: color-mix(in oklch, var(--foreground) 4%, transparent);
+    border: 1px solid var(--border-weak);
+  }
+  .sam-studio-meter-bar {
+    width: 3px;
+    height: var(--meter-h);
+    border-radius: 1px;
+    background: linear-gradient(
+      0deg,
+      color-mix(in oklch, var(--primary) 70%, transparent),
+      color-mix(in oklch, var(--primary) 95%, transparent)
+    );
+  }
+  /* Only animate the meter when the create-app section is active. */
+  .sam-body[data-create-app="true"] .sam-studio-meter-bar {
+    animation: samStudioMeter 1.4s ease-in-out infinite alternate;
+  }
+  .sam-studio-meter-bar:nth-child(2) { animation-delay: 0.08s; }
+  .sam-studio-meter-bar:nth-child(3) { animation-delay: 0.16s; }
+  .sam-studio-meter-bar:nth-child(4) { animation-delay: 0.24s; }
+  .sam-studio-meter-bar:nth-child(5) { animation-delay: 0.32s; }
+  .sam-studio-meter-bar:nth-child(6) { animation-delay: 0.40s; }
+  .sam-studio-meter-bar:nth-child(7) { animation-delay: 0.48s; }
+  .sam-studio-meter-bar:nth-child(8) { animation-delay: 0.56s; }
+
+  @keyframes samStudioRegion {
+    from { transform: scaleX(0.6); opacity: 0; }
+    to   { transform: scaleX(1);   opacity: 1; }
+  }
+  @keyframes samStudioMeter {
+    0%   { transform: scaleY(0.45); transform-origin: bottom; }
+    100% { transform: scaleY(1);    transform-origin: bottom; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sam-studio-region,
+    .sam-studio-meter-bar { animation: none; }
+  }
+
+  /* PILL OVERLAY — give the Cozy Mode pill a warm tint to hint that
+     it's a different *kind* of toggle (full-app theme vs section). */
+  .sam-pill[data-section="composer"] {
+    background: linear-gradient(135deg, rgba(254, 243, 226, 0.92), rgba(245, 225, 196, 0.92));
+    border-color: rgba(139, 105, 75, 0.28);
+    color: #5c3d2e;
+  }
+  .sam-pill[data-section="composer"][data-active="true"] {
+    background: linear-gradient(135deg, #1c1c1c, #2d2d2d);
+    color: #fef3e2;
+    border-color: #1c1c1c;
+    box-shadow:
+      0 4px 22px rgba(28, 28, 28, 0.35),
+      0 0 0 5px rgba(212, 134, 154, 0.18);
+  }
+
+  /* ──────────────────────────────────────────
+     COMPOSER — default: pill input mirroring
+     '.composer-shell' (border-radius: 999px).
+     ────────────────────────────────────────── */
+  .sam-composer-wrap {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    padding: 8px 24px 16px;
+    width: 100%;
+  }
+  .sam-composer {
+    width: 100%;
+    max-width: 480px;
+    background: var(--background);
+    border-radius: 999px;
+    box-shadow: var(--shadow-md);
+    transition: border-radius 0.3s ease;
+    overflow: hidden;
+  }
+  .sam-composer-form {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-height: 50px;
+    padding: 8px 10px;
+  }
+  .sam-composer-add {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1.5px solid var(--text-base);
+    background: color-mix(in oklch, var(--foreground) 6%, transparent);
+    color: var(--text-strong);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .sam-composer-input {
+    flex: 1;
+    padding: 4px 4px;
+    font-family: inherit;
+    font-size: 13.5px;
+    color: var(--text-strong);
+  }
+  .sam-composer-input-placeholder {
+    color: var(--text-weaker);
+    opacity: 0.85;
+  }
+  .sam-composer-submit {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    opacity: 0.45;
+  }
+
+  /* COMPOSER — modern: cozy mode with sleeping tuxedo cat */
+  .sam-composer[data-modern="true"] {
+    border-radius: 22px;
+    background: linear-gradient(135deg, #fef3e2 0%, #f5e1c4 100%);
+    box-shadow:
+      var(--shadow-md),
+      0 0 0 1px rgba(139, 105, 75, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+  .sam-composer[data-modern="true"] .sam-composer-form { display: none; }
+  .sam-cozy {
+    display: none;
+    align-items: center;
+    width: 100%;
+    gap: 14px;
+    padding: 12px 18px 12px 14px;
+    min-height: 82px;
+    position: relative;
+    overflow: hidden;
+    animation: samFadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .sam-composer[data-modern="true"] .sam-cozy { display: flex; }
+  .sam-cozy::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 18% 28%, rgba(139, 105, 75, 0.08) 3px, transparent 4px),
+      radial-gradient(circle at 64% 78%, rgba(139, 105, 75, 0.06) 2.5px, transparent 3.5px),
+      radial-gradient(circle at 92% 18%, rgba(139, 105, 75, 0.07) 4px, transparent 5px),
+      radial-gradient(circle at 78% 50%, rgba(139, 105, 75, 0.05) 2px, transparent 3px);
+    pointer-events: none;
+  }
+  .sam-cozy-cat {
+    flex-shrink: 0;
+    width: 96px;
+    height: 64px;
+    position: relative;
+  }
+  .sam-cozy-cat svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+  .sam-cozy-cat-body {
+    transform-origin: 90px 100px;
+  }
+  .sam-cozy-cat-tail {
+    transform-origin: 140px 100px;
+  }
+  /* Only animate the cat when cozy mode (composer section) is active. */
+  .sam-root[data-cozy="true"] .sam-cozy-cat-body {
+    animation: samCozyBreathe 3.6s ease-in-out infinite;
+  }
+  .sam-root[data-cozy="true"] .sam-cozy-cat-tail {
+    animation: samCozyTail 3.6s ease-in-out infinite;
+  }
+  .sam-cozy-cat::after {
+    content: "";
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 78px;
+    height: 6px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(92, 64, 51, 0.18), transparent 70%);
+  }
+  .sam-cozy-zzz {
+    position: absolute;
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-style: italic;
+    font-weight: 600;
+    color: #b08560;
+    pointer-events: none;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+    z-index: 2;
+  }
+  .sam-cozy-zzz-1 { top: 18px; left: 78px; font-size: 10px; opacity: 0.5; }
+  .sam-cozy-zzz-2 { top: 8px;  left: 86px; font-size: 13px; opacity: 0.65; }
+  .sam-cozy-zzz-3 { top: -2px; left: 96px; font-size: 17px; opacity: 0.78; }
+  /* Only float the zzz's when cozy mode is active. */
+  .sam-root[data-cozy="true"] .sam-cozy-zzz-1 { animation: samCozyFloat 3.2s ease-in-out 0.0s infinite; }
+  .sam-root[data-cozy="true"] .sam-cozy-zzz-2 { animation: samCozyFloat 3.2s ease-in-out 0.7s infinite; }
+  .sam-root[data-cozy="true"] .sam-cozy-zzz-3 { animation: samCozyFloat 3.2s ease-in-out 1.4s infinite; }
+  .sam-cozy-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    z-index: 1;
+  }
+  .sam-cozy-state {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #b8845c;
+  }
+  .sam-cozy-state-dot { display: none; }
+  .sam-cozy-line {
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-size: 17px;
+    font-style: italic;
+    font-weight: 500;
+    color: #5c3d2e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.1;
+  }
+  .sam-cozy-meter {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #8b6240;
+    flex-shrink: 0;
+    padding: 7px 12px;
+    background: rgba(255, 252, 246, 0.65);
+    border: 1px solid rgba(139, 105, 75, 0.22);
+    border-radius: 999px;
+    z-index: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .sam-cozy-heart {
+    color: #d4869a;
+    font-size: 13px;
+    line-height: 1;
+  }
+  /* Only beat the heart when cozy mode is active. */
+  .sam-root[data-cozy="true"] .sam-cozy-heart {
+    animation: samCozyHeartbeat 1.4s ease-in-out infinite;
+  }
+
+  /* ══════════════════════════════════════════
+     COZY MODE → "MOCHI" — entirely different application.
+
+     When the user picks "Cozy mode", this overlay covers the whole
+     window (the regular sidebar + main column is hidden underneath).
+     The point isn't a different colour scheme — it's a different
+     *kind* of app: no rail, no chat shell, no tabs. Instead, a slow
+     magazine surface that reads like a small daily journal kept by a
+     tuxedo cat. Different chrome, different rhythm, different
+     navigation, different composer, different verbs.
+     ══════════════════════════════════════════ */
+  .sam-mochi {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 12px;
+    color: #2a1a13;
+    font-family: var(--font-family-sans, system-ui);
+    background:
+      radial-gradient(120% 80% at 18% 0%, rgba(232, 154, 152, 0.32), transparent 55%),
+      radial-gradient(90% 80% at 100% 100%, rgba(212, 134, 154, 0.28), transparent 55%),
+      linear-gradient(168deg, #fef3e2 0%, #f7e2c4 55%, #efd4b6 100%);
+  }
+  .sam-root[data-cozy="true"] .sam-mochi {
+    display: flex;
+    animation: samMochiIn 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  /* When Mochi is on, hide the regular Stella shell entirely so the
+     transformation reads as "different app", not "same app retinted." */
+  .sam-root[data-cozy="true"] > .sam-sidebar,
+  .sam-root[data-cozy="true"] > .sam-main {
+    visibility: hidden;
+  }
+
+  /* Soft hand-drawn "paw print" texture so the surface feels warm and
+     personal rather than a flat gradient. */
+  .sam-mochi__bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(circle at 8% 18%, rgba(139, 105, 75, 0.06) 4px, transparent 5px),
+      radial-gradient(circle at 22% 70%, rgba(139, 105, 75, 0.05) 3px, transparent 4px),
+      radial-gradient(circle at 76% 22%, rgba(139, 105, 75, 0.06) 5px, transparent 6px),
+      radial-gradient(circle at 88% 78%, rgba(139, 105, 75, 0.04) 3px, transparent 4px),
+      radial-gradient(circle at 48% 90%, rgba(139, 105, 75, 0.05) 4px, transparent 5px);
+  }
+
+  /* HEADER — minimal: brand · soft pill nav · current state. */
+  .sam-mochi__header {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 24px;
+    padding: 22px 32px 18px;
+  }
+  .sam-mochi__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-style: italic;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #1c1c1c;
+  }
+  .sam-mochi__brand-paw {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    color: #1c1c1c;
+  }
+  .sam-mochi__brand-paw svg { width: 100%; height: 100%; }
+
+  .sam-mochi__chips {
+    justify-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgba(255, 252, 246, 0.55);
+    border: 1px solid rgba(139, 105, 75, 0.18);
+    backdrop-filter: blur(10px);
+  }
+  .sam-mochi__chip {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #8b6240;
+    border-radius: 999px;
+    letter-spacing: -0.005em;
+  }
+  .sam-mochi__chip.is-active {
+    background: #1c1c1c;
+    color: #fef3e2;
+    box-shadow: 0 1px 4px rgba(28, 28, 28, 0.18);
+  }
+
+  .sam-mochi__time {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: rgba(255, 252, 246, 0.6);
+    border: 1px solid rgba(139, 105, 75, 0.18);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #5c3d2e;
+  }
+  .sam-mochi__time-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #d4869a;
+  }
+
+  /* STAGE — magazine grid: feature spread, side stats, journal. */
+  .sam-mochi__stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1.55fr 1fr;
+    grid-template-rows: 1fr auto;
+    gap: 18px;
+    padding: 4px 32px 18px;
+    overflow: hidden;
+  }
+  .sam-mochi__feature {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 28px 30px 30px;
+    border-radius: 22px;
+    background:
+      radial-gradient(80% 70% at 100% 0%, rgba(255, 255, 255, 0.55), transparent 60%),
+      linear-gradient(180deg, #fff8ec 0%, #fbe5c8 100%);
+    border: 1px solid rgba(139, 105, 75, 0.18);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.7) inset,
+      0 18px 50px -22px rgba(139, 105, 75, 0.35);
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .sam-mochi__feature-eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #b8845c;
+  }
+  .sam-mochi__feature-title {
+    margin: 0;
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-weight: 400;
+    font-style: normal;
+    font-size: clamp(2rem, 4.4vw, 3.4rem);
+    line-height: 1;
+    letter-spacing: -0.035em;
+    color: #1c1c1c;
+  }
+  .sam-mochi__feature-title em {
+    font-style: italic;
+    color: #5c3d2e;
+  }
+  .sam-mochi__feature-body {
+    margin: 6px 0 0;
+    max-width: 28rem;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: #5c3d2e;
+  }
+  .sam-mochi__feature-actions {
+    margin-top: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sam-mochi__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(139, 105, 75, 0.28);
+    background: rgba(255, 252, 246, 0.9);
+    color: #5c3d2e;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: default;
+  }
+  .sam-mochi__btn--primary {
+    background: #1c1c1c;
+    color: #fef3e2;
+    border-color: #1c1c1c;
+    box-shadow: 0 6px 20px -10px rgba(28, 28, 28, 0.5);
+  }
+  .sam-mochi__btn--primary span:first-child { color: #e89a98; }
+
+  .sam-mochi__feature-cat {
+    position: absolute;
+    right: -18px;
+    bottom: -22px;
+    width: 56%;
+    max-width: 420px;
+    z-index: -1;
+    opacity: 0.95;
+    filter: drop-shadow(0 18px 18px rgba(92, 64, 51, 0.18));
+  }
+  .sam-mochi__feature-cat svg { width: 100%; height: auto; }
+
+  /* PULSE — small softly-glassy stat panel on the right. */
+  .sam-mochi__pulse {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 22px 22px 18px;
+    border-radius: 22px;
+    background: rgba(255, 252, 246, 0.7);
+    border: 1px solid rgba(139, 105, 75, 0.18);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.7) inset,
+      0 18px 50px -28px rgba(139, 105, 75, 0.3);
+    backdrop-filter: blur(12px) saturate(140%);
+  }
+  .sam-mochi__pulse-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    column-gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px dashed rgba(139, 105, 75, 0.18);
+  }
+  .sam-mochi__pulse-row:first-child { padding-top: 0; }
+  .sam-mochi__pulse-label {
+    grid-column: 1;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #b8845c;
+    align-self: end;
+  }
+  .sam-mochi__pulse-value {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-style: italic;
+    font-size: 32px;
+    font-weight: 500;
+    color: #1c1c1c;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .sam-mochi__pulse-meta {
+    grid-column: 1;
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-style: italic;
+    font-size: 13px;
+    color: #5c3d2e;
+  }
+  .sam-mochi__purr {
+    margin-top: auto;
+    padding-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .sam-mochi__purr-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #b8845c;
+  }
+  .sam-mochi__purr-value {
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-style: italic;
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: #5c3d2e;
+    text-transform: none;
+  }
+  .sam-mochi__purr-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 30px;
+  }
+  .sam-mochi__purr-bar {
+    flex: 1;
+    height: var(--purr-h);
+    border-radius: 2px;
+    background: linear-gradient(0deg, rgba(212, 134, 154, 0.85), rgba(232, 154, 152, 0.95));
+    transform-origin: bottom;
+  }
+  /* Only animate the purr meter when cozy mode is active. */
+  .sam-root[data-cozy="true"] .sam-mochi__purr-bar {
+    animation: samMochiPurr 1.6s ease-in-out infinite alternate;
+    animation-delay: calc(var(--purr-i) * 70ms);
+  }
+
+  /* MOMENTS — full-width journal across the bottom. */
+  .sam-mochi__moments {
+    grid-column: 1 / span 2;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 22px 16px;
+    border-radius: 18px;
+    background: rgba(255, 248, 236, 0.7);
+    border: 1px solid rgba(139, 105, 75, 0.18);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.6) inset,
+      0 14px 40px -28px rgba(139, 105, 75, 0.25);
+  }
+  .sam-mochi__moments-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  .sam-mochi__moments-head h2 {
+    margin: 0;
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-style: italic;
+    font-size: 20px;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    color: #1c1c1c;
+  }
+  .sam-mochi__moments-head span {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #b8845c;
+  }
+  .sam-mochi__moments-list {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+  .sam-mochi__moment {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border-left: 2px solid rgba(212, 134, 154, 0.55);
+    background: rgba(255, 252, 246, 0.5);
+    border-radius: 0 8px 8px 0;
+  }
+  .sam-mochi__moment-time {
+    font-family: var(--font-family-mono, ui-monospace, monospace);
+    font-size: 10px;
+    font-weight: 600;
+    color: #b8845c;
+    letter-spacing: 0.04em;
+  }
+  .sam-mochi__moment-body {
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-style: italic;
+    font-size: 14px;
+    line-height: 1.3;
+    color: #5c3d2e;
+    letter-spacing: -0.005em;
+  }
+
+  /* COMPOSE — soft, intimate, totally different language. */
+  .sam-mochi__compose {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 32px 22px;
+    padding: 10px 12px;
+    border-radius: 999px;
+    background: rgba(255, 252, 246, 0.85);
+    border: 1px solid rgba(139, 105, 75, 0.22);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.6) inset,
+      0 12px 30px -16px rgba(139, 105, 75, 0.3);
+    backdrop-filter: blur(12px);
+  }
+  .sam-mochi__compose-input {
+    flex: 1;
+    padding: 6px 6px 6px 10px;
+    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-style: italic;
+    font-size: 16px;
+    color: #5c3d2e;
+  }
+  .sam-mochi__compose-placeholder { opacity: 0.7; }
+  .sam-mochi__compose-send {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #1c1c1c;
+    color: #e89a98;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    box-shadow: 0 6px 18px -8px rgba(28, 28, 28, 0.5);
+  }
+
+  @keyframes samMochiIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes samMochiPurr {
+    0%   { transform: scaleY(0.55); opacity: 0.85; }
+    100% { transform: scaleY(1);    opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sam-mochi,
+    .sam-mochi__purr-bar { animation: none; }
+  }
+
+  /* ══════════════════════════════════════════
+     PILL OVERLAY (interactive mode)
+     ══════════════════════════════════════════ */
+  .sam-pill {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px 12px 16px;
+    border-radius: 999px;
+    border: 1.5px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+    background: color-mix(in oklch, var(--background) 82%, transparent);
+    backdrop-filter: blur(12px) saturate(1.2);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 650;
+    color: var(--text-strong);
+    opacity: 0.95;
+    cursor: pointer;
+    user-select: none;
+    z-index: 30;
+    box-shadow:
+      0 4px 16px color-mix(in oklch, var(--foreground) 10%, transparent),
+      0 0 0 0 color-mix(in oklch, var(--primary) 0%, transparent),
+      0 1px 0 color-mix(in oklch, white 12%, transparent) inset;
+    animation:
+      samPillIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
+      samPillBorderPulse 2.4s ease-in-out infinite;
+    transition:
+      background 0.2s ease,
+      color 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      opacity 0.2s ease,
+      transform 0.2s ease;
+  }
+  .sam-pill:hover {
+    opacity: 1;
+    border-color: color-mix(in oklch, var(--foreground) 26%, transparent);
+    transform: translateY(-1px);
+    animation-play-state: running, paused;
+  }
+  .sam-pill[data-active="true"] {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: var(--primary);
+    box-shadow:
+      0 4px 22px color-mix(in oklch, var(--primary) 45%, transparent),
+      0 0 0 5px color-mix(in oklch, var(--primary) 14%, transparent);
+    opacity: 1;
+    animation-play-state: running, paused;
+  }
+  .sam-pill-icon { display: inline-flex; opacity: 0.85; }
+  .sam-pill-icon svg { width: 16px; height: 16px; }
+  .sam-pill[data-active="true"] .sam-pill-icon { opacity: 1; }
+  /* Pause the border pulse entirely when pills are disabled — pills are
+     non-interactive in this state and the pulse is just wasted GPU work. */
+  .sam-root[data-pills-disabled="true"] .sam-pill {
+    animation: samPillIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .sam-pill-label { line-height: 1; white-space: nowrap; }
+  .sam-pill-check {
+    display: inline-flex;
+    width: 0;
+    overflow: hidden;
+    transition: width 0.25s ease, margin 0.25s ease;
+  }
+  .sam-pill[data-active="true"] .sam-pill-check {
+    width: 14px;
+    margin-left: 2px;
+  }
+
+  /* Pill positions */
+  .sam-pill[data-section="sidebar"]    { top: 12px; left: 184px;  animation-delay: 0.05s; }
+  .sam-pill[data-section="header"]     { top: 12px; right: 16px;  animation-delay: 0.12s; }
+  .sam-pill[data-section="messages"]   { top: calc(50% - 16px); right: 18px; animation-delay: 0.18s; }
+  .sam-pill[data-section="createApp"]  { top: calc(50% - 16px); left: 184px; animation-delay: 0.22s; }
+  .sam-pill[data-section="composer"]   { bottom: 24px; left: 30%; animation-delay: 0.28s; }
+
+  /* No repeat attention pulse on the first pill (samPillAttention removed). */
+
+  /* ══════════════════════════════════════════
+     ANIMATIONS
+     ══════════════════════════════════════════ */
+  @keyframes samFadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes samPillIn {
+    from { opacity: 0; transform: translateY(-4px) scale(0.92); }
+    to   { opacity: 0.95; transform: translateY(0) scale(1); }
+  }
+  @keyframes samPillBorderPulse {
+    0%, 100% {
+      border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+      box-shadow:
+        0 4px 16px color-mix(in oklch, var(--foreground) 10%, transparent),
+        0 0 0 0 color-mix(in oklch, var(--primary) 0%, transparent),
+        0 1px 0 color-mix(in oklch, white 12%, transparent) inset;
+    }
+    50% {
+      border-color: color-mix(in oklch, var(--primary) 52%, transparent);
+      box-shadow:
+        0 5px 18px color-mix(in oklch, var(--foreground) 12%, transparent),
+        0 0 0 6px color-mix(in oklch, var(--primary) 13%, transparent),
+        0 1px 0 color-mix(in oklch, white 12%, transparent) inset;
+    }
+  }
+  @keyframes samCozyFloat {
+    0%   { transform: translateY(2px)  scale(0.92); opacity: 0; }
+    25%  { opacity: 1; }
+    100% { transform: translateY(-12px) scale(1.05); opacity: 0; }
+  }
+  @keyframes samCozyDot {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(212, 134, 154, 0.5);
+      transform: scale(1);
+    }
+    50% {
+      box-shadow: 0 0 0 6px rgba(212, 134, 154, 0);
+      transform: scale(1.15);
+    }
+  }
+  @keyframes samCozyHeartbeat {
+    0%, 100% { transform: scale(1); }
+    20%      { transform: scale(1.22); }
+    40%      { transform: scale(0.94); }
+    60%      { transform: scale(1.14); }
+    80%      { transform: scale(1); }
+  }
+  @keyframes samCozyTail {
+    0%, 100% { transform: rotate(0deg); }
+    50%      { transform: rotate(-3deg); }
+  }
+  @keyframes samCozyBreathe {
+    0%, 100% { transform: scaleY(1); }
+    50%      { transform: scaleY(1.04); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sam-cozy-zzz,
+    .sam-cozy-state-dot,
+    .sam-cozy-heart,
+    .sam-cozy-cat-body,
+    .sam-cozy-cat-tail { animation: none; }
+    .sam-pill,
+    .sam-cards,
+    .sam-sidebar-modern,
+    .sam-cozy { animation: none; }
+  }

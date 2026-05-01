@@ -256,23 +256,21 @@
     0 18px 50px rgba(0, 0, 0, 0.18),
     0 4px 14px rgba(0, 0, 0, 0.1);
 
-  /* Hidden by default until the user double-taps. We blur+scale in to
-   * mirror the `miniShellMaterialize` keyframes used elsewhere so the
-   * gesture feels like the same "summon" beat as the real product. */
+  /* Hidden by default until the user double-taps. The summon beat is
+   * carried by `transform: scale + translateY` + `opacity` only — we
+   * dropped the `filter: blur(12px → 0)` because per-frame filter
+   * passes on a 264px-wide rect were the dominant cost of the toggle. */
   opacity: 0;
   transform: scale(0.6) translateY(12px);
-  filter: blur(12px);
   transition:
     opacity 0.32s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
-    filter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+    transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
 }
 
 .onboarding-doubletap-mini[data-visible="true"] {
   opacity: 1;
   transform: scale(1) translateY(0);
-  filter: blur(0);
 }
 
 .onboarding-doubletap-mini__bar {

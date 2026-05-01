@@ -325,9 +325,12 @@
   }
 }
 
-/* Three-dot typing indicator that fades out once the assistant bubble
- * appears. We use the same animation-delay so it lines up with the
- * scripted timing in the component. */
+/* Three-dot typing indicator that fades + collapses out once the
+ * assistant bubble appears. Animated `transform: scaleY` + `opacity`
+ * (compositor-only) instead of `height`/`padding`/`margin` (layout-
+ * thrashing). The `transform-origin: top` makes the collapse read like
+ * the prior height tween, and the parent column reflows once via the
+ * sibling assistant bubble appearing rather than per-frame. */
 .onboarding-memory-mock__typing {
   display: inline-flex;
   align-items: center;
@@ -337,6 +340,7 @@
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   width: fit-content;
   opacity: 0;
+  transform-origin: top center;
   animation-name: memoryTypingPulse;
   animation-timing-function: linear;
   animation-iteration-count: 1;
@@ -365,17 +369,16 @@
 @keyframes memoryTypingPulse {
   0% {
     opacity: 0;
+    transform: scaleY(1);
   }
   10%,
   85% {
     opacity: 1;
+    transform: scaleY(1);
   }
   100% {
     opacity: 0;
-    height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-    margin: 0;
+    transform: scaleY(0);
   }
 }
 

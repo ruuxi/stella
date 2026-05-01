@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type ThemeSummary = {
   id: string;
@@ -71,6 +71,43 @@ export function OnboardingThemePhase({
   const [showGradientColor, setShowGradientColor] = useState(false);
   const [hasSelectedGradientColor, setHasSelectedGradientColor] = useState(false);
 
+  // rAF-coalesce theme preview hover. `previewTheme(id)` writes CSS
+  // variables on `:root` and triggers a full-tree style recalc; sweeping
+  // the cursor across the pill row would otherwise fire one such
+  // recalc per `mouseenter` (potentially several per frame). We commit
+  // only the latest hovered theme on the next animation frame.
+  const previewFrameRef = useRef<number | null>(null);
+  const pendingPreviewIdRef = useRef<string | null>(null);
+  const handleThemePreviewEnter = useCallback(
+    (id: string) => {
+      pendingPreviewIdRef.current = id;
+      if (previewFrameRef.current !== null) return;
+      previewFrameRef.current = requestAnimationFrame(() => {
+        previewFrameRef.current = null;
+        const next = pendingPreviewIdRef.current;
+        if (next !== null) onThemePreviewEnter(next);
+      });
+    },
+    [onThemePreviewEnter],
+  );
+  const handleThemePreviewLeave = useCallback(() => {
+    pendingPreviewIdRef.current = null;
+    if (previewFrameRef.current !== null) {
+      cancelAnimationFrame(previewFrameRef.current);
+      previewFrameRef.current = null;
+    }
+    onThemePreviewLeave();
+  }, [onThemePreviewLeave]);
+  useEffect(
+    () => () => {
+      if (previewFrameRef.current !== null) {
+        cancelAnimationFrame(previewFrameRef.current);
+        previewFrameRef.current = null;
+      }
+    },
+    [],
+  );
+
   const handleSelectTheme = useCallback(
     (id: string) => {
       onSelectTheme(id);
@@ -111,7 +148,7 @@ export function OnboardingThemePhase({
       <div className="onboarding-step-label">Theme</div>
       <div
         className="onboarding-theme-grid onboarding-pill-stagger"
-        onMouseLeave={onThemePreviewLeave}
+        onMouseLeave={handleThemePreviewLeave}
       >
         {sortedThemes.map((theme) => (
           <button
@@ -119,7 +156,7 @@ export function OnboardingThemePhase({
             className="onboarding-pill"
             data-active={theme.id === themeId}
             onClick={() => handleSelectTheme(theme.id)}
-            onMouseEnter={() => onThemePreviewEnter(theme.id)}
+            onMouseEnter={() => handleThemePreviewEnter(theme.id)}
           >
             {theme.name}
           </button>

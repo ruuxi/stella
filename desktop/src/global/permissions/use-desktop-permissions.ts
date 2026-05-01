@@ -47,6 +47,15 @@ export const useDesktopPermissions = ({
   const [isRestarting, setIsRestarting] = useState(false);
   const lastStatusRef = useRef<DesktopPermissionStatus | null>(null);
 
+  const isShallowEqual = (
+    a: DesktopPermissionStatus,
+    b: DesktopPermissionStatus,
+  ) =>
+    a.accessibility === b.accessibility &&
+    a.screen === b.screen &&
+    a.microphone === b.microphone &&
+    a.microphoneStatus === b.microphoneStatus;
+
   const refresh = useCallback(async () => {
     const systemApi = window.electronAPI?.system;
     if (!systemApi?.getPermissionStatus) {
@@ -62,6 +71,12 @@ export const useDesktopPermissions = ({
     ) {
       setRestartRecommended(true);
     }
+    // Skip the React state update when nothing actually changed — every
+    // poll otherwise allocates a fresh object and re-renders the entire
+    // permissions card grid even when the user hasn't toggled anything.
+    if (previousStatus && isShallowEqual(previousStatus, nextStatus)) {
+      return previousStatus;
+    }
     lastStatusRef.current = nextStatus;
     setStatus(nextStatus);
     return nextStatus;
@@ -76,12 +91,13 @@ export const useDesktopPermissions = ({
         const nextStatus = await refresh();
         if (!cancelled) {
           setError(null);
-          setStatus(nextStatus);
         }
+        return nextStatus;
       } catch (loadError) {
         if (!cancelled) {
           setError(errorMessage(loadError));
         }
+        return null;
       } finally {
         if (!cancelled) {
           setLoaded(true);
@@ -89,14 +105,66 @@ export const useDesktopPermissions = ({
       }
     };
 
-    void load();
-    const intervalId = window.setInterval(() => {
-      void load();
-    }, pollMs);
+    let intervalId: number | null = null;
+    const stopPolling = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+    const startPolling = () => {
+      if (intervalId !== null) return;
+      intervalId = window.setInterval(() => {
+        // Don't burn cycles on a hidden window — the user can't act on a
+        // permission they aren't currently looking at, and the next
+        // foreground transition triggers a fresh load below.
+        if (document.visibilityState === "hidden") return;
+        void load().then((next) => {
+          // Stop the loop once every permission required by the caller
+          // has been granted; we won't observe further state transitions
+          // we care about until the user revokes one in System Settings,
+          // at which point the next mount picks them back up.
+          if (
+            next &&
+            next.accessibility &&
+            next.screen &&
+            next.microphone
+          ) {
+            stopPolling();
+          }
+        });
+      }, pollMs);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void load();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    void load().then((next) => {
+      if (cancelled) return;
+      // Skip starting the interval at all when everything is already
+      // granted — the common case for users on a returning device.
+      if (
+        next &&
+        next.accessibility &&
+        next.screen &&
+        next.microphone
+      ) {
+        return;
+      }
+      startPolling();
+    });
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [enabled, errorMessage, pollMs, refresh]);
 
