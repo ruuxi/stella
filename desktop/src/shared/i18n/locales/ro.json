@@ -55,7 +55,6 @@
       "secondary": "Stella nu este pentru toată lumea. Stella este pentru tine."
     },
     "stepTitles": {
-      "language": "Alege-ți limba.",
       "extension": "Adaugă Stella în browser.",
       "browser": "Lasă Stella să te cunoască.",
       "creation": "Stella se schimbă când ceri. Apasă pe butoane ca să încerci.",
@@ -82,9 +81,6 @@
         "description": "Uneltele pe care le folosești, proiectele tale și cum este configurat mediul"
       },
       "fdaNote": "Unele opțiuni necesită acces complet la disc"
-    },
-    "language": {
-      "description": "Stella va folosi această limbă în toată aplicația și în răspunsuri. Poți schimba mai târziu în Setări."
     }
   },
   "billing": {

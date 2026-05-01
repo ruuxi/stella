@@ -55,7 +55,6 @@
       "secondary": "Stella ei ole kaikille. Stella on sinulle."
     },
     "stepTitles": {
-      "language": "Valitse kieli.",
       "extension": "Lisää Stella selaimeesi.",
       "browser": "Anna Stellan oppia tuntemaan sinut.",
       "creation": "Stella muuttuu, kun pyydät. Kokeile painikkeita.",
@@ -82,9 +81,6 @@
         "description": "Käyttämäsi työkalut, projektisi ja ympäristön kokoonpano"
       },
       "fdaNote": "Jotkin vaihtoehdot edellyttävät täyttä levykäyttöoikeutta"
-    },
-    "language": {
-      "description": "Stella käyttää tätä kieltä koko sovelluksessa ja vastauksissa. Voit muuttaa sen myöhemmin Asetuksissa."
     }
   },
   "billing": {

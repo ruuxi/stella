@@ -55,7 +55,6 @@
       "secondary": "Stella no es para todos. Stella es para ti."
     },
     "stepTitles": {
-      "language": "Elige tu idioma.",
       "extension": "Añade Stella a tu navegador.",
       "browser": "Deja que Stella te conozca.",
       "creation": "Stella puede cambiar cuando se lo pidas. Haz clic en los botones para probar.",
@@ -82,9 +81,6 @@
         "description": "Las herramientas que usas, los proyectos en los que trabajas y cómo está configurado tu entorno"
       },
       "fdaNote": "Algunas opciones requieren acceso completo al disco"
-    },
-    "language": {
-      "description": "Stella usará este idioma en toda la app y cuando te responda. Puedes cambiarlo más tarde en Ajustes."
     }
   },
   "billing": {

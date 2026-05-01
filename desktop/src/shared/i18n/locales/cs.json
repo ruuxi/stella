@@ -55,7 +55,6 @@
       "secondary": "Stella není pro každého. Stella je pro vás."
     },
     "stepTitles": {
-      "language": "Vyberte si jazyk.",
       "extension": "Přidejte Stellu do prohlížeče.",
       "browser": "Nechte Stellu, ať vás pozná.",
       "creation": "Stella se mění, když ji o to požádáte. Vyzkoušejte to kliknutím na tlačítka.",
@@ -82,9 +81,6 @@
         "description": "Nástroje, které používáte, projekty, na kterých pracujete, a konfigurace prostředí"
       },
       "fdaNote": "Některé možnosti vyžadují plný přístup k disku"
-    },
-    "language": {
-      "description": "Stella bude tento jazyk používat v celé aplikaci i v odpovědích. Můžete to později změnit v Nastavení."
     }
   },
   "billing": {

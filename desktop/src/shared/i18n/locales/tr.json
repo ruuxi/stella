@@ -55,7 +55,6 @@
       "secondary": "Stella herkes için değildir. Stella sizin içindir."
     },
     "stepTitles": {
-      "language": "Dilinizi seçin.",
       "extension": "Stella'yı tarayıcınıza ekleyin.",
       "browser": "Stella'nın sizi tanımasına izin verin.",
       "creation": "İstediğinizde Stella değişir. Düğmelere tıklayarak deneyin.",
@@ -82,9 +81,6 @@
         "description": "Kullandığınız araçlar, üzerinde çalıştığınız projeler ve ortamınızın yapılandırması"
       },
       "fdaNote": "Bazı seçenekler tam disk erişimi gerektirir"
-    },
-    "language": {
-      "description": "Stella bu dili tüm uygulamada ve yanıtlarında kullanacak. Daha sonra Ayarlar'dan değiştirebilirsiniz."
     }
   },
   "billing": {

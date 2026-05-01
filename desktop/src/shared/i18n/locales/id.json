@@ -55,7 +55,6 @@
       "secondary": "Stella tidak untuk semua orang. Stella untuk Anda."
     },
     "stepTitles": {
-      "language": "Pilih bahasa Anda.",
       "extension": "Tambahkan Stella ke peramban Anda.",
       "browser": "Biarkan Stella mengenal Anda.",
       "creation": "Stella berubah saat Anda meminta. Klik tombol untuk mencoba.",
@@ -82,9 +81,6 @@
         "description": "Alat yang Anda gunakan, proyek yang Anda kerjakan, dan bagaimana lingkungan Anda dikonfigurasi"
       },
       "fdaNote": "Beberapa opsi memerlukan akses penuh ke disk"
-    },
-    "language": {
-      "description": "Stella akan menggunakan bahasa ini di seluruh aplikasi dan saat menjawab. Anda dapat mengubahnya nanti di Pengaturan."
     }
   },
   "billing": {

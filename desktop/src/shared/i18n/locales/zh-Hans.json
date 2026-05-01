@@ -55,7 +55,6 @@
       "secondary": "Stella 不属于所有人。Stella 属于您。"
     },
     "stepTitles": {
-      "language": "选择您的语言。",
       "extension": "把 Stella 添加到浏览器。",
       "browser": "让 Stella 了解您。",
       "creation": "您一开口，Stella 就会改变。点击按钮试试看。",
@@ -82,9 +81,6 @@
         "description": "您使用的工具、参与的项目，以及您的环境是如何配置的"
       },
       "fdaNote": "部分选项需要完全磁盘访问权限"
-    },
-    "language": {
-      "description": "Stella 将在整个应用和回复中使用此语言。您可以稍后在「设置」中更改。"
     }
   },
   "billing": {

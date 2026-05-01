@@ -55,7 +55,6 @@
       "secondary": "Stella không dành cho tất cả mọi người. Stella dành cho bạn."
     },
     "stepTitles": {
-      "language": "Chọn ngôn ngữ của bạn.",
       "extension": "Thêm Stella vào trình duyệt của bạn.",
       "browser": "Hãy để Stella hiểu bạn hơn.",
       "creation": "Stella thay đổi khi bạn yêu cầu. Nhấn các nút để thử.",
@@ -82,9 +81,6 @@
         "description": "Các công cụ bạn dùng, dự án bạn làm và cách môi trường được cấu hình"
       },
       "fdaNote": "Một số tùy chọn yêu cầu Quyền truy cập đầy đủ vào ổ đĩa"
-    },
-    "language": {
-      "description": "Stella sẽ dùng ngôn ngữ này trong toàn bộ ứng dụng và khi phản hồi. Bạn có thể đổi sau trong Cài đặt."
     }
   },
   "billing": {

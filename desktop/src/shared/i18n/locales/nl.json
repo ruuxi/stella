@@ -55,7 +55,6 @@
       "secondary": "Stella is niet voor iedereen. Stella is voor jou."
     },
     "stepTitles": {
-      "language": "Kies je taal.",
       "extension": "Voeg Stella toe aan je browser.",
       "browser": "Laat Stella je leren kennen.",
       "creation": "Stella verandert wanneer je het vraagt. Klik op de knoppen om het te proberen.",
@@ -82,9 +81,6 @@
         "description": "Welke tools je gebruikt, projecten waaraan je werkt en hoe je omgeving is geconfigureerd"
       },
       "fdaNote": "Sommige opties vereisen volledige schijftoegang"
-    },
-    "language": {
-      "description": "Stella gebruikt deze taal overal in de app en in antwoorden. Je kunt dit later wijzigen in Instellingen."
     }
   },
   "billing": {

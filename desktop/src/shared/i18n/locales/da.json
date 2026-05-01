@@ -55,7 +55,6 @@
       "secondary": "Stella er ikke for alle. Stella er til dig."
     },
     "stepTitles": {
-      "language": "Vælg sprog.",
       "extension": "Tilføj Stella til din browser.",
       "browser": "Lad Stella lære dig at kende.",
       "creation": "Stella ændrer sig, når du beder om det. Klik på knapperne for at prøve.",
@@ -82,9 +81,6 @@
         "description": "Værktøjer du bruger, projekter du arbejder med, og hvordan miljøet er konfigureret"
       },
       "fdaNote": "Nogle valgmuligheder kræver fuld diskadgang"
-    },
-    "language": {
-      "description": "Stella bruger dette sprog i hele appen og i svar. Du kan ændre det senere i Indstillinger."
     }
   },
   "billing": {
