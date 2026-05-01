@@ -18,6 +18,7 @@ import { ChatRuntimeProvider } from "@/context/chat-runtime";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
+import { AppSuggestionsDialog } from "@/global/onboarding/AppSuggestionsDialog";
 import { useMediaMaterializer } from "@/app/media/use-media-materializer";
 import {
   DisplaySidebar,
@@ -530,6 +531,7 @@ function RootChrome() {
         onConnect={showConnectDialog}
         onSignIn={showAuthDialog}
       />
+      <AppSuggestionsDialog conversationId={conversationId} />
     </>
   );
 }

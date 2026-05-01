@@ -25,6 +25,9 @@ export type PromptTemplateValues = {
   "synthesis.home_suggestions.user": {
     coreMemory: string
   }
+  "synthesis.app_recommendations.user": {
+    coreMemory: string
+  }
   "suggestions.user": {
     catalogText: string
     messagesText: string

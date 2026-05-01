@@ -36,3 +36,22 @@ export const buildHomeSuggestionsPrompt = (
   coreMemory: string,
   promptTemplate: string,
 ): string => promptTemplate.replace("{{coreMemory}}", coreMemory);
+
+export type AppBadgeIcon = "browser" | "account" | "key" | "info";
+
+export type AppRecommendationBadge = {
+  icon: AppBadgeIcon;
+  label: string;
+};
+
+export type AppRecommendation = {
+  label: string;
+  description: string;
+  prompt: string;
+  badges: AppRecommendationBadge[];
+};
+
+export const buildAppRecommendationsPrompt = (
+  coreMemory: string,
+  promptTemplate: string,
+): string => promptTemplate.replace("{{coreMemory}}", coreMemory);

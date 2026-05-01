@@ -89,6 +89,7 @@ export const registerLocalChatHandlers = (
         conversationId?: string;
         message?: string;
         suggestions?: unknown[];
+        appRecommendations?: unknown[];
       },
     ) => await withLocalChatClient(
       options,
@@ -98,6 +99,7 @@ export const registerLocalChatHandlers = (
         conversationId: payload?.conversationId ?? "",
         message: payload?.message ?? "",
         suggestions: payload?.suggestions,
+        appRecommendations: payload?.appRecommendations,
       }),
     ),
   );
