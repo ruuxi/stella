@@ -88,6 +88,12 @@ type VoiceSessionToken = {
   sessionId?: string;
 };
 
+type VoiceActionCompletedPayload = {
+  conversationId: string;
+  status: "completed" | "failed";
+  message: string;
+};
+
 type VoiceRuntimeState = {
   activeSession: { disconnect: () => Promise<void> } | null;
 };
@@ -194,6 +200,7 @@ export class RealtimeVoiceSession {
   private echoGuardTimer: ReturnType<typeof setInterval> | null = null;
   private inputEnergyBuffer: Uint8Array | null = null;
   private outputEnergyBuffer: Uint8Array | null = null;
+  private unsubscribeActionCompleted: (() => void) | null = null;
 
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
@@ -213,6 +220,13 @@ export class RealtimeVoiceSession {
     detail: string;
   }> = [];
   private traceSeq = 0;
+
+  constructor() {
+    this.unsubscribeActionCompleted =
+      window.electronAPI?.voice.onActionCompleted?.((payload) => {
+        this.handleVoiceActionCompleted(payload);
+      }) ?? null;
+  }
 
   private trace(event: string, detail: string) {
     this.traceSeq++;
@@ -795,6 +809,43 @@ export class RealtimeVoiceSession {
     window.electronAPI?.ui.setState({ isVoiceRtcActive: false });
   }
 
+  private handleVoiceActionCompleted(payload: VoiceActionCompletedPayload) {
+    if (this.destroyed) return;
+    if (!this.conversationId || payload.conversationId !== this.conversationId) {
+      return;
+    }
+
+    const message = payload.message.trim();
+    if (!message) {
+      return;
+    }
+
+    const statusText =
+      payload.status === "completed"
+        ? "The delegated action is complete."
+        : "The delegated action failed.";
+    window.electronAPI?.voice.persistTranscript?.({
+      conversationId: this.conversationId,
+      role: "assistant",
+      text: `[VOICE ACTION ${payload.status.toUpperCase()}] ${message}`,
+      uiVisibility: "hidden",
+    });
+    this.sendEvent({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: `[System: ${statusText} Tell the user naturally and briefly: "${message}"]`,
+          },
+        ],
+      },
+    });
+    this.sendEvent({ type: "response.create" });
+  }
+
   // ---------------------------------------------------------------------------
   // Server event handling
   // ---------------------------------------------------------------------------
@@ -925,9 +976,8 @@ export class RealtimeVoiceSession {
 
   /**
    * Delegate a voice action to the orchestrator in the background.
-   * The tool call already returned a quick acknowledgment so the voice
-   * agent can speak immediately. When the orchestrator responds, inject
-   * the result and trigger a follow-up response.
+   * Completion is no longer inferred from the orchestrator turn ending; the
+   * orchestrator must call voice_result with the terminal result.
    */
   private runPerformActionAsync(message: string): void {
     const api = window.electronAPI?.voice;
@@ -948,24 +998,9 @@ export class RealtimeVoiceSession {
         window.electronAPI?.voice.persistTranscript?.({
           conversationId: this.conversationId ?? "voice-rtc",
           role: "assistant",
-          text: `[ORCHESTRATOR RESULT] ${spokenResult || "(empty)"}`,
+          text: `[ORCHESTRATOR TURN ENDED] ${spokenResult || "(empty)"}`,
           uiVisibility: "hidden",
         });
-        if (!spokenResult || spokenResult === "Working on it.") return;
-        this.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: `[System: the action completed. Here is the result to share with the user: "${spokenResult}"]`,
-              },
-            ],
-          },
-        });
-        this.sendEvent({ type: "response.create" });
       })
       .catch((err) => {
         console.error("[realtime-voice] Orchestrator delegation error:", err);
@@ -1291,7 +1326,8 @@ export class RealtimeVoiceSession {
         // instead of the model's paraphrase for better fidelity.
         const message =
           this.lastUserTranscript || (args.message as string) || "";
-        result = "Working on it.";
+        result =
+          "Stella is working on this now. Do not say it is complete yet. You will receive a message later when the work is genuinely done or has failed.";
         this.runPerformActionAsync(message);
       } else {
         throw new Error(`Unknown tool: ${name}`);
@@ -1334,6 +1370,8 @@ export class RealtimeVoiceSession {
       this.dc.close();
       this.dc = null;
     }
+    this.unsubscribeActionCompleted?.();
+    this.unsubscribeActionCompleted = null;
 
     if (this.pc) {
       this.pc.close();

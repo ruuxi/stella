@@ -43,6 +43,7 @@ import { createScheduleControlTools } from "./schedule-control.js";
 import { strReplaceTool } from "./str-replace.js";
 import { createAgentTools } from "./task.js";
 import { viewImageTool } from "./view-image.js";
+import { createVoiceActionCompleteTool } from "./voice-action-complete.js";
 import { createWebTool } from "./web.js";
 import { createWriteStdinTool } from "./write-stdin.js";
 
@@ -105,6 +106,9 @@ export const buildBuiltinTools = (
   tools.push(...createDisplayTools({ displayHtml: options.displayHtml }));
   tools.push(askQuestionTool);
   tools.push(askUserQuestionTool);
+  tools.push(createVoiceActionCompleteTool({
+    notifyVoiceActionComplete: options.notifyVoiceActionComplete,
+  }));
   tools.push(
     createScheduleTool({
       agentApi: options.agentApi,

@@ -86,6 +86,7 @@ export const createToolHost = ({
   getStellaSiteAuth,
   queryConvex,
   memoryStore,
+  notifyVoiceActionComplete,
 }: ToolHostOptions) => {
   const stateRoot = path.join(stellaRoot, "state");
   const toolCatalog = new Map<string, ToolMetadata>();
@@ -145,6 +146,7 @@ export const createToolHost = ({
     getStellaSiteAuth,
     queryConvex,
     memoryStore,
+    notifyVoiceActionComplete,
     shellState,
     stateContext,
     executeTool: (toolName, toolArgs, context, signal, onUpdate) =>

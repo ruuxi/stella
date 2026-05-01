@@ -43,6 +43,7 @@ import {
   type RuntimeSelfModRevertResult,
   type RuntimeLocalAgentRequest,
   type RuntimeLocalAgentSnapshot,
+  type RuntimeVoiceActionCompletedPayload,
   type RuntimeVoiceAgentEventPayload,
   type RuntimeVoiceChatPayload,
   type RuntimeVoiceHmrStatePayload,
@@ -82,6 +83,7 @@ type RuntimeClientEvents = {
   "run-self-mod-hmr-state": { runId?: string; state: SelfModHmrState };
   "voice-agent-event": RuntimeVoiceAgentEventPayload;
   "voice-self-mod-hmr-state": RuntimeVoiceHmrStatePayload;
+  "voice-action-completed": RuntimeVoiceActionCompletedPayload;
   "local-chat-updated": void;
   "schedule-updated": void;
   "google-workspace-auth-required": void;
@@ -1961,6 +1963,15 @@ export class StellaRuntimeClient {
     peer.registerNotificationHandler(NOTIFICATION_NAMES.VOICE_AGENT_EVENT, (params) => {
       this.events.emit("voice-agent-event", params as RuntimeVoiceAgentEventPayload);
     });
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.VOICE_ACTION_COMPLETED,
+      (params) => {
+        this.events.emit(
+          "voice-action-completed",
+          params as RuntimeVoiceActionCompletedPayload,
+        );
+      },
+    );
     peer.registerNotificationHandler(
       NOTIFICATION_NAMES.VOICE_SELF_MOD_HMR_STATE,
       (params) => {
