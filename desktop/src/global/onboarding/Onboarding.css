@@ -358,7 +358,12 @@
 
 /* ═══ Confirm button ═══ */
 
+/* Per-phase override for the parent flex `gap` we have to negate when the
+ * Continue button is collapsed. Defaults to `.onboarding-step-content`'s
+ * 20px; phases that wrap the button in a different container (shortcuts'
+ * 24px, etc.) can re-set this on their own scope. */
 .onboarding-confirm {
+  --onboarding-collapse-gap: 20px;
   background: none;
   border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
   border-radius: 6px;
@@ -369,18 +374,41 @@
   color: var(--foreground);
   cursor: pointer;
   -webkit-app-region: no-drag;
+  font-family: inherit;
+  /* Default state collapses to zero height + a negative top margin that
+   * cancels the parent's flex `gap`, so the surrounding stage stays
+   * truly vertically centered around the still-visible content above
+   * (the previous behaviour reserved the button's full height + gap and
+   * pushed the visible content off-center). When `data-visible` flips,
+   * the button grows back to its natural size and the parent's
+   * `justify-content: center` re-centers the column as it appears. */
+  max-height: 0;
+  padding-block: 0;
+  border-block-width: 0;
+  margin-top: calc(-1 * var(--onboarding-collapse-gap));
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.94);
+  transform-origin: top center;
+  pointer-events: none;
   transition:
-    opacity 0.32s ease,
-    transform 0.2s ease,
+    max-height var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    padding-block var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    border-block-width var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    margin-top var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    opacity var(--onboarding-duration-text) var(--onboarding-ease-standard) 60ms,
+    transform var(--onboarding-duration-text) var(--onboarding-ease-standard) 60ms,
     border-color 0.32s ease,
     background 0.32s ease;
-  font-family: inherit;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .onboarding-confirm[data-visible="true"] {
+  max-height: 64px;
+  padding-block: 12px;
+  border-block-width: 1px;
+  margin-top: 0;
   opacity: 0.7;
+  transform: scale(1);
   pointer-events: auto;
 }
 
@@ -949,29 +977,44 @@
 /* ═══ Personality preview ═══ */
 
 .onboarding-personality-preview {
+  --onboarding-collapse-gap: 20px;
   font-size: 14px;
   font-weight: 300;
   letter-spacing: 0.02em;
   color: var(--foreground);
-  opacity: 0;
   line-height: 1.5;
   margin: 0;
-  padding: 12px 16px;
-  min-height: 72px;
+  padding-inline: 16px;
   display: flex;
   align-items: center;
   border-left: 2px solid color-mix(in oklch, var(--foreground) 15%, transparent);
-  visibility: hidden;
-  transform: translateY(8px);
+  /* Collapsed by default so the pills, look-section, and Continue button
+   * stay vertically centered before any expression style is selected.
+   * Grows in on selection — see `.onboarding-confirm` for the same
+   * grow-in pattern. */
+  max-height: 0;
+  padding-block: 0;
+  margin-top: calc(-1 * var(--onboarding-collapse-gap));
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.96);
+  transform-origin: top center;
+  pointer-events: none;
   transition:
+    max-height var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    padding-block var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    margin-top var(--onboarding-duration-enter) var(--onboarding-ease-soft),
     opacity var(--onboarding-duration-fade) ease,
-    transform var(--onboarding-duration-fade) var(--onboarding-ease-standard);
+    transform var(--onboarding-duration-text) var(--onboarding-ease-standard);
 }
 
 .onboarding-personality-preview[data-visible="true"] {
+  max-height: 200px;
+  padding-block: 12px;
+  margin-top: 0;
   opacity: 0.6;
-  visibility: visible;
-  transform: translateY(0);
+  transform: scale(1);
+  pointer-events: auto;
 }
 
 .onboarding-emote-preview {
@@ -1416,8 +1459,12 @@
   margin: 0;
 }
 
-/* FDA note */
+/* FDA note. Collapses cleanly when no FDA categories are selected so the
+ * discovery list above stays vertically anchored without a reserved
+ * 24px slot below it. Grows in once a category that requires Full Disk
+ * Access becomes active. Parent `.onboarding-discovery` uses gap: 16px. */
 .onboarding-fda-note {
+  --onboarding-collapse-gap: 16px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1425,19 +1472,25 @@
   font-weight: 300;
   letter-spacing: 0.04em;
   color: var(--foreground);
+  max-height: 0;
+  margin-top: calc(-1 * var(--onboarding-collapse-gap));
+  overflow: hidden;
   opacity: 0;
-  min-height: 24px;
-  visibility: hidden;
   transform: translateY(6px);
+  pointer-events: none;
   transition:
+    max-height var(--onboarding-duration-fade) var(--onboarding-ease-soft),
+    margin-top var(--onboarding-duration-fade) var(--onboarding-ease-soft),
     opacity 240ms ease,
     transform 240ms var(--onboarding-ease-standard);
 }
 
 .onboarding-fda-note[data-visible="true"] {
+  max-height: 60px;
+  margin-top: 0;
   opacity: 0.25;
-  visibility: visible;
   transform: translateY(0);
+  pointer-events: auto;
 }
 
 .onboarding-fda-link {
@@ -2442,28 +2495,43 @@
 }
 
 .onboarding-shortcut-result-description {
+  --onboarding-collapse-gap: 24px;
   display: flex;
   flex-direction: column;
   gap: 4px;
   text-align: center;
   max-width: 32rem;
   margin: 0 auto;
+  /* Collapse so the surface + Continue stay vertically centered until
+   * the user has triggered the demo and a result lands. Grows in via
+   * the same pattern as `.onboarding-confirm`. */
+  max-height: 0;
+  margin-top: calc(-1 * var(--onboarding-collapse-gap));
+  overflow: hidden;
   opacity: 0;
-  transform: translateY(6px);
+  transform: scale(0.96) translateY(6px);
+  transform-origin: top center;
   transition:
+    max-height var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    margin-top var(--onboarding-duration-enter) var(--onboarding-ease-soft),
     opacity 0.35s ease,
     transform 0.35s ease;
-  min-height: 5.5em;
   flex-shrink: 0;
 }
 
+/* The shortcuts phase wraps Continue in a 24px-gap container, not the
+ * default 20px-gap `.onboarding-step-content`, so widen the negative-
+ * margin compensation so the column re-centers cleanly. */
 .onboarding-shortcuts-phase > .onboarding-confirm {
+  --onboarding-collapse-gap: 24px;
   flex-shrink: 0;
 }
 
 .onboarding-shortcut-result-description[data-visible="true"] {
+  max-height: 240px;
+  margin-top: 0;
   opacity: 1;
-  transform: translateY(0);
+  transform: scale(1) translateY(0);
 }
 
 .onboarding-shortcut-result-description strong {
@@ -2702,7 +2770,7 @@
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   background: none;
   color: var(--foreground);
-  opacity: 0.35;
+  opacity: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2715,12 +2783,26 @@
 }
 
 .onboarding-phase-nav-btn:hover:not(:disabled) {
-  opacity: 0.7;
+  opacity: 1;
   border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
 }
 
 .onboarding-phase-nav-btn:active:not(:disabled) {
   transform: scale(0.93);
+}
+
+.onboarding-phase-nav-btn--prev {
+  position: fixed;
+  top: 50%;
+  left: 14px;
+  width: 32px;
+  height: 52px;
+  border-radius: 8px;
+  transform: translateY(-50%);
+}
+
+.onboarding-phase-nav-btn--prev:active:not(:disabled) {
+  transform: translateY(-50%) scale(0.96);
 }
 
 .onboarding-phase-nav-btn:disabled {
@@ -3061,6 +3143,17 @@
   .onboarding-showcase-card[data-active="true"]
     .onboarding-showcase-card-indicator {
     animation: none !important;
+  }
+
+  /* Grow-in elements: snap between collapsed/expanded states with no
+   * smooth transition, but keep the layout collapse so the parent stage
+   * still re-centers when they appear. */
+  .onboarding-confirm,
+  .onboarding-personality-preview,
+  .onboarding-shortcut-result-description,
+  .onboarding-fda-note {
+    transition: none !important;
+    transform: none !important;
   }
 }
 
