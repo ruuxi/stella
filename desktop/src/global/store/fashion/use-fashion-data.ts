@@ -49,6 +49,7 @@ export type FashionOutfit = {
 
 export type FashionLike = {
   _id: string;
+  _creationTime?: number;
   ownerId: string;
   variantId: string;
   productId: string;
@@ -64,6 +65,7 @@ export type FashionLike = {
 
 export type FashionCartItem = {
   _id: string;
+  _creationTime?: number;
   ownerId: string;
   variantId: string;
   productId: string;
@@ -89,7 +91,10 @@ export const useFashionFeatureStatus = () =>
     | undefined;
 
 export const useFashionProfile = () =>
-  useQuery(api.data.fashion.getProfile, {}) as FashionProfile | null | undefined;
+  useQuery(api.data.fashion.getProfile, {}) as
+    | FashionProfile
+    | null
+    | undefined;
 
 export const useFashionOutfits = () =>
   useQuery(api.data.fashion.listOutfits, { limit: 60 }) as
@@ -107,10 +112,142 @@ export const useFashionCart = () =>
 export const useFashionMutations = () => {
   const setProfile = useMutation(api.data.fashion.setProfile);
   const setBodyPhotoFlag = useMutation(api.data.fashion.setBodyPhotoFlag);
-  const toggleLike = useMutation(api.data.fashion.toggleLike);
-  const addToCart = useMutation(api.data.fashion.addToCart);
-  const removeFromCart = useMutation(api.data.fashion.removeFromCart);
-  const setCartQuantity = useMutation(api.data.fashion.setCartQuantity);
+  const toggleLike = useMutation(
+    api.data.fashion.toggleLike,
+  ).withOptimisticUpdate((localStore, args) => {
+    const queryArgs = { limit: 100 };
+    const existingLikes = localStore.getQuery(
+      api.data.fashion.listLikes,
+      queryArgs,
+    ) as FashionLike[] | undefined;
+    if (existingLikes === undefined) return;
+
+    const existing = existingLikes.find(
+      (like) => like.variantId === args.variantId,
+    );
+    if (existing) {
+      localStore.setQuery(
+        api.data.fashion.listLikes,
+        queryArgs,
+        existingLikes.filter((like) => like.variantId !== args.variantId),
+      );
+      return;
+    }
+
+    const now = Date.now();
+    localStore.setQuery(api.data.fashion.listLikes, queryArgs, [
+      {
+        _id: `optimistic:like:${args.variantId}:${now}`,
+        _creationTime: now,
+        ownerId: "optimistic",
+        variantId: args.variantId,
+        productId: args.productId,
+        title: args.title,
+        ...(args.imageUrl !== undefined ? { imageUrl: args.imageUrl } : {}),
+        ...(args.productUrl !== undefined
+          ? { productUrl: args.productUrl }
+          : {}),
+        merchantOrigin: args.merchantOrigin,
+        ...(typeof args.priceCents === "number"
+          ? { priceCents: Math.floor(args.priceCents) }
+          : {}),
+        ...(args.currency !== undefined ? { currency: args.currency } : {}),
+        ...(args.vendor !== undefined ? { vendor: args.vendor } : {}),
+        likedAt: now,
+      },
+      ...existingLikes,
+    ]);
+  });
+  const addToCart = useMutation(
+    api.data.fashion.addToCart,
+  ).withOptimisticUpdate((localStore, args) => {
+    const existingCart = localStore.getQuery(api.data.fashion.listCart, {}) as
+      | FashionCartItem[]
+      | undefined;
+    if (existingCart === undefined) return;
+
+    const quantity = Math.max(1, Math.min(99, Math.floor(args.quantity ?? 1)));
+    const existing = existingCart.find(
+      (item) => item.variantId === args.variantId,
+    );
+    if (existing) {
+      localStore.setQuery(
+        api.data.fashion.listCart,
+        {},
+        existingCart.map((item) =>
+          item.variantId === args.variantId
+            ? {
+                ...item,
+                quantity: Math.max(1, Math.min(99, item.quantity + quantity)),
+              }
+            : item,
+        ),
+      );
+      return;
+    }
+
+    const now = Date.now();
+    localStore.setQuery(api.data.fashion.listCart, {}, [
+      {
+        _id: `optimistic:cart:${args.variantId}:${now}`,
+        _creationTime: now,
+        ownerId: "optimistic",
+        variantId: args.variantId,
+        productId: args.productId,
+        title: args.title,
+        ...(args.imageUrl !== undefined ? { imageUrl: args.imageUrl } : {}),
+        ...(args.productUrl !== undefined
+          ? { productUrl: args.productUrl }
+          : {}),
+        ...(args.checkoutUrl !== undefined
+          ? { checkoutUrl: args.checkoutUrl }
+          : {}),
+        merchantOrigin: args.merchantOrigin,
+        ...(typeof args.priceCents === "number"
+          ? { priceCents: Math.floor(args.priceCents) }
+          : {}),
+        ...(args.currency !== undefined ? { currency: args.currency } : {}),
+        ...(args.vendor !== undefined ? { vendor: args.vendor } : {}),
+        quantity,
+        addedAt: now,
+      },
+      ...existingCart,
+    ]);
+  });
+  const removeFromCart = useMutation(
+    api.data.fashion.removeFromCart,
+  ).withOptimisticUpdate((localStore, args) => {
+    const existingCart = localStore.getQuery(api.data.fashion.listCart, {}) as
+      | FashionCartItem[]
+      | undefined;
+    if (existingCart === undefined) return;
+    localStore.setQuery(
+      api.data.fashion.listCart,
+      {},
+      existingCart.filter((item) => item._id !== args.cartItemId),
+    );
+  });
+  const setCartQuantity = useMutation(
+    api.data.fashion.setCartQuantity,
+  ).withOptimisticUpdate((localStore, args) => {
+    const existingCart = localStore.getQuery(api.data.fashion.listCart, {}) as
+      | FashionCartItem[]
+      | undefined;
+    if (existingCart === undefined) return;
+
+    const quantity = Math.floor(args.quantity);
+    localStore.setQuery(
+      api.data.fashion.listCart,
+      {},
+      quantity <= 0
+        ? existingCart.filter((item) => item._id !== args.cartItemId)
+        : existingCart.map((item) =>
+            item._id === args.cartItemId
+              ? { ...item, quantity: Math.min(99, quantity) }
+              : item,
+          ),
+    );
+  });
   const deleteOutfit = useMutation(api.data.fashion.deleteOutfit);
   return {
     setProfile,
