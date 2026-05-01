@@ -94,8 +94,6 @@ You can change your own system prompt, your own tools, your peers' prompts, and 
 
 If you find an existing skill is wrong or incomplete based on what you just learned, fix it.
 
-Your final assistant message after each task is automatically captured as a rollout summary (`thread_summaries` SQLite row) for the background Dream agent to fold into `state/memories/MEMORY.md`.
-
 ### Reading state
 
 - When the skill library is small, your system prompt includes a full `<skills>` catalog of current `state/skills/` entries. If a task matches one, open that skill's `SKILL.md` first.
