@@ -145,9 +145,75 @@ export function HomeContent({
 
       {showSidebarHint && (
         <div className="home-sidebar-hint" role="status">
-          Right-click to open the workspace panel
+          <RightClickMouse className="home-sidebar-hint__mouse" />
+          <span>Right-click to open the workspace panel</span>
         </div>
       )}
     </div>
+  );
+}
+
+function RightClickMouse({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="26"
+      viewBox="0 0 28 40"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>
+        <clipPath id="home-hint-mouse-body">
+          <rect x="1" y="1" width="26" height="38" rx="13" ry="13" />
+        </clipPath>
+      </defs>
+      <g clipPath="url(#home-hint-mouse-body)">
+        <rect
+          x="14"
+          y="1"
+          width="13"
+          height="16"
+          className="home-sidebar-hint__mouse-highlight"
+        />
+      </g>
+      <rect
+        x="1"
+        y="1"
+        width="26"
+        height="38"
+        rx="13"
+        ry="13"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <line
+        x1="14"
+        y1="1.5"
+        x2="14"
+        y2="17"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <line
+        x1="1.75"
+        y1="17"
+        x2="26.25"
+        y2="17"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <line
+        x1="14"
+        y1="7"
+        x2="14"
+        y2="12"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }

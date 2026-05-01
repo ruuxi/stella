@@ -118,6 +118,10 @@
   left: 50%;
   bottom: 24px;
   translate: -50% 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   width: min(calc(100% - 48px), 360px);
   color: var(--text-weak);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
@@ -128,6 +132,15 @@
   text-align: center;
   pointer-events: none;
   user-select: none;
+}
+
+.home-sidebar-hint__mouse {
+  flex-shrink: 0;
+  color: var(--text-weak);
+}
+
+.home-sidebar-hint__mouse-highlight {
+  fill: color-mix(in oklch, var(--foreground) 22%, transparent);
 }
 
 /* ── Music Player Widget (kept; user may add via self-mod) ─────────── */

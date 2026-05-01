@@ -11,6 +11,7 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { listLocalEvents } from "@/app/chat/services/local-chat-store";
 import { Compass, LogIn, Smartphone } from "lucide-react";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
 import "./welcome-dialog.css";
 
 const WELCOME_DIALOG_SEEN_KEY = "stella-welcome-dialog-seen";
@@ -96,6 +97,11 @@ export function WelcomeDialog({
     onSignIn();
   }, [handleClose, onSignIn]);
 
+  const handleOpenWorkspacePanel = useCallback(() => {
+    handleClose();
+    dispatchOpenWorkspacePanel();
+  }, [handleClose]);
+
   if (!open) return null;
 
   return (
@@ -117,7 +123,15 @@ export function WelcomeDialog({
           </p>
 
           <div className="welcome-dialog-cards">
-            <div className="welcome-dialog-card">
+            <div
+              className="welcome-dialog-card welcome-dialog-card--interactive"
+              onClick={handleOpenWorkspacePanel}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) =>
+                e.key === "Enter" && handleOpenWorkspacePanel()
+              }
+            >
               <div className="welcome-dialog-card-icon">
                 <Compass size={20} />
               </div>
@@ -129,6 +143,7 @@ export function WelcomeDialog({
                   based on what you shared during setup.
                 </p>
               </div>
+              <span className="welcome-dialog-card-arrow">&rsaquo;</span>
             </div>
 
             <div
