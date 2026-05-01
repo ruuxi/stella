@@ -70,13 +70,13 @@
   height: 400px;
   left: 50%;
   top: 50%;
-  /* Center, then stretch to cover the window plus a 110px overscan on
+  /* Center, then stretch to cover the window plus a 165px overscan on
    * each side so the displacement warp has solid colour to pull from
    * and never reveals the desktop at the corners. */
   transform: translate(-50%, -50%)
     scale(
-      calc((100vw + 220px) / 600px),
-      calc((100vh + 220px) / 400px)
+      calc((100vw + 330px) / 600px),
+      calc((100vh + 330px) / 400px)
     );
   transform-origin: 50% 50%;
   /* Promote to its own GPU compositor layer so the exit-fade repaint
@@ -179,8 +179,8 @@
    * the transform transition above shrinks it back to the normal frame. */
   transform: translate(-50%, -50%)
     scale(
-      calc((100vw + 520px) / 600px),
-      calc((100vh + 520px) / 400px)
+      calc((100vw + 720px) / 600px),
+      calc((100vh + 720px) / 400px)
     );
 }
 
