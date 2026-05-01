@@ -10,10 +10,6 @@ const USER_PROFILE_TITLE = "User Profile";
 const USER_PROFILE_DESCRIPTION =
   "Structured onboarding memory for the user, with backlinks to raw discovery data.";
 
-const SKILLS_INDEX_LINE = `- [${USER_PROFILE_SLUG}](${USER_PROFILE_SLUG}/SKILL.md): structured onboarding memory for the user, including projects, apps, interests, and environment.`;
-const REGISTRY_FAST_PATH_LINE =
-  `- User profile and context: [${USER_PROFILE_SLUG}](skills/${USER_PROFILE_SLUG}/SKILL.md)`;
-
 const RAW_DISCOVERY_DIR = "discovery";
 
 type RawSignalPage = {
@@ -49,12 +45,6 @@ const topicDir = (stellaHome: string) =>
 
 const rawDiscoveryDir = (stellaHome: string) =>
   path.join(stellaHome, "state", "raw", RAW_DISCOVERY_DIR);
-
-const skillsIndexPath = (stellaHome: string) =>
-  path.join(stellaHome, "state", "skills", "index.md");
-
-const registryPath = (stellaHome: string) =>
-  path.join(stellaHome, "state", "registry.md");
 
 const rawRelPath = (fileName: string) =>
   `../../raw/${RAW_DISCOVERY_DIR}/${fileName}`;
@@ -151,50 +141,6 @@ const buildSkillFile = (
   ].join("\n");
 };
 
-const upsertLineBeforeHeading = (
-  content: string,
-  line: string,
-  nextHeading: string,
-): string => {
-  if (content.includes(line)) {
-    return content;
-  }
-
-  const marker = `\n${nextHeading}`;
-  const index = content.indexOf(marker);
-  if (index === -1) {
-    return `${content.trimEnd()}\n${line}\n`;
-  }
-
-  return `${content.slice(0, index).trimEnd()}\n${line}\n\n${content.slice(index + 1)}`;
-};
-
-const ensureSkillsIndexEntry = async (stellaHome: string) => {
-  const filePath = skillsIndexPath(stellaHome);
-  const content = await fs.readFile(filePath, "utf-8");
-  const updated = upsertLineBeforeHeading(
-    content,
-    SKILLS_INDEX_LINE,
-    "## Related Abilities",
-  );
-  if (updated !== content) {
-    await fs.writeFile(filePath, updated, "utf-8");
-  }
-};
-
-const ensureRegistryEntry = async (stellaHome: string) => {
-  const filePath = registryPath(stellaHome);
-  const content = await fs.readFile(filePath, "utf-8");
-  const updated = upsertLineBeforeHeading(
-    content,
-    REGISTRY_FAST_PATH_LINE,
-    "## Reference Docs",
-  );
-  if (updated !== content) {
-    await fs.writeFile(filePath, updated, "utf-8");
-  }
-};
-
 export const discoveryKnowledgeExists = async (
   stellaHome: string,
 ): Promise<boolean> => {
@@ -254,8 +200,4 @@ export const writeDiscoveryKnowledge = async (
     ),
   ]);
 
-  await Promise.all([
-    ensureSkillsIndexEntry(stellaHome),
-    ensureRegistryEntry(stellaHome),
-  ]);
 };

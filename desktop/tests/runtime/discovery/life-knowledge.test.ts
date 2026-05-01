@@ -26,6 +26,7 @@ const createTempHome = async () => {
       "## Fast Paths",
       "",
       "- Browser automation: [stella-browser](skills/stella-browser/SKILL.md)",
+      "- User profile and context: [user-profile](skills/user-profile/SKILL.md)",
       "",
       "## Reference Docs",
       "",
@@ -46,6 +47,7 @@ const createTempHome = async () => {
       "## Entries",
       "",
       "- [computer-use](computer-use/SKILL.md): browser and desktop-app operating guidance.",
+      "- [user-profile](user-profile/SKILL.md): structured onboarding memory for the user, including projects, apps, interests, and environment.",
       "",
       "## Related Abilities",
       "",
@@ -154,7 +156,7 @@ describe("life knowledge discovery writer", () => {
     expect(rawDev).toContain("/Users/rahulnanda/projects/stella");
     expect(rawDev).toContain("847 files");
 
-    // Index and registry updated
+    // Index and registry already include the static user-profile entry.
     const skillsIndex = await fs.readFile(
       path.join(stellaHome, "state", "skills", "index.md"),
       "utf-8",
@@ -195,12 +197,20 @@ describe("life knowledge discovery writer", () => {
     ).rejects.toThrow();
   });
 
-  it("does not duplicate registry or skills index entries on repeated writes", async () => {
+  it("does not modify static registry or skills index entries on repeated writes", async () => {
     const stellaHome = await createTempHome();
     const payload: DiscoveryKnowledgeSeedPayload = {
       coreMemory: "[who]\n- Test user.\n",
       formattedSections: {},
     };
+    const initialSkillsIndex = await fs.readFile(
+      path.join(stellaHome, "state", "skills", "index.md"),
+      "utf-8",
+    );
+    const initialRegistry = await fs.readFile(
+      path.join(stellaHome, "state", "registry.md"),
+      "utf-8",
+    );
 
     await writeDiscoveryKnowledge(stellaHome, payload);
     await writeDiscoveryKnowledge(stellaHome, payload);
@@ -214,6 +224,8 @@ describe("life knowledge discovery writer", () => {
       "utf-8",
     );
 
+    expect(skillsIndex).toBe(initialSkillsIndex);
+    expect(registry).toBe(initialRegistry);
     expect(
       skillsIndex.match(/\[user-profile\]\(user-profile\/SKILL\.md\)/g)?.length,
     ).toBe(1);
