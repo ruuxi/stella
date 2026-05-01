@@ -33,8 +33,8 @@ import type {
   StoreReleaseManifest as SharedStoreReleaseManifest,
   StorePackageRecord as SharedStorePackageRecord,
   StorePackageReleaseRecord as SharedStorePackageReleaseRecord,
-  InstalledStoreModRecord as SharedInstalledStoreModRecord,
-  LocalGitCommitRecord as SharedLocalGitCommitRecord,
+  StoreInstallRecord as SharedStoreInstallRecord,
+  SelfModFeatureSnapshot as SharedSelfModFeatureSnapshot,
   SelfModHmrPhase as SharedSelfModHmrPhase,
   SelfModHmrState as SharedSelfModHmrState,
   AgentHealth as SharedAgentHealth,
@@ -92,97 +92,8 @@ export type StoreReleaseArtifact = SharedStoreReleaseArtifact;
 export type StoreReleaseManifest = SharedStoreReleaseManifest;
 export type StorePackageRecord = SharedStorePackageRecord;
 export type StorePackageReleaseRecord = SharedStorePackageReleaseRecord;
-export type InstalledStoreModRecord = SharedInstalledStoreModRecord;
-export type LocalGitCommitRecord = SharedLocalGitCommitRecord;
-
-/**
- * Lightweight commit catalog the desktop uploads to the backend Store
- * agent on every send. Carries no patches and no file snapshots —
- * just enough metadata for the agent to reason over.
- */
-export type StoreThreadCommitCatalogEntry = {
-  commitHash: string;
-  shortHash: string;
-  subject: string;
-  body: string;
-  timestampMs: number;
-  files: string[];
-  fileCount: number;
-  /**
-   * Stella self-mod grouping trailer extracted from the commit's
-   * trailers (the runtime strips `Stella-*` lines from `body` before
-   * returning, so we surface this as its own field for the side panel).
-   */
-  featureId?: string;
-  parentPackageIds?: string[];
-};
-
-/**
- * Full publish bundle the desktop uploads only when the user confirms a
- * draft — has commit metadata, patches, and file snapshots needed to
- * build the release artifact.
- */
-export type StoreThreadBundlePayload = {
-  commits: Array<{
-    commitHash: string;
-    shortHash?: string;
-    subject: string;
-    body: string;
-    timestampMs?: number;
-    files: string[];
-    patch: string;
-  }>;
-  files: Array<{
-    path: string;
-    deleted: boolean;
-    contentBase64?: string;
-  }>;
-  /**
-   * Captured at confirm time so the backend can stamp the release's
-   * `authoredAgainst.stellaCommit` hint. Optional - older runtimes
-   * don't send it and the install agent treats it as best-effort.
-   */
-  stellaCommit?: string;
-  /**
-   * Snapshot of the user's currently installed release for each
-   * parent add-on referenced by `Stella-Parent-Package-Id` trailers
-   * in the bundle. The backend prefers this over the parent
-   * package's "latest" release so the published manifest records
-   * the version the change was actually authored against.
-   */
-  installedParents?: Array<{
-    packageId: string;
-    releaseNumber: number;
-  }>;
-};
-
-/**
- * Feature roster (Stella self-mod commits collapsed by `Stella-Feature-Id`),
- * plus per-installed-add-on file footprints. Mirrors the runtime's
- * `FeatureRoster` shape so the side panel can subscribe directly to
- * the same data the commit-message LLM sees.
- */
-export type StoreThreadFeatureRosterEntry = {
-  featureId: string;
-  latestTitle: string;
-  totalCommits: number;
-  firstSeenMs: number;
-  lastSeenMs: number;
-  fileFingerprint: string[];
-  parentPackageIds: string[];
-  publishedPackageId?: string;
-};
-
-export type StoreThreadInstalledAddonFootprint = {
-  packageId: string;
-  releaseNumber: number;
-  fileFingerprint: string[];
-};
-
-export type StoreThreadFeatureRoster = {
-  features: StoreThreadFeatureRosterEntry[];
-  installedFootprints: StoreThreadInstalledAddonFootprint[];
-};
+export type StoreInstallRecord = SharedStoreInstallRecord;
+export type SelfModFeatureSnapshot = SharedSelfModFeatureSnapshot;
 export type SelfModHmrPhase = SharedSelfModHmrPhase;
 export type SelfModHmrState = SharedSelfModHmrState;
 export type AgentHealth = SharedAgentHealth;
@@ -860,11 +771,7 @@ export type ElectronScheduleApi = {
 };
 
 export type ElectronStoreApi = {
-  listLocalCommits: (limit?: number) => Promise<LocalGitCommitRecord[]>;
-  listLocalCommitsBySelector: (args: {
-    featureIds?: string[];
-    commitHashes?: string[];
-  }) => Promise<LocalGitCommitRecord[]>;
+  readFeatureSnapshot: () => Promise<SelfModFeatureSnapshot | null>;
   listPackages: () => Promise<StorePackageRecord[]>;
   getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
   listPackageReleases: (
@@ -874,18 +781,17 @@ export type ElectronStoreApi = {
     packageId: string;
     releaseNumber: number;
   }) => Promise<StorePackageReleaseRecord | null>;
-  buildCommitCatalog: (
-    limit?: number,
-  ) => Promise<StoreThreadCommitCatalogEntry[]>;
-  buildBundleForConfirm: (payload: {
-    commitHashes: string[];
-  }) => Promise<StoreThreadBundlePayload>;
-  listFeatureRoster: () => Promise<StoreThreadFeatureRoster>;
-  listInstalledMods: () => Promise<InstalledStoreModRecord[]>;
-  installRelease: (payload: {
+  listInstalledMods: () => Promise<StoreInstallRecord[]>;
+  installFromBlueprint: (payload: {
     packageId: string;
-    releaseNumber?: number;
-  }) => Promise<InstalledStoreModRecord>;
+    releaseNumber: number;
+    displayName: string;
+    blueprintMarkdown: string;
+  }) => Promise<StoreInstallRecord>;
+  executeAgentTool: (payload: {
+    toolName: string;
+    argsJson: string;
+  }) => Promise<{ resultText: string; isError?: boolean }>;
   uninstallPackage: (packageId: string) => Promise<{
     packageId: string;
     revertedCommits: string[];

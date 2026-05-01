@@ -137,6 +137,14 @@ const MAX_CONTENT_TEXT_CHARS = 24_000;
 const MAX_REVIEW_FAILURES_IN_MESSAGE = 4;
 
 type ParsedStoreReleaseArtifact = z.infer<typeof storeReleaseArtifactSchema>;
+type ParsedBlueprintMarkdownArtifact = {
+  kind: "blueprint_markdown";
+  schemaVersion: 2;
+  blueprintMarkdown: string;
+};
+type ParsedReviewableStoreArtifact =
+  | ParsedStoreReleaseArtifact
+  | ParsedBlueprintMarkdownArtifact;
 
 type ReviewableCodeFile = {
   path: string;
@@ -366,8 +374,28 @@ const completeStoreReviewVerdict = async (
   }
 };
 
+const buildMarkdownBlueprintReview = (
+  blueprintMarkdown: string,
+): {
+  artifact: ParsedBlueprintMarkdownArtifact;
+  codeFiles: ReviewableCodeFile[];
+  imageFiles: ReviewableImageFile[];
+} => ({
+  artifact: {
+    kind: "blueprint_markdown",
+    schemaVersion: 2,
+    blueprintMarkdown,
+  },
+  codeFiles: [{
+    path: "blueprint.md",
+    changeType: "update",
+    contentText: truncateWithNotice(blueprintMarkdown, MAX_CONTENT_TEXT_CHARS),
+  }],
+  imageFiles: [],
+});
+
 export const parseReviewableStoreArtifact = (artifactBody: string): {
-  artifact: ParsedStoreReleaseArtifact;
+  artifact: ParsedReviewableStoreArtifact;
   codeFiles: ReviewableCodeFile[];
   imageFiles: ReviewableImageFile[];
 } => {
@@ -375,7 +403,25 @@ export const parseReviewableStoreArtifact = (artifactBody: string): {
   try {
     parsedJson = JSON.parse(artifactBody);
   } catch {
-    throw new Error("Store release artifact is not valid JSON.");
+    const markdown = artifactBody.trim();
+    if (!markdown) {
+      throw new Error("Store release artifact is empty.");
+    }
+    return buildMarkdownBlueprintReview(markdown);
+  }
+
+  if (parsedJson && typeof parsedJson === "object") {
+    const record = parsedJson as Record<string, unknown>;
+    if (record.kind === "blueprint" && record.schemaVersion === 2) {
+      if (typeof record.blueprintMarkdown !== "string") {
+        throw new Error("Store release blueprint markdown is missing.");
+      }
+      const markdown = record.blueprintMarkdown.trim();
+      if (!markdown) {
+        throw new Error("Store release blueprint is empty.");
+      }
+      return buildMarkdownBlueprintReview(markdown);
+    }
   }
 
   const artifact = storeReleaseArtifactSchema.parse(parsedJson);

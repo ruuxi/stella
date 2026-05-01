@@ -32,145 +32,15 @@ import {
 } from "../../../desktop/src/shared/contracts/file-changes.js";
 import type { RunnerContext } from "./types.js";
 import { buildAgentEventPrompt } from "./shared.js";
+import {
+  buildCommitSubjectPrompt,
+  buildFeatureSnapshotPrompt,
+  parseFeatureSnapshotItems,
+  sanitizeAuthoredCommitSubject,
+} from "../self-mod/feature-namer.js";
 
 const TASK_LIFECYCLE_WAKE_PROMPT =
   "<system_reminder>Continue from the latest task lifecycle update.</system_reminder>";
-
-const COMMIT_MESSAGE_MAX_FILES_IN_PROMPT = 30;
-const COMMIT_MESSAGE_DIFF_MAX_LINES = 240;
-const COMMIT_MESSAGE_FALLBACK_SUBJECT_MAX_WORDS = 12;
-
-const truncateForCommitSubject = (raw: string): string => {
-  const cleaned = raw
-    .replace(/^["'`\s]+|["'`\s]+$/g, "")
-    .replace(/\r?\n.*$/s, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!cleaned) return cleaned;
-  const words = cleaned.split(" ");
-  if (words.length <= COMMIT_MESSAGE_FALLBACK_SUBJECT_MAX_WORDS) {
-    return cleaned;
-  }
-  return `${words.slice(0, COMMIT_MESSAGE_FALLBACK_SUBJECT_MAX_WORDS).join(" ")}…`;
-};
-
-const buildCommitMessagePrompt = (input: {
-  taskDescription: string;
-  files: string[];
-  diffPreview: string;
-  rosterBlock?: string;
-  conversationId?: string;
-}): string => {
-  const filesShown = input.files.slice(0, COMMIT_MESSAGE_MAX_FILES_IN_PROMPT);
-  const filesOmitted = Math.max(0, input.files.length - filesShown.length);
-  const filesBlock =
-    filesShown.length > 0
-      ? `Files changed:\n${filesShown.map((file) => `- ${file}`).join("\n")}${
-          filesOmitted > 0 ? `\n(...and ${filesOmitted} more files)` : ""
-        }`
-      : "Files changed: (none reported)";
-  const diffLines = input.diffPreview ? input.diffPreview.split("\n") : [];
-  const trimmedDiff =
-    diffLines.length > COMMIT_MESSAGE_DIFF_MAX_LINES
-      ? `${diffLines.slice(0, COMMIT_MESSAGE_DIFF_MAX_LINES).join("\n")}\n... [diff truncated]`
-      : input.diffPreview;
-  const diffBlock = trimmedDiff
-    ? `Diff (truncated):\n\`\`\`diff\n${trimmedDiff}\n\`\`\``
-    : "Diff: (not available)";
-
-  const sections: string[] = [
-    "You are about to commit a small Stella self-modification.",
-    "",
-    "Write a short user-friendly subject and decide which feature group this commit",
-    "belongs to. Features group commits that build the same user-visible thing across",
-    "multiple sessions, so the Store can present \"Snake game (5 changes)\" instead",
-    "of five raw commits.",
-    "",
-    "Return JSON only. Do not wrap it in markdown. Output must parse with JSON.parse:",
-    "- All keys and string values quoted with double quotes.",
-    "- No trailing commas, no comments, no extra prose around the object.",
-    "",
-    "Required keys: \"subject\" (string), \"featureId\" (string), \"featureTitle\" (string), \"parentPackageIds\" (array of strings; [] when none).",
-    "",
-    "Example output (literal — copy this format, replace the values):",
-    "{\"subject\":\"Add multiplayer mode to snake game\",\"featureId\":\"feat:nB8x9k\",\"featureTitle\":\"Snake multiplayer\",\"parentPackageIds\":[\"snake-game\"]}",
-    "",
-    "Rules:",
-    "- `subject`: 12 words or fewer, plain English, friendly to a non-developer. No \"feat:\" / \"fix:\" prefixes. No trailing period.",
-    "- `featureId`: pick from existing features below when this commit continues one of them; otherwise invent a new id like `feat:<8 chars lowercase>`.",
-    "- `featureTitle`: short human title for the feature group; update it when the latest direction has shifted.",
-    "- `parentPackageIds`: only fill in when this work is visibly building on top of an installed add-on (e.g. adding multiplayer to an installed `snake-game`). Otherwise return `[]`. A commit can have multiple parents.",
-    "",
-  ];
-
-  if (input.rosterBlock) {
-    sections.push(input.rosterBlock, "");
-  }
-
-  sections.push(
-    `Original task: ${input.taskDescription.trim() || "(no task description)"}`,
-  );
-  if (input.conversationId) {
-    sections.push(`Conversation: ${input.conversationId}`);
-  }
-  sections.push("", filesBlock, "", diffBlock);
-
-  return sections.join("\n");
-};
-
-const tryExtractCommitMessageJson = (raw: string): string | null => {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const fence = trimmed.match(/```(?:json)?\s*([\s\S]+?)```/i);
-  const candidate = (fence?.[1] ?? trimmed).trim();
-  // Find the outermost JSON object even if the model added a sentence around it.
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  return candidate.slice(start, end + 1);
-};
-
-type CommitMessageDecision = {
-  subject: string;
-  featureId?: string;
-  featureTitle?: string;
-  parentPackageIds?: string[];
-};
-
-const parseCommitMessageDecision = (
-  raw: string,
-): CommitMessageDecision | null => {
-  const blob = tryExtractCommitMessageJson(raw);
-  if (!blob) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(blob);
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object") return null;
-  const record = parsed as Record<string, unknown>;
-  const subjectRaw = typeof record.subject === "string" ? record.subject : "";
-  const subject = truncateForCommitSubject(subjectRaw);
-  if (!subject) return null;
-  const result: CommitMessageDecision = { subject };
-  if (typeof record.featureId === "string" && record.featureId.trim()) {
-    result.featureId = record.featureId.trim();
-  }
-  if (typeof record.featureTitle === "string" && record.featureTitle.trim()) {
-    result.featureTitle = record.featureTitle.trim();
-  }
-  if (Array.isArray(record.parentPackageIds)) {
-    const parents = record.parentPackageIds
-      .filter((entry): entry is string => typeof entry === "string")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-    if (parents.length > 0) {
-      result.parentPackageIds = Array.from(new Set(parents));
-    }
-  }
-  return result;
-};
 
 const collectFileChanges = (
   target: FileChangeRecord[],
@@ -878,57 +748,35 @@ export const createAgentOrchestration = (
           // resume-flush dance — it just observes self-mod-hmr state events
           // emitted by the worker server.
           if (subagentSucceeded) {
-            const commitMessageProvider = async (input: {
-              taskDescription: string;
-              files: string[];
-              diffPreview: string;
-              conversationId?: string;
-            }) => {
-              if (!agentId) {
-                return null;
-              }
-              // Best-effort roster: the prompt still works without it
-              // (the LLM will just always invent a new featureId), but
-              // grouping is the entire point of this call so we want it
-              // when available.
-              let rosterBlock: string | undefined;
-              if (context.featureRosterProvider) {
-                try {
-                  const roster = await context.featureRosterProvider();
-                  const { formatRosterForPrompt } = await import(
-                    "../self-mod/feature-roster.js"
-                  );
-                  rosterBlock = formatRosterForPrompt(roster);
-                } catch {
-                  rosterBlock = undefined;
-                }
-              }
-              const commitMessageRunId = `local:sub:${crypto.randomUUID()}`;
-              const commitMessageContext = await deps.buildAgentContext({
+            // Helper: spin up a one-shot LLM call with no tools and a
+            // freshly-built agent context. Used for the commit-subject
+            // namer and the rolling-window feature snapshot namer.
+            const runOneShotPrompt = async (
+              prompt: string,
+            ): Promise<string | null> => {
+              if (!agentId) return null;
+              const oneShotRunId = `local:sub:${crypto.randomUUID()}`;
+              const oneShotContext = await deps.buildAgentContext({
                 conversationId,
                 agentType,
-                runId: commitMessageRunId,
+                runId: oneShotRunId,
                 threadId: agentId,
               });
-              commitMessageContext.maxAgentDepth = agentContext.maxAgentDepth;
-              commitMessageContext.agentDepth = agentContext.agentDepth;
+              oneShotContext.maxAgentDepth = agentContext.maxAgentDepth;
+              oneShotContext.agentDepth = agentContext.agentDepth;
               const result = await runSubagentTask({
                 conversationId,
-                userMessageId: commitMessageRunId,
-                runId: commitMessageRunId,
+                userMessageId: oneShotRunId,
+                runId: oneShotRunId,
                 agentId,
                 ...(rootRunId ? { rootRunId } : {}),
                 agentType,
-                userPrompt: buildCommitMessagePrompt({
-                  ...input,
-                  ...(rosterBlock ? { rosterBlock } : {}),
-                }),
+                userPrompt: prompt,
                 uiVisibility: "hidden",
-                agentContext: commitMessageContext,
+                agentContext: oneShotContext,
                 toolCatalog: [],
                 toolExecutor: async () => ({
-                  error:
-                    "Tools are not available while writing a commit subject.",
+                  error: "Tools are not available for this one-shot prompt.",
                 }),
                 deviceId: context.deviceId,
                 stellaHome: context.stellaRoot,
@@ -938,17 +786,47 @@ export const createAgentOrchestration = (
                 ...(abortSignal ? { abortSignal } : {}),
                 stellaRoot: context.stellaRoot,
               });
-              if (result.error) {
-                return null;
-              }
-              const decision = parseCommitMessageDecision(result.result);
-              if (decision) return decision;
-              // Fall back to plain-string contract: treat the whole reply
-              // as the subject so the commit still gets a sane title even
-              // when the model didn't return JSON.
-              const subject = truncateForCommitSubject(result.result);
+              if (result.error) return null;
+              return result.result ?? null;
+            };
+
+            const commitMessageProvider = async (input: {
+              taskDescription: string;
+              files: string[];
+              diffPreview: string;
+              conversationId?: string;
+            }): Promise<string | null> => {
+              const reply = await runOneShotPrompt(
+                buildCommitSubjectPrompt(input),
+              );
+              if (!reply) return null;
+              const subject = sanitizeAuthoredCommitSubject(reply);
               return subject || null;
             };
+
+            const featureNamerProvider = async (input: {
+              commits: Array<{
+                commitHash: string;
+                shortHash: string;
+                subject: string;
+                body: string;
+                timestampMs: number;
+                files: string[];
+              }>;
+            }): Promise<Array<{
+              name: string;
+              commitHashes: string[];
+            }> | null> => {
+              const reply = await runOneShotPrompt(
+                buildFeatureSnapshotPrompt(input),
+              );
+              if (!reply) return null;
+              return parseFeatureSnapshotItems(
+                reply,
+                input.commits.map((commit) => commit.commitHash),
+              );
+            };
+
             await Promise.resolve(
               context.selfModLifecycle!.finalizeRun({
                 runId,
@@ -958,7 +836,7 @@ export const createAgentOrchestration = (
                 conversationId,
                 succeeded: true,
                 commitMessageProvider,
-                ...(effectiveSelfModMetadata ?? {}),
+                featureNamerProvider,
               }),
             );
           } else if (

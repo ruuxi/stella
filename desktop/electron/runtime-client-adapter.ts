@@ -791,19 +791,12 @@ export class RuntimeClientAdapter {
     return this.client.listStorePackages();
   }
 
-  listLocalCommits(limit?: number) {
-    return this.client.listLocalCommits(limit);
-  }
-
-  listLocalCommitsBySelector(args: {
-    featureIds?: string[];
-    commitHashes?: string[];
-  }) {
-    return this.client.listLocalCommitsBySelector(args);
-  }
-
   listInstalledMods() {
     return this.client.listInstalledMods();
+  }
+
+  readSelfModFeatureSnapshot() {
+    return this.client.readSelfModFeatureSnapshot();
   }
 
   getStorePackage(packageId: string) {
@@ -826,20 +819,21 @@ export class RuntimeClientAdapter {
     return this.client.createStoreReleaseUpdate(args);
   }
 
-  buildStoreThreadBundle(commitHashes: string[]) {
-    return this.client.buildStoreThreadBundle(commitHashes);
-  }
-
-  listStoreFeatureRoster() {
-    return this.client.listStoreFeatureRoster();
-  }
-
-  installStoreRelease(args: { packageId: string; releaseNumber?: number }) {
-    return this.client.installStoreRelease(args);
-  }
-
   uninstallStoreMod(packageId: string) {
     return this.client.uninstallStoreMod(packageId);
+  }
+
+  installFromBlueprint(payload: {
+    packageId: string;
+    releaseNumber: number;
+    displayName: string;
+    blueprintMarkdown: string;
+  }) {
+    return this.client.installFromBlueprint(payload);
+  }
+
+  executeStoreAgentTool(payload: { toolName: string; argsJson: string }) {
+    return this.client.executeStoreAgentTool(payload);
   }
 
   listCronJobs() {

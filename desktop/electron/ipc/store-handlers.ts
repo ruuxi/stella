@@ -2,15 +2,11 @@ import { promises as fs } from "fs";
 import { ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import path from "path";
 import type {
-  InstalledStoreModRecord,
-  LocalGitCommitRecord,
+  SelfModFeatureSnapshot,
+  StoreInstallRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
 } from "../../src/shared/contracts/boundary.js";
-import type {
-  StoreThreadCommitCatalogEntry,
-  StoreThreadBundlePayload,
-} from "../../src/shared/types/electron.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 import { assertPrivilegedRequest } from "./privileged-ipc.js";
@@ -80,29 +76,16 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     return await listInstalledThemes(stellaRoot);
   });
 
-  ipcMain.handle("store:listLocalCommits", async (event, payload?: { limit?: number }) => {
-    return await withStoreRunner(event, "store:listLocalCommits", async (runner) =>
-      await runner.listLocalCommits(payload?.limit) satisfies LocalGitCommitRecord[]);
+  ipcMain.handle("store:readFeatureSnapshot", async (event) => {
+    return await withStoreRunner(
+      event,
+      "store:readFeatureSnapshot",
+      async (runner) =>
+        (await runner.readSelfModFeatureSnapshot()) satisfies
+          | SelfModFeatureSnapshot
+          | null,
+    );
   });
-
-  // Targeted lookup that walks the wide self-mod history (matching the
-  // feature roster's window) so the publish path + pick card can resolve
-  // commits older than the recent slice. Pass either feature ids,
-  // commit hashes, or both.
-  ipcMain.handle(
-    "store:listLocalCommitsBySelector",
-    async (event, payload: { featureIds?: string[]; commitHashes?: string[] }) => {
-      return await withStoreRunner(
-        event,
-        "store:listLocalCommitsBySelector",
-        async (runner) =>
-          await runner.listLocalCommitsBySelector({
-            ...(payload?.featureIds ? { featureIds: payload.featureIds } : {}),
-            ...(payload?.commitHashes ? { commitHashes: payload.commitHashes } : {}),
-          }) satisfies LocalGitCommitRecord[],
-      );
-    },
-  );
 
   ipcMain.handle("store:listPackages", async (event) => {
     return await withStoreRunner(event, "store:listPackages", async (runner) =>
@@ -129,67 +112,42 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       ) satisfies StorePackageReleaseRecord | null),
   );
 
-  // Build the lightweight commit catalog the backend Store agent reasons
-  // over. Identical to what `store:listLocalCommits` returns plus an
-  // explicit `fileCount` (`fileCount` is already on the record but we
-  // surface a stable shape) — this is the *backend-friendly* upload
-  // payload, not a UI list.
+  // Install via the new blueprint flow: the renderer fetches the
+  // published release (blueprintMarkdown is on the release row), then
+  // calls this IPC with the markdown + package metadata. The worker
+  // runs a general agent that implements the blueprint and the runtime
+  // self-mod commit captures whatever changed.
   ipcMain.handle(
-    "store-thread:buildCommitCatalog",
-    async (event, payload: { limit?: number }) =>
-      await withStoreRunner(event, "store-thread:buildCommitCatalog", async (runner) => {
-        const commits = await runner.listLocalCommits(payload?.limit);
-        const catalog: StoreThreadCommitCatalogEntry[] = commits.map((commit) => ({
-          commitHash: commit.commitHash,
-          shortHash: commit.shortHash,
-          subject: commit.subject,
-          body: commit.body,
-          timestampMs: commit.timestampMs,
-          files: commit.files,
-          fileCount: commit.fileCount,
-          ...(commit.featureId ? { featureId: commit.featureId } : {}),
-          ...(commit.parentPackageIds && commit.parentPackageIds.length > 0
-            ? { parentPackageIds: commit.parentPackageIds }
-            : {}),
-        }));
-        return catalog;
-      }),
-  );
-
-  // Build the full publish bundle (commit metadata + patches + file
-  // snapshots) for the picked commit hashes. Called only at confirm
-  // time so the renderer never uploads file snapshots speculatively.
-  ipcMain.handle(
-    "store-thread:buildBundle",
-    async (event, payload: { commitHashes: string[] }) =>
-      await withStoreRunner(event, "store-thread:buildBundle", async (runner) => {
-        const bundle = await runner.buildStoreThreadBundle(payload.commitHashes);
-        return bundle satisfies StoreThreadBundlePayload;
-      }),
-  );
-
-  // Read the local feature roster (collapsed Stella self-mod commit
-  // groups + installed-add-on footprints). Powers the Store side
-  // panel's linear list and reuses exactly what the commit-message
-  // LLM saw, so the UI never disagrees with the system.
-  ipcMain.handle(
-    "store-thread:listFeatureRoster",
-    async (event) =>
-      await withStoreRunner(event, "store-thread:listFeatureRoster", async (runner) =>
-        await runner.listStoreFeatureRoster()),
-  );
-
-  ipcMain.handle(
-    "store:installRelease",
-    async (event, payload: { packageId: string; releaseNumber?: number }) =>
-      await withStoreRunner(event, "store:installRelease", async (runner) =>
-        await runner.installStoreRelease(payload) satisfies InstalledStoreModRecord),
+    "store:installFromBlueprint",
+    async (
+      event,
+      payload: {
+        packageId: string;
+        releaseNumber: number;
+        displayName: string;
+        blueprintMarkdown: string;
+      },
+    ) =>
+      await withStoreRunner(event, "store:installFromBlueprint", async (runner) =>
+        await runner.installFromBlueprint(payload) satisfies StoreInstallRecord),
   );
 
   ipcMain.handle("store:listInstalledMods", async (event) => {
     return await withStoreRunner(event, "store:listInstalledMods", async (runner) =>
-      await runner.listInstalledMods() satisfies InstalledStoreModRecord[]);
+      await runner.listInstalledMods() satisfies StoreInstallRecord[]);
   });
+
+  // Read-only host tool execution for the Convex Store agent. The
+  // renderer subscribes to the pending-tool-call queue, sees a row,
+  // forwards the (toolName, argsJson) here, and posts the result back
+  // to Convex via the `completeToolCall` mutation. Worker side runs
+  // git/file/ripgrep in a sandboxed read-only path.
+  ipcMain.handle(
+    "store:executeAgentTool",
+    async (event, payload: { toolName: string; argsJson: string }) =>
+      await withStoreRunner(event, "store:executeAgentTool", async (runner) =>
+        await runner.executeStoreAgentTool(payload)),
+  );
 
   ipcMain.handle("store:uninstallMod", async (event, payload: { packageId: string }) => {
     return await withStoreRunner(event, "store:uninstallMod", (runner) =>

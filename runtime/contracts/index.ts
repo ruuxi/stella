@@ -6,7 +6,12 @@ export type DiscoveryCategory =
 
 export type RadialWedge = "capture" | "chat" | "add" | "voice" | "dismiss";
 
-export type WindowBounds = { x: number; y: number; width: number; height: number };
+export type WindowBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 export type ChatContextFile = {
   name: string;
@@ -113,7 +118,13 @@ export type MiniBridgeUpdate = {
   snapshot: MiniBridgeSnapshot;
 };
 
-export type BrowserType = "chrome" | "edge" | "brave" | "arc" | "opera" | "vivaldi";
+export type BrowserType =
+  | "chrome"
+  | "edge"
+  | "brave"
+  | "arc"
+  | "opera"
+  | "vivaldi";
 
 export type DomainVisit = {
   domain: string;
@@ -197,10 +208,13 @@ export type AllUserSignalsResult = {
 
 /**
  * Lightweight summary of one recent self-mod commit, surfaced to runtime
- * diagnostic UIs (Vite error overlay revert buttons, crash surface, taint
- * monitor toast). Each entry corresponds to a single git commit; the
- * `featureId` field carries the full commit hash so callers can pass it
- * straight back into revert APIs.
+ * diagnostic UIs (Vite error overlay revert button, crash surface, taint
+ * monitor toast). `featureId` carries the full commit hash so callers
+ * can pass it straight back into revert APIs.
+ *
+ * Distinct from `SelfModFeatureSnapshot` below — this one is per-commit
+ * and used by the diagnostic surface; the snapshot is the rolling
+ * normie-friendly grouping used by the Store side panel.
  */
 export type SelfModFeatureSummary = {
   featureId: string;
@@ -214,64 +228,19 @@ export type SelfModFeatureSummary = {
 };
 
 /**
- * A flat record of one Stella self-modification commit, surfaced to the
- * Store UI without grouping by feature. Subjects are agent-authored
- * descriptions of the change (no `[feature:<id>]` tag).
- *
- * `conversationId` is the optional `Stella-Conversation:` trailer added by
- * the runtime; the Store agent uses it later to recover the user-intent
- * context that produced the change.
+ * One entry in the rolling-window feature snapshot the Store side panel
+ * renders. `name` is a normie-friendly 3-7 word phrase the namer LLM
+ * produced; `commitHashes` is the LLM's grouping decision, kept for
+ * display affordances only — the Store agent never sees hashes.
  */
-export type LocalGitCommitRecord = {
-  commitHash: string;
-  shortHash: string;
-  subject: string;
-  body: string;
-  timestampMs: number;
-  fileCount: number;
-  files: string[];
-  conversationId?: string;
-  /**
-   * True when the commit was created via the legacy `[feature:<id>, +N]`
-   * tagged-commit path. Lets the Store UI hide internals while still
-   * surfacing the user-facing description.
-   */
-  legacyFeatureTagged?: boolean;
-  /** Optional package id this commit belongs to (only set for installs/updates). */
-  packageId?: string;
-  /**
-   * Stella self-mod feature grouping. Surfaced as first-class fields so
-   * the Store side panel can resolve "which commits belong to this
-   * feature?" without re-parsing `body` (which strips Stella trailers
-   * before being returned).
-   */
-  featureId?: string;
-  featureTitle?: string;
-  parentPackageIds?: string[];
+export type SelfModFeatureSnapshotItem = {
+  name: string;
+  commitHashes: string[];
 };
 
-export type StoreReleaseBlueprintFile = {
-  path: string;
-  changeType: "create" | "update" | "delete";
-  deleted?: boolean;
-  referenceContentBase64?: string;
-};
-
-/**
- * One commit's worth of change material inside a published release
- * blueprint. `batchId` is a deterministic per-commit identifier (e.g.
- * `commit:<short>`) — a holdover from the legacy feature/batch scheme
- * that keeps existing consumers (manifest schema, blueprint apply
- * guidance) addressable without forking.
- */
-export type StoreReleaseBlueprintBatch = {
-  batchId: string;
-  ordinal: number;
-  commitHash: string;
-  files: string[];
-  subject: string;
-  body: string;
-  patch: string;
+export type SelfModFeatureSnapshot = {
+  items: SelfModFeatureSnapshotItem[];
+  generatedAt: number;
 };
 
 export type StorePackageCategory =
@@ -282,13 +251,17 @@ export type StorePackageCategory =
   | "integrations"
   | "other";
 
+/**
+ * A published Store release is a markdown blueprint plus enough
+ * metadata for the receiving agent to implement it. No patches, no
+ * file snapshots — the receiver's general agent reads the blueprint
+ * and adapts to its own codebase.
+ */
 export type StoreReleaseArtifact = {
-  kind: "self_mod_blueprint";
-  schemaVersion: 1;
+  kind: "blueprint";
+  schemaVersion: 2;
   manifest: StoreReleaseManifest;
-  applyGuidance: string;
-  batches: StoreReleaseBlueprintBatch[];
-  files: StoreReleaseBlueprintFile[];
+  blueprintMarkdown: string;
 };
 
 export type StoreReleaseManifest = {
@@ -298,21 +271,10 @@ export type StoreReleaseManifest = {
   displayName: string;
   description: string;
   releaseNotes?: string;
-  /** Per-commit batch ids embedded in the artifact (e.g. `commit:<short>`). */
-  batchIds: string[];
-  commitHashes: string[];
-  files: string[];
   createdAt: number;
-  /**
-   * Square icon URL the backend authored at publish time (FAL `icon`
-   * capability). Optional — the renderer falls back to a deterministic
-   * gradient + monogram when missing.
-   */
+  /** Optional commit hash on the author's tree at publish time. */
+  authoredAtCommit?: string;
   iconUrl?: string;
-  /**
-   * Author display name snapshotted at publish time so the Store stays
-   * usable for signed-out browsers and survives author renames.
-   */
   authorDisplayName?: string;
 };
 
@@ -340,44 +302,22 @@ export type StorePackageReleaseRecord = {
   packageId: string;
   releaseNumber: number;
   manifest: StoreReleaseManifest;
-  storageKey: string;
-  artifactUrl?: string | null;
+  blueprintMarkdown: string;
   createdAt: number;
 };
 
-export type InstalledStoreModRecord = {
-  installId: string;
+/**
+ * Persisted record of an installed Store add-on. The install flow
+ * spawns a general agent with the blueprint as its prompt; that agent's
+ * run produces a normal self-mod commit whose hash is captured here so
+ * uninstall can revert it.
+ */
+export type StoreInstallRecord = {
   packageId: string;
   releaseNumber: number;
-  applyCommitHashes: string[];
-  state: "installed" | "uninstalled";
-  createdAt: number;
-  updatedAt: number;
-};
-
-export type StorePublishCandidateFile = {
-  path: string;
-  deleted: boolean;
-  contentBase64?: string;
-};
-
-export type StorePublishCandidateCommit = {
-  commitHash: string;
-  shortHash?: string;
-  subject: string;
-  body: string;
-  timestampMs?: number;
-  files: string[];
-  patch: string;
-  conversationId?: string;
-};
-
-export type StorePublishCandidateBundle = {
-  requestText: string;
-  selectedCommitHashes: string[];
-  commits: StorePublishCandidateCommit[];
-  files: StorePublishCandidateFile[];
-  existingPackageId?: string;
+  installCommitHash: string | null;
+  installCommitHashes: string[];
+  installedAt: number;
 };
 
 export type SelfModHmrPhase =
@@ -420,7 +360,12 @@ export type LocalCronSchedule =
 
 export type LocalCronPayload =
   | { kind: "systemEvent"; text: string; agentType?: string; deliver?: boolean }
-  | { kind: "agentTurn"; message: string; agentType?: string; deliver?: boolean };
+  | {
+      kind: "agentTurn";
+      message: string;
+      agentType?: string;
+      deliver?: boolean;
+    };
 
 export type LocalHeartbeatActiveHours = {
   start: string;
@@ -511,9 +456,10 @@ export type SocialSessionServiceSnapshot = {
   processingTurnId?: string;
 };
 
-export const createEmptySocialSessionServiceSnapshot = (): SocialSessionServiceSnapshot => ({
-  enabled: false,
-  status: "stopped",
-  sessionCount: 0,
-  sessions: [],
-});
+export const createEmptySocialSessionServiceSnapshot =
+  (): SocialSessionServiceSnapshot => ({
+    enabled: false,
+    status: "stopped",
+    sessionCount: 0,
+    sessions: [],
+  });
