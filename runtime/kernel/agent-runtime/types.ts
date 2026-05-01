@@ -10,6 +10,8 @@ import type {
   ToolUpdateCallback,
 } from "../tools/types.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
+import type { LocalContextEvent } from "../local-history.js";
+import type { LocalChatAppendEventArgs } from "../storage/shared.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
@@ -183,6 +185,27 @@ export type BaseRunOptions = {
   hookEmitter?: HookEmitter;
   displayHtml?: (html: string) => void;
   responseTarget?: RuntimeAgentEventPayload["responseTarget"];
+  /**
+   * Append a local-chat event for the conversation. Routes through the
+   * worker server wrapper that also fires the `localChat:updated`
+   * notification, so the renderer re-fetches reactively.
+   */
+  appendLocalChatEvent?: (args: LocalChatAppendEventArgs) => void;
+  /**
+   * Read recent local-chat events for the conversation. Used by post-run
+   * background passes (e.g. home-suggestions refresh) that need a
+   * snapshot of the persisted event log.
+   */
+  listLocalChatEvents?: (
+    conversationId: string,
+    maxItems: number,
+  ) => LocalContextEvent[];
+  /**
+   * Resolve the LLM route for a sibling agent type (e.g. "home_suggestions")
+   * so post-run background passes can run on a different model mode than
+   * the agent that just finalized. Lazy: only invoked when actually needed.
+   */
+  resolveSubsidiaryLlmRoute?: (agentType: string) => ResolvedLlmRoute;
 };
 
 export type OrchestratorRunOptions = BaseRunOptions & {

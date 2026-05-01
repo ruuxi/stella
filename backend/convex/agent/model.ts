@@ -303,6 +303,12 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   // summarizer ticks every minute, so it must stay cheap.
   dream: "sota",
   chronicle: "synthesis",
+
+  // Background "should we update the user's home Ideas list?" pass that
+  // fires every few General-agent finalizes. Cheap reasoning model is the
+  // sweet spot — needs to weigh the current list against fresh activity
+  // and decide whether to replace it without paying the strong-tier cost.
+  home_suggestions: "reasoning",
 };
 
 const buildResolvedModeConfig = (

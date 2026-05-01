@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
-import { listLocalEvents } from "@/app/chat/services/local-chat-store"
+import {
+  listLocalEvents,
+  subscribeToLocalChatUpdates,
+} from "@/app/chat/services/local-chat-store"
 import type { OnboardingHomeSuggestion } from "@/shared/contracts/onboarding"
 
 export type SuggestionOption = {
@@ -102,7 +105,15 @@ export function usePersonalizedCategories(
     }
 
     void load()
-    return () => { cancelled = true }
+    // Re-read on any local-chat update so background suggestion refreshes
+    // surface without a remount or conversation switch.
+    const unsubscribe = subscribeToLocalChatUpdates(() => {
+      void load()
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [conversationId])
 
   return useMemo(

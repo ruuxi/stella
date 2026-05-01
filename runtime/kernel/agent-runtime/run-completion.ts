@@ -10,6 +10,10 @@ import {
   MEMORY_REVIEW_TURN_THRESHOLD,
   spawnMemoryReview,
 } from "./memory-review.js";
+import {
+  HOME_SUGGESTIONS_REFRESH_THRESHOLD,
+  spawnHomeSuggestionsRefresh,
+} from "./home-suggestions-refresh.js";
 import type {
   OrchestratorRunOptions,
   SelfModAppliedPayload,
@@ -286,6 +290,53 @@ export const finalizeSubagentSuccess = async (args: {
       logger.debug("dream-scheduler.notify-failed", {
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+
+    // Background home-suggestions refresh. Counter ticks once per
+    // successful General-agent finalize for this conversation; the
+    // cheap-LLM refresh fires when it crosses the threshold and the
+    // counter is reset to zero by the spawn helper. We need both
+    // local-chat helpers (read current suggestions, append the new
+    // event with the renderer-notify wrapper) to be plumbed through.
+    if (
+      args.opts.appendLocalChatEvent &&
+      args.opts.listLocalChatEvents &&
+      args.opts.conversationId
+    ) {
+      try {
+        const finalizes = args.opts.store
+          .incrementGeneralFinalizesSinceHomeSuggestionsRefresh(
+            args.opts.conversationId,
+          );
+        if (finalizes >= HOME_SUGGESTIONS_REFRESH_THRESHOLD) {
+          // Resolve the dedicated `home_suggestions` route (cheap reasoning
+          // model) when available; fall back to the general agent's route
+          // so the refresh still fires if the resolver isn't wired.
+          let resolvedLlm = args.opts.resolvedLlm;
+          if (args.opts.resolveSubsidiaryLlmRoute) {
+            try {
+              resolvedLlm = args.opts.resolveSubsidiaryLlmRoute(
+                AGENT_IDS.HOME_SUGGESTIONS,
+              );
+            } catch (error) {
+              logger.debug("home-suggestions-refresh.route-fallback", {
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+          spawnHomeSuggestionsRefresh({
+            conversationId: args.opts.conversationId,
+            resolvedLlm,
+            store: args.opts.store,
+            appendLocalChatEvent: args.opts.appendLocalChatEvent,
+            listLocalChatEvents: args.opts.listLocalChatEvents,
+          });
+        }
+      } catch (error) {
+        logger.debug("home-suggestions-refresh.tick-failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
   if (args.result.trim()) {

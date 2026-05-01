@@ -2071,4 +2071,59 @@ export class SessionStore {
         user_turns_since_injection = 1
     `).run(conversationId);
   }
+
+  /**
+   * Increment the home-suggestions refresh counter (one tick per successful
+   * General-agent finalize for this conversation) and return the new value.
+   * The cheap-LLM refresh fires when the counter crosses its threshold; the
+   * caller is responsible for resetting via
+   * {@link resetGeneralFinalizesSinceHomeSuggestionsRefresh}.
+   */
+  incrementGeneralFinalizesSinceHomeSuggestionsRefresh(
+    conversationId: string,
+  ): number {
+    const row = this.db.prepare(`
+      SELECT finalizes_since_refresh AS finalizesSinceRefresh
+      FROM runtime_home_suggestions_state
+      WHERE conversation_id = ?
+      LIMIT 1
+    `).get(conversationId) as { finalizesSinceRefresh?: unknown } | undefined;
+    const current = typeof row?.finalizesSinceRefresh === "number"
+      ? Math.max(0, Math.floor(row.finalizesSinceRefresh))
+      : 0;
+    const next = current + 1;
+    this.db.prepare(`
+      INSERT INTO runtime_home_suggestions_state (
+        conversation_id,
+        finalizes_since_refresh,
+        last_refresh_at
+      )
+      VALUES (?, ?, NULL)
+      ON CONFLICT(conversation_id) DO UPDATE SET
+        finalizes_since_refresh = excluded.finalizes_since_refresh
+    `).run(conversationId, next);
+    return next;
+  }
+
+  /**
+   * Reset the home-suggestions counter to zero and stamp the last refresh
+   * time. Call after kicking off a refresh so a quick follow-up finalize
+   * does not double-trigger.
+   */
+  resetGeneralFinalizesSinceHomeSuggestionsRefresh(
+    conversationId: string,
+  ): void {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO runtime_home_suggestions_state (
+        conversation_id,
+        finalizes_since_refresh,
+        last_refresh_at
+      )
+      VALUES (?, 0, ?)
+      ON CONFLICT(conversation_id) DO UPDATE SET
+        finalizes_since_refresh = 0,
+        last_refresh_at = excluded.last_refresh_at
+    `).run(conversationId, now);
+  }
 }

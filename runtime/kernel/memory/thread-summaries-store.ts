@@ -153,6 +153,36 @@ export class ThreadSummariesStore {
   }
 
   /**
+   * Return the most recent rows by source_updated_at, regardless of dream
+   * processing state. Used by background passes (e.g. home-suggestions
+   * refresh) that want a "what has the user been doing lately" snapshot.
+   */
+  listRecent(args?: { limit?: number }): ThreadSummaryRow[] {
+    const limit = Math.max(1, Math.min(args?.limit ?? 20, 200));
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          thread_id,
+          run_id,
+          agent_type,
+          rollout_summary,
+          raw_memory,
+          source_updated_at,
+          processed_by_dream_at,
+          dream_watermark,
+          usage_count,
+          last_usage
+        FROM thread_summaries
+        ORDER BY source_updated_at DESC
+        LIMIT ?
+        `,
+      )
+      .all(limit) as ThreadSummaryRawRow[];
+    return rows.map(fromRow);
+  }
+
+  /**
    * Return the count of unprocessed rows. Used by the Dream scheduler to
    * decide whether to fire a new run.
    */
