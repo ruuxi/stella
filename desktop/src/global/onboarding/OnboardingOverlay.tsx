@@ -112,6 +112,8 @@ export function OnboardingView({
   hasStarted,
   stellaAnimationRef,
   onboardingKey,
+  initialPhase = "intro",
+  creatureInitialBirth,
   triggerFlash,
   startOnboarding,
   completeOnboarding,
@@ -139,6 +141,8 @@ export function OnboardingView({
   hasStarted: boolean;
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   onboardingKey: number;
+  initialPhase?: Phase;
+  creatureInitialBirth?: number;
   triggerFlash: () => void;
   startOnboarding: () => void;
   completeOnboarding: () => void;
@@ -226,7 +230,10 @@ export function OnboardingView({
             ref={stellaAnimationRef}
             width={70}
             height={39}
-            initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
+            initialBirthProgress={
+              creatureInitialBirth ??
+              (onboardingDone ? 1 : CREATURE_INITIAL_SIZE)
+            }
             paused={stellaAnimationPaused || stellaAnimationHidden}
           />
         </div>
@@ -250,7 +257,7 @@ export function OnboardingView({
         ) : hasStarted ? (
           <OnboardingStep1
             key={onboardingKey}
-            initialPhase="intro"
+            initialPhase={initialPhase}
             onComplete={completeOnboarding}
             onInteract={triggerFlash}
             onDiscoveryConfirm={onDiscoveryConfirm}

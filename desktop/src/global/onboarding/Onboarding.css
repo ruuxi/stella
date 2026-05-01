@@ -1460,12 +1460,19 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 300;
-  letter-spacing: 0.04em;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
   color: var(--foreground);
   height: 0;
+  padding-block: 0;
+  border-width: 0;
   margin-top: calc(-1 * var(--onboarding-collapse-gap));
   overflow: hidden;
   opacity: 0;
@@ -1473,34 +1480,65 @@
   transition:
     height var(--onboarding-duration-enter) var(--onboarding-ease-soft),
     margin-top var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    padding var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    border-width var(--onboarding-duration-enter) var(--onboarding-ease-soft),
     opacity var(--onboarding-duration-enter) var(--onboarding-ease-soft);
 }
 
 .onboarding-fda-note[data-visible="true"] {
   height: auto;
   margin-top: 0;
-  opacity: 0.25;
+  padding-block: 12px;
+  border-width: 1px;
+  opacity: 1;
   pointer-events: auto;
 }
 
-.onboarding-fda-link {
-  background: none;
-  border: none;
-  font-size: inherit;
-  font-weight: inherit;
-  letter-spacing: inherit;
+.onboarding-fda-note-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
   color: var(--foreground);
-  opacity: 0.8;
+}
+
+.onboarding-fda-note-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.onboarding-fda-link {
+  flex: 0 0 auto;
+  background: var(--foreground);
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--background);
   cursor: pointer;
   font-family: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  padding: 0;
-  transition: opacity 0.2s ease;
+  padding: 7px 14px;
+  border-radius: 999px;
+  transition:
+    opacity 0.2s ease,
+    transform 0.15s ease;
 }
 
 .onboarding-fda-link:hover {
-  opacity: 1;
+  opacity: 0.9;
+}
+
+.onboarding-fda-link:active {
+  transform: translateY(1px);
+}
+
+.onboarding-fda-link:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--foreground) 50%, transparent);
+  outline-offset: 2px;
 }
 
 /* ═══ Inline auth ═══ */

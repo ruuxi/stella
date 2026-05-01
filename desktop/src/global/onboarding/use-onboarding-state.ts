@@ -1,6 +1,15 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
 
 export const ONBOARDING_COMPLETE_KEY = "stella-onboarding-complete";
+/**
+ * Persists the current onboarding phase so a user who quits the app
+ * mid-flow lands back on the same step instead of the very first
+ * "Start Stella" screen. Cleared on completion and on hard reset.
+ * Only split-flow phases are persisted (intro is the entry surface
+ * itself, and `complete`/`done` mean we're already past onboarding).
+ */
+export const ONBOARDING_PHASE_KEY = "stella-onboarding-phase";
 const ONBOARDING_COMPLETE_EVENT = "stella:onboarding-complete-changed";
 
 const readOnboardingCompleted = () => {
@@ -8,6 +17,34 @@ const readOnboardingCompleted = () => {
     return localStorage.getItem(ONBOARDING_COMPLETE_KEY) === "true";
   } catch {
     return false;
+  }
+};
+
+const SPLIT_PHASE_SET = new Set<Phase>(SPLIT_STEP_ORDER);
+
+export const readOnboardingPhase = (): Phase | null => {
+  try {
+    const raw = localStorage.getItem(ONBOARDING_PHASE_KEY);
+    if (!raw) return null;
+    if (!SPLIT_PHASE_SET.has(raw as Phase)) {
+      localStorage.removeItem(ONBOARDING_PHASE_KEY);
+      return null;
+    }
+    return raw as Phase;
+  } catch {
+    return null;
+  }
+};
+
+const writeOnboardingPhase = (phase: Phase | null) => {
+  try {
+    if (!phase || !SPLIT_PHASE_SET.has(phase)) {
+      localStorage.removeItem(ONBOARDING_PHASE_KEY);
+      return;
+    }
+    localStorage.setItem(ONBOARDING_PHASE_KEY, phase);
+  } catch {
+    // Best-effort; persistence is purely a UX nicety.
   }
 };
 
@@ -71,15 +108,21 @@ export function useOnboardingState() {
 
   const complete = useCallback(() => {
     localStorage.setItem(ONBOARDING_COMPLETE_KEY, "true");
+    writeOnboardingPhase(null);
     window.dispatchEvent(new Event(ONBOARDING_COMPLETE_EVENT));
     notifyAll();
   }, []);
 
   const reset = useCallback(() => {
     localStorage.removeItem(ONBOARDING_COMPLETE_KEY);
+    writeOnboardingPhase(null);
     window.dispatchEvent(new Event(ONBOARDING_COMPLETE_EVENT));
     notifyAll();
   }, []);
 
-  return { completed, complete, reset };
+  const persistPhase = useCallback((phase: Phase | null) => {
+    writeOnboardingPhase(phase);
+  }, []);
+
+  return { completed, complete, reset, persistPhase };
 }
