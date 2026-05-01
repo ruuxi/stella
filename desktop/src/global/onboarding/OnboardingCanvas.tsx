@@ -1,11 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { flushSync } from "react-dom";
+import React, { useCallback, useMemo, useState } from "react";
 import { StellaAppMock } from "./panels/StellaAppMock";
 import {
   EMPTY_SECTION_TOGGLES,
@@ -23,31 +16,6 @@ import {
  */
 export type OnboardingDemo = "default" | null;
 
-const MORPH_STATE_SETTLE_MS = 520;
-
-const waitForPaint = () =>
-  new Promise<void>((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve());
-    });
-  });
-
-const wait = (durationMs: number) =>
-  new Promise<void>((resolve) => {
-    window.setTimeout(resolve, durationMs);
-  });
-
-const getElementRect = (element: HTMLElement | null) => {
-  if (!element) return undefined;
-  const rect = element.getBoundingClientRect();
-  return {
-    x: rect.x,
-    y: rect.y,
-    width: rect.width,
-    height: rect.height,
-  };
-};
-
 interface OnboardingCanvasProps {
   activeDemo: OnboardingDemo;
   onMorphingChange?: (isMorphing: boolean) => void;
@@ -55,73 +23,12 @@ interface OnboardingCanvasProps {
 
 export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
   activeDemo,
-  onMorphingChange,
 }) => {
   const [activeSection, setActiveSection] = useState<SectionKey | null>(null);
-  const [pillsDisabled, setPillsDisabled] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const morphingRef = useRef(false);
 
-  // Reset morph state if the demo unmounts mid-morph. Only emits when
-  // a morph was actually in flight, so we don't spuriously trigger
-  // expensive parent-side `pauseAnimations()`/`unpauseAnimations()`
-  // calls on every demo prop change.
-  useEffect(() => {
-    return () => {
-      if (morphingRef.current) {
-        morphingRef.current = false;
-        onMorphingChange?.(false);
-      }
-    };
-  }, [onMorphingChange]);
-
-  const handleToggleSection = useCallback(
-    (section: SectionKey) => {
-      if (morphingRef.current) return;
-
-      const nextSection = activeSection === section ? null : section;
-      const morphApi = window.electronAPI?.ui;
-
-      if (!morphApi) {
-        setActiveSection(nextSection);
-        return;
-      }
-
-      morphingRef.current = true;
-      setPillsDisabled(true);
-      onMorphingChange?.(true);
-
-      void (async () => {
-        try {
-          const rect = getElementRect(rootRef.current);
-          const morphPayload = rect ? { rect } : undefined;
-          const started = await morphApi
-            .morphStart(morphPayload)
-            .catch(() => ({ ok: false }));
-
-          if (!started.ok) {
-            setActiveSection(nextSection);
-            return;
-          }
-
-          flushSync(() => {
-            setActiveSection(nextSection);
-          });
-          await waitForPaint();
-          await wait(MORPH_STATE_SETTLE_MS);
-
-          await morphApi
-            .morphComplete(morphPayload)
-            .catch(() => ({ ok: false }));
-        } finally {
-          morphingRef.current = false;
-          setPillsDisabled(false);
-          onMorphingChange?.(false);
-        }
-      })();
-    },
-    [activeSection, onMorphingChange],
-  );
+  const handleToggleSection = useCallback((section: SectionKey) => {
+    setActiveSection((current) => (current === section ? null : section));
+  }, []);
 
   const toggles: SectionToggles = useMemo(
     () => ({
@@ -134,13 +41,12 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
   if (!activeDemo) return null;
 
   return (
-    <div ref={rootRef} className="onboarding-canvas">
+    <div className="onboarding-canvas">
       <div className="selfmod-layout">
         <StellaAppMock
           interactive
           toggles={toggles}
           onToggleSection={handleToggleSection}
-          pillsDisabled={pillsDisabled}
         />
       </div>
     </div>
