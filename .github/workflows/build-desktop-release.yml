@@ -94,6 +94,7 @@ jobs:
               tag: `desktop-v${process.env.STELLA_DESKTOP_VERSION}`,
               version: process.env.STELLA_DESKTOP_VERSION,
               platform: process.env.STELLA_DESKTOP_PLATFORM,
+              commit: process.env.STELLA_DESKTOP_COMMIT,
               files,
             }, null, 2)}\n`,
           );
@@ -103,6 +104,7 @@ jobs:
         env:
           STELLA_DESKTOP_VERSION: ${{ steps.version.outputs.version }}
           STELLA_DESKTOP_PLATFORM: ${{ matrix.platform }}
+          STELLA_DESKTOP_COMMIT: ${{ github.sha }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -310,12 +312,12 @@ jobs:
           release_dir="desktop/releases/${tag}"
           manifest_path="$(mktemp)"
 
-          node - "$manifest_path" "$tag" "$R2_PUBLIC_BASE_URL" release-assets/stella-desktop-*.tar.zst <<'NODE'
+          node - "$manifest_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" release-assets/stella-desktop-*.tar.zst <<'NODE'
           const { createHash } = require("node:crypto");
           const { readFileSync, statSync, writeFileSync } = require("node:fs");
           const { basename } = require("node:path");
 
-          const [manifestPath, tag, publicBaseUrl, ...archivePaths] = process.argv.slice(2);
+          const [manifestPath, tag, commit, publicBaseUrl, ...archivePaths] = process.argv.slice(2);
           const assets = {};
           for (const archivePath of archivePaths) {
             const name = basename(archivePath);
@@ -334,6 +336,7 @@ jobs:
             `${JSON.stringify({
               schemaVersion: 1,
               tag,
+              commit,
               assets,
               publishedAt: new Date().toISOString(),
             }, null, 2)}\n`,
@@ -357,6 +360,59 @@ jobs:
             --content-type "application/json" \
             --cache-control "public, max-age=31536000, immutable" \
             --endpoint-url "$R2_ENDPOINT"
+
+      - name: Notify Convex of new desktop release
+        env:
+          CONVEX_SITE_URL: ${{ secrets.CONVEX_SITE_URL }}
+          DESKTOP_RELEASE_PUBLISH_SECRET: ${{ secrets.DESKTOP_RELEASE_PUBLISH_SECRET }}
+          R2_PUBLIC_BASE_URL: https://pub-a319aaada8144dc9be5a83625033769c.r2.dev
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CONVEX_SITE_URL:-}" ] || [ -z "${DESKTOP_RELEASE_PUBLISH_SECRET:-}" ]; then
+            echo "CONVEX_SITE_URL or DESKTOP_RELEASE_PUBLISH_SECRET is not set; skipping Convex notify."
+            exit 0
+          fi
+
+          tag="${GITHUB_REF_NAME}"
+          payload_path="$(mktemp)"
+
+          node - "$payload_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" release-assets/stella-desktop-*.tar.zst <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync, statSync, writeFileSync } = require("node:fs");
+          const { basename } = require("node:path");
+
+          const [payloadPath, tag, commit, publicBaseUrl, ...archivePaths] = process.argv.slice(2);
+          const assets = {};
+          for (const archivePath of archivePaths) {
+            const name = basename(archivePath);
+            const match = name.match(/^stella-desktop-(.+)\.tar\.zst$/);
+            if (!match) continue;
+            const platform = match[1];
+            const bytes = readFileSync(archivePath);
+            assets[platform] = {
+              url: `${publicBaseUrl.replace(/\/$/, "")}/desktop/releases/${tag}/${name}`,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              size: statSync(archivePath).size,
+            };
+          }
+          writeFileSync(
+            payloadPath,
+            JSON.stringify({
+              tag,
+              commit,
+              publishedAt: new Date().toISOString(),
+              assets,
+            }),
+          );
+          NODE
+
+          curl --fail-with-body --show-error --silent \
+            -X POST "${CONVEX_SITE_URL%/}/api/desktop-releases/publish" \
+            -H "Authorization: Bearer ${DESKTOP_RELEASE_PUBLISH_SECRET}" \
+            -H "Content-Type: application/json" \
+            --data-binary "@${payload_path}"
 
       - name: Publish launcher updater manifest to R2
         env:

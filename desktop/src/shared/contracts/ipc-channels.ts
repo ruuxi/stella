@@ -205,6 +205,13 @@ export const IPC_CREDENTIAL_REQUEST = "credential:request" as const;
 export const IPC_CREDENTIAL_SUBMIT = "credential:submit" as const;
 export const IPC_CREDENTIAL_CANCEL = "credential:cancel" as const;
 
+// ── Updates ─────────────────────────────────────────────────────────────────
+
+export const IPC_UPDATES_GET_INSTALL_MANIFEST =
+  "updates:getInstallManifest" as const;
+export const IPC_UPDATES_RECORD_APPLIED_COMMIT =
+  "updates:recordAppliedCommit" as const;
+
 // ── Onboarding ──────────────────────────────────────────────────────────────
 
 export const IPC_ONBOARDING_SYNTHESIZE =
