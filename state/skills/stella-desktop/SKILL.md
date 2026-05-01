@@ -12,10 +12,6 @@ and the small set of patterns that handle ~90% of UI changes the agent is
 asked to make. **Use it before editing `desktop/src/`** — most "where do I put
 this?" answers are here.
 
-> Co-located guidance: `desktop/src/STELLA.md` is the placement guide for
-> renderer code (which folder for which kind of code). Read both — this skill
-> is the *task-shaped* version, `STELLA.md` is the *bucket-shaped* version.
-
 ## Process model (the three Electron processes)
 
 Stella runs as three cooperating processes. Knowing which one to edit is the
@@ -325,7 +321,6 @@ from formatters.
 | Question                                   | Read                                                                                |
 | ------------------------------------------ | ----------------------------------------------------------------------------------- |
 | "Where does this state live?"              | `desktop/STATE_OWNERSHIP.md`                                                        |
-| "Where do I put this code?"                | `desktop/src/STELLA.md` (per-bucket guidance)                                       |
 | "How do I add a sidebar app?"              | This file, *Adding a new sidebar app*                                               |
 | "How do I open a dialog?"                  | This file, *Adding a new dialog*                                                    |
 | "How do dialogs/auth/connect work?"        | `desktop/src/shell/full-shell-dialogs.tsx`, `desktop/src/routes/__root.tsx`         |
@@ -338,6 +333,5 @@ from formatters.
 - [Skills Index](../index.md)
 - [registry](../../registry.md)
 - [general-agent](../../../runtime/extensions/stella-runtime/agents/general.md)
-- [renderer placement guide](../../../desktop/src/STELLA.md)
 - [state ownership](../../../desktop/STATE_OWNERSHIP.md)
 

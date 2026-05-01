@@ -33,7 +33,6 @@ type AgentDefinition = {
   includeInAgentRoster?: boolean;
   usesLocalCliRuntime: boolean;
   promptRole: AgentPromptRole;
-  includesStellaDocumentation: boolean;
   controlsSelfModHmr: boolean;
   localCliWorkingDirectory: LocalCliWorkingDirectory | null;
   agentEnginePreference: AgentEnginePreferenceKey | null;
@@ -51,7 +50,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     runsAsSubagent: false,
     usesLocalCliRuntime: true,
     promptRole: "orchestrator",
-    includesStellaDocumentation: false,
     controlsSelfModHmr: false,
     localCliWorkingDirectory: "frontend",
     agentEnginePreference: "general",
@@ -70,7 +68,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     runsAsSubagent: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
-    includesStellaDocumentation: false,
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
     agentEnginePreference: null,
@@ -87,7 +84,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     includeInAgentRoster: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
-    includesStellaDocumentation: false,
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
     agentEnginePreference: null,
@@ -103,7 +99,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     runsAsSubagent: true,
     usesLocalCliRuntime: true,
     promptRole: "subagent",
-    includesStellaDocumentation: false,
     controlsSelfModHmr: false,
     localCliWorkingDirectory: "frontend",
     agentEnginePreference: "general",
@@ -124,7 +119,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     includeInAgentRoster: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
-    includesStellaDocumentation: false,
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
     agentEnginePreference: "general",
@@ -139,7 +133,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     runsAsSubagent: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
-    includesStellaDocumentation: false,
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
     agentEnginePreference: null,
@@ -156,7 +149,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     includeInAgentRoster: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
-    includesStellaDocumentation: false,
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
     agentEnginePreference: "general",
@@ -173,7 +165,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     includeInAgentRoster: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
-    includesStellaDocumentation: false,
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
     agentEnginePreference: "general",
@@ -190,7 +181,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     includeInAgentRoster: false,
     usesLocalCliRuntime: false,
     promptRole: "subagent",
-    includesStellaDocumentation: false,
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
     agentEnginePreference: null,
@@ -270,9 +260,6 @@ export const isLocalCliAgentId = (
 
 export const isOrchestratorAgentType = (agentType: string): boolean =>
   getAgentDefinition(agentType)?.promptRole === "orchestrator";
-
-export const shouldIncludeStellaDocumentation = (agentType: string): boolean =>
-  getAgentDefinition(agentType)?.includesStellaDocumentation ?? false;
 
 // All IPC stream event types. RUN_FINISHED is the single terminal event for
 // a run; per-agent lifecycle is the AGENT_* family below.
