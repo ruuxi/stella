@@ -2029,8 +2029,69 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         throw new Error("Worker has not been initialized.");
       }
       const payload = params as { packageId: string };
+      const runner = ensureRunner();
       const service = ensureStoreModService();
       const result = await service.uninstall(payload.packageId);
+      if (result.fallbackRequired) {
+        const install = service.getInstall(payload.packageId);
+        const prompt = [
+          `# Remove Stella Store add-on: ${payload.packageId}`,
+          "",
+          "The user wants this Store add-on removed from their Stella install.",
+          "",
+          "A direct git revert is not safe right now because the install commits are no longer the latest clean HEAD stack. Instead, inspect the current codebase and remove only the behavior, files, UI, prompts, settings, and wiring that belong to this add-on.",
+          "",
+          "Do not remove unrelated user changes or other Store add-ons. If a file contains both this add-on and unrelated edits, preserve the unrelated edits. If you cannot confidently identify the add-on's changes, stop and explain what blocks removal.",
+          "",
+          "When you finish, the runtime will commit the removal changes. There is nothing extra to do.",
+          "",
+          "## Add-on metadata",
+          `Package ID: ${payload.packageId}`,
+          install?.releaseNumber
+            ? `Installed release: ${install.releaseNumber}`
+            : "Installed release: unknown",
+          install?.installCommitHashes.length
+            ? `Recorded install commits: ${install.installCommitHashes.join(", ")}`
+            : install?.installCommitHash
+              ? `Recorded install commit: ${install.installCommitHash}`
+              : "Recorded install commits: none",
+          result.reason ? `Direct revert skipped: ${result.reason}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const beforeRemovalHead = await getGitHead(state.init.stellaRoot).catch(
+          () => null,
+        );
+        const blockingResult = await runner.runBlockingLocalAgent({
+          conversationId: `store-uninstall:${payload.packageId}`,
+          description: `Remove ${payload.packageId} store add-on`,
+          prompt,
+          agentType: "general",
+          selfModMetadata: {
+            packageId: payload.packageId,
+            ...(install?.releaseNumber
+              ? { releaseNumber: install.releaseNumber }
+              : {}),
+            mode: "uninstall",
+          },
+        });
+        if (blockingResult.status !== "ok") {
+          throw new Error(blockingResult.error);
+        }
+        const afterRemovalHead = await getGitHead(state.init.stellaRoot).catch(
+          () => null,
+        );
+        if (!afterRemovalHead || afterRemovalHead === beforeRemovalHead) {
+          throw new Error(
+            "Store uninstall did not apply any changes, so the add-on remains installed.",
+          );
+        }
+        service.forgetInstall(payload.packageId);
+        return {
+          packageId: payload.packageId,
+          revertedCommits: [],
+        };
+      }
       return {
         packageId: payload.packageId,
         revertedCommits: result.revertedCommits,

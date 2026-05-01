@@ -66,7 +66,7 @@ export type StellaHostRunnerOptions = {
       conversationId: string;
       packageId?: string;
       releaseNumber?: number;
-      mode?: "author" | "install" | "update";
+      mode?: "author" | "install" | "update" | "uninstall";
     }) => Promise<void> | void;
     finalizeRun: (args: {
       runId: string;

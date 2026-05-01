@@ -5,6 +5,7 @@ import type {
 import { StoreModStore } from "../storage/store-mod-store.js";
 import {
   commitGitMessage,
+  getGitHeadCommitSequence,
   getStagedDiffPreview,
   listGitDirtyFiles,
   listRecentGitCommits,
@@ -52,7 +53,7 @@ type ActiveSelfModRun = {
   taskDescription: string;
   packageId?: string;
   releaseNumber?: number;
-  applyMode: "author" | "install" | "update";
+  applyMode: "author" | "install" | "update" | "uninstall";
 };
 
 export type FinalizedSelfModCommit = {
@@ -113,7 +114,7 @@ export class StoreModService {
     taskDescription: string;
     packageId?: string;
     releaseNumber?: number;
-    applyMode?: "author" | "install" | "update";
+    applyMode?: "author" | "install" | "update" | "uninstall";
   }): Promise<void> {
     const taskDescription = args.taskDescription.trim() || "Self mod update";
     const packageId = trimOrUndefined(args.packageId);
@@ -263,7 +264,11 @@ export class StoreModService {
 
   private deriveInstallCommitSubject(activeRun: ActiveSelfModRun): string {
     const subjectPrefix =
-      activeRun.applyMode === "update" ? "Store update" : "Store install";
+      activeRun.applyMode === "uninstall"
+        ? "Store uninstall"
+        : activeRun.applyMode === "update"
+          ? "Store update"
+          : "Store install";
     return activeRun.packageId
       ? `${subjectPrefix}: ${activeRun.packageId}`
       : subjectPrefix;
@@ -351,10 +356,14 @@ export class StoreModService {
     return this.store.listInstalls();
   }
 
-  async uninstall(packageId: string): Promise<{ revertedCommits: string[] }> {
+  async uninstall(packageId: string): Promise<{
+    revertedCommits: string[];
+    fallbackRequired: boolean;
+    reason?: string;
+  }> {
     const install = this.store.getInstall(packageId);
     if (!install) {
-      return { revertedCommits: [] };
+      return { revertedCommits: [], fallbackRequired: false };
     }
     let revertedCommits: string[] = [];
     const hashes =
@@ -364,10 +373,33 @@ export class StoreModService {
           ? [install.installCommitHash]
           : [];
     if (hashes.length > 0) {
+      const dirtyFiles = await listGitDirtyFiles(this.repoRoot);
+      if (dirtyFiles.length > 0) {
+        return {
+          revertedCommits: [],
+          fallbackRequired: true,
+          reason: "working tree is not clean",
+        };
+      }
+      const expectedHeadStack = [...hashes].reverse();
+      const actualHeadStack = await getGitHeadCommitSequence(
+        this.repoRoot,
+        expectedHeadStack.length,
+      );
+      const canDirectRevert =
+        actualHeadStack.length === expectedHeadStack.length &&
+        expectedHeadStack.every((hash, index) => actualHeadStack[index] === hash);
+      if (!canDirectRevert) {
+        return {
+          revertedCommits: [],
+          fallbackRequired: true,
+          reason: "install commits are not the latest commits",
+        };
+      }
       try {
         revertedCommits = await revertGitCommits({
           repoRoot: this.repoRoot,
-          commitHashes: [...hashes].reverse(),
+          commitHashes: expectedHeadStack,
         });
       } catch (error) {
         throw new Error(
@@ -376,6 +408,10 @@ export class StoreModService {
       }
     }
     this.store.deleteInstall(packageId);
-    return { revertedCommits };
+    return { revertedCommits, fallbackRequired: false };
+  }
+
+  forgetInstall(packageId: string): void {
+    this.store.deleteInstall(packageId);
   }
 }
