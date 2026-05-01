@@ -16,6 +16,7 @@ Each skill is a folder. The folder name is the skill ID. Inside:
 
 - [stella-browser](stella-browser/SKILL.md) — browser automation through Stella's Chrome extension bridge
 - [stella-office](stella-office/SKILL.md) — office document creation and editing
+- [stella-media](stella-media/SKILL.md) — image, video, audio, and 3D generation through Stella's managed media gateway
 - macOS desktop apps: use the typed `computer_*` tools directly (`computer_list_apps`, `computer_get_app_state`, `computer_click`, `computer_perform_secondary_action`, `computer_set_value`, `computer_type_text`, `computer_press_key`, `computer_scroll`, `computer_drag`). No skill file — the tool schemas are self-documenting.
 - [electron](electron/SKILL.md) — Electron app automation through Chromium remote debugging
 
