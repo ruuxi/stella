@@ -118,15 +118,17 @@
 .app-suggestions-dialog-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  justify-content: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full, 999px);
+  background: transparent;
   border: 1px solid var(--border);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 11px;
   font-weight: 500;
-  color: var(--muted-foreground);
+  color: var(--text-weak, var(--muted-foreground));
   letter-spacing: 0;
   line-height: 1.2;
   white-space: nowrap;
