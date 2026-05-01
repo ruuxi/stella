@@ -380,11 +380,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               durationMs: Date.now() - welcomeStartedAt,
             })),
             completeManagedChat({
-              config: {
-                ...welcomeConfig,
-                maxOutputTokens: 30000,
-                temperature: 0.7,
-              },
+              config: welcomeConfig,
               context: {
                 messages: [{
                   role: "user",
@@ -405,11 +401,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               }))
               .catch(() => null),
             completeManagedChat({
-              config: {
-                ...welcomeConfig,
-                maxOutputTokens: 8000,
-                temperature: 0.7,
-              },
+              config: welcomeConfig,
               context: {
                 messages: [{
                   role: "user",
