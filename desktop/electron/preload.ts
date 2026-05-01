@@ -439,7 +439,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       text: string;
       uiVisibility?: "visible" | "hidden";
     }) => ipcRenderer.send("voice:persistTranscript", payload),
-    orchestratorChat: (payload: { conversationId: string; message: string }) =>
+    orchestratorChat: (payload: {
+      conversationId: string;
+      message: string;
+    }) =>
       ipcRenderer.invoke("voice:orchestratorChat", payload) as Promise<string>,
     webSearch: (payload: { query: string; category?: string }) =>
       ipcRenderer.invoke("voice:webSearch", payload) as Promise<{
@@ -486,6 +489,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       micLevel: number;
       outputLevel: number;
     }) => ipcRenderer.send("voice:runtimeState", state),
+    onActionCompleted: onIpc<{
+      conversationId: string;
+      status: "completed" | "failed";
+      message: string;
+    }>("voice:actionCompleted"),
     setRtcShortcut: (shortcut: string) =>
       ipcRenderer.invoke("voice-rtc:setShortcut", shortcut) as Promise<{
         ok: boolean;

@@ -301,6 +301,7 @@ export const NOTIFICATION_NAMES = {
   RUN_SELF_MOD_HMR_STATE: "run.selfModHmrState",
   VOICE_AGENT_EVENT: "voice.agentEvent",
   VOICE_SELF_MOD_HMR_STATE: "voice.selfModHmrState",
+  VOICE_ACTION_COMPLETED: "voice.actionCompleted",
   LOCAL_CHAT_UPDATED: "localChat.updated",
   SCHEDULE_UPDATED: "schedule.updated",
   APPROVAL_REQUESTED: "approval.requested",
@@ -406,6 +407,12 @@ export type RuntimeVoiceTranscriptPayload = {
 export type RuntimeVoiceChatPayload = {
   requestId: string;
   conversationId: string;
+  message: string;
+};
+
+export type RuntimeVoiceActionCompletedPayload = {
+  conversationId: string;
+  status: "completed" | "failed";
   message: string;
 };
 

@@ -6,6 +6,7 @@ import {
 import { prepareStoredLocalChatPayload } from "../../kernel/storage/local-chat-payload.js";
 import type {
   RuntimeAgentEventPayload,
+  RuntimePromptMessage,
   RuntimeVoiceAgentEventPayload,
   RuntimeVoiceChatPayload,
   RuntimeVoiceHmrStatePayload,
@@ -29,6 +30,7 @@ type VoiceRunner = {
       conversationId: string;
       userMessageId: string;
       userPrompt: string;
+      promptMessages?: RuntimePromptMessage[];
       agentType?: string;
       storageMode?: "cloud" | "local";
     },
@@ -211,6 +213,21 @@ export class VoiceRuntimeService {
       reject(normalizeError(error));
     };
 
+    const promptMessages = [
+      {
+        text: [
+          "The user is using Stella's live voice agent feature.",
+          'Do the requested work normally. When the work is genuinely complete, call voice_result with status "completed" and a concise message for the voice agent to tell the user.',
+          'If the work fails or cannot be completed, call voice_result with status "failed" and a concise explanation.',
+          "Do not call voice_result just because you started work or delegated to a background agent; wait for a real terminal result.",
+        ].join("\n"),
+        uiVisibility: "hidden" as const,
+        messageType: "message" as const,
+        customType: "runtime.voice_action_completion_instruction",
+        display: false,
+      },
+    ];
+
     return await new Promise<string>((resolve, reject) => {
       const emitAgentEvent = (
         event: Omit<RuntimeAgentEventPayload, "type">,
@@ -231,6 +248,7 @@ export class VoiceRuntimeService {
             conversationId: payload.conversationId,
             userMessageId: `voice-${Date.now()}`,
             userPrompt: payload.message,
+            ...(promptMessages ? { promptMessages } : {}),
             agentType: "orchestrator",
             storageMode: "local",
           },

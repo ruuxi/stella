@@ -286,6 +286,7 @@ export const createRunnerContext = ({
   selfModHmrController,
   requestCredential,
   requestRuntimeAuthRefresh,
+  notifyVoiceActionComplete,
   scheduleApi,
   
   fashionApi,
@@ -349,6 +350,7 @@ export const createRunnerContext = ({
     stellaUiCliPath,
     stellaComputerCliPath,
     requestCredential,
+    notifyVoiceActionComplete,
     displayHtml,
     scheduleApi,
     
@@ -467,6 +469,7 @@ export const createRunnerContext = ({
     selfModHmrController,
     requestCredential,
     requestRuntimeAuthRefresh,
+    notifyVoiceActionComplete,
     scheduleApi,
     
     fashionApi: resolvedFashionApi,

@@ -18,6 +18,9 @@ type VoiceHandlersOptions = {
   broadcastUiState: () => void;
   syncVoiceOverlay: () => void;
   getStellaHostRunner: () => StellaHostRunner | null;
+  onStellaHostRunnerChanged?: (
+    listener: (runner: StellaHostRunner | null) => void,
+  ) => () => void;
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
   getOverlayController?: () => OverlayWindowController | null;
   getStellaRoot?: () => string | null;
@@ -63,6 +66,30 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       targetWindow.webContents.send("agent:selfModHmrState", state);
     }
   };
+
+  const emitVoiceActionCompleted = (payload: {
+    conversationId: string;
+    status: "completed" | "failed";
+    message: string;
+  }) => {
+    for (const window of options.windowManager.getAllWindows()) {
+      if (window.isDestroyed()) continue;
+      window.webContents.send("voice:actionCompleted", payload);
+    }
+    options.getBroadcastToMobile?.()?.("voice:actionCompleted", payload);
+  };
+
+  let unsubscribeVoiceActionCompleted: (() => void) | null = null;
+  const bindVoiceActionCompletion = (runner: StellaHostRunner | null) => {
+    unsubscribeVoiceActionCompleted?.();
+    unsubscribeVoiceActionCompleted = null;
+    if (!runner) return;
+    unsubscribeVoiceActionCompleted = runner.onVoiceActionCompleted((payload) => {
+      emitVoiceActionCompleted(payload);
+    });
+  };
+  bindVoiceActionCompletion(options.getStellaHostRunner());
+  options.onStellaHostRunnerChanged?.(bindVoiceActionCompletion);
 
   const broadcastRuntimeState = () => {
     for (const window of options.windowManager.getAllWindows()) {
@@ -154,7 +181,10 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
 
   ipcMain.handle(
     "voice:orchestratorChat",
-    async (_event, payload: { conversationId: string; message: string }) => {
+    async (
+      _event,
+      payload: { conversationId: string; message: string },
+    ) => {
       console.log(
         `[${ts()}] [Voice] orchestratorChat request:`,
         payload.message,

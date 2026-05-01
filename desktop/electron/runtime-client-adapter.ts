@@ -11,6 +11,7 @@ import type {
   RuntimeAutomationTurnRequest,
   RuntimeHealthSnapshot,
   RuntimeSocialSessionStatus,
+  RuntimeVoiceActionCompletedPayload,
   RuntimeVoiceChatPayload,
   SelfModFeatureSummary,
   StorePublishArgs,
@@ -885,6 +886,12 @@ export class RuntimeClientAdapter {
 
   onGoogleWorkspaceAuthRequired(listener: () => void) {
     return this.client.on("google-workspace-auth-required", listener);
+  }
+
+  onVoiceActionCompleted(
+    listener: (payload: RuntimeVoiceActionCompletedPayload) => void,
+  ) {
+    return this.client.on("voice-action-completed", listener);
   }
 
   createSocialSession(payload: { roomId: string; workspaceLabel?: string }) {

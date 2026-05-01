@@ -598,6 +598,14 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     peer.notify(NOTIFICATION_NAMES.VOICE_SELF_MOD_HMR_STATE, payload);
   };
 
+  const emitVoiceActionCompleted = (payload: {
+    conversationId: string;
+    status: "completed" | "failed";
+    message: string;
+  }) => {
+    peer.notify(NOTIFICATION_NAMES.VOICE_ACTION_COMPLETED, payload);
+  };
+
   const persistAssistantMessage = (args: {
     conversationId: string;
     text: string;
@@ -982,6 +990,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       stellaComputerCliPath: resolveRuntimeCliPath("stella-computer.js"),
       onGoogleWorkspaceAuthRequired: () => {
         peer.notify(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, null);
+      },
+      notifyVoiceActionComplete: (payload) => {
+        emitVoiceActionCompleted(payload);
       },
     };
 

@@ -260,6 +260,7 @@ export const registerBootstrapIpcHandlers = (
     broadcastUiState: () => services.uiStateService.broadcast(),
     syncVoiceOverlay: () => services.uiStateService.syncVoiceOverlay(),
     getStellaHostRunner: lifecycle.getRunner,
+    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     getBroadcastToMobile: lazyMobileBroadcast,
     getOverlayController: () => state.overlayController ?? null,
   });
