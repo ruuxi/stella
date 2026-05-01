@@ -382,6 +382,48 @@ Rules:
 Output ONLY valid JSON for that object. No markdown fences, no commentary.`,
     render: (template, values) => interpolateTemplate(template, values),
   },
+  "synthesis.app_recommendations.user": {
+    id: "synthesis.app_recommendations.user",
+    module: "synthesis",
+    title: "App Recommendations User Prompt",
+    defaultText: `You are picking exactly THREE apps that Stella — a self-modifying desktop AI assistant — should build for this specific user, based on their profile. These are surfaced as a one-time post-welcome dialog: clicking one sends the prompt straight to Stella to actually build it.
+
+{{coreMemory}}
+
+## What "an app" means here
+
+An app is a small interactive surface that lives inside Stella's home page (a tracker, dashboard, planner, mini-tool, calculator, viewer, status board, etc.). It can call live APIs, scrape pages, persist local state, and embed widgets. Stella will both write the code and, if needed, drive the user's browser to sign in or create an API key before wiring it up.
+
+## Your job
+
+Pick the THREE apps from this user's profile that would be most genuinely useful or attractive to them — the things they'd actually want, not generic filler. Reference their interests, hobbies, work, tools, games, services, etc. Be specific. "Dashboard for X" only counts if X is something the profile actually mentions.
+
+## Badges
+
+Each app declares zero or more "badges" describing what Stella will need to do up front. The user clicking the app counts as consent for those steps. Available badge icons:
+
+- "browser" — Stella will drive the user's browser to navigate or interact (e.g. "Stella will use your browser to sign in")
+- "account" — requires signing in to or creating an account on a service (e.g. "Sign in to your Riot account", "Create a free Notion account")
+- "key" — requires obtaining an API key, OAuth token, or developer credential (e.g. "Get a free Riot Developer API key")
+- "info" — generic note that doesn't fit the others
+
+Rules for badges:
+- Only use badges that are actually required by the app you're proposing.
+- Only propose services with FREE tiers or free API keys. Paid-only services are off-limits.
+- Combine badges when realistic (e.g. an app needing a Riot dev key would carry both "browser" and "key").
+- Apps that work entirely offline / from local data should have an empty badges array.
+
+## Output
+
+Return exactly one JSON object with a single key "appRecommendations" whose value is an array of exactly 3 objects. Each object must have:
+- "label": short app name (3-7 words, how the user would say it — e.g. "League of Legends Match Tracker")
+- "description": 1-2 sentence pitch of what the app does and why it fits this user
+- "prompt": the full instruction to send to Stella to actually build the app — be specific about what to build, what data to pull, what the UI should look like, and which credential/login flow Stella should run first if any
+- "badges": array of { "icon": "browser" | "account" | "key" | "info", "label": "<short user-facing phrase>" } objects
+
+Output ONLY valid JSON for that object. No markdown fences, no commentary.`,
+    render: (template, values) => interpolateTemplate(template, values),
+  },
   "suggestions.user": {
     id: "suggestions.user",
     module: "suggestions",

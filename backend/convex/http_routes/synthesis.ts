@@ -8,8 +8,9 @@ import {
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
   buildHomeSuggestionsPrompt,
+  buildAppRecommendationsPrompt,
 } from "../prompts/index";
-import type { HomeSuggestion } from "../prompts/index";
+import type { AppRecommendation, HomeSuggestion } from "../prompts/index";
 import {
   errorResponse,
   handleCorsRequest,
@@ -31,7 +32,10 @@ import {
   resolveManagedModelAccess,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
-import { parseHomeSuggestionsFromModelText } from "../lib/welcome_suggestions_parse";
+import {
+  parseAppRecommendationsFromModelText,
+  parseHomeSuggestionsFromModelText,
+} from "../lib/welcome_suggestions_parse";
 import {
   assistantText,
   completeManagedChat,
@@ -49,12 +53,14 @@ type SynthesizeRequest = {
   coreMemoryUserPromptTemplate?: string;
   welcomeMessagePromptTemplate?: string;
   homeSuggestionsPromptTemplate?: string;
+  appRecommendationsPromptTemplate?: string;
 };
 
 type SynthesizeResponse = {
   coreMemory: string;
   welcomeMessage: string;
   suggestions: HomeSuggestion[];
+  appRecommendations: AppRecommendation[];
   categoryAnalyses?: Record<string, string>;
 };
 
@@ -113,11 +119,13 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
         const coreMemoryUserPromptTemplate = body.coreMemoryUserPromptTemplate?.trim();
         const welcomeMessagePromptTemplate = body.welcomeMessagePromptTemplate?.trim();
         const homeSuggestionsPromptTemplate = body.homeSuggestionsPromptTemplate?.trim();
+        const appRecommendationsPromptTemplate = body.appRecommendationsPromptTemplate?.trim();
         if (
           !coreMemorySystemPrompt ||
           !coreMemoryUserPromptTemplate ||
           !welcomeMessagePromptTemplate ||
-          !homeSuggestionsPromptTemplate
+          !homeSuggestionsPromptTemplate ||
+          !appRecommendationsPromptTemplate
         ) {
           return errorResponse(400, "Missing synthesis prompt payload", origin);
         }
@@ -345,10 +353,13 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             audience: ownerId ? undefined : "anonymous",
           });
 
-          console.log("[synthesize] Welcome and home suggestions starting");
+          console.log(
+            "[synthesize] Welcome, home suggestions, and app recommendations starting",
+          );
           const welcomeStartedAt = Date.now();
           const suggestionsStartedAt = Date.now();
-          const [welcomeResult, suggestionsResult] = await Promise.all([
+          const appsStartedAt = Date.now();
+          const [welcomeResult, suggestionsResult, appsResult] = await Promise.all([
             completeManagedChat({
               config: welcomeConfig,
               context: {
@@ -393,9 +404,34 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                 durationMs: Date.now() - suggestionsStartedAt,
               }))
               .catch(() => null),
+            completeManagedChat({
+              config: {
+                ...welcomeConfig,
+                maxOutputTokens: 8000,
+                temperature: 0.7,
+              },
+              context: {
+                messages: [{
+                  role: "user",
+                  content: [{
+                    type: "text",
+                    text: buildAppRecommendationsPrompt(
+                      coreMemory,
+                      appRecommendationsPromptTemplate,
+                    ),
+                  }],
+                  timestamp: Date.now(),
+                }],
+              },
+            })
+              .then((result) => ({
+                result,
+                durationMs: Date.now() - appsStartedAt,
+              }))
+              .catch(() => null),
           ]);
           console.log(
-            `[synthesize] Welcome and home suggestions complete. Welcome: ${welcomeResult.durationMs}ms, suggestions: ${suggestionsResult?.durationMs ?? "failed"}ms`,
+            `[synthesize] Welcome / home suggestions / app recommendations complete. welcome: ${welcomeResult.durationMs}ms, suggestions: ${suggestionsResult?.durationMs ?? "failed"}ms, apps: ${appsResult?.durationMs ?? "failed"}ms`,
           );
 
           if (ownerId) {
@@ -418,6 +454,17 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                 usage: usageSummaryFromAssistant(suggestionsResult.result),
               });
             }
+
+            if (appsResult) {
+              await scheduleManagedUsage(ctx, {
+                ownerId,
+                agentType: "service:synthesis:app_recommendations",
+                model: welcomeConfig.model,
+                durationMs: appsResult.durationMs,
+                success: true,
+                usage: usageSummaryFromAssistant(appsResult.result),
+              });
+            }
           }
 
           const suggestionsText = getHomeSuggestionsText(suggestionsResult);
@@ -431,10 +478,24 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             );
           }
 
+          const appRecommendationsText = appsResult
+            ? assistantText(appsResult.result)
+            : "";
+          const appRecommendations = parseAppRecommendationsFromModelText(
+            appRecommendationsText,
+          );
+          if (!appRecommendations.length && appRecommendationsText) {
+            console.warn(
+              "[synthesize] App recommendations: model output was not a usable JSON array",
+              appRecommendationsText,
+            );
+          }
+
           const response: SynthesizeResponse = {
             coreMemory,
             welcomeMessage: assistantText(welcomeResult.result) || DEFAULT_WELCOME_MESSAGE,
             suggestions,
+            appRecommendations,
             ...(Object.keys(categoryAnalysesMap).length > 0
               ? { categoryAnalyses: categoryAnalysesMap }
               : {}),

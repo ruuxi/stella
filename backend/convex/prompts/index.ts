@@ -4,8 +4,14 @@ export {
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
   buildHomeSuggestionsPrompt,
+  buildAppRecommendationsPrompt,
 } from "./synthesis";
-export type { HomeSuggestion } from "./synthesis";
+export type {
+  HomeSuggestion,
+  AppRecommendation,
+  AppRecommendationBadge,
+  AppBadgeIcon,
+} from "./synthesis";
 export {
   THREAD_COMPACTION_SYSTEM_PROMPT,
   THREAD_COMPACTION_PROMPT,

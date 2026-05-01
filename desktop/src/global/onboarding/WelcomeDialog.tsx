@@ -15,6 +15,13 @@ import "./welcome-dialog.css";
 
 const WELCOME_DIALOG_SEEN_KEY = "stella-welcome-dialog-seen";
 
+/**
+ * Fired when the welcome dialog transitions from open to closed in this
+ * session. The post-welcome `AppSuggestionsDialog` listens for this so it
+ * can sequence itself behind the welcome dialog with a short delay.
+ */
+export const WELCOME_DIALOG_CLOSED_EVENT = "stella-welcome-dialog-closed";
+
 function useWelcomeMessage(conversationId: string | null): string | null {
   const [message, setMessage] = useState<string | null>(null);
 
@@ -76,6 +83,7 @@ export function WelcomeDialog({
     } catch {
       // ignore
     }
+    window.dispatchEvent(new CustomEvent(WELCOME_DIALOG_CLOSED_EVENT));
   }, []);
 
   const handleConnect = useCallback(() => {
