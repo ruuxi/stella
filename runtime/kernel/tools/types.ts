@@ -104,6 +104,7 @@ export type AgentToolRequest = {
   description: string;
   prompt: string;
   agentType: string;
+  toolWorkspaceRoot?: string;
   rootRunId?: string;
   agentDepth?: number;
   maxAgentDepth?: number;

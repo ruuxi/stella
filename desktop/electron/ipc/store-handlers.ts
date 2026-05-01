@@ -137,16 +137,40 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       await runner.listInstalledMods() satisfies StoreInstallRecord[]);
   });
 
-  // Read-only host tool execution for the Convex Store agent. The
-  // renderer subscribes to the pending-tool-call queue, sees a row,
-  // forwards the (toolName, argsJson) here, and posts the result back
-  // to Convex via the `completeToolCall` mutation. Worker side runs
-  // git/file/ripgrep in a sandboxed read-only path.
+  ipcMain.handle("store:getThread", async (event) => {
+    return await withStoreRunner(event, "store:getThread", async (runner) =>
+      await runner.getStoreThread());
+  });
+
   ipcMain.handle(
-    "store:executeAgentTool",
-    async (event, payload: { toolName: string; argsJson: string }) =>
-      await withStoreRunner(event, "store:executeAgentTool", async (runner) =>
-        await runner.executeStoreAgentTool(payload)),
+    "store:sendThreadMessage",
+    async (
+      event,
+      payload: {
+        text: string;
+        attachedFeatureNames?: string[];
+        editingBlueprint?: boolean;
+      },
+    ) =>
+      await withStoreRunner(event, "store:sendThreadMessage", async (runner) =>
+        await runner.sendStoreThreadMessage(payload)),
+  );
+
+  ipcMain.handle("store:cancelThreadTurn", async (event) => {
+    return await withStoreRunner(event, "store:cancelThreadTurn", async (runner) =>
+      await runner.cancelStoreThreadTurn());
+  });
+
+  ipcMain.handle("store:denyLatestBlueprint", async (event) => {
+    return await withStoreRunner(event, "store:denyLatestBlueprint", async (runner) =>
+      await runner.denyLatestStoreBlueprint());
+  });
+
+  ipcMain.handle(
+    "store:markBlueprintPublished",
+    async (event, payload: { messageId: string; releaseNumber: number }) =>
+      await withStoreRunner(event, "store:markBlueprintPublished", async (runner) =>
+        await runner.markStoreBlueprintPublished(payload)),
   );
 
   ipcMain.handle("store:uninstallMod", async (event, payload: { packageId: string }) => {

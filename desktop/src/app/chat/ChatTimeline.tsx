@@ -8,7 +8,7 @@
  *   - `ConversationEvents` (the home chat surface): wraps `useEventRows`
  *     and pipes its result into `<ChatTimeline>`. No behavior change vs.
  *     the previous monolithic implementation.
- *   - The Store thread's `PublishTab`: projects Convex `store_thread_messages`
+ *   - The Store thread's publish surface: projects local Store messages
  *     into `EventRowViewModel`s and mounts the same timeline. Drafts ride
  *     through `assistantRow.customSlot` so they slot in next to the
  *     existing askQuestion / officePreview / selfMod attachments rather

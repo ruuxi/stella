@@ -389,6 +389,7 @@ export const createAgentOrchestration = (
       agentType,
       agentId,
       rootRunId,
+      toolWorkspaceRoot,
       agentContext,
       taskDescription,
       taskPrompt,
@@ -679,6 +680,7 @@ export const createAgentOrchestration = (
           store: context.runtimeStore,
           abortSignal,
           stellaRoot: context.stellaRoot,
+          ...(toolWorkspaceRoot ? { toolWorkspaceRoot } : {}),
           selfModMonitor: context.selfModMonitor,
           onProgress,
           callbacks: {
@@ -925,6 +927,16 @@ export const createAgentOrchestration = (
     return { threadId };
   };
 
+  const cancelLocalAgent = async (
+    agentId: string,
+    reason?: string,
+  ): Promise<{ canceled: boolean }> => {
+    if (!context.state.localAgentManager) {
+      return { canceled: false };
+    }
+    return await context.state.localAgentManager.cancelAgent(agentId, reason);
+  };
+
   const shutdown = () => {
     context.state.localAgentManager?.shutdown();
     shutdownSubagentRuntimes();
@@ -933,6 +945,7 @@ export const createAgentOrchestration = (
   return {
     runBlockingLocalAgent,
     createBackgroundAgent,
+    cancelLocalAgent,
     shutdown,
   };
 };

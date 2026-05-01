@@ -57,6 +57,8 @@ import {
   type StorePackageRecord,
   type StorePackageReleaseRecord,
   type StorePublishArgs,
+  type StoreThreadSendInput,
+  type StoreThreadSnapshot,
   type RuntimeInitializeParams,
 } from "../protocol/index.js";
 import {
@@ -1271,16 +1273,60 @@ export class StellaRuntimeClient {
     );
   }
 
-  async executeStoreAgentTool(payload: {
-    toolName: string;
-    argsJson: string;
-  }) {
-    return await this.requestWorker<{ resultText: string; isError?: boolean }>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_AGENT_EXECUTE_TOOL,
-      payload,
+  async getStoreThread() {
+    return await this.requestWorker<StoreThreadSnapshot>(
+      METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_GET,
+      {},
       {
         ensureWorker: true,
         recordActivity: false,
+      },
+    );
+  }
+
+  async sendStoreThreadMessage(payload: StoreThreadSendInput) {
+    return await this.requestWorker<StoreThreadSnapshot>(
+      METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_SEND_MESSAGE,
+      payload,
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
+  async cancelStoreThreadTurn() {
+    return await this.requestWorker<StoreThreadSnapshot>(
+      METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_CANCEL,
+      {},
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
+  async denyLatestStoreBlueprint() {
+    return await this.requestWorker<StoreThreadSnapshot>(
+      METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_DENY_LATEST_BLUEPRINT,
+      {},
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
+  async markStoreBlueprintPublished(payload: {
+    messageId: string;
+    releaseNumber: number;
+  }) {
+    return await this.requestWorker<StoreThreadSnapshot>(
+      METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_MARK_BLUEPRINT_PUBLISHED,
+      payload,
+      {
+        ensureWorker: true,
+        recordActivity: true,
       },
     );
   }

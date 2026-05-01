@@ -262,6 +262,28 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     ON store_installs(installed_at);
   `);
 
+  // Local Store agent thread. Publishing is backend-validated, but the
+  // conversation and blueprint review loop live locally with the agent.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS store_thread_messages (
+      id TEXT PRIMARY KEY,
+      role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system_event')),
+      text TEXT NOT NULL,
+      is_blueprint INTEGER NOT NULL DEFAULT 0,
+      denied INTEGER NOT NULL DEFAULT 0,
+      published INTEGER NOT NULL DEFAULT 0,
+      published_release_number INTEGER,
+      pending INTEGER NOT NULL DEFAULT 0,
+      attached_feature_names_json TEXT NOT NULL DEFAULT '[]',
+      editing_blueprint INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_store_thread_messages_created
+    ON store_thread_messages(created_at, id);
+  `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS social_session_sync_state (
       session_id TEXT PRIMARY KEY,

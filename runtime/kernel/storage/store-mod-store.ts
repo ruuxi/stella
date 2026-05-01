@@ -1,7 +1,10 @@
+import crypto from "node:crypto";
 import type {
   SelfModFeatureSnapshot,
   SelfModFeatureSnapshotItem,
   StoreInstallRecord,
+  StoreThreadMessage,
+  StoreThreadSnapshot,
 } from "../../contracts/index.js";
 import type { SqliteDatabase } from "./shared.js";
 
@@ -16,6 +19,20 @@ type InstallRow = {
 type SnapshotRow = {
   itemsJson: string;
   generatedAt: number;
+};
+
+type StoreThreadMessageRow = {
+  id: string;
+  role: StoreThreadMessage["role"];
+  text: string;
+  isBlueprint: number;
+  denied: number;
+  published: number;
+  publishedReleaseNumber: number | null;
+  pending: number;
+  attachedFeatureNamesJson: string;
+  editingBlueprint: number;
+  createdAt: number;
 };
 
 const parseSnapshotItems = (raw: string): SelfModFeatureSnapshotItem[] => {
@@ -60,6 +77,20 @@ const parseCommitHashes = (raw: string | null | undefined): string[] => {
 const uniqueCommitHashes = (hashes: string[]): string[] =>
   Array.from(new Set(hashes.map((hash) => hash.trim()).filter(Boolean)));
 
+const parseStringArray = (raw: string | null | undefined): string[] => {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
 const toInstallRecord = (row: InstallRow): StoreInstallRecord => {
   const installCommitHashes = uniqueCommitHashes([
     ...parseCommitHashes(row.installCommitHashesJson),
@@ -76,6 +107,24 @@ const toInstallRecord = (row: InstallRow): StoreInstallRecord => {
     installedAt: row.installedAt,
   };
 };
+
+const toStoreThreadMessage = (
+  row: StoreThreadMessageRow,
+): StoreThreadMessage => ({
+  _id: row.id,
+  role: row.role,
+  text: row.text,
+  ...(row.isBlueprint ? { isBlueprint: true } : {}),
+  ...(row.denied ? { denied: true } : {}),
+  ...(row.published ? { published: true } : {}),
+  ...(typeof row.publishedReleaseNumber === "number"
+    ? { publishedReleaseNumber: row.publishedReleaseNumber }
+    : {}),
+  ...(row.pending ? { pending: true } : {}),
+  ...(row.editingBlueprint ? { editingBlueprint: true } : {}),
+  attachedFeatureNames: parseStringArray(row.attachedFeatureNamesJson),
+  createdAt: row.createdAt,
+});
 
 /**
  * Persists Store install bookkeeping plus the rolling feature snapshot
@@ -204,6 +253,226 @@ export class StoreModStore {
     return {
       items: parseSnapshotItems(row.itemsJson),
       generatedAt: row.generatedAt,
+    };
+  }
+
+  readStoreThread(): StoreThreadSnapshot {
+    return {
+      threadId: "local-store-thread",
+      messages: this.listStoreThreadMessages(),
+    };
+  }
+
+  listStoreThreadMessages(): StoreThreadMessage[] {
+    const rows = this.db
+      .prepare(
+        `
+      SELECT
+        id,
+        role,
+        text,
+        is_blueprint AS isBlueprint,
+        denied,
+        published,
+        published_release_number AS publishedReleaseNumber,
+        pending,
+        attached_feature_names_json AS attachedFeatureNamesJson,
+        editing_blueprint AS editingBlueprint,
+        created_at AS createdAt
+      FROM store_thread_messages
+      ORDER BY created_at ASC, id ASC
+    `,
+      )
+      .all() as StoreThreadMessageRow[];
+    return rows.map(toStoreThreadMessage);
+  }
+
+  appendStoreThreadMessage(args: {
+    id?: string;
+    role: StoreThreadMessage["role"];
+    text: string;
+    isBlueprint?: boolean;
+    pending?: boolean;
+    denied?: boolean;
+    published?: boolean;
+    publishedReleaseNumber?: number;
+    attachedFeatureNames?: string[];
+    editingBlueprint?: boolean;
+    createdAt?: number;
+  }): StoreThreadMessage {
+    const id = args.id ?? `store-msg-${crypto.randomUUID()}`;
+    const createdAt = args.createdAt ?? Date.now();
+    const attachedFeatureNames = (args.attachedFeatureNames ?? [])
+      .map((name) => name.trim())
+      .filter(Boolean);
+    this.db
+      .prepare(
+        `
+      INSERT INTO store_thread_messages (
+        id,
+        role,
+        text,
+        is_blueprint,
+        denied,
+        published,
+        published_release_number,
+        pending,
+        attached_feature_names_json,
+        editing_blueprint,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      )
+      .run(
+        id,
+        args.role,
+        args.text,
+        args.isBlueprint ? 1 : 0,
+        args.denied ? 1 : 0,
+        args.published ? 1 : 0,
+        args.publishedReleaseNumber ?? null,
+        args.pending ? 1 : 0,
+        JSON.stringify(attachedFeatureNames),
+        args.editingBlueprint ? 1 : 0,
+        createdAt,
+      );
+    return {
+      _id: id,
+      role: args.role,
+      text: args.text,
+      ...(args.isBlueprint ? { isBlueprint: true } : {}),
+      ...(args.denied ? { denied: true } : {}),
+      ...(args.published ? { published: true } : {}),
+      ...(typeof args.publishedReleaseNumber === "number"
+        ? { publishedReleaseNumber: args.publishedReleaseNumber }
+        : {}),
+      ...(args.pending ? { pending: true } : {}),
+      ...(args.editingBlueprint ? { editingBlueprint: true } : {}),
+      attachedFeatureNames,
+      createdAt,
+    };
+  }
+
+  patchStoreThreadMessage(
+    id: string,
+    patch: {
+      text?: string;
+      isBlueprint?: boolean;
+      denied?: boolean;
+      published?: boolean;
+      publishedReleaseNumber?: number | null;
+      pending?: boolean;
+    },
+  ): void {
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    if (patch.text !== undefined) {
+      assignments.push("text = ?");
+      values.push(patch.text);
+    }
+    if (patch.isBlueprint !== undefined) {
+      assignments.push("is_blueprint = ?");
+      values.push(patch.isBlueprint ? 1 : 0);
+    }
+    if (patch.denied !== undefined) {
+      assignments.push("denied = ?");
+      values.push(patch.denied ? 1 : 0);
+    }
+    if (patch.published !== undefined) {
+      assignments.push("published = ?");
+      values.push(patch.published ? 1 : 0);
+    }
+    if (patch.publishedReleaseNumber !== undefined) {
+      assignments.push("published_release_number = ?");
+      values.push(patch.publishedReleaseNumber);
+    }
+    if (patch.pending !== undefined) {
+      assignments.push("pending = ?");
+      values.push(patch.pending ? 1 : 0);
+    }
+    if (assignments.length === 0) return;
+    values.push(id);
+    this.db
+      .prepare(
+        `UPDATE store_thread_messages SET ${assignments.join(", ")} WHERE id = ?`,
+      )
+      .run(...values);
+  }
+
+  clearPendingStoreThreadMessages(text: string): void {
+    this.db
+      .prepare(
+        `
+      UPDATE store_thread_messages
+      SET text = ?, pending = 0
+      WHERE pending = 1
+    `,
+      )
+      .run(text);
+  }
+
+  deleteStoreThreadMessages(ids: string[]): void {
+    const uniqueIds = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
+    if (uniqueIds.length === 0) return;
+    const placeholders = uniqueIds.map(() => "?").join(", ");
+    this.db
+      .prepare(`DELETE FROM store_thread_messages WHERE id IN (${placeholders})`)
+      .run(...uniqueIds);
+  }
+
+  findLatestPublishableBlueprint(): StoreThreadMessage | null {
+    const row = this.db
+      .prepare(
+        `
+      SELECT
+        id,
+        role,
+        text,
+        is_blueprint AS isBlueprint,
+        denied,
+        published,
+        published_release_number AS publishedReleaseNumber,
+        pending,
+        attached_feature_names_json AS attachedFeatureNamesJson,
+        editing_blueprint AS editingBlueprint,
+        created_at AS createdAt
+      FROM store_thread_messages
+      WHERE role = 'assistant'
+        AND is_blueprint = 1
+        AND denied = 0
+        AND published = 0
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `,
+      )
+      .get() as StoreThreadMessageRow | undefined;
+    return row ? toStoreThreadMessage(row) : null;
+  }
+
+  denyLatestPublishableBlueprint(): StoreThreadMessage | null {
+    const latest = this.findLatestPublishableBlueprint();
+    if (!latest) return null;
+    this.patchStoreThreadMessage(latest._id, { denied: true });
+    return { ...latest, denied: true };
+  }
+
+  markLatestPublishableBlueprintPublished(args: {
+    messageId: string;
+    releaseNumber: number;
+  }): StoreThreadMessage {
+    const latest = this.findLatestPublishableBlueprint();
+    if (!latest || latest._id !== args.messageId) {
+      throw new Error("Only the latest publishable blueprint can be marked published.");
+    }
+    this.patchStoreThreadMessage(args.messageId, {
+      published: true,
+      publishedReleaseNumber: args.releaseNumber,
+    });
+    return {
+      ...latest,
+      published: true,
+      publishedReleaseNumber: args.releaseNumber,
     };
   }
 }

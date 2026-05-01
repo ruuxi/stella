@@ -34,6 +34,8 @@ import type {
   StorePackageRecord as SharedStorePackageRecord,
   StorePackageReleaseRecord as SharedStorePackageReleaseRecord,
   StoreInstallRecord as SharedStoreInstallRecord,
+  StoreThreadMessage as SharedStoreThreadMessage,
+  StoreThreadSnapshot as SharedStoreThreadSnapshot,
   SelfModFeatureSnapshot as SharedSelfModFeatureSnapshot,
   SelfModHmrPhase as SharedSelfModHmrPhase,
   SelfModHmrState as SharedSelfModHmrState,
@@ -93,6 +95,8 @@ export type StoreReleaseManifest = SharedStoreReleaseManifest;
 export type StorePackageRecord = SharedStorePackageRecord;
 export type StorePackageReleaseRecord = SharedStorePackageReleaseRecord;
 export type StoreInstallRecord = SharedStoreInstallRecord;
+export type StoreThreadMessage = SharedStoreThreadMessage;
+export type StoreThreadSnapshot = SharedStoreThreadSnapshot;
 export type SelfModFeatureSnapshot = SharedSelfModFeatureSnapshot;
 export type SelfModHmrPhase = SharedSelfModHmrPhase;
 export type SelfModHmrState = SharedSelfModHmrState;
@@ -807,10 +811,18 @@ export type ElectronStoreApi = {
     displayName: string;
     blueprintMarkdown: string;
   }) => Promise<StoreInstallRecord>;
-  executeAgentTool: (payload: {
-    toolName: string;
-    argsJson: string;
-  }) => Promise<{ resultText: string; isError?: boolean }>;
+  getThread: () => Promise<StoreThreadSnapshot>;
+  sendThreadMessage: (payload: {
+    text: string;
+    attachedFeatureNames?: string[];
+    editingBlueprint?: boolean;
+  }) => Promise<StoreThreadSnapshot>;
+  cancelThreadTurn: () => Promise<StoreThreadSnapshot>;
+  denyLatestBlueprint: () => Promise<StoreThreadSnapshot>;
+  markBlueprintPublished: (payload: {
+    messageId: string;
+    releaseNumber: number;
+  }) => Promise<StoreThreadSnapshot>;
   uninstallPackage: (packageId: string) => Promise<{
     packageId: string;
     revertedCommits: string[];

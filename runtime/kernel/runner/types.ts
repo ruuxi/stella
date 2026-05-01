@@ -388,6 +388,10 @@ export type RunnerPublicApi = {
   ) => Promise<{ threadId: string }>;
   getActiveAgentCount: () => number;
   getLocalAgentSnapshot: (agentId: string) => Promise<AgentToolSnapshot | null>;
+  cancelLocalAgent: (
+    agentId: string,
+    reason?: string,
+  ) => Promise<{ canceled: boolean }>;
   cancelLocalChat: (runId: string) => void;
   getActiveOrchestratorRun: () => RuntimeActiveRun | null;
   appendThreadMessage: (args: {

@@ -3,6 +3,7 @@ export const AGENT_IDS = {
   GENERAL: "general",
   FASHION: "fashion",
   OFFLINE_RESPONDER: "offline_responder",
+  INSTALL_UPDATE: "install_update",
 } as const;
 
 export type AgentType = (typeof AGENT_IDS)[keyof typeof AGENT_IDS];

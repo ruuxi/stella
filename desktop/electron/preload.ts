@@ -1214,8 +1214,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
       displayName: string;
       blueprintMarkdown: string;
     }) => ipcRenderer.invoke("store:installFromBlueprint", payload),
-    executeAgentTool: (payload: { toolName: string; argsJson: string }) =>
-      ipcRenderer.invoke("store:executeAgentTool", payload),
+    getThread: () => ipcRenderer.invoke("store:getThread"),
+    sendThreadMessage: (payload: {
+      text: string;
+      attachedFeatureNames?: string[];
+      editingBlueprint?: boolean;
+    }) => ipcRenderer.invoke("store:sendThreadMessage", payload),
+    cancelThreadTurn: () => ipcRenderer.invoke("store:cancelThreadTurn"),
+    denyLatestBlueprint: () => ipcRenderer.invoke("store:denyLatestBlueprint"),
+    markBlueprintPublished: (payload: {
+      messageId: string;
+      releaseNumber: number;
+    }) => ipcRenderer.invoke("store:markBlueprintPublished", payload),
     uninstallPackage: (packageId: string) =>
       ipcRenderer.invoke("store:uninstallMod", { packageId }),
     listConnectors: () => ipcRenderer.invoke("store:listConnectors"),
