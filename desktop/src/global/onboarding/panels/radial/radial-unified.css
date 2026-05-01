@@ -257,15 +257,20 @@
 
 .radial-result-voice__bars span {
   width: 2.5px;
+  height: 16px;
   border-radius: 1px;
   background: var(--page-accent);
   opacity: 0.5;
+  /* Animate `transform: scaleY` instead of `height` so the waveform runs
+   * on the compositor instead of forcing layout reflow per frame. */
+  transform-origin: center;
+  transform: scaleY(0.25);
   animation: voiceBar 0.8s ease-in-out infinite alternate;
 }
 
 @keyframes voiceBar {
-  0% { height: 4px; }
-  100% { height: 16px; }
+  0% { transform: scaleY(0.25); }
+  100% { transform: scaleY(1); }
 }
 
 .radial-result-minishell--voice {
@@ -739,26 +744,6 @@
     opacity: 1;
     filter: blur(0);
   }
-}
-
-/* Legacy inline keychord styles kept only for backward compatibility
- * with any non-onboarding caller. The onboarding flow now uses the
- * shared `.onboarding-keychord` component. */
-.radial-trigger-kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 24px;
-  padding: 0 7px;
-  border-radius: 6px;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
-  border-bottom-width: 2px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--foreground);
 }
 
 /* Hero-scale dial. The inner SVG has a fixed 248px viewBox-bound

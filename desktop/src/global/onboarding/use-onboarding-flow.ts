@@ -76,12 +76,9 @@ export function useOnboardingFlow({
     };
 
     updatePreference();
-    mediaQuery.addEventListener?.("change", updatePreference);
-    mediaQuery.addListener?.(updatePreference);
-
+    mediaQuery.addEventListener("change", updatePreference);
     return () => {
-      mediaQuery.removeEventListener?.("change", updatePreference);
-      mediaQuery.removeListener?.(updatePreference);
+      mediaQuery.removeEventListener("change", updatePreference);
     };
   }, []);
 

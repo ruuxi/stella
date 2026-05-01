@@ -359,11 +359,14 @@
   padding: 8px 10px;
   border-radius: 18px;
   border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
-  background: color-mix(in oklch, var(--background) 88%, white 6%);
+  /* Near-opaque background instead of `backdrop-filter: blur(12px)` —
+   * the static Mail mock underneath doesn't need a live blur, and the
+   * waveform inside animates infinitely so the per-frame backdrop
+   * resample was strictly wasted. */
+  background: color-mix(in oklch, var(--background) 96%, white 4%);
   box-shadow:
     0 18px 48px rgba(0, 0, 0, 0.18),
     0 2px 10px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(12px);
 }
 
 .onboarding-voice-waveform {

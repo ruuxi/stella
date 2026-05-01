@@ -62,9 +62,18 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const morphingRef = useRef(false);
 
+  // Reset morph state if the demo unmounts mid-morph. Only emits when
+  // a morph was actually in flight, so we don't spuriously trigger
+  // expensive parent-side `pauseAnimations()`/`unpauseAnimations()`
+  // calls on every demo prop change.
   useEffect(() => {
-    onMorphingChange?.(false);
-  }, [activeDemo, onMorphingChange]);
+    return () => {
+      if (morphingRef.current) {
+        morphingRef.current = false;
+        onMorphingChange?.(false);
+      }
+    };
+  }, [onMorphingChange]);
 
   const handleToggleSection = useCallback(
     (section: SectionKey) => {

@@ -73,33 +73,22 @@
   padding: clamp(12px, 1.5vw, 20px);
   opacity: 0;
   transform: scale(0.985);
-  /* Single layer-level blur for the crossfade. We deliberately avoid
-   * stacking blur on the children (chat bubbles, app cards, etc.) — a
-   * blurred parent already softens its descendants, and per-element
-   * filter animations multiply the GPU's per-frame work.
-   *
-   * Perf: dropped the blur radius from 6px to 3px. Large-area filter
-   * animations are dominated by radius-squared GPU cost, so halving the
-   * radius is roughly a 4x reduction in per-frame work for the crossfade
-   * — and at this scale the visual softness is still convincing. */
-  filter: blur(3px);
+  /* Compositor-only crossfade. We dropped the parent `filter: blur()` —
+   * the resulting reveal still reads as soft because the inner cards
+   * themselves carry their own opacity/transform staggers, and the GPU
+   * no longer pays the radius²-area filter cost for the lifetime of
+   * every scene. */
   transition:
     opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
   overflow: hidden;
-  /* will-change is left on permanently because this element only exists
-   * while a scene is on stage (React unmounts on sceneKey change), so
-   * it is effectively scoped to the transition window already. */
-  will-change: opacity, transform, filter;
   backface-visibility: hidden;
 }
 
 .onboarding-cap-scene[data-active] {
   opacity: 1;
   transform: scale(1);
-  filter: blur(0);
 }
 
 /* ── Title (above stage) + Caption body (below stage) ─────────────── *
@@ -254,16 +243,33 @@
   opacity: 1 !important;
   border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  position: relative;
+}
+
+/* Compositor-friendly halo — `transform: scale + opacity` instead of an
+ * animated `box-shadow` ring, so the pulse runs on the GPU compositor
+ * rather than forcing per-frame paint. */
+.onboarding-cap-continue[data-emphasized]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  opacity: 0;
+  transform: scale(1);
   animation: capContinuePulse 2.2s ease-in-out 0.2s 1;
 }
 
 @keyframes capContinuePulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in oklch, var(--foreground) 0%, transparent);
+    opacity: 0;
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 6px color-mix(in oklch, var(--foreground) 8%, transparent);
+    opacity: 1;
+    transform: scale(1.08);
   }
 }
 
@@ -877,30 +883,41 @@
   display: inline-block;
   width: clamp(40px, 8vw, 80px);
   height: 2px;
+  overflow: hidden;
+  background: color-mix(in oklch, oklch(0.62 0.18 235) 12%, transparent);
+}
+
+/* Compositor-friendly flow: a streak slides via `transform: translateX`
+ * inside the parent's `overflow: hidden` clip instead of animating
+ * `background-position` (which forces paint of the whole element every
+ * frame). Scoped to the active scene so the loop doesn't keep ticking
+ * after the scene cross-fades out. */
+.onboarding-cap-bridge__line::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in oklch, oklch(0.62 0.18 235) 60%, transparent),
+    color-mix(in oklch, oklch(0.62 0.18 235) 80%, transparent),
     transparent
   );
-  background-size: 200% 100%;
+  transform: translateX(-100%);
 }
 
-/* Infinite animations are scoped to the active scene so they don't burn
- * GPU cycles after a scene cross-fades out. The runtime only renders the
- * active scene today, but scoping defensively here means a future change
- * that stacks scenes (or a stale [data-active] removal) won't silently
- * leave loops ticking off-stage. */
-.onboarding-cap-scene[data-active] .onboarding-cap-bridge__line {
+.onboarding-cap-scene[data-active] .onboarding-cap-bridge__line::after {
   animation: capBridgeFlow 1.6s linear infinite;
 }
 
 @keyframes capBridgeFlow {
   from {
-    background-position: 0% 0%;
+    transform: translateX(-100%);
   }
   to {
-    background-position: -200% 0%;
+    transform: translateX(300%);
   }
 }
 
@@ -1295,10 +1312,6 @@
   }
 }
 
-.onboarding-cap-mode[data-visible] {
-  /* placeholder — animation already runs on enter */
-}
-
 .onboarding-cap-mode__label {
   display: inline-flex;
   align-items: center;
@@ -1593,18 +1606,32 @@
   background: oklch(0.62 0.18 235);
   border-color: oklch(0.62 0.18 235);
   color: white;
-  animation:
-    capCardIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards,
-    capStellaClick 0.6s ease-out 1.7s 1;
+  animation: capCardIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Compositor-only click halo: a sized pseudo-element scales out and fades
+ * via opacity instead of animating box-shadow on the chip itself. */
+.onboarding-cap-actions__time[data-stella-click]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: oklch(0.62 0.18 235 / 0.18);
+  opacity: 0;
+  transform: scale(1);
+  animation: capStellaClick 0.6s ease-out 1.7s 1;
 }
 
 @keyframes capStellaClick {
   0%,
   100% {
-    box-shadow: 0 0 0 0 oklch(0.62 0.18 235 / 0);
+    opacity: 0;
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 8px oklch(0.62 0.18 235 / 0.18);
+    opacity: 1;
+    transform: scale(1.4);
   }
 }
 
@@ -1629,12 +1656,13 @@
   height: 14px;
   border-radius: 50% 50% 50% 0;
   background: oklch(0.62 0.18 235);
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+  /* Plain box-shadow instead of `filter: drop-shadow()` so the cursor
+   * doesn't sit on its own filter layer for the entire scene. */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   top: 65%;
   left: 25%;
   opacity: 0;
   transform: translate3d(0, 0, 0) rotate(-45deg);
-  will-change: transform, opacity;
 }
 
 .onboarding-cap-actions__cursor[data-visible] {

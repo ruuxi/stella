@@ -70,9 +70,15 @@ export function useOnboardingDiscovery({
   );
 
   useEffect(() => {
+    // Only signal selection state while we're actually on the browser
+    // phase. Previously this fired on every category-toggle change (and
+    // on every mount) regardless of phase, which spammed the parent's
+    // `setHasDiscoverySelections` setter and caused the overlay tree to
+    // re-render through `useOnboardingOverlay` for unrelated phases.
+    if (phase !== "browser") return;
     const hasAny =
       Object.values(categoryStates).some((value) => value) || browserEnabled;
-    onSelectionChange?.(phase === "browser" && hasAny);
+    onSelectionChange?.(hasAny);
   }, [browserEnabled, categoryStates, onSelectionChange, phase]);
 
   useEffect(() => {

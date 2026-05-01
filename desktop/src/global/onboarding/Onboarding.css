@@ -109,12 +109,10 @@
     opacity: 0;
     transform: translate3d(0, var(--onboarding-reveal-translate), 0)
       scale(0.988);
-    filter: blur(var(--onboarding-reveal-blur));
   }
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
   }
 }
 
@@ -426,16 +424,12 @@
   overflow-y: auto;
   scrollbar-gutter: stable both-edges;
   opacity: 1;
-  /* Promote during reveal (filter-blur is in the keyframe) so the GPU
-   * doesn't re-rasterize the entire pane each frame. */
-  will-change: opacity, filter;
   backface-visibility: hidden;
   animation: splitPaneFadeIn var(--onboarding-duration-enter)
     var(--onboarding-ease-standard) both;
   transition:
     opacity var(--onboarding-duration-fade) ease-out,
-    background-color var(--onboarding-duration-fade) ease,
-    backdrop-filter var(--onboarding-duration-fade) ease;
+    background-color var(--onboarding-duration-fade) ease;
 }
 
 .onboarding-dialogue[data-phase="permissions"] .onboarding-split-right,
@@ -447,17 +441,15 @@
 
 /* The split-right pane has its own `translateX(...)` positioning per
  * phase, so we can't put a translate/scale into this keyframe — it
- * would fight the positioning rule. We resolve the disclosure through
- * opacity + filter blur only, and let inner children carry their own
- * translate via the standard reveal cascade if needed. */
+ * would fight the positioning rule. Disclosure is opacity-only so the
+ * compositor doesn't have to re-rasterize a 50%-of-viewport filter
+ * pipeline every frame; inner children carry their own reveal cascade. */
 @keyframes splitPaneFadeIn {
   from {
     opacity: 0;
-    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
     opacity: 1;
-    filter: blur(0);
   }
 }
 
@@ -581,7 +573,6 @@
   flex-shrink: 0;
   animation: splitStageIn var(--onboarding-duration-enter)
     var(--onboarding-ease-standard) both;
-  will-change: opacity, transform, filter;
   backface-visibility: hidden;
 }
 
@@ -590,12 +581,10 @@
     opacity: 0;
     transform: translate3d(0, var(--onboarding-reveal-translate), 0)
       scale(0.988);
-    filter: blur(var(--onboarding-reveal-blur));
   }
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
   }
 }
 
@@ -776,11 +765,9 @@
   from {
     opacity: 0;
     transform: translate3d(0, var(--onboarding-reveal-text-translate), 0);
-    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
     transform: translate3d(0, 0, 0);
-    filter: blur(0);
   }
 }
 
@@ -1193,11 +1180,9 @@
   from {
     opacity: 0;
     transform: translate3d(0, var(--onboarding-reveal-text-translate), 0);
-    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
     transform: translate3d(0, 0, 0);
-    filter: blur(0);
   }
 }
 
@@ -1776,11 +1761,12 @@
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   border-radius: 8px;
   overflow: hidden;
-  background: color-mix(in oklch, var(--background) 70%, transparent);
-  backdrop-filter: blur(12px);
+  /* Decorative side-column windows sit behind the dialogue copy and don't need
+   * to show through. A flat near-opaque background avoids the per-frame
+   * backdrop-sample cost of `backdrop-filter: blur(12px)` × ~6 windows. */
+  background: color-mix(in oklch, var(--background) 92%, transparent);
   animation: mockWindowIn var(--onboarding-duration-enter)
     var(--onboarding-ease-standard) both;
-  will-change: opacity, transform;
   backface-visibility: hidden;
   flex-shrink: 0;
 }
@@ -1999,6 +1985,7 @@
 
 /* Active indicator dot */
 .onboarding-showcase-card-indicator {
+  position: relative;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -2011,10 +1998,27 @@
     transform 0.2s ease;
 }
 
+/* Compositor-friendly halo: a same-sized ring scales out + fades. Cheaper
+ * than animating `box-shadow` because transform/opacity stay on the GPU
+ * compositor instead of forcing paint each frame. */
+.onboarding-showcase-card-indicator::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--showcase-accent) 30%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
 .onboarding-showcase-card[data-active="true"]
   .onboarding-showcase-card-indicator {
   opacity: 1;
   transform: scale(1);
+}
+
+.onboarding-showcase-card[data-active="true"]
+  .onboarding-showcase-card-indicator::after {
   animation: showcaseDotPulse 2s ease-in-out 5;
 }
 
@@ -2080,45 +2084,50 @@
   animation-delay: calc(var(--onboarding-stagger-step) * 5);
 }
 
-/* First card attention pulse */
-.onboarding-showcase-card:first-child {
-  animation:
-    showcaseCardIn 0.45s ease-out forwards,
-    showcaseAttention 2.5s ease-in-out 0.8s 2;
+/* First card attention pulse — opacity-only on a pseudo-element so the
+ * pulse runs on the compositor instead of forcing paint via border-color. */
+.onboarding-showcase-card:first-child::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 10px;
+  border: 1px solid
+    color-mix(in oklch, var(--showcase-accent) 40%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  animation: showcaseAttention 2.5s ease-in-out 0.8s 2;
 }
 
 @keyframes showcaseCardIn {
   from {
     opacity: 0;
     transform: translate3d(0, var(--onboarding-reveal-text-translate), 0);
-    filter: blur(var(--onboarding-reveal-text-blur));
   }
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0);
-    filter: blur(0);
   }
 }
 
 @keyframes showcaseAttention {
   0%,
   100% {
-    border-color: color-mix(in oklch, var(--foreground) 8%, transparent);
+    opacity: 0;
   }
   50% {
-    border-color: color-mix(in oklch, var(--showcase-accent) 40%, transparent);
+    opacity: 1;
   }
 }
 
 @keyframes showcaseDotPulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0
-      color-mix(in oklch, var(--showcase-accent) 30%, transparent);
+    transform: scale(1);
+    opacity: 0.6;
   }
   50% {
-    box-shadow: 0 0 0 5px
-      color-mix(in oklch, var(--showcase-accent) 0%, transparent);
+    transform: scale(2.6);
+    opacity: 0;
   }
 }
 
@@ -2300,8 +2309,7 @@
   text-align: center;
   padding: 24px;
   pointer-events: none;
-  background: color-mix(in oklch, var(--background) 80%, transparent);
-  backdrop-filter: blur(8px);
+  background: color-mix(in oklch, var(--background) 92%, transparent);
   border-radius: 20px;
 }
 
@@ -2314,14 +2322,17 @@
   display: none;
 }
 
-/* Pulsing border on the surface to draw attention */
+/* Pulsing border on the surface — we set the highlight border once and
+ * animate `opacity` so the pulse runs on the compositor instead of
+ * forcing per-frame paint via `border-color`. */
 .onboarding-shortcut-surface::after {
   content: "";
   position: absolute;
   inset: -1px;
   border-radius: 21px;
-  border: 2px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 2px solid color-mix(in oklch, var(--foreground) 28%, transparent);
   pointer-events: none;
+  opacity: 0;
   animation: surfacePulse 2s ease-in-out 0.6s 5;
   z-index: 1;
 }
@@ -2334,23 +2345,13 @@
   transition: opacity 0.3s ease;
 }
 
-@keyframes hintPulse {
-  0%,
-  100% {
-    opacity: 0.8;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
 @keyframes surfacePulse {
   0%,
   100% {
-    border-color: color-mix(in oklch, var(--foreground) 12%, transparent);
+    opacity: 0;
   }
   50% {
-    border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+    opacity: 1;
   }
 }
 
@@ -2524,14 +2525,16 @@
   width: 44%;
   display: flex;
   flex-direction: column;
-  background: color-mix(in oklch, var(--background) 96%, white 4%);
+  /* Near-opaque background instead of `backdrop-filter: blur(12px)` so the
+   * 320ms slide-in doesn't force the compositor to re-sample the backdrop
+   * for every frame of the translate. */
+  background: color-mix(in oklch, var(--background) 98%, white 2%);
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   border-radius: 16px;
   box-shadow:
     0 1px 0 color-mix(in oklch, white 60%, transparent) inset,
     -8px 0 24px color-mix(in oklch, black 14%, transparent),
     0 18px 32px color-mix(in oklch, black 12%, transparent);
-  backdrop-filter: blur(12px);
   animation: sidebarSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
   z-index: 4;
   overflow: hidden;

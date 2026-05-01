@@ -61,10 +61,14 @@ export function useOnboardingAppearance({
     [isAuthenticated, saveExpressionStyle],
   );
 
+  // Side-effects belong outside the state updater (which React may invoke
+  // twice in StrictMode / dev). Read the current snapshot, derive the
+  // next value, persist, then commit — so localStorage is written exactly
+  // once per toggle.
   const toggleEyes = useCallback(() => {
     setVisualPrefs((current) => {
       const next = { ...current, showEyes: !current.showEyes };
-      writeVisualPrefs(next);
+      queueMicrotask(() => writeVisualPrefs(next));
       return next;
     });
   }, []);
@@ -72,7 +76,7 @@ export function useOnboardingAppearance({
   const toggleMouth = useCallback(() => {
     setVisualPrefs((current) => {
       const next = { ...current, showMouth: !current.showMouth };
-      writeVisualPrefs(next);
+      queueMicrotask(() => writeVisualPrefs(next));
       return next;
     });
   }, []);
