@@ -13,6 +13,8 @@ import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
+  StoreThreadSendInput,
+  StoreThreadSnapshot,
 } from "../contracts/index.js";
 import type {
   AgentRunFinishOutcome,
@@ -33,6 +35,8 @@ export type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
+  StoreThreadSendInput,
+  StoreThreadSnapshot,
 };
 
 export const STELLA_RUNTIME_PROTOCOL_VERSION = "v1";
@@ -116,6 +120,11 @@ export const METHOD_NAMES = {
   STORE_CREATE_FIRST_RELEASE: "store.createFirstRelease",
   STORE_CREATE_RELEASE_UPDATE: "store.createReleaseUpdate",
   STORE_INSTALL_FROM_BLUEPRINT: "store.installFromBlueprint",
+  STORE_THREAD_GET: "store.thread.get",
+  STORE_THREAD_SEND_MESSAGE: "store.thread.sendMessage",
+  STORE_THREAD_CANCEL: "store.thread.cancel",
+  STORE_THREAD_DENY_LATEST_BLUEPRINT: "store.thread.denyLatestBlueprint",
+  STORE_THREAD_MARK_BLUEPRINT_PUBLISHED: "store.thread.markBlueprintPublished",
   STORE_UNINSTALL_MOD: "store.uninstallMod",
   SELF_MOD_FEATURE_SNAPSHOT_READ: "selfMod.featureSnapshot.read",
   SCHEDULE_LIST_CRON_JOBS: "schedule.listCronJobs",
@@ -181,11 +190,17 @@ export const METHOD_NAMES = {
     "internal.worker.createStoreReleaseUpdate",
   INTERNAL_WORKER_INSTALL_FROM_BLUEPRINT:
     "internal.worker.installFromBlueprint",
+  INTERNAL_WORKER_STORE_THREAD_GET: "internal.worker.storeThread.get",
+  INTERNAL_WORKER_STORE_THREAD_SEND_MESSAGE:
+    "internal.worker.storeThread.sendMessage",
+  INTERNAL_WORKER_STORE_THREAD_CANCEL: "internal.worker.storeThread.cancel",
+  INTERNAL_WORKER_STORE_THREAD_DENY_LATEST_BLUEPRINT:
+    "internal.worker.storeThread.denyLatestBlueprint",
+  INTERNAL_WORKER_STORE_THREAD_MARK_BLUEPRINT_PUBLISHED:
+    "internal.worker.storeThread.markBlueprintPublished",
   INTERNAL_WORKER_UNINSTALL_STORE_MOD: "internal.worker.uninstallStoreMod",
   INTERNAL_WORKER_FEATURE_SNAPSHOT_READ:
     "internal.worker.selfMod.featureSnapshotRead",
-  INTERNAL_WORKER_STORE_AGENT_EXECUTE_TOOL:
-    "internal.worker.storeAgent.executeTool",
   INTERNAL_WORKER_RESUME_HMR: "internal.worker.resumeHmr",
   INTERNAL_WORKER_KILL_ALL_SHELLS: "internal.worker.killAllShells",
   INTERNAL_WORKER_KILL_SHELL_BY_PORT: "internal.worker.killShellByPort",
@@ -627,6 +642,16 @@ export type RuntimeStoreApi = {
   createReleaseUpdate: (
     args: StorePublishArgs,
   ) => Promise<StorePackageReleaseRecord>;
+  getStoreThread: () => Promise<StoreThreadSnapshot>;
+  sendStoreThreadMessage: (
+    input: StoreThreadSendInput,
+  ) => Promise<StoreThreadSnapshot>;
+  cancelStoreThreadTurn: () => Promise<StoreThreadSnapshot>;
+  denyLatestStoreBlueprint: () => Promise<StoreThreadSnapshot>;
+  markStoreBlueprintPublished: (args: {
+    messageId: string;
+    releaseNumber: number;
+  }) => Promise<StoreThreadSnapshot>;
 };
 
 export type RuntimeStoreModApi = {

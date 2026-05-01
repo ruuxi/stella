@@ -230,8 +230,8 @@ export type SelfModFeatureSummary = {
 /**
  * One entry in the rolling-window feature snapshot the Store side panel
  * renders. `name` is a normie-friendly 3-7 word phrase the namer LLM
- * produced; `commitHashes` is the LLM's grouping decision, kept for
- * display affordances only — the Store agent never sees hashes.
+ * produced; `commitHashes` is the LLM's grouping decision used by the
+ * Store agent to load selected commit context.
  */
 export type SelfModFeatureSnapshotItem = {
   name: string;
@@ -318,6 +318,31 @@ export type StoreInstallRecord = {
   installCommitHash: string | null;
   installCommitHashes: string[];
   installedAt: number;
+};
+
+export type StoreThreadMessage = {
+  _id: string;
+  role: "user" | "assistant" | "system_event";
+  text: string;
+  isBlueprint?: boolean;
+  denied?: boolean;
+  published?: boolean;
+  publishedReleaseNumber?: number;
+  pending?: boolean;
+  attachedFeatureNames?: string[];
+  editingBlueprint?: boolean;
+  createdAt: number;
+};
+
+export type StoreThreadSnapshot = {
+  threadId: string;
+  messages: StoreThreadMessage[];
+};
+
+export type StoreThreadSendInput = {
+  text: string;
+  attachedFeatureNames?: string[];
+  editingBlueprint?: boolean;
 };
 
 export type SelfModHmrPhase =

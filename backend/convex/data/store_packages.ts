@@ -35,7 +35,7 @@ type StorePublishResult = Infer<typeof store_publish_result_validator>;
 
 const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/;
 const MAX_RELEASE_NOTES_LENGTH = 4_000;
-const MAX_BLUEPRINT_LENGTH = 200_000;
+const MAX_BLUEPRINT_LENGTH = 750_000;
 const MAX_DISPLAY_NAME = 120;
 const MAX_DESCRIPTION = 4_000;
 const MAX_SUMMARY = 500;
@@ -216,7 +216,7 @@ const getReleaseByPackageIdAndNumber = async (
     .unique();
 };
 
-// ── internal queries (used by store_thread + install paths) ──────────────────
+// ── internal queries (used by runtime Store operations) ──────────────────────
 
 export const listPackagesForOwnerInternal = internalQuery({
   args: { ownerId: v.string() },

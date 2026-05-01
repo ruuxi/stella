@@ -832,8 +832,31 @@ export class RuntimeClientAdapter {
     return this.client.installFromBlueprint(payload);
   }
 
-  executeStoreAgentTool(payload: { toolName: string; argsJson: string }) {
-    return this.client.executeStoreAgentTool(payload);
+  getStoreThread() {
+    return this.client.getStoreThread();
+  }
+
+  sendStoreThreadMessage(payload: {
+    text: string;
+    attachedFeatureNames?: string[];
+    editingBlueprint?: boolean;
+  }) {
+    return this.client.sendStoreThreadMessage(payload);
+  }
+
+  cancelStoreThreadTurn() {
+    return this.client.cancelStoreThreadTurn();
+  }
+
+  denyLatestStoreBlueprint() {
+    return this.client.denyLatestStoreBlueprint();
+  }
+
+  markStoreBlueprintPublished(payload: {
+    messageId: string;
+    releaseNumber: number;
+  }) {
+    return this.client.markStoreBlueprintPublished(payload);
   }
 
   listCronJobs() {

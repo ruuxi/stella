@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { existsSync, promises as fs } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { JsonRpcPeer } from "../protocol/rpc-peer.js";
@@ -12,6 +12,7 @@ import {
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
   type StorePublishArgs,
+  type StoreThreadSendInput,
   type RuntimeLocalAgentRequest,
 } from "../protocol/index.js";
 import {
@@ -38,12 +39,9 @@ import {
   detectSelfModAppliedSince,
   getLastGitFeatureId,
   getGitHead,
-  listRecentGitCommits,
   listRecentGitFeatures,
 } from "../kernel/self-mod/git.js";
 import { exec as gitExec } from "dugite";
-import { execFile as nodeExecFile } from "node:child_process";
-import { promisify as nodePromisify } from "node:util";
 import {
   createSelfModHmrController,
   type ApplyOptions,
@@ -143,6 +141,8 @@ type WorkerState = {
   runner: RuntimeRunner | null;
   deviceId: string | null;
   selfModHmrController: SelfModHmrController | null;
+  activeStoreThreadAgentId: string | null;
+  activeStoreThreadMessageId: string | null;
 };
 
 /**
@@ -172,275 +172,188 @@ const resolveRuntimeCliPath = (fileName: string) =>
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
-// ── Store-agent host tool executor ───────────────────────────────────────────
-//
-// The Convex-side Store agent emits read-only tool calls (git/file
-// inspection + ask_question). The renderer subscribes to the pending
-// queue and forwards each call here. All execution is read-only or
-// non-destructive — there is no exec_command, no apply_patch, no
-// write surface.
+const STORE_THREAD_CONVERSATION_ID = "store-agent-local";
+const STORE_THREAD_MAX_USER_TEXT = 8_000;
+const STORE_THREAD_MAX_SELECTED_COMMITS = 12;
+const STORE_THREAD_SELECTED_CHANGES_LIMIT = 120_000;
+const STORE_THREAD_SELECTED_COMMIT_LIMIT = 40_000;
 
-const STORE_TOOL_FILE_READ_LIMIT = 50_000;
-const STORE_TOOL_GIT_LOG_DEFAULT = 20;
-const STORE_TOOL_GIT_LOG_MAX = 100;
-const STORE_TOOL_LIST_FILES_LIMIT = 200;
-const STORE_TOOL_GREP_MAX_LINES = 200;
-const STORE_TOOL_OUTPUT_BYTE_LIMIT = 30_000;
-
-const promisifiedExecFile = nodePromisify(nodeExecFile);
-
-const truncateForToolOutput = (raw: string): string => {
-  if (raw.length <= STORE_TOOL_OUTPUT_BYTE_LIMIT) return raw;
-  return `${raw.slice(0, STORE_TOOL_OUTPUT_BYTE_LIMIT)}\n... [output truncated]`;
-};
-
-const safeRepoRelativePath = (
-  repoRoot: string,
-  rawPath: string,
-): string | null => {
-  const normalized = path
-    .normalize(rawPath.trim())
-    .replace(/\\/g, "/")
-    .replace(/^\/+/, "");
-  if (!normalized || normalized.startsWith("..")) return null;
-  const resolved = path.resolve(repoRoot, normalized);
-  const repoResolved = path.resolve(repoRoot);
-  if (
-    resolved !== repoResolved &&
-    !resolved.startsWith(`${repoResolved}${path.sep}`)
-  ) {
-    return null;
+const normalizeStoreThreadText = (value: unknown): string => {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) {
+    throw new Error("Message text is required.");
   }
-  return resolved;
+  if (text.length > STORE_THREAD_MAX_USER_TEXT) {
+    throw new Error("Message is too long.");
+  }
+  return text;
 };
 
-const runGitText = async (
+const normalizeStoreThreadFeatureNames = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .slice(0, 12)
+    : [];
+
+const extractBlueprintMarkdown = (
+  finalText: string,
+): { blueprintMarkdown: string | null; visibleText: string } => {
+  const match = finalText.match(/<blueprint>\s*([\s\S]*?)\s*<\/blueprint>/i);
+  if (!match) {
+    return { blueprintMarkdown: null, visibleText: finalText.trim() };
+  }
+  const blueprintMarkdown = (match[1] ?? "").trim();
+  const visibleText = finalText
+    .replace(match[0], "")
+    .replace(/<message>\s*([\s\S]*?)\s*<\/message>/i, "$1")
+    .trim();
+  return {
+    blueprintMarkdown: blueprintMarkdown || null,
+    visibleText,
+  };
+};
+
+const truncateStoreThreadContext = (value: string, limit: number): string =>
+  value.length <= limit
+    ? value
+    : `${value.slice(0, limit)}\n... [truncated]`;
+
+const runStoreThreadGitShow = async (
   repoRoot: string,
-  args: string[],
+  commitHash: string,
 ): Promise<string> => {
-  const result = await gitExec(args, repoRoot, {
-    encoding: "utf8",
-    maxBuffer: 10 * 1024 * 1024,
-  });
+  if (!/^[0-9a-f]{7,40}$/i.test(commitHash)) {
+    return `Invalid commit hash: ${commitHash}`;
+  }
+  const result = await gitExec(
+    ["show", "--stat", "--patch", "--find-renames", "--no-color", commitHash],
+    repoRoot,
+    {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+    },
+  );
+  const stdout =
+    typeof result.stdout === "string"
+      ? result.stdout
+      : Buffer.from(result.stdout).toString("utf8");
+  const stderr =
+    typeof result.stderr === "string"
+      ? result.stderr
+      : Buffer.from(result.stderr).toString("utf8");
   if (result.exitCode !== 0) {
-    const stderr =
-      typeof result.stderr === "string"
-        ? result.stderr
-        : Buffer.from(result.stderr).toString("utf8");
-    throw new Error(stderr.trim() || `git exited ${result.exitCode}`);
+    const message = stderr.trim() || `git exited ${result.exitCode}`;
+    return `Unable to read ${commitHash}: ${message}`;
   }
-  return typeof result.stdout === "string"
-    ? result.stdout
-    : Buffer.from(result.stdout).toString("utf8");
+  return truncateStoreThreadContext(
+    stdout.trim() || `(empty commit ${commitHash})`,
+    STORE_THREAD_SELECTED_COMMIT_LIMIT,
+  );
 };
 
-const executeStoreAgentToolGitLog = async (
-  repoRoot: string,
-  args: { limit?: unknown },
-): Promise<string> => {
-  const rawLimit = typeof args.limit === "number" ? args.limit : NaN;
-  const limit = Number.isFinite(rawLimit)
-    ? Math.max(1, Math.min(STORE_TOOL_GIT_LOG_MAX, Math.floor(rawLimit)))
-    : STORE_TOOL_GIT_LOG_DEFAULT;
-  const commits = await listRecentGitCommits(repoRoot, limit);
-  if (commits.length === 0) return "(no recent self-mod commits)";
-  return commits
-    .map((commit) => {
-      const date = new Date(commit.timestampMs).toISOString().slice(0, 10);
-      const files = commit.files.slice(0, 6).join(", ");
-      const filesSuffix = commit.files.length > 6 ? ", …" : "";
-      return [
-        `${commit.commitHash} (${date}) ${commit.subject}`,
-        `  files (${commit.fileCount}): ${files}${filesSuffix}`,
-      ].join("\n");
-    })
-    .join("\n");
-};
-
-const executeStoreAgentToolGitShow = async (
-  repoRoot: string,
-  args: { hash?: unknown },
-): Promise<string> => {
-  const hash = typeof args.hash === "string" ? args.hash.trim() : "";
-  if (!hash) return "Error: hash is required.";
-  if (!/^[0-9a-f]{4,}$/i.test(hash)) {
-    return "Error: hash must be a hex commit reference.";
-  }
-  const text = await runGitText(repoRoot, [
-    "show",
-    "--stat",
-    "--patch",
-    "--no-color",
-    hash,
-  ]);
-  return truncateForToolOutput(text.trim() || "(empty)");
-};
-
-const executeStoreAgentToolGitHead = async (
-  repoRoot: string,
-): Promise<string> => {
-  const head = await getGitHead(repoRoot).catch(() => null);
-  return head ?? "(no HEAD)";
-};
-
-const executeStoreAgentToolReadFile = async (
-  repoRoot: string,
-  args: { path?: unknown },
-): Promise<string> => {
-  const raw = typeof args.path === "string" ? args.path : "";
-  const resolved = raw ? safeRepoRelativePath(repoRoot, raw) : null;
-  if (!resolved)
-    return "Error: path is required and must stay inside the repo.";
-  try {
-    const stat = await fs.stat(resolved);
-    if (!stat.isFile()) return "Error: not a regular file.";
-    const fileHandle = await fs.open(resolved, "r");
-    try {
-      const buf = Buffer.alloc(Math.min(stat.size, STORE_TOOL_FILE_READ_LIMIT));
-      await fileHandle.read(buf, 0, buf.length, 0);
-      const text = buf.toString("utf8");
-      return stat.size > STORE_TOOL_FILE_READ_LIMIT
-        ? `${text}\n... [file truncated at ${STORE_TOOL_FILE_READ_LIMIT} bytes; full size ${stat.size}]`
-        : text;
-    } finally {
-      await fileHandle.close();
-    }
-  } catch (error) {
-    return `Error: ${(error as Error).message}`;
-  }
-};
-
-const executeStoreAgentToolListFiles = async (
-  repoRoot: string,
-  args: { path?: unknown },
-): Promise<string> => {
-  const raw = typeof args.path === "string" ? args.path : "";
-  const resolved = raw ? safeRepoRelativePath(repoRoot, raw) : null;
-  if (!resolved)
-    return "Error: path is required and must stay inside the repo.";
-  try {
-    const entries = await fs.readdir(resolved, { withFileTypes: true });
-    const formatted = entries
-      .slice(0, STORE_TOOL_LIST_FILES_LIMIT)
-      .map((entry) => `${entry.isDirectory() ? "d" : "f"}  ${entry.name}`);
-    const suffix =
-      entries.length > STORE_TOOL_LIST_FILES_LIMIT
-        ? `\n... [${entries.length - STORE_TOOL_LIST_FILES_LIMIT} more entries]`
-        : "";
-    return formatted.length > 0
-      ? `${formatted.join("\n")}${suffix}`
-      : "(empty)";
-  } catch (error) {
-    return `Error: ${(error as Error).message}`;
-  }
-};
-
-const executeStoreAgentToolGrep = async (
-  repoRoot: string,
-  args: { pattern?: unknown; path?: unknown },
-): Promise<string> => {
-  const pattern = typeof args.pattern === "string" ? args.pattern : "";
-  if (!pattern) return "Error: pattern is required.";
-  const scopePath = typeof args.path === "string" ? args.path : "";
-  const cwd = scopePath ? safeRepoRelativePath(repoRoot, scopePath) : repoRoot;
-  if (!cwd) return "Error: path must stay inside the repo.";
-  try {
-    const { stdout } = await promisifiedExecFile(
-      "rg",
-      [
-        "--max-count",
-        String(STORE_TOOL_GREP_MAX_LINES),
-        "--max-columns",
-        "240",
-        "--with-filename",
-        "--line-number",
-        "--no-heading",
-        "--color",
-        "never",
-        pattern,
-      ],
-      { cwd, maxBuffer: 5 * 1024 * 1024 },
-    );
-    const trimmed = stdout.trim();
-    return trimmed ? truncateForToolOutput(trimmed) : "(no matches)";
-  } catch (error) {
-    const err = error as { stdout?: string; code?: number };
-    if (err.code === 1) return "(no matches)";
-    return `Error: ${(error as Error).message}`;
-  }
-};
-
-/**
- * Tool dispatch: maps the agent's tool name to the right local
- * handler. Read-only operations only — no shell, no write surface.
- * `ask_question` is intentionally not handled here; the renderer
- * resolves it directly by surfacing a dialog and posting the user's
- * answer back to the pending tool-call row.
- */
-const executeStoreAgentTool = async (args: {
+const buildSelectedStoreChangesContext = async (args: {
   repoRoot: string;
-  toolName: string;
-  argsJson: string;
-}): Promise<{ resultText: string; isError?: boolean }> => {
-  let parsedArgs: Record<string, unknown> = {};
-  try {
-    parsedArgs = JSON.parse(args.argsJson || "{}");
-  } catch {
-    return { resultText: "Error: invalid argsJson", isError: true };
-  }
-  try {
-    switch (args.toolName) {
-      case "git_log":
-        return {
-          resultText: await executeStoreAgentToolGitLog(
-            args.repoRoot,
-            parsedArgs,
-          ),
-        };
-      case "git_show":
-        return {
-          resultText: await executeStoreAgentToolGitShow(
-            args.repoRoot,
-            parsedArgs,
-          ),
-        };
-      case "git_head":
-        return {
-          resultText: await executeStoreAgentToolGitHead(args.repoRoot),
-        };
-      case "read_file":
-        return {
-          resultText: await executeStoreAgentToolReadFile(
-            args.repoRoot,
-            parsedArgs,
-          ),
-        };
-      case "list_files":
-        return {
-          resultText: await executeStoreAgentToolListFiles(
-            args.repoRoot,
-            parsedArgs,
-          ),
-        };
-      case "grep":
-        return {
-          resultText: await executeStoreAgentToolGrep(
-            args.repoRoot,
-            parsedArgs,
-          ),
-        };
-      default:
-        return {
-          resultText: `Error: unknown tool "${args.toolName}"`,
-          isError: true,
-        };
+  attachedFeatureNames: string[];
+  snapshot: ReturnType<StoreModStore["readFeatureSnapshot"]>;
+}): Promise<string> => {
+  if (args.attachedFeatureNames.length === 0) return "- none";
+  const sections: string[] = [];
+  let commitCount = 0;
+  for (const name of args.attachedFeatureNames) {
+    const snapshotItem = args.snapshot?.items.find((item) => item.name === name);
+    const hashes = Array.from(
+      new Set(
+        (snapshotItem?.commitHashes ?? [])
+          .map((hash) => hash.trim())
+          .filter(Boolean),
+      ),
+    );
+    if (hashes.length === 0) {
+      sections.push(
+        `## ${name}\nNo commit details were available for this selected change.`,
+      );
+      continue;
     }
-  } catch (error) {
-    return {
-      resultText: `Error: ${(error as Error).message}`,
-      isError: true,
-    };
+    const commitSections: string[] = [];
+    for (const hash of hashes) {
+      if (commitCount >= STORE_THREAD_MAX_SELECTED_COMMITS) {
+        commitSections.push("Additional selected commits omitted.");
+        break;
+      }
+      commitCount += 1;
+      const commitText = await runStoreThreadGitShow(args.repoRoot, hash);
+      commitSections.push(
+        [`### Commit ${hash}`, commitText].join("\n\n"),
+      );
+    }
+    sections.push([`## ${name}`, commitSections.join("\n\n")].join("\n\n"));
   }
+  return truncateStoreThreadContext(
+    sections.join("\n\n"),
+    STORE_THREAD_SELECTED_CHANGES_LIMIT,
+  );
+};
+
+const buildStoreThreadAgentPrompt = (args: {
+  userText: string;
+  editingBlueprint: boolean;
+  latestBlueprintMarkdown?: string;
+  selectedChangesContext: string;
+  transcript: Array<{
+    role: "user" | "assistant" | "system_event";
+    text: string;
+    isBlueprint?: boolean;
+    denied?: boolean;
+    published?: boolean;
+    attachedFeatureNames?: string[];
+    editingBlueprint?: boolean;
+  }>;
+}) => {
+  const recentTranscript = args.transcript
+    .map((message) => {
+      const role = message.role === "system_event" ? "system" : message.role;
+      const text = message.isBlueprint
+        ? `[Blueprint draft saved: ${message.text.length} chars${
+            message.denied ? ", denied" : message.published ? ", published" : ""
+          }]`
+        : message.text;
+      const chips =
+        message.attachedFeatureNames && message.attachedFeatureNames.length > 0
+          ? `\nAttached changes: ${message.attachedFeatureNames.join(", ")}`
+          : "";
+      return `${role}: ${text}${chips}`;
+    })
+    .join("\n\n");
+  const latestBlueprint = args.latestBlueprintMarkdown
+    ? `\n\n## Current Draft\nThe latest publishable blueprint is below. Use it as the base when the user is editing/refining.\n\n${args.latestBlueprintMarkdown}`
+    : "";
+  return [
+    "You are the local Stella Store agent. Help the user publish a Stella add-on as a markdown blueprint.",
+    "",
+    "The blueprint is not a patch. It is an implementation guide for another local Stella agent to adapt to that user's codebase. Include relevant code snippets and exact files where useful. Include whole files only when that is the clearest contract, such as a skill file or prompt file.",
+    "",
+    "You may inspect the repo with your read-only tools. Do not edit files, run commands, commit, or publish. If the user's scope is unclear, ask a concise question in your final answer instead of drafting.",
+    "",
+    "When you have a draft or refinement ready, your final answer MUST contain the blueprint markdown inside exactly one <blueprint>...</blueprint> block. You may optionally include a short <message>...</message> before it, but the blueprint block is what the UI saves.",
+    "",
+    "## User Request",
+    args.userText,
+    "",
+    "## Selected Recent Changes",
+    args.selectedChangesContext,
+    latestBlueprint,
+    "",
+    args.editingBlueprint
+      ? "## Mode\nThe user clicked Edit on the current draft. Revise the current draft according to the request."
+      : "## Mode\nDraft a new blueprint if the request is clear enough.",
+    "",
+    recentTranscript ? `## Recent Store Thread\n${recentTranscript}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 };
 
 const DATA_URL_RE = /^data:([^;,]+);base64,(.+)$/i;
@@ -563,6 +476,8 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.storeModService = null;
   state.socialSessionStore = null;
   state.selfModHmrController = null;
+  state.activeStoreThreadAgentId = null;
+  state.activeStoreThreadMessageId = null;
   state.db?.close();
   state.db = null;
 };
@@ -582,6 +497,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     runner: null,
     deviceId: null,
     selfModHmrController: null,
+    activeStoreThreadAgentId: null,
+    activeStoreThreadMessageId: null,
   };
   const pendingApplyBatches = new Map<string, PendingApplyBatch>();
   const selfModRunRootIds = new Map<string, string>();
@@ -738,6 +655,26 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       throw new Error("Store mod service is not available.");
     }
     return state.storeModService;
+  };
+
+  const ensureStoreModStore = () => {
+    if (!state.storeModStore) {
+      throw new Error("Store data is not available.");
+    }
+    return state.storeModStore;
+  };
+
+  const reconcileStoreThreadPendingMessages = () => {
+    const store = ensureStoreModStore();
+    const pending = store
+      .listStoreThreadMessages()
+      .some((message) => message.pending === true);
+    if (pending && !state.activeStoreThreadAgentId) {
+      store.clearPendingStoreThreadMessages(
+        "The Store agent stopped unexpectedly. Please send your message again.",
+      );
+    }
+    return store;
   };
 
   const ensureVoiceService = () => {
@@ -1888,6 +1825,204 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   );
 
   peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_GET,
+    async () => reconcileStoreThreadPendingMessages().readStoreThread(),
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_SEND_MESSAGE,
+    async (params) => {
+      const store = reconcileStoreThreadPendingMessages();
+      const runner = ensureRunner();
+      const payload = params as StoreThreadSendInput;
+      const text = normalizeStoreThreadText(payload.text);
+      const attachedFeatureNames = normalizeStoreThreadFeatureNames(
+        payload.attachedFeatureNames,
+      );
+      const pending = store
+        .listStoreThreadMessages()
+        .some((message) => message.pending === true);
+      if (pending) {
+        throw new Error(
+          "The Store agent is still working. Stop it or wait for it to finish before sending another message.",
+        );
+      }
+
+      const latestBlueprint = store.findLatestPublishableBlueprint();
+      const userMessage = store.appendStoreThreadMessage({
+        role: "user",
+        text,
+        attachedFeatureNames,
+        editingBlueprint: payload.editingBlueprint === true,
+      });
+      const assistantMessage = store.appendStoreThreadMessage({
+        role: "assistant",
+        text: "Working…",
+        pending: true,
+      });
+      const snapshot = store.readFeatureSnapshot();
+      const repoRoot = state.init?.stellaRoot;
+      if (!repoRoot) {
+        store.deleteStoreThreadMessages([userMessage._id, assistantMessage._id]);
+        throw new Error("Worker has not been initialized.");
+      }
+      let prompt: string;
+      try {
+        const selectedChangesContext = await buildSelectedStoreChangesContext({
+          repoRoot,
+          attachedFeatureNames,
+          snapshot,
+        });
+        prompt = buildStoreThreadAgentPrompt({
+          userText: text,
+          editingBlueprint: payload.editingBlueprint === true,
+          ...(latestBlueprint
+            ? { latestBlueprintMarkdown: latestBlueprint.text }
+            : {}),
+          selectedChangesContext,
+          transcript: store.listStoreThreadMessages(),
+        });
+      } catch (error) {
+        store.deleteStoreThreadMessages([userMessage._id, assistantMessage._id]);
+        throw error;
+      }
+
+      let threadId: string;
+      try {
+        const created = await runner.createBackgroundAgent({
+          conversationId: STORE_THREAD_CONVERSATION_ID,
+          // Fresh runtime thread id per send — each Store turn is one-shot.
+          // The curated prompt above already re-injects the local transcript
+          // and latest blueprint, so carrying runtime thread history across
+          // turns would duplicate (and compound) that context.
+          threadId: `store-agent-local-thread:${crypto.randomUUID()}`,
+          description: "Draft Store blueprint",
+          prompt,
+          agentType: AGENT_IDS.STORE,
+          toolWorkspaceRoot: repoRoot,
+        });
+        threadId = created.threadId;
+      } catch (error) {
+        store.deleteStoreThreadMessages([userMessage._id, assistantMessage._id]);
+        throw error;
+      }
+      state.activeStoreThreadAgentId = threadId;
+      state.activeStoreThreadMessageId = assistantMessage._id;
+
+      void (async () => {
+        while (true) {
+          const agent = await runner.getLocalAgentSnapshot(threadId);
+          if (!agent) {
+            if (state.activeStoreThreadMessageId === assistantMessage._id) {
+              store.patchStoreThreadMessage(assistantMessage._id, {
+                text: "The Store agent stopped unexpectedly.",
+                pending: false,
+              });
+              state.activeStoreThreadAgentId = null;
+              state.activeStoreThreadMessageId = null;
+            }
+            return;
+          }
+          if (agent.status === "completed") {
+            if (state.activeStoreThreadMessageId !== assistantMessage._id) {
+              return;
+            }
+            const parsed = extractBlueprintMarkdown(agent.result ?? "");
+            const assistantText =
+              parsed.blueprintMarkdown ??
+              (parsed.visibleText ||
+                "I could not draft a blueprint from that request.");
+            store.patchStoreThreadMessage(assistantMessage._id, {
+              text: assistantText,
+              pending: false,
+              isBlueprint: Boolean(parsed.blueprintMarkdown),
+            });
+            state.activeStoreThreadAgentId = null;
+            state.activeStoreThreadMessageId = null;
+            return;
+          }
+          if (agent.status === "error" || agent.status === "canceled") {
+            if (state.activeStoreThreadMessageId === assistantMessage._id) {
+              store.patchStoreThreadMessage(assistantMessage._id, {
+                text:
+                  agent.status === "canceled"
+                    ? "Stopped."
+                    : agent.error ?? "The Store agent failed.",
+                pending: false,
+              });
+              state.activeStoreThreadAgentId = null;
+              state.activeStoreThreadMessageId = null;
+            }
+            return;
+          }
+          await new Promise<void>((resolve) => setTimeout(resolve, 250));
+        }
+      })().catch((error) => {
+        if (state.activeStoreThreadMessageId === assistantMessage._id) {
+          store.patchStoreThreadMessage(assistantMessage._id, {
+            text: (error as Error)?.message ?? "The Store agent failed.",
+            pending: false,
+          });
+          state.activeStoreThreadAgentId = null;
+          state.activeStoreThreadMessageId = null;
+        }
+      });
+      return store.readStoreThread();
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_CANCEL,
+    async () => {
+      const store = ensureStoreModStore();
+      const agentId = state.activeStoreThreadAgentId;
+      const messageId = state.activeStoreThreadMessageId;
+      state.activeStoreThreadAgentId = null;
+      state.activeStoreThreadMessageId = null;
+      if (messageId) {
+        store.patchStoreThreadMessage(messageId, {
+          text: "Stopped.",
+          pending: false,
+        });
+      } else {
+        store.clearPendingStoreThreadMessages("Stopped.");
+      }
+      if (agentId) {
+        await ensureRunner().cancelLocalAgent(agentId, "Stopped by user");
+      }
+      return store.readStoreThread();
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_DENY_LATEST_BLUEPRINT,
+    async () => {
+      const store = ensureStoreModStore();
+      store.denyLatestPublishableBlueprint();
+      return store.readStoreThread();
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_MARK_BLUEPRINT_PUBLISHED,
+    async (params) => {
+      const payload = params as { messageId: string; releaseNumber: number };
+      const releaseNumber = Number.isFinite(payload.releaseNumber)
+        ? Math.floor(payload.releaseNumber)
+        : null;
+      if (!payload.messageId || !releaseNumber || releaseNumber < 1) {
+        throw new Error("messageId and releaseNumber are required.");
+      }
+      const store = ensureStoreModStore();
+      store.markLatestPublishableBlueprintPublished({
+        messageId: payload.messageId,
+        releaseNumber,
+      });
+      return store.readStoreThread();
+    },
+  );
+
+  peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_UNINSTALL_STORE_MOD,
     async (params) => {
       if (!state.init) {
@@ -1900,26 +2035,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         packageId: payload.packageId,
         revertedCommits: result.revertedCommits,
       };
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_AGENT_EXECUTE_TOOL,
-    async (params) => {
-      if (!state.init) {
-        throw new Error("Worker has not been initialized.");
-      }
-      const payload = params as {
-        toolName: string;
-        argsJson: string;
-      };
-      const repoRoot = state.init.stellaRoot;
-      const result = await executeStoreAgentTool({
-        repoRoot,
-        toolName: payload.toolName,
-        argsJson: payload.argsJson,
-      });
-      return result;
     },
   );
 

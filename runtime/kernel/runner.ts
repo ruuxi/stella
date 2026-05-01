@@ -204,6 +204,7 @@ export const createStellaHostRunner = (
       }
       return manager.getAgent(agentId);
     },
+    cancelLocalAgent: taskOrchestration.cancelLocalAgent,
     cancelLocalChat: orchestratorController.cancelLocalChat,
     getActiveOrchestratorRun: orchestratorController.getActiveOrchestratorRun,
     appendThreadMessage: (args) => {

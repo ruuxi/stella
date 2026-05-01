@@ -81,6 +81,7 @@ type RuntimeAgentRecord = {
   description: string;
   prompt: string;
   agentType: string;
+  toolWorkspaceRoot?: string;
   agentDepth: number;
   maxAgentDepth?: number;
   status: LocalAgentStatus;
@@ -149,6 +150,7 @@ type LocalAgentManagerOpts = {
     agentType: string;
     runId: string;
     threadId?: string;
+    toolWorkspaceRoot?: string;
     selfModMetadata?: AgentToolRequest["selfModMetadata"];
     shouldInjectDynamicMemory?: boolean;
   }) => Promise<LocalAgentContext>;
@@ -158,6 +160,7 @@ type LocalAgentManagerOpts = {
     agentType: string;
     agentId?: string;
     rootRunId?: string;
+    toolWorkspaceRoot?: string;
     taskDescription: string;
     taskPrompt: string;
     agentContext: LocalAgentContext;
@@ -589,6 +592,9 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: task.agentType,
         runId,
         threadId: task.threadId,
+        ...(task.toolWorkspaceRoot
+          ? { toolWorkspaceRoot: task.toolWorkspaceRoot }
+          : {}),
         selfModMetadata: task.selfModMetadata,
       });
 
@@ -607,6 +613,9 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: task.agentType,
         agentId: task.threadId,
         rootRunId: task.rootRunId,
+        ...(task.toolWorkspaceRoot
+          ? { toolWorkspaceRoot: task.toolWorkspaceRoot }
+          : {}),
         taskDescription: task.description,
         taskPrompt,
         agentContext: context,
@@ -797,6 +806,9 @@ export class LocalAgentManager implements AgentToolApi {
       description: request.description,
       prompt: request.prompt,
       agentType: request.agentType,
+      ...(request.toolWorkspaceRoot
+        ? { toolWorkspaceRoot: request.toolWorkspaceRoot }
+        : {}),
       agentDepth: Math.max(1, request.agentDepth ?? 1),
       maxAgentDepth:
         typeof request.maxAgentDepth === "number"

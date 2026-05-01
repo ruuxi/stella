@@ -2113,40 +2113,6 @@
   cursor: not-allowed;
 }
 
-/* Global ask-question modal driven by StoreAgentToolDispatcher */
-.store-agent-ask-question-modal {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 1100;
-}
-
-.store-agent-ask-question-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 18px;
-  border-radius: 10px;
-  background: var(--surface-1);
-  border: 1px solid var(--border-emphasis);
-  width: min(420px, 90vw);
-}
-
-.store-agent-ask-question-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-strong);
-}
-
-.store-agent-ask-question-options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 /* Blueprint review dialog: left = markdown viewer, right = actions. */
 .store-blueprint-dialog {
   position: fixed;

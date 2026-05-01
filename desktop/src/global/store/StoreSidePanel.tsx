@@ -6,15 +6,13 @@
  *    by the cheap-LLM namer after every successful self-mod commit).
  *    The user multi-selects names to attach as context for their next
  *    message to the Store agent.
- * 2. Chat thread — Convex-backed messages with the Store agent. The
- *    agent runs server-side; tool calls go through the global
- *    `StoreAgentToolDispatcher` mounted in `App.tsx` so closing this
- *    panel mid-turn doesn't strand the agent.
+ * 2. Chat thread — local messages with the Store agent. The agent runs in
+ *    the local runtime; Convex only validates/reviews the final publish.
  * 3. Composer + Publish — the user types, sends, and (when the agent
  *    has produced a blueprint draft) clicks Publish to ship.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import {
   refreshFeatureSnapshot,
@@ -27,7 +25,6 @@ import StopCircle from "lucide-react/dist/esm/icons/stop-circle";
 import FileText from "lucide-react/dist/esm/icons/file-text";
 import X from "lucide-react/dist/esm/icons/x";
 import { showToast } from "@/ui/toast";
-import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { Markdown } from "@/app/chat/Markdown";
 
 type StoreThreadMessage = {
@@ -77,11 +74,22 @@ function formatTimeAgo(ms: number): string {
 
 type PublishDialogProps = {
   open: boolean;
+  blueprint: StoreThreadMessage | null;
   onClose: () => void;
+  onPublished: (args: {
+    messageId: string;
+    releaseNumber: number;
+  }) => Promise<void> | void;
 };
 
-function PublishDialog({ open, onClose }: PublishDialogProps) {
-  const publish = useAction(api.data.store_thread.publishLatestBlueprint);
+function PublishDialog({
+  open,
+  blueprint,
+  onClose,
+  onPublished,
+}: PublishDialogProps) {
+  const createFirstRelease = useAction(api.data.store_packages.createFirstRelease);
+  const createUpdateRelease = useAction(api.data.store_packages.createUpdateRelease);
   const myPackages = useQuery(
     api.data.store_packages.listMyPackages,
     open ? {} : "skip",
@@ -144,14 +152,38 @@ function PublishDialog({ open, onClose }: PublishDialogProps) {
       });
       return;
     }
+    if (!blueprint) {
+      showToast({
+        title: "No blueprint",
+        description: "Ask the Store agent to draft a blueprint first.",
+        variant: "error",
+      });
+      return;
+    }
     setSubmitting(true);
     try {
-      await publish({
-        packageId: packageId.trim(),
-        displayName: publishDisplayName.trim(),
-        description: publishDescription.trim(),
+      const normalizedPackageId = packageId.trim();
+      const manifest = {
         ...(publishCategory ? { category: publishCategory } : {}),
-        ...(asUpdate ? { asUpdate: true } : {}),
+        summary: publishDescription.trim().slice(0, 500),
+      };
+      const result = asUpdate
+        ? await createUpdateRelease({
+            packageId: normalizedPackageId,
+            manifest,
+            blueprintMarkdown: blueprint.text,
+          })
+        : await createFirstRelease({
+            packageId: normalizedPackageId,
+            displayName: publishDisplayName.trim(),
+            description: publishDescription.trim(),
+            ...(publishCategory ? { category: publishCategory } : {}),
+            manifest,
+            blueprintMarkdown: blueprint.text,
+          });
+      await onPublished({
+        messageId: blueprint._id,
+        releaseNumber: result.release.releaseNumber,
       });
       showToast({
         title: "Published",
@@ -386,25 +418,14 @@ function BlueprintDialog({
 
 export function StoreSidePanel() {
   const state = useStoreSidePanelState();
-  const { hasSession } = useAuthSessionState();
-  const thread = useQuery(
-    api.data.store_thread.getThread,
-    hasSession ? {} : "skip",
-  ) as
-    | StoreThreadResult
-    | undefined;
-  const sendMessage = useAction(api.data.store_thread.sendMessage);
-  const cancelInFlight = useMutation(api.data.store_thread.cancelInFlightTurn);
-
-  const denyLatestBlueprint = useMutation(
-    api.data.store_thread.denyLatestBlueprint,
-  );
-
+  const [thread, setThread] = useState<StoreThreadResult>({
+    threadId: null,
+    messages: [],
+  });
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
-  const [deviceId, setDeviceId] = useState<string | null>(null);
   /** Currently-open blueprint review dialog (clicked badge). */
   const [reviewingMessage, setReviewingMessage] =
     useState<StoreThreadMessage | null>(null);
@@ -421,10 +442,12 @@ export function StoreSidePanel() {
 
   useEffect(() => {
     void refreshFeatureSnapshot();
-    void window.electronAPI?.system
-      ?.getDeviceId?.()
-      .then((nextDeviceId) => setDeviceId(nextDeviceId?.trim() || null))
-      .catch(() => setDeviceId(null));
+    void window.electronAPI?.store
+      ?.getThread?.()
+      .then((nextThread) => {
+        if (nextThread) setThread(nextThread);
+      })
+      .catch(() => undefined);
     return () => {
       storeSidePanelStore.reset();
     };
@@ -458,11 +481,26 @@ export function StoreSidePanel() {
     [messages],
   );
 
+  useEffect(() => {
+    if (!isInFlight) return;
+    const timer = window.setInterval(() => {
+      void window.electronAPI?.store
+        ?.getThread?.()
+        .then((nextThread) => {
+          if (nextThread) setThread(nextThread);
+        })
+        .catch(() => undefined);
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [isInFlight]);
+
   const handleStop = useCallback(async () => {
     if (stopping) return;
     setStopping(true);
     try {
-      await cancelInFlight();
+      const nextThread = await window.electronAPI?.store.cancelThreadTurn();
+      if (!nextThread) throw new Error("The local Store agent is not ready.");
+      setThread(nextThread);
     } catch (error) {
       showToast({
         title: "Couldn't stop the agent",
@@ -472,15 +510,16 @@ export function StoreSidePanel() {
     } finally {
       setStopping(false);
     }
-  }, [cancelInFlight, stopping]);
+  }, [stopping]);
 
   const handleSend = useCallback(async () => {
     const text = composer.trim();
     if (!text || sending) return;
-    if (!deviceId) {
+    const storeApi = window.electronAPI?.store;
+    if (!storeApi?.sendThreadMessage) {
       showToast({
         title: "Send failed",
-        description: "This device is not ready yet. Try again in a moment.",
+        description: "The local Store agent is not ready yet. Try again in a moment.",
         variant: "error",
       });
       return;
@@ -489,12 +528,12 @@ export function StoreSidePanel() {
     try {
       const attachedFeatureNames = Array.from(state.selectedFeatureNames);
       const editingBlueprint = Boolean(editingBlueprintMessage);
-      await sendMessage({
+      const nextThread = await storeApi.sendThreadMessage({
         text,
-        deviceId,
         ...(attachedFeatureNames.length > 0 ? { attachedFeatureNames } : {}),
         ...(editingBlueprint ? { editingBlueprint: true } : {}),
       });
+      setThread(nextThread);
       setComposer("");
       setEditingBlueprintId(null);
       storeSidePanelStore.clearSelections();
@@ -509,10 +548,8 @@ export function StoreSidePanel() {
     }
   }, [
     composer,
-    deviceId,
     editingBlueprintMessage,
     sending,
-    sendMessage,
     state.selectedFeatureNames,
   ]);
 
@@ -525,7 +562,9 @@ export function StoreSidePanel() {
     if (denying) return;
     setDenying(true);
     try {
-      await denyLatestBlueprint();
+      const nextThread = await window.electronAPI?.store.denyLatestBlueprint();
+      if (!nextThread) throw new Error("The local Store agent is not ready.");
+      setThread(nextThread);
       setReviewingMessage(null);
     } catch (error) {
       showToast({
@@ -536,7 +575,19 @@ export function StoreSidePanel() {
     } finally {
       setDenying(false);
     }
-  }, [denying, denyLatestBlueprint]);
+  }, [denying]);
+
+  const handleBlueprintPublished = useCallback(
+    async (args: { messageId: string; releaseNumber: number }) => {
+      const nextThread =
+        await window.electronAPI?.store.markBlueprintPublished(args);
+      if (!nextThread) throw new Error("The local Store agent is not ready.");
+      setThread(nextThread);
+      setReviewingMessage(null);
+      setPublishOpen(false);
+    },
+    [],
+  );
 
   const handleEditBlueprint = useCallback((message: StoreThreadMessage) => {
     setEditingBlueprintId(message._id);
@@ -758,7 +809,12 @@ export function StoreSidePanel() {
         />
       ) : null}
 
-      <PublishDialog open={publishOpen} onClose={() => setPublishOpen(false)} />
+      <PublishDialog
+        open={publishOpen}
+        blueprint={latestPublishableBlueprint}
+        onClose={() => setPublishOpen(false)}
+        onPublished={handleBlueprintPublished}
+      />
     </div>
   );
 }
