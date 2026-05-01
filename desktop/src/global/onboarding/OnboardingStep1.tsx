@@ -327,7 +327,7 @@ export const OnboardingStep1 = ({
           <div className="onboarding-phase-nav">
             <button
               type="button"
-              className="onboarding-phase-nav-btn"
+              className="onboarding-phase-nav-btn onboarding-phase-nav-btn--prev"
               disabled={!canGoPrev || leaving}
               onClick={prevSplitStep}
               aria-label="Previous step"
@@ -347,7 +347,7 @@ export const OnboardingStep1 = ({
             </button>
             <button
               type="button"
-              className="onboarding-phase-nav-btn"
+              className="onboarding-phase-nav-btn onboarding-phase-nav-btn--next"
               disabled={!canGoNext || leaving}
               onClick={nextSplitStep}
               aria-label="Next step"
