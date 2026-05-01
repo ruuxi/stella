@@ -53,10 +53,13 @@
 .app-suggestions-dialog-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.app-suggestions-dialog-list > li + li {
+  border-top: 1px solid var(--border-weak, var(--border));
 }
 
 .app-suggestions-dialog-card {
@@ -64,20 +67,18 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 16px;
-  border-radius: var(--radius-lg, 12px);
-  background: color-mix(in oklch, var(--foreground) 4%, var(--popover));
-  border: 1px solid var(--border);
+  padding: 14px 4px;
+  background: transparent;
+  border: none;
   text-align: left;
   cursor: default;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: opacity 0.15s ease;
   font: inherit;
   color: inherit;
 }
 
-.app-suggestions-dialog-card:hover {
-  background: color-mix(in oklch, var(--foreground) 7%, var(--popover));
-  border-color: var(--border);
+.app-suggestions-dialog-card:hover .app-suggestions-dialog-card-title {
+  color: var(--text-strong, var(--foreground));
 }
 
 .app-suggestions-dialog-card-body {
