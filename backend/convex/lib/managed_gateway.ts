@@ -1,6 +1,9 @@
 export const MANAGED_GATEWAY_PROVIDERS = [
   "openrouter",
   "fireworks",
+  "openai",
+  "anthropic",
+  "google",
 ] as const;
 
 export type ManagedGatewayProvider = (typeof MANAGED_GATEWAY_PROVIDERS)[number];
@@ -22,11 +25,32 @@ const MANAGED_GATEWAY_CONFIGS: Record<ManagedGatewayProvider, ManagedGatewayConf
     baseURL: "https://api.fireworks.ai/inference/v1",
     apiKeyEnvVar: "FIREWORKS_API_KEY",
   },
+  openai: {
+    provider: "openai",
+    baseURL: "https://api.openai.com/v1",
+    apiKeyEnvVar: "OPENAI_API_KEY",
+  },
+  anthropic: {
+    provider: "anthropic",
+    baseURL: "https://api.anthropic.com/v1",
+    apiKeyEnvVar: "ANTHROPIC_API_KEY",
+  },
+  google: {
+    provider: "google",
+    baseURL: "https://generativelanguage.googleapis.com",
+    apiKeyEnvVar: "GOOGLE_AI_API_KEY",
+  },
 };
 
 const FIREWORKS_MODEL_PREFIXES = [
   "accounts/fireworks/models/",
   "accounts/fireworks/routers/",
+] as const;
+
+const DIRECT_MODEL_PROVIDER_PREFIXES = [
+  ["openai/", "openai"],
+  ["anthropic/", "anthropic"],
+  ["google/", "google"],
 ] as const;
 
 export function getManagedGatewayConfig(
@@ -38,6 +62,12 @@ export function getManagedGatewayConfig(
 export function inferManagedGatewayProviderFromModel(
   model: string,
 ): ManagedGatewayProvider | undefined {
+  const directProvider = DIRECT_MODEL_PROVIDER_PREFIXES.find(([prefix]) =>
+    model.startsWith(prefix)
+  )?.[1];
+  if (directProvider) {
+    return directProvider;
+  }
   return FIREWORKS_MODEL_PREFIXES.some((prefix) => model.startsWith(prefix))
     ? "fireworks"
     : undefined;
@@ -47,8 +77,8 @@ export function resolveManagedGatewayProvider(args: {
   model: string;
   configuredProvider?: ManagedGatewayProvider;
 }): ManagedGatewayProvider {
-  return inferManagedGatewayProviderFromModel(args.model)
-    ?? args.configuredProvider
+  return args.configuredProvider
+    ?? inferManagedGatewayProviderFromModel(args.model)
     ?? "openrouter";
 }
 

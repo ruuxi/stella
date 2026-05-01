@@ -24,7 +24,11 @@ export {
   type ManagedUsageSummary,
 } from "../lib/managed_usage";
 
-export type ManagedProtocol = "openai-completions" | "openai-responses";
+export type ManagedProtocol =
+  | "openai-completions"
+  | "openai-responses"
+  | "anthropic-messages"
+  | "google-generative-ai";
 
 export type ManagedModelConfig = {
   model: string;
@@ -148,7 +152,20 @@ function providerFromBaseUrl(baseUrl: string): string {
   if (baseUrl.includes("api.openai.com")) {
     return "openai";
   }
+  if (baseUrl.includes("api.anthropic.com")) {
+    return "anthropic";
+  }
+  if (baseUrl.includes("generativelanguage.googleapis.com")) {
+    return "google";
+  }
   return "managed";
+}
+
+function modelIdForGateway(model: string, provider: string): string {
+  if (provider === "openai" && model.startsWith("openai/")) {
+    return model.slice("openai/".length);
+  }
+  return model;
 }
 
 function resolveManagedProtocol(args: {
@@ -162,7 +179,16 @@ function resolveManagedProtocol(args: {
     model: args.config.model,
     configuredProvider: args.config.managedGatewayProvider,
   });
-  return gateway.provider === "fireworks" ? "openai-responses" : "openai-completions";
+  if (gateway.provider === "fireworks" || gateway.provider === "openai") {
+    return "openai-responses";
+  }
+  if (gateway.provider === "anthropic") {
+    return "anthropic-messages";
+  }
+  if (gateway.provider === "google") {
+    return "google-generative-ai";
+  }
+  return "openai-completions";
 }
 
 function inferCompat(
@@ -483,9 +509,10 @@ export function buildManagedModel<TApi extends Api>(
     configuredProvider: config.managedGatewayProvider,
   });
   const provider = providerFromBaseUrl(managedGateway.baseURL);
+  const modelId = modelIdForGateway(config.model, provider);
   return {
-    id: config.model,
-    name: config.model,
+    id: modelId,
+    name: modelId,
     api,
     provider,
     baseUrl: managedGateway.baseURL,

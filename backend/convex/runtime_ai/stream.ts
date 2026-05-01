@@ -8,6 +8,8 @@ import type {
 } from "./types";
 import { streamOpenAICompletions, streamSimpleOpenAICompletions } from "./openai_completions";
 import { streamOpenAIResponses, streamSimpleOpenAIResponses } from "./openai_responses";
+import { streamAnthropic, streamSimpleAnthropic } from "./anthropic";
+import { streamGoogle, streamSimpleGoogle } from "./google";
 
 export function stream<TApi extends Api>(
   model: Model<TApi>,
@@ -26,6 +28,20 @@ export function stream<TApi extends Api>(
       model as Model<"openai-responses">,
       context,
       options,
+    );
+  }
+  if (model.api === "anthropic-messages") {
+    return streamAnthropic(
+      model as Model<"anthropic-messages">,
+      context,
+      options as SimpleStreamOptions | undefined,
+    );
+  }
+  if (model.api === "google-generative-ai") {
+    return streamGoogle(
+      model as Model<"google-generative-ai">,
+      context,
+      options as SimpleStreamOptions | undefined,
     );
   }
   throw new Error(`Unsupported API: ${model.api}`);
@@ -54,6 +70,20 @@ export function streamSimple<TApi extends Api>(
   if (model.api === "openai-responses") {
     return streamSimpleOpenAIResponses(
       model as Model<"openai-responses">,
+      context,
+      options,
+    );
+  }
+  if (model.api === "anthropic-messages") {
+    return streamSimpleAnthropic(
+      model as Model<"anthropic-messages">,
+      context,
+      options,
+    );
+  }
+  if (model.api === "google-generative-ai") {
+    return streamSimpleGoogle(
+      model as Model<"google-generative-ai">,
       context,
       options,
     );
