@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { AppMetadata } from "@/apps/_shared/app-metadata";
+import type { AppMetadata } from "@/app/_shared/app-metadata";
 import { useSocialBadges } from "@/app/social/hooks/use-social-badges";
 import { api } from "@/convex/api";
 import {
@@ -44,14 +44,16 @@ import { useFeedbackPrompt } from "./use-feedback-prompt";
 import "./sidebar.css";
 
 /**
- * App discovery: every `desktop/src/apps/<id>/metadata.ts` is loaded eagerly
+ * App discovery: every `desktop/src/app/<id>/metadata.ts` is loaded eagerly
  * by Vite at build time, sorted by `order`, and split into top / bottom slots.
+ * Feature folders without a `metadata.ts` (e.g. `home`, `media`, `workspace`)
+ * are silently skipped, so having a sidebar entry is opt-in per feature.
  *
- * Add a new app by dropping a `metadata.ts` into `desktop/src/apps/<id>/`.
+ * Add a new app by dropping a `metadata.ts` into `desktop/src/app/<id>/`.
  * No edits to this file are needed.
  */
 const APP_MODULES = import.meta.glob<{ default: AppMetadata }>(
-  "../../apps/*/metadata.ts",
+  "../../app/*/metadata.ts",
   { eager: true },
 );
 

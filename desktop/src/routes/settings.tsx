@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { SettingsApp } from "@/apps/settings/App";
+import { SettingsApp } from "@/app/settings/App";
 import { SETTINGS_TAB_KEYS } from "@/global/settings/settings-tabs";
 
 /**

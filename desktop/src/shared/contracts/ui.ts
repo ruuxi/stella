@@ -16,7 +16,7 @@ export type WindowMode = 'full' | 'mini'
  *
  * `conversationId` remains in `UiState` because the voice overlay window
  * needs cross-window access to the active conversation. The chat route
- * (`apps/chat/App.tsx`) is the *writer* — search-param `?c=<id>` is the
+ * (`app/chat/App.tsx`) is the *writer* — search-param `?c=<id>` is the
  * canonical source of truth; UiState mirrors it. No other window writes it
  * outside of voice activation in the main process.
  */
