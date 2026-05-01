@@ -1,4 +1,5 @@
 import React from "react";
+import { Lock } from "lucide-react";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import { DISCOVERY_CATEGORIES } from "./onboarding-flow";
 import { getPlatform } from "@/platform/electron/platform";
@@ -46,7 +47,12 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
           data-visible={showFdaNote || undefined}
           aria-hidden={!showFdaNote}
         >
-          <span>{t("onboarding.discovery.fdaNote")}</span>
+          <span className="onboarding-fda-note-icon" aria-hidden="true">
+            <Lock size={14} strokeWidth={2} />
+          </span>
+          <span className="onboarding-fda-note-text">
+            {t("onboarding.discovery.fdaNote")}
+          </span>
           <button
             className="onboarding-fda-link"
             onClick={openFullDiskAccess}

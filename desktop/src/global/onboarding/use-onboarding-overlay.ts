@@ -13,7 +13,11 @@ import { useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
-import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
+import {
+  readOnboardingPhase,
+  useOnboardingState,
+} from "@/global/onboarding/use-onboarding-state";
+import { SPLIT_PHASES, type Phase } from "@/global/onboarding/onboarding-flow";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import type { StellaAnimationHandle } from "@/shell/ascii-creature/StellaAnimation";
 
@@ -85,13 +89,33 @@ export function useOnboardingOverlay() {
     completed: onboardingDone,
     complete: completeOnboarding,
     reset: resetOnboarding,
+    persistPhase,
   } = useOnboardingState();
   const { hasConnectedAccount, isLoading: isAuthLoading } =
     useAuthSessionState();
   const resetUserData = useAction(api.reset.resetAllUserData);
-  const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
-  const [hasStarted, setHasStarted] = useState(() => onboardingDone);
-  const [splitMode, setSplitMode] = useState(false);
+  // Resolve the resume target ONCE at mount: if the user quit mid-flow we
+  // skip the start screen and drop them back where they were. After that
+  // first read the value is stable for the lifetime of this overlay
+  // instance — `onboardingKey` bumps on reset to remount and re-resolve.
+  const resumePhaseRef = useRef<Phase | null>(null);
+  if (resumePhaseRef.current === null && !onboardingDone) {
+    resumePhaseRef.current = readOnboardingPhase();
+  }
+  const resumePhase = onboardingDone ? null : resumePhaseRef.current;
+  const isResuming = resumePhase !== null;
+  const initialPhase: Phase = resumePhase ?? "intro";
+  const creatureInitialBirth =
+    onboardingDone || isResuming ? 1 : CREATURE_INITIAL_SIZE;
+  const [hasExpanded, setHasExpanded] = useState(
+    () => onboardingDone || isResuming,
+  );
+  const [hasStarted, setHasStarted] = useState(
+    () => onboardingDone || isResuming,
+  );
+  const [splitMode, setSplitMode] = useState(
+    () => isResuming && SPLIT_PHASES.has(initialPhase),
+  );
   const [hasDiscoverySelections, setHasDiscoverySelections] = useState(false);
   const [onboardingExiting, setOnboardingExiting] = useState(false);
   const [onboardingKey, setOnboardingKey] = useState(0);
@@ -152,6 +176,7 @@ export function useOnboardingOverlay() {
       clearTimeout(exitTimerRef.current);
       exitTimerRef.current = null;
     }
+    resumePhaseRef.current = null;
     setHasExpanded(false);
     setHasStarted(false);
     setSplitMode(false);
@@ -193,6 +218,9 @@ export function useOnboardingOverlay() {
     hasDiscoverySelections,
     setHasDiscoverySelections,
     onboardingKey,
+    initialPhase,
+    creatureInitialBirth,
+    persistPhase,
     stellaAnimationRef,
     triggerFlash,
     startOnboarding,

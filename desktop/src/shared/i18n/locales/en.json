@@ -80,7 +80,7 @@
         "label": "Your coding setup",
         "description": "Tools you use, projects you work on, and how your environment is configured"
       },
-      "fdaNote": "Some options require Full Disk Access"
+      "fdaNote": "Some of the options you've selected need Full Disk Access on macOS."
     }
   },
   "billing": {

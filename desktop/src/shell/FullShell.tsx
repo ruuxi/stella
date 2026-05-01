@@ -179,13 +179,22 @@ function OnboardingExperience({
     };
   }, []);
 
-  const handleOnboardingPhaseChange = useCallback((phase: OnboardingPhase) => {
-    setOnboardingPhase(phase);
-    const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
-    setStellaHiddenByPhase(
-      CREATION_PHASE_INDEX >= 0 && splitIndex >= CREATION_PHASE_INDEX,
-    );
-  }, []);
+  const persistOnboardingPhase = onboarding.persistPhase;
+  const handleOnboardingPhaseChange = useCallback(
+    (phase: OnboardingPhase) => {
+      setOnboardingPhase(phase);
+      const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
+      setStellaHiddenByPhase(
+        CREATION_PHASE_INDEX >= 0 && splitIndex >= CREATION_PHASE_INDEX,
+      );
+      // Persist split-flow phases so a quit-and-relaunch resumes here
+      // instead of dropping the user back on the welcome screen.
+      // `persistPhase` no-ops on non-split phases (intro/complete/done)
+      // and effectively clears the saved slot when those fire.
+      persistOnboardingPhase(phase);
+    },
+    [persistOnboardingPhase],
+  );
 
   // Phases whose own animations dominate the frame budget; we keep the
   // creature visible but pause its rAF canvas loop so the heavy phase
@@ -323,6 +332,8 @@ function OnboardingExperience({
             stellaAnimationPaused={pauseStellaAnimation}
             stellaAnimationHidden={stellaHiddenByPhase}
             onboardingKey={onboarding.onboardingKey}
+            initialPhase={onboarding.initialPhase}
+            creatureInitialBirth={onboarding.creatureInitialBirth}
             triggerFlash={onboarding.triggerFlash}
             startOnboarding={onboarding.startOnboarding}
             completeOnboarding={onboarding.completeOnboarding}
