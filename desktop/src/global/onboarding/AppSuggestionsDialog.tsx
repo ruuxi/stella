@@ -212,19 +212,24 @@ export function AppSuggestionsDialog({
                       </p>
                     ) : null}
                     {recommendation.badges.length > 0 ? (
-                      <div className="app-suggestions-dialog-badges">
-                        {recommendation.badges.map((badge, index) => {
-                          const Icon = BADGE_ICON[badge.icon] ?? Info;
-                          return (
-                            <span
-                              key={`${badge.icon}-${index}`}
-                              className="app-suggestions-dialog-badge"
-                            >
-                              <Icon size={12} />
-                              <span>{badge.label}</span>
-                            </span>
-                          );
-                        })}
+                      <div className="app-suggestions-dialog-badges-row">
+                        <span className="app-suggestions-dialog-badges-prefix">
+                          Stella may:
+                        </span>
+                        <div className="app-suggestions-dialog-badges">
+                          {recommendation.badges.map((badge, index) => {
+                            const Icon = BADGE_ICON[badge.icon] ?? Info;
+                            return (
+                              <span
+                                key={`${badge.icon}-${index}`}
+                                className="app-suggestions-dialog-badge"
+                              >
+                                <Icon size={12} />
+                                <span>{badge.label}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
                     ) : null}
                   </div>

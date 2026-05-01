@@ -108,11 +108,28 @@
   color: var(--muted-foreground);
 }
 
+.app-suggestions-dialog-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 4px;
+}
+
+.app-suggestions-dialog-badges-prefix {
+  flex-shrink: 0;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weak, var(--muted-foreground));
+  line-height: 1.2;
+}
+
 .app-suggestions-dialog-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 4px;
+  min-width: 0;
 }
 
 .app-suggestions-dialog-badge {
