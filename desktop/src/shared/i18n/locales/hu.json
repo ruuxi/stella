@@ -55,7 +55,6 @@
       "secondary": "A Stella nem mindenkinek való. A Stella neked való."
     },
     "stepTitles": {
-      "language": "Válassz nyelvet.",
       "extension": "Add hozzá a Stellát a böngésződhöz.",
       "browser": "Hadd ismerjen meg téged a Stella.",
       "creation": "A Stella változik, ha kéred. Próbáld ki a gombokkal.",
@@ -82,9 +81,6 @@
         "description": "Milyen eszközöket használsz, milyen projekteken dolgozol és hogyan van konfigurálva a környezet"
       },
       "fdaNote": "Néhány opció teljes lemezhozzáférést igényel"
-    },
-    "language": {
-      "description": "A Stella ezt a nyelvet fogja használni az alkalmazásban és a válaszokban. Később a Beállításokban módosíthatod."
     }
   },
   "billing": {

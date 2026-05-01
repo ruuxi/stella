@@ -3717,65 +3717,58 @@
   transition-duration: 0.08s;
 }
 
-/* ═══ Language phase ═══
- * The first split-stage step lets the user pick their app language.
- * Uses logical (`inline-start` / `block-end`) properties throughout so
- * RTL locales (Arabic, Hebrew) flip the alignment and arrow direction
- * automatically when `<html dir="rtl">` is set by the I18n provider. */
-.onboarding-language-phase {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: 100%;
-}
-
-.onboarding-language-phase-description {
-  opacity: 0.62;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.onboarding-language-phase-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  max-height: 360px;
-  overflow-y: auto;
-  padding: 2px;
-}
-
-.onboarding-language-phase-row {
-  display: flex;
+/* ═══ Start-screen language picker ═══
+ * Quiet language switch tucked into the top-right of the start screen
+ * (only visible while the user hasn't pressed "Start Stella"). The
+ * native <select> stays unstyled-ish so it reads as an unobtrusive
+ * affordance rather than a primary CTA. RTL flips it to top-left
+ * automatically via logical inset properties. */
+.onboarding-language-switch {
+  position: absolute;
+  inset-block-start: 16px;
+  inset-inline-end: 16px;
+  z-index: 11;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  text-align: start;
-  background: none;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  border-radius: 8px;
-  padding-block: 10px;
-  padding-inline: 14px;
-  cursor: pointer;
+  gap: 6px;
+}
+
+.onboarding-language-switch-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  border-radius: 999px;
+  padding-block: 6px;
+  padding-inline-start: 12px;
+  padding-inline-end: 28px;
   font-family: inherit;
-  font-size: 13px;
-  color: inherit;
-  opacity: 0.7;
-  transition:
-    opacity 0.2s ease,
-    border-color 0.2s ease,
-    background 0.2s ease;
-}
-
-.onboarding-language-phase-row:hover {
-  opacity: 0.95;
-  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
-}
-
-.onboarding-language-phase-row[data-active="true"] {
-  opacity: 1;
-  border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-}
-
-.onboarding-language-phase-row-native {
+  font-size: 12px;
   font-weight: 500;
+  color: var(--text-base);
+  opacity: 0.72;
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.onboarding-language-switch-select:hover,
+.onboarding-language-switch-select:focus-visible {
+  opacity: 1;
+  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  outline: none;
+}
+
+.onboarding-language-switch-chevron {
+  position: absolute;
+  inset-inline-end: 10px;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  opacity: 0.6;
 }

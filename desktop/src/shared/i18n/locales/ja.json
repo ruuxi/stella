@@ -55,7 +55,6 @@
       "secondary": "Stella はみんなのためのものではありません。あなたのためのものです。"
     },
     "stepTitles": {
-      "language": "使う言語を選んでください。",
       "extension": "ブラウザに Stella を追加しましょう。",
       "browser": "Stella にあなたを知ってもらいましょう。",
       "creation": "頼めば Stella は変わります。ボタンをクリックして試してみてください。",
@@ -82,9 +81,6 @@
         "description": "使っているツール、進めているプロジェクト、環境の設定"
       },
       "fdaNote": "一部のオプションにはフルディスクアクセスが必要です"
-    },
-    "language": {
-      "description": "Stella はこの言語でアプリと応答を行います。設定からあとで変更できます。"
     }
   },
   "billing": {

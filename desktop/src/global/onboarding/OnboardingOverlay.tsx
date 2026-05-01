@@ -26,7 +26,13 @@ import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import type { LegalDocument } from "@/global/legal/legal-text";
 import { LegalDialog } from "@/global/legal/LegalDialog";
 import { CREATURE_INITIAL_SIZE } from "@/global/onboarding/use-onboarding-overlay";
-import { useT } from "@/shared/i18n";
+import {
+  LOCALE_NATIVE_LABELS,
+  useI18n,
+  useT,
+  type Locale,
+} from "@/shared/i18n";
+import { ChevronDown } from "lucide-react";
 
 // IMPORTANT: this module is the lazy "onboarding chunk". Do NOT re-export
 // the `useOnboardingOverlay` hook from here — FullShell needs to call
@@ -153,6 +159,18 @@ export function OnboardingView({
     null,
   );
   const t = useT();
+  const { locale, setLocale, supportedLocales } = useI18n();
+
+  // The language switch is only relevant on the very first screen —
+  // once the user starts, every other phase has its own layout and
+  // settings already exposes the picker afterwards. Keep it hidden
+  // during runtime errors / loading so the start CTA stays the only
+  // call to action when something needs the user's attention.
+  const showLanguageSwitch =
+    !hasStarted &&
+    !showRuntimeGate &&
+    !isAuthLoading &&
+    !onboardingDone;
 
   return (
     <div
@@ -166,6 +184,28 @@ export function OnboardingView({
           if (!open) setActiveLegalDoc(null);
         }}
       />
+      {showLanguageSwitch ? (
+        <div className="onboarding-language-switch">
+          <select
+            className="onboarding-language-switch-select"
+            value={locale}
+            aria-label={t("common.language")}
+            onChange={(event) => setLocale(event.currentTarget.value as Locale)}
+          >
+            {supportedLocales.map((code) => (
+              <option key={code} value={code}>
+                {LOCALE_NATIVE_LABELS[code]}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={12}
+            strokeWidth={2}
+            className="onboarding-language-switch-chevron"
+            aria-hidden
+          />
+        </div>
+      ) : null}
       <div
         className="new-session-title"
         data-expanded={hasExpanded ? "true" : "false"}

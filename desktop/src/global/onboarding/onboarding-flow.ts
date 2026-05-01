@@ -2,7 +2,6 @@ import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 
 export type Phase =
   | "intro"
-  | "language"
   | "capabilities"
   | "permissions"
   | "extension"
@@ -20,7 +19,6 @@ export type Phase =
   | "done";
 
 export const SPLIT_PHASES = new Set<Phase>([
-  "language",
   "capabilities",
   "permissions",
   "browser",
@@ -37,7 +35,6 @@ export const SPLIT_PHASES = new Set<Phase>([
 ]);
 
 export const SPLIT_STEP_ORDER: Phase[] = [
-  "language",
   "capabilities",
   "permissions",
   "browser",

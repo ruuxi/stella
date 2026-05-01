@@ -7,7 +7,6 @@ import { useOnboardingDiscovery } from "./use-onboarding-discovery";
 import { useOnboardingFlow } from "./use-onboarding-flow";
 import { useOnboardingMemory } from "./use-onboarding-memory";
 import { useT } from "@/shared/i18n";
-import { OnboardingLanguagePhase } from "./OnboardingLanguagePhase";
 import "./Onboarding.css";
 
 /* Phases are eager imports because the entire onboarding flow already
@@ -43,7 +42,6 @@ import { OnboardingMockWindows } from "./OnboardingMockWindows";
  * static step title would otherwise be — that's why it's omitted here.
  */
 const STEP_TITLE_KEYS: Partial<Record<Phase, string>> = {
-  language: "onboarding.stepTitles.language",
   extension: "onboarding.stepTitles.extension",
   browser: "onboarding.stepTitles.browser",
   creation: "onboarding.stepTitles.creation",
@@ -149,13 +147,6 @@ export const OnboardingStep1 = ({
 
   const renderActiveSplitPhase = (activePhase: Phase) => {
     switch (activePhase) {
-      case "language":
-        return (
-          <OnboardingLanguagePhase
-            splitTransitionActive={leaving}
-            onContinue={nextSplitStep}
-          />
-        );
       case "capabilities":
         return (
           <OnboardingCapabilitiesPhase
