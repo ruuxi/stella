@@ -38,9 +38,12 @@ import {
   detectSelfModAppliedSince,
   getLastGitFeatureId,
   getGitHead,
+  listRecentGitCommits,
   listRecentGitFeatures,
-  parseStellaCommitTrailers,
 } from "../kernel/self-mod/git.js";
+import { exec as gitExec } from "dugite";
+import { execFile as nodeExecFile } from "node:child_process";
+import { promisify as nodePromisify } from "node:util";
 import {
   createSelfModHmrController,
   type ApplyOptions,
@@ -49,19 +52,13 @@ import {
   type SelfModHmrController,
 } from "../kernel/self-mod/hmr.js";
 import { StoreModService } from "../kernel/self-mod/store-mod-service.js";
-import { buildFeatureRoster } from "../kernel/self-mod/feature-roster.js";
-import { revertGitCommits, revertGitFeature } from "../kernel/self-mod/git.js";
+import { revertGitFeature } from "../kernel/self-mod/git.js";
 import { createDesktopDatabase } from "../kernel/storage/database.js";
 import { ChatStore } from "../kernel/storage/chat-store.js";
 import { RuntimeStore } from "../kernel/storage/runtime-store.js";
 import { StoreModStore } from "../kernel/storage/store-mod-store.js";
 import type { SqliteDatabase } from "../kernel/storage/shared.js";
-import {
-  createEmptySocialSessionServiceSnapshot,
-  type StorePackageRecord,
-  type StorePackageReleaseRecord,
-  type StoreReleaseArtifact,
-} from "../contracts/index.js";
+import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import { SocialSessionService } from "./social-sessions/service.js";
 import { SocialSessionStore } from "./social-sessions/store.js";
 import { VoiceRuntimeService } from "./voice/service.js";
@@ -172,44 +169,279 @@ type PendingApplyBatch = {
 const resolveRuntimeCliPath = (fileName: string) =>
   fileURLToPath(new URL(`../kernel/cli/${fileName}`, import.meta.url));
 
-const writeBlueprintArtifact = async (args: {
-  stellaRoot: string;
-  packageId: string;
-  releaseNumber: number;
-  artifact: StoreReleaseArtifact;
-}): Promise<string> => {
-  const releaseDir = path.join(
-    args.stellaRoot,
-    "state",
-    "mods",
-    "store-blueprints",
-    args.packageId,
-  );
-  await fs.mkdir(releaseDir, { recursive: true });
-  const filePath = path.join(releaseDir, `release-${args.releaseNumber}.json`);
-  await fs.writeFile(filePath, JSON.stringify(args.artifact, null, 2), "utf-8");
-  return filePath;
-};
-
-const buildStoreInstallPrompt = (args: {
-  blueprintPath: string;
-  packageRecord: StorePackageRecord;
-  release: StorePackageReleaseRecord;
-  mode: "install" | "update";
-}): string =>
-  [
-    `${args.mode === "update" ? "Update" : "Install"} the Stella store package "${args.packageRecord.displayName}" (${args.packageRecord.packageId}).`,
-    `Use the blueprint JSON at "${args.blueprintPath.replace(/\\/g, "/")}" as the reference implementation.`,
-    "Read that blueprint before making changes.",
-    "The blueprint contains exact commit patches and reference file content from the published release.",
-    "Apply the intended changes to the current local Stella codebase.",
-    "Stella installations may differ, so adapt the implementation instead of blindly copying text.",
-    "Create missing files when the blueprint expects them, update existing files to preserve the intended behavior, and delete files only when the blueprint clearly marks them as removed.",
-    `Target packageId: ${args.packageRecord.packageId}. Target releaseNumber: ${args.release.releaseNumber}.`,
-  ].join("\n\n");
-
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
+
+// ── Store-agent host tool executor ───────────────────────────────────────────
+//
+// The Convex-side Store agent emits read-only tool calls (git/file
+// inspection + ask_question). The renderer subscribes to the pending
+// queue and forwards each call here. All execution is read-only or
+// non-destructive — there is no exec_command, no apply_patch, no
+// write surface.
+
+const STORE_TOOL_FILE_READ_LIMIT = 50_000;
+const STORE_TOOL_GIT_LOG_DEFAULT = 20;
+const STORE_TOOL_GIT_LOG_MAX = 100;
+const STORE_TOOL_LIST_FILES_LIMIT = 200;
+const STORE_TOOL_GREP_MAX_LINES = 200;
+const STORE_TOOL_OUTPUT_BYTE_LIMIT = 30_000;
+
+const promisifiedExecFile = nodePromisify(nodeExecFile);
+
+const truncateForToolOutput = (raw: string): string => {
+  if (raw.length <= STORE_TOOL_OUTPUT_BYTE_LIMIT) return raw;
+  return `${raw.slice(0, STORE_TOOL_OUTPUT_BYTE_LIMIT)}\n... [output truncated]`;
+};
+
+const safeRepoRelativePath = (
+  repoRoot: string,
+  rawPath: string,
+): string | null => {
+  const normalized = path
+    .normalize(rawPath.trim())
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+  if (!normalized || normalized.startsWith("..")) return null;
+  const resolved = path.resolve(repoRoot, normalized);
+  const repoResolved = path.resolve(repoRoot);
+  if (
+    resolved !== repoResolved &&
+    !resolved.startsWith(`${repoResolved}${path.sep}`)
+  ) {
+    return null;
+  }
+  return resolved;
+};
+
+const runGitText = async (
+  repoRoot: string,
+  args: string[],
+): Promise<string> => {
+  const result = await gitExec(args, repoRoot, {
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  if (result.exitCode !== 0) {
+    const stderr =
+      typeof result.stderr === "string"
+        ? result.stderr
+        : Buffer.from(result.stderr).toString("utf8");
+    throw new Error(stderr.trim() || `git exited ${result.exitCode}`);
+  }
+  return typeof result.stdout === "string"
+    ? result.stdout
+    : Buffer.from(result.stdout).toString("utf8");
+};
+
+const executeStoreAgentToolGitLog = async (
+  repoRoot: string,
+  args: { limit?: unknown },
+): Promise<string> => {
+  const rawLimit = typeof args.limit === "number" ? args.limit : NaN;
+  const limit = Number.isFinite(rawLimit)
+    ? Math.max(1, Math.min(STORE_TOOL_GIT_LOG_MAX, Math.floor(rawLimit)))
+    : STORE_TOOL_GIT_LOG_DEFAULT;
+  const commits = await listRecentGitCommits(repoRoot, limit);
+  if (commits.length === 0) return "(no recent self-mod commits)";
+  return commits
+    .map((commit) => {
+      const date = new Date(commit.timestampMs).toISOString().slice(0, 10);
+      const files = commit.files.slice(0, 6).join(", ");
+      const filesSuffix = commit.files.length > 6 ? ", …" : "";
+      return [
+        `${commit.commitHash} (${date}) ${commit.subject}`,
+        `  files (${commit.fileCount}): ${files}${filesSuffix}`,
+      ].join("\n");
+    })
+    .join("\n");
+};
+
+const executeStoreAgentToolGitShow = async (
+  repoRoot: string,
+  args: { hash?: unknown },
+): Promise<string> => {
+  const hash = typeof args.hash === "string" ? args.hash.trim() : "";
+  if (!hash) return "Error: hash is required.";
+  if (!/^[0-9a-f]{4,}$/i.test(hash)) {
+    return "Error: hash must be a hex commit reference.";
+  }
+  const text = await runGitText(repoRoot, [
+    "show",
+    "--stat",
+    "--patch",
+    "--no-color",
+    hash,
+  ]);
+  return truncateForToolOutput(text.trim() || "(empty)");
+};
+
+const executeStoreAgentToolGitHead = async (
+  repoRoot: string,
+): Promise<string> => {
+  const head = await getGitHead(repoRoot).catch(() => null);
+  return head ?? "(no HEAD)";
+};
+
+const executeStoreAgentToolReadFile = async (
+  repoRoot: string,
+  args: { path?: unknown },
+): Promise<string> => {
+  const raw = typeof args.path === "string" ? args.path : "";
+  const resolved = raw ? safeRepoRelativePath(repoRoot, raw) : null;
+  if (!resolved)
+    return "Error: path is required and must stay inside the repo.";
+  try {
+    const stat = await fs.stat(resolved);
+    if (!stat.isFile()) return "Error: not a regular file.";
+    const fileHandle = await fs.open(resolved, "r");
+    try {
+      const buf = Buffer.alloc(Math.min(stat.size, STORE_TOOL_FILE_READ_LIMIT));
+      await fileHandle.read(buf, 0, buf.length, 0);
+      const text = buf.toString("utf8");
+      return stat.size > STORE_TOOL_FILE_READ_LIMIT
+        ? `${text}\n... [file truncated at ${STORE_TOOL_FILE_READ_LIMIT} bytes; full size ${stat.size}]`
+        : text;
+    } finally {
+      await fileHandle.close();
+    }
+  } catch (error) {
+    return `Error: ${(error as Error).message}`;
+  }
+};
+
+const executeStoreAgentToolListFiles = async (
+  repoRoot: string,
+  args: { path?: unknown },
+): Promise<string> => {
+  const raw = typeof args.path === "string" ? args.path : "";
+  const resolved = raw ? safeRepoRelativePath(repoRoot, raw) : null;
+  if (!resolved)
+    return "Error: path is required and must stay inside the repo.";
+  try {
+    const entries = await fs.readdir(resolved, { withFileTypes: true });
+    const formatted = entries
+      .slice(0, STORE_TOOL_LIST_FILES_LIMIT)
+      .map((entry) => `${entry.isDirectory() ? "d" : "f"}  ${entry.name}`);
+    const suffix =
+      entries.length > STORE_TOOL_LIST_FILES_LIMIT
+        ? `\n... [${entries.length - STORE_TOOL_LIST_FILES_LIMIT} more entries]`
+        : "";
+    return formatted.length > 0
+      ? `${formatted.join("\n")}${suffix}`
+      : "(empty)";
+  } catch (error) {
+    return `Error: ${(error as Error).message}`;
+  }
+};
+
+const executeStoreAgentToolGrep = async (
+  repoRoot: string,
+  args: { pattern?: unknown; path?: unknown },
+): Promise<string> => {
+  const pattern = typeof args.pattern === "string" ? args.pattern : "";
+  if (!pattern) return "Error: pattern is required.";
+  const scopePath = typeof args.path === "string" ? args.path : "";
+  const cwd = scopePath ? safeRepoRelativePath(repoRoot, scopePath) : repoRoot;
+  if (!cwd) return "Error: path must stay inside the repo.";
+  try {
+    const { stdout } = await promisifiedExecFile(
+      "rg",
+      [
+        "--max-count",
+        String(STORE_TOOL_GREP_MAX_LINES),
+        "--max-columns",
+        "240",
+        "--with-filename",
+        "--line-number",
+        "--no-heading",
+        "--color",
+        "never",
+        pattern,
+      ],
+      { cwd, maxBuffer: 5 * 1024 * 1024 },
+    );
+    const trimmed = stdout.trim();
+    return trimmed ? truncateForToolOutput(trimmed) : "(no matches)";
+  } catch (error) {
+    const err = error as { stdout?: string; code?: number };
+    if (err.code === 1) return "(no matches)";
+    return `Error: ${(error as Error).message}`;
+  }
+};
+
+/**
+ * Tool dispatch: maps the agent's tool name to the right local
+ * handler. Read-only operations only — no shell, no write surface.
+ * `ask_question` is intentionally not handled here; the renderer
+ * resolves it directly by surfacing a dialog and posting the user's
+ * answer back to the pending tool-call row.
+ */
+const executeStoreAgentTool = async (args: {
+  repoRoot: string;
+  toolName: string;
+  argsJson: string;
+}): Promise<{ resultText: string; isError?: boolean }> => {
+  let parsedArgs: Record<string, unknown> = {};
+  try {
+    parsedArgs = JSON.parse(args.argsJson || "{}");
+  } catch {
+    return { resultText: "Error: invalid argsJson", isError: true };
+  }
+  try {
+    switch (args.toolName) {
+      case "git_log":
+        return {
+          resultText: await executeStoreAgentToolGitLog(
+            args.repoRoot,
+            parsedArgs,
+          ),
+        };
+      case "git_show":
+        return {
+          resultText: await executeStoreAgentToolGitShow(
+            args.repoRoot,
+            parsedArgs,
+          ),
+        };
+      case "git_head":
+        return {
+          resultText: await executeStoreAgentToolGitHead(args.repoRoot),
+        };
+      case "read_file":
+        return {
+          resultText: await executeStoreAgentToolReadFile(
+            args.repoRoot,
+            parsedArgs,
+          ),
+        };
+      case "list_files":
+        return {
+          resultText: await executeStoreAgentToolListFiles(
+            args.repoRoot,
+            parsedArgs,
+          ),
+        };
+      case "grep":
+        return {
+          resultText: await executeStoreAgentToolGrep(
+            args.repoRoot,
+            parsedArgs,
+          ),
+        };
+      default:
+        return {
+          resultText: `Error: unknown tool "${args.toolName}"`,
+          isError: true,
+        };
+    }
+  } catch (error) {
+    return {
+      resultText: `Error: ${(error as Error).message}`,
+      isError: true,
+    };
+  }
+};
 
 const DATA_URL_RE = /^data:([^;,]+);base64,(.+)$/i;
 const HTTP_URL_RE = /^https?:\/\//i;
@@ -710,9 +942,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           await storeModService.beginSelfModRun({
             runId,
             taskDescription,
-            packageId,
-            releaseNumber,
-            applyMode: mode,
+            ...(packageId ? { packageId } : {}),
+            ...(releaseNumber == null ? {} : { releaseNumber }),
+            ...(mode ? { applyMode: mode } : {}),
           });
         },
         finalizeRun: async ({
@@ -720,6 +952,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           succeeded,
           conversationId,
           commitMessageProvider,
+          featureNamerProvider,
         }) => {
           // Git commit happens BEFORE the apply so the overlay's
           // "read from disk at apply time" sees the post-commit content.
@@ -731,6 +964,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             succeeded,
             ...(conversationId ? { conversationId } : {}),
             ...(commitMessageProvider ? { commitMessageProvider } : {}),
+            ...(featureNamerProvider ? { featureNamerProvider } : {}),
           });
 
           if (!selfModHmrController.hasRun(runId)) {
@@ -812,11 +1046,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       onGoogleWorkspaceAuthRequired: () => {
         peer.notify(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, null);
       },
-      featureRosterProvider: async () =>
-        await buildFeatureRoster({
-          repoRoot: init.stellaRoot,
-          store: storeModStore,
-        }),
     };
 
     const runner = createStellaHostRunner(runnerOptions);
@@ -1647,168 +1876,13 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       await ensureRunner().createStoreReleaseUpdate(params as StorePublishArgs),
   );
 
-  // Backend Store agent owns publishing now. The runtime's only job is to
-  // produce the local bundle (commit metadata + patches + file snapshots)
-  // for a hand-picked commit selection — the renderer ships that directly
-  // to Convex `data.store_thread.confirmDraft`.
+  // Snapshot read for the side panel features list. The snapshot is
+  // regenerated by the namer LLM after every successful self-mod commit.
   peer.registerRequestHandler(
-    METHOD_NAMES.STORE_THREAD_BUILD_BUNDLE,
-    async (params) => {
-      if (!state.init) {
-        throw new Error("Worker has not been initialized.");
-      }
-      const payload = params as { commitHashes: string[] };
-      const service = ensureStoreModService();
-      const candidate = await service.buildPublishCandidateBundle({
-        requestText: "store-thread-confirm",
-        selectedCommitHashes: payload.commitHashes,
-      });
-      // Capture HEAD as the `authoredAgainst.stellaCommit` hint. Used by
-      // the install agent to know what surface area this release was
-      // built against — best-effort, ignored on failure.
-      let stellaCommit: string | null = null;
-      try {
-        stellaCommit = await getGitHead(state.init.stellaRoot);
-      } catch {
-        stellaCommit = null;
-      }
-      // Snapshot the user's *currently installed* version of each
-      // parent add-on referenced by `Stella-Parent-Package-Id`
-      // trailers. The backend prefers this over a fresh "latest"
-      // lookup so the published manifest records the release the
-      // change was actually authored against — not whatever happens
-      // to be the latest on the store at publish time.
-      const parentSlugs = new Set<string>();
-      for (const commit of candidate.commits) {
-        const trailers = parseStellaCommitTrailers(commit.body);
-        for (const slug of trailers.parentPackageIds) {
-          if (slug) parentSlugs.add(slug);
-        }
-      }
-      const installedParents: Array<{ packageId: string; releaseNumber: number }> = [];
-      for (const slug of parentSlugs) {
-        const installed = service.getInstalledModByPackageId(slug);
-        if (installed && installed.state === "installed") {
-          installedParents.push({
-            packageId: slug,
-            releaseNumber: installed.releaseNumber,
-          });
-        }
-      }
-      return {
-        commits: candidate.commits,
-        files: candidate.files,
-        ...(stellaCommit ? { stellaCommit } : {}),
-        ...(installedParents.length > 0 ? { installedParents } : {}),
-      };
-    },
-  );
-
-  // Feature roster reader: the side panel calls into this on mount and
-  // whenever it wants a fresh view. Same builder the commit-message LLM
-  // uses on the commit hot path, so the UI shows exactly what the
-  // grouping decision saw.
-  peer.registerRequestHandler(
-    METHOD_NAMES.STORE_THREAD_LIST_FEATURE_ROSTER,
+    METHOD_NAMES.INTERNAL_WORKER_FEATURE_SNAPSHOT_READ,
     async () => {
-      if (!state.init || !state.storeModStore) {
-        throw new Error("Worker has not been initialized.");
-      }
-      return await buildFeatureRoster({
-        repoRoot: state.init.stellaRoot,
-        store: state.storeModStore,
-      });
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_INSTALL_STORE_RELEASE,
-    async (params) => {
-      if (!state.init) {
-        throw new Error("Worker has not been initialized.");
-      }
-      const payload = params as { packageId: string; releaseNumber?: number };
-      const runner = ensureRunner();
       const service = ensureStoreModService();
-      const requestedReleaseNumber =
-        typeof payload.releaseNumber === "number" &&
-        Number.isFinite(payload.releaseNumber)
-          ? Math.max(1, Math.floor(payload.releaseNumber))
-          : undefined;
-      const availableReleases = await runner.listStorePackageReleases(
-        payload.packageId,
-      );
-      if (!requestedReleaseNumber && availableReleases.length === 0) {
-        throw new Error(
-          `Package "${payload.packageId}" has no published releases.`,
-        );
-      }
-      const releaseNumber =
-        requestedReleaseNumber ??
-        Math.max(1, ...availableReleases.map((entry) => entry.releaseNumber));
-
-      const result = await service.installRelease({
-        packageId: payload.packageId,
-        releaseNumber,
-        fetchRelease: async ({ packageId, releaseNumber }) => {
-          const release = await runner.getStorePackageRelease(
-            packageId,
-            releaseNumber,
-          );
-          const packageRecord = await runner.getStorePackage(packageId);
-          if (!release || !packageRecord) {
-            throw new Error("Store release not found.");
-          }
-          if (!release.artifactUrl) {
-            throw new Error("Store release artifact URL is unavailable.");
-          }
-          const response = await fetch(release.artifactUrl);
-          if (!response.ok) {
-            throw new Error(
-              `Failed to download release artifact (${response.status}).`,
-            );
-          }
-          const artifact = (await response.json()) as StoreReleaseArtifact;
-          return {
-            package: packageRecord,
-            release,
-            artifact,
-          };
-        },
-        applyRelease: async ({
-          package: packageRecord,
-          release,
-          artifact,
-          mode,
-        }) => {
-          const blueprintPath = await writeBlueprintArtifact({
-            stellaRoot: state.init!.stellaRoot,
-            packageId: packageRecord.packageId,
-            releaseNumber: release.releaseNumber,
-            artifact,
-          });
-          const blockingAgentResult = await runner.runBlockingLocalAgent({
-            conversationId: `store:${packageRecord.packageId}`,
-            description: `${mode === "update" ? "Update" : "Install"} ${packageRecord.displayName} from store`,
-            prompt: buildStoreInstallPrompt({
-              blueprintPath,
-              packageRecord,
-              release,
-              mode,
-            }),
-            agentType: "general",
-            selfModMetadata: {
-              packageId: packageRecord.packageId,
-              releaseNumber: release.releaseNumber,
-              mode,
-            },
-          });
-          if (blockingAgentResult.status !== "ok") {
-            throw new Error(blockingAgentResult.error);
-          }
-        },
-      });
-      return result.installRecord;
+      return service.readFeatureSnapshot();
     },
   );
 
@@ -1820,22 +1894,105 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       }
       const payload = params as { packageId: string };
       const service = ensureStoreModService();
-      const install = service.getInstalledModByPackageId(payload.packageId);
-      if (!install || install.state === "uninstalled") {
-        return {
-          packageId: payload.packageId,
-          revertedCommits: [],
-        };
-      }
-      const revertedCommits = await revertGitCommits({
-        repoRoot: state.init.stellaRoot,
-        commitHashes: [...install.applyCommitHashes].reverse(),
-      });
-      service.markInstallUninstalled(install.installId);
+      const result = await service.uninstall(payload.packageId);
       return {
         packageId: payload.packageId,
-        revertedCommits,
+        revertedCommits: result.revertedCommits,
       };
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_AGENT_EXECUTE_TOOL,
+    async (params) => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const payload = params as {
+        toolName: string;
+        argsJson: string;
+      };
+      const repoRoot = state.init.stellaRoot;
+      const result = await executeStoreAgentTool({
+        repoRoot,
+        toolName: payload.toolName,
+        argsJson: payload.argsJson,
+      });
+      return result;
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_INSTALL_FROM_BLUEPRINT,
+    async (params) => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const payload = params as {
+        packageId: string;
+        releaseNumber: number;
+        displayName: string;
+        blueprintMarkdown: string;
+      };
+      const runner = ensureRunner();
+      const service = ensureStoreModService();
+
+      const headBeforeRun = await getGitHead(state.init.stellaRoot).catch(
+        () => null,
+      );
+
+      // Fixed system reminder framing the blueprint as a spec, not a
+      // patch. The receiving general agent reads this as the user
+      // prompt and adapts to the local codebase.
+      const installPrompt = [
+        `# Stella mod blueprint install: ${payload.displayName} (${payload.packageId})`,
+        "",
+        "You are implementing a Stella mod blueprint another user authored. The user wants this mod added to their Stella.",
+        "",
+        "Important: every Stella install differs. Do not paste the blueprint's example code blindly. Read the current state of any files you're about to touch first, then adapt the implementation to fit. Create new files when the blueprint expects them, modify existing files to preserve the intended behavior, and skip pieces that don't apply on this codebase.",
+        "",
+        "When you finish, the runtime will commit the changes you made — there's nothing extra to do. If the blueprint is unsafe, contradicts how the local code works, or you genuinely cannot implement it, stop and report what you saw without leaving partial edits.",
+        "",
+        "## Blueprint",
+        "",
+        payload.blueprintMarkdown,
+      ].join("\n");
+
+      const blockingResult = await runner.runBlockingLocalAgent({
+        conversationId: `store-install:${payload.packageId}`,
+        description: `Install ${payload.displayName} from store`,
+        prompt: installPrompt,
+        agentType: "general",
+        selfModMetadata: {
+          packageId: payload.packageId,
+          releaseNumber: payload.releaseNumber,
+          mode: service.getInstall(payload.packageId) ? "update" : "install",
+        },
+      });
+      if (blockingResult.status !== "ok") {
+        throw new Error(blockingResult.error);
+      }
+
+      // Capture HEAD after the run so we can record the install commit.
+      // A successful install must produce a self-mod commit; otherwise
+      // the UI would show the add-on as installed with nothing to undo.
+      const headAfterRun = await getGitHead(state.init.stellaRoot).catch(
+        () => null,
+      );
+      const installCommitHash =
+        headAfterRun && headAfterRun !== headBeforeRun ? headAfterRun : null;
+      if (!installCommitHash) {
+        throw new Error(
+          "Store install did not apply any changes, so it was not recorded as installed.",
+        );
+      }
+
+      const installRecord = service.recordInstall({
+        packageId: payload.packageId,
+        releaseNumber: payload.releaseNumber,
+        installCommitHash,
+      });
+      return installRecord;
     },
   );
 
@@ -1895,7 +2052,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       }
       return {
         ok: true,
-        requiresClientFullReload: applyResponse.requiresClientFullReload === true,
+        requiresClientFullReload:
+          applyResponse.requiresClientFullReload === true,
       };
     },
   );
@@ -2087,32 +2245,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   );
 
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS,
-    async (params) => {
-      return await ensureStoreModService().listLocalCommits(
-        (params as { limit?: number } | undefined)?.limit,
-      );
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS_BY_SELECTOR,
-    async (params) => {
-      const args =
-        (params as
-          | { featureIds?: string[]; commitHashes?: string[] }
-          | undefined) ?? {};
-      return await ensureStoreModService().listLocalCommitsBySelector({
-        ...(args.featureIds ? { featureIds: args.featureIds } : {}),
-        ...(args.commitHashes ? { commitHashes: args.commitHashes } : {}),
-      });
-    },
-  );
-
-  peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED,
     async () => {
-      return ensureStoreModService().listInstalledMods();
+      return ensureStoreModService().listInstalls();
     },
   );
 

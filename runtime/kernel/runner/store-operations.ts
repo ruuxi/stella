@@ -1,7 +1,6 @@
 import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
-  StoreReleaseArtifact,
   StoreReleaseManifest,
 } from "../../contracts/index.js";
 import type { StorePublishArgs } from "../../protocol/index.js";
@@ -86,10 +85,7 @@ export const createStoreOperations = (
       typeof record.packageId !== "string" ||
       typeof record.releaseNumber !== "number" ||
       typeof record.createdAt !== "number" ||
-      typeof record.artifactStorageKey !== "string" ||
-      !Array.isArray(manifest.includedBatchIds) ||
-      !Array.isArray(manifest.includedCommitHashes) ||
-      !Array.isArray(manifest.changedFiles)
+      typeof record.blueprintMarkdown !== "string"
     ) {
       return null;
     }
@@ -117,16 +113,10 @@ export const createStoreOperations = (
         ...(typeof record.releaseNotes === "string"
           ? { releaseNotes: record.releaseNotes }
           : {}),
-        batchIds: manifest.includedBatchIds.filter(
-          (value): value is string => typeof value === "string",
-        ),
-        commitHashes: manifest.includedCommitHashes.filter(
-          (value): value is string => typeof value === "string",
-        ),
-        files: manifest.changedFiles.filter(
-          (value): value is string => typeof value === "string",
-        ),
         createdAt: record.createdAt,
+        ...(typeof manifest.authoredAtCommit === "string" && manifest.authoredAtCommit
+          ? { authoredAtCommit: manifest.authoredAtCommit }
+          : {}),
         ...(typeof manifest.iconUrl === "string" && manifest.iconUrl
           ? { iconUrl: manifest.iconUrl }
           : args.packageRecord.iconUrl
@@ -138,20 +128,17 @@ export const createStoreOperations = (
             ? { authorDisplayName: args.packageRecord.authorDisplayName }
             : {}),
       },
-      storageKey: record.artifactStorageKey,
-      ...(record.artifactUrl == null || typeof record.artifactUrl === "string"
-        ? { artifactUrl: record.artifactUrl as string | null | undefined }
-        : {}),
+      blueprintMarkdown: record.blueprintMarkdown,
       createdAt: record.createdAt,
     };
   };
 
   const toBackendStoreManifest = (manifest: StoreReleaseManifest) => ({
-    includedBatchIds: [...manifest.batchIds],
-    includedCommitHashes: [...manifest.commitHashes],
-    changedFiles: [...manifest.files],
     category: manifest.category,
     ...(manifest.releaseNotes ? { summary: manifest.releaseNotes } : {}),
+    ...(manifest.authoredAtCommit
+      ? { authoredAtCommit: manifest.authoredAtCommit }
+      : {}),
     ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
     ...(manifest.authorDisplayName
       ? { authorDisplayName: manifest.authorDisplayName }
@@ -251,8 +238,7 @@ export const createStoreOperations = (
         description: args.description,
         releaseNotes: args.releaseNotes,
         manifest: toBackendStoreManifest(args.manifest),
-        artifactBody: JSON.stringify(args.artifact),
-        artifactContentType: "application/json",
+        blueprintMarkdown: args.artifact.blueprintMarkdown,
       },
     )) as {
       package?: unknown;
@@ -282,8 +268,7 @@ export const createStoreOperations = (
         packageId: args.packageId,
         releaseNotes: args.releaseNotes,
         manifest: toBackendStoreManifest(args.manifest),
-        artifactBody: JSON.stringify(args.artifact),
-        artifactContentType: "application/json",
+        blueprintMarkdown: args.artifact.blueprintMarkdown,
       },
     )) as {
       package?: unknown;

@@ -1,15 +1,15 @@
 import { Type, type Static } from "@sinclair/typebox";
 import type {
   AgentHealth,
-  InstalledStoreModRecord,
   LocalCronJobRecord,
-  LocalGitCommitRecord,
   LocalHeartbeatConfigRecord,
   ScheduledConversationEvent,
+  SelfModFeatureSnapshot,
   SelfModFeatureSummary,
   SelfModHmrState,
   SocialSessionRuntimeRecord,
   SocialSessionServiceSnapshot,
+  StoreInstallRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
@@ -21,15 +21,15 @@ import type {
 
 export type {
   AgentHealth,
-  InstalledStoreModRecord,
   LocalCronJobRecord,
-  LocalGitCommitRecord,
   LocalHeartbeatConfigRecord,
   ScheduledConversationEvent,
+  SelfModFeatureSnapshot,
   SelfModFeatureSummary,
   SelfModHmrState,
   SocialSessionRuntimeRecord,
   SocialSessionServiceSnapshot,
+  StoreInstallRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
@@ -115,10 +115,9 @@ export const METHOD_NAMES = {
   STORE_GET_RELEASE: "store.getRelease",
   STORE_CREATE_FIRST_RELEASE: "store.createFirstRelease",
   STORE_CREATE_RELEASE_UPDATE: "store.createReleaseUpdate",
-  STORE_THREAD_BUILD_BUNDLE: "store.thread.buildBundle",
-  STORE_THREAD_LIST_FEATURE_ROSTER: "store.thread.listFeatureRoster",
-  STORE_INSTALL_RELEASE: "store.installRelease",
+  STORE_INSTALL_FROM_BLUEPRINT: "store.installFromBlueprint",
   STORE_UNINSTALL_MOD: "store.uninstallMod",
+  SELF_MOD_FEATURE_SNAPSHOT_READ: "selfMod.featureSnapshot.read",
   SCHEDULE_LIST_CRON_JOBS: "schedule.listCronJobs",
   SCHEDULE_LIST_HEARTBEATS: "schedule.listHeartbeats",
   SCHEDULE_LIST_EVENTS: "schedule.listConversationEvents",
@@ -180,8 +179,13 @@ export const METHOD_NAMES = {
     "internal.worker.createFirstStoreRelease",
   INTERNAL_WORKER_CREATE_STORE_RELEASE_UPDATE:
     "internal.worker.createStoreReleaseUpdate",
-  INTERNAL_WORKER_INSTALL_STORE_RELEASE: "internal.worker.installStoreRelease",
+  INTERNAL_WORKER_INSTALL_FROM_BLUEPRINT:
+    "internal.worker.installFromBlueprint",
   INTERNAL_WORKER_UNINSTALL_STORE_MOD: "internal.worker.uninstallStoreMod",
+  INTERNAL_WORKER_FEATURE_SNAPSHOT_READ:
+    "internal.worker.selfMod.featureSnapshotRead",
+  INTERNAL_WORKER_STORE_AGENT_EXECUTE_TOOL:
+    "internal.worker.storeAgent.executeTool",
   INTERNAL_WORKER_RESUME_HMR: "internal.worker.resumeHmr",
   INTERNAL_WORKER_KILL_ALL_SHELLS: "internal.worker.killAllShells",
   INTERNAL_WORKER_KILL_SHELL_BY_PORT: "internal.worker.killShellByPort",
@@ -205,10 +209,6 @@ export const METHOD_NAMES = {
     "internal.worker.discovery.collectBrowserData",
   INTERNAL_WORKER_DISCOVERY_COLLECT_ALL_SIGNALS:
     "internal.worker.discovery.collectAllSignals",
-  INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS:
-    "internal.worker.storeMods.listLocalCommits",
-  INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS_BY_SELECTOR:
-    "internal.worker.storeMods.listLocalCommitsBySelector",
   INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED:
     "internal.worker.storeMods.listInstalledMods",
   INTERNAL_WORKER_SCHEDULE_LIST_CRON_JOBS:
@@ -623,7 +623,7 @@ export type RuntimeStoreApi = {
 };
 
 export type RuntimeStoreModApi = {
-  listInstalledMods: () => Promise<InstalledStoreModRecord[]>;
+  listInstalledMods: () => Promise<StoreInstallRecord[]>;
 };
 
 export type RuntimeScheduleApi = {

@@ -75,36 +75,39 @@ export type StellaHostRunnerOptions = {
       taskPrompt: string;
       conversationId: string;
       succeeded: boolean;
-      packageId?: string;
-      releaseNumber?: number;
-      mode?: "author" | "install" | "update";
       /**
-       * Optional callback the lifecycle invokes (during author-mode runs)
-       * just before committing, to produce a human-readable commit subject
-       * + grouping decision (which `Stella-Feature-Id` this commit belongs
-       * to, plus any installed add-on parents). The runtime layer wraps
-       * this with a single LLM call; returning `null` falls back to the
-       * task description and emits no grouping trailers.
+       * Returns a 1-line user-friendly commit subject (≤ 12 words).
+       * Returning `null` falls back to the task description.
        */
       commitMessageProvider?: (args: {
         taskDescription: string;
         files: string[];
         diffPreview: string;
         conversationId?: string;
-      }) => Promise<
-        | string
-        | {
-            subject: string;
-            featureId?: string;
-            featureTitle?: string;
-            parentPackageIds?: string[];
-          }
-        | null
-      >;
+      }) => Promise<string | null>;
+      /**
+       * Returns the rolling-window feature snapshot items (3-7 word
+       * normie-friendly names grouping the most recent self-mod commits).
+       * Runs after a successful commit; result replaces the snapshot
+       * the side panel reads. Returning `null` leaves the previous
+       * snapshot in place.
+       */
+      featureNamerProvider?: (args: {
+        commits: Array<{
+          commitHash: string;
+          shortHash: string;
+          subject: string;
+          body: string;
+          timestampMs: number;
+          files: string[];
+        }>;
+      }) => Promise<Array<{ name: string; commitHashes: string[] }> | null>;
     }) => Promise<void> | void;
     cancelRun?: (runId: string) => Promise<void> | void;
   } | null;
-  selfModHmrController?: import("../self-mod/hmr.js").SelfModHmrController | null;
+  selfModHmrController?:
+    | import("../self-mod/hmr.js").SelfModHmrController
+    | null;
   requestCredential?: (payload: {
     provider: string;
     label?: string;
@@ -130,16 +133,6 @@ export type StellaHostRunnerOptions = {
   appendLocalChatEvent?: (args: LocalChatAppendEventArgs) => void;
   getDefaultConversationId?: () => string;
   onGoogleWorkspaceAuthRequired?: () => void;
-  /**
-   * Optional roster builder. Given access to local git history and the
-   * installed-add-on store, returns the feature roster + installed
-   * footprints used by the commit-message LLM (and the Store side
-   * panel). Wired in by the worker server - the runner stays
-   * decoupled from `StoreModService`.
-   */
-  featureRosterProvider?: () => Promise<
-    import("../self-mod/feature-roster.js").FeatureRoster
-  >;
 };
 
 export type ChatPayload = {
@@ -173,10 +166,7 @@ export type ActiveOrchestratorSession = RuntimeExecutionSessionHandle & {
   conversationId: string;
   agentType: string;
   uiVisibility: "visible" | "hidden";
-  queueMessage: (
-    message: AgentMessage,
-    delivery: "steer" | "followUp",
-  ) => void;
+  queueMessage: (message: AgentMessage, delivery: "steer" | "followUp") => void;
 };
 
 export type AgentHealth = {
@@ -255,7 +245,9 @@ export type RunnerState = {
   loadedAgents: ParsedAgentLike[];
   googleWorkspaceToolsLoaded: boolean;
   googleWorkspaceDisconnect: (() => Promise<void>) | null;
-  googleWorkspaceCallTool: ((name: string, args: Record<string, unknown>) => Promise<ToolResult>) | null;
+  googleWorkspaceCallTool:
+    | ((name: string, args: Record<string, unknown>) => Promise<ToolResult>)
+    | null;
   /** Cached Google Workspace auth state. null = unknown, true/false = last observed state. */
   googleWorkspaceAuthenticated: boolean | null;
   /**
@@ -295,7 +287,6 @@ export type RunnerContext = {
   listLocalChatEvents?: StellaHostRunnerOptions["listLocalChatEvents"];
   appendLocalChatEvent?: StellaHostRunnerOptions["appendLocalChatEvent"];
   getDefaultConversationId?: StellaHostRunnerOptions["getDefaultConversationId"];
-  featureRosterProvider?: StellaHostRunnerOptions["featureRosterProvider"];
   paths: RunnerPaths;
   state: RunnerState;
   ensureGoogleWorkspaceToolsLoaded: () => Promise<void>;
@@ -327,8 +318,12 @@ export type StoreOperations = {
     packageId: string,
     releaseNumber: number,
   ) => Promise<StorePackageReleaseRecord | null>;
-  createFirstStoreRelease: (args: StorePublishArgs) => Promise<StorePackageReleaseRecord>;
-  createStoreReleaseUpdate: (args: StorePublishArgs) => Promise<StorePackageReleaseRecord>;
+  createFirstStoreRelease: (
+    args: StorePublishArgs,
+  ) => Promise<StorePackageReleaseRecord>;
+  createStoreReleaseUpdate: (
+    args: StorePublishArgs,
+  ) => Promise<StorePackageReleaseRecord>;
 };
 
 export type RunnerPublicApi = {
@@ -448,9 +443,7 @@ export type RunnerPublicApi = {
    * be called by Electron on a fixed cadence (every 1 minute for "10m",
    * every 1 hour for "6h").
    */
-  runChronicleSummaryTick: (
-    window: "10m" | "6h",
-  ) => Promise<
+  runChronicleSummaryTick: (window: "10m" | "6h") => Promise<
     | {
         wrote: true;
         window: "10m" | "6h";

@@ -8,7 +8,6 @@ import type {
   ProducedFileRecord,
 } from "../../../desktop/src/shared/contracts/file-changes.js";
 import type {
-  LocalGitCommitRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseManifest,

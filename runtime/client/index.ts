@@ -31,9 +31,7 @@ import {
   type HostHeartbeatSignature,
   type HostUiActParams,
   type HostWindowTarget,
-  type InstalledStoreModRecord,
   type LocalCronJobRecord,
-  type LocalGitCommitRecord,
   type LocalHeartbeatConfigRecord,
   type RuntimeAgentEventPayload,
   type RuntimeAutomationTurnRequest,
@@ -52,8 +50,10 @@ import {
   type RuntimeWebSearchResult,
   type RunResumeEventsResult,
   type ScheduledConversationEvent,
+  type SelfModFeatureSnapshot,
   type SelfModFeatureSummary,
   type SelfModHmrState,
+  type StoreInstallRecord,
   type StorePackageRecord,
   type StorePackageReleaseRecord,
   type StorePublishArgs,
@@ -1174,28 +1174,17 @@ export class StellaRuntimeClient {
     );
   }
 
-  async listLocalCommits(limit?: number) {
-    return await this.requestWorker<LocalGitCommitRecord[]>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS,
-      typeof limit === "number" && Number.isFinite(limit) ? { limit } : undefined,
-      { ensureWorker: true, recordActivity: false },
-    );
-  }
-
-  async listLocalCommitsBySelector(args: {
-    featureIds?: string[];
-    commitHashes?: string[];
-  }) {
-    return await this.requestWorker<LocalGitCommitRecord[]>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_LOCAL_COMMITS_BY_SELECTOR,
-      args,
-      { ensureWorker: true, recordActivity: false },
-    );
-  }
-
   async listInstalledMods() {
-    return await this.requestWorker<InstalledStoreModRecord[]>(
+    return await this.requestWorker<StoreInstallRecord[]>(
       METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED,
+      undefined,
+      { ensureWorker: true, recordActivity: false },
+    );
+  }
+
+  async readSelfModFeatureSnapshot() {
+    return await this.requestWorker<SelfModFeatureSnapshot | null>(
+      METHOD_NAMES.INTERNAL_WORKER_FEATURE_SNAPSHOT_READ,
       undefined,
       { ensureWorker: true, recordActivity: false },
     );
@@ -1255,27 +1244,10 @@ export class StellaRuntimeClient {
     );
   }
 
-  async buildStoreThreadBundle(commitHashes: string[]) {
-    return await this.requestWorker<{
-      commits: Array<{
-        commitHash: string;
-        shortHash?: string;
-        subject: string;
-        body: string;
-        timestampMs?: number;
-        files: string[];
-        patch: string;
-      }>;
-      files: Array<{
-        path: string;
-        deleted: boolean;
-        contentBase64?: string;
-      }>;
-      stellaCommit?: string;
-      installedParents?: Array<{ packageId: string; releaseNumber: number }>;
-    }>(
-      METHOD_NAMES.STORE_THREAD_BUILD_BUNDLE,
-      { commitHashes },
+  async uninstallStoreMod(packageId: string) {
+    return await this.requestWorker<{ packageId: string; revertedCommits: string[] }>(
+      METHOD_NAMES.INTERNAL_WORKER_UNINSTALL_STORE_MOD,
+      { packageId },
       {
         ensureWorker: true,
         recordActivity: true,
@@ -1283,22 +1255,14 @@ export class StellaRuntimeClient {
     );
   }
 
-  async listStoreFeatureRoster() {
-    return await this.requestWorker<
-      import("../kernel/self-mod/feature-roster.js").FeatureRoster
-    >(
-      METHOD_NAMES.STORE_THREAD_LIST_FEATURE_ROSTER,
-      {},
-      {
-        ensureWorker: true,
-        recordActivity: true,
-      },
-    );
-  }
-
-  async installStoreRelease(payload: { packageId: string; releaseNumber?: number }) {
-    return await this.requestWorker<InstalledStoreModRecord>(
-      METHOD_NAMES.INTERNAL_WORKER_INSTALL_STORE_RELEASE,
+  async installFromBlueprint(payload: {
+    packageId: string;
+    releaseNumber: number;
+    displayName: string;
+    blueprintMarkdown: string;
+  }) {
+    return await this.requestWorker<StoreInstallRecord>(
+      METHOD_NAMES.INTERNAL_WORKER_INSTALL_FROM_BLUEPRINT,
       payload,
       {
         ensureWorker: true,
@@ -1307,13 +1271,16 @@ export class StellaRuntimeClient {
     );
   }
 
-  async uninstallStoreMod(packageId: string) {
-    return await this.requestWorker<{ packageId: string; revertedCommits: string[] }>(
-      METHOD_NAMES.INTERNAL_WORKER_UNINSTALL_STORE_MOD,
-      { packageId },
+  async executeStoreAgentTool(payload: {
+    toolName: string;
+    argsJson: string;
+  }) {
+    return await this.requestWorker<{ resultText: string; isError?: boolean }>(
+      METHOD_NAMES.INTERNAL_WORKER_STORE_AGENT_EXECUTE_TOOL,
+      payload,
       {
         ensureWorker: true,
-        recordActivity: true,
+        recordActivity: false,
       },
     );
   }

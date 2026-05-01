@@ -29,31 +29,29 @@ import {
   enforceActionRateLimit,
   RATE_VERY_EXPENSIVE,
 } from "../lib/rate_limits";
-import {
-  normalizeStoreCategory,
-} from "../lib/store_artifacts";
+import { normalizeStoreCategory } from "../lib/store_artifacts";
 
 type StorePublishResult = Infer<typeof store_publish_result_validator>;
 
 const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/;
-const MAX_RELEASE_NOTES_LENGTH = 4000;
-const MAX_MANIFEST_SUMMARY_LENGTH = 500;
-const MAX_ARRAY_LENGTH = 512;
-const MAX_PATH_LENGTH = 500;
-const DEFAULT_ARTIFACT_CONTENT_TYPE = "application/json";
+const MAX_RELEASE_NOTES_LENGTH = 4_000;
+const MAX_BLUEPRINT_LENGTH = 200_000;
+const MAX_DISPLAY_NAME = 120;
+const MAX_DESCRIPTION = 4_000;
+const MAX_SUMMARY = 500;
+const MAX_ICON_URL = 2_048;
+const MAX_AUTHOR_DISPLAY_NAME = 120;
+const MAX_AUTHORED_AT_COMMIT = 80;
+
+// ── arg validators ───────────────────────────────────────────────────────────
 
 const create_release_args_validator = {
   packageId: v.string(),
   releaseNotes: v.optional(v.string()),
   manifest: store_release_manifest_validator,
-  artifactBody: v.string(),
-  artifactContentType: v.optional(v.string()),
+  blueprintMarkdown: v.string(),
   iconUrl: v.optional(v.string()),
   authorDisplayName: v.optional(v.string()),
-  // `authorHandle` is intentionally NOT a public arg — the action
-  // resolves it from `user_profiles` for the authenticated caller.
-  // Trusting an arg here would let a modified renderer impersonate
-  // another creator's handle in public discovery / `/c/:handle`.
 };
 
 const create_first_release_args_validator = {
@@ -63,16 +61,15 @@ const create_first_release_args_validator = {
   description: v.string(),
 };
 
-/**
- * Resolve the caller's claimed creator handle from `user_profiles`.
- * Used by every public release-creation path so the persisted
- * `authorHandle` always reflects the authenticated caller — never
- * a renderer-supplied value. Returns `undefined` when the user
- * hasn't claimed a handle yet (the side panel prompts on first
- * publish, but the action must still succeed without one).
- */
+// ── helpers ──────────────────────────────────────────────────────────────────
+
 const resolveCallerAuthorHandle = async (
-  ctx: { runQuery: (fn: typeof internal.data.user_profiles.getHandleForOwnerInternal, args: { ownerId: string }) => Promise<string | null> },
+  ctx: {
+    runQuery: (
+      fn: typeof internal.data.user_profiles.getHandleForOwnerInternal,
+      args: { ownerId: string },
+    ) => Promise<string | null>;
+  },
   ownerId: string,
 ): Promise<string | undefined> => {
   try {
@@ -86,15 +83,10 @@ const resolveCallerAuthorHandle = async (
   }
 };
 
-/**
- * Denormalized lowercased text used as the searchField for the public
- * Discover search index. We join `displayName` and `description` so a
- * single substring search hits both. Refreshed on every release that
- * changes surface metadata; otherwise the row's previous text stays
- * authoritative.
- */
-const buildPackageSearchText = (displayName: string, description: string): string =>
-  `${displayName} ${description}`.toLowerCase();
+const buildPackageSearchText = (
+  displayName: string,
+  description: string,
+): string => `${displayName} ${description}`.toLowerCase();
 
 const normalizePackageId = (value: string) => {
   const normalized = value.trim().toLowerCase();
@@ -137,14 +129,14 @@ const normalizeOptionalText = (
   return normalized;
 };
 
-const normalizeArtifactBody = (value: string) => {
+const normalizeBlueprintMarkdown = (value: string) => {
   if (value.length === 0) {
     throw new ConvexError({
       code: "INVALID_ARGUMENT",
-      message: "artifactBody is required",
+      message: "blueprintMarkdown is required",
     });
   }
-  requireBoundedString(value, "artifactBody", 900_000);
+  requireBoundedString(value, "blueprintMarkdown", MAX_BLUEPRINT_LENGTH);
   return value;
 };
 
@@ -158,190 +150,35 @@ const normalizeReleaseNumber = (value: number) => {
   return value;
 };
 
-const normalizeStringArray = (
-  values: readonly string[],
-  fieldName: string,
-  maxItems: number,
-  maxItemLength: number,
-) => {
-  if (values.length > maxItems) {
-    throw new ConvexError({
-      code: "INVALID_ARGUMENT",
-      message: `${fieldName} exceeds maximum allowed length of ${maxItems} items`,
-    });
-  }
-
-  return values.map((value, index) => {
-    const normalized = value.trim();
-    if (!normalized) {
-      throw new ConvexError({
-        code: "INVALID_ARGUMENT",
-        message: `${fieldName}[${index}] is required`,
-      });
-    }
-    requireBoundedString(normalized, `${fieldName}[${index}]`, maxItemLength);
-    return normalized;
-  });
-};
-
-type ParentRefInput = {
-  authorHandle: string;
-  packageId: string;
-  compatibleWithReleaseNumber: number;
-};
-
-const MAX_PARENT_REFS = 8;
-
-const normalizeParentRefs = (
-  parents: ParentRefInput[] | undefined,
-): ParentRefInput[] | undefined => {
-  if (!parents || parents.length === 0) return undefined;
-  if (parents.length > MAX_PARENT_REFS) {
-    throw new ConvexError({
-      code: "INVALID_ARGUMENT",
-      message: `manifest.parent exceeds maximum of ${MAX_PARENT_REFS} references`,
-    });
-  }
-  const seen = new Set<string>();
-  const out: ParentRefInput[] = [];
-  for (const parent of parents) {
-    const handle = normalizeRequiredText(parent.authorHandle, "manifest.parent[].authorHandle", 64);
-    const packageId = normalizePackageId(parent.packageId);
-    const releaseNumber = normalizeReleaseNumber(parent.compatibleWithReleaseNumber);
-    const key = `${handle}/${packageId}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      authorHandle: handle,
-      packageId,
-      compatibleWithReleaseNumber: releaseNumber,
-    });
-  }
-  return out.length > 0 ? out : undefined;
-};
-
-const normalizeAuthoredAgainst = (
-  value: { stellaCommit?: string } | undefined,
-):
-  | { stellaCommit?: string }
-  | undefined => {
-  if (!value) return undefined;
-  const stellaCommit = normalizeOptionalText(
-    value.stellaCommit,
-    "manifest.authoredAgainst.stellaCommit",
-    80,
-  );
-  if (!stellaCommit) return undefined;
-  return { stellaCommit };
-};
-
-type ManifestCategory =
-  | "apps-games"
-  | "productivity"
-  | "customization"
-  | "skills-agents"
-  | "integrations"
-  | "other";
-
-const normalizeManifest = (
-  manifest: {
-    includedBatchIds: string[];
-    includedCommitHashes: string[];
-    changedFiles: string[];
-    category?: ManifestCategory;
-    artifactHash?: string;
-    summary?: string;
-    iconUrl?: string;
-    authorDisplayName?: string;
-    parent?: ParentRefInput[];
-    authoredAgainst?: { stellaCommit?: string };
-  },
-) => {
-  const includedBatchIds = normalizeStringArray(
-    manifest.includedBatchIds,
-    "manifest.includedBatchIds",
-    MAX_ARRAY_LENGTH,
-    120,
-  );
-  const includedCommitHashes = normalizeStringArray(
-    manifest.includedCommitHashes,
-    "manifest.includedCommitHashes",
-    MAX_ARRAY_LENGTH,
-    80,
-  );
-  const changedFiles = normalizeStringArray(
-    manifest.changedFiles,
-    "manifest.changedFiles",
-    MAX_ARRAY_LENGTH,
-    MAX_PATH_LENGTH,
-  );
-  const artifactHash = normalizeOptionalText(
-    manifest.artifactHash,
-    "manifest.artifactHash",
-    256,
-  );
-  const summary = normalizeOptionalText(
-    manifest.summary,
-    "manifest.summary",
-    MAX_MANIFEST_SUMMARY_LENGTH,
-  );
-  const iconUrl = normalizeOptionalText(manifest.iconUrl, "manifest.iconUrl", 2048);
+const normalizeManifest = (manifest: {
+  category?: "apps-games" | "productivity" | "customization" | "skills-agents" | "integrations" | "other";
+  summary?: string;
+  iconUrl?: string;
+  authorDisplayName?: string;
+  authoredAtCommit?: string;
+}) => {
+  const summary = normalizeOptionalText(manifest.summary, "manifest.summary", MAX_SUMMARY);
+  const iconUrl = normalizeOptionalText(manifest.iconUrl, "manifest.iconUrl", MAX_ICON_URL);
   const authorDisplayName = normalizeOptionalText(
     manifest.authorDisplayName,
     "manifest.authorDisplayName",
-    120,
+    MAX_AUTHOR_DISPLAY_NAME,
   );
-  const parent = normalizeParentRefs(manifest.parent);
-  const authoredAgainst = normalizeAuthoredAgainst(manifest.authoredAgainst);
-
+  const authoredAtCommit = normalizeOptionalText(
+    manifest.authoredAtCommit,
+    "manifest.authoredAtCommit",
+    MAX_AUTHORED_AT_COMMIT,
+  );
   return {
-    includedBatchIds,
-    includedCommitHashes,
-    changedFiles,
     ...(manifest.category ? { category: normalizeStoreCategory(manifest.category) } : {}),
-    ...(artifactHash ? { artifactHash } : {}),
     ...(summary ? { summary } : {}),
     ...(iconUrl ? { iconUrl } : {}),
     ...(authorDisplayName ? { authorDisplayName } : {}),
-    ...(parent ? { parent } : {}),
-    ...(authoredAgainst ? { authoredAgainst } : {}),
+    ...(authoredAtCommit ? { authoredAtCommit } : {}),
   };
 };
 
-const normalizeArtifactContentType = (value: string | undefined) => {
-  const normalized = value?.trim() || DEFAULT_ARTIFACT_CONTENT_TYPE;
-  requireBoundedString(normalized, "artifactContentType", 200);
-  return normalized;
-};
-
-const areStringArraysEqual = (
-  left: readonly string[],
-  right: readonly string[],
-) =>
-  left.length === right.length
-  && left.every((value, index) => value === right[index]);
-
-const areManifestMetadataEqual = (
-  left: {
-    includedBatchIds: readonly string[];
-    includedCommitHashes: readonly string[];
-    changedFiles: readonly string[];
-    artifactHash?: string;
-    summary?: string;
-  },
-  right: {
-    includedBatchIds: readonly string[];
-    includedCommitHashes: readonly string[];
-    changedFiles: readonly string[];
-    artifactHash?: string;
-    summary?: string;
-  },
-) =>
-  left.artifactHash === right.artifactHash
-  && left.summary === right.summary
-  && areStringArraysEqual(left.includedBatchIds, right.includedBatchIds)
-  && areStringArraysEqual(left.includedCommitHashes, right.includedCommitHashes)
-  && areStringArraysEqual(left.changedFiles, right.changedFiles);
+// ── package lookups ──────────────────────────────────────────────────────────
 
 const getOwnedPackageByPackageId = async (
   ctx: QueryCtx | MutationCtx,
@@ -379,36 +216,33 @@ const getReleaseByPackageIdAndNumber = async (
     .unique();
 };
 
+// ── internal queries (used by store_thread + install paths) ──────────────────
+
 export const listPackagesForOwnerInternal = internalQuery({
-  args: {
-    ownerId: v.string(),
-  },
+  args: { ownerId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("store_packages")
-      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId_and_updatedAt", (q) =>
+        q.eq("ownerId", args.ownerId),
+      )
       .order("desc")
       .take(200);
   },
 });
 
 export const getPackageByPackageIdInternal = internalQuery({
-  args: {
-    ownerId: v.string(),
-    packageId: v.string(),
-  },
+  args: { ownerId: v.string(), packageId: v.string() },
   handler: async (ctx, args) => {
     const normalizedPackageId = normalizePackageId(args.packageId);
-    return await getOwnedPackageByPackageId(ctx, args.ownerId, normalizedPackageId);
+    return await getOwnedPackageByPackageId(
+      ctx,
+      args.ownerId,
+      normalizedPackageId,
+    );
   },
 });
 
-/**
- * Internal: cross-owner lookup by `packageId` alone. Used by the
- * Store thread when resolving `Stella-Parent-Package-Id` trailers
- * that point at add-ons published by other creators (the publishing
- * user wouldn't necessarily have an owned row for them).
- */
 export const getAnyPackageByPackageIdInternal = internalQuery({
   args: { packageId: v.string() },
   handler: async (ctx, args) => {
@@ -418,17 +252,15 @@ export const getAnyPackageByPackageIdInternal = internalQuery({
 });
 
 export const listReleasesForPackageInternal = internalQuery({
-  args: {
-    ownerId: v.string(),
-    packageId: v.string(),
-  },
+  args: { ownerId: v.string(), packageId: v.string() },
   handler: async (ctx, args) => {
     const normalizedPackageId = normalizePackageId(args.packageId);
-    const pkg = await getOwnedPackageByPackageId(ctx, args.ownerId, normalizedPackageId);
-    if (!pkg) {
-      return [];
-    }
-
+    const pkg = await getOwnedPackageByPackageId(
+      ctx,
+      args.ownerId,
+      normalizedPackageId,
+    );
+    if (!pkg) return [];
     return await ctx.db
       .query("store_package_releases")
       .withIndex("by_packageId_and_releaseNumber", (q) =>
@@ -447,10 +279,12 @@ export const getReleaseByPackageIdAndNumberInternal = internalQuery({
   },
   handler: async (ctx, args) => {
     const normalizedPackageId = normalizePackageId(args.packageId);
-    const pkg = await getOwnedPackageByPackageId(ctx, args.ownerId, normalizedPackageId);
-    if (!pkg) {
-      return null;
-    }
+    const pkg = await getOwnedPackageByPackageId(
+      ctx,
+      args.ownerId,
+      normalizedPackageId,
+    );
+    if (!pkg) return null;
     return await getReleaseByPackageIdAndNumber(
       ctx,
       normalizedPackageId,
@@ -458,6 +292,8 @@ export const getReleaseByPackageIdAndNumberInternal = internalQuery({
     );
   },
 });
+
+// ── internal release writers ─────────────────────────────────────────────────
 
 export const createFirstReleaseRecord = internalMutation({
   args: {
@@ -468,10 +304,7 @@ export const createFirstReleaseRecord = internalMutation({
     description: v.string(),
     releaseNotes: v.optional(v.string()),
     manifest: store_release_manifest_validator,
-    artifactStorageKey: v.id("_storage"),
-    artifactUrl: v.union(v.null(), v.string()),
-    artifactContentType: v.string(),
-    artifactSize: v.number(),
+    blueprintMarkdown: v.string(),
     iconUrl: v.optional(v.string()),
     authorDisplayName: v.optional(v.string()),
     authorHandle: v.optional(v.string()),
@@ -486,7 +319,9 @@ export const createFirstReleaseRecord = internalMutation({
     }
 
     const now = Date.now();
-    const category = normalizeStoreCategory(args.category ?? args.manifest.category);
+    const category = normalizeStoreCategory(
+      args.category ?? args.manifest.category,
+    );
     const packageRef = await ctx.db.insert("store_packages", {
       ownerId: args.ownerId,
       packageId: args.packageId,
@@ -511,17 +346,8 @@ export const createFirstReleaseRecord = internalMutation({
       releaseNumber: 1,
       releaseNotes: args.releaseNotes,
       manifest: args.manifest,
-      artifactStorageKey: args.artifactStorageKey,
-      artifactUrl: args.artifactUrl,
-      artifactContentType: args.artifactContentType,
-      artifactSize: args.artifactSize,
+      blueprintMarkdown: args.blueprintMarkdown,
       createdAt: now,
-      ...(args.manifest.parent && args.manifest.parent.length > 0
-        ? { parent: args.manifest.parent }
-        : {}),
-      ...(args.manifest.authoredAgainst
-        ? { authoredAgainst: args.manifest.authoredAgainst }
-        : {}),
     });
 
     await ctx.db.patch(packageRef, {
@@ -539,10 +365,7 @@ export const createFirstReleaseRecord = internalMutation({
       });
     }
 
-    return {
-      package: pkg,
-      release,
-    };
+    return { package: pkg, release };
   },
 });
 
@@ -552,35 +375,22 @@ export const createUpdateReleaseRecord = internalMutation({
     packageId: v.string(),
     releaseNotes: v.optional(v.string()),
     manifest: store_release_manifest_validator,
-    artifactStorageKey: v.id("_storage"),
-    artifactUrl: v.union(v.null(), v.string()),
-    artifactContentType: v.string(),
-    artifactSize: v.number(),
+    blueprintMarkdown: v.string(),
     iconUrl: v.optional(v.string()),
     authorDisplayName: v.optional(v.string()),
     authorHandle: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const pkg = await getOwnedPackageByPackageId(ctx, args.ownerId, args.packageId);
+    const pkg = await getOwnedPackageByPackageId(
+      ctx,
+      args.ownerId,
+      args.packageId,
+    );
     if (!pkg) {
       throw new ConvexError({
         code: "NOT_FOUND",
         message: "Store package not found",
       });
-    }
-
-    const latestRelease = pkg.latestReleaseNumber > 0
-      ? await getReleaseByPackageIdAndNumber(ctx, args.packageId, pkg.latestReleaseNumber)
-      : null;
-    if (
-      latestRelease
-      && latestRelease.releaseNotes === args.releaseNotes
-      && areManifestMetadataEqual(latestRelease.manifest, args.manifest)
-    ) {
-      return {
-        package: pkg,
-        release: latestRelease,
-      };
     }
 
     const nextReleaseNumber = pkg.latestReleaseNumber + 1;
@@ -592,22 +402,10 @@ export const createUpdateReleaseRecord = internalMutation({
       releaseNumber: nextReleaseNumber,
       releaseNotes: args.releaseNotes,
       manifest: args.manifest,
-      artifactStorageKey: args.artifactStorageKey,
-      artifactUrl: args.artifactUrl,
-      artifactContentType: args.artifactContentType,
-      artifactSize: args.artifactSize,
+      blueprintMarkdown: args.blueprintMarkdown,
       createdAt: now,
-      ...(args.manifest.parent && args.manifest.parent.length > 0
-        ? { parent: args.manifest.parent }
-        : {}),
-      ...(args.manifest.authoredAgainst
-        ? { authoredAgainst: args.manifest.authoredAgainst }
-        : {}),
     });
 
-    // Refresh the package row's surface metadata to whatever this release
-    // provides. Icons and author names are intentionally allowed to change
-    // across releases (e.g. a re-themed mod gets a new icon next time).
     await ctx.db.patch(pkg._id, {
       latestReleaseNumber: nextReleaseNumber,
       latestReleaseId: releaseRef,
@@ -628,21 +426,18 @@ export const createUpdateReleaseRecord = internalMutation({
       });
     }
 
-    return {
-      package: updatedPackage,
-      release,
-    };
+    return { package: updatedPackage, release };
   },
 });
+
+// ── owner-scoped reads ───────────────────────────────────────────────────────
 
 export const listPackages = query({
   args: {},
   returns: v.array(store_package_validator),
   handler: async (ctx) => {
     const ownerId = await getUserIdOrNull(ctx);
-    if (!ownerId) {
-      return [];
-    }
+    if (!ownerId) return [];
     return await ctx.db
       .query("store_packages")
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
@@ -651,16 +446,11 @@ export const listPackages = query({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Public discovery
-// ---------------------------------------------------------------------------
+// ── public discovery ─────────────────────────────────────────────────────────
 
 const PUBLIC_BROWSE_PAGE_SIZE = 40;
 const PUBLIC_SEARCH_MAX_RESULTS = 60;
 
-// Effective visibility for a row, treating legacy/missing values as
-// `public`. Existing rows predate the `visibility` field — they should
-// continue to appear in Discover until the owner explicitly hides them.
 const effectiveVisibility = (
   visibility: "public" | "unlisted" | "private" | undefined,
 ): "public" | "unlisted" | "private" => visibility ?? "public";
@@ -691,26 +481,10 @@ export const listPublicPackages = query({
     ),
   }),
   handler: async (ctx, args) => {
-    // Cap `numItems` server-side so a misbehaving client can't ask for
-    // huge pages, but otherwise honour Convex's standard pagination
-    // shape so `usePaginatedQuery` can walk every page from the
-    // renderer.
     const numItems = Math.min(
       Math.max(args.paginationOpts.numItems, 1),
       PUBLIC_BROWSE_PAGE_SIZE,
     );
-    // Discover only ever surfaces `public` rows. Unlisted is share-link
-     // -only; private is owner-only. The backfill helper
-     // `effectiveVisibility` treats legacy rows (no `visibility` field)
-     // as `public`, so existing rows continue to appear here until the
-     // owner explicitly hides them.
-     //
-     // We can't filter on `visibility === undefined` directly via index
-     // (Convex doesn't index missing fields with the same key as a
-     // literal value), so we use the visibility-aware index and
-     // post-filter the page for legacy rows. In practice almost every
-     // row carries `visibility: "public"` after the first save, so the
-     // index narrows correctly.
     const indexed = args.category
       ? ctx.db
           .query("store_packages")
@@ -738,8 +512,6 @@ export const getPublicPackage = query({
     const normalizedPackageId = normalizePackageId(args.packageId);
     const record = await getPackageByPackageId(ctx, normalizedPackageId);
     if (!record) return null;
-    // Direct-link reads succeed for `public` and `unlisted` (so the
-    // share-link UX works); `private` only resolves for the owner.
     if (isDirectLinkAccessible(record.visibility)) return record;
     const callerId = await ctx.auth.getUserIdentity();
     if (callerId && record.ownerId === callerId.tokenIdentifier) {
@@ -754,8 +526,6 @@ export const getPublicPackagesByIds = query({
   returns: v.array(store_package_validator),
   handler: async (ctx, args) => {
     if (args.packageIds.length === 0) return [];
-    // Cap to keep this cheap (the side panel only ever asks for the
-    // user's installed-but-not-owned set, which is realistically small).
     const uniqueIds = Array.from(
       new Set(args.packageIds.map((id) => normalizePackageId(id))),
     ).slice(0, 200);
@@ -765,13 +535,14 @@ export const getPublicPackagesByIds = query({
     const callerIdentity = await ctx.auth.getUserIdentity();
     const callerOwnerId = callerIdentity?.tokenIdentifier;
     return records
-      .filter((record): record is NonNullable<typeof record> => record !== null)
-      // Direct-id lookups (e.g. "fetch the packages this user installed")
-      // include unlisted rows; private rows only come back when the
-      // caller owns them.
-      .filter((record) =>
-        isDirectLinkAccessible(record.visibility)
-          || (callerOwnerId !== undefined && record.ownerId === callerOwnerId),
+      .filter(
+        (record): record is NonNullable<typeof record> => record !== null,
+      )
+      .filter(
+        (record) =>
+          isDirectLinkAccessible(record.visibility) ||
+          (callerOwnerId !== undefined &&
+            record.ownerId === callerOwnerId),
       );
   },
 });
@@ -798,10 +569,7 @@ export const listPublicReleases = query({
 });
 
 export const getPublicRelease = query({
-  args: {
-    packageId: v.string(),
-    releaseNumber: v.number(),
-  },
+  args: { packageId: v.string(), releaseNumber: v.number() },
   returns: v.union(store_package_release_validator, v.null()),
   handler: async (ctx, args) => {
     const normalizedPackageId = normalizePackageId(args.packageId);
@@ -812,7 +580,11 @@ export const getPublicRelease = query({
       const callerId = await ctx.auth.getUserIdentity();
       if (!callerId || pkg.ownerId !== callerId.tokenIdentifier) return null;
     }
-    return await getReleaseByPackageIdAndNumber(ctx, normalizedPackageId, releaseNumber);
+    return await getReleaseByPackageIdAndNumber(
+      ctx,
+      normalizedPackageId,
+      releaseNumber,
+    );
   },
 });
 
@@ -825,10 +597,6 @@ export const searchPublicPackages = query({
   handler: async (ctx, args) => {
     const needle = args.query.trim().toLowerCase();
     if (!needle) return [];
-    // Search restricts to `public` via the `visibility` filter field,
-    // so unlisted/private add-ons never leak into Discover search.
-    // Legacy rows without `visibility` are post-filtered out (they
-    // shouldn't exist after the first edit, but be safe).
     return (
       await ctx.db
         .query("store_packages")
@@ -848,10 +616,6 @@ export const listPackagesByAuthorHandle = query({
   handler: async (ctx, args) => {
     const handle = args.handle.trim().toLowerCase();
     if (!handle) return [];
-    // Resolve handle -> ownerId via `user_profiles`, then list owned
-    // packages. Two reads; both indexed. The handle page only shows
-    // `public` rows (unlisted/private are off-Discover by design); the
-    // owner sees their full collection via `listMyPackages`.
     const profile = await ctx.db
       .query("user_profiles")
       .withIndex("by_publicHandle", (q) => q.eq("publicHandle", handle))
@@ -870,17 +634,12 @@ export const listPackagesByAuthorHandle = query({
   },
 });
 
-// Owner-scoped variant of `listPackages` that always returns every
-// add-on the caller owns regardless of visibility. Used by the Store
-// "Your add-ons" surface so creators can manage hidden / private rows.
 export const listMyPackages = query({
   args: {},
   returns: v.array(store_package_validator),
   handler: async (ctx) => {
     const ownerId = await getUserIdOrNull(ctx);
-    if (!ownerId) {
-      return [];
-    }
+    if (!ownerId) return [];
     return await ctx.db
       .query("store_packages")
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
@@ -889,9 +648,6 @@ export const listMyPackages = query({
   },
 });
 
-// Owner-only: change an add-on's visibility tier. Idempotent — patching
-// to the same value is a no-op and bumps `updatedAt` so the side panel
-// refreshes.
 export const setPackageVisibility = mutation({
   args: {
     packageId: v.string(),
@@ -923,11 +679,6 @@ export const setPackageVisibility = mutation({
   },
 });
 
-// Owner-only: hard-delete an add-on and every release it owns. Stored
-// artifacts are deleted from storage as well so the footprint is
-// reclaimed. There is no tombstone — installed users keep their local
-// copies but won't receive future updates and won't be able to fetch
-// the manifest. We accept that as the explicit cost of "Delete".
 export const deletePackage = mutation({
   args: { packageId: v.string() },
   returns: v.null(),
@@ -945,10 +696,6 @@ export const deletePackage = mutation({
         message: "Add-on not found",
       });
     }
-    // Releases live in their own table. Walk them all and delete each
-    // along with its stored artifact. `take(1024)` is a safety cap; if
-    // a single add-on ever ships >1k releases the caller should fall
-    // back to a paginated tear-down (no current path needs that).
     const releases = await ctx.db
       .query("store_package_releases")
       .withIndex("by_packageRef_and_releaseNumber", (q) =>
@@ -956,11 +703,6 @@ export const deletePackage = mutation({
       )
       .take(1024);
     for (const release of releases) {
-      try {
-        await ctx.storage.delete(release.artifactStorageKey);
-      } catch {
-        // Best-effort: storage may already be GCed.
-      }
       await ctx.db.delete(release._id);
     }
     await ctx.db.delete(pkg._id);
@@ -969,36 +711,29 @@ export const deletePackage = mutation({
 });
 
 export const getPackage = query({
-  args: {
-    packageId: v.string(),
-  },
+  args: { packageId: v.string() },
   returns: v.union(store_package_validator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await getUserIdOrNull(ctx);
-    if (!ownerId) {
-      return null;
-    }
+    if (!ownerId) return null;
     const normalizedPackageId = normalizePackageId(args.packageId);
     return await getOwnedPackageByPackageId(ctx, ownerId, normalizedPackageId);
   },
 });
 
 export const listReleases = query({
-  args: {
-    packageId: v.string(),
-  },
+  args: { packageId: v.string() },
   returns: v.array(store_package_release_validator),
   handler: async (ctx, args) => {
     const ownerId = await getUserIdOrNull(ctx);
-    if (!ownerId) {
-      return [];
-    }
+    if (!ownerId) return [];
     const normalizedPackageId = normalizePackageId(args.packageId);
-    const pkg = await getOwnedPackageByPackageId(ctx, ownerId, normalizedPackageId);
-    if (!pkg) {
-      return [];
-    }
-
+    const pkg = await getOwnedPackageByPackageId(
+      ctx,
+      ownerId,
+      normalizedPackageId,
+    );
+    if (!pkg) return [];
     return await ctx.db
       .query("store_package_releases")
       .withIndex("by_packageId_and_releaseNumber", (q) =>
@@ -1010,33 +745,34 @@ export const listReleases = query({
 });
 
 export const getRelease = query({
-  args: {
-    packageId: v.string(),
-    releaseNumber: v.number(),
-  },
+  args: { packageId: v.string(), releaseNumber: v.number() },
   returns: v.union(store_package_release_validator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await getUserIdOrNull(ctx);
-    if (!ownerId) {
-      return null;
-    }
+    if (!ownerId) return null;
     const normalizedPackageId = normalizePackageId(args.packageId);
     const releaseNumber = normalizeReleaseNumber(args.releaseNumber);
-    const pkg = await getOwnedPackageByPackageId(ctx, ownerId, normalizedPackageId);
-    if (!pkg) {
-      return null;
-    }
-    return await getReleaseByPackageIdAndNumber(ctx, normalizedPackageId, releaseNumber);
+    const pkg = await getOwnedPackageByPackageId(
+      ctx,
+      ownerId,
+      normalizedPackageId,
+    );
+    if (!pkg) return null;
+    return await getReleaseByPackageIdAndNumber(
+      ctx,
+      normalizedPackageId,
+      releaseNumber,
+    );
   },
 });
+
+// ── publish actions ──────────────────────────────────────────────────────────
 
 export const createFirstRelease = action({
   args: create_first_release_args_validator,
   returns: store_publish_result_validator,
   handler: async (ctx, args): Promise<StorePublishResult> => {
     const ownerId = await requireSensitiveUserIdAction(ctx);
-    // Each release writes an artifact blob to _storage and runs an LLM
-    // review action. Tight cap so a runaway client can't fill storage.
     await enforceActionRateLimit(
       ctx,
       "store_package_create_first_release",
@@ -1045,56 +781,51 @@ export const createFirstRelease = action({
       "Too many store package releases. Please wait before publishing again.",
     );
     const packageId = normalizePackageId(args.packageId);
-    const category = normalizeStoreCategory(args.category ?? args.manifest.category);
-    const displayName = normalizeRequiredText(args.displayName, "displayName", 120);
-    const description = normalizeRequiredText(args.description, "description", 4000);
+    const displayName = normalizeRequiredText(
+      args.displayName,
+      "displayName",
+      MAX_DISPLAY_NAME,
+    );
+    const description = normalizeRequiredText(
+      args.description,
+      "description",
+      MAX_DESCRIPTION,
+    );
     const releaseNotes = normalizeOptionalText(
       args.releaseNotes,
       "releaseNotes",
       MAX_RELEASE_NOTES_LENGTH,
     );
     const manifest = normalizeManifest(args.manifest);
-    const artifactBody = normalizeArtifactBody(args.artifactBody);
-    const artifactContentType = normalizeArtifactContentType(args.artifactContentType);
+    const blueprintMarkdown = normalizeBlueprintMarkdown(args.blueprintMarkdown);
     await enforceStoreReleaseReviewOrThrow(ctx, {
       ownerId,
       packageId,
       displayName,
       description,
       releaseSummary: releaseNotes,
-      artifactBody,
+      artifactBody: blueprintMarkdown,
     });
 
-    const blob = new Blob([artifactBody], {
-      type: artifactContentType,
-    });
-    const artifactStorageKey = await ctx.storage.store(blob);
-    const artifactUrl = await ctx.storage.getUrl(artifactStorageKey);
-
-    // Resolve `authorHandle` server-side from `user_profiles`. This
-    // action is reachable from the renderer, so trusting an
-    // `args.authorHandle` would let a modified client publish a row
-    // that links to another creator's handle. Public discovery + the
-    // `/c/:handle` page treat this field as identity, so it must
-    // reflect the *caller's* claimed handle (or be empty).
     const authorHandle = await resolveCallerAuthorHandle(ctx, ownerId);
-    return await ctx.runMutation(internal.data.store_packages.createFirstReleaseRecord, {
-      ownerId,
-      packageId,
-      displayName,
-      description,
-      releaseNotes,
-      manifest,
-      artifactStorageKey,
-      artifactUrl,
-      artifactContentType,
-      artifactSize: blob.size,
-      ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
-      ...(manifest.authorDisplayName
-        ? { authorDisplayName: manifest.authorDisplayName }
-        : {}),
-      ...(authorHandle ? { authorHandle } : {}),
-    });
+    return await ctx.runMutation(
+      internal.data.store_packages.createFirstReleaseRecord,
+      {
+        ownerId,
+        packageId,
+        displayName,
+        description,
+        releaseNotes,
+        manifest,
+        blueprintMarkdown,
+        ...(args.category ? { category: args.category } : {}),
+        ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
+        ...(manifest.authorDisplayName
+          ? { authorDisplayName: manifest.authorDisplayName }
+          : {}),
+        ...(authorHandle ? { authorHandle } : {}),
+      },
+    );
   },
 });
 
@@ -1117,12 +848,12 @@ export const createUpdateRelease = action({
       MAX_RELEASE_NOTES_LENGTH,
     );
     const manifest = normalizeManifest(args.manifest);
-    const artifactBody = normalizeArtifactBody(args.artifactBody);
-    const artifactContentType = normalizeArtifactContentType(args.artifactContentType);
-    const pkg: Awaited<ReturnType<typeof getOwnedPackageByPackageId>> = await ctx.runQuery(
-      internal.data.store_packages.getPackageByPackageIdInternal,
-      { ownerId, packageId },
-    );
+    const blueprintMarkdown = normalizeBlueprintMarkdown(args.blueprintMarkdown);
+    const pkg: Awaited<ReturnType<typeof getOwnedPackageByPackageId>> =
+      await ctx.runQuery(
+        internal.data.store_packages.getPackageByPackageIdInternal,
+        { ownerId, packageId },
+      );
     if (!pkg) {
       throw new ConvexError({
         code: "NOT_FOUND",
@@ -1135,32 +866,24 @@ export const createUpdateRelease = action({
       displayName: pkg.displayName,
       description: pkg.description,
       releaseSummary: releaseNotes,
-      artifactBody,
+      artifactBody: blueprintMarkdown,
     });
 
-    const blob = new Blob([artifactBody], {
-      type: artifactContentType,
-    });
-    const artifactStorageKey = await ctx.storage.store(blob);
-    const artifactUrl = await ctx.storage.getUrl(artifactStorageKey);
-
-    // See createFirstRelease — resolve handle server-side rather than
-    // trusting the renderer-supplied `args.authorHandle`.
     const authorHandle = await resolveCallerAuthorHandle(ctx, ownerId);
-    return await ctx.runMutation(internal.data.store_packages.createUpdateReleaseRecord, {
-      ownerId,
-      packageId,
-      releaseNotes,
-      manifest,
-      artifactStorageKey,
-      artifactUrl,
-      artifactContentType,
-      artifactSize: blob.size,
-      ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
-      ...(manifest.authorDisplayName
-        ? { authorDisplayName: manifest.authorDisplayName }
-        : {}),
-      ...(authorHandle ? { authorHandle } : {}),
-    });
+    return await ctx.runMutation(
+      internal.data.store_packages.createUpdateReleaseRecord,
+      {
+        ownerId,
+        packageId,
+        releaseNotes,
+        manifest,
+        blueprintMarkdown,
+        ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
+        ...(manifest.authorDisplayName
+          ? { authorDisplayName: manifest.authorDisplayName }
+          : {}),
+        ...(authorHandle ? { authorHandle } : {}),
+      },
+    );
   },
 });

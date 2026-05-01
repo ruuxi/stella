@@ -5,6 +5,7 @@ import { AppBootstrap } from "./systems/boot/AppBootstrap";
 import { ChatStoreProvider } from "@/context/chat-store";
 import { CredentialRequestLayer } from "./global/auth/CredentialRequestLayer";
 import { GoogleWorkspaceAuthListener } from "./global/integrations/GoogleWorkspaceAuthListener";
+import { StoreAgentToolDispatcher } from "./global/store/StoreAgentToolDispatcher";
 import { FullShell } from "./shell/FullShell";
 
 const AUTO_REPAIR_SIGNATURE_KEY = "stella:auto-repair:last-signature";
@@ -16,6 +17,10 @@ const AUTO_REPAIR_SIGNATURE_KEY = "stella:auto-repair:last-signature";
 //     timeout, see `desktop/electron/services/credential-service.ts`)
 //   * GoogleWorkspaceAuthListener → `googleWorkspace:authRequired` (connect
 //     card never surfaces, agent's google-workspace tool quietly fails)
+//   * StoreAgentToolDispatcher → subscribes to the Convex store-thread
+//     pending-tool-call queue. The Convex agent loop polls a row for up
+//     to 5 minutes; if the renderer isn't subscribed (e.g. user closed
+//     the side panel mid-turn) every tool call times out.
 // Bundle savings from lazy-loading these were negligible (every dep is in the
 // eager chunk anyway), and the cost of missing the event is high.
 function App() {
@@ -35,6 +40,7 @@ function App() {
           <PhoneAccessBridge />
           <CredentialRequestLayer />
           <GoogleWorkspaceAuthListener />
+          <StoreAgentToolDispatcher />
           <FullShell />
         </ChatStoreProvider>
       </div>

@@ -1,13 +1,19 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { useQuery, useMutation, usePaginatedQuery } from "convex/react"
+import { useConvex, useQuery, useMutation, usePaginatedQuery } from "convex/react"
 import { api } from "@/convex/api"
 import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
-  InstalledStoreModRecord,
+  StoreInstallRecord,
   StellaConnectorSummary,
 } from "@/shared/types/electron"
+
+// Phase 1 alias: StoreView still uses the old type name in a lot of
+// signatures. Map it to the new Phase 1 record so we don't have to
+// touch every call site this turn — the new shape exposes
+// `releaseNumber` + `packageId` which is what the UI actually reads.
+type InstalledStoreModRecord = StoreInstallRecord
 import { showToast } from "@/ui/toast"
 import {
   ChevronLeft,
@@ -247,9 +253,7 @@ function useStorePackages(hasSession: boolean) {
   const installedMap = useMemo(() => {
     const map = new Map<string, InstalledStoreModRecord>()
     for (const mod of installed) {
-      if (mod.state === "installed") {
-        map.set(mod.packageId, mod)
-      }
+      map.set(mod.packageId, mod)
     }
     return map
   }, [installed])
@@ -739,7 +743,7 @@ function AddedRow({
     return map
   }, [packages])
 
-  const activeInstalls = installed.filter((m) => m.state === "installed")
+  const activeInstalls = installed
   if (activeInstalls.length === 0) return null
 
   return (
@@ -754,7 +758,7 @@ function AddedRow({
           const name = pkg?.displayName ?? "Add-on"
           return (
             <div
-              key={mod.installId}
+              key={mod.packageId}
               className="store-added-chip"
               onClick={() => onSelect(mod.packageId)}
             >
@@ -1655,12 +1659,35 @@ export function StoreView({
     setSharePkg(pkg)
   }, [])
 
+  const convex = useConvex()
   const handleInstall = useCallback(
     async (packageId: string, releaseNumber?: number) => {
-      const api = window.electronAPI?.store
-      if (!api) return
+      const electronStore = window.electronAPI?.store
+      if (!electronStore) return
       try {
-        await api.installRelease({ packageId, ...(releaseNumber ? { releaseNumber } : {}) })
+        const pkg = await convex.query(api.data.store_packages.getPublicPackage, {
+          packageId,
+        })
+        if (!pkg) {
+          throw new Error("Add-on not found in store.")
+        }
+        const releases = (await convex.query(
+          api.data.store_packages.listPublicReleases,
+          { packageId },
+        )) as StorePackageReleaseRecord[]
+        const target =
+          releaseNumber !== undefined
+            ? releases.find((release) => release.releaseNumber === releaseNumber)
+            : releases[0]
+        if (!target) {
+          throw new Error("No release available for this add-on.")
+        }
+        await electronStore.installFromBlueprint({
+          packageId,
+          releaseNumber: target.releaseNumber,
+          displayName: pkg.displayName,
+          blueprintMarkdown: target.blueprintMarkdown,
+        })
         showToast({ title: "Added to Stella!", variant: "success" })
         await reloadPackages()
       } catch (err) {
@@ -1671,7 +1698,7 @@ export function StoreView({
         })
       }
     },
-    [reloadPackages],
+    [convex, reloadPackages],
   )
 
   const handleRemove = useCallback(

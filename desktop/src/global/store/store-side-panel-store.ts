@@ -1,44 +1,36 @@
 /**
- * Side panel state: feature roster + selected feature ids.
+ * Side-panel selection state.
  *
- * The Store side panel renders one row per feature group (collapsed
- * Stella self-mod commits) and lets the user multi-select. Selections
- * stay client-only; the publish action reads them at click time and
- * forwards to the backend Store agent.
- *
- * Side panel state machine (Idle/Working/Pick/Draft/Done) derives
- * from the Convex thread, NOT this store. That keeps refresh /
- * reopen behavior honest without duplicating state.
+ * Phase 1 ships only the rolling-window feature snapshot the namer LLM
+ * regenerates after every self-mod commit. Multi-select state lives
+ * here so the user's picks survive remounts; everything else (chat
+ * thread, draft state, publish flow) is rebuilt in Phase 2 around the
+ * new blueprint flow.
  */
 import { useSyncExternalStore } from "react";
 import type {
+  SelfModFeatureSnapshot,
+  StoreInstallRecord,
   StorePackageRecord,
-  StoreThreadFeatureRoster,
-  InstalledStoreModRecord,
 } from "@/shared/types/electron";
 
 export type StoreSidePanelState = {
-  roster: StoreThreadFeatureRoster | null;
-  rosterLoading: boolean;
+  snapshot: SelfModFeatureSnapshot | null;
+  snapshotLoading: boolean;
   packages: StorePackageRecord[];
-  installedMods: InstalledStoreModRecord[];
-  /** Selected feature ids from the linear list. */
-  selectedFeatureIds: Set<string>;
-  /**
-   * Selected installed-add-on package ids (for the "this row has an
-   * available update; selecting it triggers update" flow). Mutually
-   * fine with feature selections; the action button decides whether
-   * they form a publish or update batch.
-   */
+  installedMods: StoreInstallRecord[];
+  /** Selected feature names from the snapshot (display names — agent never sees commit hashes). */
+  selectedFeatureNames: Set<string>;
+  /** Selected installed-add-on package ids. */
   selectedInstalledPackageIds: Set<string>;
 };
 
 const EMPTY: StoreSidePanelState = {
-  roster: null,
-  rosterLoading: true,
+  snapshot: null,
+  snapshotLoading: true,
   packages: [],
   installedMods: [],
-  selectedFeatureIds: new Set(),
+  selectedFeatureNames: new Set(),
   selectedInstalledPackageIds: new Set(),
 };
 
@@ -65,23 +57,23 @@ export const storeSidePanelStore = {
   getSnapshot(): StoreSidePanelState {
     return state;
   },
-  setRoster(roster: StoreThreadFeatureRoster): void {
-    emit({ ...state, roster, rosterLoading: false });
+  setSnapshot(snapshot: SelfModFeatureSnapshot | null): void {
+    emit({ ...state, snapshot, snapshotLoading: false });
   },
-  setRosterLoading(loading: boolean): void {
-    if (state.rosterLoading === loading) return;
-    emit({ ...state, rosterLoading: loading });
+  setSnapshotLoading(loading: boolean): void {
+    if (state.snapshotLoading === loading) return;
+    emit({ ...state, snapshotLoading: loading });
   },
   setPackages(packages: StorePackageRecord[]): void {
     emit({ ...state, packages });
   },
-  setInstalledMods(installedMods: InstalledStoreModRecord[]): void {
+  setInstalledMods(installedMods: StoreInstallRecord[]): void {
     emit({ ...state, installedMods });
   },
-  toggleFeature(featureId: string): void {
+  toggleFeature(name: string): void {
     emit({
       ...state,
-      selectedFeatureIds: toggle(state.selectedFeatureIds, featureId),
+      selectedFeatureNames: toggle(state.selectedFeatureNames, name),
     });
   },
   toggleInstalled(packageId: string): void {
@@ -95,14 +87,14 @@ export const storeSidePanelStore = {
   },
   clearSelections(): void {
     if (
-      state.selectedFeatureIds.size === 0
+      state.selectedFeatureNames.size === 0
       && state.selectedInstalledPackageIds.size === 0
     ) {
       return;
     }
     emit({
       ...state,
-      selectedFeatureIds: new Set(),
+      selectedFeatureNames: new Set(),
       selectedInstalledPackageIds: new Set(),
     });
   },
@@ -118,17 +110,17 @@ export const useStoreSidePanelState = (): StoreSidePanelState =>
     storeSidePanelStore.getSnapshot,
   );
 
-export const refreshFeatureRoster = async (): Promise<void> => {
+export const refreshFeatureSnapshot = async (): Promise<void> => {
   const api = window.electronAPI?.store;
-  if (!api?.listFeatureRoster) {
-    storeSidePanelStore.setRosterLoading(false);
+  if (!api?.readFeatureSnapshot) {
+    storeSidePanelStore.setSnapshotLoading(false);
     return;
   }
-  storeSidePanelStore.setRosterLoading(true);
+  storeSidePanelStore.setSnapshotLoading(true);
   try {
-    const roster = await api.listFeatureRoster();
-    storeSidePanelStore.setRoster(roster);
+    const snapshot = await api.readFeatureSnapshot();
+    storeSidePanelStore.setSnapshot(snapshot);
   } catch {
-    storeSidePanelStore.setRosterLoading(false);
+    storeSidePanelStore.setSnapshotLoading(false);
   }
 };

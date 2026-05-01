@@ -4,67 +4,6 @@ import { ensurePrivateDirSync } from "../shared/private-fs.js";
 
 const DB_FILE = "stella.sqlite";
 
-const STORE_MOD_INSTALLS_COLUMNS = [
-  "install_id",
-  "package_id",
-  "release_number",
-  "apply_commit_hashes_json",
-  "state",
-  "created_at",
-  "updated_at",
-] as const;
-
-const STORE_MOD_INSTALLS_CREATE_SQL = `
-  CREATE TABLE IF NOT EXISTS store_mod_installs (
-    install_id TEXT PRIMARY KEY,
-    package_id TEXT NOT NULL,
-    release_number INTEGER NOT NULL,
-    apply_commit_hashes_json TEXT NOT NULL,
-    state TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-  );
-`;
-
-const ensureStoreModInstallsTable = (db: SqliteDatabase) => {
-  const rows = db.prepare("PRAGMA table_info(store_mod_installs);").all() as Array<{
-    name?: unknown;
-  }>;
-  if (rows.length === 0) {
-    db.exec(STORE_MOD_INSTALLS_CREATE_SQL);
-    return;
-  }
-
-  const columnNames = new Set(
-    rows
-      .map((row) => (typeof row.name === "string" ? row.name : ""))
-      .filter(Boolean),
-  );
-  const expectedColumns = new Set<string>(STORE_MOD_INSTALLS_COLUMNS);
-  const needsRebuild =
-    columnNames.size !== expectedColumns.size ||
-    STORE_MOD_INSTALLS_COLUMNS.some((column) => !columnNames.has(column));
-  if (!needsRebuild) {
-    return;
-  }
-
-  const canPreserveRows = STORE_MOD_INSTALLS_COLUMNS.every((column) =>
-    columnNames.has(column),
-  );
-  db.exec("ALTER TABLE store_mod_installs RENAME TO store_mod_installs_old;");
-  db.exec(STORE_MOD_INSTALLS_CREATE_SQL);
-  if (canPreserveRows) {
-    db.exec(`
-      INSERT INTO store_mod_installs (
-        ${STORE_MOD_INSTALLS_COLUMNS.join(", ")}
-      )
-      SELECT ${STORE_MOD_INSTALLS_COLUMNS.join(", ")}
-      FROM store_mod_installs_old;
-    `);
-  }
-  db.exec("DROP TABLE store_mod_installs_old;");
-};
-
 export const ensureDatabaseStateRoot = (stellaHome: string) => {
   const stateRoot = path.join(stellaHome, "state");
   ensurePrivateDirSync(stateRoot);
@@ -162,6 +101,10 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec("DROP TABLE IF EXISTS runtime_tasks;");
   db.exec("DROP TABLE IF EXISTS self_mod_batches;");
   db.exec("DROP TABLE IF EXISTS self_mod_features;");
+  // Old install ledger that tracked apply-commit hashes per package.
+  // Replaced by `store_installs` (one row per installed package, single
+  // commit hash captured from the blueprint-implementing general-agent run).
+  db.exec("DROP TABLE IF EXISTS store_mod_installs;");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_threads (
@@ -281,14 +224,42 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     );
   `);
 
-  // Self-mod publishing is commit-driven: the Store agent picks raw commits
-  // from `git log` at publish time, so we no longer materialize features or
-  // batches in SQL. Only the install record (per-package mirror of what's
-  // applied locally) is persisted.
-  ensureStoreModInstallsTable(db);
+  // Rolling-window snapshot of recent self-mod commits, named by a cheap
+  // LLM. Single row, regenerated on every successful self-mod commit. The
+  // side panel reads this row to render the "features list" the user
+  // selects from when talking to the Store agent.
   db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_store_mod_installs_package
-    ON store_mod_installs(package_id, updated_at);
+    CREATE TABLE IF NOT EXISTS self_mod_feature_snapshot (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      items_json TEXT NOT NULL,
+      generated_at INTEGER NOT NULL
+    );
+  `);
+
+  // One row per installed Store add-on. The blueprint-driven install
+  // flow runs a general agent that implements the blueprint; we capture
+  // the self-mod commit hashes here so uninstall can revert installs
+  // plus later updates in reverse order.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS store_installs (
+      package_id TEXT PRIMARY KEY,
+      release_number INTEGER NOT NULL,
+      install_commit_hash TEXT,
+      install_commit_hashes_json TEXT NOT NULL DEFAULT '[]',
+      installed_at INTEGER NOT NULL
+    );
+  `);
+  try {
+    db.exec(`
+      ALTER TABLE store_installs
+      ADD COLUMN install_commit_hashes_json TEXT NOT NULL DEFAULT '[]';
+    `);
+  } catch {
+    // Column already exists.
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_store_installs_installed_at
+    ON store_installs(installed_at);
   `);
 
   db.exec(`

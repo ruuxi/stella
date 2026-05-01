@@ -1,142 +1,148 @@
-import type { InstalledStoreModRecord } from "../../contracts/index.js";
+import type {
+  SelfModFeatureSnapshot,
+  SelfModFeatureSnapshotItem,
+  StoreInstallRecord,
+} from "../../contracts/index.js";
 import type { SqliteDatabase } from "./shared.js";
-import { generateLocalId } from "./shared.js";
 
 type InstallRow = {
-  installId: string;
   packageId: string;
   releaseNumber: number;
-  applyCommitHashesJson: string;
-  state: InstalledStoreModRecord["state"];
-  createdAt: number;
-  updatedAt: number;
+  installCommitHash: string | null;
+  installCommitHashesJson: string;
+  installedAt: number;
 };
 
-const parseJsonStringArray = (value: string | null): string[] => {
-  if (!value) return [];
+type SnapshotRow = {
+  itemsJson: string;
+  generatedAt: number;
+};
+
+const parseSnapshotItems = (raw: string): SelfModFeatureSnapshotItem[] => {
   try {
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed)
-      ? parsed.filter(
-          (entry): entry is string =>
-            typeof entry === "string" && entry.trim().length > 0,
-        )
-      : [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry): SelfModFeatureSnapshotItem | null => {
+        if (!entry || typeof entry !== "object") return null;
+        const candidate = entry as Record<string, unknown>;
+        const name =
+          typeof candidate.name === "string" ? candidate.name.trim() : "";
+        if (!name) return null;
+        const commitHashes = Array.isArray(candidate.commitHashes)
+          ? candidate.commitHashes.filter(
+              (hash): hash is string =>
+                typeof hash === "string" && hash.trim().length > 0,
+            )
+          : [];
+        return { name, commitHashes };
+      })
+      .filter((item): item is SelfModFeatureSnapshotItem => item !== null);
   } catch {
     return [];
   }
 };
 
-const toInstallRecord = (row: InstallRow): InstalledStoreModRecord => ({
-  installId: row.installId,
-  packageId: row.packageId,
-  releaseNumber: row.releaseNumber,
-  applyCommitHashes: parseJsonStringArray(row.applyCommitHashesJson),
-  state: row.state,
-  createdAt: row.createdAt,
-  updatedAt: row.updatedAt,
-});
+const parseCommitHashes = (raw: string | null | undefined): string[] => {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((hash): hash is string => typeof hash === "string")
+      .map((hash) => hash.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+const uniqueCommitHashes = (hashes: string[]): string[] =>
+  Array.from(new Set(hashes.map((hash) => hash.trim()).filter(Boolean)));
+
+const toInstallRecord = (row: InstallRow): StoreInstallRecord => {
+  const installCommitHashes = uniqueCommitHashes([
+    ...parseCommitHashes(row.installCommitHashesJson),
+    ...(row.installCommitHash ? [row.installCommitHash] : []),
+  ]);
+  return {
+    packageId: row.packageId,
+    releaseNumber: row.releaseNumber,
+    installCommitHash:
+      row.installCommitHash ??
+      installCommitHashes[installCommitHashes.length - 1] ??
+      null,
+    installCommitHashes,
+    installedAt: row.installedAt,
+  };
+};
 
 /**
- * Persists per-package install bookkeeping for store-installed mods.
- *
- * Earlier revisions of this store also tracked locally-authored
- * "features" and per-feature "batches" so a future Publish flow could
- * group them. Phase 3 removed that scheme — the Store agent picks raw
- * commits from `git log` at publish time instead — leaving only the
- * install ledger here.
+ * Persists Store install bookkeeping plus the rolling feature snapshot
+ * the side panel renders. No commit history, no per-feature index — the
+ * snapshot is regenerated wholesale by the namer LLM after every
+ * self-mod commit.
  */
 export class StoreModStore {
   constructor(private readonly db: SqliteDatabase) {}
 
-  recordInstallCommit(args: {
+  recordInstall(args: {
     packageId: string;
     releaseNumber: number;
-    applyCommitHash: string;
-  }): InstalledStoreModRecord {
-    const existing = this.getInstalledModByPackageId(args.packageId);
-    const now = Date.now();
-    if (!existing) {
-      const installId = `install:${generateLocalId()}`;
-      const applyCommitHashes = [args.applyCommitHash];
-      this.db
-        .prepare(
-          `
-        INSERT INTO store_mod_installs (
-          install_id,
-          package_id,
-          release_number,
-          apply_commit_hashes_json,
-          state,
-          created_at,
-          updated_at
-        )
-        VALUES (?, ?, ?, ?, 'installed', ?, ?)
-      `,
-        )
-        .run(
-          installId,
-          args.packageId,
-          args.releaseNumber,
-          JSON.stringify(applyCommitHashes),
-          now,
-          now,
-        );
-      return {
-        installId,
-        packageId: args.packageId,
-        releaseNumber: args.releaseNumber,
-        applyCommitHashes,
-        state: "installed",
-        createdAt: now,
-        updatedAt: now,
-      };
-    }
-
-    const applyCommitHashes = [
-      ...existing.applyCommitHashes,
-      args.applyCommitHash,
-    ];
+    installCommitHash: string | null;
+    installedAt?: number;
+  }): StoreInstallRecord {
+    const installedAt = args.installedAt ?? Date.now();
+    const existing = this.getInstall(args.packageId);
+    const installCommitHashes = uniqueCommitHashes([
+      ...(existing?.installCommitHashes ?? []),
+      ...(args.installCommitHash ? [args.installCommitHash] : []),
+    ]);
     this.db
       .prepare(
         `
-      UPDATE store_mod_installs
-      SET
-        release_number = ?,
-        apply_commit_hashes_json = ?,
-        state = 'installed',
-        updated_at = ?
-      WHERE install_id = ?
+      INSERT INTO store_installs (
+        package_id,
+        release_number,
+        install_commit_hash,
+        install_commit_hashes_json,
+        installed_at
+      )
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(package_id) DO UPDATE SET
+        release_number = excluded.release_number,
+        install_commit_hash = excluded.install_commit_hash,
+        install_commit_hashes_json = excluded.install_commit_hashes_json,
+        installed_at = excluded.installed_at
     `,
       )
       .run(
+        args.packageId,
         args.releaseNumber,
-        JSON.stringify(applyCommitHashes),
-        now,
-        existing.installId,
+        args.installCommitHash,
+        JSON.stringify(installCommitHashes),
+        installedAt,
       );
     return {
-      ...existing,
+      packageId: args.packageId,
       releaseNumber: args.releaseNumber,
-      applyCommitHashes,
-      state: "installed",
-      updatedAt: now,
+      installCommitHash: args.installCommitHash,
+      installCommitHashes,
+      installedAt,
     };
   }
 
-  getInstalledModByPackageId(packageId: string): InstalledStoreModRecord | null {
+  getInstall(packageId: string): StoreInstallRecord | null {
     const row = this.db
       .prepare(
         `
       SELECT
-        install_id AS installId,
         package_id AS packageId,
         release_number AS releaseNumber,
-        apply_commit_hashes_json AS applyCommitHashesJson,
-        state,
-        created_at AS createdAt,
-        updated_at AS updatedAt
-      FROM store_mod_installs
+        install_commit_hash AS installCommitHash,
+        install_commit_hashes_json AS installCommitHashesJson,
+        installed_at AS installedAt
+      FROM store_installs
       WHERE package_id = ?
       LIMIT 1
     `,
@@ -145,35 +151,59 @@ export class StoreModStore {
     return row ? toInstallRecord(row) : null;
   }
 
-  listInstalledMods(): InstalledStoreModRecord[] {
+  listInstalls(): StoreInstallRecord[] {
     const rows = this.db
       .prepare(
         `
       SELECT
-        install_id AS installId,
         package_id AS packageId,
         release_number AS releaseNumber,
-        apply_commit_hashes_json AS applyCommitHashesJson,
-        state,
-        created_at AS createdAt,
-        updated_at AS updatedAt
-      FROM store_mod_installs
-      ORDER BY updated_at DESC, install_id ASC
+        install_commit_hash AS installCommitHash,
+        install_commit_hashes_json AS installCommitHashesJson,
+        installed_at AS installedAt
+      FROM store_installs
+      ORDER BY installed_at DESC, package_id ASC
     `,
       )
       .all() as InstallRow[];
     return rows.map(toInstallRecord);
   }
 
-  markInstallUninstalled(installId: string): void {
+  deleteInstall(packageId: string): void {
+    this.db
+      .prepare("DELETE FROM store_installs WHERE package_id = ?")
+      .run(packageId);
+  }
+
+  writeFeatureSnapshot(snapshot: SelfModFeatureSnapshot): void {
     this.db
       .prepare(
         `
-      UPDATE store_mod_installs
-      SET state = 'uninstalled', updated_at = ?
-      WHERE install_id = ?
+      INSERT INTO self_mod_feature_snapshot (id, items_json, generated_at)
+      VALUES (1, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        items_json = excluded.items_json,
+        generated_at = excluded.generated_at
     `,
       )
-      .run(Date.now(), installId);
+      .run(JSON.stringify(snapshot.items), snapshot.generatedAt);
+  }
+
+  readFeatureSnapshot(): SelfModFeatureSnapshot | null {
+    const row = this.db
+      .prepare(
+        `
+      SELECT items_json AS itemsJson, generated_at AS generatedAt
+      FROM self_mod_feature_snapshot
+      WHERE id = 1
+      LIMIT 1
+    `,
+      )
+      .get() as SnapshotRow | undefined;
+    if (!row) return null;
+    return {
+      items: parseSnapshotItems(row.itemsJson),
+      generatedAt: row.generatedAt,
+    };
   }
 }
