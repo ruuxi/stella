@@ -97,7 +97,8 @@ function emptyUsage(): AssistantMessage["usage"] {
 }
 
 function normalizeAnthropicModelId(modelId: string): string {
-  return modelId.startsWith("anthropic/") ? modelId.slice("anthropic/".length) : modelId;
+  const nativeId = modelId.startsWith("anthropic/") ? modelId.slice("anthropic/".length) : modelId;
+  return nativeId.replace(/-(\d+)\.(\d+)$/u, "-$1-$2");
 }
 
 function convertUserContent(content: string | Array<TextContent | ImageContent>): string | AnthropicContentBlock[] {
