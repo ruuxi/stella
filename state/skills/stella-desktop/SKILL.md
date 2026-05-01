@@ -12,6 +12,16 @@ and the small set of patterns that handle ~90% of UI changes the agent is
 asked to make. **Use it before editing `desktop/src/`** — most "where do I put
 this?" answers are here.
 
+## Renderer bucket placement
+
+`desktop/src/` is bucketed by intent — `ls` for the inventory. Three rules:
+
+- Default local. Place new code in the bucket that owns it. Only reach for `shared/` when something is genuinely cross-cutting across multiple buckets.
+- Don't add new top-level buckets like `services/` or `utils/`. Add a subfolder inside an existing bucket when there's a real seam.
+- `app/<id>/` holds every per-app surface. A folder becomes a sidebar entry by shipping a `metadata.ts` (`chat`, `social`, `settings`, `store`); folders without one (`home`, `media`, `workspace`) are sub-surfaces that ship feature code only.
+
+When you build Stella-facing UI, add `data-stella-label`, `data-stella-state`, and `data-stella-action` attributes so future tasks can target it without guessing at component structure.
+
 ## Process model (the three Electron processes)
 
 Stella runs as three cooperating processes. Knowing which one to edit is the
