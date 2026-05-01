@@ -47,10 +47,10 @@ export function getVoiceToolSchemas(): VoiceToolSchema[] {
       type: "function",
       name: "look_at_screen",
       description:
-        "Look at the user's screen to find and point out UI elements, buttons, menus, tabs, icons, or anything visible. " +
+        "Look at the user's screen to understand visible UI elements, buttons, menus, tabs, icons, or anything visible. " +
         "Prefer this whenever visual guidance would help: 'where is...', 'show me...', 'find the...', 'how do I...', 'what do I click...', 'what is this button...', or questions about the current app or current screen. " +
         "Err on the side of calling this for on-screen guidance instead of answering with words alone. " +
-        "This captures the relevant screen(s), analyzes them, and highlights the best matching element with a visual callout on screen.",
+        "This captures the relevant screen(s) and passes the image directly into the voice conversation.",
       parameters: {
         type: "object",
         properties: {

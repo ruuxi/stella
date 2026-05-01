@@ -18,45 +18,6 @@ import {
 } from "@/features/voice/services/shared-microphone";
 
 // ---------------------------------------------------------------------------
-// Screen guide vision prompt
-// ---------------------------------------------------------------------------
-
-const SCREEN_GUIDE_SYSTEM_PROMPT = [
-  "You are a visual screen guide for a desktop voice assistant.",
-  "The user asked about something on their computer. Your job is to help by pointing at the most relevant visible UI element whenever that would make the answer more useful.",
-  "",
-  "Err on the side of annotating rather than not annotating.",
-  "If the user asks how to do something, where something is, what to click, what a visible control does, or how to navigate the current app, find the specific button, menu, icon, tab, or control and annotate it.",
-  "Only return zero annotations when the screenshots are not relevant or the needed element genuinely is not visible on any uploaded screen.",
-  "",
-  "You may receive multiple screens. Each image is labeled with a 1-based screen number and whether it is the primary focus screen.",
-  "Prefer the primary focus screen when several screens are plausible, but use another screen if that is clearly where the answer is.",
-  "",
-  "Scan methodically:",
-  "- Menu bar: app menus and status items",
-  "- Toolbars and tab bars: buttons, tabs, the + icon for new tabs, navigation controls",
-  "- Sidebars: panels, trees, navigation items",
-  "- Dialogs and popovers: floating UI on top",
-  "- Main content area: the active page, canvas, document, or editor",
-  "- Dock / taskbar: app icons",
-  "",
-  "Return ONLY valid JSON (no markdown fences) with this exact structure:",
-  '{"annotations":[{"label":"short label","screen":number,"cx":number,"cy":number}],"spoken":"brief natural description for voice"}',
-  "",
-  "Rules:",
-  "- screen: the 1-based screen number matching the uploaded labels",
-  "- cx, cy: center point of the element in pixels, in that screen's exact uploaded image space",
-  "- label: 2-4 words like \"Click here\", \"This tab\", \"Right here\", or \"New tab\"",
-  "- spoken: 1-2 natural sentences telling the user where it is and what to do",
-  "- Multiple annotations are fine for short multi-step guidance",
-  "",
-  "Examples:",
-  "- If the user asks how to open a new browser tab and the plus button is visible, annotate the plus button.",
-  "- If the user asks where color grading is in Final Cut and the color inspector control is visible, annotate that control.",
-  "- If the user asks what HTML means and the screenshots are irrelevant, return an empty annotations array.",
-].join("\n");
-
-// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -1089,8 +1050,7 @@ export class RealtimeVoiceSession {
 
   private runLookAtScreenAsync(query: string): void {
     const captureApi = window.electronAPI?.capture;
-    const screenGuideApi = window.electronAPI?.screenGuide;
-    if (!captureApi?.visionScreenshots || !screenGuideApi) {
+    if (!captureApi?.visionScreenshots) {
       console.warn("[realtime-voice] Cannot look at screen: missing IPC");
       return;
     }
@@ -1102,124 +1062,39 @@ export class RealtimeVoiceSession {
           throw new Error("Screen capture returned no images");
         }
 
-        const { callChatCompletion } = await import("@/infra/ai/llm");
         const content: Array<
-          { type: "text"; text: string } |
-          { type: "image_url"; image_url: { url: string } }
-        > = [];
+          { type: "input_text"; text: string } |
+          { type: "input_image"; image_url: string; detail?: "auto" | "low" | "high" }
+        > = [
+          {
+            type: "input_text",
+            text:
+              `The user asked: "${query || this.lastUserTranscript || "Look at my screen."}"\n` +
+              "Use the attached screenshot(s) to answer naturally and conversationally. " +
+              "If the user is asking where something is or what to click, describe its location clearly in words.",
+          },
+        ];
 
-        for (const screenshot of screenshots) {
+        for (const screenshot of screenshots.slice(0, 3)) {
           const coordinateSpace = screenshot.coordinateSpace;
           content.push({
-            type: "text",
+            type: "input_text",
             text:
               `${screenshot.label}. ` +
               `Image dimensions: ${coordinateSpace.targetWidth}x${coordinateSpace.targetHeight} pixels. ` +
               `Use screen ${screenshot.screenNumber} for this image.`,
           });
           content.push({
-            type: "image_url",
-            image_url: { url: screenshot.dataUrl },
+            type: "input_image",
+            image_url: screenshot.dataUrl,
+            detail: "auto",
           });
         }
 
-        content.push({
-          type: "text",
-          text:
-            `The user asked: "${query}"\n` +
-            "Use the screen numbers above. Return coordinates in the exact uploaded image space for the matching screen. " +
-            "Point when it would help the user navigate their computer.",
-        });
-
-        const response = await callChatCompletion({
-          agentType: "orchestrator",
-          messages: [
-            {
-              role: "system",
-              content: SCREEN_GUIDE_SYSTEM_PROMPT,
-            },
-            {
-              role: "user",
-              content,
-            },
-          ],
-          body: {
-            model: "stella/standard",
-            max_tokens: 12000,
-            temperature: 1.0,
-          },
-        });
-
-        const text =
-          typeof response.choices?.[0]?.message?.content === "string"
-            ? response.choices[0].message.content
-            : "";
-
-        let parsed: {
-          annotations: Array<{
-            label: string;
-            screen?: number;
-            cx: number;
-            cy: number;
-          }>;
-          spoken: string;
-        };
-
-        try {
-          const jsonStr = text.replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
-          parsed = JSON.parse(jsonStr);
-        } catch {
-          parsed = { annotations: [], spoken: text || "I couldn't parse the screen analysis." };
-        }
-
-        const withIds = (parsed.annotations ?? []).flatMap((annotation, i) => {
-          const screenNumber =
-            typeof annotation?.screen === "number" && Number.isFinite(annotation.screen)
-              ? Math.max(1, Math.round(annotation.screen))
-              : 1;
-          const cx = typeof annotation?.cx === "number" ? annotation.cx : NaN;
-          const cy = typeof annotation?.cy === "number" ? annotation.cy : NaN;
-          if (!Number.isFinite(cx) || !Number.isFinite(cy)) {
-            return [];
-          }
-
-          const screenshot =
-            screenshots.find((candidate) => candidate.screenNumber === screenNumber) ??
-            screenshots[0];
-          if (!screenshot) {
-            return [];
-          }
-
-          const coordinateSpace = screenshot.coordinateSpace;
-          const scaleX =
-            coordinateSpace.logicalWidth / coordinateSpace.targetWidth;
-          const scaleY =
-            coordinateSpace.logicalHeight / coordinateSpace.targetHeight;
-
-          return [{
-            id: `sg-${Date.now()}-${i}`,
-            label:
-              typeof annotation?.label === "string" && annotation.label.trim()
-                ? annotation.label.trim()
-                : "Here",
-            x: coordinateSpace.x + Math.round(cx * scaleX),
-            y: coordinateSpace.y + Math.round(cy * scaleY),
-          }];
-        });
-
-        if (withIds.length > 0) {
-          screenGuideApi.show(withIds);
-
-          setTimeout(() => {
-            screenGuideApi.hide();
-          }, 10_000);
-        }
-
-        const spokenResult = parsed.spoken || "I looked at your screen but couldn't find what you're looking for.";
         window.electronAPI?.voice.persistTranscript?.({
           conversationId: this.conversationId ?? "voice-rtc",
           role: "assistant",
-          text: `[SCREEN GUIDE] ${query} → ${withIds.length} annotations`,
+          text: `[SCREEN LOOK] ${query || this.lastUserTranscript || "(no query)"} → ${screenshots.length} screenshots`,
           uiVisibility: "hidden",
         });
 
@@ -1228,12 +1103,7 @@ export class RealtimeVoiceSession {
           item: {
             type: "message",
             role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: `[System: Screen analysis complete. ${spokenResult}${withIds.length ? " I've highlighted it on screen." : ""}]\n\nShare this with the user naturally and conversationally.`,
-              },
-            ],
+            content,
           },
         });
         this.sendEvent({ type: "response.create" });
