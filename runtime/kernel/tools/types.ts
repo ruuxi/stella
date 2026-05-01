@@ -114,7 +114,7 @@ export type AgentToolRequest = {
   selfModMetadata?: {
     packageId?: string;
     releaseNumber?: number;
-    mode?: "author" | "install" | "update";
+    mode?: "author" | "install" | "update" | "uninstall";
   };
 };
 

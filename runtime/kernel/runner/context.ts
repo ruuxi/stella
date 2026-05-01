@@ -548,7 +548,7 @@ export const buildAgentContext = async (
     selfModMetadata?: {
       packageId?: string;
       releaseNumber?: number;
-      mode?: "author" | "install" | "update";
+      mode?: "author" | "install" | "update" | "uninstall";
     };
     /**
      * True only on Orchestrator turns that should re-inject the dynamic

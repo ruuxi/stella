@@ -604,7 +604,7 @@ export class RuntimeClientAdapter {
     selfModMetadata?: {
       packageId?: string;
       releaseNumber?: number;
-      mode?: "author" | "install" | "update";
+      mode?: "author" | "install" | "update" | "uninstall";
     };
   }) {
     return this.client.runBlockingLocalAgent(payload);
@@ -618,7 +618,7 @@ export class RuntimeClientAdapter {
     selfModMetadata?: {
       packageId?: string;
       releaseNumber?: number;
-      mode?: "author" | "install" | "update";
+      mode?: "author" | "install" | "update" | "uninstall";
     };
   }) {
     return this.client.createBackgroundAgent(payload);

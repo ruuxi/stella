@@ -318,6 +318,23 @@ export const getGitHead = async (repoRoot: string): Promise<string | null> => {
   return output || null;
 };
 
+export const getGitHeadCommitSequence = async (
+  repoRoot: string,
+  count: number,
+): Promise<string[]> => {
+  await assertGitRepository(repoRoot);
+  const safeCount = Math.max(1, Math.min(100, Math.floor(count)));
+  const output = await runGit(repoRoot, [
+    "rev-list",
+    `--max-count=${safeCount}`,
+    "HEAD",
+  ]);
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+};
+
 const getChangedFilesForCommit = async (
   repoRoot: string,
   commitHash: string,
