@@ -9,6 +9,7 @@ export const AGENT_IDS = {
   STORE: "store",
   DREAM: "dream",
   CHRONICLE: "chronicle",
+  HOME_SUGGESTIONS: "home_suggestions",
   INSTALL_UPDATE: "install_update",
 } as const;
 

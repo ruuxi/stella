@@ -131,12 +131,11 @@ const readDreamConfig = (stellaHome: string): DreamConfig => {
     const parsed = JSON.parse(raw) as { dream?: Partial<DreamConfig> };
     const dream = parsed.dream ?? {};
     return {
-      // Dream is opt-in: only run when the user has explicitly turned on
-      // Live Memory during onboarding (or via Settings). The onboarding
-      // toggle writes `dream.enabled: true` to `state/config.json`; until
-      // then we no-op so the background scheduler never tries to resolve
-      // a model route that isn't there.
-      enabled: dream.enabled === true,
+      // Dream is on by default and consolidates `thread_summaries` into the
+      // durable on-disk memory layout. It is independent of Live Memory
+      // (Chronicle screen capture); the only way it stays off is if the
+      // user explicitly sets `dream.enabled: false` in `state/config.json`.
+      enabled: dream.enabled !== false,
       triggerRowCount:
         typeof dream.triggerRowCount === "number" && dream.triggerRowCount > 0
           ? Math.floor(dream.triggerRowCount)
@@ -148,7 +147,7 @@ const readDreamConfig = (stellaHome: string): DreamConfig => {
     };
   } catch {
     return {
-      enabled: false,
+      enabled: true,
       triggerRowCount: DEFAULT_TRIGGER_ROW_COUNT,
       idleTriggerMs: DEFAULT_IDLE_TRIGGER_MS,
     };

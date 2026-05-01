@@ -683,6 +683,28 @@ export const createAgentOrchestration = (
           ...(toolWorkspaceRoot ? { toolWorkspaceRoot } : {}),
           selfModMonitor: context.selfModMonitor,
           onProgress,
+          ...(context.appendLocalChatEvent
+            ? { appendLocalChatEvent: context.appendLocalChatEvent }
+            : {}),
+          ...(context.listLocalChatEvents
+            ? { listLocalChatEvents: context.listLocalChatEvents }
+            : {}),
+          resolveSubsidiaryLlmRoute: (subsidiaryAgentType: string) =>
+            resolveLlmRoute({
+              stellaRoot: context.stellaRoot,
+              modelName: undefined,
+              agentType: subsidiaryAgentType,
+              site: {
+                baseUrl: context.state.convexSiteUrl,
+                getAuthToken: () => context.state.authToken?.trim(),
+                refreshAuthToken: async () => {
+                  const result = await context.requestRuntimeAuthRefresh?.({
+                    source: "stella_provider",
+                  });
+                  return result?.authenticated ? result.token : null;
+                },
+              },
+            }),
           callbacks: {
             ...(runnerCallbacks
               ? {

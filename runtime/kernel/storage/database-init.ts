@@ -224,6 +224,18 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     );
   `);
 
+  // Counter for the home-suggestions refresh pass. Increments on every
+  // successful General-agent finalize; the cheap-LLM refresh fires when it
+  // crosses the threshold and the row is reset to zero. One row per
+  // conversation, mirroring the memory-review counter.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_home_suggestions_state (
+      conversation_id TEXT PRIMARY KEY,
+      finalizes_since_refresh INTEGER NOT NULL DEFAULT 0,
+      last_refresh_at INTEGER
+    );
+  `);
+
   // Rolling-window snapshot of recent self-mod commits, named by a cheap
   // LLM. Single row, regenerated on every successful self-mod commit. The
   // side panel reads this row to render the "features list" the user
