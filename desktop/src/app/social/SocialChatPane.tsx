@@ -63,9 +63,14 @@ function getProfileForOwner(
   return member ?? { nickname: "Unknown" };
 }
 
-export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) {
-  const roomData = useQuery(api.social.rooms.getRoom, { roomId }) as SocialRoomSummary | null;
-  const { messages, sendMessage } = useSocialMessages(roomId);
+export function SocialChatPane({
+  roomId,
+  currentOwnerId,
+}: SocialChatPaneProps) {
+  const roomData = useQuery(api.social.rooms.getRoom, {
+    roomId,
+  }) as SocialRoomSummary | null;
+  const { messages, sendMessage } = useSocialMessages(roomId, currentOwnerId);
   const { markRead } = useSocialRooms();
 
   // Drive the unread badge: every time the room's newest visible message id
@@ -83,7 +88,12 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
     if (latestMessageAt === undefined) return null;
     if (lastReadAt !== undefined && latestMessageAt <= lastReadAt) return null;
     return {};
-  }, [messages, roomData?.membership.lastReadAt, roomData?.room.kind, roomData?.room.latestMessageAt]);
+  }, [
+    messages,
+    roomData?.membership.lastReadAt,
+    roomData?.room.kind,
+    roomData?.room.latestMessageAt,
+  ]);
 
   useEffect(() => {
     if (!readMarker) return;
@@ -482,7 +492,11 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
 
             if (isSystem) {
               return group.messages.map((msg) => (
-                <div key={msg.id} className="social-message-bubble" data-role="system">
+                <div
+                  key={msg.id}
+                  className="social-message-bubble"
+                  data-role="system"
+                >
                   {msg.body}
                 </div>
               ));
@@ -524,7 +538,10 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
                   </div>
                 )}
                 {isSelf && (
-                  <div className="social-message-sender" style={{ justifyContent: "flex-end" }}>
+                  <div
+                    className="social-message-sender"
+                    style={{ justifyContent: "flex-end" }}
+                  >
                     <span className="social-message-sender-time">
                       {formatMessageTime(group.firstTimestamp)}
                     </span>
@@ -640,7 +657,11 @@ function AddFriendInlineButton({
 
   if (effectiveStatus === "friends") {
     return (
-      <span className="social-friend-chip" data-status="friends" title="Friends">
+      <span
+        className="social-friend-chip"
+        data-status="friends"
+        title="Friends"
+      >
         <Check size={11} aria-hidden />
         Friends
       </span>
