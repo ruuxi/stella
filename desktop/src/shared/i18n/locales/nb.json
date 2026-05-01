@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Fortsett",
+    "back": "Tilbake",
+    "next": "Neste",
+    "previous": "Forrige",
+    "cancel": "Avbryt",
+    "save": "Lagre",
+    "close": "Lukk",
+    "open": "Åpne",
+    "openPreferences": "Åpne innstillinger",
+    "signIn": "Logg inn",
+    "signOut": "Logg ut",
+    "loading": "Laster…",
+    "tryAgain": "Prøv igjen",
+    "language": "Språk",
+    "yes": "Ja",
+    "no": "Nei"
+  },
+  "sidebar": {
+    "signIn": "Logg inn",
+    "account": "Konto",
+    "feedback": "Send tilbakemelding",
+    "upgrade": "Oppgrader",
+    "newChat": "Ny samtale"
+  },
+  "settings": {
+    "title": "Innstillinger",
+    "tabs": {
+      "basic": "Generelt",
+      "shortcuts": "Snarveier",
+      "memory": "Minne",
+      "backup": "Sikkerhetskopier",
+      "account": "Konto og juridisk",
+      "models": "Modeller",
+      "audio": "Lyd"
+    },
+    "language": {
+      "title": "Språk",
+      "description": "Velg språket Stella bruker i appen og når den svarer deg."
+    }
+  },
+  "onboarding": {
+    "ready": "Klargjør...",
+    "retryStart": "Prøv å starte Stella på nytt",
+    "startStella": "Start Stella",
+    "legalFooter": "Ved å bruke Stella godtar du våre {terms} og {privacy}.",
+    "termsOfService": "Brukervilkår",
+    "privacyPolicy": "Personvernerklæring",
+    "previousStep": "Forrige trinn",
+    "nextStep": "Neste trinn",
+    "intro": {
+      "primary": "Stella er en AI som kjører på datamaskinen din.",
+      "secondary": "Stella er ikke for alle. Stella er for deg."
+    },
+    "stepTitles": {
+      "language": "Velg språk.",
+      "extension": "Legg til Stella i nettleseren.",
+      "browser": "La Stella bli kjent med deg.",
+      "creation": "Stella endrer seg når du ber om det. Trykk på knappene for å prøve.",
+      "theme": "Hvordan skal Stella se ut?",
+      "personality": "Hvordan skal Stella snakke?",
+      "shortcutsGlobal": "Hvor som helst på skrivebordet.",
+      "shortcutsLocal": "Inni Stella.",
+      "doubleTap": "Trykk to ganger. Tilkall Stella.",
+      "voice": "Snakk i stedet for å skrive.",
+      "memory": "Hjelp Stella å huske.",
+      "enter": "Stella er nesten klar."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Apper og maskinen din",
+        "description": "Hvilke apper du bruker mest, hvordan skrivebordet er organisert og arbeidsflyten din"
+      },
+      "messagesNotes": {
+        "label": "Notater og kalender",
+        "description": "Hva du jobber med, planene dine og hvordan du strukturerer tankene"
+      },
+      "devEnvironment": {
+        "label": "Utviklingsmiljøet ditt",
+        "description": "Verktøy du bruker, prosjekter du jobber med og hvordan miljøet er konfigurert"
+      },
+      "fdaNote": "Noen alternativer krever full disktilgang"
+    },
+    "language": {
+      "description": "Stella bruker dette språket i hele appen og i svar. Du kan endre det senere i Innstillinger."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Kom i gang med Stella",
+        "features": [
+          "Grunnleggende chat og hjelp",
+          "Begrenset daglig bruk"
+        ]
+      },
+      "go": {
+        "tagline": "For daglig personlig bruk",
+        "features": [
+          "Flere samtaler per dag",
+          "Nettleserautomatisering",
+          "Talesamtaler"
+        ]
+      },
+      "pro": {
+        "tagline": "For erfarne brukere",
+        "features": [
+          "3× bruken i Go",
+          "Prioriterte svartider",
+          "Alle automatiseringsfunksjoner"
+        ]
+      },
+      "plus": {
+        "tagline": "For profesjonelle",
+        "features": [
+          "Høyt daglig bruk",
+          "Avanserte agentarbeidsflyter",
+          "Prioritert støtte"
+        ]
+      },
+      "ultra": {
+        "tagline": "Ubegrenset produktivitet",
+        "features": [
+          "Maksimale bruksgrenser",
+          "Raskeste svartider",
+          "Alt i Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella klarte ikke å starte dette svaret",
+    "tryAgainHint": "Prøv igjen."
+  },
+  "errors": {
+    "generic": "Noe gikk galt",
+    "subscriptionRequired": "Sikkerhetskopier krever et aktivt Stella-abonnement.",
+    "rateLimited": "Det går litt for fort. Prøv igjen om litt.",
+    "networkUnavailable": "Stella er frakoblet. Koble til igjen for å fortsette.",
+    "permissionDenied": "Stella har ikke tillatelse til dette."
+  }
+}

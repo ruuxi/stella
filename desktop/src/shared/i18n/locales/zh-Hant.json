@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "繼續",
+    "back": "返回",
+    "next": "下一步",
+    "previous": "上一步",
+    "cancel": "取消",
+    "save": "儲存",
+    "close": "關閉",
+    "open": "開啟",
+    "openPreferences": "開啟偏好設定",
+    "signIn": "登入",
+    "signOut": "登出",
+    "loading": "載入中…",
+    "tryAgain": "重試",
+    "language": "語言",
+    "yes": "是",
+    "no": "否"
+  },
+  "sidebar": {
+    "signIn": "登入",
+    "account": "帳戶",
+    "feedback": "傳送回饋",
+    "upgrade": "升級方案",
+    "newChat": "新對話"
+  },
+  "settings": {
+    "title": "設定",
+    "tabs": {
+      "basic": "一般",
+      "shortcuts": "快速鍵",
+      "memory": "記憶",
+      "backup": "備份",
+      "account": "帳戶與法律",
+      "models": "模型",
+      "audio": "音訊"
+    },
+    "language": {
+      "title": "語言",
+      "description": "選擇 Stella 在應用程式中與回覆時使用的語言。"
+    }
+  },
+  "onboarding": {
+    "ready": "準備中...",
+    "retryStart": "重新啟動 Stella",
+    "startStella": "啟動 Stella",
+    "legalFooter": "使用 Stella 即表示您同意我們的{terms}與{privacy}。",
+    "termsOfService": "服務條款",
+    "privacyPolicy": "隱私權政策",
+    "previousStep": "上一步",
+    "nextStep": "下一步",
+    "intro": {
+      "primary": "Stella 是一款在您電腦上運行的 AI。",
+      "secondary": "Stella 不屬於每一個人。Stella 屬於您。"
+    },
+    "stepTitles": {
+      "language": "選擇您的語言。",
+      "extension": "將 Stella 加入您的瀏覽器。",
+      "browser": "讓 Stella 認識您。",
+      "creation": "您一開口，Stella 就會改變。按按鈕試試看。",
+      "theme": "Stella 該長什麼樣子？",
+      "personality": "Stella 該怎麼說話？",
+      "shortcutsGlobal": "桌面任何地方。",
+      "shortcutsLocal": "Stella 內部。",
+      "doubleTap": "點兩下，召喚 Stella。",
+      "voice": "用說的，不要用打字。",
+      "memory": "幫 Stella 記住。",
+      "enter": "Stella 即將準備就緒。"
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "您的應用程式與電腦",
+        "description": "您最常用的應用程式、桌面如何組織，以及您的工作方式"
+      },
+      "messagesNotes": {
+        "label": "您的筆記與行事曆",
+        "description": "您正在進行的事、您的行程，以及您整理想法的方式"
+      },
+      "devEnvironment": {
+        "label": "您的開發環境",
+        "description": "您使用的工具、進行中的專案，以及環境的配置方式"
+      },
+      "fdaNote": "部分選項需要完整磁碟存取權限"
+    },
+    "language": {
+      "description": "Stella 會在整個應用程式與回覆中使用這個語言。您稍後可以在「設定」中變更。"
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "開始使用 Stella",
+        "features": [
+          "基礎聊天與協助",
+          "每日使用量有限"
+        ]
+      },
+      "go": {
+        "tagline": "適合日常個人使用",
+        "features": [
+          "每日更多對話",
+          "瀏覽器自動化",
+          "語音對話"
+        ]
+      },
+      "pro": {
+        "tagline": "適合進階使用者",
+        "features": [
+          "Go 的 3 倍使用量",
+          "優先回應時間",
+          "全部自動化功能"
+        ]
+      },
+      "plus": {
+        "tagline": "適合專業人士",
+        "features": [
+          "高強度的每日使用",
+          "進階代理人工作流",
+          "優先支援"
+        ]
+      },
+      "ultra": {
+        "tagline": "無限生產力",
+        "features": [
+          "最高使用上限",
+          "最快回應時間",
+          "包含 Plus 全部內容"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella 無法開始此次回覆",
+    "tryAgainHint": "請重試。"
+  },
+  "errors": {
+    "generic": "出了一點問題",
+    "subscriptionRequired": "備份需要有效的 Stella 訂閱。",
+    "rateLimited": "操作太快了，請稍候再試。",
+    "networkUnavailable": "Stella 已離線。請重新連線後繼續。",
+    "permissionDenied": "Stella 沒有執行此操作的權限。"
+  }
+}

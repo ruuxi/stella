@@ -1,6 +1,7 @@
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { ArrowLeft, LogOut, MessageSquare } from "lucide-react";
+import { useT } from "@/shared/i18n";
 import {
   useCallback,
   useEffect,
@@ -198,6 +199,7 @@ interface AccountRowProps {
 }
 
 const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) => {
+  const t = useT();
   const { user, hasConnectedAccount } = useCurrentUser();
   // Plans + the user's current tier are public-readable via the same backend
   // query the standalone Billing page uses; running it here lets the pill
@@ -247,13 +249,15 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
           type="button"
           className="sidebar-account-signin"
           onClick={() => onSignIn?.()}
-          title="Sign in"
-          aria-label="Sign in"
+          title={t("sidebar.signIn")}
+          aria-label={t("sidebar.signIn")}
         >
           <span className="sidebar-account-signin-icon">
             <LogIn size={18} />
           </span>
-          <span className="sidebar-account-signin-label">Sign in</span>
+          <span className="sidebar-account-signin-label">
+            {t("sidebar.signIn")}
+          </span>
         </button>
       </div>
     );
@@ -262,7 +266,9 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
   const initials = initialsFromIdentity(user?.email, user?.name);
   const plan = billingStatus?.plan;
   const isPaidPlan = Boolean(plan) && plan !== "free";
-  const pillLabel = isPaidPlan ? planLabel(plan, billingStatus) : "Upgrade";
+  const pillLabel = isPaidPlan
+    ? planLabel(plan, billingStatus)
+    : t("sidebar.upgrade");
 
   return (
     <div className="sidebar-account">
@@ -271,8 +277,8 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
           <button
             type="button"
             className="sidebar-account-avatar"
-            title={user?.email ?? user?.name ?? "Account"}
-            aria-label="Account"
+            title={user?.email ?? user?.name ?? t("sidebar.account")}
+            aria-label={t("sidebar.account")}
           >
             {initials}
           </button>
@@ -291,7 +297,7 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
             <span data-slot="dropdown-menu-item-icon">
               <MessageSquare size={14} strokeWidth={1.75} />
             </span>
-            Send feedback
+            {t("sidebar.feedback")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -303,7 +309,7 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
             <span data-slot="dropdown-menu-item-icon">
               <LogOut size={14} strokeWidth={1.75} />
             </span>
-            Sign out
+            {t("common.signOut")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

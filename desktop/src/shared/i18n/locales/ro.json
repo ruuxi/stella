@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Continuă",
+    "back": "Înapoi",
+    "next": "Următor",
+    "previous": "Anterior",
+    "cancel": "Anulează",
+    "save": "Salvează",
+    "close": "Închide",
+    "open": "Deschide",
+    "openPreferences": "Deschide preferințele",
+    "signIn": "Conectează-te",
+    "signOut": "Deconectează-te",
+    "loading": "Se încarcă…",
+    "tryAgain": "Încearcă din nou",
+    "language": "Limbă",
+    "yes": "Da",
+    "no": "Nu"
+  },
+  "sidebar": {
+    "signIn": "Conectează-te",
+    "account": "Cont",
+    "feedback": "Trimite feedback",
+    "upgrade": "Upgrade",
+    "newChat": "Conversație nouă"
+  },
+  "settings": {
+    "title": "Setări",
+    "tabs": {
+      "basic": "General",
+      "shortcuts": "Comenzi rapide",
+      "memory": "Memorie",
+      "backup": "Copii de rezervă",
+      "account": "Cont și legal",
+      "models": "Modele",
+      "audio": "Audio"
+    },
+    "language": {
+      "title": "Limbă",
+      "description": "Alege limba pe care o folosește Stella în aplicație și în răspunsuri."
+    }
+  },
+  "onboarding": {
+    "ready": "Se pregătește...",
+    "retryStart": "Reîncearcă pornirea Stellei",
+    "startStella": "Pornește Stella",
+    "legalFooter": "Folosind Stella, ești de acord cu {terms} și {privacy}.",
+    "termsOfService": "Termenii de utilizare",
+    "privacyPolicy": "Politica de confidențialitate",
+    "previousStep": "Pasul anterior",
+    "nextStep": "Pasul următor",
+    "intro": {
+      "primary": "Stella este o IA care rulează pe computerul tău.",
+      "secondary": "Stella nu este pentru toată lumea. Stella este pentru tine."
+    },
+    "stepTitles": {
+      "language": "Alege-ți limba.",
+      "extension": "Adaugă Stella în browser.",
+      "browser": "Lasă Stella să te cunoască.",
+      "creation": "Stella se schimbă când ceri. Apasă pe butoane ca să încerci.",
+      "theme": "Cum ar trebui să arate Stella?",
+      "personality": "Cum ar trebui să vorbească Stella?",
+      "shortcutsGlobal": "Oriunde pe desktop.",
+      "shortcutsLocal": "În interiorul Stellei.",
+      "doubleTap": "Atinge de două ori. Cheam-o pe Stella.",
+      "voice": "Vorbește în loc să tastezi.",
+      "memory": "Ajută Stella să țină minte.",
+      "enter": "Stella e aproape gata."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Aplicațiile și computerul tău",
+        "description": "Ce aplicații folosești cel mai des, cum este organizat desktopul și fluxul tău de lucru"
+      },
+      "messagesNotes": {
+        "label": "Notițele și calendarul tău",
+        "description": "La ce lucrezi, programul tău și cum îți organizezi gândurile"
+      },
+      "devEnvironment": {
+        "label": "Mediul tău de dezvoltare",
+        "description": "Uneltele pe care le folosești, proiectele tale și cum este configurat mediul"
+      },
+      "fdaNote": "Unele opțiuni necesită acces complet la disc"
+    },
+    "language": {
+      "description": "Stella va folosi această limbă în toată aplicația și în răspunsuri. Poți schimba mai târziu în Setări."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Începe cu Stella",
+        "features": [
+          "Chat și asistență de bază",
+          "Utilizare zilnică limitată"
+        ]
+      },
+      "go": {
+        "tagline": "Pentru uz personal zilnic",
+        "features": [
+          "Mai multe conversații pe zi",
+          "Automatizarea browserului",
+          "Conversații vocale"
+        ]
+      },
+      "pro": {
+        "tagline": "Pentru utilizatori avansați",
+        "features": [
+          "De 3× utilizarea Go",
+          "Timpi de răspuns prioritari",
+          "Toate funcțiile de automatizare"
+        ]
+      },
+      "plus": {
+        "tagline": "Pentru profesioniști",
+        "features": [
+          "Utilizare zilnică intensă",
+          "Fluxuri avansate de agenți",
+          "Suport prioritar"
+        ]
+      },
+      "ultra": {
+        "tagline": "Productivitate nelimitată",
+        "features": [
+          "Limite maxime de utilizare",
+          "Cei mai rapizi timpi de răspuns",
+          "Tot ce e în Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella nu a putut începe acest răspuns",
+    "tryAgainHint": "Încearcă din nou."
+  },
+  "errors": {
+    "generic": "Ceva nu a mers",
+    "subscriptionRequired": "Copiile de rezervă necesită un abonament Stella activ.",
+    "rateLimited": "Mergi puțin prea repede. Încearcă din nou într-o clipă.",
+    "networkUnavailable": "Stella este offline. Reconectează-te ca să continui.",
+    "permissionDenied": "Stella nu are permisiunea pentru asta."
+  }
+}

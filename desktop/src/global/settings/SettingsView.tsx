@@ -12,6 +12,7 @@ import { PageSidebar } from "@/context/page-sidebar";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { authClient } from "@/global/auth/lib/auth-client";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
+import { DesktopUpdateBanner } from "@/global/updates/DesktopUpdateBanner";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
 import {
@@ -49,6 +50,8 @@ import {
   SETTINGS_TABS,
   type SettingsTab,
 } from "@/global/settings/settings-tabs";
+import { useT } from "@/shared/i18n";
+import { LanguageSettingsRow } from "@/global/settings/LanguageSettingsRow";
 import {
   getRadialTriggerLabel,
   getRadialTriggerOptions,
@@ -822,6 +825,8 @@ function BasicSettingsTab() {
 
   return (
     <div className="settings-tab-content">
+      <DesktopUpdateBanner />
+      <LanguageSettingsRow />
       <div className="settings-card">
         <h3 className="settings-card-title">Chat previews</h3>
         <p className="settings-card-desc">
@@ -3051,6 +3056,7 @@ export const SettingsScreen = ({
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(
     null,
   );
+  const t = useT();
 
   const activeTab = activeTabProp ?? selectedTab;
 
@@ -3070,7 +3076,7 @@ export const SettingsScreen = ({
           while /settings is mounted, the shell swaps its default nav for
           this tab list (and prepends a Back button automatically). The
           screen body itself is single-column. */}
-      <PageSidebar title="Settings">
+      <PageSidebar title={t("settings.title")}>
         {SETTINGS_TABS.map((tab) => (
           <button
             key={tab.key}
@@ -3078,7 +3084,7 @@ export const SettingsScreen = ({
             className={`sidebar-nav-item${activeTab === tab.key ? " sidebar-nav-item--active" : ""}`}
             onClick={() => handleTabClick(tab.key)}
           >
-            <span className="sidebar-nav-label">{tab.label}</span>
+            <span className="sidebar-nav-label">{t(tab.labelKey)}</span>
           </button>
         ))}
       </PageSidebar>

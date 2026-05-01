@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Continue",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "open": "Open",
+    "openPreferences": "Open Preferences",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "loading": "Loading…",
+    "tryAgain": "Try again",
+    "language": "Language",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "sidebar": {
+    "signIn": "Sign in",
+    "account": "Account",
+    "feedback": "Send feedback",
+    "upgrade": "Upgrade",
+    "newChat": "New chat"
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "basic": "Basic",
+      "shortcuts": "Shortcuts",
+      "memory": "Memory",
+      "backup": "Backups",
+      "account": "Account & Legal",
+      "models": "Models",
+      "audio": "Audio"
+    },
+    "language": {
+      "title": "Language",
+      "description": "Choose the language Stella uses across the app and when responding to you."
+    }
+  },
+  "onboarding": {
+    "ready": "Getting ready...",
+    "retryStart": "Retry Stella Startup",
+    "startStella": "Start Stella",
+    "legalFooter": "By using Stella, you agree to our {terms} and {privacy}.",
+    "termsOfService": "Terms of Service",
+    "privacyPolicy": "Privacy Policy",
+    "previousStep": "Previous step",
+    "nextStep": "Next step",
+    "intro": {
+      "primary": "Stella is an AI that runs on your computer.",
+      "secondary": "Stella isn't for everyone. Stella is for you."
+    },
+    "stepTitles": {
+      "language": "Pick your language.",
+      "extension": "Add Stella to your browser.",
+      "browser": "Let Stella get to know you.",
+      "creation": "Stella can change when you ask. Click the buttons to try.",
+      "theme": "How should Stella look?",
+      "personality": "How should Stella talk?",
+      "shortcutsGlobal": "Anywhere on your desktop.",
+      "shortcutsLocal": "Inside Stella.",
+      "doubleTap": "Tap twice. Summon Stella.",
+      "voice": "Speak instead of type.",
+      "memory": "Help Stella remember.",
+      "enter": "Stella is almost ready."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Your apps and computer",
+        "description": "Which apps you use most, how your desktop is organized, and your workflow"
+      },
+      "messagesNotes": {
+        "label": "Your notes and calendar",
+        "description": "What you're working on, your schedule, and how you organize your thoughts"
+      },
+      "devEnvironment": {
+        "label": "Your coding setup",
+        "description": "Tools you use, projects you work on, and how your environment is configured"
+      },
+      "fdaNote": "Some options require Full Disk Access"
+    },
+    "language": {
+      "description": "Stella will use this language across the app and when responding to you. You can change it later in Settings."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Get started with Stella",
+        "features": [
+          "Basic chat & assistance",
+          "Limited daily usage"
+        ]
+      },
+      "go": {
+        "tagline": "For everyday personal use",
+        "features": [
+          "More conversations per day",
+          "Browser automation",
+          "Voice conversations"
+        ]
+      },
+      "pro": {
+        "tagline": "For power users",
+        "features": [
+          "3x the usage of Go",
+          "Priority response times",
+          "All automation features"
+        ]
+      },
+      "plus": {
+        "tagline": "For professionals",
+        "features": [
+          "Heavy daily usage",
+          "Advanced agent workflows",
+          "Priority support"
+        ]
+      },
+      "ultra": {
+        "tagline": "Unlimited productivity",
+        "features": [
+          "Maximum usage limits",
+          "Fastest response times",
+          "Everything in Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella couldn't start this reply",
+    "tryAgainHint": "Please try again."
+  },
+  "errors": {
+    "generic": "Something went wrong",
+    "subscriptionRequired": "Backups require an active Stella subscription.",
+    "rateLimited": "You're going a little fast. Please try again in a moment.",
+    "networkUnavailable": "Stella is offline. Reconnect to continue.",
+    "permissionDenied": "Stella doesn't have permission to do this."
+  }
+}

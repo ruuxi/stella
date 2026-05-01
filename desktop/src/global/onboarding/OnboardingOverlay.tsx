@@ -14,7 +14,7 @@
  * whom `appReady === true` at first paint — never fetch this chunk.
  */
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { OnboardingStep1 } from "@/global/onboarding/OnboardingStep1";
 import {
   StellaAnimation,
@@ -26,6 +26,7 @@ import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import type { LegalDocument } from "@/global/legal/legal-text";
 import { LegalDialog } from "@/global/legal/LegalDialog";
 import { CREATURE_INITIAL_SIZE } from "@/global/onboarding/use-onboarding-overlay";
+import { useT } from "@/shared/i18n";
 
 // IMPORTANT: this module is the lazy "onboarding chunk". Do NOT re-export
 // the `useOnboardingOverlay` hook from here — FullShell needs to call
@@ -37,6 +38,60 @@ import { CREATURE_INITIAL_SIZE } from "@/global/onboarding/use-onboarding-overla
 export type OnboardingOverlayProps = {
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
 };
+
+/**
+ * Renders a localized "By using Stella, you agree to our {terms} and
+ * {privacy}." line by splitting the translated template at the
+ * `{terms}` / `{privacy}` placeholders so each becomes a real button.
+ * Word order varies by locale (German moves verbs to the end, Hebrew
+ * reads right-to-left, Japanese inserts particles), so we never
+ * assume "agree to" + "and" + "." with linkified words appended.
+ */
+function LegalFooter({
+  template,
+  termsLabel,
+  privacyLabel,
+  onTermsClick,
+  onPrivacyClick,
+}: {
+  template: string;
+  termsLabel: string;
+  privacyLabel: string;
+  onTermsClick: () => void;
+  onPrivacyClick: () => void;
+}) {
+  const slots: Record<string, React.ReactNode> = {
+    terms: (
+      <button
+        type="button"
+        className="onboarding-legal-link"
+        onClick={onTermsClick}
+      >
+        {termsLabel}
+      </button>
+    ),
+    privacy: (
+      <button
+        type="button"
+        className="onboarding-legal-link"
+        onClick={onPrivacyClick}
+      >
+        {privacyLabel}
+      </button>
+    ),
+  };
+  // Split into [literal, slotName, literal, slotName, …]; even indices
+  // are literal text, odd indices are placeholder names.
+  const parts = template.split(/\{(\w+)\}/);
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (index % 2 === 0) return <span key={index}>{part}</span>;
+        return <span key={index}>{slots[part] ?? `{${part}}`}</span>;
+      })}
+    </>
+  );
+}
 
 export function OnboardingView({
   hasExpanded,
@@ -97,6 +152,7 @@ export function OnboardingView({
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(
     null,
   );
+  const t = useT();
 
   return (
     <div
@@ -138,7 +194,7 @@ export function OnboardingView({
       {(showRuntimeGate || !onboardingDone) &&
         (isPreparingRuntime || isAuthLoading ? (
           <div className="onboarding-moment onboarding-moment--auth">
-            <div className="onboarding-text">Getting ready...</div>
+            <div className="onboarding-text">{t("onboarding.ready")}</div>
           </div>
         ) : runtimeError ? (
           <div className="onboarding-moment onboarding-moment--start">
@@ -148,7 +204,7 @@ export function OnboardingView({
                 onRetryRuntime?.();
               }}
             >
-              Retry Stella Startup
+              {t("onboarding.retryStart")}
             </button>
           </div>
         ) : hasStarted ? (
@@ -176,27 +232,17 @@ export function OnboardingView({
                   triggerFlash();
                 }}
               >
-                Start Stella
+                {t("onboarding.startStella")}
               </button>
             </div>
             <div className="onboarding-legal-footer onboarding-legal-footer--new-session">
-              By using Stella, you agree to our{" "}
-              <button
-                type="button"
-                className="onboarding-legal-link"
-                onClick={() => setActiveLegalDoc("terms")}
-              >
-                Terms of Service
-              </button>{" "}
-              and{" "}
-              <button
-                type="button"
-                className="onboarding-legal-link"
-                onClick={() => setActiveLegalDoc("privacy")}
-              >
-                Privacy Policy
-              </button>
-              .
+              <LegalFooter
+                template={t("onboarding.legalFooter")}
+                termsLabel={t("onboarding.termsOfService")}
+                privacyLabel={t("onboarding.privacyPolicy")}
+                onTermsClick={() => setActiveLegalDoc("terms")}
+                onPrivacyClick={() => setActiveLegalDoc("privacy")}
+              />
             </div>
           </>
         ))}

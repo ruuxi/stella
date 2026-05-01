@@ -4,6 +4,7 @@ import "./index.css";
 import "./ui/register-styles";
 import "./shared/styles/app-base.css";
 import "./shared/styles/app-components.css";
+import "./shared/i18n/rtl.css";
 
 import "./platform/dev/vite-error-recovery";
 import { App } from "./App.tsx";

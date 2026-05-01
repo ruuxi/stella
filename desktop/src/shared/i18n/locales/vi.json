@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Tiếp tục",
+    "back": "Quay lại",
+    "next": "Tiếp",
+    "previous": "Trước",
+    "cancel": "Hủy",
+    "save": "Lưu",
+    "close": "Đóng",
+    "open": "Mở",
+    "openPreferences": "Mở tùy chọn",
+    "signIn": "Đăng nhập",
+    "signOut": "Đăng xuất",
+    "loading": "Đang tải…",
+    "tryAgain": "Thử lại",
+    "language": "Ngôn ngữ",
+    "yes": "Có",
+    "no": "Không"
+  },
+  "sidebar": {
+    "signIn": "Đăng nhập",
+    "account": "Tài khoản",
+    "feedback": "Gửi phản hồi",
+    "upgrade": "Nâng cấp",
+    "newChat": "Cuộc trò chuyện mới"
+  },
+  "settings": {
+    "title": "Cài đặt",
+    "tabs": {
+      "basic": "Chung",
+      "shortcuts": "Phím tắt",
+      "memory": "Bộ nhớ",
+      "backup": "Sao lưu",
+      "account": "Tài khoản & Pháp lý",
+      "models": "Mô hình",
+      "audio": "Âm thanh"
+    },
+    "language": {
+      "title": "Ngôn ngữ",
+      "description": "Chọn ngôn ngữ Stella sử dụng trong ứng dụng và khi phản hồi bạn."
+    }
+  },
+  "onboarding": {
+    "ready": "Đang chuẩn bị...",
+    "retryStart": "Thử khởi động lại Stella",
+    "startStella": "Bắt đầu Stella",
+    "legalFooter": "Khi sử dụng Stella, bạn đồng ý với {terms} và {privacy} của chúng tôi.",
+    "termsOfService": "Điều khoản dịch vụ",
+    "privacyPolicy": "Chính sách bảo mật",
+    "previousStep": "Bước trước",
+    "nextStep": "Bước tiếp theo",
+    "intro": {
+      "primary": "Stella là một AI chạy trên máy tính của bạn.",
+      "secondary": "Stella không dành cho tất cả mọi người. Stella dành cho bạn."
+    },
+    "stepTitles": {
+      "language": "Chọn ngôn ngữ của bạn.",
+      "extension": "Thêm Stella vào trình duyệt của bạn.",
+      "browser": "Hãy để Stella hiểu bạn hơn.",
+      "creation": "Stella thay đổi khi bạn yêu cầu. Nhấn các nút để thử.",
+      "theme": "Stella nên trông như thế nào?",
+      "personality": "Stella nên nói chuyện thế nào?",
+      "shortcutsGlobal": "Bất cứ đâu trên màn hình nền.",
+      "shortcutsLocal": "Bên trong Stella.",
+      "doubleTap": "Chạm hai lần. Gọi Stella.",
+      "voice": "Hãy nói thay vì gõ.",
+      "memory": "Giúp Stella ghi nhớ.",
+      "enter": "Stella gần như đã sẵn sàng."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Ứng dụng và máy tính của bạn",
+        "description": "Bạn dùng ứng dụng nào nhiều nhất, máy tính của bạn sắp xếp ra sao và cách bạn làm việc"
+      },
+      "messagesNotes": {
+        "label": "Ghi chú và lịch của bạn",
+        "description": "Bạn đang làm gì, lịch trình của bạn và cách bạn sắp xếp suy nghĩ"
+      },
+      "devEnvironment": {
+        "label": "Môi trường lập trình",
+        "description": "Các công cụ bạn dùng, dự án bạn làm và cách môi trường được cấu hình"
+      },
+      "fdaNote": "Một số tùy chọn yêu cầu Quyền truy cập đầy đủ vào ổ đĩa"
+    },
+    "language": {
+      "description": "Stella sẽ dùng ngôn ngữ này trong toàn bộ ứng dụng và khi phản hồi. Bạn có thể đổi sau trong Cài đặt."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Bắt đầu với Stella",
+        "features": [
+          "Trò chuyện và hỗ trợ cơ bản",
+          "Mức dùng hằng ngày giới hạn"
+        ]
+      },
+      "go": {
+        "tagline": "Cho việc dùng cá nhân hằng ngày",
+        "features": [
+          "Nhiều cuộc trò chuyện hơn mỗi ngày",
+          "Tự động hóa trình duyệt",
+          "Trò chuyện bằng giọng nói"
+        ]
+      },
+      "pro": {
+        "tagline": "Cho người dùng nâng cao",
+        "features": [
+          "Mức dùng gấp 3 lần Go",
+          "Thời gian phản hồi ưu tiên",
+          "Tất cả tính năng tự động hóa"
+        ]
+      },
+      "plus": {
+        "tagline": "Cho người làm chuyên nghiệp",
+        "features": [
+          "Mức dùng hằng ngày cao",
+          "Quy trình tác tử nâng cao",
+          "Hỗ trợ ưu tiên"
+        ]
+      },
+      "ultra": {
+        "tagline": "Năng suất không giới hạn",
+        "features": [
+          "Hạn mức sử dụng cao nhất",
+          "Thời gian phản hồi nhanh nhất",
+          "Mọi tính năng của Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella không thể bắt đầu phản hồi này",
+    "tryAgainHint": "Vui lòng thử lại."
+  },
+  "errors": {
+    "generic": "Đã có lỗi xảy ra",
+    "subscriptionRequired": "Sao lưu yêu cầu một gói đăng ký Stella đang hoạt động.",
+    "rateLimited": "Bạn thao tác hơi nhanh. Hãy thử lại sau giây lát.",
+    "networkUnavailable": "Stella đang ngoại tuyến. Kết nối lại để tiếp tục.",
+    "permissionDenied": "Stella không có quyền thực hiện việc này."
+  }
+}

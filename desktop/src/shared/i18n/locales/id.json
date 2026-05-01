@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Lanjutkan",
+    "back": "Kembali",
+    "next": "Berikutnya",
+    "previous": "Sebelumnya",
+    "cancel": "Batal",
+    "save": "Simpan",
+    "close": "Tutup",
+    "open": "Buka",
+    "openPreferences": "Buka preferensi",
+    "signIn": "Masuk",
+    "signOut": "Keluar",
+    "loading": "Memuat…",
+    "tryAgain": "Coba lagi",
+    "language": "Bahasa",
+    "yes": "Ya",
+    "no": "Tidak"
+  },
+  "sidebar": {
+    "signIn": "Masuk",
+    "account": "Akun",
+    "feedback": "Kirim masukan",
+    "upgrade": "Tingkatkan paket",
+    "newChat": "Obrolan baru"
+  },
+  "settings": {
+    "title": "Pengaturan",
+    "tabs": {
+      "basic": "Umum",
+      "shortcuts": "Pintasan",
+      "memory": "Memori",
+      "backup": "Cadangan",
+      "account": "Akun & legal",
+      "models": "Model",
+      "audio": "Audio"
+    },
+    "language": {
+      "title": "Bahasa",
+      "description": "Pilih bahasa yang digunakan Stella di aplikasi dan saat menjawab Anda."
+    }
+  },
+  "onboarding": {
+    "ready": "Mempersiapkan...",
+    "retryStart": "Coba mulai Stella lagi",
+    "startStella": "Mulai Stella",
+    "legalFooter": "Dengan menggunakan Stella, Anda menyetujui {terms} dan {privacy} kami.",
+    "termsOfService": "Ketentuan Layanan",
+    "privacyPolicy": "Kebijakan Privasi",
+    "previousStep": "Langkah sebelumnya",
+    "nextStep": "Langkah berikutnya",
+    "intro": {
+      "primary": "Stella adalah AI yang berjalan di komputer Anda.",
+      "secondary": "Stella tidak untuk semua orang. Stella untuk Anda."
+    },
+    "stepTitles": {
+      "language": "Pilih bahasa Anda.",
+      "extension": "Tambahkan Stella ke peramban Anda.",
+      "browser": "Biarkan Stella mengenal Anda.",
+      "creation": "Stella berubah saat Anda meminta. Klik tombol untuk mencoba.",
+      "theme": "Bagaimana Stella seharusnya terlihat?",
+      "personality": "Bagaimana Stella seharusnya berbicara?",
+      "shortcutsGlobal": "Di mana saja di desktop Anda.",
+      "shortcutsLocal": "Di dalam Stella.",
+      "doubleTap": "Ketuk dua kali. Panggil Stella.",
+      "voice": "Bicaralah, jangan mengetik.",
+      "memory": "Bantu Stella mengingat.",
+      "enter": "Stella hampir siap."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Aplikasi dan komputer Anda",
+        "description": "Aplikasi yang paling sering Anda gunakan, bagaimana desktop Anda diatur, dan alur kerja Anda"
+      },
+      "messagesNotes": {
+        "label": "Catatan dan kalender Anda",
+        "description": "Apa yang sedang Anda kerjakan, jadwal Anda, dan bagaimana Anda merapikan pikiran Anda"
+      },
+      "devEnvironment": {
+        "label": "Lingkungan pengembangan Anda",
+        "description": "Alat yang Anda gunakan, proyek yang Anda kerjakan, dan bagaimana lingkungan Anda dikonfigurasi"
+      },
+      "fdaNote": "Beberapa opsi memerlukan akses penuh ke disk"
+    },
+    "language": {
+      "description": "Stella akan menggunakan bahasa ini di seluruh aplikasi dan saat menjawab. Anda dapat mengubahnya nanti di Pengaturan."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Mulai dengan Stella",
+        "features": [
+          "Obrolan dan bantuan dasar",
+          "Penggunaan harian terbatas"
+        ]
+      },
+      "go": {
+        "tagline": "Untuk penggunaan pribadi sehari-hari",
+        "features": [
+          "Lebih banyak percakapan per hari",
+          "Otomatisasi peramban",
+          "Percakapan suara"
+        ]
+      },
+      "pro": {
+        "tagline": "Untuk pengguna berat",
+        "features": [
+          "3× penggunaan Go",
+          "Waktu respons prioritas",
+          "Semua fitur otomatisasi"
+        ]
+      },
+      "plus": {
+        "tagline": "Untuk profesional",
+        "features": [
+          "Penggunaan harian yang berat",
+          "Alur kerja agen tingkat lanjut",
+          "Dukungan prioritas"
+        ]
+      },
+      "ultra": {
+        "tagline": "Produktivitas tanpa batas",
+        "features": [
+          "Batas penggunaan maksimum",
+          "Waktu respons tercepat",
+          "Semua yang ada di Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella tidak dapat memulai balasan ini",
+    "tryAgainHint": "Silakan coba lagi."
+  },
+  "errors": {
+    "generic": "Terjadi kesalahan",
+    "subscriptionRequired": "Cadangan memerlukan langganan Stella aktif.",
+    "rateLimited": "Anda terlalu cepat. Coba lagi sebentar lagi.",
+    "networkUnavailable": "Stella sedang offline. Sambungkan kembali untuk melanjutkan.",
+    "permissionDenied": "Stella tidak punya izin untuk melakukan ini."
+  }
+}

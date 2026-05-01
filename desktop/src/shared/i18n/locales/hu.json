@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Tovább",
+    "back": "Vissza",
+    "next": "Következő",
+    "previous": "Előző",
+    "cancel": "Mégse",
+    "save": "Mentés",
+    "close": "Bezárás",
+    "open": "Megnyitás",
+    "openPreferences": "Beállítások megnyitása",
+    "signIn": "Bejelentkezés",
+    "signOut": "Kijelentkezés",
+    "loading": "Betöltés…",
+    "tryAgain": "Újra",
+    "language": "Nyelv",
+    "yes": "Igen",
+    "no": "Nem"
+  },
+  "sidebar": {
+    "signIn": "Bejelentkezés",
+    "account": "Fiók",
+    "feedback": "Visszajelzés küldése",
+    "upgrade": "Csomag váltása",
+    "newChat": "Új beszélgetés"
+  },
+  "settings": {
+    "title": "Beállítások",
+    "tabs": {
+      "basic": "Általános",
+      "shortcuts": "Gyorsbillentyűk",
+      "memory": "Memória",
+      "backup": "Biztonsági mentések",
+      "account": "Fiók és jogi",
+      "models": "Modellek",
+      "audio": "Hang"
+    },
+    "language": {
+      "title": "Nyelv",
+      "description": "Válaszd ki a Stella által az alkalmazásban és a válaszokban használt nyelvet."
+    }
+  },
+  "onboarding": {
+    "ready": "Előkészítés...",
+    "retryStart": "Stella újraindítása",
+    "startStella": "Stella indítása",
+    "legalFooter": "A Stella használatával elfogadod a {terms} és az {privacy} feltételeit.",
+    "termsOfService": "Szolgáltatási feltételek",
+    "privacyPolicy": "Adatvédelmi szabályzat",
+    "previousStep": "Előző lépés",
+    "nextStep": "Következő lépés",
+    "intro": {
+      "primary": "A Stella egy MI, amely a számítógépeden fut.",
+      "secondary": "A Stella nem mindenkinek való. A Stella neked való."
+    },
+    "stepTitles": {
+      "language": "Válassz nyelvet.",
+      "extension": "Add hozzá a Stellát a böngésződhöz.",
+      "browser": "Hadd ismerjen meg téged a Stella.",
+      "creation": "A Stella változik, ha kéred. Próbáld ki a gombokkal.",
+      "theme": "Hogyan nézzen ki a Stella?",
+      "personality": "Hogyan beszéljen a Stella?",
+      "shortcutsGlobal": "Bárhol az asztalon.",
+      "shortcutsLocal": "A Stellán belül.",
+      "doubleTap": "Koppints kétszer. Hívd a Stellát.",
+      "voice": "Beszélj gépelés helyett.",
+      "memory": "Segíts a Stellának emlékezni.",
+      "enter": "A Stella majdnem készen áll."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Alkalmazásaid és számítógéped",
+        "description": "Mely alkalmazásokat használod a leggyakrabban, hogyan van rendszerezve az asztalod és a munkamenet"
+      },
+      "messagesNotes": {
+        "label": "Jegyzetek és naptár",
+        "description": "Min dolgozol, mi a beosztásod, és hogyan rendszerezed a gondolataidat"
+      },
+      "devEnvironment": {
+        "label": "Fejlesztői környezet",
+        "description": "Milyen eszközöket használsz, milyen projekteken dolgozol és hogyan van konfigurálva a környezet"
+      },
+      "fdaNote": "Néhány opció teljes lemezhozzáférést igényel"
+    },
+    "language": {
+      "description": "A Stella ezt a nyelvet fogja használni az alkalmazásban és a válaszokban. Később a Beállításokban módosíthatod."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Indítsd el a Stellát",
+        "features": [
+          "Alap chat és segítség",
+          "Korlátozott napi használat"
+        ]
+      },
+      "go": {
+        "tagline": "Mindennapi személyes használatra",
+        "features": [
+          "Több beszélgetés naponta",
+          "Böngészőautomatizálás",
+          "Hangbeszélgetések"
+        ]
+      },
+      "pro": {
+        "tagline": "Igényes felhasználóknak",
+        "features": [
+          "3× a Go használatának",
+          "Elsőbbségi válaszidők",
+          "Minden automatizálási funkció"
+        ]
+      },
+      "plus": {
+        "tagline": "Profiknak",
+        "features": [
+          "Intenzív napi használat",
+          "Fejlett ügynök munkafolyamatok",
+          "Elsőbbségi támogatás"
+        ]
+      },
+      "ultra": {
+        "tagline": "Korlátlan termelékenység",
+        "features": [
+          "Maximális használati keretek",
+          "Leggyorsabb válaszidők",
+          "Minden, ami a Plusban"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "A Stella nem tudta elindítani ezt a választ",
+    "tryAgainHint": "Próbáld újra."
+  },
+  "errors": {
+    "generic": "Valami hiba történt",
+    "subscriptionRequired": "A biztonsági mentésekhez aktív Stella-előfizetés szükséges.",
+    "rateLimited": "Egy kicsit gyorsan. Próbáld újra mindjárt.",
+    "networkUnavailable": "A Stella offline. A folytatáshoz csatlakozz újra.",
+    "permissionDenied": "A Stellának nincs erre jogosultsága."
+  }
+}

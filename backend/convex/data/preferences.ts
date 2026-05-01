@@ -23,6 +23,51 @@ const ACCOUNT_MODE_KEY = "account_mode";
 const syncModeValidator = v.union(v.literal("on"), v.literal("off"));
 const SYNC_MODE_KEY = "sync_mode";
 export const PREFERRED_BROWSER_KEY = "preferred_browser";
+
+/**
+ * BCP-47 locale tag for the user's preferred app language. Mirrors
+ * `desktop/src/shared/i18n/locales.ts::SUPPORTED_LOCALES`. Validated at
+ * the mutation boundary; absence means "English / OS default".
+ */
+export const LOCALE_KEY = "locale";
+const SUPPORTED_LOCALE_TAGS = [
+  "en",
+  "es",
+  "fr",
+  "de",
+  "it",
+  "pt",
+  "nl",
+  "ru",
+  "ja",
+  "zh-Hans",
+  "zh-Hant",
+  "ko",
+  "pl",
+  "sv",
+  "nb",
+  "da",
+  "fi",
+  "cs",
+  "el",
+  "tr",
+  "ro",
+  "hu",
+  "ar",
+  "hi",
+  "id",
+  "vi",
+  "th",
+  "he",
+] as const;
+const localeValidator = v.union(
+  ...SUPPORTED_LOCALE_TAGS.map((tag) => v.literal(tag)),
+);
+const isSupportedLocaleTag = (
+  value: string | null | undefined,
+): value is (typeof SUPPORTED_LOCALE_TAGS)[number] =>
+  typeof value === "string" &&
+  (SUPPORTED_LOCALE_TAGS as readonly string[]).includes(value);
 const preferredBrowserValidator = v.union(
   v.literal("arc"),
   v.literal("brave"),
@@ -245,5 +290,76 @@ export const getPreferenceForOwner = internalQuery({
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", args.key))
       .unique();
     return record?.value ?? null;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Locale
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the active locale for the signed-in user. Returns `null` when
+ * the user is not signed in or has no stored locale, letting the
+ * desktop fall back to localStorage / `navigator.language`.
+ */
+export const getLocale = query({
+  args: {},
+  returns: v.union(localeValidator, v.null()),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const ownerId = identity.tokenIdentifier;
+    const record = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_ownerId_and_key", (q) =>
+        q.eq("ownerId", ownerId).eq("key", LOCALE_KEY),
+      )
+      .unique();
+    const value = record?.value ?? null;
+    return isSupportedLocaleTag(value) ? value : null;
+  },
+});
+
+/**
+ * Persist the user's preferred locale. Validated against the supported
+ * set at the boundary so unknown tags can't leak into the database.
+ */
+export const setLocale = mutation({
+  args: {
+    locale: localeValidator,
+  },
+  returns: localeValidator,
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      PREFERENCE_RATE_SCOPE,
+      ownerId,
+      RATE_SETTINGS,
+    );
+    await upsertPreferenceRecord(ctx, ownerId, LOCALE_KEY, args.locale);
+    return args.locale;
+  },
+});
+
+/**
+ * Internal helper used by Convex code (email senders, offline
+ * responder) that already has the user's `ownerId` in hand and needs
+ * their preferred locale.
+ */
+export const getLocaleForOwner = internalQuery({
+  args: {
+    ownerId: v.string(),
+  },
+  returns: v.union(localeValidator, v.null()),
+  handler: async (ctx, args) => {
+    const record = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_ownerId_and_key", (q) =>
+        q.eq("ownerId", args.ownerId).eq("key", LOCALE_KEY),
+      )
+      .unique();
+    const value = record?.value ?? null;
+    return isSupportedLocaleTag(value) ? value : null;
   },
 });

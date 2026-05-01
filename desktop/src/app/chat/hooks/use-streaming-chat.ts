@@ -9,6 +9,7 @@ import {
   buildAllLocalAttachments,
 } from '../streaming/message-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
+import { useLocale } from '@/shared/i18n'
 
 type UseStreamingChatOptions = {
   conversationId: string | null
@@ -20,6 +21,7 @@ export function useStreamingChat({
   events,
 }: UseStreamingChatOptions) {
   const activeConversationId = conversationId
+  const locale = useLocale()
   const {
     isAuthenticated,
     isLocalStorage,
@@ -117,6 +119,7 @@ export function useStreamingChat({
 
       const platform = getPlatform()
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const requestLocale = locale
       const shouldQueueFollowUp =
         isStreaming &&
         (!pendingUserMessageId ||
@@ -143,6 +146,7 @@ export function useStreamingChat({
           deviceId,
           platform,
           timezone,
+          locale: requestLocale,
           ...(mode ? { mode } : {}),
           ...(options.metadata ? { messageMetadata: options.metadata } : {}),
           attachments,
@@ -160,6 +164,7 @@ export function useStreamingChat({
         deviceId,
         platform,
         timezone,
+        locale: requestLocale,
         ...(options.metadata ? { messageMetadata: options.metadata } : {}),
         attachments,
       })
@@ -172,6 +177,7 @@ export function useStreamingChat({
       pendingUserMessageId,
       queueStream,
       startStream,
+      locale,
     ],
   )
 

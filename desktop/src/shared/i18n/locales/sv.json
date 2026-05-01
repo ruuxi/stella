@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Fortsätt",
+    "back": "Tillbaka",
+    "next": "Nästa",
+    "previous": "Föregående",
+    "cancel": "Avbryt",
+    "save": "Spara",
+    "close": "Stäng",
+    "open": "Öppna",
+    "openPreferences": "Öppna inställningar",
+    "signIn": "Logga in",
+    "signOut": "Logga ut",
+    "loading": "Laddar…",
+    "tryAgain": "Försök igen",
+    "language": "Språk",
+    "yes": "Ja",
+    "no": "Nej"
+  },
+  "sidebar": {
+    "signIn": "Logga in",
+    "account": "Konto",
+    "feedback": "Skicka feedback",
+    "upgrade": "Uppgradera",
+    "newChat": "Ny chatt"
+  },
+  "settings": {
+    "title": "Inställningar",
+    "tabs": {
+      "basic": "Allmänt",
+      "shortcuts": "Genvägar",
+      "memory": "Minne",
+      "backup": "Säkerhetskopior",
+      "account": "Konto & juridiskt",
+      "models": "Modeller",
+      "audio": "Ljud"
+    },
+    "language": {
+      "title": "Språk",
+      "description": "Välj språket Stella ska använda i appen och i svar."
+    }
+  },
+  "onboarding": {
+    "ready": "Förbereder...",
+    "retryStart": "Försök starta Stella igen",
+    "startStella": "Starta Stella",
+    "legalFooter": "Genom att använda Stella godkänner du våra {terms} och {privacy}.",
+    "termsOfService": "Användarvillkor",
+    "privacyPolicy": "Integritetspolicy",
+    "previousStep": "Föregående steg",
+    "nextStep": "Nästa steg",
+    "intro": {
+      "primary": "Stella är en AI som körs på din dator.",
+      "secondary": "Stella är inte för alla. Stella är för dig."
+    },
+    "stepTitles": {
+      "language": "Välj ditt språk.",
+      "extension": "Lägg till Stella i webbläsaren.",
+      "browser": "Låt Stella lära känna dig.",
+      "creation": "Stella förändras när du ber om det. Klicka på knapparna för att prova.",
+      "theme": "Hur ska Stella se ut?",
+      "personality": "Hur ska Stella prata?",
+      "shortcutsGlobal": "Var som helst på skrivbordet.",
+      "shortcutsLocal": "Inuti Stella.",
+      "doubleTap": "Tryck två gånger. Kalla på Stella.",
+      "voice": "Tala i stället för att skriva.",
+      "memory": "Hjälp Stella att minnas.",
+      "enter": "Stella är nästan redo."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Dina appar och din dator",
+        "description": "Vilka appar du använder mest, hur skrivbordet är organiserat och hur du jobbar"
+      },
+      "messagesNotes": {
+        "label": "Dina anteckningar och kalender",
+        "description": "Vad du jobbar med, ditt schema och hur du strukturerar dina tankar"
+      },
+      "devEnvironment": {
+        "label": "Din utvecklingsmiljö",
+        "description": "Verktyg du använder, projekt du jobbar i och hur miljön är konfigurerad"
+      },
+      "fdaNote": "Vissa alternativ kräver fullständig diskåtkomst"
+    },
+    "language": {
+      "description": "Stella använder det här språket i hela appen och i svar. Du kan ändra det senare i Inställningar."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Kom igång med Stella",
+        "features": [
+          "Grundläggande chatt och hjälp",
+          "Begränsad daglig användning"
+        ]
+      },
+      "go": {
+        "tagline": "För dagligt personligt bruk",
+        "features": [
+          "Fler samtal per dag",
+          "Webbläsarautomation",
+          "Röstsamtal"
+        ]
+      },
+      "pro": {
+        "tagline": "För avancerade användare",
+        "features": [
+          "3× användningen i Go",
+          "Prioriterade svarstider",
+          "Alla automationsfunktioner"
+        ]
+      },
+      "plus": {
+        "tagline": "För proffs",
+        "features": [
+          "Tung daglig användning",
+          "Avancerade agentflöden",
+          "Prioriterad support"
+        ]
+      },
+      "ultra": {
+        "tagline": "Obegränsad produktivitet",
+        "features": [
+          "Maximala användningsgränser",
+          "Snabbaste svarstider",
+          "Allt i Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella kunde inte starta det här svaret",
+    "tryAgainHint": "Försök igen."
+  },
+  "errors": {
+    "generic": "Något gick fel",
+    "subscriptionRequired": "Säkerhetskopior kräver en aktiv Stella-prenumeration.",
+    "rateLimited": "Det går lite för fort. Försök igen om en stund.",
+    "networkUnavailable": "Stella är offline. Anslut igen för att fortsätta.",
+    "permissionDenied": "Stella har inte behörighet att göra det här."
+  }
+}

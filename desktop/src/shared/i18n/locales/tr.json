@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Devam et",
+    "back": "Geri",
+    "next": "İleri",
+    "previous": "Önceki",
+    "cancel": "İptal",
+    "save": "Kaydet",
+    "close": "Kapat",
+    "open": "Aç",
+    "openPreferences": "Tercihleri aç",
+    "signIn": "Giriş yap",
+    "signOut": "Çıkış yap",
+    "loading": "Yükleniyor…",
+    "tryAgain": "Tekrar dene",
+    "language": "Dil",
+    "yes": "Evet",
+    "no": "Hayır"
+  },
+  "sidebar": {
+    "signIn": "Giriş yap",
+    "account": "Hesap",
+    "feedback": "Geri bildirim gönder",
+    "upgrade": "Yükselt",
+    "newChat": "Yeni sohbet"
+  },
+  "settings": {
+    "title": "Ayarlar",
+    "tabs": {
+      "basic": "Genel",
+      "shortcuts": "Kısayollar",
+      "memory": "Bellek",
+      "backup": "Yedekler",
+      "account": "Hesap ve yasal",
+      "models": "Modeller",
+      "audio": "Ses"
+    },
+    "language": {
+      "title": "Dil",
+      "description": "Stella'nın uygulamada ve yanıtlarında kullanacağı dili seçin."
+    }
+  },
+  "onboarding": {
+    "ready": "Hazırlanıyor...",
+    "retryStart": "Stella'yı yeniden başlat",
+    "startStella": "Stella'yı başlat",
+    "legalFooter": "Stella'yı kullanarak {terms} ve {privacy} koşullarımızı kabul etmiş olursunuz.",
+    "termsOfService": "Hizmet şartlarımızı",
+    "privacyPolicy": "Gizlilik politikamızı",
+    "previousStep": "Önceki adım",
+    "nextStep": "Sonraki adım",
+    "intro": {
+      "primary": "Stella, bilgisayarınızda çalışan bir yapay zekâdır.",
+      "secondary": "Stella herkes için değildir. Stella sizin içindir."
+    },
+    "stepTitles": {
+      "language": "Dilinizi seçin.",
+      "extension": "Stella'yı tarayıcınıza ekleyin.",
+      "browser": "Stella'nın sizi tanımasına izin verin.",
+      "creation": "İstediğinizde Stella değişir. Düğmelere tıklayarak deneyin.",
+      "theme": "Stella nasıl görünmeli?",
+      "personality": "Stella nasıl konuşmalı?",
+      "shortcutsGlobal": "Masaüstünde her yerde.",
+      "shortcutsLocal": "Stella'nın içinde.",
+      "doubleTap": "İki kez dokunun. Stella'yı çağırın.",
+      "voice": "Yazmak yerine konuşun.",
+      "memory": "Stella'nın hatırlamasına yardım edin.",
+      "enter": "Stella neredeyse hazır."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Uygulamalarınız ve bilgisayarınız",
+        "description": "En çok kullandığınız uygulamalar, masaüstünüzün düzeni ve çalışma akışınız"
+      },
+      "messagesNotes": {
+        "label": "Notlarınız ve takviminiz",
+        "description": "Ne üzerinde çalıştığınız, programınız ve düşüncelerinizi nasıl düzenlediğiniz"
+      },
+      "devEnvironment": {
+        "label": "Geliştirme ortamınız",
+        "description": "Kullandığınız araçlar, üzerinde çalıştığınız projeler ve ortamınızın yapılandırması"
+      },
+      "fdaNote": "Bazı seçenekler tam disk erişimi gerektirir"
+    },
+    "language": {
+      "description": "Stella bu dili tüm uygulamada ve yanıtlarında kullanacak. Daha sonra Ayarlar'dan değiştirebilirsiniz."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Stella ile başlayın",
+        "features": [
+          "Temel sohbet ve yardım",
+          "Sınırlı günlük kullanım"
+        ]
+      },
+      "go": {
+        "tagline": "Günlük kişisel kullanım için",
+        "features": [
+          "Günde daha fazla konuşma",
+          "Tarayıcı otomasyonu",
+          "Sesli görüşmeler"
+        ]
+      },
+      "pro": {
+        "tagline": "Yoğun kullanıcılar için",
+        "features": [
+          "Go'nun 3 katı kullanım",
+          "Öncelikli yanıt süreleri",
+          "Tüm otomasyon özellikleri"
+        ]
+      },
+      "plus": {
+        "tagline": "Profesyoneller için",
+        "features": [
+          "Yoğun günlük kullanım",
+          "Gelişmiş ajan iş akışları",
+          "Öncelikli destek"
+        ]
+      },
+      "ultra": {
+        "tagline": "Sınırsız üretkenlik",
+        "features": [
+          "Maksimum kullanım sınırları",
+          "En hızlı yanıt süreleri",
+          "Plus'taki her şey"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella bu yanıtı başlatamadı",
+    "tryAgainHint": "Lütfen tekrar deneyin."
+  },
+  "errors": {
+    "generic": "Bir şeyler ters gitti",
+    "subscriptionRequired": "Yedekler için aktif bir Stella aboneliği gerekiyor.",
+    "rateLimited": "Biraz hızlısınız. Birazdan tekrar deneyin.",
+    "networkUnavailable": "Stella çevrimdışı. Devam etmek için yeniden bağlanın.",
+    "permissionDenied": "Stella'nın bunu yapmaya izni yok."
+  }
+}

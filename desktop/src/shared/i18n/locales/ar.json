@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "متابعة",
+    "back": "رجوع",
+    "next": "التالي",
+    "previous": "السابق",
+    "cancel": "إلغاء",
+    "save": "حفظ",
+    "close": "إغلاق",
+    "open": "فتح",
+    "openPreferences": "فتح التفضيلات",
+    "signIn": "تسجيل الدخول",
+    "signOut": "تسجيل الخروج",
+    "loading": "جارٍ التحميل…",
+    "tryAgain": "حاول مرة أخرى",
+    "language": "اللغة",
+    "yes": "نعم",
+    "no": "لا"
+  },
+  "sidebar": {
+    "signIn": "تسجيل الدخول",
+    "account": "الحساب",
+    "feedback": "إرسال ملاحظات",
+    "upgrade": "ترقية",
+    "newChat": "محادثة جديدة"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "tabs": {
+      "basic": "عام",
+      "shortcuts": "الاختصارات",
+      "memory": "الذاكرة",
+      "backup": "النسخ الاحتياطي",
+      "account": "الحساب والشؤون القانونية",
+      "models": "النماذج",
+      "audio": "الصوت"
+    },
+    "language": {
+      "title": "اللغة",
+      "description": "اختر اللغة التي ستستخدمها Stella في التطبيق وعند الرد عليك."
+    }
+  },
+  "onboarding": {
+    "ready": "جارٍ التحضير...",
+    "retryStart": "إعادة محاولة بدء Stella",
+    "startStella": "ابدأ Stella",
+    "legalFooter": "باستخدامك Stella، فأنت توافق على {terms} و{privacy}.",
+    "termsOfService": "شروط الخدمة",
+    "privacyPolicy": "سياسة الخصوصية",
+    "previousStep": "الخطوة السابقة",
+    "nextStep": "الخطوة التالية",
+    "intro": {
+      "primary": "‏Stella ذكاء اصطناعي يعمل على جهازك.",
+      "secondary": "‏Stella ليست للجميع. Stella من أجلك."
+    },
+    "stepTitles": {
+      "language": "اختر لغتك.",
+      "extension": "أضف Stella إلى متصفحك.",
+      "browser": "دع Stella تتعرف عليك.",
+      "creation": "‏Stella تتغير عندما تطلب منها. اضغط الأزرار للتجربة.",
+      "theme": "كيف يجب أن تبدو Stella؟",
+      "personality": "كيف يجب أن تتحدث Stella؟",
+      "shortcutsGlobal": "في أي مكان على سطح المكتب.",
+      "shortcutsLocal": "داخل Stella.",
+      "doubleTap": "انقر مرتين. استدعِ Stella.",
+      "voice": "تحدث بدلاً من الكتابة.",
+      "memory": "ساعد Stella على التذكر.",
+      "enter": "‏Stella جاهزة تقريبًا."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "تطبيقاتك وجهازك",
+        "description": "التطبيقات التي تستخدمها أكثر، وكيفية تنظيم سطح المكتب لديك، وأسلوب عملك"
+      },
+      "messagesNotes": {
+        "label": "ملاحظاتك ولوحك الزمني",
+        "description": "ما تعمل عليه، وجدولك، وكيف تنظم أفكارك"
+      },
+      "devEnvironment": {
+        "label": "بيئة التطوير لديك",
+        "description": "الأدوات التي تستخدمها، والمشاريع التي تعمل عليها، وكيفية إعداد بيئتك"
+      },
+      "fdaNote": "تتطلب بعض الخيارات وصولاً كاملاً إلى القرص"
+    },
+    "language": {
+      "description": "ستستخدم Stella هذه اللغة في جميع أنحاء التطبيق وفي الردود. يمكنك تغييرها لاحقًا في الإعدادات."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "ابدأ مع Stella",
+        "features": [
+          "محادثة ومساعدة أساسية",
+          "استخدام يومي محدود"
+        ]
+      },
+      "go": {
+        "tagline": "للاستخدام الشخصي اليومي",
+        "features": [
+          "محادثات أكثر يوميًا",
+          "أتمتة المتصفح",
+          "محادثات صوتية"
+        ]
+      },
+      "pro": {
+        "tagline": "للمستخدمين المتمرسين",
+        "features": [
+          "ثلاثة أضعاف استخدام Go",
+          "أوقات استجابة ذات أولوية",
+          "جميع ميزات الأتمتة"
+        ]
+      },
+      "plus": {
+        "tagline": "للمحترفين",
+        "features": [
+          "استخدام يومي مكثف",
+          "سير عمل متقدم للوكلاء",
+          "دعم ذو أولوية"
+        ]
+      },
+      "ultra": {
+        "tagline": "إنتاجية بلا حدود",
+        "features": [
+          "حدود استخدام قصوى",
+          "أسرع أوقات استجابة",
+          "كل ما في Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "لم تستطع Stella بدء هذا الرد",
+    "tryAgainHint": "يرجى المحاولة مرة أخرى."
+  },
+  "errors": {
+    "generic": "حدث خطأ ما",
+    "subscriptionRequired": "تتطلب النسخ الاحتياطية اشتراكًا نشطًا في Stella.",
+    "rateLimited": "أنت تتحرك بسرعة قليلاً. حاول مرة أخرى بعد قليل.",
+    "networkUnavailable": "‏Stella غير متصلة. أعد الاتصال للمتابعة.",
+    "permissionDenied": "ليس لدى Stella إذن للقيام بذلك."
+  }
+}

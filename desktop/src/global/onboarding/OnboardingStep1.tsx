@@ -6,6 +6,8 @@ import { useOnboardingAppearance } from "./use-onboarding-appearance";
 import { useOnboardingDiscovery } from "./use-onboarding-discovery";
 import { useOnboardingFlow } from "./use-onboarding-flow";
 import { useOnboardingMemory } from "./use-onboarding-memory";
+import { useT } from "@/shared/i18n";
+import { OnboardingLanguagePhase } from "./OnboardingLanguagePhase";
 import "./Onboarding.css";
 
 /* Phases are eager imports because the entire onboarding flow already
@@ -34,21 +36,25 @@ import { OnboardingMemoryPhase } from "./OnboardingMemoryPhase";
 import { OnboardingEnterPhase } from "./OnboardingEnterPhase";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 
-const STEP_TITLES: Partial<Record<Phase, string>> = {
-  // capabilities renders its own per-scene title inside the phase so the
-  // changing line ("Text Stella from anywhere.", "Share what you make.", …)
-  // sits where the static step title would otherwise be.
-  extension: "Add Stella to your browser.",
-  browser: "Let Stella get to know you.",
-  creation: "Stella can change when you ask. Click the buttons to try.",
-  theme: "How should Stella look?",
-  personality: "How should Stella talk?",
-  "shortcuts-global": "Anywhere on your desktop.",
-  "shortcuts-local": "Inside Stella.",
-  "double-tap": "Tap twice. Summon Stella.",
-  voice: "Speak instead of type.",
-  memory: "Help Stella remember.",
-  enter: "Stella is almost ready.",
+/**
+ * Translation keys for each split-phase title. The capabilities phase
+ * renders its own per-scene title inside the phase body so the
+ * changing line ("Text Stella from anywhere.", …) sits where the
+ * static step title would otherwise be — that's why it's omitted here.
+ */
+const STEP_TITLE_KEYS: Partial<Record<Phase, string>> = {
+  language: "onboarding.stepTitles.language",
+  extension: "onboarding.stepTitles.extension",
+  browser: "onboarding.stepTitles.browser",
+  creation: "onboarding.stepTitles.creation",
+  theme: "onboarding.stepTitles.theme",
+  personality: "onboarding.stepTitles.personality",
+  "shortcuts-global": "onboarding.stepTitles.shortcutsGlobal",
+  "shortcuts-local": "onboarding.stepTitles.shortcutsLocal",
+  "double-tap": "onboarding.stepTitles.doubleTap",
+  voice: "onboarding.stepTitles.voice",
+  memory: "onboarding.stepTitles.memory",
+  enter: "onboarding.stepTitles.enter",
 };
 
 export interface OnboardingStep1Props {
@@ -78,6 +84,7 @@ export const OnboardingStep1 = ({
   discoveryWelcomeExpected = false,
   discoveryWelcomeReady = false,
 }: OnboardingStep1Props) => {
+  const t = useT();
   const skippedPhases = useMemo(
     () => (discoveryWelcomeExpected ? undefined : new Set<Phase>(["enter"])),
     [discoveryWelcomeExpected],
@@ -142,6 +149,13 @@ export const OnboardingStep1 = ({
 
   const renderActiveSplitPhase = (activePhase: Phase) => {
     switch (activePhase) {
+      case "language":
+        return (
+          <OnboardingLanguagePhase
+            splitTransitionActive={leaving}
+            onContinue={nextSplitStep}
+          />
+        );
       case "capabilities":
         return (
           <OnboardingCapabilitiesPhase
@@ -284,10 +298,10 @@ export const OnboardingStep1 = ({
         >
           <div className="onboarding-ripple-content">
             <div className="onboarding-text onboarding-text--fade-in">
-              Stella is an AI that runs on your computer.
+              {t("onboarding.intro.primary")}
             </div>
             <div className="onboarding-text onboarding-text--fade-in-delayed">
-              Stella isn't for everyone. Stella is for you.
+              {t("onboarding.intro.secondary")}
             </div>
           </div>
           <div
@@ -295,7 +309,7 @@ export const OnboardingStep1 = ({
             data-visible={rippleActive}
           >
             <button className="onboarding-choice" onClick={continueIntro}>
-              Continue
+              {t("common.continue")}
             </button>
           </div>
         </div>
@@ -315,9 +329,9 @@ export const OnboardingStep1 = ({
               data-phase={phase}
               key={phase}
             >
-              {STEP_TITLES[phase] ? (
+              {STEP_TITLE_KEYS[phase] ? (
                 <div className="onboarding-split-title">
-                  {STEP_TITLES[phase]}
+                  {t(STEP_TITLE_KEYS[phase] as string)}
                 </div>
               ) : null}
               {renderActiveSplitPhase(phase)}
@@ -330,7 +344,7 @@ export const OnboardingStep1 = ({
               className="onboarding-phase-nav-btn onboarding-phase-nav-btn--prev"
               disabled={!canGoPrev || leaving}
               onClick={prevSplitStep}
-              aria-label="Previous step"
+              aria-label={t("onboarding.previousStep")}
             >
               <svg
                 width="14"
@@ -350,7 +364,7 @@ export const OnboardingStep1 = ({
               className="onboarding-phase-nav-btn onboarding-phase-nav-btn--next"
               disabled={!canGoNext || leaving}
               onClick={nextSplitStep}
-              aria-label="Next step"
+              aria-label={t("onboarding.nextStep")}
             >
               <svg
                 width="14"

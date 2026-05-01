@@ -487,6 +487,8 @@ export type ElectronAgentApi = {
     deviceId?: string;
     platform?: string;
     timezone?: string;
+    /** BCP-47 locale for the user's preferred response language. */
+    locale?: string;
     mode?: string;
     messageMetadata?: Record<string, unknown>;
     attachments?: Array<{
@@ -693,6 +695,23 @@ export type ElectronSystemApi = {
   cancelCredential: (payload: {
     requestId: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+};
+
+export type InstallManifestSnapshot = {
+  version: string;
+  platform: string;
+  installPath: string;
+  installedAt: string;
+  desktopReleaseTag: string | null;
+  desktopReleaseCommit: string | null;
+  desktopInstallBaseCommit: string | null;
+};
+
+export type ElectronUpdatesApi = {
+  getInstallManifest: () => Promise<InstallManifestSnapshot | null>;
+  recordAppliedCommit: (
+    commit: string,
+  ) => Promise<InstallManifestSnapshot | null>;
 };
 
 export type ElectronOnboardingApi = {
@@ -1091,6 +1110,7 @@ export type ElectronApi = {
   dictation: ElectronDictationApi;
   agent: ElectronAgentApi;
   system: ElectronSystemApi;
+  updates: ElectronUpdatesApi;
   onboarding: ElectronOnboardingApi;
   discovery: ElectronDiscoveryApi;
   browser: ElectronBrowserApi;

@@ -42,6 +42,8 @@ type StartStreamArgs = {
   deviceId?: string
   platform?: string
   timezone?: string
+  /** BCP-47 locale for the user's preferred response language. */
+  locale?: string
   mode?: string
   messageMetadata?: Record<string, unknown>
   attachments?: AttachmentRef[]
@@ -1148,6 +1150,7 @@ export function useLocalAgentStream({
             deviceId: args.deviceId,
             platform: args.platform,
             timezone: args.timezone,
+            ...(args.locale ? { locale: args.locale } : {}),
             mode: args.mode,
             ...(args.messageMetadata
               ? { messageMetadata: args.messageMetadata }

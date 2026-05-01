@@ -1226,6 +1226,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               : {}),
             ...(payload.platform ? { platform: payload.platform } : {}),
             ...(payload.timezone ? { timezone: payload.timezone } : {}),
+            ...(payload.locale ? { locale: payload.locale } : {}),
             ...(payload.messageMetadata ||
             windowContextLabel ||
             windowPreviewImageUrl

@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Pokračovat",
+    "back": "Zpět",
+    "next": "Další",
+    "previous": "Předchozí",
+    "cancel": "Zrušit",
+    "save": "Uložit",
+    "close": "Zavřít",
+    "open": "Otevřít",
+    "openPreferences": "Otevřít předvolby",
+    "signIn": "Přihlásit se",
+    "signOut": "Odhlásit se",
+    "loading": "Načítání…",
+    "tryAgain": "Zkusit znovu",
+    "language": "Jazyk",
+    "yes": "Ano",
+    "no": "Ne"
+  },
+  "sidebar": {
+    "signIn": "Přihlásit se",
+    "account": "Účet",
+    "feedback": "Odeslat zpětnou vazbu",
+    "upgrade": "Upgradovat",
+    "newChat": "Nový chat"
+  },
+  "settings": {
+    "title": "Nastavení",
+    "tabs": {
+      "basic": "Obecné",
+      "shortcuts": "Zkratky",
+      "memory": "Paměť",
+      "backup": "Zálohy",
+      "account": "Účet a právní",
+      "models": "Modely",
+      "audio": "Zvuk"
+    },
+    "language": {
+      "title": "Jazyk",
+      "description": "Vyberte jazyk, který Stella používá v aplikaci a ve svých odpovědích."
+    }
+  },
+  "onboarding": {
+    "ready": "Příprava...",
+    "retryStart": "Zkusit spustit Stellu znovu",
+    "startStella": "Spustit Stellu",
+    "legalFooter": "Používáním Stelly souhlasíte s našimi {terms} a {privacy}.",
+    "termsOfService": "Smluvními podmínkami",
+    "privacyPolicy": "Zásadami ochrany osobních údajů",
+    "previousStep": "Předchozí krok",
+    "nextStep": "Další krok",
+    "intro": {
+      "primary": "Stella je AI, která běží na vašem počítači.",
+      "secondary": "Stella není pro každého. Stella je pro vás."
+    },
+    "stepTitles": {
+      "language": "Vyberte si jazyk.",
+      "extension": "Přidejte Stellu do prohlížeče.",
+      "browser": "Nechte Stellu, ať vás pozná.",
+      "creation": "Stella se mění, když ji o to požádáte. Vyzkoušejte to kliknutím na tlačítka.",
+      "theme": "Jak by Stella měla vypadat?",
+      "personality": "Jak by Stella měla mluvit?",
+      "shortcutsGlobal": "Kdekoli na ploše.",
+      "shortcutsLocal": "Uvnitř Stelly.",
+      "doubleTap": "Klepněte dvakrát. Přivolejte Stellu.",
+      "voice": "Mluvte místo psaní.",
+      "memory": "Pomozte Stelle si pamatovat.",
+      "enter": "Stella je téměř připravena."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Vaše aplikace a počítač",
+        "description": "Které aplikace používáte nejvíce, jak máte uspořádanou plochu a jak pracujete"
+      },
+      "messagesNotes": {
+        "label": "Vaše poznámky a kalendář",
+        "description": "Na čem pracujete, váš rozvrh a jak organizujete své myšlenky"
+      },
+      "devEnvironment": {
+        "label": "Vývojářské prostředí",
+        "description": "Nástroje, které používáte, projekty, na kterých pracujete, a konfigurace prostředí"
+      },
+      "fdaNote": "Některé možnosti vyžadují plný přístup k disku"
+    },
+    "language": {
+      "description": "Stella bude tento jazyk používat v celé aplikaci i v odpovědích. Můžete to později změnit v Nastavení."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Začněte se Stellou",
+        "features": [
+          "Základní chat a pomoc",
+          "Omezené denní využití"
+        ]
+      },
+      "go": {
+        "tagline": "Pro každodenní osobní použití",
+        "features": [
+          "Více konverzací denně",
+          "Automatizace prohlížeče",
+          "Hlasové konverzace"
+        ]
+      },
+      "pro": {
+        "tagline": "Pro náročné uživatele",
+        "features": [
+          "3× využití plánu Go",
+          "Prioritní časy odezvy",
+          "Všechny funkce automatizace"
+        ]
+      },
+      "plus": {
+        "tagline": "Pro profesionály",
+        "features": [
+          "Velké denní využití",
+          "Pokročilé pracovní toky agentů",
+          "Prioritní podpora"
+        ]
+      },
+      "ultra": {
+        "tagline": "Neomezená produktivita",
+        "features": [
+          "Maximální limity využití",
+          "Nejrychlejší časy odezvy",
+          "Vše z plánu Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella nemohla zahájit tuto odpověď",
+    "tryAgainHint": "Zkuste to znovu."
+  },
+  "errors": {
+    "generic": "Něco se pokazilo",
+    "subscriptionRequired": "Zálohy vyžadují aktivní předplatné Stelly.",
+    "rateLimited": "Trochu rychle. Zkuste to za chvíli znovu.",
+    "networkUnavailable": "Stella je offline. Pro pokračování se znovu připojte.",
+    "permissionDenied": "Stella k tomu nemá oprávnění."
+  }
+}

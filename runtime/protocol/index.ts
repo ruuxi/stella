@@ -367,6 +367,13 @@ export type RuntimeChatPayload = {
   deviceId?: string;
   platform?: string;
   timezone?: string;
+  /**
+   * BCP-47 locale tag for the user's preferred response language. Plumbed
+   * from the desktop renderer's `useI18n()` so the runtime can inject a
+   * "respond in X" directive into the agent system prompt. Optional —
+   * falls back to English when absent.
+   */
+  locale?: string;
   mode?: string;
   messageMetadata?: Record<string, unknown>;
   attachments?: RuntimeAttachmentRef[];
