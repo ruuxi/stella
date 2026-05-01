@@ -47,12 +47,15 @@ const onboardingChunkPromise: { current: Promise<unknown> | null } = {
 };
 const loadOnboardingChunk = () => {
   if (!onboardingChunkPromise.current) {
-    onboardingChunkPromise.current = Promise.all([
-      import("@/global/onboarding/OnboardingOverlay"),
-      import("@/global/onboarding/OnboardingCanvas"),
-    ]);
+    onboardingChunkPromise.current = import(
+      "@/global/onboarding/OnboardingOverlay"
+    );
   }
   return onboardingChunkPromise.current;
+};
+
+const preloadOnboardingCanvas = () => {
+  void import("@/global/onboarding/OnboardingCanvas");
 };
 
 const OnboardingView = lazy(() =>
@@ -152,6 +155,17 @@ function OnboardingExperience({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const splitIndex = SPLIT_STEP_ORDER.indexOf(onboardingPhase);
+    if (
+      splitIndex >= 0 &&
+      CREATION_PHASE_INDEX >= 0 &&
+      splitIndex >= CREATION_PHASE_INDEX - 1
+    ) {
+      preloadOnboardingCanvas();
+    }
+  }, [onboardingPhase]);
 
   useEffect(() => {
     return () => {
@@ -318,10 +332,12 @@ function OnboardingExperience({
             data-closing={demoClosing || undefined}
             aria-hidden={!showOnboardingDemos}
           >
-            <OnboardingCanvas
-              activeDemo={activeDemo}
-              onMorphingChange={setOnboardingDemoMorphing}
-            />
+            {showOnboardingDemos ? (
+              <OnboardingCanvas
+                activeDemo={activeDemo}
+                onMorphingChange={setOnboardingDemoMorphing}
+              />
+            ) : null}
           </div>
         </Suspense>
       </div>

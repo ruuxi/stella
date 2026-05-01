@@ -1341,19 +1341,16 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         microphoneStatus,
       };
     }
-    clearPermissionCache();
     const accessibility = hasMacPermission("accessibility", false);
     if (accessibility && !lastAccessibilityStatus) {
       options.onPermissionGranted?.("accessibility");
-    }
-    lastAccessibilityStatus = accessibility;
-    if (accessibility) {
       try {
         options.ensureRadialGestureOnMac?.();
       } catch {
         // Best-effort; hooks may still be starting.
       }
     }
+    lastAccessibilityStatus = accessibility;
     return {
       accessibility,
       screen: hasMacPermission("screen", false),
@@ -1464,7 +1461,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         return { granted: false, alreadyGranted: false };
       }
 
+      clearPermissionCache();
       const result = await requestMacPermission(macKind);
+      clearPermissionCache();
       let openedSettings = false;
       if (macKind === "screen" && !result.granted) {
         try {

@@ -239,8 +239,12 @@ export type ElectronUiApi = {
   setAppReady: (ready: boolean) => void;
   reload: () => void;
   hardReset: () => Promise<{ ok: boolean }>;
-  morphStart: () => Promise<{ ok: boolean }>;
-  morphComplete: () => Promise<{ ok: boolean }>;
+  morphStart: (payload?: {
+    rect?: { x: number; y: number; width: number; height: number };
+  }) => Promise<{ ok: boolean }>;
+  morphComplete: (payload?: {
+    rect?: { x: number; y: number; width: number; height: number };
+  }) => Promise<{ ok: boolean }>;
   setOnboardingPresentation: (active: boolean) => Promise<{ ok: boolean }>;
 };
 
@@ -870,7 +874,9 @@ export type ElectronStoreApi = {
     packageId: string;
     releaseNumber: number;
   }) => Promise<StorePackageReleaseRecord | null>;
-  buildCommitCatalog: (limit?: number) => Promise<StoreThreadCommitCatalogEntry[]>;
+  buildCommitCatalog: (
+    limit?: number,
+  ) => Promise<StoreThreadCommitCatalogEntry[]>;
   buildBundleForConfirm: (payload: {
     commitHashes: string[];
   }) => Promise<StoreThreadBundlePayload>;

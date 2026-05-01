@@ -36,22 +36,21 @@ const PERMISSION_CARDS: PermissionCard[] = [
   {
     kind: "microphone",
     title: "Microphone",
-    description:
-      "Needed for voice conversations.",
+    description: "Needed for voice conversations.",
     actionLabel: "Enable",
   },
 ];
 
-const POLL_INTERVAL_MS = 1500;
+const POLL_INTERVAL_MS = 3000;
 const INITIAL_PERMISSION_STATUS: PermissionStatus = {
   accessibility: false,
   screen: false,
   microphone: false,
   microphoneStatus: "unknown",
 };
-const ONBOARDING_RESTART_KINDS = PERMISSION_CARDS
-  .filter((card) => card.requiresRelaunch)
-  .map((card) => card.kind);
+const ONBOARDING_RESTART_KINDS = PERMISSION_CARDS.filter(
+  (card) => card.requiresRelaunch,
+).map((card) => card.kind);
 
 type OnboardingPermissionsProps = {
   splitTransitionActive: boolean;
@@ -156,10 +155,9 @@ export function OnboardingPermissions({
 
   const allMeasuredGranted =
     status.accessibility && status.screen && status.microphone;
-  const showRestartButton = restartRecommended
-    && PERMISSION_CARDS.some(
-      (card) => card.requiresRelaunch && status[card.kind],
-    );
+  const showRestartButton =
+    restartRecommended &&
+    PERMISSION_CARDS.some((card) => card.requiresRelaunch && status[card.kind]);
   const showMicrophoneRecovery =
     platform === "darwin" && status.microphoneStatus === "denied";
 

@@ -1,10 +1,11 @@
 import type { ChatContext } from "@/shared/types/electron";
 
 /**
- * Set when the user opted into Live Memory during onboarding but isn't
- * signed in yet. The post-onboarding root chrome consumes this once and
- * opens the AuthDialog so the user can finish signing in. After sign-in,
- * `memory.promotePending()` is called to actually enable the daemon.
+ * Set when the user opted into Live Memory during onboarding. The
+ * post-onboarding root chrome consumes this once: signed-in users get
+ * `memory.promotePending()` after the onboarding exit, while signed-out users
+ * see the AuthDialog first. That keeps Chronicle/Dream from starting during
+ * the onboarding animation itself.
  *
  * Persisted in `localStorage` (not `sessionStorage`) because the user may
  * close the app before signing in, and we want to re-prompt on next

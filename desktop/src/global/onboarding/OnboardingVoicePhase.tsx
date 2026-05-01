@@ -189,7 +189,7 @@ export function OnboardingVoicePhase({
  * scrolling bars rendered to canvas in `DictationRecordingBar`. We use
  * lightweight DOM bars with phase-shifted CSS animations so the demo
  * doesn't need an audio capture session. */
-const WAVEFORM_BAR_COUNT = 56;
+const WAVEFORM_BAR_COUNT = 24;
 const WAVEFORM_BARS = Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
   const seed = (i * 37) % 100;
   return {

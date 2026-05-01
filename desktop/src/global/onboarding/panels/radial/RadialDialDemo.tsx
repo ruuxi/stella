@@ -16,7 +16,7 @@ type RadialDialDemoProps = {
 };
 
 export function RadialDialDemo({ onActivated }: RadialDialDemoProps) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState(1);
   const [activated, setActivated] = useState(false);
   const activatedRef = useRef(false);
   const { ref, isActive } = useViewportActivity<HTMLDivElement>({
@@ -78,10 +78,7 @@ export function RadialDialDemo({ onActivated }: RadialDialDemoProps) {
       <div className="radial-hero__stage">
         {activated ? (
           <>
-            <div
-              className="radial-hero__dial"
-              aria-label="Stella radial dial"
-            >
+            <div className="radial-hero__dial" aria-label="Stella radial dial">
               <RadialDialInteractive
                 selectedIndex={selectedIndex}
                 onSelect={handleSelect}
@@ -106,14 +103,9 @@ export function RadialDialDemo({ onActivated }: RadialDialDemoProps) {
           </>
         ) : (
           <div className="radial-hero__prompt">
-            <Keychord
-              aria={triggerKeyAria}
-              glyphs={triggerKeys}
-              highlight
-            />
+            <Keychord aria={triggerKeyAria} glyphs={triggerKeys} highlight />
             <p className="radial-hero__prompt-text">
-              Hold this anywhere on your computer to open Stella's radial
-              dial.
+              Hold this anywhere on your computer to open Stella's radial dial.
             </p>
           </div>
         )}
