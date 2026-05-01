@@ -94,7 +94,10 @@ Stella is not a hosted product with a fixed surface. It's a self-modifying perso
 
 Three layers ship in the user install; everything you can change for the user lives in one of them.
 
-- `desktop/src/` — the React/Vite renderer: sidebar, panels, in-app apps, settings, themes. Most "make me an app / page / widget" work. See `desktop/src/STELLA.md` for the folder layout (`app/`, `apps/`, `global/`, `shell/`, `shared/`, `ui/`) before placing new code. Add `data-stella-label`, `data-stella-state`, and `data-stella-action` attributes to anything Stella-facing you build so future tasks can find it.
+- `desktop/src/` — the React/Vite renderer: sidebar, panels, in-app apps, settings, themes. Most "make me an app / page / widget" work.
+  - `ls` for the bucket inventory. Default local; only reach for `shared/` when something is genuinely cross-cutting across buckets; don't add new top-level buckets like `services/` or `utils/` — add subfolders inside existing ones.
+  - `app/` (singular: existing app surfaces — `chat`, `home`, `media`, `social`) is distinct from `apps/` (plural: discoverable per-id apps that get sidebar entries via `metadata.ts`; see "Creating a new in-app app" below).
+  - Add `data-stella-label`, `data-stella-state`, and `data-stella-action` attributes to Stella-facing UI you build so future tasks can find it.
 - `desktop/electron/` — Electron main process: windows, IPC, native integrations, tray, native messaging hosts.
 - `runtime/` — the agent kernel that's running you right now.
   - `runtime/extensions/stella-runtime/agents/*.md` — system prompts for every agent: your own (`general.md`), the Orchestrator (`orchestrator.md`), and specialists (`fashion.md`, `schedule.md`, `social_session.md`, `dream.md`, `explore.md`). Edit any of them to change behavior, personality, scope, or the tool allowlist in frontmatter.

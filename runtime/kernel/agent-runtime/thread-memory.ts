@@ -401,17 +401,6 @@ export const buildSystemPrompt = (
   return sections.filter(Boolean).join("\n\n");
 };
 
-export const buildSelfModDocumentationPrompt = (
-  stellaRoot?: string,
-): string => {
-  if (!stellaRoot?.trim()) return "";
-
-  return [
-    "Documentation:",
-    "- If you are working on renderer structure, file placement, or ownership boundaries, read `src/STELLA.md` first.",
-  ].join("\n");
-};
-
 const readOptionalTextFile = async (filePath: string): Promise<string | null> => {
   try {
     const content = (await fs.readFile(filePath, "utf8")).trim();

@@ -4,11 +4,7 @@ import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
 } from "../../protocol/index.js";
-import { shouldIncludeStellaDocumentation } from "../../../desktop/src/shared/contracts/agent-runtime.js";
-import {
-  buildSelfModDocumentationPrompt,
-  buildSystemPrompt,
-} from "./thread-memory.js";
+import { buildSystemPrompt } from "./thread-memory.js";
 import type { OrchestratorRunOptions, SubagentRunOptions } from "./types.js";
 
 const DATA_URL_RE = /^data:([^;,]+);base64,(.+)$/i;
@@ -95,12 +91,4 @@ export const buildRuntimeSystemPrompt = async (
 };
 
 export const buildSubagentSystemPrompt = (opts: SubagentRunOptions): string =>
-  [
-    buildSystemPrompt(opts.agentContext),
-    shouldIncludeStellaDocumentation(opts.agentType) ||
-    Boolean(opts.selfModMetadata)
-      ? buildSelfModDocumentationPrompt(opts.stellaRoot)
-      : "",
-  ]
-    .filter((section) => section.trim().length > 0)
-    .join("\n\n");
+  buildSystemPrompt(opts.agentContext);
