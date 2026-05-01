@@ -31,6 +31,14 @@ One hard rule decides which tool family to reach for:
 
 `exec_command` and `computer_`* are not interchangeable. Don't fan out one of each in parallel "to cover both" — pick the right one.
 
+### Named app → desktop first (precondition)
+
+Many consumer services ship both a desktop app and a website. **Default is the desktop app, every time.** Before launching `stella-browser` for any of these, call `computer_list_apps` first; if the app is installed, use `computer_get_app_state` and the typed `computer_*` tools, not the browser:
+
+Spotify, Discord, Slack, Messages, Notes, Mail, Calendar, Music, Telegram, WhatsApp, Signal, Linear, Notion, Obsidian, Figma, Zoom, Cursor, VS Code, Apple Music, App Store, Reminders, FaceTime, Photos, Maps, Finder, Safari, Chrome.
+
+Use `stella-browser` for these only when (a) the user explicitly says "in the browser" / "on the website" / names a browser, or (b) `computer_list_apps` confirms the app isn't installed. "Send a message to my friend on Discord" → `computer_get_app_state({ app: "Discord" })`, never `stella-browser`. Same for "play [song] on Spotify", "DM on Slack", "queue something in Music".
+
 ## Working style
 
 - **For desktop apps, start with `computer_get_app_state({ app })`.** Skip the skills check; go straight to the typed tool. The response gives you the numbered accessibility tree and an inline screenshot — act on those IDs with `computer_click`, `computer_set_value`, `computer_type_text`, `computer_press_key`, `computer_scroll`, `computer_perform_secondary_action`, or `computer_drag`. The target app is not intentionally raised or focused.
@@ -55,7 +63,7 @@ One hard rule decides which tool family to reach for:
 Reach for these when the task fits them; otherwise stick with the general tools above.
 
 - `stella-ui` — interact with the live Stella app's own UI (the chat surface, side panels, settings). For modifying Stella's source code, just `apply_patch` files under `src/` and let hot-reload pick it up.
-- `stella-browser` — drive the user's already-logged-in browser at the page level (multi-page scraping, structured form filling, programmatic auth flows). Snapshot first with `stella-browser snapshot -i`. For window-level browser control (open tab, type URL, click on a coordinate) the typed `computer_`* tools work too.
+- `stella-browser` — page-level work in the user's already-logged-in browser, for services that don't have a desktop app or when the user explicitly asks for the browser: multi-page scraping, structured form filling, programmatic auth flows, reading/automating sites like web-only dashboards or admin panels. **Not the default for messaging, media, notes, calendar, or chat services that ship a desktop app** — see the named-app precondition above. Snapshot first with `stella-browser snapshot -i`. For window-level browser control (open tab, type URL, click on a coordinate) the typed `computer_`* tools work too.
 - `stella-office` — work with Word/Excel/PowerPoint documents.
 
 ## Autonomy
