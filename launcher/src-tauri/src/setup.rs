@@ -33,6 +33,7 @@ const EMOTE_INSTALL_STATE_FILE: &str = "stella-emotes-install.json";
 const EMOTE_INSTALL_STATUS_INSTALLED: &str = "installed";
 const EMOTE_INSTALL_STATUS_SKIPPED: &str = "skipped";
 const INSTALL_DIR_NAME: &str = "stella";
+const ELECTRON_USER_DATA_DIR_NAME: &str = "electron-user-data";
 
 fn release_tarball_name() -> &'static str {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
@@ -1235,6 +1236,15 @@ async fn download_and_extract_release(
 }
 
 async fn remove_install_files_preserving_state(install_path: &str) -> Result<(), String> {
+    let electron_user_data_path = Path::new(install_path)
+        .join("state")
+        .join(ELECTRON_USER_DATA_DIR_NAME);
+    if path_exists(&electron_user_data_path).await {
+        fs::remove_dir_all(&electron_user_data_path)
+            .await
+            .map_err(|e| format!("Failed to remove Stella app startup data: {e}"))?;
+    }
+
     let mut entries = fs::read_dir(install_path)
         .await
         .map_err(|e| format!("Failed to read Stella install directory: {e}"))?;
@@ -2219,7 +2229,22 @@ mod tests {
         let dir = TestDir::new("preserve-state");
         write_install_shape(&dir.path);
         fs::create_dir_all(dir.path.join("state")).expect("create state dir");
+        fs::create_dir_all(
+            dir.path
+                .join("state")
+                .join(ELECTRON_USER_DATA_DIR_NAME)
+                .join("session-data"),
+        )
+        .expect("create electron user data dir");
         fs::write(dir.path.join("state").join("stella.sqlite"), "db").expect("write state file");
+        fs::write(
+            dir.path
+                .join("state")
+                .join(ELECTRON_USER_DATA_DIR_NAME)
+                .join("Local Storage"),
+            "local storage",
+        )
+        .expect("write electron user data file");
         fs::write(dir.path.join("launch.sh"), "#!/bin/sh\n").expect("write launch script");
 
         tauri::async_runtime::block_on(remove_install_files_preserving_state(
@@ -2229,6 +2254,11 @@ mod tests {
 
         assert!(dir.path.exists());
         assert!(dir.path.join("state").join("stella.sqlite").exists());
+        assert!(!dir
+            .path
+            .join("state")
+            .join(ELECTRON_USER_DATA_DIR_NAME)
+            .exists());
         assert!(!dir.path.join("desktop").exists());
         assert!(!dir.path.join("package.json").exists());
         assert!(!dir.path.join("launch.sh").exists());

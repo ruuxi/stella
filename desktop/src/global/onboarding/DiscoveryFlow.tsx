@@ -41,6 +41,8 @@ type UseDiscoveryFlowOptions = {
 
 type DiscoveryWelcomeStatus = "idle" | "preparing" | "ready";
 
+const DISCOVERY_CONVERSATION_FALLBACK_MS = 8000;
+
 export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
   const { hasConnectedAccount } = useAuthSessionState();
@@ -61,6 +63,22 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     },
     [],
   );
+
+  useEffect(() => {
+    if (!discoveryCategories || activeConversationId) return;
+    if (welcomeStatus !== "preparing") return;
+
+    const timeoutId = window.setTimeout(() => {
+      if (synthesizingRef.current || synthesizedRef.current) return;
+      console.warn(
+        "[onboarding-discovery] Conversation was unavailable; continuing without a personalized welcome.",
+      );
+      synthesizedRef.current = true;
+      setWelcomeStatus("ready");
+    }, DISCOVERY_CONVERSATION_FALLBACK_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeConversationId, discoveryCategories, welcomeStatus]);
 
   // Collect signals -> synthesize -> post welcome as soon as collection finishes
   useEffect(() => {
@@ -205,7 +223,8 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         reportDiscoveryFailure("Discovery failed unexpectedly.", error);
       } finally {
         if (!completed) {
-          synthesizedRef.current = false;
+          synthesizedRef.current = true;
+          setWelcomeStatus("ready");
         }
         synthesizingRef.current = false;
       }

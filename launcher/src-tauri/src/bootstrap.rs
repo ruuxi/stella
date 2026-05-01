@@ -191,6 +191,12 @@ fn perform_windows_uninstall(install_root: Option<&Path>) -> Result<(), String> 
 
 #[cfg(target_os = "windows")]
 fn remove_install_files_preserving_state_sync(root: &Path) -> Result<(), String> {
+    let electron_user_data_path = root.join("state").join("electron-user-data");
+    if electron_user_data_path.exists() {
+        std::fs::remove_dir_all(&electron_user_data_path)
+            .map_err(|e| format!("Failed to remove Stella app startup data: {e}"))?;
+    }
+
     for entry in std::fs::read_dir(root)
         .map_err(|e| format!("Failed to read Stella install directory: {e}"))?
     {
