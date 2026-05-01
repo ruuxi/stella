@@ -280,7 +280,7 @@ asset preloads, third-party API calls).
 - **Editing `routeTree.gen.ts`.** It is regenerated on file change. Edit the
 files in `routes/` instead.
 - **Adding hardcoded sidebar entries.** The sidebar discovers apps via
-`import.meta.glob`. Add `apps/<id>/metadata.ts` instead.
+`import.meta.glob`. Add `app/<id>/metadata.ts` instead.
 - **Reading `window.location.pathname`.** Use `useMatchRoute` or
 `useRouterState`.
 - **Calling `useFullShellChat` outside the root.** Use `useChatRuntime()`
