@@ -20,7 +20,6 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 - Electron app control: [electron](skills/electron/SKILL.md)
 - Modify Stella's own desktop app: [stella-desktop](skills/stella-desktop/SKILL.md)
 - Managed media API docs: [https://stella.sh/docs/media](https://stella.sh/docs/media) (the General agent prompt covers `image_gen` usage and when to read the docs)
-- Feature packaging and sharing: [blueprint-management](skills/blueprint-management/SKILL.md)
 
 ## Reference Docs
 
