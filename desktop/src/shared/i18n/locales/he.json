@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "המשך",
+    "back": "חזרה",
+    "next": "הבא",
+    "previous": "הקודם",
+    "cancel": "ביטול",
+    "save": "שמירה",
+    "close": "סגירה",
+    "open": "פתיחה",
+    "openPreferences": "פתיחת ההעדפות",
+    "signIn": "התחברות",
+    "signOut": "התנתקות",
+    "loading": "טוען…",
+    "tryAgain": "נסו שוב",
+    "language": "שפה",
+    "yes": "כן",
+    "no": "לא"
+  },
+  "sidebar": {
+    "signIn": "התחברות",
+    "account": "חשבון",
+    "feedback": "שליחת משוב",
+    "upgrade": "שדרוג",
+    "newChat": "צ'אט חדש"
+  },
+  "settings": {
+    "title": "הגדרות",
+    "tabs": {
+      "basic": "כללי",
+      "shortcuts": "קיצורים",
+      "memory": "זיכרון",
+      "backup": "גיבויים",
+      "account": "חשבון ומשפטי",
+      "models": "מודלים",
+      "audio": "שמע"
+    },
+    "language": {
+      "title": "שפה",
+      "description": "בחרו את השפה שבה Stella משתמשת באפליקציה ובתגובות שלה."
+    }
+  },
+  "onboarding": {
+    "ready": "מתכוננת...",
+    "retryStart": "נסו להפעיל את Stella שוב",
+    "startStella": "הפעלת Stella",
+    "legalFooter": "השימוש ב-Stella מהווה הסכמה ל{terms} ול{privacy} שלנו.",
+    "termsOfService": "תנאי השימוש",
+    "privacyPolicy": "מדיניות הפרטיות",
+    "previousStep": "שלב קודם",
+    "nextStep": "שלב הבא",
+    "intro": {
+      "primary": "Stella היא בינה מלאכותית שרצה על המחשב שלכם.",
+      "secondary": "Stella לא בשביל כולם. Stella בשבילכם."
+    },
+    "stepTitles": {
+      "language": "בחרו שפה.",
+      "extension": "הוסיפו את Stella לדפדפן שלכם.",
+      "browser": "אפשרו ל-Stella להכיר אתכם.",
+      "creation": "Stella משתנה כשתבקשו. לחצו על הכפתורים כדי לנסות.",
+      "theme": "איך Stella צריכה להיראות?",
+      "personality": "איך Stella צריכה לדבר?",
+      "shortcutsGlobal": "בכל מקום בשולחן העבודה.",
+      "shortcutsLocal": "בתוך Stella.",
+      "doubleTap": "הקישו פעמיים. הזמינו את Stella.",
+      "voice": "דברו במקום להקליד.",
+      "memory": "עזרו ל-Stella לזכור.",
+      "enter": "Stella כמעט מוכנה."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "האפליקציות והמחשב שלכם",
+        "description": "באילו אפליקציות אתם משתמשים הכי הרבה, איך שולחן העבודה מאורגן ואיך אתם עובדים"
+      },
+      "messagesNotes": {
+        "label": "הפתקים והיומן שלכם",
+        "description": "על מה אתם עובדים, הלו\"ז שלכם ואיך אתם מסדרים את המחשבות שלכם"
+      },
+      "devEnvironment": {
+        "label": "סביבת הפיתוח שלכם",
+        "description": "הכלים שאתם משתמשים בהם, הפרויקטים שלכם והתצורה של הסביבה"
+      },
+      "fdaNote": "חלק מהאפשרויות דורשות גישה מלאה לדיסק"
+    },
+    "language": {
+      "description": "Stella תשתמש בשפה הזו בכל האפליקציה ובתגובות. אפשר לשנות בהגדרות בהמשך."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "להתחיל עם Stella",
+        "features": [
+          "צ'אט וסיוע בסיסיים",
+          "שימוש יומי מוגבל"
+        ]
+      },
+      "go": {
+        "tagline": "לשימוש אישי יומיומי",
+        "features": [
+          "יותר שיחות ביום",
+          "אוטומציה של הדפדפן",
+          "שיחות קוליות"
+        ]
+      },
+      "pro": {
+        "tagline": "למשתמשים מתקדמים",
+        "features": [
+          "פי 3 שימוש מ-Go",
+          "זמני תגובה בעדיפות",
+          "כל יכולות האוטומציה"
+        ]
+      },
+      "plus": {
+        "tagline": "לאנשי מקצוע",
+        "features": [
+          "שימוש יומי כבד",
+          "תהליכי סוכנים מתקדמים",
+          "תמיכה בעדיפות"
+        ]
+      },
+      "ultra": {
+        "tagline": "פרודוקטיביות ללא מגבלות",
+        "features": [
+          "מגבלות שימוש מקסימליות",
+          "זמני התגובה המהירים ביותר",
+          "כל מה שיש ב-Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella לא הצליחה להתחיל את התגובה הזו",
+    "tryAgainHint": "אנא נסו שוב."
+  },
+  "errors": {
+    "generic": "משהו השתבש",
+    "subscriptionRequired": "גיבויים דורשים מנוי Stella פעיל.",
+    "rateLimited": "מהר מדי. נסו שוב בעוד רגע.",
+    "networkUnavailable": "Stella במצב לא מקוון. התחברו שוב כדי להמשיך.",
+    "permissionDenied": "ל-Stella אין הרשאה לכך."
+  }
+}

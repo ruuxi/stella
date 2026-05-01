@@ -1,0 +1,63 @@
+/*
+ * Right-to-left adjustments. Applied globally when `<html dir="rtl">`
+ * is set by the I18n provider for Arabic and Hebrew.
+ *
+ * This is a baseline pass — it covers the most-visible direction-
+ * sensitive surfaces (sidebar, settings, onboarding) so RTL renders
+ * usably out of the gate. A full visual QA pass is still planned.
+ *
+ * Approach:
+ *   - Flip `text-align: left/right` to logical `start/end`.
+ *   - Mirror absolute `left`/`right` offsets via inset properties.
+ *   - Flip directional icons (back arrows, chevrons, sliders) with
+ *     `transform: scaleX(-1)` so SVG glyphs face the right way.
+ *
+ * Keep this file small and focused. Anything that needs a per-locale
+ * override beyond a simple flip should live with the component.
+ */
+
+[dir="rtl"] .sidebar-page-back,
+[dir="rtl"] .sidebar-nav-item,
+[dir="rtl"] .sidebar-account-signin {
+  text-align: start;
+}
+
+[dir="rtl"] .sidebar-nav-badge {
+  /* The unread badge is anchored top-right of its icon. In RTL the
+   * icon column visually flips to the right edge already (because
+   * the parent flex is row-reverse-equivalent under `dir=rtl`), so
+   * the badge needs to live at top-left of the same box. */
+  right: auto;
+  left: -8px;
+}
+
+[dir="rtl"] .sidebar.sidebar--rail [aria-label]::after {
+  /* Tooltip lives to the right of the rail in LTR; flip to the left
+   * for RTL so it sits over the chat surface, not off-screen. */
+  left: auto;
+  right: calc(100% + 8px);
+  transform: translateY(-50%) translateX(2px);
+}
+
+[dir="rtl"] .sidebar.sidebar--rail [aria-label]:hover::after,
+[dir="rtl"] .sidebar.sidebar--rail [aria-label]:focus-visible::after {
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Onboarding's prev/next chevron buttons are positioned glyphs
+ * (`<path d="M15 18l-6-6 6-6"/>`). The icon meaning ("go back") is
+ * semantically tied to direction, not to the literal arrow shape.
+ * Flip the SVG so the arrow points the correct way under RTL. */
+[dir="rtl"] .onboarding-phase-nav-btn--prev svg,
+[dir="rtl"] .onboarding-phase-nav-btn--next svg {
+  transform: scaleX(-1);
+}
+
+/* Settings panel rows also use `text-align: left` for the row label
+ * column — convert to logical start so RTL labels align to the
+ * (visually) right edge of the row. */
+[dir="rtl"] .settings-row-info,
+[dir="rtl"] .settings-card-desc,
+[dir="rtl"] .onboarding-discovery-row {
+  text-align: start;
+}

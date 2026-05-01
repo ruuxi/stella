@@ -2,6 +2,7 @@ import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 
 export type Phase =
   | "intro"
+  | "language"
   | "capabilities"
   | "permissions"
   | "extension"
@@ -19,6 +20,7 @@ export type Phase =
   | "done";
 
 export const SPLIT_PHASES = new Set<Phase>([
+  "language",
   "capabilities",
   "permissions",
   "browser",
@@ -35,6 +37,7 @@ export const SPLIT_PHASES = new Set<Phase>([
 ]);
 
 export const SPLIT_STEP_ORDER: Phase[] = [
+  "language",
   "capabilities",
   "permissions",
   "browser",
@@ -50,34 +53,36 @@ export const SPLIT_STEP_ORDER: Phase[] = [
   "enter",
 ];
 
+/**
+ * Discovery rows are translated at render time. `labelKey` /
+ * `descriptionKey` resolve against the locale catalog under
+ * `onboarding.discovery.<id>.{label,description}`.
+ */
 export const DISCOVERY_CATEGORIES: {
   id: DiscoveryCategory;
-  label: string;
-  description: string;
+  labelKey: string;
+  descriptionKey: string;
   defaultEnabled: boolean;
   requiresFDA: boolean;
 }[] = [
   {
     id: "apps_system",
-    label: "Your apps and computer",
-    description:
-      "Which apps you use most, how your desktop is organized, and your workflow",
+    labelKey: "onboarding.discovery.appsSystem.label",
+    descriptionKey: "onboarding.discovery.appsSystem.description",
     defaultEnabled: false,
     requiresFDA: true,
   },
   {
     id: "messages_notes",
-    label: "Your notes and calendar",
-    description:
-      "What you're working on, your schedule, and how you organize your thoughts",
+    labelKey: "onboarding.discovery.messagesNotes.label",
+    descriptionKey: "onboarding.discovery.messagesNotes.description",
     defaultEnabled: false,
     requiresFDA: true,
   },
   {
     id: "dev_environment",
-    label: "Your coding setup",
-    description:
-      "Tools you use, projects you work on, and how your environment is configured",
+    labelKey: "onboarding.discovery.devEnvironment.label",
+    descriptionKey: "onboarding.discovery.devEnvironment.description",
     defaultEnabled: false,
     requiresFDA: false,
   },

@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Continua",
+    "back": "Indietro",
+    "next": "Avanti",
+    "previous": "Precedente",
+    "cancel": "Annulla",
+    "save": "Salva",
+    "close": "Chiudi",
+    "open": "Apri",
+    "openPreferences": "Apri preferenze",
+    "signIn": "Accedi",
+    "signOut": "Esci",
+    "loading": "Caricamento…",
+    "tryAgain": "Riprova",
+    "language": "Lingua",
+    "yes": "Sì",
+    "no": "No"
+  },
+  "sidebar": {
+    "signIn": "Accedi",
+    "account": "Account",
+    "feedback": "Invia feedback",
+    "upgrade": "Aggiorna piano",
+    "newChat": "Nuova chat"
+  },
+  "settings": {
+    "title": "Impostazioni",
+    "tabs": {
+      "basic": "Generale",
+      "shortcuts": "Scorciatoie",
+      "memory": "Memoria",
+      "backup": "Backup",
+      "account": "Account e note legali",
+      "models": "Modelli",
+      "audio": "Audio"
+    },
+    "language": {
+      "title": "Lingua",
+      "description": "Scegli la lingua che Stella userà nell'app e quando ti risponde."
+    }
+  },
+  "onboarding": {
+    "ready": "Preparazione...",
+    "retryStart": "Riprova ad avviare Stella",
+    "startStella": "Avvia Stella",
+    "legalFooter": "Usando Stella accetti i nostri {terms} e la {privacy}.",
+    "termsOfService": "Termini di servizio",
+    "privacyPolicy": "Informativa sulla privacy",
+    "previousStep": "Passaggio precedente",
+    "nextStep": "Passaggio successivo",
+    "intro": {
+      "primary": "Stella è un'IA che gira sul tuo computer.",
+      "secondary": "Stella non è per tutti. Stella è per te."
+    },
+    "stepTitles": {
+      "language": "Scegli la tua lingua.",
+      "extension": "Aggiungi Stella al tuo browser.",
+      "browser": "Lascia che Stella ti conosca.",
+      "creation": "Stella può cambiare quando glielo chiedi. Clicca i pulsanti per provare.",
+      "theme": "Che aspetto deve avere Stella?",
+      "personality": "Come deve parlare Stella?",
+      "shortcutsGlobal": "Ovunque sul tuo desktop.",
+      "shortcutsLocal": "Dentro Stella.",
+      "doubleTap": "Tocca due volte. Richiama Stella.",
+      "voice": "Parla invece di scrivere.",
+      "memory": "Aiuta Stella a ricordare.",
+      "enter": "Stella è quasi pronta."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Le tue app e il tuo computer",
+        "description": "Quali app usi di più, com'è organizzata la tua scrivania e come lavori"
+      },
+      "messagesNotes": {
+        "label": "Le tue note e il calendario",
+        "description": "A cosa stai lavorando, i tuoi impegni e come organizzi le tue idee"
+      },
+      "devEnvironment": {
+        "label": "Il tuo ambiente di sviluppo",
+        "description": "Gli strumenti che usi, i progetti su cui lavori e com'è configurato il tuo ambiente"
+      },
+      "fdaNote": "Alcune opzioni richiedono l'accesso completo al disco"
+    },
+    "language": {
+      "description": "Stella userà questa lingua in tutta l'app e quando ti risponde. Puoi cambiarla più tardi nelle Impostazioni."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Inizia con Stella",
+        "features": [
+          "Chat e assistenza di base",
+          "Uso giornaliero limitato"
+        ]
+      },
+      "go": {
+        "tagline": "Per l'uso personale quotidiano",
+        "features": [
+          "Più conversazioni al giorno",
+          "Automazione del browser",
+          "Conversazioni vocali"
+        ]
+      },
+      "pro": {
+        "tagline": "Per utenti esperti",
+        "features": [
+          "3 volte l'utilizzo di Go",
+          "Risposte prioritarie",
+          "Tutte le funzioni di automazione"
+        ]
+      },
+      "plus": {
+        "tagline": "Per i professionisti",
+        "features": [
+          "Uso quotidiano intenso",
+          "Flussi di agenti avanzati",
+          "Supporto prioritario"
+        ]
+      },
+      "ultra": {
+        "tagline": "Produttività senza limiti",
+        "features": [
+          "Limiti di utilizzo massimi",
+          "Risposte più veloci",
+          "Tutto ciò che è incluso in Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella non è riuscita ad avviare questa risposta",
+    "tryAgainHint": "Riprova."
+  },
+  "errors": {
+    "generic": "Qualcosa è andato storto",
+    "subscriptionRequired": "I backup richiedono un abbonamento Stella attivo.",
+    "rateLimited": "Stai andando un po' veloce. Riprova tra un momento.",
+    "networkUnavailable": "Stella è offline. Riconnettiti per continuare.",
+    "permissionDenied": "Stella non ha l'autorizzazione per farlo."
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Dalej",
+    "back": "Wstecz",
+    "next": "Dalej",
+    "previous": "Poprzedni",
+    "cancel": "Anuluj",
+    "save": "Zapisz",
+    "close": "Zamknij",
+    "open": "Otwórz",
+    "openPreferences": "Otwórz preferencje",
+    "signIn": "Zaloguj się",
+    "signOut": "Wyloguj",
+    "loading": "Ładowanie…",
+    "tryAgain": "Spróbuj ponownie",
+    "language": "Język",
+    "yes": "Tak",
+    "no": "Nie"
+  },
+  "sidebar": {
+    "signIn": "Zaloguj się",
+    "account": "Konto",
+    "feedback": "Wyślij opinię",
+    "upgrade": "Ulepsz plan",
+    "newChat": "Nowy czat"
+  },
+  "settings": {
+    "title": "Ustawienia",
+    "tabs": {
+      "basic": "Podstawowe",
+      "shortcuts": "Skróty",
+      "memory": "Pamięć",
+      "backup": "Kopie zapasowe",
+      "account": "Konto i prawne",
+      "models": "Modele",
+      "audio": "Dźwięk"
+    },
+    "language": {
+      "title": "Język",
+      "description": "Wybierz język, którego Stella używa w aplikacji i w odpowiedziach."
+    }
+  },
+  "onboarding": {
+    "ready": "Przygotowanie...",
+    "retryStart": "Uruchom Stellę ponownie",
+    "startStella": "Uruchom Stellę",
+    "legalFooter": "Korzystając ze Stelli, akceptujesz nasze {terms} oraz {privacy}.",
+    "termsOfService": "Warunki świadczenia usług",
+    "privacyPolicy": "Politykę prywatności",
+    "previousStep": "Poprzedni krok",
+    "nextStep": "Następny krok",
+    "intro": {
+      "primary": "Stella to AI działające na Twoim komputerze.",
+      "secondary": "Stella nie jest dla każdego. Stella jest dla Ciebie."
+    },
+    "stepTitles": {
+      "language": "Wybierz język.",
+      "extension": "Dodaj Stellę do przeglądarki.",
+      "browser": "Pozwól Stelli Cię poznać.",
+      "creation": "Stella zmienia się, gdy o to poprosisz. Kliknij przyciski, by sprawdzić.",
+      "theme": "Jak ma wyglądać Stella?",
+      "personality": "Jak ma mówić Stella?",
+      "shortcutsGlobal": "W każdym miejscu na pulpicie.",
+      "shortcutsLocal": "Wewnątrz Stelli.",
+      "doubleTap": "Stuknij dwa razy. Wezwij Stellę.",
+      "voice": "Mów zamiast pisać.",
+      "memory": "Pomóż Stelli pamiętać.",
+      "enter": "Stella jest prawie gotowa."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Twoje aplikacje i komputer",
+        "description": "Z jakich aplikacji korzystasz najczęściej, jak masz uporządkowany pulpit i jak pracujesz"
+      },
+      "messagesNotes": {
+        "label": "Twoje notatki i kalendarz",
+        "description": "Nad czym pracujesz, Twój harmonogram i sposób, w jaki organizujesz myśli"
+      },
+      "devEnvironment": {
+        "label": "Środowisko dev",
+        "description": "Narzędzia, których używasz, projekty, nad którymi pracujesz, i konfiguracja środowiska"
+      },
+      "fdaNote": "Niektóre opcje wymagają pełnego dostępu do dysku"
+    },
+    "language": {
+      "description": "Stella będzie używać tego języka w całej aplikacji oraz w odpowiedziach. Możesz to później zmienić w Ustawieniach."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Zacznij ze Stellą",
+        "features": [
+          "Podstawowy czat i pomoc",
+          "Ograniczone dzienne użycie"
+        ]
+      },
+      "go": {
+        "tagline": "Do codziennego, osobistego użytku",
+        "features": [
+          "Więcej rozmów dziennie",
+          "Automatyzacja przeglądarki",
+          "Rozmowy głosowe"
+        ]
+      },
+      "pro": {
+        "tagline": "Dla zaawansowanych użytkowników",
+        "features": [
+          "3× większe użycie niż Go",
+          "Priorytetowe czasy odpowiedzi",
+          "Wszystkie funkcje automatyzacji"
+        ]
+      },
+      "plus": {
+        "tagline": "Dla profesjonalistów",
+        "features": [
+          "Intensywne dzienne użycie",
+          "Zaawansowane przepływy agentów",
+          "Wsparcie priorytetowe"
+        ]
+      },
+      "ultra": {
+        "tagline": "Nieograniczona produktywność",
+        "features": [
+          "Maksymalne limity użycia",
+          "Najszybsze czasy odpowiedzi",
+          "Wszystko, co w Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella nie mogła rozpocząć tej odpowiedzi",
+    "tryAgainHint": "Spróbuj ponownie."
+  },
+  "errors": {
+    "generic": "Coś poszło nie tak",
+    "subscriptionRequired": "Kopie zapasowe wymagają aktywnej subskrypcji Stelli.",
+    "rateLimited": "Trochę za szybko. Spróbuj ponownie za chwilę.",
+    "networkUnavailable": "Stella jest offline. Połącz się ponownie, aby kontynuować.",
+    "permissionDenied": "Stella nie ma uprawnień, aby to zrobić."
+  }
+}

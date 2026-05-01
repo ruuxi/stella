@@ -414,6 +414,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         deviceId?: string;
         platform?: string;
         timezone?: string;
+        locale?: string;
         mode?: string;
         messageMetadata?: Record<string, unknown>;
         attachments?: Array<{

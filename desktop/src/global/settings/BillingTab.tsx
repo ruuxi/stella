@@ -11,6 +11,7 @@ import {
 } from "@/global/settings/lib/billing-checkout";
 import { readConfiguredConvexSiteUrl } from "@/shared/lib/convex-urls";
 import { Button } from "@/ui/button";
+import { useI18n } from "@/shared/i18n";
 
 type BillingPlan = "free" | "go" | "pro" | "plus" | "ultra";
 type PaidBillingPlan = Exclude<BillingPlan, "free">;
@@ -71,41 +72,42 @@ const STATIC_PLAN_DISPLAY: Record<BillingPlan, { label: string; monthlyPriceCent
   ultra: { label: "Ultra", monthlyPriceCents: 20_000 },
 };
 
-const PLAN_DESCRIPTIONS: Record<BillingPlan, { tagline: string; features: string[] }> = {
+const PLAN_DESCRIPTION_KEYS: Record<
+  BillingPlan,
+  { taglineKey: string; featuresKey: string }
+> = {
   free: {
-    tagline: "Get started with Stella",
-    features: ["Basic chat & assistance", "Limited daily usage"],
+    taglineKey: "billing.plans.free.tagline",
+    featuresKey: "billing.plans.free.features",
   },
   go: {
-    tagline: "For everyday personal use",
-    features: ["More conversations per day", "Browser automation", "Voice conversations"],
+    taglineKey: "billing.plans.go.tagline",
+    featuresKey: "billing.plans.go.features",
   },
   pro: {
-    tagline: "For power users",
-    features: ["3x the usage of Go", "Priority response times", "All automation features"],
+    taglineKey: "billing.plans.pro.tagline",
+    featuresKey: "billing.plans.pro.features",
   },
   plus: {
-    tagline: "For professionals",
-    features: ["Heavy daily usage", "Advanced agent workflows", "Priority support"],
+    taglineKey: "billing.plans.plus.tagline",
+    featuresKey: "billing.plans.plus.features",
   },
   ultra: {
-    tagline: "Unlimited productivity",
-    features: ["Maximum usage limits", "Fastest response times", "Everything in Plus"],
+    taglineKey: "billing.plans.ultra.tagline",
+    featuresKey: "billing.plans.ultra.features",
   },
 };
 
-const priceFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
-
-const usdFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+const buildCurrencyFormatter = (
+  locale: string,
+  options: Intl.NumberFormatOptions,
+) => {
+  // Currency stays USD until per-currency Stripe pricing exists, but
+  // grouping/decimal/sign rules track the active locale. The locale
+  // never affects the underlying charge — Stripe always bills in the
+  // configured price's currency.
+  return new Intl.NumberFormat(locale, { currency: "USD", ...options });
+};
 
 const stripePromiseByKey = new Map<string, Promise<Stripe | null>>();
 
@@ -163,6 +165,24 @@ const toUsagePercent = (usedUsd: number, limitUsd: number) => {
 
 export function BillingTab() {
   const { hasConnectedAccount } = useAuthSessionState();
+  const { locale, t, tArray } = useI18n();
+  const priceFormatter = useMemo(
+    () =>
+      buildCurrencyFormatter(locale, {
+        style: "currency",
+        maximumFractionDigits: 0,
+      }),
+    [locale],
+  );
+  const usdFormatter = useMemo(
+    () =>
+      buildCurrencyFormatter(locale, {
+        style: "currency",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    [locale],
+  );
   const navigate = useNavigate();
   const [billingNowMs, setBillingNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -406,7 +426,9 @@ export function BillingTab() {
             const isCurrentPlan = plan === currentPlan;
             const isPaidPlan = plan !== "free";
             const isStartingThisPlan = isStartingCheckoutPlan === plan;
-            const desc = PLAN_DESCRIPTIONS[plan];
+            const planKeys = PLAN_DESCRIPTION_KEYS[plan];
+            const tagline = t(planKeys.taglineKey);
+            const features = tArray(planKeys.featuresKey);
 
             return (
               <div
@@ -420,9 +442,9 @@ export function BillingTab() {
                     ? "Free"
                     : `${priceFormatter.format(display.monthlyPriceCents / 100)}/mo`}
                 </div>
-                <div className="settings-billing-plan-tagline">{desc.tagline}</div>
+                <div className="settings-billing-plan-tagline">{tagline}</div>
                 <ul className="settings-billing-plan-features">
-                  {desc.features.map((f) => (
+                  {features.map((f) => (
                     <li key={f}>{f}</li>
                   ))}
                 </ul>

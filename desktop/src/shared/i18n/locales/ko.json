@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "계속",
+    "back": "뒤로",
+    "next": "다음",
+    "previous": "이전",
+    "cancel": "취소",
+    "save": "저장",
+    "close": "닫기",
+    "open": "열기",
+    "openPreferences": "환경설정 열기",
+    "signIn": "로그인",
+    "signOut": "로그아웃",
+    "loading": "로딩 중…",
+    "tryAgain": "다시 시도",
+    "language": "언어",
+    "yes": "예",
+    "no": "아니요"
+  },
+  "sidebar": {
+    "signIn": "로그인",
+    "account": "계정",
+    "feedback": "피드백 보내기",
+    "upgrade": "업그레이드",
+    "newChat": "새 대화"
+  },
+  "settings": {
+    "title": "설정",
+    "tabs": {
+      "basic": "기본",
+      "shortcuts": "단축키",
+      "memory": "메모리",
+      "backup": "백업",
+      "account": "계정 및 법적 고지",
+      "models": "모델",
+      "audio": "오디오"
+    },
+    "language": {
+      "title": "언어",
+      "description": "Stella가 앱 전반과 답변에서 사용할 언어를 선택하세요."
+    }
+  },
+  "onboarding": {
+    "ready": "준비 중...",
+    "retryStart": "Stella 시작 다시 시도",
+    "startStella": "Stella 시작",
+    "legalFooter": "Stella를 사용하면 {terms} 및 {privacy}에 동의하게 됩니다.",
+    "termsOfService": "서비스 약관",
+    "privacyPolicy": "개인정보 처리방침",
+    "previousStep": "이전 단계",
+    "nextStep": "다음 단계",
+    "intro": {
+      "primary": "Stella는 당신의 컴퓨터에서 실행되는 AI입니다.",
+      "secondary": "Stella는 모두를 위한 것이 아닙니다. 당신을 위한 것입니다."
+    },
+    "stepTitles": {
+      "language": "언어를 선택하세요.",
+      "extension": "브라우저에 Stella를 추가하세요.",
+      "browser": "Stella가 당신을 알 수 있게 해주세요.",
+      "creation": "요청하면 Stella가 바뀝니다. 버튼을 눌러 보세요.",
+      "theme": "Stella는 어떤 모습이어야 할까요?",
+      "personality": "Stella는 어떻게 말해야 할까요?",
+      "shortcutsGlobal": "데스크톱 어디에서나.",
+      "shortcutsLocal": "Stella 안에서.",
+      "doubleTap": "두 번 탭. Stella를 불러오세요.",
+      "voice": "타이핑 대신 말하세요.",
+      "memory": "Stella가 기억하도록 도와주세요.",
+      "enter": "Stella가 거의 준비됐어요."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "내 앱과 컴퓨터",
+        "description": "가장 자주 쓰는 앱, 데스크톱 정리 방식, 작업 흐름"
+      },
+      "messagesNotes": {
+        "label": "내 메모와 캘린더",
+        "description": "지금 하고 있는 일, 일정, 그리고 생각을 정리하는 방식"
+      },
+      "devEnvironment": {
+        "label": "개발 환경",
+        "description": "사용하는 도구, 진행 중인 프로젝트, 환경 구성"
+      },
+      "fdaNote": "일부 옵션에는 전체 디스크 접근 권한이 필요합니다"
+    },
+    "language": {
+      "description": "Stella는 앱 전반과 답변에서 이 언어를 사용합니다. 나중에 설정에서 변경할 수 있어요."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Stella 시작하기",
+        "features": [
+          "기본 채팅 및 도움말",
+          "하루 사용량 제한"
+        ]
+      },
+      "go": {
+        "tagline": "일상적인 개인 사용을 위해",
+        "features": [
+          "하루 더 많은 대화",
+          "브라우저 자동화",
+          "음성 대화"
+        ]
+      },
+      "pro": {
+        "tagline": "헤비 유저를 위해",
+        "features": [
+          "Go의 3배 사용량",
+          "우선 응답 속도",
+          "모든 자동화 기능"
+        ]
+      },
+      "plus": {
+        "tagline": "전문가를 위해",
+        "features": [
+          "강도 높은 하루 사용",
+          "고급 에이전트 워크플로",
+          "우선 지원"
+        ]
+      },
+      "ultra": {
+        "tagline": "무한한 생산성",
+        "features": [
+          "최대 사용 한도",
+          "가장 빠른 응답 속도",
+          "Plus의 모든 기능"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella가 이 응답을 시작하지 못했습니다",
+    "tryAgainHint": "다시 시도해 주세요."
+  },
+  "errors": {
+    "generic": "문제가 발생했습니다",
+    "subscriptionRequired": "백업에는 활성 Stella 구독이 필요합니다.",
+    "rateLimited": "조금 빠르네요. 잠시 후 다시 시도해 주세요.",
+    "networkUnavailable": "Stella가 오프라인 상태입니다. 다시 연결하세요.",
+    "permissionDenied": "Stella에 이 작업을 수행할 권한이 없습니다."
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Doorgaan",
+    "back": "Terug",
+    "next": "Volgende",
+    "previous": "Vorige",
+    "cancel": "Annuleren",
+    "save": "Opslaan",
+    "close": "Sluiten",
+    "open": "Openen",
+    "openPreferences": "Voorkeuren openen",
+    "signIn": "Inloggen",
+    "signOut": "Uitloggen",
+    "loading": "Laden…",
+    "tryAgain": "Opnieuw proberen",
+    "language": "Taal",
+    "yes": "Ja",
+    "no": "Nee"
+  },
+  "sidebar": {
+    "signIn": "Inloggen",
+    "account": "Account",
+    "feedback": "Feedback sturen",
+    "upgrade": "Upgraden",
+    "newChat": "Nieuwe chat"
+  },
+  "settings": {
+    "title": "Instellingen",
+    "tabs": {
+      "basic": "Algemeen",
+      "shortcuts": "Sneltoetsen",
+      "memory": "Geheugen",
+      "backup": "Back-ups",
+      "account": "Account & juridisch",
+      "models": "Modellen",
+      "audio": "Audio"
+    },
+    "language": {
+      "title": "Taal",
+      "description": "Kies de taal die Stella gebruikt in de app en in antwoorden."
+    }
+  },
+  "onboarding": {
+    "ready": "Bezig met voorbereiden...",
+    "retryStart": "Stella opnieuw starten",
+    "startStella": "Stella starten",
+    "legalFooter": "Door Stella te gebruiken ga je akkoord met onze {terms} en {privacy}.",
+    "termsOfService": "Servicevoorwaarden",
+    "privacyPolicy": "Privacybeleid",
+    "previousStep": "Vorige stap",
+    "nextStep": "Volgende stap",
+    "intro": {
+      "primary": "Stella is een AI die op je computer draait.",
+      "secondary": "Stella is niet voor iedereen. Stella is voor jou."
+    },
+    "stepTitles": {
+      "language": "Kies je taal.",
+      "extension": "Voeg Stella toe aan je browser.",
+      "browser": "Laat Stella je leren kennen.",
+      "creation": "Stella verandert wanneer je het vraagt. Klik op de knoppen om het te proberen.",
+      "theme": "Hoe moet Stella eruitzien?",
+      "personality": "Hoe moet Stella praten?",
+      "shortcutsGlobal": "Overal op je bureaublad.",
+      "shortcutsLocal": "Binnen Stella.",
+      "doubleTap": "Tik twee keer. Roep Stella op.",
+      "voice": "Praat in plaats van typen.",
+      "memory": "Help Stella onthouden.",
+      "enter": "Stella is bijna klaar."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Je apps en computer",
+        "description": "Welke apps je het meest gebruikt, hoe je bureaublad is ingericht en hoe je werkt"
+      },
+      "messagesNotes": {
+        "label": "Je notities en agenda",
+        "description": "Waar je aan werkt, je planning en hoe je je gedachten ordent"
+      },
+      "devEnvironment": {
+        "label": "Je ontwikkelomgeving",
+        "description": "Welke tools je gebruikt, projecten waaraan je werkt en hoe je omgeving is geconfigureerd"
+      },
+      "fdaNote": "Sommige opties vereisen volledige schijftoegang"
+    },
+    "language": {
+      "description": "Stella gebruikt deze taal overal in de app en in antwoorden. Je kunt dit later wijzigen in Instellingen."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Begin met Stella",
+        "features": [
+          "Basischat en hulp",
+          "Beperkt dagelijks gebruik"
+        ]
+      },
+      "go": {
+        "tagline": "Voor dagelijks persoonlijk gebruik",
+        "features": [
+          "Meer gesprekken per dag",
+          "Browserautomatisering",
+          "Spraakgesprekken"
+        ]
+      },
+      "pro": {
+        "tagline": "Voor veeleisende gebruikers",
+        "features": [
+          "3× het gebruik van Go",
+          "Voorrang bij antwoorden",
+          "Alle automatiseringsfuncties"
+        ]
+      },
+      "plus": {
+        "tagline": "Voor professionals",
+        "features": [
+          "Intensief dagelijks gebruik",
+          "Geavanceerde agentworkflows",
+          "Voorrangsondersteuning"
+        ]
+      },
+      "ultra": {
+        "tagline": "Onbeperkte productiviteit",
+        "features": [
+          "Maximale gebruikslimieten",
+          "Snelste reactietijden",
+          "Alles uit Plus"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella kon dit antwoord niet starten",
+    "tryAgainHint": "Probeer het opnieuw."
+  },
+  "errors": {
+    "generic": "Er ging iets mis",
+    "subscriptionRequired": "Back-ups vereisen een actief Stella-abonnement.",
+    "rateLimited": "Je gaat een beetje snel. Probeer het zo opnieuw.",
+    "networkUnavailable": "Stella is offline. Maak opnieuw verbinding om door te gaan.",
+    "permissionDenied": "Stella heeft hier geen toestemming voor."
+  }
+}

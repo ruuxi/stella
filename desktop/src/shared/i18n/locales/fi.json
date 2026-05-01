@@ -1,0 +1,144 @@
+{
+  "common": {
+    "appName": "Stella",
+    "continue": "Jatka",
+    "back": "Takaisin",
+    "next": "Seuraava",
+    "previous": "Edellinen",
+    "cancel": "Peruuta",
+    "save": "Tallenna",
+    "close": "Sulje",
+    "open": "Avaa",
+    "openPreferences": "Avaa asetukset",
+    "signIn": "Kirjaudu sisään",
+    "signOut": "Kirjaudu ulos",
+    "loading": "Ladataan…",
+    "tryAgain": "Yritä uudelleen",
+    "language": "Kieli",
+    "yes": "Kyllä",
+    "no": "Ei"
+  },
+  "sidebar": {
+    "signIn": "Kirjaudu sisään",
+    "account": "Tili",
+    "feedback": "Lähetä palautetta",
+    "upgrade": "Päivitä tilaus",
+    "newChat": "Uusi keskustelu"
+  },
+  "settings": {
+    "title": "Asetukset",
+    "tabs": {
+      "basic": "Yleiset",
+      "shortcuts": "Pikanäppäimet",
+      "memory": "Muisti",
+      "backup": "Varmuuskopiot",
+      "account": "Tili ja oikeudelliset",
+      "models": "Mallit",
+      "audio": "Ääni"
+    },
+    "language": {
+      "title": "Kieli",
+      "description": "Valitse kieli, jota Stella käyttää sovelluksessa ja vastauksissa."
+    }
+  },
+  "onboarding": {
+    "ready": "Valmistellaan...",
+    "retryStart": "Yritä käynnistää Stella uudelleen",
+    "startStella": "Käynnistä Stella",
+    "legalFooter": "Käyttämällä Stellaa hyväksyt {terms} ja {privacy}.",
+    "termsOfService": "käyttöehtomme",
+    "privacyPolicy": "tietosuojakäytäntömme",
+    "previousStep": "Edellinen vaihe",
+    "nextStep": "Seuraava vaihe",
+    "intro": {
+      "primary": "Stella on tekoäly, joka toimii tietokoneellasi.",
+      "secondary": "Stella ei ole kaikille. Stella on sinulle."
+    },
+    "stepTitles": {
+      "language": "Valitse kieli.",
+      "extension": "Lisää Stella selaimeesi.",
+      "browser": "Anna Stellan oppia tuntemaan sinut.",
+      "creation": "Stella muuttuu, kun pyydät. Kokeile painikkeita.",
+      "theme": "Miltä Stellan pitäisi näyttää?",
+      "personality": "Miten Stellan pitäisi puhua?",
+      "shortcutsGlobal": "Missä tahansa työpöydällä.",
+      "shortcutsLocal": "Stellan sisällä.",
+      "doubleTap": "Napauta kahdesti. Kutsu Stella.",
+      "voice": "Puhu kirjoittamisen sijaan.",
+      "memory": "Auta Stellaa muistamaan.",
+      "enter": "Stella on melkein valmis."
+    },
+    "discovery": {
+      "appsSystem": {
+        "label": "Sovelluksesi ja tietokoneesi",
+        "description": "Mitä sovelluksia käytät eniten, miten työpöytäsi on järjestetty ja miten työskentelet"
+      },
+      "messagesNotes": {
+        "label": "Muistiinpanot ja kalenteri",
+        "description": "Mitä työstät, aikataulusi ja miten järjestät ajatuksiasi"
+      },
+      "devEnvironment": {
+        "label": "Kehitysympäristö",
+        "description": "Käyttämäsi työkalut, projektisi ja ympäristön kokoonpano"
+      },
+      "fdaNote": "Jotkin vaihtoehdot edellyttävät täyttä levykäyttöoikeutta"
+    },
+    "language": {
+      "description": "Stella käyttää tätä kieltä koko sovelluksessa ja vastauksissa. Voit muuttaa sen myöhemmin Asetuksissa."
+    }
+  },
+  "billing": {
+    "plans": {
+      "free": {
+        "tagline": "Aloita Stellan kanssa",
+        "features": [
+          "Perusjuttelu ja apu",
+          "Rajallinen päivittäinen käyttö"
+        ]
+      },
+      "go": {
+        "tagline": "Päivittäiseen henkilökohtaiseen käyttöön",
+        "features": [
+          "Enemmän keskusteluja päivässä",
+          "Selaimen automaatio",
+          "Äänikeskustelut"
+        ]
+      },
+      "pro": {
+        "tagline": "Tehokäyttäjille",
+        "features": [
+          "3× Go:n käyttömäärä",
+          "Etusijavastausajat",
+          "Kaikki automaatiotoiminnot"
+        ]
+      },
+      "plus": {
+        "tagline": "Ammattilaisille",
+        "features": [
+          "Raskas päivittäinen käyttö",
+          "Edistyneet agenttityönkulut",
+          "Etusijatuki"
+        ]
+      },
+      "ultra": {
+        "tagline": "Rajaton tuottavuus",
+        "features": [
+          "Maksimaaliset käyttörajat",
+          "Nopeimmat vastausajat",
+          "Kaikki Plussin sisältämä"
+        ]
+      }
+    }
+  },
+  "chat": {
+    "stoppedReply": "Stella ei pystynyt aloittamaan tätä vastausta",
+    "tryAgainHint": "Yritä uudelleen."
+  },
+  "errors": {
+    "generic": "Jotain meni pieleen",
+    "subscriptionRequired": "Varmuuskopiot vaativat aktiivisen Stella-tilauksen.",
+    "rateLimited": "Vähän liian nopeasti. Yritä hetken päästä uudelleen.",
+    "networkUnavailable": "Stella on offline. Yhdistä uudelleen jatkaaksesi.",
+    "permissionDenied": "Stellalla ei ole oikeuksia tähän."
+  }
+}

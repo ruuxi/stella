@@ -3716,3 +3716,66 @@
   transform: translateY(0) scale(0.99);
   transition-duration: 0.08s;
 }
+
+/* ═══ Language phase ═══
+ * The first split-stage step lets the user pick their app language.
+ * Uses logical (`inline-start` / `block-end`) properties throughout so
+ * RTL locales (Arabic, Hebrew) flip the alignment and arrow direction
+ * automatically when `<html dir="rtl">` is set by the I18n provider. */
+.onboarding-language-phase {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.onboarding-language-phase-description {
+  opacity: 0.62;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.onboarding-language-phase-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.onboarding-language-phase-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: start;
+  background: none;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 8px;
+  padding-block: 10px;
+  padding-inline: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  color: inherit;
+  opacity: 0.7;
+  transition:
+    opacity 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.onboarding-language-phase-row:hover {
+  opacity: 0.95;
+  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
+.onboarding-language-phase-row[data-active="true"] {
+  opacity: 1;
+  border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.onboarding-language-phase-row-native {
+  font-weight: 500;
+}

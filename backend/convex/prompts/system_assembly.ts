@@ -67,5 +67,58 @@ export const getExpressionStyleSystemPrompt = (
   return "";
 };
 
+const LOCALE_ENGLISH_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  fr: "French",
+  de: "German",
+  it: "Italian",
+  pt: "Portuguese",
+  nl: "Dutch",
+  ru: "Russian",
+  ja: "Japanese",
+  "zh-Hans": "Simplified Chinese",
+  "zh-Hant": "Traditional Chinese",
+  ko: "Korean",
+  pl: "Polish",
+  sv: "Swedish",
+  nb: "Norwegian Bokmål",
+  da: "Danish",
+  fi: "Finnish",
+  cs: "Czech",
+  el: "Greek",
+  tr: "Turkish",
+  ro: "Romanian",
+  hu: "Hungarian",
+  ar: "Arabic",
+  hi: "Hindi",
+  id: "Indonesian",
+  vi: "Vietnamese",
+  th: "Thai",
+  he: "Hebrew",
+};
+
+/**
+ * Returns a one-line "respond in X" directive for the user's locale,
+ * or an empty string for English (or unknown tags). Mirrors the runtime
+ * helper at `runtime/kernel/runner/locale-prompt.ts` — keep both in
+ * sync when adding locales. The directive is composable: callers
+ * append it to whatever system-prompt array they already build.
+ */
+export const getResponseLanguageSystemPrompt = (
+  locale: string | null | undefined,
+): string => {
+  if (!locale) return "";
+  const trimmed = locale.trim();
+  if (!trimmed) return "";
+  if (trimmed === "en" || trimmed.startsWith("en-")) return "";
+  const name = LOCALE_ENGLISH_NAMES[trimmed];
+  if (!name) return "";
+  return [
+    `Respond to the user in ${name} (${trimmed}) unless the user explicitly switches.`,
+    "Keep code, commands, filenames, API names, and quoted source text in their original language.",
+  ].join(" ");
+};
+
 export const buildFallbackAgentSystemPrompt = (id: string): string =>
   `You are the ${id} agent.`;

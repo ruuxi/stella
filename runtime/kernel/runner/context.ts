@@ -56,6 +56,7 @@ import {
   sanitizeStellaBase,
 } from "./shared.js";
 import { resolveRunnerLlmRoute } from "./model-selection.js";
+import { getResponseLanguageSystemPrompt } from "./locale-prompt.js";
 
 type ThreadHistoryEntry = {
   timestamp?: number;
@@ -113,6 +114,34 @@ const getLocalEventTimezone = (
   return typeof payload.timezone === "string" && payload.timezone.trim()
     ? payload.timezone.trim()
     : undefined;
+};
+
+/**
+ * Picks the user's preferred locale off the most recent `user_message`
+ * event payload. Locale is plumbed in alongside `timezone` from the
+ * desktop chat send path; the runtime never reads it from local
+ * preferences directly.
+ */
+const getLocalEventLocale = (
+  event: LocalContextEvent | undefined,
+): string | undefined => {
+  if (!event?.payload || typeof event.payload !== "object") {
+    return undefined;
+  }
+  const payload = event.payload as Record<string, unknown>;
+  return typeof payload.locale === "string" && payload.locale.trim()
+    ? payload.locale.trim()
+    : undefined;
+};
+
+const findLatestLocale = (events: LocalContextEvent[]): string | undefined => {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type !== "user_message") continue;
+    const locale = getLocalEventLocale(event);
+    if (locale) return locale;
+  }
+  return undefined;
 };
 
 const buildStaleUserReminder = (
@@ -553,11 +582,18 @@ export const buildAgentContext = async (
 
   let threadHistory: ThreadHistoryEntry[] | undefined;
   let staleUserReminderText: string | undefined;
+  // Locale is plumbed onto user-message payloads alongside `timezone`, so
+  // we read whatever was most recently sent. The orchestrator path
+  // already loads recent local events to build history; subagent paths
+  // make a fresh, smaller fetch since they don't otherwise need the
+  // local-events stream.
+  let userLocale: string | undefined;
   if (args.agentType === AGENT_IDS.ORCHESTRATOR && context.listLocalChatEvents) {
     const localEvents = context
       .listLocalChatEvents(args.conversationId, 800)
       .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
     staleUserReminderText = buildStaleUserReminder(localEvents);
+    userLocale = findLatestLocale(localEvents);
     threadHistory = buildOrchestratorThreadHistory({
       storedThreadMessages,
       localEvents,
@@ -565,6 +601,12 @@ export const buildAgentContext = async (
     });
   } else {
     threadHistory = storedThreadMessages;
+    if (context.listLocalChatEvents) {
+      const recent = context
+        .listLocalChatEvents(args.conversationId, 32)
+        .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
+      userLocale = findLatestLocale(recent);
+    }
   }
 
   const activeThreadsPrompt =
@@ -576,6 +618,19 @@ export const buildAgentContext = async (
   const isSelfModTask = Boolean(args.selfModMetadata);
 
   const dynamicContextSections: string[] = [];
+
+  // Inject the user's response-language directive at the top of the
+  // dynamic context. It's a single line, comes from the latest
+  // `user_message` event's `locale` payload, and is `undefined` for
+  // English so we don't waste tokens on a no-op directive.
+  const responseLanguageDirective =
+    getResponseLanguageSystemPrompt(userLocale);
+  if (responseLanguageDirective) {
+    dynamicContextSections.push(
+      `## User Language\n${responseLanguageDirective}`,
+    );
+  }
+
   if (args.toolWorkspaceRoot?.trim()) {
     dynamicContextSections.push(
       [

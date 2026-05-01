@@ -1,6 +1,23 @@
-export const buildMagicLinkEmail = (logoSrc: string, signInUrl: string): string => `
+import { emailDir, getEmailStrings } from "./email_i18n";
+
+/**
+ * Build the magic-link sign-in email. Locale is the user's stored
+ * preference (BCP-47); when missing, falls back to English. The
+ * `<html>` element gets `lang` and `dir` attributes so screen readers
+ * and email clients render the body in the correct script direction.
+ */
+export const buildMagicLinkEmail = (
+  logoSrc: string,
+  signInUrl: string,
+  locale?: string | null,
+): string => {
+  const strings = getEmailStrings(locale);
+  const dir = emailDir(locale);
+  const lang = locale && locale.trim() ? locale.trim() : "en";
+
+  return `
 <!DOCTYPE html>
-<html>
+<html lang="${lang}" dir="${dir}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -22,10 +39,10 @@ export const buildMagicLinkEmail = (logoSrc: string, signInUrl: string): string 
             <td style="background-color:rgba(255,255,255,0.92);border:1px solid rgba(22,22,22,0.08);border-radius:10px;padding:40px 36px;">
               <!-- Title -->
               <h1 style="margin:0 0 6px;font-family:'Cormorant Garamond',Georgia,serif;font-size:28px;font-weight:300;font-style:italic;letter-spacing:-0.02em;line-height:1.1;color:#161616;">
-                Sign in
+                ${strings.signInTitle}
               </h1>
               <p style="margin:0 0 32px;font-size:14px;color:rgba(22,22,22,0.52);line-height:1.55;letter-spacing:-0.01em;">
-                Tap the link below to access your account. It expires in 10 minutes.
+                ${strings.signInDescription}
               </p>
               <!-- Divider -->
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
@@ -36,7 +53,7 @@ export const buildMagicLinkEmail = (logoSrc: string, signInUrl: string): string 
                 <tr>
                   <td align="center">
                     <a href="${signInUrl}" style="display:inline-block;padding:12px 36px;border:1px solid rgba(22,22,22,0.18);border-radius:6px;background-color:transparent;color:#161616;font-family:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;font-weight:500;text-decoration:none;letter-spacing:-0.01em;">
-                      Sign in to Stella
+                      ${strings.signInButton}
                     </a>
                   </td>
                 </tr>
@@ -47,7 +64,7 @@ export const buildMagicLinkEmail = (logoSrc: string, signInUrl: string): string 
           <tr>
             <td style="padding-top:28px;text-align:center;">
               <p style="margin:0;font-size:12px;color:rgba(22,22,22,0.35);line-height:1.5;letter-spacing:-0.01em;">
-                If you didn't request this email, you can safely ignore it.
+                ${strings.ignoreFooter}
               </p>
             </td>
           </tr>
@@ -57,3 +74,8 @@ export const buildMagicLinkEmail = (logoSrc: string, signInUrl: string): string 
   </table>
 </body>
 </html>`;
+};
+
+export const getMagicLinkSubject = (
+  locale: string | null | undefined,
+): string => getEmailStrings(locale).subjectMagicLink;

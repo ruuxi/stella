@@ -18,7 +18,10 @@ import type { DataModel, Id } from "./_generated/dataModel";
 import authConfig from "./auth.config";
 import { ConvexError, v } from "convex/values";
 import betterAuthSchema from "./betterAuth/schema";
-import { buildMagicLinkEmail } from "./lib/email_templates";
+import {
+  buildMagicLinkEmail,
+  getMagicLinkSubject,
+} from "./lib/email_templates";
 import { appReviewAuth } from "./lib/app_review_auth";
 import {
   enforceMutationRateLimit,
@@ -277,11 +280,18 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
           const actionCtx = requireActionCtx(ctx);
           const logoSrc = escapeHtmlAttribute(getEmailLogoSrc(siteUrl));
           const signInUrl = escapeHtmlAttribute(url);
+          // Magic-link is also sent on re-link / device-add flows where
+          // the user already has an account and a stored locale. The
+          // email's locale falls back to English when we can't derive
+          // it (first-time sign-up, etc.). Looking the user up by
+          // email is left to a follow-up — the plumbing accepts a
+          // locale string today.
+          const recipientLocale: string | undefined = undefined;
           await resend.sendEmail(actionCtx, {
             from: getRequiredEnv("RESEND_FROM"),
             to: email,
-            subject: "Sign in to Stella",
-            html: buildMagicLinkEmail(logoSrc, signInUrl),
+            subject: getMagicLinkSubject(recipientLocale),
+            html: buildMagicLinkEmail(logoSrc, signInUrl, recipientLocale),
           });
         },
       }),

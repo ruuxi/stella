@@ -15,6 +15,7 @@ import {
   resolveModelConfig,
 } from "../agent/model_resolver";
 import { OFFLINE_RESPONDER_SYSTEM_PROMPT } from "../prompts/offline_responder";
+import { getResponseLanguageSystemPrompt } from "../prompts/system_assembly";
 import {
   errorResponse,
   jsonResponse,
@@ -467,11 +468,18 @@ const generateOfflineReply = async (args: {
     { access: modelAccess },
   );
 
+  const responderLocaleDirective = getResponseLanguageSystemPrompt(
+    await args.ctx.runQuery(internal.data.preferences.getLocaleForOwner, {
+      ownerId: args.ownerId,
+    }),
+  );
+
   const systemPrompt = [
     OFFLINE_RESPONDER_SYSTEM_PROMPT,
     "You are replying inside Stella's mobile offline chat.",
     "Answer in plain text and keep the response practical and concise.",
     "Use prior messages in this conversation for context when relevant.",
+    responderLocaleDirective || null,
     args.userName ? `The user's name is ${args.userName}.` : null,
   ]
     .filter((value): value is string => Boolean(value))
@@ -541,11 +549,18 @@ const streamOfflineReply = async (args: {
     { access: modelAccess },
   );
 
+  const responderLocaleDirective = getResponseLanguageSystemPrompt(
+    await args.ctx.runQuery(internal.data.preferences.getLocaleForOwner, {
+      ownerId: args.ownerId,
+    }),
+  );
+
   const systemPrompt = [
     OFFLINE_RESPONDER_SYSTEM_PROMPT,
     "You are replying inside Stella's mobile offline chat.",
     "Answer in plain text and keep the response practical and concise.",
     "Use prior messages in this conversation for context when relevant.",
+    responderLocaleDirective || null,
     args.userName ? `The user's name is ${args.userName}.` : null,
   ]
     .filter((value): value is string => Boolean(value))

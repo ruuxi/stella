@@ -3,6 +3,7 @@ import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import { DISCOVERY_CATEGORIES } from "./onboarding-flow";
 import { getPlatform } from "@/platform/electron/platform";
 import { OnboardingSelectionTile } from "./OnboardingSelectionTile";
+import { useT } from "@/shared/i18n";
 
 interface OnboardingDiscoveryProps {
   categoryStates: Record<DiscoveryCategory, boolean>;
@@ -13,6 +14,7 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
   categoryStates,
   onToggleCategory,
 }) => {
+  const t = useT();
   const platform = getPlatform();
   const hasFdaCategories = DISCOVERY_CATEGORIES.some(
     (cat) => cat.requiresFDA && categoryStates[cat.id],
@@ -33,8 +35,8 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
             descriptionClassName="onboarding-discovery-row-desc"
             active={categoryStates[cat.id]}
             onClick={() => onToggleCategory(cat.id)}
-            label={cat.label}
-            description={cat.description}
+            label={t(cat.labelKey)}
+            description={t(cat.descriptionKey)}
           />
         ))}
       </div>
@@ -44,13 +46,13 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
           data-visible={showFdaNote || undefined}
           aria-hidden={!showFdaNote}
         >
-          <span>Some options require Full Disk Access</span>
+          <span>{t("onboarding.discovery.fdaNote")}</span>
           <button
             className="onboarding-fda-link"
             onClick={openFullDiskAccess}
             tabIndex={showFdaNote ? 0 : -1}
           >
-            Open Preferences
+            {t("common.openPreferences")}
           </button>
         </div>
       )}
