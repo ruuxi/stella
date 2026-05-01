@@ -3392,3 +3392,250 @@
     gap: 12px;
   }
 }
+
+/* ═══ Enter phase ═══ */
+
+/* Final pre-app step is a single centered moment: the title sits centered
+ * in the pane, "Preparing…" pulses below it with a rotating capability
+ * tagline, and the Enter Stella CTA fades in once discovery completes. */
+.onboarding-dialogue[data-phase="enter"] .onboarding-split-right {
+  width: 100%;
+  min-width: 100%;
+  margin-left: 0;
+  padding: clamp(48px, 8vh, 96px) 40px;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  backdrop-filter: none;
+  transform: none;
+}
+
+.onboarding-dialogue[data-phase="enter"] .onboarding-split-stage {
+  align-items: center;
+  justify-content: center;
+  max-width: none;
+  width: 100%;
+  text-align: center;
+}
+
+.onboarding-dialogue[data-phase="enter"] .onboarding-split-title {
+  text-align: center;
+}
+
+.onboarding-enter-step {
+  align-items: center;
+  text-align: center;
+  max-width: min(960px, 92vw);
+  gap: 28px;
+}
+
+.onboarding-enter-step__status {
+  font-size: clamp(15px, 1.6vw, 17px);
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  color: var(--foreground);
+  opacity: 0.85;
+  margin: 0;
+  min-height: 1.4em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.onboarding-enter-step__preparing,
+.onboarding-enter-step__ready {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.onboarding-enter-step__ready {
+  animation: onboardingEnterReady 0.32s
+    var(--onboarding-ease-standard, ease-out) both;
+}
+
+@keyframes onboardingEnterReady {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.onboarding-enter-step__dots {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  margin-left: 1px;
+}
+
+.onboarding-enter-step__dots > span {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: onboardingEnterDot 1.2s ease-in-out infinite;
+  transform: translateY(-1px);
+}
+
+.onboarding-enter-step__dots > span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.onboarding-enter-step__dots > span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes onboardingEnterDot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(-1px);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.onboarding-enter-step__suggestion {
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(28px, 3.6vw, 40px);
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--text-strong, var(--foreground));
+  min-height: 1.4em;
+  display: flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.25em;
+  width: 100%;
+  max-width: 100%;
+}
+
+.onboarding-enter-step__suggestion-prefix {
+  opacity: 0.55;
+}
+
+.onboarding-enter-step__suggestion-text {
+  display: inline-block;
+  color: var(--foreground);
+  animation: onboardingEnterSuggestion 0.6s
+    var(--onboarding-ease-standard, ease-out) both;
+}
+
+@keyframes onboardingEnterSuggestion {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Plain-text CTA: when discovery is ready we drop the title, status, and
+ * rotating suggestion; only "Enter Stella" remains, rendered as the same
+ * large italic Cormorant treatment as the home greeting (no border, no
+ * pill) so the moment reads as an invitation, not a form submission. */
+.onboarding-dialogue[data-phase="enter"]
+  .onboarding-split-stage:has(.onboarding-enter-step[data-ready])
+  .onboarding-split-title {
+  display: none;
+}
+
+.onboarding-enter-step__status,
+.onboarding-enter-step__suggestion {
+  transition:
+    opacity 0.32s ease,
+    transform 0.32s ease,
+    filter 0.32s ease;
+}
+
+.onboarding-enter-step[data-ready] .onboarding-enter-step__status,
+.onboarding-enter-step[data-ready] .onboarding-enter-step__suggestion {
+  opacity: 0;
+  transform: translateY(-4px);
+  filter: blur(2px);
+  pointer-events: none;
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.onboarding-enter-step__cta {
+  margin-top: 4px;
+}
+
+.onboarding-enter-step[data-ready] .onboarding-enter-step__cta {
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(40px, 5.4vw, 64px);
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  color: var(--text-strong, var(--foreground));
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 8px 16px;
+  text-transform: none;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  text-decoration-color: color-mix(
+    in oklch,
+    var(--foreground) 35%,
+    transparent
+  );
+  animation: onboardingEnterReady 0.62s
+    var(--onboarding-ease-standard, ease-out) both;
+  transition:
+    opacity 0.32s ease,
+    transform 0.2s ease,
+    text-decoration-color 0.32s ease;
+}
+
+.onboarding-enter-step[data-ready] .onboarding-enter-step__cta[data-visible="true"] {
+  opacity: 0.92;
+}
+
+.onboarding-enter-step[data-ready] .onboarding-enter-step__cta {
+  cursor: pointer;
+}
+
+.onboarding-enter-step[data-ready] .onboarding-enter-step__cta:hover,
+.onboarding-enter-step[data-ready] .onboarding-enter-step__cta:focus-visible {
+  opacity: 1;
+  background: none;
+  border-color: transparent;
+  color: var(--text-strong, var(--foreground));
+  transform: translateY(-2px) scale(1.015);
+  text-decoration-color: color-mix(
+    in oklch,
+    var(--foreground) 90%,
+    transparent
+  );
+  text-decoration-thickness: 1.5px;
+  text-shadow: 0 0 24px
+    color-mix(in oklch, var(--foreground) 22%, transparent);
+}
+
+.onboarding-enter-step[data-ready] .onboarding-enter-step__cta:active {
+  transform: translateY(0) scale(0.99);
+  transition-duration: 0.08s;
+}
