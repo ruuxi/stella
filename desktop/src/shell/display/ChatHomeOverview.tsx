@@ -19,7 +19,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
-import { useTaskProgressSummaries } from "@/app/chat/hooks/use-task-progress-summaries";
 import { usePersonalizedCategories } from "@/app/home/categories";
 import {
   isFileChangeRecordArray,
@@ -194,6 +193,7 @@ export function ChatHomeOverview() {
   const chat = useChatRuntime();
   const liveTasks = chat.conversation.streaming.liveTasks ?? [];
   const events = chat.conversation.events;
+  const summariesByAgent = chat.conversation.streaming.taskProgressSummaries;
 
   // Build a full task history (running + completed/failed/canceled) by
   // replaying conversation events and merging with the live snapshot —
@@ -248,8 +248,6 @@ export function ChatHomeOverview() {
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, MAX_FILES);
   }, [events]);
-
-  const summariesByAgent = useTaskProgressSummaries({ liveTasks, events });
 
   const handleOpenFile = (entry: FileEntry) => {
     displayTabs.openTab(payloadToTabSpec(entry.payload));

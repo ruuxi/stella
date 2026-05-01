@@ -1,4 +1,5 @@
 import type { Dispatch, RefCallback, SetStateAction } from 'react'
+import type { TaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-summaries'
 import type { EventRecord, TaskItem } from '@/app/chat/lib/event-transforms'
 import type {
   AgentResponseTarget,
@@ -23,6 +24,7 @@ export type ChatColumnConversation = {
     pendingUserMessageId: string | null
     selfModMap: Record<string, SelfModAppliedData>
     liveTasks?: TaskItem[]
+    taskProgressSummaries: TaskProgressSummaries
   }
   history: {
     hasOlderEvents: boolean

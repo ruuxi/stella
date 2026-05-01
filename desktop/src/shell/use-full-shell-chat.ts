@@ -14,6 +14,7 @@ import type {
 import { deriveComposerState } from '@/app/chat/composer-context'
 import { useConversationEventFeed } from '@/app/chat/hooks/use-conversation-events'
 import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
+import { useTaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-summaries'
 import { useIdleHomeVisibility } from '@/app/chat/hooks/use-idle-home-visibility'
 import { useTraceEventMonitor, useTraceIpcListener } from '@/debug/hooks/use-trace-listener'
 import type { MessageMetadata } from '@/app/chat/lib/event-transforms'
@@ -116,6 +117,7 @@ export function useFullShellChat({
     conversationId: activeConversationId,
     events,
   })
+  const taskProgressSummaries = useTaskProgressSummaries({ liveTasks, events })
 
   useTraceIpcListener(isDev)
   useTraceEventMonitor(isDev, events)
@@ -361,6 +363,7 @@ export function useFullShellChat({
         pendingUserMessageId,
         selfModMap,
         liveTasks,
+        taskProgressSummaries,
       },
       history: {
         hasOlderEvents,
@@ -378,6 +381,7 @@ export function useFullShellChat({
       pendingUserMessageId,
       selfModMap,
       liveTasks,
+      taskProgressSummaries,
       hasOlderEvents,
       isLoadingOlder,
       isInitialLoading,
