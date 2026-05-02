@@ -43,7 +43,7 @@ describe("self-mod HMR controller", () => {
             fullReloadRelevantPaths: [],
           },
         ]),
-      ).resolves.toBe(false);
+      ).resolves.toEqual({ ok: false });
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -263,7 +263,7 @@ describe("self-mod HMR controller", () => {
           ],
           { suppressClientFullReload: true },
         ),
-      ).resolves.toBe(true);
+      ).resolves.toEqual({ ok: true });
       expect(body).toMatchObject({
         options: { suppressClientFullReload: true },
       });
@@ -301,7 +301,7 @@ describe("self-mod HMR controller", () => {
           ],
           { forceClientFullReload: true },
         ),
-      ).resolves.toBe(true);
+      ).resolves.toEqual({ ok: true });
       expect(body).toMatchObject({
         options: { forceClientFullReload: true },
       });
