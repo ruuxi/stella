@@ -31,7 +31,9 @@ const createTestHost = async (): Promise<TestHostContext> => {
   await mkdir(path.join(rootPath, "state"), { recursive: true });
 
   const dbPath = getDesktopDatabasePath(rootPath);
-  const db = new DatabaseSync(dbPath, { timeout: 5000 }) as unknown as SqliteDatabase;
+  const db = new DatabaseSync(dbPath, {
+    timeout: 5000,
+  }) as unknown as SqliteDatabase;
   initializeDesktopDatabase(db);
 
   const createdTasks: Array<Record<string, unknown>> = [];
@@ -103,7 +105,9 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("askQuestion")).toBe(true);
     expect(orchestratorTools.has("Fashion")).toBe(false);
 
-    const generalTools = new Set(host.getToolCatalog("general").map((tool) => tool.name));
+    const generalTools = new Set(
+      host.getToolCatalog("general").map((tool) => tool.name),
+    );
     expect(generalTools.has("spawn_agent")).toBe(false);
     expect(generalTools.has("Display")).toBe(false);
     expect(generalTools.has("Memory")).toBe(false);
@@ -114,14 +118,25 @@ describe("orchestrator direct tool surface", () => {
     expect(generalTools.has("web")).toBe(true);
     expect(generalTools.has("RequestCredential")).toBe(true);
     expect(generalTools.has("view_image")).toBe(true);
-    expect(generalTools.has("image_gen")).toBe(true);
+    expect(generalTools.has("image_gen")).toBe(false);
+
+    const generalImageResult = await host.executeTool(
+      "image_gen",
+      { prompt: "Generate a small test image." },
+      makeToolContext("general"),
+    );
+    expect(generalImageResult.error).toContain(
+      "image_gen is not available to the General agent",
+    );
 
     // Store agent now lives on the backend — the local runtime exposes
     // none of its tools and the orchestrator no longer has a `Store`
     // delegation tool. Sanity-check that's still the case.
     expect(orchestratorTools.has("Store")).toBe(false);
 
-    const fashionTools = new Set(host.getToolCatalog("fashion").map((tool) => tool.name));
+    const fashionTools = new Set(
+      host.getToolCatalog("fashion").map((tool) => tool.name),
+    );
     expect(fashionTools.has("askQuestion")).toBe(false);
     expect(fashionTools.has("FashionGetContext")).toBe(true);
     expect(fashionTools.has("FashionSearchProducts")).toBe(true);

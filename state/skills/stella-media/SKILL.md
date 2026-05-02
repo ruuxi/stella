@@ -7,21 +7,21 @@ description: Generate images, video, audio, and 3D through Stella's managed medi
 
 Stella ships a managed media gateway that fronts every supported provider. Use it instead of calling provider APIs directly.
 
-## Still images — use `image_gen`
+## Still images
 
-`image_gen` submits to the managed backend, waits for completion, saves the finished files under `state/media/outputs/`, and attaches them back into context. The sidebar surfaces the asset automatically — tell the user **what** you generated, not where it is. A one-liner like "Generated a 16:9 still of the Tokyo alley scene" is enough.
+General does not call `image_gen` directly. For still images, read the image docs below and route through Stella's managed media gateway. The sidebar surfaces generated assets automatically — tell the user **what** you generated, not where it is. A one-liner like "Generated a 16:9 still of the Tokyo alley scene" is enough.
 
 ## Video, audio, 3D — read the relevant doc page first
 
 `web` fetch the URL for the operation you need, then call the gateway accordingly:
 
-| Domain   | URL                                   | Operations                                                                       |
-| -------- | ------------------------------------- | -------------------------------------------------------------------------------- |
-| Overview | `https://stella.sh/docs/media`        | Request/response shape, auth contract                                            |
-| Images   | `https://stella.sh/docs/media/images` | `text_to_image`, `icon`, `image_edit`                                            |
-| Video    | `https://stella.sh/docs/media/video`  | `image_to_video`, `video_extend`, `video_to_video`                               |
-| Audio    | `https://stella.sh/docs/media/audio`  | `text_to_dialogue`, `sound_effects`, `speech_to_text`, `audio_visual_separate`   |
-| 3D       | `https://stella.sh/docs/media/3d`     | `text_to_3d`                                                                     |
+| Domain   | URL                                   | Operations                                                                     |
+| -------- | ------------------------------------- | ------------------------------------------------------------------------------ |
+| Overview | `https://stella.sh/docs/media`        | Request/response shape, auth contract                                          |
+| Images   | `https://stella.sh/docs/media/images` | `text_to_image`, `icon`, `image_edit`                                          |
+| Video    | `https://stella.sh/docs/media/video`  | `image_to_video`, `video_extend`, `video_to_video`                             |
+| Audio    | `https://stella.sh/docs/media/audio`  | `text_to_dialogue`, `sound_effects`, `speech_to_text`, `audio_visual_separate` |
+| 3D       | `https://stella.sh/docs/media/3d`     | `text_to_3d`                                                                   |
 
 ## Don't call provider APIs directly
 

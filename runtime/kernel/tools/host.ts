@@ -67,6 +67,8 @@ const USER_FACING_AGENT_TOOL_NAMES = new Set(["askQuestion"]);
 
 const WORKER_ONLY_TOOL_NAMES = new Set(["MCP"]);
 
+const GENERAL_EXCLUDED_TOOL_NAMES = new Set(["image_gen"]);
+
 const SUBAGENT_USER_FACING_TOOL_NAMES: Record<string, ReadonlySet<string>> = {};
 
 export const createToolHost = ({
@@ -78,7 +80,7 @@ export const createToolHost = ({
   requestCredential,
   agentApi,
   scheduleApi,
-  
+
   fashionApi,
   extensionTools,
   displayHtml,
@@ -138,7 +140,7 @@ export const createToolHost = ({
     requestCredential,
     agentApi,
     scheduleApi,
-    
+
     fashionApi,
     extensionTools,
     displayHtml,
@@ -186,6 +188,15 @@ export const createToolHost = ({
       args: toolArgs,
       context,
     });
+
+    if (
+      context.agentType === AGENT_IDS.GENERAL &&
+      GENERAL_EXCLUDED_TOOL_NAMES.has(toolName)
+    ) {
+      return {
+        error: `${toolName} is not available to the General agent.`,
+      } satisfies ToolResult;
+    }
 
     const handler = handlers[toolName];
     if (!handler) {
@@ -250,9 +261,12 @@ export const createToolHost = ({
     const subagentExtras = agentType
       ? SUBAGENT_USER_FACING_TOOL_NAMES[agentType]
       : undefined;
-    return Array.from(toolCatalog.values()).filter(
-      (tool) =>
-        WORKER_ONLY_TOOL_NAMES.has(tool.name) && agentType !== AGENT_IDS.GENERAL
+    return Array.from(toolCatalog.values()).filter((tool) =>
+      agentType === AGENT_IDS.GENERAL &&
+      GENERAL_EXCLUDED_TOOL_NAMES.has(tool.name)
+        ? false
+        : WORKER_ONLY_TOOL_NAMES.has(tool.name) &&
+            agentType !== AGENT_IDS.GENERAL
           ? false
           : agentType === AGENT_IDS.SOCIAL_SESSION
             ? SOCIAL_SESSION_TOOL_NAMES.has(tool.name)
