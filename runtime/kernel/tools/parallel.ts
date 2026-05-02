@@ -26,34 +26,6 @@ const NON_PARALLEL_TOOL_NAMES = new Set<string>([
   "RequestCredential",
 ]);
 
-export const MULTI_TOOL_USE_PARALLEL_JSON_SCHEMA = {
-  type: "object",
-  properties: {
-    tool_uses: {
-      type: "array",
-      description:
-        "Independent tool calls to execute concurrently. Only batch calls that do not depend on each other.",
-      items: {
-        type: "object",
-        properties: {
-          recipient_name: {
-            type: "string",
-            description:
-              "Tool name to invoke. Accepts either bare Stella tool names like `exec_command` or `functions.exec_command`.",
-          },
-          parameters: {
-            type: "object",
-            description: "Arguments for the nested tool call.",
-            additionalProperties: true,
-          },
-        },
-        required: ["recipient_name", "parameters"],
-      },
-    },
-  },
-  required: ["tool_uses"],
-} as const;
-
 type ParallelToolDeps = {
   executeTool: (
     toolName: string,

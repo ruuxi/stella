@@ -710,12 +710,16 @@ export const compactRuntimeThreadHistory = async (args: {
   threadKey: string;
   resolvedLlm: ResolvedLlmRoute;
   agentType: string;
+  overrideSummary?: string;
+  preserveLastN?: number;
 }): Promise<void> => {
   await maybeCompactRuntimeThread({
     store: args.store,
     threadKey: args.threadKey,
     resolvedLlm: args.resolvedLlm,
     agentType: args.agentType,
+    ...(args.overrideSummary ? { overrideSummary: args.overrideSummary } : {}),
+    ...(args.preserveLastN !== undefined ? { preserveLastN: args.preserveLastN } : {}),
   }).catch((error) => {
     logger.warn("thread.compaction.failed", {
       threadKey: args.threadKey,

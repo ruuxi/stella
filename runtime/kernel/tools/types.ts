@@ -8,11 +8,6 @@ import type {
   ProducedFileRecord,
 } from "../../../desktop/src/shared/contracts/file-changes.js";
 import type {
-  StorePackageRecord,
-  StorePackageReleaseRecord,
-  StoreReleaseManifest,
-} from "../../contracts/index.js";
-import type {
   LocalCronJobCreateInput,
   LocalCronJobRecord,
   LocalCronJobUpdatePatch,

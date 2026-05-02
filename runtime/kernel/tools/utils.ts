@@ -6,7 +6,6 @@ import { promises as fs } from "fs";
 import type { Dirent } from "fs";
 import path from "path";
 import os from "os";
-import { spawn } from "child_process";
 import { createHash } from "crypto";
 import { resolveRuntimeStatePath } from "../home/stella-home.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -49,7 +48,9 @@ const sanitizeSensitiveData = (
       message: redactString(value.message),
       ...(value.stack ? { stack: redactString(value.stack) } : {}),
     };
-    for (const [key, entry] of Object.entries(value as unknown as Record<string, unknown>)) {
+    for (const [key, entry] of Object.entries(
+      value as unknown as Record<string, unknown>,
+    )) {
       if (SENSITIVE_KEY_RE.test(key)) {
         output[key] = "[REDACTED]";
         continue;
@@ -77,26 +78,15 @@ const sanitizeSensitiveData = (
 const logger = createRuntimeLogger("tools");
 
 export const log = (message: string, fields?: unknown) => {
-  logger.debug(message, fields);
+  logger.debug(message, sanitizeForLogs(fields));
   /* logging removed — use structured telemetry instead */
 };
 export const logError = (message: string, fields?: unknown) => {
-  logger.error(message, fields);
+  logger.error(message, sanitizeForLogs(fields));
   /* error logging removed — use structured telemetry instead */
 };
 
 export const sanitizeForLogs = (value: unknown) => sanitizeSensitiveData(value);
-
-// Path utilities
-export const ensureAbsolutePath = (filePath: string) => {
-  if (!path.isAbsolute(filePath)) {
-    return {
-      ok: false as const,
-      error: `file_path must be absolute. Received: ${filePath}`,
-    };
-  }
-  return { ok: true as const };
-};
 
 export const toPosix = (value: string) => value.replace(/\\/g, "/");
 
@@ -299,20 +289,6 @@ export const formatWithLineNumbers = (content: string, offset = 1, limit = 2000)
   };
 };
 
-// HTML utilities
-export const stripHtml = (html: string) => {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-};
-
-// State utilities
-export const getStatePath = (stateRoot: string, kind: string, id: string) =>
-  path.join(stateRoot, kind, `${id}.json`);
-
 export const loadJson = async <T>(filePath: string, fallback: T) => {
   try {
     const raw = await fs.readFile(filePath, "utf-8");
@@ -325,35 +301,6 @@ export const loadJson = async <T>(filePath: string, fallback: T) => {
 export const saveJson = async (filePath: string, value: unknown) => {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf-8");
-};
-
-// Secret file utilities
-const tightenWindowsAcl = async (resolvedPath: string) => {
-  if (process.platform !== "win32") {
-    return;
-  }
-  const username = process.env.USERNAME;
-  if (!username) {
-    return;
-  }
-
-  await new Promise<void>((resolve) => {
-    const child = spawn(
-      "icacls",
-      [
-        resolvedPath,
-        "/inheritance:r",
-        "/grant:r",
-        `${username}:R`,
-      ],
-      {
-        stdio: "ignore",
-        windowsHide: true,
-      },
-    );
-    child.on("close", () => resolve());
-    child.on("error", () => resolve());
-  });
 };
 
 const getDefaultSecretStateRoot = () => {
@@ -383,9 +330,6 @@ const fileExists = async (filePath: string) => {
 const hashBuffer = (buffer: Buffer) =>
   createHash("sha256").update(buffer).digest("hex");
 
-const hashString = (value: string) =>
-  createHash("sha256").update(value, "utf-8").digest("hex");
-
 type SecretMountRecord = {
   id: string;
   mountPath: string;
@@ -393,14 +337,6 @@ type SecretMountRecord = {
   recordPath: string;
   mountedHash: string;
   createdAt: number;
-};
-
-export type SecretFileMountHandle = {
-  id: string;
-  mountPath: string;
-  backupPath?: string;
-  recordPath: string;
-  mountedHash: string;
 };
 
 const asSecretMountRecord = (value: unknown): SecretMountRecord | null => {
@@ -443,102 +379,6 @@ const restoreBackup = async (backupPath: string, mountPath: string) => {
     await fs.copyFile(backupPath, mountPath);
     await removeFileIfExists(backupPath);
   }
-};
-
-export const writeSecretFile = async (
-  filePath: string,
-  value: string,
-  cwd: string,
-  stateRoot?: string,
-): Promise<SecretFileMountHandle> => {
-  const expanded = expandHomePath(filePath);
-  const resolved = path.isAbsolute(expanded)
-    ? expanded
-    : path.resolve(cwd, expanded);
-
-  const mountId = crypto.randomUUID();
-  const recordsDir = getSecretMountRecordsDir(stateRoot);
-  const recordPath = path.join(recordsDir, `${mountId}.json`);
-  const backupPath = `${resolved}.stella-backup-${mountId}`;
-  const mountedHash = hashString(value);
-
-  let hasBackup = false;
-
-  try {
-    await fs.mkdir(path.dirname(resolved), { recursive: true });
-    await fs.mkdir(recordsDir, { recursive: true });
-
-    if (await fileExists(resolved)) {
-      await removeFileIfExists(backupPath);
-      await fs.rename(resolved, backupPath);
-      hasBackup = true;
-    }
-
-    await fs.writeFile(resolved, value, "utf-8");
-    try {
-      await fs.chmod(resolved, 0o600);
-    } catch {
-      // Ignore permission failures.
-    }
-    try {
-      await tightenWindowsAcl(resolved);
-    } catch {
-      // Ignore ACL hardening failures.
-    }
-
-    const record: SecretMountRecord = {
-      id: mountId,
-      mountPath: resolved,
-      backupPath: hasBackup ? backupPath : undefined,
-      recordPath,
-      mountedHash,
-      createdAt: Date.now(),
-    };
-    await saveJson(recordPath, record);
-
-    return {
-      id: mountId,
-      mountPath: resolved,
-      backupPath: hasBackup ? backupPath : undefined,
-      recordPath,
-      mountedHash,
-    };
-  } catch (error) {
-    await removeFileIfExists(recordPath);
-    await removeFileIfExists(resolved);
-    if (hasBackup) {
-      try {
-        await restoreBackup(backupPath, resolved);
-      } catch {
-        // Best-effort rollback.
-      }
-    }
-    throw error;
-  }
-};
-
-export const removeSecretFile = async (mount: SecretFileMountHandle) => {
-  const stored = asSecretMountRecord(
-    await loadJson<unknown>(mount.recordPath, null),
-  );
-  const record = stored ?? {
-    id: mount.id,
-    mountPath: mount.mountPath,
-    backupPath: mount.backupPath,
-    recordPath: mount.recordPath,
-    mountedHash: mount.mountedHash,
-    createdAt: Date.now(),
-  };
-
-  await removeFileIfExists(record.mountPath);
-  if (record.backupPath) {
-    try {
-      await restoreBackup(record.backupPath, record.mountPath);
-    } catch {
-      // Preserve backup file for manual recovery if restore fails.
-    }
-  }
-  await removeFileIfExists(record.recordPath);
 };
 
 export const recoverStaleSecretFiles = async (stateRoot?: string) => {

@@ -1,5 +1,5 @@
 /**
- * Extension loader - auto-discovers tools, hooks, providers, and prompts
+ * Extension loader - auto-discovers tools, hooks, providers, prompts, and agents
  * from the extensions directory structure.
  */
 
@@ -153,7 +153,8 @@ async function loadPrompts(dir: string): Promise<PromptTemplate[]> {
       const baseName = entry.replace(/\.prompt\.md$/, "");
       results.push({
         name: typeof metadata.name === "string" ? metadata.name : baseName,
-        description: typeof metadata.description === "string" ? metadata.description : "",
+        description:
+          typeof metadata.description === "string" ? metadata.description : "",
         template: body.trim() || raw,
         filePath,
       });

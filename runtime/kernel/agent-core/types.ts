@@ -11,6 +11,7 @@ import type {
 	ToolResultMessage,
 } from "../../ai/types.js";
 import type { streamSimple } from "../../ai/stream.js";
+import { StringEnum } from "../../ai/utils/typebox-helpers.js";
 import type { Static, TSchema } from "@sinclair/typebox";
 
 /**
@@ -33,7 +34,14 @@ export type StreamFn = (
  * - "parallel": tool calls are prepared sequentially, then allowed tools execute concurrently.
  *   Final tool results are still emitted in assistant source order.
  */
-export type ToolExecutionMode = "sequential" | "parallel";
+export const ToolExecutionModeSchema = StringEnum(
+	["sequential", "parallel"] as const,
+	{
+		description: "How tool calls from a single assistant message are executed.",
+		default: "sequential",
+	},
+);
+export type ToolExecutionMode = Static<typeof ToolExecutionModeSchema>;
 
 /** A single tool call content block emitted by an assistant message. */
 export type AgentToolCall = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;

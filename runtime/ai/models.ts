@@ -1,5 +1,5 @@
 import { MODELS } from "./models.generated.js";
-import type { Api, KnownProvider, Model, Usage } from "./types.js";
+import type { Api, Model, Usage } from "./types.js";
 
 const modelRegistry: Map<string, Map<string, Model<Api>>> = new Map();
 
@@ -27,10 +27,6 @@ export function getModel<TProvider extends RegisteredProvider, TModelId extends 
 	return providerModels?.get(modelId as string) as Model<ModelApi<TProvider, TModelId>>;
 }
 
-export function getProviders(): KnownProvider[] {
-	return Array.from(modelRegistry.keys()) as KnownProvider[];
-}
-
 export function getModels<TProvider extends RegisteredProvider>(
 	provider: TProvider,
 ): Model<ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>>[] {
@@ -49,13 +45,6 @@ export function registerModel(provider: string, model: Model<Api>): void {
 		modelRegistry.set(provider, providerModels);
 	}
 	providerModels.set(model.id, model);
-}
-
-/**
- * Remove all models registered under a given provider.
- */
-export function unregisterProvider(provider: string): void {
-	modelRegistry.delete(provider);
 }
 
 export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage): Usage["cost"] {
@@ -84,16 +73,4 @@ export function supportsXhigh<TApi extends Api>(model: Model<TApi>): boolean {
 	}
 
 	return false;
-}
-
-/**
- * Check if two models are equal by comparing both their id and provider.
- * Returns false if either model is null or undefined.
- */
-export function modelsAreEqual<TApi extends Api>(
-	a: Model<TApi> | null | undefined,
-	b: Model<TApi> | null | undefined,
-): boolean {
-	if (!a || !b) return false;
-	return a.id === b.id && a.provider === b.provider;
 }
