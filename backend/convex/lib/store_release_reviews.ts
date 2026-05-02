@@ -383,28 +383,92 @@ const completeStoreReviewVerdict = async (
   }
 };
 
+type StoreReleaseCommitForReview = {
+  hash: string;
+  subject: string;
+  diff: string;
+};
+
+const MAX_COMMIT_DIFF_LENGTH_FOR_REVIEW = 24_000;
+const MAX_COMMITS_TOTAL_LENGTH_FOR_REVIEW = 120_000;
+
+/**
+ * Render the per-commit reference diffs into a single appendix the
+ * reviewer reads alongside the behaviour spec. Per-commit and total
+ * caps keep the prompt bounded; if a release ships more diff than fits
+ * we annotate the truncation so the reviewer can still draw a verdict.
+ */
+const renderCommitsAppendix = (
+  commits: ReadonlyArray<StoreReleaseCommitForReview>,
+): string => {
+  if (commits.length === 0) return "";
+  const sections: string[] = [];
+  let totalLength = 0;
+  let truncated = false;
+  for (const commit of commits) {
+    if (truncated) break;
+    const remaining = MAX_COMMITS_TOTAL_LENGTH_FOR_REVIEW - totalLength;
+    if (remaining <= 0) {
+      sections.push("Additional reference commits omitted (over total limit).");
+      truncated = true;
+      break;
+    }
+    const perCommitLimit = Math.min(remaining, MAX_COMMIT_DIFF_LENGTH_FOR_REVIEW);
+    const diff = commit.diff.length <= perCommitLimit
+      ? commit.diff
+      : `${commit.diff.slice(0, perCommitLimit)}\n... [truncated]`;
+    const block = [
+      `### Commit ${commit.hash}`,
+      `Subject: ${commit.subject}`,
+      "",
+      diff,
+    ].join("\n");
+    sections.push(block);
+    totalLength += diff.length;
+  }
+  return sections.join("\n\n");
+};
+
 const buildMarkdownBlueprintReview = (
   blueprintMarkdown: string,
+  commits?: ReadonlyArray<StoreReleaseCommitForReview>,
 ): {
   artifact: ParsedBlueprintMarkdownArtifact;
   codeFiles: ReviewableCodeFile[];
   imageFiles: ReviewableImageFile[];
-} => ({
-  artifact: {
-    kind: "blueprint_markdown",
-    schemaVersion: 2,
-    blueprintMarkdown,
-  },
-  codeFiles: [{
-    path: "blueprint.md",
-    changeType: "update",
-    contentText: blueprintMarkdown,
-    kind: "blueprint",
-  }],
-  imageFiles: [],
-});
+} => {
+  const commitsAppendix = renderCommitsAppendix(commits ?? []);
+  const reviewerInput = commitsAppendix
+    ? [
+        "# Behaviour spec",
+        "",
+        blueprintMarkdown,
+        "",
+        "# Reference commits (author's tree)",
+        "",
+        commitsAppendix,
+      ].join("\n")
+    : blueprintMarkdown;
+  return {
+    artifact: {
+      kind: "blueprint_markdown",
+      schemaVersion: 2,
+      blueprintMarkdown,
+    },
+    codeFiles: [{
+      path: "blueprint.md",
+      changeType: "update",
+      contentText: reviewerInput,
+      kind: "blueprint",
+    }],
+    imageFiles: [],
+  };
+};
 
-export const parseReviewableStoreArtifact = (artifactBody: string): {
+export const parseReviewableStoreArtifact = (
+  artifactBody: string,
+  commits?: ReadonlyArray<StoreReleaseCommitForReview>,
+): {
   artifact: ParsedReviewableStoreArtifact;
   codeFiles: ReviewableCodeFile[];
   imageFiles: ReviewableImageFile[];
@@ -417,7 +481,7 @@ export const parseReviewableStoreArtifact = (artifactBody: string): {
     if (!markdown) {
       throw new Error("Store release artifact is empty.");
     }
-    return buildMarkdownBlueprintReview(markdown);
+    return buildMarkdownBlueprintReview(markdown, commits);
   }
 
   if (parsedJson && typeof parsedJson === "object") {
@@ -430,7 +494,7 @@ export const parseReviewableStoreArtifact = (artifactBody: string): {
       if (!markdown) {
         throw new Error("Store release blueprint is empty.");
       }
-      return buildMarkdownBlueprintReview(markdown);
+      return buildMarkdownBlueprintReview(markdown, commits);
     }
   }
 
@@ -611,11 +675,12 @@ export const enforceStoreReleaseReviewOrThrow = async (
     description: string;
     releaseSummary?: string;
     artifactBody: string;
+    commits?: ReadonlyArray<StoreReleaseCommitForReview>;
   },
 ): Promise<void> => {
   let parsedArtifact: ReturnType<typeof parseReviewableStoreArtifact>;
   try {
-    parsedArtifact = parseReviewableStoreArtifact(args.artifactBody);
+    parsedArtifact = parseReviewableStoreArtifact(args.artifactBody, args.commits);
   } catch (error) {
     console.error("[store-review] Failed to parse artifact for review:", error);
     throw new ConvexError({

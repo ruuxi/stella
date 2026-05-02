@@ -28,7 +28,12 @@ import {
   IPC_OFFICE_PREVIEW_START,
   IPC_OFFICE_PREVIEW_UPDATE,
   IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE,
+  IPC_PET_OPEN_CHAT,
+  IPC_PET_SEND_MESSAGE,
+  IPC_PET_SET_OPEN,
+  IPC_PET_STATUS,
 } from "../src/shared/contracts/ipc-channels.js";
+import type { PetOverlayStatus } from "../src/shared/contracts/pet.js";
 import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
@@ -411,6 +416,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("overlay:morphReady", { transitionId }),
     morphDone: (transitionId: string) =>
       ipcRenderer.send("overlay:morphDone", { transitionId }),
+  },
+
+  pet: {
+    setOpen: (open: boolean) => ipcRenderer.send(IPC_PET_SET_OPEN, open),
+    openChat: () => ipcRenderer.send(IPC_PET_OPEN_CHAT),
+    sendMessage: (message: string) =>
+      ipcRenderer.send(IPC_PET_SEND_MESSAGE, { message }),
+    publishStatus: (status: PetOverlayStatus) =>
+      ipcRenderer.send(IPC_PET_STATUS, status),
+    onStatus: onIpc<PetOverlayStatus>(IPC_PET_STATUS),
+    onSetOpen: onIpc<boolean>(IPC_PET_SET_OPEN),
+    onSendMessage: onIpc<{ message: string }>(IPC_PET_SEND_MESSAGE),
   },
 
   theme: {
@@ -1214,7 +1231,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
       releaseNumber: number;
       displayName: string;
       blueprintMarkdown: string;
+      commits?: Array<{ hash: string; subject: string; diff: string }>;
     }) => ipcRenderer.invoke("store:installFromBlueprint", payload),
+    publishBlueprint: (payload: {
+      messageId: string;
+      packageId: string;
+      asUpdate: boolean;
+      displayName?: string;
+      description?: string;
+      category?:
+        | "apps-games"
+        | "productivity"
+        | "customization"
+        | "skills-agents"
+        | "integrations"
+        | "other";
+      manifest: Record<string, unknown>;
+      releaseNotes?: string;
+    }) => ipcRenderer.invoke("store:publishBlueprint", payload),
     getThread: () => ipcRenderer.invoke("store:getThread"),
     sendThreadMessage: (payload: {
       text: string;

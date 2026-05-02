@@ -22,6 +22,7 @@ import {
   store_package_validator,
   store_package_visibility_validator,
   store_publish_result_validator,
+  store_release_commit_validator,
   store_release_manifest_validator,
 } from "../schema/store";
 import { enforceStoreReleaseReviewOrThrow } from "../lib/store_release_reviews";
@@ -45,6 +46,11 @@ const MAX_SUMMARY = 500;
 const MAX_ICON_URL = 2_048;
 const MAX_AUTHOR_DISPLAY_NAME = 120;
 const MAX_AUTHORED_AT_COMMIT = 80;
+const MAX_COMMITS_PER_RELEASE = 32;
+const MAX_COMMIT_DIFF_LENGTH = 200_000;
+const MAX_COMMITS_TOTAL_LENGTH = 1_500_000;
+const MAX_COMMIT_HASH_LENGTH = 80;
+const MAX_COMMIT_SUBJECT_LENGTH = 500;
 
 // ── arg validators ───────────────────────────────────────────────────────────
 
@@ -53,6 +59,7 @@ const create_release_args_validator = {
   releaseNotes: v.optional(v.string()),
   manifest: store_release_manifest_validator,
   blueprintMarkdown: v.string(),
+  commits: v.optional(v.array(store_release_commit_validator)),
   iconUrl: v.optional(v.string()),
   authorDisplayName: v.optional(v.string()),
 };
@@ -146,6 +153,50 @@ const normalizeBlueprintMarkdown = (value: string) => {
   }
   requireBoundedString(value, "blueprintMarkdown", MAX_BLUEPRINT_LENGTH);
   return value;
+};
+
+const normalizeCommits = (
+  commits: ReadonlyArray<{ hash: string; subject: string; diff: string }> | undefined,
+): Array<{ hash: string; subject: string; diff: string }> | undefined => {
+  if (!commits || commits.length === 0) return undefined;
+  if (commits.length > MAX_COMMITS_PER_RELEASE) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `Releases may include at most ${MAX_COMMITS_PER_RELEASE} reference commits.`,
+    });
+  }
+  let totalLength = 0;
+  const seenHashes = new Set<string>();
+  const normalized: Array<{ hash: string; subject: string; diff: string }> = [];
+  for (const commit of commits) {
+    const hash = commit.hash.trim();
+    requireBoundedString(hash, "commit.hash", MAX_COMMIT_HASH_LENGTH);
+    if (!hash) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "commit.hash is required",
+      });
+    }
+    if (seenHashes.has(hash)) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: `Duplicate reference commit ${hash}`,
+      });
+    }
+    seenHashes.add(hash);
+    const subject = commit.subject.trim();
+    requireBoundedString(subject, "commit.subject", MAX_COMMIT_SUBJECT_LENGTH);
+    requireBoundedString(commit.diff, "commit.diff", MAX_COMMIT_DIFF_LENGTH);
+    totalLength += commit.diff.length;
+    if (totalLength > MAX_COMMITS_TOTAL_LENGTH) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: `Total reference commit size exceeds ${MAX_COMMITS_TOTAL_LENGTH} characters`,
+      });
+    }
+    normalized.push({ hash, subject, diff: commit.diff });
+  }
+  return normalized;
 };
 
 const normalizeReleaseNumber = (value: number) => {
@@ -313,6 +364,7 @@ export const createFirstReleaseRecord = internalMutation({
     releaseNotes: v.optional(v.string()),
     manifest: store_release_manifest_validator,
     blueprintMarkdown: v.string(),
+    commits: v.optional(v.array(store_release_commit_validator)),
     iconUrl: v.optional(v.string()),
     authorDisplayName: v.optional(v.string()),
     authorHandle: v.optional(v.string()),
@@ -355,6 +407,7 @@ export const createFirstReleaseRecord = internalMutation({
       releaseNotes: args.releaseNotes,
       manifest: args.manifest,
       blueprintMarkdown: args.blueprintMarkdown,
+      ...(args.commits && args.commits.length > 0 ? { commits: args.commits } : {}),
       createdAt: now,
     });
 
@@ -384,6 +437,7 @@ export const createUpdateReleaseRecord = internalMutation({
     releaseNotes: v.optional(v.string()),
     manifest: store_release_manifest_validator,
     blueprintMarkdown: v.string(),
+    commits: v.optional(v.array(store_release_commit_validator)),
     iconUrl: v.optional(v.string()),
     authorDisplayName: v.optional(v.string()),
     authorHandle: v.optional(v.string()),
@@ -411,6 +465,7 @@ export const createUpdateReleaseRecord = internalMutation({
       releaseNotes: args.releaseNotes,
       manifest: args.manifest,
       blueprintMarkdown: args.blueprintMarkdown,
+      ...(args.commits && args.commits.length > 0 ? { commits: args.commits } : {}),
       createdAt: now,
     });
 
@@ -836,6 +891,7 @@ export const createFirstRelease = action({
     );
     const manifest = normalizeManifest(args.manifest);
     const blueprintMarkdown = normalizeBlueprintMarkdown(args.blueprintMarkdown);
+    const commits = normalizeCommits(args.commits);
     await enforceStoreReleaseReviewOrThrow(ctx, {
       ownerId,
       packageId,
@@ -843,6 +899,7 @@ export const createFirstRelease = action({
       description,
       releaseSummary: releaseNotes,
       artifactBody: blueprintMarkdown,
+      ...(commits ? { commits } : {}),
     });
 
     const author = await resolveCallerAuthor(ctx, ownerId);
@@ -867,6 +924,7 @@ export const createFirstRelease = action({
         releaseNotes,
         manifest: releaseManifest,
         blueprintMarkdown,
+        ...(commits ? { commits } : {}),
         ...(args.category ? { category: args.category } : {}),
         ...(iconUrl ? { iconUrl } : {}),
         ...(author.authorDisplayName
@@ -900,6 +958,7 @@ export const createUpdateRelease = action({
     );
     const manifest = normalizeManifest(args.manifest);
     const blueprintMarkdown = normalizeBlueprintMarkdown(args.blueprintMarkdown);
+    const commits = normalizeCommits(args.commits);
     const pkg: Awaited<ReturnType<typeof getOwnedPackageByPackageId>> =
       await ctx.runQuery(
         internal.data.store_packages.getPackageByPackageIdInternal,
@@ -918,6 +977,7 @@ export const createUpdateRelease = action({
       description: pkg.description,
       releaseSummary: releaseNotes,
       artifactBody: blueprintMarkdown,
+      ...(commits ? { commits } : {}),
     });
 
     const author = await resolveCallerAuthor(ctx, ownerId);
@@ -941,6 +1001,7 @@ export const createUpdateRelease = action({
         releaseNotes,
         manifest: releaseManifest,
         blueprintMarkdown,
+        ...(commits ? { commits } : {}),
         ...(iconUrl ? { iconUrl } : {}),
         ...(author.authorDisplayName
           ? { authorDisplayName: author.authorDisplayName }

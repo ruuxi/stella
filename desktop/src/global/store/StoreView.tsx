@@ -1842,6 +1842,10 @@ export function StoreView({
         releaseNumber: pendingAddonInstall.release.releaseNumber,
         displayName: pendingAddonInstall.pkg.displayName,
         blueprintMarkdown: pendingAddonInstall.release.blueprintMarkdown,
+        ...(pendingAddonInstall.release.commits &&
+        pendingAddonInstall.release.commits.length > 0
+          ? { commits: pendingAddonInstall.release.commits }
+          : {}),
       })
       // Best-effort install counter bump. Failures here are silent —
       // missing the increment is much less bad than a half-installed
