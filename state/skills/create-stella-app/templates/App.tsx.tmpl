@@ -1,0 +1,26 @@
+import { lazy, Suspense } from "react";
+import { Spinner } from "@/ui/spinner";
+
+const {{COMPONENT}}View = lazy(() =>
+  import("./{{COMPONENT}}View").then((m) => ({ default: m.{{COMPONENT}}View })),
+);
+
+export function {{COMPONENT}}App() {
+  return (
+    <div className="workspace-area">
+      <div className="workspace-content workspace-content--full">
+        <Suspense
+          fallback={
+            <div className="workspace-placeholder">
+              <Spinner size="md" />
+            </div>
+          }
+        >
+          <{{COMPONENT}}View />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+export default {{COMPONENT}}App;
