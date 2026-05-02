@@ -14,8 +14,10 @@ import { buildBaseOptions, clampReasoning } from "./simple_options";
 import { transformMessages } from "./transform_messages";
 import { sanitizeSurrogates } from "./sanitize_unicode";
 
+type CacheControl = { type: "ephemeral"; ttl?: "1h" };
+
 type AnthropicContentBlock =
-  | { type: "text"; text: string; cache_control?: { type: "ephemeral"; ttl?: "1h" } }
+  | { type: "text"; text: string; cache_control?: CacheControl }
   | {
       type: "image";
       source: {
@@ -23,6 +25,7 @@ type AnthropicContentBlock =
         media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
         data: string;
       };
+      cache_control?: CacheControl;
     };
 
 type AnthropicMessage = {
@@ -31,24 +34,43 @@ type AnthropicMessage = {
 };
 
 type AnthropicToolBlock =
-  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean };
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      input: Record<string, unknown>;
+      cache_control?: CacheControl;
+    }
+  | {
+      type: "tool_result";
+      tool_use_id: string;
+      content: string;
+      is_error?: boolean;
+      cache_control?: CacheControl;
+    };
+
+type AnthropicSystemBlock = { type: "text"; text: string; cache_control?: CacheControl };
+
+type AnthropicToolDef = {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+  cache_control?: CacheControl;
+};
 
 type AnthropicRequestBody = {
   model: string;
   max_tokens: number;
   messages: AnthropicMessage[];
-  system?: string;
+  system?: string | AnthropicSystemBlock[];
   temperature?: number;
   stream: true;
-  tools?: Array<{
-    name: string;
-    description: string;
-    input_schema: Record<string, unknown>;
-  }>;
+  tools?: AnthropicToolDef[];
   tool_choice?: { type: "auto" | "any" | "none" } | { type: "tool"; name: string };
   thinking?: { type: "enabled"; budget_tokens: number };
 };
+
+const EPHEMERAL_CACHE: CacheControl = { type: "ephemeral" };
 
 type AnthropicStreamEvent = {
   type?: string;
@@ -209,6 +231,42 @@ function reasoningBudget(reasoning: SimpleStreamOptions["reasoning"], maxTokens:
   }
 }
 
+/**
+ * Apply prompt-caching breakpoints. Anthropic caches everything before each
+ * `cache_control` marker; up to 4 breakpoints per request. Strategy:
+ *
+ *  1. Mark the last tool definition (caches `system` + tool defs).
+ *  2. If there are no tools but a system prompt exists, mark the system block.
+ *  3. Mark the last block of the last user/tool_result message (caches the
+ *     full conversation history through the most recent turn).
+ *
+ * This produces a stable cacheable prefix across multi-turn agent runs where
+ * tool defs and system prompt don't change, and the only delta turn-to-turn
+ * is the new tool result + assistant turn appended at the end.
+ */
+function applyCacheBreakpoints(body: AnthropicRequestBody): void {
+  if (Array.isArray(body.tools) && body.tools.length > 0) {
+    body.tools[body.tools.length - 1].cache_control = EPHEMERAL_CACHE;
+  } else if (Array.isArray(body.system) && body.system.length > 0) {
+    body.system[body.system.length - 1].cache_control = EPHEMERAL_CACHE;
+  }
+
+  for (let i = body.messages.length - 1; i >= 0; i--) {
+    const message = body.messages[i];
+    if (message.role !== "user") continue;
+    if (typeof message.content === "string") {
+      if (message.content.length === 0) continue;
+      message.content = [{ type: "text", text: message.content, cache_control: EPHEMERAL_CACHE }];
+      return;
+    }
+    const blocks = message.content;
+    if (blocks.length === 0) continue;
+    const last = blocks[blocks.length - 1];
+    (last as { cache_control?: CacheControl }).cache_control = EPHEMERAL_CACHE;
+    return;
+  }
+}
+
 function buildRequestBody(
   model: Model<"anthropic-messages">,
   context: Context,
@@ -216,11 +274,14 @@ function buildRequestBody(
 ): AnthropicRequestBody {
   const maxTokens = options?.maxTokens ?? Math.min(model.maxTokens, 16_384);
   const budget = reasoningBudget(options?.reasoning, maxTokens);
-  return {
+  const system: AnthropicSystemBlock[] | undefined = context.systemPrompt
+    ? [{ type: "text", text: sanitizeSurrogates(context.systemPrompt) }]
+    : undefined;
+  const body: AnthropicRequestBody = {
     model: normalizeAnthropicModelId(model.id),
     max_tokens: maxTokens,
     messages: convertMessages(model, context),
-    system: context.systemPrompt,
+    system,
     temperature: options?.temperature,
     stream: true,
     tools: context.tools?.map((tool) => ({
@@ -231,6 +292,8 @@ function buildRequestBody(
     tool_choice: context.tools && context.tools.length > 0 ? { type: "auto" } : undefined,
     thinking: budget && budget > 0 ? { type: "enabled", budget_tokens: budget } : undefined,
   };
+  applyCacheBreakpoints(body);
+  return body;
 }
 
 async function* parseSse(response: Response): AsyncGenerator<AnthropicStreamEvent> {

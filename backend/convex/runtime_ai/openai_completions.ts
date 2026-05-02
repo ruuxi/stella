@@ -435,6 +435,19 @@ export function buildOpenAICompletionsParams(
     ...(options?.extraBody ?? {}),
   };
 
+  // Help upstream providers route requests to the same cache shard.
+  // OpenAI Chat Completions, Fireworks, OpenRouter (where the underlying
+  // provider supports it) all honor `prompt_cache_key`. Harmless to send
+  // when ignored. Skip when caller explicitly opts out via cacheRetention.
+  if (
+    options?.sessionId
+    && options.sessionId.length > 0
+    && (options as { cacheRetention?: string }).cacheRetention !== "none"
+    && params.prompt_cache_key === undefined
+  ) {
+    params.prompt_cache_key = options.sessionId;
+  }
+
   if (stream && compat.supportsUsageInStreaming !== false) {
     params.stream_options = { include_usage: true };
   }

@@ -91,6 +91,7 @@ export const createRuntimeExecutionSession = (
     hookEmitter: opts.hookEmitter,
     tools,
     historySource,
+    cacheSessionId: threadKey,
     afterToolCall: async (context) => {
       opts.responseTargetTracker?.noteToolEnd(
         context.toolCall.name,
