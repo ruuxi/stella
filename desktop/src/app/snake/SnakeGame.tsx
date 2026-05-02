@@ -12,7 +12,11 @@ import "./snake.css";
 
 const GRID_W = 24;
 const GRID_H = 24;
-const CELL = 20; // logical px; canvas DPR-scaled below
+// Logical px per grid cell. The canvas itself is DPR-scaled below so the
+// rendered pixels stay crisp on retina. We size the cell generously so the
+// board fills a comfortable chunk of the workspace; the wrapping CSS caps
+// it visually if the window is narrower.
+const CELL = 32;
 const BOARD_PX_W = GRID_W * CELL;
 const BOARD_PX_H = GRID_H * CELL;
 
@@ -371,7 +375,7 @@ export function SnakeGame() {
         CELL * 2,
         CELL * 2,
       );
-      drawCell(st.food.x, st.food.y, styles.food, 6, 3);
+      drawCell(st.food.x, st.food.y, styles.food, 9, 5);
 
       // Snake: interpolate each segment from its previous tick position to
       // its current one. While idle / gameover we just render at alpha=1
@@ -395,8 +399,8 @@ export function SnakeGame() {
           px,
           py,
           isHead ? styles.snakeHead : styles.snakeBody,
-          isHead ? 7 : 5,
-          isHead ? 1 : 2,
+          isHead ? 11 : 8,
+          isHead ? 2 : 3,
         );
       }
     };
