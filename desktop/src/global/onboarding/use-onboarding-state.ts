@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
 
-export const ONBOARDING_COMPLETE_KEY = "stella-onboarding-complete";
+const ONBOARDING_COMPLETE_KEY = "stella-onboarding-complete";
 /**
  * Persists the current onboarding phase so a user who quits the app
  * mid-flow lands back on the same step instead of the very first
@@ -9,7 +9,7 @@ export const ONBOARDING_COMPLETE_KEY = "stella-onboarding-complete";
  * Only split-flow phases are persisted (intro is the entry surface
  * itself, and `complete`/`done` mean we're already past onboarding).
  */
-export const ONBOARDING_PHASE_KEY = "stella-onboarding-phase";
+const ONBOARDING_PHASE_KEY = "stella-onboarding-phase";
 const ONBOARDING_COMPLETE_EVENT = "stella:onboarding-complete-changed";
 
 const readOnboardingCompleted = () => {

@@ -19,5 +19,3 @@ export function BillingScreen() {
     </div>
   );
 }
-
-export default BillingScreen;

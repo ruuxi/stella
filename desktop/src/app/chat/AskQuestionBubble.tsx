@@ -17,21 +17,21 @@ import "./AskQuestionBubble.css";
 const BADGE_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
 const OTHER_OPTION_KEY = "__other__";
 
-export type AskQuestionOption = {
+type AskQuestionOption = {
   label: string;
 };
 
-export type AskQuestion = {
+type AskQuestion = {
   question: string;
   options: AskQuestionOption[];
   allowOther?: boolean;
 };
 
-export type AskQuestionPayload = {
+type AskQuestionPayload = {
   questions: AskQuestion[];
 };
 
-export type Selection =
+type Selection =
   | { kind: "option"; key: string }
   | { kind: "other"; text: string }
   | { kind: "skipped" };

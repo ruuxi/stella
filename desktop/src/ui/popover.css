@@ -20,56 +20,6 @@
   animation: popover-close 0.15s ease-out;
 }
 
-[data-component="popover-content"] [data-slot="popover-header"] {
-  display: flex;
-  padding: 12px;
-  padding-bottom: 0;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-[data-component="popover-content"] [data-slot="popover-title"] {
-  flex: 1;
-  color: var(--foreground);
-  margin: 0;
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
-  font-weight: var(--font-family-sans--emphasis-weight, 500);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
-  line-height: 1.43;
-}
-
-[data-component="popover-content"] [data-slot="popover-close-button"] {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm, 4px);
-  background: transparent;
-  border: none;
-  color: var(--muted-foreground);
-  cursor: default;
-}
-
-[data-component="popover-content"] [data-slot="popover-close-button"]:hover {
-  background-color: var(--accent);
-  color: var(--foreground);
-}
-
-[data-component="popover-content"] [data-slot="popover-description"] {
-  padding: 0 12px;
-  margin: 0;
-  color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12px;
-  font-weight: var(--font-family-sans--default-weight, 400);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
-  line-height: 1.67;
-}
-
 [data-component="popover-content"] [data-slot="popover-body"] {
   padding: 12px;
 }

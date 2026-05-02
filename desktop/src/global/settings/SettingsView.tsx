@@ -3031,7 +3031,7 @@ function ModelsTab() {
 
 export type { SettingsTab };
 
-export interface SettingsScreenProps {
+interface SettingsScreenProps {
   /** Tab currently in view. When omitted, defaults to basic. */
   activeTab?: SettingsTab;
   /** Called when the user clicks a different tab in the sidebar. */
@@ -3123,5 +3123,3 @@ export const SettingsScreen = ({
     </>
   );
 };
-
-export default SettingsScreen;

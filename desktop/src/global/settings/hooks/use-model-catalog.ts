@@ -2,14 +2,14 @@ import { useState, useEffect, useMemo } from "react";
 import { createServiceRequest } from "@/infra/http/service-request";
 import { STELLA_MODELS_PATH } from "@/shared/stella-api";
 
-export type CatalogModel = {
+type CatalogModel = {
   id: string;
   name: string;
   provider: string;
   upstreamModel?: string;
 };
 
-export type CatalogDefaultModel = {
+type CatalogDefaultModel = {
   agentType: string;
   model: string;
   resolvedModel: string;

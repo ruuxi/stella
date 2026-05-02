@@ -117,7 +117,7 @@ function subscribe(onChange: Listener): () => void {
 
 const EMPTY: ChatContextFile[] = [];
 
-export type UseRecentFilesReturn = {
+type UseRecentFilesReturn = {
   recentFiles: ChatContextFile[];
   recordRecentFiles: (files: readonly ChatContextFile[]) => void;
   removeRecentFile: (file: ChatContextFile) => void;

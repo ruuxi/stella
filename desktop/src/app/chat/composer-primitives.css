@@ -28,11 +28,6 @@
   word-wrap: break-word;
 }
 
-.chat-composer-text-input {
-  display: block;
-  width: 100%;
-}
-
 .chat-composer-icon-button {
   display: inline-flex;
   align-items: center;

@@ -20,8 +20,8 @@ interface Blob {
   color: RGB;
 }
 
-export type GradientMode = "soft" | "flat";
-export type GradientColor = "relative" | "strong";
+type GradientMode = "soft" | "flat";
+type GradientColor = "relative" | "strong";
 
 interface ShiftingGradientProps {
   className?: string;

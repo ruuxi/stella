@@ -68,7 +68,7 @@ import {
   IPC_VOICE_WEB_SEARCH,
 } from "../../../src/shared/contracts/ipc-channels.js";
 
-export const MOBILE_BRIDGE_REQUEST_CHANNELS = [
+const MOBILE_BRIDGE_REQUEST_CHANNELS = [
   IPC_UI_GET_STATE,
   IPC_UI_SET_STATE,
   IPC_APP_SET_READY,
@@ -127,14 +127,14 @@ export const MOBILE_BRIDGE_REQUEST_CHANNELS = [
   IPC_SOCIAL_SESSIONS_GET_STATUS,
 ] as const;
 
-export type MobileBridgeRequestChannel =
+type MobileBridgeRequestChannel =
   (typeof MOBILE_BRIDGE_REQUEST_CHANNELS)[number];
 
 const MOBILE_BRIDGE_REQUEST_CHANNEL_SET = new Set<string>(
   MOBILE_BRIDGE_REQUEST_CHANNELS,
 );
 
-export const MOBILE_BRIDGE_EVENT_CHANNELS = [
+const MOBILE_BRIDGE_EVENT_CHANNELS = [
   IPC_DISPLAY_UPDATE,
   IPC_UI_STATE,
   IPC_CHAT_CONTEXT_UPDATED,
@@ -148,7 +148,7 @@ export const MOBILE_BRIDGE_EVENT_CHANNELS = [
   IPC_LOCAL_CHAT_UPDATED,
 ] as const;
 
-export type MobileBridgeEventChannel =
+type MobileBridgeEventChannel =
   (typeof MOBILE_BRIDGE_EVENT_CHANNELS)[number];
 
 const MOBILE_BRIDGE_EVENT_CHANNEL_SET = new Set<string>(

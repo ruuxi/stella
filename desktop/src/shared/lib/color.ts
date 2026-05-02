@@ -124,21 +124,3 @@ export function cssToVec3(color: string): [number, number, number] {
   const d = sampleColor(color);
   return [d[0] / 255, d[1] / 255, d[2] / 255];
 }
-
-/** CSS color string → opaque `rgb(r, g, b)` string (strips alpha). */
-export function cssToOpaque(color: string): string {
-  const d = sampleColor(color);
-  return `rgb(${d[0]}, ${d[1]}, ${d[2]})`;
-}
-
-/** Linear interpolation between two RGB tuples (0–255). Returns CSS rgb() string. */
-export function lerpRgb(
-  a: [number, number, number],
-  b: [number, number, number],
-  t: number,
-): string {
-  const r = Math.round(a[0] + (b[0] - a[0]) * t);
-  const g = Math.round(a[1] + (b[1] - a[1]) * t);
-  const bl = Math.round(a[2] + (b[2] - a[2]) * t);
-  return `rgb(${r},${g},${bl})`;
-}

@@ -22,8 +22,7 @@
     "src/shared/lib/mini-double-tap.ts",
     "src/shared/lib/radial-trigger.ts",
     "src/shared/stella-api.ts",
-    "src/convex/api.ts",
-    "src/prompts/dashboard-page-focus.ts"
+    "src/convex/api.ts"
   ],
   "exclude": ["electron/preload.ts", "**/*.test.ts"],
 }

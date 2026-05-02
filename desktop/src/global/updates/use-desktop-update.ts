@@ -38,7 +38,7 @@ const detectPlatformKey = (): string => {
   return platformKeyForCurrentEnv(electronPlatform, archGuess);
 };
 
-export type DesktopUpdateState = {
+type DesktopUpdateState = {
   installManifest: InstallManifestSnapshot | null;
   currentRelease: {
     platform: string;

@@ -1,9 +1,8 @@
 import {
   callChatCompletion,
   extractChatText,
-  type ChatCompletionResponse,
 } from "@/infra/ai/llm"
-import { resolvePromptText } from "./resolve"
+import type { ChatCompletionResponse } from "@/shared/stella-api"
 
 export type MusicMood = "Auto" | "Focus" | "Calm" | "Energy" | "Sleep" | "Lo-fi"
 
@@ -34,7 +33,32 @@ const MOOD_GUIDANCE: Record<MusicMood, string> = {
     "Lo-fi hip hop and chill beats. Moderate-slow tempo (72-90 BPM), medium density. Vinyl crackle, jazz chords, tape-saturated drums, warm analog sound.",
 }
 
-export const getMusicSystemPrompt = (): string => resolvePromptText("music.system")
+const MUSIC_SYSTEM_PROMPT = `You are a music director for Lyria, Google's AI music generator. You write rich, descriptive prompts that paint a vivid sonic picture.
+
+Write detailed natural-language prompts describing genre, mood, instrumentation, tempo, arrangement, production quality, and vocals only when lyrics are enabled. Use vivid, specific sonic language instead of comma-separated keywords.
+
+Output ONLY valid JSON with this schema:
+{
+  "label": "A short 2-3 word name",
+  "prompts": [
+    { "text": "A rich, descriptive Lyria prompt", "weight": 1.0 }
+  ],
+  "config": {
+    "bpm": 95,
+    "density": 0.5,
+    "brightness": 0.5,
+    "guidance": 4,
+    "temperature": 1
+  }
+}
+
+Rules:
+- Config values must stay within the requested ranges.
+- Each generation should feel distinct from the previous one while staying within the mood.
+- If user instructions are provided, use them as the primary creative direction.
+- Do not include real artist names, song titles, or copyrighted material.`
+
+export const getMusicSystemPrompt = (): string => MUSIC_SYSTEM_PROMPT
 
 export async function generateMusicPrompt(
   mood: MusicMood,

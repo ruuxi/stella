@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useAuthSessionState } from '@/global/auth/hooks/use-auth-session-state'
 
-export type ChatStorageMode = 'cloud' | 'local'
+type ChatStorageMode = 'cloud' | 'local'
 
 type ChatStoreContextValue = {
   storageMode: ChatStorageMode

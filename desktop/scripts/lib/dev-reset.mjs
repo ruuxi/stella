@@ -3,9 +3,9 @@ import { existsSync, promises as fs } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const scriptDir = dirname(fileURLToPath(import.meta.url));
-export const desktopDir = resolve(scriptDir, '..', '..');
-export const repoRootDir = resolve(desktopDir, '..');
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const desktopDir = resolve(scriptDir, '..', '..');
+const repoRootDir = resolve(desktopDir, '..');
 export const stellaStatePath = resolve(repoRootDir, 'state');
 
 const runnerScriptPath = resolve(desktopDir, 'scripts', 'electron-dev-runner.mjs');
@@ -103,13 +103,13 @@ const killPosixTree = async (pid) => {
   }
 };
 
-export const assertDevRunnerScriptExists = () => {
+const assertDevRunnerScriptExists = () => {
   if (!existsSync(runnerScriptPath)) {
     throw new Error(`Missing runner script: ${runnerScriptPath}`);
   }
 };
 
-export const stopExistingDevRunner = async () => {
+const stopExistingDevRunner = async () => {
   if (!(await pathExists(runnerPidFilePath))) {
     return false;
   }
@@ -145,7 +145,7 @@ export const stopExistingDevRunner = async () => {
   }
 };
 
-export const stopResidualDevElectron = async () => {
+const stopResidualDevElectron = async () => {
   if (process.platform === 'win32') {
     return 0;
   }

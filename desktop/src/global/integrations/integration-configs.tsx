@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
-export type IntegrationType = "bot";
-export type IntegrationGroup = "messaging";
+type IntegrationType = "bot";
+type IntegrationGroup = "messaging";
 
 export interface Integration {
   provider: string;

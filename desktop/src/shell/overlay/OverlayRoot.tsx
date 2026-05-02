@@ -10,10 +10,6 @@ import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { VoiceOverlay } from "@/shell/overlay/VoiceOverlay";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
-import {
-  ScreenGuideAnnotations,
-  type ScreenGuideAnnotation,
-} from "@/shell/overlay/ScreenGuideAnnotations";
 import { InworldDictationSession } from "@/features/dictation/services/inworld-dictation";
 import { appendRollingLevel } from "@/features/dictation/rolling-levels";
 import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
@@ -26,8 +22,8 @@ import "./overlays.css";
 /**
  * OverlayRoot manages the unified transparent overlay window.
  *
- * All overlay components (Region Capture, Voice Overlay, Screen Guide,
- * Window Highlight, and Morph Transition) live as absolutely-positioned
+ * All overlay components (Region Capture, Voice Overlay, Window Highlight,
+ * and Morph Transition) live as absolutely-positioned
  * children. The overlay window is hidden when idle and only shown when a
  * component activates, preventing it from blocking interaction with windows
  * below.
@@ -51,8 +47,6 @@ type OverlayState = {
   voicePosition: { x: number; y: number } | null;
   dictationVisible: boolean;
   dictationPosition: { x: number; y: number } | null;
-  screenGuideVisible: boolean;
-  screenGuideAnnotations: ScreenGuideAnnotation[];
   selectionChip: SelectionChipState | null;
 };
 
@@ -77,8 +71,6 @@ type OverlayAction =
   | { type: "voice:hide" }
   | { type: "dictation:show"; position: { x: number; y: number } }
   | { type: "dictation:hide" }
-  | { type: "screenGuide:show"; annotations: ScreenGuideAnnotation[] }
-  | { type: "screenGuide:hide" }
   | { type: "selectionChip:show"; chip: SelectionChipState }
   | { type: "selectionChip:hide"; requestId?: number };
 
@@ -101,8 +93,6 @@ const initialState: OverlayState = {
   voicePosition: null,
   dictationVisible: false,
   dictationPosition: null,
-  screenGuideVisible: false,
-  screenGuideAnnotations: [],
   selectionChip: null,
 };
 
@@ -179,16 +169,6 @@ function overlayReducer(
       return state.dictationVisible
         ? { ...state, dictationVisible: false }
         : state;
-    case "screenGuide:show":
-      return {
-        ...state,
-        screenGuideVisible: true,
-        screenGuideAnnotations: action.annotations,
-      };
-    case "screenGuide:hide":
-      return state.screenGuideVisible
-        ? { ...state, screenGuideVisible: false, screenGuideAnnotations: [] }
-        : state;
     case "selectionChip:show":
       return { ...state, selectionChip: action.chip };
     case "selectionChip:hide":
@@ -226,7 +206,7 @@ const pointInRect = (point: { x: number; y: number }, rect: InteractiveRect) =>
 // ---------------------------------------------------------------------------
 // Hook: useOverlayIPC
 // Consolidates ALL IPC subscription effects (window highlight, region capture,
-// voice show/hide, screen guide) into a single hook.
+// voice show/hide) into a single hook.
 // ---------------------------------------------------------------------------
 function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
   const radialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -339,14 +319,6 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
       api.overlay.onHideDictation?.(() => {
         dispatch({ type: "dictation:hide" });
       }),
-      api.overlay.onShowScreenGuide?.(
-        (data: { annotations: ScreenGuideAnnotation[] }) => {
-          dispatch({ type: "screenGuide:show", annotations: data.annotations });
-        },
-      ),
-      api.overlay.onHideScreenGuide?.(() => {
-        dispatch({ type: "screenGuide:hide" });
-      }),
       api.overlay.onShowSelectionChip?.((data) => {
         dispatch({
           type: "selectionChip:show",
@@ -396,7 +368,6 @@ function useOverlayHitTesting(
     voicePosition,
     dictationVisible,
     dictationPosition,
-    screenGuideVisible,
     selectionChip,
   } = state;
   const selectionChipActive = Boolean(selectionChip);
@@ -473,7 +444,6 @@ function useOverlayHitTesting(
       regionCaptureActive ||
       voiceVisible ||
       dictationVisible ||
-      screenGuideVisible ||
       selectionChipActive;
 
     if (!anythingActive) {
@@ -484,7 +454,6 @@ function useOverlayHitTesting(
     regionCaptureActive,
     voiceVisible,
     dictationVisible,
-    screenGuideVisible,
     selectionChipActive,
     updateInteractive,
   ]);
@@ -698,7 +667,6 @@ export function OverlayRoot() {
     state.regionCaptureActive,
     state.voiceVisible,
     state.dictationVisible,
-    state.screenGuideVisible,
     state.selectionChip,
   ]);
 
@@ -792,15 +760,6 @@ export function OverlayRoot() {
         elapsedMs={dictation.elapsedMs}
         onCancel={dictation.cancel}
         onConfirm={dictation.confirm}
-      />
-
-      <ScreenGuideAnnotations
-        annotations={state.screenGuideAnnotations}
-        visible={state.screenGuideVisible}
-        onDismiss={() => {
-          dispatch({ type: "screenGuide:hide" });
-          window.electronAPI?.overlay?.setInteractive(false);
-        }}
       />
 
       <MorphTransition />

@@ -19,7 +19,7 @@ type MultilineTextFieldProps = TextFieldBaseProps &
     multiline: true;
   };
 
-export type TextFieldProps = SingleLineTextFieldProps | MultilineTextFieldProps;
+type TextFieldProps = SingleLineTextFieldProps | MultilineTextFieldProps;
 
 export const TextField = React.forwardRef<HTMLInputElement | HTMLTextAreaElement, TextFieldProps>(
   (props, ref) => {

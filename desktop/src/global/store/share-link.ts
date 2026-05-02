@@ -53,11 +53,3 @@ export const parseShareLink = (input: string): ParsedShareLink | null => {
     packageId: match[2].toLowerCase(),
   };
 };
-
-/**
- * Convenience: returns true when a string is exactly a Stella share
- * link (no surrounding text). Use this in renderers to decide whether
- * to swap a text bubble for the embed card.
- */
-export const isShareLinkOnlyMessage = (body: string): boolean =>
-  parseShareLink(body) !== null;

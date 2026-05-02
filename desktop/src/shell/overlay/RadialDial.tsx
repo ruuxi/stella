@@ -391,7 +391,7 @@ export function RadialDial({
       </div>
 
       <div
-        className={`radial-dial-frame${contentVisible ? ' radial-dial-frame--visible' : ''}`}
+        className="radial-dial-frame"
         style={{
           opacity: contentVisible ? 1 : 0,
           willChange: 'opacity, transform',

@@ -114,7 +114,7 @@ export const stabilizeTurnRows = <T extends { id: string }>(
  * pass `previous` so the wrapping array reference is also reused when
  * the window slice is contents-identical to the previous render.
  */
-export const MAX_RENDERED_EVENTS = 2000;
+const MAX_RENDERED_EVENTS = 2000;
 
 export const capEventWindow = (
   events: EventRecord[],

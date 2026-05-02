@@ -80,22 +80,6 @@
   contain-intrinsic-size: none;
 }
 
-.session-turn-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-}
-
-.session-turn-title {
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--text-strong);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Event item - iOS-style speech bubbles */
 .event-item {
   padding: 12px;
@@ -405,12 +389,6 @@
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   background: var(--surface-inset);
-}
-
-.event-actions {
-  display: flex;
-  justify-content: flex-start;
-  margin-top: 4px;
 }
 
 .event-empty {

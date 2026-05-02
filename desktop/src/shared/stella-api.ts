@@ -1,5 +1,5 @@
-export const STELLA_API_BASE_PATH = "/api/stella/v1";
-export const STELLA_RUNTIME_PATH = `${STELLA_API_BASE_PATH}/runtime`;
+const STELLA_API_BASE_PATH = "/api/stella/v1";
+const STELLA_RUNTIME_PATH = `${STELLA_API_BASE_PATH}/runtime`;
 export const STELLA_CHAT_COMPLETIONS_PATH = `${STELLA_API_BASE_PATH}/chat/completions`;
 export const STELLA_MODELS_PATH = `${STELLA_API_BASE_PATH}/models`;
 export const STELLA_DEFAULT_MODEL = "stella/default";
@@ -22,17 +22,11 @@ export const stellaApiBaseUrlFromSiteUrl = (siteUrl: string): string =>
 export const stellaRuntimeUrlFromSiteUrl = (siteUrl: string): string =>
   stellaUrlFromSiteUrl(siteUrl, STELLA_RUNTIME_PATH);
 
-export const stellaChatCompletionsUrlFromSiteUrl = (siteUrl: string): string =>
-  stellaUrlFromSiteUrl(siteUrl, STELLA_CHAT_COMPLETIONS_PATH);
-
-export const stellaModelsUrlFromSiteUrl = (siteUrl: string): string =>
-  stellaUrlFromSiteUrl(siteUrl, STELLA_MODELS_PATH);
-
-export type ChatContentPart =
+type ChatContentPart =
   | { type?: string; text?: string }
   | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } };
 
-export type ChatToolCall = {
+type ChatToolCall = {
   id: string;
   type: "function";
   function: {

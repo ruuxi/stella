@@ -55,7 +55,7 @@ const STEP_TITLE_KEYS: Partial<Record<Phase, string>> = {
   enter: "onboarding.stepTitles.enter",
 };
 
-export interface OnboardingStep1Props {
+interface OnboardingStep1Props {
   onComplete: () => void;
   onInteract?: () => void;
   initialPhase?: Phase;

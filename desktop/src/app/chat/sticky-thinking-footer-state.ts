@@ -3,7 +3,7 @@ import { getWorkingIndicatorDisplayStatus } from "./working-indicator-state";
 
 export const TASK_ROTATE_MS = 3000;
 
-export type StickyThinkingFooterState = {
+type StickyThinkingFooterState = {
   activeTask: TaskItem | null;
   displayTasks: TaskItem[];
   status: string | undefined;

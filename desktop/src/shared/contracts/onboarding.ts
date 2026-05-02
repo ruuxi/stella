@@ -10,7 +10,7 @@ export type OnboardingHomeSuggestion = {
  * without parsing free-form text. Anything outside this set falls back to
  * the generic info glyph.
  */
-export type OnboardingAppBadgeIcon =
+type OnboardingAppBadgeIcon =
   | "browser"
   | "key"
   | "account"

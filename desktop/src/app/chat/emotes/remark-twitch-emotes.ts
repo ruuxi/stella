@@ -1,4 +1,4 @@
-export const EMOTE_URL_MARKER = "#stella-emote";
+const EMOTE_URL_MARKER = "#stella-emote";
 const VARIATION_SELECTOR_16 = /\uFE0F/g;
 
 type MdastNode = {
@@ -66,7 +66,7 @@ const imageNode = (url: string): MdastNode => ({
   alt: "",
 });
 
-export const transformTextWithEmotes = (
+const transformTextWithEmotes = (
   text: string,
   emojiLookup: ReadonlyMap<string, string>,
 ): MdastNode[] => {

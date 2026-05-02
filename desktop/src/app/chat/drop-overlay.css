@@ -10,18 +10,6 @@
   background: color-mix(in oklch, var(--primary) 6%, transparent);
 }
 
-.drop-overlay--full {
-  border-radius: 20px;
-}
-
-.drop-overlay--mini {
-  border-radius: 14px;
-}
-
-.drop-overlay--orb {
-  border-radius: 12px;
-}
-
 .drop-overlay--surface {
   border-radius: 0;
 }

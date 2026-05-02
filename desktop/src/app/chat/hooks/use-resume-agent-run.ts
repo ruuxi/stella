@@ -46,11 +46,11 @@ type TaskSnapshot = {
   error?: string;
 };
 
-export interface ResumeRefs {
+interface ResumeRefs {
   lastSeqByConversationRef: MutableRefObject<Map<string, number>>;
 }
 
-export interface ResumeActions {
+interface ResumeActions {
   ensureAgentStreamSubscription: () => void;
   applyResumeSnapshot: (args: {
     conversationId: string;

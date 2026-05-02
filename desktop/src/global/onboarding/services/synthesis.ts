@@ -7,14 +7,9 @@
 
 import { getSynthesisPromptConfig } from "@/prompts";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
-import type {
-  OnboardingSynthesisResponse,
-  OnboardingHomeSuggestion,
-} from "@/shared/contracts/onboarding";
+import type { OnboardingSynthesisResponse } from "@/shared/contracts/onboarding";
 
-export type HomeSuggestion = OnboardingHomeSuggestion;
-
-export type SynthesisResult = OnboardingSynthesisResponse;
+type SynthesisResult = OnboardingSynthesisResponse;
 
 type SynthesisRequestOptions = {
   includeAuth?: boolean;

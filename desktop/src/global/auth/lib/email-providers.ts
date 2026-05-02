@@ -1,4 +1,4 @@
-export interface EmailProvider {
+interface EmailProvider {
   /** Friendly display name, e.g. "Gmail". */
   name: string;
   /** URL to open the provider's webmail inbox. */

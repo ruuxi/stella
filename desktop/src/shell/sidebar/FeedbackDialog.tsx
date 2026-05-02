@@ -13,7 +13,7 @@ import {
 import { TextField } from "@/ui/text-field";
 import { showToast } from "@/ui/toast";
 
-export interface FeedbackDialogProps {
+interface FeedbackDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /**

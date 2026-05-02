@@ -954,10 +954,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('shiki') || id.includes('@shikijs')) return 'vendor-shiki'
-            if (id.includes('recharts') || id.includes('d3-') || id.includes('victory')) return 'vendor-charts'
             if (id.includes('@radix-ui')) return 'vendor-radix'
-            if (id.includes('@google/genai')) return 'vendor-genai'
             if (id.includes('react-dom')) return 'vendor-react'
           }
         },
@@ -971,7 +968,6 @@ export default defineConfig({
       'react/jsx-runtime',
       'lucide-react',
       'zod',
-      'date-fns',
     ],
     exclude: [
       '@convex-dev/better-auth',

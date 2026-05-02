@@ -1,4 +1,4 @@
-export const BILLING_CHECKOUT_QUERY_PARAM = "billingCheckout";
+const BILLING_CHECKOUT_QUERY_PARAM = "billingCheckout";
 
 const BILLING_CHECKOUT_COMPLETE_VALUE = "complete";
 

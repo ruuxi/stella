@@ -60,7 +60,7 @@ export type BrowserTabChip = {
 export type SuggestionChip = RecentAppChip | BrowserTabChip
 
 /** A lane occupant's lifecycle state — drives the entering/leaving CSS transitions. */
-export type SlotPhase = "stable" | "entering" | "leaving"
+type SlotPhase = "stable" | "entering" | "leaving"
 
 /** A single chip occupant rendered inside a lane. */
 export type SuggestionSlot = {
@@ -419,7 +419,7 @@ const orderCandidates = ({ apps, tab }: FetchSnapshotResult): SuggestionChip[] =
 // Public hook
 // ---------------------------------------------------------------------------
 
-export type AutoContextChipsApi = {
+type AutoContextChipsApi = {
   lanes: SuggestionLane[]
   /** Mark the lane occupant with this slot key as leaving (fade-out). */
   dismissSlot: (slotKey: string) => void

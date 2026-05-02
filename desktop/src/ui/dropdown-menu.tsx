@@ -17,8 +17,6 @@ const DropdownMenuTrigger = React.forwardRef<
 ));
 DropdownMenuTrigger.displayName = "DropdownMenuTrigger";
 
-const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
-
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
@@ -107,69 +105,13 @@ const DropdownMenuRadioItem = React.forwardRef<
 ));
 DropdownMenuRadioItem.displayName = "DropdownMenuRadioItem";
 
-const DropdownMenuCheckboxItem = React.forwardRef<
-  React.ElementRef<typeof DropdownMenuPrimitive.CheckboxItem>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
->(({ className, children, ...props }, ref) => (
-  <DropdownMenuPrimitive.CheckboxItem
-    ref={ref}
-    data-slot="dropdown-menu-checkbox-item"
-    className={cn(className)}
-    {...props}
-  >
-    <DropdownMenuPrimitive.ItemIndicator data-slot="dropdown-menu-item-indicator">
-      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M2 5L4 7L8 3" />
-      </svg>
-    </DropdownMenuPrimitive.ItemIndicator>
-    {children}
-  </DropdownMenuPrimitive.CheckboxItem>
-));
-DropdownMenuCheckboxItem.displayName = "DropdownMenuCheckboxItem";
-
-const DropdownMenuGroup = DropdownMenuPrimitive.Group;
-
-const DropdownMenuSub = DropdownMenuPrimitive.Sub;
-
-const DropdownMenuSubTrigger = React.forwardRef<
-  React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger>
->(({ className, ...props }, ref) => (
-  <DropdownMenuPrimitive.SubTrigger
-    ref={ref}
-    data-slot="dropdown-menu-sub-trigger"
-    className={cn(className)}
-    {...props}
-  />
-));
-DropdownMenuSubTrigger.displayName = "DropdownMenuSubTrigger";
-
-const DropdownMenuSubContent = React.forwardRef<
-  React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
->(({ className, ...props }, ref) => (
-  <DropdownMenuPrimitive.SubContent
-    ref={ref}
-    data-component="dropdown-menu-sub-content"
-    className={cn(className)}
-    {...props}
-  />
-));
-DropdownMenuSubContent.displayName = "DropdownMenuSubContent";
-
 export {
   DropdownMenuRoot as DropdownMenu,
   DropdownMenuTrigger,
-  DropdownMenuPortal,
   DropdownMenuContent,
   DropdownMenuSeparator,
   DropdownMenuLabel,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuCheckboxItem,
-  DropdownMenuGroup,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 };

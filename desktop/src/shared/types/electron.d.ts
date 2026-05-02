@@ -6,12 +6,11 @@
  * the preload bridge (electron/preload.ts) and handler (electron/ipc/*.ts)
  * using that constant — never raw strings.
  */
-import type { UiState, WindowMode } from "./ui";
+import type { UiState, WindowMode } from "../contracts/ui";
 import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "@/shared/contracts/agent-stream";
 import type { EventRecord } from "@/shared/contracts/local-chat";
 import type { TaskLifecycleStatus } from "@/shared/contracts/agent-runtime";
-import type { PetOverlayStatus } from "@/shared/contracts/pet";
 import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
 import type {
   ChatContext as SharedChatContext,
@@ -326,17 +325,6 @@ export type ElectronOverlayApi = {
     callback: (data: { x: number; y: number }) => void,
   ) => () => void;
   onHideDictation: (callback: () => void) => () => void;
-  onShowScreenGuide: (
-    callback: (data: {
-      annotations: Array<{
-        id: string;
-        label: string;
-        x: number;
-        y: number;
-      }>;
-    }) => void,
-  ) => () => void;
-  onHideScreenGuide: (callback: () => void) => () => void;
   onShowSelectionChip: (
     callback: (data: {
       requestId: number;
@@ -395,16 +383,6 @@ export type ElectronOverlayApi = {
   morphDone: (transitionId: string) => void;
 };
 
-export type ElectronPetApi = {
-  setOpen: (open: boolean) => void;
-  openChat: () => void;
-  sendMessage: (message: string) => void;
-  publishStatus: (status: PetOverlayStatus) => void;
-  onStatus: (callback: (status: PetOverlayStatus) => void) => () => void;
-  onSetOpen: (callback: (open: boolean) => void) => () => void;
-  onSendMessage: (callback: (payload: { message: string }) => void) => () => void;
-};
-
 export type ElectronThemeApi = {
   onChange: (
     callback: (event: unknown, data: { key: string; value: string }) => void,
@@ -454,8 +432,6 @@ export type ElectronDictationApi = {
    * speech-to-text session.
    */
   onToggle: (callback: (data: { startId?: string }) => void) => () => void;
-  /** Programmatically trigger the same toggle from the renderer. */
-  trigger: () => Promise<{ ok: boolean }>;
   /** Returns the currently registered global shortcut accelerator. */
   getShortcut: () => Promise<string>;
   /**
@@ -463,16 +439,6 @@ export type ElectronDictationApi = {
    * disable the shortcut entirely.
    */
   setShortcut: (shortcut: string) => Promise<VoiceShortcutRegistrationResult>;
-  localStatus: () => Promise<{
-    available: boolean;
-    model: string;
-    reason?: string;
-  }>;
-  downloadLocalModel: () => Promise<{
-    available: boolean;
-    model: string;
-    reason?: string;
-  }>;
   warmLocal: () => Promise<{
     available: boolean;
     model: string;
@@ -1079,18 +1045,6 @@ export type ElectronHomeApi = {
   }>;
 };
 
-export type ElectronScreenGuideApi = {
-  show: (
-    annotations: Array<{
-      id: string;
-      label: string;
-      x: number;
-      y: number;
-    }>,
-  ) => void;
-  hide: () => void;
-};
-
 // ---------------------------------------------------------------------------
 // Main ElectronApi â€” composed from namespaced sub-types
 // ---------------------------------------------------------------------------
@@ -1149,8 +1103,6 @@ export type ElectronApi = {
   capture: ElectronCaptureApi;
   radial: ElectronRadialApi;
   overlay: ElectronOverlayApi;
-  pet: ElectronPetApi;
-  screenGuide: ElectronScreenGuideApi;
   theme: ElectronThemeApi;
   voice: ElectronVoiceApi;
   dictation: ElectronDictationApi;

@@ -7,10 +7,7 @@ import {
 } from "@/shared/stella-api";
 
 export {
-  STELLA_CHAT_COMPLETIONS_PATH,
   extractChatText,
-  type ChatCompletionResponse,
-  type ChatMessage,
 };
 
 type ChatRequestBase = {

@@ -1,22 +1,20 @@
 /**
  * Global in-memory trace store for debugging agent execution.
  *
- * Captures tool calls, sub-agent lifecycle, errors, and voice events
- * in a circular buffer. Designed to be read by both the trace viewer UI
- * and copy-pasted into a conversation with Claude for debugging.
+ * Captures tool calls, sub-agent lifecycle, and errors in a circular
+ * buffer for dev-mode diagnostics.
  */
 
 import { AGENT_IDS, type AgentIdLike } from "@/shared/contracts/agent-runtime";
 
-export type TraceCategory =
+type TraceCategory =
   | "orchestrator"
   | "agent"
   | "tool"
-  | "voice"
   | "system"
   | "error";
 
-export type TraceEntry = {
+type TraceEntry = {
   id: number;
   ts: number;
   cat: TraceCategory;
@@ -31,27 +29,14 @@ export type TraceEntry = {
   duration?: number;
 };
 
-type Listener = () => void;
-
 const MAX_ENTRIES = 2000;
 
 let entries: TraceEntry[] = [];
 let nextId = 1;
-const listeners = new Set<Listener>();
 const toolStartTimes = new Map<string, number>();
 
 // Track which runId belongs to which agent type
 const runIdToAgent = new Map<string, string>();
-
-function notify() {
-  for (const fn of listeners) {
-    try {
-      fn();
-    } catch {
-      // ignore listener errors
-    }
-  }
-}
 
 export function addTrace(
   cat: TraceCategory,
@@ -84,25 +69,7 @@ export function addTrace(
     entries = entries.slice(entries.length - MAX_ENTRIES);
   }
 
-  notify();
   return entry;
-}
-
-export function getTraceEntries(): readonly TraceEntry[] {
-  return entries;
-}
-
-export function clearTrace() {
-  entries = [];
-  toolStartTimes.clear();
-  notify();
-}
-
-export function subscribeTrace(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
 }
 
 // --- Helpers for recording common events ---
@@ -278,52 +245,4 @@ export function traceAssistantMessage(text: string, userMessageId?: string) {
 
 export function registerRunAgent(runId: string, agentType: AgentIdLike) {
   runIdToAgent.set(runId, agentType);
-}
-
-// --- Export for debugging ---
-
-function formatTs(ts: number): string {
-  const d = new Date(ts);
-  return (
-    d.toTimeString().slice(0, 8) +
-    "." +
-    String(d.getMilliseconds()).padStart(3, "0")
-  );
-}
-
-export function formatTraceForClipboard(
-  entriesToFormat?: readonly TraceEntry[],
-): string {
-  const items = entriesToFormat ?? entries;
-  if (items.length === 0) return "(no trace entries)";
-
-  const lines: string[] = [
-    `Stella Trace — ${new Date().toISOString()} — ${items.length} entries`,
-    "─".repeat(80),
-  ];
-
-  for (const e of items) {
-    const ts = formatTs(e.ts);
-    const agent = e.agent ? `[${e.agent}]` : "";
-    const dur = e.duration != null ? ` (${e.duration}ms)` : "";
-    const tool = e.toolName ? ` ${e.toolName}` : "";
-    const callId = e.toolCallId ? ` callId=${e.toolCallId}` : "";
-    const agentId = e.agentId ? ` agentId=${e.agentId}` : "";
-
-    let line = `[${ts}] [${e.cat}]${agent} ${e.event}${tool}${callId}${agentId}${dur}`;
-    if (e.summary) {
-      line += ` | ${e.summary}`;
-    }
-    lines.push(line);
-
-    if (e.data) {
-      const dataStr =
-        typeof e.data === "string" ? e.data : JSON.stringify(e.data, null, 2);
-      for (const dl of dataStr.split("\n")) {
-        lines.push(`    ${dl}`);
-      }
-    }
-  }
-
-  return lines.join("\n");
 }

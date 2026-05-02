@@ -29,9 +29,9 @@ import {
 const TARGET_SAMPLE_RATE = 16_000;
 const PCM_WORKLET_NAME = "stella-dictation-pcm-capture";
 const PCM_WORKLET_URL = "/dictation-pcm-worklet.js";
-export const DICTATION_SUPER_FAST_KEY = "stella-dictation-super-fast";
-export const DICTATION_ENHANCE_KEY = "stella-dictation-enhance";
-export const DICTATION_LOCAL_KEY = "stella-dictation-local";
+const DICTATION_SUPER_FAST_KEY = "stella-dictation-super-fast";
+const DICTATION_ENHANCE_KEY = "stella-dictation-enhance";
+const DICTATION_LOCAL_KEY = "stella-dictation-local";
 /** Cap a single dictation segment so the upload stays well under the
  *  backend's 14 MB base64 audio limit. 16 kHz int16 mono = 32 KB/s, so
  *  ~3 minutes of speech ≈ 5.7 MB raw → ~7.6 MB base64 → safely under. */
@@ -54,7 +54,7 @@ export type DictationSessionState =
   | "transcribing"
   | "error";
 
-export type DictationCallbacks = {
+type DictationCallbacks = {
   onFinalTranscript?: (text: string) => void;
   onStateChange?: (state: DictationSessionState, error?: string) => void;
   /** Periodic 0..1 input-level tick used by the recording UI to render a

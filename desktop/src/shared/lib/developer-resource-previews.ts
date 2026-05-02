@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 
-export const DEVELOPER_RESOURCE_PREVIEWS_KEY =
+const DEVELOPER_RESOURCE_PREVIEWS_KEY =
   "stella-developer-resource-previews";
 
-export const DEVELOPER_RESOURCE_PREVIEWS_CHANGED_EVENT =
+const DEVELOPER_RESOURCE_PREVIEWS_CHANGED_EVENT =
   "stella:developer-resource-previews-changed";
 
-export const getDeveloperResourcePreviewsEnabled = (): boolean => {
+const getDeveloperResourcePreviewsEnabled = (): boolean => {
   if (typeof window === "undefined") return false;
   return window.localStorage.getItem(DEVELOPER_RESOURCE_PREVIEWS_KEY) === "true";
 };

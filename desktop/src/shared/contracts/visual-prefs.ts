@@ -15,7 +15,7 @@ export type VisualPrefs = {
   showMouth: boolean;
 };
 
-export const DEFAULT_VISUAL_PREFS: VisualPrefs = {
+const DEFAULT_VISUAL_PREFS: VisualPrefs = {
   showEyes: true,
   showMouth: false,
 };

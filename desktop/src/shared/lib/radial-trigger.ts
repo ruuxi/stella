@@ -111,7 +111,7 @@ const normalizeRadialPlatform = (value: unknown): RadialPlatform => {
   return "other"
 }
 
-export const isSupportedRadialTriggerCode = (
+const isSupportedRadialTriggerCode = (
   value: unknown,
 ): value is RadialTriggerCode =>
   typeof value === "string" && value in RADIAL_TRIGGER_DEFINITIONS

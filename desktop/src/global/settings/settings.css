@@ -414,63 +414,6 @@
   height: 30px;
 }
 
-/* ---- Phone Access ---- */
-
-.settings-phone-pairing {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 0 4px;
-}
-
-.settings-phone-qr {
-  width: 120px;
-  height: 120px;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-
-.settings-phone-code-block {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.settings-phone-code-label {
-  font-size: 11px;
-  color: var(--text-weak);
-}
-
-.settings-phone-code {
-  font-size: 28px;
-  line-height: 1;
-  letter-spacing: 0.22em;
-  font-weight: 700;
-  color: var(--text-strong);
-  font-variant-numeric: tabular-nums;
-}
-
-.settings-phone-code-meta {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  font-size: 11px;
-  color: var(--text-weak);
-}
-
-.settings-phone-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.settings-phone-list {
-  margin-top: 10px;
-}
-
 /* ---- Billing ---- */
 
 .settings-billing-current-plan-pill {
@@ -619,12 +562,4 @@
     width: 150px;
   }
 
-  .settings-phone-pairing {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .settings-phone-actions {
-    justify-content: flex-start;
-  }
 }

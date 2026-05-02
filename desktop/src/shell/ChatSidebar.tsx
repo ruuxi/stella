@@ -39,7 +39,7 @@ import {
 } from "@/shared/hooks/use-animated-composer-shell";
 import "./chat-sidebar.css";
 
-export interface ChatSidebarOpenOptions {
+interface ChatSidebarOpenOptions {
   /** When provided, attaches/replaces the current chat context before opening. */
   chatContext?: ChatContext | null;
   /** When provided, sets the composer text (replaces existing input). */

@@ -4,25 +4,25 @@ import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import type { SocialProfile } from "./use-social-profile";
 
-export type SocialFriend = {
+type SocialFriend = {
   profile: SocialProfile;
 };
 
-export type IncomingSocialFriendRequest = {
+type IncomingSocialFriendRequest = {
   relationship: {
     requesterOwnerId: string;
   };
   profile: SocialProfile;
 };
 
-export type OutgoingSocialFriendRequest = {
+type OutgoingSocialFriendRequest = {
   relationship: {
     addresseeOwnerId: string;
   };
   profile: SocialProfile;
 };
 
-export type SocialPendingRequests = {
+type SocialPendingRequests = {
   incoming: IncomingSocialFriendRequest[];
   outgoing: OutgoingSocialFriendRequest[];
 };

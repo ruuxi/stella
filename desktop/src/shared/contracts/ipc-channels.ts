@@ -92,10 +92,6 @@ export const IPC_OVERLAY_HIDE_WINDOW_HIGHLIGHT =
   "overlay:hideWindowHighlight" as const;
 export const IPC_OVERLAY_PREVIEW_WINDOW_HIGHLIGHT_AT_POINT =
   "overlay:previewWindowHighlightAtPoint" as const;
-export const IPC_PET_STATUS = "pet:status" as const;
-export const IPC_PET_SET_OPEN = "pet:setOpen" as const;
-export const IPC_PET_OPEN_CHAT = "pet:openChat" as const;
-export const IPC_PET_SEND_MESSAGE = "pet:sendMessage" as const;
 
 // ── Mini ────────────────────────────────────────────────────────────────────
 
@@ -119,15 +115,8 @@ export const IPC_VOICE_ORCHESTRATOR_CHAT = "voice:orchestratorChat" as const;
 export const IPC_VOICE_WEB_SEARCH = "voice:webSearch" as const;
 export const IPC_VOICE_GET_RUNTIME_STATE = "voice:getRuntimeState" as const;
 export const IPC_VOICE_RUNTIME_STATE = "voice:runtimeState" as const;
-export const IPC_VOICE_RTC_SET_SHORTCUT = "voice-rtc:setShortcut" as const;
-export const IPC_VOICE_RTC_GET_SHORTCUT = "voice-rtc:getShortcut" as const;
 
 // ── Dictation ───────────────────────────────────────────────────────────────
-
-export const IPC_DICTATION_TOGGLE = "dictation:toggle" as const;
-export const IPC_DICTATION_SET_SHORTCUT = "dictation:setShortcut" as const;
-export const IPC_DICTATION_GET_SHORTCUT = "dictation:getShortcut" as const;
-export const IPC_DICTATION_TRIGGER = "dictation:trigger" as const;
 
 // ── Agent ───────────────────────────────────────────────────────────────────
 

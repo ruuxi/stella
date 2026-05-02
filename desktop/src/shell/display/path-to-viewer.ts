@@ -131,7 +131,7 @@ export const basenameOf = (filePath: string): string => {
  * Map an extension to a `DisplayTabKind`. Returns `null` for unknown types
  * so callers can skip rendering a card.
  */
-export const kindForExtension = (
+const kindForExtension = (
   extension: string | null,
 ): DisplayTabKind | null => {
   if (extension == null) return null;
@@ -150,7 +150,7 @@ export const kindForExtension = (
 export const kindForPath = (filePath: string): DisplayTabKind | null =>
   kindForExtension(extensionOf(filePath));
 
-export const fileArtifactKindForPath = (
+const fileArtifactKindForPath = (
   filePath: string,
 ): DisplayFileArtifactKind | null => {
   const extension = extensionOf(filePath);
@@ -178,7 +178,7 @@ export const fileArtifactPayloadForPath = (
     : null;
 };
 
-export const isMarkdownExtension = (extension: string | null): boolean =>
+const isMarkdownExtension = (extension: string | null): boolean =>
   extension != null && MARKDOWN_EXTS.has(extension);
 
 export const isDeveloperResourceExtension = (

@@ -73,7 +73,7 @@ const isWindowActive = (): boolean => {
   return true;
 };
 
-export interface FeedbackPromptController {
+interface FeedbackPromptController {
   shouldPrompt: boolean;
   acknowledge: () => void;
 }

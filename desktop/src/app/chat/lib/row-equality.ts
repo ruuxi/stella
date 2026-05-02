@@ -20,7 +20,7 @@ import type {
   UserRowViewModel,
 } from "@/app/chat/MessageRow";
 
-export function attachmentsEqual(a: Attachment[], b: Attachment[]): boolean {
+function attachmentsEqual(a: Attachment[], b: Attachment[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
 
@@ -59,7 +59,7 @@ const reactionsEqual = (
   return true;
 };
 
-export const channelEnvelopeEqual = (
+const channelEnvelopeEqual = (
   a: ChannelEnvelope | undefined,
   b: ChannelEnvelope | undefined,
 ): boolean => {
@@ -73,7 +73,7 @@ export const channelEnvelopeEqual = (
   );
 };
 
-export const selfModAppliedEqual = (
+const selfModAppliedEqual = (
   a: SelfModApplied | undefined,
   b: SelfModApplied | undefined,
 ): boolean => {
@@ -93,7 +93,7 @@ export const selfModAppliedEqual = (
   return true;
 };
 
-export const askQuestionPayloadEqual = (
+const askQuestionPayloadEqual = (
   a: AskQuestionState | undefined,
   b: AskQuestionState | undefined,
 ): boolean => {
@@ -131,7 +131,7 @@ export const askQuestionPayloadEqual = (
   return true;
 };
 
-export const resourcePayloadEqual = (
+const resourcePayloadEqual = (
   a: DisplayPayload | undefined,
   b: DisplayPayload | undefined,
 ): boolean => {

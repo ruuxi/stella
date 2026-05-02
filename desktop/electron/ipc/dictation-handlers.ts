@@ -27,7 +27,6 @@ import {
   type ShortcutRegistrationResult,
 } from "./shortcut-registration.js";
 import {
-  downloadLocalParakeetModel,
   getLocalParakeetStatus,
   transcribeWithLocalParakeet,
   warmLocalParakeet,
@@ -229,17 +228,6 @@ export const registerDictationHandlers = (options: DictationHandlersOptions) => 
   });
 
   ipcMain.handle("dictation:getShortcut", () => currentShortcut);
-
-  ipcMain.handle("dictation:trigger", () => {
-    toggleDictation();
-    return { ok: true };
-  });
-
-  ipcMain.handle("dictation:localStatus", () => getLocalParakeetStatus());
-
-  ipcMain.handle("dictation:downloadLocalModel", () =>
-    downloadLocalParakeetModel(),
-  );
 
   ipcMain.handle("dictation:warmLocal", () => warmLocalParakeet());
 

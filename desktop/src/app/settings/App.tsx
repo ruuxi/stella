@@ -40,5 +40,3 @@ export function SettingsApp() {
     </Suspense>
   );
 }
-
-export default SettingsApp;

@@ -1,14 +1,7 @@
 import type { ChatContext } from '@/shared/types/electron'
 import type { AttachmentRef } from './chat-types'
-import { resolveComposerContextState } from '../composer-context'
 
-export const hasComposerContext = (
-  chatContext: ChatContext | null,
-  selectedText: string | null,
-) =>
-  resolveComposerContextState(chatContext, selectedText).hasComposerContext
-
-export const buildLocalScreenshotAttachments = (
+const buildLocalScreenshotAttachments = (
   chatContext: ChatContext | null,
 ): AttachmentRef[] =>
   (chatContext?.regionScreenshots ?? []).map((screenshot) => {
@@ -22,7 +15,7 @@ export const buildLocalScreenshotAttachments = (
     }
   })
 
-export const buildLocalFileAttachments = (
+const buildLocalFileAttachments = (
   chatContext: ChatContext | null,
 ): AttachmentRef[] =>
   (chatContext?.files ?? []).map((file) => ({

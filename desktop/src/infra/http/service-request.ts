@@ -43,7 +43,7 @@ const resolveCloudBaseUrl = (): string => {
 const normalizeServicePath = (path: string): string =>
   path.startsWith("/") ? path : `/${path}`;
 
-export const resolveServiceEndpoint = (path: string): string =>
+const resolveServiceEndpoint = (path: string): string =>
   new URL(normalizeServicePath(path), resolveCloudBaseUrl()).toString();
 
 export const createServiceRequest = async (
