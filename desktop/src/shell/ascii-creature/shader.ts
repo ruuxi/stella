@@ -1,4 +1,4 @@
-export const compileShader = (
+const compileShader = (
   gl: WebGLRenderingContext,
   type: number,
   source: string,

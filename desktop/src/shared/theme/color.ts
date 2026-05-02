@@ -1,15 +1,15 @@
 // Color utilities ported from Aura
 // Uses OKLCH color space for perceptually uniform color scales
 
-export type HexColor = string;
+type HexColor = string;
 
-export interface OklchColor {
+interface OklchColor {
   l: number; // Lightness 0-1
   c: number; // Chroma 0-0.4+
   h: number; // Hue 0-360
 }
 
-export function hexToRgb(hex: HexColor): { r: number; g: number; b: number } {
+function hexToRgb(hex: HexColor): { r: number; g: number; b: number } {
   if (!hex) {
     return { r: 0.5, g: 0.5, b: 0.5 };
   }
@@ -35,7 +35,7 @@ export function hexToRgb(hex: HexColor): { r: number; g: number; b: number } {
   };
 }
 
-export function rgbToHex(r: number, g: number, b: number): HexColor {
+function rgbToHex(r: number, g: number, b: number): HexColor {
   const toHex = (v: number) => {
     const clamped = Math.max(0, Math.min(1, v));
     const int = Math.round(clamped * 255);
@@ -54,7 +54,7 @@ function srgbToLinear(c: number): number {
   return Math.pow((c + 0.055) / 1.055, 2.4);
 }
 
-export function rgbToOklch(r: number, g: number, b: number): OklchColor {
+function rgbToOklch(r: number, g: number, b: number): OklchColor {
   const lr = srgbToLinear(r);
   const lg = srgbToLinear(g);
   const lb = srgbToLinear(b);
@@ -78,7 +78,7 @@ export function rgbToOklch(r: number, g: number, b: number): OklchColor {
   return { l: L, c: C, h: H };
 }
 
-export function oklchToRgb(oklch: OklchColor): { r: number; g: number; b: number } {
+function oklchToRgb(oklch: OklchColor): { r: number; g: number; b: number } {
   const { l: L, c: C, h: H } = oklch;
 
   const a = C * Math.cos((H * Math.PI) / 180);
@@ -103,12 +103,12 @@ export function oklchToRgb(oklch: OklchColor): { r: number; g: number; b: number
   };
 }
 
-export function hexToOklch(hex: HexColor): OklchColor {
+function hexToOklch(hex: HexColor): OklchColor {
   const { r, g, b } = hexToRgb(hex);
   return rgbToOklch(r, g, b);
 }
 
-export function oklchToHex(oklch: OklchColor): HexColor {
+function oklchToHex(oklch: OklchColor): HexColor {
   const { r, g, b } = oklchToRgb(oklch);
   return rgbToHex(r, g, b);
 }
@@ -117,7 +117,7 @@ export function oklchToHex(oklch: OklchColor): HexColor {
  * Generate a 12-step color scale from a seed color.
  * This matches Aura's scale generation for consistent gradients.
  */
-export function generateScale(seed: HexColor, isDark: boolean): HexColor[] {
+function generateScale(seed: HexColor, isDark: boolean): HexColor[] {
   const base = hexToOklch(seed);
   const scale: HexColor[] = [];
 

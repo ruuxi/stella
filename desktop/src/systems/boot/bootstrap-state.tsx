@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 
-export type RuntimeBootstrapStatus = 'preparing' | 'ready' | 'failed'
+type RuntimeBootstrapStatus = 'preparing' | 'ready' | 'failed'
 
 type BootstrapStateValue = {
   runtimeStatus: RuntimeBootstrapStatus

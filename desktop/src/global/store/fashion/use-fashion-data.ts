@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/api";
 
-export type FashionProfile = {
+type FashionProfile = {
   _id: string;
   ownerId: string;
   displayName?: string;
@@ -47,7 +47,7 @@ export type FashionOutfit = {
   readyAt?: number;
 };
 
-export type FashionLike = {
+type FashionLike = {
   _id: string;
   _creationTime?: number;
   ownerId: string;
@@ -81,7 +81,7 @@ export type FashionCartItem = {
   addedAt: number;
 };
 
-export type FashionFeatureStatus = {
+type FashionFeatureStatus = {
   shopifyConfigured: boolean;
 };
 
@@ -260,7 +260,7 @@ export const useFashionMutations = () => {
   };
 };
 
-export type CheckoutResult = {
+type CheckoutResult = {
   checkoutId: string;
   status: string;
   continueUrl?: string;

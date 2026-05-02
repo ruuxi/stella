@@ -4,7 +4,7 @@ import type { RuntimeSocialSessionStatus } from "../../../../../runtime/protocol
 
 export type SocialSessionStatus = RuntimeSocialSessionStatus;
 
-export type SocialSessionSummary = {
+type SocialSessionSummary = {
   room: {
     _id: string;
     kind: "dm" | "group";
@@ -29,7 +29,7 @@ export type SocialSessionSummary = {
   isHost: boolean;
 } | null;
 
-export type SocialSessionTurn = {
+type SocialSessionTurn = {
   _id: string;
   sessionId: string;
   ordinal: number;

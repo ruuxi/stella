@@ -13,7 +13,7 @@ const ONBOARDING_MORPH_REVERSE_MS = 800;
 
 type MorphFlavor = "hmr" | "onboarding";
 
-type MorphPhase = "idle" | "rippling" | "crossfading" | "calming";
+type MorphPhase = "idle" | "rippling" | "crossfading";
 
 type MorphState = {
   phase: MorphPhase;

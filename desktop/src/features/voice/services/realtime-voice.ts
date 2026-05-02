@@ -106,7 +106,7 @@ type VoiceEchoMetrics = {
   now?: number;
 };
 
-export function shouldGateVoiceInputForEcho({
+function shouldGateVoiceInputForEcho({
   assistantSpeaking,
   micLevel,
   outputLevel,
@@ -183,19 +183,8 @@ export class RealtimeVoiceSession {
   private conversationId: string | null = null;
   private model: string | null = null;
 
-  // Accumulated transcript fragments
-  private assistantTranscriptBuffer = "";
+  // Last finalized user transcript, used as fallback context for voice tools.
   private lastUserTranscript = "";
-
-  // Conversation trace log — sequential record of every event for debugging
-  private static readonly MAX_TRACE_ENTRIES = 500;
-  private traceLog: Array<{
-    seq: number;
-    time: number;
-    event: string;
-    detail: string;
-  }> = [];
-  private traceSeq = 0;
 
   constructor() {
     this.unsubscribeActionCompleted =
@@ -206,24 +195,6 @@ export class RealtimeVoiceSession {
       window.electronAPI?.localChat.onUpdated?.(() => {
         void this.syncLocalChatContext();
       }) ?? null;
-  }
-
-  private trace(event: string, detail: string) {
-    this.traceSeq++;
-    if (this.traceLog.length >= RealtimeVoiceSession.MAX_TRACE_ENTRIES) {
-      this.traceLog.shift();
-    }
-    this.traceLog.push({ seq: this.traceSeq, time: Date.now(), event, detail });
-  }
-
-  /** Return the full conversation trace for debugging. */
-  dumpTrace(): Array<{
-    seq: number;
-    time: number;
-    event: string;
-    detail: string;
-  }> {
-    return [...this.traceLog];
   }
 
   get state(): VoiceSessionState {
@@ -374,7 +345,6 @@ export class RealtimeVoiceSession {
       await this.syncInputState();
 
       getVoiceRuntimeState().activeSession = this;
-      this.trace("CONNECTED", `conv=${conversationId}`);
       this.setState("connected");
       void this.syncLocalChatContext({ markExisting: true });
     } catch (err) {
@@ -391,8 +361,6 @@ export class RealtimeVoiceSession {
 
   async disconnect(): Promise<void> {
     if (this._state === "idle" || this._state === "disconnecting") return;
-    this.trace("DISCONNECT", "session ending");
-    this.dumpTrace();
     this.destroyed = true;
     const runtime = getVoiceRuntimeState();
     if (runtime.activeSession === this) {
@@ -952,19 +920,13 @@ export class RealtimeVoiceSession {
 
     switch (type) {
       case "session.created":
-        this.trace("SESSION", "created");
         break;
       case "session.updated":
-        this.trace("SESSION", "updated");
         break;
 
       case "response.output_item.done": {
         const item = event.item as Record<string, unknown> | undefined;
         if (item?.type === "function_call") {
-          this.trace(
-            "TOOL_CALL",
-            `${item.name}(${String(item.arguments ?? "").slice(0, 200)})`,
-          );
           void this.handleFunctionCall(item);
         }
         break;
@@ -974,7 +936,6 @@ export class RealtimeVoiceSession {
       case "response.output_audio_transcript.delta": {
         const delta = (event as { delta?: string }).delta;
         if (delta) {
-          this.assistantTranscriptBuffer += delta;
           this.emit({
             type: "assistant-transcript",
             text: delta,
@@ -988,13 +949,11 @@ export class RealtimeVoiceSession {
       case "response.output_audio_transcript.done": {
         const transcript = (event as { transcript?: string }).transcript;
         if (transcript) {
-          this.trace("ASSISTANT_MSG", transcript);
           this.emit({
             type: "assistant-transcript",
             text: transcript,
             isFinal: true,
           });
-          this.assistantTranscriptBuffer = "";
         }
         break;
       }
@@ -1003,7 +962,6 @@ export class RealtimeVoiceSession {
         const transcript = (event as { transcript?: string }).transcript;
         if (transcript) {
           this.lastUserTranscript = transcript;
-          this.trace("USER_MSG", transcript);
           this.emit({
             type: "user-transcript",
             text: transcript,
@@ -1342,7 +1300,6 @@ export class RealtimeVoiceSession {
       result = `Error: ${(err as Error).message}`;
     }
 
-    this.trace("TOOL_RESULT", `${name} → ${result.slice(0, 300)}`);
     this.emit({ type: "tool-end", name, callId, result });
 
     // Send function call output back to the Realtime API
@@ -1416,7 +1373,6 @@ export class RealtimeVoiceSession {
     this.outputMonitorSource = null;
     this.pendingRemoteStream = null;
 
-    this.assistantTranscriptBuffer = "";
     this.model = null;
     this.inputEnergyBuffer = null;
     this.outputEnergyBuffer = null;

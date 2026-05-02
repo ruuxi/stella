@@ -5,19 +5,19 @@ import {
 } from "@/app/chat/services/local-chat-store"
 import type { OnboardingHomeSuggestion } from "@/shared/contracts/onboarding"
 
-export type SuggestionOption = {
+type SuggestionOption = {
   label: string
   prompt: string
 }
 
-export type SuggestionCategory = {
+type SuggestionCategory = {
   label: string
   options: SuggestionOption[]
 }
 
-export const DEFAULT_CATEGORIES: SuggestionCategory[] = [
+const DEFAULT_CATEGORIES: SuggestionCategory[] = [
   { label: "Stella", options: [
-    { label: "Add a music player to home", prompt: "Add the music player to my home page. The component is already built and ready - exists at src/app/home/MusicPlayer.tsx - integrate it into the Home.tsx page layout, don't rebuild it." },
+    { label: "Make a morning dashboard", prompt: "Build a morning dashboard for my home page with the information I care about most." },
     { label: "Change my theme to dark", prompt: "Change my theme to dark mode" },
     { label: "Build me a budget tracker app", prompt: "Build me a budget tracker app" },
     { label: "Create a habit tracker app", prompt: "Create a habit tracker app" },

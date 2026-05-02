@@ -2070,5 +2070,3 @@ export function StoreView({
     </div>
   )
 }
-
-export default StoreView

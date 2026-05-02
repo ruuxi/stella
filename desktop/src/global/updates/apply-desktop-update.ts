@@ -4,7 +4,7 @@ import type { InstallManifestSnapshot } from "@/shared/types/electron";
 const DEFAULT_REPO_OWNER = "ruuxi";
 const DEFAULT_REPO_NAME = "stella";
 
-export type ApplyDesktopUpdateOptions = {
+type ApplyDesktopUpdateOptions = {
   installManifest: InstallManifestSnapshot;
   publishedCommit: string;
   publishedTag: string;

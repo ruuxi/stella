@@ -45,10 +45,7 @@ export function DictationRecordingBar({
       </span>
       <button
         type="button"
-        className={cn(
-          "chat-composer-icon-button composer-dictation-control",
-          "composer-dictation-control--cancel",
-        )}
+        className={cn("chat-composer-icon-button composer-dictation-control")}
         onClick={onCancel}
         title="Cancel dictation"
         aria-label="Cancel dictation"

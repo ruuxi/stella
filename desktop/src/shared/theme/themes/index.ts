@@ -19,7 +19,7 @@ import type { Theme, ThemeColors } from "./types";
 
 export type { Theme, ThemeColors };
 
-export const themes: Theme[] = [
+const themes: Theme[] = [
   pearl, noir,
   oc1, tokyonight, dracula, catppuccin, nord, monokai, solarized,
   onedarkpro, shadesofpurple, nightowl, vesper, carbonfox, gruvbox, ayu, aura,
@@ -62,12 +62,4 @@ export const registerTheme = (theme: Theme) => {
     themes.push(theme);
   }
   emitChange();
-};
-
-export const unregisterTheme = (id: string) => {
-  const index = themes.findIndex((t) => t.id === id);
-  if (index >= 0) {
-    themes.splice(index, 1);
-    emitChange();
-  }
 };

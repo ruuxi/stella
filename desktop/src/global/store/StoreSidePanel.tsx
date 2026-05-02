@@ -1085,5 +1085,3 @@ export function StoreSidePanel() {
     </div>
   );
 }
-
-export default StoreSidePanel;

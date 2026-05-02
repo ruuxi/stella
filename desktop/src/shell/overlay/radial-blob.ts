@@ -230,8 +230,6 @@ const OPEN_SETTLE = 340 // ms
 const CLOSE_DURATION = 180 // ms
 const OPEN_SPEED_MULTIPLIER = 1 / 0.85
 
-export { CLOSE_DURATION }
-
 export function startOpen(
   selIdxRef: { current: number },
   colorsRef: { current: BlobColors },

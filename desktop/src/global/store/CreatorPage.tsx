@@ -122,5 +122,3 @@ export function CreatorPage({ handle }: Props) {
     </div>
   );
 }
-
-export default CreatorPage;

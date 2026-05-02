@@ -80,7 +80,7 @@ export function usePageSidebarOverride(): PageSidebarConfig | null {
  * `<PageSidebar>` instead — this is exposed for advanced cases (e.g. setting
  * the override from outside React's render tree).
  */
-export function useSetPageSidebar() {
+function useSetPageSidebar() {
   const ctx = useContext(PageSidebarContext);
   if (!ctx) {
     throw new Error(

@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 
-export type ComposerContextState = {
+type ComposerContextState = {
   hasScreenshotContext: boolean;
   hasFileContext: boolean;
   hasWindowContext: boolean;
@@ -33,7 +33,7 @@ type ComposerPlaceholderOptions = {
  * the chip strip width — the chip's button `title` attribute still carries
  * the full text for hover.
  */
-export const CHIP_LABEL_MAX_CHARS = 12;
+const CHIP_LABEL_MAX_CHARS = 12;
 
 export const truncateChipLabel = (
   text: string,
@@ -98,7 +98,7 @@ export const resolveComposerContextState = (
   };
 };
 
-export const resolveComposerPlaceholder = ({
+const resolveComposerPlaceholder = ({
   contextState,
 }: ComposerPlaceholderOptions): string => {
   if (contextState.hasPendingCaptureContext) {

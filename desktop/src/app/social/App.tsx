@@ -6,10 +6,14 @@ export function SocialApp() {
   const navigate = useNavigate();
 
   const onSignIn = useCallback(() => {
-    void navigate({ to: ".", search: (prev) => ({ ...prev, dialog: "auth" }) });
+    void navigate({
+      to: ".",
+      search: (prev) => ({
+        ...(prev ?? {}),
+        dialog: "auth",
+      }),
+    });
   }, [navigate]);
 
   return <SocialView onSignIn={onSignIn} />;
 }
-
-export default SocialApp;

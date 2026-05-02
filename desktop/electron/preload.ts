@@ -28,12 +28,7 @@ import {
   IPC_OFFICE_PREVIEW_START,
   IPC_OFFICE_PREVIEW_UPDATE,
   IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE,
-  IPC_PET_OPEN_CHAT,
-  IPC_PET_SEND_MESSAGE,
-  IPC_PET_SET_OPEN,
-  IPC_PET_STATUS,
 } from "../src/shared/contracts/ipc-channels.js";
-import type { PetOverlayStatus } from "../src/shared/contracts/pet.js";
 import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
@@ -363,15 +358,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onHideVoice: onIpcSignal("overlay:hideVoice"),
     onShowDictation: onIpc<{ x: number; y: number }>("overlay:showDictation"),
     onHideDictation: onIpcSignal("overlay:hideDictation"),
-    onShowScreenGuide: onIpc<{
-      annotations: Array<{
-        id: string;
-        label: string;
-        x: number;
-        y: number;
-      }>;
-    }>("overlay:showScreenGuide"),
-    onHideScreenGuide: onIpcSignal("overlay:hideScreenGuide"),
     onShowSelectionChip: onIpc<{
       requestId: number;
       text: string;
@@ -418,35 +404,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("overlay:morphDone", { transitionId }),
   },
 
-  pet: {
-    setOpen: (open: boolean) => ipcRenderer.send(IPC_PET_SET_OPEN, open),
-    openChat: () => ipcRenderer.send(IPC_PET_OPEN_CHAT),
-    sendMessage: (message: string) =>
-      ipcRenderer.send(IPC_PET_SEND_MESSAGE, { message }),
-    publishStatus: (status: PetOverlayStatus) =>
-      ipcRenderer.send(IPC_PET_STATUS, status),
-    onStatus: onIpc<PetOverlayStatus>(IPC_PET_STATUS),
-    onSetOpen: onIpc<boolean>(IPC_PET_SET_OPEN),
-    onSendMessage: onIpc<{ message: string }>(IPC_PET_SEND_MESSAGE),
-  },
-
   theme: {
     onChange: onIpcWithEvent<{ key: string; value: string }>("theme:change"),
     broadcast: (key: string, value: string) =>
       ipcRenderer.send("theme:broadcast", { key, value }),
     listInstalled: () => ipcRenderer.invoke("theme:listInstalled"),
-  },
-
-  screenGuide: {
-    show: (
-      annotations: Array<{
-        id: string;
-        label: string;
-        x: number;
-        y: number;
-      }>,
-    ) => ipcRenderer.send("screenGuide:show", { annotations }),
-    hide: () => ipcRenderer.send("screenGuide:hide"),
   },
 
   voice: {
@@ -521,8 +483,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   dictation: {
     onToggle: onIpc<{ startId?: string }>("dictation:toggle"),
-    trigger: () =>
-      ipcRenderer.invoke("dictation:trigger") as Promise<{ ok: boolean }>,
     getShortcut: () =>
       ipcRenderer.invoke("dictation:getShortcut") as Promise<string>,
     setShortcut: (shortcut: string) =>
@@ -531,18 +491,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         requestedShortcut: string;
         activeShortcut: string;
         error?: string;
-      }>,
-    localStatus: () =>
-      ipcRenderer.invoke("dictation:localStatus") as Promise<{
-        available: boolean;
-        model: string;
-        reason?: string;
-      }>,
-    downloadLocalModel: () =>
-      ipcRenderer.invoke("dictation:downloadLocalModel") as Promise<{
-        available: boolean;
-        model: string;
-        reason?: string;
       }>,
     warmLocal: () =>
       ipcRenderer.invoke("dictation:warmLocal") as Promise<{

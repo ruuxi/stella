@@ -2,7 +2,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "./use-auth-session-state";
 
-export type CurrentUser = {
+type CurrentUser = {
   email?: string;
   name?: string;
   isAnonymous?: boolean;
@@ -16,4 +16,3 @@ export function useCurrentUser(): { user: CurrentUser; hasConnectedAccount: bool
   ) as CurrentUser;
   return { user, hasConnectedAccount };
 }
-

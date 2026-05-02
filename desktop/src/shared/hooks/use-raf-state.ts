@@ -5,7 +5,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
  * Useful for high-frequency updates like streaming text where we want to
  * reduce render cycles while maintaining smooth visual updates.
  */
-export function useRafState<T>(
+function useRafState<T>(
   initialValue: T,
 ): [T, (updater: T | ((prev: T) => T)) => void, React.RefObject<T>] {
   const [state, setState] = useState<T>(initialValue);

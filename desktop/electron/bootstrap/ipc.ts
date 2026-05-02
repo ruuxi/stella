@@ -26,6 +26,7 @@ import {
 } from "./context.js";
 import type { BootstrapResetFlows } from "./resets.js";
 import { startMobileBridge, stopMobileBridge } from "./aux-runtime.js";
+import { scheduleGlobalInputHooksAfterAppReady } from "./global-input-hooks.js";
 
 export const registerBootstrapIpcHandlers = (
   context: BootstrapContext,
@@ -44,9 +45,13 @@ export const registerBootstrapIpcHandlers = (
     syncVoiceOverlay: () => services.uiStateService.syncVoiceOverlay(),
     setAppReady: (ready) => {
       state.appReady = ready;
+      if (ready) {
+        scheduleGlobalInputHooksAfterAppReady(context);
+      }
     },
     deactivateVoiceModes: () => services.uiStateService.deactivateVoiceModes(),
-    syncNativeRadialGesture: () => services.radialGestureService.start(),
+    syncNativeRadialGesture: () =>
+      scheduleGlobalInputHooksAfterAppReady(context),
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     getBroadcastToMobile: lazyMobileBroadcast,
@@ -150,7 +155,7 @@ export const registerBootstrapIpcHandlers = (
     },
     onPermissionGranted: (kind) => {
       if (kind === "accessibility") {
-        services.radialGestureService.start();
+        scheduleGlobalInputHooksAfterAppReady(context);
       }
     },
     setRadialTriggerKey: (triggerKey) => {
@@ -160,7 +165,7 @@ export const registerBootstrapIpcHandlers = (
       services.radialGestureService.setMiniDoubleTapModifier(modifier);
     },
     ensureRadialGestureOnMac: () => {
-      services.radialGestureService.start();
+      scheduleGlobalInputHooksAfterAppReady(context);
     },
   });
 

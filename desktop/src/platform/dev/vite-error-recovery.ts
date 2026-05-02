@@ -5,12 +5,7 @@
 type SelfModFeatureSummary = {
   featureId: string;
   name: string;
-  description: string;
-  latestCommit: string;
-  latestTimestampMs: number;
-  commitCount: number;
   tainted?: boolean;
-  taintedFiles?: string[];
 };
 
 const createButton = (label: string, style: string) => {

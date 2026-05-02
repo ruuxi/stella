@@ -40,7 +40,7 @@ type PaginatedEventsResult = {
   loadMore: (numItems: number) => void;
 };
 
-export type ConversationEventFeed = {
+type ConversationEventFeed = {
   events: EventRecord[];
   hasOlderEvents: boolean;
   isLoadingOlder: boolean;
@@ -434,4 +434,3 @@ export const useConversationEventFeed = (
     storageMode,
   ]);
 };
-

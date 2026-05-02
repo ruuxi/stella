@@ -3,14 +3,8 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/shared/lib/utils";
 import { X } from "lucide-react";
 
-export type DialogProps = React.ComponentPropsWithoutRef<
-  typeof DialogPrimitive.Root
->;
-
 const DialogRoot = DialogPrimitive.Root;
-const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
-const DialogClose = DialogPrimitive.Close;
 
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
@@ -25,7 +19,7 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = "DialogOverlay";
 
-export interface DialogContentProps
+interface DialogContentProps
   extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
   size?: "md" | "lg" | "xl";
   fit?: boolean;
@@ -110,27 +104,19 @@ const DialogCloseButton = React.forwardRef<
 DialogCloseButton.displayName = "DialogCloseButton";
 
 export const Dialog = Object.assign(DialogRoot, {
-  Trigger: DialogTrigger,
-  Portal: DialogPortal,
-  Overlay: DialogOverlay,
   Content: DialogContent,
   Header: DialogHeader,
   Title: DialogTitle,
   Description: DialogDescription,
   Body: DialogBody,
-  Close: DialogClose,
   CloseButton: DialogCloseButton,
 });
 
 export {
-  DialogTrigger,
-  DialogPortal,
-  DialogOverlay,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogBody,
-  DialogClose,
   DialogCloseButton,
 };

@@ -27,9 +27,6 @@ type Props = {
   events: EventRecord[];
   maxItems?: number;
   streamingText?: string;
-  /** Reasoning UI was removed; this prop is accepted for back-compat with
-   * call sites but no longer rendered. */
-  reasoningText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   pendingUserMessageReady?: boolean;

@@ -7,7 +7,9 @@ import {
 } from "@/global/store/store-tabs";
 import { Spinner } from "@/ui/spinner";
 
-const StoreView = lazy(() => import("@/global/store/StoreView"));
+const StoreView = lazy(() =>
+  import("@/global/store/StoreView").then((m) => ({ default: m.StoreView })),
+);
 
 // Persist the last-active Store tab so clicking the global sidebar's Store
 // icon reopens to wherever the user was last (Discover by default). The URL
@@ -89,5 +91,3 @@ export function StoreApp() {
     </div>
   );
 }
-
-export default StoreApp;

@@ -35,9 +35,10 @@ import {
   parseAskQuestionArgs,
   parseAskQuestionAnswersMessage,
   type AskQuestionState,
-  type Selection,
 } from './AskQuestionBubble'
 import { isUiHiddenMessagePayload } from '@/app/chat/lib/message-display'
+
+type Selection = NonNullable<AskQuestionState["selections"]>[number]
 
 const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   if (!event?.payload || typeof event.payload !== 'object') return null
@@ -245,7 +246,7 @@ type UseEventRowsOptions = {
   selfModMap?: Record<string, SelfModAppliedData>
 }
 
-export type UseEventRowsResult = {
+type UseEventRowsResult = {
   rows: EventRowViewModel[]
   /** Index in `rows` of the last visible user message (-1 if none). */
   lastUserRowIndex: number

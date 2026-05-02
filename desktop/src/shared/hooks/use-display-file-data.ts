@@ -12,11 +12,11 @@ export type DisplayFileBlob = {
   blob: Blob;
 };
 
-export const isDisplayFileApiAvailable = (): boolean =>
+const isDisplayFileApiAvailable = (): boolean =>
   typeof window !== "undefined" &&
   typeof window.electronAPI?.display?.readFile === "function";
 
-export const decodeBase64ToUint8Array = (base64: string): Uint8Array => {
+const decodeBase64ToUint8Array = (base64: string): Uint8Array => {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
@@ -25,7 +25,7 @@ export const decodeBase64ToUint8Array = (base64: string): Uint8Array => {
   return bytes;
 };
 
-export const decodeBase64ToBlob = (base64: string, mimeType: string): Blob => {
+const decodeBase64ToBlob = (base64: string, mimeType: string): Blob => {
   const decoded = decodeBase64ToUint8Array(base64);
   // Allocate an `ArrayBuffer` (not `SharedArrayBuffer`) so BlobPart stays
   // compatible with TS strict DOM typings.
@@ -37,7 +37,7 @@ export const decodeBase64ToBlob = (base64: string, mimeType: string): Blob => {
   });
 };
 
-export const readDisplayFile = async (
+const readDisplayFile = async (
   filePath: string,
   unavailableMessage?: string,
 ): Promise<DisplayFileReadResult> => {

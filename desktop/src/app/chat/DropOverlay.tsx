@@ -3,7 +3,7 @@ import "./drop-overlay.css";
 
 type DropOverlayProps = {
   visible: boolean;
-  variant?: "full" | "mini" | "orb" | "surface" | "sidebar";
+  variant?: "surface" | "sidebar";
 };
 
 function DropIcon() {
@@ -25,7 +25,7 @@ function DropIcon() {
   );
 }
 
-export function DropOverlay({ visible, variant = "full" }: DropOverlayProps) {
+export function DropOverlay({ visible, variant = "surface" }: DropOverlayProps) {
   return (
     <AnimatePresence>
       {visible && (

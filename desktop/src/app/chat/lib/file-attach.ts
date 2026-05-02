@@ -12,20 +12,20 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext, ChatContextFile } from "@/shared/types/electron";
 
-export type AttachedScreenshot = {
+type AttachedScreenshot = {
   dataUrl: string;
   width: number;
   height: number;
 };
 
-export type AttachedFile = ChatContextFile;
+type AttachedFile = ChatContextFile;
 
-export type ProcessedAttachments = {
+type ProcessedAttachments = {
   screenshots: AttachedScreenshot[];
   files: AttachedFile[];
 };
 
-export const ATTACHMENT_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
+const ATTACHMENT_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
   "image/png",
   "image/jpeg",
   "image/jpg",
@@ -35,7 +35,7 @@ export const ATTACHMENT_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Max raw file size (20 MB). Matches the historical drag-drop cap. */
-export const ATTACHMENT_MAX_FILE_SIZE = 20 * 1024 * 1024;
+const ATTACHMENT_MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
 
@@ -61,7 +61,7 @@ function getImageDimensions(
   });
 }
 
-export function isAttachableImage(mimeType: string): boolean {
+function isAttachableImage(mimeType: string): boolean {
   return ATTACHMENT_IMAGE_MIME_TYPES.has(mimeType);
 }
 
@@ -70,7 +70,7 @@ export function isAttachableImage(mimeType: string): boolean {
  * payload. Files exceeding {@link ATTACHMENT_MAX_FILE_SIZE} are silently
  * dropped; per-file read failures are skipped without throwing.
  */
-export async function processInputFiles(
+async function processInputFiles(
   files: readonly File[],
 ): Promise<ProcessedAttachments> {
   const accepted = files.filter((f) => f.size <= ATTACHMENT_MAX_FILE_SIZE);

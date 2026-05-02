@@ -51,6 +51,8 @@ export type BootstrapState = {
   processRuntime: ProcessRuntime;
   scheduleUpdateUnsubscribe: (() => void) | null;
   googleWorkspaceAuthRequiredUnsubscribe: (() => void) | null;
+  globalInputHooksStarted: boolean;
+  globalInputHooksStartScheduled: boolean;
   stellaRoot: string | null;
   stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
@@ -171,6 +173,8 @@ export const createBootstrapContext = (
     processRuntime,
     scheduleUpdateUnsubscribe: null,
     googleWorkspaceAuthRequiredUnsubscribe: null,
+    globalInputHooksStarted: false,
+    globalInputHooksStartScheduled: false,
     stellaRoot: null,
     stellaWorkspacePath: null,
     stellaHostRunner: null,

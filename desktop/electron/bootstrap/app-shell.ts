@@ -1,5 +1,4 @@
 import { app, session } from "electron";
-import { hasMacPermission } from "../utils/macos-permissions.js";
 import path from "path";
 import { resolveStellaHome } from "../../../runtime/kernel/home/stella-home.js";
 import { getDevServerUrl } from "../dev-url.js";
@@ -13,6 +12,7 @@ import {
   getMobileBroadcast,
 } from "./context.js";
 import { startDeferredStartup } from "./deferred-startup.js";
+import { installGlobalInputHookFocusRetry } from "./global-input-hooks.js";
 
 const initializeBootstrapLocalState = async (context: BootstrapContext) => {
   const { config, lifecycle, services, state } = context;
@@ -130,17 +130,9 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
     void startDeferredStartup(context);
   }, config.startupStageDelayMs);
 
-  // If Accessibility was off at startup, deferred startup skips the hook; when
-  // the user enables it in System Settings and returns to Stella, retry start.
-  if (process.platform === "darwin") {
-    app.on("browser-window-focus", () => {
-      if (!hasMacPermission("accessibility", false)) {
-        return;
-      }
-      services.radialGestureService.start();
-      services.selectionWatcherService.start();
-    });
-  }
+  // If Accessibility was off at startup, retry after the real app is ready
+  // when the user enables it in System Settings and returns to Stella.
+  installGlobalInputHookFocusRetry(context);
 };
 
 export const initializeBootstrapAppShell = async (

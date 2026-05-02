@@ -318,8 +318,6 @@ function RootChrome() {
   //
   // - `media` and `url` payloads always open the panel (generated artifacts
   //   and live previews are the user's main goal in that moment).
-  //   Producers running on the active surface itself (e.g. a future
-  //   `MediaStudio` page) should pass `suppress` to the materializer.
   // - For everything else (html / office / pdf), keep the existing behavior:
   //   open on the chat home pane, hot-update elsewhere so we don't steal
   //   focus mid-conversation.

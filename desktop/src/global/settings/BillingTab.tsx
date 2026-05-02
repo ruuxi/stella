@@ -202,7 +202,10 @@ export function BillingTab() {
   const openAuthDialog = useCallback(() => {
     void navigate({
       to: ".",
-      search: (prev) => ({ ...prev, dialog: "auth" as const }),
+      search: (prev: Record<string, unknown> | undefined) => ({
+        ...(prev ?? {}),
+        dialog: "auth" as const,
+      }),
     });
   }, [navigate]);
   const createEmbeddedCheckoutSession = useAction(
@@ -505,5 +508,3 @@ export function BillingTab() {
     </div>
   );
 }
-
-export default BillingTab;

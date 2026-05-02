@@ -13,7 +13,7 @@ import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import "./credential-modal.css";
 
-export type CredentialModalProps = {
+type CredentialModalProps = {
   open: boolean;
   provider: string;
   label?: string;

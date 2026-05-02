@@ -16,7 +16,7 @@ interface Toast {
   duration?: number;
 }
 
-export interface ToastOptions {
+interface ToastOptions {
   title?: string;
   description?: string;
   variant?: "default" | "success" | "error" | "loading";
@@ -25,7 +25,7 @@ export interface ToastOptions {
 
 const ToastContext = React.createContext<ToastContextValue | null>(null);
 
-export function useToast() {
+function useToast() {
   const context = React.useContext(ToastContext);
   if (!context) {
     throw new Error("useToast must be used within a ToastProvider");
@@ -134,7 +134,7 @@ function ToastItem({ toast, onClose }: ToastItemProps) {
 
 let toastFn: ((options: ToastOptions | string) => string) | null = null;
 
-export function setToastFn(fn: ((options: ToastOptions | string) => string) | null) {
+function setToastFn(fn: ((options: ToastOptions | string) => string) | null) {
   toastFn = fn;
 }
 

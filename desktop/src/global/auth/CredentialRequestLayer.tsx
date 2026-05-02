@@ -4,7 +4,7 @@ import { api } from "@/convex/api";
 import { getElectronApi } from "@/platform/electron/electron";
 import { CredentialModal } from "@/global/integrations/CredentialModal";
 
-export type PendingCredentialRequest = {
+type PendingCredentialRequest = {
   requestId: string;
   provider: string;
   label?: string;
@@ -68,5 +68,4 @@ export const CredentialRequestLayer = () => {
     />
   );
 };
-
 

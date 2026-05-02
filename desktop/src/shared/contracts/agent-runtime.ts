@@ -224,15 +224,11 @@ const BUILTIN_AGENT_DEFINITIONS = [
 ] as const satisfies readonly AgentDefinition[];
 
 type BuiltInAgentDefinition = (typeof BUILTIN_AGENT_DEFINITIONS)[number];
-export type DesktopSubagentId = Extract<
-  BuiltInAgentDefinition,
-  { runsAsSubagent: true }
->["id"];
-export type LocalCliAgentId = Extract<
+type LocalCliAgentId = Extract<
   BuiltInAgentDefinition,
   { usesLocalCliRuntime: true }
 >["id"];
-export type BundledCoreAgentId = Extract<
+type BundledCoreAgentId = Extract<
   BuiltInAgentDefinition,
   { bundledCore: true }
 >["id"];
@@ -410,9 +406,6 @@ export const RUNTIME_RUN_EVENT_TYPES = {
   ERROR: "error",
 } as const;
 
-export type RuntimeRunEventType =
-  (typeof RUNTIME_RUN_EVENT_TYPES)[keyof typeof RUNTIME_RUN_EVENT_TYPES];
-
 export const TOOL_IDS = {
   DISPLAY: "Display",
   NO_RESPONSE: "NoResponse",
@@ -421,5 +414,3 @@ export const TOOL_IDS = {
   READ: "Read",
   STR_REPLACE: "StrReplace",
 } as const;
-
-export type ToolId = (typeof TOOL_IDS)[keyof typeof TOOL_IDS];

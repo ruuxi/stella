@@ -18,7 +18,6 @@ export type OnboardingDemo = "default" | null;
 
 interface OnboardingCanvasProps {
   activeDemo: OnboardingDemo;
-  onMorphingChange?: (isMorphing: boolean) => void;
 }
 
 export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({

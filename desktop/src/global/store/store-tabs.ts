@@ -13,7 +13,7 @@ export const STORE_TAB_KEYS = ["discover", "fashion"] as const;
 
 export type StoreTab = (typeof STORE_TAB_KEYS)[number];
 
-export type StoreTabDefinition = {
+type StoreTabDefinition = {
   key: StoreTab;
   label: string;
 };

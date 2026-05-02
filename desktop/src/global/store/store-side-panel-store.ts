@@ -8,30 +8,19 @@
  * new blueprint flow.
  */
 import { useSyncExternalStore } from "react";
-import type {
-  SelfModFeatureSnapshot,
-  StoreInstallRecord,
-  StorePackageRecord,
-} from "@/shared/types/electron";
+import type { SelfModFeatureSnapshot } from "@/shared/types/electron";
 
-export type StoreSidePanelState = {
+type StoreSidePanelState = {
   snapshot: SelfModFeatureSnapshot | null;
   snapshotLoading: boolean;
-  packages: StorePackageRecord[];
-  installedMods: StoreInstallRecord[];
   /** Selected feature names from the snapshot (display names — agent never sees commit hashes). */
   selectedFeatureNames: Set<string>;
-  /** Selected installed-add-on package ids. */
-  selectedInstalledPackageIds: Set<string>;
 };
 
 const EMPTY: StoreSidePanelState = {
   snapshot: null,
   snapshotLoading: true,
-  packages: [],
-  installedMods: [],
   selectedFeatureNames: new Set(),
-  selectedInstalledPackageIds: new Set(),
 };
 
 let state: StoreSidePanelState = EMPTY;
@@ -64,38 +53,19 @@ export const storeSidePanelStore = {
     if (state.snapshotLoading === loading) return;
     emit({ ...state, snapshotLoading: loading });
   },
-  setPackages(packages: StorePackageRecord[]): void {
-    emit({ ...state, packages });
-  },
-  setInstalledMods(installedMods: StoreInstallRecord[]): void {
-    emit({ ...state, installedMods });
-  },
   toggleFeature(name: string): void {
     emit({
       ...state,
       selectedFeatureNames: toggle(state.selectedFeatureNames, name),
     });
   },
-  toggleInstalled(packageId: string): void {
-    emit({
-      ...state,
-      selectedInstalledPackageIds: toggle(
-        state.selectedInstalledPackageIds,
-        packageId,
-      ),
-    });
-  },
   clearSelections(): void {
-    if (
-      state.selectedFeatureNames.size === 0
-      && state.selectedInstalledPackageIds.size === 0
-    ) {
+    if (state.selectedFeatureNames.size === 0) {
       return;
     }
     emit({
       ...state,
       selectedFeatureNames: new Set(),
-      selectedInstalledPackageIds: new Set(),
     });
   },
   reset(): void {

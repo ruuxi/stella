@@ -6,7 +6,7 @@ import {
 
 export const isUiHiddenMessagePayload = isUiHiddenChatMessagePayload;
 
-export function isUiDisplayableEvent(event: EventRecord): boolean {
+function isUiDisplayableEvent(event: EventRecord): boolean {
   return isUiDisplayableChatEvent(event);
 }
 

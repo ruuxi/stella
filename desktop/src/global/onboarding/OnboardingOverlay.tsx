@@ -41,10 +41,6 @@ import { ChevronDown } from "lucide-react";
 // StellaAnimation, LegalDialog) into the main bundle. Always import the
 // hook directly from `@/global/onboarding/use-onboarding-overlay`.
 
-export type OnboardingOverlayProps = {
-  onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
-};
-
 /**
  * Renders a localized "By using Stella, you agree to our {terms} and
  * {privacy}." line by splitting the translated template at the

@@ -1,7 +1,6 @@
 import {
   forwardRef,
   type ButtonHTMLAttributes,
-  type InputHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
 import { motion } from "motion/react";
@@ -247,23 +246,6 @@ export const ComposerTextarea = forwardRef<
       ref={ref}
       className={cn(
         "chat-composer-field chat-composer-textarea",
-        tone === "orb" && "chat-composer-field--orb",
-        className,
-      )}
-      {...props}
-    />
-  );
-});
-
-export const ComposerTextInput = forwardRef<
-  HTMLInputElement,
-  InputHTMLAttributes<HTMLInputElement> & ComposerFieldProps
->(function ComposerTextInput({ className, tone = "default", ...props }, ref) {
-  return (
-    <input
-      ref={ref}
-      className={cn(
-        "chat-composer-field chat-composer-text-input",
         tone === "orb" && "chat-composer-field--orb",
         className,
       )}

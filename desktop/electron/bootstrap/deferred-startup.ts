@@ -1,6 +1,5 @@
 import { getSelectedText } from "../selected-text.js";
 import { ChronicleController } from "../services/chronicle-controller.js";
-import { hasMacPermission } from "../utils/macos-permissions.js";
 import { type BootstrapContext } from "./context.js";
 
 // Codex's Chronicle daemon refreshes the rolling 10-min summary once per
@@ -70,7 +69,7 @@ const triggerDreamWhenAgentReady = (
 const createDeferredStartupTasks = (
   context: BootstrapContext,
 ): DeferredStartupTask[] => {
-  const { config, services, state } = context;
+  const { config, state } = context;
   const isChronicleEnabled = async (): Promise<boolean> => {
     if (!state.chronicleController) {
       return false;
@@ -98,17 +97,6 @@ const createDeferredStartupTasks = (
             void getSelectedText();
           }, 250);
         }
-      },
-    },
-    {
-      label: "global-input-hooks",
-      delayMs: config.startupStageDelayMs,
-      run: () => {
-        if (process.platform === "darwin" && !hasMacPermission("accessibility", false)) {
-          return;
-        }
-        services.radialGestureService.start();
-        services.selectionWatcherService.start();
       },
     },
     {

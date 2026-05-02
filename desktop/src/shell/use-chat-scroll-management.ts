@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { animate } from 'motion'
 
-export type ThumbState = {
+type ThumbState = {
   top: number
   height: number
   visible: boolean

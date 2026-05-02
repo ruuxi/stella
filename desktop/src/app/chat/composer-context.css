@@ -146,8 +146,7 @@
 
 .chat-composer-context-chip,
 .composer-context-chip,
-.mini-context-chip,
-.mini-composer-window-badge {
+.mini-context-chip {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -219,8 +218,7 @@ button.mini-context-chip:hover {
 .composer-context-chip--text,
 .mini-context-chip--text,
 .chat-composer-context-chip--window,
-.composer-context-chip--window,
-.mini-composer-window-badge {
+.composer-context-chip--window {
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
@@ -233,8 +231,7 @@ button.mini-context-chip:hover {
 }
 
 .chat-composer-context-chip--window,
-.composer-context-chip--window,
-.mini-composer-window-badge {
+.composer-context-chip--window {
   background: color-mix(
     in oklch,
     var(--primary, var(--foreground)) 10%,
@@ -280,8 +277,7 @@ button.mini-context-chip:hover {
 .composer-context-text,
 .mini-context-text,
 .chat-composer-context-window,
-.composer-context-window,
-.mini-composer-window-text {
+.composer-context-window {
   display: inline-block;
   max-width: 100%;
   font-size: 12px;
@@ -298,13 +294,11 @@ button.mini-context-chip:hover {
 }
 
 .chat-composer-context-window,
-.composer-context-window,
-.mini-composer-window-text {
+.composer-context-window {
   color: var(--text-weak);
 }
 
-.composer-context-window-toggle,
-.mini-composer-window-toggle {
+.composer-context-window-toggle {
   display: inline-flex;
   align-items: center;
   min-width: 0;
@@ -346,16 +340,6 @@ button.mini-context-chip:hover {
 .composer-context-preview > div:first-child {
   overflow-y: auto;
   min-height: 0;
-}
-
-.composer-context-preview-more {
-  flex-shrink: 0;
-  padding-top: 8px;
-  margin-top: auto;
-  border-top: 1px solid
-    color-mix(in srgb, var(--border-strong) 40%, transparent);
-  color: var(--text-weak);
-  font-size: 12px;
 }
 
 .composer-context-preview:has(.composer-context-preview-img) {

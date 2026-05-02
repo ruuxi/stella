@@ -4,7 +4,7 @@ import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import type { SocialProfile } from "./use-social-profile";
 
-export type SocialRoomKind = "dm" | "group" | "global";
+type SocialRoomKind = "dm" | "group" | "global";
 
 export type SocialRoomSummary = {
   room: {

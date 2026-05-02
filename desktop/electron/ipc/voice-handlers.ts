@@ -270,29 +270,4 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     },
   );
 
-  // ─── Screen Guide ────────────────────────────────────────────────────
-
-  ipcMain.on(
-    "screenGuide:show",
-    (
-      _event,
-      payload: {
-        annotations: Array<{
-          id: string;
-          label: string;
-          x: number;
-          y: number;
-        }>;
-      },
-    ) => {
-      const overlay = options.getOverlayController?.();
-      if (!overlay || !payload?.annotations?.length) return;
-      overlay.showScreenGuide(payload.annotations);
-    },
-  );
-
-  ipcMain.on("screenGuide:hide", () => {
-    const overlay = options.getOverlayController?.();
-    overlay?.hideScreenGuide();
-  });
 };

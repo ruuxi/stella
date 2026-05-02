@@ -76,14 +76,6 @@ export class CaptureService {
     this.chatContextVersion += 1
   }
 
-  getChatContextVersion() {
-    return this.chatContextVersion
-  }
-
-  getLastBroadcastChatContextVersion() {
-    return this.lastBroadcastChatContextVersion
-  }
-
   broadcastChatContext() {
     for (const window of this.options.window.getAllWindows()) {
       window.webContents.send('chatContext:updated', {

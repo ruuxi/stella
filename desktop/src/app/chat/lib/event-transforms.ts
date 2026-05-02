@@ -9,7 +9,6 @@ import type {
 import type {
   Attachment,
   ChannelEnvelope,
-  ChannelReaction,
   EventRecord,
   MessageMetadata,
   MessagePayload,
@@ -20,15 +19,12 @@ import type {
 export type {
   Attachment,
   ChannelEnvelope,
-  ChannelReaction,
   EventRecord,
   MessageMetadata,
   MessagePayload,
-  ToolRequestPayload,
-  ToolResultPayload,
 }
 
-export interface StepItem {
+interface StepItem {
   id: string
   tool: string
   title?: string
@@ -88,7 +84,7 @@ const normalizeAssistantDisplayText = (text: string): string => {
 
 // Persisted lifecycle event payloads (kebab-case `agent-*` events). These
 // mirror the data emitted by `appendAgentLifecycleChatEvent` in the runner.
-export type AgentStartedEventPayload = {
+type AgentStartedEventPayload = {
   agentId: string
   description: string
   agentType: string
@@ -98,24 +94,24 @@ export type AgentStartedEventPayload = {
   statusText?: string
 }
 
-export type AgentCompletedEventPayload = {
+type AgentCompletedEventPayload = {
   agentId: string
   result?: string
   fileChanges?: FileChangeRecord[]
   producedFiles?: ProducedFileRecord[]
 }
 
-export type AgentFailedEventPayload = {
+type AgentFailedEventPayload = {
   agentId: string
   error?: string
 }
 
-export type AgentCanceledEventPayload = {
+type AgentCanceledEventPayload = {
   agentId: string
   error?: string
 }
 
-export type AgentProgressEventPayload = {
+type AgentProgressEventPayload = {
   agentId: string
   statusText: string
 }
@@ -470,19 +466,6 @@ export function extractTasksFromEvents(
       return nextTask
     })
     .sort((a, b) => a.startedAtMs - b.startedAtMs)
-}
-
-// Get currently running tasks
-export function getRunningTasks(
-  events: EventRecord[],
-  options?: { appSessionStartedAtMs?: number | null },
-): TaskItem[] {
-  const tasks = extractTasksFromEvents(events, options)
-  return getRunningTasksFromTasks(tasks)
-}
-
-export function getRunningTasksFromTasks(tasks: TaskItem[]): TaskItem[] {
-  return tasks.filter((t) => t.status === 'running')
 }
 
 const sortFooterTasks = (tasks: TaskItem[]): TaskItem[] =>

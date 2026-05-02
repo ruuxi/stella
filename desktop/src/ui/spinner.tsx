@@ -32,7 +32,7 @@ const dots = Array.from({ length: totalDots }, (_, i) => {
 
 const viewBoxSize = (gridSize - 1) * spacing + dotRadius * 2;
 
-export interface SpinnerProps extends React.SVGAttributes<SVGSVGElement> {
+interface SpinnerProps extends React.SVGAttributes<SVGSVGElement> {
   size?: "sm" | "md" | "lg";
 }
 

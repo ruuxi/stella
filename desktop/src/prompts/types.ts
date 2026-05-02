@@ -1,11 +1,4 @@
-export type HomeSuggestion = {
-  category: "stella" | "task" | "skill" | "schedule"
-  label: string
-  prompt: string
-}
-
-export type PromptTemplateValues = {
-  "offline_responder.system": undefined
+type PromptTemplateValues = {
   "voice_orchestrator.base": undefined
   "synthesis.category_analysis.browsing_bookmarks.system": undefined
   "synthesis.category_analysis.dev_environment.system": undefined
@@ -28,11 +21,6 @@ export type PromptTemplateValues = {
   "synthesis.app_recommendations.user": {
     coreMemory: string
   }
-  "suggestions.user": {
-    catalogText: string
-    messagesText: string
-  }
-  "music.system": undefined
 }
 
 export type PromptId = keyof PromptTemplateValues
@@ -47,13 +35,4 @@ export type PromptDefinition<TId extends PromptId = PromptId> = {
 
 export type PromptCatalog = {
   [TId in PromptId]: PromptDefinition<TId>
-}
-
-export type ResolvedPrompt<TId extends PromptId = PromptId> = {
-  id: TId
-  module: string
-  title: string
-  defaultText: string
-  text: string
-  overridden: boolean
 }

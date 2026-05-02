@@ -45,7 +45,7 @@ export function useAuthBootstrapState() {
   return useContext(AuthBootstrapContext);
 }
 
-export const getHostTokenRefreshDelayMs = (token: string): number => {
+const getHostTokenRefreshDelayMs = (token: string): number => {
   try {
     const payload = JSON.parse(atob(token.split(".")[1] ?? ""));
     if (typeof payload.exp !== "number") {

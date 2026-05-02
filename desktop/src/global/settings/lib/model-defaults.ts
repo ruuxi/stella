@@ -100,7 +100,7 @@ export function normalizeModelOverrides(
   return normalized;
 }
 
-export function getModelDisplayLabel(
+function getModelDisplayLabel(
   modelId: string,
   modelNamesById: ReadonlyMap<string, string>,
 ): string {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type DesktopPermissionKind = "accessibility" | "screen" | "microphone";
 
-export type MicrophonePermissionStatus =
+type MicrophonePermissionStatus =
   | "not-determined"
   | "granted"
   | "denied"

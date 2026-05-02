@@ -13,7 +13,6 @@ const __dirname = path.dirname(__filename);
 const MODEL_ID = "parakeet-tdt-0.6b-v3-coreml";
 const HELPER_NAME = "parakeet_transcriber";
 const TRANSCRIBE_TIMEOUT_MS = 120_000;
-const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
 const SERVICE_READY_TIMEOUT_MS = 120_000;
 
 type HelperResponse = {
@@ -24,7 +23,7 @@ type HelperResponse = {
   id?: string;
 };
 
-export type LocalParakeetStatus = {
+type LocalParakeetStatus = {
   available: boolean;
   model: string;
   reason?: string;
@@ -92,7 +91,7 @@ const parseHelperResponse = (raw: string): HelperResponse | null => {
   }
 };
 
-export const parakeetCacheRoot = (): string => {
+const parakeetCacheRoot = (): string => {
   const sourceCandidates = process.env.NODE_ENV === "development" || !process.defaultApp
     ? [
         path.join(process.cwd(), "resources", "parakeet"),
@@ -273,17 +272,6 @@ export const getLocalParakeetStatus = async (): Promise<LocalParakeetStatus> => 
     };
   }
   const result = await runHelper(["--probe"], 10_000);
-  return {
-    available: result.ok,
-    model: MODEL_ID,
-    reason: result.ok ? undefined : result.error,
-  };
-};
-
-export const downloadLocalParakeetModel = async (): Promise<LocalParakeetStatus> => {
-  const status = await getLocalParakeetStatus();
-  if (!status.available) return status;
-  const result = await runHelper(["--download"], DOWNLOAD_TIMEOUT_MS);
   return {
     available: result.ok,
     model: MODEL_ID,

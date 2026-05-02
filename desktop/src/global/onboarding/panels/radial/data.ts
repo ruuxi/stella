@@ -1,8 +1,8 @@
 import { Camera, MessageSquare, Mic, Plus, type LucideIcon } from "lucide-react";
 
-export type RadialWedgeId = "capture" | "chat" | "add" | "voice";
+type RadialWedgeId = "capture" | "chat" | "add" | "voice";
 
-export type RadialWedge = {
+type RadialWedge = {
   id: RadialWedgeId;
   label: string;
   icon: LucideIcon;

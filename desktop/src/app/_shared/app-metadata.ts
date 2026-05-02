@@ -18,9 +18,9 @@ import type { ComponentType, SVGProps } from "react";
  * sidebar reflects the new entry on the next render. No edits to the
  * sidebar or any registry are required.
  */
-export type AppSlot = "top" | "bottom";
+type AppSlot = "top" | "bottom";
 
-export type AppIcon = ComponentType<
+type AppIcon = ComponentType<
   SVGProps<SVGSVGElement> & { size?: number | string }
 >;
 

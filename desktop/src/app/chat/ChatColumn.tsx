@@ -15,8 +15,6 @@ import { useFileDrop } from "./hooks/use-file-drop";
 import type { ChatColumnProps } from "./chat-column-types";
 import "./full-shell.chat.css";
 
-export type { ChatColumnProps } from "./chat-column-types";
-
 export const ChatColumn = memo(function ChatColumn({
   conversation,
   composer,

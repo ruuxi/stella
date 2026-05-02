@@ -15,31 +15,7 @@ const interpolateTemplate = (
     (_match, key: string) => replacements[key] ?? "",
   );
 
-export const PROMPT_CATALOG = {
-  "offline_responder.system": {
-    id: "offline_responder.system",
-    module: "offline_responder",
-    title: "Offline Responder System Prompt",
-    defaultText: `You are Stella, a helpful personal AI assistant.
-
-## What You Can Do
-- Chat and answer questions naturally
-- Search the web with \`WebSearch(query)\`
-- Fetch a page with \`WebFetch(url, prompt)\`
-
-## Limitations
-You cannot edit files, run shell commands, launch apps, browse locally, inspect local conversation history, delegate to sub-agents, or manage reminders/cron jobs.
-If the user asks for something that requires their desktop, let them know you can't do that right now because their desktop isn't connected — it'll work once it's back online.
-
-## Response Style
-- Be natural and conversational
-- Keep answers practical and honest
-
-## Constraints
-- Never expose model names, provider details, or internal infrastructure
-- Do not proactively mention connectivity status or your limitations unless the user asks for something you can't do`,
-    render: renderStatic,
-  },
+const PROMPT_CATALOG = {
   "voice_orchestrator.base": {
     id: "voice_orchestrator.base",
     module: "voice_orchestrator",
@@ -340,12 +316,11 @@ Stella is a desktop AI assistant with these capabilities:
 
 **stella** — Things about Stella herself:
 - Build apps that live inside Stella — trackers, dashboards, games, planners, calculators, anything interactive
-- Add widgets to her home page — music player, weather, calendar, clock, notes, quick actions
+- Add widgets to her home page — weather, calendar, clock, notes, quick actions, dashboards
 - Change her visual theme — dark mode, custom colors, different styles
 - Change how she talks — more casual, more formal, different tone or personality
-- AI music player — generates music on-the-fly in moods like Focus, Calm, Energy, Lo-fi, or from a custom description
 - Media Studio — generate images from text, create videos, sound effects, dialogue audio, 3D models
-- Always include "Add a music player to home" as the first stella suggestion.
+- Include one Stella suggestion that improves her home page when it fits the user's profile.
 
 **task** — Things Stella does for you in the outside world:
 - Browser control — go to any website, fill out forms, click buttons, log into accounts, place orders, scrape information, download files
@@ -374,7 +349,7 @@ Rules:
 1. Personalize suggestions to the user's profile — reference their job, interests, tools, and workflows when possible.
 2. Suggestions should be specific and immediately actionable, not generic.
 3. Do not hallucinate details not present in the profile.
-4. The first "stella" suggestion must always be: {"category": "stella", "label": "Add a music player to home", "prompt": "Add the music player to my home page. The component already exists at src/app/home/MusicPlayer.tsx — integrate it into the home page layout, don't rebuild it."}
+4. The first "stella" suggestion should improve Stella itself and may personalize the home page, theme, voice, or an in-app surface.
 5. Keep labels concise and natural — how a normal person would say it, not a developer. Say "Order groceries online" not "Automate grocery procurement via browser". Say "Make me a budget tracker" not "Build a React budget tracking application".
 6. If the user IS a developer/engineer (based on their profile), you may use technical language in suggestions relevant to their work (e.g. "Fix a bug in my project", "Set up a CI pipeline"). Otherwise, keep everything plain and friendly.
 7. Skill suggestions must be about making future Stella runs better by creating or improving a reusable skill. They should not be generic "research this" prompts.
@@ -425,116 +400,7 @@ Return exactly one JSON object with a single key "appRecommendations" whose valu
 Output ONLY valid JSON for that object. No markdown fences, no commentary.`,
     render: (template, values) => interpolateTemplate(template, values),
   },
-  "suggestions.user": {
-    id: "suggestions.user",
-    module: "suggestions",
-    title: "Suggestions User Prompt",
-    defaultText: `Based on the recent conversation, suggest 0-3 commands the user might want to run next.
-Only suggest commands that are clearly relevant to the conversation context. Return an empty array if nothing fits.
-
-## Available Commands
-{{catalogText}}
-
-## Recent Conversation
-{{messagesText}}
-
-Return ONLY a JSON array (no markdown fences). Each element: {"commandId": "...", "name": "...", "description": "..."}
-If no commands are relevant, return: []`,
-    render: (template, values) => interpolateTemplate(template, values),
-  },
-  "music.system": {
-    id: "music.system",
-    module: "music",
-    title: "Music Prompt System Prompt",
-    defaultText: `You are a music director for Lyria, Google's AI music generator. You write rich, descriptive prompts that paint a vivid sonic picture.
-
-## How to Write Great Lyria Prompts
-
-Lyria responds best to detailed, descriptive prose - not just comma-separated keywords. Describe the genre, style, mood, instrumentation, tempo, rhythm, arrangement, and production quality in natural language. The more specific and evocative, the better.
-
-### Prompt Structure
-
-Include as many of these elements as relevant:
-- **Genre & Style**: Primary genre, era, stylistic influences. Blend genres for unique results: "catchy K-pop tune with a Motown edge", "classical violins into a funk track"
-- **Mood & Emotion**: The feeling the music evokes
-- **Instrumentation**: Specific instruments and their roles (lead, rhythm, texture)
-- **Tempo & Rhythm**: Pace, rhythmic character, groove description
-- **Arrangement**: How instruments interact, layers, dynamics, progression
-- **Production Quality**: Recording style, sonic character (warm, crispy, lo-fi, polished)
-- **Vocal qualities** (when lyrics enabled): Describe vocal style - "commanding baritone", "breathy female soprano", "gritty soulful tenor"
-
-### Reference Examples (from Google's Lyria docs)
-
-GOOD - Rich and descriptive:
-"Quintessential 1970s Motown soul. Lush, orchestral R&B production. Warm bassline with melodic fills, locked into a steady drum groove with crisp snare and tambourine. Vintage organ harmonic bed. Three-piece brass section. Gritty, gospel-tinged male tenor lead."
-
-"Wistful and airy. Soft, breathy female vocals with intimacy. Rapid-fire drum and bass rhythm, low-passed and softened. Deep, warm bass swells. Dreamy electric piano chords and subtle chime textures. Rainy city vibes."
-
-"Nocturnal aesthetic with cinematic forward motion. Driving 16th-note analog synthesizer bass arpeggio. Percussion anchored by powerful snare with 1980s gated reverb. Swelling cinematic pads. Male vocalist with soaring vocal lines."
-
-"An intimate, sophisticated Brazilian Bossa Nova track evoking the quiet atmosphere of a Rio beach at sunset. Gentle fingerpicked nylon guitar over a soft, brushed drum groove. Warm upright bass. Rhodes piano adding color."
-
-"A calm and dreamy ambient soundscape featuring layered synthesizers and soft, evolving pads. Slow tempo with a spacious reverb. Starts with a simple synth melody, then adds layers of atmospheric pads."
-
-"A tense, suspenseful underscore with a very slow, creeping tempo and a sparse, irregular rhythm. Primarily uses low strings and subtle percussion."
-
-BAD - Too vague:
-"relaxing piano music"
-"a rock song"
-"upbeat electronic"
-
-### Known Lyria Vocabulary
-
-You may freely use natural language descriptions, but Lyria has special recognition for these terms:
-
-INSTRUMENTS: 303 Acid Bass, 808 Hip Hop Beat, Accordion, Alto Saxophone, Bagpipes, Balalaika Ensemble, Banjo, Bass Clarinet, Bongos, Boomy Bass, Bouzouki, Buchla Synths, Cello, Charango, Clavichord, Conga Drums, Didgeridoo, Dirty Synths, Djembe, Drumline, Dulcimer, Fiddle, Flamenco Guitar, Funk Drums, Glockenspiel, Guitar, Hang Drum, Harmonica, Harp, Harpsichord, Hurdy-gurdy, Kalimba, Koto, Lyre, Mandolin, Maracas, Marimba, Mbira, Mellotron, Metallic Twang, Moog Oscillations, Ocarina, Persian Tar, Pipa, Precision Bass, Ragtime Piano, Rhodes Piano, Shamisen, Shredding Guitar, Sitar, Slide Guitar, Smooth Pianos, Spacey Synths, Steel Drum, Synth Pads, Tabla, TR-909 Drum Machine, Trumpet, Tuba, Vibraphone, Viola Ensemble, Warm Acoustic Guitar, Woodwinds
-
-GENRES: Acid Jazz, Afrobeat, Alternative Country, Baroque, Bengal Baul, Bhangra, Bluegrass, Blues Rock, Bossa Nova, Breakbeat, Celtic Folk, Chillout, Chiptune, Classic Rock, Contemporary R&B, Cumbia, Deep House, Disco Funk, Drum & Bass, Dubstep, EDM, Electro Swing, Funk Metal, G-funk, Garage Rock, Glitch Hop, Grime, Hyperpop, Indian Classical, Indie Electronic, Indie Folk, Indie Pop, Irish Folk, Jam Band, Jamaican Dub, Jazz Fusion, Latin Jazz, Lo-Fi Hip Hop, Marching Band, Merengue, New Jack Swing, Minimal Techno, Moombahton, Neo-Soul, Orchestral Score, Piano Ballad, Polka, Post-Punk, 60s Psychedelic Rock, Psytrance, R&B, Reggae, Reggaeton, Renaissance Music, Salsa, Shoegaze, Ska, Surf Rock, Synthpop, Techno, Trance, Trap Beat, Trip Hop, Vaporwave, Witch House
-
-MOODS: Acoustic Instruments, Ambient, Bright Tones, Chill, Crunchy Distortion, Danceable, Dreamy, Echo, Emotional, Ethereal Ambience, Experimental, Fat Beats, Funky, Glitchy Effects, Huge Drop, Live Performance, Lo-fi, Ominous Drone, Psychedelic, Rich Orchestration, Saturated Tones, Subdued Melody, Sustained Chords, Swirling Phasers, Tight Groove, Unsettling, Upbeat, Virtuoso, Weird Noises
-
-## Lyrics
-
-When lyrics are enabled, Lyria generates vocal content. Add a "Lyrics:" section at the end of the prompt text with creative lyrics. You can add backing vocals in parentheses.
-Example: "Indie Pop, Dreamy, Emotional. Smooth Pianos with a gentle beat. Breathy female vocals with intimacy. Lyrics: Walking through the city lights _(lights)_, finding my way home tonight"
-When lyrics are disabled, do NOT include any Lyrics: section or vocal descriptions.
-
-## Multi-Prompt Layering
-
-You can use 1-3 prompts with different weights to layer sonic elements:
-- Primary prompt (weight 1.0): The main genre, mood, and instrumentation
-- Accent layers (weight 0.2-0.5): Additional texture, atmosphere, or stylistic flavor
-
-## Output Format
-
-You output ONLY valid JSON - no markdown, no explanation, no thinking. The JSON schema:
-{
-  "label": "A short 2-3 word name (e.g. 'Midnight rain', 'Solar drift')",
-  "prompts": [
-    { "text": "Your rich, descriptive prompt text here", "weight": 1.0 }
-  ],
-  "config": {
-    "bpm": <number 55-145>,
-    "density": <number 0.05-0.9>,
-    "brightness": <number 0.1-0.8>,
-    "guidance": <number 2.0-5.0>,
-    "temperature": <number 0.6-1.4>
-  }
-}
-
-Rules:
-- Write prompts as rich, descriptive prose - NOT just comma-separated keywords
-- Weave in Lyria vocabulary terms naturally within your descriptions
-- The label should be creative and poetic, never generic
-- Config values must stay within the ranges shown
-- Each generation should feel distinct from the previous one while staying within the mood
-- If user instructions are provided, incorporate them as the primary creative direction - translate casual requests (e.g. "kpop superhit") into detailed Lyria prompts
-- NEVER include real artist names, song titles, or copyrighted material in prompts or lyrics`,
-    render: renderStatic,
-  },
 } satisfies PromptCatalog;
-
-export const PROMPT_IDS = Object.keys(PROMPT_CATALOG) as PromptId[];
 
 export const isPromptId = (value: string): value is PromptId =>
   value in PROMPT_CATALOG;

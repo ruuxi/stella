@@ -107,7 +107,6 @@ function OnboardingExperience({
 }: OnboardingExperienceProps) {
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
-  const [onboardingDemoMorphing, setOnboardingDemoMorphing] = useState(false);
   const [stellaHiddenByPhase, setStellaHiddenByPhase] = useState(false);
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("intro");
@@ -210,19 +209,18 @@ function OnboardingExperience({
     const fogDefs = fogDefsRef.current;
     if (!fogDefs) return;
 
-    // Pause the fog drift during creation-phase morphs and during the
-    // onboarding exit transition (so the fade-out reads as a calm dissolve
-    // rather than a moving texture being clipped to nothing).
-    if (onboardingDemoMorphing || onboarding.onboardingExiting) {
+    // Pause the fog drift during the onboarding exit transition so the
+    // fade-out reads as a calm dissolve rather than a moving texture being
+    // clipped to nothing.
+    if (onboarding.onboardingExiting) {
       fogDefs.pauseAnimations();
     } else {
       fogDefs.unpauseAnimations();
     }
-  }, [onboardingDemoMorphing, onboarding.onboardingExiting]);
+  }, [onboarding.onboardingExiting]);
 
   const showOnboardingDemos = activeDemo || demoClosing;
-  const pauseOnboardingMotion =
-    onboardingDemoMorphing || onboarding.onboardingExiting;
+  const pauseOnboardingMotion = onboarding.onboardingExiting;
   const pauseStellaAnimation =
     pauseOnboardingMotion ||
     Boolean(activeDemo) ||
@@ -354,10 +352,7 @@ function OnboardingExperience({
             aria-hidden={!showOnboardingDemos}
           >
             {showOnboardingDemos ? (
-              <OnboardingCanvas
-                activeDemo={activeDemo}
-                onMorphingChange={setOnboardingDemoMorphing}
-              />
+              <OnboardingCanvas activeDemo={activeDemo} />
             ) : null}
           </div>
         </Suspense>

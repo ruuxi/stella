@@ -4,7 +4,7 @@ import { lazy, Suspense } from 'react'
  * Auth and Connect render as URL-driven dialogs (`?dialog=auth|connect`).
  * Settings is a top-level route (`/settings`), not a dialog.
  */
-export type DialogType = 'auth' | 'connect' | null
+type DialogType = 'auth' | 'connect' | null
 
 const AuthDialog = lazy(() =>
   import('@/global/auth/AuthDialog').then((module) => ({

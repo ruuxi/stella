@@ -6,7 +6,7 @@ import {
   getInstancedVertexShader,
 } from "./shader";
 
-export type GlRenderer = {
+type GlRenderer = {
   render: (
     time: number,
     birth: number,
@@ -20,7 +20,7 @@ export type GlRenderer = {
   destroy: () => void;
 };
 
-export const VERTEX_SOURCE = `
+const VERTEX_SOURCE = `
   attribute vec2 a_position;
   void main() {
     gl_Position = vec4(a_position, 0.0, 1.0);
