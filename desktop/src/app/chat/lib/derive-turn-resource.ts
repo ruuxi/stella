@@ -293,6 +293,40 @@ const requestIdForEvent = (event: EventRecord): string | undefined => {
     : undefined;
 };
 
+const requestForToolResult = (
+  toolEvents: EventRecord[],
+  resultEvent: EventRecord,
+): EventRecord | null => {
+  const toolCallId = requestIdForEvent(resultEvent);
+  if (!toolCallId) return null;
+  return (
+    toolEvents.find(
+      (event) => isToolRequest(event) && event.requestId === toolCallId,
+    ) ?? null
+  );
+};
+
+const displayPayloadFromToolCall = (
+  toolEvents: EventRecord[],
+): DisplayPayload | null => {
+  for (let index = toolEvents.length - 1; index >= 0; index -= 1) {
+    const event = toolEvents[index]!;
+    if (!isToolResult(event)) continue;
+    if (event.payload.toolName !== "Display" || event.payload.error) continue;
+    const request = requestForToolResult(toolEvents, event);
+    if (!request || !isToolRequest(request)) continue;
+    const html = asNonEmptyString(request.payload.args?.html);
+    if (!html) continue;
+    return {
+      kind: "html",
+      html,
+      title: "Canvas",
+      createdAt: event.timestamp,
+    };
+  }
+  return null;
+};
+
 /**
  * Extract local file paths referenced via markdown links in the
  * assistant message text. Mirrors Codex's `yde` + `bde` pair: walk the
@@ -356,6 +390,9 @@ export const deriveTurnResource = (
   options?: { developerResourcesEnabled?: boolean },
 ): DisplayPayload | null => {
   if (toolEvents.length === 0 && !assistantText) return null;
+
+  const displayPayload = displayPayloadFromToolCall(toolEvents);
+  if (displayPayload) return displayPayload;
 
   // Build payloadByPath using rich signals (office previews + image_gen
   // metadata) so the chosen path resolves to a previewer that keeps

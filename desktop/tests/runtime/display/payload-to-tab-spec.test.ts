@@ -40,6 +40,19 @@ const { payloadToTabSpec } = await import(
 );
 
 describe("payloadToTabSpec", () => {
+  it("uses stable per-turn ids for canvas html artifacts", () => {
+    const payload: DisplayPayload = {
+      kind: "html",
+      html: "<canvas></canvas><script>window.ready = true</script>",
+      title: "Canvas",
+      createdAt: 42,
+    };
+    const spec = payloadToTabSpec(payload);
+    expect(spec.id).toBe("html:canvas:42");
+    expect(spec.kind).toBe("html");
+    expect(spec.title).toBe("Canvas");
+  });
+
   it("keeps docx office previews as office-document tabs", () => {
     const payload: DisplayPayload = {
       kind: "office",

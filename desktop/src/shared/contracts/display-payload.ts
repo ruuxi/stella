@@ -31,7 +31,7 @@ export type DisplayFileArtifactKind =
  * call) or a structured `DisplayPayload` object.
  */
 export type DisplayPayload =
-  | { kind: "html"; html: string }
+  | { kind: "html"; html: string; title?: string; createdAt?: number }
   | {
       /**
        * Live URL preview (e.g., per-social-session Vite dev server).
@@ -121,7 +121,14 @@ const isMediaAsset = (value: unknown): value is MediaAsset => {
 export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
   if (!isRecord(value)) return false;
   if (value.kind === "html") {
-    return typeof value.html === "string";
+    const createdAt = (value as { createdAt?: unknown }).createdAt;
+    return (
+      typeof value.html === "string" &&
+      ((value as { title?: unknown }).title === undefined ||
+        typeof (value as { title?: unknown }).title === "string") &&
+      (createdAt === undefined ||
+        (typeof createdAt === "number" && Number.isFinite(createdAt)))
+    );
   }
   if (value.kind === "url") {
     return (
@@ -195,7 +202,7 @@ export const normalizeDisplayPayload = (
 
 /** Quick title helper for the sidebar header / external open. */
 export const getDisplayPayloadTitle = (payload: DisplayPayload): string => {
-  if (payload.kind === "html") return "Display";
+  if (payload.kind === "html") return payload.title ?? "Canvas";
   if (payload.kind === "url") return payload.title;
   if (payload.kind === "office") {
     return payload.title ?? payload.previewRef.title;

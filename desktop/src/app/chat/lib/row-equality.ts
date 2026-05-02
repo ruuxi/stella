@@ -140,7 +140,13 @@ export const resourcePayloadEqual = (
   if (a.kind !== b.kind) return false;
   switch (a.kind) {
     case "html":
-      return a.html === (b as { html: string }).html;
+      return (
+        a.html === (b as { html: string }).html &&
+        (a.title ?? null) ===
+          ((b as Extract<DisplayPayload, { kind: "html" }>).title ?? null) &&
+        (a.createdAt ?? null) ===
+          ((b as Extract<DisplayPayload, { kind: "html" }>).createdAt ?? null)
+      );
     case "office":
       return (
         a.previewRef.sourcePath ===
