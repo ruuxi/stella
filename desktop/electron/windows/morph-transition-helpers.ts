@@ -2,6 +2,9 @@ import { ipcMain, type BrowserWindow, type Rectangle } from "electron";
 
 type MorphSignalChannel = "overlay:morphReady" | "overlay:morphDone";
 
+/** JPEG quality for morph / overlay window captures — balances size vs. ring artifacts during the short veil. */
+const MORPH_CAPTURE_JPEG_QUALITY = 80;
+
 export async function captureWindowDataUrl(
   win: BrowserWindow,
   rect?: Rectangle,
@@ -11,7 +14,8 @@ export async function captureWindowDataUrl(
   try {
     const image = await win.webContents.capturePage(rect);
     onResult?.(true, Math.round(performance.now() - startedAt));
-    return image.toDataURL();
+    const jpeg = image.toJPEG(MORPH_CAPTURE_JPEG_QUALITY);
+    return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
   } catch {
     onResult?.(false, Math.round(performance.now() - startedAt));
     return null;

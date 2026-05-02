@@ -126,10 +126,9 @@ type GLContext = {
 };
 
 /**
- * Decode a screenshot data URL to an `ImageBitmap`. The PNG parse runs off
- * the renderer main thread (browser dispatches `createImageBitmap` to an
- * internal worker), which is meaningfully faster than the older `<img>`
- * decode path on big captures.
+ * Decode a screenshot data URL to an `ImageBitmap`. Image decode runs off
+ * the renderer main thread (`createImageBitmap` uses an internal worker),
+ * which is meaningfully faster than the older `<img>` path on big captures.
  *
  * We can't `fetch(dataUrl)` here — the overlay window's CSP allows
  * `data:` under `img-src` but not under `connect-src`, so the fetch is
@@ -140,13 +139,16 @@ async function loadImage(src: string): Promise<ImageBitmap> {
   if (commaIdx < 0) {
     throw new Error("loadImage: invalid data URL");
   }
+  const header = src.slice(0, commaIdx);
+  const mimeMatch = /^data:([^;,]+)/.exec(header);
+  const mime = mimeMatch?.[1]?.trim().toLowerCase() || "image/png";
   const base64 = src.slice(commaIdx + 1);
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  return createImageBitmap(new Blob([bytes], { type: "image/png" }));
+  return createImageBitmap(new Blob([bytes], { type: mime }));
 }
 
 function initGL(canvas: HTMLCanvasElement, img: ImageBitmap): GLContext | null {
