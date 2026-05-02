@@ -258,6 +258,8 @@ function startRenderLoop(
   mixRef: { current: number },
   alphaRef: { current: number },
   activeTweensRef: { current: number },
+  steadyStrengthRef: { current: number },
+  timePhaseRef: { current: number },
   startTime: number,
   onFirstFrame?: () => void,
 ): () => void {
@@ -269,10 +271,23 @@ function startRenderLoop(
   // other frame. Tweens (forward ramp, reverse crossfade) snap back to 60Hz
   // because that's where motion smoothness actually matters.
   let skipNextFrame = false;
+  let lastTimestamp = startTime;
   const { gl, strengthLoc, timeLoc, mixLoc, alphaLoc } = ctx;
 
   const frame = (now: number) => {
     if (!running) return;
+
+    const dtSeconds = Math.max(0, (now - lastTimestamp) / 1000);
+    lastTimestamp = now;
+    // Ripple motion accelerates with strength on the way in and decelerates
+    // back to zero on the way out, so rings ease into existence and slow to
+    // a stop instead of popping in/out at constant cruise speed. We integrate
+    // dt scaled by `strength / steadyStrength` (clamped to 1) so the phase
+    // clock follows whatever envelope the strength tween produces.
+    const steady = steadyStrengthRef.current;
+    const speedScale =
+      steady > 0 ? Math.min(1, Math.max(0, strengthRef.current / steady)) : 0;
+    timePhaseRef.current += dtSeconds * speedScale;
 
     // Nothing visible — no point spending GPU cycles. Still need to paint the
     // very first frame so `onFirstFrame` (= overlay:morphReady) fires.
@@ -295,7 +310,7 @@ function startRenderLoop(
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform1f(strengthLoc, strengthRef.current);
-    gl.uniform1f(timeLoc, (now - startTime) / 1000);
+    gl.uniform1f(timeLoc, timePhaseRef.current);
     gl.uniform1f(mixLoc, mixRef.current);
     gl.uniform1f(alphaLoc, alphaRef.current);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -351,6 +366,8 @@ export function MorphTransition() {
   const morphReadySentRef = useRef(false);
   const activeMorphFlavorRef = useRef<MorphFlavor>("hmr");
   const activeTweensRef = useRef(0);
+  const steadyStrengthRef = useRef(MORPH_STEADY_STRENGTH);
+  const timePhaseRef = useRef(0);
 
   useEffect(() => {
     const api = window.electronAPI?.overlay;
@@ -406,6 +423,8 @@ export function MorphTransition() {
         strengthRef.current = 0;
         mixRef.current = 0;
         alphaRef.current = 1;
+        steadyStrengthRef.current = steadyStrength;
+        timePhaseRef.current = 0;
         setHmrState(IDLE_HMR_STATE);
         setState({
           phase: "rippling",
@@ -434,6 +453,8 @@ export function MorphTransition() {
             mixRef,
             alphaRef,
             activeTweensRef,
+            steadyStrengthRef,
+            timePhaseRef,
             loopStartTimeRef.current,
             () => signalMorphReady(data.transitionId),
           );
