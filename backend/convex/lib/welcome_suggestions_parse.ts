@@ -6,7 +6,7 @@ import type {
 } from "../prompts/synthesis";
 import { extractJsonBlock } from "./json";
 
-const VALID_CATEGORIES = new Set(["stella", "task", "explore", "schedule"]);
+const VALID_CATEGORIES = new Set(["stella", "task", "skill", "schedule"]);
 const VALID_BADGE_ICONS = new Set<AppBadgeIcon>([
   "browser",
   "account",

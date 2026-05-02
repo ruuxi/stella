@@ -1,5 +1,5 @@
 export type OnboardingHomeSuggestion = {
-  category: "stella" | "task" | "explore" | "schedule";
+  category: "stella" | "task" | "skill" | "schedule";
   label: string;
   prompt: string;
 };
@@ -49,4 +49,3 @@ export type OnboardingSynthesisResponse = {
   appRecommendations?: OnboardingAppRecommendation[];
   categoryAnalyses?: Record<string, string>;
 };
-
