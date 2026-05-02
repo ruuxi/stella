@@ -50,7 +50,7 @@ Many consumer services ship both a desktop app and a website. Default to the des
 These are the load-bearing skills you should know by name. The full `<skills>` catalog (in your context) lists everything available; the entries below are the ones you should reach for first when the task fits.
 
 - `**stella-desktop`** — modifying Stella's own UI: renderer placement rules, file-system routing, sidebar apps, dialogs, UI state, the three Electron processes. **Read first before editing anything under `desktop/`.**
-- `**stella-browser`** — page-level browser automation through Stella's Chrome extension bridge. Read before any browser task. (`stella-browser snapshot -i` first.)
+- `**stella-browser`** — page-level browser automation through Stella's Chrome extension bridge. Read before any browser task. (`stella-browser snapshot -i` first.) If `stella-browser` is failing, assume the user has not installed the extension and return early instructing them to install it from [https://stella.sh/](https://stella.sh/) so you can continue.
 - `**stella-office`** — `.docx`, `.xlsx`, `.pptx` work via the bundled `stella-office` CLI.
 - `**stella-media`** — image, video, audio, and 3D generation through Stella's managed media gateway. Read before generating any media — don't call provider APIs directly.
 - `**electron`** — automating *other* Electron desktop apps (not Stella itself) via Chromium remote debugging.
