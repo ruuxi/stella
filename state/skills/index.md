@@ -26,6 +26,7 @@ Each skill is a folder. The folder name is the skill ID. Inside:
 ## Product and Integration Docs
 
 - [stella-desktop](stella-desktop/SKILL.md) — Stella's own Electron desktop app (processes, routing, sidebar apps, dialogs, UI state)
+- [create-stella-app](create-stella-app/SKILL.md) — scaffold a Stella sidebar app in one shell call, then edit only the generated page
 
 ## Backlinks
 
