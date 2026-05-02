@@ -3,6 +3,7 @@ import {
   internalQuery,
   mutation,
   query,
+  type MutationCtx,
 } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 import {
@@ -11,6 +12,7 @@ import {
   getSocialProfileByOwnerId,
   normalizeNickname,
   normalizeNicknameKey,
+  normalizePublicHandle,
 } from "./shared";
 import {
   requireBoundedString,
@@ -27,6 +29,30 @@ import {
 import { findBannedTerm } from "./censor";
 
 const optionalProfileValidator = v.union(v.null(), socialProfileValidator);
+
+const creatorProfileSummaryValidator = v.object({
+  publicHandle: v.string(),
+  displayName: v.string(),
+});
+
+const syncStoreAuthorProfile = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  profile: { publicHandle: string; nickname: string },
+) => {
+  const packages = await ctx.db
+    .query("store_packages")
+    .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
+    .take(500);
+  await Promise.all(
+    packages.map((pkg) =>
+      ctx.db.patch(pkg._id, {
+        authorHandle: profile.publicHandle,
+        authorDisplayName: profile.nickname,
+      }),
+    ),
+  );
+};
 
 /**
  * Public DTO returned by friend-code lookups. Intentionally omits `ownerId`
@@ -49,6 +75,16 @@ export const ensureProfileInternal = internalMutation({
   handler: async (ctx) => {
     const ownerId = await requireConnectedUserId(ctx);
     return await ensureSocialProfileDoc(ctx, ownerId);
+  },
+});
+
+export const ensureProfileForOwnerInternal = internalMutation({
+  args: { ownerId: v.string() },
+  returns: socialProfileValidator,
+  handler: async (ctx, args) => {
+    const profile = await ensureSocialProfileDoc(ctx, args.ownerId);
+    await syncStoreAuthorProfile(ctx, args.ownerId, profile);
+    return profile;
   },
 });
 
@@ -84,6 +120,65 @@ export const getMyProfile = query({
       return null;
     }
     return await getSocialProfileByOwnerId(ctx, identity.tokenIdentifier);
+  },
+});
+
+export const getProfileByHandle = query({
+  args: { handle: v.string() },
+  returns: v.union(v.null(), creatorProfileSummaryValidator),
+  handler: async (ctx, args) => {
+    const handle = args.handle.trim().toLowerCase();
+    if (!handle) return null;
+    const profile = await ctx.db
+      .query("social_profiles")
+      .withIndex("by_publicHandle", (q) => q.eq("publicHandle", handle))
+      .unique();
+    if (!profile) return null;
+    return {
+      publicHandle: profile.publicHandle,
+      displayName: profile.nickname,
+    };
+  },
+});
+
+export const claimHandle = mutation({
+  args: { handle: v.string() },
+  returns: creatorProfileSummaryValidator,
+  handler: async (ctx, args) => {
+    const ownerId = await requireConnectedUserId(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "social_claim_handle",
+      ownerId,
+      RATE_SETTINGS,
+      "Too many handle updates. Please wait a moment and try again.",
+    );
+    const publicHandle = normalizePublicHandle(args.handle);
+    const profile = await ensureSocialProfileDoc(ctx, ownerId);
+    const collision = await ctx.db
+      .query("social_profiles")
+      .withIndex("by_publicHandle", (q) => q.eq("publicHandle", publicHandle))
+      .unique();
+    if (collision && collision.ownerId !== ownerId) {
+      throw new ConvexError({
+        code: "HANDLE_TAKEN",
+        message: "That handle is taken. Pick a different one.",
+      });
+    }
+    if (profile.publicHandle !== publicHandle) {
+      await ctx.db.patch(profile._id, {
+        publicHandle,
+        updatedAt: Date.now(),
+      });
+      await syncStoreAuthorProfile(ctx, ownerId, {
+        publicHandle,
+        nickname: profile.nickname,
+      });
+    }
+    return {
+      publicHandle,
+      displayName: profile.nickname,
+    };
   },
 });
 
@@ -214,6 +309,7 @@ export const updateMyProfile = mutation({
         message: "Failed to update social profile",
       });
     }
+    await syncStoreAuthorProfile(ctx, ownerId, updated);
     return updated;
   },
 });

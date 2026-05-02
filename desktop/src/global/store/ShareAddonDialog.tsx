@@ -71,7 +71,7 @@ export function ShareAddonDialog({ open, onOpenChange, pkg }: ShareAddonDialogPr
 
   // The link only resolves on the receiver's side when the package row
   // carries an `authorHandle` (which is stamped at publish time from
-  // `user_profiles`). If the publishing user never claimed a handle the
+  // `social_profiles`). If the publishing user never has a handle the
   // share link is meaningless — surface a clear inline error rather
   // than letting them send an unresolvable link.
   const link = useMemo(

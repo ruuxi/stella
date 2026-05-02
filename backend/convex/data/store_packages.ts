@@ -25,8 +25,11 @@ import {
   store_release_manifest_validator,
 } from "../schema/store";
 import { enforceStoreReleaseReviewOrThrow } from "../lib/store_release_reviews";
+import { generateStoreIconUrl } from "../lib/store_icon";
 import {
   enforceActionRateLimit,
+  enforceMutationRateLimit,
+  RATE_STANDARD,
   RATE_VERY_EXPENSIVE,
 } from "../lib/rate_limits";
 import { normalizeStoreCategory } from "../lib/store_artifacts";
@@ -63,23 +66,28 @@ const create_first_release_args_validator = {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const resolveCallerAuthorHandle = async (
+const resolveCallerAuthor = async (
   ctx: {
-    runQuery: (
-      fn: typeof internal.data.user_profiles.getHandleForOwnerInternal,
+    runMutation: (
+      fn: typeof internal.social.profiles.ensureProfileForOwnerInternal,
       args: { ownerId: string },
-    ) => Promise<string | null>;
+    ) => Promise<{ publicHandle: string; nickname: string }>;
   },
   ownerId: string,
-): Promise<string | undefined> => {
+): Promise<{ authorHandle?: string; authorDisplayName?: string }> => {
   try {
-    const handle = await ctx.runQuery(
-      internal.data.user_profiles.getHandleForOwnerInternal,
+    const profile = await ctx.runMutation(
+      internal.social.profiles.ensureProfileForOwnerInternal,
       { ownerId },
     );
-    return handle ? handle.trim().toLowerCase() : undefined;
+    return {
+      authorHandle: profile.publicHandle.trim().toLowerCase(),
+      ...(profile.nickname.trim()
+        ? { authorDisplayName: profile.nickname.trim() }
+        : {}),
+    };
   } catch {
-    return undefined;
+    return {};
   }
 };
 
@@ -617,7 +625,7 @@ export const listPackagesByAuthorHandle = query({
     const handle = args.handle.trim().toLowerCase();
     if (!handle) return [];
     const profile = await ctx.db
-      .query("user_profiles")
+      .query("social_profiles")
       .withIndex("by_publicHandle", (q) => q.eq("publicHandle", handle))
       .unique();
     if (!profile) return [];
@@ -766,6 +774,36 @@ export const getRelease = query({
   },
 });
 
+// ── install tracking ────────────────────────────────────────────────────────
+
+/**
+ * Increment the public install counter for a package. Called by the
+ * desktop install flow after a blueprint install completes successfully.
+ * Idempotent across retries within a short window via the standard rate
+ * limiter; we don't dedupe per-user since the counter intentionally
+ * tracks attempts, not unique installers.
+ */
+export const recordPackageInstall = mutation({
+  args: { packageId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await getUserIdOrNull(ctx);
+    await enforceMutationRateLimit(
+      ctx,
+      "store_record_install",
+      ownerId ?? "anonymous",
+      RATE_STANDARD,
+    );
+    const normalizedPackageId = normalizePackageId(args.packageId);
+    const pkg = await getPackageByPackageId(ctx, normalizedPackageId);
+    if (!pkg) return null;
+    await ctx.db.patch(pkg._id, {
+      installCount: (pkg.installCount ?? 0) + 1,
+    });
+    return null;
+  },
+});
+
 // ── publish actions ──────────────────────────────────────────────────────────
 
 export const createFirstRelease = action({
@@ -807,7 +845,18 @@ export const createFirstRelease = action({
       artifactBody: blueprintMarkdown,
     });
 
-    const authorHandle = await resolveCallerAuthorHandle(ctx, ownerId);
+    const author = await resolveCallerAuthor(ctx, ownerId);
+    const iconUrl =
+      manifest.iconUrl ??
+      (await generateStoreIconUrl({
+        displayName,
+        description,
+        category: normalizeStoreCategory(args.category ?? manifest.category),
+      }));
+    const releaseManifest = {
+      ...manifest,
+      ...(iconUrl ? { iconUrl } : {}),
+    };
     return await ctx.runMutation(
       internal.data.store_packages.createFirstReleaseRecord,
       {
@@ -816,14 +865,16 @@ export const createFirstRelease = action({
         displayName,
         description,
         releaseNotes,
-        manifest,
+        manifest: releaseManifest,
         blueprintMarkdown,
         ...(args.category ? { category: args.category } : {}),
-        ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
-        ...(manifest.authorDisplayName
-          ? { authorDisplayName: manifest.authorDisplayName }
-          : {}),
-        ...(authorHandle ? { authorHandle } : {}),
+        ...(iconUrl ? { iconUrl } : {}),
+        ...(author.authorDisplayName
+          ? { authorDisplayName: author.authorDisplayName }
+          : manifest.authorDisplayName
+            ? { authorDisplayName: manifest.authorDisplayName }
+            : {}),
+        ...(author.authorHandle ? { authorHandle: author.authorHandle } : {}),
       },
     );
   },
@@ -869,20 +920,34 @@ export const createUpdateRelease = action({
       artifactBody: blueprintMarkdown,
     });
 
-    const authorHandle = await resolveCallerAuthorHandle(ctx, ownerId);
+    const author = await resolveCallerAuthor(ctx, ownerId);
+    const iconUrl =
+      manifest.iconUrl ??
+      pkg.iconUrl ??
+      (await generateStoreIconUrl({
+        displayName: pkg.displayName,
+        description: pkg.description,
+        category: normalizeStoreCategory(pkg.category ?? manifest.category),
+      }));
+    const releaseManifest = {
+      ...manifest,
+      ...(iconUrl ? { iconUrl } : {}),
+    };
     return await ctx.runMutation(
       internal.data.store_packages.createUpdateReleaseRecord,
       {
         ownerId,
         packageId,
         releaseNotes,
-        manifest,
+        manifest: releaseManifest,
         blueprintMarkdown,
-        ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
-        ...(manifest.authorDisplayName
-          ? { authorDisplayName: manifest.authorDisplayName }
-          : {}),
-        ...(authorHandle ? { authorHandle } : {}),
+        ...(iconUrl ? { iconUrl } : {}),
+        ...(author.authorDisplayName
+          ? { authorDisplayName: author.authorDisplayName }
+          : manifest.authorDisplayName
+            ? { authorDisplayName: manifest.authorDisplayName }
+            : {}),
+        ...(author.authorHandle ? { authorHandle: author.authorHandle } : {}),
       },
     );
   },

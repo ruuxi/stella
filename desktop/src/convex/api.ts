@@ -855,29 +855,6 @@ export type PublicApiType = {
         string | undefined
       >;
     };
-    user_profiles: {
-      getMyProfile: FunctionReference<
-        "query",
-        "public",
-        {},
-        any,
-        string | undefined
-      >;
-      getProfileByHandle: FunctionReference<
-        "query",
-        "public",
-        { handle: string },
-        any,
-        string | undefined
-      >;
-      claimHandle: FunctionReference<
-        "mutation",
-        "public",
-        { displayName?: string | undefined; handle: string },
-        any,
-        string | undefined
-      >;
-    };
   };
   events: {
     appendEvent: FunctionReference<
@@ -1141,6 +1118,13 @@ export type PublicApiType = {
         "query",
         "public",
         { friendCode: string },
+        any,
+        string | undefined
+      >;
+      getProfileByHandle: FunctionReference<
+        "query",
+        "public",
+        { handle: string },
         any,
         string | undefined
       >;

@@ -60,7 +60,6 @@ import type * as data_secrets_rotation from "../data/secrets_rotation.js";
 import type * as data_store_packages from "../data/store_packages.js";
 import type * as data_thread_compaction_format from "../data/thread_compaction_format.js";
 import type * as data_threads from "../data/threads.js";
-import type * as data_user_profiles from "../data/user_profiles.js";
 import type * as events from "../events.js";
 import type * as feedback from "../feedback.js";
 import type * as http from "../http.js";
@@ -245,7 +244,6 @@ declare const fullApi: ApiFromModules<{
   "data/store_packages": typeof data_store_packages;
   "data/thread_compaction_format": typeof data_thread_compaction_format;
   "data/threads": typeof data_threads;
-  "data/user_profiles": typeof data_user_profiles;
   events: typeof events;
   feedback: typeof feedback;
   http: typeof http;

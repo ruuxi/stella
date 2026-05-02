@@ -21,6 +21,7 @@ import {
 const FRIEND_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const FRIEND_CODE_LENGTH = 8;
 const MAX_FRIEND_CODE_RETRIES = 24;
+const MAX_HANDLE_COLLISION_RETRIES = 24;
 
 const NICKNAME_ADJECTIVES = [
   "Brisk",
@@ -54,12 +55,26 @@ const NICKNAME_NOUNS = [
   "Zephyr",
 ];
 
+const HANDLE_REGEX = /^[a-z0-9](?:[a-z0-9_-]{1,30}[a-z0-9])$/;
+const RESERVED_HANDLES = new Set([
+  "admin",
+  "stella",
+  "store",
+  "creator",
+  "creators",
+  "support",
+  "help",
+  "about",
+  "settings",
+]);
+
 export const socialProfileValidator = v.object({
   _id: v.id("social_profiles"),
   _creationTime: v.number(),
   ownerId: v.string(),
   nickname: v.string(),
   nicknameNormalized: v.string(),
+  publicHandle: v.string(),
   friendCode: v.string(),
   avatarUrl: v.optional(v.string()),
   lastSeenIncomingFriendRequestAt: v.optional(v.number()),
@@ -197,6 +212,32 @@ export const normalizeNickname = (value: string) =>
 export const normalizeNicknameKey = (value: string) =>
   normalizeNickname(value).toLowerCase();
 
+export const normalizePublicHandle = (raw: string): string => {
+  const normalized = raw.trim().toLowerCase();
+  if (!HANDLE_REGEX.test(normalized)) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message:
+        "Handle must be 3-32 lowercase letters/numbers/underscores/hyphens, and start + end with a letter or number.",
+    });
+  }
+  if (RESERVED_HANDLES.has(normalized)) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: "That handle is reserved. Pick a different one.",
+    });
+  }
+  return normalized;
+};
+
+const slugifyHandle = (nickname: string) =>
+  nickname
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+
 export const sanitizeWorkspaceSlug = (value: string) =>
   value
     .trim()
@@ -258,11 +299,13 @@ export const ensureSocialProfileDoc = async (
 
   const now = Date.now();
   const nickname = generateDefaultNickname();
+  const publicHandle = await generateUniquePublicHandle(ctx, nickname);
   const friendCode = await generateUniqueFriendCode(ctx);
   const id = await ctx.db.insert("social_profiles", {
     ownerId,
     nickname,
     nicknameNormalized: normalizeNicknameKey(nickname),
+    publicHandle,
     friendCode,
     createdAt: now,
     updatedAt: now,
@@ -455,6 +498,31 @@ const generateDefaultNickname = () => {
     NICKNAME_NOUNS[Math.floor(Math.random() * NICKNAME_NOUNS.length)]!;
   const suffix = Math.floor(100 + Math.random() * 900);
   return `${adjective} ${noun} ${suffix}`;
+};
+
+const generateUniquePublicHandle = async (
+  ctx: MutationCtx,
+  nickname: string,
+): Promise<string> => {
+  const base = slugifyHandle(nickname);
+  for (let attempt = 0; attempt < MAX_HANDLE_COLLISION_RETRIES; attempt += 1) {
+    const candidate =
+      attempt === 0
+        ? base
+        : `${base.slice(0, 27)}-${Math.floor(1000 + Math.random() * 9000)}`;
+    if (!HANDLE_REGEX.test(candidate) || RESERVED_HANDLES.has(candidate)) {
+      continue;
+    }
+    const existing = await ctx.db
+      .query("social_profiles")
+      .withIndex("by_publicHandle", (q) => q.eq("publicHandle", candidate))
+      .unique();
+    if (!existing) return candidate;
+  }
+  throw new ConvexError({
+    code: "INTERNAL_ERROR",
+    message: "Could not generate a public handle.",
+  });
 };
 
 const generateFriendCodeCandidate = () => {

@@ -245,6 +245,22 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
     baseURL: convexSiteUrl,
     trustedOrigins,
     database: authComponent.adapter(ctx),
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            const actionCtx = requireActionCtx(ctx);
+            await actionCtx.scheduler.runAfter(
+              0,
+              internal.social.profiles.ensureProfileForOwnerInternal,
+              {
+                ownerId: tokenIdentifierForBetterAuthUserId(user.id),
+              },
+            );
+          },
+        },
+      },
+    },
     user: {
       deleteUser: {
         enabled: true,

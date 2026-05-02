@@ -2,16 +2,30 @@
  * Store side panel.
  *
  * Three stacked surfaces:
- * 1. Recent changes — the rolling-window feature snapshot (regenerated
- *    by the cheap-LLM namer after every successful self-mod commit).
- *    The user multi-selects names to attach as context for their next
- *    message to the Store agent.
- * 2. Chat thread — local messages with the Store agent. The agent runs in
- *    the local runtime; Convex only validates/reviews the final publish.
- * 3. Composer + Publish — the user types, sends, and (when the agent
- *    has produced a blueprint draft) clicks Publish to ship.
+ * 1. Recent changes — the rolling-window feature snapshot. Each row has
+ *    explicit Add (multi-select chip) and Publish (auto-fires a draft
+ *    request) actions on the right.
+ * 2. Chat thread — local messages with the Store agent rendered through
+ *    the same `UserMessageRow` / `AssistantMessageRow` components as the
+ *    full chat / chat sidebar, so bubble alignment, markdown, and
+ *    spacing match across surfaces. Pending state shows a calm two-line
+ *    "Drafting your blueprint." indicator.
+ * 3. Composer — reuses the chat-sidebar shell verbatim
+ *    (`.chat-sidebar-composer` / `.chat-sidebar-shell` / etc.) so the
+ *    pill, focus glow, and animated submit button match the chat
+ *    sidebar.
+ *
+ * Blueprint drafts render as an `EndResourceCard`-shaped artifact pill
+ * inside the assistant row, with a right-aligned bordered state badge
+ * ("Review required" / "Published" / "Denied"). Clicking opens a glass
+ * Radix `Dialog` with the markdown on a solid surface; approving opens
+ * a second glass dialog for the publish form.
+ *
+ * When a new blueprint draft lands while the panel is mounted, fires an
+ * OS notification so the user gets pulled back even if the side panel
+ * isn't on top.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import {
@@ -20,12 +34,36 @@ import {
   useStoreSidePanelState,
 } from "./store-side-panel-store";
 import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
-import Send from "lucide-react/dist/esm/icons/send";
-import StopCircle from "lucide-react/dist/esm/icons/stop-circle";
 import FileText from "lucide-react/dist/esm/icons/file-text";
 import X from "lucide-react/dist/esm/icons/x";
 import { showToast } from "@/ui/toast";
 import { Markdown } from "@/app/chat/Markdown";
+import {
+  Dialog,
+  DialogBody,
+  DialogCloseButton,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/ui/dialog";
+import {
+  ComposerStopButton,
+  ComposerSubmitButton,
+  ComposerTextarea,
+} from "@/app/chat/ComposerPrimitives";
+import {
+  AssistantMessageRow,
+  UserMessageRow,
+  type AssistantRowViewModel,
+  type UserRowViewModel,
+} from "@/app/chat/MessageRow";
+import "@/app/chat/full-shell.chat.css";
+import "@/app/chat/compact-conversation.css";
+import "@/app/chat/end-resource-card.css";
+import "@/app/chat/composer-primitives.css";
+import "@/shell/chat-sidebar.css";
+
+const EDIT_BLUEPRINT_PROMPT = "What do you want to change?";
 
 type StoreThreadMessage = {
   _id: string;
@@ -68,8 +106,46 @@ function formatTimeAgo(ms: number): string {
   });
 }
 
+/**
+ * Pull a friendly blueprint name from the leading `# Heading` of the
+ * markdown, falling back to "Blueprint" if there isn't one. Keeps the
+ * pill's secondary line readable without inventing a separate field.
+ */
+function deriveBlueprintName(text: string): string {
+  const match = text.match(/^\s*#\s+(.+?)\s*$/m);
+  if (match && match[1]) return match[1].trim();
+  return "Blueprint";
+}
+
 // ---------------------------------------------------------------------------
-// Publish dialog
+// Notifications
+// ---------------------------------------------------------------------------
+
+async function requestNotificationPermission() {
+  try {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function fireBlueprintNotification(name: string) {
+  try {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
+    new Notification("Blueprint draft ready", {
+      body: `${name} is ready to review and publish.`,
+    });
+  } catch {
+    // ignore
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Publish dialog (glass + Radix)
 // ---------------------------------------------------------------------------
 
 type PublishDialogProps = {
@@ -88,8 +164,12 @@ function PublishDialog({
   onClose,
   onPublished,
 }: PublishDialogProps) {
-  const createFirstRelease = useAction(api.data.store_packages.createFirstRelease);
-  const createUpdateRelease = useAction(api.data.store_packages.createUpdateRelease);
+  const createFirstRelease = useAction(
+    api.data.store_packages.createFirstRelease,
+  );
+  const createUpdateRelease = useAction(
+    api.data.store_packages.createUpdateRelease,
+  );
   const myPackages = useQuery(
     api.data.store_packages.listMyPackages,
     open ? {} : "skip",
@@ -124,6 +204,13 @@ function PublishDialog({
       setPackageId(slug);
     }
   };
+
+  const ownedPackages = (myPackages ?? []) as Array<{
+    packageId: string;
+    displayName: string;
+    description: string;
+    category?: StoreCategory;
+  }>;
 
   const handleSubmit = async () => {
     const selectedPackage = ownedPackages.find(
@@ -200,134 +287,134 @@ function PublishDialog({
     }
   };
 
-  if (!open) return null;
-  const ownedPackages = (myPackages ?? []) as Array<{
-    packageId: string;
-    displayName: string;
-    description: string;
-    category?: StoreCategory;
-  }>;
-
   return (
-    <div className="store-publish-dialog">
-      <div className="store-publish-dialog-card">
-        <div className="store-publish-dialog-title">
-          {asUpdate ? "Publish update" : "Publish to Store"}
-        </div>
-
-        {ownedPackages.length > 0 ? (
-          <label className="store-publish-dialog-row">
-            <input
-              type="checkbox"
-              checked={asUpdate}
-              onChange={(event) => setAsUpdate(event.target.checked)}
-            />
-            <span>Update an existing add-on</span>
-          </label>
-        ) : null}
-
-        {asUpdate ? (
-          <label className="store-publish-dialog-field">
-            <span>Existing add-on</span>
-            <select
-              value={packageId}
-              onChange={(event) => setPackageId(event.target.value)}
-            >
-              <option value="">Select…</option>
-              {ownedPackages.map((pkg) => (
-                <option key={pkg.packageId} value={pkg.packageId}>
-                  {pkg.displayName} ({pkg.packageId})
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <>
-            <label className="store-publish-dialog-field">
-              <span>Name</span>
+    <Dialog open={open} onOpenChange={(next) => (next ? null : onClose())}>
+      <DialogContent fit className="store-publish-dialog">
+        <DialogHeader>
+          <DialogTitle>
+            {asUpdate ? "Publish update" : "Publish to Store"}
+          </DialogTitle>
+          <DialogCloseButton />
+        </DialogHeader>
+        <DialogBody>
+          {ownedPackages.length > 0 ? (
+            <label className="store-publish-dialog-row">
               <input
-                type="text"
-                value={displayName}
-                onChange={(event) => handleNameChange(event.target.value)}
-                placeholder="Cute snake game"
-                maxLength={120}
+                type="checkbox"
+                checked={asUpdate}
+                onChange={(event) => setAsUpdate(event.target.checked)}
               />
+              <span>Update an existing add-on</span>
             </label>
+          ) : null}
+
+          {asUpdate ? (
             <label className="store-publish-dialog-field">
-              <span>Package ID</span>
-              <input
-                type="text"
+              <span className="store-publish-dialog-field-label">
+                Existing add-on
+              </span>
+              <select
                 value={packageId}
                 onChange={(event) => setPackageId(event.target.value)}
-                placeholder="cute-snake-game"
-                maxLength={64}
-              />
-            </label>
-            <label className="store-publish-dialog-field">
-              <span>Description</span>
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="A short description for the store listing."
-                rows={3}
-                maxLength={4_000}
-              />
-            </label>
-            <label className="store-publish-dialog-field">
-              <span>Category</span>
-              <select
-                value={category}
-                onChange={(event) =>
-                  setCategory(event.target.value as typeof category)
-                }
               >
-                <option value="">Pick a category…</option>
-                <option value="apps-games">Apps & games</option>
-                <option value="productivity">Productivity</option>
-                <option value="customization">Customization</option>
-                <option value="skills-agents">Skills & agents</option>
-                <option value="integrations">Integrations</option>
-                <option value="other">Other</option>
+                <option value="">Select…</option>
+                {ownedPackages.map((pkg) => (
+                  <option key={pkg.packageId} value={pkg.packageId}>
+                    {pkg.displayName} ({pkg.packageId})
+                  </option>
+                ))}
               </select>
             </label>
-          </>
-        )}
+          ) : (
+            <>
+              <label className="store-publish-dialog-field">
+                <span className="store-publish-dialog-field-label">Name</span>
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={(event) => handleNameChange(event.target.value)}
+                  placeholder="Cute snake game"
+                  maxLength={120}
+                />
+              </label>
+              <label className="store-publish-dialog-field">
+                <span className="store-publish-dialog-field-label">
+                  Package ID
+                </span>
+                <input
+                  type="text"
+                  value={packageId}
+                  onChange={(event) => setPackageId(event.target.value)}
+                  placeholder="cute-snake-game"
+                  maxLength={64}
+                />
+              </label>
+              <label className="store-publish-dialog-field">
+                <span className="store-publish-dialog-field-label">
+                  Description
+                </span>
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="A short description for the store listing."
+                  rows={3}
+                  maxLength={4_000}
+                />
+              </label>
+              <label className="store-publish-dialog-field">
+                <span className="store-publish-dialog-field-label">
+                  Category
+                </span>
+                <select
+                  value={category}
+                  onChange={(event) =>
+                    setCategory(event.target.value as typeof category)
+                  }
+                >
+                  <option value="">Pick a category…</option>
+                  <option value="apps-games">Apps & games</option>
+                  <option value="productivity">Productivity</option>
+                  <option value="customization">Customization</option>
+                  <option value="skills-agents">Skills & agents</option>
+                  <option value="integrations">Integrations</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+            </>
+          )}
 
-        <div className="store-publish-dialog-actions">
-          <button
-            type="button"
-            className="pill-btn"
-            onClick={onClose}
-            disabled={submitting}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="pill-btn pill-btn-primary"
-            onClick={() => void handleSubmit()}
-            disabled={submitting}
-          >
-            {submitting ? "Publishing…" : "Publish"}
-          </button>
-        </div>
-      </div>
-    </div>
+          <div className="store-publish-dialog-actions">
+            <button
+              type="button"
+              className="pill-btn"
+              onClick={onClose}
+              disabled={submitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="pill-btn pill-btn--primary"
+              onClick={() => void handleSubmit()}
+              disabled={submitting}
+            >
+              {submitting ? "Publishing…" : "Publish"}
+            </button>
+          </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Blueprint review dialog
+// Blueprint review dialog (glass + Radix)
 // ---------------------------------------------------------------------------
 
 type BlueprintDialogProps = {
-  message: StoreThreadMessage;
-  /**
-   * True only for the most recent non-denied blueprint draft. Older
-   * drafts and denied drafts open the dialog read-only — the receiver
-   * agent installs from the latest publishable draft, so approving an
-   * older one would be misleading.
-   */
+  open: boolean;
+  message: StoreThreadMessage | null;
+  /** True only for the most recent non-denied blueprint draft. */
   canApprove: boolean;
   denying: boolean;
   onClose: () => void;
@@ -337,6 +424,7 @@ type BlueprintDialogProps = {
 };
 
 function BlueprintDialog({
+  open,
   message,
   canApprove,
   denying,
@@ -345,38 +433,46 @@ function BlueprintDialog({
   onDeny,
   onEdit,
 }: BlueprintDialogProps) {
-  const denied = Boolean(message.denied);
+  const denied = Boolean(message?.denied);
+  const published = Boolean(message?.published);
+  const titleSuffix = denied
+    ? " (denied)"
+    : published
+      ? ` (published${message?.publishedReleaseNumber ? ` v${message.publishedReleaseNumber}` : ""})`
+      : "";
   return (
-    <div className="store-blueprint-dialog">
-      <div className="store-blueprint-dialog-card">
-        <div className="store-blueprint-dialog-header">
-          <div className="store-blueprint-dialog-title">
-            Blueprint draft
-            {denied ? (
-              <span className="store-blueprint-dialog-denied-tag">denied</span>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            className="store-blueprint-dialog-close"
-            onClick={onClose}
-            title="Close"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <div className="store-blueprint-dialog-body">
+    <Dialog open={open} onOpenChange={(next) => (next ? null : onClose())}>
+      <DialogContent fit className="store-blueprint-dialog">
+        <DialogHeader>
+          <DialogTitle>Blueprint draft{titleSuffix}</DialogTitle>
+          <DialogCloseButton />
+        </DialogHeader>
+        <DialogBody>
           <div className="store-blueprint-dialog-viewer">
-            <Markdown
-              text={message.text}
-              cacheKey={message._id}
-              className="store-blueprint-dialog-markdown"
-            />
+            {message ? (
+              <Markdown text={message.text} cacheKey={message._id} />
+            ) : null}
           </div>
           <div className="store-blueprint-dialog-actions">
             <button
               type="button"
-              className="pill-btn pill-btn-primary"
+              className="pill-btn"
+              onClick={onEdit}
+              disabled={!message || denying}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              className="pill-btn pill-btn--danger"
+              onClick={onDeny}
+              disabled={!canApprove || denying}
+            >
+              {denying ? "Denying…" : "Deny"}
+            </button>
+            <button
+              type="button"
+              className="pill-btn pill-btn--primary"
               onClick={onApprove}
               disabled={!canApprove || denying}
               title={
@@ -387,29 +483,128 @@ function BlueprintDialog({
                     : "Only the latest draft can be published."
               }
             >
-              Approve & Publish
-            </button>
-            <button
-              type="button"
-              className="pill-btn pill-btn-danger"
-              onClick={onDeny}
-              disabled={!canApprove || denying}
-            >
-              {denying ? "Denying…" : "Deny"}
-            </button>
-            <button
-              type="button"
-              className="pill-btn"
-              onClick={onEdit}
-              disabled={denying}
-            >
-              Edit
+              Approve & publish
             </button>
           </div>
-        </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Blueprint pill (artifact-card style)
+// ---------------------------------------------------------------------------
+
+function BlueprintPill({
+  name,
+  denied,
+  published,
+  onOpen,
+}: {
+  name: string;
+  denied: boolean;
+  published: boolean;
+  onOpen: () => void;
+}) {
+  const tier = denied ? "denied" : published ? "published" : "review";
+  const badgeLabel = denied
+    ? "Denied"
+    : published
+      ? "Published"
+      : "Review required";
+  return (
+    <button
+      type="button"
+      className="end-resource-card store-side-panel-blueprint-card"
+      data-denied={denied || undefined}
+      onClick={onOpen}
+    >
+      <span className="end-resource-card__icon">
+        <FileText size={20} />
+      </span>
+      <span className="end-resource-card__text">
+        <span className="end-resource-card__label">Blueprint draft</span>
+        <span className="end-resource-card__action">{name}</span>
+      </span>
+      <span className="store-side-panel-blueprint-badge" data-tier={tier}>
+        {badgeLabel}
+      </span>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Recent-changes row
+// ---------------------------------------------------------------------------
+
+function RecentRow({
+  name,
+  meta,
+  selected,
+  onAdd,
+  onPublish,
+}: {
+  name: string;
+  meta: string | null;
+  selected: boolean;
+  onAdd: () => void;
+  onPublish: () => void;
+}) {
+  return (
+    <div className="store-side-panel-row" data-selected={selected || undefined}>
+      <div className="store-side-panel-row-text">
+        <span className="store-side-panel-row-title">{name}</span>
+        {meta ? (
+          <span className="store-side-panel-row-meta">{meta}</span>
+        ) : null}
+      </div>
+      <div className="store-side-panel-row-actions">
+        <button
+          type="button"
+          className="store-side-panel-pill"
+          data-active={selected || undefined}
+          onClick={onAdd}
+          title={selected ? "Remove from composer" : "Add to composer"}
+        >
+          {selected ? "Added" : "Add"}
+        </button>
+        <button
+          type="button"
+          className="store-side-panel-pill"
+          data-variant="primary"
+          onClick={onPublish}
+          title="Draft a blueprint to publish this change"
+        >
+          Publish
+        </button>
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// MessageRow adapters
+// ---------------------------------------------------------------------------
+
+function toUserRow(msg: StoreThreadMessage): UserRowViewModel {
+  return {
+    kind: "user",
+    id: msg._id,
+    text: msg.text,
+    attachments: [],
+  };
+}
+
+function toAssistantRow(msg: StoreThreadMessage): AssistantRowViewModel {
+  return {
+    kind: "assistant",
+    id: msg._id,
+    text: msg.text,
+    cacheKey: msg._id,
+    emotesEnabled: false,
+    isAnimating: msg.pending === true,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -426,7 +621,6 @@ export function StoreSidePanel() {
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
-  /** Currently-open blueprint review dialog (clicked badge). */
   const [reviewingMessage, setReviewingMessage] =
     useState<StoreThreadMessage | null>(null);
   /**
@@ -440,6 +634,13 @@ export function StoreSidePanel() {
   );
   const [denying, setDenying] = useState(false);
 
+  /**
+   * Tracks the set of blueprint message ids we've already seen so we
+   * can fire an OS notification when a *new* blueprint lands.
+   */
+  const seenBlueprintsRef = useRef<Set<string>>(new Set());
+  const hasSeededBlueprintsRef = useRef(false);
+
   useEffect(() => {
     void refreshFeatureSnapshot();
     void window.electronAPI?.store
@@ -448,6 +649,7 @@ export function StoreSidePanel() {
         if (nextThread) setThread(nextThread);
       })
       .catch(() => undefined);
+    void requestNotificationPermission();
     return () => {
       storeSidePanelStore.reset();
     };
@@ -481,6 +683,26 @@ export function StoreSidePanel() {
     [messages],
   );
 
+  // Surface an OS notification when a brand-new blueprint draft arrives
+  // (i.e. one we've never observed in this session). Seed the "seen"
+  // set on first load so existing drafts don't re-fire on mount.
+  useEffect(() => {
+    const blueprints = messages.filter(
+      (msg) =>
+        msg.role === "assistant" && msg.isBlueprint && !msg.denied,
+    );
+    if (!hasSeededBlueprintsRef.current) {
+      hasSeededBlueprintsRef.current = true;
+      seenBlueprintsRef.current = new Set(blueprints.map((msg) => msg._id));
+      return;
+    }
+    for (const msg of blueprints) {
+      if (seenBlueprintsRef.current.has(msg._id)) continue;
+      seenBlueprintsRef.current.add(msg._id);
+      fireBlueprintNotification(deriveBlueprintName(msg.text));
+    }
+  }, [messages]);
+
   useEffect(() => {
     if (!isInFlight) return;
     const timer = window.setInterval(() => {
@@ -512,46 +734,76 @@ export function StoreSidePanel() {
     }
   }, [stopping]);
 
+  /**
+   * Common send pipeline. Used both by the composer's submit button
+   * and the per-row Publish button (which auto-fires a draft prompt
+   * with the feature attached).
+   */
+  const sendThreadTurn = useCallback(
+    async (args: {
+      text: string;
+      attachedFeatureNames?: string[];
+      editingBlueprint?: boolean;
+    }) => {
+      const storeApi = window.electronAPI?.store;
+      if (!storeApi?.sendThreadMessage) {
+        showToast({
+          title: "Send failed",
+          description:
+            "The local Store agent is not ready yet. Try again in a moment.",
+          variant: "error",
+        });
+        return;
+      }
+      setSending(true);
+      try {
+        const nextThread = await storeApi.sendThreadMessage({
+          text: args.text,
+          ...(args.attachedFeatureNames && args.attachedFeatureNames.length > 0
+            ? { attachedFeatureNames: args.attachedFeatureNames }
+            : {}),
+          ...(args.editingBlueprint ? { editingBlueprint: true } : {}),
+        });
+        setThread(nextThread);
+      } catch (error) {
+        showToast({
+          title: "Send failed",
+          description: (error as Error)?.message,
+          variant: "error",
+        });
+      } finally {
+        setSending(false);
+      }
+    },
+    [],
+  );
+
   const handleSend = useCallback(async () => {
     const text = composer.trim();
     if (!text || sending) return;
-    const storeApi = window.electronAPI?.store;
-    if (!storeApi?.sendThreadMessage) {
-      showToast({
-        title: "Send failed",
-        description: "The local Store agent is not ready yet. Try again in a moment.",
-        variant: "error",
-      });
-      return;
-    }
-    setSending(true);
-    try {
-      const attachedFeatureNames = Array.from(state.selectedFeatureNames);
-      const editingBlueprint = Boolean(editingBlueprintMessage);
-      const nextThread = await storeApi.sendThreadMessage({
-        text,
-        ...(attachedFeatureNames.length > 0 ? { attachedFeatureNames } : {}),
-        ...(editingBlueprint ? { editingBlueprint: true } : {}),
-      });
-      setThread(nextThread);
-      setComposer("");
-      setEditingBlueprintId(null);
-      storeSidePanelStore.clearSelections();
-    } catch (error) {
-      showToast({
-        title: "Send failed",
-        description: (error as Error)?.message,
-        variant: "error",
-      });
-    } finally {
-      setSending(false);
-    }
+    const attachedFeatureNames = Array.from(state.selectedFeatureNames);
+    const editingBlueprint = Boolean(editingBlueprintMessage);
+    await sendThreadTurn({ text, attachedFeatureNames, editingBlueprint });
+    setComposer("");
+    setEditingBlueprintId(null);
+    storeSidePanelStore.clearSelections();
   }, [
     composer,
     editingBlueprintMessage,
     sending,
+    sendThreadTurn,
     state.selectedFeatureNames,
   ]);
+
+  const handlePublishRow = useCallback(
+    async (name: string) => {
+      await sendThreadTurn({
+        text: `Draft a blueprint to publish: ${name}`,
+        attachedFeatureNames: [name],
+      });
+    },
+    [sendThreadTurn],
+  );
 
   const handleApproveBlueprint = useCallback(() => {
     setReviewingMessage(null);
@@ -592,7 +844,73 @@ export function StoreSidePanel() {
   const handleEditBlueprint = useCallback((message: StoreThreadMessage) => {
     setEditingBlueprintId(message._id);
     setReviewingMessage(null);
+    const syntheticId = `synthetic-edit:${message._id}`;
+    setThread((prev) => {
+      if (prev.messages.some((entry) => entry._id === syntheticId)) return prev;
+      return {
+        ...prev,
+        messages: [
+          ...prev.messages,
+          {
+            _id: syntheticId,
+            role: "assistant",
+            text: EDIT_BLUEPRINT_PROMPT,
+          },
+        ],
+      };
+    });
   }, []);
+
+  const renderMessage = (message: StoreThreadMessage) => {
+    if (message.role === "user") {
+      const features = message.attachedFeatureNames ?? [];
+      return (
+        <div key={message._id}>
+          {features.length > 0 ? (
+            <div className="store-side-panel-user-chips">
+              {features.map((name) => (
+                <span key={name} className="store-side-panel-user-chip">
+                  {name}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <UserMessageRow row={toUserRow(message)} />
+        </div>
+      );
+    }
+
+    if (message.isBlueprint) {
+      const name = deriveBlueprintName(message.text);
+      const row: AssistantRowViewModel = {
+        ...toAssistantRow(message),
+        text: "",
+        customSlot: (
+          <BlueprintPill
+            name={name}
+            denied={Boolean(message.denied)}
+            published={Boolean(message.published)}
+            onOpen={() => setReviewingMessage(message)}
+          />
+        ),
+        customSlotKey: `blueprint:${message._id}:${message.denied ? "denied" : message.published ? "published" : "review"}`,
+      };
+      return <AssistantMessageRow key={message._id} row={row} />;
+    }
+
+    if (message.pending && !message.text.trim()) {
+      return (
+        <div key={message._id} className="store-side-panel-drafting">
+          Drafting your blueprint.
+          <span className="store-side-panel-drafting-sub">
+            This may take a couple of minutes.
+          </span>
+        </div>
+      );
+    }
+
+    return <AssistantMessageRow key={message._id} row={toAssistantRow(message)} />;
+  };
 
   return (
     <div
@@ -624,20 +942,18 @@ export function StoreSidePanel() {
           {items.map((item, index) => {
             const selected = state.selectedFeatureNames.has(item.name);
             return (
-              <button
+              <RecentRow
                 key={`${index}:${item.name}`}
-                type="button"
-                className="store-side-panel-row"
-                data-selected={selected ? "" : undefined}
-                onClick={() => storeSidePanelStore.toggleFeature(item.name)}
-              >
-                <span className="store-side-panel-row-title">{item.name}</span>
-                {state.snapshot?.generatedAt ? (
-                  <span className="store-side-panel-row-meta">
-                    Updated {formatTimeAgo(state.snapshot.generatedAt)}
-                  </span>
-                ) : null}
-              </button>
+                name={item.name}
+                meta={
+                  state.snapshot?.generatedAt
+                    ? `Updated ${formatTimeAgo(state.snapshot.generatedAt)}`
+                    : null
+                }
+                selected={selected}
+                onAdd={() => storeSidePanelStore.toggleFeature(item.name)}
+                onPublish={() => void handlePublishRow(item.name)}
+              />
             );
           })}
         </div>
@@ -645,169 +961,119 @@ export function StoreSidePanel() {
 
       <div className="store-side-panel-thread">
         {messages.length === 0 ? (
-          <div className="store-side-panel-empty">
+          <div className="store-side-panel-thread-empty">
             Pick changes above or just type — the Store agent will help draft a
             blueprint to publish.
           </div>
         ) : (
-          messages.map((message) => {
-            // Blueprint messages render as a small badge — the full
-            // markdown opens in a dialog. Keeps the chat scannable
-            // even with several drafts and gives the user explicit
-            // approve/deny/edit controls.
-            if (message.isBlueprint) {
-              return (
-                <div
-                  key={message._id}
-                  className="store-side-panel-message"
-                  data-role={message.role}
-                  data-blueprint=""
-                  data-denied={message.denied ? "" : undefined}
-                >
+          <div className="chat-conversation-surface chat-conversation-surface--sidebar">
+            {messages.map(renderMessage)}
+          </div>
+        )}
+      </div>
+
+      {/*
+       * Composer reuses the chat-sidebar shell verbatim so it reads as
+       * the same component as the chat sidebar / full chat composer.
+       */}
+      <div className="chat-sidebar-composer">
+        <div className="chat-sidebar-shell">
+          <div className="chat-sidebar-shell-content">
+            {state.selectedFeatureNames.size > 0 || editingBlueprintMessage ? (
+              <div className="composer-attached-strip composer-attached-strip--mini">
+                {editingBlueprintMessage ? (
                   <button
                     type="button"
-                    className="store-side-panel-blueprint-badge"
-                    data-denied={message.denied ? "" : undefined}
-                    onClick={() => setReviewingMessage(message)}
-                    title="Open blueprint draft"
+                    className="store-side-panel-edit-chip"
+                    onClick={() => setEditingBlueprintId(null)}
+                    title="Click to drop the edit reference"
                   >
-                    <FileText size={14} />
-                    <span className="store-side-panel-blueprint-badge-label">
-                      {message.denied
-                        ? "Blueprint draft (denied)"
-                        : message.published
-                          ? `Blueprint draft (published${
-                              message.publishedReleaseNumber
-                                ? ` v${message.publishedReleaseNumber}`
-                                : ""
-                            })`
-                        : "Blueprint draft"}
-                    </span>
-                    <span className="store-side-panel-blueprint-badge-meta">
-                      {message.text.length.toLocaleString()} chars
-                    </span>
+                    <FileText size={12} />
+                    <span>Editing blueprint</span>
+                    <X size={12} />
                   </button>
-                </div>
-              );
-            }
-            return (
-              <div
-                key={message._id}
-                className="store-side-panel-message"
-                data-role={message.role}
-                data-pending={message.pending ? "" : undefined}
-              >
-                {message.attachedFeatureNames &&
-                message.attachedFeatureNames.length > 0 ? (
-                  <div className="store-side-panel-message-chips">
-                    {message.attachedFeatureNames.map((name) => (
-                      <span
-                        key={name}
-                        className="store-side-panel-message-chip"
-                      >
-                        {name}
-                      </span>
-                    ))}
-                  </div>
                 ) : null}
-                <div className="store-side-panel-message-text">
-                  {message.pending ? (
-                    <span className="store-side-panel-message-pending">
-                      Working…
-                    </span>
+                {Array.from(state.selectedFeatureNames).map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className="store-side-panel-edit-chip"
+                    onClick={() => storeSidePanelStore.toggleFeature(name)}
+                    title="Click to remove"
+                  >
+                    <span>{name}</span>
+                    <X size={12} />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <form
+              className="chat-sidebar-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleSend();
+              }}
+            >
+              <ComposerTextarea
+                className="chat-sidebar-input"
+                tone="default"
+                value={composer}
+                rows={1}
+                placeholder={
+                  editingBlueprintMessage
+                    ? "Describe the change you want to the draft…"
+                    : "What do you want to publish?"
+                }
+                disabled={sending || isInFlight}
+                onChange={(event) => setComposer(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void handleSend();
+                  }
+                }}
+              />
+              <div className="composer-toolbar">
+                <div className="composer-toolbar-left" />
+                <div className="composer-toolbar-right">
+                  {isInFlight ? (
+                    <ComposerStopButton
+                      className="composer-stop"
+                      onClick={() => void handleStop()}
+                      disabled={stopping}
+                      title="Stop"
+                      aria-label="Stop"
+                    />
                   ) : (
-                    message.text
+                    <ComposerSubmitButton
+                      className="composer-submit"
+                      disabled={sending || !composer.trim()}
+                      animated
+                    />
                   )}
                 </div>
               </div>
-            );
-          })
-        )}
-      </div>
-
-      {(state.selectedFeatureNames.size > 0 || editingBlueprintMessage) ? (
-        <div className="store-side-panel-selected-chips">
-          {editingBlueprintMessage ? (
-            <button
-              type="button"
-              className="store-side-panel-edit-chip"
-              onClick={() => setEditingBlueprintId(null)}
-              title="Click to drop the edit reference"
-            >
-              <FileText size={12} />
-              <span>Editing blueprint</span>
-              <X size={12} />
-            </button>
-          ) : null}
-          {Array.from(state.selectedFeatureNames).map((name) => (
-            <button
-              key={name}
-              type="button"
-              className="store-side-panel-message-chip"
-              onClick={() => storeSidePanelStore.toggleFeature(name)}
-              title="Click to remove"
-            >
-              {name} ×
-            </button>
-          ))}
+            </form>
+          </div>
         </div>
-      ) : null}
-
-      <div className="store-side-panel-composer">
-        <textarea
-          value={composer}
-          onChange={(event) => setComposer(event.target.value)}
-          placeholder={
-            editingBlueprintMessage
-              ? "Describe the change you want to the draft…"
-              : "What do you want to publish?"
-          }
-          rows={2}
-          disabled={sending || isInFlight}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void handleSend();
-            }
-          }}
-        />
-        {isInFlight ? (
-          <button
-            type="button"
-            className="store-side-panel-send"
-            onClick={() => void handleStop()}
-            disabled={stopping}
-            title="Stop"
-          >
-            <StopCircle size={14} />
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="store-side-panel-send"
-            onClick={() => void handleSend()}
-            disabled={sending || !composer.trim()}
-            title="Send"
-          >
-            <Send size={14} />
-          </button>
-        )}
       </div>
 
-      {reviewingMessage ? (
-        <BlueprintDialog
-          message={reviewingMessage}
-          canApprove={
-            !!latestPublishableBlueprint &&
-            latestPublishableBlueprint._id === reviewingMessage._id
-          }
-          denying={denying}
-          onClose={() => setReviewingMessage(null)}
-          onApprove={handleApproveBlueprint}
-          onDeny={() => void handleDenyBlueprint()}
-          onEdit={() => handleEditBlueprint(reviewingMessage)}
-        />
-      ) : null}
+      <BlueprintDialog
+        open={Boolean(reviewingMessage)}
+        message={reviewingMessage}
+        canApprove={
+          !!latestPublishableBlueprint &&
+          !!reviewingMessage &&
+          latestPublishableBlueprint._id === reviewingMessage._id
+        }
+        denying={denying}
+        onClose={() => setReviewingMessage(null)}
+        onApprove={handleApproveBlueprint}
+        onDeny={() => void handleDenyBlueprint()}
+        onEdit={() => {
+          if (reviewingMessage) handleEditBlueprint(reviewingMessage);
+        }}
+      />
 
       <PublishDialog
         open={publishOpen}
