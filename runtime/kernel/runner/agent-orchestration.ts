@@ -237,6 +237,16 @@ const getParallelRunningShellSessions = (result: ToolResult): string[] => {
   return sessionIds;
 };
 
+const parallelToolResultContainsShellCommand = (details: unknown): boolean => {
+  if (!details || typeof details !== "object") return false;
+  const results = (details as { results?: unknown }).results;
+  if (!Array.isArray(results)) return false;
+  return results.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    return (entry as { tool_name?: unknown }).tool_name === "exec_command";
+  });
+};
+
 const resolveSelfModMetadata = (args: {
   agentType: string;
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
@@ -737,12 +747,19 @@ export const createAgentOrchestration = (
                 subagentProducedFileKeys,
                 event.producedFiles?.length ? event : event.details,
               );
-              pendingToolWriteRecords.push(
-                recordToolWrites({
-                  fileChanges: event.fileChanges,
-                  producedFiles: event.producedFiles,
-                }),
-              );
+              const shellWritesAlreadyRecorded =
+                event.toolName === "exec_command" ||
+                event.toolName === "write_stdin" ||
+                (event.toolName === "multi_tool_use_parallel" &&
+                  parallelToolResultContainsShellCommand(event.details));
+              if (!shellWritesAlreadyRecorded) {
+                pendingToolWriteRecords.push(
+                  recordToolWrites({
+                    fileChanges: event.fileChanges,
+                    producedFiles: event.producedFiles,
+                  }),
+                );
+              }
               runnerCallbacks?.onToolEnd(event);
             },
           },

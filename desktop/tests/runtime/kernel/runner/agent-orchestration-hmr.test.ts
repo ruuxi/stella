@@ -8,6 +8,10 @@ import { AGENT_IDS } from "../../../../../desktop/src/shared/contracts/agent-run
 import { createAgentOrchestration } from "../../../../../runtime/kernel/runner/agent-orchestration.js";
 import { createSelfModHmrController } from "../../../../../runtime/kernel/self-mod/hmr.js";
 import { handleApplyPatch } from "../../../../../runtime/kernel/tools/apply-patch.js";
+import {
+  createShellState,
+  handleExecCommand,
+} from "../../../../../runtime/kernel/tools/shell.js";
 import type { ToolContext, ToolResult } from "../../../../../runtime/kernel/tools/types.js";
 
 vi.mock("../../../../../runtime/kernel/model-routing.js", () => ({
@@ -23,6 +27,7 @@ type MockRuntimeState = {
     | "apply_patch"
     | "safe_shell"
     | "safe_shell_alias"
+    | "real_shell_write"
     | "shell_alias_write"
     | "running_shell"
     | "parallel_running_shell";
@@ -35,6 +40,7 @@ const mockRuntime: MockRuntimeState = {
     | "apply_patch"
     | "safe_shell"
     | "safe_shell_alias"
+    | "real_shell_write"
     | "shell_alias_write"
     | "running_shell"
     | "parallel_running_shell",
@@ -105,6 +111,20 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
                   { command: "rg value desktop/src/foo.tsx" },
                   context,
                 )
+              : runtime.mode === "real_shell_write"
+                ? await opts.toolExecutor(
+                    "exec_command",
+                    {
+                      cmd: [
+                        "node",
+                        "-e",
+                        JSON.stringify(
+                          "const fs = require('fs'); fs.writeFileSync('desktop/src/foo.tsx', \"export const value = 'after';\\n\");",
+                        ),
+                      ].join(" "),
+                    },
+                    context,
+                  )
               : runtime.mode === "shell_alias_write"
                 ? await opts.toolExecutor(
                     "exec_command",
@@ -246,6 +266,19 @@ const createTestContext = (root: string, hmrController: unknown) => {
               ],
             },
           });
+        }
+        if (
+          toolName === "exec_command" &&
+          getMockRuntime().mode === "real_shell_write"
+        ) {
+          return handleExecCommand(
+            createShellState(path.join(root, "state")),
+            args,
+            {
+              ...context,
+              stellaRoot: root,
+            },
+          );
         }
         return Promise.resolve({ result: "ok" });
       },
@@ -441,6 +474,67 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(snapshot).toMatchObject({ status: "completed" });
     expect(controller.beginShellMutationGuard).toHaveBeenCalledTimes(1);
     expect(controller.recordWrite).not.toHaveBeenCalled();
+  });
+
+  it("records real exec_command filesystem writes from producedFiles", async () => {
+    const root = await makeTempRoot();
+    const filePath = path.join(root, "desktop/src/foo.tsx");
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, "export const value = 'before';\n");
+    mockRuntime.root = root;
+    mockRuntime.mode = "real_shell_write";
+    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
+      .__stellaOrchHmrMock = mockRuntime;
+    const callOrder: string[] = [];
+    const controller = {
+      beginRun: vi.fn(),
+      recordWrite: vi.fn(async () => {
+        callOrder.push("record-write");
+      }),
+      beginShellMutationGuard: vi.fn(async () => {
+        callOrder.push("guard-begin");
+        return true;
+      }),
+      endShellMutationGuard: vi.fn(async () => {
+        callOrder.push("guard-end");
+        return true;
+      }),
+      hasRun: vi.fn(() => true),
+    };
+    const context = createTestContext(root, controller);
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "write file",
+      prompt: "write file",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({ status: "completed" });
+    expect(await readFile(filePath, "utf-8")).toBe(
+      "export const value = 'after';\n",
+    );
+    expect(controller.beginShellMutationGuard).toHaveBeenCalledTimes(1);
+    expect(controller.recordWrite).toHaveBeenCalledWith(
+      expect.any(String),
+      [filePath],
+      undefined,
+    );
+    expect(controller.endShellMutationGuard).toHaveBeenCalledTimes(1);
+    expect(callOrder).toEqual(["guard-begin", "record-write", "guard-end"]);
   });
 
   it("kills still-running guarded shell sessions and cancels self-mod finalize", async () => {
