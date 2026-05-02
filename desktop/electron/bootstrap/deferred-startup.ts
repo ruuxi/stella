@@ -13,6 +13,7 @@ const CHRONICLE_6H_TICK_INTERVAL_MS = 60 * 60_000;
 // similarly: Phase-2 consolidation runs at app startup once Phase 1 catches
 // up, not on a wall-clock interval.
 const CHRONICLE_FIRST_TICK_DELAY_MS = 30_000;
+const DREAM_READY_RETRY_MS = 5_000;
 
 type DeferredStartupTask = {
   delayMs?: number;
@@ -37,6 +38,33 @@ const runDeferredStartupTask = async (
 
   await task.run();
   return true;
+};
+
+const triggerDreamWhenAgentReady = (
+  context: BootstrapContext,
+  trigger: "startup_catchup" | "chronicle_summary",
+): void => {
+  const runner = context.lifecycle.getRunner();
+  if (!runner) {
+    return;
+  }
+
+  void (async () => {
+    const health = await runner.agentHealthCheck();
+    if (!health?.ready) {
+      context.state.processRuntime.setManagedTimeout(() => {
+        triggerDreamWhenAgentReady(context, trigger);
+      }, DREAM_READY_RETRY_MS);
+      return;
+    }
+
+    await runner.triggerDreamNow(trigger);
+  })().catch((error) => {
+    console.debug(
+      "[dream] trigger failed:",
+      error instanceof Error ? error.message : String(error),
+    );
+  });
 };
 
 const createDeferredStartupTasks = (
@@ -106,16 +134,7 @@ const createDeferredStartupTasks = (
       label: "dream-startup-sweep",
       delayMs: config.startupStageDelayMs,
       run: () => {
-        const runner = context.lifecycle.getRunner();
-        if (!runner) {
-          return;
-        }
-        void runner.triggerDreamNow("startup_catchup").catch((error) => {
-          console.debug(
-            "[dream] startup sweep failed:",
-            error instanceof Error ? error.message : String(error),
-          );
-        });
+        triggerDreamWhenAgentReady(context, "startup_catchup");
       },
     },
     {
@@ -141,7 +160,7 @@ const createDeferredStartupTasks = (
             return;
           }
           if (result.wrote) {
-            void runner.triggerDreamNow("chronicle_summary").catch(() => {});
+            triggerDreamWhenAgentReady(context, "chronicle_summary");
           }
         };
         void runOnce();
@@ -172,7 +191,7 @@ const createDeferredStartupTasks = (
             return;
           }
           if (result.wrote) {
-            void runner.triggerDreamNow("chronicle_summary").catch(() => {});
+            triggerDreamWhenAgentReady(context, "chronicle_summary");
           }
         };
         void runOnce();
