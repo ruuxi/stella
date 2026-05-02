@@ -19,7 +19,7 @@ Each skill is a folder. The folder name is the skill ID. Inside:
 - [stella-media](stella-media/SKILL.md) — image, video, audio, and 3D generation through Stella's managed media gateway
 - [pdf](pdf/SKILL.md) — PDF reading, generation, page operations, and render-based quality checks
 - [skill-creator](skill-creator/SKILL.md) — create and update Stella skills under `state/skills`
-- macOS desktop apps: use the typed `computer_*` tools directly (`computer_list_apps`, `computer_get_app_state`, `computer_click`, `computer_perform_secondary_action`, `computer_set_value`, `computer_type_text`, `computer_press_key`, `computer_scroll`, `computer_drag`). No skill file — the tool schemas are self-documenting.
+- [computer-use](computer-use/SKILL.md) — macOS desktop-app automation through the local `computer-use` MCP pseudo-server; `computer_list_apps` is direct, app state and actions are deferred through `MCP`
 - [electron](electron/SKILL.md) — Electron app automation through Chromium remote debugging
 - [user-profile](user-profile/SKILL.md) — structured onboarding memory for the user, including projects, apps, interests, and environment
 

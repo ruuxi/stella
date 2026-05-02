@@ -16,11 +16,11 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 - Browser automation: [stella-browser](skills/stella-browser/SKILL.md)
 - Office documents: [stella-office](skills/stella-office/SKILL.md)
-- macOS desktop app automation: typed `computer_*` tools (no skill — schemas are self-documenting)
+- macOS desktop app automation: [computer-use](skills/computer-use/SKILL.md) through the deferred `MCP` tool; `computer_list_apps` is available directly for quick app checks
 - Electron app control: [electron](skills/electron/SKILL.md)
 - Modify Stella's own desktop app: [stella-desktop](skills/stella-desktop/SKILL.md)
 - User profile and context: [user-profile](skills/user-profile/SKILL.md)
-- Managed media API docs: [https://stella.sh/docs/media](https://stella.sh/docs/media) (the General agent prompt covers `image_gen` usage and when to read the docs)
+- Managed media generation: [stella-media](skills/stella-media/SKILL.md) and [https://stella.sh/docs/media](https://stella.sh/docs/media)
 
 ## Reference Docs
 
@@ -34,7 +34,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 ## Tools
 
-The General agent now uses a codex-style tool pack: `exec_command`, `write_stdin`, `apply_patch`, `web`, `RequestCredential`, `multi_tool_use_parallel`, `view_image`, and `image_gen`. Internal specialist agents still use narrower tools like `Read`, `Grep`, `Dream`, and the scheduling surfaces when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large.
+The General agent uses a codex-style tool pack: `exec_command`, `write_stdin`, `apply_patch`, `web`, `RequestCredential`, `MCP`, `multi_tool_use_parallel`, `view_image`, and `computer_list_apps`. Internal specialist agents still use narrower tools like `Read`, `Grep`, `Dream`, `image_gen`, and scheduling surfaces when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large.
 
 ## Dream
 
