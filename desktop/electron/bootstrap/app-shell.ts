@@ -6,6 +6,7 @@ import { getDevServerUrl } from "../dev-url.js";
 import { OverlayWindowController } from "../windows/overlay-window.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
+import { startMorphTriggerServer } from "../dev/morph-trigger-server.js";
 import {
   type BootstrapContext,
   getAllWindows,
@@ -87,6 +88,21 @@ const initializeWindowShell = (context: BootstrapContext) => {
     getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
     getOverlayController: () => state.overlayController,
   });
+
+  if (config.isDev) {
+    void startMorphTriggerServer({
+      getHmrTransitionController: () => state.hmrTransitionController,
+    }).then((handle) => {
+      if (!handle) return;
+      state.processRuntime.registerCleanup(
+        "before-quit",
+        "morph-trigger-server",
+        async () => {
+          await handle.stop();
+        },
+      );
+    });
+  }
 };
 
 const finalizeWindowLaunch = (context: BootstrapContext) => {
