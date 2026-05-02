@@ -389,8 +389,20 @@ export const createPiTools = (opts: {
         const { text: forwardedText, images: legacyImages } =
           await extractAttachImageBlocks(formatted.text);
         const content: Array<TextContent | ImageBlock> = [];
+        const screenshotNote =
+          legacyImages.length > 0
+            ? "\n\n[Screenshot attached below. If the accessibility tree is sparse or missing the visible control, inspect this image directly and use screenshot x/y coordinates.]"
+            : "";
         if (forwardedText || legacyImages.length === 0) {
-          content.push({ type: "text" as const, text: forwardedText });
+          content.push({
+            type: "text" as const,
+            text: `${forwardedText}${screenshotNote}`,
+          });
+        } else if (screenshotNote) {
+          content.push({
+            type: "text" as const,
+            text: screenshotNote.trim(),
+          });
         }
         content.push(...legacyImages);
         return {

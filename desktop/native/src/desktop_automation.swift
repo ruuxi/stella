@@ -3249,7 +3249,6 @@ final class PersistentOverlayController {
         didTriggerClickPulseForMove = false
         lastTickAt = CACurrentMediaTime()
 
-        win.orderFrontRegardless()
         window = win
         currentScreen = screen
         currentViewportFrame = viewportFrame
@@ -3262,23 +3261,31 @@ final class PersistentOverlayController {
     private func refreshOverlayWindowOrdering() {
         guard let win = window else { return }
         guard let identity = currentTargetIdentity else { return }
-        let entries = enumerateOnScreenWindows()
+        let entries = enumerateOnScreenWindows().filter { $0.pid != getpid() }
         let match = resolveTargetWindow(in: entries, identity: identity)
         let isOnScreen = match != nil
         if isOnScreen != lastTargetOnScreen {
             lastTargetOnScreen = isOnScreen
-            if isOnScreen {
-                win.orderFrontRegardless()
-            } else {
+            if !isOnScreen {
                 win.orderOut(nil)
                 lastOrderedAboveWindowID = nil
             }
         }
         guard let match = match else { return }
         let targetWindowID = match.entry.windowID
-        win.order(.above, relativeTo: Int(targetWindowID))
-        if targetWindowID != lastOrderedAboveWindowID {
-            lastOrderedAboveWindowID = targetWindowID
+        if match.indexFromFront > 0 {
+            let aboveWindowID = entries[match.indexFromFront - 1].windowID
+            win.order(.below, relativeTo: Int(aboveWindowID))
+            if aboveWindowID != lastOrderedAboveWindowID {
+                lastOrderedAboveWindowID = aboveWindowID
+            }
+        } else {
+            // The target is already the frontmost normal window. In that case
+            // fronting the overlay cannot lift the target above another app.
+            win.orderFrontRegardless()
+            if targetWindowID != lastOrderedAboveWindowID {
+                lastOrderedAboveWindowID = targetWindowID
+            }
         }
     }
 
@@ -5167,7 +5174,8 @@ func performAXClickSequence(
     target: AppTarget,
     button: CGMouseButton,
     clickCount: Int,
-    includeNearbyHitTesting: Bool
+    includeNearbyHitTesting: Bool,
+    allowActivationFallback: Bool
 ) -> (Bool, String?) {
     if let actionName = performPreferredClick(on: candidate, button: button, clickCount: clickCount) {
         Thread.sleep(forTimeInterval: 0.15)
@@ -5200,7 +5208,7 @@ func performAXClickSequence(
         }
     }
 
-    if button == .left, activateClickTarget(candidate) {
+    if allowActivationFallback, button == .left, activateClickTarget(candidate) {
         Thread.sleep(forTimeInterval: 0.15)
         return (true, "activation-fallback")
     }
@@ -5224,7 +5232,8 @@ func performClick(
             target: target,
             button: button,
             clickCount: count,
-            includeNearbyHitTesting: true
+            includeNearbyHitTesting: true,
+            allowActivationFallback: raise
         )
         if clicked, usedAction != "activation-fallback" {
             return (true, usedAction)
@@ -5283,7 +5292,8 @@ func performPointClick(
             target: target,
             button: button,
             clickCount: clickCount,
-            includeNearbyHitTesting: false
+            includeNearbyHitTesting: false,
+            allowActivationFallback: raise
         )
         if clicked, usedAction != "activation-fallback" {
             return (true, usedAction)
@@ -5893,7 +5903,7 @@ func buildMouseCGEvent(
         location: cocoaLocation(fromScreenPoint: point),
         modifierFlags: [],
         timestamp: ProcessInfo.processInfo.systemUptime,
-        windowNumber: windowID.map(Int.init) ?? 0,
+        windowNumber: 0,
         context: nil,
         eventNumber: 0,
         clickCount: clickCount,
@@ -5905,10 +5915,6 @@ func buildMouseCGEvent(
     event.setIntegerValueField(.mouseEventButtonNumber, value: Int64(eventButton))
     event.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
     event.setIntegerValueField(.mouseEventSubtype, value: 3)
-    if let windowID {
-        event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowID))
-        event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowID))
-    }
     return event
 }
 
@@ -5936,8 +5942,8 @@ func simulateLeftClickToPid(
     button: CGMouseButton = .left
 ) -> Bool {
     let count = max(1, clickCount)
-    let downType: NSEvent.EventType
-    let upType: NSEvent.EventType
+    let downType: CGEventType
+    let upType: CGEventType
     switch button {
     case .right:
         downType = .rightMouseDown
@@ -5950,50 +5956,30 @@ func simulateLeftClickToPid(
         upType = .otherMouseUp
     }
 
-    let window = onScreenWindowForClick(pid: pid, point: point)
-    let windowLocalPoint = window.map {
-        CGPoint(x: point.x - $0.frame.minX, y: point.y - $0.frame.minY)
-    }
-    let windowID = window?.windowID
-
-    if let windowID {
-        _ = FocusWithoutRaise.activateWithoutRaise(targetPid: pid, targetWindowID: windowID)
-        Thread.sleep(forTimeInterval: 0.05)
-    }
-
-    guard let move = buildMouseCGEvent(
-        type: .mouseMoved,
-        point: point,
-        clickCount: 0,
-        button: button,
-        windowID: windowID
-    ) else {
+    guard let source = CGEventSource(stateID: .combinedSessionState) else {
         return false
     }
-    _ = postPidMouseEvent(move, pid: pid, windowLocalPoint: windowLocalPoint)
-    Thread.sleep(forTimeInterval: 0.015)
 
-    for clickIndex in 1...count {
-        guard let down = buildMouseCGEvent(
-            type: downType,
-            point: point,
-            clickCount: clickIndex,
-            button: button,
-            windowID: windowID
-        ), let up = buildMouseCGEvent(
-            type: upType,
-            point: point,
-            clickCount: clickIndex,
-            button: button,
-            windowID: windowID
+    func post(_ type: CGEventType, clickState: Int) -> Bool {
+        guard let event = CGEvent(
+            mouseEventSource: source,
+            mouseType: type,
+            mouseCursorPosition: point,
+            mouseButton: button
         ) else {
             return false
         }
-        _ = postPidMouseEvent(down, pid: pid, windowLocalPoint: windowLocalPoint)
+        event.setIntegerValueField(.mouseEventClickState, value: Int64(clickState))
+        event.postToPid(pid)
         Thread.sleep(forTimeInterval: 0.03)
-        _ = postPidMouseEvent(up, pid: pid, windowLocalPoint: windowLocalPoint)
-        if clickIndex < count {
-            Thread.sleep(forTimeInterval: 0.08)
+        return true
+    }
+
+    for _ in 0..<count {
+        guard post(.mouseMoved, clickState: count),
+              post(downType, clickState: count),
+              post(upType, clickState: count) else {
+            return false
         }
     }
     return true
@@ -6294,7 +6280,8 @@ func clickViaAxAtScreenPoint(
         target: target,
         button: button,
         clickCount: clickCount,
-        includeNearbyHitTesting: false
+        includeNearbyHitTesting: false,
+        allowActivationFallback: false
     )
     if clicked {
         trace("input:ax-click ok action=\(usedAction ?? "unknown") point=(\(point.x), \(point.y))")

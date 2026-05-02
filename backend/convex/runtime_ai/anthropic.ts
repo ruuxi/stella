@@ -160,6 +160,54 @@ function convertUserContent(content: string | Array<TextContent | ImageContent>)
   return blocks;
 }
 
+function anthropicImageBlock(block: ImageContent): AnthropicContentBlock | null {
+  if (!block.data || !block.mimeType) {
+    return null;
+  }
+  return {
+    type: "image",
+    source: {
+      type: "base64",
+      media_type: block.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+      data: block.data,
+    },
+  };
+}
+
+function appendToolResultMessages(messages: AnthropicMessage[], message: Extract<Context["messages"][number], { role: "toolResult" }>): void {
+  const text = message.content
+    .filter((block): block is TextContent => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+  const images = message.content
+    .filter((block): block is ImageContent => block.type === "image")
+    .map(anthropicImageBlock)
+    .filter((block): block is AnthropicContentBlock => block !== null);
+
+  messages.push({
+    role: "user",
+    content: [{
+      type: "tool_result",
+      tool_use_id: message.toolCallId,
+      content: sanitizeSurrogates(text || (images.length > 0 ? "(screenshot attached below)" : "")),
+      is_error: message.isError,
+    }],
+  });
+
+  if (images.length > 0) {
+    messages.push({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Screenshot from the preceding computer-use tool result:",
+        },
+        ...images,
+      ],
+    });
+  }
+}
+
 function convertMessages(model: Model<"anthropic-messages">, context: Context): AnthropicMessage[] {
   const messages: AnthropicMessage[] = [];
   for (const message of transformMessages(context.messages, model)) {
@@ -198,19 +246,7 @@ function convertMessages(model: Model<"anthropic-messages">, context: Context): 
       continue;
     }
     if (message.role === "toolResult") {
-      const text = message.content
-        .filter((block): block is TextContent => block.type === "text")
-        .map((block) => block.text)
-        .join("\n");
-      messages.push({
-        role: "user",
-        content: [{
-          type: "tool_result",
-          tool_use_id: message.toolCallId,
-          content: sanitizeSurrogates(text),
-          is_error: message.isError,
-        }],
-      });
+      appendToolResultMessages(messages, message);
     }
   }
   return messages;
