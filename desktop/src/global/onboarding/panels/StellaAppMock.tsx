@@ -399,7 +399,7 @@ const STELLA_GLYPH = (
   </svg>
 );
 
-const HOME_CATEGORIES = ["Stella", "Task", "Explore", "Schedule"] as const;
+const HOME_CATEGORIES = ["Stella", "Task", "Skills", "Schedule"] as const;
 
 /* Tabs rendered when the `header` toggle is ON. Reads as a multi-context
  * workspace where Stella keeps several conversations/apps alive at once. */

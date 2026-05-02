@@ -29,11 +29,11 @@ export const DEFAULT_CATEGORIES: SuggestionCategory[] = [
     { label: "Order groceries online", prompt: "Order groceries online" },
     { label: "Fill out a form for me", prompt: "Fill out a form for me" },
   ]},
-  { label: "Explore", options: [
-    { label: "What's happening in the news", prompt: "What's happening in the news today?" },
-    { label: "Find the best laptop under $1000", prompt: "Find the best laptop under $1000" },
-    { label: "Look up flights to Tokyo", prompt: "Look up flights to Tokyo" },
-    { label: "Compare iPhone vs Pixel", prompt: "Compare the latest iPhone vs the latest Pixel" },
+  { label: "Skills", options: [
+    { label: "Save my PDF workflow", prompt: "Create a Stella skill for my repeated PDF workflows. Put it under state/skills and include clear instructions for reading, editing, rendering, and validating PDFs." },
+    { label: "Remember project conventions", prompt: "Create or update a Stella skill that captures the recurring conventions from this project so future agents can follow them without rediscovering them." },
+    { label: "Turn this into a skill", prompt: "Review the recent work in this conversation and create a reusable Stella skill for any durable pattern you find." },
+    { label: "Improve an existing skill", prompt: "Review state/skills for the closest existing skill to my recent workflow and update it if the instructions are stale or incomplete." },
   ]},
   { label: "Schedule", options: [
     { label: "Remind me to stretch every hour", prompt: "Remind me to stretch every hour" },
@@ -46,12 +46,12 @@ export const DEFAULT_CATEGORIES: SuggestionCategory[] = [
 const CATEGORY_LABEL_MAP: Record<OnboardingHomeSuggestion["category"], string> = {
   stella: "Stella",
   task: "Task",
-  explore: "Explore",
+  skill: "Skills",
   schedule: "Schedule",
 }
 
 const CATEGORY_ORDER: OnboardingHomeSuggestion["category"][] = [
-  "stella", "task", "explore", "schedule",
+  "stella", "task", "skill", "schedule",
 ]
 
 function buildCategoriesFromSuggestions(

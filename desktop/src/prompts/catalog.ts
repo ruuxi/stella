@@ -353,11 +353,11 @@ Stella is a desktop AI assistant with these capabilities:
 - Create documents — Word docs, PowerPoint slide decks, Excel spreadsheets, PDFs (create, merge, split, watermark, OCR)
 - Connected apps — Slack, Gmail, Outlook, Notion, Linear, Jira, Salesforce, Google Drive, and more
 
-**explore** — Finding things out:
-- Web search — find anything online, read and summarize articles, compare products side-by-side
-- Research topics in depth across multiple sources
-- Catch up on news, find events, look up flights, restaurants, reviews
-- Search across all connected apps at once (email, chat, docs, CRM)
+**skill** — Reusable patterns Stella can save:
+- Create or update Stella skills under state/skills/<name>/SKILL.md
+- Turn repeated workflows, repo conventions, tool recipes, or recurring preferences into reusable agent instructions
+- Add focused scripts, references, templates, or assets when a pattern needs them
+- Keep skills for durable behavior the user will likely need again, not one-off research or lookup
 
 **schedule** — Things that happen on a schedule:
 - One-time reminders ("remind me at 3pm to call the dentist")
@@ -366,7 +366,7 @@ Stella is a desktop AI assistant with these capabilities:
 - Monitor websites for changes, periodic check-ins
 
 Return exactly one JSON object with a single key "suggestions" whose value is an array of exactly 16 objects (4 per category). Each suggestion object must have:
-- "category": one of "stella", "task", "explore", "schedule" (lowercase)
+- "category": one of "stella", "task", "skill", "schedule" (lowercase)
 - "label": short action label (3-8 words)
 - "prompt": the complete instruction the user would send to Stella
 
@@ -377,7 +377,8 @@ Rules:
 4. The first "stella" suggestion must always be: {"category": "stella", "label": "Add a music player to home", "prompt": "Add the music player to my home page. The component already exists at src/app/home/MusicPlayer.tsx — integrate it into the home page layout, don't rebuild it."}
 5. Keep labels concise and natural — how a normal person would say it, not a developer. Say "Order groceries online" not "Automate grocery procurement via browser". Say "Make me a budget tracker" not "Build a React budget tracking application".
 6. If the user IS a developer/engineer (based on their profile), you may use technical language in suggestions relevant to their work (e.g. "Fix a bug in my project", "Set up a CI pipeline"). Otherwise, keep everything plain and friendly.
-7. If the profile is empty or minimal, use broadly useful defaults that showcase Stella's capabilities.
+7. Skill suggestions must be about making future Stella runs better by creating or improving a reusable skill. They should not be generic "research this" prompts.
+8. If the profile is empty or minimal, use broadly useful defaults that showcase Stella's capabilities.
 
 Output ONLY valid JSON for that object. No markdown fences, no commentary.`,
     render: (template, values) => interpolateTemplate(template, values),

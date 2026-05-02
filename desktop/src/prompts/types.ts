@@ -1,5 +1,5 @@
 export type HomeSuggestion = {
-  category: "stella" | "task" | "explore" | "schedule"
+  category: "stella" | "task" | "skill" | "schedule"
   label: string
   prompt: string
 }
