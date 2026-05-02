@@ -20,7 +20,9 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: 560px;
+  /* Match the wider board (24 * 32px = 768) plus the board wrap's padding,
+   * so the score pills line up with the board edges. */
+  max-width: 800px;
   gap: 16px;
 }
 
@@ -141,7 +143,7 @@
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  max-width: 560px;
+  max-width: 800px;
 }
 
 .snake-hint {
