@@ -1,7 +1,7 @@
 ---
-
-## name: create-stella-app
+name: create-stella-app
 description: Scaffold a new sidebar app inside Stella's desktop renderer in one shell call, then edit only the generated page.
+---
 
 # Adding a new sidebar app to Stella
 

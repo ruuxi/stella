@@ -1,8 +1,7 @@
 ---
-
-## name: stella-office
-
+name: stella-office
 description: Create, analyze, proofread, and modify Office documents (.docx, .xlsx, .pptx) using Stella's bundled `stella-office` CLI. Use when the user wants to create, inspect, check formatting, find issues, add charts, or modify Office documents.
+---
 
 # stella-office
 

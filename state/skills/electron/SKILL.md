@@ -1,3 +1,8 @@
+---
+name: electron
+description: Automate Electron desktop apps through stella-browser and Chromium remote debugging.
+---
+
 # Electron App Automation
 
 Automate any Electron desktop app using stella-browser. Electron apps are built on Chromium and expose a Chrome DevTools Protocol (CDP) port that stella-browser can connect to, enabling the same snapshot-interact workflow used for web pages.
