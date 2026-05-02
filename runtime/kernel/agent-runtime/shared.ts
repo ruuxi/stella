@@ -347,6 +347,13 @@ export const createRuntimeAgent = (args: {
   hookEmitter?: HookEmitter;
   tools: AgentTool[];
   historySource: AgentMessage[];
+  /**
+   * Stable identifier used for upstream prompt-cache routing affinity
+   * (Anthropic ephemeral cache, OpenAI/Fireworks `prompt_cache_key`, etc.).
+   * Pass the threadKey or agentType so repeated turns within the same
+   * conversation hit the same cache shard.
+   */
+  cacheSessionId?: string;
   afterToolCall?: (
     context: AfterToolCallContext,
     signal?: AbortSignal,
@@ -360,6 +367,7 @@ export const createRuntimeAgent = (args: {
       tools: args.tools,
       messages: args.historySource,
     },
+    sessionId: args.cacheSessionId ?? args.agentType,
     convertToLlm: PI_AGENT_MESSAGE_FILTER,
     transformContext: buildDefaultTransformContext(args.resolvedLlm),
     getApiKey: () => args.resolvedLlm.getApiKey(),

@@ -47,6 +47,8 @@ type ManagedCompletionRequest = {
   extraBody?: Record<string, unknown>;
   signal?: AbortSignal;
   headers?: Record<string, string>;
+  sessionId?: string;
+  cacheRetention?: "none" | "short" | "long";
 };
 
 type OpenAIChatToolChoice =
@@ -674,6 +676,8 @@ function buildSimpleOptions(args: {
     signal: args.request?.signal,
     apiKey: process.env[managedGateway.apiKeyEnvVar]?.trim(),
     headers: args.request?.headers,
+    sessionId: args.request?.sessionId,
+    cacheRetention: args.request?.cacheRetention,
   };
 }
 

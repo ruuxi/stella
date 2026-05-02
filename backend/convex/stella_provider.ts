@@ -482,6 +482,12 @@ function buildManagedRuntimeRequest(
       !STELLA_REQUEST_PASSTHROUGH_EXCLUSIONS.has(key),
     ),
   );
+  const sessionId =
+    typeof requestBody.sessionId === "string" && requestBody.sessionId.length > 0
+      ? requestBody.sessionId
+      : typeof requestBody.user === "string"
+        ? requestBody.user
+        : undefined;
 
   return {
     temperature:
@@ -518,6 +524,13 @@ function buildManagedRuntimeRequest(
     responseFormat: requestBody.response_format,
     extraBody: Object.keys(extraBody).length > 0 ? extraBody : undefined,
     signal,
+    sessionId,
+    cacheRetention:
+      requestBody.cacheRetention === "none"
+      || requestBody.cacheRetention === "short"
+      || requestBody.cacheRetention === "long"
+        ? requestBody.cacheRetention
+        : undefined,
   };
 }
 
@@ -576,6 +589,16 @@ function buildManagedRuntimeRequestFromNativeRequest(
     extraBody,
     signal,
     headers,
+    sessionId:
+      typeof record.sessionId === "string" && record.sessionId.length > 0
+        ? record.sessionId
+        : undefined,
+    cacheRetention:
+      record.cacheRetention === "none"
+      || record.cacheRetention === "short"
+      || record.cacheRetention === "long"
+        ? record.cacheRetention
+        : undefined,
   };
 }
 
