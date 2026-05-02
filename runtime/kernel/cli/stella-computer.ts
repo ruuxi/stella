@@ -192,6 +192,9 @@ const automationDaemonStartupBudgetMs = 1_500;
 // apps (Spotify, Notes empty) finish in 1–3s. Codex's MCP also runs ~10s
 // for a busy Mail snapshot and ~3s for everything else.
 const automationDaemonRequestTimeoutMs = 30_000;
+const sessionPruneIntervalMs = 24 * 60 * 60 * 1000;
+const sessionRetentionMs = 24 * 60 * 60 * 1000;
+const pruneStatePath = path.join(stateDir, "last-prune.json");
 
 const usage = `stella-computer - control macOS apps through Accessibility, in the background
 
@@ -396,6 +399,103 @@ const readPidFile = (pidPath: string) => {
   } catch {
     return null;
   }
+};
+
+const safeDirectoryEntries = (directory: string) => {
+  try {
+    return fs.readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+};
+
+const latestMtimeMs = (targetPath: string): number => {
+  let newest = 0;
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(targetPath);
+  } catch {
+    return newest;
+  }
+  newest = Math.max(newest, stats.mtimeMs);
+  if (!stats.isDirectory()) {
+    return newest;
+  }
+  for (const entry of safeDirectoryEntries(targetPath)) {
+    newest = Math.max(newest, latestMtimeMs(path.join(targetPath, entry.name)));
+  }
+  return newest;
+};
+
+const lastPrunedAtMs = () => {
+  try {
+    const raw = JSON.parse(fs.readFileSync(pruneStatePath, "utf8")) as {
+      prunedAtMs?: unknown;
+    };
+    return typeof raw.prunedAtMs === "number" && Number.isFinite(raw.prunedAtMs)
+      ? raw.prunedAtMs
+      : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const writeLastPrunedAt = (prunedAtMs: number) => {
+  try {
+    fs.writeFileSync(
+      pruneStatePath,
+      JSON.stringify({ prunedAtMs }, null, 2),
+      "utf8",
+    );
+  } catch {
+    // Best-effort cache maintenance.
+  }
+};
+
+const pruneGeneratedStateEntries = (
+  directory: string,
+  nowMs: number,
+  maxAgeMs: number,
+) => {
+  if (!fs.existsSync(directory)) return;
+  for (const entry of safeDirectoryEntries(directory)) {
+    const entryPath = path.join(directory, entry.name);
+    let mtimeMs = 0;
+    try {
+      mtimeMs = fs.statSync(entryPath).mtimeMs;
+    } catch {
+      continue;
+    }
+    if (nowMs - mtimeMs > maxAgeMs) {
+      fs.rmSync(entryPath, { recursive: true, force: true });
+    }
+  }
+};
+
+const pruneStellaComputerSessions = (activeSessionId: string) => {
+  const nowMs = Date.now();
+  if (nowMs - lastPrunedAtMs() < sessionPruneIntervalMs) {
+    return;
+  }
+  writeLastPrunedAt(nowMs);
+
+  for (const entry of safeDirectoryEntries(sessionsDir)) {
+    if (!entry.isDirectory() || entry.name === activeSessionId) {
+      continue;
+    }
+    const sessionPath = path.join(sessionsDir, entry.name);
+    const pid = readPidFile(path.join(sessionPath, "automation.pid"));
+    if (pid !== null && pidIsRunning(pid)) {
+      continue;
+    }
+    const newestMtime = latestMtimeMs(sessionPath);
+    if (newestMtime > 0 && nowMs - newestMtime > sessionRetentionMs) {
+      fs.rmSync(sessionPath, { recursive: true, force: true });
+    }
+  }
+
+  pruneGeneratedStateEntries(automationSocketsDir(), nowMs, sessionRetentionMs);
+  pruneGeneratedStateEntries(locksDir, nowMs, sessionRetentionMs);
 };
 
 const delayMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -1667,6 +1767,7 @@ const runCommand = async (
 ): Promise<number> => {
   const sessionPaths = resolveSessionPaths(sessionOverride);
   ensureStateDirectory(sessionPaths);
+  pruneStellaComputerSessions(sessionPaths.sessionId);
 
   let effectiveCommand = command === "get-state" ? "snapshot" : command;
   let effectiveArgs = args;
