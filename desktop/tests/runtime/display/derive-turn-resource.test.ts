@@ -37,6 +37,38 @@ describe("deriveTurnResource", () => {
     ).toBeNull();
   });
 
+  it("surfaces Display canvas calls as inline chat resources", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "q1",
+          type: "tool_request",
+          requestId: "display-1",
+          timestamp: 4,
+          payload: {
+            toolName: "Display",
+            args: {
+              i_have_read_guidelines: true,
+              html: "<div><canvas id=\"chart\"></canvas><script>window.ok = true</script></div>",
+            },
+          },
+        }),
+        event({
+          _id: "r1",
+          type: "tool_result",
+          requestId: "display-1",
+          timestamp: 5,
+          payload: { toolName: "Display", result: "Display updated." },
+        }),
+      ]),
+    ).toEqual({
+      kind: "html",
+      html: "<div><canvas id=\"chart\"></canvas><script>window.ok = true</script></div>",
+      title: "Canvas",
+      createdAt: 5,
+    });
+  });
+
   it("derives a payload from a fileChanges record (Write add)", () => {
     expect(
       deriveTurnResource([

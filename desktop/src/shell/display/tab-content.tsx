@@ -15,7 +15,6 @@ import { PdfViewerCard } from "@/app/chat/PdfViewerCard";
 import { Markdown } from "@/app/chat/Markdown";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
-import { applyMorphdomHtml } from "@/shell/apply-morphdom-html";
 import { useFilePreviewActions } from "@/app/chat/hooks/use-file-preview-actions";
 import { OfficeArtifactPanel } from "./office-artifact-panel";
 
@@ -77,38 +76,74 @@ export const UrlTabContent = ({
 };
 
 export const HtmlTabContent = ({ html }: { html: string }) => {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    applyMorphdomHtml(el, "display-sidebar__content", html, {
-      executeScripts: true,
-    });
-  }, [html]);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const srcDoc = useMemo(
+    () => {
+      const bridgeScript = `<script>
+document.addEventListener('click', function(event) {
+  var target = event.target && event.target.closest && event.target.closest('[data-action]');
+  if (!target) return;
+  if (target.getAttribute('data-action') === 'send-message') {
+    var prompt = target.getAttribute('data-prompt');
+    if (prompt) parent.postMessage({ type: 'stella:send-message', text: prompt }, '*');
+  }
+});
+</script>`;
+      const trimmed = html.trim();
+      if (/<\/body\s*>/i.test(trimmed)) {
+        return trimmed.replace(/<\/body\s*>/i, `${bridgeScript}</body>`);
+      }
+      if (/<html[\s>]/i.test(trimmed) || /<!doctype\s+html/i.test(trimmed)) {
+        return `${trimmed}${bridgeScript}`;
+      }
+      return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+html, body { margin: 0; min-height: 100%; background: transparent; }
+* { box-sizing: border-box; }
+</style>
+</head>
+<body>
+${html}
+${bridgeScript}
+</body>
+</html>`;
+    },
+    [html],
+  );
 
-  // The legacy DisplaySidebar handled action delegation (`data-action="send-
-  // message"`) at the container level. Preserve it here so the same HTML
-  // payloads keep working.
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const data = event.data as { type?: unknown; text?: unknown } | null;
+      if (
+        !data ||
+        data.type !== "stella:send-message" ||
+        typeof data.text !== "string"
+      ) {
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent("stella:send-message", {
+          detail: { text: data.text },
+        }),
+      );
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
   return (
-    <div
-      ref={ref}
-      className="display-sidebar__content"
-      onClick={(e) => {
-        const el = (e.target as HTMLElement).closest(
-          "[data-action]",
-        ) as HTMLElement | null;
-        if (!el) return;
-        if (el.getAttribute("data-action") === "send-message") {
-          const prompt = el.getAttribute("data-prompt");
-          if (prompt) {
-            window.dispatchEvent(
-              new CustomEvent("stella:send-message", {
-                detail: { text: prompt },
-              }),
-            );
-          }
-        }
-      }}
+    <iframe
+      ref={iframeRef}
+      title="Canvas"
+      className="display-url-iframe"
+      sandbox="allow-scripts allow-forms allow-modals allow-popups"
+      referrerPolicy="no-referrer"
+      srcDoc={srcDoc}
     />
   );
 };

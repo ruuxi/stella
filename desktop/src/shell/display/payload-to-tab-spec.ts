@@ -51,9 +51,15 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
   switch (payload.kind) {
     case "html":
       return {
-        id: HTML_STREAM_TAB_ID,
+        id:
+          typeof payload.createdAt === "number"
+            ? `html:canvas:${payload.createdAt}`
+            : HTML_STREAM_TAB_ID,
         kind: "html",
         title,
+        ...(payload.createdAt
+          ? { metadata: { createdAt: payload.createdAt } }
+          : {}),
         render: () => createElement(HtmlTabContent, { html: payload.html }),
       };
 
