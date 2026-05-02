@@ -95,7 +95,6 @@ const MAX_AGENT_CONCURRENCY_OPTIONS = Array.from(
 
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
-  resolvedDefaultModels: Record<string, string>;
   modelOverrides: Record<string, string>;
   generalAgentEngine: "default" | "claude_code_local";
   selfModAgentEngine: "default" | "claude_code_local";
@@ -872,9 +871,7 @@ function BasicSettingsTab() {
           <div className="settings-row-control">
             <Switch
               checked={soundNotificationsEnabled}
-              disabled={
-                !soundNotificationsLoaded || isSavingSoundNotifications
-              }
+              disabled={!soundNotificationsLoaded || isSavingSoundNotifications}
               onCheckedChange={(checked) =>
                 void handleSoundNotificationsChange(Boolean(checked))
               }
@@ -1972,14 +1969,15 @@ function ChronicleSettingsCard() {
 function ModelConfigSection() {
   const [modelPreferences, setModelPreferences] =
     useState<LocalModelPreferences | null>(null);
-  const { models: stellaModels } = useModelCatalog();
+  const { models: stellaModels, defaults: stellaDefaultModels } =
+    useModelCatalog();
   const modelDefaults = useMemo<ModelDefaultEntry[] | undefined>(() => {
     if (!modelPreferences) return undefined;
     return getLocalModelDefaults(
       modelPreferences.defaultModels,
-      modelPreferences.resolvedDefaultModels,
+      stellaDefaultModels,
     );
-  }, [modelPreferences]);
+  }, [modelPreferences, stellaDefaultModels]);
   const modelNamesById = useMemo(() => {
     const next = new Map<string, string>();
     for (const model of stellaModels) {

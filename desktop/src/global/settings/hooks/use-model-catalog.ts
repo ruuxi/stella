@@ -9,6 +9,12 @@ export type CatalogModel = {
   upstreamModel?: string;
 };
 
+export type CatalogDefaultModel = {
+  agentType: string;
+  model: string;
+  resolvedModel: string;
+};
+
 type ProviderGroup = {
   provider: string;
   models: CatalogModel[];
@@ -24,10 +30,12 @@ type CatalogApiModel = {
 
 type CatalogApiResponse = {
   data?: CatalogApiModel[];
+  defaults?: CatalogDefaultModel[];
 };
 
 type CatalogFetchResult = {
   models: CatalogModel[];
+  defaults: CatalogDefaultModel[];
   error: string | null;
 };
 
@@ -35,7 +43,11 @@ const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
 const ENABLE_CATALOG_CACHE = import.meta.env.MODE !== "test";
 
 let inFlightCatalogRequest: Promise<CatalogFetchResult> | null = null;
-let cachedCatalog: { models: CatalogModel[]; expiresAt: number } | null = null;
+let cachedCatalog: {
+  models: CatalogModel[];
+  defaults: CatalogDefaultModel[];
+  expiresAt: number;
+} | null = null;
 
 const toErrorMessage = (error: unknown): string =>
   error instanceof Error && error.message
@@ -49,17 +61,23 @@ function groupByProvider(models: CatalogModel[]): ProviderGroup[] {
     list.push(model);
     map.set(model.provider, list);
   }
-  return Array.from(map.entries()).map(([provider, models]) => ({ provider, models }));
+  return Array.from(map.entries()).map(([provider, models]) => ({
+    provider,
+    models,
+  }));
 }
 
-async function fetchStellaCatalogModels(): Promise<CatalogModel[]> {
+async function fetchStellaCatalogModels(): Promise<{
+  models: CatalogModel[];
+  defaults: CatalogDefaultModel[];
+}> {
   const request = await createServiceRequest(STELLA_MODELS_PATH);
   const res = await fetch(request.endpoint, { headers: request.headers });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }
   const data = (await res.json()) as CatalogApiResponse;
-  return (data?.data ?? [])
+  const models = (data?.data ?? [])
     .filter((model) => !model.type || model.type === "language")
     .map((model) => ({
       id: model.id,
@@ -67,6 +85,10 @@ async function fetchStellaCatalogModels(): Promise<CatalogModel[]> {
       provider: model.provider ?? "stella",
       upstreamModel: model.upstreamModel,
     }));
+  return {
+    models,
+    defaults: data.defaults ?? [],
+  };
 }
 
 async function fetchCatalogModels(): Promise<CatalogFetchResult> {
@@ -75,24 +97,33 @@ async function fetchCatalogModels(): Promise<CatalogFetchResult> {
     cachedCatalog &&
     cachedCatalog.expiresAt > Date.now()
   ) {
-    return { models: cachedCatalog.models, error: null };
+    return {
+      models: cachedCatalog.models,
+      defaults: cachedCatalog.defaults,
+      error: null,
+    };
   }
 
   if (!inFlightCatalogRequest) {
     inFlightCatalogRequest = (async () => {
       try {
-        const list = await fetchStellaCatalogModels();
+        const result = await fetchStellaCatalogModels();
 
-        if (ENABLE_CATALOG_CACHE && list.length > 0) {
+        if (ENABLE_CATALOG_CACHE && result.models.length > 0) {
           cachedCatalog = {
-            models: list,
+            models: result.models,
+            defaults: result.defaults,
             expiresAt: Date.now() + CATALOG_CACHE_TTL_MS,
           };
         }
 
-        return { models: list, error: null };
+        return {
+          models: result.models,
+          defaults: result.defaults,
+          error: null,
+        };
       } catch (error) {
-        return { models: [], error: toErrorMessage(error) };
+        return { models: [], defaults: [], error: toErrorMessage(error) };
       } finally {
         inFlightCatalogRequest = null;
       }
@@ -104,6 +135,7 @@ async function fetchCatalogModels(): Promise<CatalogFetchResult> {
 
 export function useModelCatalog() {
   const [models, setModels] = useState<CatalogModel[]>([]);
+  const [defaults, setDefaults] = useState<CatalogDefaultModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const groups = useMemo(() => groupByProvider(models), [models]);
@@ -115,14 +147,17 @@ export function useModelCatalog() {
       const result = await fetchCatalogModels();
       if (!canceled) {
         setModels(result.models);
+        setDefaults(result.defaults);
         setError(result.error);
       }
       if (!canceled) setLoading(false);
     }
 
     fetchCatalog();
-    return () => { canceled = true; };
+    return () => {
+      canceled = true;
+    };
   }, []);
 
-  return { models, groups, loading, error };
+  return { models, defaults, groups, loading, error };
 }

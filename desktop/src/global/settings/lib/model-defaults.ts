@@ -9,14 +9,22 @@ export type ModelDefaultEntry = {
 
 export function getLocalModelDefaults(
   defaultModels: Record<string, string> | undefined,
-  resolvedDefaultModels: Record<string, string> | undefined,
+  serverDefaults: readonly ModelDefaultEntry[] | undefined,
 ): ModelDefaultEntry[] {
+  const serverDefaultByAgent = new Map(
+    (serverDefaults ?? []).map((entry) => [entry.agentType, entry]),
+  );
+
   return MODEL_SETTINGS_AGENTS.map((agent) => {
-    const model = defaultModels?.[agent.key] ?? STELLA_DEFAULT_MODEL;
+    const serverDefault = serverDefaultByAgent.get(agent.key);
+    const model =
+      defaultModels?.[agent.key] ??
+      serverDefault?.model ??
+      STELLA_DEFAULT_MODEL;
     return {
       agentType: agent.key,
       model,
-      resolvedModel: resolvedDefaultModels?.[agent.key] ?? model,
+      resolvedModel: serverDefault?.resolvedModel ?? model,
     };
   });
 }
@@ -61,7 +69,9 @@ export function getConfigurableAgents(
   if (defaults === undefined) {
     return [];
   }
-  const availableAgentTypes = new Set((defaults ?? []).map((entry) => entry.agentType));
+  const availableAgentTypes = new Set(
+    (defaults ?? []).map((entry) => entry.agentType),
+  );
   return MODEL_SETTINGS_AGENTS.filter((agent) =>
     availableAgentTypes.has(agent.key),
   );

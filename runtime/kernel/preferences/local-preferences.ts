@@ -7,7 +7,10 @@
 
 import fs from "fs";
 import path from "path";
-import { ensurePrivateDirSync, writePrivateFileSync } from "../shared/private-fs.js";
+import {
+  ensurePrivateDirSync,
+  writePrivateFileSync,
+} from "../shared/private-fs.js";
 import {
   DEFAULT_RADIAL_TRIGGER_CODE,
   normalizeRadialTriggerCode,
@@ -24,8 +27,6 @@ type AgentEngine = "default" | "claude_code_local";
 export type LocalPreferences = {
   /** Default models keyed by agent type. */
   defaultModels: Record<string, string>;
-  /** Current resolved upstream model behind each default. */
-  resolvedDefaultModels: Record<string, string>;
   /** Model overrides keyed by agent type, e.g. "orchestrator" -> "anthropic/claude-opus-4.6" */
   modelOverrides: Record<string, string>;
   /** Whether runtime LLM calls may use locally saved user API keys. */
@@ -59,7 +60,6 @@ export type LocalPreferences = {
 export type LocalModelPreferencesSnapshot = Pick<
   LocalPreferences,
   | "defaultModels"
-  | "resolvedDefaultModels"
   | "modelOverrides"
   | "generalAgentEngine"
   | "selfModAgentEngine"
@@ -70,7 +70,6 @@ const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
 
 const DEFAULT_PREFERENCES: LocalPreferences = {
   defaultModels: {},
-  resolvedDefaultModels: {},
   modelOverrides: {},
   localLlmKeysEnabled: false,
   localLlmProvider: "openai",
@@ -107,9 +106,8 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
     const prefs: LocalPreferences = {
       ...DEFAULT_PREFERENCES,
       defaultModels: parsed.defaultModels ?? DEFAULT_PREFERENCES.defaultModels,
-      resolvedDefaultModels:
-        parsed.resolvedDefaultModels ?? DEFAULT_PREFERENCES.resolvedDefaultModels,
-      modelOverrides: parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
+      modelOverrides:
+        parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
       localLlmKeysEnabled: parsed.localLlmKeysEnabled === true,
       localLlmProvider:
         typeof parsed.localLlmProvider === "string" &&
@@ -188,27 +186,19 @@ export const getLocalLlmProviderPreference = (
   };
 };
 
-export const getExpressionStyle = (
-  stellaHome: string,
-): string | undefined => {
+export const getExpressionStyle = (stellaHome: string): string | undefined => {
   return loadLocalPreferences(stellaHome).expressionStyle;
 };
 
-export const getGeneralAgentEngine = (
-  stellaHome: string,
-): AgentEngine => {
+export const getGeneralAgentEngine = (stellaHome: string): AgentEngine => {
   return loadLocalPreferences(stellaHome).generalAgentEngine;
 };
 
-export const getSelfModAgentEngine = (
-  stellaHome: string,
-): AgentEngine => {
+export const getSelfModAgentEngine = (stellaHome: string): AgentEngine => {
   return loadLocalPreferences(stellaHome).selfModAgentEngine;
 };
 
-export const getMaxAgentConcurrency = (
-  stellaHome: string,
-): number => {
+export const getMaxAgentConcurrency = (stellaHome: string): number => {
   return loadLocalPreferences(stellaHome).maxAgentConcurrency;
 };
 
@@ -218,7 +208,6 @@ export const getLocalModelPreferences = (
   const prefs = loadLocalPreferences(stellaHome);
   return {
     defaultModels: { ...prefs.defaultModels },
-    resolvedDefaultModels: { ...prefs.resolvedDefaultModels },
     modelOverrides: { ...prefs.modelOverrides },
     generalAgentEngine: prefs.generalAgentEngine,
     selfModAgentEngine: prefs.selfModAgentEngine,
@@ -234,8 +223,6 @@ export const updateLocalModelPreferences = (
   const next: LocalPreferences = {
     ...prefs,
     defaultModels: patch.defaultModels ?? prefs.defaultModels,
-    resolvedDefaultModels:
-      patch.resolvedDefaultModels ?? prefs.resolvedDefaultModels,
     modelOverrides: patch.modelOverrides ?? prefs.modelOverrides,
     generalAgentEngine:
       patch.generalAgentEngine === undefined
@@ -263,22 +250,16 @@ export const updateLocalModelPreferences = (
  * Explore is meant to be a fast cheap pass over state/. Users who want to
  * spend more should set modelOverrides["explore"] explicitly.
  */
-export const getExploreModel = (
-  stellaHome: string,
-): string | undefined => {
+export const getExploreModel = (stellaHome: string): string | undefined => {
   const prefs = loadLocalPreferences(stellaHome);
   return prefs.modelOverrides["explore"] ?? prefs.defaultModels["explore"];
 };
 
-export const getSyncMode = (
-  stellaHome: string,
-): "on" | "off" => {
+export const getSyncMode = (stellaHome: string): "on" | "off" => {
   return loadLocalPreferences(stellaHome).syncMode;
 };
 
-export const getPreventComputerSleep = (
-  stellaHome: string,
-): boolean => {
+export const getPreventComputerSleep = (stellaHome: string): boolean => {
   return loadLocalPreferences(stellaHome).preventComputerSleep;
 };
 
@@ -288,9 +269,7 @@ export const getSoundNotificationsEnabled = (stellaHome: string): boolean => {
 
 // ── Normalization helpers ─────────────────────────────────────────────────
 
-const normalizeEngine = (
-  value: unknown,
-): AgentEngine => {
+const normalizeEngine = (value: unknown): AgentEngine => {
   if (value === "claude_code_local") return "claude_code_local";
   return "default";
 };

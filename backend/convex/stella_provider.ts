@@ -45,6 +45,7 @@ import {
   STELLA_DEFAULT_MODEL,
   isStellaModel,
   listStellaCatalogModels,
+  listStellaDefaultSelections,
   parseStellaModelSelection,
   resolveStellaModelSelection,
 } from "./stella_models";
@@ -60,7 +61,9 @@ const STELLA_MODELS_RATE_LIMIT = 60;
 const STELLA_MODELS_RATE_WINDOW_MS = 60_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
 const SSE_HEARTBEAT_INTERVAL_MS = 45_000;
-const SSE_STREAM_OPEN_COMMENT = new TextEncoder().encode(": stella-stream-open\n\n");
+const SSE_STREAM_OPEN_COMMENT = new TextEncoder().encode(
+  ": stella-stream-open\n\n",
+);
 const SSE_HEARTBEAT_COMMENT = new TextEncoder().encode(": keepalive\n\n");
 export const STELLA_API_BASE_PATH = "/api/stella/v1";
 export const STELLA_CHAT_COMPLETIONS_PATH = `${STELLA_API_BASE_PATH}/chat/completions`;
@@ -141,11 +144,12 @@ function toUpstreamHttpError(error: unknown): UpstreamHttpError | null {
     return null;
   }
 
-  const directMessage = typeof record.error?.message === "string"
-    ? record.error.message
-    : typeof record.message === "string"
-      ? record.message.replace(/^\d+\s+/, "")
-      : "Invalid Stella completion request";
+  const directMessage =
+    typeof record.error?.message === "string"
+      ? record.error.message
+      : typeof record.message === "string"
+        ? record.message.replace(/^\d+\s+/, "")
+        : "Invalid Stella completion request";
 
   return {
     status,
@@ -177,7 +181,9 @@ async function consumeDeviceRateLimit(
   }
 }
 
-async function parseRequestJson(request: Request): Promise<StellaRequestBody | null> {
+async function parseRequestJson(
+  request: Request,
+): Promise<StellaRequestBody | null> {
   try {
     return (await request.json()) as StellaRequestBody;
   } catch {
@@ -187,7 +193,7 @@ async function parseRequestJson(request: Request): Promise<StellaRequestBody | n
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -221,9 +227,10 @@ function resolveRequestedStellaModel(
 
   const parsedModel = parseStellaModelSelection(requestedModel);
   if (parsedModel?.kind === "default" || parsedModel?.kind === "mode") {
-    const config = parsedModel.kind === "default"
-      ? getModelConfig(agentType, audience)
-      : getModeConfig(parsedModel.mode, audience);
+    const config =
+      parsedModel.kind === "default"
+        ? getModelConfig(agentType, audience)
+        : getModeConfig(parsedModel.mode, audience);
     return {
       requestedModel,
       resolvedModel: config.model,
@@ -234,14 +241,18 @@ function resolveRequestedStellaModel(
   const config = getModelConfig(agentType, audience);
   return {
     requestedModel,
-    resolvedModel: resolveStellaModelSelection(agentType, requestedModel, audience),
+    resolvedModel: resolveStellaModelSelection(
+      agentType,
+      requestedModel,
+      audience,
+    ),
     config,
   };
 }
 
 function estimateRequestTokens(requestBody: StellaRequestBody): TokenEstimate {
   const messages = Array.isArray(requestBody.messages)
-    ? requestBody.messages as Array<Record<string, unknown>>
+    ? (requestBody.messages as Array<Record<string, unknown>>)
     : [];
 
   let inputTextLength = 0;
@@ -278,7 +289,10 @@ function estimateRequestTokens(requestBody: StellaRequestBody): TokenEstimate {
 
   return {
     inputTokens: Math.max(1, Math.ceil(inputTextLength / 4)),
-    outputTokens: Math.max(0, Math.min(16_384, Math.floor(maxCompletionTokens))),
+    outputTokens: Math.max(
+      0,
+      Math.min(16_384, Math.floor(maxCompletionTokens)),
+    ),
   };
 }
 
@@ -313,7 +327,11 @@ function estimateContextTokens(args: {
         parts.push(block.thinking);
         continue;
       }
-      if ("arguments" in block && block.arguments && typeof block.arguments === "object") {
+      if (
+        "arguments" in block &&
+        block.arguments &&
+        typeof block.arguments === "object"
+      ) {
         parts.push(JSON.stringify(block.arguments));
       }
     }
@@ -413,10 +431,16 @@ function assistantReasoningSignature(
 ): string | null {
   const signature = message.content
     .filter(
-      (part): part is { type: "thinking"; thinking: string; thinkingSignature?: string } =>
-        part.type === "thinking"
-        && typeof part.thinking === "string"
-        && typeof part.thinkingSignature === "string",
+      (
+        part,
+      ): part is {
+        type: "thinking";
+        thinking: string;
+        thinkingSignature?: string;
+      } =>
+        part.type === "thinking" &&
+        typeof part.thinking === "string" &&
+        typeof part.thinkingSignature === "string",
     )
     .map((part) => part.thinkingSignature?.trim() || "")
     .find((value) => value.startsWith("{"));
@@ -433,8 +457,16 @@ function buildChatCompletionResponse(args: {
   const reasoningContent = assistantReasoningContent(args.message);
   const reasoningSignature = assistantReasoningSignature(args.message);
   const toolCalls = args.message.content
-    .filter((part): part is { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> } =>
-      part.type === "toolCall")
+    .filter(
+      (
+        part,
+      ): part is {
+        type: "toolCall";
+        id: string;
+        name: string;
+        arguments: Record<string, unknown>;
+      } => part.type === "toolCall",
+    )
     .map((toolCall) => ({
       id: toolCall.id,
       type: "function" as const,
@@ -452,17 +484,21 @@ function buildChatCompletionResponse(args: {
     created: args.created,
     model: args.model,
     requestedModel: args.model,
-    choices: [{
-      index: 0,
-      message: {
-        role: "assistant",
-        content: text || null,
-        ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
-        ...(reasoningSignature ? { reasoning_signature: reasoningSignature } : {}),
-        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: text || null,
+          ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
+          ...(reasoningSignature
+            ? { reasoning_signature: reasoningSignature }
+            : {}),
+          ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+        },
+        finish_reason: mapStopReason(args.message.stopReason),
       },
-      finish_reason: mapStopReason(args.message.stopReason),
-    }],
+    ],
     usage: toOpenAIUsage({
       inputTokens: usage?.inputTokens ?? 0,
       outputTokens: usage?.outputTokens ?? 0,
@@ -478,12 +514,13 @@ function buildManagedRuntimeRequest(
   signal: AbortSignal,
 ): ManagedRuntimeRequest {
   const extraBody = Object.fromEntries(
-    Object.entries(requestBody).filter(([key]) =>
-      !STELLA_REQUEST_PASSTHROUGH_EXCLUSIONS.has(key),
+    Object.entries(requestBody).filter(
+      ([key]) => !STELLA_REQUEST_PASSTHROUGH_EXCLUSIONS.has(key),
     ),
   );
   const sessionId =
-    typeof requestBody.sessionId === "string" && requestBody.sessionId.length > 0
+    typeof requestBody.sessionId === "string" &&
+    requestBody.sessionId.length > 0
       ? requestBody.sessionId
       : typeof requestBody.user === "string"
         ? requestBody.user
@@ -491,7 +528,9 @@ function buildManagedRuntimeRequest(
 
   return {
     temperature:
-      typeof requestBody.temperature === "number" ? requestBody.temperature : undefined,
+      typeof requestBody.temperature === "number"
+        ? requestBody.temperature
+        : undefined,
     maxTokens:
       typeof requestBody.max_completion_tokens === "number"
         ? requestBody.max_completion_tokens
@@ -501,34 +540,34 @@ function buildManagedRuntimeRequest(
             ? requestBody.maxOutputTokens
             : undefined,
     reasoning:
-      requestBody.reasoning === "minimal"
-      || requestBody.reasoning === "low"
-      || requestBody.reasoning === "medium"
-      || requestBody.reasoning === "high"
-      || requestBody.reasoning === "xhigh"
+      requestBody.reasoning === "minimal" ||
+      requestBody.reasoning === "low" ||
+      requestBody.reasoning === "medium" ||
+      requestBody.reasoning === "high" ||
+      requestBody.reasoning === "xhigh"
         ? requestBody.reasoning
-        : requestBody.reasoning_effort === "minimal"
-      || requestBody.reasoning_effort === "low"
-      || requestBody.reasoning_effort === "medium"
-      || requestBody.reasoning_effort === "high"
-      || requestBody.reasoning_effort === "xhigh"
-        ? requestBody.reasoning_effort
-        : undefined,
+        : requestBody.reasoning_effort === "minimal" ||
+            requestBody.reasoning_effort === "low" ||
+            requestBody.reasoning_effort === "medium" ||
+            requestBody.reasoning_effort === "high" ||
+            requestBody.reasoning_effort === "xhigh"
+          ? requestBody.reasoning_effort
+          : undefined,
     toolChoice:
-      requestBody.tool_choice === "auto"
-      || requestBody.tool_choice === "none"
-      || requestBody.tool_choice === "required"
-      || (requestBody.tool_choice && typeof requestBody.tool_choice === "object")
-        ? requestBody.tool_choice as ManagedRuntimeRequest["toolChoice"]
+      requestBody.tool_choice === "auto" ||
+      requestBody.tool_choice === "none" ||
+      requestBody.tool_choice === "required" ||
+      (requestBody.tool_choice && typeof requestBody.tool_choice === "object")
+        ? (requestBody.tool_choice as ManagedRuntimeRequest["toolChoice"])
         : undefined,
     responseFormat: requestBody.response_format,
     extraBody: Object.keys(extraBody).length > 0 ? extraBody : undefined,
     signal,
     sessionId,
     cacheRetention:
-      requestBody.cacheRetention === "none"
-      || requestBody.cacheRetention === "short"
-      || requestBody.cacheRetention === "long"
+      requestBody.cacheRetention === "none" ||
+      requestBody.cacheRetention === "short" ||
+      requestBody.cacheRetention === "long"
         ? requestBody.cacheRetention
         : undefined,
   };
@@ -550,7 +589,8 @@ function buildManagedRuntimeRequestFromNativeRequest(
     : undefined;
 
   return {
-    temperature: typeof record.temperature === "number" ? record.temperature : undefined,
+    temperature:
+      typeof record.temperature === "number" ? record.temperature : undefined,
     maxTokens:
       typeof record.maxTokens === "number"
         ? record.maxTokens
@@ -560,30 +600,30 @@ function buildManagedRuntimeRequestFromNativeRequest(
             ? record.max_tokens
             : undefined,
     reasoning:
-      record.reasoning === "minimal"
-      || record.reasoning === "low"
-      || record.reasoning === "medium"
-      || record.reasoning === "high"
-      || record.reasoning === "xhigh"
+      record.reasoning === "minimal" ||
+      record.reasoning === "low" ||
+      record.reasoning === "medium" ||
+      record.reasoning === "high" ||
+      record.reasoning === "xhigh"
         ? record.reasoning
-        : record.reasoning_effort === "minimal"
-          || record.reasoning_effort === "low"
-          || record.reasoning_effort === "medium"
-          || record.reasoning_effort === "high"
-          || record.reasoning_effort === "xhigh"
+        : record.reasoning_effort === "minimal" ||
+            record.reasoning_effort === "low" ||
+            record.reasoning_effort === "medium" ||
+            record.reasoning_effort === "high" ||
+            record.reasoning_effort === "xhigh"
           ? record.reasoning_effort
           : undefined,
     toolChoice:
-      record.toolChoice === "auto"
-      || record.toolChoice === "none"
-      || record.toolChoice === "required"
-      || (record.toolChoice && typeof record.toolChoice === "object")
-        ? record.toolChoice as ManagedRuntimeRequest["toolChoice"]
-        : record.tool_choice === "auto"
-          || record.tool_choice === "none"
-          || record.tool_choice === "required"
-          || (record.tool_choice && typeof record.tool_choice === "object")
-          ? record.tool_choice as ManagedRuntimeRequest["toolChoice"]
+      record.toolChoice === "auto" ||
+      record.toolChoice === "none" ||
+      record.toolChoice === "required" ||
+      (record.toolChoice && typeof record.toolChoice === "object")
+        ? (record.toolChoice as ManagedRuntimeRequest["toolChoice"])
+        : record.tool_choice === "auto" ||
+            record.tool_choice === "none" ||
+            record.tool_choice === "required" ||
+            (record.tool_choice && typeof record.tool_choice === "object")
+          ? (record.tool_choice as ManagedRuntimeRequest["toolChoice"])
           : undefined,
     responseFormat: record.responseFormat ?? record.response_format,
     extraBody,
@@ -594,9 +634,9 @@ function buildManagedRuntimeRequestFromNativeRequest(
         ? record.sessionId
         : undefined,
     cacheRetention:
-      record.cacheRetention === "none"
-      || record.cacheRetention === "short"
-      || record.cacheRetention === "long"
+      record.cacheRetention === "none" ||
+      record.cacheRetention === "short" ||
+      record.cacheRetention === "long"
         ? record.cacheRetention
         : undefined,
   };
@@ -621,11 +661,13 @@ function buildStreamingErrorPayload(args: {
     object: "chat.completion.chunk",
     created: args.created,
     model: args.model,
-    choices: [{
-      index: 0,
-      delta: {},
-      finish_reason: "error",
-    }],
+    choices: [
+      {
+        index: 0,
+        delta: {},
+        finish_reason: "error",
+      },
+    ],
     error: {
       message: args.message,
       type: "server_error",
@@ -645,9 +687,9 @@ function resolveManagedProtocol(args: {
     return "google-generative-ai";
   }
   if (
-    args.managedGatewayProvider === "fireworks"
-    || args.managedGatewayProvider === "openai"
-    || normalizedModel.startsWith("openai/")
+    args.managedGatewayProvider === "fireworks" ||
+    args.managedGatewayProvider === "openai" ||
+    normalizedModel.startsWith("openai/")
   ) {
     return "openai-responses";
   }
@@ -665,12 +707,17 @@ async function authorizeStellaRequest(
   }
 
   const ownerId = identity.tokenIdentifier;
-  const isAnonymous = (identity as Record<string, unknown>).isAnonymous === true;
+  const isAnonymous =
+    (identity as Record<string, unknown>).isAnonymous === true;
   let modelAudience: ManagedModelAudience = isAnonymous ? "anonymous" : "free";
 
   const url = new URL(request.url);
   if (!url.pathname.endsWith(expectedPath)) {
-    return stellaProviderErrorResponse(404, "Stella provider path not found", request);
+    return stellaProviderErrorResponse(
+      404,
+      "Stella provider path not found",
+      request,
+    );
   }
 
   if (isAnonymous) {
@@ -693,10 +740,18 @@ async function authorizeStellaRequest(
     const usageBlocked =
       !subscriptionCheck.allowed && subscriptionCheck.plan !== "free";
     if (usageBlocked) {
-      const response = stellaProviderErrorResponse(429, subscriptionCheck.message, request);
+      const response = stellaProviderErrorResponse(
+        429,
+        subscriptionCheck.message,
+        request,
+      );
       response.headers.set(
         "Retry-After",
-        String(Math.ceil((subscriptionCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)),
+        String(
+          Math.ceil(
+            (subscriptionCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000,
+          ),
+        ),
       );
       return response;
     }
@@ -711,10 +766,18 @@ async function authorizeStellaRequest(
       );
 
       if (!rateCheck.allowed) {
-        const response = stellaProviderErrorResponse(429, "Rate limit exceeded", request);
+        const response = stellaProviderErrorResponse(
+          429,
+          "Rate limit exceeded",
+          request,
+        );
         response.headers.set(
           "Retry-After",
-          String(Math.ceil((rateCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)),
+          String(
+            Math.ceil(
+              (rateCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000,
+            ),
+          ),
         );
         return response;
       }
@@ -723,19 +786,28 @@ async function authorizeStellaRequest(
 
   const requestJson = await parseRequestJson(request);
   if (!requestJson) {
-    return stellaProviderErrorResponse(400, "Stella request body must be valid JSON", request);
+    return stellaProviderErrorResponse(
+      400,
+      "Stella request body must be valid JSON",
+      request,
+    );
   }
 
   const headerAgentType = request.headers.get("X-Stella-Agent-Type")?.trim();
   const bodyAgentType =
-    typeof requestJson.agentType === "string" && requestJson.agentType.trim().length > 0
+    typeof requestJson.agentType === "string" &&
+    requestJson.agentType.trim().length > 0
       ? requestJson.agentType.trim()
       : undefined;
   const agentType = headerAgentType || bodyAgentType || "general";
 
   let selection: ResolvedStellaModelSelection;
   try {
-    selection = resolveRequestedStellaModel(agentType, requestJson, modelAudience);
+    selection = resolveRequestedStellaModel(
+      agentType,
+      requestJson,
+      modelAudience,
+    );
   } catch (error) {
     return stellaProviderErrorResponse(
       400,
@@ -745,10 +817,11 @@ async function authorizeStellaRequest(
   }
 
   const { requestedModel, resolvedModel, config } = selection;
-  const managedGatewayProvider: ManagedGatewayProvider = resolveManagedGatewayProvider({
-    model: resolvedModel,
-    configuredProvider: config.managedGatewayProvider,
-  });
+  const managedGatewayProvider: ManagedGatewayProvider =
+    resolveManagedGatewayProvider({
+      model: resolvedModel,
+      configuredProvider: config.managedGatewayProvider,
+    });
   const managedGateway = resolveManagedGatewayConfig({
     model: resolvedModel,
     configuredProvider: config.managedGatewayProvider,
@@ -798,7 +871,9 @@ async function authorizeStellaRequest(
       managedGatewayProvider,
       temperature: config.temperature,
       maxOutputTokens: config.maxOutputTokens,
-      providerOptions: config.providerOptions as Record<string, Record<string, unknown>> | undefined,
+      providerOptions: config.providerOptions as
+        | Record<string, Record<string, unknown>>
+        | undefined,
     },
     fallbackModelConfig,
   };
@@ -896,7 +971,10 @@ async function createStreamingRuntimeResponse(args: {
       const runtimeStream = streamManagedChat({
         config: serverModelConfig,
         fallbackConfig: fallbackModelConfig,
-        context: buildContextFromChatMessages(requestBody.messages, requestBody.tools),
+        context: buildContextFromChatMessages(
+          requestBody.messages,
+          requestBody.tools,
+        ),
         api: managedApi,
         request: buildManagedRuntimeRequest(requestBody, request.signal),
       });
@@ -909,10 +987,12 @@ async function createStreamingRuntimeResponse(args: {
             object: "chat.completion.chunk",
             created,
             model: modelId,
-            choices: [{
-              index: 0,
-              delta: { content: event.delta },
-            }],
+            choices: [
+              {
+                index: 0,
+                delta: { content: event.delta },
+              },
+            ],
           });
           lastDownstreamWriteAt = Date.now();
           return false;
@@ -924,10 +1004,12 @@ async function createStreamingRuntimeResponse(args: {
             object: "chat.completion.chunk",
             created,
             model: modelId,
-            choices: [{
-              index: 0,
-              delta: { reasoning_content: event.delta },
-            }],
+            choices: [
+              {
+                index: 0,
+                delta: { reasoning_content: event.delta },
+              },
+            ],
           });
           lastDownstreamWriteAt = Date.now();
           return false;
@@ -936,53 +1018,64 @@ async function createStreamingRuntimeResponse(args: {
         if (event.type === "thinking_end") {
           const partial = event.partial.content[event.contentIndex];
           if (
-            partial
-            && partial.type === "thinking"
-            && typeof partial.thinkingSignature === "string"
-            && partial.thinkingSignature.trim().startsWith("{")
+            partial &&
+            partial.type === "thinking" &&
+            typeof partial.thinkingSignature === "string" &&
+            partial.thinkingSignature.trim().startsWith("{")
           ) {
             sendChunk(controller, {
               id: responseId,
               object: "chat.completion.chunk",
               created,
               model: modelId,
-              choices: [{
-                index: 0,
-                delta: { reasoning_signature: partial.thinkingSignature },
-              }],
+              choices: [
+                {
+                  index: 0,
+                  delta: { reasoning_signature: partial.thinkingSignature },
+                },
+              ],
             });
             lastDownstreamWriteAt = Date.now();
           }
           return false;
         }
 
-        if (event.type === "toolcall_start" || event.type === "toolcall_delta") {
+        if (
+          event.type === "toolcall_start" ||
+          event.type === "toolcall_delta"
+        ) {
           const partial = event.partial.content[event.contentIndex];
           if (!partial || partial.type !== "toolCall") {
             return false;
           }
 
-          const toolIndex = toolIndexByContentIndex.get(event.contentIndex) ?? nextToolIndex++;
+          const toolIndex =
+            toolIndexByContentIndex.get(event.contentIndex) ?? nextToolIndex++;
           toolIndexByContentIndex.set(event.contentIndex, toolIndex);
           sendChunk(controller, {
             id: responseId,
             object: "chat.completion.chunk",
             created,
             model: modelId,
-            choices: [{
-              index: 0,
-              delta: {
-                tool_calls: [{
-                  index: toolIndex,
-                  id: partial.id,
-                  type: "function",
-                  function: {
-                    name: partial.name,
-                    arguments: event.type === "toolcall_delta" ? event.delta : "",
-                  },
-                }],
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: toolIndex,
+                      id: partial.id,
+                      type: "function",
+                      function: {
+                        name: partial.name,
+                        arguments:
+                          event.type === "toolcall_delta" ? event.delta : "",
+                      },
+                    },
+                  ],
+                },
               },
-            }],
+            ],
           });
           lastDownstreamWriteAt = Date.now();
           return false;
@@ -1000,11 +1093,13 @@ async function createStreamingRuntimeResponse(args: {
             object: "chat.completion.chunk",
             created,
             model: modelId,
-            choices: [{
-              index: 0,
-              delta: {},
-              finish_reason: mapStopReason(event.message.stopReason),
-            }],
+            choices: [
+              {
+                index: 0,
+                delta: {},
+                finish_reason: mapStopReason(event.message.stopReason),
+              },
+            ],
             usage: toOpenAIUsage({
               inputTokens: usage?.inputTokens ?? tokenEstimate.inputTokens,
               outputTokens: usage?.outputTokens ?? tokenEstimate.outputTokens,
@@ -1029,14 +1124,18 @@ async function createStreamingRuntimeResponse(args: {
         }
 
         if (event.type === "error") {
-          const errorMessage = event.error.errorMessage || "Streaming completion failed";
+          const errorMessage =
+            event.error.errorMessage || "Streaming completion failed";
           console.error("[stella-provider] Streaming error:", errorMessage);
-          sendChunk(controller, buildStreamingErrorPayload({
-            id: responseId,
-            created,
-            model: modelId,
-            message: errorMessage,
-          }));
+          sendChunk(
+            controller,
+            buildStreamingErrorPayload({
+              id: responseId,
+              created,
+              model: modelId,
+              message: errorMessage,
+            }),
+          );
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
             ownerId,
@@ -1114,13 +1213,25 @@ type StellaAssistantMessageEventPayload =
   | { type: "text_end"; contentIndex: number; contentSignature?: string }
   | { type: "thinking_start"; contentIndex: number }
   | { type: "thinking_delta"; contentIndex: number; delta: string }
-  | { type: "thinking_end"; contentIndex: number; content?: string; contentSignature?: string }
-  | { type: "toolcall_start"; contentIndex: number; id: string; toolName: string }
+  | {
+      type: "thinking_end";
+      contentIndex: number;
+      content?: string;
+      contentSignature?: string;
+    }
+  | {
+      type: "toolcall_start";
+      contentIndex: number;
+      id: string;
+      toolName: string;
+    }
   | { type: "toolcall_delta"; contentIndex: number; delta: string }
   | { type: "toolcall_end"; contentIndex: number }
   | {
       type: "done";
-      reason: Extract<AssistantMessageEvent["type"], "done"> extends never ? never : "stop" | "length" | "toolUse";
+      reason: Extract<AssistantMessageEvent["type"], "done"> extends never
+        ? never
+        : "stop" | "length" | "toolUse";
       usage: Awaited<ReturnType<typeof completeManagedChat>>["usage"];
     }
   | {
@@ -1158,7 +1269,9 @@ function mapAssistantEventToStellaEvent(args: {
         type: "text_end",
         contentIndex: event.contentIndex,
         contentSignature:
-          content && content.type === "text" ? content.textSignature : undefined,
+          content && content.type === "text"
+            ? content.textSignature
+            : undefined,
       };
     }
     case "thinking_start":
@@ -1174,7 +1287,10 @@ function mapAssistantEventToStellaEvent(args: {
       return {
         type: "thinking_end",
         contentIndex: event.contentIndex,
-        content: content && content.type === "thinking" ? content.thinking : event.content,
+        content:
+          content && content.type === "thinking"
+            ? content.thinking
+            : event.content,
         contentSignature:
           content && content.type === "thinking"
             ? content.thinkingSignature
@@ -1314,7 +1430,10 @@ async function createNativeRuntimeResponse(args: {
         fallbackConfig: fallbackModelConfig,
         context,
         api: managedApi,
-        request: buildManagedRuntimeRequestFromNativeRequest(nativeRequest, request.signal),
+        request: buildManagedRuntimeRequestFromNativeRequest(
+          nativeRequest,
+          request.signal,
+        ),
       });
       const iterator = runtimeStream[Symbol.asyncIterator]();
 
@@ -1406,8 +1525,15 @@ async function createNativeRuntimeResponse(args: {
                 output: tokenEstimate.outputTokens,
                 cacheRead: 0,
                 cacheWrite: 0,
-                totalTokens: tokenEstimate.inputTokens + tokenEstimate.outputTokens,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                totalTokens:
+                  tokenEstimate.inputTokens + tokenEstimate.outputTokens,
+                cost: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  total: 0,
+                },
               },
             });
             controller.close();
@@ -1430,12 +1556,20 @@ export const stellaProviderModels = httpAction(async (ctx, request) =>
     const identity = await ctx.auth.getUserIdentity();
 
     let audience: ManagedModelAudience = identity
-      ? ((identity as Record<string, unknown>).isAnonymous === true ? "anonymous" : "free")
+      ? (identity as Record<string, unknown>).isAnonymous === true
+        ? "anonymous"
+        : "free"
       : "anonymous";
 
     let rateLimitPaidSubscriber = false;
-    if (identity && (identity as Record<string, unknown>).isAnonymous !== true) {
-      const access = await resolveManagedModelAccess(ctx, identity.tokenIdentifier);
+    if (
+      identity &&
+      (identity as Record<string, unknown>).isAnonymous !== true
+    ) {
+      const access = await resolveManagedModelAccess(
+        ctx,
+        identity.tokenIdentifier,
+      );
       audience = access.modelAudience;
       rateLimitPaidSubscriber = access.plan !== "free";
     }
@@ -1452,7 +1586,11 @@ export const stellaProviderModels = httpAction(async (ctx, request) =>
         },
       );
       if (!rateLimit.allowed) {
-        const response = stellaProviderErrorResponse(429, "Rate limit exceeded", request);
+        const response = stellaProviderErrorResponse(
+          429,
+          "Rate limit exceeded",
+          request,
+        );
         response.headers.set(
           "Retry-After",
           String(Math.ceil(rateLimit.retryAfterMs / 1000)),
@@ -1470,6 +1608,7 @@ export const stellaProviderModels = httpAction(async (ctx, request) =>
           type: model.type,
           upstreamModel: model.upstreamModel,
         })),
+        defaults: listStellaDefaultSelections(audience),
       },
       200,
       origin,
@@ -1477,104 +1616,113 @@ export const stellaProviderModels = httpAction(async (ctx, request) =>
   }),
 );
 
-export const stellaProviderChatCompletions = httpAction(async (ctx, request) => {
-  const authorized = await authorizeStellaRequest(
-    ctx,
-    request,
-    STELLA_CHAT_COMPLETIONS_PATH,
-  );
-  if (authorized instanceof Response) {
-    return authorized;
-  }
-
-  const {
-    ownerId,
-    agentType,
-    requestJson,
-    resolvedModel,
-    managedApi,
-    serverModelConfig,
-    fallbackModelConfig,
-  } = authorized;
-  const tokenEstimate = estimateRequestTokens(requestJson);
-  const isStreaming = requestJson.stream === true;
-
-  if (isStreaming) {
-    return await createStreamingRuntimeResponse({
-      request,
+export const stellaProviderChatCompletions = httpAction(
+  async (ctx, request) => {
+    const authorized = await authorizeStellaRequest(
       ctx,
+      request,
+      STELLA_CHAT_COMPLETIONS_PATH,
+    );
+    if (authorized instanceof Response) {
+      return authorized;
+    }
+
+    const {
       ownerId,
       agentType,
-      modelId: resolvedModel,
-      tokenEstimate,
-      requestBody: requestJson,
+      requestJson,
+      resolvedModel,
       managedApi,
       serverModelConfig,
       fallbackModelConfig,
-    });
-  }
+    } = authorized;
+    const tokenEstimate = estimateRequestTokens(requestJson);
+    const isStreaming = requestJson.stream === true;
 
-  const startedAt = Date.now();
-  try {
-    const message = await completeManagedChat({
-      config: serverModelConfig,
-      fallbackConfig: fallbackModelConfig,
-      context: buildContextFromChatMessages(requestJson.messages, requestJson.tools),
-      api: managedApi,
-      request: buildManagedRuntimeRequest(requestJson, request.signal),
-    });
-
-    if (message.stopReason === "error" || message.stopReason === "aborted") {
-      throw new Error(message.errorMessage || "Stella completion failed");
+    if (isStreaming) {
+      return await createStreamingRuntimeResponse({
+        request,
+        ctx,
+        ownerId,
+        agentType,
+        modelId: resolvedModel,
+        tokenEstimate,
+        requestBody: requestJson,
+        managedApi,
+        serverModelConfig,
+        fallbackModelConfig,
+      });
     }
 
-    const executedModel = message.model || resolvedModel;
-    const fallbackUsed = executedModel !== resolvedModel;
-    console.log(
-      `[stella-provider] completed agent=${agentType} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
-    );
+    const startedAt = Date.now();
+    try {
+      const message = await completeManagedChat({
+        config: serverModelConfig,
+        fallbackConfig: fallbackModelConfig,
+        context: buildContextFromChatMessages(
+          requestJson.messages,
+          requestJson.tools,
+        ),
+        api: managedApi,
+        request: buildManagedRuntimeRequest(requestJson, request.signal),
+      });
 
-    await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
-      ownerId,
-      agentType,
-      model: executedModel,
-      durationMs: Date.now() - startedAt,
-      success: true,
-      ...toManagedBillingUsage(message, tokenEstimate),
-    });
+      if (message.stopReason === "error" || message.stopReason === "aborted") {
+        throw new Error(message.errorMessage || "Stella completion failed");
+      }
 
-    return jsonResponse(
-      buildChatCompletionResponse({
-        id: `chatcmpl_${startedAt}`,
-        created: Math.floor(startedAt / 1000),
+      const executedModel = message.model || resolvedModel;
+      const fallbackUsed = executedModel !== resolvedModel;
+      console.log(
+        `[stella-provider] completed agent=${agentType} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
+      );
+
+      await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
+        ownerId,
+        agentType,
         model: executedModel,
-        message,
-      }),
-      200,
-      request.headers.get("origin"),
-    );
-  } catch (error) {
-    console.error("[stella-provider] Completion error:", error);
-    const upstreamHttpError = toUpstreamHttpError(error);
-    await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
-      ownerId,
-      agentType,
-      model: resolvedModel,
-      durationMs: Date.now() - startedAt,
-      success: false,
-      inputTokens: tokenEstimate.inputTokens,
-      outputTokens: tokenEstimate.outputTokens,
-    });
-    return stellaProviderErrorResponse(
-      upstreamHttpError?.status ?? 502,
-      upstreamHttpError?.message ?? "Failed to generate Stella completion",
-      request,
-    );
-  }
-});
+        durationMs: Date.now() - startedAt,
+        success: true,
+        ...toManagedBillingUsage(message, tokenEstimate),
+      });
+
+      return jsonResponse(
+        buildChatCompletionResponse({
+          id: `chatcmpl_${startedAt}`,
+          created: Math.floor(startedAt / 1000),
+          model: executedModel,
+          message,
+        }),
+        200,
+        request.headers.get("origin"),
+      );
+    } catch (error) {
+      console.error("[stella-provider] Completion error:", error);
+      const upstreamHttpError = toUpstreamHttpError(error);
+      await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
+        ownerId,
+        agentType,
+        model: resolvedModel,
+        durationMs: Date.now() - startedAt,
+        success: false,
+        inputTokens: tokenEstimate.inputTokens,
+        outputTokens: tokenEstimate.outputTokens,
+      });
+      return stellaProviderErrorResponse(
+        upstreamHttpError?.status ?? 502,
+        upstreamHttpError?.message ?? "Failed to generate Stella completion",
+        request,
+      );
+    }
+  },
+);
 
 export const stellaProviderRuntime = httpAction(async (ctx, request) => {
-  const authorized = await authorizeStellaRequest(ctx, request, STELLA_RUNTIME_PATH);
+  const authorized = await authorizeStellaRequest(
+    ctx,
+    request,
+    STELLA_RUNTIME_PATH,
+  );
   if (authorized instanceof Response) {
     return authorized;
   }
