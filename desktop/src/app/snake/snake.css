@@ -1,0 +1,167 @@
+.snake-app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 20px;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
+  color: var(--foreground);
+  /* Avoid the page itself scrolling when the canvas is large. */
+  overflow: auto;
+}
+
+.snake-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 560px;
+  gap: 16px;
+}
+
+.snake-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.snake-title-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full, 9999px);
+  background: var(--accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.snake-scores {
+  display: flex;
+  gap: 10px;
+}
+
+.snake-score-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full, 9999px);
+  background: var(--surface-raised, var(--card));
+  border: 1px solid var(--border-base, var(--border));
+  font-size: 12px;
+  color: var(--text-weaker, var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.snake-score-pill strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.snake-board-wrap {
+  position: relative;
+  border-radius: var(--radius-3xl, 16px);
+  padding: 14px;
+  background: var(--surface-raised, var(--card));
+  border: 1px solid var(--border-base, var(--border));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--foreground) 4%, transparent),
+    0 12px 36px color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.snake-canvas {
+  display: block;
+  border-radius: var(--radius-2xl, 12px);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--foreground) 6%, transparent),
+      color-mix(in srgb, var(--foreground) 3%, transparent)
+    );
+  /* Crisp pixel rendering for the grid. */
+  image-rendering: pixelated;
+}
+
+.snake-overlay {
+  position: absolute;
+  inset: 14px;
+  border-radius: var(--radius-2xl, 12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--background) 70%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.snake-overlay-card {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  border-radius: var(--radius-2xl, 12px);
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  border: 1px solid var(--border-base, var(--border));
+  box-shadow: 0 12px 36px color-mix(in srgb, var(--foreground) 12%, transparent);
+  min-width: 220px;
+  text-align: center;
+}
+
+.snake-overlay-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-weaker, var(--muted-foreground));
+}
+
+.snake-overlay-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.snake-overlay-sub {
+  font-size: 12px;
+  color: var(--text-weaker, var(--muted-foreground));
+  margin: 0;
+}
+
+.snake-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.snake-hint {
+  font-size: 12px;
+  color: var(--text-weaker, var(--muted-foreground));
+}
+
+.snake-hint kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 2px;
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-weak, var(--border));
+  color: var(--foreground);
+}
+
+.snake-actions {
+  display: flex;
+  gap: 8px;
+}
