@@ -27,7 +27,7 @@ import {
   Share2,
 } from "lucide-react"
 import { useSelfModTaintMonitor } from "@/systems/boot/use-self-mod-taint-monitor"
-import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogBody, DialogCloseButton } from "@/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogCloseButton } from "@/ui/dialog"
 import { Button } from "@/ui/button"
 import { TextField } from "@/ui/text-field"
 import {
@@ -185,6 +185,13 @@ function isAuthOrConnectivityErrorMessage(message: string): boolean {
 function isAuthOrConnectivityError(err: unknown): boolean {
   if (!(err instanceof Error)) return false
   return isAuthOrConnectivityErrorMessage(err.message)
+}
+
+function isStoreUpdateAvailable(
+  pkg: StorePackageRecord,
+  installed?: InstalledStoreModRecord,
+) {
+  return installed ? installed.releaseNumber < pkg.latestReleaseNumber : false
 }
 
 type PackagesCachePayload = {
@@ -518,7 +525,6 @@ function StoreCard({
   actionLabel,
   actionVariant,
   actionDisabled,
-  meta,
   onAction,
   onClick,
   onShare,
@@ -528,7 +534,6 @@ function StoreCard({
   actionLabel: string
   actionVariant: string
   actionDisabled?: boolean
-  meta?: string
   onAction?: () => void
   onClick?: () => void
   /** Optional Share affordance. When provided a Share icon button is
@@ -595,11 +600,21 @@ function StoreCard({
           </div>
         </div>
         <div className="store-card-desc">{pkg.description}</div>
-        <AuthorChip name={pkg.authorDisplayName} handle={pkg.authorHandle} />
-        {meta && <div className="store-card-meta">{meta}</div>}
+        <div className="store-card-footer">
+          <AuthorChip name={pkg.authorDisplayName} handle={pkg.authorHandle} />
+          <span className="store-card-installs">{formatInstallCount(pkg.installCount)}</span>
+        </div>
       </div>
     </div>
   )
+}
+
+function formatInstallCount(count: number | undefined): string {
+  const n = count ?? 0
+  if (n <= 0) return "New"
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M installs`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K installs`
+  return `${n} install${n === 1 ? "" : "s"}`
 }
 
 function CardOwnerMenu({
@@ -683,35 +698,41 @@ function CardOwnerMenu({
 function FeaturedCard({
   pkg,
   isAdded,
+  updateAvailable,
   isWorking,
   onAction,
   onClick,
 }: {
   pkg: StorePackageRecord
   isAdded: boolean
+  updateAvailable: boolean
   isWorking: boolean
   onAction: () => void
   onClick: () => void
 }) {
+  const label = isWorking
+    ? updateAvailable
+      ? "Updating..."
+      : "Adding..."
+    : updateAvailable
+      ? "Update"
+      : isAdded
+        ? "Added"
+        : "Get"
   return (
     <div className="store-featured" onClick={onClick}>
       <div
         className="store-featured-bg"
         style={{ background: getGradient(pkg.displayName) }}
       />
-      {pkg.iconUrl ? (
-        // Render the real icon as a soft, blurred backdrop so the hero stays
-        // ownable by the package's actual artwork without losing the eyebrow
-        // legibility the dark gradient provides.
-        <img
-          src={pkg.iconUrl}
-          alt=""
-          className="store-artwork-img store-featured-img"
-          draggable={false}
-        />
-      ) : null}
       <div className="store-featured-overlay" />
       <div className="store-featured-content">
+        <PackageArtwork
+          iconUrl={pkg.iconUrl}
+          name={pkg.displayName}
+          className="store-featured-icon"
+          letterClassName="store-featured-icon-letter"
+        />
         <div className="store-featured-text">
           <div className="store-featured-label">Featured</div>
           <div className="store-featured-name">{pkg.displayName}</div>
@@ -720,14 +741,16 @@ function FeaturedCard({
         </div>
         <button
           className="store-action-btn store-action-btn--lg"
-          data-variant={isWorking ? "working" : isAdded ? "added" : "get"}
+          data-variant={
+            isWorking ? "working" : updateAvailable ? "get" : isAdded ? "added" : "get"
+          }
           disabled={isWorking}
           onClick={(e) => {
             e.stopPropagation()
             onAction()
           }}
         >
-          {isWorking ? "Adding..." : isAdded ? "Added" : "Get"}
+          {label}
         </button>
       </div>
     </div>
@@ -762,6 +785,7 @@ function AddedRow({
         {activeInstalls.map((mod) => {
           const pkg = pkgMap.get(mod.packageId)
           const name = pkg?.displayName ?? "Add-on"
+          const updateAvailable = pkg ? isStoreUpdateAvailable(pkg, mod) : false
           return (
             <div
               key={mod.packageId}
@@ -775,6 +799,9 @@ function AddedRow({
                 letterClassName="store-added-chip-letter"
               />
               <span className="store-added-chip-name">{name}</span>
+              {updateAvailable ? (
+                <span className="store-added-chip-badge">Update</span>
+              ) : null}
             </div>
           )
         })}
@@ -959,9 +986,17 @@ function DiscoverTab({
         <FeaturedCard
           pkg={featured}
           isAdded={installedMap.has(featured.packageId)}
+          updateAvailable={isStoreUpdateAvailable(
+            featured,
+            installedMap.get(featured.packageId),
+          )}
           isWorking={working === featured.packageId}
           onAction={() => {
-            if (installedMap.has(featured.packageId)) {
+            const updateAvailable = isStoreUpdateAvailable(
+              featured,
+              installedMap.get(featured.packageId),
+            )
+            if (installedMap.has(featured.packageId) && !updateAvailable) {
               onSelect(featured.packageId)
               return
             }
@@ -985,16 +1020,35 @@ function DiscoverTab({
           </div>
           <div className="store-grid">
             {rest.map((pkg) => {
-              const isAdded = installedMap.has(pkg.packageId)
+              const installedRecord = installedMap.get(pkg.packageId)
+              const isAdded = Boolean(installedRecord)
+              const updateAvailable = isStoreUpdateAvailable(pkg, installedRecord)
               const isWorking = working === pkg.packageId
               return (
                 <StoreCard
                   key={pkg.packageId}
                   pkg={pkg}
-                  actionLabel={isWorking ? "Adding..." : isAdded ? "Added" : "Get"}
-                  actionVariant={isWorking ? "working" : isAdded ? "added" : "get"}
-                  actionDisabled={isAdded || isWorking}
-                  meta={`Version ${pkg.latestReleaseNumber}`}
+                  actionLabel={
+                    isWorking
+                      ? updateAvailable
+                        ? "Updating..."
+                        : "Adding..."
+                      : updateAvailable
+                        ? "Update"
+                        : isAdded
+                          ? "Added"
+                          : "Get"
+                  }
+                  actionVariant={
+                    isWorking
+                      ? "working"
+                      : updateAvailable
+                        ? "get"
+                        : isAdded
+                          ? "added"
+                          : "get"
+                  }
+                  actionDisabled={(isAdded && !updateAvailable) || isWorking}
                   onAction={() => void handleInstall(pkg.packageId)}
                   onClick={() => onSelect(pkg.packageId)}
                   onShare={() => onShare(pkg)}
@@ -1322,45 +1376,34 @@ function AddonInstallConfirmDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
-  if (!pending) return null
   return (
-    <div className="store-blueprint-dialog">
-      <div className="store-blueprint-dialog-card">
-        <div className="store-blueprint-dialog-header">
-          <div className="store-blueprint-dialog-title">
-            Add {pending.pkg.displayName}?
-          </div>
-          <button
-            type="button"
-            className="store-blueprint-dialog-close"
-            onClick={onCancel}
-            disabled={installing}
-            title="Close"
-          >
-            ×
-          </button>
-        </div>
-        <div className="store-blueprint-dialog-body">
+    <Dialog
+      open={Boolean(pending)}
+      onOpenChange={(next) => {
+        if (!next && !installing) onCancel()
+      }}
+    >
+      <DialogContent fit className="store-blueprint-dialog">
+        <DialogHeader>
+          <DialogTitle>
+            {pending ? `Add ${pending.pkg.displayName}?` : "Add"}
+          </DialogTitle>
+          <DialogCloseButton disabled={installing} />
+        </DialogHeader>
+        <DialogBody>
           <div className="store-blueprint-dialog-viewer">
-            <Markdown
-              text={pending.release.blueprintMarkdown}
-              cacheKey={`${pending.pkg.packageId}:${pending.release.releaseNumber}`}
-              className="store-blueprint-dialog-markdown"
-            />
+            {pending ? (
+              <Markdown
+                text={pending.release.blueprintMarkdown}
+                cacheKey={`${pending.pkg.packageId}:${pending.release.releaseNumber}`}
+              />
+            ) : null}
+          </div>
+          <div className="store-install-confirm-copy">
+            Stella will implement this blueprint locally and commit the
+            resulting changes so you can remove it later.
           </div>
           <div className="store-blueprint-dialog-actions">
-            <div className="store-install-confirm-copy">
-              Stella will implement this blueprint locally and commit the
-              resulting changes so you can remove it later.
-            </div>
-            <button
-              type="button"
-              className="pill-btn pill-btn-primary"
-              onClick={onConfirm}
-              disabled={installing}
-            >
-              {installing ? "Adding…" : "Add to Stella"}
-            </button>
             <button
               type="button"
               className="pill-btn"
@@ -1369,10 +1412,18 @@ function AddonInstallConfirmDialog({
             >
               Cancel
             </button>
+            <button
+              type="button"
+              className="pill-btn pill-btn--primary"
+              onClick={onConfirm}
+              disabled={installing}
+            >
+              {installing ? "Adding…" : "Add to Stella"}
+            </button>
           </div>
-        </div>
-      </div>
-    </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -1400,7 +1451,8 @@ function PackageDetailView({
 }) {
   const { pkg, releases, loading, error } = usePackageDetail(packageId)
   const [working, setWorking] = useState(false)
-  const isAdded = installedMap.has(packageId)
+  const installedRecord = installedMap.get(packageId)
+  const isAdded = Boolean(installedRecord)
 
   const handleInstall = useCallback(async () => {
     setWorking(true)
@@ -1448,6 +1500,7 @@ function PackageDetailView({
 
   const latestRelease = releases[0]
   const latestNotes = latestRelease ? getReleaseNotes(latestRelease) : undefined
+  const updateAvailable = isStoreUpdateAvailable(pkg, installedRecord)
 
   return (
     <div className="store-detail">
@@ -1479,14 +1532,26 @@ function PackageDetailView({
           </div>
           <div className="store-detail-actions">
             {isAdded ? (
-              <button
-                className="store-action-btn store-action-btn--lg"
-                data-variant={working ? "working" : "remove"}
-                onClick={() => void handleRemove()}
-                disabled={working}
-              >
-                {working ? "Removing..." : "Remove"}
-              </button>
+              <>
+                {updateAvailable ? (
+                  <button
+                    className="store-action-btn store-action-btn--lg"
+                    data-variant={working ? "working" : "get"}
+                    onClick={() => void handleInstall()}
+                    disabled={working}
+                  >
+                    {working ? "Updating..." : "Update"}
+                  </button>
+                ) : null}
+                <button
+                  className="store-action-btn store-action-btn--lg"
+                  data-variant={working ? "working" : "remove"}
+                  onClick={() => void handleRemove()}
+                  disabled={working}
+                >
+                  {working ? "Removing..." : "Remove"}
+                </button>
+              </>
             ) : (
               <button
                 className="store-action-btn store-action-btn--lg"
@@ -1778,6 +1843,14 @@ export function StoreView({
         displayName: pendingAddonInstall.pkg.displayName,
         blueprintMarkdown: pendingAddonInstall.release.blueprintMarkdown,
       })
+      // Best-effort install counter bump. Failures here are silent —
+      // missing the increment is much less bad than a half-installed
+      // toast state.
+      void convex
+        .mutation(api.data.store_packages.recordPackageInstall, {
+          packageId: pendingAddonInstall.pkg.packageId,
+        })
+        .catch(() => undefined)
       setPendingAddonInstall(null)
       showToast({ title: "Added to Stella!", variant: "success" })
       await reloadPackages()
@@ -1790,7 +1863,7 @@ export function StoreView({
     } finally {
       setAddonInstalling(false)
     }
-  }, [pendingAddonInstall, reloadPackages])
+  }, [pendingAddonInstall, reloadPackages, convex])
 
   const handleRemove = useCallback(
     async (packageId: string) => {

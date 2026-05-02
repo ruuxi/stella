@@ -296,6 +296,8 @@ export type StorePackageRecord = {
    * Omitted = public (legacy rows + first-publish default).
    */
   visibility?: "public" | "unlisted" | "private";
+  /** Total install attempts recorded by the backend. */
+  installCount?: number;
 };
 
 export type StorePackageReleaseRecord = {

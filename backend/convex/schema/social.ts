@@ -56,6 +56,7 @@ export const socialSchema = {
     ownerId: v.string(),
     nickname: v.string(),
     nicknameNormalized: v.string(),
+    publicHandle: v.string(),
     friendCode: v.string(),
     avatarUrl: v.optional(v.string()),
     lastSeenIncomingFriendRequestAt: v.optional(v.number()),
@@ -63,6 +64,7 @@ export const socialSchema = {
     updatedAt: v.number(),
   })
     .index("by_ownerId", ["ownerId"])
+    .index("by_publicHandle", ["publicHandle"])
     .index("by_friendCode", ["friendCode"])
     .index("by_nicknameNormalized", ["nicknameNormalized"]),
 

@@ -49,6 +49,7 @@ const storePackageFields = {
   featured: v.optional(v.boolean()),
   featuredAt: v.optional(v.number()),
   visibility: v.optional(store_package_visibility_validator),
+  installCount: v.optional(v.number()),
 };
 
 const storePackageReleaseFields = {

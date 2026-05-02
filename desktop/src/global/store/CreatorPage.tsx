@@ -2,7 +2,7 @@
  * Creator page. Lists every public add-on a creator has shared.
  *
  * Reachable via `/c/:handle`. Author bylines on add-on cards link
- * here once the creator has claimed a handle (via `claimHandle`).
+ * here once the creator has a social profile handle.
  */
 import { useState } from "react";
 import { useQuery } from "convex/react";
@@ -18,8 +18,8 @@ type Props = { handle: string };
 export function CreatorPage({ handle }: Props) {
   const navigate = useNavigate();
   const [sharePkg, setSharePkg] = useState<StorePackageRecord | null>(null);
-  const profile = useQuery(api.data.user_profiles.getProfileByHandle, { handle }) as
-    | { publicHandle: string; displayName?: string }
+  const profile = useQuery(api.social.profiles.getProfileByHandle, { handle }) as
+    | { publicHandle: string; displayName: string }
     | null
     | undefined;
   const packages = useQuery(api.data.store_packages.listPackagesByAuthorHandle, {
