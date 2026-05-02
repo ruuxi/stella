@@ -58,6 +58,7 @@ import {
   type StorePackageRecord,
   type StorePackageReleaseRecord,
   type StorePublishArgs,
+  type StorePublishBlueprintArgs,
   type StoreThreadSendInput,
   type StoreThreadSnapshot,
   type RuntimeInitializeParams,
@@ -1248,6 +1249,17 @@ export class StellaRuntimeClient {
     );
   }
 
+  async publishStoreBlueprint(args: StorePublishBlueprintArgs) {
+    return await this.requestWorker<StorePackageReleaseRecord>(
+      METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_BLUEPRINT,
+      args,
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
   async uninstallStoreMod(packageId: string) {
     return await this.requestWorker<{ packageId: string; revertedCommits: string[] }>(
       METHOD_NAMES.INTERNAL_WORKER_UNINSTALL_STORE_MOD,
@@ -1264,6 +1276,7 @@ export class StellaRuntimeClient {
     releaseNumber: number;
     displayName: string;
     blueprintMarkdown: string;
+    commits?: Array<{ hash: string; subject: string; diff: string }>;
   }) {
     return await this.requestWorker<StoreInstallRecord>(
       METHOD_NAMES.INTERNAL_WORKER_INSTALL_FROM_BLUEPRINT,

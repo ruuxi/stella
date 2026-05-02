@@ -29,6 +29,17 @@ export const store_release_manifest_validator = v.object({
   authoredAtCommit: v.optional(v.string()),
 });
 
+// Per-commit reference diff. The author's tree authored these; the
+// installer's tree may have diverged, so the install agent reads them
+// as a strong default rather than a literal patch. `diff` is the raw
+// `git show -U10` output post-redaction (home-dir paths, usernames,
+// and obvious credential shapes scrubbed).
+export const store_release_commit_validator = v.object({
+  hash: v.string(),
+  subject: v.string(),
+  diff: v.string(),
+});
+
 // ── Packages + releases ──────────────────────────────────────────────────────
 
 const storePackageFields = {
@@ -59,10 +70,13 @@ const storePackageReleaseFields = {
   releaseNumber: v.number(),
   releaseNotes: v.optional(v.string()),
   manifest: store_release_manifest_validator,
-  // The receiving general agent reads this markdown directly. No
-  // patches, no file snapshots — the receiver adapts the blueprint
-  // to its own codebase.
+  // The receiving general agent reads this markdown as the behaviour
+  // spec for the release. The actual implementation is reference
+  // diffs in `commits` — the installer's tree may have diverged from
+  // the author's tree, so the agent treats those diffs as a strong
+  // default rather than a literal patch.
   blueprintMarkdown: v.string(),
+  commits: v.optional(v.array(store_release_commit_validator)),
   createdAt: v.number(),
 };
 

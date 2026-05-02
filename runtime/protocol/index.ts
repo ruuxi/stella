@@ -119,6 +119,7 @@ export const METHOD_NAMES = {
   STORE_GET_RELEASE: "store.getRelease",
   STORE_CREATE_FIRST_RELEASE: "store.createFirstRelease",
   STORE_CREATE_RELEASE_UPDATE: "store.createReleaseUpdate",
+  STORE_PUBLISH_BLUEPRINT: "store.publishBlueprint",
   STORE_INSTALL_FROM_BLUEPRINT: "store.installFromBlueprint",
   STORE_THREAD_GET: "store.thread.get",
   STORE_THREAD_SEND_MESSAGE: "store.thread.sendMessage",
@@ -188,6 +189,8 @@ export const METHOD_NAMES = {
     "internal.worker.createFirstStoreRelease",
   INTERNAL_WORKER_CREATE_STORE_RELEASE_UPDATE:
     "internal.worker.createStoreReleaseUpdate",
+  INTERNAL_WORKER_PUBLISH_STORE_BLUEPRINT:
+    "internal.worker.publishStoreBlueprint",
   INTERNAL_WORKER_INSTALL_FROM_BLUEPRINT:
     "internal.worker.installFromBlueprint",
   INTERNAL_WORKER_STORE_THREAD_GET: "internal.worker.storeThread.get",
@@ -635,6 +638,28 @@ export type StorePublishArgs = {
   artifact: StoreReleaseArtifact;
 };
 
+/**
+ * Renderer-driven publish path. The dialog passes the source
+ * `messageId` so the worker can resolve attached features → commit
+ * hashes → redacted reference diffs and ship them with the spec.
+ */
+export type StorePublishBlueprintArgs = {
+  messageId: string;
+  packageId: string;
+  asUpdate: boolean;
+  displayName?: string;
+  description?: string;
+  category?:
+    | "apps-games"
+    | "productivity"
+    | "customization"
+    | "skills-agents"
+    | "integrations"
+    | "other";
+  manifest: StoreReleaseArtifact["manifest"];
+  releaseNotes?: string;
+};
+
 export type RuntimeStoreApi = {
   listPackages: () => Promise<StorePackageRecord[]>;
   getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
@@ -648,6 +673,9 @@ export type RuntimeStoreApi = {
   ) => Promise<StorePackageReleaseRecord>;
   createReleaseUpdate: (
     args: StorePublishArgs,
+  ) => Promise<StorePackageReleaseRecord>;
+  publishBlueprint: (
+    args: StorePublishBlueprintArgs,
   ) => Promise<StorePackageReleaseRecord>;
   getStoreThread: () => Promise<StoreThreadSnapshot>;
   sendStoreThreadMessage: (

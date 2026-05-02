@@ -252,16 +252,31 @@ export type StorePackageCategory =
   | "other";
 
 /**
- * A published Store release is a markdown blueprint plus enough
- * metadata for the receiving agent to implement it. No patches, no
- * file snapshots — the receiver's general agent reads the blueprint
- * and adapts to its own codebase.
+ * One commit's worth of reference diff that the install agent uses as
+ * a strong default when implementing the release on a divergent tree.
+ * Authored by the publisher's tree; redacted at publish time.
+ */
+export type StoreReleaseCommit = {
+  hash: string;
+  subject: string;
+  /** Output of `git show -U10 --find-renames --no-color` post-redaction. */
+  diff: string;
+};
+
+/**
+ * A published Store release is a behaviour-spec markdown blueprint
+ * plus the per-commit reference diffs that produced it on the
+ * author's tree. The install agent reads both — the spec for intent,
+ * the diffs as a concrete-but-divergence-aware reference — and writes
+ * functionally equivalent code on the installer's tree.
  */
 export type StoreReleaseArtifact = {
   kind: "blueprint";
   schemaVersion: 2;
   manifest: StoreReleaseManifest;
   blueprintMarkdown: string;
+  /** Per-commit reference diffs. Optional only for legacy spec-only releases. */
+  commits?: StoreReleaseCommit[];
 };
 
 export type StoreReleaseManifest = {
@@ -305,6 +320,8 @@ export type StorePackageReleaseRecord = {
   releaseNumber: number;
   manifest: StoreReleaseManifest;
   blueprintMarkdown: string;
+  /** Reference diffs the install agent uses; absent on legacy releases. */
+  commits?: StoreReleaseCommit[];
   createdAt: number;
 };
 

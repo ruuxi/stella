@@ -92,6 +92,10 @@ export const IPC_OVERLAY_HIDE_WINDOW_HIGHLIGHT =
   "overlay:hideWindowHighlight" as const;
 export const IPC_OVERLAY_PREVIEW_WINDOW_HIGHLIGHT_AT_POINT =
   "overlay:previewWindowHighlightAtPoint" as const;
+export const IPC_PET_STATUS = "pet:status" as const;
+export const IPC_PET_SET_OPEN = "pet:setOpen" as const;
+export const IPC_PET_OPEN_CHAT = "pet:openChat" as const;
+export const IPC_PET_SEND_MESSAGE = "pet:sendMessage" as const;
 
 // ── Mini ────────────────────────────────────────────────────────────────────
 
@@ -275,6 +279,8 @@ export const IPC_STORE_GET_RELEASE = "store:getRelease" as const;
 export const IPC_STORE_LIST_INSTALLED = "store:listInstalledMods" as const;
 export const IPC_STORE_INSTALL_FROM_BLUEPRINT =
   "store:installFromBlueprint" as const;
+export const IPC_STORE_PUBLISH_BLUEPRINT =
+  "store:publishBlueprint" as const;
 export const IPC_STORE_UNINSTALL = "store:uninstallMod" as const;
 export const IPC_STORE_LIST_CONNECTORS = "store:listConnectors" as const;
 export const IPC_STORE_INSTALL_CONNECTOR = "store:installConnector" as const;

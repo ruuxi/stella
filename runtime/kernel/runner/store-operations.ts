@@ -1,6 +1,7 @@
 import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
+  StoreReleaseCommit,
   StoreReleaseManifest,
 } from "../../contracts/index.js";
 import type { StorePublishArgs } from "../../protocol/index.js";
@@ -89,6 +90,26 @@ export const createStoreOperations = (
     ) {
       return null;
     }
+    const parsedCommits: StoreReleaseCommit[] = Array.isArray(record.commits)
+      ? record.commits
+          .map((entry: unknown): StoreReleaseCommit | null => {
+            if (!entry || typeof entry !== "object") return null;
+            const commitRecord = entry as Record<string, unknown>;
+            if (
+              typeof commitRecord.hash !== "string" ||
+              typeof commitRecord.subject !== "string" ||
+              typeof commitRecord.diff !== "string"
+            ) {
+              return null;
+            }
+            return {
+              hash: commitRecord.hash,
+              subject: commitRecord.subject,
+              diff: commitRecord.diff,
+            };
+          })
+          .filter((entry: StoreReleaseCommit | null): entry is StoreReleaseCommit => entry !== null)
+      : [];
     const validManifestCategories = new Set([
       "apps-games",
       "productivity",
@@ -129,6 +150,7 @@ export const createStoreOperations = (
             : {}),
       },
       blueprintMarkdown: record.blueprintMarkdown,
+      ...(parsedCommits.length > 0 ? { commits: parsedCommits } : {}),
       createdAt: record.createdAt,
     };
   };
@@ -225,6 +247,7 @@ export const createStoreOperations = (
     args: StorePublishArgs,
   ): Promise<StorePackageReleaseRecord> => {
     const client = deps.ensureStoreClient();
+    const commits = args.artifact.commits ?? [];
     const result = (await client.action(
       (
         context.convexApi as {
@@ -239,6 +262,7 @@ export const createStoreOperations = (
         releaseNotes: args.releaseNotes,
         manifest: toBackendStoreManifest(args.manifest),
         blueprintMarkdown: args.artifact.blueprintMarkdown,
+        ...(commits.length > 0 ? { commits } : {}),
       },
     )) as {
       package?: unknown;
@@ -258,6 +282,7 @@ export const createStoreOperations = (
     args: StorePublishArgs,
   ): Promise<StorePackageReleaseRecord> => {
     const client = deps.ensureStoreClient();
+    const commits = args.artifact.commits ?? [];
     const result = (await client.action(
       (
         context.convexApi as {
@@ -269,6 +294,7 @@ export const createStoreOperations = (
         releaseNotes: args.releaseNotes,
         manifest: toBackendStoreManifest(args.manifest),
         blueprintMarkdown: args.artifact.blueprintMarkdown,
+        ...(commits.length > 0 ? { commits } : {}),
       },
     )) as {
       package?: unknown;

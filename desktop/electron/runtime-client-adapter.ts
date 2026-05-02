@@ -15,6 +15,7 @@ import type {
   RuntimeVoiceChatPayload,
   SelfModFeatureSummary,
   StorePublishArgs,
+  StorePublishBlueprintArgs,
 } from "../../runtime/protocol/index.js";
 import {
   StellaRuntimeClient,
@@ -820,6 +821,10 @@ export class RuntimeClientAdapter {
     return this.client.createStoreReleaseUpdate(args);
   }
 
+  publishStoreBlueprint(args: StorePublishBlueprintArgs) {
+    return this.client.publishStoreBlueprint(args);
+  }
+
   uninstallStoreMod(packageId: string) {
     return this.client.uninstallStoreMod(packageId);
   }
@@ -829,6 +834,7 @@ export class RuntimeClientAdapter {
     releaseNumber: number;
     displayName: string;
     blueprintMarkdown: string;
+    commits?: Array<{ hash: string; subject: string; diff: string }>;
   }) {
     return this.client.installFromBlueprint(payload);
   }

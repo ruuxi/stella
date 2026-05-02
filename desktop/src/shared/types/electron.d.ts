@@ -11,6 +11,7 @@ import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "@/shared/contracts/agent-stream";
 import type { EventRecord } from "@/shared/contracts/local-chat";
 import type { TaskLifecycleStatus } from "@/shared/contracts/agent-runtime";
+import type { PetOverlayStatus } from "@/shared/contracts/pet";
 import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
 import type {
   ChatContext as SharedChatContext,
@@ -392,6 +393,16 @@ export type ElectronOverlayApi = {
   ) => () => void;
   morphReady: (transitionId: string) => void;
   morphDone: (transitionId: string) => void;
+};
+
+export type ElectronPetApi = {
+  setOpen: (open: boolean) => void;
+  openChat: () => void;
+  sendMessage: (message: string) => void;
+  publishStatus: (status: PetOverlayStatus) => void;
+  onStatus: (callback: (status: PetOverlayStatus) => void) => () => void;
+  onSetOpen: (callback: (open: boolean) => void) => () => void;
+  onSendMessage: (callback: (payload: { message: string }) => void) => () => void;
 };
 
 export type ElectronThemeApi = {
@@ -814,7 +825,24 @@ export type ElectronStoreApi = {
     releaseNumber: number;
     displayName: string;
     blueprintMarkdown: string;
+    commits?: Array<{ hash: string; subject: string; diff: string }>;
   }) => Promise<StoreInstallRecord>;
+  publishBlueprint: (payload: {
+    messageId: string;
+    packageId: string;
+    asUpdate: boolean;
+    displayName?: string;
+    description?: string;
+    category?:
+      | "apps-games"
+      | "productivity"
+      | "customization"
+      | "skills-agents"
+      | "integrations"
+      | "other";
+    manifest: Record<string, unknown>;
+    releaseNotes?: string;
+  }) => Promise<StorePackageReleaseRecord>;
   getThread: () => Promise<StoreThreadSnapshot>;
   sendThreadMessage: (payload: {
     text: string;
@@ -1121,6 +1149,7 @@ export type ElectronApi = {
   capture: ElectronCaptureApi;
   radial: ElectronRadialApi;
   overlay: ElectronOverlayApi;
+  pet: ElectronPetApi;
   screenGuide: ElectronScreenGuideApi;
   theme: ElectronThemeApi;
   voice: ElectronVoiceApi;

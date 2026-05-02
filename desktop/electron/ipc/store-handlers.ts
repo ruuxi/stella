@@ -113,9 +113,11 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
   );
 
   // Install via the new blueprint flow: the renderer fetches the
-  // published release (blueprintMarkdown is on the release row), then
-  // calls this IPC with the markdown + package metadata. The worker
-  // runs a general agent that implements the blueprint and the runtime
+  // published release (blueprintMarkdown + reference commits are on
+  // the release row), then calls this IPC with that payload. The
+  // worker materialises the spec + diffs into `state/raw/<pkg>-<rel>/`
+  // and runs a general agent that implements the change, adapting the
+  // diffs to the installer's possibly-divergent tree. The runtime's
   // self-mod commit captures whatever changed.
   ipcMain.handle(
     "store:installFromBlueprint",
@@ -126,10 +128,40 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         releaseNumber: number;
         displayName: string;
         blueprintMarkdown: string;
+        commits?: Array<{ hash: string; subject: string; diff: string }>;
       },
     ) =>
       await withStoreRunner(event, "store:installFromBlueprint", async (runner) =>
         await runner.installFromBlueprint(payload) satisfies StoreInstallRecord),
+  );
+
+  // Renderer-side publish entry point. The renderer collects the form
+  // fields and the source `messageId`; the worker resolves the message
+  // → attached features → commit hashes → `git show -U10` → redacted
+  // diffs, and ships the spec + diffs to the backend in a single call.
+  ipcMain.handle(
+    "store:publishBlueprint",
+    async (
+      event,
+      payload: {
+        messageId: string;
+        packageId: string;
+        asUpdate: boolean;
+        displayName?: string;
+        description?: string;
+        category?:
+          | "apps-games"
+          | "productivity"
+          | "customization"
+          | "skills-agents"
+          | "integrations"
+          | "other";
+        manifest: Record<string, unknown>;
+        releaseNotes?: string;
+      },
+    ) =>
+      await withStoreRunner(event, "store:publishBlueprint", async (runner) =>
+        await runner.publishStoreBlueprint(payload as Parameters<typeof runner.publishStoreBlueprint>[0])),
   );
 
   ipcMain.handle("store:listInstalledMods", async (event) => {

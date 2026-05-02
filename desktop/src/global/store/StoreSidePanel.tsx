@@ -26,7 +26,7 @@
  * isn't on top.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import {
   refreshFeatureSnapshot,
@@ -164,12 +164,6 @@ function PublishDialog({
   onClose,
   onPublished,
 }: PublishDialogProps) {
-  const createFirstRelease = useAction(
-    api.data.store_packages.createFirstRelease,
-  );
-  const createUpdateRelease = useAction(
-    api.data.store_packages.createUpdateRelease,
-  );
   const myPackages = useQuery(
     api.data.store_packages.listMyPackages,
     open ? {} : "skip",
@@ -254,23 +248,30 @@ function PublishDialog({
         ...(publishCategory ? { category: publishCategory } : {}),
         summary: publishDescription.trim().slice(0, 500),
       };
-      const result = asUpdate
-        ? await createUpdateRelease({
-            packageId: normalizedPackageId,
-            manifest,
-            blueprintMarkdown: blueprint.text,
-          })
-        : await createFirstRelease({
-            packageId: normalizedPackageId,
-            displayName: publishDisplayName.trim(),
-            description: publishDescription.trim(),
-            ...(publishCategory ? { category: publishCategory } : {}),
-            manifest,
-            blueprintMarkdown: blueprint.text,
-          });
+      const storeApi = window.electronAPI?.store;
+      if (!storeApi?.publishBlueprint) {
+        throw new Error("Publish backend is not available.");
+      }
+      // The worker resolves the source message → attached features →
+      // commit hashes → redacted reference diffs and ships the spec
+      // and diffs to Convex in one round-trip. The renderer no longer
+      // talks to Convex directly here.
+      const release = await storeApi.publishBlueprint({
+        messageId: blueprint._id,
+        packageId: normalizedPackageId,
+        asUpdate,
+        manifest,
+        ...(asUpdate
+          ? {}
+          : {
+              displayName: publishDisplayName.trim(),
+              description: publishDescription.trim(),
+              ...(publishCategory ? { category: publishCategory } : {}),
+            }),
+      });
       await onPublished({
         messageId: blueprint._id,
-        releaseNumber: result.release.releaseNumber,
+        releaseNumber: release.releaseNumber,
       });
       showToast({
         title: "Published",
