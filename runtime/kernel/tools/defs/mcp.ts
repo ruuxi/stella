@@ -10,7 +10,13 @@ import {
   officialConnectorRequiresSetup,
 } from "../../mcp/state.js";
 import type { McpServerConfig } from "../../mcp/types.js";
-import type { ToolDefinition } from "../types.js";
+import type {
+  ToolContext,
+  ToolDefinition,
+  ToolResult,
+  ToolUpdateCallback,
+} from "../types.js";
+import { createComputerTools } from "./computer.js";
 
 const requireGeneral = (agentType?: string) => {
   if (agentType && agentType !== AGENT_IDS.GENERAL) {
@@ -42,7 +48,29 @@ const summarizeServer = (server: McpServerConfig) => ({
   source: server.source,
 });
 
-export const createMcpTool = (stellaRoot: string): ToolDefinition => ({
+const COMPUTER_USE_SERVER_ID = "computer-use";
+
+const computerUseToolCatalog = () =>
+  createComputerTools({}).map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+  }));
+
+const isComputerUseTool = (toolName: string) =>
+  toolName.startsWith("computer_") &&
+  computerUseToolCatalog().some((tool) => tool.name === toolName);
+
+export const createMcpTool = (options: {
+  stellaRoot: string;
+  executeTool: (
+    toolName: string,
+    args: Record<string, unknown>,
+    context: ToolContext,
+    signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
+  ) => Promise<ToolResult>;
+}): ToolDefinition => ({
   name: "MCP",
   description:
     "Discover, install, inspect, and call Stella Connect MCP integrations on demand. Use this instead of assuming all connector tools are preloaded.",
@@ -61,7 +89,8 @@ export const createMcpTool = (stellaRoot: string): ToolDefinition => ({
       },
       server: {
         type: "string",
-        description: "Installed MCP server id for tools/call.",
+        description:
+          "Installed MCP server id, API connector id, or local deferred tool group such as computer-use.",
       },
       tool: {
         type: "string",
@@ -88,12 +117,12 @@ export const createMcpTool = (stellaRoot: string): ToolDefinition => ({
     },
     required: ["action"],
   },
-  execute: async (args, context) => {
+  execute: async (args, context, extras) => {
     try {
       requireGeneral(context.agentType);
       const action = String(args.action ?? "");
       if (action === "connectors") {
-        return { result: await listStellaConnectors(stellaRoot) };
+        return { result: await listStellaConnectors(options.stellaRoot) };
       }
       if (action === "install") {
         const connector = String(args.connector ?? "").trim();
@@ -109,7 +138,7 @@ export const createMcpTool = (stellaRoot: string): ToolDefinition => ({
               "Install it from Store > Connect so Stella can collect credentials before marking it installed.",
           };
         }
-        const installed = await installOfficialConnector(stellaRoot, connector);
+        const installed = await installOfficialConnector(options.stellaRoot, connector);
         return {
           result: {
             installedServers: installed.servers.map(summarizeServer),
@@ -125,11 +154,24 @@ export const createMcpTool = (stellaRoot: string): ToolDefinition => ({
         };
       }
       if (action === "servers") {
-        const servers = await listConfiguredMcpServers(stellaRoot);
-        return { result: servers.map(summarizeServer) };
+        const servers = await listConfiguredMcpServers(options.stellaRoot);
+        return {
+          result: [
+            {
+              id: COMPUTER_USE_SERVER_ID,
+              displayName: "Computer Use",
+              description:
+                "Local deferred tools for inspecting and controlling desktop apps through Stella computer-use automation.",
+              transport: "local",
+              auth: "none",
+              source: "builtin",
+            },
+            ...servers.map(summarizeServer),
+          ],
+        };
       }
       if (action === "apis") {
-        const apis = await listConfiguredApiConnectors(stellaRoot);
+        const apis = await listConfiguredApiConnectors(options.stellaRoot);
         return {
           result: apis.map((api) => ({
             id: api.id,
@@ -144,18 +186,37 @@ export const createMcpTool = (stellaRoot: string): ToolDefinition => ({
       if (action === "tools") {
         const serverId = String(args.server ?? "").trim();
         if (!serverId) return { error: "server is required." };
-        const server = await findServer(stellaRoot, serverId);
-        return { result: await listMcpServerTools(stellaRoot, server) };
+        if (serverId === COMPUTER_USE_SERVER_ID) {
+          return { result: computerUseToolCatalog() };
+        }
+        const server = await findServer(options.stellaRoot, serverId);
+        return { result: await listMcpServerTools(options.stellaRoot, server) };
       }
       if (action === "call") {
         const serverId = String(args.server ?? "").trim();
         const toolName = String(args.tool ?? "").trim();
         if (!serverId) return { error: "server is required." };
         if (!toolName) return { error: "tool is required." };
-        const server = await findServer(stellaRoot, serverId);
+        if (serverId === COMPUTER_USE_SERVER_ID) {
+          if (!isComputerUseTool(toolName)) {
+            return {
+              error: `Unknown computer-use tool: ${toolName}`,
+            };
+          }
+          return await options.executeTool(
+            toolName,
+            (args.arguments && typeof args.arguments === "object"
+              ? args.arguments
+              : {}) as Record<string, unknown>,
+            context,
+            extras?.signal,
+            extras?.onUpdate,
+          );
+        }
+        const server = await findServer(options.stellaRoot, serverId);
         return {
           result: await callMcpServerTool(
-            stellaRoot,
+            options.stellaRoot,
             server,
             toolName,
             (args.arguments && typeof args.arguments === "object"
@@ -169,9 +230,9 @@ export const createMcpTool = (stellaRoot: string): ToolDefinition => ({
         const path = String(args.path ?? "").trim();
         if (!apiId) return { error: "server is required for api_call." };
         if (!path) return { error: "path is required for api_call." };
-        const api = await findApi(stellaRoot, apiId);
+        const api = await findApi(options.stellaRoot, apiId);
         return {
-          result: await callApiConnector(stellaRoot, api, {
+          result: await callApiConnector(options.stellaRoot, api, {
             method: typeof args.method === "string" ? args.method : undefined,
             path,
             query: (args.query && typeof args.query === "object"
