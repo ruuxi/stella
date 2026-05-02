@@ -367,6 +367,21 @@ const hasShellToolGuidance = (
 const buildFileEditingPrompt = (
   context: LocalAgentContext,
 ): string | null => {
+  const explicitlyHasWriteEdit =
+    Array.isArray(context.toolsAllowlist) &&
+    context.toolsAllowlist.length > 0 &&
+    (context.toolsAllowlist.includes("Write") ||
+      context.toolsAllowlist.includes("Edit"));
+  if (explicitlyHasWriteEdit) {
+    return [
+      "File edits:",
+      "- Use `Write` for new files or full-file replacements.",
+      "- Use `Edit` for targeted text replacements inside existing files.",
+      "- Use `exec_command` for read-only inspection, builds/tests, package-manager commands, and commands that create external artifacts.",
+      "- Do not use shell heredocs or `cat > file` for source edits when `Write` or `Edit` can express the change.",
+    ].join("\n");
+  }
+
   if (!hasToolGuidance(context, ["apply_patch"])) {
     return null;
   }

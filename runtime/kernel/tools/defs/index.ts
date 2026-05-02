@@ -29,6 +29,7 @@ import { askUserQuestionTool } from "./ask-user-question.js";
 import { createComputerTools } from "./computer.js";
 import { createDisplayTools } from "./display.js";
 import { dreamTool } from "./dream.js";
+import { editTool } from "./edit.js";
 import { createExecCommandTool } from "./exec-command.js";
 import { createFashionControlTools } from "./fashion-control.js";
 import { grepTool } from "./grep.js";
@@ -45,6 +46,7 @@ import { createAgentTools } from "./task.js";
 import { viewImageTool } from "./view-image.js";
 import { createVoiceActionCompleteTool } from "./voice-action-complete.js";
 import { createWebTool } from "./web.js";
+import { writeTool } from "./write.js";
 import { createWriteStdinTool } from "./write-stdin.js";
 
 import type { StateContext } from "../state.js";
@@ -81,6 +83,8 @@ export const buildBuiltinTools = (
   tools.push(createExecCommandTool(options.shellState));
   tools.push(createWriteStdinTool(options.shellState));
   tools.push(applyPatchTool);
+  tools.push(writeTool);
+  tools.push(editTool);
   tools.push(viewImageTool);
   tools.push(createImageGenTool({
     getStellaSiteAuth: options.getStellaSiteAuth,

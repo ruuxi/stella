@@ -18,6 +18,8 @@ export const MULTI_TOOL_USE_PARALLEL_TOOL_NAME = "multi_tool_use_parallel";
  */
 const NON_PARALLEL_TOOL_NAMES = new Set<string>([
   "apply_patch",
+  "Write",
+  "Edit",
   "write_stdin",
   "ask_user_question",
   "AskUserQuestion",

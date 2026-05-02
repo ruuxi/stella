@@ -50,16 +50,16 @@ If the GitHub diff touches an out-of-scope path, log it as "skipped: out-of-scop
    Only fetch from `api.github.com` and `raw.githubusercontent.com`. Refuse to fetch any other host.
 2. Walk the response's `files[]` array. For each entry:
    - Skip if the `filename` is out of scope (see above).
-   - Skip `removed` entries that don't exist locally; otherwise delete the local file with `apply_patch`.
+   - Skip `removed` entries that don't exist locally; otherwise delete the local file with the file-editing tools exposed in this run.
    - For `added` and `modified` entries, attempt step 3.
 3. Apply strategy per file:
-   1. **Patch first.** The compare response includes a `patch` field (a unified diff hunk). Try `apply_patch` with that hunk. `apply_patch` tolerates small drift (whitespace, slightly different anchors) so most files apply cleanly even if the user touched whitespace.
-   2. **If apply_patch refuses**, fetch the full file at the target commit:
+   1. **Patch first when available.** The compare response includes a `patch` field (a unified diff hunk). If this run exposes `apply_patch`, try it with that hunk; it tolerates small drift (whitespace, slightly different anchors) so most files apply cleanly even if the user touched whitespace.
+   2. **If patching refuses or this run exposes `Write`/`Edit` instead**, fetch the full file at the target commit:
       ```
       web({ url: "https://raw.githubusercontent.com/<owner>/<name>/<targetCommit>/<path>" })
       ```
       Read the user's current local copy (`exec_command({ cmd: "cat <installRoot>/<path>" })`). Compare:
-      - If the user file is identical to what `baseCommit` had (no local edits), overwrite it with the upstream content via `apply_patch` (delete + add, or update of the whole file).
+      - If the user file is identical to what `baseCommit` had (no local edits), overwrite it with the upstream content using the exposed file-editing tools.
       - If the user file has local edits, **write a merged version inline**: keep the user's intent where it doesn't conflict with upstream, take upstream where the user file is unchanged, and pick the most reasonable resolution where they conflict. Don't insert `<<<<<<<` / `=======` / `>>>>>>>` markers; just write the merged text. The user has accepted that drift may persist.
    3. If you genuinely can't reconcile a file (rare; usually a deleted file the user heavily customized), **keep the user version unchanged** and log it as "skipped: user-modified".
 
@@ -75,7 +75,7 @@ If the GitHub diff touches an out-of-scope path, log it as "skipped: out-of-scop
 
 Return a final assistant message that lists, in three sections:
 
-- **Updated cleanly**: files where `apply_patch` accepted the upstream patch as-is.
+- **Updated cleanly**: files where the exposed file-editing tools applied the upstream change without manual conflict resolution.
 - **Merged**: files where you reconciled local edits against upstream changes.
 - **Skipped**: files you intentionally left alone, with one-line reasons (out-of-scope, user-modified, deleted-locally, etc.).
 
