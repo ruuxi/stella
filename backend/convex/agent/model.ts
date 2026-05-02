@@ -282,6 +282,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.ORCHESTRATOR]: "best",
   [AGENT_IDS.GENERAL]: "best",
   [AGENT_IDS.INSTALL_UPDATE]: "best",
+  [AGENT_IDS.STORE]: "sota",
   [AGENT_IDS.FASHION]: "fashion",
 
   schedule: "standard",
