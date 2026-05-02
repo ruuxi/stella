@@ -179,9 +179,6 @@ const asTrimmedString = (value: unknown): string =>
 
 const STORE_THREAD_CONVERSATION_ID = "store-agent-local";
 const STORE_THREAD_MAX_USER_TEXT = 8_000;
-const STORE_THREAD_MAX_SELECTED_COMMITS = 12;
-const STORE_THREAD_SELECTED_CHANGES_LIMIT = 120_000;
-const STORE_THREAD_SELECTED_COMMIT_LIMIT = 40_000;
 
 const normalizeStoreThreadText = (value: unknown): string => {
   const text = typeof value === "string" ? value.trim() : "";
@@ -240,15 +237,10 @@ const extractBlueprintMarkdown = (
   return { blueprintMarkdown: null, visibleText: finalText.trim() };
 };
 
-const truncateStoreThreadContext = (value: string, limit: number): string =>
-  value.length <= limit
-    ? value
-    : `${value.slice(0, limit)}\n... [truncated]`;
-
-// Paths that carry no signal for blueprint drafting and routinely dwarf
-// the rest of the diff. Excluded from `git show` via pathspec so both
-// the patch and the --stat header skip them.
-const STORE_THREAD_GIT_SHOW_EXCLUDE_PATHSPECS = [
+// Paths that carry no signal for the published reference diffs and
+// routinely dwarf real changes. Excluded from `git show` via pathspec
+// so both the patch and the --stat header skip them.
+const STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS = [
   ":(exclude,glob)**/bun.lock",
   ":(exclude,glob)**/package-lock.json",
   ":(exclude,glob)**/pnpm-lock.yaml",
@@ -262,48 +254,6 @@ const STORE_THREAD_GIT_SHOW_EXCLUDE_PATHSPECS = [
   ":(exclude,glob)state/electron-user-data/**",
   ":(exclude,glob)**/*.snap",
 ];
-
-const runStoreThreadGitShow = async (
-  repoRoot: string,
-  commitHash: string,
-): Promise<string> => {
-  if (!/^[0-9a-f]{7,40}$/i.test(commitHash)) {
-    return `Invalid commit hash: ${commitHash}`;
-  }
-  const result = await gitExec(
-    [
-      "show",
-      "--stat",
-      "--patch",
-      "--find-renames",
-      "--no-color",
-      commitHash,
-      "--",
-      ...STORE_THREAD_GIT_SHOW_EXCLUDE_PATHSPECS,
-    ],
-    repoRoot,
-    {
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
-    },
-  );
-  const stdout =
-    typeof result.stdout === "string"
-      ? result.stdout
-      : Buffer.from(result.stdout).toString("utf8");
-  const stderr =
-    typeof result.stderr === "string"
-      ? result.stderr
-      : Buffer.from(result.stderr).toString("utf8");
-  if (result.exitCode !== 0) {
-    const message = stderr.trim() || `git exited ${result.exitCode}`;
-    return `Unable to read ${commitHash}: ${message}`;
-  }
-  return truncateStoreThreadContext(
-    stdout.trim() || `(empty commit ${commitHash})`,
-    STORE_THREAD_SELECTED_COMMIT_LIMIT,
-  );
-};
 
 // ── Publish-time per-commit collector + redactor ─────────────────────
 //
@@ -344,7 +294,7 @@ const runStoreReleaseGitShow = async (
       "--no-color",
       commitHash,
       "--",
-      ...STORE_THREAD_GIT_SHOW_EXCLUDE_PATHSPECS,
+      ...STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS,
     ],
     repoRoot,
     { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
@@ -462,54 +412,10 @@ const collectStoreReleaseCommits = async (args: {
   return commits;
 };
 
-const buildSelectedStoreChangesContext = async (args: {
-  repoRoot: string;
-  attachedFeatureNames: string[];
-  snapshot: ReturnType<StoreModStore["readFeatureSnapshot"]>;
-}): Promise<string> => {
-  if (args.attachedFeatureNames.length === 0) return "- none";
-  const sections: string[] = [];
-  let commitCount = 0;
-  for (const name of args.attachedFeatureNames) {
-    const snapshotItem = args.snapshot?.items.find((item) => item.name === name);
-    const hashes = Array.from(
-      new Set(
-        (snapshotItem?.commitHashes ?? [])
-          .map((hash) => hash.trim())
-          .filter(Boolean),
-      ),
-    );
-    if (hashes.length === 0) {
-      sections.push(
-        `## ${name}\nNo commit details were available for this selected change.`,
-      );
-      continue;
-    }
-    const commitSections: string[] = [];
-    for (const hash of hashes) {
-      if (commitCount >= STORE_THREAD_MAX_SELECTED_COMMITS) {
-        commitSections.push("Additional selected commits omitted.");
-        break;
-      }
-      commitCount += 1;
-      const commitText = await runStoreThreadGitShow(args.repoRoot, hash);
-      commitSections.push(
-        [`### Commit ${hash}`, commitText].join("\n\n"),
-      );
-    }
-    sections.push([`## ${name}`, commitSections.join("\n\n")].join("\n\n"));
-  }
-  return truncateStoreThreadContext(
-    sections.join("\n\n"),
-    STORE_THREAD_SELECTED_CHANGES_LIMIT,
-  );
-};
-
 const buildStoreThreadAgentPrompt = (args: {
   userText: string;
   editingBlueprint: boolean;
   latestBlueprintMarkdown?: string;
-  selectedChangesContext: string;
   attachedFeatureNames: string[];
   transcript: Array<{
     role: "user" | "assistant" | "system_event";
@@ -551,17 +457,15 @@ const buildStoreThreadAgentPrompt = (args: {
       ? `## Attached features\n${args.attachedFeatureNames.map((n) => `- ${n}`).join("\n")}`
       : "## Attached features\n- none",
     "",
-    "## Reference commits",
-    "Raw `git show --stat --patch` output for each commit the user attached. Lockfiles, build outputs, and similar noise paths are pre-filtered. The publish pipeline will ship full per-commit diffs at `-U10` alongside the spec — you do not need to reproduce that content. Use these to ground your spec: name the surfaces actually touched, describe what the change does, and call out anything an install agent on a divergent tree would need to know.",
-    "",
-    args.selectedChangesContext,
+    "## How to scope your work",
+    "The user is non-technical. They picked one or more named features above (or wrote a prompt) to describe what they want to publish. Treat each name as a scope hint pointing at a feature that already exists on this tree. Use `Read` and `Grep` to find the surfaces — components, modules, prompts, tools, schemas, configs — that implement each named feature, and ground your spec in what you actually find. If you cannot locate a feature from its name, ask one concise question rather than inventing surfaces.",
     "",
     "## Divergence model",
-    "The installer's tree starts at the same root commit as the author's tree but may have diverged anywhere — partial refactors, alternate implementations of the same feature, missing files, renamed surfaces. Write the spec so an install agent reading it on a divergent tree can still produce the same observable behaviour. Functional parity, not byte parity.",
+    "The installer's tree starts at the same root commit as this tree but may have diverged anywhere — partial refactors, alternate implementations of the same feature, missing files, renamed surfaces. Write the spec so an install agent reading it on a divergent tree can still produce the same observable behaviour. Functional parity, not byte parity. The publish pipeline ships per-commit reference diffs alongside your spec; you do not produce them, you do not reference them in the spec body, and you do not list `Files touched` / `Implementation` sections — that is the install agent's job.",
     "",
     args.editingBlueprint
       ? "## Mode\nEditing the existing draft. Revise it in place, preserve the `# Title` line unless the user asks to rename, and keep the section skeleton from the system prompt."
-      : "## Mode\nDrafting a new behaviour spec. If the stated purpose and the reference commits don't line up, ask one concise question instead of guessing.",
+      : "## Mode\nDrafting a new behaviour spec.",
   ];
 
   if (args.latestBlueprintMarkdown) {
@@ -2175,7 +2079,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         text: "Working…",
         pending: true,
       });
-      const snapshot = store.readFeatureSnapshot();
       const repoRoot = state.init?.stellaRoot;
       if (!repoRoot) {
         store.deleteStoreThreadMessages([userMessage._id, assistantMessage._id]);
@@ -2183,18 +2086,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       }
       let prompt: string;
       try {
-        const selectedChangesContext = await buildSelectedStoreChangesContext({
-          repoRoot,
-          attachedFeatureNames,
-          snapshot,
-        });
         prompt = buildStoreThreadAgentPrompt({
           userText: text,
           editingBlueprint: payload.editingBlueprint === true,
           ...(latestBlueprint
             ? { latestBlueprintMarkdown: latestBlueprint.text }
             : {}),
-          selectedChangesContext,
           attachedFeatureNames,
           transcript: store.listStoreThreadMessages(),
         });
