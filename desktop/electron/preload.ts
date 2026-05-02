@@ -439,10 +439,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       text: string;
       uiVisibility?: "visible" | "hidden";
     }) => ipcRenderer.send("voice:persistTranscript", payload),
-    orchestratorChat: (payload: {
-      conversationId: string;
-      message: string;
-    }) =>
+    orchestratorChat: (payload: { conversationId: string; message: string }) =>
       ipcRenderer.invoke("voice:orchestratorChat", payload) as Promise<string>,
     webSearch: (payload: { query: string; category?: string }) =>
       ipcRenderer.invoke("voice:webSearch", payload) as Promise<{
@@ -867,7 +864,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getLocalModelPreferences: () =>
       ipcRenderer.invoke(IPC_PREFERENCES_GET_MODELS) as Promise<{
         defaultModels: Record<string, string>;
-        resolvedDefaultModels: Record<string, string>;
         modelOverrides: Record<string, string>;
         generalAgentEngine: "default" | "claude_code_local";
         selfModAgentEngine: "default" | "claude_code_local";
@@ -875,7 +871,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       } | null>,
     setLocalModelPreferences: (payload: {
       defaultModels?: Record<string, string>;
-      resolvedDefaultModels?: Record<string, string>;
       modelOverrides?: Record<string, string>;
       generalAgentEngine?: "default" | "claude_code_local";
       selfModAgentEngine?: "default" | "claude_code_local";
@@ -883,7 +878,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) =>
       ipcRenderer.invoke(IPC_PREFERENCES_SET_MODELS, payload) as Promise<{
         defaultModels: Record<string, string>;
-        resolvedDefaultModels: Record<string, string>;
         modelOverrides: Record<string, string>;
         generalAgentEngine: "default" | "claude_code_local";
         selfModAgentEngine: "default" | "claude_code_local";
@@ -1204,8 +1198,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   store: {
-    readFeatureSnapshot: () =>
-      ipcRenderer.invoke("store:readFeatureSnapshot"),
+    readFeatureSnapshot: () => ipcRenderer.invoke("store:readFeatureSnapshot"),
     listPackages: () => ipcRenderer.invoke("store:listPackages"),
     getPackage: (packageId: string) =>
       ipcRenderer.invoke("store:getPackage", { packageId }),

@@ -639,7 +639,6 @@ export type ElectronSystemApi = {
   restoreBackup: (snapshotId: string) => Promise<RestoreBackupResult>;
   getLocalModelPreferences: () => Promise<{
     defaultModels: Record<string, string>;
-    resolvedDefaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
     generalAgentEngine: "default" | "claude_code_local";
     selfModAgentEngine: "default" | "claude_code_local";
@@ -647,14 +646,12 @@ export type ElectronSystemApi = {
   } | null>;
   setLocalModelPreferences: (payload: {
     defaultModels?: Record<string, string>;
-    resolvedDefaultModels?: Record<string, string>;
     modelOverrides?: Record<string, string>;
     generalAgentEngine?: "default" | "claude_code_local";
     selfModAgentEngine?: "default" | "claude_code_local";
     maxAgentConcurrency?: number;
   }) => Promise<{
     defaultModels: Record<string, string>;
-    resolvedDefaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
     generalAgentEngine: "default" | "claude_code_local";
     selfModAgentEngine: "default" | "claude_code_local";

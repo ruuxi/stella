@@ -1068,9 +1068,6 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (!stellaRoot) return null;
 
       const nextDefaultModels = sanitizeStringRecord(payload?.defaultModels);
-      const nextResolvedDefaultModels = sanitizeStringRecord(
-        payload?.resolvedDefaultModels,
-      );
       const nextOverrides = sanitizeStringRecord(payload?.modelOverrides);
 
       const generalAgentEngine =
@@ -1090,9 +1087,6 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       const patch: Partial<LocalModelPreferencesSnapshot> = {};
       if (payload?.defaultModels !== undefined) {
         patch.defaultModels = nextDefaultModels;
-      }
-      if (payload?.resolvedDefaultModels !== undefined) {
-        patch.resolvedDefaultModels = nextResolvedDefaultModels;
       }
       if (payload?.modelOverrides !== undefined) {
         patch.modelOverrides = nextOverrides;
