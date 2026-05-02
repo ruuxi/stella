@@ -16,11 +16,6 @@ const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = path.resolve(
   STELLA_REPO_ROOT,
   '.stella-runtime-reload-state.json',
 )
-const STELLA_WORKSPACE_PANELS_DIR = path.resolve(
-  __dirname,
-  'workspace',
-  'panels',
-)
 const STELLA_STATE_DIR = path.resolve(__dirname, '..', 'state')
 const VITE_WORKSPACE_ROOT = searchForWorkspaceRoot(__dirname)
 
@@ -139,79 +134,6 @@ function devServerUrl(): Plugin {
           const host =
             addr.family === 'IPv6' ? `[${addr.address}]` : addr.address
           fs.writeFileSync(DEV_URL_FILE, `http://${host}:${addr.port}`)
-        }
-      })
-    },
-  }
-}
-
-const PANEL_FILE_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\.tsx$/
-const toViteFsPath = (filePath: string) => `/@fs/${filePath.replace(/\\/g, '/')}`
-
-/**
- * Serves workspace panel .tsx files through Vite's transform pipeline.
- * Path containment: only files inside desktop/workspace/panels/ are served.
- * Filename validation: must match PANEL_FILE_PATTERN.
- */
-function workspacePanelServer(): Plugin {
-  return {
-    name: 'workspace-panel-server',
-    configureServer(server) {
-      try {
-        fs.mkdirSync(STELLA_WORKSPACE_PANELS_DIR, { recursive: true })
-      } catch (error) {
-        console.warn('[workspace-panel-server] Failed to create runtime panels directory:', error)
-      }
-
-      server.middlewares.use(async (req, res, next) => {
-        if (!req.url || !req.url.startsWith('/workspace/panels/')) return next()
-
-        // Strip query string (e.g. ?t=timestamp for cache-busting)
-        const urlPath = req.url.split('?')[0]!
-        const filename = path.posix.basename(urlPath)
-
-        // Validate filename pattern
-        if (!PANEL_FILE_PATTERN.test(filename)) {
-          res.statusCode = 403
-          res.end('Forbidden: invalid panel filename')
-          return
-        }
-
-        // Resolve and contain path within desktop/workspace/panels/
-        const panelsDir = STELLA_WORKSPACE_PANELS_DIR
-        const resolved = path.resolve(panelsDir, filename)
-        const relative = path.relative(panelsDir, resolved)
-
-        if (relative.startsWith('..') || path.isAbsolute(relative)) {
-          res.statusCode = 403
-          res.end('Forbidden: path outside panels directory')
-          return
-        }
-
-        // Check file exists
-        if (!fs.existsSync(resolved)) {
-          res.statusCode = 404
-          res.end('Panel not found')
-          return
-        }
-
-        try {
-          // Transform the runtime TSX file through Vite's pipeline.
-          const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
-          const result = await server.transformRequest(`${toViteFsPath(resolved)}${query}`)
-          if (!result) {
-            res.statusCode = 500
-            res.end('Transform failed')
-            return
-          }
-
-          res.setHeader('Content-Type', 'application/javascript')
-          res.setHeader('Cache-Control', 'no-cache')
-          res.end(result.code)
-        } catch (err) {
-          console.error('[workspace-panel-server] Transform error:', err)
-          res.statusCode = 500
-          res.end('Transform error')
         }
       })
     },
@@ -1017,7 +939,6 @@ export default defineConfig({
     react(),
     tailwindcss(),
     devServerUrl(),
-    workspacePanelServer(),
     selfModHmrControl(),
     pdfWorkerAsset(),
   ],
@@ -1068,7 +989,7 @@ export default defineConfig({
     strictPort: false,
     forwardConsole: true,
     fs: {
-      allow: [VITE_WORKSPACE_ROOT, STELLA_WORKSPACE_PANELS_DIR],
+      allow: [VITE_WORKSPACE_ROOT],
     },
     watch: {
       ignored: [
