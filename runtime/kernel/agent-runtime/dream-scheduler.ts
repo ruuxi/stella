@@ -37,7 +37,6 @@ import type {
   ToolCall,
   ToolResultMessage,
 } from "../../ai/types.js";
-import { TOOL_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import {
   countPendingDreamExtensions,
 } from "../memory/dream-core.js";

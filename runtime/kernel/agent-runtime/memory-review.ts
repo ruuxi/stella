@@ -31,7 +31,6 @@ import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { createMemoryTool } from "../tools/defs/memory.js";
 import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
-import { TOOL_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 import { createRuntimeLogger } from "../debug.js";
 
 const logger = createRuntimeLogger("agent-runtime.memory-review");

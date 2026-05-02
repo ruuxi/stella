@@ -24,24 +24,6 @@ function resolveApiProvider(api: Api) {
 	return provider;
 }
 
-export function stream<TApi extends Api>(
-	model: Model<TApi>,
-	context: Context,
-	options?: ProviderStreamOptions,
-): AssistantMessageEventStream {
-	const provider = resolveApiProvider(model.api);
-	return provider.stream(model, context, options as StreamOptions);
-}
-
-export async function complete<TApi extends Api>(
-	model: Model<TApi>,
-	context: Context,
-	options?: ProviderStreamOptions,
-): Promise<AssistantMessage> {
-	const s = stream(model, context, options);
-	return s.result();
-}
-
 export function streamSimple<TApi extends Api>(
 	model: Model<TApi>,
 	context: Context,
@@ -51,12 +33,30 @@ export function streamSimple<TApi extends Api>(
 	return provider.streamSimple(model, context, options);
 }
 
+export function stream<TApi extends Api>(
+	model: Model<TApi>,
+	context: Context,
+	options?: ProviderStreamOptions,
+): AssistantMessageEventStream {
+	const provider = resolveApiProvider(model.api);
+	return provider.stream(model, context, options as StreamOptions);
+}
+
 export async function completeSimple<TApi extends Api>(
 	model: Model<TApi>,
 	context: Context,
 	options?: SimpleStreamOptions,
 ): Promise<AssistantMessage> {
 	const s = streamSimple(model, context, options);
+	return s.result();
+}
+
+export async function complete<TApi extends Api>(
+	model: Model<TApi>,
+	context: Context,
+	options?: ProviderStreamOptions,
+): Promise<AssistantMessage> {
+	const s = stream(model, context, options);
 	return s.result();
 }
 

@@ -83,15 +83,6 @@ export const createContentionTracker = (): ContentionTracker => {
     return state;
   };
 
-  const releasePath = (runId: string, pathKey: string): void => {
-    const owners = pathOwners.get(pathKey);
-    if (!owners) return;
-    owners.delete(runId);
-    if (owners.size === 0) {
-      pathOwners.delete(pathKey);
-    }
-  };
-
   const releaseRun = (state: RunState, releasedPaths?: string[]): void => {
     for (const pathKey of state.touchedPaths) {
       const owners = pathOwners.get(pathKey);

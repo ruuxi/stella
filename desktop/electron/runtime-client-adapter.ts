@@ -529,6 +529,10 @@ export class RuntimeClientAdapter {
     return this.activeRun;
   }
 
+  async resumeRunEvents(payload: { runId: string; lastSeq: number }) {
+    return await this.client.resumeRunEvents(payload);
+  }
+
   cancelLocalChat(runId: string) {
     return void this.client.cancelChat(runId);
   }

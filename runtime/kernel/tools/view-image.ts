@@ -3,25 +3,6 @@ import { promises as fs } from "node:fs";
 import { resolveFilePath } from "./file.js";
 import type { ToolContext, ToolResult } from "./types.js";
 
-export const VIEW_IMAGE_TOOL_NAME = "view_image";
-
-export const VIEW_IMAGE_JSON_SCHEMA = {
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      description: "Absolute or repo-relative path to a local image file.",
-    },
-    detail: {
-      type: "string",
-      enum: ["original"],
-      description:
-        "Optional fidelity hint. The only supported value is `original`.",
-    },
-  },
-  required: ["path"],
-} as const;
-
 const imageMimeForPath = (filePath: string): string | null => {
   const lower = filePath.toLowerCase();
   if (lower.endsWith(".png")) return "image/png";

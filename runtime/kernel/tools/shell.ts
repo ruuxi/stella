@@ -811,11 +811,6 @@ const waitForShellActivity = async (
   });
 };
 
-const takeUnreadOutput = (
-  record: ManagedShellRecord,
-  maxChars: number,
-): string => drainUnreadOutput(record, maxChars).text;
-
 const settleCompletedShell = async (
   record: ManagedShellRecord,
   signal?: AbortSignal,

@@ -12,58 +12,6 @@ import { fileChange } from "../../../desktop/src/shared/contracts/file-changes.j
 
 export const IMAGE_GEN_TOOL_NAME = "image_gen";
 
-export const IMAGE_GEN_JSON_SCHEMA = {
-  type: "object",
-  properties: {
-    prompt: {
-      type: "string",
-      description: "Natural-language prompt describing the image to generate.",
-    },
-    aspect_ratio: {
-      type: "string",
-      description:
-        "Optional aspect ratio like `1:1`, `16:9`, `9:16`, `4:3`, or `3:4`.",
-    },
-    profile: {
-      type: "string",
-      enum: ["best", "fast"],
-      description: "Optional model profile. Defaults to `best`.",
-    },
-    quality: {
-      type: "string",
-      enum: ["low", "medium", "high"],
-      description: "Optional quality hint forwarded to the media backend.",
-    },
-    output_format: {
-      type: "string",
-      enum: ["png", "jpeg", "webp"],
-      description: "Optional output format. Defaults to provider defaults.",
-    },
-    num_images: {
-      type: "number",
-      description: "Optional number of images to request (1-4). Defaults to 1.",
-    },
-    timeout_ms: {
-      type: "number",
-      description:
-        "Maximum time to wait for completion before returning an error. Defaults to 180000.",
-    },
-    referenceImagePaths: {
-      type: "array",
-      items: { type: "string" },
-      description:
-        "Optional local image paths used as references. The runtime base64-encodes them and switches to the image_edit capability.",
-    },
-    referenceImageUrls: {
-      type: "array",
-      items: { type: "string" },
-      description:
-        "Optional remote http(s) image URLs used as references. Mix with referenceImagePaths when you have a local subject photo plus remote product photos.",
-    },
-  },
-  required: ["prompt"],
-} as const;
-
 type MediaToolOptions = {
   getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
   queryConvex?: (

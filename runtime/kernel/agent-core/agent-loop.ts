@@ -6,6 +6,7 @@
 import type { AssistantMessage, Context, ToolResultMessage } from "../../ai/types.js";
 import { streamSimple } from "../../ai/stream.js";
 import { EventStream } from "../../ai/utils/event-stream.js";
+import { isContextOverflow } from "../../ai/utils/overflow.js";
 import { validateToolArguments } from "../../ai/utils/validation.js";
 import type {
 	AgentContext,
@@ -21,8 +22,7 @@ import type {
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
 /**
- * Start an agent loop with a new prompt message.
- * The prompt is added to the context and events are emitted for it.
+ * Start an agent loop with new prompt messages and expose emitted events as a stream.
  */
 export function agentLoop(
 	prompts: AgentMessage[],
@@ -50,12 +50,7 @@ export function agentLoop(
 }
 
 /**
- * Continue an agent loop from the current context without adding a new message.
- * Used for retries - context already has user message or tool results.
- *
- * **Important:** The last message in context must convert to a `user` or `toolResult` message
- * via `convertToLlm`. If it doesn't, the LLM provider will reject the request.
- * This cannot be validated here since `convertToLlm` is only called once per turn.
+ * Continue an agent loop from the current context and expose emitted events as a stream.
  */
 export function agentLoopContinue(
 	context: AgentContext,
@@ -67,8 +62,7 @@ export function agentLoopContinue(
 		throw new Error("Cannot continue: no messages in context");
 	}
 
-	const lastMessage = context.messages[context.messages.length - 1];
-	if (lastMessage && lastMessage.role === "assistant") {
+	if (context.messages[context.messages.length - 1]?.role === "assistant") {
 		throw new Error("Cannot continue from message role: assistant");
 	}
 
@@ -147,7 +141,7 @@ function createAgentStream(): EventStream<AgentEvent, AgentMessage[]> {
 }
 
 /**
- * Main loop logic shared by agentLoop and agentLoopContinue.
+ * Main loop logic shared by the agent loop entrypoints.
  */
 async function runLoop(
 	currentContext: AgentContext,
@@ -270,6 +264,19 @@ async function streamAssistantResponse(
 		signal,
 	});
 
+	const normalizeFinalMessage = (message: AssistantMessage): AssistantMessage => {
+		if (!isContextOverflow(message, config.model.contextWindow)) {
+			return message;
+		}
+		return {
+			...message,
+			stopReason: "error",
+			errorMessage:
+				message.errorMessage?.trim() ||
+				`Context overflow: model context window is ${config.model.contextWindow} tokens.`,
+		};
+	};
+
 	let partialMessage: AssistantMessage | null = null;
 	let addedPartial = false;
 
@@ -304,7 +311,7 @@ async function streamAssistantResponse(
 
 			case "done":
 			case "error": {
-				const finalMessage = await response.result();
+				const finalMessage = normalizeFinalMessage(await response.result());
 				if (addedPartial) {
 					context.messages[context.messages.length - 1] = finalMessage;
 				} else {
@@ -317,7 +324,7 @@ async function streamAssistantResponse(
 		}
 	}
 
-	const finalMessage = await response.result();
+	const finalMessage = normalizeFinalMessage(await response.result());
 	if (addedPartial) {
 		context.messages[context.messages.length - 1] = finalMessage;
 	} else {

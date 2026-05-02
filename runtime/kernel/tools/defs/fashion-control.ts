@@ -45,7 +45,7 @@ export const createFashionControlTools = (
       type: "object",
       properties: {},
     },
-    execute: async (args, context) => {
+    execute: async (_args, context) => {
       const denied = requireFashionAgent("FashionGetContext", context);
       if (denied) return denied;
       try {

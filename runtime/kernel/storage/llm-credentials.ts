@@ -88,13 +88,6 @@ export const getLocalLlmCredential = (
   return unprotectValue(credentialScope(normalizedProvider), record.valueProtected);
 };
 
-export const hasLocalLlmCredential = (
-  stellaRoot: string,
-  provider: string,
-): boolean => {
-  return Boolean(getLocalLlmCredential(stellaRoot, provider));
-};
-
 export const saveLocalLlmCredential = (
   stellaRoot: string,
   payload: { provider: string; label: string; plaintext: string },

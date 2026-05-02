@@ -565,6 +565,8 @@ export const maybeCompactRuntimeThread = async (args: {
   threadKey: string;
   resolvedLlm: ResolvedLlmRoute;
   agentType: string;
+  overrideSummary?: string;
+  preserveLastN?: number;
 }): Promise<void> => {
   const storedMessages = args.store.loadThreadMessages(args.threadKey);
   if (storedMessages.length === 0) {
@@ -576,16 +578,27 @@ export const maybeCompactRuntimeThread = async (args: {
     return;
   }
 
-  const splitMessages = splitThreadMessagesForCompaction(storedMessages);
+  const preserveLastN =
+    Number.isFinite(args.preserveLastN) && args.preserveLastN !== undefined
+      ? Math.max(0, Math.floor(args.preserveLastN))
+      : THREAD_COMPACTION_MIN_TAIL_MESSAGES;
+  const splitMessages = splitThreadMessagesForCompaction(
+    storedMessages,
+    THREAD_COMPACTION_PROTECT_HEAD_MESSAGES,
+    THREAD_COMPACTION_KEEP_RECENT_TOKENS,
+    preserveLastN,
+  );
   if (!splitMessages) {
     return;
   }
 
-  const summary = await generateThreadSummary({
-    messages: splitMessages.middleMessages,
-    previousSummary: splitMessages.previousSummary,
-    resolvedLlm: args.resolvedLlm,
-  });
+  const summary =
+    args.overrideSummary?.trim() ||
+    (await generateThreadSummary({
+      messages: splitMessages.middleMessages,
+      previousSummary: splitMessages.previousSummary,
+      resolvedLlm: args.resolvedLlm,
+    }));
   if (!summary) {
     return;
   }

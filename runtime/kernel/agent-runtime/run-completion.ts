@@ -136,6 +136,9 @@ const maybeCompactOrchestratorThread = async (args: {
   }
 
   let shouldCompact = true;
+  let hookCompaction:
+    | { summary: string; preserveLastN?: number }
+    | undefined;
   if (args.opts.hookEmitter) {
     const hookResult = await args.opts.hookEmitter
       .emit(
@@ -150,6 +153,15 @@ const maybeCompactOrchestratorThread = async (args: {
     if (hookResult?.cancel) {
       shouldCompact = false;
     }
+    const summary = hookResult?.compaction?.summary?.trim();
+    if (summary) {
+      hookCompaction = {
+        summary,
+        ...(hookResult?.compaction?.preserveLastN !== undefined
+          ? { preserveLastN: hookResult.compaction.preserveLastN }
+          : {}),
+      };
+    }
   }
 
   if (!shouldCompact) {
@@ -161,6 +173,14 @@ const maybeCompactOrchestratorThread = async (args: {
     threadKey: args.threadKey,
     resolvedLlm: args.opts.resolvedLlm,
     agentType: args.opts.agentType,
+    ...(hookCompaction
+      ? {
+          overrideSummary: hookCompaction.summary,
+          ...(hookCompaction.preserveLastN !== undefined
+            ? { preserveLastN: hookCompaction.preserveLastN }
+            : {}),
+        }
+      : {}),
   });
 };
 

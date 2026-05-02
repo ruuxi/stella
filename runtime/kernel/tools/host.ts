@@ -63,8 +63,6 @@ const SOCIAL_SESSION_TOOL_NAMES = new Set([
   "multi_tool_use_parallel",
 ]);
 
-const USER_FACING_AGENT_TOOL_NAMES = new Set(["askQuestion"]);
-
 const WORKER_ONLY_TOOL_NAMES = new Set(["MCP"]);
 
 const GENERAL_EXCLUDED_TOOL_NAMES = new Set(["image_gen"]);

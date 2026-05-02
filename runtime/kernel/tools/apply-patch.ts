@@ -9,21 +9,6 @@ import {
   fileChange,
 } from "../../../desktop/src/shared/contracts/file-changes.js";
 
-export const APPLY_PATCH_TOOL_NAME = "apply_patch";
-
-/** Same shape as Codex `create_apply_patch_json_tool`; handler also accepts `patch`. */
-export const APPLY_PATCH_JSON_SCHEMA = {
-  type: "object",
-  properties: {
-    input: {
-      type: "string",
-      description:
-        "Patch envelope starting with `*** Begin Patch` and ending with `*** End Patch`.",
-    },
-  },
-  required: ["input"],
-} as const;
-
 type FileOp =
   | { kind: "add"; path: string; lines: string[] }
   | { kind: "delete"; path: string }

@@ -389,14 +389,32 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       }
       const buffer = conversationEventBuffers.get(conversationId);
       const activeRun = activeRunByConversation.get(conversationId) ?? null;
+      const bufferedEvents = buffer
+        ? buffer.events.filter((agentEvent) => agentEvent.seq > lastSeq)
+        : [];
+      let events = bufferedEvents;
+      if (activeRun && events.length === 0) {
+        const stellaHostRunner = options.getStellaHostRunner();
+        if (stellaHostRunner) {
+          try {
+            const replay = await stellaHostRunner.resumeRunEvents({
+              runId: activeRun.runId,
+              lastSeq,
+            });
+            if (!replay.exhausted) {
+              events = replay.events;
+            }
+          } catch {
+            // Resume can still hydrate from local chat and task snapshots.
+          }
+        }
+      }
       const tasks = Array.from(tasksByRunId.entries())
         .filter(([runId]) => runToConversationId.get(runId) === conversationId)
         .flatMap(([, taskMap]) => Array.from(taskMap.values()));
       return {
         activeRun,
-        events: buffer
-          ? buffer.events.filter((agentEvent) => agentEvent.seq > lastSeq)
-          : [],
+        events,
         tasks,
       };
     },
