@@ -753,6 +753,13 @@ export type PublicApiType = {
         any,
         string | undefined
       >;
+      recordPackageInstall: FunctionReference<
+        "mutation",
+        "public",
+        { packageId: string },
+        any,
+        string | undefined
+      >;
       getPackage: FunctionReference<
         "query",
         "public",
