@@ -1,8 +1,7 @@
 ---
-
-## name: stella-browser
-
+name: stella-browser
 description: Browser automation through Stella's Chrome extension bridge. Use when the agent needs to control the user's real browser tabs, navigate sites, click and type, inspect pages, download files, or capture screenshots without launching a separate automation browser.
+---
 
 # Browser Automation with stella-browser
 
