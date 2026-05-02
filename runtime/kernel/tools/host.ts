@@ -18,6 +18,16 @@ import path from "node:path";
 import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
 
 import type {
+  Api,
+  Model,
+} from "../../ai/types.js";
+import {
+  APPLY_PATCH_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  getFileEditToolFamily,
+  WRITE_TOOL_NAME,
+} from "./file-edit-policy.js";
+import type {
   ToolContext,
   ToolHandler,
   ToolHandlerExtras,
@@ -59,7 +69,9 @@ const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
 const SOCIAL_SESSION_TOOL_NAMES = new Set([
   "Read",
   "Grep",
-  "apply_patch",
+  APPLY_PATCH_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  EDIT_TOOL_NAME,
   "multi_tool_use_parallel",
 ]);
 
@@ -255,22 +267,36 @@ export const createToolHost = ({
     killAllShells();
   };
 
-  const getToolCatalog = (agentType?: string) => {
+  const getToolCatalog = (
+    agentType?: string,
+    options?: { model?: Pick<Model<Api>, "api" | "provider" | "id" | "name"> },
+  ) => {
     const subagentExtras = agentType
       ? SUBAGENT_USER_FACING_TOOL_NAMES[agentType]
       : undefined;
+    const fileEditToolFamily = getFileEditToolFamily({
+      agentType,
+      model: options?.model,
+    });
     return Array.from(toolCatalog.values()).filter((tool) =>
-      agentType === AGENT_IDS.GENERAL &&
-      GENERAL_EXCLUDED_TOOL_NAMES.has(tool.name)
+      fileEditToolFamily === "write_edit" &&
+      tool.name === APPLY_PATCH_TOOL_NAME
         ? false
-        : WORKER_ONLY_TOOL_NAMES.has(tool.name) &&
-            agentType !== AGENT_IDS.GENERAL
+        : fileEditToolFamily === "apply_patch" &&
+            (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME)
           ? false
-          : agentType === AGENT_IDS.SOCIAL_SESSION
-            ? SOCIAL_SESSION_TOOL_NAMES.has(tool.name)
-            : agentType === AGENT_IDS.ORCHESTRATOR ||
-              (subagentExtras !== undefined && subagentExtras.has(tool.name)) ||
-              !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
+          : agentType === AGENT_IDS.GENERAL &&
+              GENERAL_EXCLUDED_TOOL_NAMES.has(tool.name)
+            ? false
+            : WORKER_ONLY_TOOL_NAMES.has(tool.name) &&
+                agentType !== AGENT_IDS.GENERAL
+              ? false
+              : agentType === AGENT_IDS.SOCIAL_SESSION
+                ? SOCIAL_SESSION_TOOL_NAMES.has(tool.name)
+                : agentType === AGENT_IDS.ORCHESTRATOR ||
+                  (subagentExtras !== undefined &&
+                    subagentExtras.has(tool.name)) ||
+                  !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
     );
   };
 

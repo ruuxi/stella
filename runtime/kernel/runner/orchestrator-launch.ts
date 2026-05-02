@@ -189,7 +189,9 @@ export const launchPreparedOrchestratorRun = (args: {
     attachments: prepared.attachments,
     agentContext: prepared.agentContext,
     callbacks: args.runtimeCallbacks,
-    toolCatalog: context.toolHost.getToolCatalog(prepared.agentType),
+    toolCatalog: context.toolHost.getToolCatalog(prepared.agentType, {
+      model: prepared.resolvedLlm.model,
+    }),
     toolExecutor: (toolName, toolArgs, toolContext, signal, onUpdate) =>
       context.toolHost.executeTool(
         toolName,

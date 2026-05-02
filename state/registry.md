@@ -34,7 +34,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 ## Tools
 
-The General agent uses a codex-style tool pack: `exec_command`, `write_stdin`, `apply_patch`, `web`, `RequestCredential`, `MCP`, `multi_tool_use_parallel`, `view_image`, and `computer_list_apps`. Internal specialist agents still use narrower tools like `Read`, `Grep`, `Dream`, `image_gen`, and scheduling surfaces when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large.
+The General agent uses a codex-style tool pack: `exec_command`, `write_stdin`, provider-selected file editing (`apply_patch` for OpenAI-authored models, `Write`/`Edit` for other models), `web`, `RequestCredential`, `MCP`, `multi_tool_use_parallel`, `view_image`, and `computer_list_apps`. Internal specialist agents still use narrower tools like `Read`, `Grep`, `Dream`, `image_gen`, and scheduling surfaces when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large.
 
 ## Dream
 

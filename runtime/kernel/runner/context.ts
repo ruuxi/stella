@@ -57,6 +57,10 @@ import {
 } from "./shared.js";
 import { resolveRunnerLlmRoute } from "./model-selection.js";
 import { getResponseLanguageSystemPrompt } from "./locale-prompt.js";
+import {
+  getFileEditToolFamily,
+  rewriteFileEditToolNames,
+} from "../tools/file-edit-policy.js";
 
 type ThreadHistoryEntry = {
   timestamp?: number;
@@ -653,7 +657,26 @@ export const buildAgentContext = async (
         };
   const enginePref = getAgentEnginePreference(args.agentType);
 
-  const toolsAllowlist = agent?.toolsAllowlist;
+  const fileEditToolFamily = getFileEditToolFamily({
+    agentType: args.agentType,
+    model: resolvedLlm.model,
+  });
+  const toolsAllowlist = rewriteFileEditToolNames(
+    agent?.toolsAllowlist,
+    fileEditToolFamily,
+  );
+  if (
+    args.agentType !== AGENT_IDS.ORCHESTRATOR &&
+    fileEditToolFamily === "write_edit"
+  ) {
+    dynamicContextSections.push(
+      [
+        "## File Editing Tools",
+        "This run is using a non-OpenAI model. Use `Write` for new or full-file edits and `Edit` for targeted replacements.",
+        "`apply_patch` is not available in this run.",
+      ].join("\n"),
+    );
+  }
   if (
     args.agentType === AGENT_IDS.ORCHESTRATOR ||
     args.agentType === AGENT_IDS.GENERAL

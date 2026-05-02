@@ -682,7 +682,9 @@ export const createAgentOrchestration = (
           userPrompt: composedUserPrompt,
           selfModMetadata: effectiveSelfModMetadata,
           agentContext,
-          toolCatalog: context.toolHost.getToolCatalog(agentType),
+          toolCatalog: context.toolHost.getToolCatalog(agentType, {
+            model: resolvedLlm.model,
+          }),
           toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,
           stellaHome: context.stellaRoot,
