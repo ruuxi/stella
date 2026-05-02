@@ -143,7 +143,7 @@ describe("self-mod HMR controller", () => {
 
   it("includes the generated route tree when a route file changes", async () => {
     const root = makeTempRoot();
-    const routePath = path.join(root, "desktop/src/routes/snake.tsx");
+    const routePath = path.join(root, "desktop/src/routes/settings.tsx");
     const routeTreePath = path.join(root, "desktop/src/routeTree.gen.ts");
     mkdirSync(path.dirname(routePath), { recursive: true });
     writeFileSync(routePath, "export const Route = null;\n");
@@ -160,12 +160,12 @@ describe("self-mod HMR controller", () => {
 
     expect(result.appliedRuns).toHaveLength(1);
     expect(result.appliedRuns[0]!.paths).toEqual([
-      "desktop/src/routes/snake.tsx",
+      "desktop/src/routes/settings.tsx",
       "desktop/src/routeTree.gen.ts",
     ]);
     expect(result.appliedRuns[0]!.files).toEqual([
       {
-        path: "desktop/src/routes/snake.tsx",
+        path: "desktop/src/routes/settings.tsx",
         content: "export const Route = null;\n",
       },
       {
@@ -177,7 +177,7 @@ describe("self-mod HMR controller", () => {
 
   it("captures the generated route tree at finalize time", async () => {
     const root = makeTempRoot();
-    const routePath = path.join(root, "desktop/src/routes/snake.tsx");
+    const routePath = path.join(root, "desktop/src/routes/settings.tsx");
     const routeTreePath = path.join(root, "desktop/src/routeTree.gen.ts");
     mkdirSync(path.dirname(routePath), { recursive: true });
     writeFileSync(routePath, "export const Route = null;\n");
