@@ -146,6 +146,13 @@ export function createHmrTransitionController(deps: {
     };
 
     if (!fullWindow || fullWindow.isDestroyed() || !overlayController) {
+      console.warn("[self-mod-hmr] Applying without morph cover:", {
+        reason: !fullWindow || fullWindow.isDestroyed()
+          ? "missing-full-window"
+          : "missing-overlay-controller",
+        runIds: opts.runIds,
+        requiresFullReload: opts.requiresFullReload,
+      });
       await applyWithoutMorph(
         fullWindow && !fullWindow.isDestroyed() ? fullWindow : null,
       );
@@ -162,6 +169,15 @@ export function createHmrTransitionController(deps: {
       captureWindowDataUrl(fullWindow),
     ]);
     if (!overlayReadyForMorph || !oldScreenshot) {
+      console.warn("[self-mod-hmr] Applying without morph cover:", {
+        reason: !overlayReadyForMorph
+          ? "overlay-not-ready"
+          : "pre-capture-failed",
+        runIds: opts.runIds,
+        requiresFullReload: opts.requiresFullReload,
+        overlayReadyForMorph,
+        hasOldScreenshot: Boolean(oldScreenshot),
+      });
       await applyWithoutMorph(fullWindow);
       return;
     }
@@ -232,6 +248,11 @@ export function createHmrTransitionController(deps: {
 
       const newScreenshot = await captureWindowDataUrl(fullWindow);
       if (!newScreenshot) {
+        console.warn("[self-mod-hmr] Morph reverse skipped:", {
+          reason: "post-capture-failed",
+          runIds: opts.runIds,
+          requiresFullReload,
+        });
         return;
       }
 
