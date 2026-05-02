@@ -13,7 +13,7 @@ obvious from the code.
 
 ## Adding a new app — use the scaffold
 
-For "add a Notes / Snake / Foo page", run the
+For "add a Notes / Foo page", run the
 [`create-stella-app`](../create-stella-app/SKILL.md) scaffold and edit only the resulting
 `<Component>View.tsx`. Don't hand-write metadata / route / shell files.
 

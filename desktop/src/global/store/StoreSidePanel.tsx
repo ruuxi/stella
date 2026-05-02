@@ -333,7 +333,7 @@ function PublishDialog({
                   type="text"
                   value={displayName}
                   onChange={(event) => handleNameChange(event.target.value)}
-                  placeholder="Cute snake game"
+                  placeholder="Example mod"
                   maxLength={120}
                 />
               </label>
@@ -345,7 +345,7 @@ function PublishDialog({
                   type="text"
                   value={packageId}
                   onChange={(event) => setPackageId(event.target.value)}
-                  placeholder="cute-snake-game"
+                  placeholder="example-mod"
                   maxLength={64}
                 />
               </label>
