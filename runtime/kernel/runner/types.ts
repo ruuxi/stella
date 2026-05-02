@@ -205,7 +205,6 @@ export type AgentCallbacks = {
 
 export type QueuedOrchestratorTurn = {
   priority: "user" | "system";
-  requeueOnInterrupt: boolean;
   execute: () => Promise<void>;
 };
 
@@ -243,10 +242,6 @@ export type RunnerState = {
   activeRunAbortControllers: Map<string, AbortController>;
   conversationCallbacks: Map<string, AgentCallbacks>;
   runCallbacksByRunId: Map<string, AgentCallbacks>;
-  interruptedRunIds: Set<string>;
-  activeToolExecutionCount: number;
-  interruptAfterTool: boolean;
-  activeInterruptedReplayTurn: QueuedOrchestratorTurn | null;
   loadedAgents: ParsedAgentLike[];
   googleWorkspaceToolsLoaded: boolean;
   googleWorkspaceDisconnect: (() => Promise<void>) | null;

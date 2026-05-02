@@ -15,7 +15,6 @@ export const executeOrQueueUserOrchestratorTurn = async <T>(args: {
   return await new Promise<T>((resolve, reject) => {
     args.queueOrchestratorTurn({
       priority: "user",
-      requeueOnInterrupt: false,
       execute: async () => {
         try {
           resolve(await args.execute());
@@ -34,7 +33,6 @@ export const executeOrQueueSystemOrchestratorTurn = async (args: {
 }): Promise<void> => {
   const queuedTurn: QueuedOrchestratorTurn = {
     priority: "system",
-    requeueOnInterrupt: true,
     execute: async () => {
       await args.execute(queuedTurn);
     },
