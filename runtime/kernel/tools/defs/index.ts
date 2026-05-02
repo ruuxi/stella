@@ -93,7 +93,10 @@ export const buildBuiltinTools = (
     requestCredential: options.requestCredential,
   }));
   tools.push(createWebTool({ webSearch: options.webSearch }));
-  tools.push(createMcpTool(options.stellaRoot));
+  tools.push(createMcpTool({
+    stellaRoot: options.stellaRoot,
+    executeTool: options.executeTool,
+  }));
 
   // macOS computer-use surface (9 sibling tools sharing one CLI wrapper).
   tools.push(

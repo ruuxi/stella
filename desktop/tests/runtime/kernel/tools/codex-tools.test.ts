@@ -572,6 +572,75 @@ EOF`,
     }
   });
 
+  it("MCP exposes computer-use as a local deferred tool group", async () => {
+    const root = await createTempDir();
+    const host = createToolHost({ stellaRoot: root });
+    const context = {
+      conversationId: "c1",
+      deviceId: "d1",
+      requestId: "r1",
+      agentType: "general",
+      stellaRoot: root,
+      allowedToolNames: ["MCP"],
+    };
+
+    try {
+      const servers = await host.executeTool(
+        "MCP",
+        { action: "servers" },
+        context,
+      );
+      expect(servers.error).toBeUndefined();
+      expect(servers.result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "computer-use", source: "builtin" }),
+        ]),
+      );
+
+      const tools = await host.executeTool(
+        "MCP",
+        { action: "tools", server: "computer-use" },
+        context,
+      );
+      expect(tools.error).toBeUndefined();
+      expect(tools.result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "computer_get_app_state" }),
+          expect.objectContaining({ name: "computer_click" }),
+        ]),
+      );
+
+      const call = await host.executeTool(
+        "MCP",
+        {
+          action: "call",
+          server: "computer-use",
+          tool: "computer_list_apps",
+          arguments: {},
+        },
+        context,
+      );
+      expect(call.error).toContain("stella-computer CLI is not configured");
+    } finally {
+      await host.shutdown();
+    }
+  });
+
+  it("keeps only computer_list_apps direct in the general agent allowlist", async () => {
+    const promptPath = path.join(
+      process.cwd(),
+      "runtime/extensions/stella-runtime/agents/general.md",
+    );
+    const prompt = await readFile(promptPath, "utf-8");
+    const toolsLine = prompt
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("tools: "));
+
+    expect(toolsLine).toContain("computer_list_apps");
+    expect(toolsLine).not.toContain("computer_get_app_state");
+    expect(toolsLine).not.toContain("computer_click");
+  });
+
   it("RequestCredential delegates to the device callback", async () => {
     const root = await createTempDir();
     const host = createToolHost({
