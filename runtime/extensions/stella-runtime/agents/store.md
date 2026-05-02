@@ -47,7 +47,7 @@ If the user clicked Edit, you'll see the current draft under `## Current draft`.
 
 Wrap your final spec in exactly one fenced block tagged `blueprint`:
 
-````
+```
 ```blueprint
 # Realtime voice overlay
 
@@ -117,8 +117,8 @@ const promptMessages = [{
 
 The biggest thing the install agent should know: this is one full loop, not a UI port. **Overlay toggles voice → WebRTC realtime session opens → realtime tool call delegates to orchestrator → orchestrator calls `voice_result` → realtime voice speaks the final outcome.** If that loop isn't closed end-to-end, the model will hallucinate completions; that's the failure mode to watch for.
 ```
-````
+```
 
-You may optionally include a short `<message>...</message>` block before the fenced spec to explain anything the user should know. The fenced ` ```blueprint ` block is what the UI saves; nothing outside it ships.
+You may optionally include a short `<message>...</message>` block before the fenced spec to explain anything the user should know. The fenced ````blueprint` block is what the UI saves; nothing outside it ships.
 
 If the user's scope is unclear and you cannot draft yet, return only a one-paragraph question — do not produce an empty blueprint block.
