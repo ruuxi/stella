@@ -16,6 +16,7 @@ import {
   acquireSharedMicrophone,
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
+import type { EventRecord } from "@/shared/contracts/local-chat";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,6 +86,17 @@ const ECHO_GUARD_BARGE_IN_MIN_MIC_LEVEL = 0.05;
 const ECHO_GUARD_BARGE_IN_MARGIN = 0.02;
 const ECHO_GUARD_BARGE_IN_RATIO = 0.85;
 const ECHO_GUARD_RELEASE_MS = 180;
+const VOICE_CONTEXT_SYNC_EVENT_LIMIT = 80;
+
+const VOICE_SYNC_IGNORED_EVENT_TYPES = new Set([
+  "agent-started",
+  "agent-progress",
+]);
+const VOICE_SYNC_ANNOUNCE_EVENT_TYPES = new Set([
+  "agent-completed",
+  "agent-failed",
+  "agent-canceled",
+]);
 
 type VoiceEchoMetrics = {
   assistantSpeaking: boolean;
@@ -162,6 +174,9 @@ export class RealtimeVoiceSession {
   private inputEnergyBuffer: Uint8Array | null = null;
   private outputEnergyBuffer: Uint8Array | null = null;
   private unsubscribeActionCompleted: (() => void) | null = null;
+  private unsubscribeLocalChatUpdated: (() => void) | null = null;
+  private syncedLocalEventIds = new Set<string>();
+  private localChatSyncPromise: Promise<void> = Promise.resolve();
 
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
@@ -186,6 +201,10 @@ export class RealtimeVoiceSession {
     this.unsubscribeActionCompleted =
       window.electronAPI?.voice.onActionCompleted?.((payload) => {
         this.handleVoiceActionCompleted(payload);
+      }) ?? null;
+    this.unsubscribeLocalChatUpdated =
+      window.electronAPI?.localChat.onUpdated?.(() => {
+        void this.syncLocalChatContext();
       }) ?? null;
   }
 
@@ -357,6 +376,7 @@ export class RealtimeVoiceSession {
       getVoiceRuntimeState().activeSession = this;
       this.trace("CONNECTED", `conv=${conversationId}`);
       this.setState("connected");
+      void this.syncLocalChatContext({ markExisting: true });
     } catch (err) {
       if (this.destroyed) return;
       this.cleanup();
@@ -730,6 +750,122 @@ export class RealtimeVoiceSession {
     if (this.dc?.readyState === "open") {
       this.dc.send(JSON.stringify(event));
     }
+  }
+
+  private syncLocalChatContext(options?: { markExisting?: boolean }): Promise<void> {
+    this.localChatSyncPromise = this.localChatSyncPromise
+      .catch(() => undefined)
+      .then(async () => {
+        if (this.destroyed || this._state !== "connected" || !this.conversationId) {
+          return;
+        }
+        const api = window.electronAPI?.localChat;
+        if (!api?.listEvents) {
+          return;
+        }
+
+        const events = await api.listEvents({
+          conversationId: this.conversationId,
+          maxItems: VOICE_CONTEXT_SYNC_EVENT_LIMIT,
+        });
+
+        if (options?.markExisting) {
+          for (const event of events) {
+            this.syncedLocalEventIds.add(event._id);
+          }
+          return;
+        }
+
+        for (const event of events) {
+          if (this.syncedLocalEventIds.has(event._id)) {
+            continue;
+          }
+          this.syncedLocalEventIds.add(event._id);
+          this.injectLocalChatEvent(event);
+        }
+      })
+      .catch((err) => {
+        console.debug(
+          "[realtime-voice] Failed to sync local chat context:",
+          (err as Error).message,
+        );
+      });
+
+    return this.localChatSyncPromise;
+  }
+
+  private injectLocalChatEvent(event: EventRecord) {
+    const mapped = this.mapLocalChatEventForVoice(event);
+    if (!mapped) {
+      return;
+    }
+
+    this.sendEvent({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: `[System: ${mapped.text}]`,
+          },
+        ],
+      },
+    });
+    if (mapped.announce) {
+      this.sendEvent({ type: "response.create" });
+    }
+  }
+
+  private mapLocalChatEventForVoice(
+    event: EventRecord,
+  ): { text: string; announce: boolean } | null {
+    if (VOICE_SYNC_IGNORED_EVENT_TYPES.has(event.type)) {
+      return null;
+    }
+
+    const payload = event.payload ?? {};
+    if (event.type === "user_message" || event.type === "assistant_message") {
+      const text = typeof payload.text === "string" ? payload.text.trim() : "";
+      if (!text) {
+        return null;
+      }
+      if (payload.source === "voice") {
+        return null;
+      }
+      const speaker = event.type === "user_message" ? "User" : "Text orchestrator";
+      return {
+        text: `${speaker} message in the synced chat context: ${text}`,
+        announce: false,
+      };
+    }
+
+    if (event.type === "agent-completed") {
+      const result = typeof payload.result === "string" ? payload.result.trim() : "";
+      return {
+        text: `A delegated agent completed. ${result || "The delegated work is done."} Tell the user the result naturally if they have not already heard it.`,
+        announce: true,
+      };
+    }
+
+    if (event.type === "agent-failed" || event.type === "agent-canceled") {
+      const error = typeof payload.error === "string" ? payload.error.trim() : "";
+      const verb = event.type === "agent-failed" ? "failed" : "was canceled";
+      return {
+        text: `A delegated agent ${verb}. ${error || "No additional details were provided."} Tell the user briefly.`,
+        announce: true,
+      };
+    }
+
+    if (VOICE_SYNC_ANNOUNCE_EVENT_TYPES.has(event.type)) {
+      return {
+        text: `A delegated agent changed state: ${event.type}.`,
+        announce: true,
+      };
+    }
+
+    return null;
   }
 
   private async reportUsage(response: Record<string, unknown>) {
@@ -1242,6 +1378,9 @@ export class RealtimeVoiceSession {
     }
     this.unsubscribeActionCompleted?.();
     this.unsubscribeActionCompleted = null;
+    this.unsubscribeLocalChatUpdated?.();
+    this.unsubscribeLocalChatUpdated = null;
+    this.syncedLocalEventIds.clear();
 
     if (this.pc) {
       this.pc.close();
