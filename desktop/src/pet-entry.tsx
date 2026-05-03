@@ -9,6 +9,7 @@ import { convexClient } from "./infra/convex-client";
 import { ToastProvider } from "./ui/toast";
 import { PetOverlay } from "./shell/pet/PetOverlay";
 import type { PetOverlayStatus } from "./shared/contracts/pet";
+import { writePetOpenPreference } from "./shell/pet/pet-preferences";
 
 document.documentElement.dataset.stellaWindow = "pet";
 
@@ -61,6 +62,7 @@ export function PetWindowRoot() {
       status={status}
       onClose={() => {
         setOpen(false);
+        writePetOpenPreference(false);
         window.electronAPI?.pet?.setOpen?.(false);
       }}
     />
