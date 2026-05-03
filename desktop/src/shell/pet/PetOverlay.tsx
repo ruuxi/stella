@@ -192,32 +192,16 @@ export const PetOverlay = ({
     };
   }, []);
 
-  // Open / close the composer in two steps so the user never sees a
-  // mismatched frame:
-  //   - Open:  resize the window first (grows leftward), THEN mount the
-  //            popover. If we mounted first, the 380px popover would
-  //            render inside the still-280px window and visibly jump
-  //            once the resize lands.
-  //   - Close: unmount the popover first, THEN shrink the window. If
-  //            we shrank first, the popover would briefly render
-  //            outside the window's new bounds.
-  // The sprite is anchored to the window's right edge in both states,
-  // so its absolute screen position never changes across the resize.
+  // The pet window's bounds never change — it's permanently sized for
+  // the composer's footprint. Toggling the composer just mounts /
+  // unmounts the popover and flips the window's focusable state in
+  // main so the textarea can receive keystrokes. Both can fire in the
+  // same tick because there's no resize to sequence around.
   const requestChatOpen = useCallback(() => {
     setContextMenu(null);
-    if (chatOpen) {
-      // Closing.
-      setChatOpen(false);
-      window.setTimeout(() => {
-        window.electronAPI?.pet?.setComposerActive?.(false);
-      }, 16);
-      return;
-    }
-    // Opening.
-    window.electronAPI?.pet?.setComposerActive?.(true);
-    window.setTimeout(() => {
-      setChatOpen(true);
-    }, 32);
+    const next = !chatOpen;
+    setChatOpen(next);
+    window.electronAPI?.pet?.setComposerActive?.(next);
   }, [chatOpen]);
 
   // When the pet itself is hidden, force the composer closed too so

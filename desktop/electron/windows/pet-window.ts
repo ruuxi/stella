@@ -11,21 +11,25 @@ type PetWindowControllerOptions = {
 }
 
 /**
- * Width/height of the pet window in CSS pixels. Sized to comfortably
- * contain the 96px sprite plus the action arc fanning out to its left
- * and the status bubble floating above it. Anything bigger would
- * needlessly block clicks in surrounding screen pixels; anything
- * smaller would clip the bubble or arc.
+ * Width/height of the pet window in CSS pixels.
+ *
+ * The window is intentionally sized to fit BOTH the resting sprite
+ * (right-aligned, ~96px + action arc + bubble) AND the inline chat
+ * composer (380px popover to its left) at the same time, and we never
+ * resize it. Resizing a transparent macOS BrowserWindow causes the
+ * existing IOSurface to be visibly mis-positioned for one compositor
+ * frame before the renderer can repaint; for the pet that surfaces as
+ * a brief sideways jump of the sprite when the composer closes. Holding
+ * the bounds steady at the composer footprint sidesteps that entirely.
+ *
+ * The empty space to the left of the sprite while the composer is
+ * closed is fully transparent. macOS passes clicks through transparent
+ * pixels of `transparent: true` windows automatically, so the wider
+ * footprint does not start eating clicks in the surrounding screen
+ * area.
  */
-const PET_WINDOW_WIDTH = 280
+const PET_WINDOW_WIDTH = 540
 const PET_WINDOW_HEIGHT = 240
-/**
- * Wider footprint the window grows into while the inline chat
- * composer is open. The sprite stays anchored to the right side so it
- * doesn't visually jump; the new space appears on the left where the
- * composer renders.
- */
-const PET_WINDOW_COMPOSER_WIDTH = 540
 
 /** Margin from the active display edge when the pet has never been moved. */
 const DEFAULT_EDGE_MARGIN = 24
@@ -42,7 +46,7 @@ const pickDefaultPosition = () => {
 }
 
 /**
- * Dedicated tiny `BrowserWindow` that hosts the floating pet companion.
+ * Dedicated `BrowserWindow` that hosts the floating pet companion.
  *
  * The pet was originally rendered inside the screen-spanning unified
  * overlay window, but that approach forced us to play games with
@@ -51,9 +55,11 @@ const pickDefaultPosition = () => {
  * across focus changes / window respans, which produced "pet blocks
  * Stella's clicks even when the cursor is far from the pet".
  *
- * Giving the pet its own small window solves that cleanly: the window's
- * bounds *are* the hit zone. Clicks inside the bounds go to the pet,
- * clicks outside go to whatever app is below — no toggling required.
+ * Giving the pet its own dedicated window solves that cleanly: clicks
+ * on opaque pixels (the sprite, action arc, bubble, composer popover)
+ * go to the pet, and the surrounding fully-transparent area passes
+ * clicks through to whatever app is below — automatic on macOS for
+ * `transparent: true` windows, no toggling required.
  */
 class PetWindow {
   private window: BrowserWindow | null = null
@@ -204,45 +210,28 @@ class PetWindow {
     if (!this.window || this.window.isDestroyed()) return
     const rounded = { x: Math.round(x), y: Math.round(y) }
     this.position = rounded
-    const width = this.composerActive
-      ? PET_WINDOW_COMPOSER_WIDTH
-      : PET_WINDOW_WIDTH
     this.window.setBounds({
       x: rounded.x,
       y: rounded.y,
-      width,
+      width: PET_WINDOW_WIDTH,
       height: PET_WINDOW_HEIGHT,
     })
   }
 
   /**
-   * Toggle the inline chat composer footprint. We grow the window
-   * leftward (anchored to its current right edge so the sprite stays
-   * put visually) and flip `focusable` so the textarea can receive
-   * keystrokes — the resting pet window is non-focusable so it never
-   * steals focus from the user's active app.
+   * Toggle the inline chat composer's input affordance. The window's
+   * bounds never change (see the constant comment) — opening the
+   * composer just flips `focusable: true` so the textarea can receive
+   * keystrokes, brings the window forward without hijacking the user's
+   * current Space, and reverts to the resting non-focusable state on
+   * close so the pet never steals focus from the user's active app.
    */
   setComposerActive(active: boolean) {
     if (!this.window || this.window.isDestroyed()) return
     if (active === this.composerActive) return
     this.composerActive = active
-    const bounds = this.window.getBounds()
-    const targetWidth = active ? PET_WINDOW_COMPOSER_WIDTH : PET_WINDOW_WIDTH
-    // Anchor by the existing right edge so the sprite doesn't jump.
-    const rightEdge = bounds.x + bounds.width
-    const nextX = rightEdge - targetWidth
-    this.window.setBounds({
-      x: nextX,
-      y: bounds.y,
-      width: targetWidth,
-      height: PET_WINDOW_HEIGHT,
-    })
-    this.position = { x: nextX, y: bounds.y }
     this.window.setFocusable(active)
     if (active) {
-      // Bring the window to front *without* hijacking the user's
-      // current Space. Combined with `setFocusable(true)` this is
-      // enough to let the textarea pick up keystrokes.
       this.window.show()
       this.window.focus()
     } else {
