@@ -43,7 +43,8 @@ export type UserRowViewModel = {
   kind: "user";
   id: string;
   text: string;
-  sendAnimationState?: "preparing" | "entering";
+  /** True only for the freshly-sent user bubble — drives the entry animation. */
+  justSent?: boolean;
   windowLabel?: string;
   windowPreviewImageUrl?: string;
   attachments: Attachment[];
@@ -152,8 +153,7 @@ export const UserMessageRow = memo(
 
     return (
       <div
-        className={`event-row event-row--user${row.sendAnimationState ? ` event-row--send-${row.sendAnimationState}` : ""}`}
-        data-turn-id={row.id}
+        className={`event-row event-row--user${row.justSent ? " event-row--user--just-sent" : ""}`}
       >
         <div className="event-item user">
           {windowLabel && (

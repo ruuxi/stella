@@ -2,7 +2,7 @@
  * ChatColumn: column-reverse scroll viewport, message rendering, custom scrollbar, composer.
  */
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { DropOverlay } from "./DropOverlay";
@@ -25,55 +25,23 @@ export const ChatColumn = memo(function ChatColumn({
   onSuggestionClick,
   onDismissHome,
 }: ChatColumnProps) {
-  const pinnedTurnIdRef = useRef<string | null>(null);
-  const [readyAnimatedUserMessageId, setReadyAnimatedUserMessageId] = useState<string | null>(null);
-
-  useEffect(() => {
-    pinnedTurnIdRef.current = null;
-    setReadyAnimatedUserMessageId(null);
-  }, [conversationId]);
-
   const pendingUserMessageId = conversation.streaming.pendingUserMessageId;
-  const { scrollTurnToPinTop, hasScrollElement } = scroll;
+  const lastSentMessageIdRef = useRef<string | null>(null);
+  const { scrollToBottom } = scroll;
 
-  useLayoutEffect(() => {
+  // On send, nudge the viewport to the newest edge so the freshly-sent
+  // user bubble is in view. Column-reverse + ResizeObserver already
+  // follows new content while the user is at the bottom; this covers
+  // the case where the user had scrolled up to read history.
+  useEffect(() => {
     if (!pendingUserMessageId) {
-      pinnedTurnIdRef.current = null;
-      setReadyAnimatedUserMessageId(null);
+      lastSentMessageIdRef.current = null;
       return;
     }
-    if (pinnedTurnIdRef.current === pendingUserMessageId) return;
-
-    let attempts = 0;
-    let rafId: number | null = null;
-    let revealRafId: number | null = null;
-    const maxAttempts = 36;
-    const tick = () => {
-      const ok = scrollTurnToPinTop(pendingUserMessageId);
-      if (ok) {
-        pinnedTurnIdRef.current = pendingUserMessageId;
-        revealRafId = requestAnimationFrame(() => {
-          setReadyAnimatedUserMessageId(pendingUserMessageId);
-        });
-        return;
-      }
-      attempts += 1;
-      if (attempts < maxAttempts) {
-        rafId = requestAnimationFrame(tick);
-      }
-    };
-    tick();
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (revealRafId !== null) cancelAnimationFrame(revealRafId);
-    };
-  }, [
-    pendingUserMessageId,
-    conversation.events.length,
-    showHomeContent,
-    hasScrollElement,
-    scrollTurnToPinTop,
-  ]);
+    if (lastSentMessageIdRef.current === pendingUserMessageId) return;
+    lastSentMessageIdRef.current = pendingUserMessageId;
+    scrollToBottom("smooth");
+  }, [pendingUserMessageId, scrollToBottom]);
 
   // --- Custom scrollbar thumb drag ---
   const isDraggingRef = useRef(false);
@@ -114,7 +82,6 @@ export const ChatColumn = memo(function ChatColumn({
     setViewportElement,
     showScrollButton,
     isAtBottom,
-    scrollToBottom,
     thumbState,
   } = scroll;
 
@@ -222,9 +189,6 @@ export const ChatColumn = memo(function ChatColumn({
               streamingText={conversation.streaming.text}
               isStreaming={conversation.streaming.isStreaming}
               pendingUserMessageId={conversation.streaming.pendingUserMessageId}
-              pendingUserMessageReady={
-                readyAnimatedUserMessageId === conversation.streaming.pendingUserMessageId
-              }
               selfModMap={conversation.streaming.selfModMap}
               hasOlderEvents={conversation.history.hasOlderEvents}
               isLoadingOlder={conversation.history.isLoadingOlder}
