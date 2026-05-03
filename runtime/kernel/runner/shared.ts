@@ -28,6 +28,8 @@ export {
   sanitizeConvexDeploymentUrl,
   sanitizeStellaBase,
 };
+export const QUEUED_TURN_INTERRUPT_ERROR =
+  "Interrupted by queued orchestrator turn";
 
 export const escapeHtml = (value: string) =>
   value

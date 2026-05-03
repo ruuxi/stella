@@ -35,6 +35,22 @@ export const CustomPlusSquare = ({ size = 18, className = "", ...props }: IconPr
   </svg>
 );
 
+export const CustomFolder = ({ size = 18, className = "", ...props }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`custom-icon icon-folder ${className}`} {...props}>
+    <path className="folder-p" d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+  </svg>
+);
+
+export const CustomPalette = ({ size = 18, className = "", ...props }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`custom-icon icon-palette ${className}`} {...props}>
+    <circle className="pal-c1" cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+    <circle className="pal-c2" cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+    <circle className="pal-c3" cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+    <circle className="pal-c4" cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+    <path className="pal-p" d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.6 1.5-1.5 0-.4-.1-.7-.3-1-.2-.2-.3-.5-.3-.8 0-.8.7-1.5 1.5-1.5h1.2c3.2 0 5.8-2.6 5.8-5.8C21.8 6.2 17.4 2 12 2z" />
+  </svg>
+);
+
 export const CustomSettings = ({ size = 18, className = "", ...props }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`custom-icon icon-settings ${className}`} {...props}>
     <circle className="set-c" cx="12" cy="12" r="3" />
@@ -47,6 +63,17 @@ export const CustomStore = ({ size = 18, className = "", ...props }: IconProps) 
     <path className="store-bag" d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" />
     <line className="store-line" x1="3" y1="6" x2="21" y2="6" />
     <path className="store-handle" d="M16 10a4 4 0 01-8 0" />
+  </svg>
+);
+
+export const CustomPet = ({ size = 18, className = "", ...props }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`custom-icon icon-pet ${className}`} {...props}>
+    <circle className="pet-paw1" cx="11" cy="4.5" r="1.6" />
+    <circle className="pet-paw2" cx="17.5" cy="7.5" r="1.6" />
+    <circle className="pet-paw3" cx="20" cy="13" r="1.6" />
+    <circle className="pet-paw4" cx="6.5" cy="7.5" r="1.6" />
+    <circle className="pet-paw5" cx="4" cy="13" r="1.6" />
+    <path className="pet-pad" d="M12 21c-3.3 0-6-2-6-4.6 0-2.6 2.7-4.4 6-4.4s6 1.8 6 4.4c0 2.6-2.7 4.6-6 4.6z" />
   </svg>
 );
 
@@ -66,5 +93,26 @@ export const CustomLogIn = ({ size = 18, className = "", ...props }: IconProps) 
     <path className="li-p1" d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" />
     <path className="li-p2" d="M10 17l5-5-5-5" />
     <path className="li-p3" d="M15 12H3" />
+  </svg>
+);
+
+export const CustomUser = ({ size = 18, className = "", ...props }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`custom-icon icon-user ${className}`} {...props}>
+    <path className="usr-p1" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+    <circle className="usr-c1" cx="12" cy="7" r="4" />
+  </svg>
+);
+
+export const CustomAlertCircle = ({ size = 18, className = "", ...props }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`custom-icon icon-alert ${className}`} {...props}>
+    <circle className="al-c1" cx="12" cy="12" r="10" />
+    <line className="al-l1" x1="12" y1="8" x2="12" y2="12" />
+    <line className="al-l2" x1="12" y1="16" x2="12.01" y2="16" />
+  </svg>
+);
+
+export const CustomArrowLeft = ({ size = 18, className = "", ...props }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`custom-icon icon-arrow-left ${className}`} {...props}>
+    <path className="arr-p1" d="M19 12H5M12 19l-7-7 7-7" />
   </svg>
 );
