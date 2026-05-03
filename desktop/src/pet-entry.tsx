@@ -1,9 +1,11 @@
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
+import { ConvexProvider } from "convex/react";
 import "./index.css";
 import "./ui/register-styles";
 import { ThemeProvider } from "./context/theme-context";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
+import { convexClient } from "./infra/convex-client";
 import { ToastProvider } from "./ui/toast";
 import { PetOverlay } from "./shell/pet/PetOverlay";
 import type { PetOverlayStatus } from "./shared/contracts/pet";
@@ -26,7 +28,7 @@ const IDLE_PET_STATUS: PetOverlayStatus = {
  * clicks outside the bounds go to whatever app is below — no
  * `setIgnoreMouseEvents` toggling required.
  */
-function PetWindowRoot() {
+export function PetWindowRoot() {
   const [open, setOpen] = useState(true);
   const [status, setStatus] = useState<PetOverlayStatus>(IDLE_PET_STATUS);
 
@@ -67,10 +69,12 @@ function PetWindowRoot() {
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
-    <ThemeProvider>
-      <ToastProvider>
-        <PetWindowRoot />
-      </ToastProvider>
-    </ThemeProvider>
+    <ConvexProvider client={convexClient}>
+      <ThemeProvider>
+        <ToastProvider>
+          <PetWindowRoot />
+        </ToastProvider>
+      </ThemeProvider>
+    </ConvexProvider>
   </ErrorBoundary>,
 );
