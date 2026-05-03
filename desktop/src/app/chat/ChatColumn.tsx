@@ -163,7 +163,11 @@ export const ChatColumn = memo(function ChatColumn({
         {...dropHandlers}
       >
         <DropOverlay visible={isDragOver} variant="surface" />
-        <HomeContent onDismissHome={onDismissHome}>
+        <HomeContent
+          conversationId={conversationId}
+          onDismissHome={onDismissHome}
+          onSuggestionClick={onSuggestionClick}
+        >
           <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
             {composerElement}
           </div>
