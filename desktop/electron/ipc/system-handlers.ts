@@ -1239,18 +1239,15 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     }
     const stellaRoot = options.getStellaRoot();
     if (!stellaRoot) {
-      return { enabled: false, provider: "openai" };
+      return { enabled: false };
     }
     const prefs = loadLocalPreferences(stellaRoot);
-    return {
-      enabled: prefs.localLlmKeysEnabled,
-      provider: prefs.localLlmProvider,
-    };
+    return { enabled: prefs.localLlmKeysEnabled };
   });
 
   ipcMain.handle(
     "llmCredentials:setRoutingPreference",
-    (event, payload: { enabled?: boolean; provider?: string }) => {
+    (event, payload: { enabled?: boolean }) => {
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
@@ -1263,16 +1260,10 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (!stellaRoot) {
         throw new Error("Local Stella root is unavailable.");
       }
-      const provider =
-        asTrimmedString(payload?.provider).toLowerCase() || "openai";
       const prefs = loadLocalPreferences(stellaRoot);
       prefs.localLlmKeysEnabled = payload?.enabled === true;
-      prefs.localLlmProvider = provider;
       saveLocalPreferences(stellaRoot, prefs);
-      return {
-        enabled: prefs.localLlmKeysEnabled,
-        provider: prefs.localLlmProvider,
-      };
+      return { enabled: prefs.localLlmKeysEnabled };
     },
   );
 

@@ -3,7 +3,7 @@ import type { Model } from "../../../../runtime/ai/types.js";
 
 const credentials = new Map<string, string>();
 const oauthCredentials = new Set<string>();
-let localPreference = { enabled: false, provider: "openai" };
+let localKeysEnabled = false;
 
 vi.mock("../../../../runtime/kernel/storage/llm-credentials.js", () => ({
   getLocalLlmCredential: (_stellaRoot: string, provider: string) =>
@@ -18,7 +18,7 @@ vi.mock("../../../../runtime/kernel/storage/llm-oauth-credentials.js", () => ({
 }));
 
 vi.mock("../../../../runtime/kernel/preferences/local-preferences.js", () => ({
-  getLocalLlmProviderPreference: () => localPreference,
+  isLocalLlmKeysEnabled: () => localKeysEnabled,
 }));
 
 const model = (
@@ -45,7 +45,7 @@ vi.mock("../../../../runtime/ai/models.js", () => ({
       case "anthropic":
         return [model("anthropic", "claude-opus-4.6")];
       case "openrouter":
-        return [model("openrouter", "openai/gpt-5.1-codex")];
+        return [model("openrouter", "anthropic/claude-opus-4.6")];
       case "vercel-ai-gateway":
         return [model("vercel-ai-gateway", "openai/gpt-5.1-codex")];
       default:
@@ -58,7 +58,7 @@ describe("resolveLlmRoute", () => {
   beforeEach(() => {
     credentials.clear();
     oauthCredentials.clear();
-    localPreference = { enabled: false, provider: "openai" };
+    localKeysEnabled = false;
   });
 
   const site = {
@@ -73,7 +73,7 @@ describe("resolveLlmRoute", () => {
     return `header.${payload}.signature`;
   };
 
-  it("uses Stella when local API key usage is off even if matching keys exist", async () => {
+  it("uses Stella when local API keys are disabled, even if matching keys exist", async () => {
     credentials.set("openai", "openai-key");
     credentials.set("openrouter", "openrouter-key");
     const { resolveLlmRoute } = await import(
@@ -90,6 +90,57 @@ describe("resolveLlmRoute", () => {
     expect(resolved.route).toBe("stella");
     expect(resolved.model.provider).toBe("stella");
     expect(resolved.model.id).toBe("stella/openai/gpt-5.1-codex");
+  });
+
+  it("uses Stella's recommended default when no model is specified", async () => {
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
+      modelName: undefined,
+      agentType: "general",
+      site,
+    });
+
+    expect(resolved.route).toBe("stella");
+    expect(resolved.model.id).toBe("stella/default");
+  });
+
+  it("routes explicit `stella/<provider>/<model>` ids through Stella unchanged", async () => {
+    credentials.set("anthropic", "anthropic-key");
+    localKeysEnabled = true;
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
+      modelName: "stella/anthropic/claude-opus-4.6",
+      agentType: "general",
+      site,
+    });
+
+    expect(resolved.route).toBe("stella");
+    expect(resolved.model.provider).toBe("stella");
+    expect(resolved.model.id).toBe("stella/anthropic/claude-opus-4.6");
+  });
+
+  it("routes Stella aliases (stella/best, etc.) through Stella unchanged", async () => {
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
+      modelName: "stella/best",
+      agentType: "general",
+      site,
+    });
+
+    expect(resolved.route).toBe("stella");
+    expect(resolved.model.id).toBe("stella/best");
   });
 
   it("refreshes near-expiry Stella tokens before model calls", async () => {
@@ -114,29 +165,97 @@ describe("resolveLlmRoute", () => {
     expect(refreshAuthToken).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the selected local provider when local API key usage is enabled", async () => {
-    credentials.set("openrouter", "openrouter-key");
-    localPreference = { enabled: true, provider: "openrouter" };
+  it("routes by parsed provider id when local keys are enabled", async () => {
+    credentials.set("anthropic", "anthropic-key");
+    localKeysEnabled = true;
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"
     );
 
     const resolved = resolveLlmRoute({
       stellaRoot: "/tmp/stella",
+      modelName: "anthropic/claude-opus-4.6",
+      agentType: "general",
+      site,
+    });
+
+    expect(resolved.route).toBe("direct-provider");
+    expect(resolved.model.provider).toBe("anthropic");
+    expect(resolved.model.id).toBe("claude-opus-4.6");
+    await expect(resolved.getApiKey()).resolves.toBe("anthropic-key");
+  });
+
+  it("honors multiple authed providers — each model id picks its own credential", async () => {
+    credentials.set("anthropic", "anthropic-key");
+    credentials.set("openai", "openai-key");
+    localKeysEnabled = true;
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const anthropicRoute = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
+      modelName: "anthropic/claude-opus-4.6",
+      agentType: "general",
+      site,
+    });
+    expect(anthropicRoute.model.provider).toBe("anthropic");
+    await expect(anthropicRoute.getApiKey()).resolves.toBe("anthropic-key");
+
+    const openaiRoute = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
       modelName: "openai/gpt-5.1-codex",
+      agentType: "general",
+      site,
+    });
+    expect(openaiRoute.model.provider).toBe("openai");
+    await expect(openaiRoute.getApiKey()).resolves.toBe("openai-key");
+  });
+
+  it("does not silently re-route to a different provider's gateway", async () => {
+    // User has only an OpenRouter key, but asks for `anthropic/...` directly.
+    // Old behavior would remap through OpenRouter; new behavior falls back to
+    // Stella so the user-typed provider id is never silently substituted.
+    credentials.set("openrouter", "openrouter-key");
+    localKeysEnabled = true;
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
+      modelName: "anthropic/claude-opus-4.6",
+      agentType: "general",
+      site,
+    });
+
+    expect(resolved.route).toBe("stella");
+    expect(resolved.model.id).toBe("stella/anthropic/claude-opus-4.6");
+  });
+
+  it("routes explicit `openrouter/<provider>/<model>` through OpenRouter directly", async () => {
+    credentials.set("openrouter", "openrouter-key");
+    localKeysEnabled = true;
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
+      modelName: "openrouter/anthropic/claude-opus-4.6",
       agentType: "general",
       site,
     });
 
     expect(resolved.route).toBe("direct-provider");
     expect(resolved.model.provider).toBe("openrouter");
-    expect(resolved.model.id).toBe("openai/gpt-5.1-codex");
+    expect(resolved.model.id).toBe("anthropic/claude-opus-4.6");
     await expect(resolved.getApiKey()).resolves.toBe("openrouter-key");
   });
 
-  it("falls back to Stella instead of trying unselected saved providers", async () => {
-    credentials.set("openrouter", "openrouter-key");
-    localPreference = { enabled: true, provider: "openai" };
+  it("falls back to Stella when local keys are enabled but the requested provider has no credential", async () => {
+    credentials.set("anthropic", "anthropic-key");
+    localKeysEnabled = true;
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"
     );
@@ -150,11 +269,12 @@ describe("resolveLlmRoute", () => {
 
     expect(resolved.route).toBe("stella");
     expect(resolved.model.provider).toBe("stella");
+    expect(resolved.model.id).toBe("stella/openai/gpt-5.1-codex");
   });
 
-  it("uses OAuth credentials for the selected local provider", async () => {
+  it("uses OAuth credentials when no API key is set for the requested provider", async () => {
     oauthCredentials.add("anthropic");
-    localPreference = { enabled: true, provider: "anthropic" };
+    localKeysEnabled = true;
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"
     );
