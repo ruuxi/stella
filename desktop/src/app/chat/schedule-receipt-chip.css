@@ -1,0 +1,58 @@
+/* ============================================================
+   Inline "Scheduled" receipt chip — sits between the assistant
+   markdown body and any other end-of-turn artifacts. Sized to
+   read as a compact one-line affordance, never a full card.
+   ============================================================ */
+
+.schedule-receipt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 5px 10px 5px 9px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  color: var(--text-base);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12.5px;
+  line-height: 1.2;
+  cursor: default;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.schedule-receipt-chip:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+  color: var(--text-strong);
+}
+
+.schedule-receipt-chip__icon {
+  display: inline-flex;
+  color: var(--text-weak);
+}
+
+.schedule-receipt-chip:hover .schedule-receipt-chip__icon {
+  color: var(--text-base);
+}
+
+.schedule-receipt-chip__primary {
+  font-weight: 500;
+  color: var(--text-strong);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-receipt-chip__meta {
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-receipt-chip:hover .schedule-receipt-chip__meta {
+  color: var(--text-base);
+}

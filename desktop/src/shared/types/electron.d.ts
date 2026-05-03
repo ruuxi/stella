@@ -45,7 +45,9 @@ import type {
   LocalCronPayload as SharedLocalCronPayload,
   LocalHeartbeatActiveHours as SharedLocalHeartbeatActiveHours,
   LocalCronJobRecord as SharedLocalCronJobRecord,
+  LocalCronJobUpdatePatch as SharedLocalCronJobUpdatePatch,
   LocalHeartbeatConfigRecord as SharedLocalHeartbeatConfigRecord,
+  LocalHeartbeatUpsertInput as SharedLocalHeartbeatUpsertInput,
   ScheduledConversationEvent as SharedScheduledConversationEvent,
   VoiceRuntimeSnapshot as SharedVoiceRuntimeSnapshot,
   SocialSessionRuntimeRecord as SharedSocialSessionRuntimeRecord,
@@ -110,7 +112,9 @@ export type LocalCronSchedule = SharedLocalCronSchedule;
 export type LocalCronPayload = SharedLocalCronPayload;
 export type LocalHeartbeatActiveHours = SharedLocalHeartbeatActiveHours;
 export type LocalCronJobRecord = SharedLocalCronJobRecord;
+export type LocalCronJobUpdatePatch = SharedLocalCronJobUpdatePatch;
 export type LocalHeartbeatConfigRecord = SharedLocalHeartbeatConfigRecord;
+export type LocalHeartbeatUpsertInput = SharedLocalHeartbeatUpsertInput;
 export type ScheduledConversationEvent = SharedScheduledConversationEvent;
 export type VoiceRuntimeSnapshot = SharedVoiceRuntimeSnapshot;
 export type SocialSessionRuntimeRecord = SharedSocialSessionRuntimeRecord;
@@ -790,6 +794,20 @@ export type ElectronScheduleApi = {
   getConversationEventCount: (payload: {
     conversationId: string;
   }) => Promise<number>;
+  runCronJob: (payload: {
+    jobId: string;
+  }) => Promise<LocalCronJobRecord | null>;
+  removeCronJob: (payload: { jobId: string }) => Promise<boolean>;
+  updateCronJob: (payload: {
+    jobId: string;
+    patch: LocalCronJobUpdatePatch;
+  }) => Promise<LocalCronJobRecord | null>;
+  upsertHeartbeat: (
+    payload: LocalHeartbeatUpsertInput,
+  ) => Promise<LocalHeartbeatConfigRecord>;
+  runHeartbeat: (payload: {
+    conversationId: string;
+  }) => Promise<LocalHeartbeatConfigRecord | null>;
   onUpdated: (callback: () => void) => () => void;
 };
 
@@ -811,6 +829,22 @@ export type ElectronStoreApi = {
     displayName: string;
     blueprintMarkdown: string;
   }) => Promise<StoreInstallRecord>;
+  publishBlueprint: (payload: {
+    messageId: string;
+    packageId: string;
+    asUpdate: boolean;
+    displayName?: string;
+    description?: string;
+    category?:
+      | "apps-games"
+      | "productivity"
+      | "customization"
+      | "skills-agents"
+      | "integrations"
+      | "other";
+    manifest: Record<string, unknown>;
+    releaseNotes?: string;
+  }) => Promise<StorePackageReleaseRecord>;
   getThread: () => Promise<StoreThreadSnapshot>;
   sendThreadMessage: (payload: {
     text: string;

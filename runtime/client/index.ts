@@ -1354,6 +1354,41 @@ export class StellaRuntimeClient {
     return this.ensureScheduler().listHeartbeats();
   }
 
+  /**
+   * Direct mutation surface used by the renderer-side schedule chip / dialog
+   * (Run now, Pause/Resume, Delete). Same in-process scheduler the
+   * Schedule subagent talks to via tools — both paths converge on
+   * `LocalSchedulerService` and emit the shared `schedule.updated`
+   * notification on success, so the chat surface and the Up next list
+   * refresh together.
+   */
+  async runCronJob(jobId: string): Promise<LocalCronJobRecord | null> {
+    return this.ensureScheduler().runCronJob(jobId);
+  }
+
+  async removeCronJob(jobId: string): Promise<boolean> {
+    return this.ensureScheduler().removeCronJob(jobId);
+  }
+
+  async updateCronJob(
+    jobId: string,
+    patch: LocalCronJobUpdatePatch,
+  ): Promise<LocalCronJobRecord | null> {
+    return this.ensureScheduler().updateCronJob(jobId, patch);
+  }
+
+  async upsertHeartbeat(
+    input: LocalHeartbeatUpsertInput,
+  ): Promise<LocalHeartbeatConfigRecord> {
+    return this.ensureScheduler().upsertHeartbeat(input);
+  }
+
+  async runHeartbeat(
+    conversationId: string,
+  ): Promise<LocalHeartbeatConfigRecord | null> {
+    return this.ensureScheduler().runHeartbeat(conversationId);
+  }
+
   async listConversationEvents(payload: {
     conversationId: string;
     maxItems?: number;

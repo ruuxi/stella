@@ -63,4 +63,70 @@ export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
       return await (await waitForRunner()).getConversationEventCount({ conversationId });
     },
   );
+
+  registerPrivilegedHandle(
+    options,
+    "schedule:runCronJob",
+    async (_event, payload: { jobId?: string }) => {
+      const jobId = typeof payload?.jobId === "string" ? payload.jobId.trim() : "";
+      if (!jobId) return null;
+      return await (await waitForRunner()).runCronJob(jobId);
+    },
+  );
+
+  registerPrivilegedHandle(
+    options,
+    "schedule:removeCronJob",
+    async (_event, payload: { jobId?: string }) => {
+      const jobId = typeof payload?.jobId === "string" ? payload.jobId.trim() : "";
+      if (!jobId) return false;
+      return await (await waitForRunner()).removeCronJob(jobId);
+    },
+  );
+
+  registerPrivilegedHandle(
+    options,
+    "schedule:updateCronJob",
+    async (
+      _event,
+      payload: {
+        jobId?: string;
+        patch?: import(
+          "../../../runtime/kernel/shared/scheduling.js"
+        ).LocalCronJobUpdatePatch;
+      },
+    ) => {
+      const jobId = typeof payload?.jobId === "string" ? payload.jobId.trim() : "";
+      if (!jobId || !payload?.patch || typeof payload.patch !== "object") {
+        return null;
+      }
+      return await (await waitForRunner()).updateCronJob(jobId, payload.patch);
+    },
+  );
+
+  registerPrivilegedHandle(
+    options,
+    "schedule:upsertHeartbeat",
+    async (
+      _event,
+      payload: import(
+        "../../../runtime/kernel/shared/scheduling.js"
+      ).LocalHeartbeatUpsertInput,
+    ) => {
+      return await (await waitForRunner()).upsertHeartbeat(payload);
+    },
+  );
+
+  registerPrivilegedHandle(
+    options,
+    "schedule:runHeartbeat",
+    async (_event, payload: { conversationId?: string }) => {
+      const conversationId =
+        typeof payload?.conversationId === "string"
+          ? payload.conversationId.trim()
+          : "";
+      if (!conversationId) return null;
+      return await (await waitForRunner()).runHeartbeat(conversationId);
+    },
+  );
 };

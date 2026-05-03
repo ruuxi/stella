@@ -26,6 +26,8 @@ import type {
 import { Markdown } from "@/app/chat/Markdown";
 import { EndResourceCard } from "@/app/chat/EndResourceCard";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
+import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
+import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
@@ -74,6 +76,16 @@ export type AssistantRowViewModel = {
   officePreviewRef?: OfficePreviewRef;
   resourcePayload?: DisplayPayload;
   selfModApplied?: SelfModApplied;
+  /**
+   * Inline "Scheduled" receipt chip shown after the orchestrator's
+   * `Schedule` tool returns. Carries the structured affected entries
+   * straight from the tool result so click → dialog has no race with
+   * a separate IPC fetch.
+   */
+  scheduleReceipt?: {
+    affected: ScheduleToolAffectedRef[];
+    summary?: string;
+  };
   askQuestion?: AskQuestionState;
   /**
    * Optional renderer for surface-specific row attachments (e.g. the Store
@@ -254,6 +266,9 @@ export const AssistantMessageRow = memo(
     const hasSelfMod = Boolean(row.selfModApplied);
     const hasAskQuestion = Boolean(row.askQuestion);
     const hasCustomSlot = Boolean(row.customSlot);
+    const hasScheduleReceipt = Boolean(
+      row.scheduleReceipt && row.scheduleReceipt.affected.length > 0,
+    );
 
     if (
       !hasText &&
@@ -262,7 +277,8 @@ export const AssistantMessageRow = memo(
       !hasResource &&
       !hasSelfMod &&
       !hasAskQuestion &&
-      !hasCustomSlot
+      !hasCustomSlot &&
+      !hasScheduleReceipt
     ) {
       return null;
     }
@@ -291,6 +307,12 @@ export const AssistantMessageRow = memo(
           )}
           {row.selfModApplied && (
             <SelfModUndoButton selfModApplied={row.selfModApplied} />
+          )}
+          {hasScheduleReceipt && row.scheduleReceipt && (
+            <ScheduleReceiptChip
+              affected={row.scheduleReceipt.affected}
+              summary={row.scheduleReceipt.summary}
+            />
           )}
           {row.customSlot ? row.customSlot : null}
           {row.askQuestion && <AskQuestionBubble payload={row.askQuestion} />}

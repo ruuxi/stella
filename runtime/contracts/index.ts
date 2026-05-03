@@ -469,6 +469,30 @@ export type ScheduledConversationEvent = {
   payload: Record<string, unknown>;
 };
 
+export type LocalCronJobUpdatePatch = {
+  name?: string;
+  schedule?: LocalCronSchedule;
+  payload?: LocalCronPayload;
+  sessionTarget?: "main" | "isolated";
+  conversationId?: string;
+  description?: string;
+  enabled?: boolean;
+  deleteAfterRun?: boolean;
+};
+
+export type LocalHeartbeatUpsertInput = {
+  conversationId: string;
+  enabled?: boolean;
+  intervalMs?: number;
+  prompt?: string;
+  checklist?: string;
+  ackMaxChars?: number;
+  deliver?: boolean;
+  agentType?: string;
+  activeHours?: LocalHeartbeatActiveHours;
+  targetDeviceId?: string;
+};
+
 export type VoiceRuntimeSnapshot = {
   sessionState: "idle" | "connecting" | "connected" | "error" | "disconnecting";
   isConnected: boolean;
