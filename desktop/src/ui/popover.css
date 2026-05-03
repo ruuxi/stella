@@ -1,11 +1,24 @@
 [data-component="popover-content"] {
   min-width: 200px;
   max-width: 320px;
-  border-radius: var(--radius-md, 6px);
-  background-color: var(--background);
-  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  border-radius: var(--radius-md, 10px);
+  /* Glass surface — same recipe as the connect dialog so transient
+     popovers (theme picker, model picker) live in the same visual
+     family as the larger glass surfaces. The backdrop-filter is the
+     one already used by every dropdown menu, so cost is in line with
+     existing chrome. */
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   background-clip: padding-box;
-  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-base);
+  box-shadow: var(--shadow-overlay);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  [data-component="popover-content"] {
+    background: var(--popover, var(--background));
+  }
 }
 
 [data-component="popover-content"]:focus-within {
