@@ -16,8 +16,19 @@
   min-height: 0;
 }
 
+/* Two-column variant: in-page tab rail on the left, panel on the right.
+   Used by /settings, which now owns its sidebar inline rather than
+   hijacking the shell's nav slot. */
 .settings-layout--standalone {
   padding-top: 32px;
+  gap: 32px;
+  justify-content: center;
+}
+
+.settings-layout--standalone .settings-panel-wrap {
+  flex: 1;
+  min-width: 0;
+  max-width: 760px;
 }
 
 /* Single-column variant: no left tab rail. Used by /billing, which lives
@@ -30,6 +41,87 @@
 .settings-layout--single .settings-panel-wrap {
   width: 100%;
   max-width: 1080px;
+}
+
+/* ---- In-page tab rail (Settings) ---- */
+
+.settings-tab-rail {
+  flex-shrink: 0;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 8px 0 0;
+}
+
+.settings-tab-rail-title {
+  padding: 0 12px;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 22px;
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text-strong);
+}
+
+.settings-tab-rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-tab-rail-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--text-base);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.settings-tab-rail-item:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.settings-tab-rail-item--active {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+@media (max-width: 720px) {
+  .settings-layout--standalone {
+    flex-direction: column;
+    gap: 8px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .settings-tab-rail {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .settings-tab-rail-nav {
+    flex-direction: row;
+    flex: 1;
+  }
+
+  .settings-tab-rail-item {
+    white-space: nowrap;
+  }
 }
 
 /* ---- Panel Content ---- */

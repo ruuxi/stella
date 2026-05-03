@@ -1,4 +1,4 @@
-import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
+import { useRouter, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
@@ -7,13 +7,10 @@ import {
   Minimize2,
   Minus,
   PanelRight,
-  Palette,
   Pin,
-  Settings,
   Square,
   X,
 } from "lucide-react";
-import { ThemePicker } from "@/global/settings/ThemePicker";
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
@@ -103,7 +100,6 @@ const SidebarToggleIcon = () => (
 );
 
 export const ShellTopBar = () => {
-  const navigate = useNavigate();
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
   const isMiniWindow = useWindowType() === "mini";
@@ -117,10 +113,6 @@ export const ShellTopBar = () => {
   const toggleSidebar = useCallback(() => {
     window.dispatchEvent(new Event(STELLA_TOGGLE_SIDEBAR_RAIL_EVENT));
   }, []);
-
-  const openSettings = useCallback(() => {
-    void navigate({ to: "/settings" });
-  }, [navigate]);
 
   useEffect(() => {
     if (!isMiniWindow) return;
@@ -163,29 +155,6 @@ export const ShellTopBar = () => {
         >
           <SidebarToggleIcon />
         </button>
-        <button
-          type="button"
-          className="shell-topbar-icon-btn"
-          onClick={openSettings}
-          aria-label="Settings"
-          title="Settings"
-        >
-          <Settings size={14} strokeWidth={1.75} />
-        </button>
-        <ThemePicker
-          side="bottom"
-          align="start"
-          trigger={
-            <button
-              type="button"
-              className="shell-topbar-icon-btn"
-              aria-label="Theme"
-              title="Theme"
-            >
-              <Palette size={14} strokeWidth={1.75} />
-            </button>
-          }
-        />
         <button
           type="button"
           className="shell-topbar-icon-btn shell-topbar-history-btn"

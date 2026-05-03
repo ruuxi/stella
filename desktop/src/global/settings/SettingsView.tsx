@@ -8,7 +8,6 @@ import {
 } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/api";
-import { PageSidebar } from "@/context/page-sidebar";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { authClient } from "@/global/auth/lib/auth-client";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
@@ -3070,24 +3069,35 @@ export const SettingsScreen = ({
 
   return (
     <>
-      {/* The Settings tabs live in the *main* sidebar via <PageSidebar>:
-          while /settings is mounted, the shell swaps its default nav for
-          this tab list (and prepends a Back button automatically). The
-          screen body itself is single-column. */}
-      <PageSidebar title={t("settings.title")}>
-        {SETTINGS_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            className={`sidebar-nav-item${activeTab === tab.key ? " sidebar-nav-item--active" : ""}`}
-            onClick={() => handleTabClick(tab.key)}
-          >
-            <span className="sidebar-nav-label">{t(tab.labelKey)}</span>
-          </button>
-        ))}
-      </PageSidebar>
+      {/* The Settings page owns its own left rail rather than borrowing
+          the global sidebar's slot — keeps Settings self-contained and
+          leaves the shell sidebar untouched while /settings is open. */}
       <div className="settings-screen">
-        <div className="settings-layout settings-layout--single">
+        <div className="settings-layout settings-layout--standalone">
+          <aside
+            className="settings-tab-rail"
+            role="tablist"
+            aria-label={t("settings.title")}
+          >
+            <div className="settings-tab-rail-title">{t("settings.title")}</div>
+            <nav className="settings-tab-rail-nav">
+              {SETTINGS_TABS.map((tab) => {
+                const isActive = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`settings-tab-rail-item${isActive ? " settings-tab-rail-item--active" : ""}`}
+                    onClick={() => handleTabClick(tab.key)}
+                  >
+                    {t(tab.labelKey)}
+                  </button>
+                );
+              })}
+            </nav>
+          </aside>
           <SettingsPanel>
             {activeTab === "basic" ? (
               <BasicSettingsTab />

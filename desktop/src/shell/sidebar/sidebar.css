@@ -403,6 +403,45 @@
   text-overflow: ellipsis;
 }
 
+/* ── Actions bar: settings / theme / connect / pets ────────────────
+   Single compact row of icon-only utility buttons that sit just below
+   the account row. Hidden when the sidebar collapses to its rail mode
+   (those actions become noisy at icon-only widths and the user can
+   reach Settings via the avatar dropdown / Connect from the dialog). */
+.sidebar-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px 4px 0;
+  border-top: 1px solid var(--border-weak);
+}
+
+.sidebar-actions-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-actions-btn:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+.sidebar-actions-btn:active {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
 /* ── Sidebar dialogs ───────────────────────────────────────────── */
 [data-slot="dialog-content"].sidebar-feedback-dialog,
 [data-slot="dialog-content"].sidebar-signout-dialog {
@@ -550,6 +589,10 @@
 }
 
 .sidebar.sidebar--rail .sidebar-account-signin-label {
+  display: none;
+}
+
+.sidebar.sidebar--rail .sidebar-actions-bar {
   display: none;
 }
 

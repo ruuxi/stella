@@ -2,6 +2,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   border-style: solid;
   border-width: 1px;
   border-radius: var(--radius-md, 6px);
@@ -54,7 +55,7 @@
 }
 
 [data-component="button"][data-variant="secondary"] {
-  border: transparent;
+  border-color: transparent;
   background-color: var(--button-secondary-base);
   color: var(--secondary-foreground);
   box-shadow: var(--shadow-xs-border);
