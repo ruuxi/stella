@@ -6,12 +6,16 @@
  * conversation — there's nothing useful to see there. Instead we surface
  * what is actually useful at a glance from the workspace panel:
  *
- *   - Activity: recent agent task status (running / completed / failed),
- *     using the user-friendly status text the runtime already streams.
- *   - Recent files: every file the assistant changed or produced in this
- *     conversation, clickable to open in its own display tab.
+ *   - Activity: a single time-ordered strip of running, completed, and
+ *     upcoming agent work for this conversation. Internal subgroups are
+ *     `NOW`, `DONE` (capped, with show-more), and `UP NEXT` (scheduled
+ *     cron jobs + heartbeat fires for this conversation, capped).
+ *   - Recent files: the assistant's recent file changes for this
+ *     conversation, capped, with show-more.
  *
- * On every other route, the Chat tab keeps rendering the live ChatPanelTab
+ * Ideas are no longer rendered here — they live as a footer dropup on the
+ * home content itself (see `desktop/src/app/home/HomeContent.tsx`). On
+ * every other route, the Chat tab keeps rendering the live ChatPanelTab
  * (see `default-tabs.tsx`). The route swap happens at the render level,
  * not by closing/reopening the tab — selection and panel state never
  * change just because the user navigates.
@@ -19,7 +23,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
-import { usePersonalizedCategories } from "@/app/home/categories";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
@@ -38,9 +41,20 @@ import {
   mergeFooterTasks,
   type TaskItem,
 } from "@/app/chat/lib/event-transforms";
+import {
+  useConversationSchedules,
+  type ScheduleEntry,
+} from "@/global/schedule/use-conversation-schedules";
+import { formatNextRun } from "@/global/schedule/format-schedule";
+import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
+import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import "./chat-home-overview.css";
 
-const MAX_FILES = 24;
+const FILES_DEFAULT_VISIBLE = 6;
+const DONE_DEFAULT_VISIBLE = 5;
+const UP_NEXT_DEFAULT_VISIBLE = 3;
+const FILES_TOTAL_CAP = 24;
+const NEXT_RUN_TICK_MS = 30_000;
 
 type FileEntry = {
   path: string;
@@ -48,11 +62,6 @@ type FileEntry = {
   payload: DisplayPayload;
 };
 
-/**
- * Resolve a `FileChangeRecord` into the canonical post-mutation absolute
- * path. Mirrors the small helper in `derive-turn-resource.ts` but stays
- * local so this surface doesn't reach into the chat package's internals.
- */
 const resolvedPathForChange = (record: FileChangeRecord): string | null => {
   if (record.kind.type === "delete") return null;
   const path =
@@ -68,6 +77,21 @@ const taskLineFor = (task: TaskItem): string => {
     return task.statusText ?? task.description;
   }
   return task.description;
+};
+
+const taskBadgeFor = (task: TaskItem): string => {
+  switch (task.status) {
+    case "running":
+      return "Working";
+    case "completed":
+      return "Done";
+    case "error":
+      return "Failed";
+    case "canceled":
+      return "Stopped";
+    default:
+      return "";
+  }
 };
 
 type ProgressSummary = { id: string; text: string; createdAt: number };
@@ -108,112 +132,173 @@ function TaskProgressFeed({
   );
 }
 
-function IdeasHomeSection() {
-  const { state } = useUiState();
-  const { onSuggestionClick } = useChatRuntime();
-  const categories = usePersonalizedCategories(state.conversationId);
-  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
-
-  const selectedCategory = useMemo(() => {
-    if (categories.length === 0) return null;
-    return (
-      categories.find((category) => category.label === selectedLabel) ??
-      categories[0]
-    );
-  }, [categories, selectedLabel]);
-
+/**
+ * Live "now" used to format relative next-run badges. Refreshes on a slow
+ * interval only while at least one schedule row is rendered, so an empty
+ * UP NEXT list costs nothing.
+ */
+function useNextRunTicker(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (
-      selectedLabel &&
-      !categories.some((category) => category.label === selectedLabel)
-    ) {
-      setSelectedLabel(null);
-    }
-  }, [categories, selectedLabel]);
+    if (!active) return;
+    const id = window.setInterval(() => setNow(Date.now()), NEXT_RUN_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [active]);
+  return now;
+}
 
-  const handleClick = (prompt: string) => {
-    onSuggestionClick(prompt);
-  };
-
-  if (!selectedCategory) return null;
-
+function TaskRow({
+  task,
+  summaries,
+}: {
+  task: TaskItem;
+  summaries: ReadonlyArray<ProgressSummary>;
+}) {
   return (
-    <section className="chat-home-overview__section chat-home-overview__section--ideas">
-      <h3 className="chat-home-overview__heading">Ideas</h3>
-      <div className="chat-home-overview__idea-tabs" role="tablist">
-        {categories.map((category) => {
-          const selected = category.label === selectedCategory.label;
-          return (
-            <button
-              key={category.label}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              className="chat-home-overview__idea-tab"
-              onClick={() => setSelectedLabel(category.label)}
-            >
-              {category.label}
-            </button>
-          );
-        })}
+    <li
+      className="chat-home-overview__task"
+      data-status={task.status}
+    >
+      <div className="chat-home-overview__task-row">
+        <span className="chat-home-overview__task-text">
+          {taskLineFor(task)}
+        </span>
+        <span className="chat-home-overview__task-status">
+          {taskBadgeFor(task)}
+        </span>
       </div>
-      <ul className="chat-home-overview__ideas chat-home-overview__section-body">
-        {selectedCategory.options.map((option) => (
-          <li key={option.label}>
-            <button
-              type="button"
-              className="chat-home-overview__idea"
-              onClick={() => handleClick(option.prompt)}
-            >
-              {option.label}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
+      {summaries.length > 0 && (
+        <TaskProgressFeed
+          summaries={summaries}
+          isRunning={task.status === "running"}
+        />
+      )}
+    </li>
   );
 }
 
-const taskBadgeFor = (task: TaskItem): string => {
-  switch (task.status) {
-    case "running":
-      return "Working";
-    case "completed":
-      return "Done";
-    case "error":
-      return "Failed";
-    case "canceled":
-      return "Stopped";
-    default:
-      return "";
-  }
-};
+function ScheduleRow({
+  entry,
+  nowMs,
+  onOpen,
+}: {
+  entry: ScheduleEntry;
+  nowMs: number;
+  onOpen: (entry: ScheduleEntry) => void;
+}) {
+  return (
+    <li className="chat-home-overview__task" data-status="scheduled">
+      <button
+        type="button"
+        className="chat-home-overview__task-row chat-home-overview__schedule-trigger"
+        onClick={() => onOpen(entry)}
+      >
+        <span className="chat-home-overview__task-text">{entry.name}</span>
+        <span className="chat-home-overview__task-status">
+          {formatNextRun(entry.nextRunAtMs, nowMs)}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+const scheduleEntryToAffectedRef = (
+  entry: ScheduleEntry,
+  conversationId: string,
+): ScheduleToolAffectedRef => ({
+  kind: entry.kind,
+  id: entry.id,
+  conversationId,
+  name: entry.name,
+  enabled: entry.enabled,
+  nextRunAtMs: entry.nextRunAtMs,
+});
+
+function SubgroupLabel({ children }: { children: string }) {
+  return (
+    <li
+      className="chat-home-overview__subgroup-label"
+      role="presentation"
+      aria-hidden="true"
+    >
+      {children}
+    </li>
+  );
+}
+
+function ShowMoreButton({
+  remaining,
+  onClick,
+}: {
+  remaining: number;
+  onClick: () => void;
+}) {
+  return (
+    <li className="chat-home-overview__show-more-row">
+      <button
+        type="button"
+        className="chat-home-overview__show-more"
+        onClick={onClick}
+      >
+        Show {remaining} more
+      </button>
+    </li>
+  );
+}
 
 export function ChatHomeOverview() {
   const chat = useChatRuntime();
+  const { state } = useUiState();
   const liveTasks = chat.conversation.streaming.liveTasks ?? [];
   const events = chat.conversation.events;
   const summariesByAgent = chat.conversation.streaming.taskProgressSummaries;
+  const schedules = useConversationSchedules(state.conversationId);
 
-  // Build a full task history (running + completed/failed/canceled) by
-  // replaying conversation events and merging with the live snapshot —
-  // mirroring the footer-tasks merge so the chat home overview reflects
-  // the same set the runtime knows about, not just what's in flight.
-  const tasks = useMemo(() => {
+  const [doneExpanded, setDoneExpanded] = useState(false);
+  const [filesExpanded, setFilesExpanded] = useState(false);
+
+  const allTasks = useMemo(() => {
     const persisted = extractTasksFromEvents(events);
-    const merged = mergeFooterTasks(persisted, liveTasks);
-    // Pin running tasks to the top, then most recent activity first.
-    return [...merged].sort((a, b) => {
-      const aRunning = a.status === "running";
-      const bRunning = b.status === "running";
-      if (aRunning !== bRunning) return aRunning ? -1 : 1;
-      const aTime = a.completedAtMs ?? a.lastUpdatedAtMs ?? a.startedAtMs;
-      const bTime = b.completedAtMs ?? b.lastUpdatedAtMs ?? b.startedAtMs;
-      return bTime - aTime;
-    });
+    return mergeFooterTasks(persisted, liveTasks);
   }, [events, liveTasks]);
 
-  const files = useMemo<FileEntry[]>(() => {
+  const runningTasks = useMemo(() => {
+    return [...allTasks]
+      .filter((task) => task.status === "running")
+      .sort((a, b) => {
+        const aTime = a.lastUpdatedAtMs ?? a.startedAtMs;
+        const bTime = b.lastUpdatedAtMs ?? b.startedAtMs;
+        return bTime - aTime;
+      });
+  }, [allTasks]);
+
+  const doneTasks = useMemo(() => {
+    return [...allTasks]
+      .filter((task) => task.status !== "running")
+      .sort((a, b) => {
+        const aTime = a.completedAtMs ?? a.lastUpdatedAtMs ?? a.startedAtMs;
+        const bTime = b.completedAtMs ?? b.lastUpdatedAtMs ?? b.startedAtMs;
+        return bTime - aTime;
+      });
+  }, [allTasks]);
+
+  const visibleDone = doneExpanded
+    ? doneTasks
+    : doneTasks.slice(0, DONE_DEFAULT_VISIBLE);
+  const hiddenDoneCount = doneTasks.length - visibleDone.length;
+
+  const visibleSchedules = schedules.slice(0, UP_NEXT_DEFAULT_VISIBLE);
+  const nowMs = useNextRunTicker(visibleSchedules.length > 0);
+
+  const [openScheduleEntry, setOpenScheduleEntry] = useState<ScheduleEntry | null>(
+    null,
+  );
+  const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
+    if (!openScheduleEntry || !state.conversationId) return [];
+    return [scheduleEntryToAffectedRef(openScheduleEntry, state.conversationId)];
+  }, [openScheduleEntry, state.conversationId]);
+
+  const allFiles = useMemo<FileEntry[]>(() => {
     const seen = new Map<string, FileEntry>();
 
     for (const event of events) {
@@ -246,85 +331,127 @@ export function ChatHomeOverview() {
 
     return Array.from(seen.values())
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, MAX_FILES);
+      .slice(0, FILES_TOTAL_CAP);
   }, [events]);
+
+  const visibleFiles = filesExpanded
+    ? allFiles
+    : allFiles.slice(0, FILES_DEFAULT_VISIBLE);
+  const hiddenFilesCount = allFiles.length - visibleFiles.length;
 
   const handleOpenFile = (entry: FileEntry) => {
     displayTabs.openTab(payloadToTabSpec(entry.payload));
   };
+
+  const activityIsEmpty =
+    runningTasks.length === 0 &&
+    doneTasks.length === 0 &&
+    visibleSchedules.length === 0;
 
   return (
     <div className="chat-home-overview">
       <section className="chat-home-overview__section">
         <h3 className="chat-home-overview__heading">Activity</h3>
         <div className="chat-home-overview__section-body">
-        {tasks.length === 0 ? (
-          <p className="chat-home-overview__empty">Nothing in flight.</p>
-        ) : (
-          <ul className="chat-home-overview__tasks">
-            {tasks.map((task) => {
-              const summaries = summariesByAgent.get(task.id) ?? [];
-              return (
-                <li
-                  key={task.id}
-                  className="chat-home-overview__task"
-                  data-status={task.status}
-                >
-                  <div className="chat-home-overview__task-row">
-                    <span className="chat-home-overview__task-text">
-                      {taskLineFor(task)}
-                    </span>
-                    <span className="chat-home-overview__task-status">
-                      {taskBadgeFor(task)}
-                    </span>
-                  </div>
-                  {summaries.length > 0 && (
-                    <TaskProgressFeed
-                      summaries={summaries}
-                      isRunning={task.status === "running"}
+          {activityIsEmpty ? (
+            <p className="chat-home-overview__empty">Nothing in flight.</p>
+          ) : (
+            <ul className="chat-home-overview__tasks">
+              {runningTasks.length > 0 && (
+                <>
+                  <SubgroupLabel>Now</SubgroupLabel>
+                  {runningTasks.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      summaries={summariesByAgent.get(task.id) ?? []}
+                    />
+                  ))}
+                </>
+              )}
+
+              {doneTasks.length > 0 && (
+                <>
+                  <SubgroupLabel>Done</SubgroupLabel>
+                  {visibleDone.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      summaries={summariesByAgent.get(task.id) ?? []}
+                    />
+                  ))}
+                  {hiddenDoneCount > 0 && (
+                    <ShowMoreButton
+                      remaining={hiddenDoneCount}
+                      onClick={() => setDoneExpanded(true)}
                     />
                   )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                </>
+              )}
+
+              {visibleSchedules.length > 0 && (
+                <>
+                  <SubgroupLabel>Up next</SubgroupLabel>
+                  {visibleSchedules.map((entry) => (
+                    <ScheduleRow
+                      key={`${entry.kind}:${entry.id}`}
+                      entry={entry}
+                      nowMs={nowMs}
+                      onOpen={setOpenScheduleEntry}
+                    />
+                  ))}
+                </>
+              )}
+            </ul>
+          )}
         </div>
       </section>
 
       <section className="chat-home-overview__section">
         <h3 className="chat-home-overview__heading">Recent files</h3>
         <div className="chat-home-overview__section-body">
-        {files.length === 0 ? (
-          <p className="chat-home-overview__empty">
-            Files Stella changes will show up here.
-          </p>
-        ) : (
-          <ul className="chat-home-overview__files">
-            {files.map((entry) => (
-              <li key={entry.path}>
-                <button
-                  type="button"
-                  className="chat-home-overview__file"
-                  onClick={() => handleOpenFile(entry)}
-                  title={entry.path}
-                >
-                  <DisplayTabIcon
-                    kind={payloadToTabSpec(entry.payload).kind}
-                    size={18}
-                  />
-                  <span className="chat-home-overview__file-name">
-                    {basenameOf(entry.path)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+          {allFiles.length === 0 ? (
+            <p className="chat-home-overview__empty">
+              Files Stella changes will show up here.
+            </p>
+          ) : (
+            <ul className="chat-home-overview__files">
+              {visibleFiles.map((entry) => (
+                <li key={entry.path}>
+                  <button
+                    type="button"
+                    className="chat-home-overview__file"
+                    onClick={() => handleOpenFile(entry)}
+                    title={entry.path}
+                  >
+                    <DisplayTabIcon
+                      kind={payloadToTabSpec(entry.payload).kind}
+                      size={18}
+                    />
+                    <span className="chat-home-overview__file-name">
+                      {basenameOf(entry.path)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {hiddenFilesCount > 0 && (
+                <ShowMoreButton
+                  remaining={hiddenFilesCount}
+                  onClick={() => setFilesExpanded(true)}
+                />
+              )}
+            </ul>
+          )}
         </div>
       </section>
 
-      <IdeasHomeSection />
+      <ScheduleDetailsDialog
+        open={openScheduleEntry !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenScheduleEntry(null);
+        }}
+        affected={dialogAffected}
+      />
     </div>
   );
 }
