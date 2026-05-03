@@ -162,14 +162,7 @@ export const createBootstrapServices = (options: {
     getMiniDoubleTapModifier: () => {
       const stellaRoot = state.stellaRoot;
       if (!stellaRoot) return "Alt";
-      const prefs = loadLocalPreferences(stellaRoot);
-      if (
-        prefs.dictationShortcut === "Alt" &&
-        prefs.miniDoubleTapModifier === "Alt"
-      ) {
-        return "Off";
-      }
-      return prefs.miniDoubleTapModifier;
+      return loadLocalPreferences(stellaRoot).miniDoubleTapModifier;
     },
     shouldEnable: () =>
       !uiStateService.state.suppressNativeRadialDuringOnboarding &&

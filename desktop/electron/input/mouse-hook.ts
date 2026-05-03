@@ -277,7 +277,6 @@ export class MouseHookManager {
       this.dictationKeyDownAt === null
     ) {
       this.dictationKeyDownAt = Date.now();
-      this.doubleTapDetector?.cancel();
       this.events.onDictationPushToTalkStart?.();
     }
 
@@ -289,13 +288,11 @@ export class MouseHookManager {
       if (event.keycode === 1) {
         this.dictationKeyDownAt = null;
         this.events.onDictationPushToTalkCancel?.();
-        this.doubleTapDetector?.cancel();
         return;
       }
       if (Date.now() - this.dictationKeyDownAt < 300) {
         this.dictationKeyDownAt = null;
         this.events.onDictationPushToTalkDiscard?.();
-        this.doubleTapDetector?.cancel();
       }
     }
 
@@ -306,7 +303,7 @@ export class MouseHookManager {
       this.events.onRadialShow();
     }
 
-    if (!this.doubleTapDetector || dictationPushToTalkEnabled) return;
+    if (!this.doubleTapDetector) return;
 
     // Suppress auto-repeat (the OS resends keydown while a key is held).
     if (wasAlreadyDown) return;
@@ -326,15 +323,16 @@ export class MouseHookManager {
     const isAlt = MODIFIER_KEYCODES.Alt.has(event.keycode);
     const dictationPushToTalkEnabled =
       this.events.isDictationPushToTalkEnabled?.() === true;
+    let completedLongPushToTalk = false;
     if (
       dictationPushToTalkEnabled &&
       isAlt &&
       this.dictationKeyDownAt !== null
     ) {
       const durationMs = Date.now() - this.dictationKeyDownAt;
+      completedLongPushToTalk = durationMs >= 300;
       this.dictationKeyDownAt = null;
       this.events.onDictationPushToTalkStop?.(durationMs);
-      this.doubleTapDetector?.cancel();
     }
     if (wasTriggerHeld && !this.matchesTriggerKey() && this.radialActive) {
       this.events.onTriggerUp();
@@ -342,8 +340,10 @@ export class MouseHookManager {
       this.radialActive = false;
     }
 
-    if (!this.doubleTapDetector || dictationPushToTalkEnabled) return;
-    if (this.doubleTapDetector.isModifierKey(event.keycode)) {
+    if (!this.doubleTapDetector) return;
+    if (completedLongPushToTalk) {
+      this.doubleTapDetector.cancel();
+    } else if (this.doubleTapDetector.isModifierKey(event.keycode)) {
       this.doubleTapDetector.notifyModifierKeyup(Date.now());
     }
   };
