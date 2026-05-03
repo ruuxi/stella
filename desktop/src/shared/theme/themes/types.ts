@@ -46,6 +46,13 @@ export interface ThemeColors {
 export interface Theme {
   id: string;
   name: string;
+  /**
+   * Pin this theme to a single appearance regardless of the user's
+   * Light/Dark/System choice. When set, the theme is also rendered with
+   * a flat (gradient-suppressed) background. Use for "standardized"
+   * single-mode themes like Pearl (white) and Noir (near-black).
+   */
+  forcedMode?: "light" | "dark";
   light: ThemeColors;
   dark: ThemeColors;
 }

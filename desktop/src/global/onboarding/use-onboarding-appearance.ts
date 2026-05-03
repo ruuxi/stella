@@ -18,8 +18,9 @@ export function useOnboardingAppearance({
     api.data.preferences.setExpressionStyle,
   );
 
-  const { themeId, themes, colorMode, gradientMode, gradientColor } =
+  const { theme: activeTheme, themeId, themes, colorMode, gradientMode, gradientColor } =
     useTheme();
+  const isForcedTheme = activeTheme.forcedMode !== undefined;
   const {
     setTheme,
     setColorMode,
@@ -61,6 +62,7 @@ export function useOnboardingAppearance({
     expressionStyle,
     gradientColor,
     gradientMode,
+    isForcedTheme,
     sortedThemes,
     themeId,
     cancelThemePreview,

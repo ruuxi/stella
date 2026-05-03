@@ -250,7 +250,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       return;
     }
 
-    const key = `${theme.id}-${resolvedColorMode}-${mode}-${colorMode}`;
+    const key = `${theme.id}-${resolvedColorMode}-${mode}-${colorMode}-${theme.forcedMode ?? ""}`;
     const isFirstRender = !prevKeyRef.current;
     const settingsChanged = prevKeyRef.current !== key;
 
@@ -270,7 +270,10 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     if (!ctx) return;
 
     const palette = getPalette();
-    const blobs = generateBlobs(palette, mode);
+    // Forced-mode themes (Pearl, Noir) want a clean, flat single-color
+    // surface — no blob at all, otherwise the brand-derived palette
+    // tints the whole canvas (Pearl ends up gray, Noir muddied).
+    const blobs = theme.forcedMode ? [] : generateBlobs(palette, mode);
     blobsRef.current = blobs;
 
     const bg = parseColor(colors.background) ?? { r: 248, g: 247, b: 247 };
