@@ -893,25 +893,6 @@
   line-height: 1.4;
 }
 
-/* ═══ Look section (eyes/mouth toggles) ═══ */
-
-.onboarding-look-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: center;
-  margin-top: 4px;
-}
-
-.onboarding-look-section .onboarding-step-label {
-  font-size: clamp(18px, 2.5vw, 24px);
-  font-weight: 300;
-  letter-spacing: 0.06em;
-  opacity: 0.9;
-  line-height: 1.4;
-  text-transform: none;
-}
-
 /* ═══ Personality preview ═══ */
 
 .onboarding-personality-preview {
@@ -1231,13 +1212,6 @@
 .onboarding-dialogue[data-phase="theme"] .onboarding-step-label {
   font-size: 14px;
 }
-
-/* Personality's "How should I look?" sub-heading should read at the same
- * size/weight as the phase title ("How should Stella talk?") so the two
- * questions feel like peers instead of label/sub-label. The shared
- * `.onboarding-look-section .onboarding-step-label` rule already sets
- * the right type ramp; this just keeps the per-phase override above
- * from clobbering it via source-order specificity. */
 
 .onboarding-dialogue[data-phase="permissions"] .onboarding-step-desc {
   font-size: 16px;

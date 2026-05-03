@@ -216,12 +216,8 @@ export const OnboardingStep1 = ({
           <OnboardingPersonalityPhase
             expressionStyle={appearance.expressionStyle}
             splitTransitionActive={leaving}
-            showEyes={appearance.showEyes}
-            showMouth={appearance.showMouth}
             onFinish={nextSplitStep}
             onSelectStyle={appearance.selectExpressionStyle}
-            onToggleEyes={appearance.toggleEyes}
-            onToggleMouth={appearance.toggleMouth}
           />
         );
       case "shortcuts-global":
