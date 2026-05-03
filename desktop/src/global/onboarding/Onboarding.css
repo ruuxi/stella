@@ -2107,11 +2107,9 @@
 
 .onboarding-phase-nav {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
-  display: flex;
-  gap: 4px;
+  inset: 0;
   z-index: 12;
+  pointer-events: none;
 }
 
 .onboarding-phase-nav-btn {
@@ -2119,7 +2117,7 @@
   height: 28px;
   border-radius: 6px;
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background: none;
+  background: color-mix(in oklch, var(--background) 85%, transparent);
   color: var(--foreground);
   opacity: 1;
   cursor: pointer;
@@ -2128,13 +2126,16 @@
   justify-content: center;
   padding: 0;
   font-family: inherit;
+  pointer-events: auto;
   transition:
     opacity 0.2s ease,
+    background 0.2s ease,
     border-color 0.2s ease;
 }
 
 .onboarding-phase-nav-btn:hover:not(:disabled) {
   opacity: 1;
+  background: color-mix(in oklch, var(--background) 74%, transparent);
   border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
 }
 
@@ -2152,7 +2153,18 @@
   transform: translateY(-50%);
 }
 
-.onboarding-phase-nav-btn--prev:active:not(:disabled) {
+.onboarding-phase-nav-btn--next {
+  position: fixed;
+  top: 50%;
+  right: 14px;
+  width: 32px;
+  height: 52px;
+  border-radius: 8px;
+  transform: translateY(-50%);
+}
+
+.onboarding-phase-nav-btn--prev:active:not(:disabled),
+.onboarding-phase-nav-btn--next:active:not(:disabled) {
   transform: translateY(-50%) scale(0.96);
 }
 

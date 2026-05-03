@@ -49,6 +49,9 @@ export function useOnboardingFlow({
   const [leaving, setLeaving] = useState(false);
   const [rippleActive, setRippleActive] = useState(initialPhase === "intro");
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [maxVisitedSplitStepIndex, setMaxVisitedSplitStepIndex] = useState(() =>
+    Math.max(SPLIT_STEP_ORDER.indexOf(initialPhase), 0),
+  );
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTransitionTimeout = useCallback(() => {
@@ -61,6 +64,13 @@ export function useOnboardingFlow({
   useEffect(() => {
     onPhaseChange?.(phase);
   }, [onPhaseChange, phase]);
+
+  useEffect(() => {
+    const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
+    if (splitIndex >= 0) {
+      setMaxVisitedSplitStepIndex((current) => Math.max(current, splitIndex));
+    }
+  }, [phase]);
 
   useEffect(() => {
     if (
@@ -160,6 +170,7 @@ export function useOnboardingFlow({
     phase,
     leaving,
     rippleActive,
+    maxVisitedSplitStepIndex,
     nextSplitStep,
     prevSplitStep,
     continueIntro,

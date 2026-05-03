@@ -175,13 +175,17 @@ function OnboardingExperience({
     };
   }, []);
 
-  const handleOnboardingPhaseChange = useCallback((phase: OnboardingPhase) => {
-    setOnboardingPhase(phase);
-    const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
-    setStellaHiddenByPhase(
-      CREATION_PHASE_INDEX >= 0 && splitIndex >= CREATION_PHASE_INDEX,
-    );
-  }, []);
+  const handleOnboardingPhaseChange = useCallback(
+    (phase: OnboardingPhase) => {
+      setOnboardingPhase(phase);
+      onboarding.persistPhase(phase);
+      const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
+      setStellaHiddenByPhase(
+        CREATION_PHASE_INDEX >= 0 && splitIndex >= CREATION_PHASE_INDEX,
+      );
+    },
+    [onboarding],
+  );
 
   // Phases whose own animations dominate the frame budget; we keep the
   // creature visible but pause its rAF canvas loop so the heavy phase
@@ -316,6 +320,8 @@ function OnboardingExperience({
             stellaAnimationPaused={pauseStellaAnimation}
             stellaAnimationHidden={stellaHiddenByPhase}
             onboardingKey={onboarding.onboardingKey}
+            initialPhase={onboarding.initialPhase}
+            creatureInitialBirth={onboarding.creatureInitialBirth}
             triggerFlash={onboarding.triggerFlash}
             startOnboarding={onboarding.startOnboarding}
             completeOnboarding={onboarding.completeOnboarding}
