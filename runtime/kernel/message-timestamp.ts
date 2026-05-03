@@ -1,4 +1,10 @@
 /** Shared timestamp utilities for message tagging. */
+import {
+  formatTimestampSystemReminder,
+  wrapSystemReminder,
+} from "../../desktop/src/shared/contracts/system-reminders.js";
+
+export { wrapSystemReminder };
 
 const TIME_PATTERN =
   "(?:1[0-2]|0?[1-9]):[0-5]\\d\\s?(?:AM|PM)(?:,\\s+[A-Za-z]{3}\\s+\\d{1,2})?";
@@ -17,9 +23,6 @@ export const TRAILING_TIME_TAG_RE = new RegExp(
 
 export const TEN_MINUTES_MS = 10 * 60 * 1000;
 export const THIRTY_MINUTES_MS = 30 * 60 * 1000;
-
-export const wrapSystemReminder = (text: string): string =>
-  `<system-reminder>${text.trim()}</system-reminder>`;
 
 export const formatDateTimeReminder = (
   timestamp: number,
@@ -56,7 +59,7 @@ export const formatTimestampTag = (timestamp: number, timezone?: string): string
     day: "numeric",
     timeZone: tz,
   });
-  return `<system-reminder>${timeStr}, ${dateStr}</system-reminder>`;
+  return formatTimestampSystemReminder(`${timeStr}, ${dateStr}`);
 };
 
 /**
@@ -82,7 +85,7 @@ export const formatTimestampForHistory = (
   });
   const tag =
     prevDate && dateStr === prevDate
-      ? `<system-reminder>${timeStr}</system-reminder>`
-      : `<system-reminder>${timeStr}, ${dateStr}</system-reminder>`;
+      ? formatTimestampSystemReminder(timeStr)
+      : formatTimestampSystemReminder(`${timeStr}, ${dateStr}`);
   return { tag, dateStr };
 };
