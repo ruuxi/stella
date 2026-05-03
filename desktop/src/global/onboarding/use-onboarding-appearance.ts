@@ -8,7 +8,7 @@ import {
   type PersonalityVoice,
 } from "../../../../runtime/extensions/stella-runtime/personality/voices.js";
 
-type ExpressionStyle = "emotes" | "emoji" | "none";
+type ExpressionStyle = "emoji" | "none";
 
 type UseOnboardingAppearanceArgs = {
   isAuthenticated?: boolean;
@@ -74,9 +74,8 @@ export function useOnboardingAppearance({
   const selectExpressionStyle = useCallback(
     (style: ExpressionStyle) => {
       setExpressionStyle(style);
-      const backendStyle = style === "none" ? "none" : "emoji";
       if (isAuthenticated) {
-        void saveExpressionStyle({ style: backendStyle }).catch(() => {
+        void saveExpressionStyle({ style }).catch(() => {
           // Expression style sync is best-effort only.
         });
       }

@@ -12,7 +12,6 @@ import { isOfficePreviewRef } from '@/shared/contracts/office-preview'
 import type { ScheduleToolAffectedRef } from '../../../../runtime/kernel/shared/scheduling'
 import { deriveTurnResource } from '@/app/chat/lib/derive-turn-resource'
 import { filterEventsForUiDisplay } from '@/app/chat/lib/message-display'
-import { isOrchestratorChatMessagePayload } from '@/app/chat/emotes/message-source'
 import {
   stabilizeTurnRows,
   type StableTurnRowsState,
@@ -408,7 +407,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             id: stableKey,
             text: '',
             cacheKey: stableKey,
-            emotesEnabled: true,
             askQuestion: standaloneAskQuestion,
           })
         }
@@ -455,7 +453,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             : event._id
         const toolEvents = segmentedToolEvents.get(event._id) ?? []
         const responseTarget = responseTargetByAssistantId.get(event._id)
-        const emotesEnabled = isOrchestratorChatMessagePayload(payload)
         const resourcePayload = deriveTurnResource(
           toolEvents,
           text,
@@ -470,7 +467,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           text,
           cacheKey: stableKey,
           ...(isAnimating ? { isAnimating: true } : {}),
-          emotesEnabled,
           ...(responseTarget ? { responseTarget } : {}),
           ...(getWebSearchBadgeHtml(toolEvents)
             ? { webSearchBadgeHtml: getWebSearchBadgeHtml(toolEvents) }
@@ -507,7 +503,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         id: stableKey,
         text: streamingText ?? '',
         cacheKey: stableKey,
-        emotesEnabled: true,
         ...(isStreaming ? { isAnimating: true } : {}),
       }
       computed.push(placeholder)

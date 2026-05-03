@@ -21,17 +21,11 @@ const ESTIMATED_INSTALL_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GB
 const DEFAULT_ENV_FILE_CONTENTS: &str = "\
 VITE_CONVEX_URL=https://benevolent-minnow-586.convex.cloud\n\
 VITE_CONVEX_SITE_URL=https://cloud.stella.sh\n\
-VITE_SITE_URL=https://stella.sh\n\
-VITE_TWITCH_EMOTE_TWITCH_ID=40934651\n";
+VITE_SITE_URL=https://stella.sh\n";
 
 const GITHUB_REPO: &str = "ruuxi/stella";
 const DEFAULT_DESKTOP_RELEASE_MANIFEST_URL: &str =
     "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/desktop/current.json";
-const DEFAULT_EMOTE_RELEASE_MANIFEST_URL: &str =
-    "https://pub-58708621bfa94e3bb92de37cde354c0d.r2.dev/emotes/current.json";
-const EMOTE_INSTALL_STATE_FILE: &str = "stella-emotes-install.json";
-const EMOTE_INSTALL_STATUS_INSTALLED: &str = "installed";
-const EMOTE_INSTALL_STATUS_SKIPPED: &str = "skipped";
 const INSTALL_DIR_NAME: &str = "stella";
 const ELECTRON_USER_DATA_DIR_NAME: &str = "electron-user-data";
 
@@ -276,15 +270,6 @@ fn launch_script_of(d: &str) -> PathBuf {
 fn env_file_of(d: &str) -> PathBuf {
     desktop_dir_of(d).join(ENV_FILE_NAME)
 }
-fn emote_install_state_of(d: &str) -> PathBuf {
-    Path::new(d).join(EMOTE_INSTALL_STATE_FILE)
-}
-fn emotes_dir_of(d: &str) -> PathBuf {
-    desktop_dir_of(d).join("public").join("emotes")
-}
-fn emotes_manifest_of(d: &str) -> PathBuf {
-    emotes_dir_of(d).join("manifest.json")
-}
 fn parakeet_cache_dir_of(d: &str) -> PathBuf {
     desktop_dir_of(d).join("resources").join("parakeet")
 }
@@ -294,9 +279,6 @@ fn parakeet_helper_of(d: &str) -> PathBuf {
         .join("out")
         .join("darwin")
         .join("parakeet_transcriber")
-}
-fn emote_staging_root_of(d: &str) -> PathBuf {
-    Path::new(d).join(".stella-emotes-staging")
 }
 fn dugite_git_root_of(d: &str) -> PathBuf {
     runtime_node_modules_of(d).join("dugite").join("git")
@@ -435,17 +417,6 @@ async fn path_exists_str(p: &str) -> bool {
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct EmoteReleaseManifest {
-    version: String,
-    archive_url: String,
-    #[serde(default)]
-    sha256: Option<String>,
-    #[serde(default)]
-    sha256_url: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct DesktopDownloadManifest {
     schema_version: u32,
     tag: String,
@@ -458,17 +429,6 @@ struct DesktopDownloadAsset {
     url: String,
     sha256: String,
     size: u64,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct EmoteInstallState {
-    status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    version: Option<String>,
-    updated_at: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    warning: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -486,14 +446,6 @@ struct DesktopReleaseManifest {
 struct ReleaseFileEntry {
     #[allow(dead_code)]
     sha256: String,
-}
-
-fn emote_release_manifest_url() -> String {
-    std::env::var("STELLA_EMOTE_RELEASE_MANIFEST_URL")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| DEFAULT_EMOTE_RELEASE_MANIFEST_URL.to_string())
 }
 
 fn desktop_release_manifest_url() -> String {
@@ -514,43 +466,6 @@ fn desktop_platform_key() -> &'static str {
     } else {
         "linux-x64"
     }
-}
-
-fn build_emote_install_state(
-    status: &str,
-    version: Option<String>,
-    warning: Option<String>,
-) -> EmoteInstallState {
-    EmoteInstallState {
-        status: status.to_string(),
-        version,
-        updated_at: chrono_now(),
-        warning,
-    }
-}
-
-async fn read_emote_install_state(install_dir: &str) -> Option<EmoteInstallState> {
-    let raw = fs::read_to_string(emote_install_state_of(install_dir))
-        .await
-        .ok()?;
-    serde_json::from_str::<EmoteInstallState>(&raw).ok()
-}
-
-async fn write_emote_install_state(
-    install_dir: &str,
-    state: &EmoteInstallState,
-) -> Result<(), String> {
-    let path = emote_install_state_of(install_dir);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .map_err(|e| format!("Failed to prepare emote install state path: {e}"))?;
-    }
-    let payload = serde_json::to_string_pretty(state)
-        .map_err(|e| format!("Failed to serialize emote install state: {e}"))?;
-    fs::write(path, format!("{payload}\n"))
-        .await
-        .map_err(|e| format!("Failed to persist emote install state: {e}"))
 }
 
 fn normalize_sha256(value: &str) -> Option<String> {
@@ -1311,12 +1226,12 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 fn verify_sha256(bytes: &[u8], expected: &str) -> Result<(), String> {
     let normalized = normalize_sha256(expected)
-        .ok_or_else(|| "Emote bundle checksum metadata was invalid.".to_string())?;
+        .ok_or_else(|| "Release checksum metadata was invalid.".to_string())?;
     let actual = sha256_hex(bytes);
     if actual == normalized {
         Ok(())
     } else {
-        Err("Emote bundle checksum did not match the downloaded archive.".into())
+        Err("Release checksum did not match the downloaded archive.".into())
     }
 }
 
@@ -1365,151 +1280,6 @@ async fn read_release_manifest_at(path: &Path) -> Result<DesktopReleaseManifest,
 
 async fn read_release_manifest(install_dir: &str) -> Result<DesktopReleaseManifest, String> {
     read_release_manifest_at(&release_manifest_of(install_dir)).await
-}
-
-async fn extract_emote_bundle(install_dir: &str, bytes: Vec<u8>) -> Result<(), String> {
-    let install_path = install_dir.to_string();
-    tokio::task::spawn_blocking(move || {
-        let staging_root = emote_staging_root_of(&install_path);
-        let staged_emotes_dir = staging_root.join("public").join("emotes");
-        let staged_manifest = staged_emotes_dir.join("manifest.json");
-        let final_emotes_dir = emotes_dir_of(&install_path);
-
-        let result = (|| -> Result<(), String> {
-            if staging_root.exists() {
-                std::fs::remove_dir_all(&staging_root)
-                    .map_err(|e| format!("Failed to clear emote staging directory: {e}"))?;
-            }
-            std::fs::create_dir_all(&staging_root)
-                .map_err(|e| format!("Failed to prepare emote staging directory: {e}"))?;
-
-            let decoder = zstd::Decoder::new(std::io::Cursor::new(&bytes))
-                .map_err(|e| format!("Emote bundle zstd decompress failed: {e}"))?;
-            let mut archive = tar::Archive::new(decoder);
-            archive
-                .unpack(&staging_root)
-                .map_err(|e| format!("Emote bundle extract failed: {e}"))?;
-
-            if !staged_manifest.exists() {
-                return Err("Emote bundle did not contain public/emotes/manifest.json.".into());
-            }
-
-            let final_parent = final_emotes_dir
-                .parent()
-                .ok_or_else(|| "Invalid emote install destination.".to_string())?;
-            std::fs::create_dir_all(final_parent)
-                .map_err(|e| format!("Failed to prepare emote destination: {e}"))?;
-
-            if final_emotes_dir.exists() {
-                std::fs::remove_dir_all(&final_emotes_dir)
-                    .map_err(|e| format!("Failed to replace existing emote files: {e}"))?;
-            }
-
-            std::fs::rename(&staged_emotes_dir, &final_emotes_dir)
-                .map_err(|e| format!("Failed to install emote bundle files: {e}"))?;
-
-            Ok(())
-        })();
-
-        let _ = std::fs::remove_dir_all(&staging_root);
-        result
-    })
-    .await
-    .map_err(|e| format!("Emote extract task failed: {e}"))?
-}
-
-async fn download_and_extract_emotes(install_dir: &str) -> Result<String, String> {
-    let client = reqwest::Client::new();
-    let manifest_url = emote_release_manifest_url();
-    log_install(
-        install_dir,
-        &format!("Resolving emote bundle manifest: {manifest_url}"),
-    )
-    .await;
-
-    let manifest_text = fetch_required_text(&client, &manifest_url).await?;
-    let manifest: EmoteReleaseManifest = serde_json::from_str(&manifest_text)
-        .map_err(|e| format!("Emote bundle manifest was invalid JSON: {e}"))?;
-    let version = manifest.version.trim();
-    if version.is_empty() {
-        return Err("Emote bundle manifest did not include a version.".into());
-    }
-    let checksum_source = manifest
-        .sha256_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|url| !url.is_empty())
-        .unwrap_or("embedded in manifest");
-    log_install(
-        install_dir,
-        &format!(
-            "Resolved emote bundle version {version}; archive: {}; checksum source: {checksum_source}",
-            manifest.archive_url
-        ),
-    )
-    .await;
-
-    log_install(
-        install_dir,
-        &format!("Downloading emote bundle archive: {}", manifest.archive_url),
-    )
-    .await;
-    let archive_response = client
-        .get(&manifest.archive_url)
-        .header("User-Agent", "stella-launcher")
-        .send()
-        .await
-        .map_err(|e| format!("Emote bundle download failed: {e}"))?;
-    if !archive_response.status().is_success() {
-        return Err(format!(
-            "Emote bundle download failed: HTTP {}",
-            archive_response.status()
-        ));
-    }
-    let archive_bytes = archive_response
-        .bytes()
-        .await
-        .map_err(|e| format!("Emote bundle download failed: {e}"))?;
-    log_install(
-        install_dir,
-        &format!(
-            "Downloaded emote bundle archive ({} bytes); verifying checksum",
-            archive_bytes.len()
-        ),
-    )
-    .await;
-
-    let checksum = if let Some(checksum) = manifest.sha256.as_deref().and_then(normalize_sha256) {
-        checksum
-    } else if let Some(checksum_url) = manifest
-        .sha256_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|url| !url.is_empty())
-    {
-        let checksum_text = fetch_required_text(&client, checksum_url).await?;
-        normalize_sha256(&checksum_text).ok_or_else(|| {
-            "Emote bundle checksum file did not contain a SHA-256 digest.".to_string()
-        })?
-    } else {
-        return Err("Emote bundle manifest did not include checksum metadata.".into());
-    };
-
-    verify_sha256(archive_bytes.as_ref(), &checksum)?;
-
-    log_install(
-        install_dir,
-        &format!("Extracting emote bundle version {version}"),
-    )
-    .await;
-    extract_emote_bundle(install_dir, archive_bytes.to_vec()).await?;
-    log_install(
-        install_dir,
-        &format!("Emote bundle {version} installed successfully"),
-    )
-    .await;
-
-    Ok(version.to_string())
 }
 
 // ── Git init for self-mod ───────────────────────────────────────────
@@ -1646,10 +1416,6 @@ fn build_step_defs() -> Vec<StepDef> {
             label: "Downloading Stella",
         },
         StepDef {
-            id: SetupStepId::Prepare,
-            label: "Downloading emotes",
-        },
-        StepDef {
             id: SetupStepId::Parakeet,
             label: "Preparing local dictation",
         },
@@ -1671,23 +1437,6 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
                 && path_exists(&desktop_node_modules_of(dir)).await
                 && path_exists(&runtime_package_json_of(dir)).await
                 && path_exists(&runtime_node_modules_of(dir)).await
-        }
-        SetupStepId::Prepare => {
-            if state.dev_mode {
-                true
-            } else {
-                match read_emote_install_state(dir).await {
-                    Some(install_state)
-                        if install_state.status == EMOTE_INSTALL_STATUS_INSTALLED =>
-                    {
-                        path_exists(&emotes_manifest_of(dir)).await
-                    }
-                    Some(install_state) if install_state.status == EMOTE_INSTALL_STATUS_SKIPPED => {
-                        true
-                    }
-                    _ => false,
-                }
-            }
         }
         SetupStepId::Parakeet => {
             if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
@@ -1737,39 +1486,6 @@ async fn install_step(
                 Some(0.81),
             );
             install_payload_dependencies(&dir, state, app).await?;
-            Ok(())
-        }
-        SetupStepId::Prepare => {
-            match download_and_extract_emotes(&dir).await {
-                Ok(version) => {
-                    write_emote_install_state(
-                        &dir,
-                        &build_emote_install_state(
-                            EMOTE_INSTALL_STATUS_INSTALLED,
-                            Some(version),
-                            None,
-                        ),
-                    )
-                    .await?;
-                    state.warning_message = None;
-                }
-                Err(err) => {
-                    let warning = format!(
-                        "Stella installed, but the emote pack could not be downloaded. Emotes may be unavailable until the pack is installed again. ({err})"
-                    );
-                    log_install(&dir, &format!("Emote pack install warning: {warning}")).await;
-                    write_emote_install_state(
-                        &dir,
-                        &build_emote_install_state(
-                            EMOTE_INSTALL_STATUS_SKIPPED,
-                            None,
-                            Some(warning.clone()),
-                        ),
-                    )
-                    .await?;
-                    state.warning_message = Some(warning);
-                }
-            }
             Ok(())
         }
         SetupStepId::Parakeet => {
@@ -1875,15 +1591,7 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
             && has_runtime_pkg
             && has_runtime_node_modules
     };
-    state.warning_message = read_emote_install_state(&state.install_path)
-        .await
-        .and_then(|install_state| {
-            if install_state.status == EMOTE_INSTALL_STATUS_SKIPPED {
-                install_state.warning
-            } else {
-                None
-            }
-        });
+    state.warning_message = None;
 }
 
 fn emit_state_fast(state: &InstallerState, app: &AppHandle) {
