@@ -974,6 +974,10 @@ export default defineConfig({
       '@convex-dev/better-auth',
       '@convex-dev/better-auth/react',
       'convex',
+      // Pre-bundled for self-mod use; large pure-ESM packages stay out of
+      // optimizeDeps so cold dev-server start doesn't pay for them when
+      // unused. They load fine on first import.
+      'three',
     ],
   },
   server: {
