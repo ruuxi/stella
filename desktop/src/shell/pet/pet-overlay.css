@@ -184,17 +184,19 @@ html[data-stella-window="pet"] #root {
 }
 
 /* Inline chat composer that opens to the LEFT of the sprite. The pet
- * window grows wider while this is visible (driven by main via
- * `pet:setComposerActive`) so the popover always has room. The
- * popover itself reuses `.composer-shell` / `.composer-form` styles
- * from the full chat composer (`full-shell.composer.css`) — we only
- * need to position it relative to the sprite. */
+ * window is permanently sized for this popover (see `pet-window.ts`),
+ * so it always has room. The popover itself reuses `.composer-shell`
+ * / `.composer-form` styles from the full chat composer
+ * (`full-shell.composer.css`) — we only need to position it relative
+ * to the sprite. */
 .pet-overlay-popover {
   position: absolute;
-  /* Sit just left of the sprite (parent `.pet-overlay-mascot` is the
-   * relative anchor). 12px gap so the composer doesn't kiss the
-   * sprite's edge. */
-  right: calc(100% + 12px);
+  /* Sit to the left of the sprite (parent `.pet-overlay-mascot` is
+   * the relative anchor). The action arc (radius 64 + 14px button
+   * radius - 48px half-sprite) extends ~28px past the sprite's left
+   * edge; offset enough that the composer clears those buttons with a
+   * small breathing gap. */
+  right: calc(100% + 44px);
   bottom: 0;
   width: 380px;
   pointer-events: auto;
