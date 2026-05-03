@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { GrowIn } from "@/app/chat/GrowIn";
+import { useEdgeFade } from "@/shared/hooks/use-edge-fade";
 import {
   STELLA_SEND_MESSAGE_EVENT,
   type StellaSendMessageDetail,
@@ -190,6 +191,7 @@ export const AskQuestionBubble = memo(function AskQuestionBubble({
   const bodyRef = useRef<HTMLDivElement>(null);
   const stepsRef = useRef<HTMLDivElement>(null);
   const stepRefs = useRef<Array<HTMLDivElement | null>>([]);
+  useEdgeFade(bodyRef, { axis: "vertical" });
 
   const safeIndex = Math.min(Math.max(activeIndex, 0), total - 1);
   const isFirst = safeIndex === 0;

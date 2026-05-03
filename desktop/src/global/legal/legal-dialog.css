@@ -56,20 +56,34 @@
   overflow-y: auto;
   padding: 12px 4px 4px;
   border-top: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+  /* Edge fades driven by `useEdgeFade` — drops to 0 on whichever
+     side the user has scrolled to so the mask only ever feathers
+     content that's actually offscreen. */
+  --legal-fade: 18px;
+  --legal-fade-start: var(--legal-fade);
+  --legal-fade-end: var(--legal-fade);
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    black 18px,
-    black calc(100% - 18px),
+    black var(--legal-fade-start),
+    black calc(100% - var(--legal-fade-end)),
     transparent 100%
   );
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    black 18px,
-    black calc(100% - 18px),
+    black var(--legal-fade-start),
+    black calc(100% - var(--legal-fade-end)),
     transparent 100%
   );
+}
+
+.legal-dialog-scroll[data-at-start="true"] {
+  --legal-fade-start: 0px;
+}
+
+.legal-dialog-scroll[data-at-end="true"] {
+  --legal-fade-end: 0px;
 }
 
 .legal-dialog-scroll::-webkit-scrollbar {

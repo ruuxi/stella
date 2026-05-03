@@ -113,6 +113,40 @@
     padding: 0;
     gap: 8px;
     align-items: center;
+    /* Hide the native horizontal scrollbar — it sat flush under the
+       tabs and read as cramped. The strip is still scrollable via
+       wheel / trackpad / drag, and the edge mask feathers off-screen
+       tabs out instead of letting them hit a hard clip. */
+    scrollbar-width: none;
+    --tab-rail-fade: 36px;
+    --tab-rail-fade-start: var(--tab-rail-fade);
+    --tab-rail-fade-end: var(--tab-rail-fade);
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 var(--tab-rail-fade-start),
+      #000 calc(100% - var(--tab-rail-fade-end)),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 var(--tab-rail-fade-start),
+      #000 calc(100% - var(--tab-rail-fade-end)),
+      transparent 100%
+    );
+  }
+
+  .settings-tab-rail[data-at-start="true"] {
+    --tab-rail-fade-start: 0px;
+  }
+
+  .settings-tab-rail[data-at-end="true"] {
+    --tab-rail-fade-end: 0px;
+  }
+
+  .settings-tab-rail::-webkit-scrollbar {
+    display: none;
   }
 
   .settings-tab-rail-nav {

@@ -1,4 +1,5 @@
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,7 @@ type LegalDialogProps = {
 export const LegalDialog = ({ document, onOpenChange }: LegalDialogProps) => {
   const title = document ? LEGAL_TITLES[document] : "";
   const subtitle = document ? SUBTITLE[document] : "";
+  const scrollRef = useEdgeFadeRef<HTMLDivElement>({ axis: "vertical" });
   return (
     <Dialog open={document !== null} onOpenChange={onOpenChange}>
       <DialogContent size="lg" className="legal-dialog-content">
@@ -48,7 +50,7 @@ export const LegalDialog = ({ document, onOpenChange }: LegalDialogProps) => {
             <p className="legal-dialog-title">{title}</p>
             {subtitle ? <p className="legal-dialog-sub">{subtitle}</p> : null}
           </header>
-          <div className="legal-dialog-scroll">
+          <div ref={scrollRef} className="legal-dialog-scroll">
             <article className="legal-dialog-text">
               {document ? CONTENT[document] : ""}
             </article>

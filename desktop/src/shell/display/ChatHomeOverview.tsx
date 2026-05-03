@@ -23,6 +23,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
+import { useEdgeFade } from "@/shared/hooks/use-edge-fade";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
@@ -110,6 +111,7 @@ function TaskProgressFeed({
   isRunning: boolean;
 }) {
   const scrollRef = useRef<HTMLOListElement | null>(null);
+  useEdgeFade(scrollRef, { axis: "vertical" });
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;

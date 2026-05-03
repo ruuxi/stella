@@ -90,18 +90,27 @@
   overflow-y: auto;
   scrollbar-width: none;
   overscroll-behavior: contain;
+  /* Bottom fade driven by `useEdgeFade` — drops to 0 once the user
+     scrolls to the bottom so the last question doesn't read as
+     half-faded. The top edge has no fade by design (the body sits
+     directly under a header). */
+  --aqb-fade-end: 26px;
   -webkit-mask-image: linear-gradient(
     to bottom,
     black 0,
-    black calc(100% - 26px),
+    black calc(100% - var(--aqb-fade-end)),
     transparent 100%
   );
   mask-image: linear-gradient(
     to bottom,
     black 0,
-    black calc(100% - 26px),
+    black calc(100% - var(--aqb-fade-end)),
     transparent 100%
   );
+}
+
+.ask-question-bubble__body[data-at-end="true"] {
+  --aqb-fade-end: 0px;
 }
 
 .ask-question-bubble__body::-webkit-scrollbar {
