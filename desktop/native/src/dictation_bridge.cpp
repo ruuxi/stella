@@ -116,46 +116,77 @@ static ForegroundInfo getForegroundInfo()
     return info;
 }
 
+static bool elementLooksEditable(IUIAutomationElement* element)
+{
+    if (!element) return false;
+
+    CONTROLTYPEID ctid = 0;
+    if (SUCCEEDED(element->get_CurrentControlType(&ctid))) {
+        if (ctid == UIA_EditControlTypeId
+            || ctid == UIA_DocumentControlTypeId
+            || ctid == UIA_ComboBoxControlTypeId) {
+            return true;
+        }
+    }
+
+    {
+        IUnknown* unk = nullptr;
+        if (SUCCEEDED(element->GetCurrentPattern(UIA_ValuePatternId, &unk)) && unk) {
+            IUIAutomationValuePattern* vp = nullptr;
+            if (SUCCEEDED(unk->QueryInterface(__uuidof(IUIAutomationValuePattern), (void**)&vp)) && vp) {
+                BOOL readOnly = TRUE;
+                HRESULT hr = vp->get_CurrentIsReadOnly(&readOnly);
+                vp->Release();
+                unk->Release();
+                if (SUCCEEDED(hr) && !readOnly) return true;
+            } else {
+                unk->Release();
+            }
+        }
+    }
+
+    {
+        IUnknown* unk = nullptr;
+        if (SUCCEEDED(element->GetCurrentPattern(UIA_TextPatternId, &unk)) && unk) {
+            // TextPattern on any ancestor implies a text-bearing control with
+            // caret support (Chromium edits, Office, native edits, code editors).
+            unk->Release();
+            return true;
+        }
+    }
+
+    {
+        IUnknown* unk = nullptr;
+        if (SUCCEEDED(element->GetCurrentPattern(UIA_TextEditPatternId, &unk)) && unk) {
+            unk->Release();
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static bool focusedElementIsEditable(IUIAutomation* uia)
 {
     IUIAutomationElement* focused = nullptr;
     if (FAILED(uia->GetFocusedElement(&focused)) || !focused) return false;
 
+    IUIAutomationTreeWalker* walker = nullptr;
+    uia->get_RawViewWalker(&walker);
+
+    IUIAutomationElement* current = focused;
+    current->AddRef();
     bool editable = false;
-    CONTROLTYPEID ctid = 0;
-    if (SUCCEEDED(focused->get_CurrentControlType(&ctid))) {
-        if (ctid == UIA_EditControlTypeId
-            || ctid == UIA_DocumentControlTypeId
-            || ctid == UIA_ComboBoxControlTypeId) {
-            editable = true;
-        }
+    for (int depth = 0; depth < 5 && current; ++depth) {
+        if (elementLooksEditable(current)) { editable = true; break; }
+        IUIAutomationElement* parent = nullptr;
+        if (walker) walker->GetParentElement(current, &parent);
+        current->Release();
+        current = parent;
     }
 
-    if (!editable) {
-        IUnknown* unk = nullptr;
-        if (SUCCEEDED(focused->GetCurrentPattern(UIA_ValuePatternId, &unk)) && unk) {
-            IUIAutomationValuePattern* vp = nullptr;
-            if (SUCCEEDED(unk->QueryInterface(__uuidof(IUIAutomationValuePattern), (void**)&vp)) && vp) {
-                BOOL readOnly = TRUE;
-                if (SUCCEEDED(vp->get_CurrentIsReadOnly(&readOnly)) && !readOnly) {
-                    editable = true;
-                }
-                vp->Release();
-            }
-            unk->Release();
-        }
-    }
-
-    if (!editable) {
-        IUnknown* unk = nullptr;
-        if (SUCCEEDED(focused->GetCurrentPattern(UIA_TextPatternId, &unk)) && unk) {
-            // TextPattern alone implies a text-bearing control with caret support
-            // in nearly every host (Edge/Chromium edits, Office, native edits).
-            editable = true;
-            unk->Release();
-        }
-    }
-
+    if (current) current->Release();
+    if (walker) walker->Release();
     focused->Release();
     return editable;
 }

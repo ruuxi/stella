@@ -23,7 +23,6 @@ import {
   loadLocalPreferences,
   saveLocalPreferences,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
-import { IPC_PET_SEND_MESSAGE } from "../../src/shared/contracts/ipc-channels.js";
 import { runNativeHelper } from "../native-helper.js";
 import {
   applyShortcutRegistration,
@@ -52,7 +51,6 @@ type DictationHandlersOptions = {
   windowManager: WindowManager;
   getOverlayController: () => OverlayWindowController | null;
   getStellaRoot: () => string | null;
-  isPetVisible?: () => boolean;
 };
 
 type DictationMode =
@@ -72,13 +70,6 @@ type DictationSound =
   | "stopRecording"
   | "pasteTranscript"
   | "cancel";
-
-type DictationBridgeProbe = {
-  ok?: boolean;
-  frontmostBundleId?: string;
-  frontmostPid?: number;
-  focusedEditable?: boolean;
-};
 
 type DictationMuteResult = {
   ok?: boolean;
@@ -164,24 +155,6 @@ const pasteTextIntoFocusedApp = async (text: string) => {
     restoreClipboardSnapshot(previous);
   }
 };
-
-const probeFocusedExternalInput =
-  async (): Promise<DictationBridgeProbe | null> => {
-    if (!dictationBridgeIsSupported()) return null;
-    const raw = await runNativeHelper("dictation_bridge", ["probe"], {
-      timeout: 800,
-      maxBuffer: 64 * 1024,
-      onError: (error) => {
-        console.debug("[dictation] native probe failed:", error.message);
-      },
-    });
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as DictationBridgeProbe;
-    } catch {
-      return null;
-    }
-  };
 
 const soundPath = (sound: DictationSound) => {
   const packagedPath = path.join(
@@ -462,19 +435,6 @@ export const registerDictationHandlers = (
     }
   };
 
-  const sendTranscriptToStella = (text: string) => {
-    const fullWindow = windowManager.getFullWindow();
-    if (!fullWindow || fullWindow.isDestroyed()) return false;
-    fullWindow.webContents.send(IPC_PET_SEND_MESSAGE, text);
-    return true;
-  };
-
-  const shouldRouteExternalDictationToStella = async () => {
-    if (!options.isPetVisible?.()) return false;
-    const probe = await probeFocusedExternalInput();
-    return probe?.ok === true && probe.focusedEditable !== true;
-  };
-
   const toggleDictation = () => {
     if (activeOverlaySessionId) {
       stopOverlaySession();
@@ -617,7 +577,7 @@ export const registerDictationHandlers = (
 
   ipcMain.on(
     "dictation:overlayCompleted",
-    async (
+    (
       _event,
       payload: {
         sessionId: string;
@@ -629,9 +589,6 @@ export const registerDictationHandlers = (
       const text = payload.text.trim();
       if (!text) return;
       playDictationSound("pasteTranscript");
-      if (await shouldRouteExternalDictationToStella()) {
-        if (sendTranscriptToStella(text)) return;
-      }
       pasteTextIntoFocusedApp(`${text} `).catch((error) => {
         console.warn("[dictation] OS-wide paste failed:", error);
       });
