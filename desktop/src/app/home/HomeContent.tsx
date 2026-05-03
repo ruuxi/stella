@@ -1,8 +1,18 @@
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { usePersonalizedCategories } from "@/app/home/categories";
+import { useIdeasSeen } from "@/app/home/use-ideas-seen";
 import "./home.css";
 
 type HomeContentProps = {
+  conversationId?: string | null;
   onDismissHome?: () => void;
+  onSuggestionClick?: (prompt: string) => void;
   children?: ReactNode;
 };
 
@@ -96,8 +106,144 @@ function useGreeting(): string {
   return getTimeBasedGreeting(new Date());
 }
 
+/**
+ * Footer category pills with a dropup of options on click. Plain text
+ * everywhere — no card, no popover background, no border. Always
+ * absolutely positioned so opening / closing the dropup never shifts the
+ * surrounding layout.
+ *
+ * The small dot in the top-right of a pill label means: this category's
+ * suggestions changed since the user last opened it. Logic lives in
+ * `useIdeasSeen`; opening the dropup marks the category seen.
+ */
+function HomeIdeasFooter({
+  conversationId,
+  onSuggestionClick,
+}: {
+  conversationId: string | null;
+  onSuggestionClick: (prompt: string) => void;
+}) {
+  const { categories, ready: categoriesReady } =
+    usePersonalizedCategories(conversationId);
+  const { isUnseen, markSeen } = useIdeasSeen(
+    conversationId,
+    categories,
+    categoriesReady,
+  );
+  const [openLabel, setOpenLabel] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Close on outside click or Escape so the footer stays a low-commitment
+  // surface — no manual close affordance is needed.
+  useEffect(() => {
+    if (!openLabel) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && rootRef.current?.contains(target)) return;
+      setOpenLabel(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenLabel(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [openLabel]);
+
+  // If the active category disappears from a refresh, drop the dropup.
+  useEffect(() => {
+    if (!openLabel) return;
+    if (!categories.some((category) => category.label === openLabel)) {
+      setOpenLabel(null);
+    }
+  }, [categories, openLabel]);
+
+  const handleTogglePill = useCallback(
+    (label: string) => {
+      setOpenLabel((current) => {
+        const next = current === label ? null : label;
+        if (next) markSeen(next);
+        return next;
+      });
+    },
+    [markSeen],
+  );
+
+  const handleSelectOption = useCallback(
+    (prompt: string) => {
+      onSuggestionClick(prompt);
+      setOpenLabel(null);
+    },
+    [onSuggestionClick],
+  );
+
+  if (categories.length === 0) return null;
+
+  const activeCategory = openLabel
+    ? categories.find((category) => category.label === openLabel) ?? null
+    : null;
+
+  return (
+    <div className="home-ideas-footer" ref={rootRef}>
+      {activeCategory && (
+        <ul
+          className="home-ideas-dropup"
+          role="listbox"
+          aria-label={`${activeCategory.label} suggestions`}
+        >
+          {activeCategory.options.map((option) => (
+            <li key={option.label} className="home-ideas-dropup__item">
+              <button
+                type="button"
+                className="home-ideas-dropup__option"
+                onClick={() => handleSelectOption(option.prompt)}
+              >
+                {option.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="home-ideas-footer__pills" role="tablist">
+        {categories.map((category) => {
+          const isOpen = category.label === openLabel;
+          const showDot = isUnseen(category.label);
+          return (
+            <button
+              key={category.label}
+              type="button"
+              role="tab"
+              aria-selected={isOpen}
+              aria-expanded={isOpen}
+              className={`home-ideas-footer__pill${
+                isOpen ? " home-ideas-footer__pill--open" : ""
+              }`}
+              onClick={() => handleTogglePill(category.label)}
+            >
+              <span className="home-ideas-footer__pill-label">
+                {category.label}
+                {showDot && (
+                  <span
+                    className="home-ideas-footer__pill-dot"
+                    aria-label="Updated"
+                  />
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function HomeContent({
+  conversationId = null,
   onDismissHome,
+  onSuggestionClick,
   children,
 }: HomeContentProps) {
   const greeting = useGreeting();
@@ -148,6 +294,13 @@ export function HomeContent({
           <RightClickMouse className="home-sidebar-hint__mouse" />
           <span>Right-click to open the workspace panel</span>
         </div>
+      )}
+
+      {onSuggestionClick && (
+        <HomeIdeasFooter
+          conversationId={conversationId}
+          onSuggestionClick={onSuggestionClick}
+        />
       )}
     </div>
   );

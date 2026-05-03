@@ -31,12 +31,17 @@
 /* Fade-in for home content elements */
 .home-stella-title,
 .home-view-messages-link,
-.home-sidebar-hint {
+.home-sidebar-hint,
+.home-ideas-footer {
   animation: homeContentFadeIn 300ms ease both;
 }
 
 .home-sidebar-hint {
   animation-delay: 80ms;
+}
+
+.home-ideas-footer {
+  animation-delay: 120ms;
 }
 
 @keyframes homeContentFadeIn {
@@ -54,6 +59,7 @@
 .full-body-main--home-leaving .home-stella-title,
 .full-body-main--home-leaving .home-view-messages-link,
 .full-body-main--home-leaving .home-sidebar-hint,
+.full-body-main--home-leaving .home-ideas-footer,
 .full-body-main--home-leaving .composer-wrap {
   animation: homeContentFadeOut 280ms ease both;
 }
@@ -116,7 +122,10 @@
 .home-sidebar-hint {
   position: absolute;
   left: 50%;
-  bottom: 24px;
+  /* Sits just above the absolute-positioned ideas footer so the two never
+     fight for the same row. Both elements are absolute so neither shifts
+     the centered home column. */
+  bottom: 60px;
   translate: -50% 0;
   display: flex;
   align-items: center;
@@ -141,4 +150,123 @@
 
 .home-sidebar-hint__mouse-highlight {
   fill: color-mix(in oklch, var(--foreground) 22%, transparent);
+}
+
+/* ============================================================
+   Ideas footer — plain text category pills with a dropup of
+   options. No card, no popover background, no border. Both the
+   pill row and the dropup are absolutely positioned so opening
+   or closing the dropup never shifts the centered home column.
+   ============================================================ */
+
+.home-ideas-footer {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.home-ideas-footer__pills {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+}
+
+.home-ideas-footer__pill {
+  padding: 4px 2px;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-weak);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  cursor: default;
+  transition: color 140ms ease;
+}
+
+.home-ideas-footer__pill:hover,
+.home-ideas-footer__pill--open {
+  color: var(--text-strong);
+}
+
+.home-ideas-footer__pill-label {
+  position: relative;
+  display: inline-block;
+  padding-right: 2px;
+}
+
+/* Update dot — top-right of the pill label. Small, single accent color,
+   no animation, no badge chrome. Hidden once the user opens the pill. */
+.home-ideas-footer__pill-dot {
+  position: absolute;
+  top: -1px;
+  right: -7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent, color-mix(in oklch, var(--foreground) 70%, #4a90e2));
+  pointer-events: none;
+}
+
+/* Dropup — plain stacked text lines anchored above the pill row. Absolute
+   so it never affects layout; centered horizontally over the row. */
+.home-ideas-dropup {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  white-space: nowrap;
+  animation: homeIdeasDropupFadeIn 160ms ease both;
+}
+
+@keyframes homeIdeasDropupFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.home-ideas-dropup__item {
+  margin: 0;
+  padding: 0;
+}
+
+.home-ideas-dropup__option {
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--text-base);
+  text-align: center;
+  cursor: default;
+  transition: color 140ms ease;
+}
+
+.home-ideas-dropup__option:hover {
+  color: var(--text-strong);
 }
