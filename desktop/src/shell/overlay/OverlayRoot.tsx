@@ -8,7 +8,6 @@ import {
 } from "react";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
-import { VoiceOverlay } from "@/shell/overlay/VoiceOverlay";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
 import { InworldDictationSession } from "@/features/dictation/services/inworld-dictation";
 import { appendRollingLevel } from "@/features/dictation/rolling-levels";
@@ -43,8 +42,6 @@ type OverlayState = {
   windowHighlightBounds: WindowBounds | null;
   windowHighlightTone: WindowHighlightTone;
   regionCaptureActive: boolean;
-  voiceVisible: boolean;
-  voicePosition: { x: number; y: number } | null;
   dictationVisible: boolean;
   dictationPosition: { x: number; y: number } | null;
   selectionChip: SelectionChipState | null;
@@ -64,11 +61,6 @@ type OverlayAction =
       tone?: WindowHighlightTone;
     }
   | { type: "region"; active: boolean }
-  | {
-      type: "voice:show";
-      position: { x: number; y: number };
-    }
-  | { type: "voice:hide" }
   | { type: "dictation:show"; position: { x: number; y: number } }
   | { type: "dictation:hide" }
   | { type: "selectionChip:show"; chip: SelectionChipState }
@@ -89,8 +81,6 @@ const initialState: OverlayState = {
   windowHighlightBounds: null,
   windowHighlightTone: "default",
   regionCaptureActive: false,
-  voiceVisible: false,
-  voicePosition: null,
   dictationVisible: false,
   dictationPosition: null,
   selectionChip: null,
@@ -138,21 +128,6 @@ function overlayReducer(
       return state.regionCaptureActive === action.active
         ? state
         : { ...state, regionCaptureActive: action.active };
-    case "voice:show": {
-      if (
-        state.voiceVisible &&
-        isSamePosition(state.voicePosition, action.position)
-      ) {
-        return state;
-      }
-      return {
-        ...state,
-        voiceVisible: true,
-        voicePosition: action.position,
-      };
-    }
-    case "voice:hide":
-      return state.voiceVisible ? { ...state, voiceVisible: false } : state;
     case "dictation:show":
       if (
         state.dictationVisible &&
@@ -184,11 +159,6 @@ function overlayReducer(
       return state;
   }
 }
-
-const VOICE_CREATURE_SIZE = {
-  width: 168,
-  height: 168,
-} as const;
 
 type InteractiveRect = {
   left: number;
@@ -299,17 +269,6 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
       api.overlay.onEndRegionCapture?.(() => {
         dispatch({ type: "region", active: false });
       }),
-      api.overlay.onShowVoice?.(
-        (data: { x: number; y: number; mode: "realtime" }) => {
-          dispatch({
-            type: "voice:show",
-            position: { x: data.x, y: data.y },
-          });
-        },
-      ),
-      api.overlay.onHideVoice?.(() => {
-        dispatch({ type: "voice:hide" });
-      }),
       api.overlay.onShowDictation?.((data: { x: number; y: number }) => {
         dispatch({
           type: "dictation:show",
@@ -364,8 +323,6 @@ function useOverlayHitTesting(
   const {
     regionCaptureActive,
     radialVisible,
-    voiceVisible,
-    voicePosition,
     dictationVisible,
     dictationPosition,
     selectionChip,
@@ -383,7 +340,7 @@ function useOverlayHitTesting(
       return;
     }
 
-    if (!voiceVisible && !dictationVisible && !selectionChipActive) {
+    if (!dictationVisible && !selectionChipActive) {
       updateInteractive(false);
       return;
     }
@@ -392,14 +349,6 @@ function useOverlayHitTesting(
 
     const handleMouseMove = (e: MouseEvent) => {
       const rects: InteractiveRect[] = [];
-      if (voiceVisible && voicePosition) {
-        rects.push({
-          left: voicePosition.x - VOICE_CREATURE_SIZE.width / 2,
-          top: voicePosition.y - VOICE_CREATURE_SIZE.height / 2,
-          width: VOICE_CREATURE_SIZE.width,
-          height: VOICE_CREATURE_SIZE.height,
-        });
-      }
       if (dictationVisible && dictationPosition) {
         rects.push({
           left: dictationPosition.x - DICTATION_OVERLAY_SIZE.width / 2,
@@ -429,8 +378,6 @@ function useOverlayHitTesting(
   }, [
     regionCaptureActive,
     radialVisible,
-    voiceVisible,
-    voicePosition,
     dictationVisible,
     dictationPosition,
     selectionChipActive,
@@ -442,7 +389,6 @@ function useOverlayHitTesting(
     const anythingActive =
       radialVisible ||
       regionCaptureActive ||
-      voiceVisible ||
       dictationVisible ||
       selectionChipActive;
 
@@ -452,7 +398,6 @@ function useOverlayHitTesting(
   }, [
     radialVisible,
     regionCaptureActive,
-    voiceVisible,
     dictationVisible,
     selectionChipActive,
     updateInteractive,
@@ -665,7 +610,6 @@ export function OverlayRoot() {
   }, [
     state.radialVisible,
     state.regionCaptureActive,
-    state.voiceVisible,
     state.dictationVisible,
     state.selectionChip,
   ]);
@@ -737,21 +681,6 @@ export function OverlayRoot() {
           <RegionCapture />
         </div>
       )}
-
-      <VoiceOverlay
-        visible={state.voiceVisible && Boolean(state.voicePosition)}
-        style={
-          state.voiceVisible && state.voicePosition
-            ? {
-                position: "absolute",
-                left: state.voicePosition.x,
-                top: state.voicePosition.y,
-                bottom: "auto",
-                transform: "translate(-50%, -50%)",
-              }
-            : undefined
-        }
-      />
 
       <DictationOverlay
         visible={state.dictationVisible}

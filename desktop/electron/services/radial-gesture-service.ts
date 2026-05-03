@@ -54,9 +54,11 @@ type RadialGestureDeps = {
   capture: RadialCaptureBridge
   overlay: RadialOverlayBridge
   window: RadialWindowBridge
-  activateVoiceRtc: () => void
-  deactivateVoiceModes: () => boolean
-  isVoiceActive: () => boolean
+  /** Single "go to voice now" handler — opens the floating pet and
+   *  toggles the realtime voice session. The radial dial's voice
+   *  wedge routes through this so its behaviour is identical to the
+   *  global keybind and the pet's own mic action button. */
+  togglePetVoice: () => void
   updateUiState: (partial: Record<string, unknown>) => void
   /**
    * Optional handler for global left-mouse-up events. Wired through the
@@ -126,7 +128,7 @@ export class RadialGestureService {
   }
 
   private async handleSelection(wedge: RadialWedge) {
-    const { capture, overlay, window: win, activateVoiceRtc, updateUiState } = this.deps
+    const { capture, overlay, window: win, togglePetVoice, updateUiState } = this.deps
 
     switch (wedge) {
       case 'dismiss': {
@@ -202,11 +204,7 @@ export class RadialGestureService {
         this.clearScheduledRadialCapture()
         capture.cancelRadialContextCapture()
         this.restoreOrClearTransientContext()
-        if (this.deps.isVoiceActive()) {
-          this.deps.deactivateVoiceModes()
-        } else {
-          activateVoiceRtc()
-        }
+        togglePetVoice()
         break
       }
     }

@@ -12,11 +12,19 @@
    * The sprite is anchored to the bottom-right of that window so the
    * action arc curves to the upper-left and the bubble floats above
    * the sprite — both inside the window's bounds. */
-  right: 24px;
-  bottom: 24px;
+  right: 20px;
+  bottom: 20px;
+  /* Padding extends this element's *layout* box (and therefore React's
+   * mouseEnter/Leave hit zone) far enough to cover the action arc
+   * curving to the LEFT of the sprite. Without it, moving the cursor
+   * from the sprite to a button briefly crosses transparent pixels
+   * outside the root and fires mouseLeave before the user can click.
+   * The arc extends ~30px past the sprite's left edge — 34px of left
+   * padding covers it with a small buffer. The padding is invisible. */
+  padding: 4px 4px 4px 34px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   pointer-events: auto;
   user-select: none;
   -webkit-user-select: none;
@@ -39,13 +47,19 @@ html[data-stella-window="pet"] #root {
 }
 
 .pet-overlay-bubble {
+  /* Anchored above the sprite (its parent `.pet-overlay-mascot` is
+   * `position: relative`) so the bubble's horizontal position tracks
+   * the sprite even though the sprite-hit-zone root is much wider. */
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
   display: flex;
   flex-direction: column;
   gap: 2px;
   max-width: 220px;
   min-width: 120px;
+  width: max-content;
   padding: 8px 10px;
-  margin-bottom: 6px;
   border-radius: 12px;
   background: var(--color-token-main-surface-primary, rgba(20, 20, 20, 0.92));
   color: var(--color-token-foreground, rgba(255, 255, 255, 0.95));
@@ -57,7 +71,7 @@ html[data-stella-window="pet"] #root {
   line-height: 1.35;
   pointer-events: auto;
   opacity: 0;
-  transform: translateY(4px);
+  transform: translate(-50%, 4px);
   transition:
     opacity 180ms ease-out,
     transform 180ms ease-out;
@@ -65,7 +79,7 @@ html[data-stella-window="pet"] #root {
 
 .pet-overlay-bubble[data-visible="true"] {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate(-50%, 0);
 }
 
 .pet-overlay-bubble-title {
@@ -157,6 +171,50 @@ html[data-stella-window="pet"] #root {
 .pet-overlay-action:focus-visible {
   outline: 2px solid var(--color-token-focus-border, #4caf50);
   outline-offset: 1px;
+}
+
+.pet-overlay-action[data-active="true"] {
+  background: var(--color-token-interactive, #4caf50);
+  color: var(--color-token-foreground, #fff);
+}
+
+.pet-overlay-action[data-active="true"]:hover {
+  background: var(--color-token-interactive, #4caf50);
+  color: var(--color-token-foreground, #fff);
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+/* Voice button: red while a realtime voice session is active. The
+ * pet sprite itself shows the listening / speaking animation, so the
+ * red tint here is the toggle-state affordance. */
+.pet-overlay-action[data-tone="danger"] {
+  background: var(--color-token-error, #e53935);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.pet-overlay-action[data-tone="danger"]:hover {
+  background: var(--color-token-error, #e53935);
+  color: #fff;
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+/* Inline chat composer that opens to the LEFT of the sprite. The pet
+ * window grows wider while this is visible (driven by main via
+ * `pet:setComposerActive`) so the popover always has room. The
+ * popover itself reuses `.composer-shell` / `.composer-form` styles
+ * from the full chat composer (`full-shell.composer.css`) — we only
+ * need to position it relative to the sprite. */
+.pet-overlay-popover {
+  position: absolute;
+  /* Sit just left of the sprite (parent `.pet-overlay-mascot` is the
+   * relative anchor). 12px gap so the composer doesn't kiss the
+   * sprite's edge. */
+  right: calc(100% + 12px);
+  bottom: 0;
+  width: 380px;
+  pointer-events: auto;
+  z-index: 35;
 }
 
 .pet-overlay-context-menu {

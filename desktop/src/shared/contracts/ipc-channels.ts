@@ -75,8 +75,6 @@ export const IPC_OVERLAY_END_REGION_CAPTURE =
 export const IPC_OVERLAY_SHOW_MINI = "overlay:showMini" as const;
 export const IPC_OVERLAY_HIDE_MINI = "overlay:hideMini" as const;
 export const IPC_OVERLAY_RESTORE_MINI = "overlay:restoreMini" as const;
-export const IPC_OVERLAY_SHOW_VOICE = "overlay:showVoice" as const;
-export const IPC_OVERLAY_HIDE_VOICE = "overlay:hideVoice" as const;
 export const IPC_OVERLAY_DISPLAY_CHANGE = "overlay:displayChange" as const;
 export const IPC_OVERLAY_MORPH_FORWARD = "overlay:morphForward" as const;
 export const IPC_OVERLAY_MORPH_BOUNDS = "overlay:morphBounds" as const;
@@ -346,6 +344,16 @@ export const IPC_PET_GET_STATE = "pet:getState" as const;
  *  screen-coords position. Sent on every pointermove so the window
  *  follows the cursor smoothly during a drag gesture. */
 export const IPC_PET_MOVE_WINDOW = "pet:moveWindow" as const;
+/** Pet renderer toggles the inline chat composer. Main grows the
+ *  dedicated pet window to make room for the composer to the left of
+ *  the sprite *and* flips `focusable` on so the textarea can receive
+ *  keystrokes (the resting pet window is non-focusable so it never
+ *  steals focus from the active app). */
+export const IPC_PET_SET_COMPOSER_ACTIVE = "pet:setComposerActive" as const;
+/** Pet voice button: ask main to enter voice (RTC) mode. Routes
+ *  through `uiStateService.activateVoiceRtc` — same path the radial
+ *  dial uses — so all the existing voice-overlay plumbing applies. */
+export const IPC_PET_REQUEST_VOICE = "pet:requestVoice" as const;
 export const IPC_PET_STATUS = "pet:status" as const;
 export const IPC_PET_OPEN_CHAT = "pet:openChat" as const;
 export const IPC_PET_SEND_MESSAGE = "pet:sendMessage" as const;

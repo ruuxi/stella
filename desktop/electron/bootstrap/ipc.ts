@@ -11,6 +11,7 @@ import { registerMemoryHandlers } from "../ipc/memory-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerPetHandlers } from "../ipc/pet-handlers.js";
+import { togglePetVoice } from "../services/pet-voice-control.js";
 import { registerOfficePreviewHandlers } from "../ipc/office-preview-handlers.js";
 import { registerFashionHandlers } from "../ipc/fashion-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
@@ -43,7 +44,6 @@ export const registerBootstrapIpcHandlers = (
     windowManager: state.windowManager!,
     updateUiState: (partial) => services.uiStateService.update(partial),
     broadcastUiState: () => services.uiStateService.broadcast(),
-    syncVoiceOverlay: () => services.uiStateService.syncVoiceOverlay(),
     setAppReady: (ready) => {
       state.appReady = ready;
       if (ready) {
@@ -259,12 +259,19 @@ export const registerBootstrapIpcHandlers = (
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
 
+  const togglePetVoiceImpl = () =>
+    togglePetVoice({
+      uiStateService: services.uiStateService,
+      getPetController: () => state.petController ?? null,
+      windowManager: state.windowManager!,
+    });
+
   registerVoiceHandlers({
     uiState: services.uiStateService.state,
     getAppReady: () => state.appReady,
     windowManager: state.windowManager!,
     broadcastUiState: () => services.uiStateService.broadcast(),
-    syncVoiceOverlay: () => services.uiStateService.syncVoiceOverlay(),
+    togglePetVoice: togglePetVoiceImpl,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     getBroadcastToMobile: lazyMobileBroadcast,
@@ -274,6 +281,7 @@ export const registerBootstrapIpcHandlers = (
   state.petHandlersDispose = registerPetHandlers({
     windowManager: state.windowManager!,
     getPetController: () => state.petController ?? null,
+    toggleVoiceRtc: togglePetVoiceImpl,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

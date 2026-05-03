@@ -352,10 +352,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       height: number;
       tone?: "default" | "subtle";
     } | null>("overlay:windowHighlight"),
-    onShowVoice: onIpc<{ x: number; y: number; mode: "realtime" }>(
-      "overlay:showVoice",
-    ),
-    onHideVoice: onIpcSignal("overlay:hideVoice"),
     onShowDictation: onIpc<{ x: number; y: number }>("overlay:showDictation"),
     onHideDictation: onIpcSignal("overlay:hideDictation"),
     onShowScreenGuide: onIpc<{
@@ -1343,6 +1339,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onSetOpen: onIpc<boolean>("pet:setOpen"),
     moveWindow: (position: { x: number; y: number }) =>
       ipcRenderer.send("pet:moveWindow", position),
+    setComposerActive: (active: boolean) =>
+      ipcRenderer.send("pet:setComposerActive", active),
+    requestVoice: () => ipcRenderer.send("pet:requestVoice"),
     pushStatus: (status: {
       state: "idle" | "running" | "waiting" | "review" | "failed" | "waving";
       title: string;

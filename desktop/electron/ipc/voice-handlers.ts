@@ -16,7 +16,12 @@ type VoiceHandlersOptions = {
   getAppReady: () => boolean;
   windowManager: WindowManager;
   broadcastUiState: () => void;
-  syncVoiceOverlay: () => void;
+  /** Centralized "go to voice now" handler — opens the floating pet
+   *  and toggles the realtime voice session. Voice no longer has its
+   *  own creature overlay; the pet sprite animates listening /
+   *  speaking instead. Wired the same way for the keybind, the radial
+   *  dial wedge, and the pet's own mic action button. */
+  togglePetVoice: () => void;
   getStellaHostRunner: () => StellaHostRunner | null;
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
@@ -101,12 +106,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
 
   const toggleVoiceRtc = () => {
     if (!options.getAppReady()) return;
-    options.uiState.isVoiceRtcActive = !options.uiState.isVoiceRtcActive;
-    if (options.uiState.isVoiceRtcActive) {
-      options.uiState.mode = "voice";
-    }
-    options.syncVoiceOverlay();
-    options.broadcastUiState();
+    options.togglePetVoice();
   };
 
   const loadConfiguredShortcut = () => {
