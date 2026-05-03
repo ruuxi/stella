@@ -473,6 +473,9 @@ export type ElectronDictationApi = {
   onOverlayStop: (
     callback: (data: { sessionId: string }) => void,
   ) => () => void;
+  onOverlayCancel: (
+    callback: (data: { sessionId: string }) => void,
+  ) => () => void;
   overlayCompleted: (payload: { sessionId: string; text: string }) => void;
   overlayFailed: (payload: { sessionId: string; error?: string }) => void;
   inAppStarted: (payload: { startId?: string }) => void;

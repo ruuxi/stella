@@ -536,6 +536,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
     onOverlayStart: onIpc<{ sessionId: string }>("dictation:overlayStart"),
     onOverlayStop: onIpc<{ sessionId: string }>("dictation:overlayStop"),
+    onOverlayCancel: onIpc<{ sessionId: string }>("dictation:overlayCancel"),
     overlayCompleted: (payload: { sessionId: string; text: string }) =>
       ipcRenderer.send("dictation:overlayCompleted", payload),
     overlayFailed: (payload: { sessionId: string; error?: string }) =>
