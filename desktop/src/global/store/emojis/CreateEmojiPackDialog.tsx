@@ -261,27 +261,72 @@ export function CreateEmojiPackDialog({
   const activeError = activeSheet?.error ?? null;
   const activeBusy = activeSheet?.busy ?? false;
 
+  // Which sheets need a fresh job — exactly one when the previous run
+  // half-succeeded, both otherwise. We retry only the failed slot so a
+  // good sheet doesn't get tossed.
+  const failedOnlySheets = useMemo<EmojiSheetIndex[]>(() => {
+    const sheetsState: Array<{ blob: SheetState["blob"]; error: string | null }> = [
+      sheet1,
+      sheet2,
+    ];
+    const failed: EmojiSheetIndex[] = [];
+    let hasSuccess = false;
+    sheetsState.forEach((s, idx) => {
+      if (s.blob) hasSuccess = true;
+      else if (s.error) failed.push(idx as EmojiSheetIndex);
+    });
+    return hasSuccess && failed.length > 0 ? failed : [];
+  }, [sheet1, sheet2]);
+
   const handleStartGeneration = useCallback(async () => {
     if (sheet1.busy || sheet2.busy) return;
     processedJobsRef.current = new Set();
-    for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
-    objectUrlsRef.current = [];
-    setSheet1({ jobId: null, blob: null, busy: true, error: null });
-    setSheet2({ jobId: null, blob: null, busy: true, error: null });
+    const targets =
+      failedOnlySheets.length > 0
+        ? failedOnlySheets
+        : ([...EMOJI_SHEET_INDICES] as EmojiSheetIndex[]);
+    const updaters: Record<EmojiSheetIndex, (next: SheetState) => void> = {
+      0: setSheet1,
+      1: setSheet2,
+    };
+    // Only clear the slots we're about to retry — the keeper sheet
+    // (success on the previous run) stays mounted with its preview.
+    if (failedOnlySheets.length === 0) {
+      for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
+      objectUrlsRef.current = [];
+    }
+    for (const idx of targets) {
+      updaters[idx]({ jobId: null, blob: null, busy: true, error: null });
+    }
     try {
-      const [a, b] = await Promise.all(
-        EMOJI_SHEET_INDICES.map((i) => submitEmojiSheetJob(i, style)),
+      const submissions = await Promise.all(
+        targets.map((i) => submitEmojiSheetJob(i, style)),
       );
-      setSheet1({ jobId: a.jobId, blob: null, busy: true, error: null });
-      setSheet2({ jobId: b.jobId, blob: null, busy: true, error: null });
+      submissions.forEach((submission, position) => {
+        const idx = targets[position]!;
+        updaters[idx]({
+          jobId: submission.jobId,
+          blob: null,
+          busy: true,
+          error: null,
+        });
+      });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Couldn't start generation";
-      setSheet1({ jobId: null, blob: null, busy: false, error: message });
-      setSheet2({ jobId: null, blob: null, busy: false, error: message });
+      for (const idx of targets) {
+        updaters[idx]({ jobId: null, blob: null, busy: false, error: message });
+      }
       showToast({ title: message, variant: "error" });
     }
-  }, [sheet1.busy, sheet2.busy, setSheet1, setSheet2, style]);
+  }, [
+    failedOnlySheets,
+    sheet1.busy,
+    sheet2.busy,
+    setSheet1,
+    setSheet2,
+    style,
+  ]);
 
   const handlePublish = useCallback(async () => {
     if (!bothBlobs) return;
@@ -535,6 +580,10 @@ export function CreateEmojiPackDialog({
                 <Sparkles size={14} />
                 {sheet1.busy || sheet2.busy
                   ? "Generating…"
+                  : failedOnlySheets.length > 0
+                  ? failedOnlySheets.length === 1
+                    ? "Retry failed sheet"
+                    : "Retry failed sheets"
                   : sheet1.blob && sheet2.blob
                   ? "Regenerate"
                   : "Generate"}
