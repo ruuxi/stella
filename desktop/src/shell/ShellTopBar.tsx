@@ -72,33 +72,6 @@ const WindowControls = () => {
   );
 };
 
-const SidebarToggleIcon = () => (
-  <svg
-    aria-hidden="true"
-    className="shell-topbar-sidebar-toggle-icon"
-    width="15"
-    height="15"
-    viewBox="0 0 16 16"
-    fill="none"
-  >
-    <rect
-      x="2.25"
-      y="2.25"
-      width="11.5"
-      height="11.5"
-      rx="2.25"
-      stroke="currentColor"
-      strokeWidth="1.4"
-    />
-    <path
-      d="M6.25 2.75V13.25"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-    />
-  </svg>
-);
-
 export const ShellTopBar = () => {
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
@@ -109,10 +82,6 @@ export const ShellTopBar = () => {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const isStoreRoute = pathname === "/store" || pathname.startsWith("/store/");
   const [miniAlwaysOnTop, setMiniAlwaysOnTopState] = useState(true);
-
-  const toggleSidebar = useCallback(() => {
-    window.dispatchEvent(new Event(STELLA_TOGGLE_SIDEBAR_RAIL_EVENT));
-  }, []);
 
   useEffect(() => {
     if (!isMiniWindow) return;
@@ -144,17 +113,9 @@ export const ShellTopBar = () => {
       className="shell-topbar"
       data-platform={isMac ? "mac" : "other"}
       data-display-open={panelOpen ? "true" : "false"}
+      data-route={isStoreRoute ? "store" : undefined}
     >
       <div className="shell-topbar-left">
-        <button
-          type="button"
-          className="shell-topbar-icon-btn"
-          onClick={toggleSidebar}
-          aria-label="Toggle sidebar"
-          title="Toggle sidebar"
-        >
-          <SidebarToggleIcon />
-        </button>
         <button
           type="button"
           className="shell-topbar-icon-btn shell-topbar-history-btn"

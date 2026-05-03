@@ -64,18 +64,15 @@ interface SidebarActionsBarProps {
 
 /**
  * Compact row of icon-only utility buttons rendered just below the
- * account row. Hosts Settings, Theme, and Connect — actions that
- * are global but don't deserve a full-width nav item. Hidden when the
- * sidebar is collapsed to its rail mode (CSS in `sidebar.css`).
+ * account row. Hosts Settings, Models, Theme, and Connect. Used when
+ * the sidebar is in its full (non-rail) mode where there's room for
+ * the four-button row; rail mode swaps this out for the single-button
+ * `SidebarActionsMenu` instead.
  */
 const SidebarActionsBar = ({
   onConnect,
   onOpenSettings,
 }: SidebarActionsBarProps) => {
-  // One-time post-onboarding nudge: a small red dot draws attention to
-  // the Connect button on a fresh install. Dismissed the first time the
-  // user opens it (or once they visit a different surface that also
-  // dismisses it via `dismissPostOnboardingHint`).
   const connectHint = usePostOnboardingHint("connect");
   const handleConnectClick = useCallback(() => {
     if (connectHint.active) connectHint.dismiss();
@@ -132,6 +129,151 @@ const SidebarActionsBar = ({
           <span className="sidebar-actions-btn-hint-dot" aria-hidden="true" />
         )}
       </button>
+    </div>
+  );
+};
+
+type PendingMenuAction = "settings" | "models" | "theme" | "connect" | null;
+
+/**
+ * Single gear-icon button rendered just below the account row in
+ * rail / mini layouts where the four-button `SidebarActionsBar`
+ * doesn't fit. Opens a popover menu with Settings / Models / Theme /
+ * Connect.
+ *
+ * Models and Theme are themselves popovers. We render them with
+ * hidden-but-anchored triggers next to the gear button and open
+ * them in a controlled fashion when the matching menu item is
+ * picked. The actual open is deferred to `onCloseAutoFocus` of the
+ * dropdown so Radix doesn't restore focus to the gear button mid-
+ * flight (same pattern as the avatar dropdown's sign-out flow).
+ */
+const SidebarActionsMenu = ({
+  onConnect,
+  onOpenSettings,
+}: SidebarActionsBarProps) => {
+  const connectHint = usePostOnboardingHint("connect");
+  const [modelsOpen, setModelsOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const pendingActionRef = useRef<PendingMenuAction>(null);
+
+  const handleCloseAutoFocus = useCallback(
+    (event: Event) => {
+      const action = pendingActionRef.current;
+      if (!action) return;
+      pendingActionRef.current = null;
+      event.preventDefault();
+      if (action === "settings") {
+        onOpenSettings();
+      } else if (action === "models") {
+        setModelsOpen(true);
+      } else if (action === "theme") {
+        setThemeOpen(true);
+      } else if (action === "connect") {
+        if (connectHint.active) connectHint.dismiss();
+        onConnect?.();
+      }
+    },
+    [onOpenSettings, onConnect, connectHint],
+  );
+
+  return (
+    <div className="sidebar-actions-bar">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="sidebar-actions-btn"
+            aria-label="Quick settings"
+            title="Quick settings"
+          >
+            <SettingsIcon size={18} strokeWidth={1.75} />
+            {connectHint.active && (
+              <span
+                className="sidebar-actions-btn-hint-dot"
+                aria-hidden="true"
+              />
+            )}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          side="top"
+          align="start"
+          sideOffset={8}
+          onCloseAutoFocus={handleCloseAutoFocus}
+        >
+          <DropdownMenuItem
+            onSelect={() => {
+              pendingActionRef.current = "settings";
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <SettingsIcon size={14} strokeWidth={1.75} />
+            </span>
+            Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              pendingActionRef.current = "models";
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <Cpu size={14} strokeWidth={1.75} />
+            </span>
+            Models
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              pendingActionRef.current = "theme";
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <Palette size={14} strokeWidth={1.75} />
+            </span>
+            Theme
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              pendingActionRef.current = "connect";
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <Device size={14} />
+            </span>
+            Connect
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ModelsPicker
+        open={modelsOpen}
+        onOpenChange={setModelsOpen}
+        hideTrigger
+        side="top"
+        align="start"
+        trigger={
+          <button
+            type="button"
+            className="sidebar-actions-anchor"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+        }
+      />
+      <ThemePicker
+        open={themeOpen}
+        onOpenChange={setThemeOpen}
+        hideTrigger
+        side="top"
+        align="start"
+        trigger={
+          <button
+            type="button"
+            className="sidebar-actions-anchor"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+        }
+      />
     </div>
   );
 };
@@ -494,6 +636,24 @@ export const Sidebar = ({
   // concept and is forced compact via CSS regardless of this state.
   const [railCollapsed, setRailCollapsed] = useState<boolean>(readPersistedRail);
 
+  // Mini windows render the sidebar as a rail via the `max-width: 600px`
+  // media query without flipping `railCollapsed`. Track that here so the
+  // actions row can swap to the single-button menu in either rail mode.
+  const [isCompactRail, setIsCompactRail] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 600px)").matches;
+  });
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 600px)");
+    const sync = () => setIsCompactRail(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const railMode = railCollapsed || isCompactRail;
+
   const toggleRailCollapsed = useCallback(() => {
     setRailCollapsed((prev) => {
       const next = !prev;
@@ -702,10 +862,17 @@ export const Sidebar = ({
                 onUpgrade={handleUpgrade}
                 onOpenFeedback={handleOpenFeedback}
               />
-              <SidebarActionsBar
-                onConnect={onConnect}
-                onOpenSettings={handleOpenSettings}
-              />
+              {railMode ? (
+                <SidebarActionsMenu
+                  onConnect={onConnect}
+                  onOpenSettings={handleOpenSettings}
+                />
+              ) : (
+                <SidebarActionsBar
+                  onConnect={onConnect}
+                  onOpenSettings={handleOpenSettings}
+                />
+              )}
             </div>
           </>
         )}

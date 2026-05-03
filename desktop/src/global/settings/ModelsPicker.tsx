@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type CSSProperties,
   type ReactElement,
 } from "react";
 import {
@@ -40,6 +41,13 @@ type LocalModelPreferences = {
   maxAgentConcurrency: number;
 };
 
+type ModelsPickerTriggerProps = {
+  style?: CSSProperties;
+  tabIndex?: number;
+  "aria-hidden"?: boolean;
+  "data-slot"?: string;
+};
+
 interface ModelsPickerProps {
   /** Custom trigger (e.g. icon button). Required. */
   trigger: ReactElement;
@@ -47,6 +55,13 @@ interface ModelsPickerProps {
   side?: "top" | "bottom" | "left" | "right";
   /** Alignment of the popover relative to the trigger. Defaults to `start`. */
   align?: "start" | "center" | "end";
+  /** Make the popover controlled by the caller. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Visually hide the trigger but keep it in the DOM so Radix can
+   *  still anchor the popover to it. Used when the picker is opened
+   *  from another control (e.g. a sibling dropdown menu). */
+  hideTrigger?: boolean;
 }
 
 /**
@@ -60,8 +75,13 @@ export function ModelsPicker({
   trigger,
   side = "top",
   align = "start",
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  hideTrigger = false,
 }: ModelsPickerProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const navigate = useNavigate();
   const [preferences, setPreferences] = useState<LocalModelPreferences | null>(
     null,
@@ -158,12 +178,27 @@ export function ModelsPicker({
     void navigate({ to: "/settings", search: { tab: "models" } });
   }, [navigate]);
 
-  const triggerElement = isValidElement(trigger)
-    ? cloneElement(trigger, { "data-slot": "models-picker-trigger" } as Record<
-        string,
-        unknown
-      >)
-    : trigger;
+  const triggerElement =
+    trigger && isValidElement<ModelsPickerTriggerProps>(trigger)
+      ? cloneElement(trigger, {
+          "data-slot": "models-picker-trigger",
+          ...(hideTrigger
+            ? {
+                style: {
+                  ...(typeof trigger.props.style === "object" &&
+                  trigger.props.style !== null
+                    ? trigger.props.style
+                    : {}),
+                  opacity: 0,
+                  pointerEvents: "none",
+                  position: "absolute",
+                },
+                tabIndex: -1,
+                "aria-hidden": true,
+              }
+            : null),
+        })
+      : trigger;
 
   const ready = preferences !== null && modelDefaults !== undefined;
 
