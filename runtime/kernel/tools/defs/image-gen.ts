@@ -38,6 +38,16 @@ export const createImageGenTool = (
           description:
             "Optional aspect ratio (e.g. '1:1', '16:9', '9:16', '4:3'). Defaults to the gateway's recommended ratio.",
         },
+        size: {
+          type: "object",
+          description:
+            "Optional explicit pixel dimensions. Only set this when the default aspectRatio presets won't do (e.g. sprite atlases at non-standard sizes). Subject to the model envelope: max edge ≤ 3840, 655,360 ≤ width × height ≤ 8,294,400, longest edge ≤ 3× shortest edge.",
+          properties: {
+            width: { type: "integer", minimum: 1 },
+            height: { type: "integer", minimum: 1 },
+          },
+          required: ["width", "height"],
+        },
         profile: {
           type: "string",
           enum: ["best", "fast"],

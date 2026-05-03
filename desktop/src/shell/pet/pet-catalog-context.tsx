@@ -14,6 +14,29 @@ const findBundled = (id: string | null | undefined): BuiltInPet | null => {
   return BUNDLED_PETS.find((pet) => pet.id === id) ?? null;
 };
 
+const normalizeUserPet = (pet: unknown): BuiltInPet | null => {
+  if (!pet || typeof pet !== "object") return null;
+  const row = pet as {
+    petId?: string;
+    displayName?: string;
+    description?: string;
+    spritesheetUrl?: string;
+    authorDisplayName?: string;
+    installCount?: number;
+  };
+  return normalizePet({
+    id: row.petId,
+    displayName: row.displayName,
+    description: row.description,
+    kind: "custom",
+    tags: ["custom"],
+    ownerName: row.authorDisplayName ?? null,
+    spritesheetUrl: row.spritesheetUrl,
+    sourceUrl: "",
+    downloads: row.installCount,
+  });
+};
+
 /**
  * Resolve the currently-selected pet for the floating overlay. Three
  * layers, in priority order:
@@ -59,14 +82,18 @@ export const useSelectedPet = (
     api.data.pets.getByPetId,
     selectedPetId && !bundled ? { id: selectedPetId } : "skip",
   );
+  const userPet = useQuery(
+    api.data.user_pets.getByPetId,
+    selectedPetId && !bundled ? { petId: selectedPetId } : "skip",
+  );
 
   useEffect(() => {
-    if (!remote) return;
-    const normalized = normalizePet(remote as Partial<BuiltInPet>);
+    const record = remote ? normalizePet(remote as Partial<BuiltInPet>) : null;
+    const normalized = record ?? normalizeUserPet(userPet);
     if (!normalized) return;
     writeCachedPetById(normalized);
     setCached(normalized);
-  }, [remote]);
+  }, [remote, userPet]);
 
   if (bundled) return bundled;
   if (cached) return cached;
