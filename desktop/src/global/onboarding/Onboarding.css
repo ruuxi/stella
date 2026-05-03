@@ -543,10 +543,6 @@
   display: none;
 }
 
-.onboarding-dialogue[data-phase="creation"] .onboarding-phase-nav {
-  pointer-events: auto;
-}
-
 .onboarding-dialogue[data-phase="creation"] .onboarding-split-stage {
   flex: 1;
   align-items: center;
