@@ -224,6 +224,47 @@ const createImageGenHandler = (
     input.num_images = Math.max(1, Math.min(numImages, 4));
   }
 
+  // Optional explicit pixel dimensions. Validate the GPT Image 2 envelope
+  // locally so the agent gets a clear error instead of a 4xx from upstream.
+  const sizeArg = args.size as
+    | { width?: unknown; height?: unknown }
+    | undefined;
+  if (sizeArg && typeof sizeArg === "object") {
+    const width =
+      typeof sizeArg.width === "number" ? Math.floor(sizeArg.width) : NaN;
+    const height =
+      typeof sizeArg.height === "number" ? Math.floor(sizeArg.height) : NaN;
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width < 1 ||
+      height < 1
+    ) {
+      return {
+        error: "image_gen size requires positive integer width and height.",
+      };
+    }
+    const maxEdge = Math.max(width, height);
+    const minEdge = Math.min(width, height);
+    const pixelArea = width * height;
+    if (maxEdge > 3840) {
+      return {
+        error: `image_gen size max edge ${maxEdge} exceeds 3840.`,
+      };
+    }
+    if (pixelArea < 655_360 || pixelArea > 8_294_400) {
+      return {
+        error: `image_gen size pixel area ${pixelArea} is outside 655,360–8,294,400.`,
+      };
+    }
+    if (maxEdge > minEdge * 3) {
+      return {
+        error: `image_gen size aspect ratio ${maxEdge}:${minEdge} is steeper than 3:1.`,
+      };
+    }
+    input.image_size = { width, height };
+  }
+
   // Reference images: local paths get base64-encoded into data: URIs (so the
   // body photo never lands in Convex storage), remote URLs are passed as-is.
   // Any reference present switches the capability to image_edit (GPT Image 2
