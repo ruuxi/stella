@@ -356,7 +356,8 @@ function App() {
             {state.devMode && !state.canLaunch && (
               <div className="banner banner-warn">
                 Dev mode is enabled, but this path is not launchable yet. Make
-                sure <code>desktop/package.json</code> and <code>desktop/node_modules</code> exist.
+                sure the root, desktop, and runtime workspaces have package files
+                and installed dependencies.
               </div>
             )}
 
