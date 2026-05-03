@@ -45,7 +45,9 @@ import type {
   LocalCronPayload as SharedLocalCronPayload,
   LocalHeartbeatActiveHours as SharedLocalHeartbeatActiveHours,
   LocalCronJobRecord as SharedLocalCronJobRecord,
+  LocalCronJobUpdatePatch as SharedLocalCronJobUpdatePatch,
   LocalHeartbeatConfigRecord as SharedLocalHeartbeatConfigRecord,
+  LocalHeartbeatUpsertInput as SharedLocalHeartbeatUpsertInput,
   ScheduledConversationEvent as SharedScheduledConversationEvent,
   VoiceRuntimeSnapshot as SharedVoiceRuntimeSnapshot,
   SocialSessionRuntimeRecord as SharedSocialSessionRuntimeRecord,
@@ -110,7 +112,9 @@ export type LocalCronSchedule = SharedLocalCronSchedule;
 export type LocalCronPayload = SharedLocalCronPayload;
 export type LocalHeartbeatActiveHours = SharedLocalHeartbeatActiveHours;
 export type LocalCronJobRecord = SharedLocalCronJobRecord;
+export type LocalCronJobUpdatePatch = SharedLocalCronJobUpdatePatch;
 export type LocalHeartbeatConfigRecord = SharedLocalHeartbeatConfigRecord;
+export type LocalHeartbeatUpsertInput = SharedLocalHeartbeatUpsertInput;
 export type ScheduledConversationEvent = SharedScheduledConversationEvent;
 export type VoiceRuntimeSnapshot = SharedVoiceRuntimeSnapshot;
 export type SocialSessionRuntimeRecord = SharedSocialSessionRuntimeRecord;
@@ -413,6 +417,7 @@ export type ElectronVoiceApi = {
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
+  getCoreMemory: () => Promise<string>;
   getRuntimeState: () => Promise<VoiceRuntimeSnapshot>;
   onRuntimeState: (
     callback: (state: VoiceRuntimeSnapshot) => void,
@@ -632,6 +637,10 @@ export type ElectronSystemApi = {
   setSoundNotificationsEnabled: (
     enabled: boolean,
   ) => Promise<{ enabled: boolean }>;
+  getPersonalityVoice: () => Promise<string | null>;
+  setPersonalityVoice: (
+    voiceId: string,
+  ) => Promise<{ ok: boolean; voiceId: string }>;
   getBackupStatus: () => Promise<BackupStatusSnapshot>;
   backUpNow: () => Promise<BackupNowResult>;
   listBackups: (limit?: number) => Promise<BackupSummary[]>;
@@ -665,14 +674,11 @@ export type ElectronSystemApi = {
   deleteLlmOAuthCredential: (provider: string) => Promise<{ removed: boolean }>;
   getLlmCredentialRoutingPreference: () => Promise<{
     enabled: boolean;
-    provider: string;
   }>;
   setLlmCredentialRoutingPreference: (payload: {
     enabled: boolean;
-    provider: string;
   }) => Promise<{
     enabled: boolean;
-    provider: string;
   }>;
   saveLlmCredential: (payload: {
     provider: string;
@@ -793,6 +799,16 @@ export type ElectronScheduleApi = {
   getConversationEventCount: (payload: {
     conversationId: string;
   }) => Promise<number>;
+  runCronJob: (payload: { jobId: string }) => Promise<unknown>;
+  removeCronJob: (payload: { jobId: string }) => Promise<boolean>;
+  updateCronJob: (payload: {
+    jobId: string;
+    patch: LocalCronJobUpdatePatch;
+  }) => Promise<LocalCronJobRecord | null>;
+  upsertHeartbeat: (
+    payload: LocalHeartbeatUpsertInput,
+  ) => Promise<LocalHeartbeatConfigRecord>;
+  runHeartbeat: (payload: { conversationId: string }) => Promise<unknown>;
   onUpdated: (callback: () => void) => () => void;
 };
 
@@ -826,6 +842,22 @@ export type ElectronStoreApi = {
     messageId: string;
     releaseNumber: number;
   }) => Promise<StoreThreadSnapshot>;
+  publishBlueprint: (payload: {
+    messageId: string;
+    packageId: string;
+    asUpdate: boolean;
+    displayName?: string;
+    description?: string;
+    category?:
+      | "apps-games"
+      | "productivity"
+      | "customization"
+      | "skills-agents"
+      | "integrations"
+      | "other";
+    manifest: Record<string, unknown>;
+    releaseNotes?: string;
+  }) => Promise<StorePackageReleaseRecord>;
   uninstallPackage: (packageId: string) => Promise<{
     packageId: string;
     revertedCommits: string[];
