@@ -163,14 +163,16 @@
 .dictation-overlay {
   position: absolute;
   z-index: 4;
-  width: 360px;
-  min-height: 56px;
+  box-sizing: border-box;
+  width: 300px;
+  min-height: 0;
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 18px;
+  justify-content: center;
+  gap: 10px;
+  padding: 5px 14px;
+  border-radius: 9999px;
   border: 1px solid var(--border-base, var(--border));
   background: var(--surface-overlay, var(--card));
   box-shadow:
@@ -190,5 +192,14 @@
 }
 
 .dictation-overlay .composer-dictation-waveform {
-  height: 30px;
+  flex: 0 1 200px;
+  max-width: 210px;
+  min-width: 0;
+  height: 22px;
+}
+
+.dictation-overlay .composer-dictation-timer {
+  flex: 0 0 auto;
+  padding: 0 2px;
+  font-size: 11px;
 }
