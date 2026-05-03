@@ -7,6 +7,7 @@ import {
   IPC_PET_REQUEST_VOICE,
   IPC_PET_SEND_MESSAGE,
   IPC_PET_SET_COMPOSER_ACTIVE,
+  IPC_PET_SET_INTERACTIVE,
   IPC_PET_SET_OPEN,
   IPC_PET_STATUS,
 } from "../../src/shared/contracts/ipc-channels.js";
@@ -149,6 +150,11 @@ export const registerPetHandlers = ({
     getPetController()?.setComposerActive(Boolean(active));
   };
 
+  const onSetInteractive = (event: IpcMainEvent, active: unknown) => {
+    if (!assertPrivilegedSender(event, IPC_PET_SET_INTERACTIVE)) return;
+    getPetController()?.setInteractive(Boolean(active));
+  };
+
   const onRequestVoice = (event: IpcMainEvent) => {
     if (!assertPrivilegedSender(event, IPC_PET_REQUEST_VOICE)) return;
     toggleVoiceRtc();
@@ -183,6 +189,7 @@ export const registerPetHandlers = ({
   ipcMain.on(IPC_PET_SET_OPEN, onSetOpen);
   ipcMain.on(IPC_PET_MOVE_WINDOW, onMoveWindow);
   ipcMain.on(IPC_PET_SET_COMPOSER_ACTIVE, onSetComposerActive);
+  ipcMain.on(IPC_PET_SET_INTERACTIVE, onSetInteractive);
   ipcMain.on(IPC_PET_REQUEST_VOICE, onRequestVoice);
   ipcMain.on(IPC_PET_STATUS, onStatus);
   ipcMain.on(IPC_PET_OPEN_CHAT, onOpenChat);
@@ -195,6 +202,7 @@ export const registerPetHandlers = ({
     ipcMain.removeListener(IPC_PET_SET_OPEN, onSetOpen);
     ipcMain.removeListener(IPC_PET_MOVE_WINDOW, onMoveWindow);
     ipcMain.removeListener(IPC_PET_SET_COMPOSER_ACTIVE, onSetComposerActive);
+    ipcMain.removeListener(IPC_PET_SET_INTERACTIVE, onSetInteractive);
     ipcMain.removeListener(IPC_PET_REQUEST_VOICE, onRequestVoice);
     ipcMain.removeListener(IPC_PET_STATUS, onStatus);
     ipcMain.removeListener(IPC_PET_OPEN_CHAT, onOpenChat);

@@ -15,7 +15,6 @@ import type {
 } from "@/shared/contracts/pet";
 import type { VoiceRuntimeSnapshot } from "@/shared/types/electron";
 import { DEFAULT_PET_ID } from "./built-in-pets";
-import { BUNDLED_PETS } from "./bundled-pets";
 import { useSelectedPet } from "./pet-catalog-context";
 import { useSelectedPetId } from "./pet-preferences";
 import { PetChatPopover } from "./PetChatPopover";
@@ -122,14 +121,7 @@ export const PetOverlay = ({
 }: PetOverlayProps) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [selectedPetId] = useSelectedPetId(DEFAULT_PET_ID);
-  const selected = useSelectedPet(selectedPetId);
-  // Bundled default is the absolute floor — guarantees the mascot can
-  // always render even before any Convex query has hydrated, and even
-  // when the user's selected pet was unpublished server-side.
-  const fallbackPet =
-    BUNDLED_PETS.find((bundled) => bundled.id === DEFAULT_PET_ID) ??
-    BUNDLED_PETS[0];
-  const pet = selected ?? fallbackPet;
+  const pet = useSelectedPet(selectedPetId);
 
   const [hover, setHover] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -192,17 +184,93 @@ export const PetOverlay = ({
     };
   }, []);
 
-  // The pet window's bounds never change — it's permanently sized for
-  // the composer's footprint. Toggling the composer just mounts /
-  // unmounts the popover and flips the window's focusable state in
-  // main so the textarea can receive keystrokes. Both can fire in the
-  // same tick because there's no resize to sequence around.
+  // Open / close the composer in two steps so the user never sees a
+  // mismatched frame:
+  //   - Open:  resize the window first (grows leftward), THEN mount the
+  //            popover. If we mounted first, the 380px popover would
+  //            render inside the still-280px window and visibly jump
+  //            once the resize lands.
+  //   - Close: unmount the popover first, THEN shrink the window. If
+  //            we shrank first, the popover would briefly render
+  //            outside the window's new bounds.
+  // The sprite is anchored to the window's right edge in both states,
+  // so its absolute screen position never changes across the resize.
   const requestChatOpen = useCallback(() => {
     setContextMenu(null);
-    const next = !chatOpen;
-    setChatOpen(next);
-    window.electronAPI?.pet?.setComposerActive?.(next);
+    if (chatOpen) {
+      // Closing.
+      setChatOpen(false);
+      window.setTimeout(() => {
+        window.electronAPI?.pet?.setComposerActive?.(false);
+      }, 16);
+      return;
+    }
+    // Opening.
+    window.electronAPI?.pet?.setComposerActive?.(true);
+    window.setTimeout(() => {
+      setChatOpen(true);
+    }, 32);
   }, [chatOpen]);
+
+  // Mouse-passthrough hit testing. The pet `BrowserWindow` sits with
+  // `setIgnoreMouseEvents(true, { forward: true })` by default so the
+  // empty pixels around the sprite stop blocking clicks to whatever app
+  // is below. We listen to the forwarded mousemove events (they keep
+  // arriving even while the window is ignored thanks to `forward:
+  // true`) and flip the window into interactive mode whenever the
+  // cursor is over a real pixel — `[data-pet-hit="true"]` marks every
+  // such element. Outside those rects we drop back to passthrough.
+  useEffect(() => {
+    if (!open) {
+      window.electronAPI?.pet?.setInteractive?.(false);
+      return;
+    }
+    let lastInteractive: boolean | null = null;
+    const setInteractive = (next: boolean) => {
+      if (lastInteractive === next) return;
+      lastInteractive = next;
+      window.electronAPI?.pet?.setInteractive?.(next);
+    };
+    const isInteractiveAtPoint = (clientX: number, clientY: number) => {
+      const root = rootRef.current;
+      if (!root) return false;
+      const ownerDoc = root.ownerDocument ?? document;
+      // `elementsFromPoint` walks the stacking order; any element along
+      // the way that wants clicks (popover, action arc, sprite, bubble,
+      // context menu, …) is tagged with `data-pet-hit`.
+      const stack = ownerDoc.elementsFromPoint(clientX, clientY);
+      for (const node of stack) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.closest("[data-pet-hit=\"true\"]")) return true;
+      }
+      return false;
+    };
+    const handleMouseMove = (event: MouseEvent) => {
+      setInteractive(isInteractiveAtPoint(event.clientX, event.clientY));
+    };
+    const handleMouseLeave = () => {
+      setInteractive(false);
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseleave", handleMouseLeave);
+    document.addEventListener("mouseleave", handleMouseLeave);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseleave", handleMouseLeave);
+      document.removeEventListener("mouseleave", handleMouseLeave);
+      window.electronAPI?.pet?.setInteractive?.(false);
+    };
+  }, [open]);
+
+  // The chat popover, context menu, and active drag state must always
+  // be interactive regardless of momentary cursor jitter. While any of
+  // these are showing we pin the window to interactive so a tiny gap
+  // between the dom rects and the cursor never drops the click.
+  useEffect(() => {
+    if (!open) return;
+    if (!chatOpen && !contextMenu && !dragging) return;
+    window.electronAPI?.pet?.setInteractive?.(true);
+  }, [chatOpen, contextMenu, dragging, open]);
 
   // When the pet itself is hidden, force the composer closed too so
   // we never leave main in the wider footprint.

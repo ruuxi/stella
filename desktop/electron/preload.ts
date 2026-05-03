@@ -57,8 +57,6 @@ import {
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_SET_SYNC_MODE,
-  IPC_PREFERENCES_GET_PERSONALITY_VOICE,
-  IPC_PREFERENCES_SET_PERSONALITY_VOICE,
   IPC_SHELL_SAVE_FILE_AS,
   IPC_SYSTEM_OPEN_FDA,
   IPC_SOCIAL_SESSIONS_CREATE,
@@ -458,8 +456,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         micLevel: number;
         outputLevel: number;
       }>,
-    getCoreMemory: () =>
-      ipcRenderer.invoke("voice:getCoreMemory") as Promise<string | null>,
     onRuntimeState: onIpc<{
       sessionState:
         | "idle"
@@ -540,7 +536,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
     onOverlayStart: onIpc<{ sessionId: string }>("dictation:overlayStart"),
     onOverlayStop: onIpc<{ sessionId: string }>("dictation:overlayStop"),
-    onOverlayCancel: onIpc<{ sessionId: string }>("dictation:overlayCancel"),
     overlayCompleted: (payload: { sessionId: string; text: string }) =>
       ipcRenderer.send("dictation:overlayCompleted", payload),
     overlayFailed: (payload: { sessionId: string; error?: string }) =>
@@ -856,15 +851,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
         enabled,
       ) as Promise<{ enabled: boolean }>,
-    getPersonalityVoice: () =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_GET_PERSONALITY_VOICE,
-      ) as Promise<string | null>,
-    setPersonalityVoice: (voiceId: string) =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_SET_PERSONALITY_VOICE,
-        voiceId,
-      ) as Promise<{ voiceId: string | null }>,
     getBackupStatus: () => ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),
     backUpNow: () => ipcRenderer.invoke(IPC_BACKUP_RUN_NOW),
     listBackups: (limit?: number) =>
@@ -931,13 +917,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getLlmCredentialRoutingPreference: () =>
       ipcRenderer.invoke("llmCredentials:getRoutingPreference") as Promise<{
         enabled: boolean;
+        provider: string;
       }>,
-    setLlmCredentialRoutingPreference: (payload: { enabled: boolean }) =>
+    setLlmCredentialRoutingPreference: (payload: {
+      enabled: boolean;
+      provider: string;
+    }) =>
       ipcRenderer.invoke(
         "llmCredentials:setRoutingPreference",
         payload,
       ) as Promise<{
         enabled: boolean;
+        provider: string;
       }>,
     saveLlmCredential: (payload: {
       provider: string;
@@ -1199,19 +1190,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("schedule:listConversationEvents", payload),
     getConversationEventCount: (payload: { conversationId: string }) =>
       ipcRenderer.invoke("schedule:getConversationEventCount", payload),
-    runCronJob: (payload: { jobId: string }) =>
-      ipcRenderer.invoke("schedule:runCronJob", payload),
-    removeCronJob: (payload: { jobId: string }) =>
-      ipcRenderer.invoke("schedule:removeCronJob", payload),
-    updateCronJob: (payload: {
-      jobId: string;
-      patch: import("../../runtime/kernel/shared/scheduling.js").LocalCronJobUpdatePatch;
-    }) => ipcRenderer.invoke("schedule:updateCronJob", payload),
-    upsertHeartbeat: (
-      payload: import("../../runtime/kernel/shared/scheduling.js").LocalHeartbeatUpsertInput,
-    ) => ipcRenderer.invoke("schedule:upsertHeartbeat", payload),
-    runHeartbeat: (payload: { conversationId: string }) =>
-      ipcRenderer.invoke("schedule:runHeartbeat", payload),
     onUpdated: onIpcSignal("schedule:updated"),
   },
 
@@ -1233,22 +1211,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       displayName: string;
       blueprintMarkdown: string;
     }) => ipcRenderer.invoke("store:installFromBlueprint", payload),
-    publishBlueprint: (payload: {
-      messageId: string;
-      packageId: string;
-      asUpdate: boolean;
-      displayName?: string;
-      description?: string;
-      category?:
-        | "apps-games"
-        | "productivity"
-        | "customization"
-        | "skills-agents"
-        | "integrations"
-        | "other";
-      manifest: Record<string, unknown>;
-      releaseNotes?: string;
-    }) => ipcRenderer.invoke("store:publishBlueprint", payload),
     getThread: () => ipcRenderer.invoke("store:getThread"),
     sendThreadMessage: (payload: {
       text: string;
@@ -1367,13 +1329,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("pet:getState") as Promise<{
         open: boolean;
         status: {
-          state:
-            | "idle"
-            | "running"
-            | "waiting"
-            | "review"
-            | "failed"
-            | "waving";
+          state: "idle" | "running" | "waiting" | "review" | "failed" | "waving";
           title: string;
           message: string;
           isLoading: boolean;
@@ -1385,6 +1341,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("pet:moveWindow", position),
     setComposerActive: (active: boolean) =>
       ipcRenderer.send("pet:setComposerActive", active),
+    setInteractive: (active: boolean) =>
+      ipcRenderer.send("pet:setInteractive", active),
     requestVoice: () => ipcRenderer.send("pet:requestVoice"),
     pushStatus: (status: {
       state: "idle" | "running" | "waiting" | "review" | "failed" | "waving";
