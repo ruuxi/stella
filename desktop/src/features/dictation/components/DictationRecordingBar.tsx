@@ -5,8 +5,8 @@
  *
  *   [waveform — flex 1]   [0:24]   [X]   [✓]   [↑ (optional)]
  *
- * The control buttons are used by the in-app composers. The global overlay
- * can hide them because stopping the shortcut commits the dictation directly.
+ * The external overlay can hide controls because stopping the shortcut commits
+ * the dictation directly. In-app composers also use that quieter treatment.
  *
  * The waveform is drawn to a single <canvas> so we can repaint at the level
  * tick rate (~12 Hz) without re-rendering hundreds of DOM nodes.
@@ -19,8 +19,8 @@ import "./dictation-recording-bar.css";
 type DictationRecordingBarProps = {
   levels: number[];
   elapsedMs: number;
-  onCancel: () => void;
-  onConfirm: () => void;
+  onCancel?: () => void;
+  onConfirm?: () => void;
   showControls?: boolean;
   /**
    * When provided, renders an arrow button to the right of the check that
