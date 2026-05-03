@@ -165,6 +165,11 @@ export function ChatPanelTab(
       message: inputText,
       setMessage: setInputText,
       disabled: isStreaming,
+      onTranscriptCommitted: () => {
+        requestAnimationFrame(() => {
+          inputRef.current?.focus();
+        });
+      },
       onCommit: () => {
         submitFromDictationRef.current();
       },
@@ -310,6 +315,7 @@ export function ChatPanelTab(
                         onCancel={dictation.cancel}
                         onConfirm={dictation.toggle}
                         onSend={dictation.commitAndSend}
+                        showControls={dictation.showControls}
                       />
                     ) : (
                       <>

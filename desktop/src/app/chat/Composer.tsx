@@ -72,6 +72,11 @@ export function Composer({
     message,
     setMessage,
     disabled: isStreaming,
+    onTranscriptCommitted: () => {
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
+    },
     onCommit: () => {
       onSendRef.current();
     },
@@ -146,6 +151,7 @@ export function Composer({
                 onCancel={dictation.cancel}
                 onConfirm={dictation.toggle}
                 onSend={dictation.commitAndSend}
+                showControls={dictation.showControls}
               />
             ) : (
               <>

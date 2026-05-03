@@ -44,6 +44,7 @@ interface UseDictationOptions {
   message: string;
   disabled?: boolean;
   onError?: (error: string) => void;
+  onTranscriptCommitted?: () => void;
   /**
    * Invoked when `commitAndSend` finishes — i.e. the recording has stopped,
    * any pending transcription has been appended to the composer message, and
@@ -56,6 +57,7 @@ interface UseDictationOptions {
 interface UseDictationResult {
   isRecording: boolean;
   isTranscribing: boolean;
+  showControls: boolean;
   state: DictationSessionState;
   /** Toggle recording: start → stop+transcribe (or stop+transcribe → start). */
   toggle: () => void;
@@ -86,18 +88,21 @@ export const useDictation = ({
   message,
   disabled = false,
   onError,
+  onTranscriptCommitted,
   onCommit,
 }: UseDictationOptions): UseDictationResult => {
   const [state, setState] = useState<DictationSessionState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [levels, setLevels] = useState<number[]>([]);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [showControls, setShowControls] = useState(false);
 
   const sessionRef = useRef<InworldDictationSession | null>(null);
   const baseTextRef = useRef("");
   const messageRef = useRef(message);
   const setMessageRef = useRef(setMessage);
   const onErrorRef = useRef(onError);
+  const onTranscriptCommittedRef = useRef(onTranscriptCommitted);
   const onCommitRef = useRef(onCommit);
   const stateRef = useRef<DictationSessionState>("idle");
   /**
@@ -119,6 +124,10 @@ export const useDictation = ({
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
+
+  useEffect(() => {
+    onTranscriptCommittedRef.current = onTranscriptCommitted;
+  }, [onTranscriptCommitted]);
 
   useEffect(() => {
     onCommitRef.current = onCommit;
@@ -171,12 +180,13 @@ export const useDictation = ({
     const session = sessionRef.current;
     if (!session) return;
     setLevels([]);
+    setShowControls(false);
     void session.cancel().catch((err: Error) => {
       console.debug("[dictation] cancel failed:", err.message);
     });
   }, []);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (source: "button" | "shortcut") => {
     if (sessionRef.current) return;
     if (disabled) return;
     const session = new InworldDictationSession();
@@ -185,6 +195,7 @@ export const useDictation = ({
     setError(null);
     setLevels([]);
     setElapsedMs(0);
+    setShowControls(source === "button");
 
     try {
       await session.start({
@@ -201,6 +212,7 @@ export const useDictation = ({
           if (next === "idle" || next === "error") {
             sessionRef.current = null;
             setLevels([]);
+            setShowControls(false);
             // For success paths the inworld session emits `idle` before
             // `onFinalTranscript`; defer to a microtask so commit fires
             // after the transcript has been appended. For no-audio /
@@ -211,6 +223,7 @@ export const useDictation = ({
         onFinalTranscript: (transcript) => {
           const next = joinTranscriptOntoBase(baseTextRef.current, transcript);
           setMessageRef.current(next);
+          onTranscriptCommittedRef.current?.();
         },
         onLevel: (level) => {
           setLevels((prev) => appendRollingLevel(prev, level, MAX_LEVEL_BARS));
@@ -222,6 +235,7 @@ export const useDictation = ({
       onErrorRef.current?.(errMessage);
       sessionRef.current = null;
       setLevels([]);
+      setShowControls(false);
     }
   }, [disabled]);
 
@@ -235,7 +249,7 @@ export const useDictation = ({
       return;
     } else {
       sendAfterCommitRef.current = false;
-      void start();
+      void start("button");
     }
   }, [start, stop]);
 
@@ -268,7 +282,7 @@ export const useDictation = ({
       window.electronAPI?.dictation?.inAppStarted({ startId });
       if (action === "start") {
         if (current !== "listening" && current !== "transcribing") {
-          void start();
+          void start("shortcut");
         }
         return;
       }
@@ -285,11 +299,17 @@ export const useDictation = ({
         }
         return;
       }
-      toggle();
+      if (current === "listening") {
+        sendAfterCommitRef.current = false;
+        void stop();
+      } else if (current !== "transcribing") {
+        sendAfterCommitRef.current = false;
+        void start("shortcut");
+      }
     };
     window.addEventListener(DICTATION_TOGGLE_EVENT, handler);
     return () => window.removeEventListener(DICTATION_TOGGLE_EVENT, handler);
-  }, [cancel, disabled, start, stop, toggle]);
+  }, [cancel, disabled, start, stop]);
 
   useEffect(() => {
     return () => {
@@ -304,6 +324,7 @@ export const useDictation = ({
   return {
     isRecording: state === "listening",
     isTranscribing: state === "transcribing",
+    showControls,
     state,
     toggle,
     cancel,
