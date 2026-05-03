@@ -18,9 +18,10 @@
 
 /* Two-column variant: in-page tab rail on the left, panel on the right.
    Used by /settings, which now owns its sidebar inline rather than
-   hijacking the shell's nav slot. */
+   hijacking the shell's nav slot. `.content-area` already reserves
+   the topbar height — this is just the page's own breathing room. */
 .settings-layout--standalone {
-  padding-top: 32px;
+  padding-top: 24px;
   gap: 32px;
   justify-content: center;
 }
@@ -129,11 +130,19 @@
 .settings-panel-wrap {
   flex: 1;
   min-width: 0;
+  /* `min-height: 0` is required so the wrap can shrink below its
+     intrinsic content size inside the flex layout — without it the
+     wrap inflates to fit all rendered cards and the inner panel's
+     `overflow-y: auto` never kicks in. */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   position: relative;
 }
 
 .settings-panel {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
   padding: 8px 28px 32px;

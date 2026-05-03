@@ -308,11 +308,6 @@
   transform: translateY(0);
 }
 
-.shell-topbar-sidebar-toggle-icon {
-  display: block;
-  flex-shrink: 0;
-}
-
 .shell-topbar-icon-btn:hover,
 .shell-topbar-wc-btn:hover {
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
@@ -368,8 +363,8 @@
             var(--shell-topbar-center-right-inset)
         ) / 2
   );
-  top: 50%;
-  transform: translate(-50%, -50%);
+  top: 0;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   -webkit-app-region: no-drag;
@@ -403,27 +398,61 @@ body[data-display-resizing="true"] .shell-topbar-center {
 }
 
 .shell-topbar-store-tabs {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 10px;
+  gap: 4px;
+  /* Extra horizontal padding gives the leftmost / rightmost tab pills
+     breathing room from the container's rounded bottom corners so the
+     active indicator never visually clips against the curve. */
+  padding: 6px 12px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-top: none;
+}
+
+.shell-topbar-store-tab-indicator {
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 0;
+  border-radius: 999px;
+  background: var(--background);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(0);
+}
+
+.shell-topbar-store-tab-indicator[data-visible="true"] {
+  opacity: 1;
+}
+
+.shell-topbar-store-tab-indicator[data-animated="true"] {
+  transition:
+    transform 240ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    width 240ms cubic-bezier(0.32, 0.72, 0.16, 1);
 }
 
 .shell-topbar-store-tab {
   appearance: none;
+  position: relative;
+  z-index: 1;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
   font-family: inherit;
-  padding: 4px 12px;
-  border-radius: 7px;
+  padding: 4px 14px;
+  border-radius: 999px;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: color 160ms ease;
   white-space: nowrap;
   line-height: 1.3;
 }
@@ -438,9 +467,7 @@ body[data-display-resizing="true"] .shell-topbar-center {
 }
 
 .shell-topbar-store-tab[data-active] {
-  background: var(--background);
   color: var(--text-strong);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .shell-topbar-tablist {
@@ -1105,6 +1132,54 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
     display: none;
   }
 
+  /* Mini window collapses the sidebar to a slim rail via the media
+     query (no `data-sidebar-rail` toggle), so the center strip's left
+     inset must follow the rail width — otherwise the strip is laid
+     out as if a 170px sidebar were still present and slides over the
+     rail / actions cluster when the display panel is open. */
+  .shell-topbar-center {
+    --shell-topbar-center-left-inset: var(--shell-sidebar-rail-width);
+  }
+
+  /* When the display panel is open in mini, the panel takes the full
+     width of the content area below. Reclaim the topbar accordingly:
+     collapse the topbar-left to just the rail width and let the
+     display tablist span the freed space so its tabs sit flush over
+     the panel. */
+  .shell-topbar[data-display-open="true"] .shell-topbar-left {
+    width: var(--shell-sidebar-rail-width);
+    min-width: var(--shell-sidebar-rail-width);
+  }
+  .shell-topbar[data-display-open="true"] .shell-topbar-tablist {
+    flex: 1 1 0;
+    max-width: none;
+  }
+  /* Store-only: with the freed space repurposed for the display
+     tablist there's no longer room for the centered Store strip.
+     Hide it — the user can switch Store tabs from inside the page
+     itself once the display panel is closed. */
+  .shell-topbar[data-route="store"][data-display-open="true"]
+    .shell-topbar-center {
+    display: none;
+  }
+
+  .shell-topbar-store-tabs {
+    gap: 3px;
+    padding: 5px 10px;
+  }
+
+  .shell-topbar-store-tab-indicator {
+    top: 6px;
+    bottom: 6px;
+  }
+
+  .shell-topbar-store-tab {
+    font-size: 10.5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    line-height: 1.2;
+  }
+
   .shell-topbar[data-platform="mac"] .shell-topbar-left {
     transform: translateY(-5px);
     padding-left: 70px;
@@ -1123,8 +1198,6 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
     z-index: 2;
   }
 
-  /* The mini window uses the shared topbar spacer; hide the brand row so the
-     rail content starts below that empty band. */
   .full-body > .sidebar .sidebar-brand {
     display: none;
   }
@@ -1140,7 +1213,7 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
   }
 
   .full-body > .sidebar .sidebar-nav {
-    padding: 12px 6px;
+    padding: 0 6px 12px;
     overflow: visible;
   }
 
@@ -1186,7 +1259,7 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
     flex-direction: column;
     align-items: stretch;
     gap: 6px;
-    padding: 4px 0;
+    padding: 0;
   }
 
   .full-body > .sidebar .sidebar-account-avatar {
@@ -1194,11 +1267,7 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
   }
 
   .full-body > .sidebar .sidebar-account-pill {
-    height: 24px;
-    padding: 0 6px;
-    font-size: 10px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    display: none;
   }
 
   .full-body > .sidebar .sidebar-account-signin {
@@ -1209,6 +1278,20 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
 
   .full-body > .sidebar .sidebar-account-signin-label {
     display: none;
+  }
+
+  .full-body > .sidebar .sidebar-actions-bar {
+    border-top: none;
+    margin-top: 4px;
+    padding: 0;
+    justify-content: stretch;
+  }
+
+  .full-body > .sidebar .sidebar-actions-bar .sidebar-actions-btn {
+    width: 100%;
+    height: auto;
+    padding: 10px 0;
+    border-radius: var(--radius-md);
   }
 
   .full-body > .sidebar-drawer-scrim {

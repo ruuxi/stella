@@ -304,8 +304,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
-  padding: 4px 4px;
+  padding: 0 4px;
 }
 
 .sidebar-account-avatar {
@@ -407,6 +406,7 @@
   height: 20px;
   flex-shrink: 0;
   color: var(--text-weak);
+  transform: translateX(-1px);
 }
 
 .sidebar-account-signin:hover .sidebar-account-signin-icon {
@@ -421,9 +421,8 @@
 
 /* ── Actions bar: settings / theme / connect / pets ────────────────
    Single compact row of icon-only utility buttons that sit just below
-   the account row. Hidden when the sidebar collapses to its rail mode
-   (those actions become noisy at icon-only widths and the user can
-   reach Settings via the avatar dropdown / Connect from the dialog). */
+   the account row. In rail mode, the same actions move back into the
+   title bar where they used to live. */
 .sidebar-actions-bar {
   display: flex;
   align-items: center;
@@ -472,6 +471,17 @@
 
 .sidebar-actions-btn:active {
   background: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+/* Match the gentle hover motion the rest of the sidebar nav icons get
+   (`.icon-settings .set-p`) — applied directly to the lucide SVG since
+   the rail menu's gear is the lucide component, not the custom one. */
+.sidebar-actions-btn > svg {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.sidebar-actions-btn:hover > svg {
+  transform: rotate(45deg);
 }
 
 /* ── Sidebar dialogs ───────────────────────────────────────────── */
@@ -607,11 +617,7 @@
 }
 
 .sidebar.sidebar--rail .sidebar-account-pill {
-  height: 24px;
-  padding: 0 6px;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  display: none;
 }
 
 .sidebar.sidebar--rail .sidebar-account-signin {
@@ -625,7 +631,24 @@
 }
 
 .sidebar.sidebar--rail .sidebar-actions-bar {
-  display: none;
+  /* Rail-width is too narrow for the four-button row; the menu
+     variant (single gear button) is what's actually rendered here.
+     Strip the divider/padding so the gear sits cleanly under the
+     account row. */
+  border-top: none;
+  margin-top: 4px;
+  padding: 0;
+  justify-content: stretch;
+}
+
+/* In rail mode the gear becomes a full-width nav-style hit target so
+   its hover surface matches the surrounding nav items rather than
+   reading as a tiny 28px chip. */
+.sidebar.sidebar--rail .sidebar-actions-bar .sidebar-actions-btn {
+  width: 100%;
+  height: auto;
+  padding: 10px 0;
+  border-radius: var(--radius-md);
 }
 
 .sidebar.sidebar--rail [aria-label]::after {
