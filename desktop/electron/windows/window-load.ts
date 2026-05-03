@@ -1,12 +1,14 @@
 import type { BrowserWindow, LoadFileOptions } from 'electron'
 import path from 'path'
 
-export type WindowLoadMode = 'full' | 'mini' | 'overlay'
+export type WindowLoadMode = 'full' | 'mini' | 'overlay' | 'pet'
 
 const getWindowEntryFile = (windowMode: WindowLoadMode) => {
   switch (windowMode) {
     case 'overlay':
       return 'overlay.html'
+    case 'pet':
+      return 'pet.html'
     case 'mini':
     case 'full':
     default:

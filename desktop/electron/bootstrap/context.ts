@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron";
 import { OverlayWindowController } from "../windows/overlay-window.js";
+import { PetWindowController } from "../windows/pet-window.js";
 import type { ChronicleController } from "../services/chronicle-controller.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
@@ -47,6 +48,11 @@ export type BootstrapState = {
   isQuitting: boolean;
   localChatUpdateUnsubscribe: (() => void) | null;
   overlayController: OverlayWindowController | null;
+  petController: PetWindowController | null;
+  /** Disposer returned by `registerPetHandlers`. Stored on the
+   *  bootstrap state so the quit-cleanup can tear down every pet IPC
+   *  registration on app exit (or explicitly during tests). */
+  petHandlersDispose: (() => void) | null;
   chronicleController: ChronicleController | null;
   processRuntime: ProcessRuntime;
   scheduleUpdateUnsubscribe: (() => void) | null;
@@ -169,6 +175,8 @@ export const createBootstrapContext = (
     isQuitting: false,
     localChatUpdateUnsubscribe: null,
     overlayController: null,
+    petController: null,
+    petHandlersDispose: null,
     chronicleController: null,
     processRuntime,
     scheduleUpdateUnsubscribe: null,

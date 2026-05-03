@@ -10,6 +10,7 @@ import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMemoryHandlers } from "../ipc/memory-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
+import { registerPetHandlers } from "../ipc/pet-handlers.js";
 import { registerOfficePreviewHandlers } from "../ipc/office-preview-handlers.js";
 import { registerFashionHandlers } from "../ipc/fashion-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
@@ -268,6 +269,13 @@ export const registerBootstrapIpcHandlers = (
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     getBroadcastToMobile: lazyMobileBroadcast,
     getOverlayController: () => state.overlayController ?? null,
+  });
+
+  state.petHandlersDispose = registerPetHandlers({
+    windowManager: state.windowManager!,
+    getPetController: () => state.petController ?? null,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
   });
 
   registerDictationHandlers({

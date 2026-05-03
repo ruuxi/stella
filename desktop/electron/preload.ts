@@ -358,6 +358,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onHideVoice: onIpcSignal("overlay:hideVoice"),
     onShowDictation: onIpc<{ x: number; y: number }>("overlay:showDictation"),
     onHideDictation: onIpcSignal("overlay:hideDictation"),
+    onShowScreenGuide: onIpc<{
+      annotations: Array<{
+        id: string;
+        label: string;
+        x: number;
+        y: number;
+      }>;
+    }>("overlay:showScreenGuide"),
+    onHideScreenGuide: onIpcSignal("overlay:hideScreenGuide"),
     onShowSelectionChip: onIpc<{
       requestId: number;
       text: string;
@@ -409,6 +418,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
     broadcast: (key: string, value: string) =>
       ipcRenderer.send("theme:broadcast", { key, value }),
     listInstalled: () => ipcRenderer.invoke("theme:listInstalled"),
+  },
+
+  screenGuide: {
+    show: (
+      annotations: Array<{
+        id: string;
+        label: string;
+        x: number;
+        y: number;
+      }>,
+    ) => ipcRenderer.send("screenGuide:show", { annotations }),
+    hide: () => ipcRenderer.send("screenGuide:hide"),
   },
 
   voice: {
@@ -483,6 +504,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   dictation: {
     onToggle: onIpc<{ startId?: string }>("dictation:toggle"),
+    trigger: () =>
+      ipcRenderer.invoke("dictation:trigger") as Promise<{ ok: boolean }>,
     getShortcut: () =>
       ipcRenderer.invoke("dictation:getShortcut") as Promise<string>,
     setShortcut: (shortcut: string) =>
@@ -491,6 +514,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
         requestedShortcut: string;
         activeShortcut: string;
         error?: string;
+      }>,
+    localStatus: () =>
+      ipcRenderer.invoke("dictation:localStatus") as Promise<{
+        available: boolean;
+        model: string;
+        reason?: string;
+      }>,
+    downloadLocalModel: () =>
+      ipcRenderer.invoke("dictation:downloadLocalModel") as Promise<{
+        available: boolean;
+        model: string;
+        reason?: string;
       }>,
     warmLocal: () =>
       ipcRenderer.invoke("dictation:warmLocal") as Promise<{
@@ -1179,24 +1214,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       releaseNumber: number;
       displayName: string;
       blueprintMarkdown: string;
-      commits?: Array<{ hash: string; subject: string; diff: string }>;
     }) => ipcRenderer.invoke("store:installFromBlueprint", payload),
-    publishBlueprint: (payload: {
-      messageId: string;
-      packageId: string;
-      asUpdate: boolean;
-      displayName?: string;
-      description?: string;
-      category?:
-        | "apps-games"
-        | "productivity"
-        | "customization"
-        | "skills-agents"
-        | "integrations"
-        | "other";
-      manifest: Record<string, unknown>;
-      releaseNotes?: string;
-    }) => ipcRenderer.invoke("store:publishBlueprint", payload),
     getThread: () => ipcRenderer.invoke("store:getThread"),
     sendThreadMessage: (payload: {
       text: string;
@@ -1308,6 +1326,38 @@ contextBridge.exposeInMainWorld("electronAPI", {
       clientTurnId?: string;
     }) => ipcRenderer.invoke(IPC_SOCIAL_SESSIONS_QUEUE_TURN, payload),
     getStatus: () => ipcRenderer.invoke(IPC_SOCIAL_SESSIONS_GET_STATUS),
+  },
+
+  pet: {
+    getState: () =>
+      ipcRenderer.invoke("pet:getState") as Promise<{
+        open: boolean;
+        status: {
+          state: "idle" | "running" | "waiting" | "review" | "failed" | "waving";
+          title: string;
+          message: string;
+          isLoading: boolean;
+        };
+      }>,
+    setOpen: (open: boolean) => ipcRenderer.send("pet:setOpen", open),
+    onSetOpen: onIpc<boolean>("pet:setOpen"),
+    moveWindow: (position: { x: number; y: number }) =>
+      ipcRenderer.send("pet:moveWindow", position),
+    pushStatus: (status: {
+      state: "idle" | "running" | "waiting" | "review" | "failed" | "waving";
+      title: string;
+      message: string;
+      isLoading: boolean;
+    }) => ipcRenderer.send("pet:status", status),
+    onStatus: onIpc<{
+      state: "idle" | "running" | "waiting" | "review" | "failed" | "waving";
+      title: string;
+      message: string;
+      isLoading: boolean;
+    }>("pet:status"),
+    openChat: () => ipcRenderer.send("pet:openChat"),
+    sendMessage: (text: string) => ipcRenderer.send("pet:sendMessage", text),
+    onSendMessage: onIpc<string>("pet:sendMessage"),
   },
 
   googleWorkspace: {

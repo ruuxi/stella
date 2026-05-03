@@ -20,6 +20,14 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
   processRuntime.registerCleanup("before-quit", "overlay-window", () => {
     context.state.overlayController?.destroy();
   });
+  processRuntime.registerCleanup("before-quit", "pet-window", () => {
+    context.state.petController?.destroy();
+    context.state.petController = null;
+  });
+  processRuntime.registerCleanup("before-quit", "pet-handlers", () => {
+    context.state.petHandlersDispose?.();
+    context.state.petHandlersDispose = null;
+  });
   processRuntime.registerCleanup("before-quit", "mobile-bridge", async () => {
     await context.state.mobileBridgeResource?.stop();
   });
