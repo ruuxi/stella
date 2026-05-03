@@ -3,7 +3,13 @@ import type {
   PetOverlayState,
   PetOverlayStatus,
 } from "@/shared/contracts/pet";
-import type { TaskItem } from "@/app/chat/lib/event-transforms";
+import {
+  getEventText,
+  isAssistantMessage,
+  type EventRecord,
+  type TaskItem,
+} from "@/app/chat/lib/event-transforms";
+import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { getWorkingIndicatorDisplayStatus } from "@/app/chat/working-indicator-state";
 
 const IDLE_STATUS: PetOverlayStatus = {
@@ -12,6 +18,49 @@ const IDLE_STATUS: PetOverlayStatus = {
   message: "",
   isLoading: false,
 };
+
+const WORKING_PHRASES = [
+  "Scheming",
+  "Cooking",
+  "Pondering",
+  "Thinking",
+  "Tinkering",
+  "Investigating",
+  "Exploring",
+  "Untangling",
+  "Polishing",
+  "Composing",
+  "Drafting",
+  "Inspecting",
+  "Tracing",
+  "Scanning",
+  "Crunching",
+  "Stitching",
+  "Weaving",
+  "Sharpening",
+  "Assembling",
+  "Calibrating",
+  "Brewing",
+  "Mulling",
+  "Plotting",
+  "Refining",
+  "Chiseling",
+  "Sorting",
+  "Mapping",
+  "Navigating",
+  "Sleuthing",
+  "Experimenting",
+  "Debugging",
+  "Reworking",
+  "Balancing",
+  "Sifting",
+  "Loading thoughts",
+  "Following clues",
+  "Making sparks",
+  "Herding bits",
+  "Checking corners",
+  "Connecting dots",
+] as const;
 
 type WorkingTaskShape = TaskItem & {
   /** A handful of agent flows tag tasks with a "needs input" hint via
@@ -59,7 +108,29 @@ const deriveState = ({
   return "idle";
 };
 
+const latestAssistantMessage = (
+  events: EventRecord[] | null | undefined,
+): string => {
+  const displayEvents = filterEventsForUiDisplay(events ?? []);
+  for (let index = displayEvents.length - 1; index >= 0; index -= 1) {
+    const event = displayEvents[index];
+    if (!event || !isAssistantMessage(event)) continue;
+    const text = getEventText(event).replace(/\s+/g, " ").trim();
+    if (text.length > 0) return text;
+  }
+  return "";
+};
+
+const getWorkingPhrase = (seed: string): string => {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+  return WORKING_PHRASES[hash % WORKING_PHRASES.length];
+};
+
 type UsePetStatusBroadcastInput = {
+  events: EventRecord[] | null | undefined;
   liveTasks: TaskItem[] | null | undefined;
   runtimeStatusText: string;
   isStreaming: boolean;
@@ -68,7 +139,7 @@ type UsePetStatusBroadcastInput = {
 
 /**
  * Derive a `PetOverlayStatus` from the full-shell chat surface and push
- * it to every renderer (the overlay tree subscribes via
+ * it to every renderer (the pet window subscribes via
  * `electronAPI.pet.onStatus`).
  *
  * The chat surface already runs once per app via `ChatRuntimeProvider`,
@@ -76,6 +147,7 @@ type UsePetStatusBroadcastInput = {
  * fields the pet cares about, debounce-by-equality, and fan out.
  */
 export const usePetStatusBroadcast = ({
+  events,
   liveTasks,
   runtimeStatusText,
   isStreaming,
@@ -87,19 +159,34 @@ export const usePetStatusBroadcast = ({
       isStreaming,
       pendingUserMessageId: pendingUserMessageId ?? null,
     });
-    if (state === "idle") return IDLE_STATUS;
+    const assistantMessage = isStreaming ? "" : latestAssistantMessage(events);
+    if (state === "idle") {
+      return assistantMessage
+        ? {
+            state,
+            title: "",
+            message: assistantMessage,
+            isLoading: false,
+          }
+        : IDLE_STATUS;
+    }
 
-    const message = getWorkingIndicatorDisplayStatus({
+    const statusMessage = getWorkingIndicatorDisplayStatus({
       status: runtimeStatusText,
       tasks: liveTasks ?? undefined,
     });
     return {
       state,
-      title: summarizeTitle(liveTasks, isStreaming, runtimeStatusText),
-      message,
-      isLoading: state === "running" || isStreaming,
+      title: "",
+      message:
+        state === "running"
+          ? getWorkingPhrase(
+              `${statusMessage}|${runtimeStatusText}|${pendingUserMessageId ?? ""}|${liveTasks?.[0]?.id ?? ""}`,
+            )
+          : assistantMessage || statusMessage,
+      isLoading: false,
     };
-  }, [liveTasks, runtimeStatusText, isStreaming, pendingUserMessageId]);
+  }, [events, liveTasks, runtimeStatusText, isStreaming, pendingUserMessageId]);
 
   const lastSentRef = useRef<string>("");
 

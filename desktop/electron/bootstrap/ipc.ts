@@ -270,6 +270,7 @@ export const registerBootstrapIpcHandlers = (
     uiState: services.uiStateService.state,
     getAppReady: () => state.appReady,
     windowManager: state.windowManager!,
+    getPetWindow: () => state.petController?.getWindow() ?? null,
     broadcastUiState: () => services.uiStateService.broadcast(),
     togglePetVoice: togglePetVoiceImpl,
     getStellaHostRunner: lifecycle.getRunner,

@@ -1,9 +1,8 @@
 /*
  * PetOverlay — floating Stella pet companion.
  *
- * Renders inside the unified transparent overlay window, so the wrapper
- * uses pointer-events:auto explicitly while the rest of OverlayRoot
- * stays click-through.
+ * Renders inside a dedicated transparent BrowserWindow. The wrapper keeps
+ * pointer events on only for the pet window's compact bounds.
  */
 
 .pet-overlay-root {
@@ -52,26 +51,23 @@ html[data-stella-window="pet"] #root {
    * the sprite even though the sprite-hit-zone root is much wider. */
   position: absolute;
   bottom: calc(100% + 6px);
-  left: 50%;
+  right: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-width: 220px;
-  min-width: 120px;
+  max-width: 280px;
   width: max-content;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: var(--color-token-main-surface-primary, rgba(20, 20, 20, 0.92));
-  color: var(--color-token-foreground, rgba(255, 255, 255, 0.95));
-  border: 1px solid var(--color-token-border, rgba(255, 255, 255, 0.08));
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  font-size: 12px;
-  line-height: 1.35;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: var(--background);
+  color: var(--text-strong);
+  border: 1px solid var(--border-base);
+  box-shadow: var(--shadow-md);
+  font-size: 15px;
+  line-height: 1.45;
   pointer-events: auto;
   opacity: 0;
-  transform: translate(-50%, 4px);
+  transform: translateY(4px);
   transition:
     opacity 180ms ease-out,
     transform 180ms ease-out;
@@ -79,7 +75,7 @@ html[data-stella-window="pet"] #root {
 
 .pet-overlay-bubble[data-visible="true"] {
   opacity: 1;
-  transform: translate(-50%, 0);
+  transform: translateY(0);
 }
 
 .pet-overlay-bubble-title {
@@ -90,28 +86,14 @@ html[data-stella-window="pet"] #root {
   font-size: 11px;
   letter-spacing: 0.01em;
   text-transform: uppercase;
-  color: var(--color-token-text-secondary, rgba(255, 255, 255, 0.7));
+  color: var(--text-weak);
 }
 
 .pet-overlay-bubble-message {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  display: block;
   overflow: hidden;
-  white-space: pre-wrap;
-}
-
-.pet-overlay-spinner {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-token-interactive, #4caf50);
-  animation: pet-overlay-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes pet-overlay-pulse {
-  0%, 100% { transform: scale(0.7); opacity: 0.4; }
-  50% { transform: scale(1); opacity: 1; }
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pet-overlay-mascot {
@@ -140,10 +122,10 @@ html[data-stella-window="pet"] #root {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 1px solid var(--color-token-border, rgba(255, 255, 255, 0.08));
-  background: var(--color-token-main-surface-primary, rgba(20, 20, 20, 0.92));
-  color: var(--color-token-text-secondary, rgba(255, 255, 255, 0.75));
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-base);
+  background: var(--button-secondary-base);
+  color: var(--text-base);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
   /* Hidden by default so the resting pet is just the sprite. */
   opacity: 0;
@@ -163,24 +145,24 @@ html[data-stella-window="pet"] #root {
 }
 
 .pet-overlay-action:hover {
-  background: var(--color-token-list-hover-background, rgba(40, 40, 40, 0.98));
-  color: var(--color-token-foreground, rgba(255, 255, 255, 0.95));
+  background: var(--button-secondary-hover);
+  color: var(--text-strong);
   transform: translate(-50%, -50%) scale(1.05);
 }
 
 .pet-overlay-action:focus-visible {
-  outline: 2px solid var(--color-token-focus-border, #4caf50);
+  outline: 2px solid var(--ring);
   outline-offset: 1px;
 }
 
 .pet-overlay-action[data-active="true"] {
-  background: var(--color-token-interactive, #4caf50);
-  color: var(--color-token-foreground, #fff);
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .pet-overlay-action[data-active="true"]:hover {
-  background: var(--color-token-interactive, #4caf50);
-  color: var(--color-token-foreground, #fff);
+  background: var(--primary);
+  color: var(--primary-foreground);
   transform: translate(-50%, -50%) scale(1.05);
 }
 
@@ -188,14 +170,14 @@ html[data-stella-window="pet"] #root {
  * pet sprite itself shows the listening / speaking animation, so the
  * red tint here is the toggle-state affordance. */
 .pet-overlay-action[data-tone="danger"] {
-  background: var(--color-token-error, #e53935);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.18);
+  background: var(--destructive);
+  color: var(--primary-foreground);
+  border-color: color-mix(in srgb, var(--destructive) 65%, var(--border));
 }
 
 .pet-overlay-action[data-tone="danger"]:hover {
-  background: var(--color-token-error, #e53935);
-  color: #fff;
+  background: var(--destructive);
+  color: var(--primary-foreground);
   transform: translate(-50%, -50%) scale(1.05);
 }
 
@@ -222,11 +204,11 @@ html[data-stella-window="pet"] #root {
   min-width: 140px;
   padding: 4px;
   border-radius: 8px;
-  background: var(--color-token-main-surface-primary, rgba(20, 20, 20, 0.96));
-  border: 1px solid var(--color-token-border, rgba(255, 255, 255, 0.1));
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-base);
+  box-shadow: var(--shadow-md);
   font-size: 12px;
-  color: var(--color-token-foreground, rgba(255, 255, 255, 0.95));
+  color: var(--text-strong);
   z-index: 40;
 }
 
@@ -247,9 +229,9 @@ html[data-stella-window="pet"] #root {
 }
 
 .pet-overlay-context-item:hover {
-  background: var(--color-token-list-hover-background, rgba(255, 255, 255, 0.08));
+  background: var(--button-secondary-hover);
 }
 
 .pet-overlay-context-item-danger {
-  color: var(--color-token-error-foreground, #e57373);
+  color: var(--destructive);
 }

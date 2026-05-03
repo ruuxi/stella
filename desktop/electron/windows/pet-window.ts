@@ -311,6 +311,12 @@ export class PetWindowController {
     return Boolean(win && !win.isDestroyed() && win.isVisible())
   }
 
+  getWindow() {
+    if (this.destroyed) return null
+    const win = this.petWindow.getWindow()
+    return win && !win.isDestroyed() ? win : null
+  }
+
   getWebContents() {
     if (this.destroyed) return null
     return this.petWindow.getWindow()?.webContents ?? null

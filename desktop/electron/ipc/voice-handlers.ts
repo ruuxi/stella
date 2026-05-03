@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { ipcMain, type BrowserWindow } from "electron";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { UiState } from "../types.js";
 import type { WindowManager } from "../windows/window-manager.js";
@@ -15,6 +15,7 @@ type VoiceHandlersOptions = {
   uiState: UiState;
   getAppReady: () => boolean;
   windowManager: WindowManager;
+  getPetWindow?: () => BrowserWindow | null;
   broadcastUiState: () => void;
   /** Centralized "go to voice now" handler — opens the floating pet
    *  and toggles the realtime voice session. Voice no longer has its
@@ -97,7 +98,12 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   options.onStellaHostRunnerChanged?.(bindVoiceActionCompletion);
 
   const broadcastRuntimeState = () => {
-    for (const window of options.windowManager.getAllWindows()) {
+    const windows = options.windowManager.getAllWindows();
+    const petWindow = options.getPetWindow?.() ?? null;
+    if (petWindow && !petWindow.isDestroyed() && !windows.includes(petWindow)) {
+      windows.push(petWindow);
+    }
+    for (const window of windows) {
       if (window.isDestroyed()) continue;
       window.webContents.send("voice:runtimeState", runtimeState);
     }

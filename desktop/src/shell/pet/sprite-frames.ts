@@ -95,6 +95,7 @@ const ANIMATION_TABLE: Record<PetAnimationState, SpriteFrame[]> = {
 export const resolveAnimation = (
   state: PetAnimationState,
   prefersReducedMotion: boolean,
+  continuous = false,
 ): SpriteAnimation => {
   const baseFrames = ANIMATION_TABLE[state];
   if (prefersReducedMotion) {
@@ -102,6 +103,9 @@ export const resolveAnimation = (
   }
   if (state === "idle") {
     return { frames: IDLE_REST, loopStartIndex: 0 };
+  }
+  if (continuous) {
+    return { frames: baseFrames, loopStartIndex: 0 };
   }
   const reactive = [...baseFrames, ...baseFrames, ...baseFrames];
   return {

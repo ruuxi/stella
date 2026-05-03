@@ -1,9 +1,8 @@
 /**
  * Floating pet companion contract.
  *
- * The pet renders inside the existing transparent overlay window
- * (`desktop/src/shell/overlay/OverlayRoot.tsx`) — there is no separate
- * BrowserWindow. State flows over IPC channels declared in
+ * The pet renders inside a dedicated transparent BrowserWindow. State flows
+ * over IPC channels declared in
  * `@/shared/contracts/ipc-channels` (`IPC_PET_*`):
  *
  *   - `pet:status`        renderer → main → all renderers (mascot mood)
