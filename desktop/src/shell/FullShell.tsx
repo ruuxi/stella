@@ -309,6 +309,7 @@ function OnboardingExperience({
             isPreparingRuntime={isPreparingStartup}
             runtimeError={startupError}
             splitMode={onboarding.splitMode}
+            splitEntering={onboarding.splitEntering}
             hasDiscoverySelections={onboarding.hasDiscoverySelections}
             hasStarted={onboarding.hasStarted}
             stellaAnimationRef={onboarding.stellaAnimationRef}

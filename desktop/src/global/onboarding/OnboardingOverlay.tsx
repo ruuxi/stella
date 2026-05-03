@@ -104,6 +104,7 @@ export function OnboardingView({
   isPreparingRuntime = false,
   runtimeError = null,
   splitMode,
+  splitEntering = false,
   hasDiscoverySelections,
   hasStarted,
   stellaAnimationRef,
@@ -133,6 +134,7 @@ export function OnboardingView({
   isPreparingRuntime?: boolean;
   runtimeError?: string | null;
   splitMode: boolean;
+  splitEntering?: boolean;
   hasDiscoverySelections?: boolean;
   hasStarted: boolean;
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
@@ -212,28 +214,28 @@ export function OnboardingView({
       >
         Stella
       </div>
-      {!stellaAnimationHidden ? (
-        <div
-          className="onboarding-stella-animation"
-          onClick={triggerFlash}
-          data-expanded={hasExpanded ? "true" : "false"}
-          data-split={splitMode}
-          data-has-selections={hasDiscoverySelections || undefined}
-          data-demo-active={activeDemo || undefined}
-          title="Click to sparkle"
-        >
-          <StellaAnimation
-            ref={stellaAnimationRef}
-            width={70}
-            height={39}
-            initialBirthProgress={
-              creatureInitialBirth ??
-              (onboardingDone ? 1 : CREATURE_INITIAL_SIZE)
-            }
-            paused={stellaAnimationPaused || stellaAnimationHidden}
-          />
-        </div>
-      ) : null}
+      <div
+        className="onboarding-stella-animation"
+        onClick={stellaAnimationHidden ? undefined : triggerFlash}
+        data-expanded={hasExpanded ? "true" : "false"}
+        data-split={splitMode}
+        data-split-entering={splitEntering || undefined}
+        data-has-selections={hasDiscoverySelections || undefined}
+        data-demo-active={activeDemo || undefined}
+        data-hidden={stellaAnimationHidden || undefined}
+        title="Click to sparkle"
+      >
+        <StellaAnimation
+          ref={stellaAnimationRef}
+          width={70}
+          height={39}
+          initialBirthProgress={
+            creatureInitialBirth ??
+            (onboardingDone ? 1 : CREATURE_INITIAL_SIZE)
+          }
+          paused={stellaAnimationPaused || stellaAnimationHidden}
+        />
+      </div>
       {(showRuntimeGate || !onboardingDone) &&
         (isPreparingRuntime || isAuthLoading ? (
           <div className="onboarding-moment onboarding-moment--auth">

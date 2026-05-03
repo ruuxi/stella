@@ -1475,7 +1475,11 @@
 .onboarding-mock-windows {
   position: fixed;
   top: 36%;
-  left: calc(25% - 170px);
+  /* Align horizontally with the Stella animation in split mode. Stella's
+   * center sits at `50% + clamp(-350px, -25vw, 0px)`; subtract half the
+   * mock width (340 / 2 = 170) so the mock column shares that center on
+   * wide displays where Stella's shift-x clamps at -350px. */
+  left: calc(50% + clamp(-350px, -25vw, 0px) - 170px);
   z-index: 6;
   display: flex;
   flex-direction: column;
@@ -1530,6 +1534,29 @@
   to {
     opacity: 0;
     transform: translateY(-10px);
+  }
+}
+
+/* Outgoing window when switching active category: fade out + slight lift
+ * while the incoming window fades in via the existing mockWindowIn
+ * keyframes. Position absolutely so the two briefly overlap rather than
+ * stacking and pushing layout. */
+.onboarding-mock-window[data-fading] {
+  position: absolute;
+  inset: 0 0 auto 0;
+  animation: mockWindowSwitchOut 0.26s
+    cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes mockWindowSwitchOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0);
   }
 }
 

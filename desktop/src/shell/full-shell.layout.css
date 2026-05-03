@@ -1038,6 +1038,7 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
   pointer-events: auto;
   -webkit-app-region: no-drag;
   transition:
+    opacity 0.5s ease,
     transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -1048,12 +1049,11 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
   cursor: pointer;
 }
 
-/* Split mode: fade the creature out in place, then snap it to the
- * smaller left-hand position while invisible. The transform/size
- * changes are deferred until after the opacity fade completes so the
- * user only sees a fade, not a slide. The creature then sits parked
- * (opacity 0) at the new position until a later phase wants to reveal
- * it again. */
+/* Split mode: parked at the smaller left-hand position. Opacity is
+ * controlled per-phase below — transform/size animate smoothly so any
+ * later shift (e.g. discovery selections moving the creature up, or
+ * returning to the parked position afterwards) glides instead of
+ * jumping. */
 .onboarding-stella-animation[data-split="true"] {
   --stella-shift-x: clamp(-350px, -25vw, 0px);
   --stella-shift-y: min(10vh, 95px);
@@ -1061,6 +1061,13 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
   height: clamp(64px, 10vh, 104px);
   opacity: 0;
   pointer-events: none;
+}
+
+/* Initial split-mode entry: fade out in place, then snap to the
+ * smaller left-hand position while invisible so the user sees a fade
+ * rather than a slide. Released ~400ms later by the overlay hook so
+ * subsequent transform changes resume the animated default. */
+.onboarding-stella-animation[data-split="true"][data-split-entering] {
   transition:
     opacity 0.35s ease,
     transform 0s linear 0.35s,
@@ -1084,7 +1091,14 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
   .onboarding-stella-animation[data-split="true"] {
   opacity: 1;
   pointer-events: auto;
-  transition: opacity 0.5s ease;
+}
+
+/* Hidden by phase (creation onward, before being unmounted at exit):
+ * smoothly fade out instead of disappearing instantly. Position/size
+ * still animate on any underlying shift so re-entry is graceful. */
+.onboarding-stella-animation[data-hidden] {
+  opacity: 0 !important;
+  pointer-events: none;
 }
 
 /* With selections: shift animation up to make room for mock windows */

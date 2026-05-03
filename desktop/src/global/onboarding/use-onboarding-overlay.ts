@@ -116,6 +116,14 @@ export function useOnboardingOverlay() {
   const [splitMode, setSplitMode] = useState(
     () => isResuming && SPLIT_PHASES.has(initialPhase),
   );
+  // True only during the brief "fade out + snap to split position" entry.
+  // After ~350ms the entry settles and we restore animated transitions for
+  // transform/width/height so subsequent shifts (e.g. discovery selections
+  // moving Stella up, or returning to the parked position afterwards) glide
+  // instead of jumping. Resumed sessions skip the entry entirely since the
+  // creature was never in its centered start pose.
+  const [splitEntering, setSplitEntering] = useState(false);
+  const splitEnterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hasDiscoverySelections, setHasDiscoverySelections] = useState(false);
   const [onboardingExiting, setOnboardingExiting] = useState(false);
   const [onboardingKey, setOnboardingKey] = useState(0);
@@ -157,7 +165,25 @@ export function useOnboardingOverlay() {
 
   const handleEnterSplit = useCallback(() => {
     setSplitMode(true);
+    setSplitEntering(true);
+    if (splitEnterTimerRef.current) {
+      clearTimeout(splitEnterTimerRef.current);
+    }
+    splitEnterTimerRef.current = setTimeout(() => {
+      setSplitEntering(false);
+      splitEnterTimerRef.current = null;
+    }, 400);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (splitEnterTimerRef.current) {
+        clearTimeout(splitEnterTimerRef.current);
+        splitEnterTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   const handleCompleteOnboarding = useCallback(() => {
     if (exitTimerRef.current) return;
@@ -215,6 +241,7 @@ export function useOnboardingOverlay() {
     hasExpanded,
     hasStarted,
     splitMode,
+    splitEntering,
     hasDiscoverySelections,
     setHasDiscoverySelections,
     onboardingKey,
