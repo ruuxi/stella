@@ -91,6 +91,7 @@ export const OnboardingStep1 = ({
     phase,
     leaving,
     rippleActive,
+    maxVisitedSplitStepIndex,
     nextSplitStep,
     prevSplitStep,
     continueIntro,
@@ -143,6 +144,8 @@ export const OnboardingStep1 = ({
   const splitStepIndex = SPLIT_STEP_ORDER.indexOf(phase);
   const canGoPrev = splitStepIndex > 0;
   const canGoNext = splitStepIndex < SPLIT_STEP_ORDER.length - 1;
+  const canReturnNext =
+    canGoNext && maxVisitedSplitStepIndex >= splitStepIndex + 1;
   const platform = getPlatform();
 
   const renderActiveSplitPhase = (activePhase: Phase) => {
@@ -349,26 +352,28 @@ export const OnboardingStep1 = ({
                 <path d="M15 18l-6-6 6-6" />
               </svg>
             </button>
-            <button
-              type="button"
-              className="onboarding-phase-nav-btn onboarding-phase-nav-btn--next"
-              disabled={!canGoNext || leaving}
-              onClick={nextSplitStep}
-              aria-label={t("onboarding.nextStep")}
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            {canReturnNext ? (
+              <button
+                type="button"
+                className="onboarding-phase-nav-btn onboarding-phase-nav-btn--next"
+                disabled={leaving}
+                onClick={nextSplitStep}
+                aria-label={t("onboarding.nextStep")}
               >
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-            </button>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
+            ) : null}
           </div>
         </>
       )}
