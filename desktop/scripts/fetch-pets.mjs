@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
  * fetch-pets.mjs — sync the public Codex Pet Share catalog into our R2
- * `stella-emotes` bucket and emit a local manifest the desktop app can
- * import at build time.
+ * `stella-emotes` bucket.
  *
  * The catalog lives at https://codex-pet-share.pages.dev (a public
  * Supabase-backed function). Each pet ships a 1536×1872 webp sprite
@@ -14,9 +13,8 @@
  *      ETag match, skip the upload (idempotent re-runs).
  *   3. Otherwise download the sprite sheet from the share API and PUT
  *      it to `pets/<id>.webp` via S3-compatible sigv4.
- *   4. Write `desktop/public/pets/manifest.json` with the metadata the
- *      pet picker / overlay needs (id, displayName, description, kind,
- *      tags, ownerName, public sprite URL).
+ *   4. Print the synced metadata summary. Runtime catalog metadata lives
+ *      in Convex (`pet_catalog`); R2 only hosts spritesheets.
  *
  * Required env (mirrors `convex env list` keys):
  *
@@ -34,17 +32,6 @@
  */
 
 import { createHash, createHmac } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DESKTOP_ROOT = path.resolve(__dirname, "..");
-const PUBLIC_PETS_DIR = path.join(DESKTOP_ROOT, "public", "pets");
-const MANIFEST_PATH = path.join(PUBLIC_PETS_DIR, "manifest.json");
-const SRC_PETS_DATA_DIR = path.join(DESKTOP_ROOT, "src", "shell", "pet", "data");
-const SRC_MANIFEST_PATH = path.join(SRC_PETS_DATA_DIR, "manifest.json");
 
 const PETSHARE_BASE =
   "https://ihzwckyzfcuktrljwpha.supabase.co/functions/v1/petshare";
@@ -56,6 +43,7 @@ const DEFAULT_PREFIX = (process.env.R2_PETS_PREFIX || "pets").replace(
 const DEFAULT_PUBLIC_BASE =
   process.env.R2_PUBLIC_BASE_URL ||
   "https://pub-58708621bfa94e3bb92de37cde354c0d.r2.dev";
+const DEFAULT_CONVEX_SITE_URL = process.env.CONVEX_SITE_URL || "";
 const PAGE_SIZE = 50;
 const UPLOAD_CONCURRENCY = 6;
 
@@ -79,6 +67,8 @@ const requireEnv = (name) => {
   }
   return value;
 };
+
+const optionalEnv = (name) => process.env[name]?.trim() ?? "";
 
 const sha256Hex = (data) =>
   createHash("sha256").update(data).digest("hex");
@@ -263,8 +253,6 @@ const main = async () => {
   console.log(
     `[pets] target r2://${bucket}/${prefix}/  (public ${publicBase}/${prefix}/)`,
   );
-  await mkdir(PUBLIC_PETS_DIR, { recursive: true });
-  await mkdir(SRC_PETS_DATA_DIR, { recursive: true });
 
   const catalog = await listAllPets({ limit });
   console.log(`[pets] discovered ${catalog.length} pets`);
@@ -339,19 +327,9 @@ const main = async () => {
   await Promise.all(workers);
 
   manifestEntries.sort((a, b) => a.displayName.localeCompare(b.displayName));
-  const manifest = {
-    generatedAt: new Date().toISOString(),
-    publicBaseUrl: `${publicBase}/${prefix}`,
-    bucket,
-    prefix,
-    count: manifestEntries.length,
-    pets: manifestEntries,
-  };
-  const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
-  await writeFile(MANIFEST_PATH, manifestJson, "utf8");
-  await writeFile(SRC_MANIFEST_PATH, manifestJson, "utf8");
+  await seedConvexCatalog(manifestEntries);
   console.log(
-    `[pets] done — ${uploaded} uploaded, ${skipped} cached, ${failed} failed; manifest at ${MANIFEST_PATH} and ${SRC_MANIFEST_PATH}`,
+    `[pets] done — ${uploaded} uploaded, ${skipped} cached, ${failed} failed; seeded ${manifestEntries.length} Convex catalog rows`,
   );
 };
 
@@ -368,6 +346,37 @@ const buildManifestEntry = (pet, publicBase, prefix) => {
     spritesheetUrl: `${publicBase}/${prefix}/${id}.webp`,
     sourceUrl: `https://codex-pet-share.pages.dev/#/pet/${id}`,
   };
+};
+
+const seedConvexCatalog = async (pets) => {
+  const siteUrl = (optionalEnv("PET_CATALOG_SEED_URL") || DEFAULT_CONVEX_SITE_URL).replace(
+    /\/+$/,
+    "",
+  );
+  const secret = optionalEnv("PET_CATALOG_SEED_SECRET");
+  if (!siteUrl || !secret) {
+    console.warn(
+      "[pets] skipping Convex seed (PET_CATALOG_SEED_SECRET / CONVEX_SITE_URL not set)",
+    );
+    return;
+  }
+  const res = await fetch(`${siteUrl}/api/pets/seed`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${secret}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      pets: pets.map((pet, index) => ({
+        ...pet,
+        published: true,
+        sortOrder: index,
+      })),
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Seed Convex pet catalog → ${res.status} ${await res.text()}`);
+  }
 };
 
 main().catch((error) => {

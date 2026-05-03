@@ -44,6 +44,7 @@ import { openStoreDisplayTab } from "@/shell/display/default-tabs"
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
 import "@/global/integrations/credential-modal.css"
 import { FashionTab } from "./fashion/FashionTab"
+import { PetsApp } from "@/app/pets/App"
 import { ShareAddonDialog } from "./ShareAddonDialog"
 import {
   DEFAULT_STORE_TAB,
@@ -2002,8 +2003,9 @@ export function StoreView({
     </>
   )
 
-  // Fashion is full-bleed — its grid + snap-scroll owns the canvas.
-  const isFullBleedTab = tab === "fashion"
+  // Fashion + Pets are full-bleed — they own the canvas and bring
+  // their own scrolling/grid layout.
+  const isFullBleedTab = tab === "fashion" || tab === "pets"
 
   return (
     <div className="store-root" data-tab={selectedPackageId ? "discover" : tab}>
@@ -2017,7 +2019,7 @@ export function StoreView({
         </button>
       ) : null}
       {isFullBleedTab && !selectedPackageId ? (
-        <FashionTab />
+        tab === "pets" ? <PetsApp /> : <FashionTab />
       ) : (
         <div className="store-scroll">
           {selectedPackageId ? (

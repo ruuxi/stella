@@ -11,9 +11,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       <ThemeProvider>
         <ToastProvider>
           <BootstrapStateProvider>
-            <UiStateProvider>
-              {children}
-            </UiStateProvider>
+            <UiStateProvider>{children}</UiStateProvider>
           </BootstrapStateProvider>
         </ToastProvider>
       </ThemeProvider>

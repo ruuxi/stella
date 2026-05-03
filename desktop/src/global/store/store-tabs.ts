@@ -9,7 +9,7 @@
  *   - "Fashion" — Shopify try-on flow.
  */
 
-export const STORE_TAB_KEYS = ["discover", "fashion"] as const;
+export const STORE_TAB_KEYS = ["discover", "pets", "fashion"] as const;
 
 export type StoreTab = (typeof STORE_TAB_KEYS)[number];
 
@@ -20,6 +20,7 @@ type StoreTabDefinition = {
 
 export const STORE_TABS: StoreTabDefinition[] = [
   { key: "discover", label: "Discover" },
+  { key: "pets", label: "Pets" },
   { key: "fashion", label: "Fashion" },
 ];
 
