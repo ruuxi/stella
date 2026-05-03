@@ -6,6 +6,10 @@ import { ChatStoreProvider } from "@/context/chat-store";
 import { CredentialRequestLayer } from "./global/auth/CredentialRequestLayer";
 import { GoogleWorkspaceAuthListener } from "./global/integrations/GoogleWorkspaceAuthListener";
 import { FullShell } from "./shell/FullShell";
+import {
+  readPetOpenPreference,
+  writePetOpenPreference,
+} from "./shell/pet/pet-preferences";
 
 const AUTO_REPAIR_SIGNATURE_KEY = "stella:auto-repair:last-signature";
 
@@ -24,6 +28,16 @@ function App() {
       window.sessionStorage.removeItem(AUTO_REPAIR_SIGNATURE_KEY);
     }, 20_000);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (readPetOpenPreference()) {
+      window.electronAPI?.pet?.setOpen?.(true);
+    }
+    const cleanup = window.electronAPI?.pet?.onSetOpen?.((open) => {
+      writePetOpenPreference(open);
+    });
+    return () => cleanup?.();
   }, []);
 
   return (
