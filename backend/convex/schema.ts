@@ -14,6 +14,7 @@ import { backupsSchema } from "./schema/backups";
 import { fashionSchema } from "./schema/fashion";
 import { feedbackSchema } from "./schema/feedback";
 import { desktopReleasesSchema } from "./schema/desktop_releases";
+import { petsSchema } from "./schema/pets";
 
 export default defineSchema({
   ...conversationsSchema,
@@ -31,5 +32,6 @@ export default defineSchema({
   ...fashionSchema,
   ...feedbackSchema,
   ...desktopReleasesSchema,
+  ...petsSchema,
 });
 
