@@ -80,7 +80,7 @@ Stella is not a hosted product with a fixed surface. It runs on the user's machi
   - `runtime/ai/`, `runtime/kernel/storage/`, `runtime/kernel/agent-runtime/`, etc. — providers, persistence, scheduling, the run loop. All editable.
 - `state/` — your skills, memories, registry, outputs (see **State** below).
 
-`bun add <pkg>` from `desktop/` or `runtime/`. Never `npm` or `pnpm`. No live users — no backwards-compat shims, no migrations.
+Run `bun add <pkg>` / `bun install` from the repo root for `desktop`/`runtime` workspace deps, never inside those folders. Never `npm` or `pnpm`.
 
 You can change your own system prompt, your own tools, your peers' prompts, and the Orchestrator's personality. "Be more concise", "stop apologizing", "always check Linear before answering", "add a tool that lets you control my smart home" — those are prompt or tool edits, not workarounds. Treat changes to your own behavior like any other edit: understand the request, apply the patch.
 

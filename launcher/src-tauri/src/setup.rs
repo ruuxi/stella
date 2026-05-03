@@ -233,17 +233,26 @@ fn release_manifest_of(d: &str) -> PathBuf {
 fn desktop_dir_of(d: &str) -> PathBuf {
     Path::new(d).join("desktop")
 }
+fn runtime_dir_of(d: &str) -> PathBuf {
+    Path::new(d).join("runtime")
+}
 fn package_json_of(d: &str) -> PathBuf {
     Path::new(d).join("package.json")
 }
 fn desktop_package_json_of(d: &str) -> PathBuf {
     desktop_dir_of(d).join("package.json")
 }
+fn runtime_package_json_of(d: &str) -> PathBuf {
+    runtime_dir_of(d).join("package.json")
+}
 fn node_modules_of(d: &str) -> PathBuf {
     Path::new(d).join("node_modules")
 }
 fn desktop_node_modules_of(d: &str) -> PathBuf {
     desktop_dir_of(d).join("node_modules")
+}
+fn runtime_node_modules_of(d: &str) -> PathBuf {
+    runtime_dir_of(d).join("node_modules")
 }
 fn mac_screen_capture_permissions_dir_of(d: &str) -> PathBuf {
     desktop_node_modules_of(d).join("mac-screen-capture-permissions")
@@ -290,7 +299,7 @@ fn emote_staging_root_of(d: &str) -> PathBuf {
     Path::new(d).join(".stella-emotes-staging")
 }
 fn dugite_git_root_of(d: &str) -> PathBuf {
-    desktop_node_modules_of(d).join("dugite").join("git")
+    runtime_node_modules_of(d).join("dugite").join("git")
 }
 fn dugite_git_bin_of(d: &str) -> PathBuf {
     if cfg!(target_os = "windows") {
@@ -1660,6 +1669,8 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
                 && path_exists(&node_modules_of(dir)).await
                 && path_exists(&desktop_package_json_of(dir)).await
                 && path_exists(&desktop_node_modules_of(dir)).await
+                && path_exists(&runtime_package_json_of(dir)).await
+                && path_exists(&runtime_node_modules_of(dir)).await
         }
         SetupStepId::Prepare => {
             if state.dev_mode {
@@ -1847,10 +1858,22 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
     let has_node_modules = path_exists(&node_modules_of(&state.install_path)).await;
     let has_desktop_pkg = path_exists(&desktop_package_json_of(&state.install_path)).await;
     let has_desktop_node_modules = path_exists(&desktop_node_modules_of(&state.install_path)).await;
+    let has_runtime_pkg = path_exists(&runtime_package_json_of(&state.install_path)).await;
+    let has_runtime_node_modules = path_exists(&runtime_node_modules_of(&state.install_path)).await;
     state.can_launch = if state.dev_mode {
-        has_pkg && has_node_modules && has_desktop_pkg && has_desktop_node_modules
+        has_pkg
+            && has_node_modules
+            && has_desktop_pkg
+            && has_desktop_node_modules
+            && has_runtime_pkg
+            && has_runtime_node_modules
     } else {
-        has_manifest && has_pkg && has_desktop_pkg && has_desktop_node_modules
+        has_manifest
+            && has_pkg
+            && has_desktop_pkg
+            && has_desktop_node_modules
+            && has_runtime_pkg
+            && has_runtime_node_modules
     };
     state.warning_message = read_emote_install_state(&state.install_path)
         .await
