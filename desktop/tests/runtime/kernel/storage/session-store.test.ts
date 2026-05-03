@@ -109,6 +109,37 @@ describe("session-store", () => {
     expect(oldTables).toEqual([]);
   });
 
+  it("upserts local chat events by explicit event id", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+
+    store.appendEvent({
+      conversationId,
+      eventId: "assistant-for-user-1",
+      type: "assistant_message",
+      timestamp: 1_000,
+      requestId: "user-1",
+      payload: { text: "First draft", userMessageId: "user-1" },
+    });
+    store.appendEvent({
+      conversationId,
+      eventId: "assistant-for-user-1",
+      type: "assistant_message",
+      timestamp: 1_001,
+      requestId: "user-1",
+      payload: { text: "Final answer", userMessageId: "user-1" },
+    });
+
+    const events = store.listEvents(conversationId, 10);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      _id: "assistant-for-user-1",
+      type: "assistant_message",
+      requestId: "user-1",
+      payload: { text: "Final answer", userMessageId: "user-1" },
+    });
+  });
+
   it("loads runtime thread history from shared message parts", () => {
     const { db, store } = createTestContext();
     const conversationId = "conv-thread";

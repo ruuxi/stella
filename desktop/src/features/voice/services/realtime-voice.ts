@@ -135,12 +135,30 @@ const toConvexConversationId = (value: unknown): string | null => {
 
 const buildVoiceSessionRequestBody = (
   conversationId?: string,
-): { conversationId?: string; basePrompt: string } => {
+): Promise<{ conversationId?: string; instructions: string }> => {
   const convexConversationId = toConvexConversationId(conversationId);
-  return {
-    ...(convexConversationId ? { conversationId: convexConversationId } : {}),
-    ...getVoiceSessionPromptConfig(),
-  };
+  return Promise.resolve(window.electronAPI?.voice.getCoreMemory?.())
+    .catch(() => null)
+    .then((coreMemory) => {
+      const instructions = buildVoiceSessionInstructions(coreMemory);
+      return {
+        ...(convexConversationId ? { conversationId: convexConversationId } : {}),
+        instructions,
+      };
+    });
+};
+
+const buildVoiceSessionInstructions = (
+  coreMemory: string | null | undefined,
+): string => {
+  const parts = [getVoiceSessionPromptConfig().basePrompt];
+  const trimmedCoreMemory = coreMemory?.trim();
+  if (trimmedCoreMemory) {
+    parts.push(
+      `<memory_file path="state/core-memory.md">\n${trimmedCoreMemory}\n</memory_file>`,
+    );
+  }
+  return parts.join("\n\n");
 };
 
 // ---------------------------------------------------------------------------
@@ -264,7 +282,7 @@ export class RealtimeVoiceSession {
       const keyPromise = (async () => {
         return postServiceJson<VoiceSessionToken>(
           "/api/voice/session",
-          buildVoiceSessionRequestBody(conversationId),
+          await buildVoiceSessionRequestBody(conversationId),
           {
             errorMessage: async (response) => {
               const detail = await response.text();

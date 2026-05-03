@@ -751,6 +751,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
 
     ensureChatStore().appendEvent({
       conversationId: args.conversationId,
+      eventId: `assistant-for-${args.userMessageId}`,
       type: "assistant_message",
       requestId: args.userMessageId,
       payload: prepareStoredLocalChatPayload({

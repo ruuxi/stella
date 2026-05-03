@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { ipcMain, type BrowserWindow } from "electron";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { UiState } from "../types.js";
@@ -157,6 +159,19 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   });
 
   ipcMain.handle("voice-rtc:getShortcut", () => currentVoiceRtcShortcut);
+
+  ipcMain.handle("voice:getCoreMemory", async () => {
+    const stellaRoot = options.getStellaRoot?.();
+    if (!stellaRoot) return null;
+    try {
+      return await fs.readFile(
+        path.join(stellaRoot, "state", "core-memory.md"),
+        "utf-8",
+      );
+    } catch {
+      return null;
+    }
+  });
 
   ipcMain.on(
     "voice:persistTranscript",
