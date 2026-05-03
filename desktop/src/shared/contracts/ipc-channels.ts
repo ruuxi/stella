@@ -122,6 +122,7 @@ export const IPC_DICTATION_TOGGLE = "dictation:toggle" as const;
 export const IPC_DICTATION_SET_SHORTCUT = "dictation:setShortcut" as const;
 export const IPC_DICTATION_GET_SHORTCUT = "dictation:getShortcut" as const;
 export const IPC_DICTATION_TRIGGER = "dictation:trigger" as const;
+export const IPC_DICTATION_OVERLAY_CANCEL = "dictation:overlayCancel" as const;
 
 // ── Agent ───────────────────────────────────────────────────────────────────
 

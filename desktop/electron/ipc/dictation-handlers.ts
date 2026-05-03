@@ -1,10 +1,9 @@
 /**
  * Dictation IPC handlers.
  *
- * Owns the global Cmd/Ctrl+Shift+M shortcut for speech-to-text dictation.
- * Focused Stella windows get the in-app composer path; otherwise dictation
- * happens in the shared overlay and the transcript is pasted back into the
- * previously focused app.
+ * Owns global speech-to-text dictation. Option/Alt is handled as push-to-talk
+ * through the low-level input hook; other configured shortcuts use Electron's
+ * toggle-style globalShortcut path.
  */
 import {
   BrowserWindow,
@@ -15,6 +14,8 @@ import {
 } from "electron";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import type { WindowManager } from "../windows/window-manager.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
@@ -32,7 +33,12 @@ import {
   warmLocalParakeet,
 } from "../dictation/local-parakeet.js";
 
-const DEFAULT_DICTATION_SHORTCUT = "Control+M";
+const DEFAULT_DICTATION_SHORTCUT = "Alt";
+const DEFAULT_NON_MAC_DICTATION_SHORTCUT = "Control+M";
+const LEGACY_DEFAULT_DICTATION_SHORTCUT = "Control+M";
+const PUSH_TO_TALK_DICTATION_SHORTCUT = "Alt";
+const PUSH_TO_TALK_MIN_DURATION_MS = 300;
+const DICTATION_SOUND_VOLUME = "0.5";
 const CLIPBOARD_SETTLE_MS = 150;
 const PASTE_SETTLE_MS = 700;
 const IN_APP_START_ACK_TIMEOUT_MS = 150;
@@ -44,6 +50,24 @@ type DictationHandlersOptions = {
   getOverlayController: () => OverlayWindowController | null;
   getStellaRoot: () => string | null;
 };
+
+type DictationMode =
+  | { type: "in-app"; window: BrowserWindow; startId: string }
+  | { type: "overlay"; sessionId: string };
+
+export type DictationPushToTalkController = {
+  isEnabled: () => boolean;
+  start: () => void;
+  stop: (durationMs: number) => void;
+  cancel: () => void;
+  discard: () => void;
+};
+
+type DictationSound =
+  | "startRecording"
+  | "stopRecording"
+  | "pasteTranscript"
+  | "cancel";
 
 const isUsableWindow = (
   window: BrowserWindow | null,
@@ -72,7 +96,9 @@ const restoreClipboardSnapshot = (snapshot: ClipboardSnapshot) => {
 const issuePasteKeystroke = async () => {
   if (process.platform === "darwin") {
     if (!systemPreferences.isTrustedAccessibilityClient(false)) {
-      throw new Error("Accessibility permission is required to paste dictation.");
+      throw new Error(
+        "Accessibility permission is required to paste dictation.",
+      );
     }
     await execFileAsync("/usr/bin/osascript", [
       "-e",
@@ -108,11 +134,50 @@ const pasteTextIntoFocusedApp = async (text: string) => {
   }
 };
 
-export const registerDictationHandlers = (options: DictationHandlersOptions) => {
+const soundPath = (sound: DictationSound) => {
+  const packagedPath = path.join(
+    process.resourcesPath,
+    "audio",
+    `${sound}.mp3`,
+  );
+  if (process.env.NODE_ENV !== "development") return packagedPath;
+
+  const devCandidates = [
+    path.resolve(
+      process.cwd(),
+      "desktop",
+      "resources",
+      "audio",
+      `${sound}.mp3`,
+    ),
+    path.resolve(process.cwd(), "resources", "audio", `${sound}.mp3`),
+  ];
+  return (
+    devCandidates.find((candidate) => fs.existsSync(candidate)) ?? packagedPath
+  );
+};
+
+const playDictationSound = (sound: DictationSound) => {
+  if (process.platform !== "darwin") return;
+  execFile(
+    "/usr/bin/afplay",
+    ["-v", DICTATION_SOUND_VOLUME, soundPath(sound)],
+    (error) => {
+      if (error) {
+        console.debug("[dictation] sound failed:", error.message);
+      }
+    },
+  );
+};
+
+export const registerDictationHandlers = (
+  options: DictationHandlersOptions,
+) => {
   const { windowManager } = options;
   let currentShortcut = "";
   let activeOverlaySessionId: string | null = null;
   let pendingInAppStartId: string | null = null;
+  let activePushToTalk: DictationMode | null = null;
 
   const pickFocusedStellaWindow = (): BrowserWindow | null => {
     const focused = BrowserWindow.getFocusedWindow();
@@ -162,6 +227,120 @@ export const registerDictationHandlers = (options: DictationHandlersOptions) => 
     overlay.send("dictation:overlayStart", { sessionId });
   };
 
+  const startOverlayPushToTalk = (): DictationMode | null => {
+    const overlay = options.getOverlayController();
+    if (!overlay || activeOverlaySessionId) return null;
+    const sessionId = randomUUID();
+    activeOverlaySessionId = sessionId;
+    const position = getOverlayDictationPosition();
+    overlay.showDictation(position.x, position.y);
+    overlay.send("dictation:overlayStart", { sessionId });
+    return { type: "overlay", sessionId };
+  };
+
+  const startPushToTalk = () => {
+    if (activePushToTalk || activeOverlaySessionId) return;
+    playDictationSound("startRecording");
+
+    const target = pickFocusedStellaWindow();
+    if (target) {
+      const startId = randomUUID();
+      pendingInAppStartId = startId;
+      activePushToTalk = { type: "in-app", window: target, startId };
+      target.webContents.send("dictation:toggle", {
+        startId,
+        action: "start",
+      });
+      setTimeout(() => {
+        if (pendingInAppStartId !== startId) return;
+        pendingInAppStartId = null;
+        if (
+          activePushToTalk?.type === "in-app" &&
+          activePushToTalk.startId === startId
+        ) {
+          activePushToTalk = startOverlayPushToTalk();
+        }
+      }, IN_APP_START_ACK_TIMEOUT_MS);
+      return;
+    }
+
+    activePushToTalk = startOverlayPushToTalk();
+  };
+
+  const stopPushToTalk = (durationMs: number) => {
+    const active = activePushToTalk;
+    activePushToTalk = null;
+    pendingInAppStartId = null;
+    if (!active) return;
+
+    if (durationMs < PUSH_TO_TALK_MIN_DURATION_MS) {
+      if (active.type === "overlay") {
+        options
+          .getOverlayController()
+          ?.send("dictation:overlayCancel", { sessionId: active.sessionId });
+      } else if (!active.window.isDestroyed()) {
+        active.window.webContents.send("dictation:toggle", {
+          startId: active.startId,
+          action: "cancel",
+        });
+      }
+      return;
+    }
+
+    playDictationSound("stopRecording");
+    if (active.type === "overlay") {
+      options.getOverlayController()?.send("dictation:overlayStop", {
+        sessionId: active.sessionId,
+      });
+      return;
+    }
+    if (!active.window.isDestroyed()) {
+      active.window.webContents.send("dictation:toggle", {
+        startId: active.startId,
+        action: "stop",
+      });
+    }
+  };
+
+  const cancelPushToTalk = () => {
+    const active = activePushToTalk;
+    activePushToTalk = null;
+    pendingInAppStartId = null;
+    if (!active) return;
+    playDictationSound("cancel");
+    if (active.type === "overlay") {
+      options
+        .getOverlayController()
+        ?.send("dictation:overlayCancel", { sessionId: active.sessionId });
+      return;
+    }
+    if (!active.window.isDestroyed()) {
+      active.window.webContents.send("dictation:toggle", {
+        startId: active.startId,
+        action: "cancel",
+      });
+    }
+  };
+
+  const discardPushToTalk = () => {
+    const active = activePushToTalk;
+    activePushToTalk = null;
+    pendingInAppStartId = null;
+    if (!active) return;
+    if (active.type === "overlay") {
+      options
+        .getOverlayController()
+        ?.send("dictation:overlayCancel", { sessionId: active.sessionId });
+      return;
+    }
+    if (!active.window.isDestroyed()) {
+      active.window.webContents.send("dictation:toggle", {
+        startId: active.startId,
+        action: "cancel",
+      });
+    }
+  };
+
   const toggleDictation = () => {
     if (activeOverlaySessionId) {
       stopOverlaySession();
@@ -187,10 +366,37 @@ export const registerDictationHandlers = (options: DictationHandlersOptions) => 
   const applyDictationShortcutRegistration = (
     requestedShortcut: string,
   ): ShortcutRegistrationResult => {
+    if (
+      currentShortcut &&
+      currentShortcut !== PUSH_TO_TALK_DICTATION_SHORTCUT
+    ) {
+      applyShortcutRegistration({
+        label: "Dictation",
+        requestedShortcut: "",
+        currentShortcut,
+        callback: toggleDictation,
+        onActiveShortcutChange: (shortcut) => {
+          currentShortcut = shortcut;
+        },
+      });
+    }
+
+    if (requestedShortcut === PUSH_TO_TALK_DICTATION_SHORTCUT) {
+      currentShortcut = requestedShortcut;
+      return {
+        ok: true,
+        requestedShortcut,
+        activeShortcut: requestedShortcut,
+      };
+    }
+
     return applyShortcutRegistration({
       label: "Dictation",
       requestedShortcut,
-      currentShortcut,
+      currentShortcut:
+        currentShortcut === PUSH_TO_TALK_DICTATION_SHORTCUT
+          ? ""
+          : currentShortcut,
       callback: toggleDictation,
       onActiveShortcutChange: (shortcut) => {
         currentShortcut = shortcut;
@@ -199,9 +405,22 @@ export const registerDictationHandlers = (options: DictationHandlersOptions) => 
   };
 
   const loadConfiguredShortcut = () => {
+    const platformDefault =
+      process.platform === "darwin"
+        ? DEFAULT_DICTATION_SHORTCUT
+        : DEFAULT_NON_MAC_DICTATION_SHORTCUT;
     const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return DEFAULT_DICTATION_SHORTCUT;
-    return loadLocalPreferences(stellaRoot).dictationShortcut;
+    if (!stellaRoot) return platformDefault;
+    const shortcut = loadLocalPreferences(stellaRoot).dictationShortcut;
+    if (
+      process.platform !== "darwin" &&
+      shortcut === PUSH_TO_TALK_DICTATION_SHORTCUT
+    ) {
+      return DEFAULT_NON_MAC_DICTATION_SHORTCUT;
+    }
+    return shortcut === LEGACY_DEFAULT_DICTATION_SHORTCUT
+      ? platformDefault
+      : shortcut;
   };
 
   const saveConfiguredShortcut = (shortcut: string) => {
@@ -275,6 +494,7 @@ export const registerDictationHandlers = (options: DictationHandlersOptions) => 
       hideOverlaySession(payload.sessionId);
       const text = payload.text.trim();
       if (!text) return;
+      playDictationSound("pasteTranscript");
       pasteTextIntoFocusedApp(`${text} `).catch((error) => {
         console.warn("[dictation] OS-wide paste failed:", error);
       });
@@ -295,4 +515,12 @@ export const registerDictationHandlers = (options: DictationHandlersOptions) => 
       console.warn("[dictation] overlay dictation failed:", payload.error);
     },
   );
+
+  return {
+    isEnabled: () => currentShortcut === PUSH_TO_TALK_DICTATION_SHORTCUT,
+    start: startPushToTalk,
+    stop: stopPushToTalk,
+    cancel: cancelPushToTalk,
+    discard: discardPushToTalk,
+  } satisfies DictationPushToTalkController;
 };

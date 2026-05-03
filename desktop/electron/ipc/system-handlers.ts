@@ -926,7 +926,14 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     }
     const stellaRoot = options.getStellaRoot();
     if (!stellaRoot) return "Alt";
-    return loadLocalPreferences(stellaRoot).miniDoubleTapModifier;
+    const prefs = loadLocalPreferences(stellaRoot);
+    if (
+      prefs.dictationShortcut === "Alt" &&
+      prefs.miniDoubleTapModifier === "Alt"
+    ) {
+      return "Off";
+    }
+    return prefs.miniDoubleTapModifier;
   });
 
   ipcMain.handle(
