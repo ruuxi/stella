@@ -1,4 +1,5 @@
 import type { RuntimeRunCallbacks } from "../agent-runtime.js";
+import { QUEUED_TURN_INTERRUPT_ERROR } from "./shared.js";
 import type {
   AgentCallbacks,
   QueuedOrchestratorTurn,
@@ -14,6 +15,47 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
     context.state.activeOrchestratorConversationId = null;
     context.state.activeOrchestratorUiVisibility = "visible";
     context.state.activeOrchestratorSession = null;
+    context.state.activeToolExecutionCount = 0;
+    context.state.interruptAfterTool = false;
+    context.state.activeInterruptedReplayTurn = null;
+  };
+
+  const abortActiveOrchestratorRunForQueuedTurn = () => {
+    if (!context.state.activeOrchestratorRunId) {
+      return false;
+    }
+    const runId = context.state.activeOrchestratorRunId;
+    const abortController =
+      context.state.activeRunAbortControllers.get(runId) ?? null;
+    if (!abortController || context.state.interruptedRunIds.has(runId)) {
+      return false;
+    }
+    context.state.interruptedRunIds.add(runId);
+    abortController.abort(new Error(QUEUED_TURN_INTERRUPT_ERROR));
+    return true;
+  };
+
+  const requestActiveOrchestratorCheckpoint = () => {
+    if (!context.state.activeOrchestratorRunId) {
+      return false;
+    }
+    if (context.state.activeToolExecutionCount > 0) {
+      context.state.interruptAfterTool = true;
+      return true;
+    }
+    context.state.interruptAfterTool = false;
+    return abortActiveOrchestratorRunForQueuedTurn();
+  };
+
+  const maybeInterruptAfterToolCheckpoint = () => {
+    if (
+      !context.state.interruptAfterTool ||
+      context.state.activeToolExecutionCount > 0
+    ) {
+      return;
+    }
+    context.state.interruptAfterTool = false;
+    abortActiveOrchestratorRunForQueuedTurn();
   };
 
   const drainQueuedOrchestratorTurns = async (): Promise<void> => {
@@ -51,6 +93,7 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
       context.state.queuedOrchestratorTurns.push(turn);
     }
     if (context.state.activeOrchestratorRunId) {
+      requestActiveOrchestratorCheckpoint();
       return;
     }
     queueMicrotask(() => {
@@ -70,25 +113,81 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
     });
   };
 
+  const finishInterruptedRun = (args: {
+    runId: string;
+    onInterrupted?: () => void;
+    onCleanup?: () => void;
+  }): boolean => {
+    if (context.state.interruptedRunIds.delete(args.runId)) {
+      cleanupRun(args.runId, args.onCleanup);
+      args.onInterrupted?.();
+      return true;
+    }
+    return false;
+  };
+
   const createRuntimeCallbacks = (
     runId: string,
     callbacks: AgentCallbacks,
     options?: {
+      onInterrupted?: () => void;
       onCleanup?: () => void;
     },
   ): RuntimeRunCallbacks => ({
     onUserMessage: callbacks.onUserMessage,
     onStream: callbacks.onStream,
     onStatus: callbacks.onStatus,
-    onToolStart: callbacks.onToolStart,
-    onToolEnd: callbacks.onToolEnd,
+    onToolStart: (event) => {
+      context.state.activeToolExecutionCount += 1;
+      callbacks.onToolStart(event);
+    },
+    onToolEnd: (event) => {
+      context.state.activeToolExecutionCount = Math.max(
+        0,
+        context.state.activeToolExecutionCount - 1,
+      );
+      callbacks.onToolEnd(event);
+      if (context.state.activeOrchestratorRunId === runId) {
+        maybeInterruptAfterToolCheckpoint();
+      }
+    },
     onError: (event) => {
+      if (
+        finishInterruptedRun({
+          runId,
+          onInterrupted: options?.onInterrupted,
+          onCleanup: options?.onCleanup,
+        })
+      ) {
+        callbacks.onInterrupted?.({
+          runId,
+          agentType: event.agentType,
+          reason: QUEUED_TURN_INTERRUPT_ERROR,
+        });
+        return;
+      }
       callbacks.onError(event);
       if (event.fatal) {
         cleanupRun(runId, options?.onCleanup);
       }
     },
     onInterrupted: (event) => {
+      if (
+        finishInterruptedRun({
+          runId,
+          onInterrupted: options?.onInterrupted,
+          onCleanup: options?.onCleanup,
+        })
+      ) {
+        callbacks.onInterrupted?.({
+          runId,
+          agentType: event.agentType,
+          userMessageId: event.userMessageId,
+          uiVisibility: event.uiVisibility,
+          reason: event.reason,
+        });
+        return;
+      }
       cleanupRun(runId, options?.onCleanup);
       callbacks.onInterrupted?.({
         runId,
@@ -99,16 +198,36 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
       });
     },
     onEnd: (event) => {
+      if (
+        finishInterruptedRun({
+          runId,
+          onInterrupted: options?.onInterrupted,
+          onCleanup: options?.onCleanup,
+        })
+      ) {
+        callbacks.onInterrupted?.({
+          runId,
+          agentType: event.agentType,
+          userMessageId: event.userMessageId,
+          uiVisibility: event.uiVisibility,
+          reason: QUEUED_TURN_INTERRUPT_ERROR,
+        });
+        return;
+      }
       cleanupRun(runId, options?.onCleanup);
       callbacks.onEnd(event);
     },
   });
 
   return {
+    abortActiveOrchestratorRunForQueuedTurn,
+    requestActiveOrchestratorCheckpoint,
+    maybeInterruptAfterToolCheckpoint,
     drainQueuedOrchestratorTurns,
     queueOrchestratorTurn,
     createRuntimeCallbacks,
     cleanupRun,
     clearActiveOrchestratorRun,
+    finishInterruptedRun,
   };
 };

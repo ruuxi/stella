@@ -68,6 +68,7 @@ export const createOrchestratorController = (
     clearActiveOrchestratorRun,
     createRuntimeCallbacks,
     queueOrchestratorTurn,
+    finishInterruptedRun,
   } = coordinator;
 
   type StartPreparedRunArgs = Parameters<
@@ -84,6 +85,7 @@ export const createOrchestratorController = (
     userMessageId: string;
     responseTarget?: StartPreparedRunArgs["responseTarget"];
     callbacks: AgentCallbacks;
+    replayTurn?: QueuedOrchestratorTurn | null;
     createRunCallbacks: StartPreparedRunArgs["createRuntimeCallbacks"];
     onPrepared?: StartPreparedRunArgs["onPrepared"];
   }): Promise<{ runId: string }> => {
@@ -103,6 +105,7 @@ export const createOrchestratorController = (
     await startPreparedOrchestratorRun({
       context,
       buildAgentContext: deps.buildAgentContext,
+      queueOrchestratorTurn,
       runId,
       conversationId: args.conversationId,
       agentType: args.agentType,
@@ -114,7 +117,9 @@ export const createOrchestratorController = (
       attachments: args.attachments,
       userMessageId: args.userMessageId,
       ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
+      replayTurn: args.replayTurn ?? null,
       createRuntimeCallbacks: args.createRunCallbacks,
+      finishInterruptedRun,
       cleanupRun,
       onPrepared: (prepared) => {
         args.callbacks.onRunStarted?.({
@@ -158,7 +163,7 @@ export const createOrchestratorController = (
   };
 
   const startStreamingOrchestratorTurn = async (
-    _payload: QueuedOrchestratorTurn,
+    payload: QueuedOrchestratorTurn,
     startArgs: {
       conversationId: string;
       userPrompt: string;
@@ -196,8 +201,11 @@ export const createOrchestratorController = (
         ? { responseTarget: startArgs.responseTarget }
         : {}),
       callbacks,
-      createRunCallbacks: ({ runId }) =>
-        createRuntimeCallbacks(runId, callbacks),
+      replayTurn: payload.requeueOnInterrupt ? payload : null,
+      createRunCallbacks: ({ runId, prepared }) =>
+        createRuntimeCallbacks(runId, callbacks, {
+          onInterrupted: prepared.replayInterruptedTurn,
+        }),
     });
   };
 
@@ -496,7 +504,7 @@ export const createOrchestratorController = (
   };
 
   const startAutomationTurn = async (
-    _queuedTurn: QueuedOrchestratorTurn,
+    queuedTurn: QueuedOrchestratorTurn,
     payload: {
       conversationId: string;
       userPrompt: string;
@@ -524,6 +532,7 @@ export const createOrchestratorController = (
     await startPreparedOrchestratorRun({
       context,
       buildAgentContext: deps.buildAgentContext,
+      queueOrchestratorTurn,
       runId,
       conversationId,
       agentType,
@@ -532,11 +541,16 @@ export const createOrchestratorController = (
       uiVisibility: "hidden",
       attachments: [],
       userMessageId: `automation:${crypto.randomUUID()}`,
-      createRuntimeCallbacks: ({ runId }) =>
+      replayTurn: queuedTurn.requeueOnInterrupt ? queuedTurn : null,
+      createRuntimeCallbacks: ({ runId, prepared }) =>
         createRuntimeCallbacks(
           runId,
           createAutomationAgentCallbacks(resolveResult),
+          {
+            onInterrupted: prepared.replayInterruptedTurn,
+          },
         ),
+      finishInterruptedRun,
       cleanupRun,
       onFatalError: createAutomationFatalErrorHandler(resolveResult),
     });

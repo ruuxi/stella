@@ -107,6 +107,7 @@ function OnboardingExperience({
 }: OnboardingExperienceProps) {
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
+  const [onboardingDemoMorphing, setOnboardingDemoMorphing] = useState(false);
   const [stellaHiddenByPhase, setStellaHiddenByPhase] = useState(false);
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("intro");
@@ -114,11 +115,7 @@ function OnboardingExperience({
   const activeDemoRef = useRef<OnboardingDemo>(null);
   const fogDefsRef = useRef<SVGSVGElement | null>(null);
   const onboarding = useOnboardingOverlay();
-  const {
-    handleDiscoveryConfirm,
-    discoveryWelcomeExpected,
-    discoveryWelcomeReady,
-  } = useDiscoveryFlow({
+  const { handleDiscoveryConfirm } = useDiscoveryFlow({
     conversationId: activeConversationId,
   });
 
@@ -178,49 +175,37 @@ function OnboardingExperience({
     };
   }, []);
 
-  const persistOnboardingPhase = onboarding.persistPhase;
-  const handleOnboardingPhaseChange = useCallback(
-    (phase: OnboardingPhase) => {
-      setOnboardingPhase(phase);
-      const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
-      setStellaHiddenByPhase(
-        CREATION_PHASE_INDEX >= 0 && splitIndex >= CREATION_PHASE_INDEX,
-      );
-      // Persist split-flow phases so a quit-and-relaunch resumes here
-      // instead of dropping the user back on the welcome screen.
-      // `persistPhase` no-ops on non-split phases (intro/complete/done)
-      // and effectively clears the saved slot when those fire.
-      persistOnboardingPhase(phase);
-    },
-    [persistOnboardingPhase],
-  );
+  const handleOnboardingPhaseChange = useCallback((phase: OnboardingPhase) => {
+    setOnboardingPhase(phase);
+    const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
+    setStellaHiddenByPhase(
+      CREATION_PHASE_INDEX >= 0 && splitIndex >= CREATION_PHASE_INDEX,
+    );
+  }, []);
 
   // Phases whose own animations dominate the frame budget; we keep the
   // creature visible but pause its rAF canvas loop so the heavy phase
   // gets the full frame budget. (`creation` and later are already covered
-  // by `stellaHiddenByPhase` above, which both hides AND pauses.) The
-  // voice phase mounts its own 20×20 mock creature canvas in the
-  // dictation overlay, so two RAF loops would otherwise contest the
-  // main thread during the most show-offy phase.
-  const stellaPausedByHeavyPhase =
-    onboardingPhase === "capabilities" || onboardingPhase === "voice";
+  // by `stellaHiddenByPhase` above, which both hides AND pauses.)
+  const stellaPausedByHeavyPhase = onboardingPhase === "capabilities";
 
   useEffect(() => {
     const fogDefs = fogDefsRef.current;
     if (!fogDefs) return;
 
-    // Pause the fog drift during the onboarding exit transition so the
-    // fade-out reads as a calm dissolve rather than a moving texture being
-    // clipped to nothing.
-    if (onboarding.onboardingExiting) {
+    // Pause the fog drift during creation-phase morphs and during the
+    // onboarding exit transition (so the fade-out reads as a calm dissolve
+    // rather than a moving texture being clipped to nothing).
+    if (onboardingDemoMorphing || onboarding.onboardingExiting) {
       fogDefs.pauseAnimations();
     } else {
       fogDefs.unpauseAnimations();
     }
-  }, [onboarding.onboardingExiting]);
+  }, [onboardingDemoMorphing, onboarding.onboardingExiting]);
 
   const showOnboardingDemos = activeDemo || demoClosing;
-  const pauseOnboardingMotion = onboarding.onboardingExiting;
+  const pauseOnboardingMotion =
+    onboardingDemoMorphing || onboarding.onboardingExiting;
   const pauseStellaAnimation =
     pauseOnboardingMotion ||
     Boolean(activeDemo) ||
@@ -330,8 +315,6 @@ function OnboardingExperience({
             stellaAnimationPaused={pauseStellaAnimation}
             stellaAnimationHidden={stellaHiddenByPhase}
             onboardingKey={onboarding.onboardingKey}
-            initialPhase={onboarding.initialPhase}
-            creatureInitialBirth={onboarding.creatureInitialBirth}
             triggerFlash={onboarding.triggerFlash}
             startOnboarding={onboarding.startOnboarding}
             completeOnboarding={onboarding.completeOnboarding}
@@ -342,8 +325,6 @@ function OnboardingExperience({
             onDemoChange={handleDemoChange}
             onPhaseChange={handleOnboardingPhaseChange}
             activeDemo={activeDemo}
-            discoveryWelcomeExpected={discoveryWelcomeExpected}
-            discoveryWelcomeReady={discoveryWelcomeReady}
           />
           <div
             className="onboarding-demo-area"
@@ -352,7 +333,10 @@ function OnboardingExperience({
             aria-hidden={!showOnboardingDemos}
           >
             {showOnboardingDemos ? (
-              <OnboardingCanvas activeDemo={activeDemo} />
+              <OnboardingCanvas
+                activeDemo={activeDemo}
+                onMorphingChange={setOnboardingDemoMorphing}
+              />
             ) : null}
           </div>
         </Suspense>
@@ -421,13 +405,6 @@ export const FullShell = () => {
     retryRuntimeBootstrap();
   }, [authBootstrapStatus, retryRuntimeBootstrap]);
 
-  // Stable callback so the OnboardingExperience effect doesn't re-fire on
-  // every parent render and re-trigger `setHasEnteredApp(true)` after
-  // onboarding completes.
-  const handleEnteredApp = useCallback(() => {
-    setHasEnteredApp(true);
-  }, []);
-
   useEffect(() => {
     if (!onboardingDone || !startupReady) return;
     const timer = window.setTimeout(() => {
@@ -456,6 +433,30 @@ export const FullShell = () => {
       dismissLaunchSplash();
     }
   }, [appReady, startupError]);
+
+  // TEMP: surface why the splash is gated. Remove once the launch hang
+  // is diagnosed.
+  useEffect(() => {
+    console.log("[stella:splash-gate]", {
+      appReady,
+      onboardingDone,
+      hasEnteredApp,
+      startupReady,
+      runtimeAuthReady,
+      authBootstrapStatus,
+      runtimeStatus,
+      startupError,
+    });
+  }, [
+    appReady,
+    onboardingDone,
+    hasEnteredApp,
+    startupReady,
+    runtimeAuthReady,
+    authBootstrapStatus,
+    runtimeStatus,
+    startupError,
+  ]);
 
   useEffect(() => {
     if (!appReady) return;
@@ -503,7 +504,7 @@ export const FullShell = () => {
             startupError={startupError}
             onShellStateChange={setOnboardingShellState}
             onRetryStartup={handleRetryStartup}
-            onEnteredApp={handleEnteredApp}
+            onEnteredApp={() => setHasEnteredApp(true)}
           />
         ) : (
           <PostOnboardingStartupGate
