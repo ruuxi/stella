@@ -7,17 +7,16 @@
 [data-component="dropdown-menu-content"] {
   min-width: 180px;
   padding: 6px;
-  border-radius: var(--radius-md, 8px);
-  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-md, 10px);
+  /* Hairline edge — slightly stronger than --border-weak so the menu
+     keeps a crisp boundary against the gradient backdrop. */
+  border: 1px solid var(--border-base);
   /* Glass: tinted background + heavy blur. Falls back to --popover for
      environments that don't support backdrop-filter. */
   background: color-mix(in srgb, var(--popover, var(--background)) 88%, transparent);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow:
-    0 1px 2px color-mix(in srgb, var(--foreground) 8%, transparent),
-    0 16px 36px color-mix(in srgb, var(--foreground) 18%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--foreground) 4%, transparent);
+  box-shadow: var(--shadow-overlay);
   z-index: 50;
 }
 
