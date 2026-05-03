@@ -87,25 +87,49 @@ func focusedElement() -> AXUIElement? {
     return nil
 }
 
-func roleLooksEditable(_ role: String?, _ subrole: String?) -> Bool {
-    let editableRoles: Set<String> = [
-        "AXTextArea",
-        "AXTextField",
-        "AXComboBox",
-        "AXSearchField",
-    ]
+let editableRoles: Set<String> = [
+    "AXTextArea",
+    "AXTextField",
+    "AXComboBox",
+    "AXSearchField",
+]
+
+let editableSubroles: Set<String> = [
+    "AXSecureTextField",
+    "AXContentEditable",
+]
+
+// Presence of any of these implies a caret-bearing text element, even when
+// the element exposes a generic role like AXGroup / AXStaticText (common in
+// contentEditable hosts, ProseMirror, CodeMirror, Slack/Notion compose).
+let caretAttributes: [String] = [
+    kAXSelectedTextRangeAttribute as String,
+    kAXNumberOfCharactersAttribute as String,
+    kAXInsertionPointLineNumberAttribute as String,
+    kAXVisibleCharacterRangeAttribute as String,
+]
+
+func elementLooksEditable(_ element: AXUIElement) -> Bool {
+    let role = axString(element, kAXRoleAttribute)
+    let subrole = axString(element, kAXSubroleAttribute)
     if let role, editableRoles.contains(role) { return true }
-    if subrole == "AXSecureTextField" { return true }
+    if let subrole, editableSubroles.contains(subrole) { return true }
+    if axSettable(element, kAXValueAttribute as String) { return true }
+    if axSettable(element, kAXSelectedTextAttribute as String) { return true }
+    for attr in caretAttributes {
+        if axCopy(element, attr) != nil { return true }
+    }
     return false
 }
 
 func focusedElementIsEditable() -> Bool {
-    guard let focused = focusedElement() else { return false }
-    let role = axString(focused, kAXRoleAttribute)
-    let subrole = axString(focused, kAXSubroleAttribute)
-    if roleLooksEditable(role, subrole) { return true }
-    if axSettable(focused, kAXValueAttribute as String) { return true }
-    if axSettable(focused, kAXSelectedTextAttribute as String) { return true }
+    guard let initial = focusedElement() else { return false }
+    var current: AXUIElement = initial
+    for _ in 0..<5 {
+        if elementLooksEditable(current) { return true }
+        guard let parent = axCopy(current, kAXParentAttribute) else { return false }
+        current = unsafeBitCast(parent, to: AXUIElement.self)
+    }
     return false
 }
 
