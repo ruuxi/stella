@@ -2,11 +2,13 @@ import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import {
   ArrowLeft,
+  Cpu,
   LogOut,
   MessageSquare,
   Palette,
   Settings as SettingsIcon,
 } from "lucide-react";
+import { ModelsPicker } from "@/global/settings/ModelsPicker";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import { useT } from "@/shared/i18n";
 import {
@@ -90,6 +92,20 @@ const SidebarActionsBar = ({
       >
         <SettingsIcon size={15} strokeWidth={1.75} />
       </button>
+      <ModelsPicker
+        side="top"
+        align="start"
+        trigger={
+          <button
+            type="button"
+            className="sidebar-actions-btn"
+            aria-label="Models"
+            title="Models"
+          >
+            <Cpu size={15} strokeWidth={1.75} />
+          </button>
+        }
+      />
       <ThemePicker
         side="top"
         align="start"
