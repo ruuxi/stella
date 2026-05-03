@@ -2,7 +2,7 @@
  * Presentational chat timeline.
  *
  * Renders a list of pre-built `EventRowViewModel`s using the same
- * `MessageRow` components and tail-region logic as the home full chat.
+ * `MessageRow` components as the home full chat.
  *
  * Used by:
  *   - `ConversationEvents` (the home chat surface): wraps `useEventRows`
@@ -32,12 +32,12 @@ type ChatTimelineProps = {
   rows: EventRowViewModel[];
   /**
    * Index of the latest user row in `rows`. Everything from this index
-   * onward is wrapped in the `100cqh` tail region so the active turn
-   * fills the viewport when scrolled to the top — same invariant the
-   * home chat preserves via `.event-row-region--tail`.
+   * onward is wrapped in a fixed-floor tail region so the assistant
+   * reply streams into pre-allocated empty space below the freshly-sent
+   * user bubble (avoids a double scroll-jump as content arrives).
    *
    * Pass `-1` to skip the tail region entirely (useful for
-   * agent-only surfaces where there's no "active turn" to anchor on).
+   * agent-only surfaces with no "active turn" to anchor on).
    */
   lastUserRowIndex?: number;
   /** Optional pending askQuestion bubble rendered as the final tail row. */

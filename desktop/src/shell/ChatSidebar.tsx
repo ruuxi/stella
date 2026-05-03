@@ -3,7 +3,6 @@ import {
   useRef,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
 } from "react";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
@@ -90,25 +89,18 @@ export function ChatPanelTab(
     const [inputText, setInputText] = useState("");
     const [sidebarExpanded, setSidebarExpanded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
-    const pinnedTurnIdRef = useRef<string | null>(null);
+    const lastSentMessageIdRef = useRef<string | null>(null);
 
     /*
-     * Own scroll-management instance for the sidebar viewport. Mirrors the
-     * full chat (`useFullShellChat` → `useChatScrollManagement`) so the
-     * sidebar gets the same user-bubble pin-to-top, custom auto-anchor,
-     * and ResizeObserver-driven follow behavior — instead of the previous
-     * raw `scrollTop = 0` snap that visibly "unsettled" assistant replies
-     * mid-stream and after CV containment toggled on completed turns.
-     *
-     * `pauseResizeFollow` mirrors the full-chat semantic: while a reply is
-     * in flight (`pendingUserMessageId`), don't re-snap to the newest edge
-     * on resize — the user bubble is pinned to the top instead.
+     * Own scroll-management instance for the sidebar viewport. Mirrors
+     * the full chat (`useFullShellChat` → `useChatScrollManagement`) so
+     * the sidebar gets the same custom auto-anchor and ResizeObserver-
+     * driven follow behavior.
      */
     const sidebarScroll = useChatScrollManagement({
       hasOlderEvents,
       isLoadingOlder,
       isWorking: isStreaming,
-      pauseResizeFollow: Boolean(pendingUserMessageId),
     });
 
     const sidebarScrollApi = useMemo<ChatColumnScroll>(
@@ -119,7 +111,6 @@ export function ChatPanelTab(
         showScrollButton: sidebarScroll.showScrollButton,
         isAtBottom: sidebarScroll.isNearBottom,
         scrollToBottom: sidebarScroll.scrollToBottom,
-        scrollTurnToPinTop: sidebarScroll.scrollTurnToPinTop,
         overflowAnchor: sidebarScroll.overflowAnchor,
         thumbState: sidebarScroll.thumbState,
         hasScrollElement: sidebarScroll.hasScrollElement,
@@ -131,7 +122,6 @@ export function ChatPanelTab(
         sidebarScroll.showScrollButton,
         sidebarScroll.isNearBottom,
         sidebarScroll.scrollToBottom,
-        sidebarScroll.scrollTurnToPinTop,
         sidebarScroll.overflowAnchor,
         sidebarScroll.thumbState,
         sidebarScroll.hasScrollElement,
@@ -139,40 +129,21 @@ export function ChatPanelTab(
     );
 
     /*
-     * Pin the freshly-sent user bubble to the top of the sidebar viewport
-     * once `pendingUserMessageId` arrives. Mirrors `ChatColumn`'s effect.
-     * The retry loop covers the case where the new turn isn't laid out yet
-     * on the same frame the pendingUserMessageId becomes available.
+     * On send, nudge the sidebar viewport to the newest edge so the
+     * freshly-sent user bubble is in view. Column-reverse +
+     * ResizeObserver already follows new content while the user is at
+     * the bottom; this covers the case where they had scrolled up.
      */
-    const { scrollTurnToPinTop, hasScrollElement: hasSidebarScroll } =
-      sidebarScrollApi;
-    useLayoutEffect(() => {
+    const { scrollToBottom: sidebarScrollToBottom } = sidebarScrollApi;
+    useEffect(() => {
       if (!pendingUserMessageId) {
-        pinnedTurnIdRef.current = null;
+        lastSentMessageIdRef.current = null;
         return;
       }
-      if (pinnedTurnIdRef.current === pendingUserMessageId) return;
-
-      let attempts = 0;
-      const maxAttempts = 36;
-      const tick = () => {
-        const ok = scrollTurnToPinTop(pendingUserMessageId);
-        if (ok) {
-          pinnedTurnIdRef.current = pendingUserMessageId;
-          return;
-        }
-        attempts += 1;
-        if (attempts < maxAttempts) {
-          requestAnimationFrame(tick);
-        }
-      };
-      tick();
-    }, [
-      pendingUserMessageId,
-      events.length,
-      hasSidebarScroll,
-      scrollTurnToPinTop,
-    ]);
+      if (lastSentMessageIdRef.current === pendingUserMessageId) return;
+      lastSentMessageIdRef.current = pendingUserMessageId;
+      sidebarScrollToBottom("smooth");
+    }, [pendingUserMessageId, sidebarScrollToBottom]);
 
     const { chatContext, setChatContext, selectedText, setSelectedText } =
       useCapturedChatContext();

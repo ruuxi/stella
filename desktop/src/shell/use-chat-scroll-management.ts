@@ -33,17 +33,6 @@ type ChatScrollManagementOptions = {
   isLoadingOlder?: boolean
   onLoadOlder?: () => void
   isWorking?: boolean
-  /** When true, content growth does not snap scroll to newest (turn-anchored reply). */
-  pauseResizeFollow?: boolean
-}
-
-const PIN_TOP_PADDING_PX = 48
-
-function escapeTurnIdForSelector(turnId: string): string {
-  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
-    return CSS.escape(turnId)
-  }
-  return turnId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
 type ResizeAnchor = {
@@ -56,7 +45,6 @@ export function useChatScrollManagement({
   isLoadingOlder = false,
   onLoadOlder,
   isWorking = false,
-  pauseResizeFollow = false,
 }: ChatScrollManagementOptions = {}) {
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const [hasViewport, setHasViewport] = useState(false)
@@ -81,21 +69,9 @@ export function useChatScrollManagement({
   })
   const thumbFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const pauseResizeFollowRef = useRef(pauseResizeFollow)
-  useEffect(() => {
-    pauseResizeFollowRef.current = pauseResizeFollow
-  }, [pauseResizeFollow])
-
-  const [pinnedToTurn, setPinnedToTurnState] = useState(false)
-  const pinnedToTurnRef = useRef(false)
-  const setPinnedToTurn = useCallback((pinned: boolean) => {
-    pinnedToTurnRef.current = pinned
-    setPinnedToTurnState(pinned)
-  }, [])
-
   const isNearBottom = !userScrolled
   const isNearBottomRef = useRef(true)
-  const showScrollButton = scrollButtonVisible && !pinnedToTurn
+  const showScrollButton = scrollButtonVisible
 
   const setUserScrolled = useCallback((scrolled: boolean) => {
     userScrolledRef.current = scrolled
@@ -164,26 +140,26 @@ export function useChatScrollManagement({
 
     const viewportRect = viewport.getBoundingClientRect()
     const anchorLine = viewportRect.top + RESIZE_ANCHOR_TOP_PX
-    const turns = Array.from(
-      viewport.querySelectorAll<HTMLElement>('[data-turn-id]'),
+    const rows = Array.from(
+      viewport.querySelectorAll<HTMLElement>('.event-row'),
     )
     let best: HTMLElement | null = null
     let bestDistance = Number.POSITIVE_INFINITY
 
-    for (const turn of turns) {
-      const rect = turn.getBoundingClientRect()
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect()
       if (rect.bottom < viewportRect.top || rect.top > viewportRect.bottom) {
         continue
       }
 
       if (rect.top <= anchorLine && rect.bottom >= anchorLine) {
-        best = turn
+        best = row
         break
       }
 
       const distance = Math.abs(rect.top - anchorLine)
       if (distance < bestDistance) {
-        best = turn
+        best = row
         bestDistance = distance
       }
     }
@@ -257,78 +233,15 @@ export function useChatScrollManagement({
     [stopSpring, markProgrammatic, setScrollButtonVisible, setUserScrolled],
   )
 
-  /**
-   * Places the latest user bubble near the top of the scrollport (reading area).
-   * Scroll container is column-reverse (scrollTop = 0 = newest edge); we use the
-   * user bubble as the anchor, not the whole turn, then correct with rects.
-   */
-  const scrollTurnToPinTop = useCallback(
-    (turnId: string): boolean => {
-      const viewport = viewportRef.current
-      if (!viewport) return false
-
-      const turn = viewport.querySelector(
-        `[data-turn-id="${escapeTurnIdForSelector(turnId)}"]`,
-      ) as HTMLElement | null
-      if (!turn) return false
-
-      const anchor =
-        (turn.querySelector('.event-item.user') as HTMLElement | null) ?? turn
-
-      const maxScroll = viewport.scrollHeight - viewport.clientHeight
-
-      setUserScrolled(true)
-      setPinnedToTurn(true)
-      markProgrammatic()
-      stopSpring()
-
-      if (maxScroll < 1) {
-        markProgrammatic()
-        updateThumb()
-        return true
-      }
-
-      // Avoid scrollIntoView({ block: 'start' }) — column-reverse can flip block
-      // alignment. Align user bubble to the scrollport using rect error vs scrollTop
-      // (scrollTop = 0 = newest edge; negative = scrolled toward older content).
-      const alignUserBubble = (invert: boolean) => {
-        for (let i = 0; i < 20; i += 1) {
-          const vpRect = viewport.getBoundingClientRect()
-          const elRect = anchor.getBoundingClientRect()
-          const err = elRect.top - vpRect.top - PIN_TOP_PADDING_PX
-          if (Math.abs(err) < 2) return true
-
-          const before = viewport.scrollTop
-          if (invert) viewport.scrollTop += err
-          else viewport.scrollTop -= err
-          if (Math.abs(viewport.scrollTop - before) < 0.5 && Math.abs(err) > 2) {
-            viewport.scrollTop = invert ? before - err : before + err
-          }
-        }
-        return false
-      }
-
-      if (!alignUserBubble(false)) {
-        alignUserBubble(true)
-      }
-
-      markProgrammatic()
-      updateThumb()
-      return true
-    },
-    [markProgrammatic, setPinnedToTurn, setUserScrolled, stopSpring, updateThumb],
-  )
-
   const resetScrollState = useCallback(() => {
     stopSpring()
     setUserScrolled(false)
     setScrollButtonVisible(false)
-    setPinnedToTurn(false)
     if (settleRef.current) {
       clearTimeout(settleRef.current)
       settleRef.current = null
     }
-  }, [stopSpring, setScrollButtonVisible, setUserScrolled, setPinnedToTurn])
+  }, [stopSpring, setScrollButtonVisible, setUserScrolled])
 
   const handleScroll = useCallback(() => {
     if (rafRef.current !== null) return
@@ -340,20 +253,12 @@ export function useChatScrollManagement({
         return
       }
 
-      if (pinnedToTurnRef.current) {
-        setPinnedToTurn(false)
-      }
-
       const el = viewportRef.current
       if (!el) return
 
       const atBottom = Math.abs(el.scrollTop) < AT_BOTTOM_THRESHOLD
 
-      if (
-        atBottom &&
-        userScrolledRef.current &&
-        !pauseResizeFollowRef.current
-      ) {
+      if (atBottom && userScrolledRef.current) {
         setUserScrolled(false)
         setScrollButtonVisible(false)
       } else if (!atBottom && !userScrolledRef.current) {
@@ -383,7 +288,6 @@ export function useChatScrollManagement({
     updateThumb,
     setScrollButtonVisible,
     setUserScrolled,
-    setPinnedToTurn,
     stopSpring,
     hasOlderEvents,
     isLoadingOlder,
@@ -407,7 +311,7 @@ export function useChatScrollManagement({
       const grew = newHeight > lastHeight
       lastHeight = newHeight
 
-      if (grew && !userScrolledRef.current && !pauseResizeFollowRef.current) {
+      if (grew && !userScrolledRef.current) {
         viewport.scrollTop = 0
         markProgrammatic()
       } else if (userScrolledRef.current) {
@@ -530,7 +434,6 @@ export function useChatScrollManagement({
     isNearBottomRef,
     showScrollButton,
     scrollToBottom,
-    scrollTurnToPinTop,
     handleScroll,
     resetScrollState,
     overflowAnchor: (userScrolled ? 'auto' : 'none') as 'auto' | 'none',

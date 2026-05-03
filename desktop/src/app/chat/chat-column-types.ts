@@ -54,8 +54,6 @@ export type ChatColumnScroll = {
   /** True when the user is at (or within ~1px of) the newest-content edge. */
   isAtBottom: boolean
   scrollToBottom: (behavior?: ScrollBehavior) => void
-  /** Scroll so the turn's top aligns with the reading area (column-reverse viewport). */
-  scrollTurnToPinTop: (turnId: string) => boolean
   overflowAnchor: 'auto' | 'none'
   thumbState: ChatColumnThumbState
   hasScrollElement?: boolean

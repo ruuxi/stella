@@ -24,9 +24,9 @@ type CompactConversationSurfaceProps = {
   variant: CompactConversationVariant;
   /**
    * Owned by the parent (e.g. `ChatSidebar` running its own
-   * `useChatScrollManagement` instance). Same shape as the full chat —
-   * keeps user-bubble pin-to-top, the `100cqh` last-turn floor, and CV
-   * virtualization behavior identical across surfaces.
+   * `useChatScrollManagement` instance). Same shape as the full chat
+   * so CV virtualization and ResizeObserver follow behavior stay
+   * identical across surfaces.
    */
   scroll: ChatColumnScroll;
   events: EventRecord[];

@@ -273,7 +273,6 @@ export function useFullShellChat({
     isNearBottom,
     showScrollButton,
     scrollToBottom,
-    scrollTurnToPinTop,
     handleScroll,
     resetScrollState,
     overflowAnchor,
@@ -283,7 +282,6 @@ export function useFullShellChat({
     isLoadingOlder,
     onLoadOlder: loadOlder,
     isWorking: isStreaming,
-    pauseResizeFollow: Boolean(pendingUserMessageId),
   })
 
   // Reset scroll on conversation change
@@ -423,7 +421,6 @@ export function useFullShellChat({
       showScrollButton,
       isAtBottom: isNearBottom,
       scrollToBottom,
-      scrollTurnToPinTop,
       overflowAnchor,
       thumbState,
       hasScrollElement,
@@ -435,7 +432,6 @@ export function useFullShellChat({
       showScrollButton,
       isNearBottom,
       scrollToBottom,
-      scrollTurnToPinTop,
       overflowAnchor,
       thumbState,
       hasScrollElement,

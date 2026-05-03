@@ -1,9 +1,7 @@
 /* Message list — column-reverse viewport handles bottom-anchoring,
    so no justify-content: flex-end or min-height: 100% needed. The list
-   is now a flat sequence of `.event-row` siblings (one per persisted
-   message) plus a single `.event-row-region--tail` wrapper around the
-   latest user message and everything after it (see comment further
-   down for why that wrapper exists). */
+   is a flat sequence of `.event-row` siblings, one per persisted
+   message. */
 .event-list {
   display: flex;
   flex-direction: column;
@@ -35,10 +33,7 @@
  * paint for any row that isn't intersecting the viewport — the same
  * payoff @legendapp/list and react-window provide via JS windowing,
  * but browser-native and without disrupting the column-reverse
- * viewport, the mask-image fades, the custom scrollbar overlay,
- * `scrollTurnToPinTop`'s `[data-turn-id]` querySelector, or the
- * tail-region `100cqh` min-height that gives the latest exchange a
- * full reading area.
+ * viewport, the mask-image fades, or the custom scrollbar overlay.
  *
  * `contain-intrinsic-size: auto 200px` is the placeholder size used
  * while the row is hidden. After the row has been laid out once the
@@ -50,24 +45,26 @@
 }
 
 /*
- * Tail region: wraps the latest visible user message + every row after
- * it (assistant continuations, the streaming tail, the pending
- * askQuestion bubble). Stretches to `100cqh` so when
- * `scrollTurnToPinTop` aligns the user bubble to the viewport top there
- * is enough room below for the assistant reply to fill the viewport,
- * regardless of how short the assistant content is. 100cqh = 100% of
- * `.chat-viewport-region`'s height (the nearest size container —
- * applies to both the full-chat and sidebar viewport-regions).
+ * Tail region: wraps the latest user message + every row after it
+ * (assistant continuations, the streaming tail, the pending askQuestion
+ * bubble). A small fixed floor pre-allocates empty space below the
+ * just-sent user bubble so the assistant reply streams *into* that
+ * space — no double scroll-jump as content arrives.
  *
- * `content-visibility: visible` keeps the tail laid out at all times so
- * pin-to-top math (which reads `getBoundingClientRect()` on the user
- * bubble) is stable across resizes.
+ * `content-visibility: visible` keeps the tail laid out at all times
+ * so its size is stable across resizes.
  */
 .event-row-region--tail {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  min-height: calc(100cqh - 48px);
+  min-height: 280px;
+}
+
+.chat-viewport-region--sidebar .event-row-region--tail,
+.chat-viewport-region--mini .event-row-region--tail,
+.chat-viewport-region--orb .event-row-region--tail {
+  min-height: 180px;
 }
 
 .chat-viewport-region .event-row-region--tail {
@@ -102,12 +99,11 @@
   scroll-margin-top: 2px;
 }
 
-.event-row--user.event-row--send-preparing .event-item.user {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.event-row--user.event-row--send-entering .event-item.user {
+/* Freshly-sent user bubble grows/fades in once. Tagged from the top of
+   the chat surface (`ConversationEvents`) only while the row's id
+   matches `pendingUserMessageId`; the class drops on completion so the
+   animation never replays on remount/scrollback. */
+.event-row--user--just-sent .event-item.user {
   animation: user-message-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
   transform-origin: right bottom;
 }
@@ -126,15 +122,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .event-row--user.event-row--send-preparing .event-item.user,
-  .event-row--user.event-row--send-entering .event-item.user {
+  .event-row--user--just-sent .event-item.user {
     animation: none;
-    opacity: 1;
-    filter: none;
-    transform: none;
   }
 }
-
 
 .event-item.assistant {
   background: transparent;
