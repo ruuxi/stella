@@ -43,6 +43,10 @@ echo "Building selected_text (macOS)..."
 build_swift_universal "selected_text" "src/selected_text.swift" -framework ApplicationServices -framework AppKit -framework Carbon
 echo "Build successful: $OUTPUT_DIR/selected_text"
 
+echo "Building dictation_bridge (macOS)..."
+build_swift_universal "dictation_bridge" "src/dictation_bridge.swift" -framework ApplicationServices -framework AppKit -framework AudioToolbox -framework Carbon -framework CoreAudio
+echo "Build successful: $OUTPUT_DIR/dictation_bridge"
+
 echo "Building screen_permission (macOS)..."
 build_swift_universal "screen_permission" "src/screen_permission.swift" -framework CoreGraphics -framework Foundation
 echo "Build successful: $OUTPUT_DIR/screen_permission"

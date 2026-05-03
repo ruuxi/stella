@@ -288,6 +288,7 @@ export const registerBootstrapIpcHandlers = (
     windowManager: state.windowManager!,
     getOverlayController: () => state.overlayController ?? null,
     getStellaRoot: lifecycle.getStellaRoot,
+    isPetVisible: () => state.petController?.isVisible() ?? false,
   });
   services.radialGestureService.setDictationPushToTalkHandlers(
     dictationPushToTalk,
