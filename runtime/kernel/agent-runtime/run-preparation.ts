@@ -4,6 +4,9 @@ import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
 } from "../../protocol/index.js";
+import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { readOrSeedPersonality } from "../personality/personality.js";
+import { getPersonalityVoiceId } from "../preferences/local-preferences.js";
 import { buildSystemPrompt } from "./thread-memory.js";
 import type { OrchestratorRunOptions, SubagentRunOptions } from "./types.js";
 
@@ -68,10 +71,40 @@ export const createRuntimePromptAgentMessage = (
   };
 };
 
+const PERSONALITY_MARKER = "<!-- personality -->";
+
+const maybeInjectPersonality = (
+  opts: OrchestratorRunOptions,
+  systemPrompt: string,
+): string => {
+  if (opts.agentType !== AGENT_IDS.ORCHESTRATOR) {
+    return systemPrompt;
+  }
+  try {
+    const voiceId = getPersonalityVoiceId(opts.stellaHome);
+    const personality = readOrSeedPersonality(opts.stellaHome, voiceId);
+    if (systemPrompt.includes(PERSONALITY_MARKER)) {
+      return systemPrompt.replace(
+        PERSONALITY_MARKER,
+        personality?.trim() ?? "",
+      );
+    }
+    if (!personality) {
+      return systemPrompt;
+    }
+    return `${personality}\n\n${systemPrompt}`;
+  } catch {
+    return systemPrompt.replace(PERSONALITY_MARKER, "");
+  }
+};
+
 export const buildRuntimeSystemPrompt = async (
   opts: OrchestratorRunOptions,
 ): Promise<string> => {
-  const effectiveSystemPrompt = buildSystemPrompt(opts.agentContext);
+  const effectiveSystemPrompt = maybeInjectPersonality(
+    opts,
+    buildSystemPrompt(opts.agentContext),
+  );
   if (!opts.hookEmitter) {
     return effectiveSystemPrompt;
   }

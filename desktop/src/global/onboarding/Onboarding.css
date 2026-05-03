@@ -929,6 +929,35 @@
   pointer-events: auto;
 }
 
+.onboarding-voice-description {
+  --onboarding-collapse-gap: 16px;
+  box-sizing: border-box;
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  line-height: 1.4;
+  margin: 0;
+  padding: 0 4px;
+  text-align: center;
+  height: 0;
+  margin-top: calc(-1 * var(--onboarding-collapse-gap));
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    height var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    margin-top var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    opacity var(--onboarding-duration-enter) var(--onboarding-ease-soft);
+}
+
+.onboarding-voice-description[data-visible="true"] {
+  height: auto;
+  margin-top: 0;
+  opacity: 0.5;
+  pointer-events: auto;
+}
+
 .onboarding-emote-preview {
   display: inline-block;
   height: 48px;

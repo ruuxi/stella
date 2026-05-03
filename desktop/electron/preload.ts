@@ -57,6 +57,8 @@ import {
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_SET_SYNC_MODE,
+  IPC_PREFERENCES_GET_PERSONALITY_VOICE,
+  IPC_PREFERENCES_SET_PERSONALITY_VOICE,
   IPC_SHELL_SAVE_FILE_AS,
   IPC_SYSTEM_OPEN_FDA,
   IPC_SOCIAL_SESSIONS_CREATE,
@@ -854,6 +856,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
         IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
         enabled,
       ) as Promise<{ enabled: boolean }>,
+    getPersonalityVoice: () =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_GET_PERSONALITY_VOICE,
+      ) as Promise<string | null>,
+    setPersonalityVoice: (voiceId: string) =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_PERSONALITY_VOICE,
+        voiceId,
+      ) as Promise<{ voiceId: string | null }>,
     getBackupStatus: () => ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),
     backUpNow: () => ipcRenderer.invoke(IPC_BACKUP_RUN_NOW),
     listBackups: (limit?: number) =>

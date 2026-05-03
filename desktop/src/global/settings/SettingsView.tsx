@@ -63,6 +63,10 @@ import {
   type MiniDoubleTapModifier,
 } from "@/shared/lib/mini-double-tap";
 import {
+  DEFAULT_PERSONALITY_VOICE_ID,
+  PERSONALITY_VOICES,
+} from "../../../../runtime/extensions/stella-runtime/personality/voices.js";
+import {
   useDesktopPermissions,
   type DesktopPermissionStatus,
 } from "@/global/permissions/use-desktop-permissions";
@@ -618,6 +622,15 @@ function BasicSettingsTab() {
   const [soundNotificationsError, setSoundNotificationsError] = useState<
     string | null
   >(null);
+  const [personalityVoiceId, setPersonalityVoiceIdState] = useState<string>(
+    DEFAULT_PERSONALITY_VOICE_ID,
+  );
+  const [personalityVoiceLoaded, setPersonalityVoiceLoaded] = useState(false);
+  const [isSavingPersonalityVoice, setIsSavingPersonalityVoice] =
+    useState(false);
+  const [personalityVoiceError, setPersonalityVoiceError] = useState<
+    string | null
+  >(null);
   const initialPermissionStatus = useMemo<DesktopPermissionStatus>(
     () => ({
       accessibility: platform === "darwin" ? false : true,
@@ -708,6 +721,64 @@ function BasicSettingsTab() {
       }
     },
     [preventComputerSleep],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const current =
+          await window.electronAPI?.system?.getPersonalityVoice?.();
+        if (!cancelled) {
+          setPersonalityVoiceIdState(
+            typeof current === "string" && current.trim().length > 0
+              ? current
+              : DEFAULT_PERSONALITY_VOICE_ID,
+          );
+          setPersonalityVoiceError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPersonalityVoiceError(
+            getSettingsErrorMessage(error, "Failed to load voice setting."),
+          );
+        }
+      } finally {
+        if (!cancelled) setPersonalityVoiceLoaded(true);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handlePersonalityVoiceChange = useCallback(
+    async (nextVoiceId: string) => {
+      const systemApi = window.electronAPI?.system;
+      if (!systemApi?.setPersonalityVoice) {
+        setPersonalityVoiceError("Voice settings are unavailable in this window.");
+        return;
+      }
+      const previous = personalityVoiceId;
+      setPersonalityVoiceIdState(nextVoiceId);
+      setPersonalityVoiceError(null);
+      setIsSavingPersonalityVoice(true);
+      try {
+        const result = await systemApi.setPersonalityVoice(nextVoiceId);
+        if (typeof result?.voiceId === "string" && result.voiceId.length > 0) {
+          setPersonalityVoiceIdState(result.voiceId);
+        }
+      } catch (error) {
+        setPersonalityVoiceIdState(previous);
+        setPersonalityVoiceError(
+          getSettingsErrorMessage(error, "Failed to update voice setting."),
+        );
+      } finally {
+        setIsSavingPersonalityVoice(false);
+      }
+    },
+    [personalityVoiceId],
   );
 
   const handleSoundNotificationsChange = useCallback(
@@ -845,6 +916,46 @@ function BasicSettingsTab() {
                 setDeveloperResourcePreviewsEnabled(Boolean(checked))
               }
             />
+          </div>
+        </div>
+      </div>
+      <div className="settings-card">
+        <h3 className="settings-card-title">Voice</h3>
+        <p className="settings-card-desc">
+          How Stella talks to you. Changes apply on the next message.
+        </p>
+        {personalityVoiceError ? (
+          <p
+            className="settings-card-desc settings-card-desc--error"
+            role="alert"
+          >
+            {personalityVoiceError}
+          </p>
+        ) : null}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Personality</div>
+            <div className="settings-row-sublabel">
+              {PERSONALITY_VOICES.find(
+                (voice) => voice.id === personalityVoiceId,
+              )?.description ?? ""}
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <NativeSelect
+              className="settings-runtime-select"
+              value={personalityVoiceId}
+              disabled={!personalityVoiceLoaded || isSavingPersonalityVoice}
+              onChange={(event) =>
+                void handlePersonalityVoiceChange(event.target.value)
+              }
+            >
+              {PERSONALITY_VOICES.map((voice) => (
+                <option key={voice.id} value={voice.id}>
+                  {voice.label}
+                </option>
+              ))}
+            </NativeSelect>
           </div>
         </div>
       </div>
