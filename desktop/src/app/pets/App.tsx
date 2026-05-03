@@ -198,6 +198,8 @@ export const PetsApp = () => {
 
   const isLoadingFirstPage = status === "LoadingFirstPage";
   const canLoadMore = status === "CanLoadMore";
+  const isLoadingMore = status === "LoadingMore";
+  const showPagingFooter = canLoadMore || isLoadingMore;
 
   // Auto-load the next page as the sentinel approaches the viewport.
   // 600px rootMargin so the next batch lands before the user notices.
@@ -393,9 +395,14 @@ export const PetsApp = () => {
               );
             })}
           </div>
-          {canLoadMore && (
-            <div ref={sentinelRef} className="pets-grid-sentinel" aria-hidden="true">
-              Loading more…
+          {showPagingFooter && (
+            <div
+              ref={sentinelRef}
+              className="pets-grid-sentinel"
+              data-loading={isLoadingMore ? "true" : "false"}
+              aria-hidden="true"
+            >
+              {isLoadingMore ? "Loading more…" : ""}
             </div>
           )}
         </>
