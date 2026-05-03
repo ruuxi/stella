@@ -2580,7 +2580,6 @@ function ApiKeysSection() {
     LocalLlmCredentialSummary[]
   >([]);
   const [useLocalKeys, setUseLocalKeys] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState("openai");
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
   const [isSavingKey, setIsSavingKey] = useState(false);
   const [oauthProviderInFlight, setOauthProviderInFlight] = useState<
@@ -2632,7 +2631,6 @@ function ApiKeysSection() {
         if (!cancelled) {
           if (routingPreference) {
             setUseLocalKeys(routingPreference.enabled);
-            setSelectedProvider(routingPreference.provider || "openai");
           }
           setCredentialsError(null);
         }
@@ -2670,7 +2668,7 @@ function ApiKeysSection() {
     );
 
   const saveRoutingPreference = useCallback(
-    async (next: { enabled: boolean; provider: string }) => {
+    async (next: { enabled: boolean }) => {
       if (!window.electronAPI?.system.setLlmCredentialRoutingPreference) {
         setCredentialsError(
           "Local API key settings are unavailable in this window.",
@@ -2678,12 +2676,8 @@ function ApiKeysSection() {
         return;
       }
 
-      const previous = {
-        enabled: useLocalKeys,
-        provider: selectedProvider,
-      };
+      const previous = { enabled: useLocalKeys };
       setUseLocalKeys(next.enabled);
-      setSelectedProvider(next.provider);
       setCredentialsError(null);
       setIsSavingRoutingPreference(true);
       try {
@@ -2692,10 +2686,8 @@ function ApiKeysSection() {
             next,
           );
         setUseLocalKeys(saved.enabled);
-        setSelectedProvider(saved.provider || "openai");
       } catch (error) {
         setUseLocalKeys(previous.enabled);
-        setSelectedProvider(previous.provider);
         setCredentialsError(
           error instanceof Error
             ? error.message
@@ -2705,7 +2697,7 @@ function ApiKeysSection() {
         setIsSavingRoutingPreference(false);
       }
     },
-    [selectedProvider, useLocalKeys],
+    [useLocalKeys],
   );
 
   const handleSave = useCallback(
@@ -2844,44 +2836,12 @@ function ApiKeysSection() {
             checked={useLocalKeys}
             disabled={isSavingRoutingPreference}
             onCheckedChange={(checked) =>
-              void saveRoutingPreference({
-                enabled: checked,
-                provider: selectedProvider,
-              })
+              void saveRoutingPreference({ enabled: checked })
             }
             hideLabel
           />
         </div>
       </div>
-      {useLocalKeys ? (
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">Provider</div>
-            <div className="settings-row-sublabel">
-              Which provider Stella routes through.
-            </div>
-          </div>
-          <div className="settings-row-control">
-            <NativeSelect
-              className="settings-model-select"
-              value={selectedProvider}
-              disabled={isSavingRoutingPreference}
-              onChange={(event) =>
-                void saveRoutingPreference({
-                  enabled: useLocalKeys,
-                  provider: event.currentTarget.value,
-                })
-              }
-            >
-              {LLM_PROVIDERS.map((provider) => (
-                <option key={provider.key} value={provider.key}>
-                  {provider.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-        </div>
-      ) : null}
       {useLocalKeys &&
         LLM_PROVIDERS.map((provider) => {
           const credential = getCredentialForProvider(provider.key);

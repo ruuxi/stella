@@ -17,11 +17,11 @@ import {
   STELLA_PROVIDER,
   type StellaSiteConfig,
 } from "./model-routing-stella.js";
-import { getLocalLlmProviderPreference } from "./preferences/local-preferences.js";
+import { isLocalLlmKeysEnabled } from "./preferences/local-preferences.js";
 
 export type ResolvedLlmRoute = {
   model: Model<Api>;
-  route: "direct-provider" | "direct-gateway" | "stella";
+  route: "direct-provider" | "stella";
   getApiKey: () => Promise<string | undefined> | string | undefined;
   refreshApiKey?: () => Promise<string | undefined> | string | undefined;
 };
@@ -57,6 +57,11 @@ const getLocalProviderApiKey = async (
   return oauthKey || undefined;
 };
 
+/**
+ * Per-provider quirks — registry name + credential name + model-id aliases.
+ * Most providers map 1:1 between the model-id prefix, the registry key, and
+ * the credential key. The exceptions get an entry here.
+ */
 const getDirectProviderCandidates = (
   provider: string,
   modelId: string,
@@ -93,12 +98,16 @@ const getDirectProviderCandidates = (
     case "cerebras":
     case "xai":
     case "zai":
+    case "openrouter":
+    case "vercel-ai-gateway":
       return {
         credentialProvider: provider,
         registryProvider: provider,
         candidates: uniqueModelCandidates([modelId, modelId.replace(/\./g, "-")]),
       };
     default: {
+      // Plugin providers register themselves in the AI registry; if they show
+      // up there, treat them as direct providers without hard-coding here.
       const extensionModels = getModels(provider as never) as Model<Api>[];
       if (extensionModels.length > 0) {
         return {
@@ -124,122 +133,53 @@ const resolveDirectProviderRoute = (args: {
     return null;
   }
 
-  const hasAuth = hasLocalProviderAuth(
-    args.stellaRoot,
-    directProvider.credentialProvider,
-  );
-
   const requestedCandidates = uniqueModelCandidates([
     args.fullModelId,
     ...directProvider.candidates,
   ]);
 
-  if (hasAuth) {
-    const directModel = findRegistryModel(
-      directProvider.registryProvider,
-      requestedCandidates,
-    );
-    if (directModel) {
-      return {
-        model: directModel,
-        route: "direct-provider",
-        getApiKey: () =>
-          getLocalProviderApiKey(
-            args.stellaRoot,
-            directProvider.credentialProvider,
-          ),
-      };
-    }
-  }
-
-  if (!hasAuth && directProvider.allowBaseUrlWithoutCredential) {
-    const directModel = findRegistryModel(
-      directProvider.registryProvider,
-      requestedCandidates,
-    );
-    if (directModel?.baseUrl) {
-      return {
-        model: directModel,
-        route: "direct-provider",
-        getApiKey: () => "",
-      };
-    }
-  }
-
-  return null;
-};
-
-const resolveOpenRouterRoute = (args: {
-  stellaRoot: string;
-  requestedCandidates: string[];
-}): ResolvedLlmRoute | null => {
-  if (!hasLocalProviderAuth(args.stellaRoot, "openrouter")) {
-    return null;
-  }
-
-  const openrouterModel = findRegistryModel("openrouter", args.requestedCandidates);
-  if (openrouterModel) {
-    return {
-      model: openrouterModel,
-      route: "direct-provider",
-      getApiKey: () => getLocalProviderApiKey(args.stellaRoot, "openrouter"),
-    };
-  }
-  return null;
-};
-
-const resolveGatewayRoute = (args: {
-  stellaRoot: string;
-  requestedCandidates: string[];
-}): ResolvedLlmRoute | null => {
-  if (!hasLocalProviderAuth(args.stellaRoot, "vercel-ai-gateway")) {
-    return null;
-  }
-
-  const gatewayModel = findRegistryModel(
-    "vercel-ai-gateway",
-    args.requestedCandidates,
+  const directModel = findRegistryModel(
+    directProvider.registryProvider,
+    requestedCandidates,
   );
-  if (gatewayModel) {
+  if (!directModel) {
+    return null;
+  }
+
+  if (hasLocalProviderAuth(args.stellaRoot, directProvider.credentialProvider)) {
     return {
-      model: gatewayModel,
-      route: "direct-gateway",
+      model: directModel,
+      route: "direct-provider",
       getApiKey: () =>
-        getLocalProviderApiKey(args.stellaRoot, "vercel-ai-gateway"),
+        getLocalProviderApiKey(
+          args.stellaRoot,
+          directProvider.credentialProvider,
+        ),
     };
   }
+
+  if (directProvider.allowBaseUrlWithoutCredential && directModel.baseUrl) {
+    return {
+      model: directModel,
+      route: "direct-provider",
+      getApiKey: () => "",
+    };
+  }
+
   return null;
 };
 
-const resolveParsedProviderRoute = (args: {
-  stellaRoot: string;
-  parsed: NonNullable<ReturnType<typeof parseModelReference>>;
-  selectedProvider: string;
-}): ResolvedLlmRoute | null => {
-  const requestedCandidates = uniqueModelCandidates([
-    args.parsed.fullModelId,
-    args.parsed.modelId,
-  ]);
-
-  switch (args.selectedProvider) {
-    case "openrouter":
-      return resolveOpenRouterRoute({
-        stellaRoot: args.stellaRoot,
-        requestedCandidates,
-      });
-    case "vercel-ai-gateway":
-      return resolveGatewayRoute({
-        stellaRoot: args.stellaRoot,
-        requestedCandidates,
-      });
-    default:
-      return resolveDirectProviderRoute({
-        stellaRoot: args.stellaRoot,
-        provider: args.selectedProvider,
-        modelId: args.parsed.modelId,
-        fullModelId: args.parsed.fullModelId,
-      });
-  }
+/**
+ * Wrap any model id as a Stella-routed model id.
+ *
+ * `parsed.fullModelId` is the user-typed id minus surrounding whitespace,
+ * already including its `<provider>/<model>` shape. We prefix `stella/` so the
+ * Stella backend treats the rest as a passthrough to that upstream provider
+ * (matching `parseStellaModelSelection` in `backend/convex/stella_models.ts`).
+ */
+const wrapAsStellaModelId = (fullModelId: string): string => {
+  if (fullModelId.startsWith(`${STELLA_PROVIDER}/`)) return fullModelId;
+  return `${STELLA_PROVIDER}/${fullModelId}`;
 };
 
 const resolveMaybeLlmRoute = (args: {
@@ -250,7 +190,18 @@ const resolveMaybeLlmRoute = (args: {
 }): ResolvedLlmRoute | null => {
   const parsed = parseModelReference(args.modelName);
 
-  if (parsed?.provider === STELLA_PROVIDER) {
+  // No model specified → Stella's recommended default.
+  if (!parsed) {
+    return createStellaRoute({
+      site: args.site,
+      agentType: args.agentType,
+      modelId: STELLA_DEFAULT_MODEL,
+    });
+  }
+
+  // Explicit Stella prefix (`stella/<alias>` or `stella/<provider>/<model>`):
+  // route through Stella with the original id intact.
+  if (parsed.provider === STELLA_PROVIDER) {
     return createStellaRoute({
       site: args.site,
       agentType: args.agentType,
@@ -258,43 +209,36 @@ const resolveMaybeLlmRoute = (args: {
     });
   }
 
-  if (!parsed) {
-    return (
-      createStellaRoute({
-        site: args.site,
-        agentType: args.agentType,
-        modelId: STELLA_DEFAULT_MODEL,
-      }) ?? null
-    );
+  // Local API keys disabled → always go through Stella, wrapping the requested
+  // provider/model so the Stella backend forwards it upstream.
+  if (!isLocalLlmKeysEnabled(args.stellaRoot)) {
+    return createStellaRoute({
+      site: args.site,
+      agentType: args.agentType,
+      modelId: wrapAsStellaModelId(parsed.fullModelId),
+    });
   }
 
-  const localProviderPreference = getLocalLlmProviderPreference(args.stellaRoot);
-  if (!localProviderPreference.enabled) {
-    return (
-      createStellaRoute({
-        site: args.site,
-        agentType: args.agentType,
-        modelId: `${STELLA_PROVIDER}/${parsed.fullModelId}`,
-      }) ?? null
-    );
-  }
-
-  const directProviderRoute = resolveParsedProviderRoute({
+  // Local keys enabled: try the direct provider that the model id specifies.
+  // Multiple authed providers can coexist; the model id is the source of truth.
+  const directProviderRoute = resolveDirectProviderRoute({
     stellaRoot: args.stellaRoot,
-    parsed,
-    selectedProvider: localProviderPreference.provider,
+    provider: parsed.provider,
+    modelId: parsed.modelId,
+    fullModelId: parsed.fullModelId,
   });
   if (directProviderRoute) {
     return directProviderRoute;
   }
 
-  return (
-    createStellaRoute({
-      site: args.site,
-      agentType: args.agentType,
-      modelId: `${STELLA_PROVIDER}/${parsed.fullModelId}`,
-    }) ?? null
-  );
+  // No direct route (missing key or unknown provider) → fall back to Stella
+  // rather than hard-failing. Users who want strict direct routing can add a
+  // matching API key in Settings.
+  return createStellaRoute({
+    site: args.site,
+    agentType: args.agentType,
+    modelId: wrapAsStellaModelId(parsed.fullModelId),
+  });
 };
 
 export const canResolveLlmRoute = (args: {
