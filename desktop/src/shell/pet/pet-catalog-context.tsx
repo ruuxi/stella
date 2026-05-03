@@ -19,7 +19,7 @@ const findBundled = (id: string | null | undefined): BuiltInPet | null => {
  * layers, in priority order:
  *
  *   1. Bundled pet — synchronous, ships with the app, always renderable
- *      offline. Only the default `dotbloom` lives here today, but any
+ *      offline. Only the bundled `stella` default lives here today, but any
  *      pet baked into `desktop/public/pets/` would short-circuit here.
  *   2. Cached pet record from a previous session — synchronous, survives
  *      reloads, written every time the live query yields a fresh value.

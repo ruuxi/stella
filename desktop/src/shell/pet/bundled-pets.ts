@@ -12,14 +12,14 @@ import type { BuiltInPet } from "./built-in-pets";
  */
 export const BUNDLED_PETS: BuiltInPet[] = [
   {
-    id: "dotbloom",
-    displayName: "Dotbloom",
+    id: "stella",
+    displayName: "Stella",
     description:
-      "A soft dotted bloom-shaped digital companion with cyan eyes and pastel blue-green pixel-dot body.",
+      "Stella's default floating companion — soft dotted bloom silhouette with cyan eyes and a pastel blue-green pixel body.",
     kind: "creature",
     tags: ["cute", "default", "pixel"],
     ownerName: "Stella",
-    spritesheetUrl: "/pets/dotbloom.webp",
+    spritesheetUrl: "/pets/stella.webp",
     sourceUrl: "",
     creator: "Stella",
     downloads: 0,

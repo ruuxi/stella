@@ -47,4 +47,4 @@ export const normalizePet = (pet: Partial<BuiltInPet>): BuiltInPet | null => {
 /** Stable id used when the user hasn't picked a pet yet. Must match a
  *  `BUNDLED_PETS` entry so the default is always renderable, even
  *  offline or before Convex has hydrated. */
-export const DEFAULT_PET_ID = "dotbloom";
+export const DEFAULT_PET_ID = "stella";
