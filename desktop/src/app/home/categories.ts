@@ -75,14 +75,26 @@ function buildCategoriesFromSuggestions(
  * Read persisted onboarding-personalized suggestions for the conversation
  * and fall back to `DEFAULT_CATEGORIES` until they arrive (or if loading
  * fails). Used by the Ideas display tab.
+ *
+ * Returns a `ready` flag alongside the categories: callers that gate UX
+ * on the final personalized set (e.g. the unseen-dot tracker) need to
+ * distinguish "still resolving" from "definitely defaults" — without
+ * that, every remount briefly shows defaults, which would race against
+ * any state that hashes the categories.
  */
 export function usePersonalizedCategories(
   conversationId: string | null,
-): SuggestionCategory[] {
+): { categories: SuggestionCategory[]; ready: boolean } {
   const [persisted, setPersisted] = useState<OnboardingHomeSuggestion[] | null>(null)
+  const [ready, setReady] = useState<boolean>(conversationId === null)
 
   useEffect(() => {
-    if (!conversationId) return
+    if (!conversationId) {
+      // No conversation yet — defaults are the final answer.
+      setReady(true)
+      return
+    }
+    setReady(false)
 
     let cancelled = false
 
@@ -101,6 +113,8 @@ export function usePersonalizedCategories(
         }
       } catch {
         // fall through - defaults will be used
+      } finally {
+        if (!cancelled) setReady(true)
       }
     }
 
@@ -116,11 +130,12 @@ export function usePersonalizedCategories(
     }
   }, [conversationId])
 
-  return useMemo(
+  const categories = useMemo(
     () =>
       persisted && persisted.length > 0
         ? buildCategoriesFromSuggestions(persisted)
         : DEFAULT_CATEGORIES,
     [persisted],
   )
+  return { categories, ready }
 }

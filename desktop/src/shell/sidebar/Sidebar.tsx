@@ -21,6 +21,10 @@ import type { AppMetadata } from "@/app/_shared/app-metadata";
 import { useSocialBadges } from "@/app/social/hooks/use-social-badges";
 import { api } from "@/convex/api";
 import {
+  dismissPostOnboardingHint,
+  usePostOnboardingHint,
+} from "@/global/onboarding/post-onboarding-hints";
+import {
   useDefaultPageSidebarBack,
   usePageSidebarOverride,
 } from "@/context/page-sidebar";
@@ -66,6 +70,15 @@ const SidebarActionsBar = ({
   onConnect,
   onOpenSettings,
 }: SidebarActionsBarProps) => {
+  // One-time post-onboarding nudge: a small red dot draws attention to
+  // the Connect button on a fresh install. Dismissed the first time the
+  // user opens it (or once they visit a different surface that also
+  // dismisses it via `dismissPostOnboardingHint`).
+  const connectHint = usePostOnboardingHint("connect");
+  const handleConnectClick = useCallback(() => {
+    if (connectHint.active) connectHint.dismiss();
+    onConnect?.();
+  }, [connectHint, onConnect]);
   return (
     <div className="sidebar-actions-bar" role="toolbar" aria-label="Quick actions">
       <button
@@ -94,11 +107,14 @@ const SidebarActionsBar = ({
       <button
         type="button"
         className="sidebar-actions-btn"
-        onClick={onConnect}
+        onClick={handleConnectClick}
         aria-label="Connect"
         title="Connect"
       >
         <Device size={15} />
+        {connectHint.active && (
+          <span className="sidebar-actions-btn-hint-dot" aria-hidden="true" />
+        )}
       </button>
     </div>
   );
@@ -161,24 +177,38 @@ const writePersistedRail = (collapsed: boolean) => {
 interface AppNavItemProps {
   app: AppMetadata;
   badgeCount?: number;
+  /** Show a small one-time "look here" red dot until the user visits
+   *  this app. Suppressed automatically when `badgeCount > 0` so a
+   *  Social-style unread count always wins over a hint nudge. */
+  showHintDot?: boolean;
+  /** Called when the user clicks the item while the hint dot is shown
+   *  so the parent can dismiss the hint. Fires before navigation. */
+  onHintDismiss?: () => void;
 }
 
-const AppNavItem = ({ app, badgeCount = 0 }: AppNavItemProps) => {
+const AppNavItem = ({
+  app,
+  badgeCount = 0,
+  showHintDot = false,
+  onHintDismiss,
+}: AppNavItemProps) => {
   const matchRoute = useMatchRoute();
   const isActive = Boolean(matchRoute({ to: app.route }));
   const Icon = app.icon;
 
   const showBadge = badgeCount > 0;
   const badgeLabel = badgeCount > 99 ? "99+" : String(badgeCount);
+  const showHint = showHintDot && !showBadge;
 
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (showHint) onHintDismiss?.();
       if (isActive && app.onActiveClick) {
         event.preventDefault();
         app.onActiveClick();
       }
     },
-    [isActive, app],
+    [isActive, app, showHint, onHintDismiss],
   );
 
   return (
@@ -199,6 +229,9 @@ const AppNavItem = ({ app, badgeCount = 0 }: AppNavItemProps) => {
           <span className="sidebar-nav-badge" aria-hidden="true">
             {badgeLabel}
           </span>
+        )}
+        {showHint && (
+          <span className="sidebar-nav-hint-dot" aria-hidden="true" />
         )}
       </span>
       <span className="sidebar-nav-label">{app.label}</span>
@@ -516,6 +549,29 @@ export const Sidebar = ({
     [socialBadge],
   );
 
+  // One-time post-onboarding nudge for the Store entry. Mirrors the
+  // Connect dot shown in the actions bar and is dismissed the moment
+  // the user actually lands on `/store` — by clicking the entry, by
+  // a deeper nav, or by a deep link.
+  const storeHint = usePostOnboardingHint("store");
+  const matchRoute = useMatchRoute();
+  const onStoreRoute = Boolean(matchRoute({ to: "/store", fuzzy: true }));
+  useEffect(() => {
+    if (storeHint.active && onStoreRoute) {
+      dismissPostOnboardingHint("store");
+    }
+  }, [onStoreRoute, storeHint.active]);
+  const showHintForApp = useCallback(
+    (app: AppMetadata) => app.id === "store" && storeHint.active,
+    [storeHint.active],
+  );
+  const dismissHintForApp = useCallback(
+    (app: AppMetadata) => {
+      if (app.id === "store") dismissPostOnboardingHint("store");
+    },
+    [],
+  );
+
   const sidebarClass = useMemo(() => {
     const parts = ["sidebar"];
     if (className) parts.push(className);
@@ -590,6 +646,8 @@ export const Sidebar = ({
                   key={app.id}
                   app={app}
                   badgeCount={badgeCountForApp(app)}
+                  showHintDot={showHintForApp(app)}
+                  onHintDismiss={() => dismissHintForApp(app)}
                 />
               ))}
               <DropdownMenu>
@@ -619,6 +677,8 @@ export const Sidebar = ({
                   key={app.id}
                   app={app}
                   badgeCount={badgeCountForApp(app)}
+                  showHintDot={showHintForApp(app)}
+                  onHintDismiss={() => dismissHintForApp(app)}
                 />
               ))}
               <AccountRow
