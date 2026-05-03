@@ -1,6 +1,13 @@
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { ArrowLeft, LogOut, MessageSquare } from "lucide-react";
+import {
+  ArrowLeft,
+  LogOut,
+  MessageSquare,
+  Palette,
+  Settings as SettingsIcon,
+} from "lucide-react";
+import { ThemePicker } from "@/global/settings/ThemePicker";
 import { useT } from "@/shared/i18n";
 import {
   useCallback,
@@ -43,6 +50,59 @@ import {
 } from "./SidebarIcons";
 import { useFeedbackPrompt } from "./use-feedback-prompt";
 import "./sidebar.css";
+
+interface SidebarActionsBarProps {
+  onConnect?: () => void;
+  onOpenSettings: () => void;
+}
+
+/**
+ * Compact row of icon-only utility buttons rendered just below the
+ * account row. Hosts Settings, Theme, and Connect — actions that
+ * are global but don't deserve a full-width nav item. Hidden when the
+ * sidebar is collapsed to its rail mode (CSS in `sidebar.css`).
+ */
+const SidebarActionsBar = ({
+  onConnect,
+  onOpenSettings,
+}: SidebarActionsBarProps) => {
+  return (
+    <div className="sidebar-actions-bar" role="toolbar" aria-label="Quick actions">
+      <button
+        type="button"
+        className="sidebar-actions-btn"
+        onClick={onOpenSettings}
+        aria-label="Settings"
+        title="Settings"
+      >
+        <SettingsIcon size={15} strokeWidth={1.75} />
+      </button>
+      <ThemePicker
+        side="top"
+        align="start"
+        trigger={
+          <button
+            type="button"
+            className="sidebar-actions-btn"
+            aria-label="Theme"
+            title="Theme"
+          >
+            <Palette size={15} strokeWidth={1.75} />
+          </button>
+        }
+      />
+      <button
+        type="button"
+        className="sidebar-actions-btn"
+        onClick={onConnect}
+        aria-label="Connect"
+        title="Connect"
+      >
+        <Device size={15} />
+      </button>
+    </div>
+  );
+};
 
 /**
  * App discovery: every `desktop/src/app/<id>/metadata.ts` is loaded eagerly
@@ -418,6 +478,10 @@ export const Sidebar = ({
     void navigate({ to: "/billing" });
   }, [navigate]);
 
+  const handleOpenSettings = useCallback(() => {
+    void navigate({ to: "/settings" });
+  }, [navigate]);
+
   // Auto-prompted feedback. The hook tracks active (visible + focused) time
   // across the whole shell and flips `shouldPrompt` once the user has been
   // active for ~30 minutes today AND it's been ≥24h since the last prompt.
@@ -557,22 +621,14 @@ export const Sidebar = ({
                   badgeCount={badgeCountForApp(app)}
                 />
               ))}
-              <button
-                type="button"
-                className="sidebar-nav-item"
-                onClick={onConnect}
-                title="Connect"
-                aria-label="Connect"
-              >
-                <span className="sidebar-nav-icon">
-                  <Device size={18} />
-                </span>
-                <span className="sidebar-nav-label">Connect</span>
-              </button>
               <AccountRow
                 onSignIn={onSignIn}
                 onUpgrade={handleUpgrade}
                 onOpenFeedback={handleOpenFeedback}
+              />
+              <SidebarActionsBar
+                onConnect={onConnect}
+                onOpenSettings={handleOpenSettings}
               />
             </div>
           </>
