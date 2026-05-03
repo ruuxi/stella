@@ -11,6 +11,7 @@ import {
   readConfiguredStellaBaseUrl as sanitizeStellaBase,
 } from "../convex-urls.js";
 import { isOrchestratorAgentType } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { formatAgentTerminalStateSystemReminder } from "../../../desktop/src/shared/contracts/system-reminders.js";
 
 export const DEFAULT_MAX_AGENT_DEPTH = 8;
 export const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
@@ -139,15 +140,5 @@ export const buildAgentEventPrompt = (
     lines.push(`error: ${truncateAgentEventField(event.error)}`);
   }
 
-  return [
-    "<system_reminder>",
-    "A subagent you delegated to has reached a terminal state. The block below is",
-    "an internal coordination signal — the user did not see it and is not waiting",
-    "on you to acknowledge it.",
-    "",
-    "Decide what to do next: delegate further or reply to the user.",
-    "</system_reminder>",
-    "",
-    ...lines,
-  ].join("\n");
+  return formatAgentTerminalStateSystemReminder(lines);
 };

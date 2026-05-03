@@ -13,6 +13,14 @@ import {
   getVoiceSessionPromptConfig,
 } from "@/prompts";
 import {
+  formatRealtimeSystemMessage,
+  formatScreenLookFailedSystemReminder,
+  formatVoiceActionCompletedSystemReminder,
+  formatVoiceActionErrorSystemReminder,
+  formatWebSearchFailedSystemReminder,
+  formatWebSearchSystemReminder,
+} from "@/shared/contracts/system-reminders";
+import {
   acquireSharedMicrophone,
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
@@ -794,7 +802,7 @@ export class RealtimeVoiceSession {
         content: [
           {
             type: "input_text",
-            text: `[System: ${mapped.text}]`,
+            text: formatRealtimeSystemMessage(mapped.text),
           },
         ],
       },
@@ -921,7 +929,7 @@ export class RealtimeVoiceSession {
         content: [
           {
             type: "input_text",
-            text: `[System: ${statusText} Tell the user naturally and briefly: "${message}"]`,
+            text: formatVoiceActionCompletedSystemReminder(statusText, message),
           },
         ],
       },
@@ -1085,7 +1093,7 @@ export class RealtimeVoiceSession {
             content: [
               {
                 type: "input_text",
-                text: `[System: the action failed with error: "${(err as Error).message}". Let the user know briefly.]`,
+                text: formatVoiceActionErrorSystemReminder((err as Error).message),
               },
             ],
           },
@@ -1134,7 +1142,7 @@ export class RealtimeVoiceSession {
             content: [
               {
                 type: "input_text",
-                text: `[System: ${resultText}]\n\nSummarize these results for the user conversationally. Be concise.`,
+                text: formatWebSearchSystemReminder(resultText),
               },
             ],
           },
@@ -1151,7 +1159,7 @@ export class RealtimeVoiceSession {
             content: [
               {
                 type: "input_text",
-                text: `[System: Web search failed: ${(err as Error).message}]. Let the user know briefly.`,
+                text: formatWebSearchFailedSystemReminder((err as Error).message),
               },
             ],
           },
@@ -1229,7 +1237,7 @@ export class RealtimeVoiceSession {
             content: [
               {
                 type: "input_text",
-                text: `[System: I tried to look at the screen but ran into an error: ${(err as Error).message}. Let the user know briefly.]`,
+                text: formatScreenLookFailedSystemReminder((err as Error).message),
               },
             ],
           },

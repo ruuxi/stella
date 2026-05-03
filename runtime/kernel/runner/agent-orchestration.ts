@@ -24,6 +24,7 @@ import {
   AGENT_IDS,
   isLocalCliAgentId,
 } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { TASK_LIFECYCLE_WAKE_PROMPT } from "../../../desktop/src/shared/contracts/system-reminders.js";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
@@ -38,9 +39,6 @@ import {
   parseFeatureSnapshotItems,
   sanitizeAuthoredCommitSubject,
 } from "../self-mod/feature-namer.js";
-
-const TASK_LIFECYCLE_WAKE_PROMPT =
-  "<system_reminder>Continue from the latest task lifecycle update.</system_reminder>";
 
 const collectFileChanges = (
   target: FileChangeRecord[],
