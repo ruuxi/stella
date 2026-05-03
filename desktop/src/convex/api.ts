@@ -441,6 +441,90 @@ export type PublicApiType = {
         string | undefined
       >;
     };
+    emoji_packs: {
+      listPublicPage: FunctionReference<
+        "query",
+        "public",
+        {
+          paginationOpts: {
+            id?: number;
+            endCursor?: string | null;
+            maximumRowsRead?: number;
+            maximumBytesRead?: number;
+            numItems: number;
+            cursor: string | null;
+          };
+          search?: string | undefined;
+        },
+        any,
+        string | undefined
+      >;
+      listMine: FunctionReference<
+        "query",
+        "public",
+        {},
+        any,
+        string | undefined
+      >;
+      getByPackId: FunctionReference<
+        "query",
+        "public",
+        { packId: string },
+        any,
+        string | undefined
+      >;
+      createPack: FunctionReference<
+        "mutation",
+        "public",
+        {
+          packId: string;
+          displayName: string;
+          description?: string | undefined;
+          prompt?: string | undefined;
+          coverEmoji: string;
+          sheet1Url: string;
+          sheet2Url: string;
+          visibility: "public" | "unlisted" | "private";
+        },
+        any,
+        string | undefined
+      >;
+      setVisibility: FunctionReference<
+        "mutation",
+        "public",
+        { packId: string; visibility: "public" | "unlisted" | "private" },
+        any,
+        string | undefined
+      >;
+      deletePack: FunctionReference<
+        "mutation",
+        "public",
+        { packId: string },
+        any,
+        string | undefined
+      >;
+      recordInstall: FunctionReference<
+        "mutation",
+        "public",
+        { packId: string },
+        any,
+        string | undefined
+      >;
+    };
+    emoji_pack_uploads: {
+      createUploadUrls: FunctionReference<
+        "action",
+        "public",
+        {
+          packId: string;
+          sheet1Sha256: string;
+          sheet2Sha256: string;
+          contentType?: string | undefined;
+        },
+        any,
+        string | undefined
+      >;
+    };
     fashion: {
       getFashionFeatureStatus: FunctionReference<
         "query",

@@ -25,7 +25,8 @@
     "electron:typecheck:watch": "concurrently -k --kill-others-on-fail \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",
     "electron:build": "npm run native:build && bunx --package typescript@5.9.3 tsc --build && vite build && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron-builder",
     "electron:preview": "bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron .",
-    "morph:test": "node scripts/trigger-morph.mjs"
+    "morph:test": "node scripts/trigger-morph.mjs",
+    "emoji-sprite:gen": "bun run scripts/generate-emoji-sprite.ts"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.10.0",

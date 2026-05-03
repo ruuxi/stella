@@ -46,8 +46,8 @@ native/src/parakeet-helper/.build/
 *.sln
 *.sw?
 
-# Generated emote assets
-public/emotes/assets/
+# Local-only debug output for the emoji sprite generator.
+.emoji-sprites-debug/
 
 # Agent Browser
 stella-browser/node_modules/
