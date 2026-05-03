@@ -7,7 +7,10 @@
 
 .chat-home-overview {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.25fr);
+  /* Activity gets the lion's share now that Ideas has moved to a footer
+     dropup on the home content. Recent files keeps its own row but caps
+     visible rows so the section doesn't dominate. */
+  grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
   gap: 22px;
   padding: 22px 18px 28px;
   height: 100%;
@@ -38,10 +41,6 @@
   border-radius: 3px;
 }
 
-.chat-home-overview__section--ideas {
-  /* Ideas owns its own row in the grid; no auto-margin needed. */
-}
-
 .chat-home-overview__heading {
   margin: 0;
   font-size: 13px;
@@ -60,13 +59,29 @@
 /* --- Activity ------------------------------------------------ */
 
 .chat-home-overview__tasks,
-.chat-home-overview__files,
-.chat-home-overview__ideas {
+.chat-home-overview__files {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Tiny uppercase header used to break Activity into Now / Done / Up next
+   without spending a full <h3>. Sits in the same <ul> as the rows so the
+   subgroup is visually unified with its items. */
+.chat-home-overview__subgroup-label {
+  margin: 10px 0 2px;
+  padding: 0 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weak);
+}
+
+.chat-home-overview__subgroup-label:first-child {
+  margin-top: 0;
 }
 
 .chat-home-overview__task {
@@ -115,14 +130,64 @@
   color: color-mix(in oklch, var(--foreground) 55%, #c33);
 }
 
-/* Non-running history rows read as quieter so the eye snaps to anything
-   currently in flight first. */
-.chat-home-overview__task:not([data-status="running"]) {
+/* Up-next rows are commitments, not history — keep their text sharp and
+   their badge in the same color register as running rows so the eye reads
+   "future thing happening" rather than "stale completed thing". */
+.chat-home-overview__task[data-status="scheduled"] .chat-home-overview__task-status {
+  color: var(--text-base);
+}
+
+/* Non-running, non-scheduled history rows read as quieter so the eye snaps
+   to anything currently in flight first. */
+.chat-home-overview__task:not([data-status="running"]):not([data-status="scheduled"]) {
   opacity: 0.55;
 }
 
-.chat-home-overview__task:not([data-status="running"]):hover {
+.chat-home-overview__task:not([data-status="running"]):not([data-status="scheduled"]):hover {
   opacity: 0.85;
+}
+
+/* Schedule rows are buttons (clicking opens the manage dialog); strip
+   button chrome so they read identically to the non-interactive task
+   rows above and below them. */
+.chat-home-overview__schedule-trigger {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: default;
+  color: inherit;
+  font: inherit;
+  transition: opacity 120ms ease;
+}
+
+.chat-home-overview__schedule-trigger:hover .chat-home-overview__task-text {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+  text-underline-offset: 3px;
+}
+
+/* "Show N more" reveal — text-only, no card; matches the section's tone. */
+.chat-home-overview__show-more-row {
+  list-style: none;
+  padding: 6px 4px 2px;
+}
+
+.chat-home-overview__show-more {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-weak);
+  cursor: default;
+  transition: color 120ms ease;
+}
+
+.chat-home-overview__show-more:hover {
+  color: var(--text-base);
 }
 
 /* --- Per-task progress feed --------------------------------- */
@@ -210,60 +275,5 @@
   white-space: nowrap;
 }
 
-/* --- Ideas --------------------------------------------------- */
-
-.chat-home-overview__idea-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
-  border-radius: 10px;
-}
-
-.chat-home-overview__idea-tab {
-  min-width: 0;
-  padding: 6px 4px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-weak);
-  font-size: 12.5px;
-  font-weight: 500;
-  line-height: 1.2;
-  cursor: default;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-}
-
-.chat-home-overview__idea-tab:hover {
-  color: var(--text-base);
-}
-
-.chat-home-overview__idea-tab[aria-selected="true"] {
-  background: color-mix(in oklch, var(--foreground) 7%, transparent);
-  color: var(--text-strong);
-}
-
-.chat-home-overview__idea {
-  width: 100%;
-  padding: 7px 10px;
-  margin: 0;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-strong);
-  font-size: 13px;
-  line-height: 1.4;
-  text-align: left;
-  cursor: default;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-}
-
-.chat-home-overview__idea:hover {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  color: var(--text-strong);
-}
+/* Ideas moved out of the sidebar entirely — they live as a footer dropup
+   on the home content (`HomeContent.tsx` + `home.css`). */
