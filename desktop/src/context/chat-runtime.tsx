@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { useFullShellChat } from '@/shell/use-full-shell-chat'
 import { ChatRuntimeContext } from '@/context/chat-runtime-context'
+import { usePetStatusBroadcast } from '@/shell/pet/use-pet-status-broadcast'
 
 /**
  * Hoists `useFullShellChat`'s output into a single Context so the chat
@@ -27,6 +28,16 @@ export function ChatRuntimeProvider({
     activeConversationId,
     isOnChatRoute,
     isDev: import.meta.env.DEV,
+  })
+
+  // Broadcast a derived PetOverlayStatus alongside the existing working
+  // indicator so the floating pet always mirrors the same agent state
+  // the chat surface displays.
+  usePetStatusBroadcast({
+    liveTasks: runtime.conversation.streaming.liveTasks,
+    runtimeStatusText: runtime.conversation.streaming.runtimeStatusText ?? '',
+    isStreaming: runtime.conversation.isStreaming,
+    pendingUserMessageId: runtime.conversation.pendingUserMessageId ?? null,
   })
 
   return (

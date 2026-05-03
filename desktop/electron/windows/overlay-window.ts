@@ -38,6 +38,7 @@ class OverlayWindow {
   private displayListenersRegistered = false
   private respanHandler: (() => void) | null = null
   private ready = false
+  private destroyed = false
   private overlayOrigin = { x: 0, y: 0 }
   private reloadTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -46,6 +47,7 @@ class OverlayWindow {
   getWindow() { return this.window }
   getOverlayOrigin() { return this.overlayOrigin }
   isReady() { return this.ready }
+  isDestroyed() { return this.destroyed }
 
   async ensureReady(timeoutMs = 1_500) {
     const win = this.create()
@@ -81,6 +83,7 @@ class OverlayWindow {
   }
 
   create() {
+    if (this.destroyed) return null
     if (this.window && !this.window.isDestroyed()) {
       return this.window
     }
@@ -231,6 +234,13 @@ class OverlayWindow {
     // this window as fully opaque (alpha < 255 = not occluding). Without this,
     // Chrome stops rendering video when the overlay becomes visible.
     this.window.setOpacity(0.99)
+    // Showing a hidden BrowserWindow can reset mouse-event policy on some
+    // Electron/macOS paths. Keep passive overlay surfaces (including the pet)
+    // click-through unless their renderer explicitly claims interactivity.
+    if (!options?.focus) {
+      this.window.setIgnoreMouseEvents(true, { forward: true })
+      this.window.setFocusable(false)
+    }
     if (options?.focus) {
       this.window.focus()
     }
@@ -298,7 +308,12 @@ class OverlayWindow {
     this.reloadTimer = null
   }
 
+  /** Idempotent — calling more than once is a no-op after the first.
+   *  After this returns, `create()` refuses to materialize the window
+   *  again (the controller is treated as dead). */
   destroy() {
+    if (this.destroyed) return
+    this.destroyed = true
     this.clearReloadTimer()
 
     if (this.respanHandler) {
@@ -311,9 +326,12 @@ class OverlayWindow {
 
     if (this.window) {
       this.window.removeAllListeners('close')
-      this.window.destroy()
+      if (!this.window.isDestroyed()) {
+        this.window.destroy()
+      }
       this.window = null
     }
+    this.ready = false
   }
 }
 
@@ -334,6 +352,7 @@ export type SelectionChipPayload = {
 
 export class OverlayWindowController {
   private readonly overlayWindow: OverlayWindow
+  private destroyed = false
   private morphTrackedWindow: BrowserWindow | null = null
   private activeMorphTransitionId: string | null = null
   private morphFlavor: MorphTransitionFlavor = 'hmr'
@@ -346,6 +365,7 @@ export class OverlayWindowController {
   private activeRegionCapture = false
   private activeVoice = false
   private activeDictation = false
+  private activeScreenGuide = false
   private activeWindowHighlight = false
   private windowHighlightRequestId = 0
   private activeSelectionChip = false
@@ -449,6 +469,7 @@ export class OverlayWindowController {
       this.activeRegionCapture ||
       this.activeVoice ||
       this.activeDictation ||
+      this.activeScreenGuide ||
       this.activeWindowHighlight ||
       this.activeSelectionChip ||
       this.activeMorph
@@ -691,6 +712,31 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
+  // ─── Screen Guide ────────────────────────────────────────────────────
+
+  showScreenGuide(annotations: Array<{
+    id: string
+    label: string
+    x: number
+    y: number
+  }>) {
+    this.activeScreenGuide = true
+    this.overlayWindow.show({ inactive: true })
+    const origin = this.overlayWindow.getOverlayOrigin()
+    const adjusted = annotations.map((a) => ({
+      ...a,
+      x: a.x - origin.x,
+      y: a.y - origin.y,
+    }))
+    this.overlayWindow.send('overlay:showScreenGuide', { annotations: adjusted })
+  }
+
+  hideScreenGuide() {
+    this.activeScreenGuide = false
+    this.overlayWindow.send('overlay:hideScreenGuide')
+    this.hideOverlayIfIdle()
+  }
+
   // ─── Selection Chip ("Ask Stella" pill above text selection) ──────────
 
   showSelectionChip(payload: SelectionChipPayload) {
@@ -840,7 +886,13 @@ export class OverlayWindowController {
 
   // ─── Cleanup ──────────────────────────────────────────────────────────
 
+  /** Idempotent — calling more than once is a no-op after the first.
+   *  Detaches every IPC listener this controller registered in its
+   *  constructor so we don't leak listeners across a hot-restart, and
+   *  destroys the underlying overlay window. */
   destroy() {
+    if (this.destroyed) return
+    this.destroyed = true
     this.stopTrackingMorphWindow()
     ipcMain.removeListener('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.removeListener('overlay:showWindowHighlight', this.handleOverlayShowWindowHighlight)

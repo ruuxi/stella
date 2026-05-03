@@ -115,8 +115,15 @@ export const IPC_VOICE_ORCHESTRATOR_CHAT = "voice:orchestratorChat" as const;
 export const IPC_VOICE_WEB_SEARCH = "voice:webSearch" as const;
 export const IPC_VOICE_GET_RUNTIME_STATE = "voice:getRuntimeState" as const;
 export const IPC_VOICE_RUNTIME_STATE = "voice:runtimeState" as const;
+export const IPC_VOICE_RTC_SET_SHORTCUT = "voice-rtc:setShortcut" as const;
+export const IPC_VOICE_RTC_GET_SHORTCUT = "voice-rtc:getShortcut" as const;
 
 // ── Dictation ───────────────────────────────────────────────────────────────
+
+export const IPC_DICTATION_TOGGLE = "dictation:toggle" as const;
+export const IPC_DICTATION_SET_SHORTCUT = "dictation:setShortcut" as const;
+export const IPC_DICTATION_GET_SHORTCUT = "dictation:getShortcut" as const;
+export const IPC_DICTATION_TRIGGER = "dictation:trigger" as const;
 
 // ── Agent ───────────────────────────────────────────────────────────────────
 
@@ -268,8 +275,6 @@ export const IPC_STORE_GET_RELEASE = "store:getRelease" as const;
 export const IPC_STORE_LIST_INSTALLED = "store:listInstalledMods" as const;
 export const IPC_STORE_INSTALL_FROM_BLUEPRINT =
   "store:installFromBlueprint" as const;
-export const IPC_STORE_PUBLISH_BLUEPRINT =
-  "store:publishBlueprint" as const;
 export const IPC_STORE_UNINSTALL = "store:uninstallMod" as const;
 export const IPC_STORE_LIST_CONNECTORS = "store:listConnectors" as const;
 export const IPC_STORE_INSTALL_CONNECTOR = "store:installConnector" as const;
@@ -321,6 +326,29 @@ export const IPC_SOCIAL_SESSIONS_QUEUE_TURN =
   "socialSessions:queueTurn" as const;
 export const IPC_SOCIAL_SESSIONS_GET_STATUS =
   "socialSessions:getStatus" as const;
+
+// ── Pet Overlay ─────────────────────────────────────────────────────────────
+//
+// The pet renders inside the existing transparent overlay window. State is
+// owned by the main process so toggles from any window (Pets settings,
+// pet's own context menu) reach every renderer; agent status is produced
+// by the full-shell chat surface and broadcast to all renderers via
+// `pet:status` so the overlay can drive the right animation and bubble.
+//
+//   pet:setOpen      any window → main → all renderers (toggle visibility)
+//   pet:status       full window → main → all renderers (mood + bubble copy)
+//   pet:openChat     pet → main (focus full window + open the sidebar chat)
+//   pet:sendMessage  pet → main → full window (deliver popover-composer text)
+
+export const IPC_PET_SET_OPEN = "pet:setOpen" as const;
+export const IPC_PET_GET_STATE = "pet:getState" as const;
+/** Renderer drag handler: move the dedicated pet window to an absolute
+ *  screen-coords position. Sent on every pointermove so the window
+ *  follows the cursor smoothly during a drag gesture. */
+export const IPC_PET_MOVE_WINDOW = "pet:moveWindow" as const;
+export const IPC_PET_STATUS = "pet:status" as const;
+export const IPC_PET_OPEN_CHAT = "pet:openChat" as const;
+export const IPC_PET_SEND_MESSAGE = "pet:sendMessage" as const;
 
 // ── Google Workspace ────────────────────────────────────────────────────────
 

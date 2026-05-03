@@ -6,7 +6,7 @@
  * the preload bridge (electron/preload.ts) and handler (electron/ipc/*.ts)
  * using that constant — never raw strings.
  */
-import type { UiState, WindowMode } from "../contracts/ui";
+import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "@/shared/contracts/agent-stream";
 import type { EventRecord } from "@/shared/contracts/local-chat";
@@ -325,6 +325,17 @@ export type ElectronOverlayApi = {
     callback: (data: { x: number; y: number }) => void,
   ) => () => void;
   onHideDictation: (callback: () => void) => () => void;
+  onShowScreenGuide: (
+    callback: (data: {
+      annotations: Array<{
+        id: string;
+        label: string;
+        x: number;
+        y: number;
+      }>;
+    }) => void,
+  ) => () => void;
+  onHideScreenGuide: (callback: () => void) => () => void;
   onShowSelectionChip: (
     callback: (data: {
       requestId: number;
@@ -432,6 +443,8 @@ export type ElectronDictationApi = {
    * speech-to-text session.
    */
   onToggle: (callback: (data: { startId?: string }) => void) => () => void;
+  /** Programmatically trigger the same toggle from the renderer. */
+  trigger: () => Promise<{ ok: boolean }>;
   /** Returns the currently registered global shortcut accelerator. */
   getShortcut: () => Promise<string>;
   /**
@@ -439,6 +452,16 @@ export type ElectronDictationApi = {
    * disable the shortcut entirely.
    */
   setShortcut: (shortcut: string) => Promise<VoiceShortcutRegistrationResult>;
+  localStatus: () => Promise<{
+    available: boolean;
+    model: string;
+    reason?: string;
+  }>;
+  downloadLocalModel: () => Promise<{
+    available: boolean;
+    model: string;
+    reason?: string;
+  }>;
   warmLocal: () => Promise<{
     available: boolean;
     model: string;
@@ -791,24 +814,7 @@ export type ElectronStoreApi = {
     releaseNumber: number;
     displayName: string;
     blueprintMarkdown: string;
-    commits?: Array<{ hash: string; subject: string; diff: string }>;
   }) => Promise<StoreInstallRecord>;
-  publishBlueprint: (payload: {
-    messageId: string;
-    packageId: string;
-    asUpdate: boolean;
-    displayName?: string;
-    description?: string;
-    category?:
-      | "apps-games"
-      | "productivity"
-      | "customization"
-      | "skills-agents"
-      | "integrations"
-      | "other";
-    manifest: Record<string, unknown>;
-    releaseNotes?: string;
-  }) => Promise<StorePackageReleaseRecord>;
   getThread: () => Promise<StoreThreadSnapshot>;
   sendThreadMessage: (payload: {
     text: string;
@@ -1045,6 +1051,18 @@ export type ElectronHomeApi = {
   }>;
 };
 
+export type ElectronScreenGuideApi = {
+  show: (
+    annotations: Array<{
+      id: string;
+      label: string;
+      x: number;
+      y: number;
+    }>,
+  ) => void;
+  hide: () => void;
+};
+
 // ---------------------------------------------------------------------------
 // Main ElectronApi â€” composed from namespaced sub-types
 // ---------------------------------------------------------------------------
@@ -1103,6 +1121,7 @@ export type ElectronApi = {
   capture: ElectronCaptureApi;
   radial: ElectronRadialApi;
   overlay: ElectronOverlayApi;
+  screenGuide: ElectronScreenGuideApi;
   theme: ElectronThemeApi;
   voice: ElectronVoiceApi;
   dictation: ElectronDictationApi;
@@ -1184,6 +1203,48 @@ export type ElectronApi = {
   localChat: ElectronLocalChatApi;
   googleWorkspace: ElectronGoogleWorkspaceApi;
   home: ElectronHomeApi;
+  pet: ElectronPetApi;
+};
+
+type PetOverlayMood =
+  | "idle"
+  | "running"
+  | "waiting"
+  | "review"
+  | "failed"
+  | "waving";
+
+type PetOverlayStatusPayload = {
+  state: PetOverlayMood;
+  title: string;
+  message: string;
+  isLoading: boolean;
+};
+
+type ElectronPetApi = {
+  /** Read the main-process canonical visibility/status. Used by the overlay
+   *  renderer on mount because it can be loaded after the original broadcast. */
+  getState: () => Promise<{
+    open: boolean;
+    status: PetOverlayStatusPayload;
+  }>;
+  /** Toggle the floating pet visibility from any window. */
+  setOpen: (open: boolean) => void;
+  /** Move the dedicated pet window to an absolute screen-coords
+   *  position. Used by the renderer's drag handler. */
+  moveWindow: (position: { x: number; y: number }) => void;
+  /** Subscribe to visibility broadcasts coming back from main. */
+  onSetOpen: (callback: (open: boolean) => void) => () => void;
+  /** Push a derived `PetOverlayStatus` to every renderer. */
+  pushStatus: (status: PetOverlayStatusPayload) => void;
+  /** Subscribe to status broadcasts (fan-out from `pushStatus`). */
+  onStatus: (callback: (status: PetOverlayStatusPayload) => void) => () => void;
+  /** Ask main to focus the full window and open the chat sidebar. */
+  openChat: () => void;
+  /** Forward a popover-composer message to the full window's chat. */
+  sendMessage: (text: string) => void;
+  /** Receive `pet:sendMessage` payloads (full window only). */
+  onSendMessage: (callback: (text: string) => void) => () => void;
 };
 
 declare global {

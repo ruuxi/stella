@@ -1,18 +1,18 @@
 import { app, session } from "electron";
+import { hasMacPermission } from "../utils/macos-permissions.js";
 import path from "path";
 import { resolveStellaHome } from "../../../runtime/kernel/home/stella-home.js";
 import { getDevServerUrl } from "../dev-url.js";
 import { OverlayWindowController } from "../windows/overlay-window.js";
+import { PetWindowController } from "../windows/pet-window.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
-import { startMorphTriggerServer } from "../dev/morph-trigger-server.js";
 import {
   type BootstrapContext,
   getAllWindows,
   getMobileBroadcast,
 } from "./context.js";
 import { startDeferredStartup } from "./deferred-startup.js";
-import { installGlobalInputHookFocusRetry } from "./global-input-hooks.js";
 
 const initializeBootstrapLocalState = async (context: BootstrapContext) => {
   const { config, lifecycle, services, state } = context;
@@ -45,6 +45,13 @@ const initializeWindowShell = (context: BootstrapContext) => {
   );
 
   state.overlayController = new OverlayWindowController({
+    preloadPath,
+    sessionPartition: config.sessionPartition,
+    electronDir: config.electronDir,
+    isDev: config.isDev,
+    getDevServerUrl,
+  });
+  state.petController = new PetWindowController({
     preloadPath,
     sessionPartition: config.sessionPartition,
     electronDir: config.electronDir,
@@ -88,21 +95,6 @@ const initializeWindowShell = (context: BootstrapContext) => {
     getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
     getOverlayController: () => state.overlayController,
   });
-
-  if (config.isDev) {
-    void startMorphTriggerServer({
-      getHmrTransitionController: () => state.hmrTransitionController,
-    }).then((handle) => {
-      if (!handle) return;
-      state.processRuntime.registerCleanup(
-        "before-quit",
-        "morph-trigger-server",
-        async () => {
-          await handle.stop();
-        },
-      );
-    });
-  }
 };
 
 const finalizeWindowLaunch = (context: BootstrapContext) => {
@@ -130,9 +122,17 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
     void startDeferredStartup(context);
   }, config.startupStageDelayMs);
 
-  // If Accessibility was off at startup, retry after the real app is ready
-  // when the user enables it in System Settings and returns to Stella.
-  installGlobalInputHookFocusRetry(context);
+  // If Accessibility was off at startup, deferred startup skips the hook; when
+  // the user enables it in System Settings and returns to Stella, retry start.
+  if (process.platform === "darwin") {
+    app.on("browser-window-focus", () => {
+      if (!hasMacPermission("accessibility", false)) {
+        return;
+      }
+      services.radialGestureService.start();
+      services.selectionWatcherService.start();
+    });
+  }
 };
 
 export const initializeBootstrapAppShell = async (

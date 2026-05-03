@@ -1,0 +1,197 @@
+/*
+ * PetOverlay — floating Stella pet companion.
+ *
+ * Renders inside the unified transparent overlay window, so the wrapper
+ * uses pointer-events:auto explicitly while the rest of OverlayRoot
+ * stays click-through.
+ */
+
+.pet-overlay-root {
+  position: absolute;
+  /* The dedicated pet `BrowserWindow` is 280x240 (see `pet-window.ts`).
+   * The sprite is anchored to the bottom-right of that window so the
+   * action arc curves to the upper-left and the bubble floats above
+   * the sprite — both inside the window's bounds. */
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  z-index: 30;
+}
+
+html[data-stella-window="pet"],
+html[data-stella-window="pet"] body,
+html[data-stella-window="pet"] #root {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.pet-overlay-root[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+.pet-overlay-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 220px;
+  min-width: 120px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border-radius: 12px;
+  background: var(--color-token-main-surface-primary, rgba(20, 20, 20, 0.92));
+  color: var(--color-token-foreground, rgba(255, 255, 255, 0.95));
+  border: 1px solid var(--color-token-border, rgba(255, 255, 255, 0.08));
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 180ms ease-out,
+    transform 180ms ease-out;
+}
+
+.pet-overlay-bubble[data-visible="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.pet-overlay-bubble-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--color-token-text-secondary, rgba(255, 255, 255, 0.7));
+}
+
+.pet-overlay-bubble-message {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.pet-overlay-spinner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-token-interactive, #4caf50);
+  animation: pet-overlay-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pet-overlay-pulse {
+  0%, 100% { transform: scale(0.7); opacity: 0.4; }
+  50% { transform: scale(1); opacity: 1; }
+}
+
+.pet-overlay-mascot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.pet-overlay-mascot[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+/* Individual circular action buttons curving around the left side of the
+ * mascot. Each button is absolutely positioned via inline style on an arc
+ * relative to the mascot center; there is intentionally no shared
+ * pill / bar so the visual hierarchy stays "sprite + small floating
+ * controls" rather than "sprite + UI chrome". */
+.pet-overlay-action {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--color-token-border, rgba(255, 255, 255, 0.08));
+  background: var(--color-token-main-surface-primary, rgba(20, 20, 20, 0.92));
+  color: var(--color-token-text-secondary, rgba(255, 255, 255, 0.75));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  /* Hidden by default so the resting pet is just the sprite. */
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.92);
+  transition:
+    opacity 160ms ease-out,
+    transform 160ms ease-out,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.pet-overlay-action[data-visible="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.pet-overlay-action:hover {
+  background: var(--color-token-list-hover-background, rgba(40, 40, 40, 0.98));
+  color: var(--color-token-foreground, rgba(255, 255, 255, 0.95));
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+.pet-overlay-action:focus-visible {
+  outline: 2px solid var(--color-token-focus-border, #4caf50);
+  outline-offset: 1px;
+}
+
+.pet-overlay-context-menu {
+  position: absolute;
+  min-width: 140px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--color-token-main-surface-primary, rgba(20, 20, 20, 0.96));
+  border: 1px solid var(--color-token-border, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+  color: var(--color-token-foreground, rgba(255, 255, 255, 0.95));
+  z-index: 40;
+}
+
+.pet-overlay-context-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.pet-overlay-context-item:hover {
+  background: var(--color-token-list-hover-background, rgba(255, 255, 255, 0.08));
+}
+
+.pet-overlay-context-item-danger {
+  color: var(--color-token-error-foreground, #e57373);
+}

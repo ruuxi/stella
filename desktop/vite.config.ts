@@ -950,6 +950,7 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'index.html'),
         overlay: path.resolve(__dirname, 'overlay.html'),
+        pet: path.resolve(__dirname, 'pet.html'),
       },
       output: {
         manualChunks(id) {

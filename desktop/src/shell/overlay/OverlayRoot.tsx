@@ -22,8 +22,8 @@ import "./overlays.css";
 /**
  * OverlayRoot manages the unified transparent overlay window.
  *
- * All overlay components (Region Capture, Voice Overlay, Window Highlight,
- * and Morph Transition) live as absolutely-positioned
+ * All overlay components (Region Capture, Voice Overlay, Screen Guide,
+ * Window Highlight, and Morph Transition) live as absolutely-positioned
  * children. The overlay window is hidden when idle and only shown when a
  * component activates, preventing it from blocking interaction with windows
  * below.
@@ -206,7 +206,7 @@ const pointInRect = (point: { x: number; y: number }, rect: InteractiveRect) =>
 // ---------------------------------------------------------------------------
 // Hook: useOverlayIPC
 // Consolidates ALL IPC subscription effects (window highlight, region capture,
-// voice show/hide) into a single hook.
+// voice show/hide, screen guide) into a single hook.
 // ---------------------------------------------------------------------------
 function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
   const radialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
