@@ -4,6 +4,7 @@ import { AuthService } from "../services/auth-service.js";
 import { BackupService } from "../services/backup-service.js";
 import { CaptureService } from "../services/capture-service.js";
 import { RadialGestureService } from "../services/radial-gesture-service.js";
+import { togglePetVoice } from "../services/pet-voice-control.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
 import { LocalChatHistoryService } from "../services/local-chat-history-service.js";
@@ -204,10 +205,19 @@ export const createBootstrapServices = (options: {
       showWindow: (target) => state.windowManager?.showWindow(target),
       minimizeWindow: () => state.windowManager?.minimizeWindow(),
     },
-    activateVoiceRtc: () =>
-      uiStateService.activateVoiceRtc(uiStateService.state.conversationId),
-    deactivateVoiceModes: () => uiStateService.deactivateVoiceModes(),
-    isVoiceActive: () => uiStateService.state.isVoiceRtcActive,
+    togglePetVoice: () => {
+      // Resolve lazily — the pet controller is constructed in
+      // app-shell after this options bag is built. Inlining the
+      // toggle here keeps it scoped to this single radial dep
+      // without exporting more bootstrap state.
+      const wm = state.windowManager;
+      if (!wm) return;
+      togglePetVoice({
+        uiStateService,
+        getPetController: () => state.petController ?? null,
+        windowManager: wm,
+      });
+    },
     updateUiState: (partial) => uiStateService.update(partial),
     // Forward every left-mouse-up to the SelectionWatcher so it can ask the
     // native helper for the current selection and pop the "Ask Stella" pill.

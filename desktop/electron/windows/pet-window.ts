@@ -19,6 +19,13 @@ type PetWindowControllerOptions = {
  */
 const PET_WINDOW_WIDTH = 280
 const PET_WINDOW_HEIGHT = 240
+/**
+ * Wider footprint the window grows into while the inline chat
+ * composer is open. The sprite stays anchored to the right side so it
+ * doesn't visually jump; the new space appears on the left where the
+ * composer renders.
+ */
+const PET_WINDOW_COMPOSER_WIDTH = 540
 
 /** Margin from the active display edge when the pet has never been moved. */
 const DEFAULT_EDGE_MARGIN = 24
@@ -52,6 +59,7 @@ class PetWindow {
   private window: BrowserWindow | null = null
   private ready = false
   private destroyed = false
+  private composerActive = false
   private position = pickDefaultPosition()
   /** Concrete listener references so `destroy()` can detach them
    *  symmetrically before tearing down the BrowserWindow. The window's
@@ -196,12 +204,50 @@ class PetWindow {
     if (!this.window || this.window.isDestroyed()) return
     const rounded = { x: Math.round(x), y: Math.round(y) }
     this.position = rounded
+    const width = this.composerActive
+      ? PET_WINDOW_COMPOSER_WIDTH
+      : PET_WINDOW_WIDTH
     this.window.setBounds({
       x: rounded.x,
       y: rounded.y,
-      width: PET_WINDOW_WIDTH,
+      width,
       height: PET_WINDOW_HEIGHT,
     })
+  }
+
+  /**
+   * Toggle the inline chat composer footprint. We grow the window
+   * leftward (anchored to its current right edge so the sprite stays
+   * put visually) and flip `focusable` so the textarea can receive
+   * keystrokes — the resting pet window is non-focusable so it never
+   * steals focus from the user's active app.
+   */
+  setComposerActive(active: boolean) {
+    if (!this.window || this.window.isDestroyed()) return
+    if (active === this.composerActive) return
+    this.composerActive = active
+    const bounds = this.window.getBounds()
+    const targetWidth = active ? PET_WINDOW_COMPOSER_WIDTH : PET_WINDOW_WIDTH
+    // Anchor by the existing right edge so the sprite doesn't jump.
+    const rightEdge = bounds.x + bounds.width
+    const nextX = rightEdge - targetWidth
+    this.window.setBounds({
+      x: nextX,
+      y: bounds.y,
+      width: targetWidth,
+      height: PET_WINDOW_HEIGHT,
+    })
+    this.position = { x: nextX, y: bounds.y }
+    this.window.setFocusable(active)
+    if (active) {
+      // Bring the window to front *without* hijacking the user's
+      // current Space. Combined with `setFocusable(true)` this is
+      // enough to let the textarea pick up keystrokes.
+      this.window.show()
+      this.window.focus()
+    } else {
+      this.window.blur()
+    }
   }
 
   /** Tear down the pet window. Idempotent — safe to call more than
@@ -273,6 +319,11 @@ export class PetWindowController {
   setWindowPosition(x: number, y: number) {
     if (this.destroyed) return
     this.petWindow.setPosition(x, y)
+  }
+
+  setComposerActive(active: boolean) {
+    if (this.destroyed) return
+    this.petWindow.setComposerActive(active)
   }
 
   /** Idempotent — calling more than once is a no-op after the first. */

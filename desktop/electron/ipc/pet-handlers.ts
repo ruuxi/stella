@@ -4,7 +4,9 @@ import {
   IPC_PET_OPEN_CHAT,
   IPC_PET_GET_STATE,
   IPC_PET_MOVE_WINDOW,
+  IPC_PET_REQUEST_VOICE,
   IPC_PET_SEND_MESSAGE,
+  IPC_PET_SET_COMPOSER_ACTIVE,
   IPC_PET_SET_OPEN,
   IPC_PET_STATUS,
 } from "../../src/shared/contracts/ipc-channels.js";
@@ -19,10 +21,15 @@ type PetHandlersOptions = {
   windowManager: WindowManager;
   /** Pet controller owns the dedicated mini `BrowserWindow` that hosts
    *  the pet sprite. Toggling visibility here just shows/hides that
-   *  window; we no longer share the screen-spanning overlay window
-   *  with the pet, which avoids the macOS `setIgnoreMouseEvents`
-   *  click-through problems entirely. */
+   *  window. */
   getPetController: () => PetWindowController | null;
+  /** Toggle the realtime voice session. Voice always opens the pet
+   *  (the sprite animates listening / speaking from
+   *  `voice:runtimeState` and the mic button turns red). The caller
+   *  resolves to a single function so every voice activation path —
+   *  the keybind, the radial dial's voice wedge, and the pet's own
+   *  mic action button — shares behaviour. */
+  toggleVoiceRtc: () => void;
   assertPrivilegedSender: (event: IpcMainEvent, channel: string) => boolean;
 };
 
@@ -33,7 +40,6 @@ const DEFAULT_STATUS: PetOverlayStatus = {
   isLoading: false,
 };
 
-let petOpen = false;
 let latestStatus: PetOverlayStatus = DEFAULT_STATUS;
 /**
  * Single live registration. We refuse to register twice because the
@@ -94,6 +100,7 @@ const broadcast = (
 export const registerPetHandlers = ({
   windowManager,
   getPetController,
+  toggleVoiceRtc,
   assertPrivilegedSender,
 }: PetHandlersOptions): (() => void) => {
   if (activeDisposer) {
@@ -102,15 +109,23 @@ export const registerPetHandlers = ({
     );
   }
 
+  // The pet's open state is whatever the controller's window
+  // currently is. Keeping it derived (rather than caching a separate
+  // `petOpen` flag) means `setOpen` calls coming from outside the
+  // pet IPC plumbing — e.g. the centralized voice toggle that opens
+  // the pet alongside activating voice — stay in sync without an
+  // extra writeback path.
+  const isPetOpen = () =>
+    Boolean(getPetController()?.isVisible());
+
   const onGetState = () => ({
-    open: petOpen,
+    open: isPetOpen(),
     status: latestStatus,
   });
 
   const onSetOpen = (event: IpcMainEvent, open: unknown) => {
     if (!assertPrivilegedSender(event, IPC_PET_SET_OPEN)) return;
     const next = Boolean(open);
-    petOpen = next;
     getPetController()?.setOpen(next);
     broadcast(windowManager, IPC_PET_SET_OPEN, next);
     if (next) {
@@ -127,6 +142,16 @@ export const registerPetHandlers = ({
     }
     if (!Number.isFinite(candidate.x) || !Number.isFinite(candidate.y)) return;
     getPetController()?.setWindowPosition(candidate.x, candidate.y);
+  };
+
+  const onSetComposerActive = (event: IpcMainEvent, active: unknown) => {
+    if (!assertPrivilegedSender(event, IPC_PET_SET_COMPOSER_ACTIVE)) return;
+    getPetController()?.setComposerActive(Boolean(active));
+  };
+
+  const onRequestVoice = (event: IpcMainEvent) => {
+    if (!assertPrivilegedSender(event, IPC_PET_REQUEST_VOICE)) return;
+    toggleVoiceRtc();
   };
 
   const onStatus = (event: IpcMainEvent, status: unknown) => {
@@ -157,6 +182,8 @@ export const registerPetHandlers = ({
   ipcMain.handle(IPC_PET_GET_STATE, onGetState);
   ipcMain.on(IPC_PET_SET_OPEN, onSetOpen);
   ipcMain.on(IPC_PET_MOVE_WINDOW, onMoveWindow);
+  ipcMain.on(IPC_PET_SET_COMPOSER_ACTIVE, onSetComposerActive);
+  ipcMain.on(IPC_PET_REQUEST_VOICE, onRequestVoice);
   ipcMain.on(IPC_PET_STATUS, onStatus);
   ipcMain.on(IPC_PET_OPEN_CHAT, onOpenChat);
   ipcMain.on(IPC_PET_SEND_MESSAGE, onSendMessage);
@@ -167,10 +194,11 @@ export const registerPetHandlers = ({
     ipcMain.removeHandler(IPC_PET_GET_STATE);
     ipcMain.removeListener(IPC_PET_SET_OPEN, onSetOpen);
     ipcMain.removeListener(IPC_PET_MOVE_WINDOW, onMoveWindow);
+    ipcMain.removeListener(IPC_PET_SET_COMPOSER_ACTIVE, onSetComposerActive);
+    ipcMain.removeListener(IPC_PET_REQUEST_VOICE, onRequestVoice);
     ipcMain.removeListener(IPC_PET_STATUS, onStatus);
     ipcMain.removeListener(IPC_PET_OPEN_CHAT, onOpenChat);
     ipcMain.removeListener(IPC_PET_SEND_MESSAGE, onSendMessage);
-    petOpen = false;
     latestStatus = DEFAULT_STATUS;
   };
 

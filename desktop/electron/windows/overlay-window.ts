@@ -363,7 +363,6 @@ export class OverlayWindowController {
   // Active component tracking — overlay stays visible when any component is active.
   private activeRadial = false
   private activeRegionCapture = false
-  private activeVoice = false
   private activeDictation = false
   private activeScreenGuide = false
   private activeWindowHighlight = false
@@ -467,7 +466,6 @@ export class OverlayWindowController {
   private get isAnyActive() {
     return this.activeRadial ||
       this.activeRegionCapture ||
-      this.activeVoice ||
       this.activeDictation ||
       this.activeScreenGuide ||
       this.activeWindowHighlight ||
@@ -673,21 +671,6 @@ export class OverlayWindowController {
       restoreIgnoreMouseEvents: true,
       focusable: false,
     })
-  }
-
-  // ─── Voice ─────────────────────────────────────────────────────────────
-
-  showVoice(screenX: number, screenY: number, mode: 'realtime') {
-    this.activeVoice = true
-    this.overlayWindow.show({ inactive: true })
-    const origin = this.overlayWindow.getOverlayOrigin()
-    this.overlayWindow.send('overlay:showVoice', { x: screenX - origin.x, y: screenY - origin.y, mode })
-  }
-
-  hideVoice() {
-    this.activeVoice = false
-    this.overlayWindow.send('overlay:hideVoice')
-    this.hideOverlayIfIdle()
   }
 
   send(channel: string, ...args: unknown[]) {

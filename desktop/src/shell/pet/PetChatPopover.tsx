@@ -10,6 +10,10 @@ import {
   ComposerSubmitButton,
   ComposerTextarea,
 } from "@/app/chat/ComposerPrimitives";
+// Import the full chat composer's stylesheet so this popover renders
+// pixel-identically — same shell, same form, same toolbar — to the
+// composer the user already knows from the main window.
+import "@/app/chat/full-shell.composer.css";
 
 const PLACEHOLDER = "Message Stella";
 
@@ -27,12 +31,12 @@ type PetChatPopoverProps = {
 /**
  * Compact composer popover anchored to the left of the floating pet.
  *
- * The visual is intentionally a stripped-down version of the full chat
- * composer (`ComposerTextarea` + `ComposerSubmitButton` over the same
- * `chat-composer-*` styles) so the user sees the same input affordance
- * everywhere Stella runs. We do not bring chips/dictation/capture here
- * — the radial dial and full chat already own those flows; this surface
- * only needs "type a message, hit enter".
+ * Visually identical to the full chat composer — same `composer-shell`
+ * + `composer-form` container classes and the same `ComposerTextarea`
+ * + `ComposerSubmitButton` primitives, so the user sees the same input
+ * affordance everywhere Stella runs. We deliberately omit chips,
+ * dictation, and the add menu: this surface only needs "type a
+ * message, hit enter, fire & forget".
  */
 export const PetChatPopover = ({
   open,
@@ -45,9 +49,9 @@ export const PetChatPopover = ({
   useEffect(() => {
     if (!open) return;
     setValue("");
-    // Focus on the next frame so the popover's transition has begun and
-    // macOS doesn't swallow focus during the same tick the panel's
-    // pointer-events flip on.
+    // Focus on the next frame so the popover's transition has begun
+    // and the pet `BrowserWindow` has finished flipping `focusable: true`
+    // (driven by `pet:setComposerActive` in main).
     const raf = requestAnimationFrame(() => {
       textareaRef.current?.focus();
     });
@@ -89,28 +93,41 @@ export const PetChatPopover = ({
 
   const canSubmit = value.trim().length > 0;
 
+  // Mirror the full composer's structure exactly so the same CSS
+  // (`composer-shell`, `composer-form`, `composer-input`,
+  // `composer-toolbar`, `composer-submit`) styles us identically.
   return (
-    <form
-      className="pet-overlay-popover"
-      onSubmit={handleSubmit}
+    <div
+      className="composer pet-overlay-popover"
       onClick={(event) => event.stopPropagation()}
     >
-      <div className="pet-overlay-popover-shell">
-        <ComposerTextarea
-          ref={textareaRef}
-          value={value}
-          placeholder={PLACEHOLDER}
-          rows={2}
-          onChange={(event) => setValue(event.currentTarget.value)}
-          onKeyDown={handleKeyDown}
-          aria-label="Message Stella from pet"
-        />
-        <ComposerSubmitButton
-          animated
-          aria-label="Send"
-          disabled={!canSubmit}
-        />
+      <div className="composer-shell">
+        <div className="composer-shell-content">
+          <form className="composer-form" onSubmit={handleSubmit}>
+            <ComposerTextarea
+              ref={textareaRef}
+              className="composer-input"
+              value={value}
+              placeholder={PLACEHOLDER}
+              rows={1}
+              onChange={(event) => setValue(event.currentTarget.value)}
+              onKeyDown={handleKeyDown}
+              aria-label="Message Stella from pet"
+            />
+            <div className="composer-toolbar">
+              <div className="composer-toolbar-left" />
+              <div className="composer-toolbar-right">
+                <ComposerSubmitButton
+                  className="composer-submit"
+                  animated
+                  aria-label="Send"
+                  disabled={!canSubmit}
+                />
+              </div>
+            </div>
+          </form>
+        </div>
       </div>
-    </form>
+    </div>
   );
 };

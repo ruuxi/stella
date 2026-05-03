@@ -1,18 +1,12 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow } from 'electron'
 import type { UiState } from '../types.js'
 
 export type UiStateBroadcastTarget = {
   getAllWindows: () => BrowserWindow[]
 }
 
-export type VoiceOverlayTarget = {
-  showVoice: (x: number, y: number, mode: 'realtime') => void
-  hideVoice: () => void
-}
-
 export type UiStateServiceDeps = {
   broadcastTarget: UiStateBroadcastTarget
-  getOverlayTarget: () => VoiceOverlayTarget | null
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null
 }
 
@@ -45,23 +39,11 @@ export class UiStateService {
     this.deps.getBroadcastToMobile?.()?.('ui:state', this.state)
   }
 
-  syncVoiceOverlay() {
-    const overlay = this.deps?.getOverlayTarget()
-    if (!overlay) return
-    if (this.state.isVoiceRtcActive) {
-      const pos = this.getStandaloneVoicePosition()
-      overlay.showVoice(pos.x, pos.y, 'realtime')
-      return
-    }
-    overlay.hideVoice()
-  }
-
   deactivateVoiceModes(): boolean {
     if (!this.state.isVoiceRtcActive) {
       return false
     }
     this.state.isVoiceRtcActive = false
-    this.syncVoiceOverlay()
     this.broadcast()
     return true
   }
@@ -70,16 +52,6 @@ export class UiStateService {
     this.state.isVoiceRtcActive = true
     this.state.mode = 'voice'
     this.state.conversationId = conversationId ?? this.state.conversationId
-    this.syncVoiceOverlay()
     this.broadcast()
-  }
-
-  private getStandaloneVoicePosition() {
-    const cursor = screen.getCursorScreenPoint()
-    const display = screen.getDisplayNearestPoint(cursor)
-    return {
-      x: display.bounds.x + Math.round(display.bounds.width / 2),
-      y: display.bounds.y + display.bounds.height - 88,
-    }
   }
 }

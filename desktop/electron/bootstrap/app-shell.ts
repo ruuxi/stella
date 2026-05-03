@@ -80,14 +80,6 @@ const initializeWindowShell = (context: BootstrapContext) => {
     broadcastTarget: {
       getAllWindows: () => getAllWindows(context),
     },
-    getOverlayTarget: () =>
-      state.overlayController
-        ? {
-            showVoice: (x, y, mode) =>
-              state.overlayController!.showVoice(x, y, mode),
-            hideVoice: () => state.overlayController!.hideVoice(),
-          }
-        : null,
     getBroadcastToMobile: () => getMobileBroadcast(context),
   });
 

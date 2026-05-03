@@ -317,10 +317,6 @@ export type ElectronOverlayApi = {
       } | null,
     ) => void,
   ) => () => void;
-  onShowVoice: (
-    callback: (data: { x: number; y: number; mode: "realtime" }) => void,
-  ) => () => void;
-  onHideVoice: (callback: () => void) => () => void;
   onShowDictation: (
     callback: (data: { x: number; y: number }) => void,
   ) => () => void;
@@ -1233,6 +1229,14 @@ type ElectronPetApi = {
   /** Move the dedicated pet window to an absolute screen-coords
    *  position. Used by the renderer's drag handler. */
   moveWindow: (position: { x: number; y: number }) => void;
+  /** Toggle the inline chat composer next to the pet. Main grows the
+   *  pet window leftward to make room for the composer and flips
+   *  `focusable` on so the textarea can receive keystrokes. Pass
+   *  `false` to collapse the composer and restore the resting
+   *  footprint. */
+  setComposerActive: (active: boolean) => void;
+  /** Pet voice button — ask main to enter voice (RTC) mode. */
+  requestVoice: () => void;
   /** Subscribe to visibility broadcasts coming back from main. */
   onSetOpen: (callback: (open: boolean) => void) => () => void;
   /** Push a derived `PetOverlayStatus` to every renderer. */

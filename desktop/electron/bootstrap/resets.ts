@@ -63,7 +63,6 @@ export const createBootstrapResetFlows = (
     state.appReady = false;
     services.authService.clearPendingAuthCallback();
     services.uiStateService.state.isVoiceRtcActive = false;
-    services.uiStateService.syncVoiceOverlay();
     services.captureService.resetForHardReset();
     state.windowManager?.restoreFullSize();
 

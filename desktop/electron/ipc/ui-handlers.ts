@@ -14,7 +14,6 @@ type UiHandlersOptions = {
   windowManager: WindowManager;
   updateUiState: (partial: Partial<UiState>) => void;
   broadcastUiState: () => void;
-  syncVoiceOverlay: () => void;
   setAppReady: (ready: boolean) => void;
   deactivateVoiceModes: () => boolean;
   syncNativeRadialGesture: () => void;
@@ -163,7 +162,6 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
       options.syncNativeRadialGesture();
     }
     if (isVoiceRtcActive !== undefined) {
-      options.syncVoiceOverlay();
       options.broadcastUiState();
     }
     return options.uiState;
