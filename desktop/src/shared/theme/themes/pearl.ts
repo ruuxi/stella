@@ -1,58 +1,43 @@
-import type { Theme } from "./types";
+import type { Theme, ThemeColors } from "./types";
+
+// Pearl is a standardized "white" theme. It is pinned to light appearance
+// and ignores the gradient controls — same single palette regardless of
+// system Light/Dark or gradient settings. Background is the canonical
+// off-white that companies like Linear, Notion, and Stripe use rather
+// than pure #ffffff for the entire surface.
+const pearl: ThemeColors = {
+  background: "#ffffff",
+  backgroundWeak: "#ffffff",
+  backgroundStrong: "#ffffff",
+  foreground: "#111111",
+  foregroundWeak: "#737373",
+  foregroundStrong: "#000000",
+  primary: "#111111",
+  primaryForeground: "#ffffff",
+  success: "#16a34a",
+  warning: "#a16207",
+  error: "#dc2626",
+  info: "#2563eb",
+  interactive: "#111111",
+  border: "#ededed",
+  borderWeak: "#f5f5f5",
+  borderStrong: "#dcdcdc",
+  card: "rgba(255, 255, 255, 0.96)",
+  cardForeground: "#111111",
+  muted: "#f7f7f7",
+  mutedForeground: "#737373",
+  accent: "#f4f4f4",
+  accentForeground: "#111111",
+  // Match the background so the flat blob disappears into the surface.
+  gradientAnchor: "#ffffff",
+};
 
 const theme: Theme = {
   id: "pearl",
   name: "Pearl",
-  light: {
-    background: "#ffffff",
-    backgroundWeak: "#f7f7f7",
-    backgroundStrong: "#ffffff",
-    foreground: "#1a1a1a",
-    foregroundWeak: "#6b6b6b",
-    foregroundStrong: "#0a0a0a",
-    primary: "#2563eb",
-    primaryForeground: "#ffffff",
-    success: "#22863a",
-    warning: "#b08600",
-    error: "#d1242f",
-    info: "#0ea5e9",
-    interactive: "#2563eb",
-    border: "#e5e5e5",
-    borderWeak: "#f0f0f0",
-    borderStrong: "#d4d4d4",
-    card: "rgba(255, 255, 255, 0.88)",
-    cardForeground: "#1a1a1a",
-    muted: "#f5f5f5",
-    mutedForeground: "#737373",
-    accent: "#f0f0f0",
-    accentForeground: "#1a1a1a",
-    gradientAnchor: "#c8c8c8",
-  },
-  dark: {
-    background: "#161616",
-    backgroundWeak: "#1c1c1c",
-    backgroundStrong: "#111111",
-    foreground: "#e5e5e5",
-    foregroundWeak: "#a0a0a0",
-    foregroundStrong: "#fafafa",
-    primary: "#3b82f6",
-    primaryForeground: "#ffffff",
-    success: "#3fb950",
-    warning: "#d29922",
-    error: "#f85149",
-    info: "#38bdf8",
-    interactive: "#3b82f6",
-    border: "#2e2e2e",
-    borderWeak: "#232323",
-    borderStrong: "#424242",
-    card: "rgba(28, 28, 28, 0.85)",
-    cardForeground: "#e5e5e5",
-    muted: "#232323",
-    mutedForeground: "#a0a0a0",
-    accent: "#2a2a2a",
-    accentForeground: "#e5e5e5",
-    gradientAnchor: "#3a3a3a",
-  },
+  forcedMode: "light",
+  light: pearl,
+  dark: pearl,
 };
 
 export default theme;

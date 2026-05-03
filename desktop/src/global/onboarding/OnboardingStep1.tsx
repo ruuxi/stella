@@ -199,6 +199,7 @@ export const OnboardingStep1 = ({
             colorMode={appearance.colorMode}
             gradientColor={appearance.gradientColor}
             gradientMode={appearance.gradientMode}
+            isForcedTheme={appearance.isForcedTheme}
             sortedThemes={appearance.sortedThemes}
             splitTransitionActive={leaving}
             themeId={appearance.themeId}

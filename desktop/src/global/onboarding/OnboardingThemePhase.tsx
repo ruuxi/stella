@@ -9,6 +9,7 @@ type ThemePhaseProps = {
   colorMode: "light" | "dark" | "system";
   gradientColor: "relative" | "strong";
   gradientMode: "soft" | "flat";
+  isForcedTheme: boolean;
   sortedThemes: ThemeSummary[];
   splitTransitionActive: boolean;
   themeId: string;
@@ -55,6 +56,7 @@ export function OnboardingThemePhase({
   colorMode,
   gradientColor,
   gradientMode,
+  isForcedTheme,
   sortedThemes,
   splitTransitionActive,
   themeId,
@@ -140,8 +142,11 @@ export function OnboardingThemePhase({
     [onSelectGradientColor],
   );
 
-  const canContinue =
-    showAppearance && showGradientStyle && showGradientColor && hasSelectedGradientColor;
+  // Forced-mode themes (Pearl, Noir) skip Appearance + Gradient choices
+  // entirely — selecting one is enough to continue.
+  const canContinue = isForcedTheme
+    ? showAppearance
+    : showAppearance && showGradientStyle && showGradientColor && hasSelectedGradientColor;
 
   return (
     <div className="onboarding-step-content">

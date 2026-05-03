@@ -252,9 +252,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const activeThemeId = preview.previewThemeId ?? persisted.themeId;
   const theme = getThemeById(activeThemeId) ?? defaultTheme;
-  const resolvedColorMode = persisted.colorMode === "system" ? persisted.systemMode : persisted.colorMode;
+  const userResolvedColorMode = persisted.colorMode === "system" ? persisted.systemMode : persisted.colorMode;
+  // Themes with `forcedMode` (Pearl, Noir) ignore the user's Light/Dark
+  // choice and the Gradient controls — they're standardized single-mode
+  // surfaces with no gradient blob.
+  const resolvedColorMode = theme.forcedMode ?? userResolvedColorMode;
   const colors = resolvedColorMode === "dark" ? theme.dark : theme.light;
-  const effectiveGradientMode = preview.previewGradientMode ?? persisted.gradientMode;
+  const effectiveGradientMode = theme.forcedMode
+    ? "flat"
+    : preview.previewGradientMode ?? persisted.gradientMode;
   const effectiveGradientColor = preview.previewGradientColor ?? persisted.gradientColor;
 
   useEffect(() => {
