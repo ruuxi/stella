@@ -1,28 +1,29 @@
 import oc1 from "./oc1";
-import tokyonight from "./tokyonight";
 import dracula from "./dracula";
 import catppuccin from "./catppuccin";
-import nord from "./nord";
 import monokai from "./monokai";
 import solarized from "./solarized";
-import onedarkpro from "./onedarkpro";
 import shadesofpurple from "./shadesofpurple";
 import nightowl from "./nightowl";
 import vesper from "./vesper";
-import carbonfox from "./carbonfox";
 import gruvbox from "./gruvbox";
 import ayu from "./ayu";
 import aura from "./aura";
 import pearl from "./pearl";
 import noir from "./noir";
+import sage from "./sage";
+import crimson from "./crimson";
+import slate from "./slate";
+import cocoa from "./cocoa";
 import type { Theme, ThemeColors } from "./types";
 
 export type { Theme, ThemeColors };
 
 const themes: Theme[] = [
   pearl, noir,
-  oc1, tokyonight, dracula, catppuccin, nord, monokai, solarized,
-  onedarkpro, shadesofpurple, nightowl, vesper, carbonfox, gruvbox, ayu, aura,
+  oc1, dracula, catppuccin, monokai, solarized,
+  shadesofpurple, nightowl, vesper, gruvbox, ayu, aura,
+  sage, crimson, slate, cocoa,
 ];
 
 const listeners = new Set<() => void>();
@@ -43,7 +44,7 @@ export const getThemeById = (id: string): Theme | undefined => {
   return themes.find((t) => t.id === id);
 };
 
-export const defaultTheme = themes.find((t) => t.id === "carbonfox")!;
+export const defaultTheme = themes.find((t) => t.id === "slate")!;
 
 export const subscribeThemes = (listener: () => void) => {
   listeners.add(listener);
