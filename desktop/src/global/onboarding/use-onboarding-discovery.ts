@@ -75,7 +75,14 @@ export function useOnboardingDiscovery({
     // on every mount) regardless of phase, which spammed the parent's
     // `setHasDiscoverySelections` setter and caused the overlay tree to
     // re-render through `useOnboardingOverlay` for unrelated phases.
-    if (phase !== "browser") return;
+    if (phase !== "browser") {
+      // Leaving the browser phase: reset the elevated-creature flag so
+      // Stella glides back to its parked split position instead of
+      // staying lifted into the now-empty mock slot above the next
+      // phase's copy.
+      onSelectionChange?.(false);
+      return;
+    }
     const hasAny =
       Object.values(categoryStates).some((value) => value) || browserEnabled;
     onSelectionChange?.(hasAny);

@@ -17,8 +17,10 @@ const TALK_KEY_BY_PLATFORM: Record<string, KeyLabel> = {
   linux: { glyphs: ["Ctrl", "Shift", "D"], aria: "Control Shift D" },
 };
 
+// On macOS the default dictation shortcut is push-to-talk: hold the Option
+// key. Other platforms keep the Ctrl+M toggle.
 const DICTATE_KEY_BY_PLATFORM: Record<string, KeyLabel> = {
-  darwin: { glyphs: ["⌃", "M"], aria: "Control M" },
+  darwin: { glyphs: ["⌥"], aria: "Hold Option" },
   win32: { glyphs: ["Ctrl", "M"], aria: "Control M" },
   linux: { glyphs: ["Ctrl", "M"], aria: "Control M" },
 };

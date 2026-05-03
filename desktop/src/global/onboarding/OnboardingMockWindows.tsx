@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 /* ── Mock data for each category ── */
 
@@ -83,12 +83,17 @@ type WindowConfig = {
   content: React.ReactNode;
 };
 
-const MockWindow: React.FC<{ title: string; delay: number; children: React.ReactNode }> = ({
-  title,
-  delay,
-  children,
-}) => (
-  <div className="onboarding-mock-window" style={{ animationDelay: `${delay}s` }}>
+const MockWindow: React.FC<{
+  title: string;
+  delay: number;
+  children: React.ReactNode;
+  fading?: boolean;
+}> = ({ title, delay, children, fading }) => (
+  <div
+    className="onboarding-mock-window"
+    data-fading={fading || undefined}
+    style={{ animationDelay: `${delay}s` }}
+  >
     <div className="onboarding-mock-window-titlebar">
       <div className="onboarding-mock-window-dots">
         <span />
@@ -150,11 +155,44 @@ const WINDOW_MAP: Record<string, WindowConfig> = {
   dev_environment: { id: "dev_environment", title: "Coding Setup", content: <SimpleList sections={MOCK_DEV} /> },
 };
 
+/* Switching active category: fade the outgoing window out while the new
+ * one fades in, instead of swapping instantly. Keep at most one outgoing
+ * window in the queue — if the user toggles rapidly we drop the older
+ * outgoing in favor of the most recent. */
+const MOCK_SWITCH_FADE_MS = 260;
+
 export const OnboardingMockWindows: React.FC<OnboardingMockWindowsProps> = ({
   activeWindowId,
   stageState = "current",
 }) => {
   const active = activeWindowId ? WINDOW_MAP[activeWindowId] : null;
+  const [outgoing, setOutgoing] = useState<WindowConfig | null>(null);
+  const prevActiveIdRef = useRef<string | null>(activeWindowId);
+  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const prev = prevActiveIdRef.current;
+    if (prev !== activeWindowId) {
+      const outgoingConfig = prev ? WINDOW_MAP[prev] ?? null : null;
+      if (outgoingConfig && outgoingConfig.id !== activeWindowId) {
+        setOutgoing(outgoingConfig);
+        if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+        fadeTimerRef.current = setTimeout(() => {
+          setOutgoing(null);
+          fadeTimerRef.current = null;
+        }, MOCK_SWITCH_FADE_MS);
+      } else {
+        setOutgoing(null);
+      }
+      prevActiveIdRef.current = activeWindowId;
+    }
+    return () => {
+      if (fadeTimerRef.current) {
+        clearTimeout(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+      }
+    };
+  }, [activeWindowId]);
 
   return (
     <div
@@ -162,6 +200,16 @@ export const OnboardingMockWindows: React.FC<OnboardingMockWindowsProps> = ({
       data-stage-state={stageState}
       aria-hidden={stageState === "outgoing"}
     >
+      {outgoing && (!active || outgoing.id !== active.id) && (
+        <MockWindow
+          key={`out-${outgoing.id}`}
+          title={outgoing.title}
+          delay={0}
+          fading
+        >
+          {outgoing.content}
+        </MockWindow>
+      )}
       {active && (
         <MockWindow key={active.id} title={active.title} delay={0}>
           {active.content}
