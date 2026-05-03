@@ -23,6 +23,8 @@ import {
   loadLocalPreferences,
   saveLocalPreferences,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
+import { IPC_PET_SEND_MESSAGE } from "../../src/shared/contracts/ipc-channels.js";
+import { runNativeHelper } from "../native-helper.js";
 import {
   applyShortcutRegistration,
   type ShortcutRegistrationResult,
@@ -42,6 +44,7 @@ const DICTATION_SOUND_VOLUME = "0.5";
 const CLIPBOARD_SETTLE_MS = 150;
 const PASTE_SETTLE_MS = 700;
 const IN_APP_START_ACK_TIMEOUT_MS = 150;
+const DICTATION_BRIDGE_TIMEOUT_MS = 2_000;
 
 const execFileAsync = promisify(execFile);
 
@@ -49,6 +52,7 @@ type DictationHandlersOptions = {
   windowManager: WindowManager;
   getOverlayController: () => OverlayWindowController | null;
   getStellaRoot: () => string | null;
+  isPetVisible?: () => boolean;
 };
 
 type DictationMode =
@@ -68,6 +72,22 @@ type DictationSound =
   | "stopRecording"
   | "pasteTranscript"
   | "cancel";
+
+type DictationBridgeProbe = {
+  ok?: boolean;
+  frontmostBundleId?: string;
+  frontmostPid?: number;
+  focusedEditable?: boolean;
+};
+
+type DictationMuteResult = {
+  ok?: boolean;
+  previousVolume?: number;
+  previousMuted?: boolean;
+};
+
+const dictationBridgeIsSupported = () =>
+  process.platform === "darwin" || process.platform === "win32";
 
 const isUsableWindow = (
   window: BrowserWindow | null,
@@ -124,6 +144,17 @@ const issuePasteKeystroke = async () => {
 };
 
 const pasteTextIntoFocusedApp = async (text: string) => {
+  if (dictationBridgeIsSupported()) {
+    const result = await runNativeHelper("dictation_bridge", ["paste", text], {
+      timeout: DICTATION_BRIDGE_TIMEOUT_MS,
+      maxBuffer: 64 * 1024,
+      onError: (error) => {
+        console.debug("[dictation] native paste failed:", error.message);
+      },
+    });
+    if (result) return;
+  }
+
   const previous = readClipboardSnapshot();
   clipboard.writeText(text);
   await sleep(CLIPBOARD_SETTLE_MS);
@@ -133,6 +164,24 @@ const pasteTextIntoFocusedApp = async (text: string) => {
     restoreClipboardSnapshot(previous);
   }
 };
+
+const probeFocusedExternalInput =
+  async (): Promise<DictationBridgeProbe | null> => {
+    if (!dictationBridgeIsSupported()) return null;
+    const raw = await runNativeHelper("dictation_bridge", ["probe"], {
+      timeout: 800,
+      maxBuffer: 64 * 1024,
+      onError: (error) => {
+        console.debug("[dictation] native probe failed:", error.message);
+      },
+    });
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as DictationBridgeProbe;
+    } catch {
+      return null;
+    }
+  };
 
 const soundPath = (sound: DictationSound) => {
   const packagedPath = path.join(
@@ -178,6 +227,70 @@ export const registerDictationHandlers = (
   let activeOverlaySessionId: string | null = null;
   let pendingInAppStartId: string | null = null;
   let activePushToTalk: DictationMode | null = null;
+  let mutedOutputVolume: number | null = null;
+  let mutedOutputPreviousMuted: boolean | null = null;
+  let outputMutePromise: Promise<void> | null = null;
+  let outputMuteActive = false;
+
+  const muteOutputForDictation = () => {
+    if (!dictationBridgeIsSupported()) return;
+    if (mutedOutputVolume !== null) {
+      outputMuteActive = true;
+      return;
+    }
+    outputMuteActive = true;
+    if (outputMutePromise) return;
+    outputMutePromise = runNativeHelper("dictation_bridge", ["mute-output"], {
+      timeout: DICTATION_BRIDGE_TIMEOUT_MS,
+      maxBuffer: 64 * 1024,
+      onError: (error) => {
+        console.debug("[dictation] output mute failed:", error.message);
+      },
+    })
+      .then((raw) => {
+        if (!raw) return;
+        const result = JSON.parse(raw) as DictationMuteResult;
+        if (result.ok === true && typeof result.previousVolume === "number") {
+          mutedOutputVolume = result.previousVolume;
+          mutedOutputPreviousMuted =
+            typeof result.previousMuted === "boolean"
+              ? result.previousMuted
+              : null;
+          if (!outputMuteActive) {
+            restoreOutputAfterDictation();
+          }
+        }
+      })
+      .catch((error) => {
+        console.debug("[dictation] output mute failed:", error);
+      })
+      .finally(() => {
+        outputMutePromise = null;
+      });
+  };
+
+  const restoreOutputAfterDictation = () => {
+    if (!dictationBridgeIsSupported()) return;
+    outputMuteActive = false;
+    const previousVolume = mutedOutputVolume;
+    const previousMuted = mutedOutputPreviousMuted;
+    mutedOutputVolume = null;
+    mutedOutputPreviousMuted = null;
+    if (typeof previousVolume !== "number") return;
+    const args = ["restore-output", String(previousVolume)];
+    if (typeof previousMuted === "boolean") {
+      args.push(previousMuted ? "true" : "false");
+    }
+    runNativeHelper("dictation_bridge", args, {
+      timeout: DICTATION_BRIDGE_TIMEOUT_MS,
+      maxBuffer: 64 * 1024,
+      onError: (error) => {
+        console.debug("[dictation] output restore failed:", error.message);
+      },
+    }).catch((error) => {
+      console.debug("[dictation] output restore failed:", error);
+    });
+  };
 
   const pickFocusedStellaWindow = (): BrowserWindow | null => {
     const focused = BrowserWindow.getFocusedWindow();
@@ -190,6 +303,7 @@ export const registerDictationHandlers = (
   const hideOverlaySession = (sessionId: string) => {
     if (activeOverlaySessionId !== sessionId) return;
     activeOverlaySessionId = null;
+    restoreOutputAfterDictation();
     options.getOverlayController()?.hideDictation();
   };
 
@@ -225,6 +339,7 @@ export const registerDictationHandlers = (
     const position = getOverlayDictationPosition();
     overlay.showDictation(position.x, position.y);
     overlay.send("dictation:overlayStart", { sessionId });
+    muteOutputForDictation();
   };
 
   const startOverlayPushToTalk = (): DictationMode | null => {
@@ -235,12 +350,14 @@ export const registerDictationHandlers = (
     const position = getOverlayDictationPosition();
     overlay.showDictation(position.x, position.y);
     overlay.send("dictation:overlayStart", { sessionId });
+    muteOutputForDictation();
     return { type: "overlay", sessionId };
   };
 
   const startPushToTalk = () => {
     if (activePushToTalk || activeOverlaySessionId) return;
     playDictationSound("startRecording");
+    muteOutputForDictation();
 
     const target = pickFocusedStellaWindow();
     if (target) {
@@ -274,6 +391,7 @@ export const registerDictationHandlers = (
     if (!active) return;
 
     if (durationMs < PUSH_TO_TALK_MIN_DURATION_MS) {
+      restoreOutputAfterDictation();
       if (active.type === "overlay") {
         options
           .getOverlayController()
@@ -287,6 +405,7 @@ export const registerDictationHandlers = (
       return;
     }
 
+    restoreOutputAfterDictation();
     playDictationSound("stopRecording");
     if (active.type === "overlay") {
       options.getOverlayController()?.send("dictation:overlayStop", {
@@ -307,6 +426,7 @@ export const registerDictationHandlers = (
     activePushToTalk = null;
     pendingInAppStartId = null;
     if (!active) return;
+    restoreOutputAfterDictation();
     playDictationSound("cancel");
     if (active.type === "overlay") {
       options
@@ -327,6 +447,7 @@ export const registerDictationHandlers = (
     activePushToTalk = null;
     pendingInAppStartId = null;
     if (!active) return;
+    restoreOutputAfterDictation();
     if (active.type === "overlay") {
       options
         .getOverlayController()
@@ -339,6 +460,19 @@ export const registerDictationHandlers = (
         action: "cancel",
       });
     }
+  };
+
+  const sendTranscriptToStella = (text: string) => {
+    const fullWindow = windowManager.getFullWindow();
+    if (!fullWindow || fullWindow.isDestroyed()) return false;
+    fullWindow.webContents.send(IPC_PET_SEND_MESSAGE, text);
+    return true;
+  };
+
+  const shouldRouteExternalDictationToStella = async () => {
+    if (!options.isPetVisible?.()) return false;
+    const probe = await probeFocusedExternalInput();
+    return probe?.ok === true && probe.focusedEditable !== true;
   };
 
   const toggleDictation = () => {
@@ -483,7 +617,7 @@ export const registerDictationHandlers = (
 
   ipcMain.on(
     "dictation:overlayCompleted",
-    (
+    async (
       _event,
       payload: {
         sessionId: string;
@@ -495,6 +629,9 @@ export const registerDictationHandlers = (
       const text = payload.text.trim();
       if (!text) return;
       playDictationSound("pasteTranscript");
+      if (await shouldRouteExternalDictationToStella()) {
+        if (sendTranscriptToStella(text)) return;
+      }
       pasteTextIntoFocusedApp(`${text} `).catch((error) => {
         console.warn("[dictation] OS-wide paste failed:", error);
       });
@@ -517,7 +654,9 @@ export const registerDictationHandlers = (
   );
 
   return {
-    isEnabled: () => currentShortcut === PUSH_TO_TALK_DICTATION_SHORTCUT,
+    isEnabled: () =>
+      dictationBridgeIsSupported() &&
+      currentShortcut === PUSH_TO_TALK_DICTATION_SHORTCUT,
     start: startPushToTalk,
     stop: stopPushToTalk,
     cancel: cancelPushToTalk,
