@@ -442,6 +442,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
       }>,
+    getCoreMemory: () =>
+      ipcRenderer.invoke("voice:getCoreMemory") as Promise<string>,
     getRuntimeState: () =>
       ipcRenderer.invoke("voice:getRuntimeState") as Promise<{
         sessionState:
@@ -852,6 +854,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
         IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
         enabled,
       ) as Promise<{ enabled: boolean }>,
+    getPersonalityVoice: () =>
+      ipcRenderer.invoke("preferences:getPersonalityVoice") as Promise<
+        string | null
+      >,
+    setPersonalityVoice: (voiceId: string) =>
+      ipcRenderer.invoke("preferences:setPersonalityVoice", voiceId) as Promise<{
+        ok: boolean;
+        voiceId: string;
+      }>,
     getBackupStatus: () => ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),
     backUpNow: () => ipcRenderer.invoke(IPC_BACKUP_RUN_NOW),
     listBackups: (limit?: number) =>
@@ -918,18 +929,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getLlmCredentialRoutingPreference: () =>
       ipcRenderer.invoke("llmCredentials:getRoutingPreference") as Promise<{
         enabled: boolean;
-        provider: string;
       }>,
     setLlmCredentialRoutingPreference: (payload: {
       enabled: boolean;
-      provider: string;
     }) =>
       ipcRenderer.invoke(
         "llmCredentials:setRoutingPreference",
         payload,
       ) as Promise<{
         enabled: boolean;
-        provider: string;
       }>,
     saveLlmCredential: (payload: {
       provider: string;
@@ -1191,6 +1199,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("schedule:listConversationEvents", payload),
     getConversationEventCount: (payload: { conversationId: string }) =>
       ipcRenderer.invoke("schedule:getConversationEventCount", payload),
+    runCronJob: (payload: { jobId: string }) =>
+      ipcRenderer.invoke("schedule:runCronJob", payload),
+    removeCronJob: (payload: { jobId: string }) =>
+      ipcRenderer.invoke("schedule:removeCronJob", payload),
+    updateCronJob: (payload: { jobId: string; patch: Record<string, unknown> }) =>
+      ipcRenderer.invoke("schedule:updateCronJob", payload),
+    upsertHeartbeat: (payload: Record<string, unknown>) =>
+      ipcRenderer.invoke("schedule:upsertHeartbeat", payload),
+    runHeartbeat: (payload: { conversationId: string }) =>
+      ipcRenderer.invoke("schedule:runHeartbeat", payload),
     onUpdated: onIpcSignal("schedule:updated"),
   },
 
@@ -1224,6 +1242,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
       messageId: string;
       releaseNumber: number;
     }) => ipcRenderer.invoke("store:markBlueprintPublished", payload),
+    publishBlueprint: (payload: {
+      messageId: string;
+      packageId: string;
+      asUpdate: boolean;
+      displayName?: string;
+      description?: string;
+      category?: string;
+      manifest: Record<string, unknown>;
+      releaseNotes?: string;
+    }) => ipcRenderer.invoke("store:publishBlueprint", payload),
     uninstallPackage: (packageId: string) =>
       ipcRenderer.invoke("store:uninstallMod", { packageId }),
     listConnectors: () => ipcRenderer.invoke("store:listConnectors"),
