@@ -126,6 +126,41 @@ export type LocalHeartbeatUpsertInput = {
   targetDeviceId?: string
 }
 
+/**
+ * Structured side-channel returned by the `Schedule` orchestrator tool
+ * alongside its plain-text summary. The chat UI uses this to render the
+ * inline "Scheduled" receipt chip and link it back to the affected
+ * cron / heartbeat rows.
+ */
+export type ScheduleToolAffectedRef = {
+  kind: 'cron' | 'heartbeat'
+  id: string
+  conversationId: string
+  /** Display label: cron `name` or "Check-in" / first ~60 chars of heartbeat prompt. */
+  name: string
+  enabled: boolean
+  nextRunAtMs: number
+}
+
+export type ScheduleToolChangeSet = {
+  added: Array<{ kind: 'cron' | 'heartbeat'; id: string }>
+  updated: Array<{ kind: 'cron' | 'heartbeat'; id: string }>
+  removed: Array<{ kind: 'cron' | 'heartbeat'; id: string }>
+}
+
+export type ScheduleToolDetails = {
+  schedule: {
+    /**
+     * Snapshot of every entry that was added or updated by this run, taken
+     * after the schedule subagent returned. The chip uses this to render
+     * one row per affected schedule with current `name` / `nextRunAtMs`.
+     */
+    affected: ScheduleToolAffectedRef[]
+    /** Categorized id-only deltas. `removed` is reported here only. */
+    changes: ScheduleToolChangeSet
+  }
+}
+
 export type LocalAutomationRunResult =
   | {
       status: 'ok'

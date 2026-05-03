@@ -9,6 +9,7 @@ import {
   isAgentCompletedEvent,
 } from '@/app/chat/lib/event-transforms'
 import { isOfficePreviewRef } from '@/shared/contracts/office-preview'
+import type { ScheduleToolAffectedRef } from '../../../../runtime/kernel/shared/scheduling'
 import { deriveTurnResource } from '@/app/chat/lib/derive-turn-resource'
 import { filterEventsForUiDisplay } from '@/app/chat/lib/message-display'
 import { isOrchestratorChatMessagePayload } from '@/app/chat/emotes/message-source'
@@ -66,6 +67,50 @@ const getOfficePreviewRef = (events: EventRecord[]) => {
     if (event.type !== 'tool_result') continue
     const payload = event.payload as { officePreviewRef?: unknown } | undefined
     if (isOfficePreviewRef(payload?.officePreviewRef)) return payload.officePreviewRef
+  }
+  return undefined
+}
+
+/**
+ * Pick out the latest `Schedule` tool_result on this assistant turn and
+ * lift its structured `details.schedule.affected` payload (see
+ * `ScheduleToolDetails` in `runtime/kernel/shared/scheduling.ts`). Returns
+ * `undefined` for turns that didn't go through the Schedule tool, or
+ * Schedule turns whose subagent reported "no_change".
+ */
+const getScheduleReceipt = (
+  events: EventRecord[],
+):
+  | { affected: ScheduleToolAffectedRef[]; summary?: string }
+  | undefined => {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event.type !== 'tool_result') continue
+    const payload = event.payload as
+      | {
+          toolName?: string
+          error?: string
+          schedule?: { affected?: unknown }
+          resultPreview?: unknown
+          result?: unknown
+        }
+      | undefined
+    if (!payload || payload.toolName !== 'Schedule') continue
+    if (typeof payload.error === 'string' && payload.error) return undefined
+    const schedule = payload.schedule
+    if (!schedule || typeof schedule !== 'object') continue
+    const affected = (schedule as { affected?: unknown }).affected
+    if (!Array.isArray(affected) || affected.length === 0) continue
+    const summary =
+      typeof payload.resultPreview === 'string' && payload.resultPreview.trim()
+        ? payload.resultPreview.trim()
+        : typeof payload.result === 'string' && payload.result.trim()
+          ? payload.result.trim()
+          : undefined
+    return {
+      affected: affected as ScheduleToolAffectedRef[],
+      ...(summary ? { summary } : {}),
+    }
   }
   return undefined
 }
@@ -435,6 +480,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             : {}),
           ...(resourcePayload ? { resourcePayload } : {}),
           ...(selfModApplied ? { selfModApplied } : {}),
+          ...(getScheduleReceipt(toolEvents)
+            ? { scheduleReceipt: getScheduleReceipt(toolEvents) }
+            : {}),
           ...(askQuestionState ? { askQuestion: askQuestionState } : {}),
         }
         computed.push(row)

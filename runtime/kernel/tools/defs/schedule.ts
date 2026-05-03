@@ -49,7 +49,12 @@ export const createScheduleTool = (
     const denied = requireOrchestrator("Schedule", context);
     if (denied) return denied;
     try {
-      return await handleSchedule(options.agentApi, args, context);
+      return await handleSchedule(
+        options.agentApi,
+        options.scheduleApi,
+        args,
+        context,
+      );
     } catch (error) {
       return { error: (error as Error).message };
     }

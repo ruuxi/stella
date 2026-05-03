@@ -878,6 +878,31 @@ export class RuntimeClientAdapter {
     return this.client.listHeartbeats();
   }
 
+  runCronJob(jobId: string) {
+    return this.client.runCronJob(jobId);
+  }
+
+  removeCronJob(jobId: string) {
+    return this.client.removeCronJob(jobId);
+  }
+
+  updateCronJob(
+    jobId: string,
+    patch: import("../../runtime/kernel/shared/scheduling.js").LocalCronJobUpdatePatch,
+  ) {
+    return this.client.updateCronJob(jobId, patch);
+  }
+
+  upsertHeartbeat(
+    input: import("../../runtime/kernel/shared/scheduling.js").LocalHeartbeatUpsertInput,
+  ) {
+    return this.client.upsertHeartbeat(input);
+  }
+
+  runHeartbeat(conversationId: string) {
+    return this.client.runHeartbeat(conversationId);
+  }
+
   listConversationEvents(args: { conversationId: string; maxItems?: number }) {
     return this.client.listConversationEvents(args);
   }

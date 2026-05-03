@@ -1,4 +1,5 @@
 import type { ConvexClient } from "convex/browser";
+import type { Api, Model } from "../../ai/types.js";
 import type { AgentMessage } from "../agent-core/types.js";
 import type {
   RuntimeEndEvent,
@@ -297,7 +298,10 @@ export type RunnerContext = {
   ensureGoogleWorkspaceToolsLoaded: () => Promise<void>;
   hookEmitter: HookEmitter;
   toolHost: {
-    getToolCatalog: (agentType?: string) => ToolMetadata[];
+    getToolCatalog: (
+      agentType?: string,
+      options?: { model?: Pick<Model<Api>, "api" | "provider" | "id" | "name"> },
+    ) => ToolMetadata[];
     executeTool: (
       toolName: string,
       toolArgs: Record<string, unknown>,

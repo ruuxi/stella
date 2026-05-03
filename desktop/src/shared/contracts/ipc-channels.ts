@@ -260,6 +260,12 @@ export const IPC_SCHEDULE_LIST_CONVERSATION_EVENTS =
   "schedule:listConversationEvents" as const;
 export const IPC_SCHEDULE_GET_EVENT_COUNT =
   "schedule:getConversationEventCount" as const;
+export const IPC_SCHEDULE_RUN_CRON_JOB = "schedule:runCronJob" as const;
+export const IPC_SCHEDULE_REMOVE_CRON_JOB = "schedule:removeCronJob" as const;
+export const IPC_SCHEDULE_UPDATE_CRON_JOB = "schedule:updateCronJob" as const;
+export const IPC_SCHEDULE_UPSERT_HEARTBEAT =
+  "schedule:upsertHeartbeat" as const;
+export const IPC_SCHEDULE_RUN_HEARTBEAT = "schedule:runHeartbeat" as const;
 export const IPC_SCHEDULE_UPDATED = "schedule:updated" as const;
 
 // ── Store ───────────────────────────────────────────────────────────────────

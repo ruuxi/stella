@@ -1190,6 +1190,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("schedule:listConversationEvents", payload),
     getConversationEventCount: (payload: { conversationId: string }) =>
       ipcRenderer.invoke("schedule:getConversationEventCount", payload),
+    runCronJob: (payload: { jobId: string }) =>
+      ipcRenderer.invoke("schedule:runCronJob", payload),
+    removeCronJob: (payload: { jobId: string }) =>
+      ipcRenderer.invoke("schedule:removeCronJob", payload),
+    updateCronJob: (payload: {
+      jobId: string;
+      patch: import(
+        "../../runtime/kernel/shared/scheduling.js"
+      ).LocalCronJobUpdatePatch;
+    }) => ipcRenderer.invoke("schedule:updateCronJob", payload),
+    upsertHeartbeat: (
+      payload: import(
+        "../../runtime/kernel/shared/scheduling.js"
+      ).LocalHeartbeatUpsertInput,
+    ) => ipcRenderer.invoke("schedule:upsertHeartbeat", payload),
+    runHeartbeat: (payload: { conversationId: string }) =>
+      ipcRenderer.invoke("schedule:runHeartbeat", payload),
     onUpdated: onIpcSignal("schedule:updated"),
   },
 
@@ -1211,6 +1228,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
       displayName: string;
       blueprintMarkdown: string;
     }) => ipcRenderer.invoke("store:installFromBlueprint", payload),
+    publishBlueprint: (payload: {
+      messageId: string;
+      packageId: string;
+      asUpdate: boolean;
+      displayName?: string;
+      description?: string;
+      category?:
+        | "apps-games"
+        | "productivity"
+        | "customization"
+        | "skills-agents"
+        | "integrations"
+        | "other";
+      manifest: Record<string, unknown>;
+      releaseNotes?: string;
+    }) => ipcRenderer.invoke("store:publishBlueprint", payload),
     getThread: () => ipcRenderer.invoke("store:getThread"),
     sendThreadMessage: (payload: {
       text: string;

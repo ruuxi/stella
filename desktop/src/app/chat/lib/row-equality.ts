@@ -93,6 +93,25 @@ const selfModAppliedEqual = (
   return true;
 };
 
+const scheduleReceiptEqual = (
+  a: AssistantRowViewModel["scheduleReceipt"],
+  b: AssistantRowViewModel["scheduleReceipt"],
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return a === b;
+  if ((a.summary ?? null) !== (b.summary ?? null)) return false;
+  if (a.affected.length !== b.affected.length) return false;
+  for (let i = 0; i < a.affected.length; i += 1) {
+    const left = a.affected[i];
+    const right = b.affected[i];
+    if (left.kind !== right.kind) return false;
+    if (left.id !== right.id) return false;
+    if (left.enabled !== right.enabled) return false;
+    if (left.nextRunAtMs !== right.nextRunAtMs) return false;
+  }
+  return true;
+};
+
 const askQuestionPayloadEqual = (
   a: AskQuestionState | undefined,
   b: AskQuestionState | undefined,
@@ -235,6 +254,7 @@ const assistantRowEqual = (
     (b.officePreviewRef?.sessionId ?? null) &&
   resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
+  scheduleReceiptEqual(a.scheduleReceipt, b.scheduleReceipt) &&
   askQuestionPayloadEqual(a.askQuestion, b.askQuestion) &&
   // Compare a stable key for the custom slot (the ReactNode itself
   // changes identity on each render of the Store thread). Surfaces

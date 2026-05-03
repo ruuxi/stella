@@ -1,4 +1,11 @@
 import type {
+  LocalCronJobRecord,
+  LocalHeartbeatConfigRecord,
+  ScheduleToolAffectedRef,
+  ScheduleToolChangeSet,
+  ScheduleToolDetails,
+} from "../shared/scheduling.js";
+import type {
   ScheduleToolApi,
   AgentToolApi,
   ToolContext,
@@ -63,14 +70,147 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
+/**
+ * Best-effort schedule snapshot scoped to a single conversation. Heartbeat
+ * is per-conversation (`getHeartbeatConfig`); crons are global so we filter
+ * by `conversationId` here.
+ *
+ * Failures resolve to an empty snapshot — the schedule subagent has its own
+ * authoritative path to persist changes; this helper exists only to power
+ * the structured `details` side-channel for the inline receipt chip.
+ */
+const snapshotConversationSchedules = async (
+  api: ScheduleToolApi | undefined,
+  conversationId: string,
+): Promise<{
+  crons: Map<string, LocalCronJobRecord>;
+  heartbeat: LocalHeartbeatConfigRecord | null;
+}> => {
+  if (!api) return { crons: new Map(), heartbeat: null };
+  try {
+    const [allCrons, heartbeat] = await Promise.all([
+      api.listCronJobs(),
+      api.getHeartbeatConfig(conversationId),
+    ]);
+    const crons = new Map<string, LocalCronJobRecord>();
+    for (const cron of allCrons) {
+      if (cron.conversationId === conversationId) {
+        crons.set(cron.id, cron);
+      }
+    }
+    return { crons, heartbeat };
+  } catch {
+    return { crons: new Map(), heartbeat: null };
+  }
+};
+
+const heartbeatDisplayName = (record: LocalHeartbeatConfigRecord): string => {
+  const prompt = record.prompt?.trim();
+  if (!prompt) return "Check-in";
+  return prompt.length > 60 ? `${prompt.slice(0, 60)}…` : prompt;
+};
+
+const cronToAffected = (record: LocalCronJobRecord): ScheduleToolAffectedRef => ({
+  kind: "cron",
+  id: record.id,
+  conversationId: record.conversationId,
+  name: record.name?.trim() || "Scheduled task",
+  enabled: record.enabled,
+  nextRunAtMs: record.nextRunAtMs,
+});
+
+const heartbeatToAffected = (
+  record: LocalHeartbeatConfigRecord,
+): ScheduleToolAffectedRef => ({
+  kind: "heartbeat",
+  id: record.id,
+  conversationId: record.conversationId,
+  name: heartbeatDisplayName(record),
+  enabled: record.enabled,
+  nextRunAtMs: record.nextRunAtMs,
+});
+
+/**
+ * Diff a before/after snapshot of one conversation's schedules into the
+ * structured `ScheduleToolDetails` shape consumed by the chat UI's inline
+ * receipt chip. `updated` is detected via `updatedAt` divergence rather
+ * than deep equality — the scheduler bumps `updatedAt` on every mutation
+ * and skips it on no-op writes.
+ */
+const buildScheduleDetails = (
+  before: {
+    crons: Map<string, LocalCronJobRecord>;
+    heartbeat: LocalHeartbeatConfigRecord | null;
+  },
+  after: {
+    crons: Map<string, LocalCronJobRecord>;
+    heartbeat: LocalHeartbeatConfigRecord | null;
+  },
+): ScheduleToolDetails => {
+  const affected: ScheduleToolAffectedRef[] = [];
+  const changes: ScheduleToolChangeSet = {
+    added: [],
+    updated: [],
+    removed: [],
+  };
+
+  for (const [id, cron] of after.crons) {
+    const prior = before.crons.get(id);
+    if (!prior) {
+      changes.added.push({ kind: "cron", id });
+      affected.push(cronToAffected(cron));
+    } else if (cron.updatedAt > prior.updatedAt) {
+      changes.updated.push({ kind: "cron", id });
+      affected.push(cronToAffected(cron));
+    }
+  }
+  for (const id of before.crons.keys()) {
+    if (!after.crons.has(id)) {
+      changes.removed.push({ kind: "cron", id });
+    }
+  }
+
+  if (after.heartbeat && !before.heartbeat) {
+    changes.added.push({ kind: "heartbeat", id: after.heartbeat.id });
+    affected.push(heartbeatToAffected(after.heartbeat));
+  } else if (after.heartbeat && before.heartbeat) {
+    if (after.heartbeat.updatedAt > before.heartbeat.updatedAt) {
+      changes.updated.push({ kind: "heartbeat", id: after.heartbeat.id });
+      affected.push(heartbeatToAffected(after.heartbeat));
+    }
+  } else if (!after.heartbeat && before.heartbeat) {
+    changes.removed.push({ kind: "heartbeat", id: before.heartbeat.id });
+  }
+
+  affected.sort((a, b) => a.nextRunAtMs - b.nextRunAtMs);
+  return { schedule: { affected, changes } };
+};
+
+const isEmptyDetails = (details: ScheduleToolDetails): boolean =>
+  details.schedule.affected.length === 0 &&
+  details.schedule.changes.added.length === 0 &&
+  details.schedule.changes.updated.length === 0 &&
+  details.schedule.changes.removed.length === 0;
+
 export const handleSchedule = async (
   agentApi: AgentToolApi | undefined,
+  scheduleApi: ScheduleToolApi | undefined,
   args: Record<string, unknown>,
   context: ToolContext,
 ): Promise<ToolResult> => {
   const api = requireAgentApi(agentApi);
   const prompt = getSchedulePrompt(args);
   const nextAgentDepth = Math.max(0, context.agentDepth ?? 0) + 1;
+
+  // Snapshot before so the post-run diff identifies exactly which schedules
+  // the subagent created / updated / removed. Failures here resolve to an
+  // empty snapshot, in which case the diff just reports everything visible
+  // afterwards as `added`.
+  const before = await snapshotConversationSchedules(
+    scheduleApi,
+    context.conversationId,
+  );
+
   const created = await api.createAgent({
     conversationId: context.conversationId,
     description: "Apply local scheduling changes",
@@ -92,7 +232,19 @@ export const handleSchedule = async (
       throw new Error(`Schedule task not found: ${created.threadId}`);
     }
     if (snapshot.status === "completed") {
-      return { result: typeof snapshot.result === "string" ? snapshot.result : "Scheduling updated." };
+      const summary =
+        typeof snapshot.result === "string" && snapshot.result.trim().length > 0
+          ? snapshot.result
+          : "Scheduling updated.";
+      const after = await snapshotConversationSchedules(
+        scheduleApi,
+        context.conversationId,
+      );
+      const details = buildScheduleDetails(before, after);
+      return {
+        result: summary,
+        ...(isEmptyDetails(details) ? {} : { details }),
+      };
     }
     if (snapshot.status === "error" || snapshot.status === "canceled") {
       throw new Error(snapshot.error || "Scheduling request failed.");
@@ -100,7 +252,10 @@ export const handleSchedule = async (
     await sleep(SCHEDULE_TASK_POLL_MS);
   }
 
-  await api.cancelAgent(created.threadId, "Schedule tool timed out waiting for completion.");
+  await api.cancelAgent(
+    created.threadId,
+    "Schedule tool timed out waiting for completion.",
+  );
   throw new Error("Scheduling request timed out.");
 };
 
