@@ -491,6 +491,14 @@ function useOverlayDictation() {
             }
           },
         })
+        .then(() => {
+          if (
+            sessionRef.current !== session ||
+            sessionIdRef.current !== sessionId
+          ) {
+            void session.cancel().catch(() => undefined);
+          }
+        })
         .catch((error) => {
           window.electronAPI?.dictation?.overlayFailed({
             sessionId,
