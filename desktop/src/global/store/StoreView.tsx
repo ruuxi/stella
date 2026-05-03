@@ -45,6 +45,7 @@ import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
 import "@/global/integrations/credential-modal.css"
 import { FashionTab } from "./fashion/FashionTab"
 import { PetsApp } from "@/app/pets/App"
+import { EmojiStorePage } from "./emojis/EmojiStorePage"
 import { ShareAddonDialog } from "./ShareAddonDialog"
 import {
   DEFAULT_STORE_TAB,
@@ -2003,9 +2004,9 @@ export function StoreView({
     </>
   )
 
-  // Fashion + Pets are full-bleed — they own the canvas and bring
+  // Fashion + Pets + Emojis are full-bleed — they own the canvas and bring
   // their own scrolling/grid layout.
-  const isFullBleedTab = tab === "fashion" || tab === "pets"
+  const isFullBleedTab = tab === "fashion" || tab === "pets" || tab === "emojis"
 
   return (
     <div className="store-root" data-tab={selectedPackageId ? "discover" : tab}>
@@ -2019,7 +2020,13 @@ export function StoreView({
         </button>
       ) : null}
       {isFullBleedTab && !selectedPackageId ? (
-        tab === "pets" ? <PetsApp /> : <FashionTab />
+        tab === "pets" ? (
+          <PetsApp />
+        ) : tab === "emojis" ? (
+          <EmojiStorePage />
+        ) : (
+          <FashionTab />
+        )
       ) : (
         <div className="store-scroll">
           {selectedPackageId ? (
