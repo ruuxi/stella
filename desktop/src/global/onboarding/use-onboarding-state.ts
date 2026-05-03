@@ -1,5 +1,9 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
+import {
+  clearPostOnboardingHints,
+  seedPostOnboardingHints,
+} from "./post-onboarding-hints";
 
 const ONBOARDING_COMPLETE_KEY = "stella-onboarding-complete";
 /**
@@ -109,6 +113,9 @@ export function useOnboardingState() {
   const complete = useCallback(() => {
     localStorage.setItem(ONBOARDING_COMPLETE_KEY, "true");
     writeOnboardingPhase(null);
+    // Seed the one-time post-onboarding sidebar hints (Connect / Store).
+    // Idempotent — re-completing onboarding without a reset is a no-op.
+    seedPostOnboardingHints();
     window.dispatchEvent(new Event(ONBOARDING_COMPLETE_EVENT));
     notifyAll();
   }, []);
@@ -116,6 +123,9 @@ export function useOnboardingState() {
   const reset = useCallback(() => {
     localStorage.removeItem(ONBOARDING_COMPLETE_KEY);
     writeOnboardingPhase(null);
+    // Reset clears the seeded marker too so the next completion re-shows
+    // the post-onboarding hints, matching brand-new-install behavior.
+    clearPostOnboardingHints();
     window.dispatchEvent(new Event(ONBOARDING_COMPLETE_EVENT));
     notifyAll();
   }, []);

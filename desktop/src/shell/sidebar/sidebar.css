@@ -264,6 +264,22 @@
   pointer-events: none;
 }
 
+/* One-shot post-onboarding nudge dot — same anchor as the unread badge
+   but text-less and slightly smaller, so it reads as "look here" rather
+   than "you have N items". Suppressed automatically when a numeric
+   badge is also present so the two never stack. */
+.sidebar-nav-hint-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px var(--surface-base, var(--background));
+  pointer-events: none;
+}
+
 .sidebar-nav-item:hover .sidebar-nav-icon {
   color: var(--text-strong);
 }
@@ -419,6 +435,7 @@
 }
 
 .sidebar-actions-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -431,6 +448,21 @@
   color: var(--text-weak);
   cursor: default;
   transition: background 0.15s ease, color 0.15s ease;
+}
+
+/* Mirror of `.sidebar-nav-hint-dot` for the actions-bar buttons (Connect).
+   Position and tone match the nav dots so the post-onboarding nudges
+   read as a single visual language across the sidebar. */
+.sidebar-actions-btn-hint-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px var(--surface-base, var(--background));
+  pointer-events: none;
 }
 
 .sidebar-actions-btn:hover {
