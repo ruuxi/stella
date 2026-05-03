@@ -122,7 +122,6 @@ export const IPC_DICTATION_TOGGLE = "dictation:toggle" as const;
 export const IPC_DICTATION_SET_SHORTCUT = "dictation:setShortcut" as const;
 export const IPC_DICTATION_GET_SHORTCUT = "dictation:getShortcut" as const;
 export const IPC_DICTATION_TRIGGER = "dictation:trigger" as const;
-export const IPC_DICTATION_OVERLAY_CANCEL = "dictation:overlayCancel" as const;
 
 // ── Agent ───────────────────────────────────────────────────────────────────
 
@@ -265,12 +264,6 @@ export const IPC_SCHEDULE_LIST_CONVERSATION_EVENTS =
   "schedule:listConversationEvents" as const;
 export const IPC_SCHEDULE_GET_EVENT_COUNT =
   "schedule:getConversationEventCount" as const;
-export const IPC_SCHEDULE_RUN_CRON_JOB = "schedule:runCronJob" as const;
-export const IPC_SCHEDULE_REMOVE_CRON_JOB = "schedule:removeCronJob" as const;
-export const IPC_SCHEDULE_UPDATE_CRON_JOB = "schedule:updateCronJob" as const;
-export const IPC_SCHEDULE_UPSERT_HEARTBEAT =
-  "schedule:upsertHeartbeat" as const;
-export const IPC_SCHEDULE_RUN_HEARTBEAT = "schedule:runHeartbeat" as const;
 export const IPC_SCHEDULE_UPDATED = "schedule:updated" as const;
 
 // ── Store ───────────────────────────────────────────────────────────────────
@@ -365,6 +358,13 @@ export const IPC_PET_SET_COMPOSER_ACTIVE = "pet:setComposerActive" as const;
  *  through `uiStateService.activateVoiceRtc` — same path the radial
  *  dial uses — so all the existing voice-overlay plumbing applies. */
 export const IPC_PET_REQUEST_VOICE = "pet:requestVoice" as const;
+/** Renderer-driven mouse passthrough toggle. The pet window is small
+ *  but most of its rectangle is transparent space around the sprite +
+ *  action arc; we keep `setIgnoreMouseEvents(true, { forward: true })`
+ *  by default and let the renderer flip it to `false` only while the
+ *  cursor is over a visibly-interactive element. Without this empty
+ *  pixels of the pet window block clicks to whatever app is below. */
+export const IPC_PET_SET_INTERACTIVE = "pet:setInteractive" as const;
 export const IPC_PET_STATUS = "pet:status" as const;
 export const IPC_PET_OPEN_CHAT = "pet:openChat" as const;
 export const IPC_PET_SEND_MESSAGE = "pet:sendMessage" as const;

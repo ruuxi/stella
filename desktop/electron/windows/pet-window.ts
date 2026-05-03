@@ -11,25 +11,21 @@ type PetWindowControllerOptions = {
 }
 
 /**
- * Width/height of the pet window in CSS pixels.
- *
- * The window is intentionally sized to fit BOTH the resting sprite
- * (right-aligned, ~96px + action arc + bubble) AND the inline chat
- * composer (380px popover to its left) at the same time, and we never
- * resize it. Resizing a transparent macOS BrowserWindow causes the
- * existing IOSurface to be visibly mis-positioned for one compositor
- * frame before the renderer can repaint; for the pet that surfaces as
- * a brief sideways jump of the sprite when the composer closes. Holding
- * the bounds steady at the composer footprint sidesteps that entirely.
- *
- * The empty space to the left of the sprite while the composer is
- * closed is fully transparent. macOS passes clicks through transparent
- * pixels of `transparent: true` windows automatically, so the wider
- * footprint does not start eating clicks in the surrounding screen
- * area.
+ * Width/height of the pet window in CSS pixels. Sized to comfortably
+ * contain the 96px sprite plus the action arc fanning out to its left
+ * and the status bubble floating above it. Anything bigger would
+ * needlessly block clicks in surrounding screen pixels; anything
+ * smaller would clip the bubble or arc.
  */
-const PET_WINDOW_WIDTH = 540
+const PET_WINDOW_WIDTH = 280
 const PET_WINDOW_HEIGHT = 240
+/**
+ * Wider footprint the window grows into while the inline chat
+ * composer is open. The sprite stays anchored to the right side so it
+ * doesn't visually jump; the new space appears on the left where the
+ * composer renders.
+ */
+const PET_WINDOW_COMPOSER_WIDTH = 540
 
 /** Margin from the active display edge when the pet has never been moved. */
 const DEFAULT_EDGE_MARGIN = 24
@@ -46,7 +42,7 @@ const pickDefaultPosition = () => {
 }
 
 /**
- * Dedicated `BrowserWindow` that hosts the floating pet companion.
+ * Dedicated tiny `BrowserWindow` that hosts the floating pet companion.
  *
  * The pet was originally rendered inside the screen-spanning unified
  * overlay window, but that approach forced us to play games with
@@ -55,11 +51,9 @@ const pickDefaultPosition = () => {
  * across focus changes / window respans, which produced "pet blocks
  * Stella's clicks even when the cursor is far from the pet".
  *
- * Giving the pet its own dedicated window solves that cleanly: clicks
- * on opaque pixels (the sprite, action arc, bubble, composer popover)
- * go to the pet, and the surrounding fully-transparent area passes
- * clicks through to whatever app is below — automatic on macOS for
- * `transparent: true` windows, no toggling required.
+ * Giving the pet its own small window solves that cleanly: the window's
+ * bounds *are* the hit zone. Clicks inside the bounds go to the pet,
+ * clicks outside go to whatever app is below — no toggling required.
  */
 class PetWindow {
   private window: BrowserWindow | null = null
@@ -173,6 +167,15 @@ class PetWindow {
       event.preventDefault()
     }
 
+    // The pet window is mostly transparent — the sprite, action arc, and
+    // bubble cover only a fraction of the 280×240 rect. Default to
+    // mouse-passthrough so clicks in the empty pixels go to whatever
+    // app is below. The renderer flips this off via `setInteractive`
+    // when the cursor moves over a visible interactive element.
+    // `forward: true` keeps mousemove events flowing to the renderer
+    // while ignored, which is what makes that hover detection work.
+    window.setIgnoreMouseEvents(true, { forward: true })
+
     window.once('ready-to-show', this.readyToShowHandler)
     window.webContents.once('did-finish-load', this.didFinishLoadHandler)
     window.on('moved', this.movedHandler)
@@ -210,32 +213,92 @@ class PetWindow {
     if (!this.window || this.window.isDestroyed()) return
     const rounded = { x: Math.round(x), y: Math.round(y) }
     this.position = rounded
-    this.window.setBounds({
-      x: rounded.x,
-      y: rounded.y,
-      width: PET_WINDOW_WIDTH,
-      height: PET_WINDOW_HEIGHT,
-    })
+    const width = this.composerActive
+      ? PET_WINDOW_COMPOSER_WIDTH
+      : PET_WINDOW_WIDTH
+    this.window.setBounds(
+      {
+        x: rounded.x,
+        y: rounded.y,
+        width,
+        height: PET_WINDOW_HEIGHT,
+      },
+      false,
+    )
   }
 
   /**
-   * Toggle the inline chat composer's input affordance. The window's
-   * bounds never change (see the constant comment) — opening the
-   * composer just flips `focusable: true` so the textarea can receive
-   * keystrokes, brings the window forward without hijacking the user's
-   * current Space, and reverts to the resting non-focusable state on
-   * close so the pet never steals focus from the user's active app.
+   * Toggle the inline chat composer footprint. We grow the window
+   * leftward (anchored to its current right edge so the sprite stays
+   * put visually) and flip `focusable` so the textarea can receive
+   * keystrokes — the resting pet window is non-focusable so it never
+   * steals focus from the user's active app.
    */
   setComposerActive(active: boolean) {
     if (!this.window || this.window.isDestroyed()) return
     if (active === this.composerActive) return
     this.composerActive = active
+    const bounds = this.window.getBounds()
+    const targetWidth = active ? PET_WINDOW_COMPOSER_WIDTH : PET_WINDOW_WIDTH
+    // Anchor by the existing right edge so the sprite doesn't jump.
+    // `Math.round` keeps the new x integer-aligned — Electron rounds
+    // bounds internally, so passing rationals (e.g. after a drag mid-
+    // float) can land us on a different pixel column than the right
+    // edge we computed from. `animate: false` is the default, but we
+    // pass it explicitly to make sure macOS never decides to slide
+    // the window into its new size on close.
+    const rightEdge = bounds.x + bounds.width
+    const nextX = Math.round(rightEdge - targetWidth)
+    if (active) {
+      // Toggle mouse-passthrough off BEFORE the resize so the click
+      // that lands on the textarea right after open is honored on the
+      // first frame. Order matters here because Electron processes
+      // setIgnoreMouseEvents asynchronously on macOS — flipping after
+      // the resize would leave a 1–2 frame window where the composer
+      // is visible but unclickable.
+      this.window.setIgnoreMouseEvents(false)
+    }
+    this.window.setBounds(
+      {
+        x: nextX,
+        y: bounds.y,
+        width: targetWidth,
+        height: PET_WINDOW_HEIGHT,
+      },
+      false,
+    )
+    this.position = { x: nextX, y: bounds.y }
     this.window.setFocusable(active)
     if (active) {
-      this.window.show()
+      // Pull focus so the textarea picks up keystrokes. We avoid
+      // `show()` / `focus()` calls on close because they were the
+      // source of an apparent reposition on the close transition —
+      // `setAlwaysOnTop('floating')` keeps the window on top either
+      // way, so we don't need to re-raise it.
       this.window.focus()
     } else {
-      this.window.blur()
+      // Restore passthrough AFTER the resize so the renderer-driven
+      // mousemove hit-test can immediately re-flip it back to
+      // interactive if the cursor is still over the sprite. Doing it
+      // before the resize was visually indistinguishable from a
+      // reposition because the window's tracking area got rebuilt
+      // mid-shrink on macOS.
+      this.window.setIgnoreMouseEvents(true, { forward: true })
+    }
+  }
+
+  /** Renderer-driven mouse passthrough toggle. Active means clicks land
+   *  on the pet; inactive means clicks pass through to whatever app is
+   *  below. While the composer is open we keep the window fully
+   *  interactive (the composer needs every click), so this is a no-op
+   *  in that mode. */
+  setInteractive(active: boolean) {
+    if (!this.window || this.window.isDestroyed()) return
+    if (this.composerActive) return
+    if (active) {
+      this.window.setIgnoreMouseEvents(false)
+    } else {
+      this.window.setIgnoreMouseEvents(true, { forward: true })
     }
   }
 
@@ -319,6 +382,11 @@ export class PetWindowController {
   setComposerActive(active: boolean) {
     if (this.destroyed) return
     this.petWindow.setComposerActive(active)
+  }
+
+  setInteractive(active: boolean) {
+    if (this.destroyed) return
+    this.petWindow.setInteractive(active)
   }
 
   /** Idempotent — calling more than once is a no-op after the first. */

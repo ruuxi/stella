@@ -7,12 +7,10 @@
 
 .pet-overlay-root {
   position: absolute;
-  /* The dedicated pet `BrowserWindow` is sized to fit BOTH the sprite
-   * and the inline composer popover at the same time and never
-   * resizes (see `pet-window.ts`). The sprite stays anchored to the
-   * bottom-right corner so the action arc curves to the upper-left,
-   * the bubble floats above, and the composer (when open) extends
-   * leftward into the window's otherwise-transparent area. */
+  /* The dedicated pet `BrowserWindow` is 280x240 (see `pet-window.ts`).
+   * The sprite is anchored to the bottom-right of that window so the
+   * action arc curves to the upper-left and the bubble floats above
+   * the sprite — both inside the window's bounds. */
   right: 20px;
   bottom: 20px;
   /* Padding extends this element's *layout* box (and therefore React's
@@ -57,7 +55,14 @@ html[data-stella-window="pet"] #root {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-width: 280px;
+  /* Bubble is right-anchored to the sprite (which itself sits 20px
+   * from the window's right edge). The dedicated pet window is 280px
+   * wide while the composer is closed, so the bubble can extend at
+   * most ~244px leftward before its left edge clips against the
+   * window's left edge. Capping max-width here lets the message
+   * truncate cleanly inside the bubble (`text-overflow: ellipsis`
+   * below) instead of being cut off by the OS-level window bounds. */
+  max-width: 244px;
   width: max-content;
   padding: 14px 18px;
   border-radius: 16px;
@@ -184,19 +189,17 @@ html[data-stella-window="pet"] #root {
 }
 
 /* Inline chat composer that opens to the LEFT of the sprite. The pet
- * window is permanently sized for this popover (see `pet-window.ts`),
- * so it always has room. The popover itself reuses `.composer-shell`
- * / `.composer-form` styles from the full chat composer
- * (`full-shell.composer.css`) — we only need to position it relative
- * to the sprite. */
+ * window grows wider while this is visible (driven by main via
+ * `pet:setComposerActive`) so the popover always has room. The
+ * popover itself reuses `.composer-shell` / `.composer-form` styles
+ * from the full chat composer (`full-shell.composer.css`) — we only
+ * need to position it relative to the sprite. */
 .pet-overlay-popover {
   position: absolute;
-  /* Sit to the left of the sprite (parent `.pet-overlay-mascot` is
-   * the relative anchor). The action arc (radius 64 + 14px button
-   * radius - 48px half-sprite) extends ~28px past the sprite's left
-   * edge; offset enough that the composer clears those buttons with a
-   * small breathing gap. */
-  right: calc(100% + 44px);
+  /* Sit just left of the sprite (parent `.pet-overlay-mascot` is the
+   * relative anchor). 12px gap so the composer doesn't kiss the
+   * sprite's edge. */
+  right: calc(100% + 12px);
   bottom: 0;
   width: 380px;
   pointer-events: auto;

@@ -99,6 +99,7 @@ export const PetChatPopover = ({
   return (
     <div
       className="composer pet-overlay-popover"
+      data-pet-hit="true"
       onClick={(event) => event.stopPropagation()}
     >
       <div className="composer-shell">
