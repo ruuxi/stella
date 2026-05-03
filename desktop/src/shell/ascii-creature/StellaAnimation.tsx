@@ -8,12 +8,6 @@ import {
   parseColor,
 } from "./glyph-atlas";
 import { initRenderer } from "./renderer";
-import {
-  VISUAL_PREFS_CHANGED_EVENT,
-  VISUAL_PREFS_KEY,
-  readVisualPrefs,
-  type VisualPrefs,
-} from "@/shared/contracts/visual-prefs";
 
 /** Reusable buffer for frequency data — avoids per-frame allocation. */
 let energyBuffer: Uint8Array<ArrayBuffer> | null = null;
@@ -277,7 +271,6 @@ export const StellaAnimation = React.forwardRef<
         return new Float32Array(parsed.flat());
       };
 
-      const initialVisualPrefs = readVisualPrefs();
       const mainRenderer = initRenderer(
         canvas,
         glyphAtlas,
@@ -286,27 +279,8 @@ export const StellaAnimation = React.forwardRef<
         readColors(),
         birthRef.current,
         flashRef.current,
-        initialVisualPrefs,
       );
       if (!mainRenderer) return;
-
-      const applyVisualPrefs = (prefs: VisualPrefs) => {
-        mainRenderer.setVisibility(prefs.showEyes, prefs.showMouth);
-      };
-      const handleVisualPrefsEvent = (event: Event) => {
-        const detail = (event as CustomEvent<VisualPrefs>).detail;
-        applyVisualPrefs(detail ?? readVisualPrefs());
-      };
-      const handleVisualPrefsStorage = (event: StorageEvent) => {
-        if (event.storageArea !== localStorage) return;
-        if (event.key !== null && event.key !== VISUAL_PREFS_KEY) return;
-        applyVisualPrefs(readVisualPrefs());
-      };
-      window.addEventListener(
-        VISUAL_PREFS_CHANGED_EVENT,
-        handleVisualPrefsEvent,
-      );
-      window.addEventListener("storage", handleVisualPrefsStorage);
 
       let frameCount = 0;
 
@@ -481,11 +455,6 @@ export const StellaAnimation = React.forwardRef<
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
         animateRef.current = null;
         observer.disconnect();
-        window.removeEventListener(
-          VISUAL_PREFS_CHANGED_EVENT,
-          handleVisualPrefsEvent,
-        );
-        window.removeEventListener("storage", handleVisualPrefsStorage);
         mainRenderer.destroy();
       };
     }, [

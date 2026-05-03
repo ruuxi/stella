@@ -43,7 +43,7 @@ export const createProgram = (
 
 export const getFragmentShader = (): string => {
   // CPU precomputes per-frame values that are constant across all pixels
-  // (phase weights, eye origin & blink, mouth pos/shape/anim, canvas aspect).
+  // (phase weights, eye origin & blink, canvas aspect).
   // This eliminates dozens of trig ops per pixel.
   const baseHeader = `
     precision mediump float;
@@ -60,11 +60,6 @@ export const getFragmentShader = (): string => {
     uniform vec3 u_phases;
     uniform vec2 u_eyeOrigin;
     uniform float u_eyeBlink;
-    uniform vec2 u_mouthPos;
-    uniform float u_mouthShape;
-    uniform float u_mouthAnim;
-    uniform float u_showEyes;
-    uniform float u_showMouth;
     uniform sampler2D u_glyph;
     uniform vec3 u_colors[5];
   `;
@@ -111,36 +106,8 @@ export const getFragmentShader = (): string => {
                   * step(abs(uv.y - u_eyeOrigin.y), eyeHalf.y);
     float rightEye = step(abs(uv.x - u_eyeOrigin.x - eyeGap), eyeHalf.x)
                    * step(abs(uv.y - u_eyeOrigin.y), eyeHalf.y);
-    float eyeMask = max(leftEye, rightEye) * smoothstep(0.3, 0.6, u_birth) * u_showEyes;
+    float eyeMask = max(leftEye, rightEye) * smoothstep(0.3, 0.6, u_birth);
     gl_FragColor = mix(gl_FragColor, vec4(u_colors[4], 1.0), eyeMask);
-
-    // Mouth — pos/shape/anim come from CPU; shape index is uniform across pixels
-    // so the if-else cascade is non-divergent on the GPU.
-    vec2 md = (uv - u_mouthPos) * u_gridSize;
-    float lineW = 0.5;
-
-    float mouthShape = 0.0;
-    if (u_mouthShape < 0.5) {
-      vec2 mdO = md;
-      mdO.y /= max(u_mouthAnim, 0.15);
-      float oDist = length(mdO);
-      mouthShape = smoothstep(1.8, 1.5, oDist) * smoothstep(0.5, 0.8, oDist);
-    } else if (u_mouthShape < 1.5) {
-      float smileDist = abs(md.y - 0.6 + 0.7 * abs(md.x));
-      mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, smileDist)) * step(abs(md.x), 1.8);
-    } else if (u_mouthShape < 2.5) {
-      float frownDist = abs(md.y + 0.6 - 0.7 * abs(md.x));
-      mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, frownDist)) * step(abs(md.x), 1.8);
-    } else if (u_mouthShape < 3.5) {
-      float sideDist = abs(md.x - 0.8 + 0.6 * abs(md.y));
-      mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, sideDist)) * step(abs(md.y), 1.2);
-    } else {
-      mouthShape = (1.0 - smoothstep(lineW * 0.3, lineW * 0.7, abs(md.y))) * step(abs(md.x), 1.5);
-    }
-    mouthShape *= smoothstep(0.05, 0.2, u_mouthAnim);
-
-    float mouthMask = mouthShape * smoothstep(0.3, 0.6, u_birth) * u_showMouth;
-    gl_FragColor = mix(gl_FragColor, vec4(u_colors[4], 1.0), mouthMask);
   `;
 
   // Flowing organic patterns — 3 phases morphing smoothly
@@ -285,11 +252,6 @@ export const getInstancedVertexShader = (): string => `
   uniform vec3 u_phases;
   uniform vec2 u_eyeOrigin;
   uniform float u_eyeBlink;
-  uniform vec2 u_mouthPos;
-  uniform float u_mouthShape;
-  uniform float u_mouthAnim;
-  uniform float u_showEyes;
-  uniform float u_showMouth;
   uniform vec3 u_colors[5];
 
   varying vec2 v_glyphUv;
@@ -431,32 +393,7 @@ export const getInstancedVertexShader = (): string => `
                   * step(abs(uv.y - u_eyeOrigin.y), eyeHalf.y);
     float rightEye = step(abs(uv.x - u_eyeOrigin.x - eyeGap), eyeHalf.x)
                    * step(abs(uv.y - u_eyeOrigin.y), eyeHalf.y);
-    float eyeMask = max(leftEye, rightEye) * smoothstep(0.3, 0.6, u_birth) * u_showEyes;
-
-    vec2 md = (uv - u_mouthPos) * u_gridSize;
-    float lineW = 0.5;
-    float mouthShape = 0.0;
-    if (u_mouthShape < 0.5) {
-      vec2 mdO = md;
-      mdO.y /= max(u_mouthAnim, 0.15);
-      float oDist = length(mdO);
-      mouthShape = smoothstep(1.8, 1.5, oDist) * smoothstep(0.5, 0.8, oDist);
-    } else if (u_mouthShape < 1.5) {
-      float smileDist = abs(md.y - 0.6 + 0.7 * abs(md.x));
-      mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, smileDist)) * step(abs(md.x), 1.8);
-    } else if (u_mouthShape < 2.5) {
-      float frownDist = abs(md.y + 0.6 - 0.7 * abs(md.x));
-      mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, frownDist)) * step(abs(md.x), 1.8);
-    } else if (u_mouthShape < 3.5) {
-      float sideDist = abs(md.x - 0.8 + 0.6 * abs(md.y));
-      mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, sideDist)) * step(abs(md.y), 1.2);
-    } else {
-      mouthShape = (1.0 - smoothstep(lineW * 0.3, lineW * 0.7, abs(md.y))) * step(abs(md.x), 1.5);
-    }
-    mouthShape *= smoothstep(0.05, 0.2, u_mouthAnim);
-    float mouthMask = mouthShape * smoothstep(0.3, 0.6, u_birth) * u_showMouth;
-
-    float solidMask = max(eyeMask, mouthMask) * v_visible;
+    float solidMask = max(leftEye, rightEye) * smoothstep(0.3, 0.6, u_birth) * v_visible;
     v_color = mix(color, u_colors[4], solidMask);
     v_solidAlpha = solidMask;
     v_charIndex = floor(intensity * (u_charCount - 1.0));

@@ -16,7 +16,6 @@ type GlRenderer = {
     voiceEnergy?: number,
   ) => void;
   setColors: (next: Float32Array) => void;
-  setVisibility: (showEyes: boolean, showMouth: boolean) => void;
   destroy: () => void;
 };
 
@@ -136,23 +135,7 @@ const createAnimationUniforms = (
   const dblCurve = smoothstep01(0, 1, Math.abs(bt2 * 2 - 1));
   blink *= 1 + (dblCurve - 1) * doDouble;
 
-  const mouthSlot = Math.floor(time / 2.5);
-  const mouthLocal = fract(time / 2.5);
-  const mouthHash = fract(Math.sin(mouthSlot * 47.3) * 31718.9);
-  const shapeHash = fract(Math.sin(mouthSlot * 113.1) * 18734.3);
-  const doOpen = mouthHash >= 0.7 ? 1 : 0;
-  const openUp = smoothstep01(0, 0.08, mouthLocal);
-  const closeDown = 1 - smoothstep01(0.6, 0.8, mouthLocal);
-  const mouthAnim = openUp * closeDown * doOpen;
-  let mouthShapeIdx;
-  if (shapeHash < 0.2) mouthShapeIdx = 0;
-  else if (shapeHash < 0.4) mouthShapeIdx = 1;
-  else if (shapeHash < 0.6) mouthShapeIdx = 2;
-  else if (shapeHash < 0.8) mouthShapeIdx = 3;
-  else mouthShapeIdx = 4;
-
   const eyeUp = 2.5 / height;
-  const mouthYOffset = 3.5 / height;
   const eyeOriginX = 0.5 + eyeDriftX / width;
   const eyeOriginY = 0.5 - eyeUp + eyeDriftY / height;
 
@@ -163,10 +146,6 @@ const createAnimationUniforms = (
     eyeOriginX,
     eyeOriginY,
     blink,
-    mouthPosX: eyeOriginX,
-    mouthPosY: eyeOriginY + mouthYOffset,
-    mouthShapeIdx,
-    mouthAnim,
   };
 };
 
@@ -179,7 +158,6 @@ const initInstancedRenderer = (
   colors: Float32Array,
   birthValue: number,
   flashValue: number,
-  initialVisibility: { showEyes: boolean; showMouth: boolean },
 ): GlRenderer | null => {
   const instanced = gl.getExtension(INSTANCED_EXT);
   if (!instanced) return null;
@@ -247,11 +225,6 @@ const initInstancedRenderer = (
   const uPhases = gl.getUniformLocation(program, "u_phases");
   const uEyeOrigin = gl.getUniformLocation(program, "u_eyeOrigin");
   const uEyeBlink = gl.getUniformLocation(program, "u_eyeBlink");
-  const uMouthPos = gl.getUniformLocation(program, "u_mouthPos");
-  const uMouthShape = gl.getUniformLocation(program, "u_mouthShape");
-  const uMouthAnim = gl.getUniformLocation(program, "u_mouthAnim");
-  const uShowEyes = gl.getUniformLocation(program, "u_showEyes");
-  const uShowMouth = gl.getUniformLocation(program, "u_showMouth");
 
   if (
     !uGridSize ||
@@ -279,8 +252,6 @@ const initInstancedRenderer = (
   if (uSpeaking) gl.uniform1f(uSpeaking, 0);
   if (uVoiceEnergy) gl.uniform1f(uVoiceEnergy, 0);
   if (uAspect) gl.uniform1f(uAspect, aspect);
-  if (uShowEyes) gl.uniform1f(uShowEyes, initialVisibility.showEyes ? 1 : 0);
-  if (uShowMouth) gl.uniform1f(uShowMouth, initialVisibility.showMouth ? 1 : 0);
 
   configureCommonState(gl, canvasW, canvasH);
   const phasesArr = new Float32Array(3);
@@ -310,10 +281,6 @@ const initInstancedRenderer = (
     if (uEyeOrigin)
       gl.uniform2f(uEyeOrigin, uniforms.eyeOriginX, uniforms.eyeOriginY);
     if (uEyeBlink) gl.uniform1f(uEyeBlink, uniforms.blink);
-    if (uMouthPos)
-      gl.uniform2f(uMouthPos, uniforms.mouthPosX, uniforms.mouthPosY);
-    if (uMouthShape) gl.uniform1f(uMouthShape, uniforms.mouthShapeIdx);
-    if (uMouthAnim) gl.uniform1f(uMouthAnim, uniforms.mouthAnim);
 
     gl.clear(gl.COLOR_BUFFER_BIT);
     instanced.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, cellCount);
@@ -321,11 +288,6 @@ const initInstancedRenderer = (
 
   const setColors = (next: Float32Array) => {
     gl.uniform3fv(uColors, next);
-  };
-
-  const setVisibility = (showEyes: boolean, showMouth: boolean) => {
-    if (uShowEyes) gl.uniform1f(uShowEyes, showEyes ? 1 : 0);
-    if (uShowMouth) gl.uniform1f(uShowMouth, showMouth ? 1 : 0);
   };
 
   const destroy = () => {
@@ -336,7 +298,7 @@ const initInstancedRenderer = (
     gl.deleteProgram(program);
   };
 
-  return { render, setColors, setVisibility, destroy };
+  return { render, setColors, destroy };
 };
 
 const initFullCanvasRenderer = (
@@ -348,7 +310,6 @@ const initFullCanvasRenderer = (
   colors: Float32Array,
   birthValue: number,
   flashValue: number,
-  initialVisibility: { showEyes: boolean; showMouth: boolean },
 ): GlRenderer | null => {
   const program = createProgram(gl, VERTEX_SOURCE, getFragmentShader());
   if (!program) return null;
@@ -394,11 +355,6 @@ const initFullCanvasRenderer = (
   const uPhases = gl.getUniformLocation(program, "u_phases");
   const uEyeOrigin = gl.getUniformLocation(program, "u_eyeOrigin");
   const uEyeBlink = gl.getUniformLocation(program, "u_eyeBlink");
-  const uMouthPos = gl.getUniformLocation(program, "u_mouthPos");
-  const uMouthShape = gl.getUniformLocation(program, "u_mouthShape");
-  const uMouthAnim = gl.getUniformLocation(program, "u_mouthAnim");
-  const uShowEyes = gl.getUniformLocation(program, "u_showEyes");
-  const uShowMouth = gl.getUniformLocation(program, "u_showMouth");
 
   if (
     !uCanvasSize ||
@@ -431,8 +387,6 @@ const initFullCanvasRenderer = (
   if (uSpeaking) gl.uniform1f(uSpeaking, 0);
   if (uVoiceEnergy) gl.uniform1f(uVoiceEnergy, 0);
   if (uAspect) gl.uniform1f(uAspect, aspect);
-  if (uShowEyes) gl.uniform1f(uShowEyes, initialVisibility.showEyes ? 1 : 0);
-  if (uShowMouth) gl.uniform1f(uShowMouth, initialVisibility.showMouth ? 1 : 0);
 
   configureCommonState(gl, canvasW, canvasH);
   const phasesArr = new Float32Array(3);
@@ -462,10 +416,6 @@ const initFullCanvasRenderer = (
     if (uEyeOrigin)
       gl.uniform2f(uEyeOrigin, uniforms.eyeOriginX, uniforms.eyeOriginY);
     if (uEyeBlink) gl.uniform1f(uEyeBlink, uniforms.blink);
-    if (uMouthPos)
-      gl.uniform2f(uMouthPos, uniforms.mouthPosX, uniforms.mouthPosY);
-    if (uMouthShape) gl.uniform1f(uMouthShape, uniforms.mouthShapeIdx);
-    if (uMouthAnim) gl.uniform1f(uMouthAnim, uniforms.mouthAnim);
 
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -475,18 +425,13 @@ const initFullCanvasRenderer = (
     gl.uniform3fv(uColors, next);
   };
 
-  const setVisibility = (showEyes: boolean, showMouth: boolean) => {
-    if (uShowEyes) gl.uniform1f(uShowEyes, showEyes ? 1 : 0);
-    if (uShowMouth) gl.uniform1f(uShowMouth, showMouth ? 1 : 0);
-  };
-
   const destroy = () => {
     gl.deleteTexture(glyphTexture);
     gl.deleteBuffer(positionBuffer);
     gl.deleteProgram(program);
   };
 
-  return { render, setColors, setVisibility, destroy };
+  return { render, setColors, destroy };
 };
 
 export const initRenderer = (
@@ -497,10 +442,6 @@ export const initRenderer = (
   colors: Float32Array,
   birthValue: number,
   flashValue: number,
-  initialVisibility: { showEyes: boolean; showMouth: boolean } = {
-    showEyes: true,
-    showMouth: false,
-  },
 ): GlRenderer | null => {
   const gl =
     (targetCanvas.getContext("webgl", {
@@ -522,7 +463,6 @@ export const initRenderer = (
       colors,
       birthValue,
       flashValue,
-      initialVisibility,
     ) ??
     initFullCanvasRenderer(
       gl,
@@ -533,7 +473,6 @@ export const initRenderer = (
       colors,
       birthValue,
       flashValue,
-      initialVisibility,
     )
   );
 };
