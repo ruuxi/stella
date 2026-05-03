@@ -163,10 +163,19 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           return;
         }
 
+        // Location is only resolved (and stored in core-memory.md) when the
+        // user opted into a discovery category that already implies their
+        // physical location — browsing history (URLs are geo-correlated) or
+        // apps/system signals (system identity, dock, locale). Dev-only or
+        // messages-only profiles never trigger the IP lookup.
+        const includeLocation =
+          discoveryCategories.includes("browsing_bookmarks") ||
+          discoveryCategories.includes("apps_system");
         const [coreMemoryWrite, knowledgeWrite] = await Promise.all([
           window.electronAPI?.discovery.writeCoreMemory
             ? window.electronAPI.discovery.writeCoreMemory(
                 synthesisResult.coreMemory,
+                { includeLocation },
               )
             : Promise.resolve({
                 ok: false,

@@ -746,6 +746,7 @@ export type ElectronDiscoveryApi = {
   listProfiles: (browserType: string) => Promise<BrowserProfile[]>;
   writeCoreMemory: (
     content: string,
+    options?: { includeLocation?: boolean },
   ) => Promise<{ ok: boolean; error?: string }>;
   writeKnowledge: (
     payload: DiscoveryKnowledgeSeedPayload,

@@ -92,21 +92,30 @@ export const registerDiscoveryHandlers = (options: DiscoveryHandlersOptions) => 
       ),
   );
 
-  ipcMain.handle(IPC_DISCOVERY_WRITE_CORE_MEMORY, async (event, content: string) => {
-    if (!options.assertPrivilegedSender(event, IPC_DISCOVERY_WRITE_CORE_MEMORY)) {
-      throw new Error("Blocked untrusted request.");
-    }
-    const runner = options.getStellaHostRunner();
-    if (!runner) {
-      return { ok: false, error: "Runtime not available" };
-    }
-    try {
-      await runner.writeCoreMemory(content);
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, error: (error as Error).message };
-    }
-  });
+  ipcMain.handle(
+    IPC_DISCOVERY_WRITE_CORE_MEMORY,
+    async (
+      event,
+      payload: string | { content: string; includeLocation?: boolean },
+    ) => {
+      if (!options.assertPrivilegedSender(event, IPC_DISCOVERY_WRITE_CORE_MEMORY)) {
+        throw new Error("Blocked untrusted request.");
+      }
+      const runner = options.getStellaHostRunner();
+      if (!runner) {
+        return { ok: false, error: "Runtime not available" };
+      }
+      const content = typeof payload === "string" ? payload : payload.content;
+      const includeLocation =
+        typeof payload === "string" ? false : payload.includeLocation === true;
+      try {
+        await runner.writeCoreMemory(content, { includeLocation });
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: (error as Error).message };
+      }
+    },
+  );
 
   ipcMain.handle(
     IPC_DISCOVERY_WRITE_KNOWLEDGE,

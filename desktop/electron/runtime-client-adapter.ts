@@ -993,8 +993,11 @@ export class RuntimeClientAdapter {
     return this.client.discoveryKnowledgeExists();
   }
 
-  writeCoreMemory(content: string) {
-    return this.client.writeCoreMemory(content);
+  writeCoreMemory(
+    content: string,
+    options?: { includeLocation?: boolean },
+  ) {
+    return this.client.writeCoreMemory(content, options);
   }
 
   writeDiscoveryKnowledge(payload: DiscoveryKnowledgeSeedPayload) {

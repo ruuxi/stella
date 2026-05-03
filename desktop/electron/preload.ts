@@ -1019,8 +1019,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_DISCOVERY_DETECT_PREFERRED_BROWSER),
     listProfiles: (browserType: string) =>
       ipcRenderer.invoke(IPC_DISCOVERY_LIST_BROWSER_PROFILES, browserType),
-    writeCoreMemory: (content: string) =>
-      ipcRenderer.invoke(IPC_DISCOVERY_WRITE_CORE_MEMORY, content),
+    writeCoreMemory: (
+      content: string,
+      options?: { includeLocation?: boolean },
+    ) =>
+      ipcRenderer.invoke(IPC_DISCOVERY_WRITE_CORE_MEMORY, {
+        content,
+        includeLocation: options?.includeLocation === true,
+      }),
     writeKnowledge: (payload: DiscoveryKnowledgeSeedPayload) =>
       ipcRenderer.invoke(IPC_DISCOVERY_WRITE_KNOWLEDGE, payload),
     collectAllSignals: (options?: {
