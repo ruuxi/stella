@@ -402,7 +402,11 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
               lastSeq,
             });
             if (!replay.exhausted) {
-              events = replay.events;
+              events = replay.events.map((event) => ({
+                ...event,
+                type: event.type as AgentStreamEventType,
+                conversationId: event.conversationId ?? conversationId,
+              }));
             }
           } catch {
             // Resume can still hydrate from local chat and task snapshots.

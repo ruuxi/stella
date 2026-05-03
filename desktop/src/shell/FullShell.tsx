@@ -107,7 +107,7 @@ function OnboardingExperience({
 }: OnboardingExperienceProps) {
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
-  const [onboardingDemoMorphing, setOnboardingDemoMorphing] = useState(false);
+  const onboardingDemoMorphing = false;
   const [stellaHiddenByPhase, setStellaHiddenByPhase] = useState(false);
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("intro");
@@ -333,10 +333,7 @@ function OnboardingExperience({
             aria-hidden={!showOnboardingDemos}
           >
             {showOnboardingDemos ? (
-              <OnboardingCanvas
-                activeDemo={activeDemo}
-                onMorphingChange={setOnboardingDemoMorphing}
-              />
+              <OnboardingCanvas activeDemo={activeDemo} />
             ) : null}
           </div>
         </Suspense>
