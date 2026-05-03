@@ -98,10 +98,16 @@ export const getMobileBroadcast = (
   return context.state.mobileBridgeResource?.broadcastToMobile ?? null;
 };
 
-export const getAllWindows = (context: BootstrapContext) =>
-  context.state.windowManager
+export const getAllWindows = (context: BootstrapContext) => {
+  const windows = context.state.windowManager
     ? context.state.windowManager.getAllWindows()
     : BrowserWindow.getAllWindows();
+  const petWindow = context.state.petController?.getWindow() ?? null;
+  if (!petWindow || petWindow.isDestroyed() || windows.includes(petWindow)) {
+    return windows;
+  }
+  return [...windows, petWindow];
+};
 
 export const forEachWindow = (
   context: BootstrapContext,

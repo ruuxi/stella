@@ -32,6 +32,8 @@ export type PetSpriteProps = {
   state: PetAnimationState;
   /** Pixel size of the rendered frame. Defaults to a 96px square-ish frame. */
   size?: number;
+  /** Keep a reactive row looping, used for ongoing voice listening/speaking. */
+  continuous?: boolean;
   className?: string;
   style?: CSSProperties;
 };
@@ -49,6 +51,7 @@ export const PetSprite = ({
   spritesheetUrl,
   state,
   size = 96,
+  continuous = false,
   className,
   style,
 }: PetSpriteProps) => {
@@ -58,7 +61,7 @@ export const PetSprite = ({
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
-    const animation = resolveAnimation(state, prefersReducedMotion);
+    const animation = resolveAnimation(state, prefersReducedMotion, continuous);
     const { frames, loopStartIndex } = animation;
     let frameIndex = 0;
     let timer: number | null = null;
@@ -100,7 +103,7 @@ export const PetSprite = ({
         window.clearTimeout(timer);
       }
     };
-  }, [state, prefersReducedMotion, spritesheetUrl]);
+  }, [state, prefersReducedMotion, spritesheetUrl, continuous]);
 
   // Aspect-ratio-locked block (192:208) so the sprite never squashes.
   const computedHeight = Math.round(size * (208 / 192));

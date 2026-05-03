@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -12,6 +13,7 @@ import type {
   PetOverlayState,
   PetOverlayStatus,
 } from "@/shared/contracts/pet";
+import type { VoiceRuntimeSnapshot } from "@/shared/types/electron";
 import {
   BUILT_IN_PETS,
   DEFAULT_PET_ID,
@@ -34,6 +36,34 @@ const ACTION_ARC_RADIUS = 64;
 const ACTION_ANGLES = [135, 165, 195, 225] as const;
 
 const DEFAULT_PET = findBuiltInPet(DEFAULT_PET_ID) ?? BUILT_IN_PETS[0];
+
+type VoicePetMode = "idle" | "listening" | "speaking";
+
+const VOICE_MIC_LEVEL_THRESHOLD = 0.025;
+const VOICE_OUTPUT_LEVEL_THRESHOLD = 0.02;
+const ASSISTANT_BUBBLE_VISIBLE_MS = 4_000;
+
+const deriveVoicePetMode = (
+  state: VoiceRuntimeSnapshot | null | undefined,
+  voiceActive: boolean,
+): VoicePetMode => {
+  if (!voiceActive && !state?.isConnected) return "idle";
+  if (
+    state?.isSpeaking ||
+    (state?.outputLevel ?? 0) > VOICE_OUTPUT_LEVEL_THRESHOLD
+  ) {
+    return "speaking";
+  }
+  if (
+    voiceActive ||
+    state?.isConnected ||
+    state?.isUserSpeaking ||
+    (state?.micLevel ?? 0) > VOICE_MIC_LEVEL_THRESHOLD
+  ) {
+    return "listening";
+  }
+  return "idle";
+};
 
 /**
  * Map the high-level mood broadcast by the chat surface to the actual
@@ -110,9 +140,9 @@ export const PetOverlay = ({
    *  turns red and the sprite animates listening / speaking based on
    *  the broadcast `voice:runtimeState`. */
   const [voiceActive, setVoiceActive] = useState(false);
-  const [voiceMode, setVoiceMode] = useState<"idle" | "listening" | "speaking">(
-    "idle",
-  );
+  const voiceActiveRef = useRef(false);
+  const [voiceMode, setVoiceMode] = useState<VoicePetMode>("idle");
+  const [assistantBubbleVisible, setAssistantBubbleVisible] = useState(true);
 
   // Subscribe to the central UI state for `isVoiceRtcActive` (drives
   // the mic button's active red styling) and the voice runtime state
@@ -120,34 +150,38 @@ export const PetOverlay = ({
   // override).
   useEffect(() => {
     const cleanups: Array<() => void> = [];
+    const applyVoiceActive = (nextActive: boolean) => {
+      voiceActiveRef.current = nextActive;
+      setVoiceActive(nextActive);
+      if (nextActive) {
+        setVoiceMode((previous) =>
+          previous === "idle" ? "listening" : previous,
+        );
+      } else {
+        setVoiceMode("idle");
+      }
+    };
+    const applyRuntimeState = (
+      state: VoiceRuntimeSnapshot | null | undefined,
+    ) => {
+      setVoiceMode(deriveVoicePetMode(state, voiceActiveRef.current));
+    };
     const ui = window.electronAPI?.ui;
     if (ui?.onState) {
       // Initial pull plus subscription so we don't miss the current
       // value if voice was already active when the pet mounted.
       void ui.getState?.().then((state) => {
-        setVoiceActive(Boolean(state?.isVoiceRtcActive));
+        applyVoiceActive(Boolean(state?.isVoiceRtcActive));
       });
       const off = ui.onState((state) => {
-        setVoiceActive(Boolean(state?.isVoiceRtcActive));
+        applyVoiceActive(Boolean(state?.isVoiceRtcActive));
       });
       if (off) cleanups.push(off);
     }
     const voice = window.electronAPI?.voice;
     if (voice?.onRuntimeState) {
-      const off = voice.onRuntimeState((state) => {
-        if (!state?.isConnected) {
-          setVoiceMode("idle");
-          return;
-        }
-        if (state.isSpeaking) {
-          setVoiceMode("speaking");
-          return;
-        }
-        // Connected — sit in the listening pose whenever the AI isn't
-        // currently talking. `isUserSpeaking` flickers per VAD frame
-        // so we don't gate on it.
-        setVoiceMode("listening");
-      });
+      void voice.getRuntimeState?.().then(applyRuntimeState);
+      const off = voice.onRuntimeState(applyRuntimeState);
       if (off) cleanups.push(off);
     }
     return () => {
@@ -318,6 +352,8 @@ export const PetOverlay = ({
     window.electronAPI?.window?.show?.("full");
   }, []);
 
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -331,6 +367,48 @@ export const PetOverlay = ({
     },
     [],
   );
+
+  /**
+   * Keep the right-click menu inside the pet window. Because the window
+   * itself is small, opening the menu near the right or bottom edge
+   * would otherwise clip it. We measure the menu after layout and, if
+   * it overflows the window's inner box, flip / shift the position so
+   * the menu stays fully visible. Padding mirrors the small breathing
+   * room around the window's interactive area.
+   */
+  useLayoutEffect(() => {
+    if (!contextMenu) return;
+    const node = contextMenuRef.current;
+    const root = rootRef.current;
+    if (!node || !root) return;
+    const margin = 8;
+    const rootRect = root.getBoundingClientRect();
+    const menuRect = node.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let nextLeft = contextMenu.left;
+    let nextTop = contextMenu.top;
+
+    const absoluteRight = rootRect.left + nextLeft + menuRect.width;
+    if (absoluteRight > viewportWidth - margin) {
+      nextLeft = Math.max(
+        margin - rootRect.left,
+        nextLeft - menuRect.width,
+      );
+    }
+
+    const absoluteBottom = rootRect.top + nextTop + menuRect.height;
+    if (absoluteBottom > viewportHeight - margin) {
+      nextTop = Math.max(
+        margin - rootRect.top,
+        nextTop - menuRect.height,
+      );
+    }
+
+    if (nextLeft === contextMenu.left && nextTop === contextMenu.top) return;
+    setContextMenu({ left: nextLeft, top: nextTop });
+  }, [contextMenu]);
 
   // Click-outside to dismiss the context menu.
   useEffect(() => {
@@ -346,6 +424,19 @@ export const PetOverlay = ({
     return () => window.removeEventListener("mousedown", handler);
   }, [contextMenu]);
 
+  useEffect(() => {
+    if (status.state !== "idle" || !status.message.trim()) {
+      setAssistantBubbleVisible(true);
+      return;
+    }
+
+    setAssistantBubbleVisible(true);
+    const timer = window.setTimeout(() => {
+      setAssistantBubbleVisible(false);
+    }, ASSISTANT_BUBBLE_VISIBLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [status.message, status.state]);
+
   const handleSelectAnotherPet = useCallback(() => {
     setContextMenu(null);
     // Cycle through built-ins for now; the picker page covers full
@@ -359,13 +450,6 @@ export const PetOverlay = ({
       setSelectedPetId(next.id);
     }
   }, [pet.id, setSelectedPetId]);
-
-  const handleOpenPicker = useCallback(() => {
-    setContextMenu(null);
-    window.electronAPI?.window?.show?.("full");
-    // The renderer route subscribes to this custom event and navigates.
-    window.dispatchEvent(new CustomEvent("stella:pet:open-picker"));
-  }, []);
 
   const handleClosePet = useCallback(() => {
     setContextMenu(null);
@@ -401,8 +485,10 @@ export const PetOverlay = ({
         ? "waving"
         : baseAnimation;
   const showActions = hover && !dragging;
-  const showBubble =
+  const hasBubbleContent =
     Boolean(status.message?.trim()) || Boolean(status.title?.trim());
+  const showBubble =
+    hasBubbleContent && (status.state !== "idle" || assistantBubbleVisible);
 
   return (
     <div
@@ -426,19 +512,16 @@ export const PetOverlay = ({
         {showBubble && (
           <div
             className="pet-overlay-bubble"
-            data-visible={hover || status.isLoading ? "true" : "false"}
-            data-pet-hit={hover || status.isLoading ? "true" : "false"}
+            data-visible={showBubble ? "true" : "false"}
+            data-pet-hit={showBubble ? "true" : "false"}
           >
-            <div className="pet-overlay-bubble-title">
-              {status.isLoading && <span className="pet-overlay-spinner" />}
-              <span>{status.title || pet.displayName}</span>
-            </div>
             <div className="pet-overlay-bubble-message">{status.message}</div>
           </div>
         )}
         <PetSprite
           spritesheetUrl={pet.spritesheetUrl}
           state={animationState}
+          continuous={voiceAnimation != null}
           size={MASCOT_SIZE}
         />
         {(
@@ -523,18 +606,12 @@ export const PetOverlay = ({
 
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           className="pet-overlay-context-menu"
           data-pet-hit="true"
           style={{ left: contextMenu.left, top: contextMenu.top }}
           onClick={(event) => event.stopPropagation()}
         >
-          <button
-            type="button"
-            className="pet-overlay-context-item"
-            onClick={handleOpenPicker}
-          >
-            Pick another pet…
-          </button>
           <button
             type="button"
             className="pet-overlay-context-item"
