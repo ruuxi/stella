@@ -8,7 +8,6 @@ use tokio::sync::Mutex;
 #[serde(rename_all = "lowercase")]
 pub enum SetupStepId {
     Runtime,
-    Prepare,
     Parakeet,
     Payload,
     Deps,

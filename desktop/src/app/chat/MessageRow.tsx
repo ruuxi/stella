@@ -70,7 +70,6 @@ export type AssistantRowViewModel = {
   cacheKey: string;
   /** True while the runtime is still streaming text into this row. */
   isAnimating?: boolean;
-  emotesEnabled: boolean;
   responseTarget?: AgentResponseTarget;
   webSearchBadgeHtml?: string;
   officePreviewRef?: OfficePreviewRef;
@@ -296,7 +295,6 @@ export const AssistantMessageRow = memo(
               text={text}
               cacheKey={row.cacheKey}
               isAnimating={row.isAnimating}
-              enableEmotes={row.emotesEnabled}
             />
           )}
           {row.officePreviewRef && (

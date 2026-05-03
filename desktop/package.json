@@ -25,16 +25,7 @@
     "electron:typecheck:watch": "concurrently -k --kill-others-on-fail \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",
     "electron:build": "npm run native:build && bunx --package typescript@5.9.3 tsc --build && vite build && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron-builder",
     "electron:preview": "bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron .",
-    "morph:test": "node scripts/trigger-morph.mjs",
-    "emotes:sync": "node scripts/fetch-emotes.mjs",
-    "emotes:sync:clean": "node scripts/fetch-emotes.mjs --clean",
-    "emotes:label": "node scripts/label-emotes.mjs",
-    "emotes:label:dry": "node scripts/label-emotes.mjs --dry-run",
-    "emotes:emoji-index": "node scripts/build-emote-emoji-index.mjs",
-    "emotes:prune-family": "node scripts/prune-emotes-by-emoji-family.mjs",
-    "emotes:optimize": "node scripts/optimize-emotes.mjs",
-    "emotes:bundle": "node scripts/publish-emote-bundle.mjs",
-    "emotes:bundle:publish": "node scripts/publish-emote-bundle.mjs --publish"
+    "morph:test": "node scripts/trigger-morph.mjs"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.10.0",

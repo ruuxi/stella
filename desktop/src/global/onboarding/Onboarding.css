@@ -958,14 +958,6 @@
   pointer-events: auto;
 }
 
-.onboarding-emote-preview {
-  display: inline-block;
-  height: 48px;
-  width: auto;
-  vertical-align: middle;
-  margin-left: 8px;
-}
-
 /* ═══ Browser expanded — CSS grid reveal (no layout shift) ═══ */
 
 .onboarding-reveal {
