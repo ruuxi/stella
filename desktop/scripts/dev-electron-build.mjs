@@ -19,6 +19,7 @@ const graphWatchRoots = [
 ];
 const runtimeStaticAssetRoots = [
   "runtime/extensions/stella-runtime/agents",
+  "runtime/extensions/stella-runtime/personality",
 ];
 const mainEntryRoots = [
   "desktop/electron",

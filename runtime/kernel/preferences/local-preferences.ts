@@ -37,6 +37,11 @@ export type LocalPreferences = {
   localLlmKeysEnabled: boolean;
   /** Expression style: "none" | "emoji" | undefined (default) */
   expressionStyle?: string;
+  /**
+   * Selected personality voice id (see PERSONALITY_VOICES catalog).
+   * Undefined falls back to the default voice.
+   */
+  personalityVoiceId?: string;
   /** General agent engine: "default" | "claude_code_local" */
   generalAgentEngine: AgentEngine;
   /** Self-mod agent engine: "default" | "claude_code_local" */
@@ -75,6 +80,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   modelOverrides: {},
   localLlmKeysEnabled: false,
   expressionStyle: undefined,
+  personalityVoiceId: undefined,
   generalAgentEngine: "default",
   selfModAgentEngine: "default",
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
@@ -111,6 +117,11 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
       localLlmKeysEnabled: parsed.localLlmKeysEnabled === true,
       expressionStyle: parsed.expressionStyle,
+      personalityVoiceId:
+        typeof parsed.personalityVoiceId === "string" &&
+        parsed.personalityVoiceId.trim().length > 0
+          ? parsed.personalityVoiceId.trim()
+          : DEFAULT_PREFERENCES.personalityVoiceId,
       generalAgentEngine: normalizeEngine(parsed.generalAgentEngine),
       selfModAgentEngine: normalizeEngine(parsed.selfModAgentEngine),
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
@@ -177,6 +188,27 @@ export const isLocalLlmKeysEnabled = (stellaHome: string): boolean =>
 
 export const getExpressionStyle = (stellaHome: string): string | undefined => {
   return loadLocalPreferences(stellaHome).expressionStyle;
+};
+
+export const getPersonalityVoiceId = (
+  stellaHome: string,
+): string | undefined => {
+  return loadLocalPreferences(stellaHome).personalityVoiceId;
+};
+
+export const setPersonalityVoiceId = (
+  stellaHome: string,
+  voiceId: string | undefined,
+): void => {
+  const prefs = loadLocalPreferences(stellaHome);
+  const next: LocalPreferences = {
+    ...prefs,
+    personalityVoiceId:
+      typeof voiceId === "string" && voiceId.trim().length > 0
+        ? voiceId.trim()
+        : undefined,
+  };
+  saveLocalPreferences(stellaHome, next);
 };
 
 export const getGeneralAgentEngine = (stellaHome: string): AgentEngine => {

@@ -12,14 +12,18 @@ import { copyFile, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   getLocalModelPreferences,
+  getPersonalityVoiceId,
   getPreventComputerSleep,
   getSoundNotificationsEnabled,
   getSyncMode,
   loadLocalPreferences,
   saveLocalPreferences,
+  setPersonalityVoiceId,
   updateLocalModelPreferences,
   type LocalModelPreferencesSnapshot,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
+import { writePersonalityForVoice } from "../../../runtime/kernel/personality/personality.js";
+import { isKnownPersonalityVoiceId } from "../../../runtime/extensions/stella-runtime/personality/voices.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
 import type { BackupService } from "../services/backup-service.js";
@@ -78,6 +82,8 @@ import {
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
+  IPC_PREFERENCES_GET_PERSONALITY_VOICE,
+  IPC_PREFERENCES_SET_PERSONALITY_VOICE,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
 } from "../../src/shared/contracts/ipc-channels.js";
@@ -1030,6 +1036,52 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         saveLocalPreferences(stellaRoot, prefs);
       }
       return { enabled: nextEnabled };
+    },
+  );
+
+  ipcMain.handle(IPC_PREFERENCES_GET_PERSONALITY_VOICE, (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_PERSONALITY_VOICE,
+      )
+    ) {
+      throw new Error(
+        "Blocked untrusted preferences:getPersonalityVoice request.",
+      );
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return null;
+    return getPersonalityVoiceId(stellaRoot) ?? null;
+  });
+
+  ipcMain.handle(
+    IPC_PREFERENCES_SET_PERSONALITY_VOICE,
+    (event, voiceId: unknown) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PREFERENCES_SET_PERSONALITY_VOICE,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted preferences:setPersonalityVoice request.",
+        );
+      }
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) return { voiceId: null };
+      if (!isKnownPersonalityVoiceId(voiceId)) {
+        throw new Error("Unknown personality voice id.");
+      }
+      const normalized = String(voiceId).trim().toLowerCase();
+      setPersonalityVoiceId(stellaRoot, normalized);
+      try {
+        writePersonalityForVoice(stellaRoot, normalized);
+      } catch {
+        // Best-effort — the seed pass on the next orchestrator turn will
+        // re-compose from the preference if the file is missing.
+      }
+      return { voiceId: normalized };
     },
   );
 

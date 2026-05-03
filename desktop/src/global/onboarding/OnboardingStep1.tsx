@@ -215,10 +215,12 @@ export const OnboardingStep1 = ({
       case "personality":
         return (
           <OnboardingPersonalityPhase
-            expressionStyle={appearance.expressionStyle}
+            personalityVoices={appearance.personalityVoices}
+            personalityVoiceId={appearance.personalityVoiceId}
+            defaultPersonalityVoiceId={appearance.defaultPersonalityVoiceId}
             splitTransitionActive={leaving}
             onFinish={nextSplitStep}
-            onSelectStyle={appearance.selectExpressionStyle}
+            onSelectVoice={appearance.selectPersonalityVoice}
           />
         );
       case "shortcuts-global":

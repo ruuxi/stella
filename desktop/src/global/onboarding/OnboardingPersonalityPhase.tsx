@@ -1,71 +1,65 @@
-import { useState } from "react";
-
-type ExpressionStyle = "emotes" | "emoji" | "none" | null;
-const EMOTE_PREVIEW_SRC = "/emotes/assets/7tv/Agreeing-6db2604d601b.webp";
+import type { PersonalityVoice } from "../../../../runtime/extensions/stella-runtime/personality/voices.js";
 
 type PersonalityPhaseProps = {
-  expressionStyle: ExpressionStyle;
+  personalityVoices: readonly PersonalityVoice[];
+  personalityVoiceId: string | null;
+  defaultPersonalityVoiceId: string;
   splitTransitionActive: boolean;
   onFinish: () => void;
-  onSelectStyle: (style: Exclude<ExpressionStyle, null>) => void;
+  onSelectVoice: (voiceId: string) => void;
 };
 
 export function OnboardingPersonalityPhase({
-  expressionStyle,
+  personalityVoices,
+  personalityVoiceId,
+  defaultPersonalityVoiceId,
   splitTransitionActive,
   onFinish,
-  onSelectStyle,
+  onSelectVoice,
 }: PersonalityPhaseProps) {
-  const [emotePreviewUnavailable, setEmotePreviewUnavailable] = useState(false);
-  const handleSelectStyle = (style: Exclude<ExpressionStyle, null>) => {
-    if (style === "emotes") {
-      setEmotePreviewUnavailable(false);
-    }
-    onSelectStyle(style);
-  };
+  const activeVoiceId = personalityVoiceId ?? null;
+  const activeVoice =
+    personalityVoices.find((voice) => voice.id === activeVoiceId) ??
+    personalityVoices.find(
+      (voice) => voice.id === defaultPersonalityVoiceId,
+    ) ??
+    null;
 
   return (
     <div className="onboarding-step-content">
       <div className="onboarding-pills onboarding-pill-stagger">
-        {(["emotes", "emoji", "none"] as const).map((style) => (
+        {personalityVoices.map((voice) => (
           <button
-            key={style}
+            key={voice.id}
+            type="button"
             className="onboarding-pill"
-            data-active={expressionStyle === style}
-            onClick={() => handleSelectStyle(style)}
+            data-active={activeVoiceId === voice.id}
+            onClick={() => onSelectVoice(voice.id)}
           >
-            {style.charAt(0).toUpperCase() + style.slice(1)}
+            {voice.label}
           </button>
         ))}
       </div>
+
+      <p
+        className="onboarding-voice-description"
+        data-visible={activeVoiceId !== null || undefined}
+        aria-hidden={activeVoiceId === null}
+      >
+        {activeVoice ? activeVoice.description : ""}
+      </p>
+
       <p
         className="onboarding-personality-preview"
-        data-visible={expressionStyle !== null || undefined}
-        aria-hidden={expressionStyle === null}
+        data-visible={activeVoiceId !== null || undefined}
+        aria-hidden={activeVoiceId === null}
       >
-        {expressionStyle === "emotes" && (
-          <>
-            Got it! I'll get that done for you{" "}
-            {emotePreviewUnavailable ? (
-              <span aria-hidden="true">😊</span>
-            ) : (
-              <img
-                src={EMOTE_PREVIEW_SRC}
-                alt="Agreeing"
-                className="onboarding-emote-preview"
-                onError={() => setEmotePreviewUnavailable(true)}
-              />
-            )}
-          </>
-        )}
-        {expressionStyle === "emoji" &&
-          "Got it! I'll get that done for you \uD83D\uDE0A"}
-        {expressionStyle === "none" && "Got it. I'll get that done for you."}
+        {activeVoice ? activeVoice.sampleLine : ""}
       </p>
 
       <button
         className="onboarding-confirm"
-        data-visible={expressionStyle !== null}
+        data-visible={activeVoiceId !== null}
         disabled={splitTransitionActive}
         onClick={onFinish}
       >

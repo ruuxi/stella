@@ -642,6 +642,10 @@ export type ElectronSystemApi = {
   setSoundNotificationsEnabled: (
     enabled: boolean,
   ) => Promise<{ enabled: boolean }>;
+  getPersonalityVoice: () => Promise<string | null>;
+  setPersonalityVoice: (
+    voiceId: string,
+  ) => Promise<{ voiceId: string | null }>;
   getBackupStatus: () => Promise<BackupStatusSnapshot>;
   backUpNow: () => Promise<BackupNowResult>;
   listBackups: (limit?: number) => Promise<BackupSummary[]>;
