@@ -46,6 +46,12 @@ class OverlayWindow {
 
   getWindow() { return this.window }
   getOverlayOrigin() { return this.overlayOrigin }
+  /** Keeps overlay-local coords aligned with `getContentBounds()` (macOS can nudge the panel). */
+  refreshOverlayOriginFromContentBounds() {
+    if (!this.window || this.window.isDestroyed()) return
+    const cb = this.window.getContentBounds()
+    this.overlayOrigin = { x: cb.x, y: cb.y }
+  }
   isReady() { return this.ready }
   isDestroyed() { return this.destroyed }
 
@@ -228,8 +234,7 @@ class OverlayWindow {
     // coordinates stay correct. macOS can silently reposition windows
     // (for example around the menu bar or notch), which otherwise leaves
     // first-open surfaces slightly offset from the cursor.
-    const cb = this.window.getContentBounds()
-    this.overlayOrigin = { x: cb.x, y: cb.y }
+    this.refreshOverlayOriginFromContentBounds()
     // Use 0.99 instead of 1 so Chrome's occlusion tracker doesn't consider
     // this window as fully opaque (alpha < 255 = not occluding). Without this,
     // Chrome stops rendering video when the overlay becomes visible.
@@ -682,6 +687,7 @@ export class OverlayWindowController {
   showDictation(screenX: number, screenY: number) {
     this.activeDictation = true
     this.overlayWindow.show({ inactive: true })
+    this.overlayWindow.refreshOverlayOriginFromContentBounds()
     const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.send('overlay:showDictation', {
       x: screenX - origin.x,

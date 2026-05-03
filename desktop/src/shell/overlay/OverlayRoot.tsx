@@ -546,8 +546,8 @@ function useOverlayDictation() {
 
 const MAX_DICTATION_OVERLAY_LEVELS = 96;
 const DICTATION_OVERLAY_SIZE = {
-  width: 360,
-  height: 56,
+  width: 300,
+  height: 42,
 } as const;
 
 function DictationOverlay({

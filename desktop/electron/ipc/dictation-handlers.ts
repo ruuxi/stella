@@ -294,7 +294,8 @@ export const registerDictationHandlers = (
     const workArea = display.workArea;
     return {
       x: workArea.x + Math.round(workArea.width / 2),
-      y: workArea.y + workArea.height - 88,
+      // Anchor sits at pill center (`translate(-50%, -50%)`); tuck tight above the dock.
+      y: workArea.y + workArea.height - 24,
     };
   };
 
