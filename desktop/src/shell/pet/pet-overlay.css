@@ -7,10 +7,12 @@
 
 .pet-overlay-root {
   position: absolute;
-  /* The dedicated pet `BrowserWindow` is 280x240 (see `pet-window.ts`).
-   * The sprite is anchored to the bottom-right of that window so the
-   * action arc curves to the upper-left and the bubble floats above
-   * the sprite — both inside the window's bounds. */
+  /* The dedicated pet `BrowserWindow` is sized to fit BOTH the sprite
+   * and the inline composer popover at the same time and never
+   * resizes (see `pet-window.ts`). The sprite stays anchored to the
+   * bottom-right corner so the action arc curves to the upper-left,
+   * the bubble floats above, and the composer (when open) extends
+   * leftward into the window's otherwise-transparent area. */
   right: 20px;
   bottom: 20px;
   /* Padding extends this element's *layout* box (and therefore React's
