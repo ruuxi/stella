@@ -418,6 +418,7 @@ export type ElectronVoiceApi = {
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
   getRuntimeState: () => Promise<VoiceRuntimeSnapshot>;
+  getCoreMemory: () => Promise<string | null>;
   onRuntimeState: (
     callback: (state: VoiceRuntimeSnapshot) => void,
   ) => () => void;

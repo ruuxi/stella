@@ -456,6 +456,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
         micLevel: number;
         outputLevel: number;
       }>,
+    getCoreMemory: () =>
+      ipcRenderer.invoke("voice:getCoreMemory") as Promise<string | null>,
     onRuntimeState: onIpc<{
       sessionState:
         | "idle"

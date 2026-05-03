@@ -6,7 +6,6 @@ import { requireConversationOwnerAction } from "../auth";
 import {
   checkManagedUsageLimit,
 } from "../lib/managed_billing";
-import { buildVoiceSessionInstructions } from "../prompts/voice_orchestrator";
 import {
   errorResponse,
   jsonResponse,
@@ -151,7 +150,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           model?: string;
           turnDetection?: "semantic_vad" | "server_vad";
           turnEagerness?: "low" | "medium" | "high";
-          basePrompt?: string;
+          instructions?: string;
         };
         let body: VoiceSessionBody | null = null;
         try {
@@ -160,9 +159,9 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           return errorResponse(400, "Invalid JSON body", origin);
         }
 
-        const basePrompt = body?.basePrompt?.trim();
-        if (!basePrompt) {
-          return errorResponse(400, "basePrompt is required", origin);
+        const instructions = body?.instructions?.trim();
+        if (!instructions) {
+          return errorResponse(400, "instructions is required", origin);
         }
 
         // Resolve owner ID from identity
@@ -172,78 +171,11 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           return errorResponse(429, subscriptionCheck.message, origin);
         }
 
-        // Conversation ID is optional -- local-mode conversations use locally-generated
-        // ULIDs (uppercase, digit-prefixed) that aren't valid Convex document IDs.
-        // Only attempt ownership verification for IDs that look like Convex IDs
-        // (lowercase, no leading digits) to avoid noisy validation errors in logs.
-        let convexConversationId: Id<"conversations"> | undefined;
-        const parsedConvId = asConvexConversationId(body?.conversationId);
-        if (parsedConvId) {
-          try {
-            await requireConversationOwnerAction(ctx, parsedConvId);
-            convexConversationId = parsedConvId;
-          } catch (err) {
-            console.warn("[voice/session] Conversation lookup failed:", err);
-          }
-        }
-
         const resolveOpenAiApiKey = async (): Promise<string | null> =>
           process.env.OPENAI_API_KEY ?? null;
 
-        const resolveDeviceStatus = async (): Promise<string | undefined> => {
-          try {
-            const deviceResult = await ctx.runQuery(
-              internal.agent.device_resolver.getDeviceStatus,
-              { ownerId, nowMs: Date.now() },
-            );
-            const lines = ["# Device Status"];
-            lines.push(
-              `- Local device: ${deviceResult.localOnline ? "online" : "offline"}`,
-            );
-            return lines.join("\n");
-          } catch (err) {
-            console.warn("[voice/session] Failed to resolve device status:", err);
-            return undefined;
-          }
-        };
-
-        const resolveActiveThreads = async (): Promise<
-          string | undefined
-        > => {
-          if (!convexConversationId) return undefined;
-          try {
-            const threads = await ctx.runQuery(
-              internal.data.threads.listActiveThreads,
-              {
-                ownerId,
-                conversationId: convexConversationId,
-              },
-            );
-            const subagentThreads = (
-              threads as Array<{
-                _id: string;
-                name: string;
-                messageCount: number;
-              }>
-            ).filter((t) => t.name !== "Main");
-            if (subagentThreads.length === 0) return undefined;
-            const lines = ["# Active Threads"];
-            for (const t of subagentThreads.slice(0, 10)) {
-              lines.push(
-                `- ${t.name} (id: ${t._id}, ${t.messageCount} messages)`,
-              );
-            }
-            return lines.join("\n");
-          } catch (err) {
-            console.warn("[voice/session] Failed to resolve active threads:", err);
-            return undefined;
-          }
-        };
-
-        const [openaiApiKey, deviceStatus, activeThreads] = await Promise.all([
+        const [openaiApiKey] = await Promise.all([
           resolveOpenAiApiKey(),
-          resolveDeviceStatus(),
-          resolveActiveThreads(),
         ]);
         if (!openaiApiKey) {
           return errorResponse(
@@ -253,21 +185,9 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           );
         }
 
-        // Build voice session instructions with dynamic context
         const [{ getVoiceToolSchemas }] = await Promise.all([
           import("../tools/voice_schemas"),
         ]);
-
-        const userName =
-          identity.name ?? identity.nickname;
-
-        const instructions = buildVoiceSessionInstructions({
-          basePrompt,
-          userName,
-          platform: "desktop",
-          deviceStatus,
-          activeThreads,
-        });
 
         const tools = getVoiceToolSchemas();
         const model = body.model ?? "gpt-realtime-1.5";

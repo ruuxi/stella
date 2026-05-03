@@ -135,7 +135,6 @@ import type * as prompts_store_reviews from "../prompts/store_reviews.js";
 import type * as prompts_synthesis from "../prompts/synthesis.js";
 import type * as prompts_system_assembly from "../prompts/system_assembly.js";
 import type * as prompts_thread_compaction from "../prompts/thread_compaction.js";
-import type * as prompts_voice_orchestrator from "../prompts/voice_orchestrator.js";
 import type * as r2_files from "../r2_files.js";
 import type * as rate_limits from "../rate_limits.js";
 import type * as reset from "../reset.js";
@@ -322,7 +321,6 @@ declare const fullApi: ApiFromModules<{
   "prompts/synthesis": typeof prompts_synthesis;
   "prompts/system_assembly": typeof prompts_system_assembly;
   "prompts/thread_compaction": typeof prompts_thread_compaction;
-  "prompts/voice_orchestrator": typeof prompts_voice_orchestrator;
   r2_files: typeof r2_files;
   rate_limits: typeof rate_limits;
   reset: typeof reset;
