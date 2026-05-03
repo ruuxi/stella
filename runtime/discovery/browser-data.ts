@@ -1319,19 +1319,63 @@ export const coreMemoryExists = async (StellaHome: string): Promise<boolean> => 
   }
   return false;
 };
+const fetchUserLocationLine = async (): Promise<string | null> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3_000);
+  try {
+    const response = await fetch("https://ipwho.is/", {
+      signal: controller.signal,
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as {
+      success?: boolean;
+      city?: string;
+      region?: string;
+      postal?: string;
+      country?: string;
+    };
+    if (body.success === false) return null;
+    const city = body.city?.trim();
+    const region = body.region?.trim();
+    const postal = body.postal?.trim();
+    const country = body.country?.trim();
+    if (!city || !country) return null;
+    // "City, Region postal, Country" — postal hugs the region when present.
+    const cityRegion = region ? `${city}, ${region}` : city;
+    const cityRegionPostal = postal ? `${cityRegion} ${postal}` : cityRegion;
+    return `${cityRegionPostal}, ${country}`;
+  } catch (error) {
+    log("Location lookup failed:", error);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 /**
- * Write core memory profile to disk
+ * Write core memory profile to disk. When `includeLocation` is true (gated by
+ * the discovery categories the user opted into during onboarding), appends a
+ * one-time `## Location` section resolved via IP geolocation (cross-platform,
+ * no native APIs) so the agent always knows the user's city/region/postal/
+ * country.
  */
 export const writeCoreMemory = async (
   StellaHome: string,
-  content: string
+  content: string,
+  options?: { includeLocation?: boolean }
 ): Promise<void> => {
   const statePath = path.join(StellaHome, "state");
   await fs.mkdir(statePath, { recursive: true });
   const coreMemoryPath = path.join(statePath, "core-memory.md");
-  await fs.writeFile(coreMemoryPath, content, "utf-8");
-  log("Wrote state/core-memory.md");
+  const location = options?.includeLocation
+    ? await fetchUserLocationLine()
+    : null;
+  const finalContent = location
+    ? `${content.trimEnd()}\n\n## Location\n${location}\n`
+    : content;
+  await fs.writeFile(coreMemoryPath, finalContent, "utf-8");
+  log(`Wrote state/core-memory.md${location ? " (with location)" : ""}`);
 };
 
 

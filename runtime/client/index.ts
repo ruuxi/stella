@@ -1527,9 +1527,16 @@ export class StellaRuntimeClient {
     return await discoveryKnowledgeExists(this.options.initializeParams.stellaRoot);
   }
 
-  async writeCoreMemory(content: string) {
+  async writeCoreMemory(
+    content: string,
+    options?: { includeLocation?: boolean },
+  ) {
     const { writeCoreMemory } = await import("../discovery/browser-data.js");
-    await writeCoreMemory(this.options.initializeParams.stellaRoot, content);
+    await writeCoreMemory(
+      this.options.initializeParams.stellaRoot,
+      content,
+      options,
+    );
   }
 
   async writeDiscoveryKnowledge(payload: DiscoveryKnowledgeSeedPayload) {
