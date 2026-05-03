@@ -6,6 +6,7 @@
  */
 
 import type { CSSProperties } from "react";
+import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
 import { displayTabs, useDisplayTabs } from "./tab-store";
 import { DisplayTabIcon } from "./icons";
 import { DisplayTabAddMenu } from "./DisplayTabAddMenu";
@@ -17,9 +18,10 @@ const closeIconStyle: CSSProperties = {
 
 export const DisplayTabBar = () => {
   const { tabs, activeTabId } = useDisplayTabs();
+  const tablistRef = useEdgeFadeRef<HTMLDivElement>();
 
   return (
-    <div className="shell-topbar-tablist" role="tablist">
+    <div ref={tablistRef} className="shell-topbar-tablist" role="tablist">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
         return (

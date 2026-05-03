@@ -488,9 +488,37 @@ body[data-display-resizing="true"] .shell-topbar-center {
   padding: 0 4px;
   overflow-x: auto;
   overflow-y: visible;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent)
-    transparent;
+  /* Hide the horizontal scrollbar entirely — when the tabs overflow
+     the strip can be scrolled via wheel / trackpad / drag, but a
+     visible bar sitting flush under the tabs reads as cramped.
+     Pair with the edge mask below so the off-screen tabs feather
+     out instead of getting hard-clipped at the strip's edge. */
+  scrollbar-width: none;
+  --topbar-tablist-fade: 36px;
+  --topbar-tablist-fade-start: var(--topbar-tablist-fade);
+  --topbar-tablist-fade-end: var(--topbar-tablist-fade);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--topbar-tablist-fade-start),
+    #000 calc(100% - var(--topbar-tablist-fade-end)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--topbar-tablist-fade-start),
+    #000 calc(100% - var(--topbar-tablist-fade-end)),
+    transparent 100%
+  );
+}
+
+.shell-topbar-tablist[data-at-start="true"] {
+  --topbar-tablist-fade-start: 0px;
+}
+
+.shell-topbar-tablist[data-at-end="true"] {
+  --topbar-tablist-fade-end: 0px;
   /* Slides in/out in lockstep with the display panel
      (`.display-sidebar` uses width 460ms cubic-bezier(0.32, 0.72, 0.16, 1)). */
   transition:
@@ -526,12 +554,7 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
 }
 
 .shell-topbar-tablist::-webkit-scrollbar {
-  height: 4px;
-}
-
-.shell-topbar-tablist::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--foreground) 18%, transparent);
-  border-radius: 2px;
+  display: none;
 }
 
 .shell-topbar-tab {

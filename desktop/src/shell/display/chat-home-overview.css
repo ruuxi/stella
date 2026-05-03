@@ -209,20 +209,33 @@
   font-size: 12px;
   line-height: 1.35;
   color: var(--text-weak);
+  /* Edge fades driven by `useEdgeFade` — collapse on whichever edge
+     the autoscroller has reached. */
+  --task-feed-fade: 14px;
+  --task-feed-fade-start: var(--task-feed-fade);
+  --task-feed-fade-end: var(--task-feed-fade);
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    #000 14px,
-    #000 calc(100% - 14px),
+    #000 var(--task-feed-fade-start),
+    #000 calc(100% - var(--task-feed-fade-end)),
     transparent 100%
   );
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    #000 14px,
-    #000 calc(100% - 14px),
+    #000 var(--task-feed-fade-start),
+    #000 calc(100% - var(--task-feed-fade-end)),
     transparent 100%
   );
+}
+
+.chat-home-overview__task-feed[data-at-start="true"] {
+  --task-feed-fade-start: 0px;
+}
+
+.chat-home-overview__task-feed[data-at-end="true"] {
+  --task-feed-fade-end: 0px;
 }
 
 .chat-home-overview__task-feed::-webkit-scrollbar {

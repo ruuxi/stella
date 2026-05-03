@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/api";
+import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { authClient } from "@/global/auth/lib/auth-client";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
@@ -3027,6 +3028,8 @@ export const SettingsScreen = ({
     [activeTabProp, onActiveTabChange],
   );
 
+  const tabRailRef = useEdgeFadeRef<HTMLElement>();
+
   return (
     <>
       {/* The Settings page owns its own left rail rather than borrowing
@@ -3035,6 +3038,7 @@ export const SettingsScreen = ({
       <div className="settings-screen">
         <div className="settings-layout settings-layout--standalone">
           <aside
+            ref={tabRailRef}
             className="settings-tab-rail"
             role="tablist"
             aria-label={t("settings.title")}
