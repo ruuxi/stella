@@ -536,6 +536,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
     onOverlayStart: onIpc<{ sessionId: string }>("dictation:overlayStart"),
     onOverlayStop: onIpc<{ sessionId: string }>("dictation:overlayStop"),
+    onOverlayCancel: onIpc<{ sessionId: string }>("dictation:overlayCancel"),
     overlayCompleted: (payload: { sessionId: string; text: string }) =>
       ipcRenderer.send("dictation:overlayCompleted", payload),
     overlayFailed: (payload: { sessionId: string; error?: string }) =>
@@ -1196,14 +1197,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("schedule:removeCronJob", payload),
     updateCronJob: (payload: {
       jobId: string;
-      patch: import(
-        "../../runtime/kernel/shared/scheduling.js"
-      ).LocalCronJobUpdatePatch;
+      patch: import("../../runtime/kernel/shared/scheduling.js").LocalCronJobUpdatePatch;
     }) => ipcRenderer.invoke("schedule:updateCronJob", payload),
     upsertHeartbeat: (
-      payload: import(
-        "../../runtime/kernel/shared/scheduling.js"
-      ).LocalHeartbeatUpsertInput,
+      payload: import("../../runtime/kernel/shared/scheduling.js").LocalHeartbeatUpsertInput,
     ) => ipcRenderer.invoke("schedule:upsertHeartbeat", payload),
     runHeartbeat: (payload: { conversationId: string }) =>
       ipcRenderer.invoke("schedule:runHeartbeat", payload),
@@ -1362,7 +1359,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("pet:getState") as Promise<{
         open: boolean;
         status: {
-          state: "idle" | "running" | "waiting" | "review" | "failed" | "waving";
+          state:
+            | "idle"
+            | "running"
+            | "waiting"
+            | "review"
+            | "failed"
+            | "waving";
           title: string;
           message: string;
           isLoading: boolean;

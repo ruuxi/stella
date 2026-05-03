@@ -5,8 +5,8 @@
  *
  *   [waveform — flex 1]   [0:24]   [X]   [✓]   [↑ (optional)]
  *
- * The optional send arrow is only wired by the in-app composers — the
- * global overlay (used to dictate into other apps) omits it.
+ * The control buttons are used by the in-app composers. The global overlay
+ * can hide them because stopping the shortcut commits the dictation directly.
  *
  * The waveform is drawn to a single <canvas> so we can repaint at the level
  * tick rate (~12 Hz) without re-rendering hundreds of DOM nodes.
@@ -21,6 +21,7 @@ type DictationRecordingBarProps = {
   elapsedMs: number;
   onCancel: () => void;
   onConfirm: () => void;
+  showControls?: boolean;
   /**
    * When provided, renders an arrow button to the right of the check that
    * stops dictation and immediately submits the resulting message. Only the
@@ -35,6 +36,7 @@ export function DictationRecordingBar({
   elapsedMs,
   onCancel,
   onConfirm,
+  showControls = true,
   onSend,
 }: DictationRecordingBarProps) {
   return (
@@ -43,41 +45,47 @@ export function DictationRecordingBar({
       <span className="composer-dictation-timer" aria-live="polite">
         {formatElapsed(elapsedMs)}
       </span>
-      <button
-        type="button"
-        className={cn("chat-composer-icon-button composer-dictation-control")}
-        onClick={onCancel}
-        title="Cancel dictation"
-        aria-label="Cancel dictation"
-      >
-        <CancelIcon />
-      </button>
-      <button
-        type="button"
-        className={cn(
-          "chat-composer-icon-button composer-dictation-control",
-          "composer-dictation-control--confirm",
-        )}
-        onClick={onConfirm}
-        title="Stop and transcribe"
-        aria-label="Stop dictation and transcribe"
-      >
-        <CheckIcon />
-      </button>
-      {onSend && (
-        <button
-          type="button"
-          className={cn(
-            "chat-composer-icon-button composer-dictation-control",
-            "composer-dictation-control--send",
+      {showControls ? (
+        <>
+          <button
+            type="button"
+            className={cn(
+              "chat-composer-icon-button composer-dictation-control",
+            )}
+            onClick={onCancel}
+            title="Cancel dictation"
+            aria-label="Cancel dictation"
+          >
+            <CancelIcon />
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "chat-composer-icon-button composer-dictation-control",
+              "composer-dictation-control--confirm",
+            )}
+            onClick={onConfirm}
+            title="Stop and transcribe"
+            aria-label="Stop dictation and transcribe"
+          >
+            <CheckIcon />
+          </button>
+          {onSend && (
+            <button
+              type="button"
+              className={cn(
+                "chat-composer-icon-button composer-dictation-control",
+                "composer-dictation-control--send",
+              )}
+              onClick={onSend}
+              title="Stop, transcribe, and send"
+              aria-label="Stop dictation, transcribe, and send"
+            >
+              <SendIcon />
+            </button>
           )}
-          onClick={onSend}
-          title="Stop, transcribe, and send"
-          aria-label="Stop dictation, transcribe, and send"
-        >
-          <SendIcon />
-        </button>
-      )}
+        </>
+      ) : null}
     </>
   );
 }
@@ -145,10 +153,7 @@ function DictationWaveform({ levels }: { levels: number[] }) {
 
     for (let i = 0; i < visibleCount; i += 1) {
       const level = levels[startIndex + i]!;
-      const barH = Math.max(
-        minBarH,
-        Math.min(maxBarH, level * maxBarH),
-      );
+      const barH = Math.max(minBarH, Math.min(maxBarH, level * maxBarH));
       const x = startX + i * stride;
       const y = midY - barH / 2;
       ctx.fillRect(x, y, barW, barH);

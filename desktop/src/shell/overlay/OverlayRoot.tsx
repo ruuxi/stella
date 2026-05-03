@@ -367,9 +367,7 @@ function useOverlayHitTesting(
       }
 
       updateInteractive(
-        rects.some((rect) =>
-          pointInRect({ x: e.clientX, y: e.clientY }, rect),
-        ),
+        rects.some((rect) => pointInRect({ x: e.clientX, y: e.clientY }, rect)),
       );
     };
 
@@ -505,10 +503,19 @@ function useOverlayDictation() {
     const cleanupStop = api.onOverlayStop(({ sessionId }) => {
       void stopAndComplete(sessionId);
     });
+    const cleanupCancel = api.onOverlayCancel?.(({ sessionId }) => {
+      const session = sessionRef.current;
+      if (!session || sessionIdRef.current !== sessionId) return;
+      void session.cancel().finally(() => {
+        window.electronAPI?.dictation?.overlayFailed({ sessionId });
+        clearSession();
+      });
+    });
 
     return () => {
       cleanupStart();
       cleanupStop();
+      cleanupCancel?.();
       const session = sessionRef.current;
       if (session) {
         void session.cancel().catch(() => undefined);
@@ -572,6 +579,7 @@ function DictationOverlay({
         elapsedMs={elapsedMs}
         onCancel={onCancel}
         onConfirm={onConfirm}
+        showControls={false}
       />
     </div>
   );

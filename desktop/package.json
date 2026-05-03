@@ -121,6 +121,13 @@
     ],
     "extraResources": [
       {
+        "from": "resources/audio",
+        "to": "audio",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "native/out",
         "to": "native/out",
         "filter": [

@@ -28,6 +28,11 @@ import { appendRollingLevel } from "@/features/dictation/rolling-levels";
 
 export const DICTATION_TOGGLE_EVENT = "stella:dictation-toggle";
 
+type DictationToggleEventDetail = {
+  startId?: string;
+  action?: "toggle" | "start" | "stop" | "cancel";
+};
+
 /** How many waveform bars we retain. The session emits ~12.5 ticks/sec, so
  *  this buffers ~20 s of recent activity before older bars scroll off. */
 const MAX_LEVEL_BARS = 256;
@@ -186,7 +191,10 @@ export const useDictation = ({
         onStateChange: (next, errMessage) => {
           setState(next);
           if (next === "error" && errMessage) {
-            console.warn("[dictation] session entered error state:", errMessage);
+            console.warn(
+              "[dictation] session entered error state:",
+              errMessage,
+            );
             setError(errMessage);
             onErrorRef.current?.(errMessage);
           }
@@ -250,18 +258,38 @@ export const useDictation = ({
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const startId = (event as CustomEvent<{ startId?: string }>).detail
-        ?.startId;
+      const detail = (event as CustomEvent<DictationToggleEventDetail>).detail;
+      const startId = detail?.startId;
+      const action = detail?.action ?? "toggle";
       const current = stateRef.current;
       const canHandle =
         !disabled || current === "listening" || current === "transcribing";
       if (!canHandle) return;
       window.electronAPI?.dictation?.inAppStarted({ startId });
+      if (action === "start") {
+        if (current !== "listening" && current !== "transcribing") {
+          void start();
+        }
+        return;
+      }
+      if (action === "stop") {
+        if (current === "listening") {
+          sendAfterCommitRef.current = false;
+          void stop();
+        }
+        return;
+      }
+      if (action === "cancel") {
+        if (current === "listening" || current === "transcribing") {
+          cancel();
+        }
+        return;
+      }
       toggle();
     };
     window.addEventListener(DICTATION_TOGGLE_EVENT, handler);
     return () => window.removeEventListener(DICTATION_TOGGLE_EVENT, handler);
-  }, [disabled, toggle]);
+  }, [cancel, disabled, start, stop, toggle]);
 
   useEffect(() => {
     return () => {

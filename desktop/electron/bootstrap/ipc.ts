@@ -22,10 +22,7 @@ import { registerUpdatesHandlers } from "../ipc/updates-handlers.js";
 import { registerVoiceHandlers } from "../ipc/voice-handlers.js";
 import { registerDictationHandlers } from "../ipc/dictation-handlers.js";
 import { startCapturingHandlers } from "../services/mobile-bridge/handler-registry.js";
-import {
-  type BootstrapContext,
-  getMobileBroadcast,
-} from "./context.js";
+import { type BootstrapContext, getMobileBroadcast } from "./context.js";
 import type { BootstrapResetFlows } from "./resets.js";
 import { startMobileBridge, stopMobileBridge } from "./aux-runtime.js";
 import { scheduleGlobalInputHooksAfterAppReady } from "./global-input-hooks.js";
@@ -287,11 +284,14 @@ export const registerBootstrapIpcHandlers = (
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
 
-  registerDictationHandlers({
+  const dictationPushToTalk = registerDictationHandlers({
     windowManager: state.windowManager!,
     getOverlayController: () => state.overlayController ?? null,
     getStellaRoot: lifecycle.getStellaRoot,
   });
+  services.radialGestureService.setDictationPushToTalkHandlers(
+    dictationPushToTalk,
+  );
 
   stopCapturing();
 };

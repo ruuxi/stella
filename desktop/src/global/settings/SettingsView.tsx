@@ -299,7 +299,7 @@ function ShortcutsSettingsTab() {
     [platform],
   );
   const [shortcuts, setShortcuts] = useState<Record<ShortcutAction, string>>({
-    dictation: "Control+M",
+    dictation: "Alt",
     voice: "CommandOrControl+Shift+D",
   });
   const [radialTriggerKey, setRadialTriggerKey] =
@@ -321,7 +321,7 @@ function ShortcutsSettingsTab() {
         const [dictationShortcut, voiceShortcut, radialKey, miniModifier] =
           await Promise.all([
             window.electronAPI?.dictation?.getShortcut?.() ??
-              Promise.resolve("Control+M"),
+              Promise.resolve("Alt"),
             window.electronAPI?.voice?.getRtcShortcut?.() ??
               Promise.resolve("CommandOrControl+Shift+D"),
             window.electronAPI?.system?.getRadialTriggerKey?.() ??
@@ -535,7 +535,7 @@ function ShortcutsSettingsTab() {
         ) : null}
         {renderShortcutRow(
           "dictation",
-          "Starts in the active Stella composer, or opens OS-wide dictation when another app is focused.",
+          "Hold Option to dictate into Stella or the app you're using.",
         )}
         {renderShortcutRow(
           "voice",

@@ -79,7 +79,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   syncMode: "off",
   radialTriggerKey: DEFAULT_RADIAL_TRIGGER_CODE,
-  dictationShortcut: "Control+M",
+  dictationShortcut: "Alt",
   voiceRtcShortcut: "CommandOrControl+Shift+D",
   miniDoubleTapModifier: DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
   preventComputerSleep: false,
