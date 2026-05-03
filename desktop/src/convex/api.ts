@@ -392,6 +392,55 @@ export type PublicApiType = {
         string | undefined
       >;
     };
+    pets: {
+      listPublicPage: FunctionReference<
+        "query",
+        "public",
+        {
+          paginationOpts: {
+            id?: number;
+            endCursor?: string | null;
+            maximumRowsRead?: number;
+            maximumBytesRead?: number;
+            numItems: number;
+            cursor: string | null;
+          };
+          sort: "downloads" | "name";
+          tag?: string | undefined;
+          search?: string | undefined;
+        },
+        any,
+        string | undefined
+      >;
+      getByPetId: FunctionReference<
+        "query",
+        "public",
+        { id: string },
+        any,
+        string | undefined
+      >;
+      getByPetIds: FunctionReference<
+        "query",
+        "public",
+        { ids: string[] },
+        any,
+        string | undefined
+      >;
+      listTagFacets: FunctionReference<
+        "query",
+        "public",
+        {},
+        any,
+        string | undefined
+      >;
+      incrementDownloads: FunctionReference<
+        "mutation",
+        "public",
+        { id: string },
+        any,
+        string | undefined
+      >;
+    };
     fashion: {
       getFashionFeatureStatus: FunctionReference<
         "query",

@@ -14,11 +14,9 @@ import type {
   PetOverlayStatus,
 } from "@/shared/contracts/pet";
 import type { VoiceRuntimeSnapshot } from "@/shared/types/electron";
-import {
-  BUILT_IN_PETS,
-  DEFAULT_PET_ID,
-  findBuiltInPet,
-} from "./built-in-pets";
+import { DEFAULT_PET_ID } from "./built-in-pets";
+import { BUNDLED_PETS } from "./bundled-pets";
+import { useSelectedPet } from "./pet-catalog-context";
 import { useSelectedPetId } from "./pet-preferences";
 import { PetChatPopover } from "./PetChatPopover";
 import { PetSprite } from "./PetSprite";
@@ -34,8 +32,6 @@ const ACTION_ARC_RADIUS = 64;
  *  Four buttons spread between 135° (upper-left) and 225° (lower-left)
  *  with even ~30° spacing. */
 const ACTION_ANGLES = [135, 165, 195, 225] as const;
-
-const DEFAULT_PET = findBuiltInPet(DEFAULT_PET_ID) ?? BUILT_IN_PETS[0];
 
 type VoicePetMode = "idle" | "listening" | "speaking";
 
@@ -125,8 +121,15 @@ export const PetOverlay = ({
   onClose,
 }: PetOverlayProps) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [selectedPetId, setSelectedPetId] = useSelectedPetId(DEFAULT_PET.id);
-  const pet = findBuiltInPet(selectedPetId) ?? DEFAULT_PET;
+  const [selectedPetId] = useSelectedPetId(DEFAULT_PET_ID);
+  const selected = useSelectedPet(selectedPetId);
+  // Bundled default is the absolute floor — guarantees the mascot can
+  // always render even before any Convex query has hydrated, and even
+  // when the user's selected pet was unpublished server-side.
+  const fallbackPet =
+    BUNDLED_PETS.find((bundled) => bundled.id === DEFAULT_PET_ID) ??
+    BUNDLED_PETS[0];
+  const pet = selected ?? fallbackPet;
 
   const [hover, setHover] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -437,27 +440,13 @@ export const PetOverlay = ({
     return () => window.clearTimeout(timer);
   }, [status.message, status.state]);
 
-  const handleSelectAnotherPet = useCallback(() => {
-    setContextMenu(null);
-    // Cycle through built-ins for now; the picker page covers full
-    // browsing and the keyboard shortcut keeps the flow snappy from the
-    // overlay even when the main window is buried.
-    const currentIndex = BUILT_IN_PETS.findIndex(
-      (entry) => entry.id === pet.id,
-    );
-    const next = BUILT_IN_PETS[(currentIndex + 1) % BUILT_IN_PETS.length];
-    if (next) {
-      setSelectedPetId(next.id);
-    }
-  }, [pet.id, setSelectedPetId]);
-
   const handleClosePet = useCallback(() => {
     setContextMenu(null);
     onClose();
     window.electronAPI?.pet?.setOpen?.(false);
   }, [onClose]);
 
-  if (!open) {
+  if (!open || !pet) {
     return null;
   }
 
@@ -612,13 +601,6 @@ export const PetOverlay = ({
           style={{ left: contextMenu.left, top: contextMenu.top }}
           onClick={(event) => event.stopPropagation()}
         >
-          <button
-            type="button"
-            className="pet-overlay-context-item"
-            onClick={handleSelectAnotherPet}
-          >
-            Cycle next pet
-          </button>
           <button
             type="button"
             className="pet-overlay-context-item pet-overlay-context-item-danger"

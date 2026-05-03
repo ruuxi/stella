@@ -69,22 +69,6 @@ type WorkingTaskShape = TaskItem & {
   requiresUserInput?: boolean;
 };
 
-const summarizeTitle = (
-  liveTasks: TaskItem[] | null | undefined,
-  isStreaming: boolean,
-  runtimeStatusText: string,
-): string => {
-  const firstRunning = (liveTasks ?? []).find(
-    (task) => task.status === "running",
-  );
-  if (firstRunning?.description && firstRunning.description !== "Task") {
-    return firstRunning.description;
-  }
-  if (firstRunning?.statusText) return firstRunning.statusText;
-  if (isStreaming) return "Working";
-  return runtimeStatusText || "";
-};
-
 const deriveState = ({
   liveTasks,
   isStreaming,
