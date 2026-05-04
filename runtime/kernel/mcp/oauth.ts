@@ -57,6 +57,24 @@ export const saveMcpAccessToken = async (
   await writeTokenStore(stellaRoot, store);
 };
 
+export const deleteMcpAccessTokens = async (
+  stellaRoot: string,
+  tokenKeys: Iterable<string | undefined>,
+) => {
+  const keys = [...new Set([...tokenKeys].filter((key): key is string => Boolean(key)))];
+  if (keys.length === 0) return;
+  const store = await readTokenStore(stellaRoot);
+  if (!store.tokens) return;
+  let changed = false;
+  for (const key of keys) {
+    if (key in store.tokens) {
+      delete store.tokens[key];
+      changed = true;
+    }
+  }
+  if (changed) await writeTokenStore(stellaRoot, store);
+};
+
 const base64Url = (buffer: Buffer) =>
   buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
 

@@ -86,16 +86,29 @@ class HttpMcpSession {
   private async request(method: string, params?: unknown): Promise<unknown> {
     if (!this.server.url) throw new Error(`${this.server.displayName} does not have a URL.`);
     const id = randomUUID();
-    const response = await fetch(this.server.url, {
-      method: "POST",
-      headers: await this.headers(),
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id,
-        method,
-        ...(params === undefined ? {} : { params }),
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000);
+    let response: Response;
+    try {
+      response = await fetch(this.server.url, {
+        method: "POST",
+        headers: await this.headers(),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          method,
+          ...(params === undefined ? {} : { params }),
+        }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(`${this.server.displayName} timed out waiting for ${method}.`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
     const responseSessionId = response.headers.get("mcp-session-id");
     if (responseSessionId) this.sessionId = responseSessionId;
     const text = await response.text();
@@ -118,15 +131,22 @@ class HttpMcpSession {
 
   private async notify(method: string, params?: unknown) {
     if (!this.server.url) return;
-    await fetch(this.server.url, {
-      method: "POST",
-      headers: await this.headers(),
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method,
-        ...(params === undefined ? {} : { params }),
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000);
+    try {
+      await fetch(this.server.url, {
+        method: "POST",
+        headers: await this.headers(),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method,
+          ...(params === undefined ? {} : { params }),
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async initialize() {
@@ -155,6 +175,11 @@ class HttpMcpSession {
     });
     return result as McpCallResult;
   }
+
+  close() {
+    this.sessionId = null;
+    this.initialized = false;
+  }
 }
 
 class StdioMcpSession {
@@ -177,6 +202,7 @@ class StdioMcpSession {
       throw new Error(`${this.server.displayName} does not have a command.`);
     }
     this.child = spawn(this.server.command, this.server.args ?? [], {
+      cwd: this.server.cwd,
       env: {
         ...process.env,
         ...(await resolveSecretPlaceholders(this.stellaRoot, this.server.env)),
@@ -189,6 +215,14 @@ class StdioMcpSession {
     this.child.on("exit", () => {
       for (const pending of this.pending.values()) {
         pending.reject(new Error(`${this.server.displayName} exited.`));
+      }
+      this.pending.clear();
+      this.child = null;
+      this.initialized = false;
+    });
+    this.child.on("error", (error) => {
+      for (const pending of this.pending.values()) {
+        pending.reject(error);
       }
       this.pending.clear();
       this.child = null;
@@ -270,6 +304,16 @@ class StdioMcpSession {
     });
     return result as McpCallResult;
   }
+
+  close() {
+    for (const pending of this.pending.values()) {
+      pending.reject(new Error(`${this.server.displayName} was disconnected.`));
+    }
+    this.pending.clear();
+    this.child?.kill();
+    this.child = null;
+    this.initialized = false;
+  }
 }
 
 const sessions = new Map<string, HttpMcpSession | StdioMcpSession>();
@@ -297,3 +341,15 @@ export const callMcpServerTool = async (
   toolName: string,
   args: Record<string, unknown>,
 ) => getSession(stellaRoot, server).callTool(toolName, args);
+
+export const closeMcpServerSessions = (
+  stellaRoot: string,
+  serverIds: Iterable<string>,
+) => {
+  for (const serverId of serverIds) {
+    const key = `${stellaRoot}:${serverId}`;
+    const session = sessions.get(key);
+    session?.close();
+    sessions.delete(key);
+  }
+};

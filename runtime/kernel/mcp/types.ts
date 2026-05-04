@@ -7,6 +7,7 @@ export type McpServerConfig = {
   transport: McpTransport;
   command?: string;
   args?: string[];
+  cwd?: string;
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
@@ -55,6 +56,7 @@ export type StellaConnectorRecord = {
   executable?: boolean;
   configFields?: ConnectorConfigField[];
   status:
+    | "local"
     | "official-mcp"
     | "official-api"
     | "implemented";

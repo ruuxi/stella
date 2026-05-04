@@ -70,6 +70,7 @@ type PendingDeviceSelectionState = {
   createdAt: number;
   provider: string;
   promptText: string;
+  userMessageId?: Id<"events">;
   attachments?: ChannelInboundAttachment[];
   channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
   deliveryMeta: Value;
@@ -438,7 +439,48 @@ export async function processIncomingMessage(
     });
   };
 
+  const persistUser = async (params: {
+    text: string;
+    attachments?: ChannelInboundAttachment[];
+    channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
+  }): Promise<Id<"events"> | null> => {
+    if (transient && transientBatchKey) {
+      await appendTransientChannelEvent({
+        ctx: args.ctx,
+        ownerId: connection.ownerId,
+        conversationId,
+        provider: args.provider,
+        direction: "inbound",
+        text: params.text,
+        batchKey: transientBatchKey,
+        metadata: {
+          source: "connector",
+          syncMode,
+        },
+      });
+      return null;
+    }
+
+    return await appendInboundUserMessage({
+      ctx: args.ctx,
+      conversationId,
+      provider: args.provider,
+      text: params.text,
+      attachments: params.attachments,
+      channelEnvelope: params.channelEnvelope,
+    });
+  };
+
   try {
+    if (args.respond === false) {
+      await persistUser({
+        text: args.text,
+        attachments: args.attachments,
+        channelEnvelope: args.channelEnvelope,
+      });
+      return { text: "" };
+    }
+
     const [routingState, freshDevices] = await Promise.all([
       getConversationRoutingState({
         ctx: args.ctx,
@@ -456,6 +498,7 @@ export async function processIncomingMessage(
     let promptAttachments = args.attachments;
     let promptChannelEnvelope = args.channelEnvelope;
     let promptDeliveryMeta = args.deliveryMeta;
+    let pendingPromptUserMessageId: Id<"events"> | null = null;
     let targetDeviceId: string | null = null;
 
     if (routingState.pendingDeviceSelection) {
@@ -466,12 +509,17 @@ export async function processIncomingMessage(
       );
 
       if (!selectedOption) {
-        return {
-          text: buildDeviceSelectionPrompt(
-            pendingSelection.deviceOptions,
-            "I couldn't match that choice.",
-          ),
-        };
+        const responseText = buildDeviceSelectionPrompt(
+          pendingSelection.deviceOptions,
+          "I couldn't match that choice.",
+        );
+        await persistUser({
+          text: args.text,
+          attachments: args.attachments,
+          channelEnvelope: args.channelEnvelope,
+        });
+        await persistAssistant({ text: responseText });
+        return { text: responseText };
       }
 
       const freshMatch = freshDevices.find(
@@ -491,6 +539,7 @@ export async function processIncomingMessage(
           promptAttachments = pendingSelection.attachments;
           promptChannelEnvelope = pendingSelection.channelEnvelope;
           promptDeliveryMeta = asRecord(pendingSelection.deliveryMeta);
+          pendingPromptUserMessageId = pendingSelection.userMessageId ?? null;
         } else {
           const refreshedOptions = freshDevices.map((device) => ({
             deviceId: device.deviceId,
@@ -508,12 +557,17 @@ export async function processIncomingMessage(
               },
             },
           );
-          return {
-            text: buildDeviceSelectionPrompt(
-              refreshedOptions,
-              `${selectedOption.deviceName} is no longer online.`,
-            ),
-          };
+          const responseText = buildDeviceSelectionPrompt(
+            refreshedOptions,
+            `${selectedOption.deviceName} is no longer online.`,
+          );
+          await persistUser({
+            text: args.text,
+            attachments: args.attachments,
+            channelEnvelope: args.channelEnvelope,
+          });
+          await persistAssistant({ text: responseText });
+          return { text: responseText };
         }
       } else {
         await args.ctx.runMutation(
@@ -528,6 +582,7 @@ export async function processIncomingMessage(
         promptAttachments = pendingSelection.attachments;
         promptChannelEnvelope = pendingSelection.channelEnvelope;
         promptDeliveryMeta = asRecord(pendingSelection.deliveryMeta);
+        pendingPromptUserMessageId = pendingSelection.userMessageId ?? null;
         targetDeviceId = freshMatch.deviceId;
       }
     } else if (
@@ -557,6 +612,12 @@ export async function processIncomingMessage(
           deviceName: device.deviceName,
           platform: device.platform,
         }));
+        const userMessageId = await persistUser({
+          text: args.text,
+          attachments: args.attachments,
+          channelEnvelope: args.channelEnvelope,
+        });
+        const responseText = buildDeviceSelectionPrompt(deviceOptions);
         await args.ctx.runMutation(
           internal.conversations.setPendingDeviceSelection,
           {
@@ -565,6 +626,7 @@ export async function processIncomingMessage(
               createdAt: nowMs,
               provider: args.provider,
               promptText: args.text,
+              ...(userMessageId ? { userMessageId } : {}),
               attachments: args.attachments,
               channelEnvelope: args.channelEnvelope,
               deliveryMeta: JSON.parse(JSON.stringify(args.deliveryMeta ?? {})) as Value,
@@ -572,40 +634,18 @@ export async function processIncomingMessage(
             },
           },
         );
-        return { text: buildDeviceSelectionPrompt(deviceOptions) };
+        await persistAssistant({ text: responseText });
+        return { text: responseText };
       }
     }
 
-    const userMessageId = transient
-      ? null
-      : await appendInboundUserMessage({
-          ctx: args.ctx,
-          conversationId,
-          provider: args.provider,
-          text: promptText,
-          attachments: promptAttachments,
-          channelEnvelope: promptChannelEnvelope,
-        });
-
-    if (transient && transientBatchKey) {
-      await appendTransientChannelEvent({
-        ctx: args.ctx,
-        ownerId: connection.ownerId,
-        conversationId,
-        provider: args.provider,
-        direction: "inbound",
+    const userMessageId =
+      pendingPromptUserMessageId ??
+      (await persistUser({
         text: promptText,
-        batchKey: transientBatchKey,
-        metadata: {
-          source: "connector",
-          syncMode,
-        },
-      });
-    }
-
-    if (args.respond === false) {
-      return { text: "" };
-    }
+        attachments: promptAttachments,
+        channelEnvelope: promptChannelEnvelope,
+      }));
 
     console.log(
       `[pipeline:trace] conversationRouting: ownerId=${connection.ownerId}, activeTargetDeviceId=${routingState.activeTargetDeviceId ?? "none"}, freshDevices=${freshDevices.length}, targetDeviceId=${targetDeviceId}`,
@@ -727,9 +767,8 @@ export async function processIncomingMessage(
 
     return { text: responseText };
   } catch (error) {
-    // best-effort: connector webhook callers treat null as "no reply"; rethrowing would 500 the webhook
     console.error("[channels] processIncomingMessage failed:", error);
-    return null;
+    throw error;
   } finally {
     // Always clear transient connector rows, including unexpected error paths.
     await cleanupTransientBatch();
@@ -771,7 +810,7 @@ export async function handleConnectorIncomingMessage(
       await args.sendReply(result.text);
     }
   } catch (error) {
-    console.error(`${args.logPrefix} Agent turn failed:`, error);
+    console.error(`${args.logPrefix} Connector pipeline failed:`, error);
     if (shouldRespond) {
       await args.sendReply(args.failureText ?? "Sorry, something went wrong. Please try again.");
     }

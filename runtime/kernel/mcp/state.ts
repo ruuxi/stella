@@ -60,12 +60,24 @@ const getCodexMarketplaceRoot = () =>
   process.env.STELLA_CONNECT_PLUGIN_MARKETPLACE_ROOT ??
   path.join(os.homedir(), ".codex", ".tmp", "plugins");
 
-const listLocalMarketplaceEntries = async (): Promise<StellaConnectorRecord[]> => {
+const listLocalMarketplacePlugins = async () => {
   const root = getCodexMarketplaceRoot();
   const marketplace = await readJson<{ plugins?: Array<Record<string, unknown>> }>(
     path.join(root, ".agents", "plugins", "marketplace.json"),
   );
   const plugins = Array.isArray(marketplace?.plugins) ? marketplace.plugins : [];
+  return { root, plugins };
+};
+
+const findLocalMarketplaceSourcePath = async (marketplaceKey: string) => {
+  const { root, plugins } = await listLocalMarketplacePlugins();
+  const plugin = plugins.find((entry) => entry.name === marketplaceKey);
+  if (!plugin) return null;
+  return path.resolve(root, String((plugin.source as { path?: unknown } | undefined)?.path ?? ""));
+};
+
+const listLocalMarketplaceEntries = async (): Promise<StellaConnectorRecord[]> => {
+  const { root, plugins } = await listLocalMarketplacePlugins();
   const entries: StellaConnectorRecord[] = [];
 
   for (const plugin of plugins) {
@@ -99,9 +111,10 @@ const listLocalMarketplaceEntries = async (): Promise<StellaConnectorRecord[]> =
       (typeof manifest?.name === "string" && manifest.name) ||
       key;
     const official = getOfficialConnector(key);
-    if (!official) continue;
-    const executable = Boolean(official.servers?.length || official.apis?.length);
-    const requiresCredential = officialConnectorRequiresSetup(official);
+    const executable = Boolean(official?.servers?.length || official?.apis?.length);
+    const requiresCredential = official
+      ? officialConnectorRequiresCredentialInput(official)
+      : false;
     entries.push({
       id: safeName(key),
       marketplaceKey: key,
@@ -122,7 +135,7 @@ const listLocalMarketplaceEntries = async (): Promise<StellaConnectorRecord[]> =
       configFields: official?.configFields,
       executable,
       requiresCredential,
-      status: official.status,
+      status: official?.status ?? "local",
       installed: false,
     });
   }
@@ -160,6 +173,15 @@ export const officialConnectorRequiresSetup = (
     connector.configFields?.length ||
       connector.apis?.some((api) => api.auth && api.auth.type !== "none") ||
       connector.servers?.some((server) => server.auth && server.auth.type !== "none"),
+  );
+
+const officialConnectorRequiresCredentialInput = (
+  connector: OfficialConnectorDefinition,
+) =>
+  Boolean(
+    connector.configFields?.length ||
+      connector.apis?.some((api) => api.auth?.type === "api_key") ||
+      connector.servers?.some((server) => server.auth?.type === "api_key"),
   );
 
 export const listConfiguredApiConnectors = async (
@@ -213,10 +235,17 @@ export const installOfficialConnector = async (
     throw new Error(`No Stella-native connector configuration is available for ${marketplaceKey} yet.`);
   }
   const persistedConfig = getInterpolationConfig(config, official.configFields);
+  const localSourcePath = await findLocalMarketplaceSourcePath(safeKey);
   const existing = await listConfiguredMcpServers(stellaRoot);
   const byId = new Map(existing.map((server) => [server.id, server]));
   for (const server of official.servers ?? []) {
-    byId.set(server.id, interpolateConfig(server, persistedConfig));
+    const interpolated = interpolateConfig(server, persistedConfig);
+    byId.set(server.id, {
+      ...interpolated,
+      ...(interpolated.transport === "stdio" && !interpolated.cwd && localSourcePath
+        ? { cwd: localSourcePath }
+        : {}),
+    });
   }
   const servers = [...byId.values()].sort((left, right) =>
     left.displayName.localeCompare(right.displayName),
@@ -246,6 +275,17 @@ export const removeOfficialConnector = async (
     listConfiguredMcpServers(stellaRoot),
     listConfiguredApiConnectors(stellaRoot),
   ]);
+  const removedServers = servers.filter((server) => server.source?.marketplaceKey === safeKey);
+  const removedApis = apis.filter((api) => api.source?.marketplaceKey === safeKey);
+  const official = getOfficialConnector(safeKey);
+  const tokenKeys = [
+    ...removedServers.map((server) => server.auth?.tokenKey),
+    ...removedApis.map((api) => api.auth?.tokenKey),
+    ...(official?.servers ?? []).map((server) => server.auth?.tokenKey),
+    ...(official?.apis ?? []).map((api) => api.auth?.tokenKey),
+    ...(official?.configFields ?? []).map((field) => field.key),
+  ];
+  const { deleteMcpAccessTokens } = await import("./oauth.js");
   await Promise.all([
     saveConfiguredMcpServers(
       stellaRoot,
@@ -255,7 +295,10 @@ export const removeOfficialConnector = async (
       stellaRoot,
       apis.filter((api) => api.source?.marketplaceKey !== safeKey),
     ),
+    deleteMcpAccessTokens(stellaRoot, tokenKeys),
   ]);
+  const { closeMcpServerSessions } = await import("./client.js");
+  closeMcpServerSessions(stellaRoot, removedServers.map((server) => server.id));
 };
 
 export const listOfficialConnectorDefinitions = () =>

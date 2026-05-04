@@ -64,6 +64,7 @@ import "@/app/chat/composer-primitives.css";
 import "@/shell/chat-sidebar.css";
 
 const EDIT_BLUEPRINT_PROMPT = "What do you want to change?";
+const EMPTY_STORE_THREAD_MESSAGES: StoreThreadMessage[] = [];
 
 type StoreThreadMessage = {
   _id: string;
@@ -656,7 +657,7 @@ export function StoreSidePanel() {
   }, []);
 
   const items = state.snapshot?.items ?? [];
-  const messages = thread?.messages ?? [];
+  const messages = thread?.messages ?? EMPTY_STORE_THREAD_MESSAGES;
   /** Latest non-denied, unpublished blueprint draft (mirrors the server-side query). */
   const latestPublishableBlueprint = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
