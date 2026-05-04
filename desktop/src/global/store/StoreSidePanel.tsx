@@ -242,51 +242,64 @@ function PublishDialog({
       });
       return;
     }
-    setSubmitting(true);
-    try {
-      const normalizedPackageId = packageId.trim();
-      const manifest = {
-        ...(publishCategory ? { category: publishCategory } : {}),
-        summary: publishDescription.trim().slice(0, 500),
-      };
-      const storeApi = window.electronAPI?.store;
-      if (!storeApi?.publishBlueprint) {
-        throw new Error("Publish backend is not available.");
-      }
-      // The worker resolves the source message → attached features →
-      // commit hashes → redacted reference diffs and ships the spec
-      // and diffs to Convex in one round-trip. The renderer no longer
-      // talks to Convex directly here.
-      const release = await storeApi.publishBlueprint({
-        messageId: blueprint._id,
-        packageId: normalizedPackageId,
-        asUpdate,
-        manifest,
-        ...(asUpdate
-          ? {}
-          : {
-              displayName: publishDisplayName.trim(),
-              description: publishDescription.trim(),
-              ...(publishCategory ? { category: publishCategory } : {}),
-            }),
-      });
-      await onPublished({
-        messageId: blueprint._id,
-        releaseNumber: release.releaseNumber,
-      });
-      showToast({
-        title: "Published",
-        description: `${publishDisplayName.trim()} is now in the store.`,
-      });
-      onClose();
-    } catch (error) {
+    const normalizedPackageId = packageId.trim();
+    const manifest = {
+      ...(publishCategory ? { category: publishCategory } : {}),
+      summary: publishDescription.trim().slice(0, 500),
+    };
+    const storeApi = window.electronAPI?.store;
+    if (!storeApi?.publishBlueprint) {
       showToast({
         title: "Publish failed",
-        description: (error as Error)?.message,
+        description: "Publish backend is not available.",
         variant: "error",
       });
-      setSubmitting(false);
+      return;
     }
+    const publishArgs = {
+      messageId: blueprint._id,
+      packageId: normalizedPackageId,
+      asUpdate,
+      manifest,
+      ...(asUpdate
+        ? {}
+        : {
+            displayName: publishDisplayName.trim(),
+            description: publishDescription.trim(),
+            ...(publishCategory ? { category: publishCategory } : {}),
+          }),
+    };
+    const publishedMessageId = blueprint._id;
+    const toastName = publishDisplayName.trim();
+    setSubmitting(true);
+    onClose();
+    showToast({
+      title: "Publishing",
+      description: "Stella will let you know when it's finished.",
+    });
+    void (async () => {
+      try {
+        // The worker resolves the source message → attached features →
+        // commit hashes → redacted reference diffs and ships the spec
+        // and diffs to Convex in one round-trip. The renderer no longer
+        // talks to Convex directly here.
+        const release = await storeApi.publishBlueprint(publishArgs);
+        await onPublished({
+          messageId: publishedMessageId,
+          releaseNumber: release.releaseNumber,
+        });
+        showToast({
+          title: "Published",
+          description: `${toastName} is now in the store.`,
+        });
+      } catch (error) {
+        showToast({
+          title: "Publish failed",
+          description: (error as Error)?.message,
+          variant: "error",
+        });
+      }
+    })();
   };
 
   return (
@@ -390,7 +403,6 @@ function PublishDialog({
               type="button"
               className="pill-btn"
               onClick={onClose}
-              disabled={submitting}
             >
               Cancel
             </button>
