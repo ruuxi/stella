@@ -7,7 +7,10 @@ import {
 } from "./shared_validators";
 
 export type { MediaBillingUnit, MediaMeteredFrom };
-export { MEDIA_BILLING_UNITS, MEDIA_METERED_FROM_VALUES } from "./shared_validators";
+export {
+  MEDIA_BILLING_UNITS,
+  MEDIA_METERED_FROM_VALUES,
+} from "./shared_validators";
 
 export type MediaBillingRecord = {
   endpointId: string;
@@ -93,10 +96,7 @@ const walkObject = (
   }
 };
 
-const findMaxNumericField = (
-  value: unknown,
-  field: string,
-): number | null => {
+const findMaxNumericField = (value: unknown, field: string): number | null => {
   let max: number | null = null;
   walkObject(value, (entry) => {
     const candidate = asNumber(entry[field]);
@@ -181,15 +181,8 @@ const estimateGptImage2PricePerImage = (
   request: MediaRequestSummary,
 ): { unitPriceUsd: number; megapixels: number; quality: string } => {
   const input = getInput(request);
-  const quality = (
-    getInputString(request, "quality") ?? "high"
-  ).toLowerCase();
-  const perMp =
-    quality === "low"
-      ? 0.012
-      : quality === "medium"
-        ? 0.045
-        : 0.18; // "high" is the documented default
+  const quality = (getInputString(request, "quality") ?? "high").toLowerCase();
+  const perMp = quality === "low" ? 0.012 : quality === "medium" ? 0.045 : 0.18; // "high" is the documented default
 
   // Default `landscape_4_3` ≈ 1024×768 (0.79 MP). Without an explicit size,
   // round up slightly so we don't undercharge.
@@ -216,6 +209,15 @@ export const meterCompletedMediaJob = (args: {
   output: unknown;
 }): MediaBillingRecord | UnsupportedMediaBilling => {
   switch (args.endpointId) {
+    case "google/lyria-3-pro-preview":
+      return buildBillingRecord({
+        endpointId: args.endpointId,
+        billingUnit: "request",
+        quantity: 1,
+        unitPriceUsd: 0,
+        meteredFrom: "request",
+        note: "Lyria pricing is not configured yet; tracked as a generated media request.",
+      });
     case "openai/gpt-image-2":
     case "openai/gpt-image-2/edit": {
       const numImages = Math.max(
@@ -234,13 +236,14 @@ export const meterCompletedMediaJob = (args: {
       });
     }
     case "fal-ai/bytedance/seedream/v5/lite/text-to-image": {
-      const imageCount =
-        getInputNumber(args.request, "num_images") ?? 1;
+      const imageCount = getInputNumber(args.request, "num_images") ?? 1;
       const maxImages = getInputNumber(args.request, "max_images") ?? 1;
       return buildBillingRecord({
         endpointId: args.endpointId,
         billingUnit: "image",
-        quantity: Math.max(1, Math.round(imageCount)) * Math.max(1, Math.round(maxImages)),
+        quantity:
+          Math.max(1, Math.round(imageCount)) *
+          Math.max(1, Math.round(maxImages)),
         unitPriceUsd: 0.035,
         meteredFrom: "request",
       });
@@ -283,7 +286,12 @@ export const meterCompletedMediaJob = (args: {
     }
     case "fal-ai/ltx-2.3/extend-video": {
       const durationSeconds =
-        getInputNumber(args.request, "duration", "target_duration", "duration_seconds") ?? 5;
+        getInputNumber(
+          args.request,
+          "duration",
+          "target_duration",
+          "duration_seconds",
+        ) ?? 5;
       return buildBillingRecord({
         endpointId: args.endpointId,
         billingUnit: "second",
@@ -313,7 +321,8 @@ export const meterCompletedMediaJob = (args: {
       if (lastWordEndSeconds === null) {
         return {
           supported: false,
-          reason: "Transcription output did not include word or segment end timestamps.",
+          reason:
+            "Transcription output did not include word or segment end timestamps.",
         };
       }
       const keytermCount = getInputArrayLength(args.request, "keyterms");
@@ -347,9 +356,7 @@ export const meterCompletedMediaJob = (args: {
     }
     case "fal-ai/elevenlabs/text-to-dialogue/eleven-v3": {
       const text =
-        getInputString(args.request, "text")
-        ?? args.request.prompt
-        ?? "";
+        getInputString(args.request, "text") ?? args.request.prompt ?? "";
       if (!text) {
         return {
           supported: false,
@@ -378,8 +385,8 @@ export const meterCompletedMediaJob = (args: {
       );
       const baseThirtySecondUnits = durationSeconds / 30;
       const blendedUnits =
-        baseThirtySecondUnits
-        * (1 + Math.max(0, rerankingCandidates - 1) * 0.5);
+        baseThirtySecondUnits *
+        (1 + Math.max(0, rerankingCandidates - 1) * 0.5);
       return buildBillingRecord({
         endpointId: args.endpointId,
         billingUnit: "30_second_unit",
@@ -397,13 +404,12 @@ export const meterCompletedMediaJob = (args: {
       if (durationSeconds === null || outputHeight === null) {
         return {
           supported: false,
-          reason: "The edited video output did not include duration and height metadata.",
+          reason:
+            "The edited video output did not include duration and height metadata.",
         };
       }
       const pricePerSecond =
-        outputHeight <= 480 ? 0.06
-          : outputHeight <= 720 ? 0.08
-            : null;
+        outputHeight <= 480 ? 0.06 : outputHeight <= 720 ? 0.08 : null;
       if (pricePerSecond === null) {
         return {
           supported: false,
@@ -421,7 +427,8 @@ export const meterCompletedMediaJob = (args: {
     default:
       return {
         supported: false,
-        reason: "No completion-time billing strategy is configured for this provider endpoint.",
+        reason:
+          "No completion-time billing strategy is configured for this provider endpoint.",
       };
   }
 };

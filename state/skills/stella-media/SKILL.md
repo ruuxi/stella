@@ -21,6 +21,7 @@ General does not call `image_gen` directly. For still images, read the image doc
 | Images   | `https://stella.sh/docs/media/images` | `text_to_image`, `icon`, `image_edit`                                          |
 | Video    | `https://stella.sh/docs/media/video`  | `image_to_video`, `video_extend`, `video_to_video`                             |
 | Audio    | `https://stella.sh/docs/media/audio`  | `text_to_dialogue`, `sound_effects`, `speech_to_text`, `audio_visual_separate` |
+| Music    | `https://stella.sh/docs/media/music`  | `text_to_music`                                                                |
 | 3D       | `https://stella.sh/docs/media/3d`     | `text_to_3d`                                                                   |
 
 ## Don't call provider APIs directly

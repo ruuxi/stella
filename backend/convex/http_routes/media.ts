@@ -37,14 +37,18 @@ import {
   verifyFalWebhookSignature,
 } from "../media_fal_webhooks";
 import { hashSha256Hex } from "../lib/crypto_utils";
+import { getUserProviderKey } from "../lib/provider_keys";
 import { isRecord } from "../shared_validators";
 import {
   getMediaBillingAdmissionIssue,
   meterCompletedMediaJob,
 } from "../media_billing";
 import {
-  checkManagedUsageLimit,
-} from "../lib/managed_billing";
+  generateMusic,
+  LYRIA_MUSIC_ENDPOINT_ID,
+  parseMusicStreamRequest,
+} from "../media_lyria";
+import { checkManagedUsageLimit } from "../lib/managed_billing";
 import { dollarsToMicroCents } from "../lib/billing_money";
 
 const MEDIA_API_BASE_PATH = "/api/media/v1";
@@ -57,7 +61,7 @@ const MEDIA_SUBSCRIPTION_QUERY = "api.media_jobs.getByJobId";
  * Public agent-facing docs are served from the marketing site, not from the
  * backend. The backend just points callers at the right URL.
  *
- * Pages live at /docs/media (overview) and /docs/media/{images,video,audio,3d}.
+ * Pages live at /docs/media (overview) and /docs/media/{images,video,audio,music,3d}.
  * See `stella-website/src/lib/media-docs.ts` for the source content.
  */
 const MEDIA_DOCS_URL = "https://stella.sh/docs/media";
@@ -118,7 +122,9 @@ const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
 const asTrimmedString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+  typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 
 const hasAspectRatioSupport = (capability: MediaCapability): boolean =>
   capability.supportsAspectRatio === true;
@@ -134,7 +140,10 @@ const hasAspectRatioSupport = (capability: MediaCapability): boolean =>
  * Anything we don't recognize maps to undefined so the upstream default
  * (`landscape_4_3`) kicks in instead of us hard-failing the request.
  */
-const GPT_IMAGE_2_ASPECT_PRESETS: Record<string, { width: number; height: number }> = {
+const GPT_IMAGE_2_ASPECT_PRESETS: Record<
+  string,
+  { width: number; height: number }
+> = {
   "1:1": { width: 1024, height: 1024 },
   "4:3": { width: 1024, height: 768 },
   "3:4": { width: 768, height: 1024 },
@@ -146,7 +155,8 @@ const GPT_IMAGE_2_ASPECT_PRESETS: Record<string, { width: number; height: number
 };
 
 const isGptImage2Endpoint = (endpointId: string): boolean =>
-  endpointId === "openai/gpt-image-2" || endpointId === "openai/gpt-image-2/edit";
+  endpointId === "openai/gpt-image-2" ||
+  endpointId === "openai/gpt-image-2/edit";
 
 const applyCapabilityDefaults = (args: {
   capability: MediaCapability;
@@ -204,8 +214,7 @@ const isHttpUrl = (value: unknown): value is string => {
 };
 
 const isDataUri = (value: unknown): value is string =>
-  isNonEmptyString(value) &&
-  /^data:[^;,\s]+;base64,/i.test(value);
+  isNonEmptyString(value) && /^data:[^;,\s]+;base64,/i.test(value);
 
 const isMediaSourceReference = (value: unknown): value is string =>
   isHttpUrl(value) || isDataUri(value);
@@ -235,7 +244,10 @@ const isValidBase64Payload = (value: unknown): value is string => {
   }
 };
 
-const toMediaSourceDataUri = (args: { mimeType: string; base64: string }): string =>
+const toMediaSourceDataUri = (args: {
+  mimeType: string;
+  base64: string;
+}): string =>
   `data:${args.mimeType};base64,${normalizeBase64Payload(args.base64)}`;
 
 const SOURCE_SLOT_ALIASES: Record<string, string> = {
@@ -305,16 +317,36 @@ export const applyConvenienceInput = (args: {
       }
   >;
 }): Record<string, unknown> => {
-  const normalized = applyCapabilityDefaults(args);
-  if (args.prompt && args.capability.promptKey && normalized[args.capability.promptKey] === undefined) {
+  let normalized = applyCapabilityDefaults(args);
+  if (
+    args.prompt &&
+    args.capability.promptKey &&
+    normalized[args.capability.promptKey] === undefined
+  ) {
     normalized[args.capability.promptKey] = args.prompt;
   }
-  if (args.aspectRatio && hasAspectRatioSupport(args.capability) && normalized.aspect_ratio === undefined) {
+  if (args.capability.id === "text_to_music") {
+    normalized = createLyriaInput({ prompt: args.prompt, input: normalized });
+  }
+  if (
+    args.aspectRatio &&
+    hasAspectRatioSupport(args.capability) &&
+    normalized.aspect_ratio === undefined
+  ) {
     normalized.aspect_ratio = args.aspectRatio;
   }
-  const rawSourceValue = args.sourceUrl ?? (args.source ? normalizeSourceReference(args.source) : undefined);
-  if (rawSourceValue && args.capability.sourceUrlKey && normalized[args.capability.sourceUrlKey] === undefined) {
-    normalized[args.capability.sourceUrlKey] = args.capability.sourceUrlKey.endsWith("_urls") ? [rawSourceValue] : rawSourceValue;
+  const rawSourceValue =
+    args.sourceUrl ??
+    (args.source ? normalizeSourceReference(args.source) : undefined);
+  if (
+    rawSourceValue &&
+    args.capability.sourceUrlKey &&
+    normalized[args.capability.sourceUrlKey] === undefined
+  ) {
+    normalized[args.capability.sourceUrlKey] =
+      args.capability.sourceUrlKey.endsWith("_urls")
+        ? [rawSourceValue]
+        : rawSourceValue;
   }
   if (args.sources) {
     for (const [key, value] of Object.entries(args.sources)) {
@@ -324,7 +356,10 @@ export const applyConvenienceInput = (args: {
       }
     }
   }
-  return applyEndpointTransforms({ capability: args.capability, input: normalized });
+  return applyEndpointTransforms({
+    capability: args.capability,
+    input: normalized,
+  });
 };
 
 const requireCapabilityInputs = (args: {
@@ -333,11 +368,13 @@ const requireCapabilityInputs = (args: {
   prompt?: string;
   aspectRatio?: string;
   sourceUrl?: string;
-  source?: {
-    base64: string;
-    mimeType: string;
-    fileName?: string;
-  } | string;
+  source?:
+    | {
+        base64: string;
+        mimeType: string;
+        fileName?: string;
+      }
+    | string;
   sources?: Record<
     string,
     | string
@@ -365,8 +402,10 @@ const requireCapabilityInputs = (args: {
         ? null
         : `${label} must be a valid http(s) URL or data URI`;
     }
-    if (!isMimeType(value.mimeType)) return `${label}.mimeType must be a valid MIME type`;
-    if (!isValidBase64Payload(value.base64)) return `${label}.base64 must be valid base64`;
+    if (!isMimeType(value.mimeType))
+      return `${label}.mimeType must be a valid MIME type`;
+    if (!isValidBase64Payload(value.base64))
+      return `${label}.base64 must be valid base64`;
     return null;
   };
   if (args.source) {
@@ -382,36 +421,89 @@ const requireCapabilityInputs = (args: {
   if (args.aspectRatio !== undefined && !isNonEmptyString(args.aspectRatio)) {
     return "aspectRatio must be a non-empty string";
   }
-  if (args.capability.promptKey && !isNonEmptyString(normalized[args.capability.promptKey])) {
+  if (
+    args.capability.promptKey &&
+    !isNonEmptyString(normalized[args.capability.promptKey])
+  ) {
     return "prompt is required for this capability";
   }
-  const sourceSlotValue = args.capability.sourceUrlKey ? normalized[args.capability.sourceUrlKey] : undefined;
-  const sourceSlotRef = Array.isArray(sourceSlotValue) ? sourceSlotValue[0] : sourceSlotValue;
-  if (args.capability.requiresSourceUrl && (!args.capability.sourceUrlKey || !isMediaSourceReference(sourceSlotRef))) {
+  const sourceSlotValue = args.capability.sourceUrlKey
+    ? normalized[args.capability.sourceUrlKey]
+    : undefined;
+  const sourceSlotRef = Array.isArray(sourceSlotValue)
+    ? sourceSlotValue[0]
+    : sourceSlotValue;
+  if (
+    args.capability.requiresSourceUrl &&
+    (!args.capability.sourceUrlKey || !isMediaSourceReference(sourceSlotRef))
+  ) {
     return "A valid http(s) sourceUrl or source.base64 input is required for this capability";
   }
-  if (args.capability.sourceUrlKey && sourceSlotRef !== undefined && !isMediaSourceReference(sourceSlotRef)) {
+  if (
+    args.capability.sourceUrlKey &&
+    sourceSlotRef !== undefined &&
+    !isMediaSourceReference(sourceSlotRef)
+  ) {
     return "sourceUrl must be a valid http(s) URL or data URI";
   }
   if (args.capability.id === "sound_effects") {
     const durationSeconds = normalized.duration_seconds;
-    if (typeof durationSeconds !== "number" || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    if (
+      typeof durationSeconds !== "number" ||
+      !Number.isFinite(durationSeconds) ||
+      durationSeconds <= 0
+    ) {
       return "duration_seconds is required for this capability";
+    }
+  }
+  if (args.capability.id === "text_to_music") {
+    const parsedMusic = parseMusicStreamRequest(normalized);
+    if (!parsedMusic) {
+      return "weightedPrompts and musicGenerationConfig are required for this capability";
     }
   }
   return null;
 };
 
+const createLyriaInput = (args: {
+  prompt?: string;
+  input: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const input = { ...args.input };
+  if (!Array.isArray(input.weightedPrompts) && args.prompt) {
+    input.weightedPrompts = [{ text: args.prompt, weight: 1 }];
+  }
+  if (!isRecord(input.musicGenerationConfig)) {
+    input.musicGenerationConfig = {
+      bpm: 95,
+      density: 0.5,
+      brightness: 0.5,
+      guidance: 4,
+      temperature: 1,
+    };
+  }
+  return input;
+};
+
 export const registerMediaRoutes = (http: HttpRouter) => {
-  registerCorsOptions(http, [MEDIA_CAPABILITIES_PATH, MEDIA_GENERATE_PATH, MEDIA_FAL_WEBHOOK_PATH]);
+  registerCorsOptions(http, [
+    MEDIA_CAPABILITIES_PATH,
+    MEDIA_GENERATE_PATH,
+    MEDIA_FAL_WEBHOOK_PATH,
+  ]);
 
   http.route({
     path: MEDIA_CAPABILITIES_PATH,
     method: "GET",
     handler: httpAction(async (_ctx, request) =>
       handleCorsRequest(request, async (origin) =>
-        jsonResponse({ data: listMediaCapabilities(), docsUrl: MEDIA_DOCS_URL }, 200, origin),
-      )),
+        jsonResponse(
+          { data: listMediaCapabilities(), docsUrl: MEDIA_DOCS_URL },
+          200,
+          origin,
+        ),
+      ),
+    ),
   });
 
   http.route({
@@ -420,20 +512,27 @@ export const registerMediaRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         const identity = await ctx.auth.getUserIdentity();
-        const ownerId = identity?.tokenIdentifier ?? (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
+        const ownerId =
+          identity?.tokenIdentifier ??
+          (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
         if (!ownerId) return mediaUnauthorizedResponse(request, origin);
         const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId, {
           minimumRemainingMicroCents: MEDIA_DENY_BUFFER_MICRO_CENTS,
         });
-        if (!subscriptionCheck.allowed) return errorResponse(429, subscriptionCheck.message, origin);
-        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
-          scope: "media_generate",
-          key: ownerId,
-          limit: MEDIA_RATE_LIMIT,
-          windowMs: MEDIA_RATE_WINDOW_MS,
-          blockMs: MEDIA_RATE_WINDOW_MS,
-        });
-        if (!rateLimit.allowed) return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+        if (!subscriptionCheck.allowed)
+          return errorResponse(429, subscriptionCheck.message, origin);
+        const rateLimit = await ctx.runMutation(
+          internal.rate_limits.consumeWebhookRateLimit,
+          {
+            scope: "media_generate",
+            key: ownerId,
+            limit: MEDIA_RATE_LIMIT,
+            windowMs: MEDIA_RATE_WINDOW_MS,
+            blockMs: MEDIA_RATE_WINDOW_MS,
+          },
+        );
+        if (!rateLimit.allowed)
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
 
         let requestBody: unknown;
         try {
@@ -443,9 +542,19 @@ export const registerMediaRoutes = (http: HttpRouter) => {
         }
         try {
           const body = parseMediaGenerateRequest(requestBody);
-          if (!body) return errorResponse(400, "Invalid media generation JSON body", origin);
+          if (!body)
+            return errorResponse(
+              400,
+              "Invalid media generation JSON body",
+              origin,
+            );
           const resolved = resolveMediaProfile(body.capability, body.profile);
-          if (!resolved) return errorResponse(400, `Unknown capability or profile. See ${MEDIA_DOCS_URL}.`, origin);
+          if (!resolved)
+            return errorResponse(
+              400,
+              `Unknown capability or profile. See ${MEDIA_DOCS_URL}.`,
+              origin,
+            );
           const validationError = requireCapabilityInputs({
             capability: resolved.capability,
             profile: resolved.profile,
@@ -456,7 +565,8 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             sources: body.sources,
             input: body.input,
           });
-          if (validationError) return errorResponse(400, validationError, origin);
+          if (validationError)
+            return errorResponse(400, validationError, origin);
           const submissionInput = applyConvenienceInput({
             capability: resolved.capability,
             profile: resolved.profile,
@@ -476,10 +586,19 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             request: storedRequest,
           });
           if (billingAdmissionIssue) {
-            return errorResponse(503, `Media billing is not configured for ${resolved.profile.endpointId}: ${billingAdmissionIssue}`, origin);
+            return errorResponse(
+              503,
+              `Media billing is not configured for ${resolved.profile.endpointId}: ${billingAdmissionIssue}`,
+              origin,
+            );
           }
           const apiKey = getFalApiKey();
-          if (!apiKey) return errorResponse(503, "Media generation is not configured yet.", origin);
+          if (!apiKey)
+            return errorResponse(
+              503,
+              "Media generation is not configured yet.",
+              origin,
+            );
 
           const jobId = crypto.randomUUID();
           await ctx.runMutation(internal.media_jobs.createJob, {
@@ -487,10 +606,121 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             jobId,
             capability: resolved.capability.id,
             profile: resolved.profile.id,
-            provider: "fal",
+            provider: resolved.profile.provider,
             endpointId: resolved.profile.endpointId,
             request: storedRequest,
           });
+
+          if (resolved.profile.provider === "google_lyria") {
+            const parsedMusic = parseMusicStreamRequest(submissionInput);
+            if (!parsedMusic) {
+              await ctx.runMutation(internal.media_jobs.markSubmissionFailed, {
+                jobId,
+                upstreamStatus: "ERROR",
+                error: {
+                  message:
+                    "weightedPrompts and musicGenerationConfig are required for this capability.",
+                },
+              });
+              return errorResponse(
+                400,
+                "weightedPrompts and musicGenerationConfig are required for this capability.",
+                origin,
+              );
+            }
+            const apiKey =
+              (await getUserProviderKey(ctx, ownerId, "llm:google")) ??
+              process.env.GOOGLE_AI_API_KEY ??
+              null;
+            if (!apiKey) {
+              await ctx.runMutation(internal.media_jobs.markSubmissionFailed, {
+                jobId,
+                upstreamStatus: "ERROR",
+                error: {
+                  message:
+                    "No Google AI API key configured. Add one in Settings or contact your administrator.",
+                },
+              });
+              return errorResponse(
+                503,
+                "No Google AI API key configured. Add one in Settings or contact your administrator.",
+                origin,
+              );
+            }
+            try {
+              const result = await generateMusic({
+                apiKey,
+                parsedBody: parsedMusic,
+              });
+              const audioBytes = Uint8Array.from(
+                atob(result.audio.data),
+                (char) => char.charCodeAt(0),
+              );
+              const storageId = await ctx.storage.store(
+                new Blob([audioBytes], { type: result.audio.mimeType }),
+              );
+              const audioUrl = await ctx.storage.getUrl(storageId);
+              if (!audioUrl) {
+                throw new Error(
+                  "Failed to create a downloadable URL for the music clip.",
+                );
+              }
+              const output = {
+                audio: {
+                  url: audioUrl,
+                  mimeType: result.audio.mimeType,
+                },
+                promptLabel: result.promptLabel,
+                textParts: result.textParts,
+              };
+              const billing = meterCompletedMediaJob({
+                endpointId: LYRIA_MUSIC_ENDPOINT_ID,
+                request: storedRequest,
+                output,
+              });
+              const meteredBilling =
+                billing && !("supported" in billing) ? billing : undefined;
+              if (billing && "supported" in billing) {
+                console.error(
+                  `[media/generate] Failed to meter Lyria: ${billing.reason}`,
+                );
+              }
+              await ctx.runMutation(internal.media_jobs.markGenerated, {
+                jobId,
+                upstreamStatus: "OK",
+                output: output as never,
+                ...(meteredBilling ? { billing: meteredBilling as never } : {}),
+              });
+              const accepted = createMediaGenerateAcceptedResponse({
+                jobId,
+                capability: resolved.capability.id,
+                profile: resolved.profile.id,
+                status: "succeeded",
+                upstreamStatus: "OK",
+                subscription: {
+                  query: MEDIA_SUBSCRIPTION_QUERY,
+                  args: { jobId },
+                },
+              });
+              return jsonResponse({ ...accepted, output }, 202, origin);
+            } catch (error) {
+              await ctx.runMutation(internal.media_jobs.markSubmissionFailed, {
+                jobId,
+                upstreamStatus: "ERROR",
+                error: (createMediaJobError({
+                  value: (error as Error).message,
+                  fallbackMessage: "Music generation failed upstream.",
+                }) ?? {
+                  message: "Music generation failed upstream.",
+                }) as never,
+              });
+              return errorResponse(
+                502,
+                `Music generation failed: ${(error as Error).message || "Unknown error"}`,
+                origin,
+              );
+            }
+          }
 
           try {
             const submitted = await submitFalRequest({
@@ -502,37 +732,60 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             await ctx.runMutation(internal.media_jobs.markSubmitted, {
               jobId,
               providerRequestId: submitted.requestId,
-              ...(submitted.gatewayRequestId ? { providerGatewayRequestId: submitted.gatewayRequestId } : {}),
-              ...(submitted.responseUrl ? { providerResponseUrl: submitted.responseUrl } : {}),
-              ...(submitted.statusUrl ? { providerStatusUrl: submitted.statusUrl } : {}),
+              ...(submitted.gatewayRequestId
+                ? { providerGatewayRequestId: submitted.gatewayRequestId }
+                : {}),
+              ...(submitted.responseUrl
+                ? { providerResponseUrl: submitted.responseUrl }
+                : {}),
+              ...(submitted.statusUrl
+                ? { providerStatusUrl: submitted.statusUrl }
+                : {}),
               upstreamStatus: submitted.upstreamStatus,
-              ...(submitted.queuePosition !== undefined ? { queuePosition: submitted.queuePosition } : {}),
+              ...(submitted.queuePosition !== undefined
+                ? { queuePosition: submitted.queuePosition }
+                : {}),
             });
-            return jsonResponse(createMediaGenerateAcceptedResponse({
-              jobId,
-              capability: resolved.capability.id,
-              profile: resolved.profile.id,
-              status: toMediaJobStatus(submitted.upstreamStatus),
-              upstreamStatus: submitted.upstreamStatus,
-              subscription: { query: MEDIA_SUBSCRIPTION_QUERY, args: { jobId } },
-            }), 202, origin);
+            return jsonResponse(
+              createMediaGenerateAcceptedResponse({
+                jobId,
+                capability: resolved.capability.id,
+                profile: resolved.profile.id,
+                status: toMediaJobStatus(submitted.upstreamStatus),
+                upstreamStatus: submitted.upstreamStatus,
+                subscription: {
+                  query: MEDIA_SUBSCRIPTION_QUERY,
+                  args: { jobId },
+                },
+              }),
+              202,
+              origin,
+            );
           } catch (error) {
             await ctx.runMutation(internal.media_jobs.markSubmissionFailed, {
               jobId,
               upstreamStatus: "ERROR",
-              error:
-                (createMediaJobError({
-                  value: (error as Error).message,
-                  fallbackMessage: "Media generation failed upstream.",
-                }) ?? { message: "Media generation failed upstream." }) as never,
+              error: (createMediaJobError({
+                value: (error as Error).message,
+                fallbackMessage: "Media generation failed upstream.",
+              }) ?? { message: "Media generation failed upstream." }) as never,
             });
-            return errorResponse(502, `Fal request failed: ${(error as Error).message || "Unknown error"}`, origin);
+            return errorResponse(
+              502,
+              `Fal request failed: ${(error as Error).message || "Unknown error"}`,
+              origin,
+            );
           }
         } catch (error) {
           console.error("[media/generate] Unhandled error:", error);
-          return errorResponse(500, `Media generation error: ${(error as Error).message || "Unknown error"}`, origin);
+          return errorResponse(
+            500,
+            `Media generation error: ${(error as Error).message || "Unknown error"}`,
+            origin,
+          );
         }
-      })),
+      }),
+    ),
   });
 
   http.route({
@@ -550,55 +803,81 @@ export const registerMediaRoutes = (http: HttpRouter) => {
         } catch {
           parsed = null;
         }
-        if (!isRecord(parsed)) return errorResponse(400, "Invalid Fal webhook payload", origin);
+        if (!isRecord(parsed))
+          return errorResponse(400, "Invalid Fal webhook payload", origin);
         const payload = parsed as FalWebhookPayload;
         const requestId = asTrimmedString(payload.request_id);
         const gatewayRequestId = asTrimmedString(payload.gateway_request_id);
-        const upstreamStatus = asTrimmedString(payload.status)?.toUpperCase() ?? "ERROR";
-        const jobId = new URL(request.url).searchParams.get("jobId")?.trim() || undefined;
+        const upstreamStatus =
+          asTrimmedString(payload.status)?.toUpperCase() ?? "ERROR";
+        const jobId =
+          new URL(request.url).searchParams.get("jobId")?.trim() || undefined;
         const dedupKey = `${requestId ?? jobId ?? "unknown"}:${await hashSha256Hex(rawBody)}`;
-        const accepted = await consumeWebhookDedup(ctx, "media_fal_webhook", dedupKey);
-        if (!accepted) return jsonResponse({ received: true, duplicate: true }, 200, origin);
+        const accepted = await consumeWebhookDedup(
+          ctx,
+          "media_fal_webhook",
+          dedupKey,
+        );
+        if (!accepted)
+          return jsonResponse({ received: true, duplicate: true }, 200, origin);
 
         const webhookJob = jobId
           ? await ctx.runQuery(internal.media_jobs.getWebhookJob, { jobId })
           : null;
-        let output = upstreamStatus === "OK" && payload.payload !== undefined
-          ? payload.payload
-          : undefined;
+        let output =
+          upstreamStatus === "OK" && payload.payload !== undefined
+            ? payload.payload
+            : undefined;
         const payloadError = createMediaJobError({
           value: payload.payload_error,
-          fallbackMessage: upstreamStatus === "OK" ? "Fal completed the job but returned a non-JSON payload." : undefined,
+          fallbackMessage:
+            upstreamStatus === "OK"
+              ? "Fal completed the job but returned a non-JSON payload."
+              : undefined,
         });
 
         if (upstreamStatus === "OK" && output === undefined && payloadError) {
           const apiKey = getFalApiKey();
-          const resultUrl = webhookJob?.providerResponseUrl ??
-            (requestId && webhookJob?.endpointId ? buildFalResponseUrl(webhookJob.endpointId, requestId) : undefined);
+          const resultUrl =
+            webhookJob?.providerResponseUrl ??
+            (requestId && webhookJob?.endpointId
+              ? buildFalResponseUrl(webhookJob.endpointId, requestId)
+              : undefined);
           if (apiKey && resultUrl) {
             try {
               output = await fetchFalResultPayload({ apiKey, url: resultUrl });
             } catch (error) {
-              console.error("[media/webhook] Failed to fetch Fal result payload", error);
+              console.error(
+                "[media/webhook] Failed to fetch Fal result payload",
+                error,
+              );
             }
           }
         }
 
-        const finalPayloadError = output === undefined ? payloadError : undefined;
-        const error = finalPayloadError ?? createMediaJobError({
-          value: payload.error,
-          fallbackMessage: upstreamStatus === "ERROR" ? "Media generation failed upstream." : undefined,
-        });
-        const normalizedUpstreamStatus = finalPayloadError ? "PAYLOAD_ERROR" : upstreamStatus;
+        const finalPayloadError =
+          output === undefined ? payloadError : undefined;
+        const error =
+          finalPayloadError ??
+          createMediaJobError({
+            value: payload.error,
+            fallbackMessage:
+              upstreamStatus === "ERROR"
+                ? "Media generation failed upstream."
+                : undefined,
+          });
+        const normalizedUpstreamStatus = finalPayloadError
+          ? "PAYLOAD_ERROR"
+          : upstreamStatus;
         const billing =
-          normalizedUpstreamStatus === "OK"
-          && output !== undefined
-          && webhookJob
+          normalizedUpstreamStatus === "OK" &&
+          output !== undefined &&
+          webhookJob
             ? meterCompletedMediaJob({
-              endpointId: webhookJob.endpointId,
-              request: webhookJob.request,
-              output,
-            })
+                endpointId: webhookJob.endpointId,
+                request: webhookJob.request,
+                output,
+              })
             : null;
         const meteredBilling =
           billing && !("supported" in billing) ? billing : null;
@@ -611,10 +890,11 @@ export const registerMediaRoutes = (http: HttpRouter) => {
         await ctx.scheduler.runAfter(0, internal.media_jobs.applyFalWebhook, {
           ...(jobId ? { jobId } : {}),
           ...(requestId ? { providerRequestId: requestId } : {}),
-          ...(gatewayRequestId ? { providerGatewayRequestId: gatewayRequestId } : {}),
+          ...(gatewayRequestId
+            ? { providerGatewayRequestId: gatewayRequestId }
+            : {}),
           upstreamStatus: normalizedUpstreamStatus,
-          ...(upstreamStatus === "OK" &&
-          output !== undefined
+          ...(upstreamStatus === "OK" && output !== undefined
             ? { output: output as never }
             : {}),
           ...(meteredBilling ? { billing: meteredBilling as never } : {}),
@@ -622,18 +902,23 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           receivedAt: Date.now(),
         });
         if (meteredBilling && webhookJob && jobId) {
-          await ctx.scheduler.runAfter(0, internal.billing.recordMediaCompletedUsage, {
-            ownerId: webhookJob.ownerId,
-            jobId,
-            ...(requestId ? { providerRequestId: requestId } : {}),
-            endpointId: meteredBilling.endpointId,
-            costMicroCents: meteredBilling.costMicroCents,
-            billingUnit: meteredBilling.billingUnit,
-            quantity: meteredBilling.quantity,
-          });
+          await ctx.scheduler.runAfter(
+            0,
+            internal.billing.recordMediaCompletedUsage,
+            {
+              ownerId: webhookJob.ownerId,
+              jobId,
+              ...(requestId ? { providerRequestId: requestId } : {}),
+              endpointId: meteredBilling.endpointId,
+              costMicroCents: meteredBilling.costMicroCents,
+              billingUnit: meteredBilling.billingUnit,
+              quantity: meteredBilling.quantity,
+            },
+          );
         }
         return jsonResponse({ received: true }, 200, origin);
-      })),
+      }),
+    ),
   });
 };
 
@@ -654,7 +939,10 @@ export const validateCapabilityRequest = (args: {
   aspectRatio?: string;
   sourceUrl?: string;
   source?: { base64: string; mimeType: string; fileName?: string } | string;
-  sources?: Record<string, string | { base64: string; mimeType: string; fileName?: string }>;
+  sources?: Record<
+    string,
+    string | { base64: string; mimeType: string; fileName?: string }
+  >;
   input?: Record<string, unknown>;
 }) => {
   const resolved = resolveMediaProfile(args.capabilityId);
@@ -677,6 +965,3 @@ export {
   MEDIA_FAL_WEBHOOK_PATH,
   MEDIA_GENERATE_PATH,
 };
-
-
-

@@ -1,4 +1,4 @@
-export type MediaProvider = "fal";
+export type MediaProvider = "fal" | "google_lyria";
 
 export type MediaProfile = {
   id: string;
@@ -14,12 +14,7 @@ export type MediaCapability = {
   id: string;
   name: string;
   description: string;
-  category:
-    | "audio"
-    | "image"
-    | "video"
-    | "3d"
-    | "analysis";
+  category: "audio" | "image" | "video" | "3d" | "analysis";
   promptKey?: string;
   sourceUrlKey?: string;
   requiresSourceUrl?: boolean;
@@ -96,6 +91,32 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     ],
   },
   {
+    id: "text_to_music",
+    name: "Text To Music",
+    description: "Generate short music clips from weighted text prompts.",
+    category: "audio",
+    promptKey: "prompt",
+    inputHints: [
+      "prompt",
+      "weightedPrompts",
+      "musicGenerationConfig",
+      "promptLabel",
+      "musicGenerationMode (VOCALIZATION for sung elements)",
+    ],
+    outputHints: ["audio file"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "Google Lyria 3 Pro preview music generation.",
+        provider: "google_lyria",
+        endpointId: "google/lyria-3-pro-preview",
+        docsUrl: "https://ai.google.dev/gemini-api/docs/music-generation",
+        isDefault: true,
+      },
+    ],
+  },
+  {
     id: "text_to_image",
     name: "Text To Image",
     description: "Generate still images from text prompts.",
@@ -134,16 +155,23 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
   {
     id: "icon",
     name: "Icon Generator",
-    description: "Generate icons, logos, thumbnails, and other compact visual assets from text prompts.",
+    description:
+      "Generate icons, logos, thumbnails, and other compact visual assets from text prompts.",
     category: "image",
     promptKey: "prompt",
-    inputHints: ["prompt", "transparent / background style", "brand / icon constraints", "fixed square output"],
+    inputHints: [
+      "prompt",
+      "transparent / background style",
+      "brand / icon constraints",
+      "fixed square output",
+    ],
     outputHints: ["image URLs"],
     profiles: [
       {
         id: "default",
         name: "Default",
-        description: "Fast Flux Turbo generation for icons, logos, and thumbnails.",
+        description:
+          "Fast Flux Turbo generation for icons, logos, and thumbnails.",
         provider: "fal",
         endpointId: "fal-ai/flux-2/turbo",
         docsUrl: falModelUrl("fal-ai/flux-2/turbo"),
@@ -194,7 +222,8 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
   {
     id: "audio_visual_separate",
     name: "Audio Visual Separate",
-    description: "Separate or isolate audio using the visual track for guidance.",
+    description:
+      "Separate or isolate audio using the visual track for guidance.",
     category: "analysis",
     inputHints: ["video_url", "audio_url", "separation controls"],
     outputHints: ["separated stems / tracks"],
@@ -219,7 +248,13 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     sourceUrlKey: "image_url",
     requiresSourceUrl: true,
     supportsAspectRatio: true,
-    inputHints: ["image_url", "prompt", "aspectRatio", "duration", "camera / motion controls"],
+    inputHints: [
+      "image_url",
+      "prompt",
+      "aspectRatio",
+      "duration",
+      "camera / motion controls",
+    ],
     outputHints: ["video URL"],
     profiles: [
       {
@@ -264,7 +299,12 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     sourceUrlKey: "video_url",
     requiresSourceUrl: true,
     supportsAspectRatio: true,
-    inputHints: ["video_url", "prompt", "aspectRatio", "reference strength / style controls"],
+    inputHints: [
+      "video_url",
+      "prompt",
+      "aspectRatio",
+      "reference strength / style controls",
+    ],
     outputHints: ["video URL"],
     profiles: [
       {
@@ -273,7 +313,9 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
         description: "Kling reference-based video-to-video transformation.",
         provider: "fal",
         endpointId: "fal-ai/kling-video/o3/pro/video-to-video/reference",
-        docsUrl: falModelUrl("fal-ai/kling-video/o3/pro/video-to-video/reference"),
+        docsUrl: falModelUrl(
+          "fal-ai/kling-video/o3/pro/video-to-video/reference",
+        ),
         isDefault: true,
       },
       {
@@ -319,7 +361,8 @@ export const listMediaCapabilities = (): MediaCapability[] =>
 export const getMediaCapability = (
   capabilityId: string,
 ): MediaCapability | null =>
-  MEDIA_CAPABILITIES.find((capability) => capability.id === capabilityId) ?? null;
+  MEDIA_CAPABILITIES.find((capability) => capability.id === capabilityId) ??
+  null;
 
 export const resolveMediaProfile = (
   capabilityId: string,
@@ -332,7 +375,9 @@ export const resolveMediaProfile = (
 
   const normalizedProfile = profileId?.trim().toLowerCase();
   if (normalizedProfile) {
-    const match = capability.profiles.find((profile) => profile.id === normalizedProfile);
+    const match = capability.profiles.find(
+      (profile) => profile.id === normalizedProfile,
+    );
     if (!match) {
       return null;
     }
@@ -340,7 +385,8 @@ export const resolveMediaProfile = (
   }
 
   const defaultProfile =
-    capability.profiles.find((profile) => profile.isDefault) ?? capability.profiles[0];
+    capability.profiles.find((profile) => profile.isDefault) ??
+    capability.profiles[0];
   if (!defaultProfile) {
     return null;
   }

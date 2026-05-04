@@ -66,7 +66,9 @@ const runStellaBrowserJson = (
           resolve(JSON.parse(output) as StellaBrowserResponse);
         } catch {
           reject(
-            new Error(stderr.trim() || "Failed to parse stella-browser output."),
+            new Error(
+              stderr.trim() || "Failed to parse stella-browser output.",
+            ),
           );
         }
       },
@@ -99,9 +101,11 @@ const getBrowserCookieHeader = async (
   return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
 };
 
-const fetchWithBrowserSession = async (
-  payload: { url: string; responseType: "json" | "text"; init?: BrowserFetchInit },
-) => {
+const fetchWithBrowserSession = async (payload: {
+  url: string;
+  responseType: "json" | "text";
+  init?: BrowserFetchInit;
+}) => {
   const url = await normalizeUrlForPrivilegedRendererFetch(payload.url);
   const cookieHeader = await getBrowserCookieHeader(url);
   const method = payload.init?.method ?? "GET";
@@ -200,7 +204,14 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         const dir = path.join(stellaRoot, "state", "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = path.join(dir, payload.fileName);
-        const safeUrl = await normalizeUrlForPrivilegedRendererFetch(payload.url);
+        const dataUriMatch = payload.url.match(/^data:([^;,]+);base64,(.+)$/is);
+        if (dataUriMatch) {
+          await fs.writeFile(destPath, Buffer.from(dataUriMatch[2], "base64"));
+          return { ok: true, path: destPath };
+        }
+        const safeUrl = await normalizeUrlForPrivilegedRendererFetch(
+          payload.url,
+        );
         const res = await fetch(safeUrl, {
           headers: { "User-Agent": "StellaDesktop/1.0" },
           redirect: "follow",
