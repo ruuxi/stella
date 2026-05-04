@@ -1,32 +1,38 @@
-import { postServiceJson } from "@/infra/http/service-request"
-import {
-  generateMusicPrompt,
-  type MusicMood,
-} from "@/prompts/music"
+import { postServiceJson } from "@/infra/http/service-request";
+import { generateMusicPrompt, type MusicMood } from "@/prompts/music";
 
-export type { MusicMood } from "@/prompts/music"
+export type { MusicMood } from "@/prompts/music";
 export type MusicServiceState = {
-  status: "idle" | "loading" | "playing" | "paused" | "error"
-  mood: MusicMood
-  error: string | null
-  currentPromptLabel: string
-  elapsedSeconds: number
-  userHint: string
-  lyrics: boolean
-}
+  status: "idle" | "loading" | "playing" | "paused" | "error";
+  mood: MusicMood;
+  error: string | null;
+  currentPromptLabel: string;
+  elapsedSeconds: number;
+  userHint: string;
+  lyrics: boolean;
+};
 
 type GeneratedMusicResponse = {
   audio?: {
-    data?: string
-    mimeType?: string
-  }
-  promptLabel?: string | null
-  textParts?: string[]
-}
+    data?: string;
+    url?: string;
+    mimeType?: string;
+  };
+  output?: {
+    audio?: {
+      url?: string;
+      mimeType?: string;
+    };
+    promptLabel?: string | null;
+    textParts?: string[];
+  };
+  promptLabel?: string | null;
+  textParts?: string[];
+};
 
-type StateListener = (state: MusicServiceState) => void
+type StateListener = (state: MusicServiceState) => void;
 
-let listeners: StateListener[] = []
+let listeners: StateListener[] = [];
 
 let state: MusicServiceState = {
   status: "idle",
@@ -36,231 +42,270 @@ let state: MusicServiceState = {
   elapsedSeconds: 0,
   userHint: "",
   lyrics: false,
-}
+};
 
-let audioContext: AudioContext | null = null
-let masterGain: GainNode | null = null
-let analyserNode: AnalyserNode | null = null
-let currentSource: AudioBufferSourceNode | null = null
+let audioContext: AudioContext | null = null;
+let masterGain: GainNode | null = null;
+let analyserNode: AnalyserNode | null = null;
+let currentSource: AudioBufferSourceNode | null = null;
 
-let elapsedTimer: ReturnType<typeof setInterval> | null = null
-let playbackGeneration = 0
-let targetVolume = 1.0
-let intentionallyStopped = false
+let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+let playbackGeneration = 0;
+let targetVolume = 1.0;
+let intentionallyStopped = false;
 
 function logMusic(
   message: string,
   details?: Record<string, unknown>,
   level: "log" | "warn" | "error" = "log",
 ) {
-  const prefix = "[lyria-music]"
+  const prefix = "[lyria-music]";
   if (level === "error") {
-    console.error(prefix, message, details ?? {})
+    console.error(prefix, message, details ?? {});
   } else if (level === "warn") {
-    console.warn(prefix, message, details ?? {})
+    console.warn(prefix, message, details ?? {});
   } else {
-    console.log(prefix, message, details ?? {})
+    console.log(prefix, message, details ?? {});
   }
 }
 
 function emit() {
-  for (const fn of listeners) fn(state)
+  for (const fn of listeners) fn(state);
 }
 
 function setState(patch: Partial<MusicServiceState>) {
-  state = { ...state, ...patch }
-  emit()
+  state = { ...state, ...patch };
+  emit();
 }
 
 export function subscribe(listener: StateListener): () => void {
-  listeners.push(listener)
-  listener(state)
+  listeners.push(listener);
+  listener(state);
   return () => {
-    listeners = listeners.filter((l) => l !== listener)
-  }
+    listeners = listeners.filter((l) => l !== listener);
+  };
 }
 
 export function getState(): MusicServiceState {
-  return state
+  return state;
 }
 
 function ensureAudioGraph(): {
-  ctx: AudioContext
-  gain: GainNode
-  analyser: AnalyserNode
+  ctx: AudioContext;
+  gain: GainNode;
+  analyser: AnalyserNode;
 } {
   if (!audioContext) {
-    audioContext = new AudioContext()
+    audioContext = new AudioContext();
 
-    analyserNode = audioContext.createAnalyser()
-    analyserNode.fftSize = 256
-    analyserNode.smoothingTimeConstant = 0.8
-    analyserNode.connect(audioContext.destination)
+    analyserNode = audioContext.createAnalyser();
+    analyserNode.fftSize = 256;
+    analyserNode.smoothingTimeConstant = 0.8;
+    analyserNode.connect(audioContext.destination);
 
-    masterGain = audioContext.createGain()
-    masterGain.gain.value = targetVolume
-    masterGain.connect(analyserNode)
+    masterGain = audioContext.createGain();
+    masterGain.gain.value = targetVolume;
+    masterGain.connect(analyserNode);
   }
 
-  return { ctx: audioContext, gain: masterGain!, analyser: analyserNode! }
+  return { ctx: audioContext, gain: masterGain!, analyser: analyserNode! };
 }
 
 export function getAnalyser(): AnalyserNode | null {
-  return analyserNode
+  return analyserNode;
 }
 
 function startElapsedTimer() {
-  stopElapsedTimer()
+  stopElapsedTimer();
   elapsedTimer = setInterval(() => {
-    setState({ elapsedSeconds: state.elapsedSeconds + 1 })
-  }, 1000)
+    setState({ elapsedSeconds: state.elapsedSeconds + 1 });
+  }, 1000);
 }
 
 function stopElapsedTimer() {
   if (elapsedTimer) {
-    clearInterval(elapsedTimer)
-    elapsedTimer = null
+    clearInterval(elapsedTimer);
+    elapsedTimer = null;
   }
 }
 
 function stopCurrentSource() {
   if (!currentSource) {
-    return
+    return;
   }
 
   try {
-    currentSource.onended = null
-    currentSource.stop()
+    currentSource.onended = null;
+    currentSource.stop();
   } catch {
     // Source may already be stopped.
   }
 
   try {
-    currentSource.disconnect()
+    currentSource.disconnect();
   } catch {
     // Ignore disconnect failures.
   }
 
-  currentSource = null
+  currentSource = null;
 }
 
 function fadeOutAudio() {
   if (!audioContext || !masterGain) {
-    stopCurrentSource()
-    return
+    stopCurrentSource();
+    return;
   }
 
-  const now = audioContext.currentTime
-  masterGain.gain.cancelScheduledValues(now)
-  masterGain.gain.setValueAtTime(masterGain.gain.value, now)
-  masterGain.gain.linearRampToValueAtTime(0, now + 0.2)
+  const now = audioContext.currentTime;
+  masterGain.gain.cancelScheduledValues(now);
+  masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+  masterGain.gain.linearRampToValueAtTime(0, now + 0.2);
 
   window.setTimeout(() => {
-    stopCurrentSource()
+    stopCurrentSource();
     if (masterGain && audioContext) {
-      masterGain.gain.setValueAtTime(targetVolume, audioContext.currentTime)
+      masterGain.gain.setValueAtTime(targetVolume, audioContext.currentTime);
     }
-  }, 250)
+  }, 250);
 }
 
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryString = atob(base64)
-  const bytes = new Uint8Array(binaryString.length)
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i += 1) {
-    bytes[i] = binaryString.charCodeAt(i)
+    bytes[i] = binaryString.charCodeAt(i);
   }
-  return bytes.buffer
+  return bytes.buffer;
+}
+
+function dataUrlToArrayBuffer(dataUrl: string): {
+  buffer: ArrayBuffer;
+  mimeType: string | null;
+} {
+  const match = dataUrl.match(/^data:([^;,]+);base64,(.+)$/s);
+  if (!match) {
+    throw new Error("Music generation returned an unsupported audio URL.");
+  }
+  return {
+    buffer: base64ToArrayBuffer(match[2]),
+    mimeType: match[1],
+  };
+}
+
+async function audioUrlToArrayBuffer(
+  url: string,
+): Promise<{ buffer: ArrayBuffer; mimeType: string | null }> {
+  if (url.startsWith("data:")) {
+    return dataUrlToArrayBuffer(url);
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download generated music (${response.status})`);
+  }
+  return {
+    buffer: await response.arrayBuffer(),
+    mimeType: response.headers.get("content-type"),
+  };
 }
 
 async function parseErrorResponse(response: Response): Promise<string> {
-  const body = await response.json().catch(() => null)
+  const body = await response.json().catch(() => null);
   if (body && typeof body === "object" && "error" in body) {
-    const error = (body as { error?: unknown }).error
+    const error = (body as { error?: unknown }).error;
     if (typeof error === "string" && error.trim()) {
-      return error
+      return error;
     }
   }
-  return `Failed to start music (${response.status})`
+  return `Failed to start music (${response.status})`;
 }
 
 async function playGeneratedAudio(
   payload: GeneratedMusicResponse,
   generation: number,
 ): Promise<void> {
-  const encodedAudio = payload.audio?.data
-  const mimeType = payload.audio?.mimeType
-  if (!encodedAudio || !mimeType) {
-    throw new Error("Music generation returned no audio.")
+  const encodedAudio = payload.audio?.data;
+  const outputAudioUrl = payload.output?.audio?.url;
+  const mimeType = payload.audio?.mimeType ?? payload.output?.audio?.mimeType;
+  if ((!encodedAudio || !mimeType) && !outputAudioUrl) {
+    throw new Error("Music generation returned no audio.");
   }
 
-  const { ctx, gain } = ensureAudioGraph()
+  const { ctx, gain } = ensureAudioGraph();
   if (ctx.state === "suspended") {
-    await ctx.resume()
+    await ctx.resume();
   }
 
-  gain.gain.cancelScheduledValues(ctx.currentTime)
-  gain.gain.setValueAtTime(targetVolume, ctx.currentTime)
+  gain.gain.cancelScheduledValues(ctx.currentTime);
+  gain.gain.setValueAtTime(targetVolume, ctx.currentTime);
 
-  stopCurrentSource()
+  stopCurrentSource();
 
-  const decoded = await ctx.decodeAudioData(base64ToArrayBuffer(encodedAudio).slice(0))
+  const audioData = outputAudioUrl
+    ? await audioUrlToArrayBuffer(outputAudioUrl)
+    : { buffer: base64ToArrayBuffer(encodedAudio!), mimeType };
+  const resolvedMimeType = audioData.mimeType ?? mimeType ?? "audio/mpeg";
+  const decoded = await ctx.decodeAudioData(audioData.buffer.slice(0));
   if (generation !== playbackGeneration) {
-    return
+    return;
   }
 
-  const source = ctx.createBufferSource()
-  source.buffer = decoded
-  source.connect(gain)
-  currentSource = source
+  const source = ctx.createBufferSource();
+  source.buffer = decoded;
+  source.connect(gain);
+  currentSource = source;
 
   source.onended = () => {
     if (currentSource !== source) {
-      return
+      return;
     }
-    currentSource = null
-    stopElapsedTimer()
+    currentSource = null;
+    stopElapsedTimer();
     if (!intentionallyStopped && generation === playbackGeneration) {
       setState({
         status: "idle",
         error: null,
         currentPromptLabel: "",
         elapsedSeconds: 0,
-      })
+      });
     }
-  }
+  };
 
-  source.start(0)
-  startElapsedTimer()
+  source.start(0);
+  startElapsedTimer();
   setState({
     status: "playing",
     error: null,
-    currentPromptLabel: payload.promptLabel?.trim() || state.currentPromptLabel,
+    currentPromptLabel:
+      payload.output?.promptLabel?.trim() ||
+      payload.promptLabel?.trim() ||
+      state.currentPromptLabel,
     elapsedSeconds: 0,
-  })
+  });
 
   logMusic("Started generated music playback.", {
-    mimeType,
+    mimeType: resolvedMimeType,
     durationSeconds: decoded.duration,
-    textParts: payload.textParts?.length ?? 0,
-  })
+    textParts:
+      payload.output?.textParts?.length ?? payload.textParts?.length ?? 0,
+  });
 }
 
 export async function play(): Promise<void> {
-  const generation = ++playbackGeneration
-  intentionallyStopped = false
-  stopElapsedTimer()
-  stopCurrentSource()
+  const generation = ++playbackGeneration;
+  intentionallyStopped = false;
+  stopElapsedTimer();
+  stopCurrentSource();
 
   setState({
     status: "loading",
     error: null,
     elapsedSeconds: 0,
-  })
+  });
   logMusic("Starting music generation request.", {
     mood: state.mood,
     lyrics: state.lyrics,
     userHint: state.userHint,
-  })
+  });
 
   try {
     const promptSet = await generateMusicPrompt(
@@ -268,24 +313,28 @@ export async function play(): Promise<void> {
       null,
       state.userHint || null,
       state.lyrics,
-    )
+    );
 
     if (generation !== playbackGeneration) {
-      return
+      return;
     }
 
     const payload = await postServiceJson<GeneratedMusicResponse>(
-      "/api/music/stream",
+      "/api/media/v1/generate",
       {
-        promptLabel: promptSet.label,
-        weightedPrompts: promptSet.prompts,
-        musicGenerationConfig: {
-          bpm: promptSet.config.bpm,
-          density: promptSet.config.density,
-          brightness: promptSet.config.brightness,
-          guidance: promptSet.config.guidance,
-          temperature: promptSet.config.temperature,
-          ...(state.lyrics ? { musicGenerationMode: "VOCALIZATION" } : {}),
+        capability: "text_to_music",
+        prompt: promptSet.prompts[0]?.text ?? state.userHint,
+        input: {
+          promptLabel: promptSet.label,
+          weightedPrompts: promptSet.prompts,
+          musicGenerationConfig: {
+            bpm: promptSet.config.bpm,
+            density: promptSet.config.density,
+            brightness: promptSet.config.brightness,
+            guidance: promptSet.config.guidance,
+            temperature: promptSet.config.temperature,
+            ...(state.lyrics ? { musicGenerationMode: "VOCALIZATION" } : {}),
+          },
         },
       },
       {
@@ -297,13 +346,13 @@ export async function play(): Promise<void> {
             ok: response.ok,
             status: response.status,
             statusText: response.statusText,
-          })
+          });
         },
         errorMessage: parseErrorResponse,
       },
-    )
+    );
     if (generation !== playbackGeneration) {
-      return
+      return;
     }
 
     setState({
@@ -311,79 +360,84 @@ export async function play(): Promise<void> {
       error: null,
       currentPromptLabel: promptSet.label,
       elapsedSeconds: 0,
-    })
+    });
 
-    await playGeneratedAudio(payload, generation)
+    await playGeneratedAudio(payload, generation);
   } catch (error) {
     if (generation !== playbackGeneration) {
-      return
+      return;
     }
 
-    stopCurrentSource()
-    stopElapsedTimer()
+    stopCurrentSource();
+    stopElapsedTimer();
     logMusic(
       "Failed to generate or play music.",
       {
-        message: error instanceof Error ? error.message : "Failed to start music",
+        message:
+          error instanceof Error ? error.message : "Failed to start music",
       },
       "error",
-    )
+    );
     setState({
       status: "error",
       error: error instanceof Error ? error.message : "Failed to start music",
-    })
+    });
   }
 }
 
 export async function pause(): Promise<void> {
   if (state.status !== "playing" || !audioContext) {
-    return
+    return;
   }
 
-  await audioContext.suspend()
-  stopElapsedTimer()
-  setState({ status: "paused" })
+  await audioContext.suspend();
+  stopElapsedTimer();
+  setState({ status: "paused" });
 }
 
 export async function resume(): Promise<void> {
   if (state.status !== "paused" || !audioContext) {
-    return
+    return;
   }
 
-  await audioContext.resume()
-  startElapsedTimer()
-  setState({ status: "playing" })
+  await audioContext.resume();
+  startElapsedTimer();
+  setState({ status: "playing" });
 }
 
 export function stop(): void {
-  playbackGeneration += 1
-  intentionallyStopped = true
-  stopElapsedTimer()
-  fadeOutAudio()
+  playbackGeneration += 1;
+  intentionallyStopped = true;
+  stopElapsedTimer();
+  fadeOutAudio();
 
   setState({
     status: "idle",
     error: null,
     currentPromptLabel: "",
     elapsedSeconds: 0,
-  })
+  });
 }
 
 export function setMood(mood: MusicMood): void {
-  setState({ mood })
+  setState({ mood });
 }
 
 export function setVolume(volume: number): void {
-  targetVolume = Math.max(0, Math.min(1, volume))
+  targetVolume = Math.max(0, Math.min(1, volume));
   if (masterGain && audioContext) {
-    masterGain.gain.setTargetAtTime(targetVolume, audioContext.currentTime, 0.05)
+    masterGain.gain.setTargetAtTime(
+      targetVolume,
+      audioContext.currentTime,
+      0.05,
+    );
   }
 }
 
 export function setUserHint(hint: string): void {
-  setState({ userHint: hint })
+  setState({ userHint: hint });
 }
 
 export function setLyrics(enabled: boolean): void {
-  setState({ lyrics: enabled })
+  setState({ lyrics: enabled });
 }

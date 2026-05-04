@@ -46,19 +46,19 @@ export const mediaJobSubscriptionValidator = v.object({
 });
 
 const billingUnitValidator = v.union(
-  ...MEDIA_BILLING_UNITS.map((u) => v.literal(u)) as [
+  ...(MEDIA_BILLING_UNITS.map((u) => v.literal(u)) as [
     ReturnType<typeof v.literal>,
     ReturnType<typeof v.literal>,
     ...ReturnType<typeof v.literal>[],
-  ],
+  ]),
 );
 
 const meteredFromValidator = v.union(
-  ...MEDIA_METERED_FROM_VALUES.map((u) => v.literal(u)) as [
+  ...(MEDIA_METERED_FROM_VALUES.map((u) => v.literal(u)) as [
     ReturnType<typeof v.literal>,
     ReturnType<typeof v.literal>,
     ...ReturnType<typeof v.literal>[],
-  ],
+  ]),
 );
 
 export const mediaJobBillingValidator = v.object({
@@ -94,7 +94,7 @@ export const mediaSchema = {
     jobId: v.string(),
     capability: v.string(),
     profile: v.string(),
-    provider: v.literal("fal"),
+    provider: v.union(v.literal("fal"), v.literal("google_lyria")),
     endpointId: v.string(),
     request: mediaRequestSummaryValidator,
     billing: v.optional(mediaJobBillingValidator),
@@ -121,8 +121,15 @@ export const mediaSchema = {
     // as a compound index lets that query return only succeeded rows
     // directly, rather than over-fetching `(ownerId, createdAt)` and JS
     // filtering by `status === "succeeded"`.
-    .index("by_ownerId_and_status_and_completedAt", ["ownerId", "status", "completedAt"])
-    .index("by_provider_and_providerRequestId", ["provider", "providerRequestId"]),
+    .index("by_ownerId_and_status_and_completedAt", [
+      "ownerId",
+      "status",
+      "completedAt",
+    ])
+    .index("by_provider_and_providerRequestId", [
+      "provider",
+      "providerRequestId",
+    ]),
 
   /**
    * Per-job webhook log entries split out from `media_jobs.logs`. Each fal
@@ -140,5 +147,3 @@ export const mediaSchema = {
     .index("by_jobId_and_ordinal", ["jobId", "ordinal"])
     .index("by_ownerId_and_jobId", ["ownerId", "jobId"]),
 };
-
-

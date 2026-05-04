@@ -1,5 +1,10 @@
 import { ConvexError, type Value, v } from "convex/values";
-import { internalMutation, internalQuery, query, type QueryCtx } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  query,
+  type QueryCtx,
+} from "./_generated/server";
 import type {
   MediaGenerateRequest,
   MediaRequestSummary,
@@ -12,7 +17,11 @@ import {
   mediaJobResponseValidator,
   mediaRequestSummaryValidator,
 } from "./schema/media";
-import { isRecord, jsonValueValidator, optionalJsonValueValidator } from "./shared_validators";
+import {
+  isRecord,
+  jsonValueValidator,
+  optionalJsonValueValidator,
+} from "./shared_validators";
 
 export const PUBLIC_MEDIA_TEST_OWNER_ID = "__public_media_test__";
 
@@ -41,7 +50,11 @@ const redactLargeString = (value: string): string => {
 };
 
 const sanitizeJsonValue = (value: unknown, depth = 0): Value => {
-  if (value === null || typeof value === "boolean" || typeof value === "number") {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number"
+  ) {
     return value;
   }
   if (typeof value === "string") {
@@ -94,7 +107,9 @@ export const summarizeMediaRequestForStorage = (
 ): StoredMediaRequestSummary => {
   const source =
     toSourceSummary(request.source) ??
-    (request.sourceUrl ? { kind: "url" as const, url: request.sourceUrl } : undefined);
+    (request.sourceUrl
+      ? { kind: "url" as const, url: request.sourceUrl }
+      : undefined);
   const sources = request.sources
     ? Object.fromEntries(
         Object.entries(request.sources)
@@ -194,9 +209,7 @@ const toViewerOwnerId = async (ctx: QueryCtx): Promise<string> => {
  * queries can return empty/null instead of throwing into the React error
  * boundary during sign-in / sign-out transitions.
  */
-const toViewerOwnerIdOrNull = async (
-  ctx: QueryCtx,
-): Promise<string | null> => {
+const toViewerOwnerIdOrNull = async (ctx: QueryCtx): Promise<string | null> => {
   const identity = await ctx.auth.getUserIdentity();
   if (identity?.tokenIdentifier) {
     return identity.tokenIdentifier;
@@ -241,10 +254,7 @@ const toWebhookMediaJobStatus = (upstreamStatus: string): MediaJobStatus => {
   }
 };
 
-const getJobByJobId = async (
-  ctx: Pick<QueryCtx, "db">,
-  jobId: string,
-) =>
+const getJobByJobId = async (ctx: Pick<QueryCtx, "db">, jobId: string) =>
   await ctx.db
     .query("media_jobs")
     .withIndex("by_jobId", (q) => q.eq("jobId", jobId))
@@ -334,7 +344,9 @@ export const listSucceededSince = query({
     const logs = wantsLogs
       ? await Promise.all(succeeded.map((row) => loadJobLogs(ctx, row.jobId)))
       : succeeded.map(() => undefined);
-    return succeeded.map((row, index) => toStoredMediaJobResponse(row, logs[index]));
+    return succeeded.map((row, index) =>
+      toStoredMediaJobResponse(row, logs[index]),
+    );
   },
 });
 
@@ -364,7 +376,7 @@ export const createJob = internalMutation({
     jobId: v.string(),
     capability: v.string(),
     profile: v.string(),
-    provider: v.literal("fal"),
+    provider: v.union(v.literal("fal"), v.literal("google_lyria")),
     endpointId: v.string(),
     request: mediaRequestSummaryValidator,
     billing: v.optional(mediaJobBillingValidator),
@@ -446,12 +458,18 @@ export const markSubmitted = internalMutation({
       ...(args.providerGatewayRequestId
         ? { providerGatewayRequestId: args.providerGatewayRequestId }
         : {}),
-      ...(args.providerResponseUrl ? { providerResponseUrl: args.providerResponseUrl } : {}),
-      ...(args.providerStatusUrl ? { providerStatusUrl: args.providerStatusUrl } : {}),
+      ...(args.providerResponseUrl
+        ? { providerResponseUrl: args.providerResponseUrl }
+        : {}),
+      ...(args.providerStatusUrl
+        ? { providerStatusUrl: args.providerStatusUrl }
+        : {}),
       upstreamStatus: args.upstreamStatus,
       status,
       queuePosition:
-        args.queuePosition !== undefined ? args.queuePosition : job.queuePosition,
+        args.queuePosition !== undefined
+          ? args.queuePosition
+          : job.queuePosition,
       updatedAt: now,
       ...(status === "running" && job.startedAt === undefined
         ? { startedAt: now }
@@ -481,6 +499,33 @@ export const markSubmissionFailed = internalMutation({
       upstreamStatus: args.upstreamStatus,
       error: args.error,
       updatedAt: now,
+      completedAt: now,
+    });
+    return null;
+  },
+});
+
+export const markGenerated = internalMutation({
+  args: {
+    jobId: v.string(),
+    upstreamStatus: v.string(),
+    output: jsonValueValidator,
+    billing: v.optional(mediaJobBillingValidator),
+  },
+  handler: async (ctx, args) => {
+    const job = await getJobByJobId(ctx, args.jobId);
+    if (!job) {
+      return null;
+    }
+    const now = Date.now();
+    await ctx.db.patch(job._id, {
+      status: "succeeded",
+      upstreamStatus: args.upstreamStatus,
+      queuePosition: null,
+      output: sanitizeJsonValue(args.output),
+      ...(args.billing ? { billing: args.billing } : {}),
+      updatedAt: now,
+      startedAt: job.startedAt ?? now,
       completedAt: now,
     });
     return null;
@@ -537,7 +582,9 @@ export const applyFalWebhook = internalMutation({
       status: toWebhookMediaJobStatus(args.upstreamStatus),
       upstreamStatus: args.upstreamStatus,
       queuePosition: null,
-      ...(args.providerRequestId ? { providerRequestId: args.providerRequestId } : {}),
+      ...(args.providerRequestId
+        ? { providerRequestId: args.providerRequestId }
+        : {}),
       ...(args.providerGatewayRequestId
         ? { providerGatewayRequestId: args.providerGatewayRequestId }
         : {}),
