@@ -4,7 +4,7 @@ import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
 } from "../../protocol/index.js";
-import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import { readOrSeedPersonality } from "../personality/personality.js";
 import { getPersonalityVoiceId } from "../preferences/local-preferences.js";
 import { buildSystemPrompt } from "./thread-memory.js";

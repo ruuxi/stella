@@ -1,4 +1,4 @@
-import { AGENT_IDS } from "@/shared/contracts/agent-runtime";
+import { AGENT_IDS } from "../../../../runtime/contracts/agent-runtime.js";
 import type { InstallManifestSnapshot } from "@/shared/types/electron";
 
 const DEFAULT_REPO_OWNER = "ruuxi";

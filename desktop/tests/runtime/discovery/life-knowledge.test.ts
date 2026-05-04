@@ -6,7 +6,7 @@ import {
   discoveryKnowledgeExists,
   writeDiscoveryKnowledge,
 } from "../../../../runtime/discovery/life-knowledge.js";
-import type { DiscoveryKnowledgeSeedPayload } from "../../../src/shared/contracts/discovery.js";
+import type { DiscoveryKnowledgeSeedPayload } from "../../../../runtime/contracts/discovery.js";
 
 const tempDirs: string[] = [];
 

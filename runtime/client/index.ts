@@ -19,8 +19,8 @@ import type {
 } from "../kernel/shared/scheduling.js";
 import type {
   DiscoveryKnowledgeSeedPayload,
-} from "../../desktop/src/shared/contracts/discovery.js";
-import type { LocalChatUpdatedPayload } from "../../desktop/src/shared/contracts/local-chat.js";
+} from "../contracts/discovery.js";
+import type { LocalChatUpdatedPayload } from "../contracts/local-chat.js";
 import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import {
   METHOD_NAMES,

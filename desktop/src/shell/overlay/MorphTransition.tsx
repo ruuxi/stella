@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { SelfModHmrState } from "../../shared/contracts/boundary";
+import type { SelfModHmrState } from "../../../../runtime/contracts/index.js";
 import {
   MORPH_FORWARD_RAMP_MS,
   MORPH_REVERSE_CROSSFADE_MS,

@@ -96,7 +96,7 @@ describe("normalizeContentionPath", () => {
     ).toBeNull();
   });
 
-  it("allows nested package manifests before artifact suffix exclusion", () => {
+  it("allows legacy nested package manifests before artifact suffix exclusion", () => {
     expect(
       normalizeContentionPath(
         path.join(repoRoot, "desktop", "package.json"),
@@ -205,8 +205,6 @@ describe("isRestartRequiredNonHmrPath", () => {
     expect(isRestartRequiredNonHmrPath("package.json")).toBe(true);
     expect(isRestartRequiredNonHmrPath("bun.lock")).toBe(true);
     expect(isRestartRequiredNonHmrPath("bun.lockb")).toBe(true);
-    expect(isRestartRequiredNonHmrPath("desktop/package.json")).toBe(true);
-    expect(isRestartRequiredNonHmrPath("runtime/package.json")).toBe(true);
     expect(
       isRestartRequiredNonHmrPath("desktop/stella-browser/bun.lockb"),
     ).toBe(true);

@@ -1,7 +1,7 @@
 import { getSelectedText } from './selected-text.js'
 import { getWindowInfoAtPoint } from './window-capture.js'
 import { captureWindowContent } from './window-content-capture.js'
-import type { ChatContext } from '../src/shared/contracts/boundary.js'
+import type { ChatContext } from '../../runtime/contracts/index.js'
 
 type CaptureChatContextOptions = {
   excludeCurrentProcessWindows?: boolean

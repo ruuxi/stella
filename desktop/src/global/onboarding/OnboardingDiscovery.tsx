@@ -1,6 +1,6 @@
 import React from "react";
 import { Lock } from "lucide-react";
-import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
 import { DISCOVERY_CATEGORIES } from "./onboarding-flow";
 import { getPlatform } from "@/platform/electron/platform";
 import { OnboardingSelectionTile } from "./OnboardingSelectionTile";

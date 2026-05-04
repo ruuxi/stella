@@ -6,7 +6,7 @@ import type {
   OfficePreviewFormat,
   OfficePreviewSnapshot,
   OfficePreviewStatus,
-} from "../../src/shared/contracts/office-preview.js";
+} from "../../../runtime/contracts/office-preview.js";
 import { IPC_OFFICE_PREVIEW_UPDATE } from "../../src/shared/contracts/ipc-channels.js";
 import { broadcastToWindows, type BootstrapContext } from "./context.js";
 

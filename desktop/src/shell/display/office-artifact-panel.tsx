@@ -11,7 +11,7 @@ import type {
   OfficePreviewFormat,
   OfficePreviewRef,
   OfficePreviewSnapshot,
-} from "@/shared/contracts/office-preview";
+} from "../../../../runtime/contracts/office-preview.js";
 import { useOfficePreview } from "@/app/chat/office-preview-store";
 import { useFilePreviewActions } from "@/app/chat/hooks/use-file-preview-actions";
 

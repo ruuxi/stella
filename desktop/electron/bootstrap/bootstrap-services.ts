@@ -16,7 +16,7 @@ import { hasMacPermission } from "../utils/macos-permissions.js";
 import { loadLocalPreferences } from "../../../runtime/kernel/preferences/local-preferences.js";
 import { setPreventComputerSleep } from "../ipc/system-handlers.js";
 import { DEFAULT_RADIAL_TRIGGER_CODE } from "../../src/shared/lib/radial-trigger.js";
-import type { ChatContext } from "../../src/shared/contracts/boundary.js";
+import type { ChatContext } from "../../../runtime/contracts/index.js";
 import type {
   BootstrapConfig,
   BootstrapServices,

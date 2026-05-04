@@ -3,12 +3,12 @@ import type { IpcRendererEvent } from "electron";
 import type {
   ChatContext,
   SelfModHmrState,
-} from "../src/shared/contracts/boundary.js";
-import type { TaskLifecycleStatus } from "../src/shared/contracts/agent-runtime.js";
-import type { LocalChatUpdatedPayload } from "../src/shared/contracts/local-chat.js";
+} from "../../runtime/contracts/index.js";
+import type { TaskLifecycleStatus } from "../../runtime/contracts/agent-runtime.js";
+import type { LocalChatUpdatedPayload } from "../../runtime/contracts/local-chat.js";
 import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
 import type { MiniDoubleTapModifier } from "../src/shared/lib/mini-double-tap.js";
-import type { OfficePreviewSnapshot } from "../src/shared/contracts/office-preview.js";
+import type { OfficePreviewSnapshot } from "../../runtime/contracts/office-preview.js";
 import {
   IPC_BROWSER_FETCH_JSON,
   IPC_BROWSER_FETCH_TEXT,
@@ -34,7 +34,7 @@ import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../src/shared/contracts/onboarding.js";
-import type { DiscoveryKnowledgeSeedPayload } from "../src/shared/contracts/discovery.js";
+import type { DiscoveryKnowledgeSeedPayload } from "../../runtime/contracts/discovery.js";
 import {
   IPC_APP_QUIT_FOR_RESTART,
   IPC_AUTH_CONSUME_PENDING_CALLBACK,

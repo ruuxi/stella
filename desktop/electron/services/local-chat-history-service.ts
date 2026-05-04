@@ -11,7 +11,7 @@ import type {
   LocalChatSyncMessage,
   SqliteDatabase,
 } from "../../../runtime/kernel/storage/shared.js";
-import type { LocalChatUpdatedPayload } from "../../src/shared/contracts/local-chat.js";
+import type { LocalChatUpdatedPayload } from "../../../runtime/contracts/local-chat.js";
 import type { LocalChatEventWindowMode } from "../../../runtime/chat-event-visibility.js";
 
 type LocalChatHistoryServiceOptions = {

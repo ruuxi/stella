@@ -1,5 +1,5 @@
 import { type EventRecord } from "@/app/chat/lib/event-transforms";
-import type { LocalChatUpdatedPayload } from "@/shared/contracts/local-chat";
+import type { LocalChatUpdatedPayload } from "../../../../../runtime/contracts/local-chat.js";
 import type { LocalChatEventWindowMode } from "../../../../../runtime/chat-event-visibility.js";
 
 const getLocalChatApi = () => {

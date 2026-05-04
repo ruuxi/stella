@@ -11,7 +11,7 @@ import type {
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
-import { stellaRuntimeUrlFromSiteUrl } from "../../../desktop/src/shared/stella-api.js";
+import { stellaRuntimeUrlFromSiteUrl } from "../../contracts/stella-api.js";
 
 type StreamingToolCall = ToolCall & { partialJson?: string };
 

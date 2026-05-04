@@ -1,12 +1,12 @@
 import type { Api, Model } from "../ai/types.js";
-import { AGENT_IDS } from "../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../contracts/agent-runtime.js";
 import { getModels } from "../ai/models.js";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
 import {
   getLocalLlmOAuthApiKey,
   hasLocalLlmOAuthCredential,
 } from "./storage/llm-oauth-credentials.js";
-import { STELLA_DEFAULT_MODEL } from "../../desktop/src/shared/stella-api.js";
+import { STELLA_DEFAULT_MODEL } from "../contracts/stella-api.js";
 import {
   findRegistryModel,
   parseModelReference,

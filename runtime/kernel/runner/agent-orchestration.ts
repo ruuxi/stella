@@ -23,14 +23,14 @@ import type {
 import {
   AGENT_IDS,
   isLocalCliAgentId,
-} from "../../../desktop/src/shared/contracts/agent-runtime.js";
-import { TASK_LIFECYCLE_WAKE_PROMPT } from "../../../desktop/src/shared/contracts/system-reminders.js";
+} from "../../contracts/agent-runtime.js";
+import { TASK_LIFECYCLE_WAKE_PROMPT } from "../../contracts/system-reminders.js";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
   type FileChangeRecord,
   type ProducedFileRecord,
-} from "../../../desktop/src/shared/contracts/file-changes.js";
+} from "../../contracts/file-changes.js";
 import type { RunnerContext } from "./types.js";
 import { buildAgentEventPrompt } from "./shared.js";
 import {

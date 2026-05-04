@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { TOOL_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { TOOL_IDS } from "../../contracts/agent-runtime.js";
 import { dreamList, dreamMarkProcessed } from "../memory/dream-core.js";
 import type { MemoryStore, MemoryTarget } from "../memory/memory-store.js";
 import {

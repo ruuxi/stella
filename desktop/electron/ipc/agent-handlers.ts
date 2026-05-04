@@ -16,8 +16,8 @@ import {
   type AgentRunFinishOutcome,
   type AgentStreamEventType,
   type TaskLifecycleStatus,
-} from "../../src/shared/contracts/agent-runtime.js";
-import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
+} from "../../../runtime/contracts/agent-runtime.js";
+import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 

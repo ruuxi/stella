@@ -277,7 +277,7 @@ export const createStellaHostRunner = (
           "./runner/model-selection.js"
         );
         const { AGENT_IDS } = await import(
-          "../../desktop/src/shared/contracts/agent-runtime.js"
+          "../contracts/agent-runtime.js"
         );
         const pendingThreadSummaries =
           context.runtimeStore.threadSummariesStore.countUnprocessed();
@@ -324,7 +324,7 @@ export const createStellaHostRunner = (
           "./runner/model-selection.js"
         );
         const { AGENT_IDS } = await import(
-          "../../desktop/src/shared/contracts/agent-runtime.js"
+          "../contracts/agent-runtime.js"
         );
         const resolvedLlm = resolveRunnerLlmRoute(
           context,

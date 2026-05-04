@@ -10,7 +10,7 @@ import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import {
   AGENT_IDS,
   AGENT_STREAM_EVENT_TYPES,
-} from "@/shared/contracts/agent-runtime";
+} from "../../../../runtime/contracts/agent-runtime.js";
 import {
   isAgentStartedEvent,
   isAgentCompletedEvent,

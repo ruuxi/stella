@@ -7,4 +7,4 @@ export type {
   AgentResponseTarget,
   AgentStreamEvent,
   SelfModAppliedData,
-} from "@/shared/contracts/agent-stream";
+} from "../../../../../runtime/contracts/agent-stream.js";

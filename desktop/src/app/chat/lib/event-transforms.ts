@@ -1,11 +1,11 @@
 import {
   isTerminalTaskLifecycleStatus,
   type TaskLifecycleStatus,
-} from '@/shared/contracts/agent-runtime'
+} from '../../../../../runtime/contracts/agent-runtime.js'
 import type {
   FileChangeRecord,
   ProducedFileRecord,
-} from '@/shared/contracts/file-changes'
+} from '../../../../../runtime/contracts/file-changes.js'
 import type {
   Attachment,
   ChannelEnvelope,
@@ -14,7 +14,7 @@ import type {
   MessagePayload,
   ToolRequestPayload,
   ToolResultPayload,
-} from '@/shared/contracts/local-chat'
+} from '../../../../../runtime/contracts/local-chat.js'
 
 export type {
   Attachment,

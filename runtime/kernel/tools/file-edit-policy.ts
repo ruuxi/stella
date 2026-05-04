@@ -1,4 +1,4 @@
-import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { Api, Model } from "../../ai/types.js";
 
 export const APPLY_PATCH_TOOL_NAME = "apply_patch";

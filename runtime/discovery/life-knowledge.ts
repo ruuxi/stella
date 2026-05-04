@@ -3,7 +3,7 @@ import path from "node:path";
 import type {
   DiscoveryCategory,
   DiscoveryKnowledgeSeedPayload,
-} from "../../desktop/src/shared/contracts/discovery.js";
+} from "../contracts/discovery.js";
 
 const USER_PROFILE_SLUG = "user-profile";
 const USER_PROFILE_TITLE = "User Profile";

@@ -2,11 +2,11 @@
  * Shared type definitions for the tools system.
  */
 
-import type { TaskLifecycleStatus } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import type { TaskLifecycleStatus } from "../../contracts/agent-runtime.js";
 import type {
   FileChangeRecord,
   ProducedFileRecord,
-} from "../../../desktop/src/shared/contracts/file-changes.js";
+} from "../../contracts/file-changes.js";
 import type {
   LocalCronJobCreateInput,
   LocalCronJobRecord,

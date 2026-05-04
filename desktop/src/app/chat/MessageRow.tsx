@@ -31,7 +31,7 @@ import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
-import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
+import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import {

@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
+import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
 import { PdfViewerCard } from "@/app/chat/PdfViewerCard";
 import { Markdown } from "@/app/chat/Markdown";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";

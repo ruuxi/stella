@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { SelfModHmrState } from "../shared/contracts/boundary";
+import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
 
 const MAX_COVER_DURATION_MS = 12_000;
 

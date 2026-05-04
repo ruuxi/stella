@@ -7,7 +7,7 @@ import {
   DISCOVERY_CATEGORIES_CHANGED_EVENT,
   DISCOVERY_CATEGORIES_KEY,
   type DiscoveryCategory,
-} from "@/shared/contracts/discovery";
+} from "../../../../runtime/contracts/discovery.js";
 import {
   BROWSERS,
   DISCOVERY_CATEGORIES,

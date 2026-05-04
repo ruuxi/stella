@@ -1,4 +1,4 @@
-import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { Agent } from "../agent-core/agent.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RuntimeRunEventRecorder } from "./run-events.js";

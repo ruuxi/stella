@@ -50,6 +50,12 @@ export default defineConfig([
               message: 'Import UI primitives directly from their module instead of the barrel.',
             },
           ],
+          patterns: [
+            {
+              group: ['**/runtime/protocol/schemas*'],
+              message: 'Protocol schemas are runtime-internal. Import from runtime/protocol/index.js instead.',
+            },
+          ],
         },
       ],
     },

@@ -6,7 +6,7 @@
  * actions: `add`, `replace` (by `oldText` substring), `remove`.
  */
 
-import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import type { MemoryStore, MemoryTarget } from "../../memory/memory-store.js";
 import type { ToolContext, ToolDefinition, ToolResult } from "../types.js";
 

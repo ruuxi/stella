@@ -8,7 +8,7 @@ import {
 } from 'electron'
 import { captureChatContext } from '../chat-context.js'
 import { globalShortcut } from 'electron'
-import type { ChatContext } from '../../src/shared/contracts/boundary.js'
+import type { ChatContext } from '../../../runtime/contracts/index.js'
 import type {
   RegionCaptureResult,
   RegionSelection,

@@ -43,8 +43,7 @@ function pdfWorkerAsset(): Plugin {
     // wojtekmaj/react-pdf nests pdfjs-dist as its own dependency, which is
     // the most stable resolution target across package managers.
     path.resolve(
-      __dirname,
-      '..',
+      STELLA_REPO_ROOT,
       'node_modules',
       '.bun',
       'node_modules',
@@ -53,14 +52,12 @@ function pdfWorkerAsset(): Plugin {
       'pdf.worker.min.mjs',
     ),
     path.resolve(
-      __dirname,
-      '..',
+      STELLA_REPO_ROOT,
       'node_modules',
       'pdfjs-dist',
       'build',
       'pdf.worker.min.mjs',
     ),
-    path.resolve(__dirname, 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.min.mjs'),
   ]
 
   const resolveSource = (): string | null => {
@@ -1003,11 +1000,11 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
     alias: [
-      { find: /^react$/, replacement: path.resolve(__dirname, "./node_modules/react/index.js") },
-      { find: /^react\/jsx-runtime$/, replacement: path.resolve(__dirname, "./node_modules/react/jsx-runtime.js") },
-      { find: /^react\/jsx-dev-runtime$/, replacement: path.resolve(__dirname, "./node_modules/react/jsx-dev-runtime.js") },
-      { find: /^react-dom$/, replacement: path.resolve(__dirname, "./node_modules/react-dom/index.js") },
-      { find: /^react-dom\/client$/, replacement: path.resolve(__dirname, "./node_modules/react-dom/client.js") },
+      { find: /^react$/, replacement: path.resolve(STELLA_REPO_ROOT, "node_modules/react/index.js") },
+      { find: /^react\/jsx-runtime$/, replacement: path.resolve(STELLA_REPO_ROOT, "node_modules/react/jsx-runtime.js") },
+      { find: /^react\/jsx-dev-runtime$/, replacement: path.resolve(STELLA_REPO_ROOT, "node_modules/react/jsx-dev-runtime.js") },
+      { find: /^react-dom$/, replacement: path.resolve(STELLA_REPO_ROOT, "node_modules/react-dom/index.js") },
+      { find: /^react-dom\/client$/, replacement: path.resolve(STELLA_REPO_ROOT, "node_modules/react-dom/client.js") },
     ],
     dedupe: ["react", "react-dom"],
   },

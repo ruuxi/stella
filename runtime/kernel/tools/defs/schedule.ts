@@ -5,7 +5,7 @@
  * agent which builds the actual cron / heartbeat configuration.
  */
 
-import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import { handleSchedule } from "../schedule.js";
 import type {
   ScheduleToolApi,

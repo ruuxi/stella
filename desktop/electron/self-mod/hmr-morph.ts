@@ -13,7 +13,7 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import type { BrowserWindow } from "electron";
-import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
+import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
 import {
   MORPH_DONE_TIMEOUT_MS,
   MORPH_OVERLAY_READY_TIMEOUT_MS,

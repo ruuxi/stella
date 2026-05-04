@@ -6,7 +6,7 @@ import type {
   StoreInstallRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
-} from "../../src/shared/contracts/boundary.js";
+} from "../../../runtime/contracts/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 import { assertPrivilegedRequest } from "./privileged-ipc.js";

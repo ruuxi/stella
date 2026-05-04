@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { OfficePreviewSnapshot } from "@/shared/contracts/office-preview";
+import type { OfficePreviewSnapshot } from "../../../../runtime/contracts/office-preview.js";
 
 type OfficePreviewStoreState = {
   byId: Record<string, OfficePreviewSnapshot>;

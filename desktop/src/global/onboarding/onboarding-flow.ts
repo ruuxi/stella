@@ -1,4 +1,4 @@
-import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
 
 export type Phase =
   | "intro"

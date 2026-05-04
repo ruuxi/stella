@@ -27,7 +27,7 @@ import type {
   ToolCall,
   ToolResultMessage,
 } from "../../ai/types.js";
-import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import { grepTool } from "../tools/defs/grep.js";
 import { readTool } from "../tools/defs/read.js";
 import { resolveLlmRoute } from "../model-routing.js";

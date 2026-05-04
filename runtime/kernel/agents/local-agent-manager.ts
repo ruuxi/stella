@@ -2,11 +2,11 @@ import path from "path";
 import type {
   TaskLifecycleStatus,
   TerminalTaskLifecycleStatus,
-} from "../../../desktop/src/shared/contracts/agent-runtime.js";
+} from "../../contracts/agent-runtime.js";
 import type {
   FileChangeRecord,
   ProducedFileRecord,
-} from "../../../desktop/src/shared/contracts/file-changes.js";
+} from "../../contracts/file-changes.js";
 import type {
   ToolContext,
   ToolResult,

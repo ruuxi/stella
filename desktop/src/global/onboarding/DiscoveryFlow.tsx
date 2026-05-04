@@ -6,11 +6,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { showToast } from "@/ui/toast";
-import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
 import {
   BROWSER_PROFILE_KEY,
   BROWSER_SELECTION_KEY,
-} from "@/shared/contracts/discovery";
+} from "../../../../runtime/contracts/discovery.js";
 
 const withBrowserDiscoveryCategory = (
   categories: DiscoveryCategory[],

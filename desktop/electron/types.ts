@@ -1,5 +1,5 @@
 import type { WindowInfo } from './window-capture.js'
-import type { ChatContext } from '../src/shared/contracts/boundary.js'
+import type { ChatContext } from '../../runtime/contracts/index.js'
 import type {
   UiMode,
   WindowMode,

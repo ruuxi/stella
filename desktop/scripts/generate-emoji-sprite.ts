@@ -15,8 +15,8 @@
  * to bypass user auth.
  *
  * Usage:
- *   cd desktop && bun run scripts/generate-emoji-sprite.ts --sheet 1
- *   cd desktop && bun run scripts/generate-emoji-sprite.ts --sheet 2 --style "neon synthwave"
+ *   bun run emoji-sprite:gen -- --sheet 1
+ *   bun run emoji-sprite:gen -- --sheet 2 --style "neon synthwave"
  */
 
 import { promises as fs } from "node:fs";

@@ -13,7 +13,7 @@ import {
   type RuntimeThreadRecord,
 } from "../runtime-threads.js";
 import { AGENT_PAUSE_CANCEL_REASON } from "../agents/local-agent-manager.js";
-import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 
 export type StateContext = {
   stateRoot: string;

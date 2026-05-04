@@ -2,7 +2,7 @@ import type {
   AgentIdLike,
   AgentRunFinishOutcome,
   AgentStreamEventType,
-} from "./agent-runtime";
+} from "./agent-runtime.js";
 
 export type SelfModAppliedData = {
   featureId: string;

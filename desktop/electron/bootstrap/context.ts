@@ -149,7 +149,7 @@ export const broadcastAuthCallback = (
 
 export const broadcastLocalChatUpdated = (
   context: BootstrapContext,
-  payload?: import("../../src/shared/contracts/local-chat.js").LocalChatUpdatedPayload | null,
+  payload?: import("../../../runtime/contracts/local-chat.js").LocalChatUpdatedPayload | null,
 ) => {
   broadcastToWindowsAndMobile(context, "localChat:updated", payload ?? null);
 };

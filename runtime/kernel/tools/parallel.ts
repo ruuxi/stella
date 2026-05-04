@@ -1,7 +1,7 @@
 import type {
   FileChangeRecord,
   ProducedFileRecord,
-} from "../../../desktop/src/shared/contracts/file-changes.js";
+} from "../../contracts/file-changes.js";
 import type {
   ToolContext,
   ToolHandlerExtras,

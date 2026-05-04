@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AGENT_IDS } from "../../../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import { createAgentOrchestration } from "../../../../../runtime/kernel/runner/agent-orchestration.js";
 import { createSelfModHmrController } from "../../../../../runtime/kernel/self-mod/hmr.js";
 import { handleApplyPatch } from "../../../../../runtime/kernel/tools/apply-patch.js";

@@ -24,15 +24,15 @@
  * `fileChanges` automatically participates in the resource pill.
  */
 
-import { isOfficePreviewRef } from "@/shared/contracts/office-preview";
+import { isOfficePreviewRef } from "../../../../../runtime/contracts/office-preview.js";
 import {
   type FileChangeRecord,
   isFileChangeRecordArray,
   isProducedFileRecordArray,
   type ProducedFileRecord,
-} from "@/shared/contracts/file-changes";
+} from "../../../../../runtime/contracts/file-changes.js";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
-import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
+import type { OfficePreviewRef } from "../../../../../runtime/contracts/office-preview.js";
 import {
   kindForPath,
   basenameOf,

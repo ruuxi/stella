@@ -1,7 +1,7 @@
 import path from "path";
 import { promises as fs } from "fs";
 import { ConvexClient } from "convex/browser";
-import { api } from "../../../desktop/src/convex/api.js";
+import { api } from "../../contracts/convex-api.js";
 import { readConfiguredConvexUrl } from "../../kernel/convex-urls.js";
 import type {
   RuntimeActiveRun,

@@ -9,7 +9,7 @@ import type {
   ToolUpdateCallback,
 } from "../tools/types.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
-import { TOOL_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { TOOL_IDS } from "../../contracts/agent-runtime.js";
 import { AnyToolArgsSchema, textFromUnknown } from "./shared.js";
 import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
 

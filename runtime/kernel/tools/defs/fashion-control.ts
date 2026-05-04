@@ -5,7 +5,7 @@
  * spawns the Fashion subagent that owns this surface.
  */
 
-import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import {
   handleFashionCreateCheckout,
   handleFashionCreateOutfit,

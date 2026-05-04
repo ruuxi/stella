@@ -1,5 +1,5 @@
-import type { OfficePreviewRef } from "./office-preview";
-import type { FileChangeRecord, ProducedFileRecord } from "./file-changes";
+import type { OfficePreviewRef } from "./office-preview.js";
+import type { FileChangeRecord, ProducedFileRecord } from "./file-changes.js";
 
 export type EventRecord = {
   _id: string;

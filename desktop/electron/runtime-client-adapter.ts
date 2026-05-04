@@ -1,10 +1,10 @@
-import type { SelfModHmrState } from "../src/shared/contracts/boundary.js";
-import type { DiscoveryKnowledgeSeedPayload } from "../src/shared/contracts/discovery.js";
+import type { SelfModHmrState } from "../../runtime/contracts/index.js";
+import type { DiscoveryKnowledgeSeedPayload } from "../../runtime/contracts/discovery.js";
 import {
   AGENT_STREAM_EVENT_TYPES,
   isTaskLifecycleEventType,
   isTaskLifecycleTerminalType,
-} from "../src/shared/contracts/agent-runtime.js";
+} from "../../runtime/contracts/agent-runtime.js";
 import type {
   RuntimeActiveRun,
   RuntimeAgentEventPayload,
@@ -917,7 +917,7 @@ export class RuntimeClientAdapter {
 
   onLocalChatUpdated(
     listener: (
-      payload: import("../src/shared/contracts/local-chat.js").LocalChatUpdatedPayload | null,
+      payload: import("../../runtime/contracts/local-chat.js").LocalChatUpdatedPayload | null,
     ) => void,
   ) {
     return this.client.on("local-chat-updated", listener);

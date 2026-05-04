@@ -8,7 +8,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, "..");
 const repoRootDir = resolve(desktopDir, "..");
 const viteBinPath = resolve(
-  desktopDir,
+  repoRootDir,
   "node_modules",
   "vite",
   "bin",
@@ -23,7 +23,7 @@ const managedScriptPaths = [
 
 if (!existsSync(viteBinPath)) {
   console.error(
-    `[electron:dev] Missing Vite binary at ${viteBinPath}. Run your package install in desktop/ first.`,
+    `[electron:dev] Missing Vite binary at ${viteBinPath}. Run \`bun install\` at the repo root first.`,
   );
   process.exit(1);
 }

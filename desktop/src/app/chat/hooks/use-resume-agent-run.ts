@@ -1,5 +1,5 @@
 import { useEffect, type MutableRefObject } from "react";
-import type { TaskLifecycleStatus } from "@/shared/contracts/agent-runtime";
+import type { TaskLifecycleStatus } from "../../../../../runtime/contracts/agent-runtime.js";
 import type { AgentStreamEvent } from "../streaming/streaming-types";
 
 type ActiveRunSnapshot = {

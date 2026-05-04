@@ -2,7 +2,7 @@ import {
   AGENT_RUN_FINISH_OUTCOMES,
   AGENT_STREAM_EVENT_TYPES,
   type AgentStreamEventType,
-} from "../../../desktop/src/shared/contracts/agent-runtime.js";
+} from "../../contracts/agent-runtime.js";
 import { prepareStoredLocalChatPayload } from "../../kernel/storage/local-chat-payload.js";
 import type {
   RuntimeAgentEventPayload,
