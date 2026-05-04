@@ -642,7 +642,7 @@ export function OverlayRoot() {
       style={{
         position: "fixed",
         inset: 0,
-        pointerEvents: "none",
+        pointerEvents: state.regionCaptureActive ? "auto" : "none",
         overflow: "hidden",
       }}
     >

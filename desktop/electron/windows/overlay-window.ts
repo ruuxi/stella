@@ -388,6 +388,9 @@ export class OverlayWindowController {
   }
 
   private readonly handleOverlaySetInteractive = (_event: unknown, interactive: boolean) => {
+    if (this.activeRegionCapture && !interactive) {
+      return
+    }
     this.overlayWindow.setIgnoreMouseEvents(!interactive)
   }
   private readonly handleOverlayShowWindowHighlight = (
@@ -489,7 +492,10 @@ export class OverlayWindowController {
 
     this.activeWindowHighlight = true
     this.overlayWindow.show({ inactive: true })
-    if (!this.activeRegionCapture) {
+    if (this.activeRegionCapture) {
+      this.overlayWindow.setFocusable(true)
+      this.overlayWindow.setIgnoreMouseEvents(false)
+    } else {
       this.overlayWindow.setIgnoreMouseEvents(true)
       this.overlayWindow.setFocusable(false)
     }

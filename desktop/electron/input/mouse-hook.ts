@@ -290,10 +290,12 @@ export class MouseHookManager {
     const isAlt = MODIFIER_KEYCODES.Alt.has(event.keycode);
     const dictationPushToTalkEnabled =
       this.events.isDictationPushToTalkEnabled?.() === true;
+    const radialTriggerPressed = this.matchesTriggerKey();
 
     if (
       dictationPushToTalkEnabled &&
       isAlt &&
+      !radialTriggerPressed &&
       !wasAlreadyDown &&
       this.dictationKeyDownAt === null
     ) {
@@ -332,9 +334,19 @@ export class MouseHookManager {
       }
     }
 
+    if (dictationPushToTalkEnabled && radialTriggerPressed) {
+      if (!this.dictationStarted) {
+        this.cancelPendingDictationStart();
+      } else {
+        this.clearPendingDictationStart();
+        this.dictationStarted = false;
+        this.events.onDictationPushToTalkCancel?.();
+      }
+    }
+
     // Radial chord: fire `onRadialShow` exactly when the chord transitions
     // from incomplete → complete. Holding any extra keys does not retrigger.
-    if (this.matchesTriggerKey() && !this.radialActive) {
+    if (radialTriggerPressed && !this.radialActive) {
       this.radialActive = true;
       this.events.onRadialShow();
     }
