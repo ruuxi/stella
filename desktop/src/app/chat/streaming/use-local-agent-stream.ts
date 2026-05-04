@@ -23,16 +23,11 @@ import type {
 } from './streaming-types'
 import type { AttachmentRef } from './chat-types'
 import type { ChatContext } from '@/shared/types/electron'
-import {
-  getAgentHealthReason,
-  resolveAgentNotReadyToast,
-  trySyncHostToken,
-} from './agent-stream-errors'
+import { resolveAgentNotReadyToast } from './agent-stream-errors'
 
 type UseLocalAgentStreamOptions = {
   activeConversationId: string | null
   storageMode: 'cloud' | 'local'
-  hasConnectedAccount: boolean
 }
 
 type StartStreamArgs = {
@@ -148,14 +143,6 @@ const initialStoreState: StreamStoreState = {
   tasksByRunId: {},
   requestToRunId: {},
 }
-
-const TOKEN_SYNC_RETRY_COUNT = 10
-const TOKEN_SYNC_RETRY_DELAY_MS = 500
-
-const wait = (ms: number) =>
-  new Promise<void>((resolve) => {
-    window.setTimeout(resolve, ms)
-  })
 
 function streamStoreReducer(
   state: StreamStoreState,
@@ -478,9 +465,6 @@ export const reconcileTerminalTaskKeysFromResumeTasks = (args: {
   return nextKeys
 }
 
-const isTokenSyncIssue = (reason: string | null) =>
-  Boolean(reason && reason.toLowerCase().match(/token|auth/))
-
 const toTaskFromResumeSnapshot = (
   snapshot: ResumeTaskSnapshot,
   nowMs: number,
@@ -515,7 +499,6 @@ const toTaskFromResumeSnapshot = (
 export function useLocalAgentStream({
   activeConversationId,
   storageMode,
-  hasConnectedAccount,
 }: UseLocalAgentStreamOptions) {
   const [storeState, dispatch] = useReducer(
     streamStoreReducer,
@@ -1092,92 +1075,51 @@ export function useLocalAgentStream({
 
       ensureAgentStreamSubscription()
 
-      if (!window.electronAPI.agent.healthCheck) {
-        showToast({ title: 'Stella agent is not running', variant: 'error' })
-        args.onStartFailed?.()
-        return
-      }
-
       const attemptId = ++startAttemptRef.current
       const startChatAttachments = attachmentsForStartChat(args.attachments)
 
-      void window.electronAPI.agent
-        .healthCheck()
-        .then(async (health) => {
-          if (attemptId !== startAttemptRef.current) return
+      void (async () => {
+        if (attemptId !== startAttemptRef.current) return
 
-          let nextHealth = health
-          let reason = getAgentHealthReason(nextHealth)
-
-          for (
-            let retryIndex = 0;
-            !nextHealth?.ready &&
-            isTokenSyncIssue(reason) &&
-            retryIndex < TOKEN_SYNC_RETRY_COUNT;
-            retryIndex += 1
-          ) {
-            const synced = await trySyncHostToken({ hasConnectedAccount })
-            if (attemptId !== startAttemptRef.current) return
-
-            if (synced && window.electronAPI?.agent.healthCheck) {
-              nextHealth = await window.electronAPI.agent.healthCheck()
-              if (attemptId !== startAttemptRef.current) return
-              reason = getAgentHealthReason(nextHealth)
-              if (nextHealth?.ready || !isTokenSyncIssue(reason)) {
-                break
-              }
-            }
-
-            await wait(TOKEN_SYNC_RETRY_DELAY_MS)
-            if (attemptId !== startAttemptRef.current) return
-          }
-
-          if (!nextHealth?.ready && isTokenSyncIssue(reason)) {
-            const toast = resolveAgentNotReadyToast(reason)
-            showToast({
-              title: toast.title,
-              description: toast.description,
-              variant: 'error',
-            })
-            args.onStartFailed?.()
-            return
-          }
-
-          const { requestId } = await window.electronAPI!.agent.startChat({
-            conversationId: activeConversationId,
-            userPrompt: args.userPrompt,
-            ...(typeof args.selectedText !== 'undefined'
-              ? { selectedText: args.selectedText }
-              : {}),
-            ...(typeof args.chatContext !== 'undefined'
-              ? { chatContext: args.chatContext }
-              : {}),
-            deviceId: args.deviceId,
-            platform: args.platform,
-            timezone: args.timezone,
-            ...(args.locale ? { locale: args.locale } : {}),
-            mode: args.mode,
-            ...(args.messageMetadata
-              ? { messageMetadata: args.messageMetadata }
-              : {}),
-            ...(startChatAttachments?.length
-              ? { attachments: startChatAttachments }
-              : {}),
-            ...(args.userMessageEventId
-              ? { userMessageEventId: args.userMessageEventId }
-              : {}),
-            storageMode,
-          })
-          pendingRequestIdsRef.current.add(requestId)
+        const { requestId } = await window.electronAPI!.agent.startChat({
+          conversationId: activeConversationId,
+          userPrompt: args.userPrompt,
+          ...(typeof args.selectedText !== 'undefined'
+            ? { selectedText: args.selectedText }
+            : {}),
+          ...(typeof args.chatContext !== 'undefined'
+            ? { chatContext: args.chatContext }
+            : {}),
+          deviceId: args.deviceId,
+          platform: args.platform,
+          timezone: args.timezone,
+          ...(args.locale ? { locale: args.locale } : {}),
+          mode: args.mode,
+          ...(args.messageMetadata
+            ? { messageMetadata: args.messageMetadata }
+            : {}),
+          ...(startChatAttachments?.length
+            ? { attachments: startChatAttachments }
+            : {}),
+          ...(args.userMessageEventId
+            ? { userMessageEventId: args.userMessageEventId }
+            : {}),
+          storageMode,
         })
+        pendingRequestIdsRef.current.add(requestId)
+      })()
         .catch((error) => {
           console.error(
             'Failed to start local agent chat:',
             (error as Error).message,
           )
+          const toast = resolveAgentNotReadyToast(
+            (error as Error).message || null,
+          )
           showToast({
-            title: "Stella couldn't start this reply",
-            description: (error as Error).message || 'Please try again.',
+            title: toast.title,
+            description:
+              toast.description || (error as Error).message || 'Please try again.',
             variant: 'error',
           })
           args.onStartFailed?.()
@@ -1186,7 +1128,6 @@ export function useLocalAgentStream({
     [
       activeConversationId,
       ensureAgentStreamSubscription,
-      hasConnectedAccount,
       storageMode,
     ],
   )
