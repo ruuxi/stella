@@ -11,6 +11,10 @@ import {
 } from "@/app/chat/lib/event-transforms";
 import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { getWorkingIndicatorDisplayStatus } from "@/app/chat/working-indicator-state";
+import {
+  readLastSeenPetAssistantMessageId,
+  writeLastSeenPetAssistantMessageId,
+} from "./pet-preferences";
 
 const IDLE_STATUS: PetOverlayStatus = {
   state: "idle",
@@ -92,17 +96,22 @@ const deriveState = ({
   return "idle";
 };
 
+type LatestAssistantMessage = {
+  id: string;
+  text: string;
+};
+
 const latestAssistantMessage = (
   events: EventRecord[] | null | undefined,
-): string => {
+): LatestAssistantMessage | null => {
   const displayEvents = filterEventsForUiDisplay(events ?? []);
   for (let index = displayEvents.length - 1; index >= 0; index -= 1) {
     const event = displayEvents[index];
     if (!event || !isAssistantMessage(event)) continue;
     const text = getEventText(event).replace(/\s+/g, " ").trim();
-    if (text.length > 0) return text;
+    if (text.length > 0) return { id: event._id, text };
   }
-  return "";
+  return null;
 };
 
 const getWorkingPhrase = (seed: string): string => {
@@ -137,15 +146,25 @@ export const usePetStatusBroadcast = ({
   isStreaming,
   pendingUserMessageId,
 }: UsePetStatusBroadcastInput): void => {
+  const lastSeenAssistantMessageIdRef = useRef<string | null>(
+    readLastSeenPetAssistantMessageId(),
+  );
+
+  const latestAssistant = useMemo(
+    () => (isStreaming ? null : latestAssistantMessage(events)),
+    [events, isStreaming],
+  );
+
   const status: PetOverlayStatus = useMemo(() => {
     const state = deriveState({
       liveTasks,
       isStreaming,
       pendingUserMessageId: pendingUserMessageId ?? null,
     });
-    const assistantMessage = isStreaming ? "" : latestAssistantMessage(events);
+    const assistantMessage = latestAssistant?.text ?? "";
     if (state === "idle") {
-      return assistantMessage
+      return assistantMessage &&
+        latestAssistant?.id !== lastSeenAssistantMessageIdRef.current
         ? {
             state,
             title: "",
@@ -170,7 +189,13 @@ export const usePetStatusBroadcast = ({
           : assistantMessage || statusMessage,
       isLoading: false,
     };
-  }, [events, liveTasks, runtimeStatusText, isStreaming, pendingUserMessageId]);
+  }, [
+    liveTasks,
+    runtimeStatusText,
+    isStreaming,
+    pendingUserMessageId,
+    latestAssistant,
+  ]);
 
   const lastSentRef = useRef<string>("");
 
@@ -180,6 +205,14 @@ export const usePetStatusBroadcast = ({
     lastSentRef.current = fingerprint;
     window.electronAPI?.pet?.pushStatus?.(status);
   }, [status]);
+
+  useEffect(() => {
+    if (status.state !== "idle" || !status.message.trim()) return;
+    const id = latestAssistant?.id;
+    if (!id || id === lastSeenAssistantMessageIdRef.current) return;
+    writeLastSeenPetAssistantMessageId(id);
+    lastSeenAssistantMessageIdRef.current = id;
+  }, [latestAssistant, status.message, status.state]);
 
   // Subscribe to inbound `pet:sendMessage` from the overlay popover and
   // re-emit it as a Stella send-message custom event so the existing

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 const PET_OPEN_KEY = "stella:pet:open";
 const PET_SELECTED_KEY = "stella:pet:selectedId";
 const PET_POSITION_KEY = "stella:pet:position";
+const PET_LAST_SEEN_ASSISTANT_MESSAGE_KEY =
+  "stella:pet:lastSeenAssistantMessageId";
 
 type PetPosition = { left: number; top: number };
 
@@ -93,4 +95,12 @@ export const readPetPosition = (): PetPosition | null => {
 
 export const writePetPosition = (position: PetPosition): void => {
   safeWrite(PET_POSITION_KEY, JSON.stringify(position));
+};
+
+/** Last assistant message id the pet has already surfaced as an idle bubble. */
+export const readLastSeenPetAssistantMessageId = (): string | null =>
+  safeRead(PET_LAST_SEEN_ASSISTANT_MESSAGE_KEY);
+
+export const writeLastSeenPetAssistantMessageId = (id: string): void => {
+  safeWrite(PET_LAST_SEEN_ASSISTANT_MESSAGE_KEY, id);
 };
