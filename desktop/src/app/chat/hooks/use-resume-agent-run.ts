@@ -86,21 +86,13 @@ export function useResumeAgentRun({
     if (!activeConversationId || !window.electronAPI) {
       return;
     }
-    if (
-      !window.electronAPI.agent.healthCheck
-      || !window.electronAPI.agent.resumeConversationExecution
-    ) {
+    if (!window.electronAPI.agent.resumeConversationExecution) {
       return;
     }
 
     let cancelled = false;
 
     void (async () => {
-      const health = await window.electronAPI!.agent.healthCheck();
-      if (!health?.ready || cancelled) {
-        return;
-      }
-
       ensureAgentStreamSubscription();
 
       const lastSeq =

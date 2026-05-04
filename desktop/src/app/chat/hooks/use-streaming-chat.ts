@@ -56,7 +56,6 @@ export function useStreamingChat({
   const justSentTimeoutsRef = useRef(new Map<string, number>())
   const locale = useLocale()
   const {
-    isAuthenticated,
     isLocalStorage,
     storageMode,
   } = useChatStore()
@@ -76,7 +75,6 @@ export function useStreamingChat({
     resetStreamingState,
   } = useLocalAgentStream({
     activeConversationId,
-    hasConnectedAccount: isAuthenticated,
     storageMode,
   })
 
