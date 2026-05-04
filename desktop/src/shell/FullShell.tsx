@@ -23,6 +23,7 @@ import { useDiscoveryFlow } from "@/global/onboarding/DiscoveryFlow";
 import { useOnboardingOverlay } from "@/global/onboarding/use-onboarding-overlay";
 import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
 import { useBootstrapState } from "@/systems/boot/bootstrap-state";
+import { useWindowType } from "@/shared/hooks/use-window-type";
 import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import { MorphInputAbsorber } from "./MorphInputAbsorber";
@@ -374,6 +375,8 @@ function PostOnboardingStartupGate({
 }
 
 export const FullShell = () => {
+  const windowType = useWindowType();
+  const isMiniWindow = windowType === "mini";
   const { state, updateState } = useUiState();
   const activeConversationId = state.conversationId;
   const { gradientMode, gradientColor } = useTheme();
@@ -395,7 +398,8 @@ export const FullShell = () => {
     useBootstrapState();
 
   const startupReady = runtimeAuthReady && runtimeStatus === "ready";
-  const appReady = onboardingDone && (hasEnteredApp || startupReady);
+  const appReady =
+    onboardingDone && (isMiniWindow || hasEnteredApp || startupReady);
   const needsOnboarding = !onboardingDone;
   const isPreparingStartup =
     runtimeStatus === "preparing" ||
@@ -427,8 +431,9 @@ export const FullShell = () => {
   // startup. Once mounted, later sign-out/sign-in transitions keep the app
   // visible while auth falls back to an anonymous local session.
   useEffect(() => {
+    if (isMiniWindow) return;
     window.electronAPI?.ui.setAppReady?.(appReady);
-  }, [appReady]);
+  }, [appReady, isMiniWindow]);
 
   useEffect(() => {
     updateState({
@@ -443,30 +448,6 @@ export const FullShell = () => {
       dismissLaunchSplash();
     }
   }, [appReady, startupError]);
-
-  // TEMP: surface why the splash is gated. Remove once the launch hang
-  // is diagnosed.
-  useEffect(() => {
-    console.log("[stella:splash-gate]", {
-      appReady,
-      onboardingDone,
-      hasEnteredApp,
-      startupReady,
-      runtimeAuthReady,
-      authBootstrapStatus,
-      runtimeStatus,
-      startupError,
-    });
-  }, [
-    appReady,
-    onboardingDone,
-    hasEnteredApp,
-    startupReady,
-    runtimeAuthReady,
-    authBootstrapStatus,
-    runtimeStatus,
-    startupError,
-  ]);
 
   useEffect(() => {
     if (!appReady) return;
