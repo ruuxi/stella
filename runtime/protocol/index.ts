@@ -138,6 +138,8 @@ export const METHOD_NAMES = {
   PROJECTS_START: "projects.start",
   PROJECTS_STOP: "projects.stop",
   SELF_MOD_REVERT: "selfMod.revert",
+  SELF_MOD_CRASH_RECOVERY_STATUS: "selfMod.crashRecoveryStatus",
+  SELF_MOD_DISCARD_UNFINISHED: "selfMod.discardUnfinished",
   SELF_MOD_LAST_FEATURE: "selfMod.lastFeature",
   SELF_MOD_RECENT_FEATURES: "selfMod.recentFeatures",
   SHELL_KILL_ALL: "shell.killAll",
@@ -254,6 +256,10 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_CHRONICLE_SUMMARY_TICK:
     "internal.worker.chronicle.summaryTick",
   INTERNAL_WORKER_SELF_MOD_REVERT: "internal.worker.selfMod.revert",
+  INTERNAL_WORKER_SELF_MOD_CRASH_RECOVERY_STATUS:
+    "internal.worker.selfMod.crashRecoveryStatus",
+  INTERNAL_WORKER_SELF_MOD_DISCARD_UNFINISHED:
+    "internal.worker.selfMod.discardUnfinished",
   INTERNAL_WORKER_SELF_MOD_LAST_FEATURE: "internal.worker.selfMod.lastFeature",
   INTERNAL_WORKER_SELF_MOD_RECENT_FEATURES:
     "internal.worker.selfMod.recentFeatures",
@@ -441,6 +447,28 @@ export type RuntimeSelfModRevertResult = {
   featureId: string;
   revertedCommitHashes: string[];
   message: string;
+};
+
+export type RuntimeCrashRecoveryStatus =
+  | {
+      kind: "dirty";
+      changedFileCount: number;
+      latestChangedAtMs: number | null;
+    }
+  | {
+      kind: "clean";
+      latestFeature: {
+        featureId: string;
+        name: string;
+        description: string;
+        latestCommit: string;
+        latestTimestampMs: number;
+        commitCount: number;
+      } | null;
+    };
+
+export type RuntimeDiscardUnfinishedResult = {
+  discardedFileCount: number;
 };
 
 export type RuntimeLocalAgentRequest = {

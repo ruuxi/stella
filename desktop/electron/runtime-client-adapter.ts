@@ -957,6 +957,14 @@ export class RuntimeClientAdapter {
     return this.client.revertSelfModFeature(payload);
   }
 
+  getCrashRecoveryStatus() {
+    return this.client.getCrashRecoveryStatus();
+  }
+
+  discardUnfinishedSelfModChanges() {
+    return this.client.discardUnfinishedSelfModChanges();
+  }
+
   getLastSelfModFeature() {
     return this.client.getLastSelfModFeature();
   }

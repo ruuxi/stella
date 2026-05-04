@@ -41,10 +41,13 @@ import {
 import { buildChatPromptMessages } from "../kernel/chat-prompt-context.js";
 import { getDevServerUrl } from "./dev-url.js";
 import {
+  discardGitDirtyFiles,
   detectSelfModAppliedSince,
   getLastGitFeatureId,
   getGitHead,
+  listGitDirtyFiles,
   listRecentGitFeatures,
+  revertGitFeature,
 } from "../kernel/self-mod/git.js";
 import { exec as gitExec } from "dugite";
 import {
@@ -55,7 +58,6 @@ import {
   type SelfModHmrController,
 } from "../kernel/self-mod/hmr.js";
 import { StoreModService } from "../kernel/self-mod/store-mod-service.js";
-import { revertGitFeature } from "../kernel/self-mod/git.js";
 import { createDesktopDatabase } from "../kernel/storage/database.js";
 import { ChatStore } from "../kernel/storage/chat-store.js";
 import { RuntimeStore } from "../kernel/storage/runtime-store.js";
@@ -2804,6 +2806,60 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         featureId: payload.featureId,
         steps: payload.steps,
       });
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_CRASH_RECOVERY_STATUS,
+    async () => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const dirtyFiles = await listGitDirtyFiles(state.init.stellaRoot);
+      if (dirtyFiles.length > 0) {
+        const mtimes = await Promise.all(
+          dirtyFiles.map(async (file) => {
+            try {
+              const stat = await fsPromises.stat(
+                path.join(state.init!.stellaRoot, file),
+              );
+              return stat.mtimeMs;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        const latestChangedAtMs = mtimes.reduce<number | null>(
+          (latest, value) =>
+            typeof value === "number"
+              ? Math.max(latest ?? value, value)
+              : latest,
+          null,
+        );
+        return {
+          kind: "dirty",
+          changedFileCount: dirtyFiles.length,
+          latestChangedAtMs,
+        };
+      }
+      const [latestFeature = null] = await listRecentGitFeatures(
+        state.init.stellaRoot,
+        1,
+      );
+      return {
+        kind: "clean",
+        latestFeature,
+      };
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_DISCARD_UNFINISHED,
+    async () => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      return await discardGitDirtyFiles(state.init.stellaRoot);
     },
   );
 

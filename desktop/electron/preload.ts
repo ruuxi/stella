@@ -721,6 +721,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onSelfModHmrState: onIpc<SelfModHmrState>("agent:selfModHmrState"),
     selfModRevert: (featureId?: string, steps?: number) =>
       ipcRenderer.invoke("selfmod:revert", { featureId, steps }),
+    getCrashRecoveryStatus: () =>
+      ipcRenderer.invoke("selfmod:crashRecoveryStatus"),
+    discardUnfinishedSelfModChanges: () =>
+      ipcRenderer.invoke("selfmod:discardUnfinished"),
     getLastSelfModFeature: () => ipcRenderer.invoke("selfmod:lastFeature"),
     listSelfModFeatures: (limit?: number) =>
       ipcRenderer.invoke("selfmod:recentFeatures", { limit }) as Promise<

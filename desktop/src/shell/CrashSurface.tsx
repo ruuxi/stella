@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SelfModFeatureSummary } from "@/shared/types/electron";
 import "./error-boundary.css";
 
@@ -8,6 +8,17 @@ type Props = {
 };
 
 const AUTO_REPAIR_SIGNATURE_KEY = "stella:auto-repair:last-signature";
+
+type CrashRecoveryStatus =
+  | {
+      kind: "dirty";
+      changedFileCount: number;
+      latestChangedAtMs: number | null;
+    }
+  | {
+      kind: "clean";
+      latestFeature: SelfModFeatureSummary | null;
+    };
 
 const buildAutoRepairPrompt = (error: Error, componentStack: string) => {
   const stack = componentStack.trim() || "(no component stack)";
@@ -27,6 +38,18 @@ ${stack}
 After fixing, return a concise summary of what you changed.`;
 };
 
+const formatRecoveryTime = (timestampMs: number | null | undefined) => {
+  if (!timestampMs) return null;
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+};
+
 /**
  * Renderless-of-itself crash UI. Used by both the React `ErrorBoundary`
  * (for crashes outside the router) and the router's `defaultErrorComponent`
@@ -34,25 +57,30 @@ After fixing, return a concise summary of what you changed.`;
  * loaders, which never reach a React error boundary upstream).
  */
 export function CrashSurface({ error, componentStack }: Props) {
-  const [revertingFeatureId, setRevertingFeatureId] = useState<string | null>(
-    null,
-  );
-  const [, setFeatures] = useState<SelfModFeatureSummary[]>([]);
+  const [recoveryStatus, setRecoveryStatus] =
+    useState<CrashRecoveryStatus | null>(null);
+  const [reverting, setReverting] = useState(false);
+  const [confirmingRevert, setConfirmingRevert] = useState(false);
   const [repairStatus, setRepairStatus] = useState<
     "idle" | "running" | "failed"
   >("idle");
   const [repairMessage, setRepairMessage] = useState("");
   const startedRunIdRef = useRef<string | null>(null);
 
+  useLayoutEffect(() => {
+    document.getElementById("stella-launch")?.remove();
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const features = await window.electronAPI?.agent.listSelfModFeatures(5);
-        if (!cancelled) setFeatures(features ?? []);
+        const status =
+          await window.electronAPI?.agent.getCrashRecoveryStatus?.();
+        if (!cancelled) setRecoveryStatus(status ?? null);
       } catch (loadError) {
-        console.error("CrashSurface feature load failed:", loadError);
-        if (!cancelled) setFeatures([]);
+        console.error("CrashSurface recovery status load failed:", loadError);
+        if (!cancelled) setRecoveryStatus(null);
       }
     })();
     return () => {
@@ -60,16 +88,25 @@ export function CrashSurface({ error, componentStack }: Props) {
     };
   }, []);
 
-  const handleRevert = useCallback(async (featureId?: string) => {
-    setRevertingFeatureId(featureId ?? "__latest__");
+  const handleRevert = useCallback(async () => {
+    setReverting(true);
     try {
-      await window.electronAPI?.agent.selfModRevert(featureId, 1);
+      if (recoveryStatus?.kind === "dirty") {
+        await window.electronAPI?.agent.discardUnfinishedSelfModChanges?.();
+      } else {
+        await window.electronAPI?.agent.selfModRevert(
+          recoveryStatus?.kind === "clean"
+            ? recoveryStatus.latestFeature?.featureId
+            : undefined,
+          1,
+        );
+      }
     } catch (err) {
       console.error("CrashSurface revert failed:", err);
     } finally {
       window.location.reload();
     }
-  }, []);
+  }, [recoveryStatus]);
 
   const handleRepair = useCallback(async () => {
     if (repairStatus === "running" || !error) return;
@@ -164,6 +201,31 @@ export function CrashSurface({ error, componentStack }: Props) {
     window.location.reload();
   }, []);
 
+  const handleRevertClick = useCallback(() => {
+    setConfirmingRevert(true);
+  }, []);
+
+  const revertLabel =
+    recoveryStatus?.kind === "dirty"
+      ? "Undo unfinished Stella update"
+      : "Undo latest Stella update";
+  const canRevert =
+    recoveryStatus?.kind === "dirty"
+    || (recoveryStatus?.kind === "clean" && recoveryStatus.latestFeature);
+  const recoveryTime =
+    recoveryStatus?.kind === "dirty"
+      ? formatRecoveryTime(recoveryStatus.latestChangedAtMs)
+      : formatRecoveryTime(recoveryStatus?.latestFeature?.latestTimestampMs);
+  const revertContext = recoveryTime
+    ? `Restores Stella to before ${recoveryTime}.`
+    : null;
+  const confirmationTitle =
+    recoveryStatus?.kind === "dirty"
+      ? "Undo unfinished Stella update?"
+      : "Undo latest Stella update?";
+  const confirmationBody =
+    "This will remove recent work from this update. You won't be able to recover it from Stella.";
+
   return (
     <div className="error-boundary">
       <div className="error-boundary-gradient" />
@@ -177,25 +239,56 @@ export function CrashSurface({ error, componentStack }: Props) {
           <p className="error-boundary-status">{repairMessage}</p>
         )}
         <div className="error-boundary-actions">
-          {repairStatus === "idle" && error && (
-            <button
-              className="error-boundary-btn error-boundary-btn--fix"
-              onClick={handleRepair}
-            >
-              Ask Stella to fix
-            </button>
-          )}
           <button
-            className="error-boundary-btn"
-            onClick={() => handleRevert()}
-            disabled={revertingFeatureId !== null}
+            className="error-boundary-btn error-boundary-btn--fix"
+            onClick={handleReload}
           >
-            {revertingFeatureId ? "Reverting..." : "Undo"}
-          </button>
-          <button className="error-boundary-btn" onClick={handleReload}>
             Reload
           </button>
+          {repairStatus === "idle" && error && (
+            <button className="error-boundary-btn" onClick={handleRepair}>
+              Ask Stella to repair
+            </button>
+          )}
+          {canRevert && (
+            <div className="error-boundary-recovery-option">
+              <button
+                className="error-boundary-btn"
+                onClick={handleRevertClick}
+                disabled={reverting}
+              >
+                {reverting ? "Reverting..." : revertLabel}
+              </button>
+              {revertContext && (
+                <p className="error-boundary-recovery-option__hint">
+                  {revertContext}
+                </p>
+              )}
+            </div>
+          )}
         </div>
+        {confirmingRevert && canRevert && (
+          <div className="error-boundary-confirm">
+            <p className="error-boundary-confirm__title">{confirmationTitle}</p>
+            <p className="error-boundary-confirm__body">{confirmationBody}</p>
+            <div className="error-boundary-confirm__actions">
+              <button
+                className="error-boundary-btn"
+                onClick={() => setConfirmingRevert(false)}
+                disabled={reverting}
+              >
+                Keep my work
+              </button>
+              <button
+                className="error-boundary-btn error-boundary-btn--danger"
+                onClick={handleRevert}
+                disabled={reverting}
+              >
+                {reverting ? "Undoing..." : "Undo update"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

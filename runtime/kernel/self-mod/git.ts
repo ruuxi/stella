@@ -948,6 +948,21 @@ export const listGitDirtyFiles = async (repoRoot: string): Promise<string[]> => 
   return await listDirtyFiles(repoRoot);
 };
 
+export const discardGitDirtyFiles = async (
+  repoRoot: string,
+): Promise<{ discardedFileCount: number }> => {
+  await assertGitRepository(repoRoot);
+  const dirtyFiles = await listDirtyFiles(repoRoot);
+  if (dirtyFiles.length === 0) {
+    return { discardedFileCount: 0 };
+  }
+
+  await runGit(repoRoot, ["reset", "--hard", "HEAD"]);
+  await runGit(repoRoot, ["clean", "-fd"]);
+
+  return { discardedFileCount: dirtyFiles.length };
+};
+
 /**
  * Return a truncated unified diff for the changes about to be committed.
  *
