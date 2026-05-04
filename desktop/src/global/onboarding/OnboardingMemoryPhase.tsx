@@ -89,7 +89,9 @@ export function OnboardingMemoryPhase({
 
         <p className="onboarding-step-subdesc onboarding-memory-controls__hint">
           {memoryEnabled
-            ? "Stella will reference your screen context when helpful. You can pause or turn this off any time from Settings."
+            ? isAuthenticated
+              ? "Stella will reference your screen context when helpful. You can pause or turn this off any time from Settings."
+              : "Live Memory will be enabled after sign in. You can pause or turn this off any time from Settings."
             : "Skip for now — you can always turn this on later in Settings."}
         </p>
 
@@ -98,8 +100,8 @@ export function OnboardingMemoryPhase({
           data-visible={showSignInNotice || undefined}
           aria-hidden={!showSignInNotice}
         >
-          You'll need to sign in for Live Memory to start. We'll prompt you
-          right after onboarding.
+          Live Memory will be enabled after sign in. We'll prompt you right
+          after onboarding.
         </div>
       </div>
 
