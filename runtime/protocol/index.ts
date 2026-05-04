@@ -402,6 +402,7 @@ export type RuntimeChatPayload = {
   mode?: string;
   messageMetadata?: Record<string, unknown>;
   attachments?: RuntimeAttachmentRef[];
+  userMessageEventId?: string;
   agentType?: string;
   storageMode?: "cloud" | "local";
 };

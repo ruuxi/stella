@@ -56,6 +56,7 @@ interface ChatPanelTabProps {
   isStreaming: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
+  optimisticUserMessageIds: string[];
   selfModMap: Record<string, SelfModAppliedData>;
   liveTasks?: TaskItem[];
   hasOlderEvents: boolean;
@@ -77,6 +78,7 @@ export function ChatPanelTab(
       isStreaming,
       runtimeStatusText,
       pendingUserMessageId,
+      optimisticUserMessageIds,
       selfModMap,
       liveTasks,
       hasOlderEvents,
@@ -263,6 +265,7 @@ export function ChatPanelTab(
               isStreaming={isStreaming}
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}
+              optimisticUserMessageIds={optimisticUserMessageIds}
               selfModMap={selfModMap}
               liveTasks={liveTasks}
               hasOlderEvents={hasOlderEvents}

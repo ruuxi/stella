@@ -20,6 +20,7 @@ import type {
 import type {
   DiscoveryKnowledgeSeedPayload,
 } from "../../desktop/src/shared/contracts/discovery.js";
+import type { LocalChatUpdatedPayload } from "../../desktop/src/shared/contracts/local-chat.js";
 import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import {
   METHOD_NAMES,
@@ -87,7 +88,7 @@ type RuntimeClientEvents = {
   "voice-agent-event": RuntimeVoiceAgentEventPayload;
   "voice-self-mod-hmr-state": RuntimeVoiceHmrStatePayload;
   "voice-action-completed": RuntimeVoiceActionCompletedPayload;
-  "local-chat-updated": void;
+  "local-chat-updated": LocalChatUpdatedPayload | null;
   "schedule-updated": void;
   "google-workspace-auth-required": void;
 };
@@ -1601,7 +1602,7 @@ export class StellaRuntimeClient {
       payload,
       { ensureWorker: true, recordActivity: true },
     );
-    this.events.emit("local-chat-updated", undefined);
+    this.events.emit("local-chat-updated", null);
   }
 
   private async initializeHostServices() {
@@ -2054,8 +2055,8 @@ export class StellaRuntimeClient {
         );
       },
     );
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, () => {
-      this.events.emit("local-chat-updated", undefined);
+    peer.registerNotificationHandler(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, (params) => {
+      this.events.emit("local-chat-updated", params as LocalChatUpdatedPayload | null);
     });
     peer.registerNotificationHandler(NOTIFICATION_NAMES.SCHEDULE_UPDATED, () => {
       this.events.emit("schedule-updated", undefined);

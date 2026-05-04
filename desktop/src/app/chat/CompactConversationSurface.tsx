@@ -35,6 +35,7 @@ type CompactConversationSurfaceProps = {
   isStreaming: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
+  optimisticUserMessageIds?: string[];
   selfModMap?: Record<string, SelfModAppliedData>;
   liveTasks?: TaskItem[];
   hasOlderEvents?: boolean;
@@ -54,6 +55,7 @@ export function CompactConversationSurface({
   isStreaming,
   runtimeStatusText,
   pendingUserMessageId,
+  optimisticUserMessageIds,
   selfModMap,
   liveTasks,
   hasOlderEvents,
@@ -116,6 +118,7 @@ export function CompactConversationSurface({
               streamingText={streamingText}
               isStreaming={isStreaming}
               pendingUserMessageId={pendingUserMessageId}
+              optimisticUserMessageIds={optimisticUserMessageIds}
               selfModMap={selfModMap}
               hasOlderEvents={hasOlderEvents}
               isLoadingOlder={isLoadingOlder}

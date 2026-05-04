@@ -915,7 +915,11 @@ export class RuntimeClientAdapter {
     return this.client.on("schedule-updated", listener);
   }
 
-  onLocalChatUpdated(listener: () => void) {
+  onLocalChatUpdated(
+    listener: (
+      payload: import("../src/shared/contracts/local-chat.js").LocalChatUpdatedPayload | null,
+    ) => void,
+  ) {
     return this.client.on("local-chat-updated", listener);
   }
 

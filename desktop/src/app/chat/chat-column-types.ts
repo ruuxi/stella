@@ -22,6 +22,7 @@ export type ChatColumnConversation = {
     isStreaming: boolean
     runtimeStatusText?: string | null
     pendingUserMessageId: string | null
+    optimisticUserMessageIds: string[]
     selfModMap: Record<string, SelfModAppliedData>
     liveTasks?: TaskItem[]
     taskProgressSummaries: TaskProgressSummaries

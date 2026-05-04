@@ -203,10 +203,36 @@ export const useConversationEventFeed = (
     };
 
     void load();
-    const unsubscribe = subscribeToLocalChatUpdates(() => {
+    const applyUpdatedEvent = (payloadEvent: EventRecord) => {
+      setLocalSnapshot((current) => {
+        if (current.visitToken !== localWindowVisitToken) {
+          return current;
+        }
+        const alreadyPresent = current.events.some(
+          (event) => event._id === payloadEvent._id,
+        );
+        const events = mergeEventSources(current.events, [payloadEvent]);
+        return {
+          visitToken: localWindowVisitToken,
+          events,
+          count: alreadyPresent
+            ? current.count
+            : current.count + countVisibleChatMessageEvents([payloadEvent]),
+          hasLoaded: true,
+        };
+      });
+    };
+
+    const unsubscribe = subscribeToLocalChatUpdates((payload) => {
       if (retryTimer !== null) {
         window.clearTimeout(retryTimer);
         retryTimer = null;
+      }
+      if (
+        payload?.event &&
+        (!payload.conversationId || payload.conversationId === conversationId)
+      ) {
+        applyUpdatedEvent(payload.event);
       }
       void load();
     });

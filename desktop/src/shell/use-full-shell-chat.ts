@@ -17,7 +17,10 @@ import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
 import { useTaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-summaries'
 import { useIdleHomeVisibility } from '@/app/chat/hooks/use-idle-home-visibility'
 import { useTraceEventMonitor, useTraceIpcListener } from '@/debug/hooks/use-trace-listener'
-import type { MessageMetadata } from '@/app/chat/lib/event-transforms'
+import type {
+  EventRecord,
+  MessageMetadata,
+} from '@/app/chat/lib/event-transforms'
 import {
   STELLA_SEND_MESSAGE_EVENT,
   type StellaSendMessageDetail,
@@ -66,6 +69,23 @@ const resetChatScroll = (
   return () => cancelAnimationFrame(raf)
 }
 
+const mergeEventSources = (
+  events: EventRecord[],
+  optimisticEvents: EventRecord[],
+) => {
+  if (optimisticEvents.length === 0) return events
+  const merged = new Map(events.map((event) => [event._id, event]))
+  for (const event of optimisticEvents) {
+    if (!merged.has(event._id)) {
+      merged.set(event._id, event)
+    }
+  }
+  return [...merged.values()].sort((a, b) => {
+    if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
+    return a._id.localeCompare(b._id)
+  })
+}
+
 type UseFullShellChatOptions = {
   activeConversationId: string | null
   /** True when the user is currently on the `/chat` route. */
@@ -104,6 +124,8 @@ export function useFullShellChat({
 
   const {
     liveTasks,
+    optimisticEvents,
+    justSentUserMessageIds,
     runtimeStatusText,
     streamingText,
     reasoningText,
@@ -117,10 +139,14 @@ export function useFullShellChat({
     conversationId: activeConversationId,
     events,
   })
+  const displayEvents = useMemo(
+    () => mergeEventSources(events, optimisticEvents),
+    [events, optimisticEvents],
+  )
   const taskProgressSummaries = useTaskProgressSummaries({ liveTasks, events })
 
   useTraceIpcListener(isDev)
-  useTraceEventMonitor(isDev, events)
+  useTraceEventMonitor(isDev, displayEvents)
 
   const sendMessageRef = useRef(sendMessage)
 
@@ -192,7 +218,7 @@ export function useFullShellChat({
     [enterChatSurfaceForInteraction],
   )
 
-  const hasMessages = events.length > 0
+  const hasMessages = displayEvents.length > 0
 
   const { showHomeContent: idleBasedHome, resetIdleTimer, forceShowHome } = useIdleHomeVisibility({
     hasMessages,
@@ -351,7 +377,7 @@ export function useFullShellChat({
 
   const chatColumnConversation = useMemo<ChatColumnConversation>(
     () => ({
-      events,
+      events: displayEvents,
       streaming: {
         text: streamingText,
         reasoningText,
@@ -359,6 +385,7 @@ export function useFullShellChat({
         isStreaming,
         runtimeStatusText,
         pendingUserMessageId,
+        optimisticUserMessageIds: justSentUserMessageIds,
         selfModMap,
         liveTasks,
         taskProgressSummaries,
@@ -370,13 +397,14 @@ export function useFullShellChat({
       },
     }),
     [
-      events,
+      displayEvents,
       streamingText,
       reasoningText,
       streamingResponseTarget,
       isStreaming,
       runtimeStatusText,
       pendingUserMessageId,
+      justSentUserMessageIds,
       selfModMap,
       liveTasks,
       taskProgressSummaries,

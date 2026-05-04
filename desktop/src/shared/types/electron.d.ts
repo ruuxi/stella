@@ -9,7 +9,10 @@
 import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "@/shared/contracts/agent-stream";
-import type { EventRecord } from "@/shared/contracts/local-chat";
+import type {
+  EventRecord,
+  LocalChatUpdatedPayload,
+} from "@/shared/contracts/local-chat";
 import type { TaskLifecycleStatus } from "@/shared/contracts/agent-runtime";
 import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
 import type {
@@ -510,6 +513,7 @@ export type ElectronAgentApi = {
       url: string;
       mimeType?: string;
     }>;
+    userMessageEventId?: string;
     agentType?: string;
     storageMode?: "cloud" | "local";
   }) => Promise<{ requestId: string }>;
@@ -1019,7 +1023,7 @@ export type ElectronLocalChatApi = {
     conversationId: string;
     localMessageId: string;
   }) => Promise<{ ok: boolean }>;
-  onUpdated: (callback: () => void) => () => void;
+  onUpdated: (callback: (payload: LocalChatUpdatedPayload | null) => void) => () => void;
 };
 
 // ---------------------------------------------------------------------------

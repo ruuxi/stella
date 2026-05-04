@@ -443,6 +443,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           url: string;
           mimeType?: string;
         }>;
+        userMessageEventId?: string;
         agentType?: string;
         storageMode?: "cloud" | "local";
       },

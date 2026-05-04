@@ -29,6 +29,7 @@ type Props = {
   streamingText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
+  optimisticUserMessageIds?: string[];
   selfModMap?: Record<string, SelfModAppliedData>;
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
@@ -42,6 +43,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   streamingText,
   isStreaming,
   pendingUserMessageId,
+  optimisticUserMessageIds,
   selfModMap,
   hasOlderEvents,
   isLoadingOlder,
@@ -67,13 +69,20 @@ export const ConversationEvents = memo(function ConversationEvents({
     selfModMap,
   });
 
-  const rows = pendingUserMessageId
-    ? projectedRows.map((row) =>
-        row.kind === "user" && row.id === pendingUserMessageId
-          ? { ...row, justSent: true }
-          : row,
-      )
-    : projectedRows;
+  const justSentIds =
+    optimisticUserMessageIds && optimisticUserMessageIds.length > 0
+      ? new Set(optimisticUserMessageIds)
+      : null;
+  const rows =
+    pendingUserMessageId || justSentIds
+      ? projectedRows.map((row) =>
+          row.kind === "user" &&
+          (row.id === pendingUserMessageId ||
+            (justSentIds ? justSentIds.has(row.id) : false))
+            ? { ...row, justSent: true }
+            : row,
+        )
+      : projectedRows;
 
   return (
     <ChatTimeline

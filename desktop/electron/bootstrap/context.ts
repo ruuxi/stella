@@ -147,8 +147,11 @@ export const broadcastAuthCallback = (
   broadcastToWindowsAndMobile(context, "auth:callback", { url });
 };
 
-export const broadcastLocalChatUpdated = (context: BootstrapContext) => {
-  broadcastToWindowsAndMobile(context, "localChat:updated");
+export const broadcastLocalChatUpdated = (
+  context: BootstrapContext,
+  payload?: import("../../src/shared/contracts/local-chat.js").LocalChatUpdatedPayload | null,
+) => {
+  broadcastToWindowsAndMobile(context, "localChat:updated", payload ?? null);
 };
 
 export const broadcastScheduleUpdated = (context: BootstrapContext) => {

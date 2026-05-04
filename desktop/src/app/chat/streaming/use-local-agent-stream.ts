@@ -47,6 +47,8 @@ type StartStreamArgs = {
   mode?: string
   messageMetadata?: Record<string, unknown>
   attachments?: AttachmentRef[]
+  userMessageEventId?: string
+  onStartFailed?: () => void
 }
 
 type RunRecord = {
@@ -1084,6 +1086,7 @@ export function useLocalAgentStream({
   const startStream = useCallback(
     (args: StartStreamArgs) => {
       if (!activeConversationId || !window.electronAPI) {
+        args.onStartFailed?.()
         return
       }
 
@@ -1091,6 +1094,7 @@ export function useLocalAgentStream({
 
       if (!window.electronAPI.agent.healthCheck) {
         showToast({ title: 'Stella agent is not running', variant: 'error' })
+        args.onStartFailed?.()
         return
       }
 
@@ -1135,6 +1139,7 @@ export function useLocalAgentStream({
               description: toast.description,
               variant: 'error',
             })
+            args.onStartFailed?.()
             return
           }
 
@@ -1158,6 +1163,9 @@ export function useLocalAgentStream({
             ...(startChatAttachments?.length
               ? { attachments: startChatAttachments }
               : {}),
+            ...(args.userMessageEventId
+              ? { userMessageEventId: args.userMessageEventId }
+              : {}),
             storageMode,
           })
           pendingRequestIdsRef.current.add(requestId)
@@ -1172,6 +1180,7 @@ export function useLocalAgentStream({
             description: (error as Error).message || 'Please try again.',
             variant: 'error',
           })
+          args.onStartFailed?.()
         })
     },
     [
