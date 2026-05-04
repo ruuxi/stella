@@ -306,7 +306,6 @@ function RootChrome() {
     if (!isOnChatRoute) {
       openChatPanel();
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-shot consumer (see comment above).
     handlePendingAskStellaHandled(pendingAskStellaRequest.id);
   }, [
     handlePendingAskStellaHandled,
@@ -481,7 +480,6 @@ function RootChrome() {
   // intentional here — the drawer is a UI artifact that should reset on every
   // navigation; the pathname *is* the external state we are syncing from.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDrawerOpen(false);
   }, [pathname]);
 

@@ -132,7 +132,7 @@ describe("normalizeDisplayPayload", () => {
   });
 
   it("derives reasonable titles", () => {
-    expect(getDisplayPayloadTitle({ kind: "html", html: "x" })).toBe("Display");
+    expect(getDisplayPayloadTitle({ kind: "html", html: "x" })).toBe("Canvas");
     expect(
       getDisplayPayloadTitle({
         kind: "office",

@@ -112,7 +112,6 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
   return <UiStateContext.Provider value={value}>{children}</UiStateContext.Provider>
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export const useUiState = () => {
   const context = useContext(UiStateContext)
   if (!context) {

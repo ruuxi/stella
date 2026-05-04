@@ -83,7 +83,7 @@ const injectPreviewChrome = (html: string, zoomPercent: number) => {
     display: none !important;
   }
 </style>`;
-  let next = html.includes("</head>")
+  const next = html.includes("</head>")
     ? html.replace("</head>", `${style}</head>`)
     : `${style}${html}`;
   return next;

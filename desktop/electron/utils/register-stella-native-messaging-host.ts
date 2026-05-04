@@ -67,7 +67,7 @@ function escapeForCmdLiteral(value: string): string {
 }
 
 function quoteForSh(value: string): string {
-  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 function writeLauncherAndManifest(

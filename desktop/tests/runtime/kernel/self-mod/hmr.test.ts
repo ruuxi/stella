@@ -206,6 +206,8 @@ describe("self-mod HMR controller", () => {
     mkdirSync(path.dirname(filePath), { recursive: true });
     writeFileSync(filePath, "export const value = 'race';\n");
     const requestedPaths: string[] = [];
+    // Assigned after the fetch mock closes over it.
+    // eslint-disable-next-line prefer-const
     let controller: ReturnType<typeof createSelfModHmrController>;
     globalThis.fetch = vi.fn(async (input) => {
       const url = String(input);

@@ -5,12 +5,6 @@ import type {
   OnboardingSynthesisResponse,
 } from "../../src/shared/contracts/onboarding.js";
 
-type BrowserFetchInit = {
-  method?: "GET" | "POST";
-  headers?: Record<string, string>;
-  body?: string;
-};
-
 type OnboardingHandlersOptions = {
   authService: AuthService;
   getDeviceId: () => string | null;

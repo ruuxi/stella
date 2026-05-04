@@ -25,7 +25,7 @@ export const scheduleBootstrapRuntimeShutdown = (
 
 export const shutdownBootstrapRuntime = async (
   context: BootstrapContext,
-  options: { stopScheduler?: boolean } = {},
+  _options: { stopScheduler?: boolean } = {},
 ) => {
   const { lifecycle, state } = context;
 

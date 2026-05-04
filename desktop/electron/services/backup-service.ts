@@ -151,14 +151,6 @@ type RemotePrepareUploadResponse = {
   };
 };
 
-type RemoteKeyStatusResponse = {
-  key: {
-    keyBase64Url: string;
-    keyFingerprint: string;
-    updatedAt: number;
-  } | null;
-};
-
 type RemoteKeyEnsureResponse = {
   status: "created" | "matched" | "mismatch";
   keyFingerprint: string;

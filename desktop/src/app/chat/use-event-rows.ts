@@ -503,9 +503,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     streamingText,
   ])
 
-  /* eslint-disable react-hooks/refs --
-   * Stable-rows cache; mirrors `stabilizeEventList` usage in the event
-   * feed. The ref is only read inside this `useMemo` callback. */
   const rowsStableRef = useRef<StableTurnRowsState<EventRowViewModel> | null>(
     null,
   )
@@ -515,7 +512,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     rowsStableRef.current = next
     return next.result
   }, [allRows])
-  /* eslint-enable react-hooks/refs */
 
   const slicedRows = useMemo(() => {
     if (typeof maxItems !== 'number') return stableRows

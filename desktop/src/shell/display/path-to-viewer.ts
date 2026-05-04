@@ -131,7 +131,7 @@ export const basenameOf = (filePath: string): string => {
  * Map an extension to a `DisplayTabKind`. Returns `null` for unknown types
  * so callers can skip rendering a card.
  */
-const kindForExtension = (
+export const kindForExtension = (
   extension: string | null,
 ): DisplayTabKind | null => {
   if (extension == null) return null;

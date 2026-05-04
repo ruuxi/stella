@@ -9,7 +9,7 @@ import {
 } from "../http_shared/webhook_controls";
 import { getClientAddressKey } from "../lib/http_utils";
 
-const STRIPE_API_VERSION = "2026-02-25.clover";
+const STRIPE_API_VERSION = "2026-04-22.dahlia";
 
 // Caps used for the Stripe webhook surface. The dedup window catches
 // upstream replay (Stripe's own retry policy is ~3 days). The per-IP and
