@@ -511,14 +511,6 @@ body[data-display-resizing="true"] .shell-topbar-center {
     #000 calc(100% - var(--topbar-tablist-fade-end)),
     transparent 100%
   );
-}
-
-.shell-topbar-tablist[data-at-start="true"] {
-  --topbar-tablist-fade-start: 0px;
-}
-
-.shell-topbar-tablist[data-at-end="true"] {
-  --topbar-tablist-fade-end: 0px;
   /* Slides in/out in lockstep with the display panel
      (`.display-sidebar` uses width 460ms cubic-bezier(0.32, 0.72, 0.16, 1)). */
   transition:
@@ -527,6 +519,14 @@ body[data-display-resizing="true"] .shell-topbar-center {
     padding 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
     opacity 220ms ease-out;
   will-change: max-width, flex-basis;
+}
+
+.shell-topbar-tablist[data-at-start="true"] {
+  --topbar-tablist-fade-start: 0px;
+}
+
+.shell-topbar-tablist[data-at-end="true"] {
+  --topbar-tablist-fade-end: 0px;
 }
 
 .shell-topbar:not([data-display-open="true"]) .shell-topbar-tablist {
