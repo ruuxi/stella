@@ -18,6 +18,7 @@ import {
   RATE_STANDARD,
   enforceMutationRateLimit,
 } from "../lib/rate_limits";
+import { filterDisplayableTags, isBlockedContentTag } from "../lib/content_tags";
 import {
   emoji_pack_validator,
   emoji_pack_visibility_validator,
@@ -132,7 +133,12 @@ const buildSearchText = (args: {
     .join(" ")
     .toLowerCase();
 
-const toOwnedPack = (row: Doc<"emoji_packs">) => row;
+const toDisplayablePack = (row: Doc<"emoji_packs">): Doc<"emoji_packs"> => ({
+  ...row,
+  tags: filterDisplayableTags(row.tags),
+});
+
+const toOwnedPack = (row: Doc<"emoji_packs">) => toDisplayablePack(row);
 
 const isVisibleTo = (
   row: Doc<"emoji_packs">,
@@ -158,6 +164,9 @@ export const listPublicPage = query({
     const opts = { cursor: args.paginationOpts.cursor, numItems };
     const search = args.search?.trim() ?? "";
     const tag = args.tag?.trim().toLowerCase() ?? "";
+    if (tag.length > 0 && isBlockedContentTag(tag)) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
     if (search.length > 0) {
       const result = await ctx.db
         .query("emoji_packs")
@@ -165,7 +174,7 @@ export const listPublicPage = query({
           q.search("searchText", search).eq("visibility", "public"),
         )
         .paginate(opts);
-      return result;
+      return { ...result, page: result.page.map(toDisplayablePack) };
     }
     if (tag.length > 0) {
       const sort = args.sort ?? "installs";
@@ -185,19 +194,22 @@ export const listPublicPage = query({
       );
       return {
         ...page,
-        page: packs.filter(
-          (pack): pack is Doc<"emoji_packs"> =>
-            pack !== null && pack.visibility === "public",
-        ),
+        page: packs
+          .filter(
+            (pack): pack is Doc<"emoji_packs"> =>
+              pack !== null && pack.visibility === "public",
+          )
+          .map(toDisplayablePack),
       };
     }
-    return await ctx.db
+    const result = await ctx.db
       .query("emoji_packs")
       .withIndex("by_visibility_and_updatedAt", (q) =>
         q.eq("visibility", "public"),
       )
       .order("desc")
       .paginate(opts);
+    return { ...result, page: result.page.map(toDisplayablePack) };
   },
 });
 
@@ -210,7 +222,9 @@ export const listTagFacets = query({
       .withIndex("by_count")
       .order("desc")
       .take(MAX_FACETS);
-    return rows.map((row) => ({ tag: row.tag, count: row.count }));
+    return rows
+      .filter((row) => !isBlockedContentTag(row.tag))
+      .map((row) => ({ tag: row.tag, count: row.count }));
   },
 });
 
@@ -240,7 +254,7 @@ export const getByPackId = query({
       .withIndex("by_packId", (q) => q.eq("packId", packId))
       .unique();
     if (!row || !isVisibleTo(row, ownerId)) return null;
-    return row;
+    return toDisplayablePack(row);
   },
 });
 
@@ -261,12 +275,16 @@ export const patchGeneratedMetadata = internalMutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.packId);
     if (!row) return null;
-    await syncTagMembership(ctx, row, args.metadata.tags, {
+    const displayableTags = filterDisplayableTags(args.metadata.tags);
+    await syncTagMembership(ctx, row, displayableTags, {
       visibility: row.visibility,
       displayName: args.metadata.displayName,
       installCount: row.installCount ?? 0,
     });
-    await ctx.db.patch(args.packId, args.metadata);
+    await ctx.db.patch(args.packId, {
+      ...args.metadata,
+      tags: displayableTags,
+    });
     return null;
   },
 });
@@ -394,7 +412,8 @@ export const setVisibility = mutation({
       visibility: args.visibility,
       updatedAt: Date.now(),
     });
-    await syncTagMembership(ctx, row, row.tags, {
+    const displayableTags = filterDisplayableTags(row.tags);
+    await syncTagMembership(ctx, row, displayableTags, {
       visibility: args.visibility,
       displayName: row.displayName,
       installCount: row.installCount ?? 0,

@@ -17,6 +17,7 @@ import {
   RATE_STANDARD,
   enforceMutationRateLimit,
 } from "../lib/rate_limits";
+import { filterDisplayableTags } from "../lib/content_tags";
 import {
   user_pet_validator,
   user_pet_visibility_validator,
@@ -136,6 +137,11 @@ const isVisibleTo = (
   return ownerId !== null && row.ownerId === ownerId;
 };
 
+const toDisplayablePet = (row: Doc<"user_pets">): Doc<"user_pets"> => ({
+  ...row,
+  tags: filterDisplayableTags(row.tags),
+});
+
 export const listPublicPage = query({
   args: {
     paginationOpts: paginationOptsValidator,
@@ -150,20 +156,22 @@ export const listPublicPage = query({
     const opts = { cursor: args.paginationOpts.cursor, numItems };
     const search = args.search?.trim() ?? "";
     if (search.length > 0) {
-      return await ctx.db
+      const result = await ctx.db
         .query("user_pets")
         .withSearchIndex("search_text", (q) =>
           q.search("searchText", search).eq("visibility", "public"),
         )
         .paginate(opts);
+      return { ...result, page: result.page.map(toDisplayablePet) };
     }
-    return await ctx.db
+    const result = await ctx.db
       .query("user_pets")
       .withIndex("by_visibility_and_updatedAt", (q) =>
         q.eq("visibility", "public"),
       )
       .order("desc")
       .paginate(opts);
+    return { ...result, page: result.page.map(toDisplayablePet) };
   },
 });
 
@@ -173,11 +181,12 @@ export const listMine = query({
   handler: async (ctx) => {
     const ownerId = await getConnectedUserIdOrNull(ctx);
     if (!ownerId) return [];
-    return await ctx.db
+    const rows = await ctx.db
       .query("user_pets")
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(256);
+    return rows.map(toDisplayablePet);
   },
 });
 
@@ -198,7 +207,11 @@ export const patchGeneratedMetadata = internalMutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.petId);
     if (!row) return null;
-    await ctx.db.patch(args.petId, args.metadata);
+    const displayableTags = filterDisplayableTags(args.metadata.tags);
+    await ctx.db.patch(args.petId, {
+      ...args.metadata,
+      tags: displayableTags,
+    });
     return null;
   },
 });
@@ -214,7 +227,7 @@ export const getByPetId = query({
       .withIndex("by_petId", (q) => q.eq("petId", petId))
       .unique();
     if (!row || !isVisibleTo(row, ownerId)) return null;
-    return row;
+    return toDisplayablePet(row);
   },
 });
 

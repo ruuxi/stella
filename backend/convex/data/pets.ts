@@ -9,6 +9,7 @@ import {
   RATE_STANDARD,
   enforceMutationRateLimit,
 } from "../lib/rate_limits";
+import { filterDisplayableTags, isBlockedContentTag } from "../lib/content_tags";
 
 /** Public catalog rows always carry these display-safe fields. */
 const publicPetValidator = v.object({
@@ -51,7 +52,7 @@ const toPublicPet = (row: Doc<"pet_catalog">) => ({
   displayName: row.displayName,
   description: row.description,
   kind: row.kind,
-  tags: row.tags,
+  tags: filterDisplayableTags(row.tags),
   ownerName: row.ownerName,
   spritesheetUrl: row.spritesheetUrl,
   sourceUrl: row.sourceUrl,
@@ -95,6 +96,9 @@ export const listPublicPage = query({
 
     const trimmedSearch = args.search?.trim() ?? "";
     const trimmedTag = args.tag?.trim() ?? "";
+    if (trimmedTag.length > 0 && isBlockedContentTag(trimmedTag)) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
 
     if (trimmedSearch.length > 0) {
       const result = await ctx.db
@@ -216,7 +220,9 @@ export const listTagFacets = query({
       .withIndex("by_count")
       .order("desc")
       .take(MAX_FACETS);
-    return rows.map((row) => ({ tag: row.tag, count: row.count }));
+    return rows
+      .filter((row) => !isBlockedContentTag(row.tag))
+      .map((row) => ({ tag: row.tag, count: row.count }));
   },
 });
 
@@ -269,39 +275,43 @@ export const upsertMany = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     for (const pet of args.pets) {
+      const displayableTags = filterDisplayableTags(pet.tags);
+      const sanitizedPet = { ...pet, tags: displayableTags };
       const existing = await ctx.db
         .query("pet_catalog")
         .withIndex("by_petId", (q) => q.eq("id", pet.id))
         .unique();
       const downloads = Math.max(0, Math.floor(pet.downloads ?? existing?.downloads ?? 0));
-      const searchText = buildSearchText(pet);
+      const searchText = buildSearchText(sanitizedPet);
       let petDocId: Id<"pet_catalog">;
       if (existing) {
         await ctx.db.replace(existing._id, {
-          ...pet,
+          ...sanitizedPet,
           downloads,
           searchText,
         });
         petDocId = existing._id;
       } else {
         petDocId = await ctx.db.insert("pet_catalog", {
-          ...pet,
+          ...sanitizedPet,
           downloads: 0,
           searchText,
         });
       }
 
       const beforePublished =
-        existing?.published === true ? new Set(existing.tags) : new Set<string>();
+        existing?.published === true
+          ? new Set(filterDisplayableTags(existing.tags))
+          : new Set<string>();
       const afterPublished = pet.published
-        ? new Set(pet.tags)
+        ? new Set(displayableTags)
         : new Set<string>();
 
       await syncTagMembership(
         ctx,
         petDocId,
         pet.id,
-        pet.tags,
+        displayableTags,
         pet.published,
         pet.displayName,
         downloads,
@@ -344,7 +354,7 @@ const syncTagMembership = async (
   for (const row of previousMemberships) {
     await ctx.db.delete(row._id);
   }
-  for (const tag of new Set(tags)) {
+  for (const tag of new Set(filterDisplayableTags(tags))) {
     await ctx.db.insert("pet_tag_membership", {
       petId: petDocId,
       petStringId,
