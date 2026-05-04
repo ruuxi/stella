@@ -14,6 +14,11 @@ export type BuiltInPet = {
   tags: string[];
   ownerName: string | null;
   spritesheetUrl: string;
+  /** Tiny idle-strip preview used by the Pets store grid so we don't
+   *  fetch the full atlas just to render a card. Optional: catalog and
+   *  bundled pets may not have one yet, in which case the grid falls
+   *  back to the full spritesheet renderer. */
+  previewUrl?: string;
   sourceUrl: string;
   /** Convenience alias used by older overlay code paths. */
   creator: string;
@@ -35,6 +40,9 @@ export const normalizePet = (pet: Partial<BuiltInPet>): BuiltInPet | null => {
     tags: Array.isArray(pet.tags) ? pet.tags.filter((t): t is string => typeof t === "string") : [],
     ownerName,
     spritesheetUrl: pet.spritesheetUrl ?? "",
+    ...(typeof pet.previewUrl === "string" && pet.previewUrl.length > 0
+      ? { previewUrl: pet.previewUrl }
+      : {}),
     sourceUrl: pet.sourceUrl ?? "",
     creator: ownerName ?? "Codex Pet Share",
     downloads:

@@ -149,12 +149,14 @@ export const createUploadUrls = action({
     packId: v.string(),
     sheet1Sha256: v.string(),
     sheet2Sha256: v.string(),
+    coverSha256: v.optional(v.string()),
     contentType: v.optional(v.string()),
   },
   returns: v.object({
     uploadId: v.string(),
     sheet1: uploadTargetValidator,
     sheet2: uploadTargetValidator,
+    cover: v.optional(uploadTargetValidator),
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserIdAction(ctx);
@@ -187,8 +189,11 @@ export const createUploadUrls = action({
     const baseKey = `${prefix}/${ownerKey}/${packId}/${uploadId}`;
     const sheet1Sha256 = normalizeSha256(args.sheet1Sha256, "sheet1Sha256");
     const sheet2Sha256 = normalizeSha256(args.sheet2Sha256, "sheet2Sha256");
-    const makeTarget = (sheet: 1 | 2, payloadHash: string) => {
-      const key = `${baseKey}/sheet-${sheet}.webp`;
+    const coverSha256 = args.coverSha256
+      ? normalizeSha256(args.coverSha256, "coverSha256")
+      : undefined;
+    const makeTarget = (filename: string, payloadHash: string) => {
+      const key = `${baseKey}/${filename}`;
       const signed = signR2Put({
         accessKeyId,
         secretAccessKey,
@@ -206,10 +211,14 @@ export const createUploadUrls = action({
         headers: signed.headers,
       };
     };
+    const cover = coverSha256
+      ? makeTarget("cover.webp", coverSha256)
+      : undefined;
     return {
       uploadId,
-      sheet1: makeTarget(1, sheet1Sha256),
-      sheet2: makeTarget(2, sheet2Sha256),
+      sheet1: makeTarget("sheet-1.webp", sheet1Sha256),
+      sheet2: makeTarget("sheet-2.webp", sheet2Sha256),
+      ...(cover ? { cover } : {}),
     };
   },
 });

@@ -28,6 +28,7 @@ import {
 } from "./emoji-pack-data";
 import { CreateEmojiPackDialog } from "./CreateEmojiPackDialog";
 import { ShareEmojiPackDialog } from "./ShareEmojiPackDialog";
+import { EmojiPackDetailsDialog } from "./EmojiPackDetailsDialog";
 import { EmojiCellPreview } from "./EmojiCellPreview";
 import "./emojis.css";
 
@@ -67,8 +68,7 @@ type PackCardProps = {
   pack: EmojiPackRecord;
   active: boolean;
   owned: boolean;
-  onUse: () => void;
-  onDeactivate: () => void;
+  onOpen: () => void;
   onSetVisibility: (next: EmojiPackVisibility) => void;
   onShare: () => void;
   onDelete: () => void;
@@ -78,13 +78,12 @@ function PackCard({
   pack,
   active,
   owned,
-  onUse,
-  onDeactivate,
+  onOpen,
   onSetVisibility,
   onShare,
   onDelete,
 }: PackCardProps) {
-  const cover = useMemo(() => findCoverCell(pack), [pack]);
+  const fallback = useMemo(() => findCoverCell(pack), [pack]);
   const author =
     pack.authorDisplayName?.trim() ||
     (pack.authorHandle ? `@${pack.authorHandle}` : "Unknown");
@@ -93,17 +92,29 @@ function PackCard({
       <button
         type="button"
         className="emoji-pack-cover"
-        onClick={active ? onDeactivate : onUse}
-        aria-label={active ? `Stop using ${pack.displayName}` : `Use ${pack.displayName}`}
-        data-stella-action="select-emoji-pack"
+        onClick={onOpen}
+        aria-label={`Open ${pack.displayName}`}
+        data-stella-action="open-emoji-pack"
         data-stella-label={pack.displayName}
         data-stella-state={active ? "active" : "available"}
       >
-        <EmojiCellPreview
-          sheetUrl={cover.sheetUrl}
-          cell={cover.cell}
-          size={56}
-        />
+        {pack.coverUrl ? (
+          <img
+            src={pack.coverUrl}
+            alt=""
+            width={56}
+            height={56}
+            className="emoji-pack-cover-img"
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <EmojiCellPreview
+            sheetUrl={fallback.sheetUrl}
+            cell={fallback.cell}
+            size={56}
+          />
+        )}
       </button>
       <div className="emoji-pack-body">
         <div className="emoji-pack-name-row">
@@ -132,10 +143,12 @@ function PackCard({
           type="button"
           variant={active ? "secondary" : "primary"}
           size="small"
-          className="pill-btn"
-          onClick={active ? onDeactivate : onUse}
+          className={
+            active ? "pill-btn" : "pill-btn pill-btn--primary"
+          }
+          onClick={onOpen}
         >
-          {active ? "Active" : "Use"}
+          {active ? "Active" : "Get"}
         </Button>
         {owned ? (
           <DropdownMenu>
@@ -218,6 +231,9 @@ export function EmojiStorePage() {
   const [activePack, setActivePack] = useActiveEmojiPack();
   const [createOpen, setCreateOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<EmojiPackRecord | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<EmojiPackRecord | null>(
+    null,
+  );
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -277,17 +293,27 @@ export function EmojiStorePage() {
   const recordedRef = useRef<Set<string>>(new Set());
 
   const handleUse = useCallback(
-    (pack: EmojiPackRecord) => {
-      const next: ActiveEmojiPack = emojiPackToActivePack(pack);
-      setActivePack(next);
+    async (pack: EmojiPackRecord) => {
+      if (!hasConnectedAccount) {
+        showToast({
+          title: "Sign in to use emoji packs",
+          variant: "error",
+        });
+        return;
+      }
       if (!recordedRef.current.has(pack.packId)) {
         recordedRef.current.add(pack.packId);
-        void recordInstall({ packId: pack.packId }).catch(() => {
+        try {
+          await recordInstall({ packId: pack.packId });
+        } catch (err) {
           recordedRef.current.delete(pack.packId);
-        });
+          throw err;
+        }
       }
+      const next: ActiveEmojiPack = emojiPackToActivePack(pack);
+      setActivePack(next);
     },
-    [recordInstall, setActivePack],
+    [hasConnectedAccount, recordInstall, setActivePack],
   );
 
   const handleDeactivate = useCallback(() => {
@@ -336,22 +362,6 @@ export function EmojiStorePage() {
     [activePack, deletePack, setActivePack],
   );
 
-  if (!hasConnectedAccount) {
-    return (
-      <main className="emoji-page" data-stella-section="emojis">
-        <header className="emoji-page-header">
-          <h1 className="emoji-page-title">Emoji packs</h1>
-          <p className="emoji-page-subtitle">
-            Replace standard emojis in chat with a custom AI-generated pack.
-          </p>
-        </header>
-        <div className="emoji-page-signin">
-          <p>Sign in to create and share emoji packs.</p>
-        </div>
-      </main>
-    );
-  }
-
   return (
     <main className="emoji-page" data-stella-section="emojis">
       <header className="emoji-page-header">
@@ -393,7 +403,16 @@ export function EmojiStorePage() {
           variant="primary"
           size="normal"
           className="pill-btn pill-btn--primary"
-          onClick={() => setCreateOpen(true)}
+          onClick={() => {
+            if (!hasConnectedAccount) {
+              showToast({
+                title: "Sign in to create your own emoji pack",
+                variant: "error",
+              });
+              return;
+            }
+            setCreateOpen(true);
+          }}
         >
           <Sparkles size={14} />
           Create pack
@@ -413,8 +432,7 @@ export function EmojiStorePage() {
                 pack={pack}
                 active={activePack?.packId === pack.packId}
                 owned
-                onUse={() => handleUse(pack)}
-                onDeactivate={handleDeactivate}
+                onOpen={() => setDetailsTarget(pack)}
                 onSetVisibility={(next) => void handleSetVisibility(pack, next)}
                 onShare={() => setShareTarget(pack)}
                 onDelete={() => void handleDelete(pack)}
@@ -450,8 +468,7 @@ export function EmojiStorePage() {
                 pack={pack}
                 active={activePack?.packId === pack.packId}
                 owned={false}
-                onUse={() => handleUse(pack)}
-                onDeactivate={handleDeactivate}
+                onOpen={() => setDetailsTarget(pack)}
                 onSetVisibility={() => undefined}
                 onShare={() => setShareTarget(pack)}
                 onDelete={() => undefined}
@@ -470,7 +487,28 @@ export function EmojiStorePage() {
         ) : null}
       </section>
 
-      <CreateEmojiPackDialog open={createOpen} onOpenChange={setCreateOpen} />
+      {detailsTarget ? (
+        <EmojiPackDetailsDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setDetailsTarget(null);
+          }}
+          pack={detailsTarget}
+          active={activePack?.packId === detailsTarget.packId}
+          hasConnectedAccount={hasConnectedAccount}
+          onUse={async (pack) => {
+            await handleUse(pack);
+          }}
+          onStop={() => {
+            handleDeactivate();
+            setDetailsTarget(null);
+          }}
+        />
+      ) : null}
+
+      {hasConnectedAccount ? (
+        <CreateEmojiPackDialog open={createOpen} onOpenChange={setCreateOpen} />
+      ) : null}
       {shareTarget ? (
         <ShareEmojiPackDialog
           open

@@ -14,6 +14,9 @@ const userPetFields = {
   description: v.string(),
   prompt: v.optional(v.string()),
   spritesheetUrl: v.string(),
+  /** Tiny 8-frame idle strip used by the Pets store grid so we don't
+   *  need to fetch the full atlas just to render a card. */
+  previewUrl: v.optional(v.string()),
   visibility: user_pet_visibility_validator,
   searchText: v.string(),
   authorDisplayName: v.optional(v.string()),

@@ -17,6 +17,7 @@ export type UserPetRecord = {
   description: string;
   prompt?: string;
   spritesheetUrl: string;
+  previewUrl?: string;
   visibility: UserPetVisibility;
   searchText: string;
   authorDisplayName?: string;
@@ -36,6 +37,7 @@ export type UserPetUploadTarget = {
 export type UserPetUploadUrl = {
   uploadId: string;
   spritesheet: UserPetUploadTarget;
+  preview?: UserPetUploadTarget;
 };
 
 const PAGE_SIZE = 24;
@@ -79,6 +81,7 @@ export function useCreateUserPetUploadUrl() {
   return useAction(api.data.user_pet_uploads.createUploadUrl) as (args: {
     petId: string;
     spritesheetSha256: string;
+    previewSha256?: string;
     contentType?: string;
   }) => Promise<UserPetUploadUrl>;
 }

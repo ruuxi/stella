@@ -13,7 +13,10 @@
  */
 
 import { createServiceRequest } from "@/infra/http/service-request";
-import { EMOJI_SHEETS } from "@/app/chat/emoji-sprites/cells";
+import {
+  EMOJI_SHEETS,
+  EMOJI_SHEET_GRID_SIZE,
+} from "@/app/chat/emoji-sprites/cells";
 
 export const EMOJI_SHEET_INDICES = [0, 1] as const;
 export type EmojiSheetIndex = (typeof EMOJI_SHEET_INDICES)[number];
@@ -247,4 +250,63 @@ export const uploadSheetToR2 = async (
     const text = await res.text().catch(() => "");
     throw new Error(`Sheet upload failed (${res.status})${text ? `: ${text}` : ""}`);
   }
+};
+
+export type EmojiCoverBlob = {
+  blob: Blob;
+  sha256: string;
+  objectUrl: string;
+};
+
+/**
+ * Crop the chosen cover cell out of a generated sheet blob and re-encode
+ * it as a tiny WebP. Stored in R2 alongside the full sheets so the
+ * Store grid can render a single emoji without fetching the whole sheet.
+ */
+export const buildEmojiCoverBlob = async (
+  sheetBlob: Blob,
+  cell: number,
+  outputSize = 96,
+): Promise<EmojiCoverBlob> => {
+  const bitmap = await createImageBitmap(sheetBlob);
+  const cellWidth = bitmap.width / EMOJI_SHEET_GRID_SIZE;
+  const cellHeight = bitmap.height / EMOJI_SHEET_GRID_SIZE;
+  const row = Math.floor(cell / EMOJI_SHEET_GRID_SIZE);
+  const col = cell % EMOJI_SHEET_GRID_SIZE;
+  const canvas = document.createElement("canvas");
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    bitmap.close();
+    throw new Error("Canvas2D unavailable for cover");
+  }
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(
+    bitmap,
+    col * cellWidth,
+    row * cellHeight,
+    cellWidth,
+    cellHeight,
+    0,
+    0,
+    outputSize,
+    outputSize,
+  );
+  bitmap.close();
+  const blob: Blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) =>
+        b ? resolve(b) : reject(new Error("cover toBlob returned null")),
+      "image/webp",
+      0.9,
+    );
+  });
+  const buffer = await blob.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  const sha256 = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return { blob, sha256, objectUrl: URL.createObjectURL(blob) };
 };

@@ -77,13 +77,13 @@ export type PublicApiType = {
       "currentDesktopRelease": FunctionReference<'query', 'public', { platform: string; }, any, string | undefined>;
     };
     "emoji_pack_uploads": {
-      "createUploadUrls": FunctionReference<'action', 'public', { contentType?: string | undefined; packId: string; sheet1Sha256: string; sheet2Sha256: string; }, any, string | undefined>;
+      "createUploadUrls": FunctionReference<'action', 'public', { contentType?: string | undefined; coverSha256?: string | undefined; packId: string; sheet1Sha256: string; sheet2Sha256: string; }, any, string | undefined>;
     };
     "emoji_packs": {
       "listPublicPage": FunctionReference<'query', 'public', { search?: string | undefined; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
       "listMine": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "getByPackId": FunctionReference<'query', 'public', { packId: string; }, any, string | undefined>;
-      "createPack": FunctionReference<'mutation', 'public', { description?: string | undefined; prompt?: string | undefined; displayName: string; visibility: 'public' | 'unlisted' | 'private'; packId: string; coverEmoji: string; sheet1Url: string; sheet2Url: string; }, any, string | undefined>;
+      "createPack": FunctionReference<'mutation', 'public', { description?: string | undefined; prompt?: string | undefined; coverUrl?: string | undefined; displayName: string; visibility: 'public' | 'unlisted' | 'private'; packId: string; coverEmoji: string; sheet1Url: string; sheet2Url: string; }, any, string | undefined>;
       "setVisibility": FunctionReference<'mutation', 'public', { visibility: 'public' | 'unlisted' | 'private'; packId: string; }, any, string | undefined>;
       "deletePack": FunctionReference<'mutation', 'public', { packId: string; }, any, string | undefined>;
       "recordInstall": FunctionReference<'mutation', 'public', { packId: string; }, any, string | undefined>;
@@ -152,13 +152,13 @@ export type PublicApiType = {
       "applyCompactionForRuntime": FunctionReference<'mutation', 'public', { threadId: Id<'threads'>; summary: string; keepFromOrdinal: number; }, any, string | undefined>;
     };
     "user_pet_uploads": {
-      "createUploadUrl": FunctionReference<'action', 'public', { contentType?: string | undefined; petId: string; spritesheetSha256: string; }, any, string | undefined>;
+      "createUploadUrl": FunctionReference<'action', 'public', { contentType?: string | undefined; previewSha256?: string | undefined; petId: string; spritesheetSha256: string; }, any, string | undefined>;
     };
     "user_pets": {
       "listPublicPage": FunctionReference<'query', 'public', { search?: string | undefined; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
       "listMine": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "getByPetId": FunctionReference<'query', 'public', { petId: string; }, any, string | undefined>;
-      "createPet": FunctionReference<'mutation', 'public', { prompt?: string | undefined; description: string; displayName: string; visibility: 'public' | 'unlisted' | 'private'; spritesheetUrl: string; petId: string; }, any, string | undefined>;
+      "createPet": FunctionReference<'mutation', 'public', { prompt?: string | undefined; previewUrl?: string | undefined; description: string; displayName: string; visibility: 'public' | 'unlisted' | 'private'; spritesheetUrl: string; petId: string; }, any, string | undefined>;
       "setVisibility": FunctionReference<'mutation', 'public', { visibility: 'public' | 'unlisted' | 'private'; petId: string; }, any, string | undefined>;
       "deletePet": FunctionReference<'mutation', 'public', { petId: string; }, any, string | undefined>;
       "recordInstall": FunctionReference<'mutation', 'public', { petId: string; }, any, string | undefined>;

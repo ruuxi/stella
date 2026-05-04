@@ -18,7 +18,30 @@ export type UserPetSpritesheetBlob = {
   width: number;
   height: number;
   warnings: string[];
+  /** Tiny WebP rendering of the idle row (row 0, 8 frames) so the
+   *  Pets store grid can animate without fetching the full atlas. */
+  preview: UserPetPreviewBlob | null;
 };
+
+export type UserPetPreviewBlob = {
+  blob: Blob;
+  sha256: string;
+  objectUrl: string;
+  width: number;
+  height: number;
+  /** Per-frame width inside the strip (= width / frameCount). */
+  frameWidth: number;
+  frameHeight: number;
+  frameCount: number;
+};
+
+export const PREVIEW_STRIP = {
+  /** 1/4 of the atlas idle row keeps the grid lightweight while still
+   *  reading clearly at 84px renders. */
+  width: 640,
+  height: 90,
+  frameCount: 8,
+} as const;
 
 export type SubmitUserPetJobResult = { jobId: string };
 
@@ -319,6 +342,7 @@ export const processUserPetAtlasImage = async (
 
   const blob = await blobToWebP(canvas);
   const sha256 = await sha256Hex(blob);
+  const preview = await buildIdlePreviewStrip(canvas).catch(() => null);
   return {
     blob,
     sha256,
@@ -326,6 +350,53 @@ export const processUserPetAtlasImage = async (
     width: canvas.width,
     height: canvas.height,
     warnings,
+    preview,
+  };
+};
+
+/**
+ * Render row 0 (idle) of the atlas onto a small canvas at
+ * `PREVIEW_STRIP.width × .height` so the Pets store grid can animate
+ * without ever fetching the full sprite sheet.
+ */
+const buildIdlePreviewStrip = async (
+  atlasCanvas: HTMLCanvasElement,
+): Promise<UserPetPreviewBlob> => {
+  const previewCanvas = document.createElement("canvas");
+  previewCanvas.width = PREVIEW_STRIP.width;
+  previewCanvas.height = PREVIEW_STRIP.height;
+  const ctx = previewCanvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas2D unavailable for preview");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(
+    atlasCanvas,
+    0,
+    0,
+    USER_PET_ATLAS.cellWidth * USER_PET_ATLAS.columns,
+    USER_PET_ATLAS.cellHeight,
+    0,
+    0,
+    PREVIEW_STRIP.width,
+    PREVIEW_STRIP.height,
+  );
+  const blob: Blob = await new Promise((resolve, reject) => {
+    previewCanvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("preview toBlob returned null"))),
+      "image/webp",
+      0.85,
+    );
+  });
+  const sha256 = await sha256Hex(blob);
+  return {
+    blob,
+    sha256,
+    objectUrl: URL.createObjectURL(blob),
+    width: PREVIEW_STRIP.width,
+    height: PREVIEW_STRIP.height,
+    frameWidth: PREVIEW_STRIP.width / PREVIEW_STRIP.frameCount,
+    frameHeight: PREVIEW_STRIP.height,
+    frameCount: PREVIEW_STRIP.frameCount,
   };
 };
 
