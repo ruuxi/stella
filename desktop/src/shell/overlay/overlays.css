@@ -174,12 +174,13 @@
   padding: 5px 14px;
   border-radius: 9999px;
   border: 1px solid var(--border-base, var(--border));
-  background: var(--surface-overlay, var(--card));
+  /* Opaque surface — frosted `backdrop-filter` + `--surface-overlay` read
+     semi-transparent over other apps; dictation should stay a solid pill. */
+  background: var(--background);
   box-shadow:
     0 18px 48px rgba(0, 0, 0, 0.18),
     0 2px 10px rgba(0, 0, 0, 0.08);
   pointer-events: auto;
-  backdrop-filter: blur(18px);
   -webkit-app-region: no-drag;
 }
 
