@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import { createStateContext, handleSpawnAgent } from "../../../../../runtime/kernel/tools/state.js";
 import { AGENT_PAUSE_CANCEL_REASON } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type { AgentToolRequest } from "../../../../../runtime/kernel/tools/types.js";

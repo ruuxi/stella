@@ -7,7 +7,7 @@ import { expandHomePath } from "./utils.js";
 import {
   type FileChangeRecord,
   fileChange,
-} from "../../../desktop/src/shared/contracts/file-changes.js";
+} from "../../contracts/file-changes.js";
 
 type FileOp =
   | { kind: "add"; path: string; lines: string[] }

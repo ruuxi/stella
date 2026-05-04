@@ -1,7 +1,7 @@
 ---
-name: create-stella-app
+
+## name: create-stella-app
 description: Scaffold a new sidebar app inside Stella's desktop renderer in one shell call, then edit only the generated page.
----
 
 # Adding a new sidebar app to Stella
 
@@ -35,13 +35,12 @@ options if you pass an unknown one. Need a brand-new icon? Add the
 SVG component there first, then re-run with `--icon Custom<Name>`.
 
 After scaffolding, replace `<Component>View.tsx` with the real surface.
-If you need a new package, run `bun add <pkg>` from `desktop/` (never
+If you need a new package, run `bun add <pkg>` from the repo root (never
 `npm` or `pnpm`). Then validate:
 
 ```sh
-cd desktop && bunx --package typescript@5.9.3 tsc -p tsconfig.app.json --noEmit
-cd desktop && bunx vitest@4.0.18 run --project runtime \
-  tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
+bunx --package typescript@5.9.3 tsc -p desktop/tsconfig.app.json --noEmit
+bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
 ```
 
 ## When to skip the scaffold

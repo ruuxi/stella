@@ -5,7 +5,7 @@ import {
   type LeftMouseUpEvent,
 } from "../input/mouse-hook.js";
 import { calculateSelectedWedge, type RadialWedge } from "../radial-wedge.js";
-import type { ChatContext } from "../../src/shared/contracts/boundary.js";
+import type { ChatContext } from "../../../runtime/contracts/index.js";
 import type { RadialTriggerCode } from "../../src/shared/lib/radial-trigger.js";
 import type { MiniDoubleTapModifier } from "../../src/shared/lib/mini-double-tap.js";
 

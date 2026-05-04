@@ -8,7 +8,7 @@
  * are orchestrator-only.
  */
 
-import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import {
   handleSendInput,
   handleSpawnAgent,

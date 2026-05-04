@@ -8,12 +8,12 @@
  */
 import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
-import type { AgentStreamEvent } from "@/shared/contracts/agent-stream";
+import type { AgentStreamEvent } from "../../../../runtime/contracts/agent-stream.js";
 import type {
   EventRecord,
   LocalChatUpdatedPayload,
-} from "@/shared/contracts/local-chat";
-import type { TaskLifecycleStatus } from "@/shared/contracts/agent-runtime";
+} from "../../../../runtime/contracts/local-chat.js";
+import type { TaskLifecycleStatus } from "../../../../runtime/contracts/agent-runtime.js";
 import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
 import type {
   ChatContext as SharedChatContext,
@@ -55,20 +55,20 @@ import type {
   VoiceRuntimeSnapshot as SharedVoiceRuntimeSnapshot,
   SocialSessionRuntimeRecord as SharedSocialSessionRuntimeRecord,
   SocialSessionServiceSnapshot as SharedSocialSessionServiceSnapshot,
-} from "../contracts/boundary";
+} from "../../../../runtime/contracts/index.js";
 import type {
   DiscoveryCategory,
   DiscoveryKnowledgeSeedPayload,
-} from "@/shared/contracts/discovery";
+} from "../../../../runtime/contracts/discovery.js";
 import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../contracts/onboarding";
-import type { RuntimeSocialSessionStatus } from "../../../../runtime/protocol/index";
+import type { RuntimeSocialSessionStatus } from "../../../../runtime/protocol/index.js";
 import type {
   OfficePreviewRef as SharedOfficePreviewRef,
   OfficePreviewSnapshot as SharedOfficePreviewSnapshot,
-} from "../contracts/office-preview";
+} from "../../../../runtime/contracts/office-preview.js";
 import type {
   BackupNowResult as SharedBackupNowResult,
   BackupStatusSnapshot as SharedBackupStatusSnapshot,

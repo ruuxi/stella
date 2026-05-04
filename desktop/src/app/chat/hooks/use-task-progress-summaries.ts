@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/api";
-import { AGENT_IDS } from "@/shared/contracts/agent-runtime";
+import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import {
   extractToolTitle,
   extractTasksFromEvents,

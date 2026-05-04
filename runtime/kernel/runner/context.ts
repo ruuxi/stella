@@ -39,7 +39,7 @@ import {
   AGENT_IDS,
   getAgentEnginePreference,
   isLocalCliAgentId,
-} from "../../../desktop/src/shared/contracts/agent-runtime.js";
+} from "../../contracts/agent-runtime.js";
 import type {
   PersistedRuntimeThreadPayload,
   RuntimeThreadMessage,

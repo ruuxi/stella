@@ -6,7 +6,7 @@
  */
 
 import { getSynthesisPromptConfig } from "@/prompts";
-import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import type { DiscoveryCategory } from "../../../../../runtime/contracts/discovery.js";
 import type { OnboardingSynthesisResponse } from "@/shared/contracts/onboarding";
 
 type SynthesisResult = OnboardingSynthesisResponse;

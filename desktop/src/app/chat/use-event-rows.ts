@@ -8,7 +8,7 @@ import {
   isToolResult,
   isAgentCompletedEvent,
 } from '@/app/chat/lib/event-transforms'
-import { isOfficePreviewRef } from '@/shared/contracts/office-preview'
+import { isOfficePreviewRef } from '../../../../runtime/contracts/office-preview.js'
 import type { ScheduleToolAffectedRef } from '../../../../runtime/kernel/shared/scheduling'
 import { deriveTurnResource } from '@/app/chat/lib/derive-turn-resource'
 import { filterEventsForUiDisplay } from '@/app/chat/lib/message-display'

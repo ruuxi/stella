@@ -178,9 +178,9 @@ function main(): void {
   console.log("next steps:");
   console.log(`  1. replace ${Component}View.tsx body with the real surface`);
   console.log("  2. validate:");
-  console.log("     cd desktop && bunx --package typescript@5.9.3 tsc -p tsconfig.app.json --noEmit");
+  console.log("     bunx --package typescript@5.9.3 tsc -p desktop/tsconfig.app.json --noEmit");
   console.log(
-    "     cd desktop && bunx vitest@4.0.18 run --project runtime tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts",
+    "     bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts",
   );
 }
 

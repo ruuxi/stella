@@ -27,7 +27,7 @@ import {
   type AgentIdLike,
   type AgentRunFinishOutcome,
   type AgentStreamEventType,
-} from "../../desktop/src/shared/contracts/agent-runtime.js";
+} from "../contracts/agent-runtime.js";
 import { prepareStoredLocalChatPayload } from "../kernel/storage/local-chat-payload.js";
 import { collectAllSignals } from "../discovery/collect-all.js";
 import {
@@ -2694,7 +2694,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       return await collectAllSignals(
         state.init.stellaRoot,
         payload.categories as
-          | import("../../desktop/src/shared/contracts/discovery.js").DiscoveryCategory[]
+          | import("../contracts/discovery.js").DiscoveryCategory[]
           | undefined,
         payload.selectedBrowser,
         payload.selectedProfile,

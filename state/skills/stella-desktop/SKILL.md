@@ -56,23 +56,21 @@ component trees.
 
 ## Validation
 
-`desktop/package.json` has **no** `typecheck` script. The right
-commands:
+The root `package.json` owns Stella's desktop/runtime dependencies and scripts.
+The right commands:
 
 ```bash
-cd desktop
-bunx --package typescript@5.9.3 tsc -p tsconfig.app.json --noEmit   # renderer
-bun run electron:typecheck                                          # main + preload
+cd /Users/rahulnanda/projects/stella
+bunx --package typescript@5.9.3 tsc -p desktop/tsconfig.app.json --noEmit   # renderer
+bun run electron:typecheck                                                 # main + preload
 bun run lint
-bunx vitest@4.0.18 run --project runtime    # node-env tests (sidebar/route invariants live here)
-bunx vitest@4.0.18 run --project renderer   # jsdom-env tests
+bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
 ```
 
 After scaffolding or editing any sidebar app, run at minimum:
 
 ```bash
-cd desktop && bunx vitest@4.0.18 run --project runtime \
-  tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
+bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
 ```
 
 ## Backlinks

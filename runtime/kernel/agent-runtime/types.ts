@@ -20,7 +20,7 @@ import type {
 import type {
   FileChangeRecord,
   ProducedFileRecord,
-} from "../../../desktop/src/shared/contracts/file-changes.js";
+} from "../../contracts/file-changes.js";
 
 export type SelfModAppliedPayload = {
   featureId: string;

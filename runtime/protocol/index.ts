@@ -18,7 +18,7 @@ import type {
 import type {
   AgentRunFinishOutcome,
   TaskLifecycleStatus,
-} from "../../desktop/src/shared/contracts/agent-runtime.js";
+} from "../contracts/agent-runtime.js";
 
 export type {
   AgentHealth,

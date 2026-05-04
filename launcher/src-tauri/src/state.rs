@@ -112,6 +112,8 @@ pub struct InstallerContext {
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub install_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_path: Option<String>,
     pub run_after_install: Option<bool>,
 }
 

@@ -10,7 +10,7 @@ import {
   AGENT_STREAM_EVENT_TYPES,
   isTerminalTaskLifecycleStatus,
   type TaskLifecycleStatus,
-} from '@/shared/contracts/agent-runtime'
+} from '../../../../../runtime/contracts/agent-runtime.js'
 import {
   useRafStringAccumulator,
   useStreamBuffer,

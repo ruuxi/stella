@@ -11,7 +11,7 @@ export const stellaStatePath = resolve(repoRootDir, 'state');
 const runnerScriptPath = resolve(desktopDir, 'scripts', 'electron-dev-runner.mjs');
 const runnerPidFilePath = resolve(desktopDir, '.electron-dev-runner.pid');
 const devElectronBinaryPathFragments = [
-  resolve(desktopDir, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron'),
+  resolve(repoRootDir, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron'),
   resolve(desktopDir, '.stella-dev-runtime', 'Stella.app', 'Contents', 'MacOS', 'Electron'),
 ].map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 

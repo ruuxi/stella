@@ -1,4 +1,4 @@
-import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import { canResolveRunnerLlmRoute } from "./model-selection.js";
 import { sanitizeStellaBase } from "./shared.js";
 import type { AgentHealth, ChatPayload, RunnerContext } from "./types.js";

@@ -2,7 +2,7 @@
 import {
   formatTimestampSystemReminder,
   wrapSystemReminder,
-} from "../../desktop/src/shared/contracts/system-reminders.js";
+} from "../contracts/system-reminders.js";
 
 export { wrapSystemReminder };
 

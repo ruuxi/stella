@@ -1,4 +1,4 @@
-import type { DiscoveryCategory as RuntimeDiscoveryCategory } from '../../../../runtime/contracts/index.js'
+import type { DiscoveryCategory as RuntimeDiscoveryCategory } from './index.js'
 
 export type DiscoveryCategory = RuntimeDiscoveryCategory
 

@@ -13,14 +13,14 @@ import {
   fileChange,
   type FileChangeRecord,
   type ProducedFileRecord,
-} from "../../../desktop/src/shared/contracts/file-changes.js";
+} from "../../contracts/file-changes.js";
 import type { ToolContext, ToolResult, ShellRecord } from "./types.js";
 import { truncate } from "./utils.js";
 import { isDangerousCommand } from "./command-safety.js";
 import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
 import { getStellaComputerSessionId } from "./stella-computer-session.js";
 import { inferShellMentionedPaths } from "./path-inference.js";
-import type { OfficePreviewRef } from "../../../desktop/src/shared/contracts/office-preview.js";
+import type { OfficePreviewRef } from "../../contracts/office-preview.js";
 import {
   purgeExpiredDeferredDeletes,
   trashPathsForDeferredDelete,

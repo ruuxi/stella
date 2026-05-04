@@ -4,7 +4,7 @@ import {
   getAgentEnginePreference,
   getLocalCliWorkingDirectory,
   isLocalCliAgentId,
-} from "../../../../src/shared/contracts/agent-runtime.js";
+} from "../../../../../runtime/contracts/agent-runtime.js";
 
 describe("agent runtime contracts", () => {
   it("routes the orchestrator through the shared local CLI engine preference", () => {

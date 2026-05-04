@@ -6,7 +6,7 @@ const backendRoot = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(backendRoot, "..");
 const configPath = path.join(backendRoot, "convex", "tsconfig.json");
 const apiPath = path.join(backendRoot, "convex", "_generated", "api.d.ts");
-const outputPath = path.join(repoRoot, "desktop", "src", "convex", "api.ts");
+const outputPath = path.join(repoRoot, "runtime", "contracts", "convex-api.ts");
 
 const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
 if (configFile.error) {

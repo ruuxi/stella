@@ -19,12 +19,12 @@ import {
   formatVoiceActionErrorSystemReminder,
   formatWebSearchFailedSystemReminder,
   formatWebSearchSystemReminder,
-} from "@/shared/contracts/system-reminders";
+} from "../../../../../runtime/contracts/system-reminders.js";
 import {
   acquireSharedMicrophone,
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
-import type { EventRecord } from "@/shared/contracts/local-chat";
+import type { EventRecord } from "../../../../../runtime/contracts/local-chat.js";
 
 // ---------------------------------------------------------------------------
 // Types

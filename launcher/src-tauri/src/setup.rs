@@ -172,8 +172,24 @@ pub fn browse_directory_for_install_path(install_path: &str) -> String {
 
 fn looks_like_stella_install_dir(path: &Path) -> bool {
     path.join(INSTALL_MANIFEST).is_file()
-        || (path.join("package.json").is_file()
-            && path.join("desktop").join("package.json").is_file())
+        || path.join(RELEASE_MANIFEST).is_file()
+        || looks_like_stella_source_tree(path)
+}
+
+fn looks_like_stella_source_tree(path: &Path) -> bool {
+    let package_path = path.join("package.json");
+    let Ok(raw) = std::fs::read_to_string(package_path) else {
+        return false;
+    };
+    let Ok(package_json) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return false;
+    };
+    let is_stella_package = package_json
+        .get("name")
+        .and_then(|value| value.as_str())
+        .is_some_and(|name| name == "stella" || name == "stella-workspace");
+
+    is_stella_package && path.join("desktop").is_dir() && path.join("runtime").is_dir()
 }
 
 fn is_directory_empty(path: &Path) -> bool {
@@ -227,29 +243,14 @@ fn release_manifest_of(d: &str) -> PathBuf {
 fn desktop_dir_of(d: &str) -> PathBuf {
     Path::new(d).join("desktop")
 }
-fn runtime_dir_of(d: &str) -> PathBuf {
-    Path::new(d).join("runtime")
-}
 fn package_json_of(d: &str) -> PathBuf {
     Path::new(d).join("package.json")
-}
-fn desktop_package_json_of(d: &str) -> PathBuf {
-    desktop_dir_of(d).join("package.json")
-}
-fn runtime_package_json_of(d: &str) -> PathBuf {
-    runtime_dir_of(d).join("package.json")
 }
 fn node_modules_of(d: &str) -> PathBuf {
     Path::new(d).join("node_modules")
 }
-fn desktop_node_modules_of(d: &str) -> PathBuf {
-    desktop_dir_of(d).join("node_modules")
-}
-fn runtime_node_modules_of(d: &str) -> PathBuf {
-    runtime_dir_of(d).join("node_modules")
-}
 fn mac_screen_capture_permissions_dir_of(d: &str) -> PathBuf {
-    desktop_node_modules_of(d).join("mac-screen-capture-permissions")
+    node_modules_of(d).join("mac-screen-capture-permissions")
 }
 fn mac_screen_capture_permissions_binary_of(d: &str) -> PathBuf {
     mac_screen_capture_permissions_dir_of(d)
@@ -281,7 +282,7 @@ fn parakeet_helper_of(d: &str) -> PathBuf {
         .join("parakeet_transcriber")
 }
 fn dugite_git_root_of(d: &str) -> PathBuf {
-    runtime_node_modules_of(d).join("dugite").join("git")
+    node_modules_of(d).join("dugite").join("git")
 }
 fn dugite_git_bin_of(d: &str) -> PathBuf {
     if cfg!(target_os = "windows") {
@@ -485,8 +486,14 @@ async fn read_settings(ctx: &InstallerContext) -> Settings {
 }
 
 async fn write_settings(ctx: &InstallerContext, state: &InstallerState) {
+    let existing = read_settings(ctx).await;
     let settings = Settings {
         install_path: Some(state.install_path.clone()),
+        installed_path: if state.installed {
+            Some(state.install_path.clone())
+        } else {
+            existing.installed_path
+        },
         run_after_install: Some(state.run_after_install),
     };
     if let Some(parent) = ctx.settings_file_path.parent() {
@@ -1431,12 +1438,7 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
     match id {
         SetupStepId::Runtime => bun_on_path().await,
         SetupStepId::Payload => {
-            path_exists(&package_json_of(dir)).await
-                && path_exists(&node_modules_of(dir)).await
-                && path_exists(&desktop_package_json_of(dir)).await
-                && path_exists(&desktop_node_modules_of(dir)).await
-                && path_exists(&runtime_package_json_of(dir)).await
-                && path_exists(&runtime_node_modules_of(dir)).await
+            path_exists(&package_json_of(dir)).await && path_exists(&node_modules_of(dir)).await
         }
         SetupStepId::Parakeet => {
             if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
@@ -1572,24 +1574,10 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
     let has_manifest = path_exists(&manifest_of(&state.install_path)).await;
     let has_pkg = path_exists(&package_json_of(&state.install_path)).await;
     let has_node_modules = path_exists(&node_modules_of(&state.install_path)).await;
-    let has_desktop_pkg = path_exists(&desktop_package_json_of(&state.install_path)).await;
-    let has_desktop_node_modules = path_exists(&desktop_node_modules_of(&state.install_path)).await;
-    let has_runtime_pkg = path_exists(&runtime_package_json_of(&state.install_path)).await;
-    let has_runtime_node_modules = path_exists(&runtime_node_modules_of(&state.install_path)).await;
     state.can_launch = if state.dev_mode {
-        has_pkg
-            && has_node_modules
-            && has_desktop_pkg
-            && has_desktop_node_modules
-            && has_runtime_pkg
-            && has_runtime_node_modules
+        has_pkg && has_node_modules
     } else {
-        has_manifest
-            && has_pkg
-            && has_desktop_pkg
-            && has_desktop_node_modules
-            && has_runtime_pkg
-            && has_runtime_node_modules
+        has_manifest && has_pkg && has_node_modules
     };
     state.warning_message = None;
 }
@@ -1631,8 +1619,9 @@ pub async fn create_initial_state(ctx: &InstallerContext) -> InstallerState {
     } else {
         resolve_install_path(
             settings
-                .install_path
+                .installed_path
                 .as_deref()
+                .or(settings.install_path.as_deref())
                 .unwrap_or(&ctx.default_install_path),
         )
     };
@@ -1817,9 +1806,7 @@ pub async fn install_all(
 
 pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {
     let dir = &state.install_path;
-    if !path_exists(&package_json_of(dir)).await
-        || !path_exists(&desktop_package_json_of(dir)).await
-    {
+    if !path_exists(&package_json_of(dir)).await {
         return None;
     }
 
@@ -1884,9 +1871,12 @@ mod tests {
 
     fn write_install_shape(path: &Path) {
         fs::create_dir_all(path.join("desktop")).expect("create desktop dir");
-        fs::write(path.join("package.json"), "{}\n").expect("write package");
-        fs::write(path.join("desktop").join("package.json"), "{}\n")
-            .expect("write desktop package");
+        fs::create_dir_all(path.join("runtime")).expect("create runtime dir");
+        fs::write(path.join("package.json"), r#"{"name":"stella"}"#).expect("write package");
+    }
+
+    fn write_generic_package_shape(path: &Path) {
+        fs::write(path.join("package.json"), r#"{"name":"other-app"}"#).expect("write package");
     }
 
     #[test]
@@ -1929,6 +1919,16 @@ mod tests {
     }
 
     #[test]
+    fn location_error_rejects_generic_package_dirs() {
+        let dir = TestDir::new("generic-package");
+        write_generic_package_shape(&dir.path);
+
+        let error = location_error(&dir.path.to_string_lossy()).expect("expected location error");
+        assert!(error.contains("own"));
+        assert!(error.contains(INSTALL_DIR_NAME));
+    }
+
+    #[test]
     fn location_error_allows_state_only_install_dirs() {
         let dir = TestDir::new("state-only");
         fs::create_dir_all(dir.path.join("state")).expect("create state dir");
@@ -1944,6 +1944,14 @@ mod tests {
 
         write_install_shape(&dir.path);
         assert!(is_uninstallable_install_path(&dir.path.to_string_lossy()));
+    }
+
+    #[test]
+    fn uninstallable_install_path_rejects_generic_package_dirs() {
+        let dir = TestDir::new("generic-uninstallable");
+        write_generic_package_shape(&dir.path);
+
+        assert!(!is_uninstallable_install_path(&dir.path.to_string_lossy()));
     }
 
     #[test]

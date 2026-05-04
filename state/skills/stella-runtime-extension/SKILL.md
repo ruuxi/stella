@@ -115,8 +115,8 @@ General-agent prompts should stay lean. Move detailed reusable procedure into `s
 Run the narrowest relevant checks:
 
 ```bash
-bun test desktop/tests/runtime/kernel/tools/codex-tools.test.ts
-bun run --cwd desktop electron:typecheck
+bun run test:run -- tests/runtime/kernel/tools/codex-tools.test.ts
+bun run electron:typecheck
 ```
 
 For loader or agent prompt changes, also search for direct factory references:

@@ -18,7 +18,7 @@
  * short-circuits on the `prev.row === next.row` reference check rather
  * than running a deep compare per row.
  */
-import type { EventRecord } from "@/shared/contracts/local-chat";
+import type { EventRecord } from "../../../../../runtime/contracts/local-chat.js";
 
 export type StableEventListState = {
   byId: Map<string, EventRecord>;

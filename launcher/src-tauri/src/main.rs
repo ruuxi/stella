@@ -10,12 +10,12 @@ mod state;
 
 use state::AppState;
 use std::path::PathBuf;
+use tauri::Emitter;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     Manager,
 };
-use tauri::Emitter;
 use tauri_plugin_updater::UpdaterExt;
 
 const LAUNCHER_UPDATE_INITIAL_DELAY_SECS: u64 = 5;

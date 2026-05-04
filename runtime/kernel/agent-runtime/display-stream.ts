@@ -1,4 +1,4 @@
-import { TOOL_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { TOOL_IDS } from "../../contracts/agent-runtime.js";
 
 const stripScriptTags = (html: string): string =>
   html.replace(/<script\b[\s\S]*?<\/script>/gi, "");

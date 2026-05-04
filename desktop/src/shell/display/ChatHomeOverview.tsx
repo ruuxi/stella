@@ -28,7 +28,7 @@ import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
   type FileChangeRecord,
-} from "@/shared/contracts/file-changes";
+} from "../../../../runtime/contracts/file-changes.js";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { displayTabs } from "./tab-store";
 import { payloadToTabSpec } from "./payload-to-tab-spec";

@@ -1,4 +1,4 @@
-import type { TaskLifecycleStatus } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import type { TaskLifecycleStatus } from "../../contracts/agent-runtime.js";
 import {
   MAX_ACTIVE_RUNTIME_THREADS,
   type RuntimeThreadRecord,

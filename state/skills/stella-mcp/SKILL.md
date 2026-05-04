@@ -111,7 +111,7 @@ bun test desktop/tests/runtime/kernel/tools/codex-tools.test.ts
 Run Electron typecheck after TypeScript changes:
 
 ```bash
-bun run --cwd desktop electron:typecheck
+bun run electron:typecheck
 ```
 
 If a connector requires credentials or external network access, test install/list behavior separately from live calls. The `MCP` tool should return clear errors when setup is missing.

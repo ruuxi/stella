@@ -1,4 +1,4 @@
-import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import { callApiConnector } from "../../mcp/api-client.js";
 import { callMcpServerTool, listMcpServerTools } from "../../mcp/client.js";
 import { getOfficialConnector } from "../../mcp/official-connectors.js";

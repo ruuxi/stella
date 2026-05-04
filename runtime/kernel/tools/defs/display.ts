@@ -6,7 +6,7 @@
  * the side canvas via the injected renderer.
  */
 
-import { AGENT_IDS } from "../../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import type { ToolContext, ToolDefinition, ToolResult } from "../types.js";
 
 export type DisplayToolOptions = {

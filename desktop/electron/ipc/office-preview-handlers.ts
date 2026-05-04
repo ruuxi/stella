@@ -11,7 +11,7 @@ import {
 import type {
   OfficePreviewFormat,
   OfficePreviewRef,
-} from "../../src/shared/contracts/office-preview.js";
+} from "../../../runtime/contracts/office-preview.js";
 import { listOfficePreviewSnapshots } from "../bootstrap/office-preview-bridge.js";
 
 type OfficePreviewHandlersOptions = {

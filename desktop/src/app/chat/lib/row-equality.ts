@@ -10,7 +10,7 @@ import type {
   Attachment,
   ChannelEnvelope,
 } from "@/app/chat/lib/event-transforms";
-import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
+import type { OfficePreviewRef } from "../../../../../runtime/contracts/office-preview.js";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
 import type { AskQuestionState } from "@/app/chat/AskQuestionBubble";

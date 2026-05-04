@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import type { Model } from "../ai/types.js";
 import {
   STELLA_DEFAULT_MODEL,
-} from "../../desktop/src/shared/stella-api.js";
+} from "../contracts/stella-api.js";
 import { readConfiguredStellaSiteUrl } from "./convex-urls.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 

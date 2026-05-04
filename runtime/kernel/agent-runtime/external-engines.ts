@@ -43,7 +43,7 @@ import type {
 import type { RuntimePromptMessage } from "../../protocol/index.js";
 import {
   isLocalCliAgentId,
-} from "../../../desktop/src/shared/contracts/agent-runtime.js";
+} from "../../contracts/agent-runtime.js";
 
 const EMPTY_USAGE: Usage = {
   input: 0,

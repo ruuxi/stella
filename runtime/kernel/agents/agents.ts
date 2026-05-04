@@ -2,7 +2,7 @@ import type { ParsedAgent } from "./types.js";
 import {
   BUNDLED_CORE_AGENT_IDS,
   getAgentDefinition,
-} from "../../../desktop/src/shared/contracts/agent-runtime.js";
+} from "../../contracts/agent-runtime.js";
 import { loadParsedAgentsFromDir } from "./markdown-agent-loader.js";
 
 const BUNDLED_AGENT_DIR = new URL(

@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
 import { SPLIT_PHASES, SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
 import { getPlatform } from "@/platform/electron/platform";
 import { useOnboardingAppearance } from "./use-onboarding-appearance";

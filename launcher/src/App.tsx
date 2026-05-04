@@ -356,8 +356,8 @@ function App() {
             {state.devMode && !state.canLaunch && (
               <div className="banner banner-warn">
                 Dev mode is enabled, but this path is not launchable yet. Make
-                sure the root, desktop, and runtime workspaces have package files
-                and installed dependencies.
+                sure the Stella folder has its root package file and installed
+                dependencies.
               </div>
             )}
 

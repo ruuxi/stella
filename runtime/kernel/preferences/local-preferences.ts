@@ -15,12 +15,12 @@ import {
   DEFAULT_RADIAL_TRIGGER_CODE,
   normalizeRadialTriggerCode,
   type RadialTriggerCode,
-} from "../../../desktop/src/shared/lib/radial-trigger.js";
+} from "../../contracts/radial-trigger.js";
 import {
   DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
   normalizeMiniDoubleTapModifier,
   type MiniDoubleTapModifier,
-} from "../../../desktop/src/shared/lib/mini-double-tap.js";
+} from "../../contracts/mini-double-tap.js";
 
 type AgentEngine = "default" | "claude_code_local";
 

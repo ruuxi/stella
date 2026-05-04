@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { AGENT_IDS } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import { createRuntimePromptAgentMessage } from "../agent-runtime/run-preparation.js";
 import { persistThreadPayloadMessage } from "../agent-runtime/thread-memory.js";
 import { createRuntimeLogger } from "../debug.js";

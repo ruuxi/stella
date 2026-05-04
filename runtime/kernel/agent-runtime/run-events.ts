@@ -1,8 +1,8 @@
-import { RUNTIME_RUN_EVENT_TYPES } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { RUNTIME_RUN_EVENT_TYPES } from "../../contracts/agent-runtime.js";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
-} from "../../../desktop/src/shared/contracts/file-changes.js";
+} from "../../contracts/file-changes.js";
 import type { AgentEvent, AgentMessage } from "../agent-core/types.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";

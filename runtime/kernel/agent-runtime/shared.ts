@@ -12,7 +12,7 @@ import type { HookEmitter } from "../extensions/hook-emitter.js";
 import { selectRecentByTokenBudget } from "../local-history.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { estimateRuntimeTokens } from "../runtime-threads.js";
-import { getLocalCliWorkingDirectory } from "../../../desktop/src/shared/contracts/agent-runtime.js";
+import { getLocalCliWorkingDirectory } from "../../contracts/agent-runtime.js";
 import { stripStaleImageBlocks } from "./thread-memory.js";
 
 const MAX_RESULT_PREVIEW = 200;

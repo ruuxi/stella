@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_STREAM_EVENT_TYPES,
   shouldIgnoreTerminalTaskFeedEvent,
-} from "../../src/shared/contracts/agent-runtime";
+} from "../../../runtime/contracts/agent-runtime.js";
 
 describe("shouldIgnoreTerminalTaskFeedEvent", () => {
   it("ignores late progress and reasoning once a task is terminal", () => {

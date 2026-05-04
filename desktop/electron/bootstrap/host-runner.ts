@@ -5,7 +5,7 @@ import {
   signDeviceHeartbeat,
 } from "../../../runtime/kernel/home/device.js";
 import { getSoundNotificationsEnabled } from "../../../runtime/kernel/preferences/local-preferences.js";
-import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
+import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
 import {
   createStellaHostRunner,
   type RuntimeHostHandlers,
