@@ -37,9 +37,8 @@ const MODEL_SAMPLE_RATE: u32 = 16_000;
 /// model.
 const PREDICT_WINDOW_SECS: f32 = 2.0;
 
-/// How often we run inference. LiveKit's listener cadence is 80ms; 160ms keeps
-/// us aligned to the embedding stride so cached overlapping windows remain exact.
-const PREDICT_STRIDE_SECS: f32 = 0.16;
+/// How often we run inference (~100 ms between predict calls on the rolling window).
+const PREDICT_STRIDE_SECS: f32 = 0.10;
 
 /// Very low energy gate: only skip obvious silence before running the model.
 /// Speech in normal rooms is well above this; noisy rooms simply fall through
