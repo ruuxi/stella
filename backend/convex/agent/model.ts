@@ -64,6 +64,7 @@ export const MODEL_MODES = [
   "reasoning",
   "synthesis",
   "media",
+  "vision_metadata",
 ] as const;
 
 export type ModelMode = (typeof MODEL_MODES)[number];
@@ -262,6 +263,17 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
       },
     },
   },
+
+  vision_metadata: {
+    model: "google/gemini-3-flash-preview",
+    fallbackMode: "media",
+    managedGatewayProvider: "google",
+    temperature: 0.4,
+    maxOutputTokens: 2048,
+    providerOptions: {
+      ...gatewayOptions("google"),
+    },
+  },
 };
 
 const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<ModelMode, Partial<ModeConfig>>>> = {
@@ -295,6 +307,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   search_html: "fast",
   store_security_review: "sota",
   store_image_safety_review: "media",
+  store_asset_metadata: "vision_metadata",
   task_summary: "social_moderation",
 
   // Memory pipeline (mirrors split: cheap extract / strong consolidate).

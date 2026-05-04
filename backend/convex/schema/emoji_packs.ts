@@ -12,6 +12,7 @@ const emojiPackFields = {
   packId: v.string(),
   displayName: v.string(),
   description: v.optional(v.string()),
+  tags: v.array(v.string()),
   prompt: v.optional(v.string()),
   coverEmoji: v.string(),
   /** Tiny single-emoji cover used by the Store grid so we don't need to
@@ -44,4 +45,31 @@ export const emojiPacksSchema = {
       searchField: "searchText",
       filterFields: ["visibility"],
     }),
+
+  emoji_pack_tag_membership: defineTable({
+    packRef: v.id("emoji_packs"),
+    packId: v.string(),
+    tag: v.string(),
+    visibility: emoji_pack_visibility_validator,
+    displayName: v.string(),
+    installCount: v.number(),
+  })
+    .index("by_packRef", ["packRef"])
+    .index("by_tag_and_visibility_and_installCount", [
+      "tag",
+      "visibility",
+      "installCount",
+    ])
+    .index("by_tag_and_visibility_and_displayName", [
+      "tag",
+      "visibility",
+      "displayName",
+    ]),
+
+  emoji_pack_tag_facets: defineTable({
+    tag: v.string(),
+    count: v.number(),
+  })
+    .index("by_tag", ["tag"])
+    .index("by_count", ["count"]),
 };

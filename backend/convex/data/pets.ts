@@ -20,6 +20,7 @@ const publicPetValidator = v.object({
   ownerName: v.union(v.string(), v.null()),
   spritesheetUrl: v.string(),
   sourceUrl: v.string(),
+  previewUrl: v.optional(v.string()),
   sortOrder: v.number(),
   updatedAt: v.number(),
   downloads: v.number(),
@@ -54,6 +55,7 @@ const toPublicPet = (row: Doc<"pet_catalog">) => ({
   ownerName: row.ownerName,
   spritesheetUrl: row.spritesheetUrl,
   sourceUrl: row.sourceUrl,
+  ...(row.previewUrl ? { previewUrl: row.previewUrl } : {}),
   sortOrder: row.sortOrder,
   updatedAt: row.updatedAt,
   downloads: row.downloads ?? 0,
@@ -271,7 +273,7 @@ export const upsertMany = internalMutation({
         .query("pet_catalog")
         .withIndex("by_petId", (q) => q.eq("id", pet.id))
         .unique();
-      const downloads = existing?.downloads ?? 0;
+      const downloads = Math.max(0, Math.floor(pet.downloads ?? existing?.downloads ?? 0));
       const searchText = buildSearchText(pet);
       let petDocId: Id<"pet_catalog">;
       if (existing) {

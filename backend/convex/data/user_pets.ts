@@ -1,7 +1,12 @@
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
-import { mutation, query } from "../_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
   getConnectedUserIdOrNull,
@@ -37,6 +42,14 @@ const paginatedUserPetsValidator = v.object({
       v.null(),
     ),
   ),
+});
+
+const generatedMetadataValidator = v.object({
+  displayName: v.string(),
+  description: v.string(),
+  tags: v.array(v.string()),
+  searchText: v.string(),
+  updatedAt: v.number(),
 });
 
 const normalizePetId = (value: string): string => {
@@ -99,12 +112,14 @@ const normalizeUrl = (value: string, fieldName: string): string => {
 const buildSearchText = (args: {
   displayName: string;
   description: string;
+  tags: string[];
   prompt?: string;
   authorDisplayName?: string;
 }): string =>
   [
     args.displayName,
     args.description,
+    ...args.tags,
     args.prompt ?? "",
     args.authorDisplayName ?? "",
   ]
@@ -163,6 +178,28 @@ export const listMine = query({
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(256);
+  },
+});
+
+export const getByIdInternal = internalQuery({
+  args: { petId: v.id("user_pets") },
+  returns: v.union(user_pet_validator, v.null()),
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.petId);
+  },
+});
+
+export const patchGeneratedMetadata = internalMutation({
+  args: {
+    petId: v.id("user_pets"),
+    metadata: generatedMetadataValidator,
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.petId);
+    if (!row) return null;
+    await ctx.db.patch(args.petId, args.metadata);
+    return null;
   },
 });
 
@@ -239,6 +276,7 @@ export const createPet = mutation({
       petId,
       displayName,
       description,
+      tags: [],
       ...(prompt ? { prompt } : {}),
       spritesheetUrl,
       ...(previewUrl ? { previewUrl } : {}),
@@ -246,6 +284,7 @@ export const createPet = mutation({
       searchText: buildSearchText({
         displayName,
         description,
+        tags: [],
         prompt,
         authorDisplayName,
       }),
@@ -255,6 +294,11 @@ export const createPet = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.data.store_asset_metadata.enrichUserPet,
+      { petId: id },
+    );
     const row = await ctx.db.get(id);
     if (!row) {
       throw new ConvexError({

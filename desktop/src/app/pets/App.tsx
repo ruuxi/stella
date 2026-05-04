@@ -9,6 +9,14 @@ import { Download, MoreHorizontal, Plus, Search, Sparkles } from "lucide-react";
 import { useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogCloseButton,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/ui/dialog";
 import { showToast } from "@/ui/toast";
 import { PetIdlePreview } from "./PetIdlePreview";
 import { useInstalledPets, isBundledPetId } from "./installed-pets";
@@ -40,6 +48,7 @@ import {
   useSelectedPetId,
   writePetOpenPreference,
 } from "@/shell/pet/pet-preferences";
+import type { PetAnimationState } from "@/shared/contracts/pet";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { CreatePetDialog } from "./CreatePetDialog";
 import { SharePetDialog } from "./SharePetDialog";
@@ -66,6 +75,21 @@ const SORT_LABELS: Record<SortOption, string> = {
   downloads: "Most popular",
   name: "Alphabetical",
 };
+
+const ANIMATION_STATES: ReadonlyArray<{
+  state: PetAnimationState;
+  label: string;
+}> = [
+  { state: "idle", label: "Idle" },
+  { state: "running-right", label: "Run right" },
+  { state: "running-left", label: "Run left" },
+  { state: "waving", label: "Waving" },
+  { state: "jumping", label: "Jumping" },
+  { state: "failed", label: "Failed" },
+  { state: "waiting", label: "Waiting" },
+  { state: "running", label: "Running" },
+  { state: "review", label: "Review" },
+];
 
 const downloadCountFormatter = new Intl.NumberFormat(undefined, {
   notation: "compact",
@@ -113,12 +137,17 @@ type PetCardActionState = "uninstalled" | "installed" | "selected";
 type PetCardProps = {
   pet: BuiltInPet;
   state: PetCardActionState;
-  /** When true, render `PetIdlePreview` for installed/selected pets and
-   *  the lightweight preview (or a static placeholder) for uninstalled
-   *  ones. Bundled pets bypass this — they're always animated. */
   removable: boolean;
+  /** True when this card is rendering one of our own user-generated
+   *  pets, where `previewUrl` is the 8-frame `PREVIEW_STRIP` we built
+   *  in the renderer. Upstream catalog pets ship a different preview
+   *  shape (full atlas linearized into a wide strip) so we must always
+   *  use `PetSprite` for them — passing the upstream preview into
+   *  `PetIdlePreview` shows ~9 frames at once. */
+  ownIdleStrip?: boolean;
   badge?: { label: string; tier: "private" | "unlisted" } | null;
   menu?: React.ReactNode;
+  onOpen: () => void;
   onGet: () => Promise<void> | void;
   onSelect: () => void;
   onRemove: () => void;
@@ -138,14 +167,21 @@ function PetCard({
   pet,
   state,
   removable,
+  ownIdleStrip = false,
   badge,
   menu,
+  onOpen,
   onGet,
   onSelect,
   onRemove,
 }: PetCardProps) {
-  const animateFull = state !== "uninstalled" || isBundledPetId(pet.id);
-  const useIdleStrip = !animateFull && Boolean(pet.previewUrl);
+  // Use the lightweight 8-frame strip only for our own user-generated
+  // pets (where `previewUrl` matches `PREVIEW_STRIP`). Everything else
+  // (bundled + upstream catalog) animates the full sprite atlas via
+  // `PetSprite` — upstream `previewUrl` is a 5472×104 multi-row strip
+  // that doesn't fit the 8-frame layout.
+  const useIdleStrip = ownIdleStrip && Boolean(pet.previewUrl);
+  const animateFull = !useIdleStrip;
 
   return (
     <div
@@ -153,6 +189,15 @@ function PetCard({
       data-pet-state={state}
       data-selected={state === "selected" ? "true" : "false"}
       data-stella-label={pet.displayName}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <div className="pets-card-sprite">
         {animateFull ? (
@@ -187,7 +232,10 @@ function PetCard({
           {formatDownloads(pet.downloads)}
         </span>
       </div>
-      <div className="pets-card-actions">
+      <div
+        className="pets-card-actions"
+        onClick={(event) => event.stopPropagation()}
+      >
         {state === "uninstalled" ? (
           <Button
             type="button"
@@ -239,6 +287,139 @@ function PetCard({
   );
 }
 
+type PetDetailsDialogProps = {
+  pet: BuiltInPet;
+  state: PetCardActionState;
+  removable: boolean;
+  onOpenChange: (open: boolean) => void;
+  onGet: () => Promise<void> | void;
+  onSelect: () => void;
+  onRemove: () => void;
+};
+
+function PetDetailsDialog({
+  pet,
+  state,
+  removable,
+  onOpenChange,
+  onGet,
+  onSelect,
+  onRemove,
+}: PetDetailsDialogProps) {
+  const [mainState, setMainState] = useState<PetAnimationState>("idle");
+
+  useEffect(() => {
+    setMainState("idle");
+  }, [pet.id]);
+
+  const primaryLabel =
+    state === "selected" ? "Selected" : state === "installed" ? "Select" : "Get";
+
+  const handlePrimary = async () => {
+    if (state === "selected") return;
+    if (state === "installed") {
+      onSelect();
+      onOpenChange(false);
+      return;
+    }
+    await onGet();
+  };
+
+  const blurb = pet.description?.trim();
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent fit className="pet-detail-dialog">
+        <DialogCloseButton />
+        <DialogHeader>
+          <DialogTitle className="pet-detail-title">
+            {pet.displayName}
+          </DialogTitle>
+          <p className="pet-detail-caption">
+            by {pet.creator} · {formatDownloads(pet.downloads)} selections
+          </p>
+        </DialogHeader>
+        <DialogBody className="pet-detail-body">
+          <div
+            className="pet-detail-stage"
+            aria-label={`${pet.displayName} preview`}
+          >
+            <PetSprite
+              spritesheetUrl={pet.spritesheetUrl}
+              state={mainState}
+              size={220}
+              continuous
+            />
+          </div>
+
+          {blurb ? <p className="pet-detail-blurb">{blurb}</p> : null}
+
+          <div className="pet-detail-actions">
+            <Button
+              type="button"
+              variant={state === "selected" ? "secondary" : "primary"}
+              size="normal"
+              className={
+                state === "selected"
+                  ? "pill-btn pill-btn--lg"
+                  : "pill-btn pill-btn--primary pill-btn--lg"
+              }
+              onClick={() => void handlePrimary()}
+              disabled={state === "selected"}
+            >
+              {primaryLabel}
+            </Button>
+            {removable && state !== "uninstalled" ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="normal"
+                className="pill-btn pill-btn--lg"
+                onClick={() => {
+                  onRemove();
+                  onOpenChange(false);
+                }}
+              >
+                Remove
+              </Button>
+            ) : null}
+          </div>
+
+          <section className="pet-detail-states-section">
+            <span className="pet-detail-states-label">Animations</span>
+            <div
+              className="pet-detail-states"
+              role="tablist"
+              aria-label="Animation states"
+            >
+              {ANIMATION_STATES.map((entry) => (
+                <button
+                  key={entry.state}
+                  type="button"
+                  role="tab"
+                  aria-selected={mainState === entry.state}
+                  aria-label={entry.label}
+                  title={entry.label}
+                  className="pet-detail-state-thumb"
+                  data-active={mainState === entry.state || undefined}
+                  onClick={() => setMainState(entry.state)}
+                >
+                  <PetSprite
+                    spritesheetUrl={pet.spritesheetUrl}
+                    state={entry.state}
+                    size={52}
+                    continuous
+                  />
+                </button>
+              ))}
+            </div>
+          </section>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const userPetToBuiltIn = (pet: UserPetRecord): BuiltInPet => ({
   id: pet.petId,
   displayName: pet.displayName,
@@ -266,6 +447,7 @@ export const PetsApp = () => {
   );
   const [createOpen, setCreateOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<UserPetRecord | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<BuiltInPet | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const myUserPets = useMyUserPets(hasConnectedAccount);
@@ -450,6 +632,12 @@ export const PetsApp = () => {
       try {
         await recordOneInstall(id);
         install(id);
+        setSelectedPetId(id);
+        if (!petOpen) {
+          writePetOpenPreference(true);
+          setPetOpenState(true);
+          window.electronAPI?.pet?.setOpen?.(true);
+        }
       } catch (err) {
         showToast({
           title: err instanceof Error ? err.message : "Couldn't get pet",
@@ -457,7 +645,13 @@ export const PetsApp = () => {
         });
       }
     },
-    [hasConnectedAccount, install, recordOneInstall],
+    [
+      hasConnectedAccount,
+      install,
+      petOpen,
+      recordOneInstall,
+      setSelectedPetId,
+    ],
   );
 
   const handleSelect = useCallback(
@@ -630,6 +824,9 @@ export const PetsApp = () => {
           <Button
             variant={petOpen ? "secondary" : "primary"}
             size="small"
+            className={
+              petOpen ? "pill-btn" : "pill-btn pill-btn--primary"
+            }
             onClick={handleToggle}
             data-stella-action="toggle-pet"
             data-stella-label={petOpen ? "Hide pet" : "Show pet"}
@@ -659,6 +856,7 @@ export const PetsApp = () => {
                   pet={builtIn}
                   state={cardState}
                   removable={false}
+                  ownIdleStrip
                   badge={
                     pet.visibility === "private"
                       ? { label: "Private", tier: "private" }
@@ -666,10 +864,12 @@ export const PetsApp = () => {
                       ? { label: "Unlisted", tier: "unlisted" }
                       : null
                   }
+                  onOpen={() => setDetailsTarget(builtIn)}
                   onGet={() => handleGet(pet.petId)}
                   onSelect={() => handleSelect(pet.petId)}
                   onRemove={() => handleRemove(pet.petId)}
                   menu={
+                    <div onClick={(event) => event.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
@@ -760,6 +960,7 @@ export const PetsApp = () => {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    </div>
                   }
                 />
               );
@@ -815,7 +1016,9 @@ export const PetsApp = () => {
                   pet={pet}
                   state={cardState}
                   removable={!isBundledPetId(pet.id)}
-                  onGet={() => handleGet(pet.id)}
+                  ownIdleStrip={userPetIds.has(pet.id)}
+                  onOpen={() => setDetailsTarget(pet)}
+                  onGet={() => setDetailsTarget(pet)}
                   onSelect={() => handleSelect(pet.id)}
                   onRemove={() => handleRemove(pet.id)}
                 />
@@ -843,6 +1046,25 @@ export const PetsApp = () => {
             if (!next) setShareTarget(null);
           }}
           pet={shareTarget}
+        />
+      ) : null}
+      {detailsTarget ? (
+        <PetDetailsDialog
+          pet={detailsTarget}
+          state={
+            detailsTarget.id === selectedPetId
+              ? "selected"
+              : isInstalled(detailsTarget.id)
+                ? "installed"
+                : "uninstalled"
+          }
+          removable={!isBundledPetId(detailsTarget.id)}
+          onOpenChange={(next) => {
+            if (!next) setDetailsTarget(null);
+          }}
+          onGet={() => handleGet(detailsTarget.id)}
+          onSelect={() => handleSelect(detailsTarget.id)}
+          onRemove={() => handleRemove(detailsTarget.id)}
         />
       ) : null}
     </main>

@@ -16,6 +16,7 @@ export type EmojiPackRecord = {
   packId: string;
   displayName: string;
   description?: string;
+  tags: string[];
   prompt?: string;
   coverEmoji: string;
   coverUrl?: string;
@@ -52,16 +53,36 @@ export const emojiPackToActivePack = (
   sheet2Url: pack.sheet2Url,
 });
 
-export function usePublicEmojiPacks(search?: string) {
+export type EmojiPackSort = "installs" | "name";
+
+export function usePublicEmojiPacks(args?: {
+  search?: string;
+  sort?: EmojiPackSort;
+  tag?: string;
+}) {
+  const search = args?.search?.trim();
+  const tag = args?.tag?.trim();
   return usePaginatedQuery(
     api.data.emoji_packs.listPublicPage,
-    search?.trim() ? { search: search.trim() } : {},
+    {
+      ...(search ? { search } : {}),
+      ...(args?.sort ? { sort: args.sort } : {}),
+      ...(tag ? { tag } : {}),
+    },
     { initialNumItems: 32 },
   ) as {
     results: EmojiPackRecord[];
     status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted";
     loadMore: (numItems: number) => void;
   };
+}
+
+export type EmojiPackTagFacet = { tag: string; count: number };
+
+export function useEmojiPackTagFacets() {
+  return useQuery(api.data.emoji_packs.listTagFacets, {}) as
+    | EmojiPackTagFacet[]
+    | undefined;
 }
 
 export function useMyEmojiPacks(enabled: boolean) {

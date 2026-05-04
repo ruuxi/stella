@@ -194,10 +194,6 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
     if (state.busy) return;
     const trimmedName = displayName.trim();
     const trimmedDescription = description.trim();
-    if (!trimmedName) {
-      showToast({ title: "Give your pet a name first", variant: "error" });
-      return;
-    }
     if (!trimmedDescription) {
       showToast({
         title: "Describe your pet so Stella knows what to draw",
@@ -231,16 +227,9 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
 
   const handlePublish = useCallback(async () => {
     if (!state.blob) return;
-    const trimmedName = displayName.trim();
-    const trimmedDescription = description.trim();
-    if (!trimmedName) {
-      showToast({ title: "Give your pet a name", variant: "error" });
-      return;
-    }
-    if (!trimmedDescription) {
-      showToast({ title: "Add a description", variant: "error" });
-      return;
-    }
+    const trimmedName = displayName.trim() || "Stella pet";
+    const trimmedDescription =
+      description.trim() || style.trim() || "A custom Stella pet.";
     setSubmitting(true);
     try {
       const petId = buildPetId(trimmedName);
@@ -271,7 +260,7 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
       });
       addInstalledPet(created.petId);
       writeSelectedPetId(created.petId);
-      showToast({ title: `“${trimmedName}” is ready`, variant: "success" });
+      showToast({ title: `“${created.displayName}” is ready`, variant: "success" });
       onOpenChange(false);
       resetTransient();
     } catch (err) {
@@ -386,7 +375,7 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
               label="Pet name"
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="e.g. Sprig"
+              placeholder="Optional — Stella can name it"
               maxLength={80}
               autoFocus
             />
@@ -456,8 +445,6 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
                 className="pill-btn pill-btn--primary pill-btn--lg"
                 disabled={
                   !ready ||
-                  !displayName.trim() ||
-                  !description.trim() ||
                   submitting
                 }
               >

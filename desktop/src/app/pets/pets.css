@@ -208,6 +208,18 @@
     background-color 140ms ease,
     border-color 140ms ease;
   text-align: center;
+  cursor: pointer;
+}
+
+.pets-card:hover {
+  border-color: var(--border-base);
+  background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
+}
+
+.pets-card:focus-visible {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 24%, transparent);
 }
 
 .pets-card[data-selected="true"] {
@@ -391,6 +403,161 @@
   opacity: 1;
   background: var(--surface-raised);
   border-color: var(--border-base);
+}
+
+/* === Pet detail dialog ===
+   Mirrors Connect dialog aesthetic — glass surface, headered top
+   section with hairline divider, generous internal padding so the
+   content never crowds the dialog edges. */
+
+[data-slot="dialog-content"].pet-detail-dialog {
+  --pet-dialog-pad-x: 28px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  max-height: 100%;
+}
+
+[data-component="dialog"][data-fit]:has([data-slot="dialog-content"].pet-detail-dialog)
+  [data-slot="dialog-container"] {
+  --dialog-width: 540px;
+  height: min(calc(100vh - 16px), 720px);
+  min-height: min(calc(100vh - 16px), 640px);
+}
+
+.pet-detail-dialog [data-slot="dialog-header"] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  text-align: center;
+  padding: 22px var(--pet-dialog-pad-x) 18px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+.pet-detail-title {
+  margin: 0;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 1.7rem;
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--text-strong);
+}
+
+.pet-detail-caption {
+  margin: 0;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12.5px;
+  color: var(--text-weak);
+  letter-spacing: -0.005em;
+}
+
+.pet-detail-dialog [data-slot="dialog-body"] {
+  flex: 1;
+  min-height: 0;
+  padding: 24px var(--pet-dialog-pad-x) 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.pet-detail-body {
+  width: 100%;
+}
+
+.pet-detail-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 260px;
+  padding: 12px 0;
+}
+
+.pet-detail-blurb {
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-base);
+  max-width: 360px;
+}
+
+.pet-detail-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.pet-detail-states-section {
+  margin-top: auto;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-weak);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.pet-detail-states-label {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+  opacity: 0.85;
+}
+
+.pet-detail-states {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.pet-detail-state-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-base);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.pet-detail-state-thumb:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.pet-detail-state-thumb[data-active] {
+  border-color: var(--border-base);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.pet-detail-state-thumb:focus-visible {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 24%, transparent);
 }
 
 /* === Create pet dialog === */

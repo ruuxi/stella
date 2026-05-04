@@ -80,7 +80,8 @@ export type PublicApiType = {
       "createUploadUrls": FunctionReference<'action', 'public', { contentType?: string | undefined; coverSha256?: string | undefined; packId: string; sheet1Sha256: string; sheet2Sha256: string; }, any, string | undefined>;
     };
     "emoji_packs": {
-      "listPublicPage": FunctionReference<'query', 'public', { search?: string | undefined; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
+      "listPublicPage": FunctionReference<'query', 'public', { search?: string | undefined; tag?: string | undefined; sort?: 'installs' | 'name' | undefined; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
+      "listTagFacets": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "listMine": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "getByPackId": FunctionReference<'query', 'public', { packId: string; }, any, string | undefined>;
       "createPack": FunctionReference<'mutation', 'public', { description?: string | undefined; prompt?: string | undefined; coverUrl?: string | undefined; displayName: string; visibility: 'public' | 'unlisted' | 'private'; packId: string; coverEmoji: string; sheet1Url: string; sheet2Url: string; }, any, string | undefined>;
