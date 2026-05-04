@@ -59,8 +59,11 @@ component trees.
 The root `package.json` owns Stella's desktop/runtime dependencies and scripts.
 The right commands:
 
+Run from the Stella install root (the directory containing `desktop/`,
+`runtime/`, `state/`) so commands target the same tree the running app
+loads from:
+
 ```bash
-cd /Users/rahulnanda/projects/stella
 bunx --package typescript@5.9.3 tsc -p desktop/tsconfig.app.json --noEmit   # renderer
 bun run electron:typecheck                                                 # main + preload
 bun run lint

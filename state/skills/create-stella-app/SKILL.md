@@ -1,7 +1,7 @@
 ---
-
-## name: create-stella-app
+name: create-stella-app
 description: Scaffold a new sidebar app inside Stella's desktop renderer in one shell call, then edit only the generated page.
+---
 
 # Adding a new sidebar app to Stella
 
@@ -12,8 +12,12 @@ to fill in.
 
 ## Scaffold
 
+Run from the Stella install root (the directory containing `desktop/`,
+`runtime/`, `state/`) so the script scaffolds into the tree the running
+app loads from:
+
 ```sh
-bun /Users/rahulnanda/projects/stella/state/skills/create-stella-app/scripts/program.ts \
+bun state/skills/create-stella-app/scripts/program.ts \
   <id> <label> [--slot top|bottom] [--order N] [--icon CustomXxx]
 ```
 

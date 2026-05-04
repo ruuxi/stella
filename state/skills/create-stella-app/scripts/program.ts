@@ -42,7 +42,7 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-function findRepoRoot(start: string): string {
+function findRepoRoot(start: string): string | null {
   let dir = start;
   while (dir !== "/") {
     if (
@@ -52,10 +52,22 @@ function findRepoRoot(start: string): string {
     }
     dir = dirname(dir);
   }
-  fail("could not locate Stella repo root (no desktop/src/app/_shared found)");
+  return null;
 }
 
-const REPO_ROOT = findRepoRoot(SCRIPT_DIR);
+// Resolve the repo root from the caller's cwd first so the script scaffolds
+// into whichever Stella install invoked it (e.g. ~/Stella for end users),
+// not whichever tree this script's source happens to live in. SCRIPT_DIR is
+// only a fallback for `bun /abs/path/program.ts` invocations from outside
+// any Stella tree.
+const REPO_ROOT =
+  findRepoRoot(process.cwd()) ??
+  findRepoRoot(SCRIPT_DIR) ??
+  fail(
+    "could not locate Stella repo root from cwd or script dir " +
+      "(no desktop/src/app/_shared found). cd into the Stella install root " +
+      "and re-run.",
+  );
 const APP_DIR = join(REPO_ROOT, "desktop/src/app");
 const ROUTES_DIR = join(REPO_ROOT, "desktop/src/routes");
 const ICONS_FILE = join(REPO_ROOT, "desktop/src/shell/sidebar/SidebarIcons.tsx");
