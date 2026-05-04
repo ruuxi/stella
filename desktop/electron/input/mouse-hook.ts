@@ -36,6 +36,7 @@ const LEFT_MOUSE_BUTTON = 1;
 // the gesture to count as a "double-tap". 350ms matches the typical OS
 // double-click threshold and feels fast-but-not-twitchy in practice.
 const DOUBLE_TAP_WINDOW_MS = 350;
+const DICTATION_PUSH_TO_TALK_TRIGGER_DELAY_MS = 150;
 
 export type LeftMouseUpEvent = {
   x: number;
@@ -177,6 +178,8 @@ export class MouseHookManager {
   private readonly doubleTapDetector: DoubleTapModifierDetector | null;
   private lastLeftDownPoint: { x: number; y: number } | null = null;
   private dictationKeyDownAt: number | null = null;
+  private dictationStartTimer: ReturnType<typeof setTimeout> | null = null;
+  private dictationStarted = false;
 
   constructor(
     events: MouseHookEvents,
@@ -217,7 +220,8 @@ export class MouseHookManager {
     this.started = false;
     this.pressedKeycodes.clear();
     this.radialActive = false;
-    this.dictationKeyDownAt = null;
+    this.clearPendingDictationStart();
+    this.dictationStarted = false;
     this.doubleTapDetector?.cancel();
 
     if (this.uiohookStarted) {
@@ -250,6 +254,23 @@ export class MouseHookManager {
     );
   }
 
+  private clearPendingDictationStart() {
+    if (this.dictationStartTimer) {
+      clearTimeout(this.dictationStartTimer);
+      this.dictationStartTimer = null;
+    }
+    this.dictationKeyDownAt = null;
+  }
+
+  private cancelPendingDictationStart() {
+    const hadPendingStart =
+      this.dictationKeyDownAt !== null && !this.dictationStarted;
+    this.clearPendingDictationStart();
+    if (hadPendingStart) {
+      this.events.onDictationPushToTalkDiscard?.();
+    }
+  }
+
   private attachUiohookListeners() {
     if (this.uiohookListenersAttached) return;
     this.uiohookListenersAttached = true;
@@ -277,7 +298,13 @@ export class MouseHookManager {
       this.dictationKeyDownAt === null
     ) {
       this.dictationKeyDownAt = Date.now();
-      this.events.onDictationPushToTalkStart?.();
+      this.dictationStarted = false;
+      this.dictationStartTimer = setTimeout(() => {
+        this.dictationStartTimer = null;
+        if (this.dictationKeyDownAt === null || this.dictationStarted) return;
+        this.dictationStarted = true;
+        this.events.onDictationPushToTalkStart?.();
+      }, DICTATION_PUSH_TO_TALK_TRIGGER_DELAY_MS);
     }
 
     if (
@@ -286,13 +313,22 @@ export class MouseHookManager {
       this.dictationKeyDownAt !== null
     ) {
       if (event.keycode === 1) {
-        this.dictationKeyDownAt = null;
-        this.events.onDictationPushToTalkCancel?.();
+        const hadStarted = this.dictationStarted;
+        this.clearPendingDictationStart();
+        this.dictationStarted = false;
+        if (hadStarted) {
+          this.events.onDictationPushToTalkCancel?.();
+        } else {
+          this.events.onDictationPushToTalkDiscard?.();
+        }
         return;
       }
-      if (Date.now() - this.dictationKeyDownAt < 300) {
-        this.dictationKeyDownAt = null;
-        this.events.onDictationPushToTalkDiscard?.();
+      if (!this.dictationStarted) {
+        this.cancelPendingDictationStart();
+      } else if (this.matchesTriggerKey()) {
+        this.clearPendingDictationStart();
+        this.dictationStarted = false;
+        this.events.onDictationPushToTalkCancel?.();
       }
     }
 
@@ -330,9 +366,17 @@ export class MouseHookManager {
       this.dictationKeyDownAt !== null
     ) {
       const durationMs = Date.now() - this.dictationKeyDownAt;
-      completedLongPushToTalk = durationMs >= 300;
-      this.dictationKeyDownAt = null;
-      this.events.onDictationPushToTalkStop?.(durationMs);
+      completedLongPushToTalk =
+        this.dictationStarted &&
+        durationMs >= DICTATION_PUSH_TO_TALK_TRIGGER_DELAY_MS;
+      const hadStarted = this.dictationStarted;
+      this.clearPendingDictationStart();
+      this.dictationStarted = false;
+      if (hadStarted) {
+        this.events.onDictationPushToTalkStop?.(durationMs);
+      } else {
+        this.events.onDictationPushToTalkDiscard?.();
+      }
     }
     if (wasTriggerHeld && !this.matchesTriggerKey() && this.radialActive) {
       this.events.onTriggerUp();
@@ -359,10 +403,9 @@ export class MouseHookManager {
     if (
       this.events.isDictationPushToTalkEnabled?.() === true &&
       this.dictationKeyDownAt !== null &&
-      Date.now() - this.dictationKeyDownAt < 300
+      !this.dictationStarted
     ) {
-      this.dictationKeyDownAt = null;
-      this.events.onDictationPushToTalkDiscard?.();
+      this.cancelPendingDictationStart();
       this.doubleTapDetector?.cancel();
     }
     if (button === LEFT_MOUSE_BUTTON) {
