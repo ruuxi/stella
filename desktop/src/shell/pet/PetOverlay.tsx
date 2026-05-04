@@ -7,7 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Camera, Maximize2, MessageSquare, Mic } from "lucide-react";
+import { Maximize2, MessageSquare, Mic } from "lucide-react";
 import type {
   PetAnimationState,
   PetOverlayState,
@@ -26,11 +26,11 @@ const MASCOT_SIZE = 96;
 /** Pointer drag threshold below which a release counts as a click. */
 const DRAG_THRESHOLD_PX = 4;
 /** Distance from the mascot center where action buttons sit on their arc. */
-const ACTION_ARC_RADIUS = 64;
+const ACTION_ARC_RADIUS = 70;
 /** Action arc angles (degrees) around the mascot, fanning out to the left.
- *  Four buttons spread between 135° (upper-left) and 225° (lower-left)
- *  with even ~30° spacing. */
-const ACTION_ANGLES = [135, 165, 195, 225] as const;
+ *  Three buttons spread between 145° (upper-left) and 215° (lower-left)
+ *  with even 35° spacing. */
+const ACTION_ANGLES = [145, 180, 215] as const;
 
 type VoicePetMode = "idle" | "listening" | "speaking";
 
@@ -378,12 +378,6 @@ export const PetOverlay = ({
     [],
   );
 
-  const handleCapture = useCallback(() => {
-    setContextMenu(null);
-    setChatOpen(false);
-    void window.electronAPI?.capture?.beginRegionCapture?.();
-  }, []);
-
   // Toggling the chat button opens the inline composer to the LEFT of
   // the sprite — explicitly NOT the full-window sidebar. The popover
   // owns the textarea + auto-focus + submit; submission is one-shot
@@ -631,40 +625,31 @@ export const PetOverlay = ({
         {(
           [
             {
-              key: "capture",
-              label: "Capture screenshot",
-              title: "Capture",
-              icon: <Camera size={14} />,
-              onClick: handleCapture,
-              active: false,
-              angle: ACTION_ANGLES[0],
-            },
-            {
               key: "dictate",
               label: "Dictate to Stella",
               title: "Dictate",
-              icon: <Mic size={14} />,
+              icon: <Mic size={16} />,
               onClick: handleDictate,
               active: false,
-              angle: ACTION_ANGLES[1],
+              angle: ACTION_ANGLES[0],
             },
             {
               key: "chat",
               label: "Send a message",
               title: "Chat",
-              icon: <MessageSquare size={14} />,
+              icon: <MessageSquare size={16} />,
               onClick: handleChat,
               active: chatOpen,
-              angle: ACTION_ANGLES[2],
+              angle: ACTION_ANGLES[1],
             },
             {
               key: "expand",
               label: "Open Stella",
               title: "Open Stella",
-              icon: <Maximize2 size={14} />,
+              icon: <Maximize2 size={16} />,
               onClick: handleExpand,
               active: false,
-              angle: ACTION_ANGLES[3],
+              angle: ACTION_ANGLES[2],
             },
           ] as const
         ).map(({ key, label, title, icon, onClick, active, angle }) => {
