@@ -1526,7 +1526,7 @@ async fn parakeet_step_complete(dir: &str) -> bool {
         return true;
     }
     if !path_exists(&parakeet_helper_of(dir)).await {
-        return true;
+        return payload_step_complete(dir).await;
     }
     path_exists(&parakeet_cache_dir_of(dir).join("FluidAudio")).await
         || path_exists(&parakeet_cache_dir_of(dir).join("fluidaudio")).await
@@ -2108,6 +2108,32 @@ mod tests {
 
         let complete =
             tauri::async_runtime::block_on(payload_step_complete(&dir.path.to_string_lossy()));
+
+        assert!(complete);
+    }
+
+    #[test]
+    fn parakeet_step_stays_pending_before_payload_is_installed() {
+        let dir = TestDir::new("parakeet-before-payload");
+        fs::create_dir_all(dir.path.join("state")).expect("create state dir");
+
+        let complete =
+            tauri::async_runtime::block_on(parakeet_step_complete(&dir.path.to_string_lossy()));
+
+        assert_eq!(complete, !cfg!(all(target_os = "macos", target_arch = "aarch64")));
+    }
+
+    #[test]
+    fn parakeet_step_skips_missing_helper_after_payload_is_installed() {
+        let dir = TestDir::new("parakeet-no-helper");
+        write_install_shape(&dir.path);
+        fs::create_dir_all(dir.path.join("node_modules")).expect("create node_modules");
+        fs::write(dir.path.join("desktop").join("package.json"), "{}").expect("write desktop file");
+        fs::write(dir.path.join("runtime").join("package.json"), "{}").expect("write runtime file");
+        write_release_manifest(&dir.path, &["desktop/package.json", "runtime/package.json"]);
+
+        let complete =
+            tauri::async_runtime::block_on(parakeet_step_complete(&dir.path.to_string_lossy()));
 
         assert!(complete);
     }
