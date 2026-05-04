@@ -107,6 +107,14 @@
   gap: 8px;
 }
 
+/* Toolbar pills (My emojis / Create pack) share a uniform width so
+   the toolbar doesn't shift when labels swap (My emojis ↔ Discover). */
+.emoji-page-toolbar-actions > .pill-btn,
+.emoji-page-toolbar-actions > .pill-btn[data-component="button"] {
+  min-width: 124px;
+  justify-content: center;
+}
+
 .emoji-page-sort {
   display: inline-flex;
   align-items: center;
@@ -457,8 +465,13 @@
   flex-direction: column;
   gap: 10px;
   width: 100%;
-  min-height: 220px;
+  /* Tight preview tile so the form (prompt + visibility + actions)
+     always remains visible below it. The grid is centered inside; if
+     the dialog gets wider in the future the preview won't blow up. */
+  max-width: 320px;
+  align-self: center;
   align-items: stretch;
+  flex: 0 0 auto;
 }
 
 .emoji-create-stage-tabs {
@@ -505,7 +518,11 @@
 .emoji-create-grid {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
-  gap: 4px;
+  gap: 3px;
+  width: 100%;
+  /* The preview is a perfect square — keeps the dialog body stable
+     across sheets so the prompt/visibility/actions never jump. */
+  aspect-ratio: 1 / 1;
 }
 
 .emoji-create-cell {
@@ -540,7 +557,12 @@
   gap: 10px;
   color: var(--text-weak);
   text-align: center;
-  min-height: 220px;
+  /* Match the preview grid's footprint so the dialog body doesn't
+     resize between empty / busy / ready states. */
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
   position: relative;
 }
 
@@ -675,6 +697,18 @@
 .emoji-create-visibility-sub {
   font-size: 11px;
   color: var(--text-weak);
+}
+
+.emoji-create-discard {
+  margin-right: auto;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-weak);
+}
+
+.emoji-create-discard:hover:not(:disabled) {
+  color: var(--danger, #d04444);
+  background: color-mix(in oklch, var(--danger, #d04444) 8%, transparent);
 }
 
 .emoji-create-actions {

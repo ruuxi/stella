@@ -164,7 +164,7 @@ export const submitUserPetAtlasJob = async (args: {
           width: USER_PET_ATLAS.width,
           height: USER_PET_ATLAS.height,
         },
-        quality: "low",
+        quality: "medium",
         output_format: "png",
       },
     }),

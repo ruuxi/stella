@@ -53,19 +53,40 @@ const POLL_TIMEOUT_MS = 5 * 60_000;
 const buildPrompt = (sheetIndex: number, style: string): string => {
   const list = EMOJI_SHEETS[sheetIndex];
   if (!list) throw new Error(`Unknown sheet index ${sheetIndex}`);
-  const flat = list.join(" ");
+  const theme = style.trim();
+  const cellLines = list
+    .map((glyph, idx) => {
+      const row = Math.floor(idx / 8) + 1;
+      const col = (idx % 8) + 1;
+      return `- r${row}c${col}: ${glyph}`;
+    })
+    .join("\n");
   return [
-    "Generate an image on a magenta background of emojis, on an 8x8 grid:",
-    flat,
-    `Inspired by: ${style}`,
-    [
-      "Strict requirements (these override any interpretation of the inspiration above):",
-      "- The background is a single uniform solid magenta color filling every pixel that is not part of an emoji glyph. Same shade everywhere — no gradient, no texture, no shading variation.",
-      "- The canvas contains nothing other than the 64 emoji glyphs and the magenta background. No confetti, sparkles, streamers, decorative shapes, particles, borders, watermarks, or stray graphics anywhere — even if the inspiration would suggest them.",
-      "- 8 rows, 8 columns. Each emoji occupies exactly one cell with consistent padding, fully contained within its cell. Cells are perfectly uniform in size.",
-      "- Render in row-major order matching the list above (top-left is the first emoji, top-right is the eighth, bottom-right is the last).",
-    ].join("\n"),
-  ].join("\n\n");
+    `Design a custom emoji pack styled entirely as: "${theme}".`,
+    "The style is the most important constraint. Every single emoji must be a fully original artwork drawn in that style — never the default Apple, Google, Microsoft, Samsung, Twemoji, or system emoji rendering. If a stock emoji shape would appear, you have failed; redraw it from scratch in the requested style.",
+    `Theme reminder: "${theme}". Apply it to every cell — the linework, palette, shading, mood, and character design must all read as that theme. Subtle reskins are not enough; the pack should be unmistakably this style.`,
+    "",
+    "Each grid cell below names a concept the cell should depict, written as a reference glyph. Treat the glyph as a concept hint only — reinterpret it as a brand-new icon in the requested style, matching the same meaning. Faces become characters in this style; hands become hands in this style; objects become objects in this style.",
+    "",
+    "Cells (row-major, 8 rows × 8 columns):",
+    cellLines,
+    "",
+    "Layout:",
+    "- Output a single square image as an 8×8 grid of cells.",
+    "- Cells are perfectly uniform in size with consistent padding.",
+    "- Each icon is fully contained inside its cell, centered, with breathing room.",
+    "- Render in the exact row-major order above. r1c1 is the top-left cell; r8c8 is the bottom-right.",
+    "",
+    "Background:",
+    "- Fill every non-icon pixel with a single uniform solid magenta. Same exact shade everywhere — no gradient, no texture, no shading.",
+    "- The same magenta fills the gutters between cells.",
+    "",
+    "Forbidden:",
+    "- Default platform emoji rendering of any kind. No Apple/Google/Microsoft/Samsung/Twemoji glyph reuse, even as a base.",
+    "- Borders, frame lines, grid lines, labels, captions, watermarks, signatures, or text anywhere on the canvas.",
+    "- Decorative confetti, sparkles, particles, motion lines, or background props that do not belong to the icon itself.",
+    "- Icons crossing into neighboring cells.",
+  ].join("\n");
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -77,7 +98,7 @@ const submitJob = async (prompt: string): Promise<string> => {
     prompt,
     input: {
       image_size: { width: 512, height: 512 },
-      quality: "low",
+      quality: "medium",
       output_format: "png",
     },
   };
