@@ -288,8 +288,8 @@ html[data-stella-window="pet"] #root {
  * controls" rather than "sprite + UI chrome". */
 .pet-overlay-action {
   position: absolute;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -364,7 +364,7 @@ html[data-stella-window="pet"] #root {
   /* Sit just left of the sprite (parent `.pet-overlay-mascot` is the
    * relative anchor). 12px gap so the composer doesn't kiss the
    * sprite's edge. */
-  right: calc(100% + 12px);
+  right: calc(100% + 32px);
   bottom: 0;
   width: 380px;
   pointer-events: auto;
