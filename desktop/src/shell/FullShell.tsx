@@ -115,7 +115,11 @@ function OnboardingExperience({
   const activeDemoRef = useRef<OnboardingDemo>(null);
   const fogDefsRef = useRef<SVGSVGElement | null>(null);
   const onboarding = useOnboardingOverlay();
-  const { handleDiscoveryConfirm } = useDiscoveryFlow({
+  const {
+    handleDiscoveryConfirm,
+    discoveryWelcomeExpected,
+    discoveryWelcomeReady,
+  } = useDiscoveryFlow({
     conversationId: activeConversationId,
   });
 
@@ -332,6 +336,8 @@ function OnboardingExperience({
             onDemoChange={handleDemoChange}
             onPhaseChange={handleOnboardingPhaseChange}
             activeDemo={activeDemo}
+            discoveryWelcomeExpected={discoveryWelcomeExpected}
+            discoveryWelcomeReady={discoveryWelcomeReady}
           />
           <div
             className="onboarding-demo-area"

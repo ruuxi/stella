@@ -17,6 +17,8 @@ import {
 } from "../../../runtime/kernel/mcp/state.js";
 import { connectMcpOAuth, saveMcpAccessToken } from "../../../runtime/kernel/mcp/oauth.js";
 
+const STORE_INSTALL_ARTIFACT_LIMIT = 20;
+
 type StoreHandlersOptions = {
   getStellaRoot: () => string | null;
   getStellaHostRunner: () => StellaHostRunner | null;
@@ -50,6 +52,58 @@ const listInstalledThemes = async (stellaRoot: string) => {
   } catch {
     return [];
   }
+};
+
+const safeStorePackageSegment = (packageId: string) =>
+  packageId.replace(/[^a-z0-9_-]/gi, "_");
+
+const cleanupStoreInstallArtifacts = async (
+  stellaRoot: string,
+  payload: { packageId: string; releaseNumber: number },
+) => {
+  const artifactRoot = path.join(stellaRoot, "state", "raw", "store-installs");
+  const safePackageSegment = safeStorePackageSegment(payload.packageId);
+  const packagePrefix = `${safePackageSegment}-r`;
+  await fs.rm(path.join(artifactRoot, `${packagePrefix}${payload.releaseNumber}`), {
+    recursive: true,
+    force: true,
+  });
+
+  const entries = await fs
+    .readdir(artifactRoot, { withFileTypes: true })
+    .catch(() => []);
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith(packagePrefix))
+      .map((entry) =>
+        fs.rm(path.join(artifactRoot, entry.name), {
+          recursive: true,
+          force: true,
+        }),
+      ),
+  );
+
+  const remaining = await fs
+    .readdir(artifactRoot, { withFileTypes: true })
+    .catch(() => []);
+  const dirs = await Promise.all(
+    remaining
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => {
+        const fullPath = path.join(artifactRoot, entry.name);
+        const stat = await fs.stat(fullPath).catch(() => null);
+        return stat ? { fullPath, mtimeMs: stat.mtimeMs } : null;
+      }),
+  );
+  const staleDirs = dirs
+    .filter((dir): dir is { fullPath: string; mtimeMs: number } => dir !== null)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(STORE_INSTALL_ARTIFACT_LIMIT);
+  await Promise.all(
+    staleDirs.map((dir) =>
+      fs.rm(dir.fullPath, { recursive: true, force: true }),
+    ),
+  );
 };
 
 export const registerStoreHandlers = (options: StoreHandlersOptions) => {
@@ -131,8 +185,17 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         commits?: Array<{ hash: string; subject: string; diff: string }>;
       },
     ) =>
-      await withStoreRunner(event, "store:installFromBlueprint", async (runner) =>
-        await runner.installFromBlueprint(payload) satisfies StoreInstallRecord),
+      await withStoreRunner(event, "store:installFromBlueprint", async (runner) => {
+        const installRecord =
+          await runner.installFromBlueprint(payload) satisfies StoreInstallRecord;
+        const stellaRoot = options.getStellaRoot();
+        if (stellaRoot) {
+          await cleanupStoreInstallArtifacts(stellaRoot, payload).catch(
+            () => undefined,
+          );
+        }
+        return installRecord;
+      }),
   );
 
   // Renderer-side publish entry point. The renderer collects the form

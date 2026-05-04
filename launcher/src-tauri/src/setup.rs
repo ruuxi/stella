@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 use tokio::fs;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
 // ── Constants ───────────────────────────────────────────────────────
@@ -249,6 +249,31 @@ fn package_json_of(d: &str) -> PathBuf {
 fn node_modules_of(d: &str) -> PathBuf {
     Path::new(d).join("node_modules")
 }
+fn bun_executable_of() -> PathBuf {
+    if cfg!(target_os = "windows") {
+        home_dir().join(".bun").join("bin").join("bun.exe")
+    } else {
+        home_dir().join(".bun").join("bin").join("bun")
+    }
+}
+fn bun_bin_dir() -> PathBuf {
+    home_dir().join(".bun").join("bin")
+}
+fn path_separator() -> &'static str {
+    if cfg!(target_os = "windows") {
+        ";"
+    } else {
+        ":"
+    }
+}
+fn prepend_path_entry(entry: &Path, existing_path: &str) -> String {
+    let entry = entry.to_string_lossy();
+    if existing_path.is_empty() {
+        entry.to_string()
+    } else {
+        format!("{entry}{}{existing_path}", path_separator())
+    }
+}
 fn mac_screen_capture_permissions_dir_of(d: &str) -> PathBuf {
     node_modules_of(d).join("mac-screen-capture-permissions")
 }
@@ -322,8 +347,11 @@ fn dugite_git_exec_path_of(d: &str) -> PathBuf {
 }
 fn dugite_launch_env(install_dir: &str) -> HashMap<String, String> {
     let mut env = HashMap::new();
+    let mut launch_path =
+        prepend_path_entry(&bun_bin_dir(), &std::env::var("PATH").unwrap_or_default());
     let git_root = dugite_git_root_of(install_dir);
     if !git_root.exists() {
+        env.insert("PATH".into(), launch_path);
         return env;
     }
 
@@ -340,7 +368,6 @@ fn dugite_launch_env(install_dir: &str) -> HashMap<String, String> {
             .to_string(),
     );
 
-    let existing_path = std::env::var("PATH").unwrap_or_default();
     if cfg!(target_os = "windows") {
         let mingw_root = git_root.join(dugite_win32_subfolder());
         let path_prefix = format!(
@@ -348,7 +375,8 @@ fn dugite_launch_env(install_dir: &str) -> HashMap<String, String> {
             mingw_root.join("bin").to_string_lossy(),
             mingw_root.join("usr").join("bin").to_string_lossy()
         );
-        env.insert("PATH".into(), format!("{path_prefix};{existing_path}"));
+        launch_path = format!("{path_prefix};{launch_path}");
+        env.insert("PATH".into(), launch_path);
         env.insert(
             "STELLA_GIT_BASH".into(),
             dugite_git_bash_of(install_dir)
@@ -356,7 +384,8 @@ fn dugite_launch_env(install_dir: &str) -> HashMap<String, String> {
                 .to_string(),
         );
     } else {
-        env.insert("PATH".into(), format!("{git_root_str}/bin:{existing_path}"));
+        launch_path = format!("{git_root_str}/bin:{launch_path}");
+        env.insert("PATH".into(), launch_path);
         env.insert(
             "GIT_CONFIG_SYSTEM".into(),
             git_root
@@ -644,25 +673,14 @@ async fn bun_on_path() -> bool {
         return true;
     }
 
-    // macOS GUI apps don't inherit shell PATH — check ~/.bun/bin directly
-    let bun_bin = if cfg!(target_os = "windows") {
-        home_dir().join(".bun").join("bin").join("bun.exe")
-    } else {
-        home_dir().join(".bun").join("bin").join("bun")
-    };
+    // GUI apps don't inherit shell startup files, so keep the launcher process
+    // PATH aligned with the Bun install location used by launch scripts.
+    let bun_bin = bun_executable_of();
 
     if path_exists(&bun_bin).await {
         if let Some(bin_dir) = bun_bin.parent() {
             let current_path = std::env::var("PATH").unwrap_or_default();
-            let sep = if cfg!(target_os = "windows") {
-                ";"
-            } else {
-                ":"
-            };
-            std::env::set_var(
-                "PATH",
-                format!("{}{sep}{current_path}", bin_dir.to_string_lossy()),
-            );
+            std::env::set_var("PATH", prepend_path_entry(bin_dir, &current_path));
             return run(&["bun", "--version"], None).await.ok;
         }
     }
@@ -1068,17 +1086,34 @@ async fn download_and_extract_release(
     };
 
     let total_bytes = resp.content_length().or(expected_size);
+    fs::create_dir_all(install_dir)
+        .await
+        .map_err(|e| format!("mkdir failed: {e}"))?;
+    let archive_path = Path::new(install_dir).join(".stella-desktop-download.tar.zst");
+    let mut archive_file = fs::File::create(&archive_path)
+        .await
+        .map_err(|e| format!("Failed to prepare download file: {e}"))?;
     let mut downloaded: u64 = 0;
-    let mut chunks = Vec::new();
+    let mut digest = Sha256::new();
     let mut stream = resp.bytes_stream();
     let mut last_emit = std::time::Instant::now()
         .checked_sub(std::time::Duration::from_secs(1))
         .unwrap_or_else(std::time::Instant::now);
 
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("Download failed: {e}"))?;
+        let chunk = match chunk {
+            Ok(chunk) => chunk,
+            Err(err) => {
+                let _ = fs::remove_file(&archive_path).await;
+                return Err(format!("Download failed: {err}"));
+            }
+        };
         downloaded += chunk.len() as u64;
-        chunks.push(chunk);
+        digest.update(&chunk);
+        if let Err(err) = archive_file.write_all(&chunk).await {
+            let _ = fs::remove_file(&archive_path).await;
+            return Err(format!("Failed to write download file: {err}"));
+        }
 
         if last_emit.elapsed() >= std::time::Duration::from_millis(300) {
             let detail = if let Some(total) = total_bytes {
@@ -1097,15 +1132,22 @@ async fn download_and_extract_release(
             last_emit = std::time::Instant::now();
         }
     }
+    if let Err(err) = archive_file.flush().await {
+        let _ = fs::remove_file(&archive_path).await;
+        return Err(format!("Failed to finish download file: {err}"));
+    }
+    drop(archive_file);
 
-    let bytes = chunks.concat();
     if let Some(expected) = expected_sha256 {
-        verify_sha256(bytes.as_ref(), &expected)?;
+        if let Err(err) = verify_sha256_digest(digest, &expected) {
+            let _ = fs::remove_file(&archive_path).await;
+            return Err(err);
+        }
     }
 
     log_install(
         install_dir,
-        &format!("Downloaded {} bytes, extracting...", bytes.len()),
+        &format!("Downloaded {downloaded} bytes, extracting..."),
     )
     .await;
     set_step_progress(
@@ -1118,9 +1160,12 @@ async fn download_and_extract_release(
 
     // Decompress zstd then untar — do in blocking task to avoid blocking async runtime
     let install_path = install_dir.to_string();
-    tokio::task::spawn_blocking(move || {
-        let decoder = zstd::Decoder::new(std::io::Cursor::new(&bytes))
-            .map_err(|e| format!("zstd decompress failed: {e}"))?;
+    let archive_path_for_extract = archive_path.clone();
+    let extract_result = tokio::task::spawn_blocking(move || {
+        let archive_file = std::fs::File::open(&archive_path_for_extract)
+            .map_err(|e| format!("open archive failed: {e}"))?;
+        let decoder =
+            zstd::Decoder::new(archive_file).map_err(|e| format!("zstd decompress failed: {e}"))?;
         let mut archive = tar::Archive::new(decoder);
 
         std::fs::create_dir_all(&install_path).map_err(|e| format!("mkdir failed: {e}"))?;
@@ -1153,7 +1198,10 @@ async fn download_and_extract_release(
         Ok::<(), String>(())
     })
     .await
-    .map_err(|e| format!("Extract task failed: {e}"))??;
+    .map_err(|e| format!("Extract task failed: {e}"))
+    .and_then(|result| result);
+    let _ = fs::remove_file(&archive_path).await;
+    extract_result?;
 
     log_install(install_dir, "Extraction complete").await;
     set_step_progress(
@@ -1224,17 +1272,15 @@ async fn fetch_required_text(client: &reqwest::Client, url: &str) -> Result<Stri
         .map_err(|e| format!("Failed to read response body from {url}: {e}"))
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
-    let mut digest = Sha256::new();
-    digest.update(bytes);
+fn sha256_digest_hex(digest: Sha256) -> String {
     let hash = digest.finalize();
     hash.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn verify_sha256(bytes: &[u8], expected: &str) -> Result<(), String> {
+fn verify_sha256_digest(digest: Sha256, expected: &str) -> Result<(), String> {
     let normalized = normalize_sha256(expected)
         .ok_or_else(|| "Release checksum metadata was invalid.".to_string())?;
-    let actual = sha256_hex(bytes);
+    let actual = sha256_digest_hex(digest);
     if actual == normalized {
         Ok(())
     } else {
@@ -1437,17 +1483,8 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
     let dir = &state.install_path;
     match id {
         SetupStepId::Runtime => bun_on_path().await,
-        SetupStepId::Payload => {
-            path_exists(&package_json_of(dir)).await && path_exists(&node_modules_of(dir)).await
-        }
-        SetupStepId::Parakeet => {
-            if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-                true
-            } else {
-                path_exists(&parakeet_cache_dir_of(dir).join("FluidAudio")).await
-                    || path_exists(&parakeet_cache_dir_of(dir).join("fluidaudio")).await
-            }
-        }
+        SetupStepId::Payload => payload_step_complete(dir).await,
+        SetupStepId::Parakeet => parakeet_step_complete(dir).await,
         SetupStepId::Finalize => {
             if state.dev_mode {
                 true
@@ -1457,6 +1494,38 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
         }
         _ => true,
     }
+}
+
+async fn payload_step_complete(dir: &str) -> bool {
+    if !path_exists(&node_modules_of(dir)).await {
+        return false;
+    }
+    if !looks_like_stella_source_tree(Path::new(dir)) {
+        return false;
+    }
+    let Ok(manifest) = read_release_manifest(dir).await else {
+        return false;
+    };
+    if manifest.files.is_empty() {
+        return false;
+    }
+    for relative_path in manifest.files.keys() {
+        if !path_exists(&Path::new(dir).join(relative_path)).await {
+            return false;
+        }
+    }
+    true
+}
+
+async fn parakeet_step_complete(dir: &str) -> bool {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return true;
+    }
+    if !path_exists(&parakeet_helper_of(dir)).await {
+        return true;
+    }
+    path_exists(&parakeet_cache_dir_of(dir).join("FluidAudio")).await
+        || path_exists(&parakeet_cache_dir_of(dir).join("fluidaudio")).await
 }
 
 async fn install_step(
@@ -1572,12 +1641,12 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
     state.install_path_error = location_error(&state.install_path);
 
     let has_manifest = path_exists(&manifest_of(&state.install_path)).await;
-    let has_pkg = path_exists(&package_json_of(&state.install_path)).await;
-    let has_node_modules = path_exists(&node_modules_of(&state.install_path)).await;
+    let has_payload = payload_step_complete(&state.install_path).await;
     state.can_launch = if state.dev_mode {
-        has_pkg && has_node_modules
+        looks_like_stella_source_tree(Path::new(&state.install_path))
+            && path_exists(&node_modules_of(&state.install_path)).await
     } else {
-        has_manifest && has_pkg && has_node_modules
+        has_manifest && has_payload
     };
     state.warning_message = None;
 }
@@ -1875,6 +1944,19 @@ mod tests {
         fs::write(path.join("package.json"), r#"{"name":"stella"}"#).expect("write package");
     }
 
+    fn write_release_manifest(path: &Path, files: &[&str]) {
+        let files_json = files
+            .iter()
+            .map(|file| format!(r#""{file}":{{"sha256":"abc"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        fs::write(
+            path.join(RELEASE_MANIFEST),
+            format!(r#"{{"schemaVersion":1,"tag":"desktop-v0.0.1","files":{{{files_json}}}}}"#),
+        )
+        .expect("write release manifest");
+    }
+
     fn write_generic_package_shape(path: &Path) {
         fs::write(path.join("package.json"), r#"{"name":"other-app"}"#).expect("write package");
     }
@@ -1961,6 +2043,43 @@ mod tests {
         fs::write(dir.path.join("state").join("stella.sqlite"), "db").expect("write state file");
 
         assert!(is_uninstallable_install_path(&dir.path.to_string_lossy()));
+    }
+
+    #[test]
+    fn launch_env_prepends_bun_bin_even_without_dugite() {
+        let dir = TestDir::new("launch-env");
+        let env = dugite_launch_env(&dir.path.to_string_lossy());
+        let path = env.get("PATH").expect("PATH env");
+        assert!(path.starts_with(&bun_bin_dir().to_string_lossy().to_string()));
+    }
+
+    #[test]
+    fn payload_completion_rejects_missing_manifest_files() {
+        let dir = TestDir::new("partial-payload");
+        write_install_shape(&dir.path);
+        fs::create_dir_all(dir.path.join("node_modules")).expect("create node_modules");
+        write_release_manifest(&dir.path, &["desktop/package.json", "runtime/missing.txt"]);
+        fs::write(dir.path.join("desktop").join("package.json"), "{}").expect("write desktop file");
+
+        let complete =
+            tauri::async_runtime::block_on(payload_step_complete(&dir.path.to_string_lossy()));
+
+        assert!(!complete);
+    }
+
+    #[test]
+    fn payload_completion_accepts_manifest_files_and_dependencies() {
+        let dir = TestDir::new("complete-payload");
+        write_install_shape(&dir.path);
+        fs::create_dir_all(dir.path.join("node_modules")).expect("create node_modules");
+        fs::write(dir.path.join("desktop").join("package.json"), "{}").expect("write desktop file");
+        fs::write(dir.path.join("runtime").join("package.json"), "{}").expect("write runtime file");
+        write_release_manifest(&dir.path, &["desktop/package.json", "runtime/package.json"]);
+
+        let complete =
+            tauri::async_runtime::block_on(payload_step_complete(&dir.path.to_string_lossy()));
+
+        assert!(complete);
     }
 
     #[test]

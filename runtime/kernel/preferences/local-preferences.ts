@@ -151,7 +151,10 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       ),
       preventComputerSleep: parsed.preventComputerSleep === true,
       soundNotificationsEnabled: parsed.soundNotificationsEnabled !== false,
-      wakeWordEnabled: parsed.wakeWordEnabled !== false,
+      wakeWordEnabled:
+        typeof parsed.wakeWordEnabled === "boolean"
+          ? parsed.wakeWordEnabled
+          : DEFAULT_PREFERENCES.wakeWordEnabled,
       wakeWordThreshold:
         typeof parsed.wakeWordThreshold === "number" &&
         Number.isFinite(parsed.wakeWordThreshold) &&

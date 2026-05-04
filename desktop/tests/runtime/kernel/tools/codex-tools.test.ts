@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -14,6 +15,10 @@ import {
 import { handleViewImage } from "../../../../../runtime/kernel/tools/view-image.js";
 
 const tempDirs: string[] = [];
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../../..",
+);
 
 afterEach(async () => {
   await Promise.all(
@@ -628,8 +633,7 @@ EOF`,
 
   it("keeps only computer_list_apps direct in the general agent allowlist", async () => {
     const promptPath = path.join(
-      process.cwd(),
-      "..",
+      repoRoot,
       "runtime/extensions/stella-runtime/agents/general.md",
     );
     const prompt = await readFile(promptPath, "utf-8");
