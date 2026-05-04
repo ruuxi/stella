@@ -28,6 +28,7 @@ import {
   uploadUserPetSpritesheetToR2,
   type UserPetSpritesheetBlob,
 } from "./user-pet-generation";
+import { markMediaJobMaterialized } from "@/app/media/use-media-materializer";
 
 type CreatePetDialogProps = {
   open: boolean;
@@ -192,6 +193,10 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
         name: "",
         description: trimmedPrompt,
       });
+      // Pet atlas generation runs entirely inside this dialog; suppress
+      // the global media materializer so the raw PNG never pops the
+      // display sidebar.
+      markMediaJobMaterialized(submission.jobId);
       setState({
         jobId: submission.jobId,
         blob: null,
@@ -266,10 +271,18 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
     (next: boolean) => {
       if (submitting) return;
       onOpenChange(next);
-      if (!next) resetTransient();
+      // Keep generation state alive across close/reopen so a
+      // half-finished pet isn't lost when the user dismisses the
+      // dialog. Reset only on successful save or via explicit Discard.
     },
-    [onOpenChange, resetTransient, submitting],
+    [onOpenChange, submitting],
   );
+
+  const handleDiscard = useCallback(() => {
+    if (submitting) return;
+    resetTransient();
+    onOpenChange(false);
+  }, [onOpenChange, resetTransient, submitting]);
 
   const ready = Boolean(state.blob);
   const generateLabel = state.busy
@@ -277,6 +290,11 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
     : ready
     ? "Regenerate"
     : "Generate";
+  const hasDraft =
+    prompt.trim().length > 0 ||
+    state.jobId !== null ||
+    state.blob !== null ||
+    state.error !== null;
 
   const warningSummary = useMemo(() => {
     if (!state.blob || state.blob.warnings.length === 0) return null;
@@ -398,6 +416,18 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
             </div>
 
             <div className="user-pet-create-actions">
+              {hasDraft ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="normal"
+                  className="pill-btn user-pet-create-discard"
+                  onClick={handleDiscard}
+                  disabled={submitting}
+                >
+                  Discard
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="secondary"

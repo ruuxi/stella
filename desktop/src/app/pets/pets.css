@@ -92,6 +92,15 @@
   gap: 8px;
 }
 
+/* Keep toolbar pills (My pets / Create pet / Show pet) on a uniform
+   width so they don't reflow as their labels swap (e.g. Show ↔ Hide
+   pet, My pets ↔ Discover). */
+.pets-toolbar-actions > .pill-btn,
+.pets-toolbar-actions > .pill-btn[data-component="button"] {
+  min-width: 124px;
+  justify-content: center;
+}
+
 .pets-sort {
   display: inline-flex;
   align-items: center;
@@ -815,4 +824,16 @@
   padding: 14px 28px;
   border-top: 1px solid var(--border-weak);
   z-index: 2;
+}
+
+.user-pet-create-discard {
+  margin-right: auto;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-weak);
+}
+
+.user-pet-create-discard:hover:not(:disabled) {
+  color: var(--danger, #d04444);
+  background: color-mix(in oklch, var(--danger, #d04444) 8%, transparent);
 }

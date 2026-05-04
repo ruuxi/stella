@@ -34,6 +34,7 @@ import {
   submitEmojiSheetJob,
   uploadSheetToR2,
 } from "./emoji-pack-generation";
+import { markMediaJobMaterialized } from "@/app/media/use-media-materializer";
 import { EmojiCellPreview } from "./EmojiCellPreview";
 import { glyphForCell } from "./emoji-pack-cells";
 import {
@@ -225,6 +226,14 @@ export function CreateEmojiPackDialog({
   const activeError = activeSheet?.error ?? null;
   const activeBusy = activeSheet?.busy ?? false;
   const anyBusy = sheet1.busy || sheet2.busy;
+  const hasDraft =
+    prompt.trim().length > 0 ||
+    sheet1.jobId !== null ||
+    sheet2.jobId !== null ||
+    sheet1.blob !== null ||
+    sheet2.blob !== null ||
+    sheet1.error !== null ||
+    sheet2.error !== null;
 
   // Which sheets need a fresh job — exactly one when the previous run
   // half-succeeded, both otherwise.
@@ -274,6 +283,10 @@ export function CreateEmojiPackDialog({
       );
       submissions.forEach((submission, position) => {
         const idx = targets[position]!;
+        // Suppress the global media materializer for these jobs — emoji
+        // pack generation is a private workflow inside this dialog and
+        // must never auto-open the display sidebar with the raw PNG.
+        markMediaJobMaterialized(submission.jobId);
         updaters[idx]({
           jobId: submission.jobId,
           blob: null,
@@ -366,10 +379,20 @@ export function CreateEmojiPackDialog({
     (next: boolean) => {
       if (submitting) return;
       onOpenChange(next);
-      if (!next) resetTransient();
+      // Intentionally do NOT reset transient state on close. Closing
+      // mid-generation should preserve in-flight job IDs, processed
+      // sheets, and the prompt so the user can pick the work back up
+      // by reopening the dialog. We only reset on a successful save
+      // or via the explicit Discard button.
     },
-    [onOpenChange, resetTransient, submitting],
+    [onOpenChange, submitting],
   );
+
+  const handleDiscard = useCallback(() => {
+    if (submitting) return;
+    resetTransient();
+    onOpenChange(false);
+  }, [onOpenChange, resetTransient, submitting]);
 
   const generateLabel = anyBusy
     ? "Generating…"
@@ -547,6 +570,18 @@ export function CreateEmojiPackDialog({
             </div>
 
             <div className="emoji-create-actions">
+              {hasDraft ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="normal"
+                  className="pill-btn emoji-create-discard"
+                  onClick={handleDiscard}
+                  disabled={submitting}
+                >
+                  Discard
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="secondary"
