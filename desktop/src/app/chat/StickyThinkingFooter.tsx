@@ -10,6 +10,9 @@ import "./indicators.css";
 type StickyThinkingFooterProps = {
   tasks: TaskItem[];
   runningTool?: string;
+  /** Stable id of the in-flight tool call; used as a seed so the friendly
+   * status label stays put for the duration of one call. */
+  runningToolId?: string;
   isStreaming?: boolean;
   status?: string | null;
 };
@@ -17,6 +20,7 @@ type StickyThinkingFooterProps = {
 export function StickyThinkingFooter({
   tasks,
   runningTool,
+  runningToolId,
   isStreaming,
   status,
 }: StickyThinkingFooterProps) {
@@ -64,6 +68,7 @@ export function StickyThinkingFooter({
           status={footerState.status}
           tasks={activeTask ? [activeTask] : undefined}
           toolName={runningTool}
+          toolCallId={runningToolId}
           isReasoning={!activeTask}
         />
       </div>

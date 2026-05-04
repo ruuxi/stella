@@ -1,7 +1,6 @@
 import { ConvexClient } from "convex/browser";
 import type { RunnerContext } from "./types.js";
 import {
-  escapeHtml,
   sanitizeConvexDeploymentUrl,
   sanitizeStellaBase,
 } from "./shared.js";
@@ -68,7 +67,7 @@ export const createConvexSession = (
 
   const webSearch = async (
     query: string,
-    optionsArg?: { category?: string; displayResults?: boolean },
+    optionsArg?: { category?: string },
   ): Promise<{
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
@@ -93,23 +92,6 @@ export const createConvexSession = (
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
       };
-
-      if (
-        optionsArg?.displayResults &&
-        context.displayHtml &&
-        result.results.length > 0
-      ) {
-        const itemsHtml = result.results
-          .slice(0, 6)
-          .map(
-            (resultItem) =>
-              `<div style="margin-bottom:12px"><div style="font-size:13px;opacity:0.92"><a href="${resultItem.url}" style="color:var(--foreground);text-decoration:underline;text-underline-offset:2px;text-decoration-color:color-mix(in oklch,var(--foreground) 20%,transparent)">${escapeHtml(resultItem.title)}</a></div><div style="font-size:12px;opacity:0.55;margin-top:2px">${escapeHtml(resultItem.snippet)}</div></div>`,
-          )
-          .join("");
-        context.displayHtml(
-          `<div><h2 style="font-family:Georgia,serif;font-size:15px;font-weight:500;opacity:0.92;margin:0 0 12px">${escapeHtml(query)}</h2>${itemsHtml}</div>`,
-        );
-      }
 
       return {
         text: result.text || "WebSearch returned no response.",

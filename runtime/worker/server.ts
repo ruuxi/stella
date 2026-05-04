@@ -1855,11 +1855,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       const payload = params as {
         query: string;
         category?: string;
-        displayResults?: boolean;
       };
       return await ensureRunner().webSearch(payload.query, {
         category: payload.category,
-        displayResults: payload.displayResults,
       });
     },
   );

@@ -12,6 +12,10 @@ import "./indicators.css";
 interface WorkingIndicatorProps {
   status?: string;
   toolName?: string;
+  /** Stable id of the in-flight tool call. Used as a seed for the
+   * friendly variation picker so the label doesn't flicker on each
+   * re-render. */
+  toolCallId?: string;
   tasks?: TaskItem[];
   isReasoning?: boolean;
   className?: string;
@@ -20,6 +24,7 @@ interface WorkingIndicatorProps {
 export function WorkingIndicator({
   status,
   toolName,
+  toolCallId,
   tasks,
   isReasoning,
   className,
@@ -42,6 +47,7 @@ export function WorkingIndicator({
   const displayStatus = getWorkingIndicatorDisplayStatus({
     status,
     toolName,
+    toolCallId,
     tasks,
     isReasoning,
   });

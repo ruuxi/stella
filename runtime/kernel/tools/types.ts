@@ -164,12 +164,11 @@ export type ToolHostOptions = {
   displayHtml?: (html: string) => void;
   /**
    * Optional handler for Stella's search-backed `web` tool. When omitted,
-   * search mode is unavailable. `displayResults` asks the implementation to
-   * surface result cards in chat (orchestrator only).
+   * search mode is unavailable.
    */
   webSearch?: (
     query: string,
-    options?: { category?: string; displayResults?: boolean },
+    options?: { category?: string },
   ) => Promise<{
     text: string;
     results?: Array<{ title: string; url: string; snippet: string }>;

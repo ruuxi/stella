@@ -52,7 +52,7 @@ type VoiceRunner = {
   }) => void;
   webSearch: (
     query: string,
-    options?: { category?: string; displayResults?: boolean },
+    options?: { category?: string },
   ) => Promise<RuntimeWebSearchResult>;
 };
 
@@ -132,7 +132,6 @@ export class VoiceRuntimeService {
   }) {
     return await this.ensureRunner().webSearch(payload.query, {
       category: payload.category,
-      displayResults: true,
     });
   }
 

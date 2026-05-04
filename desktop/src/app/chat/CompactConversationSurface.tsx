@@ -138,7 +138,8 @@ export function CompactConversationSurface({
         <div className="thinking-footer-overlay">
           <StickyThinkingFooter
             tasks={footerTasks}
-            runningTool={runningTool}
+            runningTool={runningTool?.tool}
+            runningToolId={runningTool?.id}
             isStreaming={isStreaming}
             status={runtimeStatusText}
           />

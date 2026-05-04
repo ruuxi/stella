@@ -13,6 +13,7 @@ type StickyThinkingFooterState = {
 export function getStickyThinkingFooterDisplayText(args: {
   state: StickyThinkingFooterState;
   runningTool?: string;
+  runningToolId?: string;
   isReasoning?: boolean;
   fallbackText?: string;
 }): string | null {
@@ -22,6 +23,7 @@ export function getStickyThinkingFooterDisplayText(args: {
   return getWorkingIndicatorDisplayStatus({
     status: args.state.status,
     toolName: args.runningTool,
+    toolCallId: args.runningToolId,
     tasks: args.state.activeTask ? [args.state.activeTask] : undefined,
     isReasoning: args.isReasoning ?? !args.state.activeTask,
   }) ?? args.fallbackText ?? null;

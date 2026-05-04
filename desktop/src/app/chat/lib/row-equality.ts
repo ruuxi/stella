@@ -248,7 +248,6 @@ const assistantRowEqual = (
   Boolean(a.isAnimating) === Boolean(b.isAnimating) &&
   JSON.stringify(a.responseTarget ?? null) ===
     JSON.stringify(b.responseTarget ?? null) &&
-  (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
   (a.officePreviewRef?.sessionId ?? null) ===
     (b.officePreviewRef?.sessionId ?? null) &&
   resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
