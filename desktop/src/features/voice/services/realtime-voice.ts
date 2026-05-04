@@ -921,6 +921,9 @@ export class RealtimeVoiceSession {
 
   private handleVoiceActionCompleted(payload: VoiceActionCompletedPayload) {
     if (this.destroyed) return;
+    if (!this.inputActive) {
+      return;
+    }
     if (!this.conversationId || payload.conversationId !== this.conversationId) {
       return;
     }
@@ -1355,6 +1358,19 @@ export class RealtimeVoiceSession {
         result = "Let me take a look.";
         this.runLookAtScreenAsync(query);
       } else if (name === "perform_action") {
+        if (!this.inputActive) {
+          result = "Voice mode is no longer active. Do not call tools or continue this voice-only action.";
+          this.emit({ type: "tool-end", name, callId, result });
+          this.sendEvent({
+            type: "conversation.item.create",
+            item: {
+              type: "function_call_output",
+              call_id: callId,
+              output: result,
+            },
+          });
+          return;
+        }
         // Delegate to orchestrator. Use the user's actual transcript
         // instead of the model's paraphrase for better fidelity.
         const message =
