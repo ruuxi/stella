@@ -75,7 +75,6 @@ export const BootstrapStateProvider = ({ children }: { children: ReactNode }) =>
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export const useBootstrapState = () => {
   const context = useContext(BootstrapStateContext)
   if (!context) {

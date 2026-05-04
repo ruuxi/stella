@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   createContext,

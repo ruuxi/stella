@@ -629,6 +629,7 @@ EOF`,
   it("keeps only computer_list_apps direct in the general agent allowlist", async () => {
     const promptPath = path.join(
       process.cwd(),
+      "..",
       "runtime/extensions/stella-runtime/agents/general.md",
     );
     const prompt = await readFile(promptPath, "utf-8");

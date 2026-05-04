@@ -154,7 +154,6 @@ export function ShareAddonDialog({ open, onOpenChange, pkg }: ShareAddonDialogPr
         } catch (error) {
           // Best-effort per friend — surface a single aggregate toast
           // at the end rather than spamming one per failure.
-          // eslint-disable-next-line no-console
           console.warn("[share-addon] send failed", ownerId, error);
         }
       }

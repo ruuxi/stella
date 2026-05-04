@@ -56,6 +56,8 @@ type DeferredDeletePaths = {
   trashDir: string;
 };
 
+type PathApi = Pick<typeof path, "resolve" | "sep">;
+
 const getStellaHome = (override?: string) => {
   if (override && override.trim().length > 0) {
     return override;
@@ -95,7 +97,7 @@ const isSubPath = (candidate: string, parentPath: string) => {
   return target === parent || target.startsWith(`${parent}${path.sep}`);
 };
 
-const normalizeForComparison = (value: string, pathApi: path.PlatformPath) =>
+const normalizeForComparison = (value: string, pathApi: PathApi) =>
   pathApi
     .resolve(value)
     .replace(/[\\/]+$/g, "")
@@ -105,7 +107,7 @@ const normalizeForComparison = (value: string, pathApi: path.PlatformPath) =>
 const isSameOrInsidePath = (
   candidate: string,
   protectedPath: string,
-  pathApi: path.PlatformPath,
+  pathApi: PathApi,
 ) => {
   const target = normalizeForComparison(candidate, pathApi);
   const parent = normalizeForComparison(protectedPath, pathApi);
@@ -116,7 +118,7 @@ const getProtectedDeletePaths = (): Array<{
   path: string;
   mode: "exact" | "tree";
   label: string;
-  pathApi: path.PlatformPath;
+  pathApi: PathApi;
 }> => {
   const home = os.homedir();
   const homeParent = home ? path.dirname(home) : "";
@@ -127,14 +129,14 @@ const getProtectedDeletePaths = (): Array<{
     path: string;
     mode: "exact" | "tree";
     label: string;
-    pathApi: path.PlatformPath;
+    pathApi: PathApi;
   }> = [];
 
   const add = (
     protectedPath: string,
     mode: "exact" | "tree",
     label: string,
-    pathApi: path.PlatformPath = path,
+    pathApi: PathApi = path,
   ) => {
     if (!protectedPath.trim()) return;
     protectedPaths.push({ path: protectedPath, mode, label, pathApi });

@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useCallback,
@@ -154,7 +153,6 @@ export function I18nProvider({ children }: I18nProviderProps) {
     if (!remotePreference) return;
     if (!isSupportedLocale(remotePreference)) return;
     if (remotePreference === locale) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs from Convex query, the canonical "subscribe to external" pattern.
     setLocaleState(remotePreference);
     writePersistedLocale(remotePreference);
   }, [remotePreference, locale]);

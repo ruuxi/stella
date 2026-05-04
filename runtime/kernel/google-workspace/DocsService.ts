@@ -39,18 +39,6 @@ interface DocsParagraphStyleChangeSuggestion extends BaseDocsSuggestion {
   namedStyleType?: string;
 }
 
-interface DocsDateElementProperties {
-  displayText?: string | null;
-  timestamp?: string | null;
-}
-
-interface DocsParagraphElementWithDate
-  extends docs_v1.Schema$ParagraphElement {
-  dateElement?: {
-    dateElementProperties?: DocsDateElementProperties | null;
-  } | null;
-}
-
 type DocsSuggestion =
   | DocsInsertionSuggestion
   | DocsDeletionSuggestion
@@ -678,8 +666,7 @@ export class DocsService {
             pElement.richLink.richLinkProperties,
           );
         } else {
-          const dateElement = (pElement as DocsParagraphElementWithDate)
-            .dateElement?.dateElementProperties;
+          const dateElement = pElement.dateElement?.dateElementProperties;
           if (dateElement) {
             text += this._renderDateChip(dateElement);
           }
@@ -715,7 +702,7 @@ export class DocsService {
     return title || '';
   }
 
-  private _renderDateChip(props: DocsDateElementProperties): string {
+  private _renderDateChip(props: docs_v1.Schema$DateElementProperties): string {
     const { displayText, timestamp } = props;
     return displayText || timestamp || '';
   }

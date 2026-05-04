@@ -1,6 +1,6 @@
 import type { BetterAuthPlugin } from "better-auth";
+import { createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
-import { createAuthEndpoint } from "better-auth/plugins";
 import { APIError } from "better-call";
 import * as z from "zod";
 
