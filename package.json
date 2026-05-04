@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "cd desktop && vite",
     "preview": "cd desktop && vite preview",
-    "build": "cd desktop && bunx --package typescript@6.0.3 tsc --build && vite build",
+    "build": "bun run routes:generate && cd desktop && bunx --package typescript@6.0.3 tsc --build && vite build",
     "format": "bunx prettier@3.6.2 --write .",
     "format:check": "bunx prettier@3.6.2 --check .",
     "lint": "cd desktop && eslint .",
@@ -15,6 +15,7 @@
     "test:run": "cd desktop && vitest run",
     "test:electron": "cd desktop && vitest run --config vitest.electron.config.ts",
     "test:stella-browser": "cd desktop && vitest run --config stella-browser/vitest.config.ts",
+    "routes:generate": "cd desktop && bunx --package @tanstack/router-cli@1.166.40 tsr generate",
     "reset": "cd desktop && node scripts/reset-dev.mjs",
     "reset:all": "cd desktop && node scripts/reset-dev.mjs --with-permissions",
     "reset:sql": "cd desktop && node scripts/reset-sql.mjs",

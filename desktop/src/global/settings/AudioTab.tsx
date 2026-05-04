@@ -32,7 +32,7 @@ export function AudioTab() {
   const [localDictationUnavailableReason, setLocalDictationUnavailableReason] =
     useState<string | null>(null);
   const [micEnabled, setMicEnabled] = useState(() => isMicrophoneEnabled());
-  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
   const [dictationSuperFast, setDictationSuperFast] = useState(() =>
     isDictationSuperFastEnabled(),
   );

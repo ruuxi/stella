@@ -1837,6 +1837,7 @@ export function StoreView({
     if (!pendingAddonInstall) return
     const electronStore = window.electronAPI?.store
     if (!electronStore) return
+    const wasAlreadyInstalled = installedMap.has(pendingAddonInstall.pkg.packageId)
     setAddonInstalling(true)
     try {
       await electronStore.installFromBlueprint({
@@ -1849,14 +1850,16 @@ export function StoreView({
           ? { commits: pendingAddonInstall.release.commits }
           : {}),
       })
-      // Best-effort install counter bump. Failures here are silent —
-      // missing the increment is much less bad than a half-installed
-      // toast state.
-      void convex
-        .mutation(api.data.store_packages.recordPackageInstall, {
-          packageId: pendingAddonInstall.pkg.packageId,
-        })
-        .catch(() => undefined)
+      if (!wasAlreadyInstalled) {
+        // Best-effort install counter bump. Failures here are silent —
+        // missing the increment is much less bad than a half-installed
+        // toast state.
+        void convex
+          .mutation(api.data.store_packages.recordPackageInstall, {
+            packageId: pendingAddonInstall.pkg.packageId,
+          })
+          .catch(() => undefined)
+      }
       setPendingAddonInstall(null)
       showToast({ title: "Added to Stella!", variant: "success" })
       await reloadPackages()
@@ -1869,7 +1872,7 @@ export function StoreView({
     } finally {
       setAddonInstalling(false)
     }
-  }, [pendingAddonInstall, reloadPackages, convex])
+  }, [pendingAddonInstall, installedMap, reloadPackages, convex])
 
   const handleRemove = useCallback(
     async (packageId: string) => {
