@@ -110,6 +110,12 @@ else
   log "DEV-CONTEXT.md not found; continuing"
 fi
 
+if [[ -f "$repo_root/desktop/package.json" || -f "$repo_root/runtime/package.json" ]]; then
+  log "desktop/runtime package manifests found; root install still runs first"
+else
+  log "root package owns desktop/runtime dependencies"
+fi
+
 if [[ -d "$source_repo" && "$source_repo" != "$repo_root" ]]; then
   copy_if_missing "desktop/.env.local"
   copy_if_missing "backend/.env.local"
@@ -120,10 +126,12 @@ fi
 if [[ "$skip_install" == "1" ]]; then
   log "skipping package install"
 else
-  log "installing root Bun workspace"
+  log "installing root Bun package"
   bun install --frozen-lockfile
 
   if [[ "$with_backend" == "1" ]]; then
+    require_file "backend/package.json"
+    require_file "backend/bun.lock"
     log "installing backend Bun project"
     (cd backend && bun install --frozen-lockfile)
   else
