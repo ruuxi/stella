@@ -331,11 +331,7 @@ export function CreateEmojiPackDialog({
 
   const handlePublish = useCallback(async () => {
     if (!bothBlobs) return;
-    const trimmedName = displayName.trim();
-    if (!trimmedName) {
-      showToast({ title: "Give your pack a name", variant: "error" });
-      return;
-    }
+    const trimmedName = displayName.trim() || "Stella emoji pack";
     const packId = buildPackId(trimmedName);
     const cover = glyphForCell(coverSheet, coverCell);
     if (!cover) {
@@ -531,7 +527,7 @@ export function CreateEmojiPackDialog({
               label="Pack name"
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="e.g. Synthwave"
+              placeholder="Optional — Stella can name it"
               maxLength={80}
               autoFocus
             />
@@ -607,7 +603,7 @@ export function CreateEmojiPackDialog({
                 size="large"
                 className="pill-btn pill-btn--primary pill-btn--lg"
                 disabled={
-                  !bothBlobs || !displayName.trim() || submitting
+                  !bothBlobs || submitting
                 }
               >
                 {submitting ? "Saving…" : "Save pack"}

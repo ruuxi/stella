@@ -3,7 +3,7 @@
  * fetch-pets.mjs — sync the public Codex Pet Share catalog into our R2
  * `stella-emotes` bucket.
  *
- * The catalog lives at https://codex-pet-share.pages.dev (a public
+ * The catalog lives at https://codex-pets.net (a public
  * Supabase-backed function). Each pet ships a 1536×1872 webp sprite
  * sheet and a small `pet.json` manifest. We:
  *
@@ -35,6 +35,7 @@ import { createHash, createHmac } from "node:crypto";
 
 const PETSHARE_BASE =
   "https://ihzwckyzfcuktrljwpha.supabase.co/functions/v1/petshare";
+const PETSHARE_WEB_BASE = "https://codex-pets.net";
 const DEFAULT_BUCKET = process.env.R2_PETS_BUCKET || "stella-emotes";
 const DEFAULT_PREFIX = (process.env.R2_PETS_PREFIX || "pets").replace(
   /^\/+|\/+$/g,
@@ -335,6 +336,11 @@ const main = async () => {
 
 const buildManifestEntry = (pet, publicBase, prefix) => {
   const id = String(pet.id);
+  const uploadedAt = Date.parse(pet.uploadedAt);
+  const updatedAt = Number.isFinite(uploadedAt) ? uploadedAt : Date.now();
+  const downloadCount = Number.isFinite(pet.downloadCount)
+    ? Number(pet.downloadCount)
+    : 0;
   return {
     id,
     displayName: String(pet.displayName ?? id),
@@ -344,7 +350,13 @@ const buildManifestEntry = (pet, publicBase, prefix) => {
     ownerName:
       typeof pet.ownerName === "string" && pet.ownerName ? pet.ownerName : null,
     spritesheetUrl: `${publicBase}/${prefix}/${id}.webp`,
-    sourceUrl: `https://codex-pet-share.pages.dev/#/pet/${id}`,
+    previewUrl:
+      typeof pet.previewUrl === "string" && pet.previewUrl
+        ? pet.previewUrl
+        : undefined,
+    sourceUrl: `${PETSHARE_WEB_BASE}/#/pet/${id}`,
+    updatedAt,
+    downloads: downloadCount,
   };
 };
 
@@ -371,6 +383,7 @@ const seedConvexCatalog = async (pets) => {
         ...pet,
         published: true,
         sortOrder: index,
+        downloads: pet.downloads ?? 0,
       })),
     }),
   });

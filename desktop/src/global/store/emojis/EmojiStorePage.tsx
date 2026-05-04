@@ -20,9 +20,11 @@ import {
 import { EMOJI_SHEETS } from "@/app/chat/emoji-sprites/cells";
 import {
   emojiPackToActivePack,
+  useEmojiPackTagFacets,
   useEmojiPackMutations,
   useMyEmojiPacks,
   usePublicEmojiPacks,
+  type EmojiPackSort,
   type EmojiPackRecord,
   type EmojiPackVisibility,
 } from "./emoji-pack-data";
@@ -34,6 +36,11 @@ import "./emojis.css";
 
 const PAGE_SIZE = 24;
 const SEARCH_DEBOUNCE_MS = 200;
+const ALL_TAG = "all" as const;
+const SORT_LABELS: Record<EmojiPackSort, string> = {
+  installs: "Most used",
+  name: "Alphabetical",
+};
 
 const formatInstallCount = (count: number | undefined): string => {
   const n = count ?? 0;
@@ -236,6 +243,8 @@ export function EmojiStorePage() {
   );
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [activeTag, setActiveTag] = useState<string>(ALL_TAG);
+  const [sort, setSort] = useState<EmojiPackSort>("installs");
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -250,7 +259,15 @@ export function EmojiStorePage() {
     results: publicPacks,
     status,
     loadMore,
-  } = usePublicEmojiPacks(debouncedQuery);
+  } = usePublicEmojiPacks({
+    search: debouncedQuery,
+    sort,
+    tag:
+      debouncedQuery.trim().length === 0 && activeTag !== ALL_TAG
+        ? activeTag
+        : undefined,
+  });
+  const tagFacets = useEmojiPackTagFacets();
 
   const { setVisibility, deletePack, recordInstall } = useEmojiPackMutations();
 
@@ -268,6 +285,10 @@ export function EmojiStorePage() {
   const canLoadMore = status === "CanLoadMore";
   const isLoadingMore = status === "LoadingMore";
   const isLoadingFirstPage = status === "LoadingFirstPage";
+  const tagOptions = useMemo(
+    () => (tagFacets ?? []).map((facet) => facet.tag),
+    [tagFacets],
+  );
 
   // Auto-load the next page as the sentinel approaches the viewport.
   useEffect(() => {
@@ -399,24 +420,66 @@ export function EmojiStorePage() {
             spellCheck={false}
           />
         </label>
-        <Button
-          variant="primary"
-          size="normal"
-          className="pill-btn pill-btn--primary"
-          onClick={() => {
-            if (!hasConnectedAccount) {
-              showToast({
-                title: "Sign in to create your own emoji pack",
-                variant: "error",
-              });
-              return;
-            }
-            setCreateOpen(true);
-          }}
+        <label className="emoji-page-sort">
+          <span className="emoji-page-sort-label">Sort</span>
+          <select
+            className="emoji-page-sort-select"
+            value={sort}
+            onChange={(event) => setSort(event.currentTarget.value as EmojiPackSort)}
+          >
+            {(Object.keys(SORT_LABELS) as EmojiPackSort[]).map((option) => (
+              <option key={option} value={option}>
+                {SORT_LABELS[option]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="emoji-page-toolbar-actions">
+          <Button
+            variant="primary"
+            size="small"
+            className="pill-btn pill-btn--primary"
+            onClick={() => {
+              if (!hasConnectedAccount) {
+                showToast({
+                  title: "Sign in to create your own emoji pack",
+                  variant: "error",
+                });
+                return;
+              }
+              setCreateOpen(true);
+            }}
+          >
+            <Sparkles size={14} />
+            Create pack
+          </Button>
+        </div>
+      </div>
+
+      <div className="emoji-page-tags" role="tablist" aria-label="Filter emoji packs by tag">
+        <button
+          type="button"
+          role="tab"
+          className="emoji-page-tag-pill"
+          data-active={activeTag === ALL_TAG ? "true" : "false"}
+          aria-selected={activeTag === ALL_TAG}
+          onClick={() => setActiveTag(ALL_TAG)}
         >
-          <Sparkles size={14} />
-          Create pack
-        </Button>
+          All
+        </button>
+        {tagOptions.map((tag) => (
+          <button
+            key={tag}
+            type="button"
+            role="tab"
+            className="emoji-page-tag-pill"
+            data-active={activeTag === tag ? "true" : "false"}
+            aria-selected={activeTag === tag}
+            onClick={() => setActiveTag(tag)}
+          >
+            {tag}
+          </button>
+        ))}
       </div>
 
       {myPacks && myPacks.length > 0 ? (

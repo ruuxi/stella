@@ -12,6 +12,7 @@ const userPetFields = {
   petId: v.string(),
   displayName: v.string(),
   description: v.string(),
+  tags: v.array(v.string()),
   prompt: v.optional(v.string()),
   spritesheetUrl: v.string(),
   /** Tiny 8-frame idle strip used by the Pets store grid so we don't

@@ -16,9 +16,11 @@ export const petCatalogItemValidator = v.object({
   ownerName: v.union(v.string(), v.null()),
   spritesheetUrl: v.string(),
   sourceUrl: v.string(),
+  previewUrl: v.optional(v.string()),
   published: v.boolean(),
   sortOrder: v.number(),
   updatedAt: v.number(),
+  downloads: v.optional(v.number()),
 });
 
 export const petsSchema = {
@@ -37,6 +39,7 @@ export const petsSchema = {
     ownerName: v.union(v.string(), v.null()),
     spritesheetUrl: v.string(),
     sourceUrl: v.string(),
+    previewUrl: v.optional(v.string()),
     published: v.boolean(),
     sortOrder: v.number(),
     updatedAt: v.number(),

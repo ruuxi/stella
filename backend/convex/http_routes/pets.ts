@@ -16,9 +16,11 @@ type PetSeedRequestBody = {
     ownerName?: string | null;
     spritesheetUrl?: string;
     sourceUrl?: string;
+    previewUrl?: string;
     published?: boolean;
     sortOrder?: number;
     updatedAt?: number;
+    downloads?: number;
   }>;
 };
 
@@ -63,9 +65,11 @@ const normalizePet = (
     ownerName: typeof pet.ownerName === "string" ? pet.ownerName : null,
     spritesheetUrl: pet.spritesheetUrl,
     sourceUrl: typeof pet.sourceUrl === "string" ? pet.sourceUrl : "",
+    previewUrl: typeof pet.previewUrl === "string" ? pet.previewUrl : undefined,
     published: pet.published ?? true,
     sortOrder: Number.isFinite(pet.sortOrder) ? Number(pet.sortOrder) : index,
     updatedAt: Number.isFinite(pet.updatedAt) ? Number(pet.updatedAt) : updatedAt,
+    downloads: Number.isFinite(pet.downloads) ? Number(pet.downloads) : 0,
   };
 };
 
