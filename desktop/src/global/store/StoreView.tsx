@@ -1319,13 +1319,11 @@ function ConnectorCredentialDialog({
 function ConnectorConfirmDialog({
   connector,
   open,
-  installing,
   onConfirm,
   onCancel,
 }: {
   connector: StellaConnectorSummary | null
   open: boolean
-  installing: boolean
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -1347,7 +1345,6 @@ function ConnectorConfirmDialog({
             size="large"
             className="pill-btn pill-btn--lg"
             onClick={onCancel}
-            disabled={installing}
           >
             Cancel
           </Button>
@@ -1357,9 +1354,8 @@ function ConnectorConfirmDialog({
             size="large"
             className="pill-btn pill-btn--primary pill-btn--lg"
             onClick={onConfirm}
-            disabled={installing}
           >
-            {installing ? "Adding..." : "Add"}
+            Add
           </Button>
         </div>
       </DialogContent>
@@ -1369,12 +1365,10 @@ function ConnectorConfirmDialog({
 
 function AddonInstallConfirmDialog({
   pending,
-  installing,
   onConfirm,
   onCancel,
 }: {
   pending: PendingAddonInstall | null
-  installing: boolean
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -1382,7 +1376,7 @@ function AddonInstallConfirmDialog({
     <Dialog
       open={Boolean(pending)}
       onOpenChange={(next) => {
-        if (!next && !installing) onCancel()
+        if (!next) onCancel()
       }}
     >
       <DialogContent fit className="store-blueprint-dialog">
@@ -1390,7 +1384,7 @@ function AddonInstallConfirmDialog({
           <DialogTitle>
             {pending ? `Add ${pending.pkg.displayName}?` : "Add"}
           </DialogTitle>
-          <DialogCloseButton disabled={installing} />
+          <DialogCloseButton />
         </DialogHeader>
         <DialogBody>
           <div className="store-blueprint-dialog-viewer">
@@ -1410,7 +1404,6 @@ function AddonInstallConfirmDialog({
               type="button"
               className="pill-btn"
               onClick={onCancel}
-              disabled={installing}
             >
               Cancel
             </button>
@@ -1418,9 +1411,8 @@ function AddonInstallConfirmDialog({
               type="button"
               className="pill-btn pill-btn--primary"
               onClick={onConfirm}
-              disabled={installing}
             >
-              {installing ? "Adding…" : "Add to Stella"}
+              Add to Stella
             </button>
           </div>
         </DialogBody>
@@ -1667,10 +1659,8 @@ export function StoreView({
     useState<StellaConnectorSummary | null>(null)
   const [confirmConnector, setConfirmConnector] =
     useState<StellaConnectorSummary | null>(null)
-  const [confirmInstalling, setConfirmInstalling] = useState(false)
   const [pendingAddonInstall, setPendingAddonInstall] =
     useState<PendingAddonInstall | null>(null)
-  const [addonInstalling, setAddonInstalling] = useState(false)
   const { hasSession } = useAuthSessionState()
 
   const {
@@ -1837,42 +1827,70 @@ export function StoreView({
     if (!pendingAddonInstall) return
     const electronStore = window.electronAPI?.store
     if (!electronStore) return
-    const wasAlreadyInstalled = installedMap.has(pendingAddonInstall.pkg.packageId)
-    setAddonInstalling(true)
-    try {
-      await electronStore.installFromBlueprint({
-        packageId: pendingAddonInstall.pkg.packageId,
-        releaseNumber: pendingAddonInstall.release.releaseNumber,
-        displayName: pendingAddonInstall.pkg.displayName,
-        blueprintMarkdown: pendingAddonInstall.release.blueprintMarkdown,
-        ...(pendingAddonInstall.release.commits &&
-        pendingAddonInstall.release.commits.length > 0
-          ? { commits: pendingAddonInstall.release.commits }
-          : {}),
-      })
-      if (!wasAlreadyInstalled) {
-        // Best-effort install counter bump. Failures here are silent —
-        // missing the increment is much less bad than a half-installed
-        // toast state.
-        void convex
-          .mutation(api.data.store_packages.recordPackageInstall, {
-            packageId: pendingAddonInstall.pkg.packageId,
-          })
-          .catch(() => undefined)
+    const install = pendingAddonInstall
+    const wasAlreadyInstalled = installedMap.has(install.pkg.packageId)
+    setPendingAddonInstall(null)
+    showToast({
+      title: wasAlreadyInstalled ? "Updating add-on" : "Adding add-on",
+      description: "Stella will let you know when it's finished.",
+    })
+    void (async () => {
+      try {
+        await electronStore.installFromBlueprint({
+          packageId: install.pkg.packageId,
+          releaseNumber: install.release.releaseNumber,
+          displayName: install.pkg.displayName,
+          blueprintMarkdown: install.release.blueprintMarkdown,
+          ...(install.release.commits && install.release.commits.length > 0
+            ? { commits: install.release.commits }
+            : {}),
+        })
+        if (!wasAlreadyInstalled) {
+          // Best-effort install counter bump. Failures here are silent —
+          // missing the increment is much less bad than a half-installed
+          // toast state.
+          void convex
+            .mutation(api.data.store_packages.recordPackageInstall, {
+              packageId: install.pkg.packageId,
+            })
+            .catch(() => undefined)
+        }
+        showToast({ title: "Added to Stella", variant: "success" })
+        await reloadPackages()
+      } catch (err) {
+        showToast({
+          title:
+            err instanceof Error ? err.message : "Couldn't add this right now",
+          variant: "error",
+        })
       }
-      setPendingAddonInstall(null)
-      showToast({ title: "Added to Stella!", variant: "success" })
-      await reloadPackages()
-    } catch (err) {
-      showToast({
-        title:
-          err instanceof Error ? err.message : "Couldn't add this right now",
-        variant: "error",
-      })
-    } finally {
-      setAddonInstalling(false)
-    }
+    })()
   }, [pendingAddonInstall, installedMap, reloadPackages, convex])
+
+  const handleConfirmInstallConnector = useCallback(() => {
+    if (!confirmConnector) return
+    const api = window.electronAPI?.store
+    if (!api?.installConnector) return
+    const connector = confirmConnector
+    setConfirmConnector(null)
+    showToast({
+      title: "Adding connector",
+      description: "Stella will let you know when it's finished.",
+    })
+    void (async () => {
+      try {
+        await api.installConnector(connector.marketplaceKey)
+        showToast({ title: "Connector added to Stella", variant: "success" })
+        await reloadConnectors()
+      } catch (err) {
+        showToast({
+          title:
+            err instanceof Error ? err.message : "Couldn't add this connector",
+          variant: "error",
+        })
+      }
+    })()
+  }, [confirmConnector, reloadConnectors])
 
   const handleRemove = useCallback(
     async (packageId: string) => {
@@ -1918,27 +1936,6 @@ export function StoreView({
     [connectors],
   )
 
-  const handleConfirmInstallConnector = useCallback(async () => {
-    if (!confirmConnector) return
-    const api = window.electronAPI?.store
-    if (!api?.installConnector) return
-    try {
-      setConfirmInstalling(true)
-      await api.installConnector(confirmConnector.marketplaceKey)
-      setConfirmConnector(null)
-      showToast({ title: "Connector added to Stella.", variant: "success" })
-      await reloadConnectors()
-    } catch (err) {
-      showToast({
-        title:
-          err instanceof Error ? err.message : "Couldn't add this connector",
-        variant: "error",
-      })
-    } finally {
-      setConfirmInstalling(false)
-    }
-  }, [confirmConnector, reloadConnectors])
-
   const handleSubmitConnectorCredential = useCallback(
     async ({ credential, config }: ConnectorCredentialPayload) => {
       if (!credentialConnector) return
@@ -1981,19 +1978,13 @@ export function StoreView({
       <ConnectorConfirmDialog
         connector={confirmConnector}
         open={Boolean(confirmConnector)}
-        installing={confirmInstalling}
         onConfirm={() => void handleConfirmInstallConnector()}
-        onCancel={() =>
-          confirmInstalling ? undefined : setConfirmConnector(null)
-        }
+        onCancel={() => setConfirmConnector(null)}
       />
       <AddonInstallConfirmDialog
         pending={pendingAddonInstall}
-        installing={addonInstalling}
         onConfirm={() => void handleConfirmInstallAddon()}
-        onCancel={() =>
-          addonInstalling ? undefined : setPendingAddonInstall(null)
-        }
+        onCancel={() => setPendingAddonInstall(null)}
       />
       {sharePkg ? (
         <ShareAddonDialog
