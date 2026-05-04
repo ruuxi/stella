@@ -57,6 +57,8 @@ import {
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_SET_SYNC_MODE,
+  IPC_PREFERENCES_GET_WAKE_WORD,
+  IPC_PREFERENCES_SET_WAKE_WORD,
   IPC_SHELL_SAVE_FILE_AS,
   IPC_SYSTEM_OPEN_FDA,
   IPC_SOCIAL_SESSIONS_CREATE,
@@ -854,6 +856,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
         IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
         enabled,
       ) as Promise<{ enabled: boolean }>,
+    getWakeWordEnabled: () =>
+      ipcRenderer.invoke(IPC_PREFERENCES_GET_WAKE_WORD) as Promise<boolean>,
+    setWakeWordEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_WAKE_WORD,
+        enabled,
+      ) as Promise<{ enabled: boolean }>,
     getPersonalityVoice: () =>
       ipcRenderer.invoke("preferences:getPersonalityVoice") as Promise<
         string | null
@@ -1379,6 +1388,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setInteractive: (active: boolean) =>
       ipcRenderer.send("pet:setInteractive", active),
     requestVoice: () => ipcRenderer.send("pet:requestVoice"),
+    requestDictation: () => ipcRenderer.send("pet:requestDictation"),
+    onDictationActive: onIpc<boolean>("pet:dictationActive"),
     pushStatus: (status: {
       state: "idle" | "running" | "waiting" | "review" | "failed" | "waving";
       title: string;

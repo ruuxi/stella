@@ -11,7 +11,17 @@ import { registerMemoryHandlers } from "../ipc/memory-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerPetHandlers } from "../ipc/pet-handlers.js";
+import { ipcMain } from "electron";
 import { togglePetVoice } from "../services/pet-voice-control.js";
+import { WakewordService } from "../services/wakeword-service.js";
+import {
+  loadLocalPreferences,
+  saveLocalPreferences,
+} from "../../../runtime/kernel/preferences/local-preferences.js";
+import {
+  IPC_PREFERENCES_GET_WAKE_WORD,
+  IPC_PREFERENCES_SET_WAKE_WORD,
+} from "../../src/shared/contracts/ipc-channels.js";
 import { registerOfficePreviewHandlers } from "../ipc/office-preview-handlers.js";
 import { registerFashionHandlers } from "../ipc/fashion-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
@@ -276,14 +286,9 @@ export const registerBootstrapIpcHandlers = (
     getOverlayController: () => state.overlayController ?? null,
   });
 
-  state.petHandlersDispose = registerPetHandlers({
-    windowManager: state.windowManager!,
-    getPetController: () => state.petController ?? null,
-    toggleVoiceRtc: togglePetVoiceImpl,
-    assertPrivilegedSender: (event, channel) =>
-      services.externalLinkService.assertPrivilegedSender(event, channel),
-  });
-
+  // Register dictation first so we can pass `startPetDictation` into
+  // the pet handlers — the pet's mic action is dictation now (voice
+  // is wake-word driven, not button-driven).
   const dictationPushToTalk = registerDictationHandlers({
     windowManager: state.windowManager!,
     getOverlayController: () => state.overlayController ?? null,
@@ -291,6 +296,85 @@ export const registerBootstrapIpcHandlers = (
   });
   services.radialGestureService.setDictationPushToTalkHandlers(
     dictationPushToTalk,
+  );
+
+  state.petHandlersDispose = registerPetHandlers({
+    windowManager: state.windowManager!,
+    getPetController: () => state.petController ?? null,
+    toggleVoiceRtc: togglePetVoiceImpl,
+    startPetDictation: () => dictationPushToTalk.startPetDictation(),
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  // ── Wake-word listener ──────────────────────────────────────────────
+  // Spawns the native `wakeword_listener` helper. On a "Hey Stella"
+  // detection it activates the realtime voice agent (the same surface
+  // the keybind / radial wedge / pet mic button reach via
+  // `togglePetVoice`). Mic buttons stay dictation-only — voice is
+  // wake-word-gated. Auto-pauses while a voice session is active so
+  // the assistant cannot trigger itself.
+  const stellaRoot = lifecycle.getStellaRoot();
+  const wakePrefs = stellaRoot
+    ? loadLocalPreferences(stellaRoot)
+    : { wakeWordEnabled: true, wakeWordThreshold: 0.55 };
+  const wakeword = new WakewordService({
+    threshold: wakePrefs.wakeWordThreshold,
+    onWake: (event) => {
+      if (services.uiStateService.state.isVoiceRtcActive) return;
+      console.log(
+        `[wakeword] detected "${event.model}" (score=${event.score.toFixed(3)})`,
+      );
+      togglePetVoiceImpl();
+    },
+  });
+  services.uiStateService.onVoiceActiveChanged((active) => {
+    wakeword.setPaused(active);
+  });
+  wakeword.setEnabled(wakePrefs.wakeWordEnabled);
+  state.processRuntime.registerCleanup(
+    "will-quit",
+    "wakeword-service",
+    () => {
+      wakeword.dispose();
+    },
+  );
+
+  ipcMain.handle(IPC_PREFERENCES_GET_WAKE_WORD, (event) => {
+    if (
+      !services.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_WAKE_WORD,
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:getWakeWord request.");
+    }
+    const root = lifecycle.getStellaRoot();
+    if (!root) return true;
+    return loadLocalPreferences(root).wakeWordEnabled;
+  });
+
+  ipcMain.handle(
+    IPC_PREFERENCES_SET_WAKE_WORD,
+    (event, enabled: boolean) => {
+      if (
+        !services.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PREFERENCES_SET_WAKE_WORD,
+        )
+      ) {
+        throw new Error("Blocked untrusted preferences:setWakeWord request.");
+      }
+      const next = enabled === true;
+      const root = lifecycle.getStellaRoot();
+      if (root) {
+        const prefs = loadLocalPreferences(root);
+        prefs.wakeWordEnabled = next;
+        saveLocalPreferences(root, prefs);
+      }
+      wakeword.setEnabled(next);
+      return { enabled: next };
+    },
   );
 
   stopCapturing();

@@ -4,6 +4,7 @@ import {
   IPC_PET_OPEN_CHAT,
   IPC_PET_GET_STATE,
   IPC_PET_MOVE_WINDOW,
+  IPC_PET_REQUEST_DICTATION,
   IPC_PET_REQUEST_VOICE,
   IPC_PET_SEND_MESSAGE,
   IPC_PET_SET_COMPOSER_ACTIVE,
@@ -31,6 +32,11 @@ type PetHandlersOptions = {
    *  the keybind, the radial dial's voice wedge, and the pet's own
    *  mic action button — shares behaviour. */
   toggleVoiceRtc: () => void;
+  /** Start a dictation overlay whose transcript routes to Stella's
+   *  chat instead of pasting into the focused app. The pet's mic
+   *  action button is dictation, not voice — voice is wake-word
+   *  driven. */
+  startPetDictation: () => void;
   assertPrivilegedSender: (event: IpcMainEvent, channel: string) => boolean;
 };
 
@@ -102,6 +108,7 @@ export const registerPetHandlers = ({
   windowManager,
   getPetController,
   toggleVoiceRtc,
+  startPetDictation,
   assertPrivilegedSender,
 }: PetHandlersOptions): (() => void) => {
   if (activeDisposer) {
@@ -160,6 +167,11 @@ export const registerPetHandlers = ({
     toggleVoiceRtc();
   };
 
+  const onRequestDictation = (event: IpcMainEvent) => {
+    if (!assertPrivilegedSender(event, IPC_PET_REQUEST_DICTATION)) return;
+    startPetDictation();
+  };
+
   const onStatus = (event: IpcMainEvent, status: unknown) => {
     if (!assertPrivilegedSender(event, IPC_PET_STATUS)) return;
     if (!isPetOverlayStatus(status)) return;
@@ -191,6 +203,7 @@ export const registerPetHandlers = ({
   ipcMain.on(IPC_PET_SET_COMPOSER_ACTIVE, onSetComposerActive);
   ipcMain.on(IPC_PET_SET_INTERACTIVE, onSetInteractive);
   ipcMain.on(IPC_PET_REQUEST_VOICE, onRequestVoice);
+  ipcMain.on(IPC_PET_REQUEST_DICTATION, onRequestDictation);
   ipcMain.on(IPC_PET_STATUS, onStatus);
   ipcMain.on(IPC_PET_OPEN_CHAT, onOpenChat);
   ipcMain.on(IPC_PET_SEND_MESSAGE, onSendMessage);
@@ -204,6 +217,7 @@ export const registerPetHandlers = ({
     ipcMain.removeListener(IPC_PET_SET_COMPOSER_ACTIVE, onSetComposerActive);
     ipcMain.removeListener(IPC_PET_SET_INTERACTIVE, onSetInteractive);
     ipcMain.removeListener(IPC_PET_REQUEST_VOICE, onRequestVoice);
+    ipcMain.removeListener(IPC_PET_REQUEST_DICTATION, onRequestDictation);
     ipcMain.removeListener(IPC_PET_STATUS, onStatus);
     ipcMain.removeListener(IPC_PET_OPEN_CHAT, onOpenChat);
     ipcMain.removeListener(IPC_PET_SEND_MESSAGE, onSendMessage);

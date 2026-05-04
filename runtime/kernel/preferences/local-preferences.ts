@@ -62,6 +62,15 @@ export type LocalPreferences = {
   preventComputerSleep: boolean;
   /** Allows desktop notification sounds for agent completion. */
   soundNotificationsEnabled: boolean;
+  /**
+   * "Hey Stella" wake-word listener — when enabled, a background
+   * native helper continuously listens for the wake word and starts
+   * the realtime voice agent on detection. Mic buttons / keybinds
+   * remain dictation-only; voice is wake-word-gated.
+   */
+  wakeWordEnabled: boolean;
+  /** Wake-word detection threshold (0–1). Higher = stricter. */
+  wakeWordThreshold: number;
 };
 
 export type LocalModelPreferencesSnapshot = Pick<
@@ -91,6 +100,8 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   miniDoubleTapModifier: DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
   preventComputerSleep: false,
   soundNotificationsEnabled: true,
+  wakeWordEnabled: true,
+  wakeWordThreshold: 0.55,
 };
 
 let _cached: LocalPreferences | null = null;
@@ -140,6 +151,14 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       ),
       preventComputerSleep: parsed.preventComputerSleep === true,
       soundNotificationsEnabled: parsed.soundNotificationsEnabled !== false,
+      wakeWordEnabled: parsed.wakeWordEnabled !== false,
+      wakeWordThreshold:
+        typeof parsed.wakeWordThreshold === "number" &&
+        Number.isFinite(parsed.wakeWordThreshold) &&
+        parsed.wakeWordThreshold > 0 &&
+        parsed.wakeWordThreshold <= 1
+          ? parsed.wakeWordThreshold
+          : DEFAULT_PREFERENCES.wakeWordThreshold,
     };
     _cached = prefs;
     _cachedMtime = stat.mtimeMs;

@@ -1,0 +1,23 @@
+[package]
+name = "wakeword_listener"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "wakeword_listener"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+cpal = "0.15"
+livekit-wakeword = { path = "vendor/livekit-wakeword" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

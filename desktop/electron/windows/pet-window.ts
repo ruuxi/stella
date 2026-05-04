@@ -55,12 +55,19 @@ const pickDefaultPosition = () => {
  * bounds *are* the hit zone. Clicks inside the bounds go to the pet,
  * clicks outside go to whatever app is below — no toggling required.
  */
+/** How long the show / hide opacity tween runs. Short enough that the
+ *  pet feels responsive, long enough that the appearance/disappearance
+ *  reads as a graceful fade rather than a hard cut. */
+const PET_FADE_MS = 200
+const PET_FADE_FPS = 60
+
 class PetWindow {
   private window: BrowserWindow | null = null
   private ready = false
   private destroyed = false
   private composerActive = false
   private position = pickDefaultPosition()
+  private fadeTimer: NodeJS.Timeout | null = null
   /** Concrete listener references so `destroy()` can detach them
    *  symmetrically before tearing down the BrowserWindow. The window's
    *  own native handles get released by `destroy()`, but holding onto
@@ -195,15 +202,68 @@ class PetWindow {
   show() {
     const win = this.ensure()
     if (!win || win.isDestroyed()) return
+    this.cancelFade()
     if (!win.isVisible()) {
+      win.setOpacity(0)
       win.showInactive()
     }
+    this.tweenOpacity(win, win.getOpacity(), 1, null)
   }
 
   hide() {
     if (!this.window || this.window.isDestroyed()) return
-    if (this.window.isVisible()) {
-      this.window.hide()
+    if (!this.window.isVisible()) return
+    const target = this.window
+    this.cancelFade()
+    this.tweenOpacity(target, target.getOpacity(), 0, () => {
+      if (target.isDestroyed()) return
+      target.hide()
+      target.setOpacity(1)
+    })
+  }
+
+  /** Linear opacity tween via setOpacity. Reuses one interval so a
+   *  rapid show→hide→show cycle doesn't start two competing tweens. */
+  private tweenOpacity(
+    win: BrowserWindow,
+    from: number,
+    to: number,
+    onDone: (() => void) | null,
+  ) {
+    if (win.isDestroyed()) {
+      onDone?.()
+      return
+    }
+    if (Math.abs(from - to) < 0.01) {
+      win.setOpacity(to)
+      onDone?.()
+      return
+    }
+    const stepMs = 1000 / PET_FADE_FPS
+    const steps = Math.max(1, Math.round(PET_FADE_MS / stepMs))
+    let frame = 0
+    win.setOpacity(from)
+    this.fadeTimer = setInterval(() => {
+      frame += 1
+      if (win.isDestroyed()) {
+        this.cancelFade()
+        onDone?.()
+        return
+      }
+      const t = Math.min(1, frame / steps)
+      win.setOpacity(from + (to - from) * t)
+      if (frame >= steps) {
+        this.cancelFade()
+        win.setOpacity(to)
+        onDone?.()
+      }
+    }, stepMs)
+  }
+
+  private cancelFade() {
+    if (this.fadeTimer) {
+      clearInterval(this.fadeTimer)
+      this.fadeTimer = null
     }
   }
 
@@ -307,6 +367,7 @@ class PetWindow {
    *  window (the controller is treated as dead). */
   destroy() {
     this.destroyed = true
+    this.cancelFade()
     const win = this.window
     if (!win) return
     if (this.closeHandler) {

@@ -195,6 +195,12 @@ export const IPC_PREFERENCES_GET_PERSONALITY_VOICE =
   "preferences:getPersonalityVoice" as const;
 export const IPC_PREFERENCES_SET_PERSONALITY_VOICE =
   "preferences:setPersonalityVoice" as const;
+export const IPC_PREFERENCES_GET_WAKE_WORD = "preferences:getWakeWord" as const;
+export const IPC_PREFERENCES_SET_WAKE_WORD = "preferences:setWakeWord" as const;
+export const IPC_PET_REQUEST_DICTATION = "pet:requestDictation" as const;
+/** Main → renderer broadcast: pet-mic dictation is currently
+ *  recording. Drives the pet's "Sending to Stella…" status pill. */
+export const IPC_PET_DICTATION_ACTIVE = "pet:dictationActive" as const;
 export const IPC_BACKUP_GET_STATUS = "backup:getStatus" as const;
 export const IPC_BACKUP_RUN_NOW = "backup:runNow" as const;
 export const IPC_BACKUP_LIST = "backup:list" as const;

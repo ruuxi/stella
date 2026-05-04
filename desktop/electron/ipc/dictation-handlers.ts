@@ -198,6 +198,14 @@ export const registerDictationHandlers = (
   const { windowManager } = options;
   let currentShortcut = "";
   let activeOverlaySessionId: string | null = null;
+  /**
+   * When set, the active overlay session's transcript is delivered to
+   * Stella's chat (via IPC_PET_SEND_MESSAGE) instead of being pasted
+   * into whatever app is in the foreground. Used by the pet's mic
+   * action button so a click → dictate → auto-send-to-Stella round-trip
+   * lands the spoken text in chat regardless of which app is focused.
+   */
+  let activeOverlayRoute: "paste" | "stella-chat" = "paste";
   let pendingInAppStartId: string | null = null;
   let activePushToTalk: DictationMode | null = null;
   let mutedOutputVolume: number | null = null;
@@ -273,16 +281,29 @@ export const registerDictationHandlers = (
     return null;
   };
 
+  const broadcastPetDictationActive = (active: boolean) => {
+    for (const window of windowManager.getAllWindows()) {
+      if (window.isDestroyed()) continue;
+      window.webContents.send("pet:dictationActive", active);
+    }
+  };
+
   const hideOverlaySession = (sessionId: string) => {
     if (activeOverlaySessionId !== sessionId) return;
+    const wasPetRoute = activeOverlayRoute === "stella-chat";
     activeOverlaySessionId = null;
+    activeOverlayRoute = "paste";
     restoreOutputAfterDictation();
     options.getOverlayController()?.hideDictation();
+    if (wasPetRoute) broadcastPetDictationActive(false);
   };
 
   const stopOverlaySession = () => {
     const sessionId = activeOverlaySessionId;
     if (!sessionId) return;
+    if (activeOverlayRoute === "stella-chat") {
+      broadcastPetDictationActive(false);
+    }
     options
       .getOverlayController()
       ?.send("dictation:overlayStop", { sessionId });
@@ -299,7 +320,7 @@ export const registerDictationHandlers = (
     };
   };
 
-  const startOverlaySession = () => {
+  const startOverlaySession = (route: "paste" | "stella-chat" = "paste") => {
     const overlay = options.getOverlayController();
     if (!overlay) return;
 
@@ -310,10 +331,12 @@ export const registerDictationHandlers = (
 
     const sessionId = randomUUID();
     activeOverlaySessionId = sessionId;
+    activeOverlayRoute = route;
     const position = getOverlayDictationPosition();
     overlay.showDictation(position.x, position.y);
     overlay.send("dictation:overlayStart", { sessionId });
     muteOutputForDictation();
+    if (route === "stella-chat") broadcastPetDictationActive(true);
   };
 
   const startOverlayPushToTalk = (): DictationMode | null => {
@@ -586,10 +609,21 @@ export const registerDictationHandlers = (
       },
     ) => {
       if (payload.sessionId !== activeOverlaySessionId) return;
+      const route = activeOverlayRoute;
+      activeOverlayRoute = "paste";
       hideOverlaySession(payload.sessionId);
       const text = payload.text.trim();
       if (!text) return;
       playDictationSound("pasteTranscript");
+      if (route === "stella-chat") {
+        // Pet mic flow: deliver transcript to Stella's chat instead of
+        // pasting into the foreground app.
+        const fullWindow = windowManager.getFullWindow();
+        if (fullWindow && !fullWindow.isDestroyed()) {
+          fullWindow.webContents.send("pet:sendMessage", text);
+        }
+        return;
+      }
       pasteTextIntoFocusedApp(`${text} `).catch((error) => {
         console.warn("[dictation] OS-wide paste failed:", error);
       });
@@ -611,6 +645,22 @@ export const registerDictationHandlers = (
     },
   );
 
+  /**
+   * Start an overlay dictation session whose transcript routes to
+   * Stella's chat instead of pasting. Used by the pet's mic action
+   * button so a click → speak → auto-send round-trip lands the
+   * transcript as a chat message regardless of the foreground app.
+   * Toggling while a session is active stops it (same UX as the
+   * default overlay session toggle).
+   */
+  const startPetDictation = () => {
+    if (activeOverlaySessionId) {
+      stopOverlaySession();
+      return;
+    }
+    startOverlaySession("stella-chat");
+  };
+
   return {
     isEnabled: () =>
       dictationBridgeIsSupported() &&
@@ -619,5 +669,8 @@ export const registerDictationHandlers = (
     stop: stopPushToTalk,
     cancel: cancelPushToTalk,
     discard: discardPushToTalk,
-  } satisfies DictationPushToTalkController;
+    startPetDictation,
+  } satisfies DictationPushToTalkController & {
+    startPetDictation: () => void;
+  };
 };
