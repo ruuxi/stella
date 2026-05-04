@@ -1814,6 +1814,7 @@ function formatDreamRunResult(args: {
 
 function ChronicleSettingsCard() {
   const chronicleApi = window.electronAPI?.chronicle;
+  const { hasConnectedAccount } = useAuthSessionState();
   const [available, setAvailable] = useState<boolean>(true);
   const [status, setStatus] = useState<ChronicleStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1852,6 +1853,16 @@ function ChronicleSettingsCard() {
 
   const handleToggle = async (next: boolean) => {
     if (!chronicleApi?.setEnabled) return;
+    if (next && !hasConnectedAccount) {
+      const message = "Sign in to Stella before turning on screen memory.";
+      setError(message);
+      showToast({
+        title: "Sign in required",
+        description: message,
+        variant: "error",
+      });
+      return;
+    }
     setBusy("toggle");
     setError(null);
     try {
@@ -1967,8 +1978,9 @@ function ChronicleSettingsCard() {
         <div className="settings-row-info">
           <div className="settings-row-label">Screen memory</div>
           <div className="settings-row-sublabel">
-            Lets Stella glance at your screen now and then so it can remember
-            what you were doing.
+            {hasConnectedAccount
+              ? "Lets Stella glance at your screen now and then so it can remember what you were doing."
+              : "Sign in to Stella before turning on screen memory."}
           </div>
         </div>
         <div className="settings-row-control">
@@ -1979,7 +1991,13 @@ function ChronicleSettingsCard() {
             disabled={busy !== null || loading}
             onClick={() => handleToggle(!enabled)}
           >
-            {busy === "toggle" ? "Working…" : enabled ? "Disable" : "Enable"}
+            {busy === "toggle"
+              ? "Working…"
+              : enabled
+                ? "Disable"
+                : hasConnectedAccount
+                  ? "Enable"
+                  : "Sign in to enable"}
           </Button>
         </div>
       </div>
