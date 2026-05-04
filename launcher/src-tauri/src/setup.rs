@@ -219,9 +219,13 @@ fn is_state_only_install_dir(path: &Path) -> bool {
             saw_state = true;
             continue;
         }
-        // Launcher-owned debug artifact left behind by previous installs;
-        // safe to allow alongside state.
-        if file_type.is_file() && name == "stella-install.log" {
+        // Launcher/macOS-owned artifacts that are safe to allow alongside
+        // preserved state after uninstall.
+        if file_type.is_file()
+            && (name == "stella-install.log"
+                || name == ".DS_Store"
+                || name == ".stella-desktop-download.tar.zst")
+        {
             continue;
         }
         return false;
@@ -2020,6 +2024,19 @@ mod tests {
     }
 
     #[test]
+    fn location_error_allows_state_only_install_dirs_with_benign_leftovers() {
+        let dir = TestDir::new("state-only-leftovers");
+        fs::create_dir_all(dir.path.join("state")).expect("create state dir");
+        fs::write(dir.path.join("state").join("stella.sqlite"), "db").expect("write state file");
+        fs::write(dir.path.join(".DS_Store"), "").expect("write ds store");
+        fs::write(dir.path.join("stella-install.log"), "log").expect("write log");
+        fs::write(dir.path.join(".stella-desktop-download.tar.zst"), "")
+            .expect("write temp archive");
+
+        assert_eq!(location_error(&dir.path.to_string_lossy()), None);
+    }
+
+    #[test]
     fn uninstallable_install_path_requires_stella_shape() {
         let dir = TestDir::new("uninstallable");
         assert!(!is_uninstallable_install_path(&dir.path.to_string_lossy()));
@@ -2041,6 +2058,19 @@ mod tests {
         let dir = TestDir::new("uninstallable-state-only");
         fs::create_dir_all(dir.path.join("state")).expect("create state dir");
         fs::write(dir.path.join("state").join("stella.sqlite"), "db").expect("write state file");
+
+        assert!(is_uninstallable_install_path(&dir.path.to_string_lossy()));
+    }
+
+    #[test]
+    fn uninstallable_install_path_allows_state_only_stella_dirs_with_benign_leftovers() {
+        let dir = TestDir::new("uninstallable-state-only-leftovers");
+        fs::create_dir_all(dir.path.join("state")).expect("create state dir");
+        fs::write(dir.path.join("state").join("stella.sqlite"), "db").expect("write state file");
+        fs::write(dir.path.join(".DS_Store"), "").expect("write ds store");
+        fs::write(dir.path.join("stella-install.log"), "log").expect("write log");
+        fs::write(dir.path.join(".stella-desktop-download.tar.zst"), "")
+            .expect("write temp archive");
 
         assert!(is_uninstallable_install_path(&dir.path.to_string_lossy()));
     }
