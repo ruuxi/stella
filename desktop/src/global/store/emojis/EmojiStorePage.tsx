@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MoreHorizontal, Search } from "lucide-react";
+import { Compass, MoreHorizontal, Search, User } from "lucide-react";
 import { Button } from "@/ui/button";
 import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import { showToast } from "@/ui/toast";
@@ -246,6 +246,7 @@ export function EmojiStorePage() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string>(ALL_TAG);
   const [sort, setSort] = useState<EmojiPackSort>("installs");
+  const [viewMode, setViewMode] = useState<"discover" | "mine">("discover");
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -437,9 +438,46 @@ export function EmojiStorePage() {
         </label>
         <div className="emoji-page-toolbar-actions">
           <Button
+            variant="secondary"
+            size="normal"
+            className="pill-btn pill-btn--lg"
+            onClick={() => {
+              if (viewMode === "mine") {
+                setViewMode("discover");
+                return;
+              }
+              if (!hasConnectedAccount) {
+                showToast({
+                  title: "Sign in to see your emoji packs",
+                  variant: "error",
+                });
+                return;
+              }
+              setViewMode("mine");
+            }}
+            data-stella-action="toggle-emoji-view"
+            data-stella-state={viewMode}
+          >
+            {viewMode === "mine" ? (
+              <>
+                <Compass size={14} aria-hidden />
+                Discover
+              </>
+            ) : (
+              <>
+                <User size={14} aria-hidden />
+                My emojis
+              </>
+            )}
+          </Button>
+          <Button
             variant="primary"
             size="normal"
             className="pill-btn pill-btn--primary pill-btn--lg"
+            style={{
+              borderColor:
+                "color-mix(in oklch, var(--primary-foreground) 30%, transparent)",
+            }}
             onClick={() => {
               if (!hasConnectedAccount) {
                 showToast({
@@ -457,99 +495,138 @@ export function EmojiStorePage() {
         </div>
       </div>
 
-      <div className="emoji-page-tags" role="tablist" aria-label="Filter emoji packs by tag">
-        <button
-          type="button"
-          role="tab"
-          className="emoji-page-tag-pill"
-          data-active={activeTag === ALL_TAG ? "true" : "false"}
-          aria-selected={activeTag === ALL_TAG}
-          onClick={() => setActiveTag(ALL_TAG)}
-        >
-          All
-        </button>
-        {tagOptions.map((tag) => (
-          <button
-            key={tag}
-            type="button"
-            role="tab"
-            className="emoji-page-tag-pill"
-            data-active={activeTag === tag ? "true" : "false"}
-            aria-selected={activeTag === tag}
-            onClick={() => setActiveTag(tag)}
-          >
-            {tag}
-          </button>
-        ))}
-      </div>
+      {viewMode === "discover" ? (
+        <>
+          <div className="emoji-page-tags" role="tablist" aria-label="Filter emoji packs by tag">
+            <button
+              type="button"
+              role="tab"
+              className="emoji-page-tag-pill"
+              data-active={activeTag === ALL_TAG ? "true" : "false"}
+              aria-selected={activeTag === ALL_TAG}
+              onClick={() => setActiveTag(ALL_TAG)}
+            >
+              All
+            </button>
+            {tagOptions.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                role="tab"
+                className="emoji-page-tag-pill"
+                data-active={activeTag === tag ? "true" : "false"}
+                aria-selected={activeTag === tag}
+                onClick={() => setActiveTag(tag)}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
 
-      {myPacks && myPacks.length > 0 ? (
+          {myPacks && myPacks.length > 0 ? (
+            <section className="emoji-page-section">
+              <div className="emoji-page-section-header">
+                <span className="emoji-page-section-title">Your packs</span>
+                <span className="emoji-page-section-count">{myPacks.length}</span>
+              </div>
+              <div className="emoji-pack-grid">
+                {myPacks.map((pack) => (
+                  <PackCard
+                    key={pack.packId}
+                    pack={pack}
+                    active={activePack?.packId === pack.packId}
+                    owned
+                    onOpen={() => setDetailsTarget(pack)}
+                    onSetVisibility={(next) =>
+                      void handleSetVisibility(pack, next)
+                    }
+                    onShare={() => setShareTarget(pack)}
+                    onDelete={() => void handleDelete(pack)}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="emoji-page-section">
+            <div className="emoji-page-section-header">
+              <span className="emoji-page-section-title">Discover</span>
+              {visiblePublicPacks.length > 0 ? (
+                <span className="emoji-page-section-count">
+                  {visiblePublicPacks.length}
+                  {canLoadMore ? "+" : ""}
+                </span>
+              ) : null}
+            </div>
+            {isLoadingFirstPage ? (
+              <div className="emoji-page-empty">Loading…</div>
+            ) : visiblePublicPacks.length === 0 ? (
+              <div className="emoji-page-empty">
+                {debouncedQuery.trim()
+                  ? "No packs match that search."
+                  : "No community packs yet — be the first to make one."}
+              </div>
+            ) : (
+              <div className="emoji-pack-grid">
+                {visiblePublicPacks.map((pack) => (
+                  <PackCard
+                    key={pack.packId}
+                    pack={pack}
+                    active={activePack?.packId === pack.packId}
+                    owned={false}
+                    onOpen={() => setDetailsTarget(pack)}
+                    onSetVisibility={() => undefined}
+                    onShare={() => setShareTarget(pack)}
+                    onDelete={() => undefined}
+                  />
+                ))}
+              </div>
+            )}
+            {canLoadMore || isLoadingMore ? (
+              <div
+                ref={sentinelRef}
+                className="emoji-page-sentinel"
+                data-loading={isLoadingMore || undefined}
+              >
+                {isLoadingMore ? "Loading more…" : ""}
+              </div>
+            ) : null}
+          </section>
+        </>
+      ) : (
         <section className="emoji-page-section">
           <div className="emoji-page-section-header">
-            <span className="emoji-page-section-title">Your packs</span>
-            <span className="emoji-page-section-count">{myPacks.length}</span>
+            <span className="emoji-page-section-title">My emojis</span>
+            {myPacks && myPacks.length > 0 ? (
+              <span className="emoji-page-section-count">{myPacks.length}</span>
+            ) : null}
           </div>
-          <div className="emoji-pack-grid">
-            {myPacks.map((pack) => (
-              <PackCard
-                key={pack.packId}
-                pack={pack}
-                active={activePack?.packId === pack.packId}
-                owned
-                onOpen={() => setDetailsTarget(pack)}
-                onSetVisibility={(next) => void handleSetVisibility(pack, next)}
-                onShare={() => setShareTarget(pack)}
-                onDelete={() => void handleDelete(pack)}
-              />
-            ))}
-          </div>
+          {!myPacks ? (
+            <div className="emoji-page-empty">Loading…</div>
+          ) : myPacks.length === 0 ? (
+            <div className="emoji-page-empty">
+              You haven't created any emoji packs yet.
+            </div>
+          ) : (
+            <div className="emoji-pack-grid">
+              {myPacks.map((pack) => (
+                <PackCard
+                  key={pack.packId}
+                  pack={pack}
+                  active={activePack?.packId === pack.packId}
+                  owned
+                  onOpen={() => setDetailsTarget(pack)}
+                  onSetVisibility={(next) =>
+                    void handleSetVisibility(pack, next)
+                  }
+                  onShare={() => setShareTarget(pack)}
+                  onDelete={() => void handleDelete(pack)}
+                />
+              ))}
+            </div>
+          )}
         </section>
-      ) : null}
-
-      <section className="emoji-page-section">
-        <div className="emoji-page-section-header">
-          <span className="emoji-page-section-title">Discover</span>
-          {visiblePublicPacks.length > 0 ? (
-            <span className="emoji-page-section-count">
-              {visiblePublicPacks.length}
-              {canLoadMore ? "+" : ""}
-            </span>
-          ) : null}
-        </div>
-        {isLoadingFirstPage ? (
-          <div className="emoji-page-empty">Loading…</div>
-        ) : visiblePublicPacks.length === 0 ? (
-          <div className="emoji-page-empty">
-            {debouncedQuery.trim()
-              ? "No packs match that search."
-              : "No community packs yet — be the first to make one."}
-          </div>
-        ) : (
-          <div className="emoji-pack-grid">
-            {visiblePublicPacks.map((pack) => (
-              <PackCard
-                key={pack.packId}
-                pack={pack}
-                active={activePack?.packId === pack.packId}
-                owned={false}
-                onOpen={() => setDetailsTarget(pack)}
-                onSetVisibility={() => undefined}
-                onShare={() => setShareTarget(pack)}
-                onDelete={() => undefined}
-              />
-            ))}
-          </div>
-        )}
-        {canLoadMore || isLoadingMore ? (
-          <div
-            ref={sentinelRef}
-            className="emoji-page-sentinel"
-            data-loading={isLoadingMore || undefined}
-          >
-            {isLoadingMore ? "Loading more…" : ""}
-          </div>
-        ) : null}
-      </section>
+      )}
 
       {detailsTarget ? (
         <EmojiPackDetailsDialog
