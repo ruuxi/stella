@@ -39,13 +39,13 @@ export const createBootstrapServices = (options: {
   const externalLinkService = new ExternalLinkService();
   const localChatHistoryService = new LocalChatHistoryService({
     stellaRoot: config.stellaRoot,
-    onUpdated: () => {
+    onUpdated: (payload) => {
       for (const window of options.getAllWindows()) {
         if (!window.isDestroyed()) {
-          window.webContents.send("localChat:updated");
+          window.webContents.send("localChat:updated", payload ?? null);
         }
       }
-      options.getMobileBroadcast()?.("localChat:updated", null);
+      options.getMobileBroadcast()?.("localChat:updated", payload ?? null);
     },
   });
   externalLinkService.setDevBuild(config.isDev);

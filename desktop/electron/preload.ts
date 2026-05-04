@@ -5,6 +5,7 @@ import type {
   SelfModHmrState,
 } from "../src/shared/contracts/boundary.js";
 import type { TaskLifecycleStatus } from "../src/shared/contracts/agent-runtime.js";
+import type { LocalChatUpdatedPayload } from "../src/shared/contracts/local-chat.js";
 import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
 import type { MiniDoubleTapModifier } from "../src/shared/lib/mini-double-tap.js";
 import type { OfficePreviewSnapshot } from "../src/shared/contracts/office-preview.js";
@@ -1354,7 +1355,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       conversationId: string;
       localMessageId: string;
     }) => ipcRenderer.invoke("localChat:setSyncCheckpoint", payload),
-    onUpdated: onIpcSignal("localChat:updated"),
+    onUpdated: onIpc<LocalChatUpdatedPayload | null>("localChat:updated"),
   },
 
   socialSessions: {

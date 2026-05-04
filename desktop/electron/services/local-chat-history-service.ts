@@ -11,11 +11,12 @@ import type {
   LocalChatSyncMessage,
   SqliteDatabase,
 } from "../../../runtime/kernel/storage/shared.js";
+import type { LocalChatUpdatedPayload } from "../../src/shared/contracts/local-chat.js";
 import type { LocalChatEventWindowMode } from "../../../runtime/chat-event-visibility.js";
 
 type LocalChatHistoryServiceOptions = {
   stellaRoot: string;
-  onUpdated?: () => void;
+  onUpdated?: (payload: LocalChatUpdatedPayload | null) => void;
 };
 
 const openNodeSqliteDatabase = (dbPath: string): SqliteDatabase =>
@@ -25,7 +26,7 @@ export class LocalChatHistoryService {
   private db: SqliteDatabase | null = null;
   private store: SessionStore | null = null;
   private readonly stellaRoot: string;
-  private readonly onUpdated?: () => void;
+  private readonly onUpdated?: (payload: LocalChatUpdatedPayload | null) => void;
   private resetInProgress = false;
 
   constructor(options: LocalChatHistoryServiceOptions) {
@@ -93,7 +94,10 @@ export class LocalChatHistoryService {
 
   appendEvent(args: LocalChatAppendEventArgs): LocalChatEventRecord {
     const event = this.getStore().appendEvent(args);
-    this.onUpdated?.();
+    this.onUpdated?.({
+      conversationId: args.conversationId,
+      event: event as unknown as LocalChatUpdatedPayload["event"],
+    });
     return event;
   }
 
@@ -105,8 +109,9 @@ export class LocalChatHistoryService {
   }): { ok: true } {
     const message = args.message.trim();
     const store = this.getStore();
+    let latestEvent: LocalChatEventRecord | undefined;
     if (message.length > 0) {
-      store.appendEvent({
+      latestEvent = store.appendEvent({
         conversationId: args.conversationId,
         type: "assistant_message",
         payload: prepareStoredLocalChatPayload({
@@ -119,7 +124,7 @@ export class LocalChatHistoryService {
 
     const suggestions = Array.isArray(args.suggestions) ? args.suggestions : [];
     if (suggestions.length > 0) {
-      store.appendEvent({
+      latestEvent = store.appendEvent({
         conversationId: args.conversationId,
         type: "home_suggestions",
         payload: { suggestions },
@@ -130,14 +135,19 @@ export class LocalChatHistoryService {
       ? args.appRecommendations
       : [];
     if (appRecommendations.length > 0) {
-      store.appendEvent({
+      latestEvent = store.appendEvent({
         conversationId: args.conversationId,
         type: "app_recommendations",
         payload: { appRecommendations },
       });
     }
 
-    this.onUpdated?.();
+    this.onUpdated?.({
+      conversationId: args.conversationId,
+      ...(latestEvent
+        ? { event: latestEvent as unknown as LocalChatUpdatedPayload["event"] }
+        : {}),
+    });
     return { ok: true };
   }
 

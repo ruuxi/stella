@@ -193,6 +193,7 @@ export const ChatColumn = memo(function ChatColumn({
               streamingText={conversation.streaming.text}
               isStreaming={conversation.streaming.isStreaming}
               pendingUserMessageId={conversation.streaming.pendingUserMessageId}
+              optimisticUserMessageIds={conversation.streaming.optimisticUserMessageIds}
               selfModMap={conversation.streaming.selfModMap}
               hasOlderEvents={conversation.history.hasOlderEvents}
               isLoadingOlder={conversation.history.isLoadingOlder}

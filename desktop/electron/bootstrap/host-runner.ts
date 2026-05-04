@@ -194,8 +194,8 @@ const connectHostRunner = async (context: BootstrapContext) => {
   );
   runner.setAuthToken(await services.authService.getAuthToken());
 
-  state.localChatUpdateUnsubscribe = runner.onLocalChatUpdated(() => {
-    broadcastLocalChatUpdated(context);
+  state.localChatUpdateUnsubscribe = runner.onLocalChatUpdated((payload) => {
+    broadcastLocalChatUpdated(context, payload);
   });
   state.scheduleUpdateUnsubscribe = runner.onScheduleUpdated(() => {
     broadcastScheduleUpdated(context);

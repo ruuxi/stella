@@ -62,7 +62,10 @@ import { createDesktopDatabase } from "../kernel/storage/database.js";
 import { ChatStore } from "../kernel/storage/chat-store.js";
 import { RuntimeStore } from "../kernel/storage/runtime-store.js";
 import { StoreModStore } from "../kernel/storage/store-mod-store.js";
-import type { SqliteDatabase } from "../kernel/storage/shared.js";
+import type {
+  LocalChatEventRecord,
+  SqliteDatabase,
+} from "../kernel/storage/shared.js";
 import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import { SocialSessionService } from "./social-sessions/service.js";
 import { SocialSessionStore } from "./social-sessions/store.js";
@@ -77,6 +80,22 @@ type WorkerInitializationState = {
   convexSiteUrl: string | null;
   hasConnectedAccount: boolean;
   cloudSyncEnabled: boolean;
+};
+
+const notifyLocalChatUpdated = (
+  peer: JsonRpcPeer,
+  conversationId?: string,
+  event?: LocalChatEventRecord,
+) => {
+  peer.notify(
+    NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED,
+    event || conversationId
+      ? {
+          ...(conversationId ? { conversationId } : {}),
+          ...(event ? { event } : {}),
+        }
+      : null,
+  );
 };
 
 const logger = createRuntimeLogger("worker.server");
@@ -572,23 +591,6 @@ const materializeImageAttachments = async (
   return materialized;
 };
 
-const replaceStoredImageAttachments = (
-  attachments: RuntimeAttachmentRef[] | undefined,
-  materializedImages: MaterializedImageAttachment[],
-): RuntimeAttachmentRef[] | undefined => {
-  if (!attachments?.length) {
-    return undefined;
-  }
-
-  const replacementByIndex = new Map(
-    materializedImages.map(({ index, attachment }) => [index, attachment]),
-  );
-
-  return attachments.map(
-    (attachment, index) => replacementByIndex.get(index) ?? attachment,
-  );
-};
-
 const stopWorkerServices = async (state: WorkerState) => {
   state.socialSessionService?.stop();
   state.socialSessionService = null;
@@ -751,7 +753,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         }
       : undefined;
 
-    ensureChatStore().appendEvent({
+    const event = ensureChatStore().appendEvent({
       conversationId: args.conversationId,
       eventId: `assistant-for-${args.userMessageId}`,
       type: "assistant_message",
@@ -767,7 +769,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         timezone: args.timezone,
       }),
     });
-    peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+    notifyLocalChatUpdated(peer, args.conversationId, event);
   };
 
   const ensureRunner = () => {
@@ -934,8 +936,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       listLocalChatEvents: (conversationId, maxItems) =>
         chatStore.listEvents(conversationId, maxItems),
       appendLocalChatEvent: (args) => {
-        chatStore.appendEvent(args);
-        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+        const event = chatStore.appendEvent(args);
+        notifyLocalChatUpdated(peer, args.conversationId, event);
       },
       getDefaultConversationId: () =>
         chatStore.getOrCreateDefaultConversationId(),
@@ -1139,7 +1141,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       getChatStore: () => state.chatStore,
       getStore: () => state.socialSessionStore,
       onLocalChatUpdated: () => {
-        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+        notifyLocalChatUpdated(peer);
       },
       pushDisplayPayload: (payload) => {
         // Forward the structured display payload through the existing
@@ -1159,7 +1161,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       getChatStore: () => state.chatStore,
       getDeviceId: () => state.deviceId,
       onLocalChatUpdated: () => {
-        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+        notifyLocalChatUpdated(peer);
       },
       emitAgentEvent: (payload) => {
         emitVoiceAgentEvent(payload);
@@ -1262,16 +1264,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         asTrimmedString(
           (payload as RuntimeChatPayload & { requestId?: string }).requestId,
         ) || undefined;
-      const materializedImageAttachments = await materializeImageAttachments(
-        payload.attachments,
-      );
-      const modelImageAttachments = materializedImageAttachments.map(
-        ({ attachment }) => attachment,
-      );
-      const storedAttachments = replaceStoredImageAttachments(
-        payload.attachments,
-        materializedImageAttachments,
-      );
       const {
         visibleUserPrompt,
         windowContextLabel,
@@ -1282,21 +1274,22 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         selectedText:
           payload.selectedText ?? payload.chatContext?.selectedText ?? null,
         chatContext: payload.chatContext ?? null,
-        explicitImageAttachmentCount: modelImageAttachments.length,
+        explicitImageAttachmentCount: payload.attachments?.length ?? 0,
       });
       const userMessageTimestamp = Date.now();
       const windowPreviewImageUrl = windowScreenshotAttachment?.url;
       const userMessageEvent = ensureChatStore().appendEvent({
         conversationId: payload.conversationId,
         type: "user_message",
+        ...(payload.userMessageEventId ? { eventId: payload.userMessageEventId } : {}),
         deviceId: payload.deviceId,
         timestamp: userMessageTimestamp,
         payload: prepareStoredLocalChatPayload({
           type: "user_message",
           payload: {
             text: visibleUserPrompt,
-            ...(storedAttachments?.length
-              ? { attachments: storedAttachments }
+            ...(payload.attachments?.length
+              ? { attachments: payload.attachments }
               : {}),
             ...(payload.platform ? { platform: payload.platform } : {}),
             ...(payload.timezone ? { timezone: payload.timezone } : {}),
@@ -1333,9 +1326,15 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           timezone: payload.timezone,
         }),
       });
-      peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      notifyLocalChatUpdated(peer, payload.conversationId, userMessageEvent);
 
       const userMessageId = userMessageEvent._id;
+      const materializedImageAttachments = await materializeImageAttachments(
+        payload.attachments,
+      );
+      const modelImageAttachments = materializedImageAttachments.map(
+        ({ attachment }) => attachment,
+      );
       let activeRunId = "";
       let syntheticSeq = 1;
       const hiddenSystemRunIds = new Set<string>();
@@ -1403,7 +1402,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             if (ev.uiVisibility === "hidden") {
               return;
             }
-            ensureChatStore().appendEvent({
+            const event = ensureChatStore().appendEvent({
               conversationId: payload.conversationId,
               type: "user_message",
               requestId: ev.userMessageId,
@@ -1422,7 +1421,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
                 timezone: payload.timezone,
               }),
             });
-            peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+            notifyLocalChatUpdated(peer, payload.conversationId, event);
           },
           onStream: (ev) => {
             if (hiddenSystemRunIds.has(ev.runId)) {
@@ -1472,7 +1471,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             if (hiddenSystemRunIds.has(ev.runId)) {
               return;
             }
-            ensureChatStore().appendEvent({
+            const event = ensureChatStore().appendEvent({
               conversationId: payload.conversationId,
               type: "tool_request",
               requestId: ev.toolCallId,
@@ -1482,7 +1481,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
                 ...(ev.agentType ? { agentType: ev.agentType } : {}),
               },
             });
-            peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+            notifyLocalChatUpdated(peer, payload.conversationId, event);
             emitRunEvent({
               ...ev,
               type: AGENT_STREAM_EVENT_TYPES.TOOL_START,
@@ -1498,7 +1497,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               ev.details && typeof ev.details === "object"
                 ? (ev.details as Record<string, unknown>)
                 : undefined;
-            ensureChatStore().appendEvent({
+            const event = ensureChatStore().appendEvent({
               conversationId: payload.conversationId,
               type: "tool_result",
               requestId: ev.toolCallId,
@@ -1516,7 +1515,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
                 ...(ev.agentType ? { agentType: ev.agentType } : {}),
               },
             });
-            peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+            notifyLocalChatUpdated(peer, payload.conversationId, event);
             emitRunEvent({
               ...ev,
               type: AGENT_STREAM_EVENT_TYPES.TOOL_END,
@@ -1758,7 +1757,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           ? (metadata.ui as Record<string, unknown>)
           : {};
       const timestamp = Date.now();
-      ensureChatStore().appendEvent({
+      const event = ensureChatStore().appendEvent({
         conversationId,
         type: "user_message",
         timestamp,
@@ -1777,7 +1776,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           timestamp,
         }),
       });
-      peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      notifyLocalChatUpdated(peer, conversationId, event);
       return { delivered: true };
     },
   );
@@ -2535,20 +2534,19 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT,
     async (params) => {
-      ensureChatStore().appendEvent(
-        params as {
-          conversationId: string;
-          type: string;
-          payload?: unknown;
-          requestId?: string;
-          targetDeviceId?: string;
-          deviceId?: string;
-          timestamp?: number;
-          eventId?: string;
-          channelEnvelope?: unknown;
-        },
-      );
-      peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      const eventArgs = params as {
+        conversationId: string;
+        type: string;
+        payload?: unknown;
+        requestId?: string;
+        targetDeviceId?: string;
+        deviceId?: string;
+        timestamp?: number;
+        eventId?: string;
+        channelEnvelope?: unknown;
+      };
+      const event = ensureChatStore().appendEvent(eventArgs);
+      notifyLocalChatUpdated(peer, eventArgs.conversationId, event);
       return { ok: true };
     },
   );
@@ -2594,8 +2592,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       const conversationId = payload.conversationId ?? "";
       const message =
         typeof payload.message === "string" ? payload.message : "";
+      let latestEvent: LocalChatEventRecord | undefined;
       if (message.trim().length > 0) {
-        ensureChatStore().appendEvent({
+        latestEvent = ensureChatStore().appendEvent({
           conversationId,
           type: "assistant_message",
           payload: prepareStoredLocalChatPayload({
@@ -2609,13 +2608,13 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         ? payload.suggestions
         : [];
       if (suggestions.length > 0) {
-        ensureChatStore().appendEvent({
+        latestEvent = ensureChatStore().appendEvent({
           conversationId,
           type: "home_suggestions",
           payload: { suggestions },
         });
       }
-      peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      notifyLocalChatUpdated(peer, conversationId, latestEvent);
       return { ok: true as const };
     },
   );

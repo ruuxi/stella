@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getPlatform } from '@/platform/electron/platform'
 import { useChatStore } from '@/context/chat-store'
 import { getOrCreateDeviceId } from '@/platform/electron/device'
@@ -16,11 +16,44 @@ type UseStreamingChatOptions = {
   events: EventRecord[]
 }
 
+const createLocalMessageId = () =>
+  `local-${crypto.randomUUID()}`
+
+const JUST_SENT_CLASS_MS = 900
+
+const buildOptimisticUserEvent = (args: {
+  id: string
+  text: string
+  timestamp: number
+  platform?: string
+  timezone?: string
+  locale?: string
+  metadata?: SendMessageArgs['metadata']
+  attachments: ReturnType<typeof buildAllLocalAttachments>
+  mode?: string
+}): EventRecord => ({
+  _id: args.id,
+  type: 'user_message',
+  timestamp: args.timestamp,
+  payload: {
+    text: args.text,
+    ...(args.attachments.length ? { attachments: args.attachments } : {}),
+    ...(args.platform ? { platform: args.platform } : {}),
+    ...(args.timezone ? { timezone: args.timezone } : {}),
+    ...(args.locale ? { locale: args.locale } : {}),
+    ...(args.metadata ? { metadata: args.metadata } : {}),
+    ...(args.mode ? { mode: args.mode } : {}),
+  },
+})
+
 export function useStreamingChat({
   conversationId,
   events,
 }: UseStreamingChatOptions) {
   const activeConversationId = conversationId
+  const [optimisticEvents, setOptimisticEvents] = useState<EventRecord[]>([])
+  const [justSentUserMessageIds, setJustSentUserMessageIds] = useState<string[]>([])
+  const justSentTimeoutsRef = useRef(new Map<string, number>())
   const locale = useLocale()
   const {
     isAuthenticated,
@@ -95,6 +128,56 @@ export function useStreamingChat({
     streamingResponseTarget,
   ])
 
+  useEffect(() => {
+    if (optimisticEvents.length === 0) return
+    const persistedIds = new Set(events.map((event) => event._id))
+    setOptimisticEvents((current) => {
+      const next = current.filter((event) => !persistedIds.has(event._id))
+      return next.length === current.length ? current : next
+    })
+  }, [events, optimisticEvents.length])
+
+  useEffect(
+    () => () => {
+      for (const timeoutId of justSentTimeoutsRef.current.values()) {
+        window.clearTimeout(timeoutId)
+      }
+      justSentTimeoutsRef.current.clear()
+    },
+    [],
+  )
+
+  const markJustSent = useCallback((messageId: string) => {
+    setJustSentUserMessageIds((current) =>
+      current.includes(messageId) ? current : [...current, messageId],
+    )
+    const existingTimeoutId = justSentTimeoutsRef.current.get(messageId)
+    if (existingTimeoutId) {
+      window.clearTimeout(existingTimeoutId)
+    }
+    const timeoutId = window.setTimeout(() => {
+      justSentTimeoutsRef.current.delete(messageId)
+      setJustSentUserMessageIds((current) =>
+        current.filter((id) => id !== messageId),
+      )
+    }, JUST_SENT_CLASS_MS)
+    justSentTimeoutsRef.current.set(messageId, timeoutId)
+  }, [])
+
+  const clearOptimisticMessage = useCallback((messageId: string) => {
+    setOptimisticEvents((current) =>
+      current.filter((event) => event._id !== messageId),
+    )
+    const timeoutId = justSentTimeoutsRef.current.get(messageId)
+    if (timeoutId) {
+      window.clearTimeout(timeoutId)
+      justSentTimeoutsRef.current.delete(messageId)
+    }
+    setJustSentUserMessageIds((current) =>
+      current.filter((id) => id !== messageId),
+    )
+  }, [])
+
   const sendMessage = useCallback(
     async (options: SendMessageArgs) => {
       const resolvedConversationId = activeConversationId
@@ -112,11 +195,9 @@ export function useStreamingChat({
         return
       }
 
-      const deviceId = await getOrCreateDeviceId()
       const attachments = isLocalStorage && hasAttachments
         ? buildAllLocalAttachments(options.chatContext)
         : []
-
       const platform = getPlatform()
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
       const requestLocale = locale
@@ -132,8 +213,34 @@ export function useStreamingChat({
             )
           }))
       const mode = shouldQueueFollowUp ? 'follow_up' : undefined
+      const optimisticUserMessageId = createLocalMessageId()
+      const optimisticText =
+        cleanedText || options.selectedText?.trim() || 'Attached context'
 
+      setOptimisticEvents((current) => [
+        ...current,
+        buildOptimisticUserEvent({
+          id: optimisticUserMessageId,
+          text: optimisticText,
+          timestamp: Date.now(),
+          platform,
+          timezone,
+          locale: requestLocale,
+          ...(options.metadata ? { metadata: options.metadata } : {}),
+          attachments,
+          ...(mode ? { mode } : {}),
+        }),
+      ])
+      markJustSent(optimisticUserMessageId)
       options.onClear()
+
+      let deviceId: string
+      try {
+        deviceId = await getOrCreateDeviceId()
+      } catch (error) {
+        clearOptimisticMessage(optimisticUserMessageId)
+        throw error
+      }
 
       if (mode === 'follow_up') {
         console.log(
@@ -150,6 +257,10 @@ export function useStreamingChat({
           ...(mode ? { mode } : {}),
           ...(options.metadata ? { messageMetadata: options.metadata } : {}),
           attachments,
+          userMessageEventId: optimisticUserMessageId,
+          onStartFailed: () => {
+            clearOptimisticMessage(optimisticUserMessageId)
+          },
         })
         return
       }
@@ -167,6 +278,10 @@ export function useStreamingChat({
         locale: requestLocale,
         ...(options.metadata ? { messageMetadata: options.metadata } : {}),
         attachments,
+        userMessageEventId: optimisticUserMessageId,
+        onStartFailed: () => {
+          clearOptimisticMessage(optimisticUserMessageId)
+        },
       })
     },
     [
@@ -178,11 +293,15 @@ export function useStreamingChat({
       queueStream,
       startStream,
       locale,
+      markJustSent,
+      clearOptimisticMessage,
     ],
   )
 
   return {
     liveTasks,
+    optimisticEvents,
+    justSentUserMessageIds,
     runtimeStatusText,
     streamingText,
     reasoningText,

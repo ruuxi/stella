@@ -1,4 +1,5 @@
 import { type EventRecord } from "@/app/chat/lib/event-transforms";
+import type { LocalChatUpdatedPayload } from "@/shared/contracts/local-chat";
 import type { LocalChatEventWindowMode } from "../../../../../runtime/chat-event-visibility.js";
 
 const getLocalChatApi = () => {
@@ -36,5 +37,7 @@ export const getLocalEventCount = async (
     ...(options?.countBy ? { countBy: options.countBy } : {}),
   });
 
-export const subscribeToLocalChatUpdates = (listener: () => void): (() => void) =>
+export const subscribeToLocalChatUpdates = (
+  listener: (payload: LocalChatUpdatedPayload | null) => void,
+): (() => void) =>
   getLocalChatApi().onUpdated(listener);

@@ -12,6 +12,11 @@ export type EventRecord = {
   channelEnvelope?: ChannelEnvelope;
 };
 
+export type LocalChatUpdatedPayload = {
+  conversationId?: string;
+  event?: EventRecord;
+};
+
 export type ToolRequestPayload = {
   toolName: string;
   args?: Record<string, unknown>;
