@@ -100,7 +100,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   miniDoubleTapModifier: DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
   preventComputerSleep: false,
   soundNotificationsEnabled: true,
-  wakeWordEnabled: true,
+  wakeWordEnabled: false,
   wakeWordThreshold: 0.55,
 };
 

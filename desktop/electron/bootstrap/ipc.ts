@@ -317,7 +317,7 @@ export const registerBootstrapIpcHandlers = (
   const stellaRoot = lifecycle.getStellaRoot();
   const wakePrefs = stellaRoot
     ? loadLocalPreferences(stellaRoot)
-    : { wakeWordEnabled: true, wakeWordThreshold: 0.55 };
+    : { wakeWordEnabled: false, wakeWordThreshold: 0.55 };
   const wakeword = new WakewordService({
     threshold: wakePrefs.wakeWordThreshold,
     onWake: (event) => {
@@ -350,7 +350,7 @@ export const registerBootstrapIpcHandlers = (
       throw new Error("Blocked untrusted preferences:getWakeWord request.");
     }
     const root = lifecycle.getStellaRoot();
-    if (!root) return true;
+    if (!root) return false;
     return loadLocalPreferences(root).wakeWordEnabled;
   });
 
