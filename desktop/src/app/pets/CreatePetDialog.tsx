@@ -16,6 +16,7 @@ import { showToast } from "@/ui/toast";
 import { PetSprite } from "@/shell/pet/PetSprite";
 import type { PetAnimationState } from "@/shared/contracts/pet";
 import { writeSelectedPetId } from "@/shell/pet/pet-preferences";
+import { addInstalledPet } from "./installed-pets";
 import {
   useCreateUserPetUploadUrl,
   useUserPetMutations,
@@ -100,18 +101,18 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
   const [previewState, setPreviewState] =
     useState<PetAnimationState>("idle");
 
-  const objectUrlRef = useRef<string | null>(null);
+  const objectUrlsRef = useRef<string[]>([]);
   useEffect(
     () => () => {
-      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
+      for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
+      objectUrlsRef.current = [];
     },
     [],
   );
 
   const resetTransient = useCallback(() => {
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-    objectUrlRef.current = null;
+    for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
+    objectUrlsRef.current = [];
     setState({ ...EMPTY });
     setDisplayName("");
     setDescription("");
@@ -147,8 +148,11 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
       void (async () => {
         try {
           const processed = await processUserPetAtlasImage(url);
-          if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-          objectUrlRef.current = processed.objectUrl;
+          for (const u of objectUrlsRef.current) URL.revokeObjectURL(u);
+          objectUrlsRef.current = [processed.objectUrl];
+          if (processed.preview) {
+            objectUrlsRef.current.push(processed.preview.objectUrl);
+          }
           setState({
             jobId: currentJobId,
             blob: processed,
@@ -201,10 +205,8 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
       });
       return;
     }
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
+    for (const u of objectUrlsRef.current) URL.revokeObjectURL(u);
+    objectUrlsRef.current = [];
     processedJobsRef.current = new Set();
     setState({ jobId: null, blob: null, busy: true, error: null });
     try {
@@ -242,20 +244,32 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
     setSubmitting(true);
     try {
       const petId = buildPetId(trimmedName);
+      const previewBlob = state.blob.preview;
       const upload = await createUploadUrl({
         petId,
         spritesheetSha256: state.blob.sha256,
+        ...(previewBlob ? { previewSha256: previewBlob.sha256 } : {}),
         contentType: "image/webp",
       });
-      await uploadUserPetSpritesheetToR2(state.blob.blob, upload.spritesheet);
+      const uploads: Array<Promise<void>> = [
+        uploadUserPetSpritesheetToR2(state.blob.blob, upload.spritesheet),
+      ];
+      if (previewBlob && upload.preview) {
+        uploads.push(
+          uploadUserPetSpritesheetToR2(previewBlob.blob, upload.preview),
+        );
+      }
+      await Promise.all(uploads);
       const created = await createPet({
         petId,
         displayName: trimmedName,
         description: trimmedDescription,
         ...(style.trim() ? { prompt: style.trim() } : {}),
         spritesheetUrl: upload.spritesheet.publicUrl,
+        ...(upload.preview ? { previewUrl: upload.preview.publicUrl } : {}),
         visibility,
       });
+      addInstalledPet(created.petId);
       writeSelectedPetId(created.petId);
       showToast({ title: `“${trimmedName}” is ready`, variant: "success" });
       onOpenChange(false);

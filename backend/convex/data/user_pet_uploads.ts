@@ -141,11 +141,13 @@ export const createUploadUrl = action({
   args: {
     petId: v.string(),
     spritesheetSha256: v.string(),
+    previewSha256: v.optional(v.string()),
     contentType: v.optional(v.string()),
   },
   returns: v.object({
     uploadId: v.string(),
     spritesheet: uploadTargetValidator,
+    preview: v.optional(uploadTargetValidator),
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserIdAction(ctx);
@@ -176,29 +178,40 @@ export const createUploadUrl = action({
     ).replace(/\/+$/, "");
     const uploadId = randomUUID();
     const ownerKey = sha256Hex(ownerId).slice(0, 24);
-    const payloadHash = normalizeSha256(
-      args.spritesheetSha256,
-      "spritesheetSha256",
-    );
-    const key = `${prefix}/${ownerKey}/${petId}/${uploadId}/spritesheet.webp`;
-    const signed = signR2Put({
-      accessKeyId,
-      secretAccessKey,
-      endpoint,
-      bucket,
-      key,
-      payloadHash,
-      contentType,
-      cacheControl: CACHE_CONTROL,
-    });
-    return {
-      uploadId,
-      spritesheet: {
+    const baseKey = `${prefix}/${ownerKey}/${petId}/${uploadId}`;
+    const makeTarget = (filename: string, payloadHash: string) => {
+      const key = `${baseKey}/${filename}`;
+      const signed = signR2Put({
+        accessKeyId,
+        secretAccessKey,
+        endpoint,
+        bucket,
+        key,
+        payloadHash,
+        contentType,
+        cacheControl: CACHE_CONTROL,
+      });
+      return {
         key,
         publicUrl: `${publicBase}/${key}`,
         putUrl: signed.putUrl,
         headers: signed.headers,
-      },
+      };
+    };
+    const spritesheet = makeTarget(
+      "spritesheet.webp",
+      normalizeSha256(args.spritesheetSha256, "spritesheetSha256"),
+    );
+    const preview = args.previewSha256
+      ? makeTarget(
+          "preview.webp",
+          normalizeSha256(args.previewSha256, "previewSha256"),
+        )
+      : undefined;
+    return {
+      uploadId,
+      spritesheet,
+      ...(preview ? { preview } : {}),
     };
   },
 });

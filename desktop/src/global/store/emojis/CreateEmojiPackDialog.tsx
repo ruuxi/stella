@@ -28,6 +28,7 @@ import {
   EMOJI_SHEET_INDICES,
   type EmojiSheetIndex,
   type EmojiSheetBlob,
+  buildEmojiCoverBlob,
   extractFirstImageUrl,
   processSheetImage,
   submitEmojiSheetJob,
@@ -343,16 +344,27 @@ export function CreateEmojiPackDialog({
     }
     setSubmitting(true);
     try {
+      const coverSourceBlob = bothBlobs[coverSheet]!;
+      const coverBlob = await buildEmojiCoverBlob(
+        coverSourceBlob.blob,
+        coverCell,
+      );
+      objectUrlsRef.current.push(coverBlob.objectUrl);
       const upload = await createUploadUrls({
         packId,
         sheet1Sha256: bothBlobs[0]!.sha256,
         sheet2Sha256: bothBlobs[1]!.sha256,
+        coverSha256: coverBlob.sha256,
         contentType: "image/webp",
       });
-      await Promise.all([
+      const uploads: Array<Promise<void>> = [
         uploadSheetToR2(bothBlobs[0]!.blob, upload.sheet1),
         uploadSheetToR2(bothBlobs[1]!.blob, upload.sheet2),
-      ]);
+      ];
+      if (upload.cover) {
+        uploads.push(uploadSheetToR2(coverBlob.blob, upload.cover));
+      }
+      await Promise.all(uploads);
       const created = await createPack({
         packId,
         displayName: trimmedName,
@@ -361,6 +373,7 @@ export function CreateEmojiPackDialog({
           ? { prompt: style.trim() }
           : {}),
         coverEmoji: cover,
+        ...(upload.cover ? { coverUrl: upload.cover.publicUrl } : {}),
         sheet1Url: upload.sheet1.publicUrl,
         sheet2Url: upload.sheet2.publicUrl,
         visibility,

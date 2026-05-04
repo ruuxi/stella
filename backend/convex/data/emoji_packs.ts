@@ -192,6 +192,7 @@ export const createPack = mutation({
     description: v.optional(v.string()),
     prompt: v.optional(v.string()),
     coverEmoji: v.string(),
+    coverUrl: v.optional(v.string()),
     sheet1Url: v.string(),
     sheet2Url: v.string(),
     visibility: emoji_pack_visibility_validator,
@@ -233,6 +234,9 @@ export const createPack = mutation({
     );
     const prompt = normalizeOptionalText(args.prompt, "prompt", MAX_PROMPT);
     const coverEmoji = normalizeRequiredText(args.coverEmoji, "coverEmoji", 16);
+    const coverUrl = args.coverUrl
+      ? normalizeUrl(args.coverUrl, "coverUrl")
+      : undefined;
     const sheet1Url = normalizeUrl(args.sheet1Url, "sheet1Url");
     const sheet2Url = normalizeUrl(args.sheet2Url, "sheet2Url");
     const authorDisplayName = profile.nickname.trim();
@@ -245,6 +249,7 @@ export const createPack = mutation({
       ...(description ? { description } : {}),
       ...(prompt ? { prompt } : {}),
       coverEmoji,
+      ...(coverUrl ? { coverUrl } : {}),
       sheet1Url,
       sheet2Url,
       visibility: args.visibility,

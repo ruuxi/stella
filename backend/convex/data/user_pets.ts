@@ -188,6 +188,7 @@ export const createPet = mutation({
     description: v.string(),
     prompt: v.optional(v.string()),
     spritesheetUrl: v.string(),
+    previewUrl: v.optional(v.string()),
     visibility: user_pet_visibility_validator,
   },
   returns: user_pet_validator,
@@ -227,6 +228,9 @@ export const createPet = mutation({
     );
     const prompt = normalizeOptionalText(args.prompt, "prompt", MAX_PROMPT);
     const spritesheetUrl = normalizeUrl(args.spritesheetUrl, "spritesheetUrl");
+    const previewUrl = args.previewUrl
+      ? normalizeUrl(args.previewUrl, "previewUrl")
+      : undefined;
     const authorDisplayName = profile.nickname.trim();
     const authorHandle = profile.publicHandle.trim().toLowerCase();
     const now = Date.now();
@@ -237,6 +241,7 @@ export const createPet = mutation({
       description,
       ...(prompt ? { prompt } : {}),
       spritesheetUrl,
+      ...(previewUrl ? { previewUrl } : {}),
       visibility: args.visibility,
       searchText: buildSearchText({
         displayName,

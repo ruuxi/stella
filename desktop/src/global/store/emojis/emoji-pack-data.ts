@@ -18,6 +18,7 @@ export type EmojiPackRecord = {
   description?: string;
   prompt?: string;
   coverEmoji: string;
+  coverUrl?: string;
   sheet1Url: string;
   sheet2Url: string;
   visibility: EmojiPackVisibility;
@@ -40,6 +41,7 @@ export type EmojiPackUploadUrls = {
   uploadId: string;
   sheet1: EmojiPackUploadTarget;
   sheet2: EmojiPackUploadTarget;
+  cover?: EmojiPackUploadTarget;
 };
 
 export const emojiPackToActivePack = (
@@ -90,6 +92,7 @@ export function useCreateEmojiPackUploadUrls() {
     packId: string;
     sheet1Sha256: string;
     sheet2Sha256: string;
+    coverSha256?: string;
     contentType?: string;
   }) => Promise<EmojiPackUploadUrls>;
 }

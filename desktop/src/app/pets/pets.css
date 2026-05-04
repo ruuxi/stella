@@ -204,15 +204,10 @@
   border-radius: 12px;
   background: transparent;
   border: 1px solid transparent;
-  cursor: pointer;
   transition:
     background-color 140ms ease,
     border-color 140ms ease;
   text-align: center;
-}
-
-.pets-card:hover {
-  background: var(--button-secondary-hover);
 }
 
 .pets-card[data-selected="true"] {
@@ -246,6 +241,27 @@
   width: 100%;
   font-size: 10px;
   color: var(--text-weak);
+}
+
+.pets-card-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.pets-card-sprite-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 96px;
+  border-radius: 12px;
+  border: 1px dashed var(--border-base);
+  color: var(--text-weak);
+  background: var(--surface-raised);
 }
 
 .pets-card-creator {
