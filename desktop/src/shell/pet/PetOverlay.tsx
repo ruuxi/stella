@@ -22,7 +22,7 @@ import { PetSprite } from "./PetSprite";
 import "./pet-overlay.css";
 
 /** How big the rendered mascot is, in CSS pixels. */
-const MASCOT_SIZE = 96;
+const MASCOT_SIZE = 76;
 /** Pointer drag threshold below which a release counts as a click. */
 const DRAG_THRESHOLD_PX = 4;
 /** Distance from the mascot center where action buttons sit on their arc. */
@@ -88,6 +88,54 @@ export type PetOverlayProps = {
 type ContextMenuState = {
   left: number;
   top: number;
+};
+
+/**
+ * Cross-fade the bubble's inner text whenever the message changes.
+ *
+ * Two layered slots: at any moment one shows the current message and
+ * the other holds the previous message faded to 0. When `message`
+ * changes we flip slots, so the new text fades in at the same time
+ * the old text fades out — no hot-swap, no width pop (parent bubble
+ * has a stable width).
+ */
+type BubbleSlots = { slots: [string, string]; active: 0 | 1 };
+
+const PetBubbleMessage = ({ message }: { message: string }) => {
+  const [{ slots, active }, setBubble] = useState<BubbleSlots>(() => ({
+    slots: [message, ""],
+    active: 0,
+  }));
+
+  useEffect(() => {
+    setBubble((current) => {
+      if (current.slots[current.active] === message) return current;
+      const nextActive: 0 | 1 = current.active === 0 ? 1 : 0;
+      const nextSlots: [string, string] = [...current.slots] as [
+        string,
+        string,
+      ];
+      nextSlots[nextActive] = message;
+      return { slots: nextSlots, active: nextActive };
+    });
+  }, [message]);
+
+  return (
+    <div className="pet-overlay-bubble-message">
+      <span
+        className="pet-overlay-bubble-message-slot"
+        data-active={active === 0 ? "true" : "false"}
+      >
+        {slots[0]}
+      </span>
+      <span
+        className="pet-overlay-bubble-message-slot"
+        data-active={active === 1 ? "true" : "false"}
+      >
+        {slots[1]}
+      </span>
+    </div>
+  );
 };
 
 /**
@@ -481,8 +529,15 @@ export const PetOverlay = ({
         setContextMenu(null);
       }
     };
+    const dismiss = () => setContextMenu(null);
     window.addEventListener("mousedown", handler);
-    return () => window.removeEventListener("mousedown", handler);
+    document.addEventListener("mouseleave", dismiss);
+    window.addEventListener("blur", dismiss);
+    return () => {
+      window.removeEventListener("mousedown", handler);
+      document.removeEventListener("mouseleave", dismiss);
+      window.removeEventListener("blur", dismiss);
+    };
   }, [contextMenu]);
 
   useEffect(() => {
@@ -579,15 +634,18 @@ export const PetOverlay = ({
         onContextMenu={handleContextMenu}
         title={pet.displayName}
       >
-        {showBubble && !statusPillMode && (
-          <div
-            className="pet-overlay-bubble"
-            data-visible={showBubble ? "true" : "false"}
-            data-pet-hit={showBubble ? "true" : "false"}
-          >
-            <div className="pet-overlay-bubble-message">{status.message}</div>
-          </div>
-        )}
+        {/* Always mounted so the fade transitions in the CSS run on
+         *  every show / hide. The bubble cross-fades its inner message
+         *  on text change so message swaps mid-run feel like one
+         *  continuous surface instead of a hot-swap. */}
+        <div
+          className="pet-overlay-bubble"
+          data-visible={showBubble && !statusPillMode ? "true" : "false"}
+          data-pet-hit={showBubble && !statusPillMode ? "true" : "false"}
+          aria-hidden={showBubble && !statusPillMode ? "false" : "true"}
+        >
+          <PetBubbleMessage message={status.message} />
+        </div>
         {/* Apple-style voice / dictation status pill. Always mounted
          *  so the fade-out transition runs cleanly when `mode`
          *  flips to null (e.g. user said "Bye"). The corresponding

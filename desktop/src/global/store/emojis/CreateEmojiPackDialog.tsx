@@ -6,8 +6,9 @@ import {
   useState,
 } from "react";
 import { useQuery } from "convex/react";
-import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/convex/api";
+import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import {
   Dialog,
   DialogBody,
@@ -485,7 +486,7 @@ export function CreateEmojiPackDialog({
                   activeBusy ? "busy" : activeError ? "error" : "empty"
                 }
               >
-                <Sparkles size={22} aria-hidden />
+                <StellaLogoIcon size={22} aria-hidden />
                 <span className="emoji-create-empty-text">
                   {activeBusy
                     ? "Painting your pack…"
@@ -556,7 +557,7 @@ export function CreateEmojiPackDialog({
                   anyBusy || submitting || prompt.trim().length === 0
                 }
               >
-                <Sparkles size={14} />
+                <StellaLogoIcon size={14} aria-hidden />
                 {generateLabel}
               </Button>
               <Button
