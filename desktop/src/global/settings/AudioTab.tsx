@@ -28,6 +28,7 @@ type MicrophonePermissionStatus =
 export function AudioTab() {
   const platform = window.electronAPI?.platform;
   const [micEnabled, setMicEnabled] = useState(() => isMicrophoneEnabled());
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
   const [dictationSuperFast, setDictationSuperFast] = useState(() =>
     isDictationSuperFastEnabled(),
   );
@@ -82,6 +83,31 @@ export function AudioTab() {
   useEffect(() => {
     void syncPermissionStatus();
   }, [syncPermissionStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI?.system
+      ?.getWakeWordEnabled?.()
+      .then((enabled) => {
+        if (!cancelled) setWakeWordEnabled(enabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleWakeWordToggle = useCallback(
+    (checked: boolean) => {
+      setWakeWordEnabled(checked);
+      void window.electronAPI?.system
+        ?.setWakeWordEnabled?.(checked)
+        .catch(() => {
+          setWakeWordEnabled(!checked);
+        });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!micEnabled) {
@@ -185,6 +211,12 @@ export function AudioTab() {
     }
   }, [dictationSuperFast, handleDictationSuperFastToggle, micEnabled]);
 
+  useEffect(() => {
+    if (!micEnabled && wakeWordEnabled) {
+      handleWakeWordToggle(false);
+    }
+  }, [micEnabled, wakeWordEnabled, handleWakeWordToggle]);
+
   const handleMicChange = useCallback((deviceId: string) => {
     setSelectedMicId(deviceId);
     if (deviceId) {
@@ -265,6 +297,24 @@ export function AudioTab() {
               >
                 {microphoneRecovery.isResetting ? "Closing..." : "Reset & Restart"}
               </button>
+            </div>
+          </div>
+        ) : null}
+        {micEnabled ? (
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Hey Stella wake word</div>
+              <div className="settings-row-sublabel">
+                Listen for "Hey Stella" in the background and start a voice
+                conversation. When off, mic stays idle until you press dictate.
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Switch
+                checked={wakeWordEnabled}
+                onCheckedChange={handleWakeWordToggle}
+                hideLabel
+              />
             </div>
           </div>
         ) : null}

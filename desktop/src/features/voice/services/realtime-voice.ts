@@ -114,6 +114,25 @@ type VoiceEchoMetrics = {
   now?: number;
 };
 
+/**
+ * Lightweight goodbye matcher. We only fire on simple terminal
+ * farewells — "bye", "goodbye", "bye stella", etc. — said as a
+ * standalone utterance. Anything embedded in a longer sentence
+ * ("…by Tuesday", "good morning") is left alone so the user can't
+ * accidentally hang up mid-sentence.
+ */
+const GOODBYE_PHRASES = [
+  /^(?:hey\s+|ok(?:ay)?\s+|alright\s+)?(?:bye|goodbye|good\s*bye)(?:\s+stella)?[\s.!?,]*$/i,
+  /^(?:bye|goodbye)\s+(?:now|then|for\s+now)[\s.!?,]*$/i,
+  /^(?:thanks?|thank\s+you)[,\s]+(?:bye|goodbye)[\s.!?,]*$/i,
+];
+
+function matchesGoodbye(transcript: string): boolean {
+  const trimmed = transcript.trim();
+  if (!trimmed) return false;
+  return GOODBYE_PHRASES.some((re) => re.test(trimmed));
+}
+
 function shouldGateVoiceInputForEcho({
   assistantSpeaking,
   micLevel,
@@ -993,6 +1012,30 @@ export class RealtimeVoiceSession {
             text: transcript,
             isFinal: true,
           });
+          if (matchesGoodbye(transcript)) {
+            // The user said "bye" — exit voice mode. We DON'T disconnect
+            // the WebRTC session here: with wake-word pre-warm we want
+            // the connection to stay open with the mic gated off. We
+            // ask main to toggle voice mode off (same path the
+            // keybind / radial wedge uses); main flips
+            // `isVoiceRtcActive=false`, which propagates back to
+            // `VoiceSessionManager.updateSession` and silences the mic
+            // while keeping the pre-warmed session alive for the next
+            // "Hey Stella". Routed via the pet's `requestVoice` IPC
+            // because that's a privileged-sender channel and toggles
+            // the same `togglePetVoice` source of truth used
+            // elsewhere.
+            queueMicrotask(() => {
+              try {
+                window.electronAPI?.pet?.requestVoice?.();
+              } catch (err) {
+                console.debug(
+                  "[realtime-voice] goodbye toggle failed:",
+                  (err as Error).message,
+                );
+              }
+            });
+          }
         }
         break;
       }

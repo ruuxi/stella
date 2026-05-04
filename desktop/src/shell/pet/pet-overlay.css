@@ -112,6 +112,171 @@ html[data-stella-window="pet"] #root {
   pointer-events: auto;
 }
 
+/* ─── Apple-style voice / dictation indicator ─────────────────────── */
+
+/* Soft halo behind the sprite while voice / dictation is active. We
+ * keep this a separate layer (rather than colorizing the sprite
+ * itself) so the sprite art stays untouched and the halo can pulse
+ * independently of the sprite frames. The opacity fade is what makes
+ * the indicator dissolve calmly when the user says "Bye" — pill +
+ * halo unmount via opacity, never via DOM removal. */
+.pet-overlay-aura {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 132px;
+  height: 132px;
+  transform: translate(-50%, -50%) scale(0.92);
+  border-radius: 50%;
+  pointer-events: none;
+  /* Cool, breathing wash for listening; warmer for speaking;
+   * slightly amber for dictation. Color-mixed against the user's
+   * theme so it sits naturally on light & dark backgrounds. */
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--pet-aura-color, #7cc8ff) 38%, transparent) 0%,
+    color-mix(in oklch, var(--pet-aura-color, #7cc8ff) 18%, transparent) 32%,
+    transparent 70%
+  );
+  opacity: 0;
+  transition:
+    opacity 320ms ease-out,
+    transform 320ms ease-out;
+  z-index: 0;
+  filter: blur(2px);
+}
+
+.pet-overlay-aura[data-visible="true"] {
+  opacity: 1;
+  animation: petAuraPulse 2.6s ease-in-out infinite;
+}
+
+.pet-overlay-aura[data-mode="speaking"] {
+  --pet-aura-color: #c89dff;
+  animation-duration: 1.4s;
+}
+
+.pet-overlay-aura[data-mode="dictating"] {
+  --pet-aura-color: #ffb56b;
+  animation-duration: 1.8s;
+}
+
+@keyframes petAuraPulse {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(0.94);
+    opacity: 0.78;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.04);
+    opacity: 1;
+  }
+}
+
+/* Frosted-glass status pill above the sprite. Mirrors the visual
+ * vocabulary of macOS / iOS system pills: small, blurred, neutral,
+ * with a subtle animated indicator on the leading edge. */
+.pet-overlay-status-pill {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 11px 5px 9px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--background) 72%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  box-shadow: 0 8px 22px color-mix(in oklch, black 14%, transparent);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text-strong);
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transform: translateY(4px) scale(0.96);
+  transition:
+    opacity 240ms ease-out,
+    transform 240ms ease-out;
+  z-index: 5;
+}
+
+.pet-overlay-status-pill[data-visible="true"] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* Three-bar mini equalizer that animates while voice/dictation is
+ * active. Apple's voice surfaces use a similar wavy/animated motif on
+ * the left of the label. */
+.pet-overlay-status-pill__indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 12px;
+}
+
+.pet-overlay-status-pill__bar {
+  width: 2px;
+  height: 100%;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--foreground) 65%, transparent);
+  transform-origin: center;
+  animation: petPillBar 1.1s ease-in-out infinite;
+}
+
+.pet-overlay-status-pill__bar:nth-child(1) {
+  animation-delay: 0s;
+}
+.pet-overlay-status-pill__bar:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.pet-overlay-status-pill__bar:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+.pet-overlay-status-pill[data-mode="speaking"] .pet-overlay-status-pill__bar {
+  background: color-mix(in oklch, #c89dff 80%, var(--foreground) 20%);
+  animation-duration: 0.7s;
+}
+
+.pet-overlay-status-pill[data-mode="dictating"] .pet-overlay-status-pill__bar {
+  background: color-mix(in oklch, #ffb56b 75%, var(--foreground) 25%);
+}
+
+@keyframes petPillBar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.pet-overlay-status-pill__label {
+  line-height: 1;
+}
+
+/* Respect reduced motion: drop the pulse / equalizer animations and
+ * fall back to a static state. */
+@media (prefers-reduced-motion: reduce) {
+  .pet-overlay-aura[data-visible="true"] {
+    animation: none;
+  }
+  .pet-overlay-status-pill__bar {
+    animation: none;
+    transform: scaleY(0.7);
+    opacity: 0.85;
+  }
+}
+
 .pet-overlay-mascot[data-dragging="true"] {
   cursor: grabbing;
 }

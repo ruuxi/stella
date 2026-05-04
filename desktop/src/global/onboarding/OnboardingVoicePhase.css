@@ -161,7 +161,7 @@
   flex-shrink: 0;
 }
 
-/* ─── Talk card: voice overlay creature ───────────────────────────── */
+/* ─── Talk card: waving pet sprite + wake-word toggle ─────────────── */
 
 .onboarding-voice-card__stage--talk {
   display: flex;
@@ -169,40 +169,19 @@
   justify-content: center;
 }
 
-/* Mirror of `.voice-overlay-creature`: 120px area with a soft white
- * radial halo behind the animated creature. We render the StellaAnimation
- * at the same 0.5 scale the live overlay uses (animation `to` keyframe). */
-.onboarding-voice-overlay-creature {
-  position: relative;
-  width: 120px;
-  height: 120px;
+.onboarding-voice-card__toggle {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.onboarding-voice-wave-sprite {
   display: flex;
   align-items: center;
   justify-content: center;
-  transform: scale(0.78);
-}
-
-.onboarding-voice-overlay-creature::before {
-  content: "";
-  position: absolute;
-  inset: -40px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(255, 255, 255, 0.95) 30%,
-    rgba(255, 255, 255, 0.85) 38%,
-    rgba(255, 255, 255, 0.6) 48%,
-    rgba(255, 255, 255, 0.32) 58%,
-    rgba(255, 255, 255, 0.12) 68%,
-    transparent 78%
-  );
-  z-index: 0;
+  width: 120px;
+  height: 120px;
   pointer-events: none;
-}
-
-.onboarding-voice-overlay-creature > * {
-  position: relative;
-  z-index: 1;
 }
 
 /* ─── Dictate card: dictation overlay floating over a generic app ─── */

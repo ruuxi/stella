@@ -637,6 +637,8 @@ export type ElectronSystemApi = {
   setSoundNotificationsEnabled: (
     enabled: boolean,
   ) => Promise<{ enabled: boolean }>;
+  getWakeWordEnabled: () => Promise<boolean>;
+  setWakeWordEnabled: (enabled: boolean) => Promise<{ enabled: boolean }>;
   getPersonalityVoice: () => Promise<string | null>;
   setPersonalityVoice: (
     voiceId: string,
@@ -1278,6 +1280,11 @@ type ElectronPetApi = {
   setInteractive: (active: boolean) => void;
   /** Pet voice button — ask main to enter voice (RTC) mode. */
   requestVoice: () => void;
+  /** Pet mic button — start a dictation overlay whose transcript is
+   *  delivered to Stella's chat instead of pasted into the focused app. */
+  requestDictation: () => void;
+  /** Subscribe to pet-mic dictation start/stop broadcasts. */
+  onDictationActive: (callback: (active: boolean) => void) => () => void;
   /** Subscribe to visibility broadcasts coming back from main. */
   onSetOpen: (callback: (open: boolean) => void) => () => void;
   /** Push a derived `PetOverlayStatus` to every renderer. */

@@ -52,6 +52,20 @@ export function VoiceRuntimeRoot() {
   const [bootConversationId, setBootConversationId] = useState<string | null>(
     state.conversationId,
   );
+  /**
+   * Pre-warm: when the wake word is enabled we keep a Realtime WebRTC
+   * session open with the mic gated off (`inputActive=false`). OpenAI
+   * Realtime only bills for streamed audio tokens, so an idle
+   * connection costs nothing — but it removes the ~1s cold-start cost
+   * between "Hey Stella" and Stella starting to listen for real.
+   *
+   * When voice activates (via wake word, keybind, or the radial
+   * wedge), we flip `inputActive=true` and the existing session takes
+   * over. When voice ends, we drop back to pre-warm rather than
+   * tearing down the connection.
+   */
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
+  const sessionShouldRun = state.isVoiceRtcActive || wakeWordEnabled;
   const analyserRef = useRef<AnalyserNode | null>(null);
   const outputAnalyserRef = useRef<AnalyserNode | null>(null);
   const conversationIdRef = useRef<string>(state.conversationId ?? "voice-rtc");
@@ -91,7 +105,7 @@ export function VoiceRuntimeRoot() {
   }, [bootConversationId, state.conversationId]);
 
   useEffect(() => {
-    if (!state.isVoiceRtcActive || state.conversationId || bootConversationId) {
+    if (!sessionShouldRun || state.conversationId || bootConversationId) {
       return;
     }
 
@@ -122,11 +136,40 @@ export function VoiceRuntimeRoot() {
     return () => {
       cancelled = true;
     };
-  }, [bootConversationId, state.conversationId, state.isVoiceRtcActive]);
+  }, [bootConversationId, state.conversationId, sessionShouldRun]);
 
   useEffect(() => {
     inputActiveRef.current = state.isVoiceRtcActive;
   }, [state.isVoiceRtcActive]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI?.system
+      ?.getWakeWordEnabled?.()
+      .then((enabled) => {
+        if (!cancelled) setWakeWordEnabled(enabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The wake-word IPC isn't broadcast on toggle today — re-read the
+  // setting whenever the window regains focus. That's enough to pick
+  // up settings-panel changes without adding a dedicated push channel.
+  useEffect(() => {
+    const refresh = () => {
+      void window.electronAPI?.system
+        ?.getWakeWordEnabled?.()
+        .then(setWakeWordEnabled)
+        .catch(() => undefined);
+    };
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
 
   const stopRuntimeSession = () => {
     if (levelTimerRef.current) {
@@ -145,7 +188,7 @@ export function VoiceRuntimeRoot() {
   };
 
   useEffect(() => {
-    if (!state.isVoiceRtcActive) {
+    if (!sessionShouldRun) {
       stopRuntimeSession();
       return;
     }
@@ -197,7 +240,7 @@ export function VoiceRuntimeRoot() {
         outputLevel: computeEnergy(outputAnalyserRef.current),
       });
     }, LEVEL_SAMPLE_MS);
-  }, [resolvedConversationId, state.isVoiceRtcActive]);
+  }, [resolvedConversationId, sessionShouldRun]);
 
   useEffect(() => {
     return () => {

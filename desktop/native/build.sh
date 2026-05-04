@@ -99,3 +99,27 @@ if [ "$(uname -m)" = "arm64" ]; then
 else
   echo "Skipping parakeet_transcriber: Parakeet Core ML is only enabled for macOS arm64."
 fi
+
+# wakeword_listener — Rust binary, universal macOS via cargo + lipo. Skipped
+# silently if cargo is unavailable so this file is not a hard-dependency on
+# rustup for contributors who only touch the C++/Swift helpers.
+if command -v cargo >/dev/null 2>&1; then
+  echo "Building wakeword_listener (macOS universal)..."
+  pushd wakeword >/dev/null
+  rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null 2>&1 || true
+  MACOSX_DEPLOYMENT_TARGET="$MACOS_MIN_VERSION" cargo build --release --quiet --target aarch64-apple-darwin
+  MACOSX_DEPLOYMENT_TARGET="$MACOS_MIN_VERSION" cargo build --release --quiet --target x86_64-apple-darwin
+  popd >/dev/null
+  lipo -create \
+    -output "$OUTPUT_DIR/wakeword_listener" \
+    "wakeword/target/aarch64-apple-darwin/release/wakeword_listener" \
+    "wakeword/target/x86_64-apple-darwin/release/wakeword_listener"
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force --sign - "$OUTPUT_DIR/wakeword_listener" >/dev/null 2>&1 || true
+  fi
+  mkdir -p "$OUTPUT_DIR/wakeword_models"
+  cp wakeword/models/hey_stella.onnx "$OUTPUT_DIR/wakeword_models/hey_stella.onnx"
+  echo "Build successful: $OUTPUT_DIR/wakeword_listener"
+else
+  echo "Skipping wakeword_listener: cargo not on PATH (install rustup to enable)."
+fi

@@ -87,4 +87,32 @@ foreach ($t in $targets) {
 }
 
 if (-not $allOk) { exit 1 }
+
+# wakeword_listener — Rust binary, x86_64 Windows via cargo. Skipped silently
+# when cargo is unavailable so non-Rust contributors aren't blocked.
+$cargo = Get-Command cargo -ErrorAction SilentlyContinue
+if ($cargo) {
+    Write-Host "Building wakeword_listener.exe..."
+    Push-Location (Join-Path $PSScriptRoot "wakeword")
+    try {
+        & cargo build --release --quiet --target x86_64-pc-windows-msvc
+        if ($LASTEXITCODE -eq 0) {
+            $src = Join-Path (Get-Location) "target\x86_64-pc-windows-msvc\release\wakeword_listener.exe"
+            $dst = Join-Path $outputDir "wakeword_listener.exe"
+            Copy-Item -Force $src $dst
+            $modelsDir = Join-Path $outputDir "wakeword_models"
+            New-Item -ItemType Directory -Force -Path $modelsDir | Out-Null
+            Copy-Item -Force (Join-Path $PSScriptRoot "wakeword\models\hey_stella.onnx") (Join-Path $modelsDir "hey_stella.onnx")
+            Write-Host "  Build successful: $dst"
+        } else {
+            Write-Host "  ERROR: cargo build failed"
+            exit 1
+        }
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-Host "Skipping wakeword_listener: cargo not on PATH (install rustup to enable)."
+}
+
 exit 0

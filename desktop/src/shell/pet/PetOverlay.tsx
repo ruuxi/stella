@@ -34,7 +34,6 @@ const ACTION_ANGLES = [135, 165, 195, 225] as const;
 
 type VoicePetMode = "idle" | "listening" | "speaking";
 
-const VOICE_MIC_LEVEL_THRESHOLD = 0.025;
 const VOICE_OUTPUT_LEVEL_THRESHOLD = 0.02;
 const ASSISTANT_BUBBLE_VISIBLE_MS = 4_000;
 
@@ -42,22 +41,18 @@ const deriveVoicePetMode = (
   state: VoiceRuntimeSnapshot | null | undefined,
   voiceActive: boolean,
 ): VoicePetMode => {
-  if (!voiceActive && !state?.isConnected) return "idle";
+  // With wake-word pre-warm the session can be `isConnected: true`
+  // even when voice mode is off — connection stays open, mic is
+  // gated. Treat the listening / speaking modes as gated on
+  // `voiceActive`; only then do connection / level signals matter.
+  if (!voiceActive) return "idle";
   if (
     state?.isSpeaking ||
     (state?.outputLevel ?? 0) > VOICE_OUTPUT_LEVEL_THRESHOLD
   ) {
     return "speaking";
   }
-  if (
-    voiceActive ||
-    state?.isConnected ||
-    state?.isUserSpeaking ||
-    (state?.micLevel ?? 0) > VOICE_MIC_LEVEL_THRESHOLD
-  ) {
-    return "listening";
-  }
-  return "idle";
+  return "listening";
 };
 
 /**
@@ -131,13 +126,20 @@ export const PetOverlay = ({
    *  on so the textarea can take keystrokes. */
   const [chatOpen, setChatOpen] = useState(false);
   /** Voice (RTC) state. The pet has replaced the standalone voice
-   *  creature overlay: when voice is active, the mic action button
-   *  turns red and the sprite animates listening / speaking based on
-   *  the broadcast `voice:runtimeState`. */
-  const [voiceActive, setVoiceActive] = useState(false);
+   *  creature overlay: when voice is active, the sprite animates
+   *  listening / speaking based on the broadcast `voice:runtimeState`,
+   *  and the bubble reads "Stella is listening" / "Stella is
+   *  speaking". The mic action button is dictation now (voice is
+   *  wake-word driven), so we only need to track active state for
+   *  the bubble + animation precedence below. */
   const voiceActiveRef = useRef(false);
   const [voiceMode, setVoiceMode] = useState<VoicePetMode>("idle");
   const [assistantBubbleVisible, setAssistantBubbleVisible] = useState(true);
+  /** Whether the pet-mic dictation overlay is actively recording.
+   *  Broadcast from main as `pet:dictationActive`. Drives the
+   *  "Sending to Stella…" status pill that complements the voice
+   *  "Listening" pill. */
+  const [petDictationActive, setPetDictationActive] = useState(false);
 
   // Subscribe to the central UI state for `isVoiceRtcActive` (drives
   // the mic button's active red styling) and the voice runtime state
@@ -147,7 +149,6 @@ export const PetOverlay = ({
     const cleanups: Array<() => void> = [];
     const applyVoiceActive = (nextActive: boolean) => {
       voiceActiveRef.current = nextActive;
-      setVoiceActive(nextActive);
       if (nextActive) {
         setVoiceMode((previous) =>
           previous === "idle" ? "listening" : previous,
@@ -177,6 +178,13 @@ export const PetOverlay = ({
     if (voice?.onRuntimeState) {
       void voice.getRuntimeState?.().then(applyRuntimeState);
       const off = voice.onRuntimeState(applyRuntimeState);
+      if (off) cleanups.push(off);
+    }
+    const pet = window.electronAPI?.pet;
+    if (pet?.onDictationActive) {
+      const off = pet.onDictationActive((active) => {
+        setPetDictationActive(active);
+      });
       if (off) cleanups.push(off);
     }
     return () => {
@@ -395,10 +403,14 @@ export const PetOverlay = ({
     if (chatOpen) requestChatOpen();
   }, [chatOpen, requestChatOpen]);
 
-  const handleVoice = useCallback(() => {
+  // The mic action button is dictation, not voice. Voice is wake-word
+  // gated ("Hey Stella") so the user can't accidentally start a
+  // realtime session by clicking. Pressing mic dictates a single
+  // utterance which is auto-sent to Stella's chat.
+  const handleDictate = useCallback(() => {
     setContextMenu(null);
     setChatOpen(false);
-    window.electronAPI?.pet?.requestVoice?.();
+    window.electronAPI?.pet?.requestDictation?.();
   }, []);
 
   const handleExpand = useCallback(() => {
@@ -528,8 +540,31 @@ export const PetOverlay = ({
   const showActions = hover && !dragging;
   const hasBubbleContent =
     Boolean(status.message?.trim()) || Boolean(status.title?.trim());
+  // Voice / dictation get a separate Apple-style status pill +
+  // sprite halo (see below) — not the chat bubble. The bubble keeps
+  // its original role: surfacing agent status messages.
   const showBubble =
     hasBubbleContent && (status.state !== "idle" || assistantBubbleVisible);
+
+  // Status pill mode. Voice listening / speaking takes precedence
+  // over dictation (the realtime session can't be active at the
+  // same time as a pet-mic dictation overlay anyway). The pill
+  // fades out via CSS when `mode === null` so saying "Bye" cleanly
+  // dissolves the indicator instead of cutting it.
+  type StatusPillMode = "listening" | "speaking" | "dictating";
+  const statusPillMode: StatusPillMode | null =
+    voiceMode === "speaking"
+      ? "speaking"
+      : voiceMode === "listening"
+        ? "listening"
+        : petDictationActive
+          ? "dictating"
+          : null;
+  const statusPillLabel: Record<StatusPillMode, string> = {
+    listening: "Listening",
+    speaking: "Stella is speaking",
+    dictating: "Sending to Stella",
+  };
 
   return (
     <div
@@ -550,7 +585,7 @@ export const PetOverlay = ({
         onContextMenu={handleContextMenu}
         title={pet.displayName}
       >
-        {showBubble && (
+        {showBubble && !statusPillMode && (
           <div
             className="pet-overlay-bubble"
             data-visible={showBubble ? "true" : "false"}
@@ -559,6 +594,34 @@ export const PetOverlay = ({
             <div className="pet-overlay-bubble-message">{status.message}</div>
           </div>
         )}
+        {/* Apple-style voice / dictation status pill. Always mounted
+         *  so the fade-out transition runs cleanly when `mode`
+         *  flips to null (e.g. user said "Bye"). The corresponding
+         *  halo sits behind the sprite. */}
+        <div
+          className="pet-overlay-status-pill"
+          data-mode={statusPillMode ?? "idle"}
+          data-visible={statusPillMode ? "true" : "false"}
+          aria-hidden={statusPillMode ? "false" : "true"}
+        >
+          <span
+            className="pet-overlay-status-pill__indicator"
+            data-mode={statusPillMode ?? "idle"}
+          >
+            <span className="pet-overlay-status-pill__bar" />
+            <span className="pet-overlay-status-pill__bar" />
+            <span className="pet-overlay-status-pill__bar" />
+          </span>
+          <span className="pet-overlay-status-pill__label">
+            {statusPillMode ? statusPillLabel[statusPillMode] : ""}
+          </span>
+        </div>
+        <div
+          className="pet-overlay-aura"
+          data-mode={statusPillMode ?? "idle"}
+          data-visible={statusPillMode ? "true" : "false"}
+          aria-hidden="true"
+        />
         <PetSprite
           spritesheetUrl={pet.spritesheetUrl}
           state={animationState}
@@ -577,12 +640,12 @@ export const PetOverlay = ({
               angle: ACTION_ANGLES[0],
             },
             {
-              key: "voice",
-              label: voiceActive ? "Stop voice" : "Talk to Stella",
-              title: voiceActive ? "Stop voice" : "Voice",
+              key: "dictate",
+              label: "Dictate to Stella",
+              title: "Dictate",
               icon: <Mic size={14} />,
-              onClick: handleVoice,
-              active: voiceActive,
+              onClick: handleDictate,
+              active: false,
               angle: ACTION_ANGLES[1],
             },
             {
@@ -609,13 +672,9 @@ export const PetOverlay = ({
           const x = Math.cos(radians) * ACTION_ARC_RADIUS;
           const y = Math.sin(radians) * ACTION_ARC_RADIUS;
           // The chat button stays visible whenever the composer is
-          // open and the voice button stays visible whenever voice is
-          // active — both so the user can always see the toggle
-          // target. The rest of the arc only appears on hover.
-          const visible =
-            showActions ||
-            (key === "chat" && chatOpen) ||
-            (key === "voice" && voiceActive);
+          // open so the user can always see the toggle target. The
+          // rest of the arc only appears on hover.
+          const visible = showActions || (key === "chat" && chatOpen);
           return (
             <button
               key={key}
@@ -624,7 +683,7 @@ export const PetOverlay = ({
               data-visible={visible ? "true" : "false"}
               data-pet-hit={visible ? "true" : "false"}
               data-active={active ? "true" : "false"}
-              data-tone={key === "voice" && active ? "danger" : undefined}
+              data-tone={undefined}
               onClick={onClick}
               aria-label={label}
               aria-pressed={active}

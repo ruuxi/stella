@@ -1,6 +1,10 @@
-import type { CSSProperties } from "react";
-import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { getPlatform } from "@/platform/electron/platform";
+import { Switch } from "@/ui/switch";
+import { DEFAULT_PET_ID } from "@/shell/pet/built-in-pets";
+import { useSelectedPet } from "@/shell/pet/pet-catalog-context";
+import { useSelectedPetId } from "@/shell/pet/pet-preferences";
+import { PetSprite } from "@/shell/pet/PetSprite";
 import { Keychord } from "./Keychord";
 import "./OnboardingVoicePhase.css";
 
@@ -10,12 +14,6 @@ type VoicePhaseProps = {
 };
 
 type KeyLabel = { glyphs: string[]; aria: string };
-
-const TALK_KEY_BY_PLATFORM: Record<string, KeyLabel> = {
-  darwin: { glyphs: ["⌘", "⇧", "D"], aria: "Command Shift D" },
-  win32: { glyphs: ["Ctrl", "Shift", "D"], aria: "Control Shift D" },
-  linux: { glyphs: ["Ctrl", "Shift", "D"], aria: "Control Shift D" },
-};
 
 // On macOS the default dictation shortcut is push-to-talk: hold the Option
 // key. Other platforms keep the Ctrl+M toggle.
@@ -28,36 +26,54 @@ const DICTATE_KEY_BY_PLATFORM: Record<string, KeyLabel> = {
 /**
  * Onboarding "voice" phase.
  *
- * Teaches the two voice shortcuts. Each card mirrors the *actual*
- * overlay surface the user will see when they fire the shortcut so
- * the demo doubles as a visual primer:
- *
- *   - ⌘⇧D: the voice creature in its white radial halo
- *     (`VoiceOverlay` / `voice-overlay-creature`).
- *   - ⌃M: the dictation pill bar with waveform + timer + cancel/confirm
- *     (`DictationOverlay` / `dictation-overlay` + `DictationRecordingBar`),
- *     floating over a generic "any app" surface so it's clear the
- *     bar appears wherever the user is typing — not just inside Stella.
+ * Two side-by-side cards:
+ *   - "Hey Stella" wake-word card with a toggle. The voice agent is
+ *     wake-word gated — there is no keybind for it.
+ *   - Dictation card mirroring the live `dictation-overlay` floating
+ *     above a generic "any app" surface.
  */
 export function OnboardingVoicePhase({
   splitTransitionActive,
   onContinue,
 }: VoicePhaseProps) {
   const platform = getPlatform();
-  const talkKey = TALK_KEY_BY_PLATFORM[platform] ?? TALK_KEY_BY_PLATFORM.darwin;
   const dictateKey =
     DICTATE_KEY_BY_PLATFORM[platform] ?? DICTATE_KEY_BY_PLATFORM.darwin;
+  const [selectedPetId] = useSelectedPetId(DEFAULT_PET_ID);
+  const pet = useSelectedPet(selectedPetId);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI?.system
+      ?.getWakeWordEnabled?.()
+      .then((enabled) => {
+        if (!cancelled) setWakeWordEnabled(enabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleWakeWordToggle = useCallback((checked: boolean) => {
+    setWakeWordEnabled(checked);
+    void window.electronAPI?.system
+      ?.setWakeWordEnabled?.(checked)
+      .catch(() => {
+        setWakeWordEnabled(!checked);
+      });
+  }, []);
 
   return (
     <div className="onboarding-step-content onboarding-voice-step">
       <p className="onboarding-step-desc onboarding-voice-step__lede">
-        Two voice shortcuts that work anywhere on your computer — one to speak
-        with Stella, one to dictate into any app.
+        Say "Hey Stella" anywhere to start a voice conversation. Hold the
+        dictation key to type with your voice in any app.
       </p>
 
       <div className="onboarding-voice-grid">
         <article className="onboarding-voice-card" data-variant="talk">
-          <Keychord aria={talkKey.aria} glyphs={talkKey.glyphs} />
           <div className="onboarding-voice-card__body">
             <header className="onboarding-voice-card__header">
               <div className="onboarding-voice-card__heading">
@@ -65,29 +81,36 @@ export function OnboardingVoicePhase({
                   Speak with Stella
                 </span>
                 <h3 className="onboarding-voice-card__title">
-                  Have a real conversation.
+                  Say "Hey Stella" to start, "Bye" to end.
                 </h3>
+              </div>
+              <div className="onboarding-voice-card__toggle">
+                <Switch
+                  checked={wakeWordEnabled}
+                  onCheckedChange={handleWakeWordToggle}
+                  hideLabel
+                  aria-label="Enable Hey Stella wake word"
+                />
               </div>
             </header>
 
             <div className="onboarding-voice-card__stage onboarding-voice-card__stage--talk">
-              {/* Faithful mock of `voice-overlay-creature`: the Stella
-                  creature inside its white radial halo. */}
-              <div
-                className="onboarding-voice-overlay-creature"
-                aria-hidden="true"
-              >
-                <StellaAnimation
-                  width={20}
-                  height={20}
-                  maxDpr={2}
-                  voiceMode="listening"
-                />
+              <div className="onboarding-voice-wave-sprite" aria-hidden="true">
+                {pet ? (
+                  <PetSprite
+                    spritesheetUrl={pet.spritesheetUrl}
+                    state="waving"
+                    continuous
+                    size={120}
+                  />
+                ) : null}
               </div>
             </div>
 
             <p className="onboarding-voice-card__caption">
-              Stella listens and replies out loud — like a phone call.
+              {wakeWordEnabled
+                ? 'Stella listens for "Hey Stella" in the background. No keybind needed.'
+                : "Wake word off — turn it on to start voice with your voice."}
             </p>
           </div>
         </article>
