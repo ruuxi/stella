@@ -560,40 +560,81 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 24%, transparent);
 }
 
-/* === Create pet dialog === */
+/* === Create pet dialog ===
+   Connect-dialog aesthetic: glass surface, headered top section,
+   generous padding, single-column layout. */
 
-.user-pet-create-dialog {
-  max-width: 880px;
-  width: 100%;
+[data-slot="dialog-content"].user-pet-create-dialog {
+  --pet-create-pad-x: 28px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  max-height: 100%;
+}
+
+[data-component="dialog"][data-fit]:has([data-slot="dialog-content"].user-pet-create-dialog)
+  [data-slot="dialog-container"] {
+  --dialog-width: 540px;
+  height: min(calc(100vh - 16px), 720px);
+  min-height: min(calc(100vh - 16px), 640px);
+}
+
+.user-pet-create-dialog [data-slot="dialog-header"] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  text-align: center;
+  padding: 22px var(--pet-create-pad-x) 18px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+.user-pet-create-title {
+  margin: 0;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 1.7rem;
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--text-strong);
+}
+
+.user-pet-create-caption {
+  margin: 0;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12.5px;
+  color: var(--text-weak);
+  letter-spacing: -0.005em;
+  max-width: 420px;
+}
+
+.user-pet-create-dialog [data-slot="dialog-body"] {
+  flex: 1;
+  min-height: 0;
+  padding: 20px var(--pet-create-pad-x) 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  overflow-y: auto;
 }
 
 .user-pet-create-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: 24px;
-  padding-top: 8px;
-}
-
-@media (max-width: 760px) {
-  .user-pet-create-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.user-pet-create-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  width: 100%;
 }
 
 .user-pet-create-stage {
   display: flex;
   align-items: center;
   justify-content: center;
-  aspect-ratio: 4 / 5;
-  border-radius: 16px;
-  border: 1px solid var(--border-base);
-  background: var(--surface-base, var(--surface-raised));
+  width: 100%;
+  min-height: 220px;
   position: relative;
   overflow: hidden;
 }
@@ -605,7 +646,7 @@
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, var(--primary) 14%, transparent),
+    color-mix(in srgb, var(--primary) 12%, transparent),
     transparent
   );
   background-size: 200% 100%;
@@ -618,11 +659,20 @@
   to { background-position: 200% 0; }
 }
 
-.user-pet-create-stage-placeholder {
-  font-size: 12.5px;
+.user-pet-create-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   color: var(--text-weak);
   text-align: center;
   padding: 0 24px;
+}
+
+.user-pet-create-empty-text {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12.5px;
+  color: var(--text-weak);
 }
 
 .user-pet-create-state-row {
@@ -630,6 +680,7 @@
   flex-wrap: wrap;
   gap: 6px;
   justify-content: center;
+  margin-top: -6px;
 }
 
 .user-pet-create-state-pill {
@@ -754,9 +805,14 @@
 }
 
 .user-pet-create-actions {
+  position: sticky;
+  bottom: -24px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 4px;
+  margin: 8px -28px -24px;
+  padding: 14px 28px;
+  border-top: 1px solid var(--border-weak);
+  z-index: 2;
 }

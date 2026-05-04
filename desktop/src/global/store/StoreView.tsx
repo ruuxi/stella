@@ -2013,7 +2013,7 @@ export function StoreView({
       {!isFullBleedTab || selectedPackageId ? (
         <button
           type="button"
-          className="pill-btn pill-btn--primary store-upload-btn"
+          className="pill-btn pill-btn--primary pill-btn--lg store-upload-btn"
           onClick={handleOpenStoreUpload}
         >
           Upload to Store

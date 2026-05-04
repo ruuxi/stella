@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MoreHorizontal, Search, Sparkles } from "lucide-react";
+import { MoreHorizontal, Search } from "lucide-react";
 import { Button } from "@/ui/button";
+import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import { showToast } from "@/ui/toast";
 import {
   DropdownMenu,
@@ -437,8 +438,8 @@ export function EmojiStorePage() {
         <div className="emoji-page-toolbar-actions">
           <Button
             variant="primary"
-            size="small"
-            className="pill-btn pill-btn--primary"
+            size="normal"
+            className="pill-btn pill-btn--primary pill-btn--lg"
             onClick={() => {
               if (!hasConnectedAccount) {
                 showToast({
@@ -450,7 +451,7 @@ export function EmojiStorePage() {
               setCreateOpen(true);
             }}
           >
-            <Sparkles size={14} />
+            <StellaLogoIcon size={14} aria-hidden />
             Create pack
           </Button>
         </div>

@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
-import { Sparkles } from "lucide-react";
 import { api } from "@/convex/api";
+import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import {
   Dialog,
   DialogBody,
   DialogCloseButton,
   DialogContent,
-  DialogDescription,
+  DialogHeader,
   DialogTitle,
 } from "@/ui/dialog";
 import { Button } from "@/ui/button";
-import { TextField } from "@/ui/text-field";
 import { showToast } from "@/ui/toast";
 import { PetSprite } from "@/shell/pet/PetSprite";
 import type { PetAnimationState } from "@/shared/contracts/pet";
@@ -66,21 +65,9 @@ const PREVIEW_STATES: PetAnimationState[] = [
   "jumping",
 ];
 
-const PET_ID_BASE_PATTERN = /[^a-z0-9]+/g;
-
-const slugify = (value: string): string =>
-  value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(PET_ID_BASE_PATTERN, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-
-const buildPetId = (displayName: string): string => {
-  const slug = slugify(displayName) || "pet";
+const buildPetId = (): string => {
   const suffix = Date.now().toString(36).slice(-6);
-  return `${slug}-${suffix}`;
+  return `pet-${suffix}`;
 };
 
 const isMediaJobSnapshot = (
@@ -93,9 +80,7 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
   const createUploadUrl = useCreateUserPetUploadUrl();
 
   const [state, setState] = useState<GenerationState>({ ...EMPTY });
-  const [displayName, setDisplayName] = useState("");
-  const [description, setDescription] = useState("");
-  const [style, setStyle] = useState("");
+  const [prompt, setPrompt] = useState("");
   const [visibility, setVisibility] = useState<UserPetVisibility>("private");
   const [submitting, setSubmitting] = useState(false);
   const [previewState, setPreviewState] =
@@ -114,9 +99,7 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
     for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
     objectUrlsRef.current = [];
     setState({ ...EMPTY });
-    setDisplayName("");
-    setDescription("");
-    setStyle("");
+    setPrompt("");
     setVisibility("private");
     setSubmitting(false);
     setPreviewState("idle");
@@ -177,8 +160,8 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
     }
   }, [job, state.jobId, state.error]);
 
-  // Cycle preview rows so the user can see the pet animate in different
-  // states without having to interact with the preview.
+  // Cycle preview rows so the user sees the pet animate through a few
+  // states without poking the preview pills.
   useEffect(() => {
     if (!state.blob) return;
     const id = window.setInterval(() => {
@@ -192,9 +175,8 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
 
   const handleStartGeneration = useCallback(async () => {
     if (state.busy) return;
-    const trimmedName = displayName.trim();
-    const trimmedDescription = description.trim();
-    if (!trimmedDescription) {
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) {
       showToast({
         title: "Describe your pet so Stella knows what to draw",
         variant: "error",
@@ -207,9 +189,8 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
     setState({ jobId: null, blob: null, busy: true, error: null });
     try {
       const submission = await submitUserPetAtlasJob({
-        name: trimmedName,
-        description: trimmedDescription,
-        style: style.trim() || undefined,
+        name: "",
+        description: trimmedPrompt,
       });
       setState({
         jobId: submission.jobId,
@@ -223,16 +204,14 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
       setState({ jobId: null, blob: null, busy: false, error: message });
       showToast({ title: message, variant: "error" });
     }
-  }, [description, displayName, state.busy, style]);
+  }, [prompt, state.busy]);
 
   const handlePublish = useCallback(async () => {
     if (!state.blob) return;
-    const trimmedName = displayName.trim() || "Stella pet";
-    const trimmedDescription =
-      description.trim() || style.trim() || "A custom Stella pet.";
+    const trimmedPrompt = prompt.trim() || "A custom Stella pet.";
     setSubmitting(true);
     try {
-      const petId = buildPetId(trimmedName);
+      const petId = buildPetId();
       const previewBlob = state.blob.preview;
       const upload = await createUploadUrl({
         petId,
@@ -251,16 +230,18 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
       await Promise.all(uploads);
       const created = await createPet({
         petId,
-        displayName: trimmedName,
-        description: trimmedDescription,
-        ...(style.trim() ? { prompt: style.trim() } : {}),
+        // Backend enrichment renames this to a friendly Stella-generated
+        // name + description + tags right after insert.
+        displayName: "Stella pet",
+        description: trimmedPrompt,
+        prompt: trimmedPrompt,
         spritesheetUrl: upload.spritesheet.publicUrl,
         ...(upload.preview ? { previewUrl: upload.preview.publicUrl } : {}),
         visibility,
       });
       addInstalledPet(created.petId);
       writeSelectedPetId(created.petId);
-      showToast({ title: `“${created.displayName}” is ready`, variant: "success" });
+      showToast({ title: "Pet ready", variant: "success" });
       onOpenChange(false);
       resetTransient();
     } catch (err) {
@@ -274,12 +255,10 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
   }, [
     createPet,
     createUploadUrl,
-    description,
-    displayName,
     onOpenChange,
+    prompt,
     resetTransient,
     state.blob,
-    style,
     visibility,
   ]);
 
@@ -299,108 +278,100 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
     ? "Regenerate"
     : "Generate";
 
-  const warningCount = state.blob?.warnings.length ?? 0;
   const warningSummary = useMemo(() => {
-    if (!state.blob || warningCount === 0) return null;
+    if (!state.blob || state.blob.warnings.length === 0) return null;
     return state.blob.warnings.slice(0, 2).join(" ");
-  }, [state.blob, warningCount]);
+  }, [state.blob]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent size="xl" className="user-pet-create-dialog">
+      <DialogContent fit className="user-pet-create-dialog">
         <DialogCloseButton disabled={submitting} />
-        <DialogTitle>Create pet</DialogTitle>
-        <DialogDescription>
-          Describe your pet and Stella generates a full animated spritesheet.
-          Idle, walking, waving, jumping — all in one image.
-        </DialogDescription>
+        <DialogHeader>
+          <DialogTitle className="user-pet-create-title">
+            Create a pet
+          </DialogTitle>
+          <p className="user-pet-create-caption">
+            Describe your pet — Stella draws a full animated spritesheet and
+            names it for you.
+          </p>
+        </DialogHeader>
         <DialogBody className="user-pet-create-body">
-          <div className="user-pet-create-preview">
-            <div
-              className="user-pet-create-stage"
-              data-state={
-                state.blob
-                  ? "ready"
-                  : state.busy
-                  ? "busy"
-                  : state.error
-                  ? "error"
-                  : "empty"
-              }
-            >
-              {state.blob ? (
-                <PetSprite
-                  spritesheetUrl={state.blob.objectUrl}
-                  state={previewState}
-                  size={160}
-                />
-              ) : (
-                <div className="user-pet-create-stage-placeholder">
+          <section
+            className="user-pet-create-stage"
+            data-state={
+              state.blob
+                ? "ready"
+                : state.busy
+                ? "busy"
+                : state.error
+                ? "error"
+                : "empty"
+            }
+          >
+            {state.blob ? (
+              <PetSprite
+                spritesheetUrl={state.blob.objectUrl}
+                state={previewState}
+                size={180}
+              />
+            ) : (
+              <div className="user-pet-create-empty">
+                <StellaLogoIcon size={22} aria-hidden />
+                <span className="user-pet-create-empty-text">
                   {state.busy
                     ? "Painting your pet…"
                     : state.error
                     ? state.error
-                    : "Your pet will animate here"}
-                </div>
-              )}
-            </div>
-            {state.blob ? (
-              <div className="user-pet-create-state-row">
-                {PREVIEW_STATES.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className="user-pet-create-state-pill"
-                    data-active={previewState === s || undefined}
-                    onClick={() => setPreviewState(s)}
-                  >
-                    {s.replace("-", " ")}
-                  </button>
-                ))}
+                    : "Your pet appears here"}
+                </span>
               </div>
-            ) : null}
-            {warningSummary ? (
-              <div className="user-pet-create-warning">{warningSummary}</div>
-            ) : null}
-          </div>
+            )}
+          </section>
+
+          {state.blob ? (
+            <div className="user-pet-create-state-row">
+              {PREVIEW_STATES.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="user-pet-create-state-pill"
+                  data-active={previewState === s || undefined}
+                  onClick={() => setPreviewState(s)}
+                >
+                  {s.replace("-", " ")}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {warningSummary ? (
+            <div className="user-pet-create-warning">{warningSummary}</div>
+          ) : null}
 
           <form
             className="user-pet-create-form"
             onSubmit={(event) => {
               event.preventDefault();
+              if (!ready) {
+                void handleStartGeneration();
+                return;
+              }
               void handlePublish();
             }}
           >
-            <TextField
-              label="Pet name"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="Optional — Stella can name it"
-              maxLength={80}
-              autoFocus
-            />
-            <label className="user-pet-create-field">
-              <span className="user-pet-create-field-label">Describe your pet</span>
-              <textarea
-                className="user-pet-create-textarea"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="A leafy green sprout with bright eyes, small leafy ears, and a tiny acorn cap."
-                rows={3}
-                maxLength={500}
-              />
-            </label>
             <label className="user-pet-create-field">
               <span className="user-pet-create-field-label">
-                Style notes <span className="user-pet-create-field-hint">optional</span>
+                How should your pet look?
               </span>
               <textarea
                 className="user-pet-create-textarea"
-                value={style}
-                onChange={(event) => setStyle(event.target.value)}
-                placeholder="Pixel art, thick outline, soft pastel palette…"
-                rows={2}
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                placeholder="A leafy green sprout with bright eyes, small leaf ears, and a tiny acorn cap."
+                rows={3}
                 maxLength={2000}
+                autoFocus
               />
             </label>
 
@@ -430,23 +401,22 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
               <Button
                 type="button"
                 variant="secondary"
-                size="large"
+                size="normal"
                 className="pill-btn pill-btn--lg"
                 onClick={() => void handleStartGeneration()}
-                disabled={state.busy || submitting}
+                disabled={
+                  state.busy || submitting || prompt.trim().length === 0
+                }
               >
-                <Sparkles size={14} />
+                <StellaLogoIcon size={14} aria-hidden />
                 {generateLabel}
               </Button>
               <Button
                 type="submit"
                 variant="primary"
-                size="large"
+                size="normal"
                 className="pill-btn pill-btn--primary pill-btn--lg"
-                disabled={
-                  !ready ||
-                  submitting
-                }
+                disabled={!ready || submitting}
               >
                 {submitting ? "Saving…" : "Save pet"}
               </Button>
