@@ -667,14 +667,51 @@ body[data-display-resizing="true"] .shell-topbar-tablist {
   background: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 
+/* "Add tab" dropdown — adopts the same glass surface as the connect
+   dialog / theme picker / model picker so transient overlays stay in
+   one visual family. Heavier blur, glass background, and roomier item
+   targets distinguish it from inline composer dropdowns. */
 [data-component="dropdown-menu-content"].display-tab-add-menu {
-  min-width: 180px;
+  min-width: 200px;
+  padding: 8px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-base);
+  box-shadow: var(--shadow-overlay);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  [data-component="dropdown-menu-content"].display-tab-add-menu {
+    background: var(--popover, var(--background));
+  }
 }
 
 .display-tab-add-menu__item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-base);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.display-tab-add-menu__item svg {
+  color: var(--text-weak);
+  transition: color 0.12s ease;
+}
+
+.display-tab-add-menu__item[data-highlighted] {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  color: var(--text-strong);
+}
+
+.display-tab-add-menu__item[data-highlighted] svg {
+  color: var(--text-strong);
 }
 
 .shell-topbar-right {
