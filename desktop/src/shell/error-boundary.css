@@ -132,10 +132,66 @@
   );
 }
 
+.error-boundary-btn--danger {
+  border-color: color-mix(in oklch, #ef4444 58%, var(--border-strong));
+  color: color-mix(in oklch, #fecaca 82%, var(--text-base));
+}
+
+.error-boundary-btn--danger:hover:not(:disabled) {
+  background: color-mix(in oklch, #ef4444 14%, var(--background, #111111));
+}
+
 .error-boundary-actions {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
   width: 100%;
+}
+
+.error-boundary-recovery-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.error-boundary-recovery-option__hint {
+  margin: 0;
+  color: var(--text-muted, rgba(229, 229, 229, 0.62));
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.error-boundary-confirm {
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.2));
+  border-radius: var(--radius-lg, 14px);
+  background: color-mix(
+    in oklch,
+    var(--glass-bg, rgba(255, 255, 255, 0.04)) 72%,
+    transparent
+  );
+}
+
+.error-boundary-confirm__title {
+  margin: 0 0 6px;
+  color: var(--text-strong, #ffffff);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.error-boundary-confirm__body {
+  margin: 0 0 12px;
+  color: var(--text-muted, rgba(229, 229, 229, 0.72));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.error-boundary-confirm__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }

@@ -38,6 +38,8 @@ import {
   type RuntimeAutomationTurnResult,
   type RuntimeChatPayload,
   type RuntimeConfigureParams,
+  type RuntimeCrashRecoveryStatus,
+  type RuntimeDiscardUnfinishedResult,
   type RuntimeHealthSnapshot,
   type RuntimeSocialSessionStatus,
   type RuntimeSelfModRevertResult,
@@ -1457,6 +1459,22 @@ export class StellaRuntimeClient {
         ensureWorker: true,
         recordActivity: true,
       },
+    );
+  }
+
+  async getCrashRecoveryStatus() {
+    return await this.requestWorker<RuntimeCrashRecoveryStatus>(
+      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_CRASH_RECOVERY_STATUS,
+      undefined,
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
+  async discardUnfinishedSelfModChanges() {
+    return await this.requestWorker<RuntimeDiscardUnfinishedResult>(
+      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_DISCARD_UNFINISHED,
+      undefined,
+      { ensureWorker: true, recordActivity: true },
     );
   }
 

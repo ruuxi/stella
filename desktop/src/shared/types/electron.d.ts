@@ -550,6 +550,20 @@ export type ElectronAgentApi = {
   onStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void;
   onSelfModHmrState: (callback: (event: SelfModHmrState) => void) => () => void;
   selfModRevert: (featureId?: string, steps?: number) => Promise<unknown>;
+  getCrashRecoveryStatus: () => Promise<
+    | {
+        kind: "dirty";
+        changedFileCount: number;
+        latestChangedAtMs: number | null;
+      }
+    | {
+        kind: "clean";
+        latestFeature: SelfModFeatureSummary | null;
+      }
+  >;
+  discardUnfinishedSelfModChanges: () => Promise<{
+    discardedFileCount: number;
+  }>;
   getLastSelfModFeature: () => Promise<string | null>;
   listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureSummary[]>;
   triggerViteError: () => Promise<{ ok: boolean }>;

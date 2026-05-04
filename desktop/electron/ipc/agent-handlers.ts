@@ -729,6 +729,28 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     },
   );
 
+  ipcMain.handle("selfmod:crashRecoveryStatus", async (event) => {
+    if (!options.assertPrivilegedSender(event, "selfmod:crashRecoveryStatus")) {
+      throw new Error("Blocked untrusted request.");
+    }
+    const stellaHostRunner = options.getStellaHostRunner();
+    if (!stellaHostRunner) {
+      throw new Error("Stella runtime not available");
+    }
+    return await stellaHostRunner.getCrashRecoveryStatus();
+  });
+
+  ipcMain.handle("selfmod:discardUnfinished", async (event) => {
+    if (!options.assertPrivilegedSender(event, "selfmod:discardUnfinished")) {
+      throw new Error("Blocked untrusted request.");
+    }
+    const stellaHostRunner = options.getStellaHostRunner();
+    if (!stellaHostRunner) {
+      throw new Error("Stella runtime not available");
+    }
+    return await stellaHostRunner.discardUnfinishedSelfModChanges();
+  });
+
   ipcMain.handle("selfmod:lastFeature", async (event) => {
     if (!options.assertPrivilegedSender(event, "selfmod:lastFeature")) {
       throw new Error("Blocked untrusted request.");
