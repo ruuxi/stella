@@ -140,6 +140,7 @@ const invokeBrowserFetch = async <T>(
 
 contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
+  arch: process.arch,
 
   window: {
     minimize: () => ipcRenderer.send("window:minimize"),
