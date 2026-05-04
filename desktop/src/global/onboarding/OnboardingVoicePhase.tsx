@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import { getPlatform } from "@/platform/electron/platform";
-import { Switch } from "@/ui/switch";
 import { DEFAULT_PET_ID } from "@/shell/pet/built-in-pets";
 import { useSelectedPet } from "@/shell/pet/pet-catalog-context";
 import { useSelectedPetId } from "@/shell/pet/pet-preferences";
@@ -27,8 +26,8 @@ const DICTATE_KEY_BY_PLATFORM: Record<string, KeyLabel> = {
  * Onboarding "voice" phase.
  *
  * Two side-by-side cards:
- *   - "Hey Stella" wake-word card with a toggle. The voice agent is
- *     wake-word gated — there is no keybind for it.
+ *   - "Hey Stella" wake-word card. Off by default — onboarding just
+ *     points users at Settings → Audio to enable.
  *   - Dictation card mirroring the live `dictation-overlay` floating
  *     above a generic "any app" surface.
  */
@@ -41,29 +40,6 @@ export function OnboardingVoicePhase({
     DICTATE_KEY_BY_PLATFORM[platform] ?? DICTATE_KEY_BY_PLATFORM.darwin;
   const [selectedPetId] = useSelectedPetId(DEFAULT_PET_ID);
   const pet = useSelectedPet(selectedPetId);
-  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void window.electronAPI?.system
-      ?.getWakeWordEnabled?.()
-      .then((enabled) => {
-        if (!cancelled) setWakeWordEnabled(enabled);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleWakeWordToggle = useCallback((checked: boolean) => {
-    setWakeWordEnabled(checked);
-    void window.electronAPI?.system
-      ?.setWakeWordEnabled?.(checked)
-      .catch(() => {
-        setWakeWordEnabled(!checked);
-      });
-  }, []);
 
   return (
     <div className="onboarding-step-content onboarding-voice-step">
@@ -84,14 +60,6 @@ export function OnboardingVoicePhase({
                   Say "Hey Stella" to start, "Bye" to end.
                 </h3>
               </div>
-              <div className="onboarding-voice-card__toggle">
-                <Switch
-                  checked={wakeWordEnabled}
-                  onCheckedChange={handleWakeWordToggle}
-                  hideLabel
-                  aria-label="Enable Hey Stella wake word"
-                />
-              </div>
             </header>
 
             <div className="onboarding-voice-card__stage onboarding-voice-card__stage--talk">
@@ -108,9 +76,7 @@ export function OnboardingVoicePhase({
             </div>
 
             <p className="onboarding-voice-card__caption">
-              {wakeWordEnabled
-                ? 'Stella listens for "Hey Stella" in the background. No keybind needed.'
-                : "Wake word off — turn it on to start voice with your voice."}
+              Off by default — turn on in Settings → Audio.
             </p>
           </div>
         </article>
