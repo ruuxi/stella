@@ -45,21 +45,6 @@ const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   return event.payload as MessagePayload
 }
 
-const getWebSearchBadgeHtml = (events: EventRecord[]): string | undefined => {
-  for (const event of events) {
-    if (event.type !== 'tool_result') continue
-    const payload = event.payload as
-      | { toolName?: string; html?: unknown; result?: unknown }
-      | undefined
-    if (!payload || typeof payload.toolName !== 'string') continue
-    if (payload.toolName.toLowerCase() !== 'web') continue
-    if (typeof payload.html === 'string' && payload.html.trim()) return payload.html
-    if (typeof payload.result === 'string' && payload.result.trim())
-      return payload.result
-  }
-  return undefined
-}
-
 const getOfficePreviewRef = (events: EventRecord[]) => {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
@@ -468,9 +453,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           cacheKey: stableKey,
           ...(isAnimating ? { isAnimating: true } : {}),
           ...(responseTarget ? { responseTarget } : {}),
-          ...(getWebSearchBadgeHtml(toolEvents)
-            ? { webSearchBadgeHtml: getWebSearchBadgeHtml(toolEvents) }
-            : {}),
           ...(getOfficePreviewRef(toolEvents)
             ? { officePreviewRef: getOfficePreviewRef(toolEvents) }
             : {}),

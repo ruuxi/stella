@@ -2,14 +2,13 @@
  * Per-kind viewer components used by the workspace panel's tab manager.
  *
  * Each component is a thin wrapper that delegates to the existing card UI
- * (MediaPreviewCard sub-renderers, OfficePreviewCard, PdfViewerCard,
- * morphdom HTML application). The wrappers exist so the tab spec's
- * `render()` function can be a single `createElement(Component, props)`
- * call — no per-call branching, no `kind` discriminator inside the render
- * path.
+ * (MediaPreviewCard sub-renderers, OfficePreviewCard, PdfViewerCard). The
+ * wrappers exist so the tab spec's `render()` function can be a single
+ * `createElement(Component, props)` call — no per-call branching, no
+ * `kind` discriminator inside the render path.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 import { PdfViewerCard } from "@/app/chat/PdfViewerCard";
 import { Markdown } from "@/app/chat/Markdown";
@@ -72,79 +71,6 @@ export const UrlTabContent = ({
         referrerPolicy="no-referrer"
       />
     </div>
-  );
-};
-
-export const HtmlTabContent = ({ html }: { html: string }) => {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const srcDoc = useMemo(
-    () => {
-      const bridgeScript = `<script>
-document.addEventListener('click', function(event) {
-  var target = event.target && event.target.closest && event.target.closest('[data-action]');
-  if (!target) return;
-  if (target.getAttribute('data-action') === 'send-message') {
-    var prompt = target.getAttribute('data-prompt');
-    if (prompt) parent.postMessage({ type: 'stella:send-message', text: prompt }, '*');
-  }
-});
-</script>`;
-      const trimmed = html.trim();
-      if (/<\/body\s*>/i.test(trimmed)) {
-        return trimmed.replace(/<\/body\s*>/i, `${bridgeScript}</body>`);
-      }
-      if (/<html[\s>]/i.test(trimmed) || /<!doctype\s+html/i.test(trimmed)) {
-        return `${trimmed}${bridgeScript}`;
-      }
-      return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>
-html, body { margin: 0; min-height: 100%; background: transparent; }
-* { box-sizing: border-box; }
-</style>
-</head>
-<body>
-${html}
-${bridgeScript}
-</body>
-</html>`;
-    },
-    [html],
-  );
-
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.source !== iframeRef.current?.contentWindow) return;
-      const data = event.data as { type?: unknown; text?: unknown } | null;
-      if (
-        !data ||
-        data.type !== "stella:send-message" ||
-        typeof data.text !== "string"
-      ) {
-        return;
-      }
-      window.dispatchEvent(
-        new CustomEvent("stella:send-message", {
-          detail: { text: data.text },
-        }),
-      );
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
-
-  return (
-    <iframe
-      ref={iframeRef}
-      title="Canvas"
-      className="display-url-iframe"
-      sandbox="allow-scripts allow-forms allow-modals allow-popups"
-      referrerPolicy="no-referrer"
-      srcDoc={srcDoc}
-    />
   );
 };
 

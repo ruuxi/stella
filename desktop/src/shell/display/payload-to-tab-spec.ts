@@ -1,19 +1,22 @@
 /**
- * Bridge from the legacy `DisplayPayload` IPC contract (one-payload-at-a-
- * time, used by the runtime worker's `displayHtml(...)` and the media
- * materializer) to the new `DisplayTabSpec` model.
+ * Bridge from the `DisplayPayload` IPC contract (one-payload-at-a-time,
+ * used by the media materializer and a few other channels) to the
+ * `DisplayTabSpec` model.
  *
  * Keeping the bridge isolated means the worker / IPC / Convex hooks don't
  * have to learn about the tab manager — they keep speaking
  * `DisplayPayload` and a single mapper turns each one into a tab spec at
  * the renderer boundary.
+ *
+ * `html` payloads from the orchestrator's `Display` tool intentionally
+ * bypass this bridge — they render inline in the chat (see
+ * `InlineHtmlCanvas`) instead of opening a tab.
  */
 
 import { createElement } from "react";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { getDisplayPayloadTitle } from "@/shared/contracts/display-payload";
 import {
-  HtmlTabContent,
   UrlTabContent,
   MarkdownTabContent,
   SourceDiffTabContent,
@@ -33,36 +36,20 @@ import type { DisplayTabSpec } from "./types";
 import { basenameOf, kindForPath } from "./path-to-viewer";
 
 /**
- * Singleton id for the runtime `displayHtml(...)` stream. The runtime
- * worker only ever streams one HTML view at a time, so we intentionally
- * collapse all of them into one tab that morphs in place.
- */
-const HTML_STREAM_TAB_ID = "html:stream";
-
-/**
  * Stable hash for a list of file paths (used as part of media-image tab
  * ids). Sorted so that `[a, b]` and `[b, a]` collapse to the same tab.
  */
 const stableJoin = (paths: string[]): string => [...paths].sort().join("|");
 
 export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
+  if (payload.kind === "html") {
+    // `html` payloads render inline in the chat. They never become a
+    // tab; the workspace panel doesn't know about them.
+    throw new Error("html payloads do not have a tab spec");
+  }
   const title = getDisplayPayloadTitle(payload);
 
   switch (payload.kind) {
-    case "html":
-      return {
-        id:
-          typeof payload.createdAt === "number"
-            ? `html:canvas:${payload.createdAt}`
-            : HTML_STREAM_TAB_ID,
-        kind: "html",
-        title,
-        ...(payload.createdAt
-          ? { metadata: { createdAt: payload.createdAt } }
-          : {}),
-        render: () => createElement(HtmlTabContent, { html: payload.html }),
-      };
-
     case "url":
       return {
         id: payload.tabId,

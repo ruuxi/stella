@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../src/shell/display/tab-content", () => ({
-  HtmlTabContent: () => null,
   UrlTabContent: () => null,
   MarkdownTabContent: () => null,
   SourceDiffTabContent: () => null,
@@ -15,9 +14,9 @@ vi.mock("../../../src/shell/display/tab-content", () => ({
   Model3dTabContent: () => null,
   DownloadTabContent: () => null,
   TextTabContent: () => null,
+  TrashTabContent: () => null,
 }));
 vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
-  HtmlTabContent: () => null,
   UrlTabContent: () => null,
   MarkdownTabContent: () => null,
   SourceDiffTabContent: () => null,
@@ -31,6 +30,7 @@ vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
   Model3dTabContent: () => null,
   DownloadTabContent: () => null,
   TextTabContent: () => null,
+  TrashTabContent: () => null,
 }));
 
 import type { DisplayPayload } from "../../../src/shared/contracts/display-payload";
@@ -40,17 +40,14 @@ const { payloadToTabSpec } = await import(
 );
 
 describe("payloadToTabSpec", () => {
-  it("uses stable per-turn ids for canvas html artifacts", () => {
+  it("refuses to build a tab spec for html canvas payloads (renders inline)", () => {
     const payload: DisplayPayload = {
       kind: "html",
       html: "<canvas></canvas><script>window.ready = true</script>",
       title: "Canvas",
       createdAt: 42,
     };
-    const spec = payloadToTabSpec(payload);
-    expect(spec.id).toBe("html:canvas:42");
-    expect(spec.kind).toBe("html");
-    expect(spec.title).toBe("Canvas");
+    expect(() => payloadToTabSpec(payload)).toThrow();
   });
 
   it("keeps docx office previews as office-document tabs", () => {

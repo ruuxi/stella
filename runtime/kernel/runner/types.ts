@@ -265,7 +265,7 @@ export type RunnerState = {
   webSearch:
     | ((
         query: string,
-        options?: { category?: string; displayResults?: boolean },
+        options?: { category?: string },
       ) => Promise<{
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
@@ -366,7 +366,7 @@ export type RunnerPublicApi = {
   agentHealthCheck: () => AgentHealth;
   webSearch: (
     query: string,
-    options?: { category?: string; displayResults?: boolean },
+    options?: { category?: string },
   ) => Promise<{
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;

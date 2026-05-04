@@ -337,23 +337,6 @@
   letter-spacing: 0.04em;
 }
 
-.event-search-badge {
-  display: inline-flex;
-  width: fit-content;
-  margin-bottom: 4px;
-}
-
-.event-search-badge-label {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  font-size: 10.5px;
-  line-height: 1;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-weak);
-}
-
 .event-attachments {
   display: flex;
   flex-wrap: wrap;

@@ -21,7 +21,6 @@ const TYPE_COLORS = {
   doc: "#2563eb",
   sheet: "#16a34a",
   slides: "#ea580c",
-  html: "#0891b2",
   markdown: "#2563eb",
   diff: "#16a34a",
   image: "#7c3aed",
@@ -119,23 +118,6 @@ const SheetIcon = (props: IconProps) => (
 const SlidesIcon = (props: IconProps) => (
   <Sheet {...props}>
     <TypeBadge color={TYPE_COLORS.slides} label="PPT" />
-  </Sheet>
-);
-
-const HtmlIcon = (props: IconProps) => (
-  <Sheet {...props}>
-    <g
-      transform="translate(5 12.5)"
-      stroke={TYPE_COLORS.html}
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill="none"
-    >
-      <path d="M3.4 0.8L0.8 3.6L3.4 6.4" />
-      <path d="M8.6 0.8L11.2 3.6L8.6 6.4" />
-      <path d="M7 0.4L5 6.8" />
-    </g>
   </Sheet>
 );
 
@@ -409,8 +391,6 @@ export const DisplayTabIcon = ({
       return <DocumentIcon size={size} style={style} />;
     case "office-slides":
       return <SlidesIcon size={size} style={style} />;
-    case "html":
-      return <HtmlIcon size={size} style={style} />;
     case "url":
       return <UrlIcon size={size} style={style} />;
     case "markdown":

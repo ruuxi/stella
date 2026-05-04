@@ -32,13 +32,6 @@ export {
 export const QUEUED_TURN_INTERRUPT_ERROR =
   "Interrupted by queued orchestrator turn";
 
-export const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-
 export const defaultPromptForAgentType = (agentType: string): string => {
   if (isOrchestratorAgentType(agentType)) return DEFAULT_ORCHESTRATOR_PROMPT;
   return DEFAULT_SUBAGENT_PROMPT;

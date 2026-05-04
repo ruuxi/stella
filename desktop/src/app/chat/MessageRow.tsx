@@ -25,6 +25,7 @@ import type {
 } from "@/app/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
 import { EndResourceCard } from "@/app/chat/EndResourceCard";
+import { InlineHtmlCanvas } from "@/app/chat/InlineHtmlCanvas";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
@@ -71,7 +72,6 @@ export type AssistantRowViewModel = {
   /** True while the runtime is still streaming text into this row. */
   isAnimating?: boolean;
   responseTarget?: AgentResponseTarget;
-  webSearchBadgeHtml?: string;
   officePreviewRef?: OfficePreviewRef;
   resourcePayload?: DisplayPayload;
   selfModApplied?: SelfModApplied;
@@ -139,12 +139,6 @@ const summarizeReactions = (envelope: ChannelEnvelope): string | null => {
   const suffix = reactions.length > 3 ? ` +${reactions.length - 3}` : "";
   return `Reactions ${labels.join(" ")}${suffix}`;
 };
-
-const WebSearchBadge = () => (
-  <div className="event-search-badge">
-    <span className="event-search-badge-label">Search briefing</span>
-  </div>
-);
 
 type UserRowProps = {
   row: UserRowViewModel;
@@ -259,7 +253,6 @@ export const AssistantMessageRow = memo(
   function AssistantMessageRow({ row }: AssistantRowProps) {
     const text = row.text;
     const hasText = text.trim().length > 0;
-    const hasWebSearchBadge = Boolean(row.webSearchBadgeHtml?.trim());
     const hasOfficePreview = Boolean(row.officePreviewRef);
     const hasResource = Boolean(row.resourcePayload);
     const hasSelfMod = Boolean(row.selfModApplied);
@@ -271,7 +264,6 @@ export const AssistantMessageRow = memo(
 
     if (
       !hasText &&
-      !hasWebSearchBadge &&
       !hasOfficePreview &&
       !hasResource &&
       !hasSelfMod &&
@@ -289,7 +281,6 @@ export const AssistantMessageRow = memo(
         <div
           className={`event-item assistant${row.isAnimating ? " streaming" : ""}${!hasText && hasAskQuestion ? " event-item--ask-question-only" : ""}`}
         >
-          {hasWebSearchBadge && <WebSearchBadge />}
           {hasText && (
             <Markdown
               text={text}
@@ -300,7 +291,22 @@ export const AssistantMessageRow = memo(
           {row.officePreviewRef && (
             <OfficePreviewCard previewRef={row.officePreviewRef} />
           )}
-          {row.resourcePayload && (
+          {/* Mount the canvas eagerly while this row is animating so the
+              live `Display` stream can morph partial HTML in place — the
+              persisted html arrives later via `resourcePayload` once the
+              tool call completes. The component stays empty (and hidden
+              via CSS) when neither the live stream nor the persisted
+              prop have html yet. */}
+          {(row.resourcePayload?.kind === "html" || row.isAnimating) && (
+            <InlineHtmlCanvas
+              html={
+                row.resourcePayload?.kind === "html"
+                  ? row.resourcePayload.html
+                  : ""
+              }
+            />
+          )}
+          {row.resourcePayload && row.resourcePayload.kind !== "html" && (
             <EndResourceCard payload={row.resourcePayload} />
           )}
           {row.selfModApplied && (

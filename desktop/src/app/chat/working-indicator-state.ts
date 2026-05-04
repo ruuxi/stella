@@ -9,11 +9,13 @@ const getDisplayableTaskDescription = (description: string): string =>
 export function getWorkingIndicatorDisplayStatus({
   status,
   toolName,
+  toolCallId,
   tasks,
   isReasoning,
 }: {
   status?: string;
   toolName?: string;
+  toolCallId?: string;
   tasks?: TaskItem[];
   isReasoning?: boolean;
 }): string {
@@ -42,10 +44,10 @@ export function getWorkingIndicatorDisplayStatus({
     // before the first agent-progress and the description was generic). Prefer
     // an orchestrator tool line over a bare "Working" label.
     if (toolName) {
-      return `${label} · ${computeStatus({ toolName })}`;
+      return `${label} · ${computeStatus({ toolName, seed: toolCallId })}`;
     }
     return label;
   }
 
-  return computeStatus({ toolName, isReasoning });
+  return computeStatus({ toolName, seed: toolCallId, isReasoning });
 }

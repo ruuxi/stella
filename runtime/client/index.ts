@@ -1064,7 +1064,7 @@ export class StellaRuntimeClient {
     );
   }
 
-  async webSearch(query: string, options?: { category?: string; displayResults?: boolean }) {
+  async webSearch(query: string, options?: { category?: string }) {
     return await this.requestWorker<RuntimeWebSearchResult>(
       METHOD_NAMES.INTERNAL_WORKER_WEB_SEARCH,
       { query, ...options },

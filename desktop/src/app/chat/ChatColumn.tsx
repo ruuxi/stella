@@ -242,7 +242,8 @@ export const ChatColumn = memo(function ChatColumn({
           {showThinkingFooter && (
             <StickyThinkingFooter
               tasks={footerTasks}
-              runningTool={runningTool}
+              runningTool={runningTool?.tool}
+              runningToolId={runningTool?.id}
               isStreaming={conversation.streaming.isStreaming}
               status={conversation.streaming.runtimeStatusText}
             />

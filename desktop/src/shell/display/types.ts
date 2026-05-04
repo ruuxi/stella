@@ -16,7 +16,6 @@ import type { ReactNode } from "react";
  */
 export type DisplayTabKind =
   | "chat"
-  | "html"
   | "url"
   | "markdown"
   | "source-diff"
@@ -47,7 +46,6 @@ export type DisplayTabKind =
  *   - `media:text:<sha256-of-text>` (unique per text blob)
  *   - `office:<sourcePath>`
  *   - `pdf:<filePath>`
- *   - `html:<hash>` (or `html:singleton` for the legacy single-HTML stream)
  */
 export type DisplayTabSpec = {
   id: string;

@@ -785,7 +785,7 @@ export class RuntimeClientAdapter {
     }
   }
 
-  webSearch(query: string, options?: { category?: string; displayResults?: boolean }) {
+  webSearch(query: string, options?: { category?: string }) {
     return this.client.webSearch(query, options);
   }
 

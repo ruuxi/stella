@@ -294,19 +294,24 @@ export function extractStepsFromEvents(events: EventRecord[]): StepItem[] {
 }
 
 /**
- * Returns the tool name of the currently-running tool, if any.
+ * Returns the currently-running tool call (name + stable request id),
+ * if any.
  *
  * Linear-history pipeline: walks all tool_request/tool_result events,
  * pairs them by requestId, and returns the unmatched (still running)
  * one. Independent of message-turn grouping (which no longer exists).
+ *
+ * The `id` doubles as a stable seed for the working-indicator's
+ * variation picker — it stays constant for the duration of one tool
+ * call so the friendly label doesn't flicker on each re-render.
  */
 export function getCurrentRunningTool(
   events: EventRecord[],
-): string | undefined {
+): { tool: string; id: string } | undefined {
   const running = extractStepsFromEvents(events).find(
     (s) => s.status === 'running',
   )
-  return running?.tool
+  return running ? { tool: running.tool, id: running.id } : undefined
 }
 
 // Extract tasks from events
