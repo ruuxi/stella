@@ -5,10 +5,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { Download, MoreHorizontal, Plus, Search, Sparkles } from "lucide-react";
+import { Download, MoreHorizontal, Plus, Search } from "lucide-react";
 import { useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
+import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import {
   Dialog,
   DialogBody,
@@ -210,7 +211,7 @@ function PetCard({
           <PetIdlePreview previewUrl={pet.previewUrl!} size={84} />
         ) : (
           <div className="pets-card-sprite-placeholder" aria-hidden>
-            <Sparkles size={20} />
+            <StellaLogoIcon size={20} aria-hidden />
           </div>
         )}
       </div>
@@ -803,8 +804,8 @@ export const PetsApp = () => {
         <div className="pets-toolbar-actions">
           <Button
             variant="primary"
-            size="small"
-            className="pill-btn pill-btn--primary"
+            size="normal"
+            className="pill-btn pill-btn--primary pill-btn--lg"
             onClick={() => {
               if (!hasConnectedAccount) {
                 showToast({
@@ -818,14 +819,16 @@ export const PetsApp = () => {
             data-stella-action="create-pet"
             data-stella-label="Create pet"
           >
-            <Sparkles size={14} />
+            <StellaLogoIcon size={14} aria-hidden />
             Create pet
           </Button>
           <Button
             variant={petOpen ? "secondary" : "primary"}
-            size="small"
+            size="normal"
             className={
-              petOpen ? "pill-btn" : "pill-btn pill-btn--primary"
+              petOpen
+                ? "pill-btn pill-btn--lg"
+                : "pill-btn pill-btn--primary pill-btn--lg"
             }
             onClick={handleToggle}
             data-stella-action="toggle-pet"
