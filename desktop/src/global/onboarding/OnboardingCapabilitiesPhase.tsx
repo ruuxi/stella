@@ -23,7 +23,6 @@ import {
   Plus,
   Presentation,
   Send,
-  Sparkles,
   Upload,
   User,
   Users,
@@ -31,6 +30,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import "./OnboardingCapabilitiesPhase.css";
 
 type CapabilitiesPhaseProps = {
@@ -90,7 +90,7 @@ const STORE_ITEMS: Array<{
   name: string;
   author: string;
   action: "publish" | "install" | "browse";
-  Icon: LucideIcon;
+  Icon: LucideIcon | null;
 }> = [
   { name: "Habit tracker", author: "by you", action: "publish", Icon: Check },
   { name: "Recipe box", author: "by @maya", action: "install", Icon: Download },
@@ -98,9 +98,14 @@ const STORE_ITEMS: Array<{
     name: "Mood journal",
     author: "by @rahul",
     action: "browse",
-    Icon: Sparkles,
+    Icon: null,
   },
-  { name: "Workout plan", author: "by @leo", action: "browse", Icon: Sparkles },
+  {
+    name: "Workout plan",
+    author: "by @leo",
+    action: "browse",
+    Icon: null,
+  },
 ];
 
 const ACTION_TIME_SLOTS = ["7:00", "7:30", "8:00", "8:30", "9:00"];
@@ -420,7 +425,7 @@ function StellaShell({
     <div className="onboarding-cap-shell" data-variant={variant ?? "default"}>
       <div className="onboarding-cap-shell__sidebar">
         <div className="onboarding-cap-shell__brand">
-          <Sparkles size={12} />
+          <StellaLogoIcon size={12} aria-hidden />
           <span>STELLA</span>
         </div>
         <div className="onboarding-cap-shell__nav">
@@ -613,7 +618,7 @@ function ConnectionScene({ active }: { active: boolean }) {
         <div className="onboarding-cap-phone__notch" />
         <div className="onboarding-cap-phone__header">
           <span className="onboarding-cap-phone__avatar">
-            <Sparkles size={11} />
+            <StellaLogoIcon size={11} aria-hidden />
           </span>
           <span className="onboarding-cap-phone__name">Stella</span>
         </div>
@@ -705,7 +710,11 @@ function StoreScene({ active }: { active: boolean }) {
                 style={{ animationDelay: `${300 + i * 200}ms` }}
               >
                 <div className="onboarding-cap-store__card-art">
-                  <Icon size={12} />
+                  {Icon ? (
+                    <Icon size={12} />
+                  ) : (
+                    <StellaLogoIcon size={12} aria-hidden />
+                  )}
                 </div>
                 <div className="onboarding-cap-store__card-meta">
                   <span className="onboarding-cap-store__card-name">
@@ -753,7 +762,7 @@ function TogetherScene({ active }: { active: boolean }) {
             Maya
           </span>
           <span className="onboarding-cap-together__avatar" data-color="stella">
-            <Sparkles size={11} />
+            <StellaLogoIcon size={11} aria-hidden />
             Stella
           </span>
         </div>
@@ -823,7 +832,7 @@ function ModesScene({ active }: { active: boolean }) {
         </div>
         <div className="onboarding-cap-mini">
           <div className="onboarding-cap-mini__bar">
-            <Sparkles size={11} />
+            <StellaLogoIcon size={11} aria-hidden />
             <span>Stella</span>
             <span className="onboarding-cap-mini__actions">
               <Maximize2 size={10} />

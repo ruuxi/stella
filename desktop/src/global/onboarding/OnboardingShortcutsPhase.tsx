@@ -5,7 +5,8 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { ArrowUp, Plus, Sparkles, X } from "lucide-react";
+import { ArrowUp, Plus, X } from "lucide-react";
+import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import { StellaAppMock } from "./panels/StellaAppMock";
 import { RadialDialDemo } from "./panels/radial/RadialDialDemo";
 
@@ -112,7 +113,7 @@ export function OnboardingShortcutsPhase({
                       className="onboarding-shortcut-sidebar-demo__avatar"
                       aria-hidden="true"
                     >
-                      <Sparkles size={11} />
+                      <StellaLogoIcon size={11} aria-hidden />
                     </div>
                     <span className="onboarding-shortcut-sidebar-demo__title">
                       Stella

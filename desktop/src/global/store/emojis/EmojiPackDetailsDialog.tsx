@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Dialog,
   DialogBody,
@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/ui/dialog";
 import { Button } from "@/ui/button";
+import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import { showToast } from "@/ui/toast";
 import {
   EMOJI_SHEETS,
@@ -219,7 +220,7 @@ export function EmojiPackDetailsDialog({
                 onClick={() => void handlePrimary()}
                 disabled={submitting}
               >
-                <Sparkles size={14} />
+                <StellaLogoIcon size={14} aria-hidden />
                 {active
                   ? "Stop using"
                   : submitting

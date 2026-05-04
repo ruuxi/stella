@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, Maximize2, Plus, Sparkles, X } from "lucide-react";
+import { ArrowUp, Maximize2, Plus, X } from "lucide-react";
 import { getPlatform } from "@/platform/electron/platform";
+import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import "./OnboardingDoubleTapPhase.css";
 
 type DoubleTapPhaseProps = {
@@ -245,7 +246,7 @@ export function OnboardingDoubleTapPhase({
           >
             <div className="onboarding-doubletap-mini__bar">
               <span className="onboarding-doubletap-mini__brand">
-                <Sparkles size={11} />
+                <StellaLogoIcon size={11} aria-hidden />
                 Stella
               </span>
               <div className="onboarding-doubletap-mini__actions">
