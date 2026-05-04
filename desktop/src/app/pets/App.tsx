@@ -5,7 +5,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { Download, MoreHorizontal, Plus, Search } from "lucide-react";
+import {
+  Compass,
+  Download,
+  MoreHorizontal,
+  Plus,
+  Search,
+  User,
+} from "lucide-react";
 import { useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
@@ -449,6 +456,7 @@ export const PetsApp = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<UserPetRecord | null>(null);
   const [detailsTarget, setDetailsTarget] = useState<BuiltInPet | null>(null);
+  const [viewMode, setViewMode] = useState<"discover" | "mine">("discover");
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const myUserPets = useMyUserPets(hasConnectedAccount);
@@ -803,9 +811,46 @@ export const PetsApp = () => {
         </label>
         <div className="pets-toolbar-actions">
           <Button
+            variant="secondary"
+            size="normal"
+            className="pill-btn pill-btn--lg"
+            onClick={() => {
+              if (viewMode === "mine") {
+                setViewMode("discover");
+                return;
+              }
+              if (!hasConnectedAccount) {
+                showToast({
+                  title: "Sign in to see your pets",
+                  variant: "error",
+                });
+                return;
+              }
+              setViewMode("mine");
+            }}
+            data-stella-action="toggle-pets-view"
+            data-stella-state={viewMode}
+          >
+            {viewMode === "mine" ? (
+              <>
+                <Compass size={14} aria-hidden />
+                Discover
+              </>
+            ) : (
+              <>
+                <User size={14} aria-hidden />
+                My pets
+              </>
+            )}
+          </Button>
+          <Button
             variant="primary"
             size="normal"
             className="pill-btn pill-btn--primary pill-btn--lg"
+            style={{
+              borderColor:
+                "color-mix(in oklch, var(--primary-foreground) 30%, transparent)",
+            }}
             onClick={() => {
               if (!hasConnectedAccount) {
                 showToast({
@@ -830,6 +875,14 @@ export const PetsApp = () => {
                 ? "pill-btn pill-btn--lg"
                 : "pill-btn pill-btn--primary pill-btn--lg"
             }
+            style={
+              petOpen
+                ? undefined
+                : {
+                    borderColor:
+                      "color-mix(in oklch, var(--primary-foreground) 30%, transparent)",
+                  }
+            }
             onClick={handleToggle}
             data-stella-action="toggle-pet"
             data-stella-label={petOpen ? "Hide pet" : "Show pet"}
@@ -840,7 +893,7 @@ export const PetsApp = () => {
         </div>
       </div>
 
-      {myUserPets && myUserPets.length > 0 ? (
+      {viewMode === "discover" && myUserPets && myUserPets.length > 0 ? (
         <section className="pets-your-section">
           <div className="pets-your-header">
             <span className="pets-your-title">Your pets</span>
@@ -972,73 +1025,217 @@ export const PetsApp = () => {
         </section>
       ) : null}
 
-      <div className="pets-tags" role="tablist" aria-label="Filter by tag">
-        <button
-          type="button"
-          role="tab"
-          className="pets-tag-pill"
-          data-active={activeTag === ALL_TAG ? "true" : "false"}
-          aria-selected={activeTag === ALL_TAG}
-          onClick={() => setActiveTag(ALL_TAG)}
-        >
-          All
-        </button>
-        {tagOptions.map((tag) => (
+      {viewMode === "discover" ? (
+        <div className="pets-tags" role="tablist" aria-label="Filter by tag">
           <button
-            key={tag}
             type="button"
             role="tab"
             className="pets-tag-pill"
-            data-active={activeTag === tag ? "true" : "false"}
-            aria-selected={activeTag === tag}
-            onClick={() => setActiveTag(tag)}
+            data-active={activeTag === ALL_TAG ? "true" : "false"}
+            aria-selected={activeTag === ALL_TAG}
+            onClick={() => setActiveTag(ALL_TAG)}
           >
-            {tag}
+            All
           </button>
-        ))}
-      </div>
-
-      {visiblePets.length === 0 && !isLoadingFirstPage ? (
-        <div className="pets-empty">
-          No pets match that filter — try a different tag or clear the search.
-        </div>
-      ) : (
-        <>
-          <div className="pets-grid">
-            {visiblePets.map((pet) => {
-              const isSelected = pet.id === selectedPetId;
-              const installed = isInstalled(pet.id);
-              const cardState: PetCardActionState = isSelected
-                ? "selected"
-                : installed
-                ? "installed"
-                : "uninstalled";
-              return (
-                <PetCard
-                  key={pet.id}
-                  pet={pet}
-                  state={cardState}
-                  removable={!isBundledPetId(pet.id)}
-                  ownIdleStrip={userPetIds.has(pet.id)}
-                  onOpen={() => setDetailsTarget(pet)}
-                  onGet={() => setDetailsTarget(pet)}
-                  onSelect={() => handleSelect(pet.id)}
-                  onRemove={() => handleRemove(pet.id)}
-                />
-              );
-            })}
-          </div>
-          {showPagingFooter && (
-            <div
-              ref={sentinelRef}
-              className="pets-grid-sentinel"
-              data-loading={isLoadingMore ? "true" : "false"}
-              aria-hidden="true"
+          {tagOptions.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              role="tab"
+              className="pets-tag-pill"
+              data-active={activeTag === tag ? "true" : "false"}
+              aria-selected={activeTag === tag}
+              onClick={() => setActiveTag(tag)}
             >
-              {isLoadingMore ? "Loading more…" : ""}
+              {tag}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {viewMode === "discover" ? (
+        visiblePets.length === 0 && !isLoadingFirstPage ? (
+          <div className="pets-empty">
+            No pets match that filter — try a different tag or clear the search.
+          </div>
+        ) : (
+          <>
+            <div className="pets-grid">
+              {visiblePets.map((pet) => {
+                const isSelected = pet.id === selectedPetId;
+                const installed = isInstalled(pet.id);
+                const cardState: PetCardActionState = isSelected
+                  ? "selected"
+                  : installed
+                  ? "installed"
+                  : "uninstalled";
+                return (
+                  <PetCard
+                    key={pet.id}
+                    pet={pet}
+                    state={cardState}
+                    removable={!isBundledPetId(pet.id)}
+                    ownIdleStrip={userPetIds.has(pet.id)}
+                    onOpen={() => setDetailsTarget(pet)}
+                    onGet={() => setDetailsTarget(pet)}
+                    onSelect={() => handleSelect(pet.id)}
+                    onRemove={() => handleRemove(pet.id)}
+                  />
+                );
+              })}
+            </div>
+            {showPagingFooter && (
+              <div
+                ref={sentinelRef}
+                className="pets-grid-sentinel"
+                data-loading={isLoadingMore ? "true" : "false"}
+                aria-hidden="true"
+              >
+                {isLoadingMore ? "Loading more…" : ""}
+              </div>
+            )}
+          </>
+        )
+      ) : (
+        <section className="pets-your-section">
+          <div className="pets-your-header">
+            <span className="pets-your-title">My pets</span>
+            {myUserPets && myUserPets.length > 0 ? (
+              <span className="pets-your-count">{myUserPets.length}</span>
+            ) : null}
+          </div>
+          {!myUserPets ? (
+            <div className="pets-empty">Loading…</div>
+          ) : myUserPets.length === 0 ? (
+            <div className="pets-empty">
+              You haven't created any pets yet.
+            </div>
+          ) : (
+            <div className="pets-grid">
+              {myUserPets.map((pet) => {
+                const builtIn = userPetToBuiltIn(pet);
+                const isSelected = pet.petId === selectedPetId;
+                const cardState: PetCardActionState = isSelected
+                  ? "selected"
+                  : "installed";
+                return (
+                  <PetCard
+                    key={pet.petId}
+                    pet={builtIn}
+                    state={cardState}
+                    removable={false}
+                    ownIdleStrip
+                    badge={
+                      pet.visibility === "private"
+                        ? { label: "Private", tier: "private" }
+                        : pet.visibility === "unlisted"
+                        ? { label: "Unlisted", tier: "unlisted" }
+                        : null
+                    }
+                    onOpen={() => setDetailsTarget(builtIn)}
+                    onGet={() => handleGet(pet.petId)}
+                    onSelect={() => handleSelect(pet.petId)}
+                    onRemove={() => handleRemove(pet.petId)}
+                    menu={
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="pets-card-menu-btn"
+                              aria-label={`More actions for ${pet.displayName}`}
+                            >
+                              <MoreHorizontal size={14} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="end"
+                            sideOffset={6}
+                            className="store-card-menu"
+                          >
+                            <DropdownMenuLabel className="store-card-menu-label">
+                              Visibility
+                            </DropdownMenuLabel>
+                            <DropdownMenuRadioGroup
+                              value={pet.visibility}
+                              onValueChange={(value) => {
+                                if (
+                                  value === "public" ||
+                                  value === "unlisted" ||
+                                  value === "private"
+                                ) {
+                                  void handleSetUserPetVisibility(pet, value);
+                                }
+                              }}
+                            >
+                              <DropdownMenuRadioItem
+                                value="public"
+                                className="store-card-menu-item"
+                              >
+                                <div className="store-card-menu-item-text">
+                                  <span className="store-card-menu-item-title">
+                                    Public
+                                  </span>
+                                  <span className="store-card-menu-item-sub">
+                                    Listed on the Store
+                                  </span>
+                                </div>
+                              </DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem
+                                value="unlisted"
+                                className="store-card-menu-item"
+                              >
+                                <div className="store-card-menu-item-text">
+                                  <span className="store-card-menu-item-title">
+                                    Unlisted
+                                  </span>
+                                  <span className="store-card-menu-item-sub">
+                                    Anyone with the link
+                                  </span>
+                                </div>
+                              </DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem
+                                value="private"
+                                className="store-card-menu-item"
+                              >
+                                <div className="store-card-menu-item-text">
+                                  <span className="store-card-menu-item-title">
+                                    Private
+                                  </span>
+                                  <span className="store-card-menu-item-sub">
+                                    Only you
+                                  </span>
+                                </div>
+                              </DropdownMenuRadioItem>
+                            </DropdownMenuRadioGroup>
+                            <DropdownMenuSeparator className="store-card-menu-separator" />
+                            <DropdownMenuItem
+                              className="store-card-menu-item"
+                              onSelect={() => setShareTarget(pet)}
+                            >
+                              Share with friends
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="store-card-menu-item store-card-menu-item--danger"
+                              onSelect={() => {
+                                const ok = window.confirm(
+                                  `Delete "${pet.displayName}"? This cannot be undone.`,
+                                );
+                                if (ok) void handleDeleteUserPet(pet);
+                              }}
+                            >
+                              Delete pet
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    }
+                  />
+                );
+              })}
             </div>
           )}
-        </>
+        </section>
       )}
 
       <CreatePetDialog open={createOpen} onOpenChange={setCreateOpen} />
