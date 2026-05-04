@@ -318,6 +318,20 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
           throw error;
         }
       }
+      for (const api of installed.apis) {
+        if (!api.baseUrl) continue;
+        if (api.auth?.type !== "oauth" || !api.auth.tokenKey) continue;
+        try {
+          oauthResults.push(await connectMcpOAuth(stellaRoot, {
+            tokenKey: api.auth.tokenKey,
+            resourceUrl: api.baseUrl,
+            openUrl: (url) => shell.openExternal(url),
+          }));
+        } catch (error) {
+          await removeOfficialConnector(stellaRoot, payload.marketplaceKey);
+          throw error;
+        }
+      }
       return {
         installedServers: installed.servers.map((server) => ({
           id: server.id,

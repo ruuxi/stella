@@ -520,6 +520,7 @@ export const registerConnectorWebhookRoutes = (http: HttpRouter) => {
             groupId,
             attachments,
             channelEnvelope: envelope,
+            respond: !update.edited_message,
           });
         }
   

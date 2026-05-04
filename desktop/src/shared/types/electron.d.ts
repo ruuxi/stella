@@ -925,7 +925,7 @@ export type StellaConnectorSummary = {
     secret?: boolean;
     placeholder?: string;
   }>;
-  status: "official-mcp" | "official-api" | "implemented";
+  status: "local" | "official-mcp" | "official-api" | "implemented";
   installed: boolean;
 };
 

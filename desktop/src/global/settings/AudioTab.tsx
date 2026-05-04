@@ -118,30 +118,17 @@ export function AudioTab() {
       return;
     }
 
-    // Need at least a transient permission to enumerate labelled devices
     let cancelled = false;
     void (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        stream.getTracks().forEach((t) => t.stop());
-        if (!cancelled) {
-          await syncPermissionStatus();
-          await loadDevices();
-        }
-      } catch {
-        if (!cancelled) {
-          await syncPermissionStatus();
-          // Permission denied or no devices — still try enumerateDevices
-          await loadDevices();
-        }
+      await syncPermissionStatus();
+      if (!cancelled) {
+        await loadDevices();
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [micEnabled, loadDevices]);
+  }, [micEnabled, loadDevices, syncPermissionStatus]);
 
   const handleMicToggle = useCallback(
     (checked: boolean) => {

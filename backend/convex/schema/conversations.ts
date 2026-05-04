@@ -56,6 +56,7 @@ export const pendingDeviceSelectionValidator = v.object({
   createdAt: v.number(),
   provider: v.string(),
   promptText: v.string(),
+  userMessageId: v.optional(v.id("events")),
   attachments: v.optional(v.array(channelAttachmentValidator)),
   channelEnvelope: optionalChannelEnvelopeValidator,
   deliveryMeta: jsonValueValidator,

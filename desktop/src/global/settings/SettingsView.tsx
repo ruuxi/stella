@@ -828,6 +828,7 @@ function BasicSettingsTab() {
     activeAction: activePermissionAction,
     restartRecommended: screenRestartRecommended,
     isRestarting: isRestartingAfterPermissions,
+    refresh: refreshPermissions,
     requestWithSettingsFallback,
     restart: restartAfterPermissionChange,
   } = useDesktopPermissions({
@@ -838,11 +839,50 @@ function BasicSettingsTab() {
     errorMessage: formatPermissionLoadError,
   });
 
+  const [requestingMicrophonePermission, setRequestingMicrophonePermission] =
+    useState(false);
+
+  const requestMicrophonePermission = useCallback(async () => {
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices?.getUserMedia) {
+      throw new Error("Microphone permission requests are unavailable.");
+    }
+
+    setRequestingMicrophonePermission(true);
+    try {
+      const latestStatus = await refreshPermissions();
+      if (latestStatus.microphone) return;
+
+      if (latestStatus.microphoneStatus === "denied") {
+        await window.electronAPI?.system.openPermissionSettings?.("microphone");
+        throw new Error(
+          "Microphone access was denied earlier. Turn it on in System Settings, then reopen Stella.",
+        );
+      }
+
+      const stream = await mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+
+      const nextStatus = await refreshPermissions();
+      if (!nextStatus.microphone) {
+        throw new Error(
+          "Microphone access is still off. Turn it on in System Settings, then reopen Stella.",
+        );
+      }
+    } finally {
+      setRequestingMicrophonePermission(false);
+    }
+  }, [refreshPermissions]);
+
   const handlePermissionEnable = useCallback(
-    async (kind: "accessibility" | "screen") => {
+    async (kind: "accessibility" | "screen" | "microphone") => {
       setPermissionsError(null);
       try {
-        await requestWithSettingsFallback(kind);
+        if (kind === "microphone") {
+          await requestMicrophonePermission();
+        } else {
+          await requestWithSettingsFallback(kind);
+        }
       } catch (error) {
         setPermissionsError(
           getSettingsErrorMessage(
@@ -852,7 +892,7 @@ function BasicSettingsTab() {
         );
       }
     },
-    [requestWithSettingsFallback, setPermissionsError],
+    [requestMicrophonePermission, requestWithSettingsFallback, setPermissionsError],
   );
 
   const handlePermissionRestart = useCallback(async () => {
@@ -1133,9 +1173,18 @@ function BasicSettingsTab() {
                 type="button"
                 variant="ghost"
                 className="settings-btn"
-                disabled
+                disabled={
+                  !permissionsLoaded ||
+                  permissionStatus.microphone ||
+                  requestingMicrophonePermission
+                }
+                onClick={() => void handlePermissionEnable("microphone")}
               >
-                {permissionStatus.microphone ? "Granted" : "Not granted"}
+                {permissionStatus.microphone
+                  ? "Granted"
+                  : requestingMicrophonePermission
+                    ? "Opening..."
+                    : "Enable"}
               </Button>
               <Button
                 type="button"
