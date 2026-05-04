@@ -1148,6 +1148,7 @@ export type ElectronOfficePreviewApi = {
 
 export type ElectronApi = {
   platform: string;
+  arch: string;
   display: ElectronDisplayApi;
   officePreview: ElectronOfficePreviewApi;
   window: ElectronWindowApi;

@@ -568,6 +568,8 @@ export const registerDictationHandlers = (
 
   ipcMain.handle("dictation:warmLocal", () => warmLocalParakeet());
 
+  ipcMain.handle("dictation:localStatus", () => getLocalParakeetStatus());
+
   ipcMain.handle(
     "dictation:transcribeLocal",
     async (

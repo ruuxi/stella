@@ -27,6 +27,10 @@ type MicrophonePermissionStatus =
 
 export function AudioTab() {
   const platform = window.electronAPI?.platform;
+  const arch = window.electronAPI?.arch;
+  const localDictationSupported = platform === "darwin" && arch === "arm64";
+  const [localDictationUnavailableReason, setLocalDictationUnavailableReason] =
+    useState<string | null>(null);
   const [micEnabled, setMicEnabled] = useState(() => isMicrophoneEnabled());
   const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
   const [dictationSuperFast, setDictationSuperFast] = useState(() =>
@@ -200,6 +204,23 @@ export function AudioTab() {
     setLocalDictation(checked);
     setLocalDictationPreference(checked);
   }, []);
+
+  useEffect(() => {
+    if (!localDictationSupported) return;
+    let cancelled = false;
+    void window.electronAPI?.dictation
+      ?.localStatus?.()
+      .then((status) => {
+        if (cancelled) return;
+        setLocalDictationUnavailableReason(
+          status.available ? null : (status.reason ?? "Unavailable on this Mac."),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [localDictationSupported]);
 
   useEffect(() => {
     if (!micEnabled && dictationSuperFast) {
@@ -376,19 +397,20 @@ export function AudioTab() {
             </div>
           </div>
         ) : null}
-        {platform === "darwin" && micEnabled ? (
+        {localDictationSupported && micEnabled ? (
           <div className="settings-row">
             <div className="settings-row-info">
               <div className="settings-row-label">On-device transcription</div>
               <div className="settings-row-sublabel">
-                Use the local Parakeet model instead of Inworld. This can use
-                more memory on lower-end Macs.
+                {localDictationUnavailableReason ??
+                  "Use the local Parakeet model instead of Inworld. This can use more memory on lower-end Macs."}
               </div>
             </div>
             <div className="settings-row-control">
               <Switch
-                checked={localDictation}
+                checked={localDictation && !localDictationUnavailableReason}
                 onCheckedChange={handleLocalDictationToggle}
+                disabled={Boolean(localDictationUnavailableReason)}
                 hideLabel
               />
             </div>
