@@ -13,6 +13,7 @@ import {
   usageSummaryFromAssistant,
 } from "../runtime_ai/managed";
 import { requireBoundedString } from "../shared_validators";
+import { isBlockedContentTag } from "../lib/content_tags";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_TAGS = 8;
@@ -32,6 +33,7 @@ const ASSET_METADATA_SYSTEM_PROMPT = [
   "Return only JSON. No markdown.",
   "Prefer short, friendly names. Descriptions should be one Store-card sentence.",
   "Tags should be lowercase, user-facing filter labels like cute, pixel, animal, cozy, fantasy, food, robot, spooky, pastel, neon, object, emoji, pet.",
+  "Never use nsfw as a tag or category.",
 ].join("\n");
 
 const ASSET_METADATA_OUTPUT_INSTRUCTIONS = [
@@ -74,7 +76,7 @@ const normalizeTags = (value: unknown): string[] => {
   const seen = new Set<string>();
   for (const raw of value) {
     const tag = normalizeTag(raw);
-    if (!tag || seen.has(tag)) continue;
+    if (!tag || isBlockedContentTag(tag) || seen.has(tag)) continue;
     seen.add(tag);
     tags.push(tag);
     if (tags.length >= MAX_TAGS) break;

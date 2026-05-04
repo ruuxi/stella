@@ -92,6 +92,7 @@ import type * as lib_billing_date from "../lib/billing_date.js";
 import type * as lib_billing_money from "../lib/billing_money.js";
 import type * as lib_billing_plans from "../lib/billing_plans.js";
 import type * as lib_coerce from "../lib/coerce.js";
+import type * as lib_content_tags from "../lib/content_tags.js";
 import type * as lib_context_window from "../lib/context_window.js";
 import type * as lib_crypto_utils from "../lib/crypto_utils.js";
 import type * as lib_email_i18n from "../lib/email_i18n.js";
@@ -285,6 +286,7 @@ declare const fullApi: ApiFromModules<{
   "lib/billing_money": typeof lib_billing_money;
   "lib/billing_plans": typeof lib_billing_plans;
   "lib/coerce": typeof lib_coerce;
+  "lib/content_tags": typeof lib_content_tags;
   "lib/context_window": typeof lib_context_window;
   "lib/crypto_utils": typeof lib_crypto_utils;
   "lib/email_i18n": typeof lib_email_i18n;
