@@ -38,7 +38,7 @@ export type DisplayTabKind =
  * replace its props and re-activate, never stack.
  *
  * Convention for ids:
- *   - `media:image:<sorted joined paths>`
+ *   - `media:image:generated` (all generated images in one gallery)
  *   - `media:video:<path>`
  *   - `media:audio:<path>`
  *   - `media:model3d:<path>`

@@ -73,6 +73,10 @@ export const InlineGeneratedImageCard = ({
       const completedPayload = await mediaPayloadFromJob(job);
       if (cancelled || !completedPayload) return;
       publishMaterializedMediaPayload(completedPayload);
+      displayTabs.openTab(payloadToTabSpec(completedPayload), {
+        activate: false,
+        openPanel: false,
+      });
       markMediaJobMaterialized(job.jobId);
     })();
     return () => {

@@ -147,4 +147,21 @@ describe("payloadToTabSpec", () => {
     expect(spec.id).toBe("source-diff:/tmp/app.ts:7");
     expect(spec.kind).toBe("source-diff");
   });
+
+  it("merges generated images into one stable gallery tab", () => {
+    const first = payloadToTabSpec({
+      kind: "media",
+      asset: { kind: "image", filePaths: ["/out/a.png"] },
+      createdAt: 1,
+    });
+    const second = payloadToTabSpec({
+      kind: "media",
+      asset: { kind: "image", filePaths: ["/out/b.png", "/out/a.png"] },
+      createdAt: 2,
+    });
+
+    expect(first.id).toBe("media:image:generated");
+    expect(second.id).toBe("media:image:generated");
+    expect(second.metadata?.filePaths).toEqual(["/out/a.png", "/out/b.png"]);
+  });
 });
