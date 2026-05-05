@@ -12,6 +12,7 @@ import type {
 	StreamOptions,
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
+import { retryWithBackoff } from "../utils/retry.js";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.js";
 import { buildBaseOptions, clampReasoning } from "./simple-options.js";
 
@@ -90,9 +91,9 @@ export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"
 			if (nextParams !== undefined) {
 				params = nextParams as ResponseCreateParamsStreaming;
 			}
-			const openaiStream = await client.responses.create(
-				params,
-				options?.signal ? { signal: options.signal } : undefined,
+			const openaiStream = await retryWithBackoff(
+				() => client.responses.create(params, options?.signal ? { signal: options.signal } : undefined),
+				{ signal: options?.signal },
 			);
 			stream.push({ type: "start", partial: output });
 
@@ -199,6 +200,7 @@ function createClient(model: Model<"azure-openai-responses">, apiKey: string, op
 	return new AzureOpenAI({
 		apiKey,
 		apiVersion,
+		maxRetries: 0,
 		dangerouslyAllowBrowser: true,
 		defaultHeaders: headers,
 		baseURL: baseUrl,

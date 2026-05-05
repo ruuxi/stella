@@ -172,6 +172,7 @@ function createClient(
   return new OpenAI({
     apiKey,
     baseURL: model.baseUrl,
+    maxRetries: 0,
     defaultHeaders: {
       ...model.headers,
       ...optionsHeaders,

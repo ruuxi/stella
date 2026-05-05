@@ -26,6 +26,7 @@ import type {
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
+import { retryWithBackoff } from "../utils/retry.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
@@ -256,7 +257,10 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 			if (nextParams !== undefined) {
 				params = nextParams as MessageCreateParamsStreaming;
 			}
-			const anthropicStream = client.messages.stream({ ...params, stream: true }, { signal: options?.signal });
+			const anthropicStream = await retryWithBackoff(
+				async () => client.messages.stream({ ...params, stream: true }, { signal: options?.signal }),
+				{ signal: options?.signal },
+			);
 			stream.push({ type: "start", partial: output });
 
 			type Block = (ThinkingContent | TextContent | (ToolCall & { partialJson: string })) & { index: number };
@@ -541,6 +545,7 @@ function createClient(
 			apiKey: null,
 			authToken: apiKey,
 			baseURL: model.baseUrl,
+			maxRetries: 0,
 			dangerouslyAllowBrowser: true,
 			defaultHeaders: mergeHeaders(
 				{
@@ -568,6 +573,7 @@ function createClient(
 			apiKey: null,
 			authToken: apiKey,
 			baseURL: model.baseUrl,
+			maxRetries: 0,
 			dangerouslyAllowBrowser: true,
 			defaultHeaders: mergeHeaders(
 				{
@@ -589,6 +595,7 @@ function createClient(
 	const client = new Anthropic({
 		apiKey,
 		baseURL: model.baseUrl,
+		maxRetries: 0,
 		dangerouslyAllowBrowser: true,
 		defaultHeaders: mergeHeaders(
 			{

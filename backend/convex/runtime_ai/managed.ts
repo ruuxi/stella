@@ -4,6 +4,7 @@ import {
   type ManagedGatewayProvider,
 } from "../lib/managed_gateway";
 import { buildOpenAICompletionsParams, mapStopReason } from "./openai_completions";
+import { isRetryableProviderError, retryDelayMs, retryProviderRequest } from "./retry";
 import { completeSimple, streamSimple } from "./stream";
 import { parseOpenAIChatUsage } from "./usage";
 import type {
@@ -703,6 +704,7 @@ async function completeManagedOpenAICompletions(args: {
   const client = new OpenAI({
     apiKey,
     baseURL: model.baseUrl,
+    maxRetries: 0,
     defaultHeaders: model.headers,
   });
   const params = buildOpenAICompletionsParams(
@@ -818,13 +820,26 @@ export async function completeManagedChat(args: {
 }): Promise<AssistantMessage> {
   const execute = async (config: ManagedModelConfig) => {
     const api = resolveManagedProtocol({ api: args.api, config });
-    const message = await completeSimple(
-      buildManagedModel(config, api, args.request?.headers),
-      args.context,
-      buildSimpleOptions({
-        config,
-        request: args.request,
-      }),
+    const message = await retryProviderRequest(
+      () =>
+        completeSimple(
+          buildManagedModel(config, api, args.request?.headers),
+          args.context,
+          buildSimpleOptions({
+            config,
+            request: args.request,
+          }),
+        ),
+      {
+        signal: args.request?.signal,
+        onRetry: ({ attempt, delayMs, error }) => {
+          console.warn(
+            `[managed-model] retrying provider request | model=${config.model} | attempt=${attempt} | delayMs=${delayMs} | error=${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        },
+      },
     );
     if (message.stopReason === "error" || message.stopReason === "aborted") {
       throw new Error(message.errorMessage || "Managed completion failed");
@@ -867,18 +882,71 @@ export function streamManagedChat(args: {
   };
 
   const fallbackConfig = args.fallbackConfig ?? undefined;
-  if (!fallbackConfig) {
-    return streamForConfig(args.config);
-  }
 
   return (async function* () {
     let emittedOutput = false;
-    try {
-      for await (const event of streamForConfig(args.config)) {
-        if (event.type === "error" && !emittedOutput) {
+    const maxAttempts = 4;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        let retryPrimary = false;
+        for await (const event of streamForConfig(args.config)) {
+          if (event.type === "error" && !emittedOutput) {
+            if (attempt < maxAttempts && isRetryableProviderError(event.error)) {
+              const delayMs = retryDelayMs(attempt, event.error);
+              console.warn(
+                `[managed-model] retrying provider stream | model=${args.config.model} | attempt=${attempt} | delayMs=${delayMs} | error=${
+                  event.error.errorMessage || event.reason
+                }`,
+              );
+              await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+              retryPrimary = true;
+              break;
+            }
+            if (fallbackConfig) {
+              console.warn(
+                `[managed-model] primary model failed before streaming output, attempting fallback | primary=${args.config.model} | fallback=${fallbackConfig.model} | error=${
+                  event.error.errorMessage || event.reason
+                }`,
+              );
+              for await (const fallbackEvent of streamForConfig(fallbackConfig)) {
+                yield fallbackEvent;
+              }
+            } else {
+              yield event;
+            }
+            return;
+          }
+
+          if (event.type !== "error") {
+            emittedOutput = true;
+          }
+          yield event;
+        }
+        if (retryPrimary) {
+          continue;
+        }
+        return;
+      } catch (error) {
+        if (emittedOutput) {
+          throw error;
+        }
+        if (attempt < maxAttempts && isRetryableProviderError(error)) {
+          const delayMs = retryDelayMs(attempt, error);
+          console.warn(
+            `[managed-model] retrying provider stream | model=${args.config.model} | attempt=${attempt} | delayMs=${delayMs} | error=${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+        if (!isRetryableProviderError(error)) {
+          throw error;
+        }
+        if (fallbackConfig) {
           console.warn(
             `[managed-model] primary model failed before streaming output, attempting fallback | primary=${args.config.model} | fallback=${fallbackConfig.model} | error=${
-              event.error.errorMessage || event.reason
+              error instanceof Error ? error.message : String(error)
             }`,
           );
           for await (const fallbackEvent of streamForConfig(fallbackConfig)) {
@@ -886,23 +954,7 @@ export function streamManagedChat(args: {
           }
           return;
         }
-
-        if (event.type !== "error") {
-          emittedOutput = true;
-        }
-        yield event;
-      }
-    } catch (error) {
-      if (emittedOutput) {
         throw error;
-      }
-      console.warn(
-        `[managed-model] primary model failed before streaming output, attempting fallback | primary=${args.config.model} | fallback=${fallbackConfig.model} | error=${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      for await (const fallbackEvent of streamForConfig(fallbackConfig)) {
-        yield fallbackEvent;
       }
     }
   })();
