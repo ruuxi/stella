@@ -1,40 +1,23 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
+import type { FunctionReference } from "convex/server";
 import { api } from "@/convex/api";
 import { authClient } from "@/global/auth/lib/auth-client";
 import { createServiceRequest } from "@/infra/http/service-request";
+import {
+  groupCatalogModelsByProvider,
+  listLocalCatalogModels,
+  mergeCatalogModels,
+  normalizeManagedGatewayCatalogModels,
+  normalizeStellaCatalogModels,
+  searchCatalogModels,
+  type CatalogApiResponse,
+  type CatalogDefaultModel,
+  type CatalogModel,
+  type ModelsDevApi,
+  type ProviderGroup,
+} from "@/global/settings/lib/model-catalog";
 import { STELLA_MODELS_PATH } from "@/shared/stella-api";
-
-type CatalogModel = {
-  id: string;
-  name: string;
-  provider: string;
-  upstreamModel?: string;
-};
-
-type CatalogDefaultModel = {
-  agentType: string;
-  model: string;
-  resolvedModel: string;
-};
-
-type ProviderGroup = {
-  provider: string;
-  models: CatalogModel[];
-};
-
-type CatalogApiModel = {
-  id: string;
-  name?: string;
-  provider?: string;
-  type?: string;
-  upstreamModel?: string;
-};
-
-type CatalogApiResponse = {
-  data?: CatalogApiModel[];
-  defaults?: CatalogDefaultModel[];
-};
 
 type CatalogFetchResult = {
   models: CatalogModel[];
@@ -69,32 +52,20 @@ type BillingStatus = {
 type CatalogCacheEntry = {
   models: CatalogModel[];
   defaults: CatalogDefaultModel[];
-  expiresAt: number;
 };
 
-const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
 const ENABLE_CATALOG_CACHE = import.meta.env.MODE !== "test";
 
 const inFlightCatalogRequests = new Map<string, Promise<CatalogFetchResult>>();
 const catalogCache = new Map<string, CatalogCacheEntry>();
+const MODELS_DEV_API_URL = "https://models.dev/api.json";
+let managedGatewayCatalogCache: CatalogModel[] | null = null;
+let inFlightManagedGatewayCatalogRequest: Promise<CatalogModel[]> | null = null;
 
 const toErrorMessage = (error: unknown): string =>
   error instanceof Error && error.message
     ? error.message
     : "Unable to load model catalog.";
-
-function groupByProvider(models: CatalogModel[]): ProviderGroup[] {
-  const map = new Map<string, CatalogModel[]>();
-  for (const model of models) {
-    const list = map.get(model.provider) ?? [];
-    list.push(model);
-    map.set(model.provider, list);
-  }
-  return Array.from(map.entries()).map(([provider, models]) => ({
-    provider,
-    models,
-  }));
-}
 
 function getJwtCacheIdentity(authorization: string | undefined): string {
   if (!authorization?.startsWith("Bearer ")) {
@@ -137,10 +108,12 @@ function getJwtCacheIdentity(authorization: string | undefined): string {
 function getCatalogRequestCacheKey(
   request: Awaited<ReturnType<typeof createServiceRequest>>,
   authAudienceKey: string,
+  modelCatalogUpdatedAt: number | null,
 ): string {
   return [
     request.endpoint,
     authAudienceKey,
+    `modelCatalogUpdatedAt:${modelCatalogUpdatedAt ?? "none"}`,
     getJwtCacheIdentity(request.headers.Authorization),
     request.headers["X-Device-ID"] ?? "device:none",
   ].join("|");
@@ -177,15 +150,16 @@ function getSessionCacheKey(sessionData: AuthSessionData): string {
 
 async function fetchCatalogModels(
   authAudienceKey: string,
+  modelCatalogUpdatedAt: number | null,
 ): Promise<CatalogFetchResult> {
   const request = await createServiceRequest(STELLA_MODELS_PATH);
-  const cacheKey = getCatalogRequestCacheKey(request, authAudienceKey);
+  const cacheKey = getCatalogRequestCacheKey(
+    request,
+    authAudienceKey,
+    modelCatalogUpdatedAt,
+  );
   const cachedCatalog = catalogCache.get(cacheKey);
-  if (
-    ENABLE_CATALOG_CACHE &&
-    cachedCatalog &&
-    cachedCatalog.expiresAt > Date.now()
-  ) {
+  if (ENABLE_CATALOG_CACHE && cachedCatalog) {
     return {
       models: cachedCatalog.models,
       defaults: cachedCatalog.defaults,
@@ -203,14 +177,7 @@ async function fetchCatalogModels(
           throw new Error(`HTTP ${res.status}`);
         }
         const data = (await res.json()) as CatalogApiResponse;
-        const models = (data?.data ?? [])
-          .filter((model) => !model.type || model.type === "language")
-          .map((model) => ({
-            id: model.id,
-            name: model.name ?? model.id,
-            provider: model.provider ?? "stella",
-            upstreamModel: model.upstreamModel,
-          }));
+        const models = normalizeStellaCatalogModels(data?.data ?? []);
         const result = {
           models,
           defaults: data.defaults ?? [],
@@ -220,7 +187,6 @@ async function fetchCatalogModels(
           catalogCache.set(cacheKey, {
             models: result.models,
             defaults: result.defaults,
-            expiresAt: Date.now() + CATALOG_CACHE_TTL_MS,
           });
         }
 
@@ -256,8 +222,55 @@ async function fetchCatalogModels(
   return inFlightCatalogRequest;
 }
 
+async function fetchManagedGatewayCatalogModels(
+  forceRefresh = false,
+): Promise<CatalogModel[]> {
+  if (forceRefresh) {
+    managedGatewayCatalogCache = null;
+    inFlightManagedGatewayCatalogRequest = null;
+  }
+  if (ENABLE_CATALOG_CACHE && managedGatewayCatalogCache) {
+    return managedGatewayCatalogCache;
+  }
+  if (!inFlightManagedGatewayCatalogRequest) {
+    inFlightManagedGatewayCatalogRequest = (async () => {
+      try {
+        const res = await fetch(MODELS_DEV_API_URL);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const data = (await res.json()) as ModelsDevApi;
+        const models = normalizeManagedGatewayCatalogModels(data);
+        if (ENABLE_CATALOG_CACHE) {
+          managedGatewayCatalogCache = models;
+        }
+        return models;
+      } catch {
+        return managedGatewayCatalogCache ?? [];
+      } finally {
+        inFlightManagedGatewayCatalogRequest = null;
+      }
+    })();
+  }
+  return inFlightManagedGatewayCatalogRequest;
+}
+
 export function useModelCatalog() {
   const session = authClient.useSession();
+  const catalogUpdatedAtQuery = (
+    api as unknown as {
+      stella_models: {
+        getModelCatalogUpdatedAt: FunctionReference<
+          "query",
+          "public",
+          Record<string, never>,
+          number
+        >;
+      };
+    }
+  ).stella_models.getModelCatalogUpdatedAt;
+  const modelCatalogUpdatedAt =
+    (useQuery(catalogUpdatedAtQuery, {}) as number | undefined) ?? null;
   const sessionData = session.data as AuthSessionData;
   const user = sessionData?.user ?? null;
   const hasConnectedAccount = Boolean(sessionData && user?.isAnonymous !== true);
@@ -280,10 +293,31 @@ export function useModelCatalog() {
     return `${sessionKey}:audience:${billingAudienceKey}`;
   }, [billingAudienceKey, hasConnectedAccount, sessionData, session.isPending]);
   const [models, setModels] = useState<CatalogModel[]>([]);
+  const [managedGatewayModels, setManagedGatewayModels] = useState<
+    CatalogModel[]
+  >([]);
   const [defaults, setDefaults] = useState<CatalogDefaultModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const groups = useMemo(() => groupByProvider(models), [models]);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const localModels = useMemo(() => listLocalCatalogModels(), []);
+  const stellaModels = useMemo(
+    () => mergeCatalogModels(models, managedGatewayModels),
+    [managedGatewayModels, models],
+  );
+  const mergedModels = useMemo(
+    () => mergeCatalogModels(stellaModels, localModels),
+    [localModels, stellaModels],
+  );
+  const groups = useMemo<ProviderGroup[]>(
+    () => groupCatalogModelsByProvider(mergedModels),
+    [mergedModels],
+  );
+  const searchModels = useMemo(
+    () => (query: string) => searchCatalogModels(mergedModels, query),
+    [mergedModels],
+  );
 
   useEffect(() => {
     if (!authAudienceKey) {
@@ -295,7 +329,10 @@ export function useModelCatalog() {
 
     async function fetchCatalog() {
       setLoading(true);
-      const result = await fetchCatalogModels(activeAuthAudienceKey);
+      const result = await fetchCatalogModels(
+        activeAuthAudienceKey,
+        modelCatalogUpdatedAt,
+      );
       if (!canceled) {
         if (result.models.length > 0 || result.defaults.length > 0) {
           setModels(result.models);
@@ -310,7 +347,53 @@ export function useModelCatalog() {
     return () => {
       canceled = true;
     };
-  }, [authAudienceKey]);
+  }, [authAudienceKey, modelCatalogUpdatedAt, refreshTick]);
 
-  return { models, defaults, groups, loading, error };
+  useEffect(() => {
+    let canceled = false;
+    void fetchManagedGatewayCatalogModels(refreshTick > 0).then((next) => {
+      if (!canceled) {
+        setManagedGatewayModels(next);
+      }
+    });
+    return () => {
+      canceled = true;
+    };
+  }, [refreshTick]);
+
+  const refresh = useCallback(async () => {
+    if (!authAudienceKey) return;
+    setRefreshing(true);
+    catalogCache.delete(
+      getCatalogRequestCacheKey(
+        await createServiceRequest(STELLA_MODELS_PATH),
+        authAudienceKey,
+        modelCatalogUpdatedAt,
+      ),
+    );
+    setRefreshTick((tick) => tick + 1);
+    try {
+      await Promise.all([
+        fetchCatalogModels(authAudienceKey, modelCatalogUpdatedAt),
+        fetchManagedGatewayCatalogModels(true),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [authAudienceKey, modelCatalogUpdatedAt]);
+
+  return {
+    models: stellaModels,
+    stellaModels,
+    localModels,
+    allModels: mergedModels,
+    defaults,
+    groups,
+    loading,
+    error,
+    searchModels,
+    modelCatalogUpdatedAt,
+    refresh,
+    refreshing,
+  };
 }

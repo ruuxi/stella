@@ -29,12 +29,6 @@ export type LocalPreferences = {
   defaultModels: Record<string, string>;
   /** Model overrides keyed by agent type, e.g. "orchestrator" -> "anthropic/claude-opus-4.6" */
   modelOverrides: Record<string, string>;
-  /**
-   * Master switch — when true, runtime LLM calls may use any locally saved
-   * user API keys / OAuth credentials whose provider matches the requested
-   * model id. When false, all calls go through Stella.
-   */
-  localLlmKeysEnabled: boolean;
   /** Expression style: "none" | "emoji" | undefined (default) */
   expressionStyle?: string;
   /**
@@ -87,7 +81,6 @@ const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
 const DEFAULT_PREFERENCES: LocalPreferences = {
   defaultModels: {},
   modelOverrides: {},
-  localLlmKeysEnabled: false,
   expressionStyle: undefined,
   personalityVoiceId: undefined,
   generalAgentEngine: "default",
@@ -126,7 +119,6 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       defaultModels: parsed.defaultModels ?? DEFAULT_PREFERENCES.defaultModels,
       modelOverrides:
         parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
-      localLlmKeysEnabled: parsed.localLlmKeysEnabled === true,
       expressionStyle: parsed.expressionStyle,
       personalityVoiceId:
         typeof parsed.personalityVoiceId === "string" &&
@@ -204,9 +196,6 @@ export const getDefaultModel = (
   const prefs = loadLocalPreferences(stellaHome);
   return prefs.defaultModels[agentType];
 };
-
-export const isLocalLlmKeysEnabled = (stellaHome: string): boolean =>
-  loadLocalPreferences(stellaHome).localLlmKeysEnabled;
 
 export const getExpressionStyle = (stellaHome: string): string | undefined => {
   return loadLocalPreferences(stellaHome).expressionStyle;

@@ -1296,45 +1296,6 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
-  ipcMain.handle("llmCredentials:getRoutingPreference", (event) => {
-    if (
-      !options.externalLinkService.assertPrivilegedSender(
-        event,
-        "llmCredentials:getRoutingPreference",
-      )
-    ) {
-      throw new Error("Blocked untrusted credential preference request.");
-    }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) {
-      return { enabled: false };
-    }
-    const prefs = loadLocalPreferences(stellaRoot);
-    return { enabled: prefs.localLlmKeysEnabled };
-  });
-
-  ipcMain.handle(
-    "llmCredentials:setRoutingPreference",
-    (event, payload: { enabled?: boolean }) => {
-      if (
-        !options.externalLinkService.assertPrivilegedSender(
-          event,
-          "llmCredentials:setRoutingPreference",
-        )
-      ) {
-        throw new Error("Blocked untrusted credential preference write.");
-      }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
-        throw new Error("Local Stella root is unavailable.");
-      }
-      const prefs = loadLocalPreferences(stellaRoot);
-      prefs.localLlmKeysEnabled = payload?.enabled === true;
-      saveLocalPreferences(stellaRoot, prefs);
-      return { enabled: prefs.localLlmKeysEnabled };
-    },
-  );
-
   ipcMain.handle(
     "llmCredentials:save",
     (

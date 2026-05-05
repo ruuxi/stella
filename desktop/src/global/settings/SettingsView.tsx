@@ -13,28 +13,21 @@ import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
 import { authClient } from "@/global/auth/lib/auth-client";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
 import { DesktopUpdateBanner } from "@/global/updates/DesktopUpdateBanner";
-import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
-import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
-import {
-  buildModelDefaultsMap,
-  buildResolvedModelDefaultsMap,
-  getConfigurableAgents,
-  getDefaultModelOptionLabel,
-  getLocalModelDefaults,
-  normalizeModelOverrides,
-  type ModelDefaultEntry,
-} from "@/global/settings/lib/model-defaults";
 import { showToast } from "@/ui/toast";
 import type {
   BackupStatusSnapshot,
   BackupSummary,
-  LocalLlmCredentialSummary,
-  LocalLlmOAuthProviderSummary,
 } from "@/shared/types/electron";
 import type { LegalDocument } from "@/global/legal/legal-text";
 import { Button } from "@/ui/button";
-import { TextField } from "@/ui/text-field";
 import { NativeSelect } from "@/ui/native-select";
+import { AgentModelPicker } from "@/global/settings/AgentModelPicker";
+import {
+  findApiKey,
+  findOauthCredential,
+  useLlmCredentials,
+} from "@/global/settings/hooks/use-llm-credentials";
+import { LLM_PROVIDERS } from "@/global/settings/lib/llm-providers";
 import { Switch } from "@/ui/switch";
 import { Keybind } from "@/ui/keybind";
 import {
@@ -105,28 +98,6 @@ type LocalModelPreferences = {
   maxAgentConcurrency: number;
 };
 
-const LLM_PROVIDERS = [
-  { key: "anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
-  { key: "openai", label: "OpenAI", placeholder: "sk-..." },
-  { key: "openai-codex", label: "OpenAI Codex", placeholder: "eyJ..." },
-  { key: "google", label: "Google", placeholder: "AIza..." },
-  { key: "kimi-coding", label: "Kimi (Moonshot AI)", placeholder: "sk-..." },
-  { key: "zai", label: "Z.AI", placeholder: "..." },
-  { key: "xai", label: "xAI", placeholder: "xai-..." },
-  { key: "groq", label: "Groq", placeholder: "gsk_..." },
-  { key: "mistral", label: "Mistral", placeholder: "..." },
-  { key: "cerebras", label: "Cerebras", placeholder: "..." },
-  { key: "openrouter", label: "OpenRouter", placeholder: "sk-or-..." },
-  { key: "vercel-ai-gateway", label: "Vercel AI Gateway", placeholder: "..." },
-  { key: "opencode", label: "OpenCode Zen", placeholder: "..." },
-  { key: "github-copilot", label: "GitHub Copilot", placeholder: "OAuth only" },
-  { key: "google-gemini-cli", label: "Gemini CLI", placeholder: "OAuth only" },
-  {
-    key: "google-antigravity",
-    label: "Google Antigravity",
-    placeholder: "OAuth only",
-  },
-] as const;
 
 function getSettingsErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -200,10 +171,6 @@ async function deleteCurrentBetterAuthUser() {
     throw new Error("Account deletion is not available.");
   }
   await client.deleteUser({ callbackURL: "/" });
-}
-
-function isStellaSelection(value: string | undefined) {
-  return Boolean(value) && value!.startsWith("stella/");
 }
 
 function formatBackupTimestamp(timestamp?: number) {
@@ -2147,53 +2114,6 @@ function ChronicleSettingsCard() {
 function ModelConfigSection() {
   const [modelPreferences, setModelPreferences] =
     useState<LocalModelPreferences | null>(null);
-  const { models: stellaModels, defaults: stellaDefaultModels } =
-    useModelCatalog();
-  const modelDefaults = useMemo<ModelDefaultEntry[] | undefined>(() => {
-    if (!modelPreferences) return undefined;
-    return getLocalModelDefaults(
-      modelPreferences.defaultModels,
-      stellaDefaultModels,
-    );
-  }, [modelPreferences, stellaDefaultModels]);
-  const modelNamesById = useMemo(() => {
-    const next = new Map<string, string>();
-    for (const model of stellaModels) {
-      next.set(model.id, model.name);
-      if (model.upstreamModel) {
-        next.set(model.upstreamModel, model.name);
-      }
-    }
-    return next;
-  }, [stellaModels]);
-  const defaultModelMap = useMemo(
-    () => buildModelDefaultsMap(modelDefaults),
-    [modelDefaults],
-  );
-  const resolvedDefaultModelMap = useMemo(
-    () => buildResolvedModelDefaultsMap(modelDefaults),
-    [modelDefaults],
-  );
-  const configurableAgents = useMemo(
-    () => getConfigurableAgents(modelDefaults),
-    [modelDefaults],
-  );
-
-  const serverOverrides = useMemo<Record<string, string>>(() => {
-    if (!modelPreferences) {
-      return {};
-    }
-    return normalizeModelOverrides(
-      modelPreferences.modelOverrides,
-      defaultModelMap,
-    );
-  }, [defaultModelMap, modelPreferences]);
-  const [localOverrides, setLocalOverrides] = useState<
-    Record<string, string | null>
-  >({});
-  const [customModelDrafts, setCustomModelDrafts] = useState<
-    Record<string, string>
-  >({});
   const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<
     "default" | "claude_code_local" | null
   >(null);
@@ -2201,10 +2121,7 @@ function ModelConfigSection() {
     number | null
   >(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
-  const [modelConfigError, setModelConfigError] = useState<string | null>(null);
   const [isSavingRuntimePreference, setIsSavingRuntimePreference] =
-    useState(false);
-  const [isSavingModelPreferences, setIsSavingModelPreferences] =
     useState(false);
 
   useEffect(() => {
@@ -2216,7 +2133,6 @@ function ModelConfigSection() {
         if (!cancelled) {
           setModelPreferences(next ?? null);
           setRuntimeError(null);
-          setModelConfigError(null);
         }
       } catch (error) {
         if (!cancelled) {
@@ -2234,34 +2150,6 @@ function ModelConfigSection() {
   }, []);
 
   const runtimePreferencesLoaded = modelPreferences !== null;
-  const modelPreferencesLoaded = modelDefaults !== undefined;
-
-  const pendingLocalOverrides = useMemo(() => {
-    const next: Record<string, string | null> = {};
-
-    for (const [key, value] of Object.entries(localOverrides)) {
-      const serverValue = serverOverrides[key];
-      if (value === null && serverValue === undefined) continue;
-      if (value !== null && serverValue === value) continue;
-      next[key] = value;
-    }
-
-    return next;
-  }, [localOverrides, serverOverrides]);
-
-  const overrides = useMemo<Record<string, string>>(() => {
-    const merged: Record<string, string> = { ...serverOverrides };
-
-    for (const [key, value] of Object.entries(pendingLocalOverrides)) {
-      if (value === null) {
-        delete merged[key];
-      } else {
-        merged[key] = value;
-      }
-    }
-
-    return merged;
-  }, [pendingLocalOverrides, serverOverrides]);
 
   const effectiveGeneralAgentEngine =
     (localGeneralAgentEngine !== null &&
@@ -2277,145 +2165,6 @@ function ModelConfigSection() {
       : null) ??
     modelPreferences?.maxAgentConcurrency ??
     24;
-
-  const hasAnyOverride = Object.keys(overrides).length > 0;
-
-  const handleChange = useCallback(
-    async (agentType: string, value: string) => {
-      if (isSavingModelPreferences) {
-        return;
-      }
-
-      const previousValue = Object.prototype.hasOwnProperty.call(
-        localOverrides,
-        agentType,
-      )
-        ? localOverrides[agentType]
-        : undefined;
-
-      setModelConfigError(null);
-      setIsSavingModelPreferences(true);
-      setLocalOverrides((prev) => ({
-        ...prev,
-        [agentType]: value === "" ? null : value,
-      }));
-
-      try {
-        const nextOverrides = { ...serverOverrides };
-        if (value === "") {
-          delete nextOverrides[agentType];
-        } else {
-          nextOverrides[agentType] = value;
-        }
-        const saved =
-          await window.electronAPI?.system?.setLocalModelPreferences?.({
-            modelOverrides: nextOverrides,
-          });
-        if (saved) {
-          setModelPreferences(saved);
-          setLocalOverrides((prev) => {
-            const next = { ...prev };
-            delete next[agentType];
-            return next;
-          });
-        }
-      } catch (error) {
-        setLocalOverrides((prev) => {
-          const next = { ...prev };
-          if (previousValue === undefined) {
-            delete next[agentType];
-          } else {
-            next[agentType] = previousValue;
-          }
-          return next;
-        });
-        setModelConfigError(
-          getSettingsErrorMessage(error, "Failed to update model setting."),
-        );
-      } finally {
-        setIsSavingModelPreferences(false);
-      }
-    },
-    [isSavingModelPreferences, localOverrides, serverOverrides],
-  );
-
-  const handleCustomDraftChange = useCallback(
-    (agentType: string, value: string) => {
-      setCustomModelDrafts((prev) => ({ ...prev, [agentType]: value }));
-    },
-    [],
-  );
-
-  const commitCustomModel = useCallback(
-    async (agentType: string, currentValue: string, nextValue: string) => {
-      const trimmed = nextValue.trim();
-      if (trimmed === currentValue) {
-        return;
-      }
-
-      if (!trimmed) {
-        await handleChange(agentType, "");
-        setCustomModelDrafts((prev) => {
-          const next = { ...prev };
-          delete next[agentType];
-          return next;
-        });
-        return;
-      }
-
-      await handleChange(agentType, trimmed);
-      setCustomModelDrafts((prev) => ({ ...prev, [agentType]: trimmed }));
-    },
-    [handleChange],
-  );
-
-  const handleResetAll = useCallback(async () => {
-    if (isSavingModelPreferences || !hasAnyOverride) {
-      return;
-    }
-
-    setModelConfigError(null);
-    setIsSavingModelPreferences(true);
-
-    const cleared: Record<string, null> = {};
-    for (const key of Object.keys(overrides)) {
-      cleared[key] = null;
-    }
-    setLocalOverrides((prev) => ({ ...prev, ...cleared }));
-    setCustomModelDrafts({});
-
-    const keys = Object.keys(overrides);
-    const previousLocalOverrides = localOverrides;
-    try {
-      const saved =
-        await window.electronAPI?.system?.setLocalModelPreferences?.({
-          modelOverrides: {},
-        });
-      if (saved) {
-        setModelPreferences(saved);
-        setLocalOverrides({});
-      }
-    } catch (error) {
-      setLocalOverrides((prev) => {
-        const next = { ...prev };
-        for (const key of keys) {
-          if (
-            Object.prototype.hasOwnProperty.call(previousLocalOverrides, key)
-          ) {
-            next[key] = previousLocalOverrides[key] ?? null;
-          } else {
-            delete next[key];
-          }
-        }
-        return next;
-      });
-      setModelConfigError(
-        getSettingsErrorMessage(error, "Failed to reset model settings."),
-      );
-    }
-
-    setIsSavingModelPreferences(false);
-  }, [hasAnyOverride, isSavingModelPreferences, localOverrides, overrides]);
 
   const handleAgentEngineChange = useCallback(
     async (_agentType: "general", value: string) => {
@@ -2579,473 +2328,93 @@ function ModelConfigSection() {
       </div>
 
       <div className="settings-card">
-        <div className="settings-card-header">
-          <h3 className="settings-card-title">Models</h3>
-          <Button
-            type="button"
-            variant="ghost"
-            className="settings-btn settings-btn--reset-all"
-            onClick={() => void handleResetAll()}
-            style={{ visibility: hasAnyOverride ? "visible" : "hidden" }}
-            disabled={!modelPreferencesLoaded || isSavingModelPreferences}
-          >
-            {isSavingModelPreferences ? "Resetting..." : "Reset All"}
-          </Button>
-        </div>
+        <h3 className="settings-card-title">Models</h3>
         <p className="settings-card-desc">
-          Pick which AI model Stella uses for each kind of task. Leave on
-          Default for our recommendation.
+          Pick which model and provider Stella uses for each kind of task.
+          The toggle below switches between the two agents.
         </p>
-        {modelConfigError ? (
-          <p
-            className="settings-card-desc settings-card-desc--error"
-            role="alert"
-          >
-            {modelConfigError}
-          </p>
-        ) : null}
-        {!modelPreferencesLoaded ? (
-          <p className="settings-card-desc">Loading saved settings...</p>
-        ) : null}
-        {modelPreferencesLoaded &&
-          configurableAgents.map((agent) => {
-            const current = overrides[agent.key] ?? "";
-            const isDirectOverride =
-              Boolean(current) && !isStellaSelection(current);
-            const isCustomEditing = Object.prototype.hasOwnProperty.call(
-              customModelDrafts,
-              agent.key,
-            );
-            const selectValue =
-              isDirectOverride || isCustomEditing ? "__custom__" : current;
-            const customDraft =
-              customModelDrafts[agent.key] ?? (isDirectOverride ? current : "");
-            const selectedStellaModel =
-              isStellaSelection(current) &&
-              current !== STELLA_DEFAULT_MODEL &&
-              !stellaModels.some((model) => model.id === current)
-                ? current
-                : null;
-            const defaultLabel = getDefaultModelOptionLabel(
-              agent.key,
-              defaultModelMap,
-              resolvedDefaultModelMap,
-              modelNamesById,
-            );
-            return (
-              <div key={agent.key} className="settings-row">
-                <div className="settings-row-info">
-                  <div className="settings-row-label">{agent.label}</div>
-                  <div className="settings-row-sublabel">{agent.desc}</div>
-                </div>
-                <div className="settings-row-control">
-                  {current && (
-                    <button
-                      className="settings-model-reset-icon"
-                      onClick={() => {
-                        setCustomModelDrafts((prev) => {
-                          const next = { ...prev };
-                          delete next[agent.key];
-                          return next;
-                        });
-                        void handleChange(agent.key, "");
-                      }}
-                      title="Reset to default"
-                      disabled={isSavingModelPreferences}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M3 12a9 9 0 1 1 3 6.7" />
-                        <polyline points="3 7 3 13 9 13" />
-                      </svg>
-                    </button>
-                  )}
-                  <NativeSelect
-                    className="settings-model-select"
-                    value={selectValue}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === "__custom__") {
-                        setCustomModelDrafts((prev) => ({
-                          ...prev,
-                          [agent.key]: current,
-                        }));
-                        return;
-                      }
-                      setCustomModelDrafts((prev) => {
-                        const next = { ...prev };
-                        delete next[agent.key];
-                        return next;
-                      });
-                      void handleChange(agent.key, value);
-                    }}
-                    disabled={isSavingModelPreferences}
-                  >
-                    <option value="">{defaultLabel}</option>
-                    {selectedStellaModel ? (
-                      <option value={selectedStellaModel}>
-                        {modelNamesById.get(selectedStellaModel) ??
-                          selectedStellaModel}
-                      </option>
-                    ) : null}
-                    {stellaModels
-                      .filter((model) => model.id !== STELLA_DEFAULT_MODEL)
-                      .map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name}
-                        </option>
-                      ))}
-                    <option value="__custom__">Custom model ID…</option>
-                  </NativeSelect>
-                  {selectValue === "__custom__" ? (
-                    <div className="settings-model-input">
-                      <TextField
-                        label={`${agent.label} custom model`}
-                        hideLabel={true}
-                        placeholder="anthropic/claude-opus-4.6"
-                        value={customDraft}
-                        onChange={(e) =>
-                          handleCustomDraftChange(agent.key, e.target.value)
-                        }
-                        onBlur={(e) =>
-                          void commitCustomModel(
-                            agent.key,
-                            current,
-                            e.currentTarget.value,
-                          )
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.currentTarget.blur();
-                          }
-                          if (e.key === "Escape") {
-                            setCustomModelDrafts((prev) => ({
-                              ...prev,
-                              [agent.key]: isDirectOverride ? current : "",
-                            }));
-                            e.currentTarget.blur();
-                          }
-                        }}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
+        <AgentModelPicker />
       </div>
     </>
   );
 }
 
-function ApiKeysSection() {
-  const [editingProvider, setEditingProvider] = useState<string | null>(null);
-  const [keyInput, setKeyInput] = useState("");
-  const [llmCredentials, setLlmCredentials] = useState<
-    LocalLlmCredentialSummary[]
-  >([]);
-  const [oauthProviders, setOauthProviders] = useState<
-    LocalLlmOAuthProviderSummary[]
-  >([]);
-  const [oauthCredentials, setOauthCredentials] = useState<
-    LocalLlmCredentialSummary[]
-  >([]);
-  const [useLocalKeys, setUseLocalKeys] = useState(false);
-  const [credentialsError, setCredentialsError] = useState<string | null>(null);
-  const [isSavingKey, setIsSavingKey] = useState(false);
-  const [oauthProviderInFlight, setOauthProviderInFlight] = useState<
-    string | null
-  >(null);
-  const [isSavingRoutingPreference, setIsSavingRoutingPreference] =
-    useState(false);
+/**
+ * Read-only "Connected providers" view. Sign-in / API-key entry now happens
+ * inline inside the model picker — this card just shows the user which
+ * providers are currently authenticated and lets them disconnect.
+ */
+function ConnectedProvidersSection() {
+  const credentials = useLlmCredentials();
   const [removingProvider, setRemovingProvider] = useState<string | null>(null);
 
-  const loadCredentials = useCallback(async () => {
-    if (!window.electronAPI?.system.listLlmCredentials) {
-      setLlmCredentials([]);
-      return;
-    }
-
-    const nextCredentials =
-      await window.electronAPI.system.listLlmCredentials();
-    setLlmCredentials(nextCredentials);
-  }, []);
-
-  const loadOauthCredentials = useCallback(async () => {
-    const systemApi = window.electronAPI?.system;
-    if (
-      !systemApi?.listLlmOAuthProviders ||
-      !systemApi.listLlmOAuthCredentials
-    ) {
-      setOauthProviders([]);
-      setOauthCredentials([]);
-      return;
-    }
-
-    const [nextProviders, nextCredentials] = await Promise.all([
-      systemApi.listLlmOAuthProviders(),
-      systemApi.listLlmOAuthCredentials(),
-    ]);
-    setOauthProviders(nextProviders);
-    setOauthCredentials(nextCredentials);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      try {
-        await loadCredentials();
-        await loadOauthCredentials();
-        const routingPreference =
-          await window.electronAPI?.system.getLlmCredentialRoutingPreference?.();
-        if (!cancelled) {
-          if (routingPreference) {
-            setUseLocalKeys(routingPreference.enabled);
-          }
-          setCredentialsError(null);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setCredentialsError(
-            error instanceof Error
-              ? error.message
-              : "Failed to load local API keys.",
-          );
-          setLlmCredentials([]);
-        }
+  const connectedProviders = useMemo(() => {
+    return LLM_PROVIDERS.map((entry) => {
+      const apiKey = findApiKey(credentials.apiKeys, entry.key);
+      const oauth = findOauthCredential(credentials.oauthCredentials, entry.key);
+      if (!apiKey && !oauth) return null;
+      return { ...entry, apiKey, oauth };
+    }).filter(Boolean) as Array<
+      (typeof LLM_PROVIDERS)[number] & {
+        apiKey: ReturnType<typeof findApiKey>;
+        oauth: ReturnType<typeof findOauthCredential>;
       }
-    };
+    >;
+  }, [credentials.apiKeys, credentials.oauthCredentials]);
 
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadCredentials, loadOauthCredentials]);
-
-  const getCredentialForProvider = (providerKey: string) =>
-    llmCredentials.find(
-      (credential) =>
-        credential.provider === providerKey && credential.status === "active",
-    );
-
-  const getOauthProviderForProvider = (providerKey: string) =>
-    oauthProviders.find((provider) => provider.provider === providerKey);
-
-  const getOauthCredentialForProvider = (providerKey: string) =>
-    oauthCredentials.find(
-      (credential) =>
-        credential.provider === providerKey && credential.status === "active",
-    );
-
-  const saveRoutingPreference = useCallback(
-    async (next: { enabled: boolean }) => {
-      if (!window.electronAPI?.system.setLlmCredentialRoutingPreference) {
-        setCredentialsError(
-          "Local API key settings are unavailable in this window.",
-        );
-        return;
-      }
-
-      const previous = { enabled: useLocalKeys };
-      setUseLocalKeys(next.enabled);
-      setCredentialsError(null);
-      setIsSavingRoutingPreference(true);
+  const handleRemove = useCallback(
+    async (providerKey: string, kind: "key" | "oauth") => {
+      setRemovingProvider(providerKey);
       try {
-        const saved =
-          await window.electronAPI.system.setLlmCredentialRoutingPreference(
-            next,
-          );
-        setUseLocalKeys(saved.enabled);
-      } catch (error) {
-        setUseLocalKeys(previous.enabled);
-        setCredentialsError(
-          error instanceof Error
-            ? error.message
-            : "Failed to update local API key settings.",
-        );
+        if (kind === "key") {
+          await credentials.removeApiKey(providerKey);
+        } else {
+          await credentials.logoutOAuth(providerKey);
+        }
+      } catch {
+        // surface failures via the credentials hook's own error state next reload
       } finally {
-        setIsSavingRoutingPreference(false);
+        setRemovingProvider(null);
       }
     },
-    [useLocalKeys],
+    [credentials],
   );
-
-  const handleSave = useCallback(
-    async (providerKey: string, label: string) => {
-      if (!keyInput.trim()) return;
-      if (!window.electronAPI?.system.saveLlmCredential) {
-        setCredentialsError(
-          "Local API key storage is unavailable in this window.",
-        );
-        return;
-      }
-      setCredentialsError(null);
-      setIsSavingKey(true);
-      try {
-        const saved = await window.electronAPI.system.saveLlmCredential({
-          provider: providerKey,
-          label,
-          plaintext: keyInput.trim(),
-        });
-        setLlmCredentials((prev) => {
-          const next = prev.filter(
-            (entry) => entry.provider !== saved.provider,
-          );
-          next.push(saved);
-          return next.sort((a, b) => a.label.localeCompare(b.label));
-        });
-        setKeyInput("");
-        setEditingProvider(null);
-      } catch (error) {
-        setCredentialsError(
-          error instanceof Error
-            ? error.message
-            : "Failed to save local API key.",
-        );
-      } finally {
-        setIsSavingKey(false);
-      }
-    },
-    [keyInput],
-  );
-
-  const handleRemove = useCallback(async (providerKey: string) => {
-    if (!window.electronAPI?.system.deleteLlmCredential) {
-      setCredentialsError(
-        "Local API key storage is unavailable in this window.",
-      );
-      return;
-    }
-    setCredentialsError(null);
-    setRemovingProvider(providerKey);
-    try {
-      await window.electronAPI.system.deleteLlmCredential(providerKey);
-      setLlmCredentials((prev) =>
-        prev.filter((entry) => entry.provider !== providerKey),
-      );
-    } catch (error) {
-      setCredentialsError(
-        error instanceof Error
-          ? error.message
-          : "Failed to remove local API key.",
-      );
-    } finally {
-      setRemovingProvider(null);
-    }
-  }, []);
-
-  const handleOauthLogin = useCallback(async (providerKey: string) => {
-    if (!window.electronAPI?.system.loginLlmOAuthCredential) {
-      setCredentialsError("OAuth login is unavailable in this window.");
-      return;
-    }
-    setCredentialsError(null);
-    setOauthProviderInFlight(providerKey);
-    try {
-      const saved =
-        await window.electronAPI.system.loginLlmOAuthCredential(providerKey);
-      setOauthCredentials((prev) => {
-        const next = prev.filter((entry) => entry.provider !== saved.provider);
-        next.push(saved);
-        return next.sort((a, b) => a.label.localeCompare(b.label));
-      });
-    } catch (error) {
-      setCredentialsError(
-        error instanceof Error ? error.message : "OAuth login failed.",
-      );
-    } finally {
-      setOauthProviderInFlight(null);
-    }
-  }, []);
-
-  const handleOauthRemove = useCallback(async (providerKey: string) => {
-    if (!window.electronAPI?.system.deleteLlmOAuthCredential) {
-      setCredentialsError("OAuth login is unavailable in this window.");
-      return;
-    }
-    setCredentialsError(null);
-    setOauthProviderInFlight(providerKey);
-    try {
-      await window.electronAPI.system.deleteLlmOAuthCredential(providerKey);
-      setOauthCredentials((prev) =>
-        prev.filter((entry) => entry.provider !== providerKey),
-      );
-    } catch (error) {
-      setCredentialsError(
-        error instanceof Error
-          ? error.message
-          : "Failed to remove OAuth login.",
-      );
-    } finally {
-      setOauthProviderInFlight(null);
-    }
-  }, []);
 
   return (
     <div className="settings-card">
-      <h3 className="settings-card-title">API keys &amp; OAuth</h3>
+      <h3 className="settings-card-title">Connected providers</h3>
       <p className="settings-card-desc">
-        Add your own API keys. Talk to your providers directly. Keys stay on
-        this device.
+        Sign in to providers from the model picker. Anything you connect lives
+        on this device only and shows up here so you can disconnect it.
       </p>
-      {credentialsError ? (
-        <p className="settings-card-desc">{credentialsError}</p>
+      {credentials.error ? (
+        <p
+          className="settings-card-desc settings-card-desc--error"
+          role="alert"
+        >
+          {credentials.error}
+        </p>
       ) : null}
-      <div className="settings-row">
-        <div className="settings-row-info">
-          <div className="settings-row-label">
-            Sign in to another provider or use my API key
-          </div>
-          <div className="settings-row-sublabel">
-            Use Anthropic, OpenAI, and other providers directly. When off,
-            Stella uses its built-in access.
-          </div>
-        </div>
-        <div className="settings-row-control">
-          <Switch
-            checked={useLocalKeys}
-            disabled={isSavingRoutingPreference}
-            onCheckedChange={(checked) =>
-              void saveRoutingPreference({ enabled: checked })
-            }
-            hideLabel
-          />
-        </div>
-      </div>
-      {useLocalKeys &&
-        LLM_PROVIDERS.map((provider) => {
-          const credential = getCredentialForProvider(provider.key);
-          const oauthProvider = getOauthProviderForProvider(provider.key);
-          const oauthCredential = getOauthCredentialForProvider(provider.key);
-          const isEditing = editingProvider === provider.key;
+      {connectedProviders.length === 0 ? (
+        <p className="settings-card-desc">
+          No providers connected yet. Pick a non-Stella model in any agent's
+          picker above to add an API key or sign in.
+        </p>
+      ) : (
+        connectedProviders.map((provider) => {
           const isRemoving = removingProvider === provider.key;
-          const isOauthBusy = oauthProviderInFlight === provider.key;
           return (
             <div key={provider.key} className="settings-row">
               <div className="settings-row-info">
                 <div className="settings-row-label">{provider.label}</div>
                 <div className="settings-row-sublabel">
-                  {credential ? (
+                  {provider.apiKey ? (
                     <span className="settings-key-status">
                       <span className="settings-key-dot settings-key-dot--active" />
-                      Key set
+                      API key
                     </span>
-                  ) : (
-                    <span className="settings-key-status">
-                      <span className="settings-key-dot settings-key-dot--inactive" />
-                      No key
-                    </span>
-                  )}
-                  {oauthCredential ? (
+                  ) : null}
+                  {provider.oauth ? (
                     <span className="settings-key-status">
                       <span className="settings-key-dot settings-key-dot--active" />
                       Signed in
@@ -3054,102 +2423,33 @@ function ApiKeysSection() {
                 </div>
               </div>
               <div className="settings-row-control">
-                {isEditing ? (
-                  <div className="settings-key-input">
-                    <TextField
-                      label={`${provider.label} API key`}
-                      hideLabel={true}
-                      type="password"
-                      placeholder={provider.placeholder}
-                      value={keyInput}
-                      onChange={(e) => setKeyInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter")
-                          handleSave(provider.key, provider.label);
-                        if (e.key === "Escape") {
-                          setEditingProvider(null);
-                          setKeyInput("");
-                        }
-                      }}
-                      autoFocus
-                    />
-                    <Button
-                      type="button"
-                      variant="primary"
-                      className="settings-btn settings-btn--primary"
-                      onClick={() => handleSave(provider.key, provider.label)}
-                      disabled={isSavingKey}
-                    >
-                      {isSavingKey ? "Saving..." : "Save"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="settings-btn"
-                      onClick={() => {
-                        setEditingProvider(null);
-                        setKeyInput("");
-                      }}
-                      disabled={isSavingKey}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="settings-btn"
-                      onClick={() => {
-                        setEditingProvider(provider.key);
-                        setKeyInput("");
-                        setCredentialsError(null);
-                      }}
-                      disabled={isSavingKey || Boolean(removingProvider)}
-                    >
-                      {credential ? "Update key" : "Add key"}
-                    </Button>
-                    {credential && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="settings-btn settings-btn--danger"
-                        onClick={() => handleRemove(provider.key)}
-                        disabled={isRemoving || isSavingKey}
-                      >
-                        {isRemoving ? "Removing..." : "Remove"}
-                      </Button>
-                    )}
-                    {oauthProvider ? (
-                      oauthCredential ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="settings-btn settings-btn--danger"
-                          onClick={() => handleOauthRemove(provider.key)}
-                          disabled={isOauthBusy || isSavingKey}
-                        >
-                          {isOauthBusy ? "Signing out..." : "Sign out"}
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="settings-btn"
-                          onClick={() => handleOauthLogin(provider.key)}
-                          disabled={isOauthBusy || isSavingKey}
-                        >
-                          {isOauthBusy ? "Opening..." : "Sign in"}
-                        </Button>
-                      )
-                    ) : null}
-                  </>
-                )}
+                {provider.apiKey ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="settings-btn settings-btn--danger"
+                    onClick={() => void handleRemove(provider.key, "key")}
+                    disabled={isRemoving}
+                  >
+                    {isRemoving ? "Removing…" : "Remove key"}
+                  </Button>
+                ) : null}
+                {provider.oauth ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="settings-btn settings-btn--danger"
+                    onClick={() => void handleRemove(provider.key, "oauth")}
+                    disabled={isRemoving}
+                  >
+                    {isRemoving ? "Signing out…" : "Sign out"}
+                  </Button>
+                ) : null}
               </div>
             </div>
           );
-        })}
+        })
+      )}
     </div>
   );
 }
@@ -3158,7 +2458,7 @@ function ModelsTab() {
   return (
     <div className="settings-tab-content">
       <ModelConfigSection />
-      <ApiKeysSection />
+      <ConnectedProvidersSection />
     </div>
   );
 }

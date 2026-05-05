@@ -1,46 +1,25 @@
-/* ModelsPicker — compact orchestrator + general agent model selector. */
+/* ModelsPicker — sidebar popover that wraps the AgentModelPicker. */
 
 [data-models-picker] {
-  width: 280px;
+  width: min(960px, calc(100vw - 32px));
+  max-width: min(960px, calc(100vw - 32px));
 }
 
 [data-models-picker] [data-slot="popover-body"] {
-  padding: 8px;
+  padding: 12px;
 }
 
-.models-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+[data-models-picker] .agent-model-picker {
+  gap: 10px;
 }
 
-.models-picker-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm, 6px);
-}
-
-.models-picker-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-base);
-}
-
-.models-picker-select {
-  width: 160px;
-  border-radius: var(--radius-full);
-}
-
-.models-picker-more {
+[data-models-picker] .models-picker-more {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
   margin-top: 4px;
-  padding: 8px;
+  padding: 8px 4px 2px;
   background: none;
   border: none;
   border-top: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
@@ -51,8 +30,8 @@
   transition: color 120ms ease;
 }
 
-.models-picker-more:hover,
-.models-picker-more:focus-visible {
+[data-models-picker] .models-picker-more:hover,
+[data-models-picker] .models-picker-more:focus-visible {
   color: var(--text-strong);
   outline: none;
 }

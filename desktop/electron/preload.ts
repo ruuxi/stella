@@ -951,17 +951,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }) as Promise<{
         removed: boolean;
       }>,
-    getLlmCredentialRoutingPreference: () =>
-      ipcRenderer.invoke("llmCredentials:getRoutingPreference") as Promise<{
-        enabled: boolean;
-      }>,
-    setLlmCredentialRoutingPreference: (payload: { enabled: boolean }) =>
-      ipcRenderer.invoke(
-        "llmCredentials:setRoutingPreference",
-        payload,
-      ) as Promise<{
-        enabled: boolean;
-      }>,
     saveLlmCredential: (payload: {
       provider: string;
       label: string;
