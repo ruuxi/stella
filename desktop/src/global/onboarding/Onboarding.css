@@ -1865,6 +1865,36 @@
 .onboarding-shortcuts-phase > .onboarding-confirm {
   --onboarding-collapse-gap: 24px;
   flex-shrink: 0;
+  /* Sit above the radial mock so an overflowing dial/visual can't paint
+   * over the Continue button on smaller viewports. */
+  position: relative;
+  z-index: 2;
+}
+
+/* The radial demo column hosts `.radial-hero` which carries website-scale
+ * padding/transforms; clip its spillover so the mock can't paint over the
+ * Continue button when the column is shorter than the hero's natural size. */
+.onboarding-shortcut-demo--radial {
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.onboarding-shortcut-demo--radial .radial-hero {
+  /* The website hero reserves 5–8rem top / 4–6.5rem bottom; in onboarding
+   * the surrounding split-pane already provides that breathing room, and
+   * the extra padding is what was pushing the mock down into Continue. */
+  padding: 0;
+  gap: clamp(1rem, 2.5vw, 2rem);
+}
+
+/* The website hero pulls the dial and mock upward with negative translates
+ * so they tuck into the surrounding hero padding. With that padding zeroed
+ * out for onboarding, those translates clip the top of the dial against the
+ * column's `overflow: hidden`. Drop the translates in this context. */
+.onboarding-shortcut-demo--radial .radial-hero__dial,
+.onboarding-shortcut-demo--radial .radial-hero__mock {
+  transform: none;
 }
 
 .onboarding-shortcut-result-description[data-visible="true"] {
