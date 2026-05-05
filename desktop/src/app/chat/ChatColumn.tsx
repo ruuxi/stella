@@ -7,7 +7,7 @@ import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { DropOverlay } from "./DropOverlay";
 import { HomeContent } from "@/app/home/HomeContent";
-import { StickyThinkingFooter } from "./StickyThinkingFooter";
+import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import { getCurrentRunningTool } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import { useFooterTasks } from "./hooks/use-footer-tasks";
@@ -123,7 +123,20 @@ export const ChatColumn = memo(function ChatColumn({
     footerTasks.length > 0 ||
     Boolean(conversation.streaming.isStreaming) ||
     Boolean(conversation.streaming.runtimeStatusText);
-  const showThinkingFooter = hasActiveWork;
+  // Always pass the indicator with `active` reflecting work state.
+  // `InlineWorkingIndicator` itself handles the post-active hold +
+  // grow-out exit and snapshots its last-known props for the duration
+  // of that exit, so it's safe to keep feeding it the live (possibly
+  // empty) values from the runtime — when `active` flips false it
+  // freezes whichever props it had at that moment.
+  const indicatorProps: InlineWorkingIndicatorMountProps = {
+    active: hasActiveWork,
+    tasks: footerTasks,
+    runningTool: runningTool?.tool,
+    runningToolId: runningTool?.id,
+    isStreaming: conversation.streaming.isStreaming,
+    status: conversation.streaming.runtimeStatusText,
+  };
   const shouldShowHomeContent = homeVisible;
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext: composer.setChatContext,
@@ -179,7 +192,10 @@ export const ChatColumn = memo(function ChatColumn({
   return (
     <div className="full-body-main" {...dropHandlers}>
       <DropOverlay visible={isDragOver} variant="surface" />
-      {/* Viewport region: scroll container + overlays (scrollbar, scroll-to-bottom) */}
+      {/* Viewport region: scroll container + overlays (scrollbar, scroll-to-bottom).
+          The working indicator now renders inline as the next sibling of the
+          latest animating assistant row (Claude pattern), so there's no
+          floating overlay to clear at the viewport bottom. */}
       <div className="chat-viewport-region">
         <div
           className={`session-content${isAtBottom ? " at-bottom" : ""}`}
@@ -198,6 +214,7 @@ export const ChatColumn = memo(function ChatColumn({
               hasOlderEvents={conversation.history.hasOlderEvents}
               isLoadingOlder={conversation.history.isLoadingOlder}
               isLoadingHistory={conversation.history.isInitialLoading}
+              indicator={indicatorProps}
             />
           </div>
         </div>
@@ -236,20 +253,6 @@ export const ChatColumn = memo(function ChatColumn({
           </button>
         )}
 
-        {/* Thinking footer — floats over the bottom of the scroll viewport so
-            the chat content can extend down to the composer. The bottom mask
-            on .session-content fades content out behind it. */}
-        <div className="thinking-footer-overlay">
-          {showThinkingFooter && (
-            <StickyThinkingFooter
-              tasks={footerTasks}
-              runningTool={runningTool?.tool}
-              runningToolId={runningTool?.id}
-              isStreaming={conversation.streaming.isStreaming}
-              status={conversation.streaming.runtimeStatusText}
-            />
-          )}
-        </div>
       </div>
 
       {/* Composer: normal flow below the scroll viewport */}

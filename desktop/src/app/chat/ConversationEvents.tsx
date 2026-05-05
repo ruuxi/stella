@@ -16,6 +16,7 @@ import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCar
 import { GrowIn } from "@/app/chat/GrowIn";
 import { useEventRows } from "./use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
+import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import {
   acknowledgeGoogleWorkspaceAuthRequired,
@@ -35,6 +36,14 @@ type Props = {
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
+  /**
+   * Inline working-indicator inputs. Forwarded to `ChatTimeline` which
+   * keeps the indicator mounted as the next sibling after the latest
+   * assistant row in the tail. The indicator handles its own hold +
+   * grow-out exit when `active` flips false, so this prop is always
+   * defined.
+   */
+  indicator?: InlineWorkingIndicatorMountProps;
 };
 
 export const ConversationEvents = memo(function ConversationEvents({
@@ -49,6 +58,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   isLoadingOlder,
   isLoadingHistory,
   onOpenAttachment,
+  indicator,
 }: Props) {
   const showGwsConnect = useSyncExternalStore(
     subscribeGoogleWorkspaceAuthRequired,
@@ -93,6 +103,7 @@ export const ConversationEvents = memo(function ConversationEvents({
       isLoadingOlder={isLoadingOlder}
       isLoadingHistory={isLoadingHistory}
       onOpenAttachment={onOpenAttachment}
+      indicator={indicator}
       extraTail={
         <GrowIn animate={true} show={showGwsConnect}>
           <GoogleWorkspaceConnectCard onConnected={handleGwsConnected} />

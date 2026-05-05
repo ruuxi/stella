@@ -138,6 +138,29 @@ export type TaskItem = {
 
 export const TASK_COMPLETION_INDICATOR_MS = 3000
 
+/**
+ * Strip out general-agent internal tool-call noise from `statusText`
+ * (e.g. "Using exec_command", "Using apply_patch") while letting the
+ * orchestrator-level overrides ("Updating", "Pausing", "Queued") and
+ * any genuinely meaningful per-agent phrase pass through unchanged.
+ *
+ * `description` is still the preferred stable subtitle — this just
+ * keeps `statusText` available as a fallback when an agent is active
+ * but its `description` is generic (e.g. the default "Task") so the
+ * working indicator doesn't collapse to a bare "Working".
+ */
+const NOISY_STATUS_TEXT_PATTERN = /^using\s+/i
+
+export function normalizeTaskDisplayStatusText(
+  statusText: string | undefined,
+): string | undefined {
+  if (!statusText) return undefined
+  const trimmed = statusText.trim()
+  if (!trimmed) return undefined
+  if (NOISY_STATUS_TEXT_PATTERN.test(trimmed)) return undefined
+  return trimmed
+}
+
 // Generic type guard factory — reduces per-event-type boilerplate.
 function createEventGuard<T extends Record<string, unknown>>(
   type: string,
@@ -337,7 +360,7 @@ export function extractTasksFromEvents(
       agentType: previous?.agentType ?? 'general',
       status: previous?.status ?? 'running',
       parentAgentId: previous?.parentAgentId,
-      statusText: previous?.statusText,
+      statusText: normalizeTaskDisplayStatusText(previous?.statusText),
       startedAtMs: previous?.startedAtMs ?? timestamp,
       completedAtMs: previous?.completedAtMs,
       lastUpdatedAtMs: previous?.lastUpdatedAtMs ?? timestamp,
@@ -363,7 +386,9 @@ export function extractTasksFromEvents(
         agentType: event.payload.agentType,
         status: 'running',
         parentAgentId: event.payload.parentAgentId,
-        statusText: event.payload.statusText ?? previous?.statusText,
+        statusText:
+          normalizeTaskDisplayStatusText(event.payload.statusText) ??
+          normalizeTaskDisplayStatusText(previous?.statusText),
         startedAtMs: event.timestamp,
         completedAtMs: undefined,
         lastUpdatedAtMs: event.timestamp,
@@ -377,11 +402,14 @@ export function extractTasksFromEvents(
       if (terminalTaskIds.has(event.payload.agentId)) {
         continue
       }
+      const previous = tasksById.get(event.payload.agentId)
       tasksById.set(
         event.payload.agentId,
         ensureTask(event.payload.agentId, event.timestamp, {
           status: 'running',
-          statusText: event.payload.statusText,
+          statusText:
+            normalizeTaskDisplayStatusText(event.payload.statusText) ??
+            normalizeTaskDisplayStatusText(previous?.statusText),
           completedAtMs: undefined,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: undefined,

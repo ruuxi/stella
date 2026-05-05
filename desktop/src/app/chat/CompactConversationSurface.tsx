@@ -7,7 +7,7 @@ import { useFooterTasks } from "./hooks/use-footer-tasks";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import type { ChatColumnScroll } from "@/app/chat/chat-column-types";
 import { ConversationEvents } from "./ConversationEvents";
-import { StickyThinkingFooter } from "./StickyThinkingFooter";
+import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import "./full-shell.chat.css";
 import "./compact-conversation.css";
 
@@ -70,8 +70,20 @@ export function CompactConversationSurface({
     liveTasks,
     appSessionStartedAtMs,
   });
-  const showThinkingFooter =
-    footerTasks.length > 0 || Boolean(isStreaming) || Boolean(runtimeStatusText);
+  const hasActiveWork =
+    footerTasks.length > 0 ||
+    Boolean(isStreaming) ||
+    Boolean(runtimeStatusText);
+  // See note in `ChatColumn.tsx`: pass the indicator unconditionally
+  // and toggle `active` so the component can play its exit animation.
+  const indicatorProps: InlineWorkingIndicatorMountProps = {
+    active: hasActiveWork,
+    tasks: footerTasks,
+    runningTool: runningTool?.tool,
+    runningToolId: runningTool?.id,
+    isStreaming,
+    status: runtimeStatusText,
+  };
 
   /*
    * Destructure the scroll API up front so the JSX reads plain identifiers
@@ -123,31 +135,11 @@ export function CompactConversationSurface({
               hasOlderEvents={hasOlderEvents}
               isLoadingOlder={isLoadingOlder}
               isLoadingHistory={isLoadingHistory}
+              indicator={indicatorProps}
             />
           </div>
         ) : null}
       </div>
-
-      {/*
-       * Floating thinking footer overlay — same DOM position as the full
-       * chat (`ChatColumn`): a sibling of the scroll viewport, absolutely
-       * positioned by `.chat-viewport-region .thinking-footer-overlay`.
-       * The mask on `.session-content`/`.chat-sidebar-messages` already
-       * fades chat content out behind it, so no inner `min-height: 52px`
-       * spacer is needed (which would otherwise reserve dead space at the
-       * column-reverse bottom — i.e. visually below the latest message).
-       */}
-      {showThinkingFooter && (
-        <div className="thinking-footer-overlay">
-          <StickyThinkingFooter
-            tasks={footerTasks}
-            runningTool={runningTool?.tool}
-            runningToolId={runningTool?.id}
-            isStreaming={isStreaming}
-            status={runtimeStatusText}
-          />
-        </div>
-      )}
     </div>
   );
 }
