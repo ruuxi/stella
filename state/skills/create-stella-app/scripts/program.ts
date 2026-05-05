@@ -55,11 +55,8 @@ function findRepoRoot(start: string): string | null {
   return null;
 }
 
-// Resolve the repo root from the caller's cwd first so the script scaffolds
-// into whichever Stella install invoked it (e.g. ~/Stella for end users),
-// not whichever tree this script's source happens to live in. SCRIPT_DIR is
-// only a fallback for `bun /abs/path/program.ts` invocations from outside
-// any Stella tree.
+// Resolve from the caller's cwd first so this scaffolds into whichever
+// Stella tree invoked it, not whichever tree contains this script.
 const REPO_ROOT =
   findRepoRoot(process.cwd()) ??
   findRepoRoot(SCRIPT_DIR) ??
