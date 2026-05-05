@@ -33,9 +33,7 @@ import {
   storeSidePanelStore,
   useStoreSidePanelState,
 } from "./store-side-panel-store";
-import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
-import FileText from "lucide-react/dist/esm/icons/file-text";
-import X from "lucide-react/dist/esm/icons/x";
+import { FileText, RefreshCw, X } from "lucide-react";
 import { showToast } from "@/ui/toast";
 import { Markdown } from "@/app/chat/Markdown";
 import {
