@@ -102,9 +102,6 @@ function PackCard({
         className="emoji-pack-cover"
         onClick={onOpen}
         aria-label={`Open ${pack.displayName}`}
-        data-stella-action="open-emoji-pack"
-        data-stella-label={pack.displayName}
-        data-stella-state={active ? "active" : "available"}
       >
         {pack.coverUrl ? (
           <img
@@ -386,7 +383,7 @@ export function EmojiStorePage() {
   );
 
   return (
-    <main className="emoji-page" data-stella-section="emojis">
+    <main className="emoji-page">
       <header className="emoji-page-header">
         <div className="emoji-page-heading">
           <h1 className="emoji-page-title">Emoji packs</h1>
@@ -455,8 +452,6 @@ export function EmojiStorePage() {
               }
               setViewMode("mine");
             }}
-            data-stella-action="toggle-emoji-view"
-            data-stella-state={viewMode}
           >
             {viewMode === "mine" ? (
               <>

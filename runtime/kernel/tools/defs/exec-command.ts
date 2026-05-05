@@ -17,7 +17,7 @@ export const createExecCommandTool = (
 ): ToolDefinition => ({
   name: "exec_command",
   description:
-    "Run a shell command in a PTY. Returns immediate output, or a session_id if the process is still running so you can poll/interact via write_stdin. Required: cmd. Stella CLIs (stella-browser, stella-office, stella-ui, stella-computer) are auto-injected into PATH.",
+    "Run a shell command in a PTY. Returns immediate output, or a session_id if the process is still running so you can poll/interact via write_stdin. Required: cmd. Stella CLIs (stella-browser, stella-office, stella-computer) are auto-injected into PATH.",
   promptSnippet: "Execute shell commands (git, build, package managers, file scripts)",
   parameters: {
     type: "object",

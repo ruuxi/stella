@@ -55,7 +55,6 @@ export type StellaHostRunnerOptions = {
   stellaRoot: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
-  stellaUiCliPath?: string;
   stellaComputerCliPath?: string;
   selfModMonitor?: SelfModMonitor | null;
   selfModLifecycle?: {
@@ -281,7 +280,6 @@ export type RunnerContext = {
   stellaRoot: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
-  stellaUiCliPath?: string;
   stellaComputerCliPath?: string;
   selfModMonitor?: SelfModMonitor | null;
   selfModLifecycle?: StellaHostRunnerOptions["selfModLifecycle"];

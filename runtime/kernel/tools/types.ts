@@ -155,7 +155,6 @@ export type ToolHostOptions = {
   stellaRoot: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
-  stellaUiCliPath?: string;
   stellaComputerCliPath?: string;
   agentApi?: AgentToolApi;
   scheduleApi?: ScheduleToolApi;

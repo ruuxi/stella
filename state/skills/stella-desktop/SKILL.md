@@ -50,10 +50,6 @@ from it must flow through `UiState`, not router state.
 Everything else (chat route, sidebars) reads it via
 `useChatRuntime()`. Mounting it elsewhere double-instantiates the
 streaming subscription.
-- Tag interactive UI with `data-stella-label`, `data-stella-state`,
-`data-stella-action` so `stella-ui` can drive it without reading
-component trees.
-
 ## Validation
 
 The root `package.json` owns Stella's desktop/runtime dependencies and scripts.
@@ -80,4 +76,3 @@ bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-
 
 - [create-stella-app](../create-stella-app/SKILL.md) — scaffold a new sidebar app (also covers canvas / game surfaces)
 - [state ownership](../../../desktop/STATE_OWNERSHIP.md)
-

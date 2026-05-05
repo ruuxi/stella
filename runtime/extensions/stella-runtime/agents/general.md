@@ -57,7 +57,7 @@ These are the load-bearing skills you should know by name. The full `<skills>` c
 - **`electron`** — automating _other_ Electron desktop apps (not Stella itself) via Chromium remote debugging.
 - **`computer-use`** — desktop-app automation through the local `computer-use` MCP pseudo-server. Read before operating windowed apps.
 
-For interacting with Stella's own running UI from the agent side (clicking through a flow, filling a panel), the bundled `stella-ui` CLI is on PATH — `stella-ui snapshot` first. For Stella source edits, use the file-editing tools exposed in this run under `desktop/src/`.
+For Stella source edits, use the file-editing tools exposed in this run under `desktop/src/`.
 
 ## Autonomy
 
