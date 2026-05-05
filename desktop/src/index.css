@@ -142,12 +142,32 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --spinner-color-3: #f1c21b;
   --spinner-color-4: #4589ff;
 
-  /* Layered shadows */
-  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
-  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.16);
+  /* Layered shadows.
+   * Each token stacks a tight contact layer with progressively wider,
+   * lower-opacity layers. A single fat blur with a non-trivial alpha bands
+   * visibly at 8-bit color depth (the falloff quantizes into rings) —
+   * stacking layers keeps every per-step delta below the quantization
+   * threshold and yields a smooth Gaussian-like falloff. */
+  --shadow-subtle:
+    0 1px 1px rgba(0, 0, 0, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-sm:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 2px 6px rgba(0, 0, 0, 0.04);
+  --shadow-md:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 4px 8px rgba(0, 0, 0, 0.05),
+    0 8px 24px rgba(0, 0, 0, 0.04);
+  --shadow-lg:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 4px 12px rgba(0, 0, 0, 0.06),
+    0 12px 32px rgba(0, 0, 0, 0.05),
+    0 20px 56px rgba(0, 0, 0, 0.04);
+  --shadow-xl:
+    0 1px 2px rgba(0, 0, 0, 0.07),
+    0 6px 16px rgba(0, 0, 0, 0.07),
+    0 16px 40px rgba(0, 0, 0, 0.06),
+    0 28px 72px rgba(0, 0, 0, 0.05);
 
   /* Aura-style border shadows */
   --shadow-xs-border:
@@ -251,12 +271,30 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --spinner-color-3: #f1c21b;
   --spinner-color-4: #4589ff;
 
-  /* Dark mode shadows */
-  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.4);
-  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.5);
+  /* Dark mode shadows — same layered strategy as light, with stronger
+   * contact + mid layers since dark surfaces need more shadow weight to
+   * read at all. Layering matters even more here: a single 0.3+ alpha
+   * blur over near-black backgrounds is where banding is most visible. */
+  --shadow-subtle:
+    0 1px 1px rgba(0, 0, 0, 0.18),
+    0 1px 2px rgba(0, 0, 0, 0.14);
+  --shadow-sm:
+    0 1px 2px rgba(0, 0, 0, 0.22),
+    0 2px 6px rgba(0, 0, 0, 0.16);
+  --shadow-md:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 4px 10px rgba(0, 0, 0, 0.20),
+    0 12px 28px rgba(0, 0, 0, 0.14);
+  --shadow-lg:
+    0 1px 2px rgba(0, 0, 0, 0.30),
+    0 6px 14px rgba(0, 0, 0, 0.22),
+    0 16px 36px rgba(0, 0, 0, 0.16),
+    0 28px 64px rgba(0, 0, 0, 0.12);
+  --shadow-xl:
+    0 1px 2px rgba(0, 0, 0, 0.32),
+    0 8px 20px rgba(0, 0, 0, 0.26),
+    0 20px 48px rgba(0, 0, 0, 0.20),
+    0 36px 80px rgba(0, 0, 0, 0.14);
 
   /* Dark mode Aura-style border shadows */
   --shadow-xs-border:
