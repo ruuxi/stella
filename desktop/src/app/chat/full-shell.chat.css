@@ -27,24 +27,6 @@
 }
 
 /*
- * Render-time virtualization (no JS list lib).
- *
- * `content-visibility: auto` lets the browser skip layout, style, and
- * paint for any row that isn't intersecting the viewport — the same
- * payoff @legendapp/list and react-window provide via JS windowing,
- * but browser-native and without disrupting the column-reverse
- * viewport, the mask-image fades, or the custom scrollbar overlay.
- *
- * `contain-intrinsic-size: auto 200px` is the placeholder size used
- * while the row is hidden. After the row has been laid out once the
- * browser caches the real size and re-uses it.
- */
-.chat-viewport-region .event-row {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 200px;
-}
-
-/*
  * Tail region: wraps the latest user message + every row after it
  * (assistant continuations, the streaming tail, the pending askQuestion
  * bubble). A small fixed floor pre-allocates empty space below the
@@ -68,11 +50,6 @@
 }
 
 .chat-viewport-region .event-row-region--tail {
-  content-visibility: visible;
-  contain-intrinsic-size: none;
-}
-
-.chat-viewport-region .event-row-region--tail .event-row {
   content-visibility: visible;
   contain-intrinsic-size: none;
 }
