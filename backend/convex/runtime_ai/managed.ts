@@ -346,6 +346,18 @@ function readSerializedOutputTextParts(content: string): TextContent[] {
     return blocks;
   }
 
+  const singleKeyDoubleQuotedText = /'text'\s*:\s*"((?:\\.|[^"\\])*)"/g;
+  for (const match of trimmed.matchAll(singleKeyDoubleQuotedText)) {
+    const text = decodeEscapedString(match[1], "\"");
+    if (text.length > 0) {
+      blocks.push({ type: "text", text });
+    }
+  }
+
+  if (blocks.length > 0) {
+    return blocks;
+  }
+
   const doubleQuotedText = /"text"\s*:\s*"((?:\\.|[^"\\])*)"/g;
   for (const match of trimmed.matchAll(doubleQuotedText)) {
     const text = decodeEscapedString(match[1], "\"");

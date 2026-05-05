@@ -482,8 +482,8 @@ const normalizeAssistantDisplayText = (text: string): string => {
   }
 
   const parts: string[] = [];
-  const textPattern = /'text'\s*:\s*'((?:\\.|[^'\\])*)'/g;
-  for (const match of trimmed.matchAll(textPattern)) {
+  const singleQuotedText = /'text'\s*:\s*'((?:\\.|[^'\\])*)'/g;
+  for (const match of trimmed.matchAll(singleQuotedText)) {
     parts.push(
       match[1]
         .replace(/\\'/g, "'")
@@ -491,6 +491,20 @@ const normalizeAssistantDisplayText = (text: string): string => {
         .replace(/\\t/g, "\t")
         .replace(/\\\\/g, "\\"),
     );
+  }
+  const singleKeyDoubleQuotedText = /'text'\s*:\s*"((?:\\.|[^"\\])*)"/g;
+  for (const match of trimmed.matchAll(singleKeyDoubleQuotedText)) {
+    try {
+      parts.push(JSON.parse(`"${match[1]}"`) as string);
+    } catch {
+      parts.push(
+        match[1]
+          .replace(/\\"/g, "\"")
+          .replace(/\\n/g, "\n")
+          .replace(/\\t/g, "\t")
+          .replace(/\\\\/g, "\\"),
+      );
+    }
   }
   return parts.length > 0 ? parts.join("") : text;
 };
