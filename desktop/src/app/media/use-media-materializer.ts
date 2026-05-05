@@ -29,6 +29,7 @@ import { displayTabs } from "@/shell/display/tab-store"
 import { payloadToTabSpec } from "@/shell/display/payload-to-tab-spec"
 
 const MATERIALIZED_KEY = "stella-media-materialized-jobs"
+const MATERIALIZED_PAYLOADS_KEY = "stella-media-materialized-payloads"
 const MATERIALIZED_CAP = 1000
 
 const loadFromStorage = (): string[] => {
@@ -54,17 +55,61 @@ const persistToStorage = (ids: Set<string>): void => {
   }
 }
 
+const loadPayloadsFromStorage = (): Map<string, DisplayPayload> => {
+  const map = new Map<string, DisplayPayload>()
+  if (typeof localStorage === "undefined") return map
+  try {
+    const raw = localStorage.getItem(MATERIALIZED_PAYLOADS_KEY)
+    if (!raw) return map
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return map
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== "object") continue
+      const record = entry as { jobId?: unknown; payload?: unknown }
+      if (typeof record.jobId !== "string") continue
+      const payload = record.payload
+      if (!payload || typeof payload !== "object") continue
+      if ((payload as { kind?: unknown }).kind !== "media") continue
+      map.set(record.jobId, payload as DisplayPayload)
+    }
+  } catch {
+    return new Map()
+  }
+  return map
+}
+
+const persistPayloadsToStorage = (
+  payloads: Map<string, DisplayPayload>,
+): void => {
+  if (typeof localStorage === "undefined") return
+  try {
+    const entries = Array.from(payloads.entries()).slice(-MATERIALIZED_CAP)
+    localStorage.setItem(
+      MATERIALIZED_PAYLOADS_KEY,
+      JSON.stringify(
+        entries.map(([jobId, payload]) => ({
+          jobId,
+          payload,
+        })),
+      ),
+    )
+  } catch {
+    // Best-effort; no-op on quota errors.
+  }
+}
+
 // Module-scoped, mutated through `markMediaJobMaterialized` and the
 // materializer hook. Sharing the same Set across both means no race window
 // where one writer's mark is invisible to the other (which would happen if
 // each side maintained its own `loadFromStorage()` snapshot).
 const materializedJobs: Set<string> = new Set(loadFromStorage())
-const materializedPayloadsByJobId = new Map<string, DisplayPayload>()
+const materializedPayloadsByJobId = loadPayloadsFromStorage()
 const materializedPayloadListeners = new Set<() => void>()
 
 export const publishMaterializedMediaPayload = (payload: DisplayPayload): void => {
   if (payload.kind === "media" && payload.jobId) {
     materializedPayloadsByJobId.set(payload.jobId, payload)
+    persistPayloadsToStorage(materializedPayloadsByJobId)
   }
   for (const listener of materializedPayloadListeners) listener()
 }
@@ -215,7 +260,6 @@ export const useMediaMaterializer = ({
           if (payload.asset.kind === "image") {
             displayTabs.openTab(payloadToTabSpec(payload), {
               activate: false,
-              openPanel: false,
             })
           }
 

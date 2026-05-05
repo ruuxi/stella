@@ -19,6 +19,7 @@ export type DisplayTabKind =
   | "url"
   | "markdown"
   | "source-diff"
+  | "media"
   | "image"
   | "pdf"
   | "office-document"
@@ -38,12 +39,7 @@ export type DisplayTabKind =
  * replace its props and re-activate, never stack.
  *
  * Convention for ids:
- *   - `media:image:generated` (all generated images in one gallery)
- *   - `media:video:<path>`
- *   - `media:audio:<path>`
- *   - `media:model3d:<path>`
- *   - `media:download:<path>`
- *   - `media:text:<sha256-of-text>` (unique per text blob)
+ *   - `media:generated` (all generated media in one gallery)
  *   - `office:<sourcePath>`
  *   - `pdf:<filePath>`
  */

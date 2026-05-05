@@ -5,12 +5,18 @@ import { useChatRuntime } from "@/context/use-chat-runtime";
 import { StoreSidePanel } from "@/global/store/StoreSidePanel";
 import { TrashTabContent } from "./TrashTabContent";
 import { ChatHomeOverview } from "./ChatHomeOverview";
+import { MediaTabContent } from "./tab-content";
 import { displayTabs } from "./tab-store";
+import {
+  GENERATED_MEDIA_TAB_ID,
+  getGeneratedMediaItems,
+} from "./payload-to-tab-spec";
 import type { OpenTabOptions } from "./types";
 
 export const CHAT_DISPLAY_TAB_ID = "chat";
 export const STORE_DISPLAY_TAB_ID = "store:side-panel";
 export const TRASH_DISPLAY_TAB_ID = "trash:deferred-delete";
+export const MEDIA_DISPLAY_TAB_ID = GENERATED_MEDIA_TAB_ID;
 
 /**
  * Chat display tab body. Always mounted via the singleton tab store; its
@@ -44,7 +50,9 @@ function ChatDisplayTab({
       isStreaming={chat.conversation.isStreaming}
       runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
       pendingUserMessageId={chat.conversation.pendingUserMessageId}
-      optimisticUserMessageIds={chat.conversation.streaming.optimisticUserMessageIds}
+      optimisticUserMessageIds={
+        chat.conversation.streaming.optimisticUserMessageIds
+      }
       selfModMap={chat.conversation.selfModMap}
       liveTasks={chat.conversation.streaming.liveTasks}
       hasOlderEvents={chat.conversation.hasOlderEvents}
@@ -97,5 +105,17 @@ export function openTrashDisplayTab(): void {
     kind: "trash",
     title: "Trash",
     render: () => createElement(TrashTabContent),
+  });
+}
+
+export function openMediaDisplayTab(): void {
+  const items = getGeneratedMediaItems();
+  displayTabs.openTab({
+    id: MEDIA_DISPLAY_TAB_ID,
+    kind: "media",
+    title: "Media",
+    tooltip: "Generated media",
+    metadata: { kind: "media", items },
+    render: () => createElement(MediaTabContent, { items }),
   });
 }

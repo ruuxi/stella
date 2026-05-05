@@ -61,8 +61,8 @@ import {
   ensureChatDisplayTab,
   openChatDisplayTab,
 } from "@/shell/display/default-tabs";
-import { MediaPreviewDialog } from "@/shell/MediaPreviewDialog";
 import { api } from "@/convex/api";
+import type { FunctionReference } from "convex/server";
 
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
@@ -73,10 +73,19 @@ type PendingAskStellaRequest = {
 };
 
 function ModelCatalogUpdatedAtSync() {
-  const updatedAt = useQuery(
-    (api as any).stella_models.getModelCatalogUpdatedAt,
-    {},
-  ) as number | undefined;
+  const catalogUpdatedAtQuery = (
+    api as unknown as {
+      stella_models: {
+        getModelCatalogUpdatedAt: FunctionReference<
+          "query",
+          "public",
+          Record<string, never>,
+          number
+        >;
+      };
+    }
+  ).stella_models.getModelCatalogUpdatedAt;
+  const updatedAt = useQuery(catalogUpdatedAtQuery, {}) as number | undefined;
   const lastSentRef = useRef<number | null | undefined>(undefined);
 
   useEffect(() => {
@@ -546,7 +555,6 @@ function RootChrome() {
         activeDialog={activeDialog ?? null}
         onDialogOpenChange={handleDialogOpenChange}
       />
-      <MediaPreviewDialog />
 
       <WelcomeDialog
         conversationId={conversationId}

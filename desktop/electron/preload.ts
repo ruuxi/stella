@@ -16,6 +16,9 @@ import {
   IPC_HOME_CAPTURE_APP_WINDOW,
   IPC_HOME_GET_ACTIVE_BROWSER_TAB,
   IPC_HOME_LIST_RECENT_APPS,
+  IPC_MEDIA_COPY_IMAGE,
+  IPC_MEDIA_GET_DIR,
+  IPC_MEDIA_SAVE_OUTPUT,
   IPC_DISCOVERY_COLLECT_BROWSER_DATA,
   IPC_DISCOVERY_CORE_MEMORY_EXISTS,
   IPC_DISCOVERY_DETECT_PREFERRED_BROWSER,
@@ -868,16 +871,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getWakeWordEnabled: () =>
       ipcRenderer.invoke(IPC_PREFERENCES_GET_WAKE_WORD) as Promise<boolean>,
     setWakeWordEnabled: (enabled: boolean) =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_SET_WAKE_WORD,
-        enabled,
-      ) as Promise<{ enabled: boolean }>,
+      ipcRenderer.invoke(IPC_PREFERENCES_SET_WAKE_WORD, enabled) as Promise<{
+        enabled: boolean;
+      }>,
     getPersonalityVoice: () =>
       ipcRenderer.invoke("preferences:getPersonalityVoice") as Promise<
         string | null
       >,
     setPersonalityVoice: (voiceId: string) =>
-      ipcRenderer.invoke("preferences:setPersonalityVoice", voiceId) as Promise<{
+      ipcRenderer.invoke(
+        "preferences:setPersonalityVoice",
+        voiceId,
+      ) as Promise<{
         ok: boolean;
         voiceId: string;
       }>,
@@ -948,9 +953,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("llmCredentials:getRoutingPreference") as Promise<{
         enabled: boolean;
       }>,
-    setLlmCredentialRoutingPreference: (payload: {
-      enabled: boolean;
-    }) =>
+    setLlmCredentialRoutingPreference: (payload: { enabled: boolean }) =>
       ipcRenderer.invoke(
         "llmCredentials:setRoutingPreference",
         payload,
@@ -1132,13 +1135,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   media: {
     saveOutput: (url: string, fileName: string) =>
-      ipcRenderer.invoke("media:saveOutput", { url, fileName }) as Promise<{
+      ipcRenderer.invoke(IPC_MEDIA_SAVE_OUTPUT, { url, fileName }) as Promise<{
         ok: boolean;
         path?: string;
         error?: string;
       }>,
     getStellaMediaDir: () =>
-      ipcRenderer.invoke("media:getStellaMediaDir") as Promise<string | null>,
+      ipcRenderer.invoke(IPC_MEDIA_GET_DIR) as Promise<string | null>,
+    copyImage: (pngBase64: string) =>
+      ipcRenderer.invoke(IPC_MEDIA_COPY_IMAGE, { pngBase64 }) as Promise<{
+        ok: boolean;
+        error?: string;
+      }>,
   },
 
   memory: {
@@ -1227,8 +1235,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("schedule:runCronJob", payload),
     removeCronJob: (payload: { jobId: string }) =>
       ipcRenderer.invoke("schedule:removeCronJob", payload),
-    updateCronJob: (payload: { jobId: string; patch: Record<string, unknown> }) =>
-      ipcRenderer.invoke("schedule:updateCronJob", payload),
+    updateCronJob: (payload: {
+      jobId: string;
+      patch: Record<string, unknown>;
+    }) => ipcRenderer.invoke("schedule:updateCronJob", payload),
     upsertHeartbeat: (payload: Record<string, unknown>) =>
       ipcRenderer.invoke("schedule:upsertHeartbeat", payload),
     runHeartbeat: (payload: { conversationId: string }) =>
@@ -1382,7 +1392,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("pet:getState") as Promise<{
         open: boolean;
         status: {
-          state: "idle" | "running" | "waiting" | "review" | "failed" | "waving";
+          state:
+            | "idle"
+            | "running"
+            | "waiting"
+            | "review"
+            | "failed"
+            | "waving";
           title: string;
           message: string;
           isLoading: boolean;

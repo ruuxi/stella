@@ -1,7 +1,13 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import {
+  clipboard,
+  ipcMain,
+  nativeImage,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from "electron";
 import { getStellaBrowserBridgeEnv } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import { resolveStellaBrowserRoot } from "../utils/stella-browser-paths.js";
 import {
@@ -11,6 +17,9 @@ import {
 import {
   IPC_BROWSER_FETCH_JSON,
   IPC_BROWSER_FETCH_TEXT,
+  IPC_MEDIA_COPY_IMAGE,
+  IPC_MEDIA_GET_DIR,
+  IPC_MEDIA_SAVE_OUTPUT,
 } from "../../src/shared/contracts/ipc-channels.js";
 
 type BrowserFetchInit = {
@@ -188,12 +197,12 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
   // ── Media file operations ──
 
   ipcMain.handle(
-    "media:saveOutput",
+    IPC_MEDIA_SAVE_OUTPUT,
     async (
       event,
       payload: { url: string; fileName: string },
     ): Promise<{ ok: boolean; path?: string; error?: string }> => {
-      if (!options.assertPrivilegedSender(event, "media:saveOutput")) {
+      if (!options.assertPrivilegedSender(event, IPC_MEDIA_SAVE_OUTPUT)) {
         return { ok: false, error: "Blocked untrusted request." };
       }
       const stellaRoot = options.getStellaRoot();
@@ -229,15 +238,36 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     },
   );
 
+  ipcMain.handle(IPC_MEDIA_GET_DIR, async (event): Promise<string | null> => {
+    if (!options.assertPrivilegedSender(event, IPC_MEDIA_GET_DIR)) {
+      return null;
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return null;
+    return path.join(stellaRoot, "state", "media");
+  });
+
   ipcMain.handle(
-    "media:getStellaMediaDir",
-    async (event): Promise<string | null> => {
-      if (!options.assertPrivilegedSender(event, "media:getStellaMediaDir")) {
-        return null;
+    IPC_MEDIA_COPY_IMAGE,
+    async (
+      event,
+      payload: { pngBase64: string },
+    ): Promise<{ ok: boolean; error?: string }> => {
+      if (!options.assertPrivilegedSender(event, IPC_MEDIA_COPY_IMAGE)) {
+        return { ok: false, error: "Blocked untrusted request." };
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) return null;
-      return path.join(stellaRoot, "state", "media");
+      try {
+        const image = nativeImage.createFromBuffer(
+          Buffer.from(payload.pngBase64, "base64"),
+        );
+        if (image.isEmpty()) {
+          return { ok: false, error: "Could not read image." };
+        }
+        clipboard.writeImage(image);
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: (error as Error).message };
+      }
     },
   );
 };

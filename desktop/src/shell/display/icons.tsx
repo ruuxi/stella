@@ -106,11 +106,50 @@ const SheetIcon = (props: IconProps) => (
   <Sheet {...props}>
     <g transform="translate(5 11.2)" fill={TYPE_COLORS.sheet}>
       <rect x="0" y="0" width="12" height="8" rx="1.2" />
-      <rect x="0" y="0" width="12" height="2.4" fill="#fff" fillOpacity="0.55" />
-      <line x1="4" y1="0" x2="4" y2="8" stroke="#fff" strokeOpacity="0.7" strokeWidth="0.7" />
-      <line x1="8" y1="0" x2="8" y2="8" stroke="#fff" strokeOpacity="0.7" strokeWidth="0.7" />
-      <line x1="0" y1="2.4" x2="12" y2="2.4" stroke="#fff" strokeOpacity="0.7" strokeWidth="0.7" />
-      <line x1="0" y1="5.2" x2="12" y2="5.2" stroke="#fff" strokeOpacity="0.7" strokeWidth="0.7" />
+      <rect
+        x="0"
+        y="0"
+        width="12"
+        height="2.4"
+        fill="#fff"
+        fillOpacity="0.55"
+      />
+      <line
+        x1="4"
+        y1="0"
+        x2="4"
+        y2="8"
+        stroke="#fff"
+        strokeOpacity="0.7"
+        strokeWidth="0.7"
+      />
+      <line
+        x1="8"
+        y1="0"
+        x2="8"
+        y2="8"
+        stroke="#fff"
+        strokeOpacity="0.7"
+        strokeWidth="0.7"
+      />
+      <line
+        x1="0"
+        y1="2.4"
+        x2="12"
+        y2="2.4"
+        stroke="#fff"
+        strokeOpacity="0.7"
+        strokeWidth="0.7"
+      />
+      <line
+        x1="0"
+        y1="5.2"
+        x2="12"
+        y2="5.2"
+        stroke="#fff"
+        strokeOpacity="0.7"
+        strokeWidth="0.7"
+      />
     </g>
   </Sheet>
 );
@@ -151,7 +190,14 @@ const ImageIcon = (props: IconProps) => (
 const VideoIcon = (props: IconProps) => (
   <Sheet {...props}>
     <g transform="translate(5 11.5)">
-      <rect x="0" y="0" width="12" height="8.5" rx="1.4" fill={TYPE_COLORS.video} />
+      <rect
+        x="0"
+        y="0"
+        width="12"
+        height="8.5"
+        rx="1.4"
+        fill={TYPE_COLORS.video}
+      />
       <path d="M4.7 2.4L8.7 4.25L4.7 6.1Z" fill="#fff" />
     </g>
   </Sheet>
@@ -287,6 +333,46 @@ const StoreIcon = ({ size = 18, style }: IconProps) => (
   </svg>
 );
 
+/**
+ * Media tab icon — minimalist Photos-style silhouette in currentColor.
+ * Matches the chrome of the other top-level tab icons (Chat, Store,
+ * Trash) instead of the badged `ImageIcon` used for inline image
+ * payloads.
+ */
+const MediaIcon = ({ size = 18, style }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={style}
+  >
+    <rect
+      x="3.5"
+      y="5.5"
+      width="17"
+      height="13"
+      rx="2.5"
+      stroke="currentColor"
+      strokeOpacity="0.75"
+      strokeWidth="1.5"
+      fill="currentColor"
+      fillOpacity="0.08"
+    />
+    <circle cx="9" cy="10" r="1.4" fill="currentColor" fillOpacity="0.75" />
+    <path
+      d="M5 16.5l4-4 3.5 3 3-2.5 3.5 3.5"
+      stroke="currentColor"
+      strokeOpacity="0.75"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
+  </svg>
+);
+
 const ChatIcon = ({ size = 18, style }: IconProps) => (
   <svg
     width={size}
@@ -383,6 +469,8 @@ export const DisplayTabIcon = ({
       return <ChatIcon size={size} style={style} />;
     case "image":
       return <ImageIcon size={size} style={style} />;
+    case "media":
+      return <MediaIcon size={size} style={style} />;
     case "pdf":
       return <PdfIcon size={size} style={style} />;
     case "office-spreadsheet":

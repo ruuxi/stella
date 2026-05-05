@@ -1026,7 +1026,9 @@ export type ElectronLocalChatApi = {
     conversationId: string;
     localMessageId: string;
   }) => Promise<{ ok: boolean }>;
-  onUpdated: (callback: (payload: LocalChatUpdatedPayload | null) => void) => () => void;
+  onUpdated: (
+    callback: (payload: LocalChatUpdatedPayload | null) => void,
+  ) => () => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -1192,6 +1194,7 @@ export type ElectronApi = {
       fileName: string,
     ) => Promise<{ ok: boolean; path?: string; error?: string }>;
     getStellaMediaDir: () => Promise<string | null>;
+    copyImage: (pngBase64: string) => Promise<{ ok: boolean; error?: string }>;
   };
   memory: {
     status: () => Promise<{

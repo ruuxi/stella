@@ -263,6 +263,7 @@ export const IPC_HOME_CAPTURE_APP_WINDOW = "home:captureAppWindow" as const;
 
 export const IPC_MEDIA_SAVE_OUTPUT = "media:saveOutput" as const;
 export const IPC_MEDIA_GET_DIR = "media:getStellaMediaDir" as const;
+export const IPC_MEDIA_COPY_IMAGE = "media:copyImage" as const;
 
 // ── Schedule ────────────────────────────────────────────────────────────────
 
