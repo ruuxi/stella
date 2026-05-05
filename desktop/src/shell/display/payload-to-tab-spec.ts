@@ -31,11 +31,19 @@ import {
 import type { DisplayTabSpec } from "./types";
 import { basenameOf, kindForPath } from "./path-to-viewer";
 
-/**
- * Stable hash for a list of file paths (used as part of media-image tab
- * ids). Sorted so that `[a, b]` and `[b, a]` collapse to the same tab.
- */
-const stableJoin = (paths: string[]): string => [...paths].sort().join("|");
+export const GENERATED_IMAGE_TAB_ID = "media:image:generated";
+
+const generatedImagePaths: string[] = [];
+const generatedImagePathSet = new Set<string>();
+
+const addGeneratedImagePaths = (filePaths: string[]): string[] => {
+  for (const filePath of filePaths) {
+    if (!filePath || generatedImagePathSet.has(filePath)) continue;
+    generatedImagePathSet.add(filePath);
+    generatedImagePaths.push(filePath);
+  }
+  return [...generatedImagePaths];
+};
 
 export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
   if (payload.kind === "html") {
@@ -165,19 +173,20 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
       };
       switch (asset.kind) {
         case "image":
+          const filePaths = addGeneratedImagePaths(asset.filePaths);
           return {
-            id: `media:image:${stableJoin(asset.filePaths)}`,
+            id: GENERATED_IMAGE_TAB_ID,
             kind: "image",
-            title,
-            tooltip: asset.filePaths.map(basenameOf).join(", "),
+            title: "Generated images",
+            tooltip: filePaths.map(basenameOf).join(", "),
             metadata: {
               kind: "image",
-              filePaths: asset.filePaths,
+              filePaths,
               ...baseMeta,
             },
             render: () =>
               createElement(ImageTabContent, {
-                filePaths: asset.filePaths,
+                filePaths,
                 ...(payload.prompt ? { prompt: payload.prompt } : {}),
                 ...(payload.capability
                   ? { capability: payload.capability }
