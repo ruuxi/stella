@@ -88,6 +88,10 @@ export const createRuntimeExecutionSession = (
     agentType: opts.agentType,
     systemPrompt: opts.systemPrompt,
     resolvedLlm: opts.resolvedLlm,
+    reasoningEffort:
+      opts.resolvedLlm.route === "direct-provider"
+        ? opts.agentContext.reasoningEffort
+        : undefined,
     hookEmitter: opts.hookEmitter,
     tools,
     historySource,

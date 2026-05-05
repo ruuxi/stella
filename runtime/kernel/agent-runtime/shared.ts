@@ -6,6 +6,7 @@ import type {
   AfterToolCallResult,
   AgentMessage,
   AgentTool,
+  ThinkingLevel,
 } from "../agent-core/types.js";
 import type { Message } from "../../ai/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
@@ -23,9 +24,7 @@ const ESTIMATED_IMAGE_TOKENS = 2_000;
 
 export const DEFAULT_MAX_TURNS = 40;
 
-export const PI_AGENT_MESSAGE_FILTER = (
-  messages: AgentMessage[],
-): Message[] =>
+export const PI_AGENT_MESSAGE_FILTER = (messages: AgentMessage[]): Message[] =>
   messages.flatMap((msg): Message[] => {
     if (
       msg.role === "user" ||
@@ -35,11 +34,13 @@ export const PI_AGENT_MESSAGE_FILTER = (
       return [msg];
     }
     if (msg.role === "runtimeInternal") {
-      return [{
-        role: "user",
-        content: msg.content,
-        timestamp: msg.timestamp,
-      }];
+      return [
+        {
+          role: "user",
+          content: msg.content,
+          timestamp: msg.timestamp,
+        },
+      ];
     }
     return [];
   });
@@ -344,6 +345,7 @@ export const createRuntimeAgent = (args: {
   agentType: string;
   systemPrompt: string;
   resolvedLlm: ResolvedLlmRoute;
+  reasoningEffort?: Exclude<ThinkingLevel, "off">;
   hookEmitter?: HookEmitter;
   tools: AgentTool[];
   historySource: AgentMessage[];
@@ -357,13 +359,16 @@ export const createRuntimeAgent = (args: {
   afterToolCall?: (
     context: AfterToolCallContext,
     signal?: AbortSignal,
-  ) => Promise<AfterToolCallResult | undefined> | AfterToolCallResult | undefined;
+  ) =>
+    | Promise<AfterToolCallResult | undefined>
+    | AfterToolCallResult
+    | undefined;
 }): Agent =>
   new Agent({
     initialState: {
       systemPrompt: args.systemPrompt,
       model: args.resolvedLlm.model,
-      thinkingLevel: "medium",
+      thinkingLevel: args.reasoningEffort ?? "medium",
       tools: args.tools,
       messages: args.historySource,
     },

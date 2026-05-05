@@ -33,6 +33,7 @@
 }
 
 .model-picker-current-label {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -40,6 +41,34 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--text-strong);
+}
+
+.model-picker-current-reasoning {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weak);
+}
+
+.model-picker-current-reasoning select {
+  appearance: none;
+  height: 24px;
+  min-width: 86px;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
+  background: color-mix(in oklch, var(--background) 75%, transparent);
+  color: var(--text-strong);
+  font: inherit;
+  padding: 0 22px 0 9px;
+  cursor: pointer;
+}
+
+.model-picker-current-reasoning select:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .model-picker-rail {

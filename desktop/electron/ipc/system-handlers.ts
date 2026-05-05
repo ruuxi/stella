@@ -21,6 +21,7 @@ import {
   setPersonalityVoiceId,
   updateLocalModelPreferences,
   type LocalModelPreferencesSnapshot,
+  type ReasoningEffort,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
 import { writePersonalityForVoice } from "../../../runtime/kernel/personality/personality.js";
 import { isKnownPersonalityVoiceId } from "../../../runtime/extensions/stella-runtime/personality/voices.js";
@@ -236,6 +237,30 @@ const sanitizeStringRecord = (value: unknown): Record<string, string> => {
       continue;
     }
     nextRecord[trimmedKey] = trimmedValue;
+  }
+  return nextRecord;
+};
+
+const sanitizeReasoningEfforts = (
+  value: unknown,
+): Record<string, ReasoningEffort> => {
+  const nextRecord: Record<string, ReasoningEffort> = {};
+  for (const [key, entryValue] of Object.entries(
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {},
+  )) {
+    const trimmedKey = asTrimmedString(key);
+    if (!trimmedKey) continue;
+    if (
+      entryValue === "minimal" ||
+      entryValue === "low" ||
+      entryValue === "medium" ||
+      entryValue === "high" ||
+      entryValue === "xhigh"
+    ) {
+      nextRecord[trimmedKey] = entryValue;
+    }
   }
   return nextRecord;
 };
@@ -580,7 +605,8 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const updatedAt =
-        typeof payload?.updatedAt === "number" && Number.isFinite(payload.updatedAt)
+        typeof payload?.updatedAt === "number" &&
+        Number.isFinite(payload.updatedAt)
           ? payload.updatedAt
           : null;
       options.getStellaHostRunner()?.setModelCatalogUpdatedAt(updatedAt);
@@ -1144,6 +1170,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
 
       const nextDefaultModels = sanitizeStringRecord(payload?.defaultModels);
       const nextOverrides = sanitizeStringRecord(payload?.modelOverrides);
+      const nextReasoningEfforts = sanitizeReasoningEfforts(
+        payload?.reasoningEfforts,
+      );
 
       const generalAgentEngine =
         payload?.generalAgentEngine === "claude_code_local"
@@ -1165,6 +1194,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
       if (payload?.modelOverrides !== undefined) {
         patch.modelOverrides = nextOverrides;
+      }
+      if (payload?.reasoningEfforts !== undefined) {
+        patch.reasoningEfforts = nextReasoningEfforts;
       }
       if (payload?.generalAgentEngine !== undefined) {
         patch.generalAgentEngine = generalAgentEngine;

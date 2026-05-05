@@ -7,6 +7,7 @@ import {
   getGeneralAgentEngine,
   getMaxAgentConcurrency,
   getModelOverride,
+  getReasoningEffort,
   getSelfModAgentEngine,
 } from "../preferences/local-preferences.js";
 import {
@@ -78,10 +79,7 @@ const getLocalHistoryBudget = (contextWindow: number): number =>
   );
 
 const getLocalHistoryWarningThreshold = (contextWindow: number): number =>
-  Math.max(
-    MIN_LOCAL_HISTORY_TOKENS,
-    Math.floor(contextWindow * 0.85),
-  );
+  Math.max(MIN_LOCAL_HISTORY_TOKENS, Math.floor(contextWindow * 0.85));
 
 const hasStoredCheckpoint = (messages: ThreadHistoryEntry[]): boolean =>
   messages.some(
@@ -164,7 +162,10 @@ const buildStaleUserReminder = (
   if (!latestUserEvent || !previousUserEvent) {
     return undefined;
   }
-  if (latestUserEvent.timestamp - previousUserEvent.timestamp < THIRTY_MINUTES_MS) {
+  if (
+    latestUserEvent.timestamp - previousUserEvent.timestamp <
+    THIRTY_MINUTES_MS
+  ) {
     return undefined;
   }
   const timezone =
@@ -223,8 +224,9 @@ export const buildOrchestratorThreadHistory = (args: {
 }): ThreadHistoryEntry[] => {
   const localEvents = args.localEvents ?? [];
   const localHistoryBudget = getLocalHistoryBudget(args.contextWindow);
-  const warningThresholdTokens =
-    getLocalHistoryWarningThreshold(args.contextWindow);
+  const warningThresholdTokens = getLocalHistoryWarningThreshold(
+    args.contextWindow,
+  );
 
   if (args.storedThreadMessages.length === 0) {
     return buildLocalHistoryFromEvents({
@@ -291,7 +293,7 @@ export const createRunnerContext = ({
   requestRuntimeAuthRefresh,
   notifyVoiceActionComplete,
   scheduleApi,
-  
+
   fashionApi,
   displayHtml,
   runtimeStore,
@@ -311,7 +313,10 @@ export const createRunnerContext = ({
   const context = {} as RunnerContext;
   const hookEmitter = new HookEmitter();
 
-  const convexAction = async (ref: unknown, args: unknown): Promise<unknown> => {
+  const convexAction = async (
+    ref: unknown,
+    args: unknown,
+  ): Promise<unknown> => {
     const deploymentUrl = sanitizeConvexDeploymentUrl(
       context.state?.convexDeploymentUrl ?? envConvexDeploymentUrl,
     );
@@ -322,10 +327,11 @@ export const createRunnerContext = ({
 
     const existingClient = context.state?.convexClient;
     if (existingClient && context.state?.convexClientUrl === deploymentUrl) {
-      return await (existingClient as { action: (tool: unknown, params: unknown) => Promise<unknown> }).action(
-        ref,
-        args,
-      );
+      return await (
+        existingClient as {
+          action: (tool: unknown, params: unknown) => Promise<unknown>;
+        }
+      ).action(ref, args);
     }
 
     const client = new ConvexClient(deploymentUrl, {
@@ -334,10 +340,11 @@ export const createRunnerContext = ({
     });
     client.setAuth(async () => authToken);
     try {
-      return await (client as { action: (tool: unknown, params: unknown) => Promise<unknown> }).action(
-        ref,
-        args,
-      );
+      return await (
+        client as {
+          action: (tool: unknown, params: unknown) => Promise<unknown>;
+        }
+      ).action(ref, args);
     } finally {
       void client.close().catch(() => undefined);
     }
@@ -355,7 +362,7 @@ export const createRunnerContext = ({
     notifyVoiceActionComplete,
     displayHtml,
     scheduleApi,
-    
+
     fashionApi: resolvedFashionApi,
     webSearch: async (query, searchOptions) => {
       const handler = context.state?.webSearch;
@@ -368,7 +375,9 @@ export const createRunnerContext = ({
       return await handler(query, searchOptions);
     },
     getStellaSiteAuth: () => {
-      const baseUrl = sanitizeStellaBase(context.state?.convexSiteUrl ?? envProxyBaseUrl);
+      const baseUrl = sanitizeStellaBase(
+        context.state?.convexSiteUrl ?? envProxyBaseUrl,
+      );
       const authToken = (context.state?.authToken ?? envAuthToken ?? "").trim();
       return baseUrl && authToken ? { baseUrl, authToken } : null;
     },
@@ -383,10 +392,11 @@ export const createRunnerContext = ({
 
       const existingClient = context.state?.convexClient;
       if (existingClient && context.state?.convexClientUrl === deploymentUrl) {
-        return await (existingClient as { query: (tool: unknown, params: unknown) => Promise<unknown> }).query(
-          ref,
-          args,
-        );
+        return await (
+          existingClient as {
+            query: (tool: unknown, params: unknown) => Promise<unknown>;
+          }
+        ).query(ref, args);
       }
 
       const client = new ConvexClient(deploymentUrl, {
@@ -395,15 +405,16 @@ export const createRunnerContext = ({
       });
       client.setAuth(async () => authToken);
       try {
-        return await (client as { query: (tool: unknown, params: unknown) => Promise<unknown> }).query(
-          ref,
-          args,
-        );
+        return await (
+          client as {
+            query: (tool: unknown, params: unknown) => Promise<unknown>;
+          }
+        ).query(ref, args);
       } finally {
         void client.close().catch(() => undefined);
       }
     },
-    ...(memoryStore ?? runtimeStore?.memoryStore
+    ...((memoryStore ?? runtimeStore?.memoryStore)
       ? { memoryStore: memoryStore ?? runtimeStore.memoryStore }
       : {}),
     ...(runtimeStore?.threadSummariesStore
@@ -427,7 +438,10 @@ export const createRunnerContext = ({
         if (!context.state.localAgentManager) {
           return { canceled: false };
         }
-        return await context.state.localAgentManager.cancelAgent(agentId, reason);
+        return await context.state.localAgentManager.cancelAgent(
+          agentId,
+          reason,
+        );
       },
       sendAgentMessage: async (agentId, message, from, options) => {
         if (
@@ -446,7 +460,8 @@ export const createRunnerContext = ({
       drainAgentMessages: async (agentId, recipient) => {
         if (
           !context.state.localAgentManager ||
-          typeof context.state.localAgentManager.drainAgentMessages !== "function"
+          typeof context.state.localAgentManager.drainAgentMessages !==
+            "function"
         ) {
           return [];
         }
@@ -472,7 +487,7 @@ export const createRunnerContext = ({
     requestRuntimeAuthRefresh,
     notifyVoiceActionComplete,
     scheduleApi,
-    
+
     fashionApi: resolvedFashionApi,
     displayHtml,
     runtimeStore,
@@ -593,7 +608,10 @@ export const buildAgentContext = async (
   // make a fresh, smaller fetch since they don't otherwise need the
   // local-events stream.
   let userLocale: string | undefined;
-  if (args.agentType === AGENT_IDS.ORCHESTRATOR && context.listLocalChatEvents) {
+  if (
+    args.agentType === AGENT_IDS.ORCHESTRATOR &&
+    context.listLocalChatEvents
+  ) {
     const localEvents = context
       .listLocalChatEvents(args.conversationId, 800)
       .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
@@ -628,8 +646,7 @@ export const buildAgentContext = async (
   // dynamic context. It's a single line, comes from the latest
   // `user_message` event's `locale` payload, and is `undefined` for
   // English so we don't waste tokens on a no-op directive.
-  const responseLanguageDirective =
-    getResponseLanguageSystemPrompt(userLocale);
+  const responseLanguageDirective = getResponseLanguageSystemPrompt(userLocale);
   if (responseLanguageDirective) {
     dynamicContextSections.push(
       `## User Language\n${responseLanguageDirective}`,
@@ -679,13 +696,16 @@ export const buildAgentContext = async (
     args.agentType === AGENT_IDS.ORCHESTRATOR ||
     args.agentType === AGENT_IDS.GENERAL
   ) {
-    dynamicContextSections.push(await renderSkillCatalogBlock(context.stellaRoot));
+    dynamicContextSections.push(
+      await renderSkillCatalogBlock(context.stellaRoot),
+    );
   }
   if (args.agentType === AGENT_IDS.GENERAL) {
     const connectors = await listStellaConnectors(context.stellaRoot);
     const installed = connectors.filter((connector) => connector.installed);
     const available = connectors.filter(
-      (connector) => !connector.installed && connector.status === "official-mcp",
+      (connector) =>
+        !connector.installed && connector.status === "official-mcp",
     );
     const lines = [
       "## Stella Connect",
@@ -705,8 +725,8 @@ export const buildAgentContext = async (
   // on coast turns keeps both the prompt and the snapshot rebuild cheap.
   let memorySnapshot: { memory?: string; user?: string } | undefined;
   const shouldInjectDynamicMemory =
-    args.agentType === AGENT_IDS.ORCHESTRATOR
-    && args.shouldInjectDynamicMemory === true;
+    args.agentType === AGENT_IDS.ORCHESTRATOR &&
+    args.shouldInjectDynamicMemory === true;
   if (shouldInjectDynamicMemory) {
     const memoryStore = context.runtimeStore.memoryStore;
     // Freeze a fresh snapshot for this run so new writes appear on the next
@@ -731,16 +751,16 @@ export const buildAgentContext = async (
     staleUserReminderText,
     toolsAllowlist,
     model,
+    reasoningEffort: getReasoningEffort(context.stellaRoot, args.agentType),
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
     coreMemory: readCoreMemory(context.stellaRoot),
     ...(memorySnapshot ? { memorySnapshot } : {}),
     ...(shouldInjectDynamicMemory ? { shouldInjectDynamicMemory: true } : {}),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
-    agentEngine:
-      isSelfModTask
-        ? getSelfModAgentEngine(context.stellaRoot)
-        : enginePref === "general"
+    agentEngine: isSelfModTask
+      ? getSelfModAgentEngine(context.stellaRoot)
+      : enginePref === "general"
         ? getGeneralAgentEngine(context.stellaRoot)
         : undefined,
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)

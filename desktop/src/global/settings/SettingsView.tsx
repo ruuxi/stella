@@ -93,11 +93,14 @@ const MAX_AGENT_CONCURRENCY_OPTIONS = Array.from(
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
   modelOverrides: Record<string, string>;
+  reasoningEfforts: Record<
+    string,
+    "minimal" | "low" | "medium" | "high" | "xhigh"
+  >;
   generalAgentEngine: "default" | "claude_code_local";
   selfModAgentEngine: "default" | "claude_code_local";
   maxAgentConcurrency: number;
 };
-
 
 function getSettingsErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -724,7 +727,9 @@ function BasicSettingsTab() {
     async (nextVoiceId: string) => {
       const systemApi = window.electronAPI?.system;
       if (!systemApi?.setPersonalityVoice) {
-        setPersonalityVoiceError("Voice settings are unavailable in this window.");
+        setPersonalityVoiceError(
+          "Voice settings are unavailable in this window.",
+        );
         return;
       }
       const previous = personalityVoiceId;
@@ -859,7 +864,11 @@ function BasicSettingsTab() {
         );
       }
     },
-    [requestMicrophonePermission, requestWithSettingsFallback, setPermissionsError],
+    [
+      requestMicrophonePermission,
+      requestWithSettingsFallback,
+      setPermissionsError,
+    ],
   );
 
   const handlePermissionRestart = useCallback(async () => {
@@ -2330,8 +2339,8 @@ function ModelConfigSection() {
       <div className="settings-card">
         <h3 className="settings-card-title">Models</h3>
         <p className="settings-card-desc">
-          Pick which model and provider Stella uses for each kind of task.
-          The toggle below switches between the two agents.
+          Pick which model and provider Stella uses for each kind of task. The
+          toggle below switches between the two agents.
         </p>
         <AgentModelPicker />
       </div>
@@ -2351,7 +2360,10 @@ function ConnectedProvidersSection() {
   const connectedProviders = useMemo(() => {
     return LLM_PROVIDERS.map((entry) => {
       const apiKey = findApiKey(credentials.apiKeys, entry.key);
-      const oauth = findOauthCredential(credentials.oauthCredentials, entry.key);
+      const oauth = findOauthCredential(
+        credentials.oauthCredentials,
+        entry.key,
+      );
       if (!apiKey && !oauth) return null;
       return { ...entry, apiKey, oauth };
     }).filter(Boolean) as Array<
