@@ -487,6 +487,7 @@ export type ElectronDictationApi = {
   overlayCompleted: (payload: { sessionId: string; text: string }) => void;
   overlayFailed: (payload: { sessionId: string; error?: string }) => void;
   inAppStarted: (payload: { startId?: string }) => void;
+  activeChanged: (payload: { active: boolean }) => void;
 };
 
 export type ElectronAgentApi = {

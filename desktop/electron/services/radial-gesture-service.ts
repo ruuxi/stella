@@ -29,6 +29,12 @@ export type RadialCaptureBridge = {
     screenshot: { dataUrl: string; width: number; height: number } | null;
     window: ChatContext["window"];
   } | null>;
+  mergeRegionCaptureResult: (
+    result: {
+      screenshot: { dataUrl: string; width: number; height: number } | null;
+      window: ChatContext["window"];
+    } | null,
+  ) => boolean;
   emptyContext: () => ChatContext;
   broadcastChatContext: () => void;
 };
@@ -171,40 +177,7 @@ export class RadialGestureService {
         const targetWindowMode = win.getLastFocusedWindowMode();
         win.minimizeWindow();
         const regionCapture = await capture.startRegionCapture();
-        if (
-          regionCapture &&
-          (regionCapture.screenshot || regionCapture.window)
-        ) {
-          const ctx =
-            capture.getChatContextSnapshot() ?? capture.emptyContext();
-          const isWindowClick = Boolean(
-            regionCapture.window && regionCapture.screenshot,
-          );
-          const existing = ctx.regionScreenshots ?? [];
-          const nextScreenshots =
-            regionCapture.screenshot && !isWindowClick
-              ? [...existing, regionCapture.screenshot]
-              : existing;
-          const nextWindow = regionCapture.window ?? ctx.window;
-          const nextWindowScreenshot = isWindowClick
-            ? regionCapture.screenshot
-            : (ctx.windowScreenshot ?? null);
-          const isRegionSelection = Boolean(
-            regionCapture.screenshot && !regionCapture.window,
-          );
-          capture.setPendingChatContext({
-            ...ctx,
-            window: isRegionSelection ? null : nextWindow,
-            windowScreenshot: isRegionSelection ? null : nextWindowScreenshot,
-            windowContextEnabled: isRegionSelection
-              ? undefined
-              : regionCapture.window
-                ? undefined
-                : ctx.windowContextEnabled,
-            regionScreenshots: nextScreenshots,
-          });
-          capture.broadcastChatContext();
-        }
+        capture.mergeRegionCaptureResult(regionCapture);
         // Cancel (Escape / exit without capturing) resolves null; leave the window minimized.
         if (regionCapture !== null) {
           win.showWindow(targetWindowMode);

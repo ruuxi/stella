@@ -163,34 +163,7 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
 
     const result = await options.captureService.startRegionCapture();
 
-    if (result && (result.screenshot || result.window)) {
-      const ctx =
-        options.captureService.getChatContextSnapshot()
-        ?? options.captureService.emptyContext();
-      const isWindowClick = Boolean(result.window && result.screenshot);
-      const existing = ctx.regionScreenshots ?? [];
-      const nextScreenshots =
-        result.screenshot && !isWindowClick
-          ? [...existing, result.screenshot]
-          : existing;
-      const nextWindow = result.window ?? ctx.window;
-      const nextWindowScreenshot = isWindowClick
-        ? result.screenshot
-        : ctx.windowScreenshot ?? null;
-      const isRegionSelection = Boolean(result.screenshot && !result.window);
-      options.captureService.setPendingChatContext({
-        ...ctx,
-        window: isRegionSelection ? null : nextWindow,
-        windowScreenshot: isRegionSelection ? null : nextWindowScreenshot,
-        windowContextEnabled: isRegionSelection
-          ? undefined
-          : result.window
-            ? undefined
-            : ctx.windowContextEnabled,
-        regionScreenshots: nextScreenshots,
-      });
-      options.captureService.broadcastChatContext();
-    }
+    options.captureService.mergeRegionCaptureResult(result);
 
     wm.showWindow(targetWindowMode);
 

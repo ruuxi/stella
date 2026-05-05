@@ -51,6 +51,7 @@ type DictationHandlersOptions = {
   windowManager: WindowManager;
   getOverlayController: () => OverlayWindowController | null;
   getStellaRoot: () => string | null;
+  onDictationActiveChanged?: (active: boolean) => void;
 };
 
 type DictationMode =
@@ -212,6 +213,21 @@ export const registerDictationHandlers = (
   let mutedOutputPreviousMuted: boolean | null = null;
   let outputMutePromise: Promise<void> | null = null;
   let outputMuteActive = false;
+  const activeDictationSources = new Set<string>();
+  let dictationActive = false;
+
+  const setDictationSourceActive = (source: string, active: boolean) => {
+    const previous = dictationActive;
+    if (active) {
+      activeDictationSources.add(source);
+    } else {
+      activeDictationSources.delete(source);
+    }
+    dictationActive = activeDictationSources.size > 0;
+    if (dictationActive !== previous) {
+      options.onDictationActiveChanged?.(dictationActive);
+    }
+  };
 
   const muteOutputForDictation = () => {
     if (!dictationBridgeIsSupported()) return;
@@ -293,6 +309,7 @@ export const registerDictationHandlers = (
     const wasPetRoute = activeOverlayRoute === "stella-chat";
     activeOverlaySessionId = null;
     activeOverlayRoute = "paste";
+    setDictationSourceActive(`overlay:${sessionId}`, false);
     restoreOutputAfterDictation();
     options.getOverlayController()?.hideDictation();
     if (wasPetRoute) broadcastPetDictationActive(false);
@@ -332,6 +349,7 @@ export const registerDictationHandlers = (
     const sessionId = randomUUID();
     activeOverlaySessionId = sessionId;
     activeOverlayRoute = route;
+    setDictationSourceActive(`overlay:${sessionId}`, true);
     const position = getOverlayDictationPosition();
     overlay.showDictation(position.x, position.y);
     overlay.send("dictation:overlayStart", { sessionId });
@@ -344,6 +362,7 @@ export const registerDictationHandlers = (
     if (!overlay || activeOverlaySessionId) return null;
     const sessionId = randomUUID();
     activeOverlaySessionId = sessionId;
+    setDictationSourceActive(`overlay:${sessionId}`, true);
     const position = getOverlayDictationPosition();
     overlay.showDictation(position.x, position.y);
     overlay.send("dictation:overlayStart", { sessionId });
@@ -361,6 +380,7 @@ export const registerDictationHandlers = (
       const startId = randomUUID();
       pendingInAppStartId = startId;
       activePushToTalk = { type: "in-app", window: target, startId };
+      setDictationSourceActive(`in-app:${startId}`, true);
       target.webContents.send("dictation:toggle", {
         startId,
         action: "start",
@@ -372,6 +392,7 @@ export const registerDictationHandlers = (
           activePushToTalk?.type === "in-app" &&
           activePushToTalk.startId === startId
         ) {
+          setDictationSourceActive(`in-app:${startId}`, false);
           activePushToTalk = startOverlayPushToTalk();
         }
       }, IN_APP_START_ACK_TIMEOUT_MS);
@@ -393,7 +414,9 @@ export const registerDictationHandlers = (
         options
           .getOverlayController()
           ?.send("dictation:overlayCancel", { sessionId: active.sessionId });
-      } else if (!active.window.isDestroyed()) {
+      } else {
+        setDictationSourceActive(`in-app:${active.startId}`, false);
+        if (active.window.isDestroyed()) return;
         active.window.webContents.send("dictation:toggle", {
           startId: active.startId,
           action: "cancel",
@@ -411,10 +434,13 @@ export const registerDictationHandlers = (
       return;
     }
     if (!active.window.isDestroyed()) {
+      setDictationSourceActive(`in-app:${active.startId}`, false);
       active.window.webContents.send("dictation:toggle", {
         startId: active.startId,
         action: "stop",
       });
+    } else {
+      setDictationSourceActive(`in-app:${active.startId}`, false);
     }
   };
 
@@ -431,6 +457,7 @@ export const registerDictationHandlers = (
         ?.send("dictation:overlayCancel", { sessionId: active.sessionId });
       return;
     }
+    setDictationSourceActive(`in-app:${active.startId}`, false);
     if (!active.window.isDestroyed()) {
       active.window.webContents.send("dictation:toggle", {
         startId: active.startId,
@@ -451,6 +478,7 @@ export const registerDictationHandlers = (
         ?.send("dictation:overlayCancel", { sessionId: active.sessionId });
       return;
     }
+    setDictationSourceActive(`in-app:${active.startId}`, false);
     if (!active.window.isDestroyed()) {
       active.window.webContents.send("dictation:toggle", {
         startId: active.startId,
@@ -598,6 +626,22 @@ export const registerDictationHandlers = (
       if (pendingInAppStartId === payload.startId) {
         pendingInAppStartId = null;
       }
+      setDictationSourceActive(`in-app:${payload.startId}`, false);
+    },
+  );
+
+  ipcMain.on(
+    "dictation:activeChanged",
+    (
+      event,
+      payload: {
+        active?: boolean;
+      } | null,
+    ) => {
+      setDictationSourceActive(
+        `renderer:${event.sender.id}`,
+        payload?.active === true,
+      );
     },
   );
 
