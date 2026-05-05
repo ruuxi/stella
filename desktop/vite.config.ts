@@ -959,24 +959,6 @@ export default defineConfig({
       },
     },
   },
-  optimizeDeps: {
-    include: [
-      'react',
-      'react-dom',
-      'react/jsx-runtime',
-      'lucide-react',
-      'zod',
-    ],
-    exclude: [
-      '@convex-dev/better-auth',
-      '@convex-dev/better-auth/react',
-      'convex',
-      // Pre-bundled for self-mod use; large pure-ESM packages stay out of
-      // optimizeDeps so cold dev-server start doesn't pay for them when
-      // unused. They load fine on first import.
-      'three',
-    ],
-  },
   server: {
     // Pin to IPv4 loopback and publish that exact address via the dev-url
     // plugin above. With the default (`localhost`), Node 17+'s verbatim DNS
