@@ -60,6 +60,7 @@ import {
   ensureChatDisplayTab,
   openChatDisplayTab,
 } from "@/shell/display/default-tabs";
+import { MediaPreviewDialog } from "@/shell/MediaPreviewDialog";
 
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
@@ -521,6 +522,7 @@ function RootChrome() {
         activeDialog={activeDialog ?? null}
         onDialogOpenChange={handleDialogOpenChange}
       />
+      <MediaPreviewDialog />
 
       <WelcomeDialog
         conversationId={conversationId}

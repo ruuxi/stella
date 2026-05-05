@@ -11,11 +11,14 @@ import {
   useDisplayFileBlobs,
   type DisplayFileBlob,
 } from "@/shared/hooks/use-display-file-data";
+import { mediaPreviewDialog } from "@/shell/media-preview-dialog-store";
 
 type MediaPreviewCardProps = {
   asset: MediaAsset;
   prompt?: string;
   capability?: string;
+  inDialog?: boolean;
+  initialIndex?: number;
 };
 
 const filenameOf = (filePath: string): string =>
@@ -118,17 +121,20 @@ const ImageGallery = ({
   filePaths,
   prompt,
   capability,
+  inDialog,
+  initialIndex,
 }: {
   filePaths: string[];
   prompt?: string;
   capability?: string;
+  inDialog?: boolean;
+  initialIndex?: number;
 }) => {
   const { files, error } = useDisplayFileBlobs(
     filePaths,
     "Media preview requires the Electron host runtime.",
   );
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [lightbox, setLightbox] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(initialIndex ?? 0);
 
   // Clamp on render rather than syncing via effect — when a new batch with
   // fewer files arrives we want the active selection to slide back into
@@ -137,18 +143,39 @@ const ImageGallery = ({
   const safeIndex = Math.max(0, Math.min(activeIndex, files.length - 1));
   const active = files[safeIndex];
 
-  const handleClose = useCallback(() => setLightbox(false), []);
+  const handleOpenPreview = useCallback(() => {
+    mediaPreviewDialog.open({
+      asset: { kind: "image", filePaths },
+      ...(prompt ? { prompt } : {}),
+      ...(capability ? { capability } : {}),
+      initialIndex: safeIndex,
+    });
+  }, [capability, filePaths, prompt, safeIndex]);
 
   return (
     <div className="display-media display-media--image">
       <PromptHeader prompt={prompt} capability={capability} />
       {error && <p className="display-media__error">{error}</p>}
-      <MediaActions filePath={filePaths[safeIndex]} copyImage={active} />
+      <MediaActions
+        filePath={filePaths[safeIndex]}
+        copyImage={active}
+        extraAction={
+          !inDialog && active ? (
+            <button
+              type="button"
+              className="display-media__action-btn"
+              onClick={handleOpenPreview}
+            >
+              Open preview
+            </button>
+          ) : undefined
+        }
+      />
       {active ? (
         <button
           type="button"
           className="display-media__primary-btn"
-          onClick={() => setLightbox(true)}
+          onClick={inDialog ? undefined : handleOpenPreview}
           aria-label="Open full size"
         >
           <img
@@ -183,29 +210,6 @@ const ImageGallery = ({
           ))}
         </div>
       )}
-      {lightbox && active && (
-        <div
-          className="display-media-lightbox"
-          onClick={handleClose}
-          role="dialog"
-          aria-modal="true"
-        >
-          <img
-            src={active.url}
-            alt={prompt ?? ""}
-            className="display-media-lightbox__img"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button
-            type="button"
-            className="display-media-lightbox__close"
-            onClick={handleClose}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-      )}
     </div>
   );
 };
@@ -214,10 +218,12 @@ const VideoCard = ({
   filePath,
   prompt,
   capability,
+  inDialog,
 }: {
   filePath: string;
   prompt?: string;
   capability?: string;
+  inDialog?: boolean;
 }) => {
   const { files, error } = useDisplayFileBlobs(
     [filePath],
@@ -241,7 +247,27 @@ const VideoCard = ({
       ) : (
         !error && <div className="display-media__loading">Loading…</div>
       )}
-      <MediaActions filePath={filePath} copyText={filePath} />
+      <MediaActions
+        filePath={filePath}
+        copyText={filePath}
+        extraAction={
+          !inDialog && file ? (
+            <button
+              type="button"
+              className="display-media__action-btn"
+              onClick={() =>
+                mediaPreviewDialog.open({
+                  asset: { kind: "video", filePath },
+                  ...(prompt ? { prompt } : {}),
+                  ...(capability ? { capability } : {}),
+                })
+              }
+            >
+              Open preview
+            </button>
+          ) : undefined
+        }
+      />
       <div className="display-media__filename">{filenameOf(filePath)}</div>
     </div>
   );
@@ -251,10 +277,12 @@ const AudioCard = ({
   filePath,
   prompt,
   capability,
+  inDialog,
 }: {
   filePath: string;
   prompt?: string;
   capability?: string;
+  inDialog?: boolean;
 }) => {
   const { files, error } = useDisplayFileBlobs(
     [filePath],
@@ -281,7 +309,27 @@ const AudioCard = ({
           ) : (
             !error && <div className="display-media__loading">Loading…</div>
           )}
-          <MediaActions filePath={filePath} copyText={filePath} />
+          <MediaActions
+            filePath={filePath}
+            copyText={filePath}
+            extraAction={
+              !inDialog && file ? (
+                <button
+                  type="button"
+                  className="display-media__action-btn"
+                  onClick={() =>
+                    mediaPreviewDialog.open({
+                      asset: { kind: "audio", filePath },
+                      ...(prompt ? { prompt } : {}),
+                      ...(capability ? { capability } : {}),
+                    })
+                  }
+                >
+                  Open preview
+                </button>
+              ) : undefined
+            }
+          />
         </div>
       </div>
     </div>
@@ -294,12 +342,14 @@ const DownloadCard = ({
   prompt,
   capability,
   variant,
+  inDialog,
 }: {
   filePath: string;
   label: string;
   prompt?: string;
   capability?: string;
   variant: "model3d" | "download";
+  inDialog?: boolean;
 }) => {
   const handleReveal = useCallback(() => {
     window.electronAPI?.system?.showItemInFolder?.(filePath);
@@ -323,13 +373,33 @@ const DownloadCard = ({
             filePath={filePath}
             copyText={filePath}
             extraAction={
-              <button
-                type="button"
-                className="display-media__action-btn"
-                onClick={handleReveal}
-              >
-                Reveal in Finder
-              </button>
+              <>
+                {!inDialog && (
+                  <button
+                    type="button"
+                    className="display-media__action-btn"
+                    onClick={() =>
+                      mediaPreviewDialog.open({
+                        asset:
+                          variant === "model3d"
+                            ? { kind: "model3d", filePath, label }
+                            : { kind: "download", filePath, label },
+                        ...(prompt ? { prompt } : {}),
+                        ...(capability ? { capability } : {}),
+                      })
+                    }
+                  >
+                    Open preview
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="display-media__action-btn"
+                  onClick={handleReveal}
+                >
+                  Reveal in Finder
+                </button>
+              </>
             }
           />
         </div>
@@ -358,6 +428,8 @@ export const MediaPreviewCard = ({
   asset,
   prompt,
   capability,
+  inDialog,
+  initialIndex,
 }: MediaPreviewCardProps) => {
   switch (asset.kind) {
     case "image":
@@ -366,6 +438,8 @@ export const MediaPreviewCard = ({
           filePaths={asset.filePaths}
           {...(prompt ? { prompt } : {})}
           {...(capability ? { capability } : {})}
+          {...(inDialog ? { inDialog } : {})}
+          {...(initialIndex !== undefined ? { initialIndex } : {})}
         />
       );
     case "video":
@@ -374,6 +448,7 @@ export const MediaPreviewCard = ({
           filePath={asset.filePath}
           {...(prompt ? { prompt } : {})}
           {...(capability ? { capability } : {})}
+          {...(inDialog ? { inDialog } : {})}
         />
       );
     case "audio":
@@ -382,6 +457,7 @@ export const MediaPreviewCard = ({
           filePath={asset.filePath}
           {...(prompt ? { prompt } : {})}
           {...(capability ? { capability } : {})}
+          {...(inDialog ? { inDialog } : {})}
         />
       );
     case "model3d":
@@ -392,6 +468,7 @@ export const MediaPreviewCard = ({
           variant="model3d"
           {...(prompt ? { prompt } : {})}
           {...(capability ? { capability } : {})}
+          {...(inDialog ? { inDialog } : {})}
         />
       );
     case "download":
@@ -402,6 +479,7 @@ export const MediaPreviewCard = ({
           variant="download"
           {...(prompt ? { prompt } : {})}
           {...(capability ? { capability } : {})}
+          {...(inDialog ? { inDialog } : {})}
         />
       );
     case "text":
