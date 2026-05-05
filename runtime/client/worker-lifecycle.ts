@@ -405,7 +405,7 @@ export class RuntimeWorkerLifecycleController {
       this.clearIdleTimer();
       return;
     }
-    this.scheduleIdleEvaluation(0);
+    this.scheduleIdleEvaluation(this.options.idleTimeoutMs ?? 0);
   }
 
   async getHealth(args: { ensureWorker: boolean }) {

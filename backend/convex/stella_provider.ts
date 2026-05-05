@@ -43,6 +43,7 @@ import {
 import type { AssistantMessageEvent, Context } from "./runtime_ai/types";
 import {
   STELLA_DEFAULT_MODEL,
+  STELLA_MODEL_CATALOG_UPDATED_AT,
   isStellaModel,
   listStellaCatalogModels,
   listStellaDefaultSelections,
@@ -1646,6 +1647,7 @@ export const stellaProviderModels = httpAction(async (ctx, request) =>
           upstreamModel: model.upstreamModel,
         })),
         defaults: listStellaDefaultSelections(audience),
+        updatedAt: STELLA_MODEL_CATALOG_UPDATED_AT,
       },
       200,
       origin,

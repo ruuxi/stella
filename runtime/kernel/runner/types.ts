@@ -233,6 +233,7 @@ export type RunnerState = {
   convexClientUrl: string | null;
   hasConnectedAccount: boolean;
   cloudSyncEnabled: boolean;
+  modelCatalogUpdatedAt: number | null;
   isRunning: boolean;
   isInitialized: boolean;
   initializationPromise: Promise<void> | null;
@@ -344,6 +345,7 @@ export type RunnerPublicApi = {
   setAuthToken: (value: string | null) => void;
   setHasConnectedAccount: (value: boolean) => void;
   setCloudSyncEnabled: (enabled: boolean) => void;
+  setModelCatalogUpdatedAt: (value: number | null) => void;
   start: () => void;
   stop: () => void;
   waitUntilInitialized: () => Promise<void>;

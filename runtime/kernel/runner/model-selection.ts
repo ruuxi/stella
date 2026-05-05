@@ -4,6 +4,7 @@ import {
   resolveLlmRoute,
   type ResolvedLlmRoute,
 } from "../model-routing.js";
+import { withStellaModelCatalogMetadata } from "../stella-model-catalog.js";
 import type { RunnerContext } from "./types.js";
 
 export const createRunnerSiteConfig = (context: RunnerContext) => ({
@@ -28,6 +29,27 @@ export const resolveRunnerLlmRoute = (
     agentType,
     site: createRunnerSiteConfig(context),
   });
+
+export const resolveRunnerLlmRouteWithMetadata = async (
+  context: RunnerContext,
+  agentType: string,
+  modelName: string | undefined,
+): Promise<ResolvedLlmRoute> => {
+  const site = createRunnerSiteConfig(context);
+  const route = resolveLlmRoute({
+    stellaRoot: context.stellaRoot,
+    modelName,
+    agentType,
+    site,
+  });
+  return await withStellaModelCatalogMetadata({
+    route,
+    agentType,
+    site,
+    deviceId: context.deviceId,
+    modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
+  });
+};
 
 export const canResolveRunnerLlmRoute = (
   context: RunnerContext,

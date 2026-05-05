@@ -80,6 +80,7 @@ export class RuntimeClientAdapter {
     authToken?: string | null;
     hasConnectedAccount?: boolean;
     cloudSyncEnabled?: boolean;
+    modelCatalogUpdatedAt?: number | null;
   } = {};
   private queuedConfigPatch: {
     convexUrl?: string | null;
@@ -87,6 +88,7 @@ export class RuntimeClientAdapter {
     authToken?: string | null;
     hasConnectedAccount?: boolean;
     cloudSyncEnabled?: boolean;
+    modelCatalogUpdatedAt?: number | null;
   } = {};
   private configFlushQueued = false;
   private readonly localChatSessions = new Map<string, LocalChatSession>();
@@ -420,6 +422,7 @@ export class RuntimeClientAdapter {
     authToken?: string | null;
     hasConnectedAccount?: boolean;
     cloudSyncEnabled?: boolean;
+    modelCatalogUpdatedAt?: number | null;
   }) {
     this.pendingConfig = {
       ...this.pendingConfig,
@@ -509,6 +512,13 @@ export class RuntimeClientAdapter {
 
   setCloudSyncEnabled(enabled: boolean) {
     this.queueRuntimeConfigPatch({ cloudSyncEnabled: enabled });
+  }
+
+  setModelCatalogUpdatedAt(value: number | null) {
+    this.queueRuntimeConfigPatch({
+      modelCatalogUpdatedAt:
+        typeof value === "number" && Number.isFinite(value) ? value : null,
+    });
   }
 
   getStellaSiteAuth(): { baseUrl: string; authToken: string } | null {

@@ -44,6 +44,7 @@ import {
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
+  IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT,
   IPC_PERMISSIONS_RESET,
   IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_PREFERENCES_GET_MODELS,
@@ -769,6 +770,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke(IPC_AUTH_RUNTIME_REFRESH_COMPLETE, payload),
     setCloudSyncEnabled: (payload: { enabled: boolean }) =>
       ipcRenderer.invoke("host:setCloudSyncEnabled", payload),
+    setModelCatalogUpdatedAt: (payload: { updatedAt: number | null }) =>
+      ipcRenderer.invoke(IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT, payload),
     onAuthCallback: onIpc<{ url: string }>("auth:callback"),
     consumePendingAuthCallback: () =>
       ipcRenderer.invoke(IPC_AUTH_CONSUME_PENDING_CALLBACK) as Promise<

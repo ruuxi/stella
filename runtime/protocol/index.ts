@@ -337,6 +337,7 @@ export type RuntimeConfigureParams = {
   authToken?: string | null;
   hasConnectedAccount?: boolean;
   cloudSyncEnabled?: boolean;
+  modelCatalogUpdatedAt?: number | null;
 };
 
 export type RuntimeAuthRefreshSource =
