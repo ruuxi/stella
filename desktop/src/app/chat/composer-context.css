@@ -13,13 +13,13 @@
  * `min-height` keeps the strip's vertical footprint reserved even when
  * every lane is empty / hidden, so the composer doesn't pop up and down
  * when chips appear or disappear. The reserved height matches one chip
- * (~22px) plus the row's bottom padding. */
+ * (~24px) plus the row's bottom padding. */
 .composer-context-actions--suggestions {
   position: relative;
   flex-wrap: nowrap;
   overflow: hidden;
   padding: 0 4px 4px;
-  min-height: calc(22px + 4px);
+  min-height: calc(24px + 4px);
   align-items: center;
 }
 
