@@ -21,6 +21,7 @@ import type {
   RuntimeInterruptedEvent,
   RuntimeReasoningEvent,
   RuntimeRunCallbacks,
+  RuntimeRunStartedEvent,
   RuntimeStatusEvent,
   RuntimeStreamEvent,
   RuntimeToolEndEvent,
@@ -96,9 +97,35 @@ export const createRunEventRecorder = ({
   getResponseTarget,
 }: RunRecorderArgs) => {
   let seq = 0;
+  let currentUserMessageId = userMessageId;
+  const queuedUserMessageIds: string[] = [];
   const nextSeq = () => ++seq;
 
   return {
+    queueUserMessageId(nextUserMessageId: string): void {
+      const trimmed = nextUserMessageId.trim();
+      if (trimmed) {
+        queuedUserMessageIds.push(trimmed);
+      }
+    },
+
+    recordQueuedUserMessageStart(): RuntimeRunStartedEvent | null {
+      const nextUserMessageId = queuedUserMessageIds.shift();
+      if (!nextUserMessageId) {
+        return null;
+      }
+      currentUserMessageId = nextUserMessageId;
+      const responseTarget = getResponseTarget?.();
+      return {
+        runId,
+        agentType,
+        seq: nextSeq(),
+        userMessageId: currentUserMessageId,
+        ...(responseTarget ? { responseTarget } : {}),
+        ...(uiVisibility ? { uiVisibility } : {}),
+      };
+    },
+
     recordRunStart(): void {
       store.recordRunEvent({
         timestamp: now(),
@@ -126,7 +153,7 @@ export const createRunEventRecorder = ({
         agentType,
         seq,
         chunk,
-        userMessageId,
+        userMessageId: currentUserMessageId,
         ...(responseTarget ? { responseTarget } : {}),
         ...(uiVisibility ? { uiVisibility } : {}),
       };
@@ -140,7 +167,7 @@ export const createRunEventRecorder = ({
         agentType,
         seq,
         chunk,
-        userMessageId,
+        userMessageId: currentUserMessageId,
         ...(responseTarget ? { responseTarget } : {}),
         ...(uiVisibility ? { uiVisibility } : {}),
       };
@@ -249,7 +276,7 @@ export const createRunEventRecorder = ({
         runId,
         agentType,
         seq,
-        userMessageId,
+        userMessageId: currentUserMessageId,
         finalText: args.finalText,
         persisted: true,
         ...(args.selfModApplied ? { selfModApplied: args.selfModApplied } : {}),
@@ -296,7 +323,7 @@ export const createRunEventRecorder = ({
         runId,
         agentType,
         seq,
-        userMessageId,
+        userMessageId: currentUserMessageId,
         reason,
         ...(uiVisibility ? { uiVisibility } : {}),
       };
@@ -360,6 +387,12 @@ export const subscribeRuntimeAgentEvents = ({
   const emittedThinkingLengths = new Map<number, number>();
 
   return agent.subscribe((event) => {
+    if (event.type === "message_start" && event.message.role === "user") {
+      const runStartedEvent = recorder.recordQueuedUserMessageStart();
+      if (runStartedEvent) {
+        callbacks?.onRunStarted?.(runStartedEvent);
+      }
+    }
 
     if (event.type === "message_end" && threadStore && threadKey) {
       const payload = toPersistedThreadPayload(event.message);

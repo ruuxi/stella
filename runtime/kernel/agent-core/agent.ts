@@ -327,8 +327,8 @@ export class Agent {
 	}
 
 	/**
-	 * Queue a steering message to interrupt the agent mid-run.
-	 * Delivered after current tool execution, skips remaining tools.
+	 * Queue a steering message for the next safe turn boundary.
+	 * Delivered after the current model response and issued tools finish.
 	 */
 	steer(m: AgentMessage) {
 		this.steeringQueue.push(m);

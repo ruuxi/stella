@@ -389,17 +389,12 @@ async function executeToolCallsSequential(
 				),
 			);
 		}
+	}
 
-		if (config.getSteeringMessages) {
-			const steering = await config.getSteeringMessages();
-			if (steering.length > 0) {
-				steeringMessages = steering;
-				const remainingCalls = toolCalls.slice(index + 1);
-				for (const skipped of remainingCalls) {
-					results.push(await skipToolCall(skipped, emit));
-				}
-				break;
-			}
+	if (config.getSteeringMessages) {
+		const steering = await config.getSteeringMessages();
+		if (steering.length > 0) {
+			steeringMessages = steering;
 		}
 	}
 
@@ -432,21 +427,6 @@ async function executeToolCallsParallel(
 			results.push(await emitToolCallOutcome(toolCall, preparation.result, preparation.isError, emit));
 		} else {
 			runnableCalls.push(preparation);
-		}
-
-		if (config.getSteeringMessages) {
-			const steering = await config.getSteeringMessages();
-			if (steering.length > 0) {
-				steeringMessages = steering;
-				for (const runnable of runnableCalls) {
-					results.push(await skipToolCall(runnable.toolCall, emit, { emitStart: false }));
-				}
-				const remainingCalls = toolCalls.slice(index + 1);
-				for (const skipped of remainingCalls) {
-					results.push(await skipToolCall(skipped, emit));
-				}
-				return { toolResults: results, steeringMessages };
-			}
 		}
 	}
 
@@ -656,23 +636,4 @@ async function emitToolCallOutcome(
 	await emit({ type: "message_start", message: toolResultMessage });
 	await emit({ type: "message_end", message: toolResultMessage });
 	return toolResultMessage;
-}
-
-async function skipToolCall(
-	toolCall: AgentToolCall,
-	emit: AgentEventSink,
-	options?: { emitStart?: boolean },
-): Promise<ToolResultMessage> {
-	const result = createErrorToolResult("Skipped due to queued user message.");
-
-	if (options?.emitStart !== false) {
-		await emit({
-			type: "tool_execution_start",
-			toolCallId: toolCall.id,
-			toolName: toolCall.name,
-			args: toolCall.arguments,
-		});
-	}
-
-	return emitToolCallOutcome(toolCall, result, true, emit);
 }
