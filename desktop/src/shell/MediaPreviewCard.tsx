@@ -11,7 +11,8 @@ import {
   useDisplayFileBlobs,
   type DisplayFileBlob,
 } from "@/shared/hooks/use-display-file-data";
-import { mediaPreviewDialog } from "@/shell/media-preview-dialog-store";
+import { copyImageBlob } from "@/shell/media-clipboard";
+import { displayTabs } from "@/shell/display/tab-store";
 
 type MediaPreviewCardProps = {
   asset: MediaAsset;
@@ -23,6 +24,10 @@ type MediaPreviewCardProps = {
 
 const filenameOf = (filePath: string): string =>
   filePath.split(/[\\/]/).pop() ?? filePath;
+
+const expandDisplayPanel = () => {
+  displayTabs.setPanelExpanded(true);
+};
 
 const PromptHeader = ({
   prompt,
@@ -70,11 +75,7 @@ const MediaActions = ({
   const handleCopy = useCallback(async () => {
     try {
       if (copyImage) {
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            [copyImage.mimeType || "image/png"]: copyImage.blob,
-          }),
-        ]);
+        await copyImageBlob(copyImage.blob);
         setMessage("Copied");
         return;
       }
@@ -112,7 +113,9 @@ const MediaActions = ({
         </button>
       )}
       {extraAction}
-      {message && <span className="display-media__action-status">{message}</span>}
+      {message && (
+        <span className="display-media__action-status">{message}</span>
+      )}
     </div>
   );
 };
@@ -143,15 +146,6 @@ const ImageGallery = ({
   const safeIndex = Math.max(0, Math.min(activeIndex, files.length - 1));
   const active = files[safeIndex];
 
-  const handleOpenPreview = useCallback(() => {
-    mediaPreviewDialog.open({
-      asset: { kind: "image", filePaths },
-      ...(prompt ? { prompt } : {}),
-      ...(capability ? { capability } : {}),
-      initialIndex: safeIndex,
-    });
-  }, [capability, filePaths, prompt, safeIndex]);
-
   return (
     <div className="display-media display-media--image">
       <PromptHeader prompt={prompt} capability={capability} />
@@ -164,9 +158,9 @@ const ImageGallery = ({
             <button
               type="button"
               className="display-media__action-btn"
-              onClick={handleOpenPreview}
+              onClick={expandDisplayPanel}
             >
-              Open preview
+              Expand
             </button>
           ) : undefined
         }
@@ -175,8 +169,8 @@ const ImageGallery = ({
         <button
           type="button"
           className="display-media__primary-btn"
-          onClick={inDialog ? undefined : handleOpenPreview}
-          aria-label="Open full size"
+          onClick={inDialog ? undefined : expandDisplayPanel}
+          aria-label="Expand panel"
         >
           <img
             src={active.url}
@@ -255,15 +249,9 @@ const VideoCard = ({
             <button
               type="button"
               className="display-media__action-btn"
-              onClick={() =>
-                mediaPreviewDialog.open({
-                  asset: { kind: "video", filePath },
-                  ...(prompt ? { prompt } : {}),
-                  ...(capability ? { capability } : {}),
-                })
-              }
+              onClick={expandDisplayPanel}
             >
-              Open preview
+              Expand
             </button>
           ) : undefined
         }
@@ -317,15 +305,9 @@ const AudioCard = ({
                 <button
                   type="button"
                   className="display-media__action-btn"
-                  onClick={() =>
-                    mediaPreviewDialog.open({
-                      asset: { kind: "audio", filePath },
-                      ...(prompt ? { prompt } : {}),
-                      ...(capability ? { capability } : {}),
-                    })
-                  }
+                  onClick={expandDisplayPanel}
                 >
-                  Open preview
+                  Expand
                 </button>
               ) : undefined
             }
@@ -378,18 +360,9 @@ const DownloadCard = ({
                   <button
                     type="button"
                     className="display-media__action-btn"
-                    onClick={() =>
-                      mediaPreviewDialog.open({
-                        asset:
-                          variant === "model3d"
-                            ? { kind: "model3d", filePath, label }
-                            : { kind: "download", filePath, label },
-                        ...(prompt ? { prompt } : {}),
-                        ...(capability ? { capability } : {}),
-                      })
-                    }
+                    onClick={expandDisplayPanel}
                   >
-                    Open preview
+                    Expand
                   </button>
                 )}
                 <button

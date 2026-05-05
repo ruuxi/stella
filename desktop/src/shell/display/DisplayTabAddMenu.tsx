@@ -24,7 +24,9 @@ import { DisplayTabIcon } from "./icons";
 import type { DisplayTabKind } from "./types";
 import {
   CHAT_DISPLAY_TAB_ID,
+  MEDIA_DISPLAY_TAB_ID,
   openChatDisplayTab,
+  openMediaDisplayTab,
   openStoreDisplayTab,
   openTrashDisplayTab,
   STORE_DISPLAY_TAB_ID,
@@ -61,12 +63,17 @@ export const DisplayTabAddMenu = () => {
     openOrActivate(STORE_DISPLAY_TAB_ID, openStoreDisplayTab);
   }, [openOrActivate]);
 
+  const openMedia = useCallback(() => {
+    openOrActivate(MEDIA_DISPLAY_TAB_ID, openMediaDisplayTab);
+  }, [openOrActivate]);
+
   const openTrash = useCallback(() => {
     openOrActivate(TRASH_DISPLAY_TAB_ID, openTrashDisplayTab);
   }, [openOrActivate]);
 
   const options: AddMenuOption[] = [
     { id: "chat", label: "Chat", kind: "chat", onSelect: openChat },
+    { id: "media", label: "Media", kind: "media", onSelect: openMedia },
     { id: "store", label: "Store", kind: "store", onSelect: openStore },
     { id: "trash", label: "Trash", kind: "trash", onSelect: openTrash },
   ];

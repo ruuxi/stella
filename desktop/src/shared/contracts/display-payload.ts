@@ -74,6 +74,8 @@ export type DisplayPayload =
       jobId?: string;
       capability?: string;
       prompt?: string;
+      aspectRatio?: string;
+      requestedSize?: { width: number; height: number };
       presentation?: "inline-image";
       createdAt: number;
     };

@@ -16,33 +16,86 @@ import {
   UrlTabContent,
   MarkdownTabContent,
   SourceDiffTabContent,
-  ImageTabContent,
   PdfTabContent,
   OfficeTabContent,
   OfficeFileTabContent,
   DelimitedTableTabContent,
-  VideoTabContent,
-  AudioTabContent,
-  Model3dTabContent,
-  DownloadTabContent,
-  TextTabContent,
+  MediaTabContent,
   TrashTabContent,
 } from "./tab-content";
 import type { DisplayTabSpec } from "./types";
-import { basenameOf, kindForPath } from "./path-to-viewer";
+import { kindForPath } from "./path-to-viewer";
 
-export const GENERATED_IMAGE_TAB_ID = "media:image:generated";
+export const GENERATED_MEDIA_TAB_ID = "media:generated";
+export const GENERATED_IMAGE_TAB_ID = GENERATED_MEDIA_TAB_ID;
 
-const generatedImagePaths: string[] = [];
-const generatedImagePathSet = new Set<string>();
+export type GeneratedMediaItem = {
+  id: string;
+  asset: Extract<DisplayPayload, { kind: "media" }>["asset"];
+  prompt?: string;
+  capability?: string;
+  createdAt: number;
+};
 
-const addGeneratedImagePaths = (filePaths: string[]): string[] => {
-  for (const filePath of filePaths) {
-    if (!filePath || generatedImagePathSet.has(filePath)) continue;
-    generatedImagePathSet.add(filePath);
-    generatedImagePaths.push(filePath);
+const generatedMediaItems: GeneratedMediaItem[] = [];
+const generatedMediaItemIds = new Set<string>();
+
+const hashText = (text: string): string => {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 33) ^ text.charCodeAt(i);
   }
-  return [...generatedImagePaths];
+  return (hash >>> 0).toString(36);
+};
+
+const idForMediaPayload = (
+  payload: Extract<DisplayPayload, { kind: "media" }>,
+): string => {
+  const { asset } = payload;
+  switch (asset.kind) {
+    case "image":
+      return `image:${asset.filePaths.join("|")}`;
+    case "video":
+    case "audio":
+    case "model3d":
+    case "download":
+      return `${asset.kind}:${asset.filePath}`;
+    case "text":
+      return `text:${payload.jobId ?? `${payload.createdAt}:${hashText(asset.text)}`}`;
+  }
+};
+
+const addGeneratedMediaItem = (
+  payload: Extract<DisplayPayload, { kind: "media" }>,
+): GeneratedMediaItem[] => {
+  const id = idForMediaPayload(payload);
+  if (!generatedMediaItemIds.has(id)) {
+    generatedMediaItemIds.add(id);
+    generatedMediaItems.push({
+      id,
+      asset: payload.asset,
+      ...(payload.prompt ? { prompt: payload.prompt } : {}),
+      ...(payload.capability ? { capability: payload.capability } : {}),
+      createdAt: payload.createdAt,
+    });
+  }
+  return [...generatedMediaItems];
+};
+
+export const getGeneratedMediaItems = (): GeneratedMediaItem[] => [
+  ...generatedMediaItems,
+];
+
+/**
+ * Remove a generated media item from the shared store. Returns the new
+ * snapshot so callers can re-register the tab to surface the change.
+ */
+export const removeGeneratedMediaItem = (id: string): GeneratedMediaItem[] => {
+  const idx = generatedMediaItems.findIndex((item) => item.id === id);
+  if (idx === -1) return [...generatedMediaItems];
+  generatedMediaItems.splice(idx, 1);
+  generatedMediaItemIds.delete(id);
+  return [...generatedMediaItems];
 };
 
 export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
@@ -165,128 +218,24 @@ export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
       };
 
     case "media": {
-      const asset = payload.asset;
       const baseMeta = {
         ...(payload.jobId ? { jobId: payload.jobId } : {}),
         ...(payload.capability ? { capability: payload.capability } : {}),
         ...(payload.prompt ? { prompt: payload.prompt } : {}),
       };
-      switch (asset.kind) {
-        case "image":
-          const filePaths = addGeneratedImagePaths(asset.filePaths);
-          return {
-            id: GENERATED_IMAGE_TAB_ID,
-            kind: "image",
-            title: "Generated images",
-            tooltip: filePaths.map(basenameOf).join(", "),
-            metadata: {
-              kind: "image",
-              filePaths,
-              ...baseMeta,
-            },
-            render: () =>
-              createElement(ImageTabContent, {
-                filePaths,
-                ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability
-                  ? { capability: payload.capability }
-                  : {}),
-              }),
-          };
-        case "video":
-          return {
-            id: `media:video:${asset.filePath}`,
-            kind: "video",
-            title,
-            tooltip: asset.filePath,
-            metadata: { kind: "video", filePath: asset.filePath, ...baseMeta },
-            render: () =>
-              createElement(VideoTabContent, {
-                filePath: asset.filePath,
-                ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability
-                  ? { capability: payload.capability }
-                  : {}),
-              }),
-          };
-        case "audio":
-          return {
-            id: `media:audio:${asset.filePath}`,
-            kind: "audio",
-            title,
-            tooltip: asset.filePath,
-            metadata: { kind: "audio", filePath: asset.filePath, ...baseMeta },
-            render: () =>
-              createElement(AudioTabContent, {
-                filePath: asset.filePath,
-                ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability
-                  ? { capability: payload.capability }
-                  : {}),
-              }),
-          };
-        case "model3d":
-          return {
-            id: `media:model3d:${asset.filePath}`,
-            kind: "model3d",
-            title,
-            tooltip: asset.filePath,
-            metadata: {
-              kind: "model3d",
-              filePath: asset.filePath,
-              ...baseMeta,
-            },
-            render: () =>
-              createElement(Model3dTabContent, {
-                filePath: asset.filePath,
-                label: asset.label,
-                ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability
-                  ? { capability: payload.capability }
-                  : {}),
-              }),
-          };
-        case "download":
-          return {
-            id: `media:download:${asset.filePath}`,
-            kind: "download",
-            title,
-            tooltip: asset.filePath,
-            metadata: {
-              kind: "download",
-              filePath: asset.filePath,
-              ...baseMeta,
-            },
-            render: () =>
-              createElement(DownloadTabContent, {
-                filePath: asset.filePath,
-                label: asset.label,
-                ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability
-                  ? { capability: payload.capability }
-                  : {}),
-              }),
-          };
-        case "text": {
-          // Text blobs don't have a path, so the id is keyed off the
-          // payload's `createdAt` — re-emitting the same blob within one ms
-          // would dedupe (which is fine: it's the same content).
-          return {
-            id: `media:text:${payload.createdAt}`,
-            kind: "text",
-            title,
-            metadata: { kind: "text", ...baseMeta },
-            render: () =>
-              createElement(TextTabContent, {
-                text: asset.text,
-                ...(payload.prompt ? { prompt: payload.prompt } : {}),
-                ...(payload.capability
-                  ? { capability: payload.capability }
-                  : {}),
-              }),
-          };
-        }
-      }
+      const mediaItems = addGeneratedMediaItem(payload);
+      return {
+        id: GENERATED_MEDIA_TAB_ID,
+        kind: "media",
+        title: "Media",
+        tooltip: "Generated media",
+        metadata: {
+          kind: "media",
+          items: mediaItems,
+          ...baseMeta,
+        },
+        render: () => createElement(MediaTabContent, { items: mediaItems }),
+      };
     }
   }
 };

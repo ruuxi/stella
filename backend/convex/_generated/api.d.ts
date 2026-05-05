@@ -154,6 +154,7 @@ import type * as runtime_ai_model_utils from "../runtime_ai/model_utils.js";
 import type * as runtime_ai_openai_completions from "../runtime_ai/openai_completions.js";
 import type * as runtime_ai_openai_responses from "../runtime_ai/openai_responses.js";
 import type * as runtime_ai_openai_responses_shared from "../runtime_ai/openai_responses_shared.js";
+import type * as runtime_ai_retry from "../runtime_ai/retry.js";
 import type * as runtime_ai_sanitize_unicode from "../runtime_ai/sanitize_unicode.js";
 import type * as runtime_ai_simple_options from "../runtime_ai/simple_options.js";
 import type * as runtime_ai_stream from "../runtime_ai/stream.js";
@@ -349,6 +350,7 @@ declare const fullApi: ApiFromModules<{
   "runtime_ai/openai_completions": typeof runtime_ai_openai_completions;
   "runtime_ai/openai_responses": typeof runtime_ai_openai_responses;
   "runtime_ai/openai_responses_shared": typeof runtime_ai_openai_responses_shared;
+  "runtime_ai/retry": typeof runtime_ai_retry;
   "runtime_ai/sanitize_unicode": typeof runtime_ai_sanitize_unicode;
   "runtime_ai/simple_options": typeof runtime_ai_simple_options;
   "runtime_ai/stream": typeof runtime_ai_stream;

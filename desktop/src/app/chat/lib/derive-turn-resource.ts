@@ -54,6 +54,24 @@ const asNonEmptyString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const requestedSizeFromRecord = (
+  value: unknown,
+): { width: number; height: number } | null => {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const width =
+    typeof record.width === "number" && Number.isFinite(record.width)
+      ? Math.floor(record.width)
+      : null;
+  const height =
+    typeof record.height === "number" && Number.isFinite(record.height)
+      ? Math.floor(record.height)
+      : null;
+  return width !== null && height !== null && width > 0 && height > 0
+    ? { width, height }
+    : null;
+};
+
 type PayloadByPath = Map<string, DisplayPayload>;
 
 type ResolvedFileChange = {
@@ -185,6 +203,12 @@ const imageGenPayloadsByPath = (
         ? { capability: record.capability }
         : {}),
       ...(typeof record.prompt === "string" ? { prompt: record.prompt } : {}),
+      ...(typeof record.aspectRatio === "string"
+        ? { aspectRatio: record.aspectRatio }
+        : {}),
+      ...(requestedSizeFromRecord(record.requestedSize)
+        ? { requestedSize: requestedSizeFromRecord(record.requestedSize)! }
+        : {}),
       ...((event.payload as { agentType?: unknown }).agentType ===
       "orchestrator"
         ? { presentation: "inline-image" as const }
@@ -205,7 +229,9 @@ const inlineImageGenSubmissionPayload = (
     const event = toolEvents[index]!;
     if (!isToolResult(event)) continue;
     if (event.payload.toolName !== "image_gen" || event.payload.error) continue;
-    if ((event.payload as { agentType?: unknown }).agentType !== "orchestrator") {
+    if (
+      (event.payload as { agentType?: unknown }).agentType !== "orchestrator"
+    ) {
       continue;
     }
     const candidate =
@@ -231,6 +257,12 @@ const inlineImageGenSubmissionPayload = (
         ? { capability: record.capability }
         : {}),
       ...(typeof record.prompt === "string" ? { prompt: record.prompt } : {}),
+      ...(typeof record.aspectRatio === "string"
+        ? { aspectRatio: record.aspectRatio }
+        : {}),
+      ...(requestedSizeFromRecord(record.requestedSize)
+        ? { requestedSize: requestedSizeFromRecord(record.requestedSize)! }
+        : {}),
       presentation: "inline-image",
       createdAt: event.timestamp,
     };
@@ -330,8 +362,9 @@ const requestIdForEvent = (event: EventRecord): string | undefined => {
   if (typeof event.requestId === "string" && event.requestId.trim()) {
     return event.requestId;
   }
-  const payloadRequestId = (event.payload as { requestId?: unknown } | undefined)
-    ?.requestId;
+  const payloadRequestId = (
+    event.payload as { requestId?: unknown } | undefined
+  )?.requestId;
   return typeof payloadRequestId === "string" && payloadRequestId.trim()
     ? payloadRequestId
     : undefined;
@@ -406,7 +439,8 @@ export const deriveTurnResource = (
   // session ids / prompts / capability context.
   const payloadByPath: PayloadByPath = new Map();
   const imagePayloads = imageGenPayloadsByPath(toolEvents);
-  const inlineImageSubmissionPayload = inlineImageGenSubmissionPayload(toolEvents);
+  const inlineImageSubmissionPayload =
+    inlineImageGenSubmissionPayload(toolEvents);
   if (inlineImageSubmissionPayload) return inlineImageSubmissionPayload;
 
   for (const [filePath, payload] of imagePayloads) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, type CSSProperties } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import {
@@ -21,7 +21,11 @@ const filenameOf = (filePath: string): string =>
 type MediaJobLookup = {
   jobId: string;
   capability: string;
-  request?: { prompt?: string };
+  request?: {
+    prompt?: string;
+    aspectRatio?: string;
+    input?: Record<string, unknown>;
+  };
   output?: unknown;
   status?: string;
   completedAt?: number;
@@ -47,12 +51,72 @@ const mediaPayloadFromJob = async (
         jobId: job.jobId,
         capability: job.capability,
         ...(job.request?.prompt ? { prompt: job.request.prompt } : {}),
+        ...(job.request?.aspectRatio
+          ? { aspectRatio: job.request.aspectRatio }
+          : {}),
+        ...(requestedSizeFromInput(job.request?.input)
+          ? { requestedSize: requestedSizeFromInput(job.request?.input)! }
+          : {}),
         createdAt: job.completedAt ?? job.updatedAt,
       };
     }
     default:
       return null;
   }
+};
+
+const requestedSizeFromInput = (
+  input: Record<string, unknown> | undefined,
+): { width: number; height: number } | null => {
+  const imageSize = input?.image_size;
+  if (!imageSize || typeof imageSize !== "object") return null;
+  const record = imageSize as Record<string, unknown>;
+  const width =
+    typeof record.width === "number" && Number.isFinite(record.width)
+      ? Math.floor(record.width)
+      : null;
+  const height =
+    typeof record.height === "number" && Number.isFinite(record.height)
+      ? Math.floor(record.height)
+      : null;
+  return width !== null && height !== null && width > 0 && height > 0
+    ? { width, height }
+    : null;
+};
+
+const ratioFromAspectRatio = (
+  aspectRatio: string | undefined,
+): string | null => {
+  if (!aspectRatio) return null;
+  const match = aspectRatio
+    .trim()
+    .match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return null;
+  }
+  return `${width} / ${height}`;
+};
+
+const previewAspectRatio = (
+  payload: InlineGeneratedImagePayload,
+  job: MediaJobLookup | undefined,
+): string => {
+  const requestedSize =
+    payload.requestedSize ?? requestedSizeFromInput(job?.request?.input);
+  if (requestedSize) return `${requestedSize.width} / ${requestedSize.height}`;
+  return (
+    ratioFromAspectRatio(payload.aspectRatio) ??
+    ratioFromAspectRatio(job?.request?.aspectRatio) ??
+    "4 / 3"
+  );
 };
 
 export const InlineGeneratedImageCard = ({
@@ -75,7 +139,6 @@ export const InlineGeneratedImageCard = ({
       publishMaterializedMediaPayload(completedPayload);
       displayTabs.openTab(payloadToTabSpec(completedPayload), {
         activate: false,
-        openPanel: false,
       });
       markMediaJobMaterialized(job.jobId);
     })();
@@ -84,40 +147,65 @@ export const InlineGeneratedImageCard = ({
     };
   }, [job]);
 
-  const effectivePayload =
-    materializedPayload?.kind === "media" &&
-    materializedPayload.asset.kind === "image"
-      ? ({ ...materializedPayload, presentation: payload.presentation } as const)
-      : payload;
+  const effectivePayload = useMemo(
+    () =>
+      materializedPayload?.kind === "media" &&
+      materializedPayload.asset.kind === "image"
+        ? ({
+            ...materializedPayload,
+            presentation: payload.presentation,
+          } as const)
+        : payload,
+    [materializedPayload, payload],
+  );
 
-  if (effectivePayload.asset.kind !== "image") return null;
-
-  const filePaths = effectivePayload.asset.filePaths;
+  const isImage = effectivePayload.asset.kind === "image";
+  const filePaths = isImage ? effectivePayload.asset.filePaths : [];
   const { files, error, loading } = useDisplayFileBlobs(
     filePaths,
     "Image preview requires the Electron host runtime.",
   );
   const primaryFile = files[0] ?? null;
   const primaryPath = filePaths[0];
+  const frameStyle = {
+    "--inline-generated-image-aspect-ratio": previewAspectRatio(
+      effectivePayload,
+      job,
+    ),
+  } as CSSProperties;
 
   const handleClick = useCallback(() => {
-    if (effectivePayload.asset.kind !== "image" || filePaths.length === 0) return;
+    if (!isImage || filePaths.length === 0) return;
     displayTabs.openTab(payloadToTabSpec(effectivePayload));
-  }, [effectivePayload, filePaths.length]);
+  }, [effectivePayload, filePaths.length, isImage]);
+
+  if (!isImage) return null;
 
   return (
     <button
       type="button"
-      className="inline-generated-image-card"
+      className={
+        primaryFile
+          ? "inline-generated-image-card inline-generated-image-card--image"
+          : "inline-generated-image-card"
+      }
       onClick={handleClick}
       title="Open in panel"
     >
-      <span className="inline-generated-image-card__frame">
+      <span
+        className={
+          primaryFile
+            ? "inline-generated-image-card__frame inline-generated-image-card__frame--image"
+            : "inline-generated-image-card__frame"
+        }
+        style={frameStyle}
+      >
         {primaryFile ? (
           <img
             src={primaryFile.url}
             alt={
-              effectivePayload.prompt ?? (primaryPath ? filenameOf(primaryPath) : "")
+              effectivePayload.prompt ??
+              (primaryPath ? filenameOf(primaryPath) : "")
             }
             className="inline-generated-image-card__image"
           />
