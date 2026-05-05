@@ -43,7 +43,7 @@ If you need a new package, run `bun add <pkg>` from the repo root (never
 `npm` or `pnpm`). Then validate:
 
 ```sh
-bunx --package typescript@5.9.3 tsc -p desktop/tsconfig.app.json --noEmit
+bunx --package typescript@6.0.3 tsc -p desktop/tsconfig.app.json --noEmit
 bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
 ```
 
@@ -53,23 +53,62 @@ bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-
 - The app needs `hideFromSidebar: true` or `onActiveClick`. Scaffold
 first, then tweak `metadata.ts`.
 
-## Visual style — reach for the existing tokens
+## Visual style
 
-Design with intent — Apple-like polish, generous whitespace, restrained
-color, sharp typography. **No AI slop**: don't pile cards on cards,
-don't sprinkle gradients/badges/dots/emoji to fill space, don't add
-"smart" affordances that aren't earned. If the feature legitimately
-calls for a different language (e.g. a game, a richly visual surface),
-diverge intentionally — but the default is the rest of Stella.
+You're designing a **page**, not a widget. The surface is the full
+Stella canvas — `width: 100%; height: 100%`. Use the room. Don't cap
+content to ~430px and float a single card in the middle of empty
+space; that reads as a tiny modal lost on a desktop.
 
-**Don't paint a background on the root.** Stella's shifting gradient
-canvas sits behind everything; setting `background:` on `.<id>-app`
-covers it up. The stub leaves it transparent on purpose. Apply
-backgrounds only on raised surfaces (cards, chips, modals) where
-contrast is actually needed.
+Aim for Apple-like polish: generous whitespace, restrained color,
+sharp typography, intentional structure. **No AI slop**: don't pile
+cards on cards, don't sprinkle gradients/badges/dots/emoji to fill
+space, don't add affordances that aren't earned.
 
-The stub already wires the right tokens. Keep using these so the new
-surface reads like the rest of Stella in both themes:
+### Let the layout match the feature
+
+The shape of the page should follow what's actually on it. A few
+honest patterns — pick one, don't force it:
+
+- **Hero + canvas** — a single focused surface (game board, viewer,
+editor): a Cormorant hero up top, then the thing itself filling the
+remaining height. The default stub is this shape.
+- **Rail + canvas** — a comprehensive tool with controls plus a
+working area: `display: grid; grid-template-columns: <rail> 1fr; height: 100%`. Media Studio (`desktop/src/app/media/media-studio.css`,
+~320px rail) is the reference. Use this only when there are
+enough controls to earn a rail; don't manufacture a sidebar to
+look fancier.
+- **Stream / list** — feeds, libraries, history: a hero, then a
+scrollable column at a comfortable measure (≤ ~72ch) inside the
+full-height surface.
+
+A small game and a comprehensive studio can both be beautiful pages.
+What they share: full-height layout, a real hero, and structure that
+fits the content. What they don't share: a fixed template.
+
+### Typography
+
+Type families are loaded globally via `desktop/src/main.tsx` — never
+import or `@font-face` anything yourself, just reference the token:
+
+- `var(--font-family-display)` — **Cormorant Garamond**. The page
+hero / title. Set it on the `<h1>` (the stub already does). Use
+300 or 400 weight, tight letter-spacing (~ −0.04em), `line-height: 1`. Italics via `<em>` work well for a single accented word.
+- `var(--font-family-sans)` — **Manrope**. Body, controls, labels.
+The stub's root rule sets this and
+`var(--font-family-sans--default-letter-spacing)` (−0.02em) so
+children inherit. Headings 600, body 400.
+- `var(--font-family-mono)` — **IBM Plex Mono**. Numeric readouts,
+code/JSON, `<kbd>` chips, small uppercase tab labels. Pair with
+`font-variant-numeric: tabular-nums`.
+
+### Color & surfaces
+
+Don't hard-code colors — light/dark flip automatically through tokens.
+**Don't paint a background on `.<id>-app`**; Stella's shifting
+gradient canvas sits behind everything and the stub leaves the root
+transparent on purpose. Apply backgrounds only on raised surfaces
+(rails, cards, chips, modals) where contrast is actually needed.
 
 - `var(--background)`, `var(--foreground)` — page bg / text
 - `var(--card)` — raised surfaces
@@ -77,21 +116,10 @@ surface reads like the rest of Stella in both themes:
 - `var(--accent)` — call-out / highlight color
 - `var(--text-weaker, var(--muted-foreground))` — secondary text
 - `var(--radius-2xl)` (12px), `var(--radius-full)` for pill chips
-- `color-mix(in srgb, var(--foreground) 6%, transparent)` for theme-adaptive overlays
+- `color-mix(in srgb, var(--foreground) 6%, transparent)` for
+theme-adaptive overlays
 
-Type families are loaded globally via `desktop/src/main.tsx` — never
-import or `@font-face` anything yourself, just reference the token:
-
-- `var(--font-family-sans)` — **Manrope**. Default UI text. The stub's
-root rule already sets this and `var(--font-family-sans--default-letter-spacing)`
-(−0.02em) so children inherit. Headings 600, body 400.
-- `var(--font-family-mono)` — **IBM Plex Mono**. Numeric readouts,
-code/JSON, `<kbd>` chips. Pair with `font-variant-numeric: tabular-nums`.
-- `var(--font-family-display)` — **Cormorant Garamond**. Hero/display
-text only.
-
-Don't hard-code colors. Light/dark theme flips automatically because
-every token above flips.
+### Hooks for stella-ui
 
 Tag interactive UI with `data-stella-label`, `data-stella-state`,
 `data-stella-action` so `stella-ui` can drive it without reading

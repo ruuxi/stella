@@ -3,8 +3,13 @@ import "./{{ID}}.css";
 export function {{COMPONENT}}View() {
   return (
     <div className="{{ID}}-app" data-stella-label="{{LABEL}}">
-      <h1 className="{{ID}}-title">{{LABEL}}</h1>
-      <p className="{{ID}}-subtitle">Replace this with the real surface.</p>
+      <header className="{{ID}}-hero">
+        <h1 className="{{ID}}-title">{{LABEL}}</h1>
+        <p className="{{ID}}-lead">Replace this with the real surface.</p>
+      </header>
+      <section className="{{ID}}-body">
+        {/* Build the surface here. Let layout match the feature; use the full page. */}
+      </section>
     </div>
   );
 }
