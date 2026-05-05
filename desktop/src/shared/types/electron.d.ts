@@ -696,14 +696,6 @@ export type ElectronSystemApi = {
     provider: string,
   ) => Promise<LocalLlmCredentialSummary>;
   deleteLlmOAuthCredential: (provider: string) => Promise<{ removed: boolean }>;
-  getLlmCredentialRoutingPreference: () => Promise<{
-    enabled: boolean;
-  }>;
-  setLlmCredentialRoutingPreference: (payload: {
-    enabled: boolean;
-  }) => Promise<{
-    enabled: boolean;
-  }>;
   saveLlmCredential: (payload: {
     provider: string;
     label: string;

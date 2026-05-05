@@ -17,7 +17,6 @@ import {
   STELLA_PROVIDER,
   type StellaSiteConfig,
 } from "./model-routing-stella.js";
-import { isLocalLlmKeysEnabled } from "./preferences/local-preferences.js";
 
 export type ResolvedLlmRoute = {
   model: Model<Api>;
@@ -210,18 +209,11 @@ const resolveMaybeLlmRoute = (args: {
     });
   }
 
-  // Local API keys disabled → always go through Stella, wrapping the requested
-  // provider/model so the Stella backend forwards it upstream.
-  if (!isLocalLlmKeysEnabled(args.stellaRoot)) {
-    return createStellaRoute({
-      site: args.site,
-      agentType: args.agentType,
-      modelId: wrapAsStellaModelId(parsed.fullModelId),
-    });
-  }
-
-  // Local keys enabled: try the direct provider that the model id specifies.
-  // Multiple authed providers can coexist; the model id is the source of truth.
+  // Try the direct provider that the model id specifies. Multiple authed
+  // providers can coexist; the model id is the source of truth. Picking a
+  // non-Stella model implicitly opts that call into local-credential routing —
+  // there is no master toggle. If the user has no matching credential we fall
+  // through to the Stella passthrough below.
   const directProviderRoute = resolveDirectProviderRoute({
     stellaRoot: args.stellaRoot,
     provider: parsed.provider,

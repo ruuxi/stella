@@ -34,6 +34,17 @@ export function getModels<TProvider extends RegisteredProvider>(
 	return models ? (Array.from(models.values()) as Model<ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>>[]) : [];
 }
 
+export function getModelProviders(): string[] {
+	return Array.from(modelRegistry.keys()).sort();
+}
+
+export function getAllModels(): Model<Api>[] {
+	return getModelProviders().flatMap((provider) => {
+		const models = modelRegistry.get(provider);
+		return models ? Array.from(models.values()) : [];
+	});
+}
+
 /**
  * Register a model at runtime (e.g., from extensions).
  * If the provider doesn't exist in the registry, it is created.

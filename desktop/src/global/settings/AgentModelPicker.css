@@ -1,0 +1,104 @@
+/* AgentModelPicker — agent toggle + inline two-pane provider/model panel. */
+
+.agent-model-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agent-model-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-model-picker-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--text-strong) 6%, transparent);
+  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+}
+
+.agent-model-picker-refresh {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.agent-model-picker-refresh:hover:not(:disabled),
+.agent-model-picker-refresh:focus-visible {
+  color: var(--text-strong);
+  border-color: var(--border);
+  outline: none;
+}
+
+.agent-model-picker-refresh:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.agent-model-picker-refresh svg[data-spinning] {
+  animation: agent-model-picker-spin 700ms linear infinite;
+}
+
+@keyframes agent-model-picker-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.agent-model-picker-toggle-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 4px 14px;
+  border-radius: var(--radius-full);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.agent-model-picker-toggle-btn:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
+.agent-model-picker-toggle-btn[data-active] {
+  background: var(--background, #fff);
+  color: var(--text-strong);
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.08);
+}
+
+.agent-model-picker-toggle-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.agent-model-picker-error {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--danger, #c2410c);
+}
+
+.agent-model-picker .model-picker-shell {
+  overflow: hidden;
+}

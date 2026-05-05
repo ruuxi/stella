@@ -123,16 +123,16 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   free: {
-    model: "minimax/minimax-m2.7",
+    model: "accounts/fireworks/models/minimax-m2p7",
     fallbackMode: "standard",
-    managedGatewayProvider: "openrouter",
+    managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 4096,
     providerOptions: {
       openai: {
         reasoningEffort: "medium",
       },
-      ...gatewayOptions("openrouter"),
+      ...gatewayOptions("fireworks"),
     },
   },
 
@@ -176,7 +176,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   smart: {
-    model: "accounts/fireworks/models/kimi-k2p6",
+    model: "accounts/fireworks/routers/kimi-k2p6-turbo",
     fallbackMode: "fast",
     managedGatewayProvider: "fireworks",
     temperature: 1.0,
