@@ -9,7 +9,7 @@ import {
 } from "./model-selection.js";
 import { isReportedOrchestratorError } from "../agent-runtime/run-completion.js";
 import { MEMORY_INJECTION_TURN_THRESHOLD } from "../agent-runtime/thread-memory.js";
-import type { QueuedOrchestratorTurn, RunnerContext } from "./types.js";
+import type { RunnerContext } from "./types.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
@@ -38,7 +38,6 @@ export type PreparedOrchestratorRun = {
   agentContext: LocalAgentContext;
   resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
   abortController: AbortController;
-  replayInterruptedTurn: () => void;
   /**
    * Memory-review user-turn counter AFTER incrementing for this run.
    * Only set when the run is a real user turn (Orchestrator + uiVisibility !== "hidden").
@@ -50,7 +49,6 @@ export type PreparedOrchestratorRun = {
 export const prepareOrchestratorRun = async (args: {
   context: RunnerContext;
   buildAgentContext: BuildAgentContext;
-  queueOrchestratorTurn: (turn: QueuedOrchestratorTurn) => void;
   runId: string;
   conversationId: string;
   agentType: string;
@@ -59,7 +57,6 @@ export const prepareOrchestratorRun = async (args: {
   promptMessages?: RuntimePromptMessage[];
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
-  replayTurn?: QueuedOrchestratorTurn | null;
   toolWorkspaceRoot?: string;
 }): Promise<PreparedOrchestratorRun> => {
   // Decide whether this turn should re-inject the memory bundle BEFORE we
@@ -109,17 +106,9 @@ export const prepareOrchestratorRun = async (args: {
   args.context.state.activeOrchestratorConversationId = args.conversationId;
   args.context.state.activeOrchestratorUiVisibility =
     args.uiVisibility ?? "visible";
-  args.context.state.activeInterruptedReplayTurn = args.replayTurn ?? null;
 
   const abortController = new AbortController();
   args.context.state.activeRunAbortControllers.set(args.runId, abortController);
-  const replayTurn = args.replayTurn ?? null;
-
-  const replayInterruptedTurn = () => {
-    if (replayTurn) {
-      args.queueOrchestratorTurn(replayTurn);
-    }
-  };
 
   // Increment the memory-review user-turn counter only on real user-driven
   // Orchestrator turns. Synthetic task-callback turns (uiVisibility === "hidden")
@@ -151,7 +140,6 @@ export const prepareOrchestratorRun = async (args: {
     agentContext,
     resolvedLlm,
     abortController,
-    replayInterruptedTurn,
     ...(userTurnsSinceMemoryReview != null
       ? { userTurnsSinceMemoryReview }
       : {}),
@@ -166,11 +154,6 @@ export const launchPreparedOrchestratorRun = (args: {
   onExecutionSessionCreated?: NonNullable<
     Parameters<typeof runOrchestratorTurn>[0]["onExecutionSessionCreated"]
   >;
-  finishInterruptedRun: (args: {
-    runId: string;
-    onInterrupted?: () => void;
-    onCleanup?: () => void;
-  }) => boolean;
   cleanupRun: (runId: string, onCleanup?: () => void) => void;
   onFatalError: (error: unknown) => void;
 }): void => {
@@ -223,14 +206,6 @@ export const launchPreparedOrchestratorRun = (args: {
     if (isReportedOrchestratorError(error)) {
       return;
     }
-    if (
-      args.finishInterruptedRun({
-        runId: prepared.runId,
-        onInterrupted: prepared.replayInterruptedTurn,
-      })
-    ) {
-      return;
-    }
     args.cleanupRun(prepared.runId);
     args.onFatalError(error);
   });
@@ -239,7 +214,6 @@ export const launchPreparedOrchestratorRun = (args: {
 export const startPreparedOrchestratorRun = async (args: {
   context: RunnerContext;
   buildAgentContext: BuildAgentContext;
-  queueOrchestratorTurn: (turn: QueuedOrchestratorTurn) => void;
   createRuntimeCallbacks: (args: {
     runId: string;
     prepared: PreparedOrchestratorRun;
@@ -253,23 +227,16 @@ export const startPreparedOrchestratorRun = async (args: {
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
   userMessageId: string;
-  finishInterruptedRun: (args: {
-    runId: string;
-    onInterrupted?: () => void;
-    onCleanup?: () => void;
-  }) => boolean;
   cleanupRun: (runId: string, onCleanup?: () => void) => void;
   onFatalError: (error: unknown) => void;
   onPrepared?: (prepared: PreparedOrchestratorRun) => void;
   onExecutionSessionCreated?: NonNullable<
     Parameters<typeof runOrchestratorTurn>[0]["onExecutionSessionCreated"]
   >;
-  replayTurn?: QueuedOrchestratorTurn | null;
 }): Promise<{ runId: string; prepared: PreparedOrchestratorRun }> => {
   const prepared = await prepareOrchestratorRun({
     context: args.context,
     buildAgentContext: args.buildAgentContext,
-    queueOrchestratorTurn: args.queueOrchestratorTurn,
     runId: args.runId,
     conversationId: args.conversationId,
     agentType: args.agentType,
@@ -278,7 +245,6 @@ export const startPreparedOrchestratorRun = async (args: {
     promptMessages: args.promptMessages,
     ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
     attachments: args.attachments,
-    replayTurn: args.replayTurn,
   });
 
   args.onPrepared?.(prepared);
@@ -292,7 +258,6 @@ export const startPreparedOrchestratorRun = async (args: {
       prepared,
     }),
     onExecutionSessionCreated: args.onExecutionSessionCreated,
-    finishInterruptedRun: args.finishInterruptedRun,
     cleanupRun: args.cleanupRun,
     onFatalError: args.onFatalError,
   });

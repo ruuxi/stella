@@ -9,7 +9,6 @@ import type {
   ActiveOrchestratorSession,
   AgentCallbacks,
   ChatPayload,
-  QueuedOrchestratorTurn,
   RunnerContext,
   RuntimeSendMessageInput,
   RuntimeSendUserMessageInput,
@@ -68,7 +67,6 @@ export const createOrchestratorController = (
     clearActiveOrchestratorRun,
     createRuntimeCallbacks,
     queueOrchestratorTurn,
-    finishInterruptedRun,
   } = coordinator;
 
   type StartPreparedRunArgs = Parameters<
@@ -85,7 +83,6 @@ export const createOrchestratorController = (
     userMessageId: string;
     responseTarget?: StartPreparedRunArgs["responseTarget"];
     callbacks: AgentCallbacks;
-    replayTurn?: QueuedOrchestratorTurn | null;
     createRunCallbacks: StartPreparedRunArgs["createRuntimeCallbacks"];
     onPrepared?: StartPreparedRunArgs["onPrepared"];
   }): Promise<{ runId: string }> => {
@@ -105,7 +102,6 @@ export const createOrchestratorController = (
     await startPreparedOrchestratorRun({
       context,
       buildAgentContext: deps.buildAgentContext,
-      queueOrchestratorTurn,
       runId,
       conversationId: args.conversationId,
       agentType: args.agentType,
@@ -117,9 +113,7 @@ export const createOrchestratorController = (
       attachments: args.attachments,
       userMessageId: args.userMessageId,
       ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
-      replayTurn: args.replayTurn ?? null,
       createRuntimeCallbacks: args.createRunCallbacks,
-      finishInterruptedRun,
       cleanupRun,
       onPrepared: (prepared) => {
         args.callbacks.onRunStarted?.({
@@ -163,7 +157,6 @@ export const createOrchestratorController = (
   };
 
   const startStreamingOrchestratorTurn = async (
-    payload: QueuedOrchestratorTurn,
     startArgs: {
       conversationId: string;
       userPrompt: string;
@@ -201,11 +194,8 @@ export const createOrchestratorController = (
         ? { responseTarget: startArgs.responseTarget }
         : {}),
       callbacks,
-      replayTurn: payload.requeueOnInterrupt ? payload : null,
-      createRunCallbacks: ({ runId, prepared }) =>
-        createRuntimeCallbacks(runId, callbacks, {
-          onInterrupted: prepared.replayInterruptedTurn,
-        }),
+      createRunCallbacks: ({ runId }) =>
+        createRuntimeCallbacks(runId, callbacks),
     });
   };
 
@@ -285,6 +275,47 @@ export const createOrchestratorController = (
     return payload;
   };
 
+  const persistAndQueueLiveChatMessages = (args: {
+    session: ActiveOrchestratorSession;
+    userMessageId: string;
+    userPrompt: string;
+    promptMessages?: ChatPayload["promptMessages"];
+    attachments: StartPreparedRunArgs["attachments"];
+  }) => {
+    const trimmedUserPrompt = args.userPrompt.trim();
+    const promptInputs =
+      args.promptMessages && args.promptMessages.length > 0
+        ? [
+            ...args.promptMessages,
+            ...(trimmedUserPrompt
+              ? [{ text: trimmedUserPrompt, messageType: "user" as const }]
+              : []),
+          ]
+        : [{ text: trimmedUserPrompt, messageType: "user" as const }];
+    const timestamp = Date.now();
+    if (promptInputs.some((message) => message.messageType !== "message")) {
+      args.session.queueUserMessageId(args.userMessageId);
+    }
+    for (const [index, promptInput] of promptInputs.entries()) {
+      const message = createRuntimePromptAgentMessage(
+        {
+          ...promptInput,
+          ...(index === promptInputs.length - 1 && args.attachments.length
+            ? { attachments: args.attachments }
+            : {}),
+        },
+        timestamp + index,
+      );
+      if (message.role === "user") {
+        persistThreadPayloadMessage(context.runtimeStore, {
+          threadKey: args.session.threadKey,
+          payload: message,
+        });
+      }
+      args.session.queueMessage(message, "steer");
+    }
+  };
+
   const appendVisibleUserChatEvent = (args: {
     conversationId: string;
     userMessageId: string;
@@ -336,9 +367,8 @@ export const createOrchestratorController = (
     await executeOrQueueSystemOrchestratorTurn({
       hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
       queueOrchestratorTurn,
-      execute: async (queuedTurn) => {
+      execute: async () => {
         await startStreamingOrchestratorTurn(
-          queuedTurn,
           {
             conversationId: input.conversationId,
             userPrompt: "",
@@ -414,6 +444,7 @@ export const createOrchestratorController = (
       input.agentType,
     );
     if (liveSession) {
+      liveSession.queueUserMessageId(userMessageId);
       const message = persistInjectedUserMessage(liveSession, text, timestamp);
       liveSession.queueMessage(message, delivery);
       return;
@@ -460,6 +491,18 @@ export const createOrchestratorController = (
       throw new Error("Missing user prompt");
     }
 
+    const liveSession = getLiveOrchestratorSession(conversationId, agentType);
+    if (liveSession) {
+      persistAndQueueLiveChatMessages({
+        session: liveSession,
+        userMessageId: payload.userMessageId,
+        userPrompt,
+        promptMessages,
+        attachments,
+      });
+      return { runId: liveSession.runId };
+    }
+
     return await launchOrchestratorRun({
       alreadyRunningError:
         "The orchestrator is already running. Wait for it to finish before starting another run.",
@@ -496,6 +539,14 @@ export const createOrchestratorController = (
       throw new Error(health.reason ?? "Stella runtime not ready");
     }
 
+    const liveSession = getLiveOrchestratorSession(
+      payload.conversationId,
+      payload.agentType,
+    );
+    if (liveSession) {
+      return await startLocalChatTurn(payload, callbacks);
+    }
+
     return await executeOrQueueUserOrchestratorTurn({
       hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
       queueOrchestratorTurn,
@@ -504,7 +555,6 @@ export const createOrchestratorController = (
   };
 
   const startAutomationTurn = async (
-    queuedTurn: QueuedOrchestratorTurn,
     payload: {
       conversationId: string;
       userPrompt: string;
@@ -532,7 +582,6 @@ export const createOrchestratorController = (
     await startPreparedOrchestratorRun({
       context,
       buildAgentContext: deps.buildAgentContext,
-      queueOrchestratorTurn,
       runId,
       conversationId,
       agentType,
@@ -541,16 +590,11 @@ export const createOrchestratorController = (
       uiVisibility: "hidden",
       attachments: [],
       userMessageId: `automation:${crypto.randomUUID()}`,
-      replayTurn: queuedTurn.requeueOnInterrupt ? queuedTurn : null,
-      createRuntimeCallbacks: ({ runId, prepared }) =>
+      createRuntimeCallbacks: ({ runId }) =>
         createRuntimeCallbacks(
           runId,
           createAutomationAgentCallbacks(resolveResult),
-          {
-            onInterrupted: prepared.replayInterruptedTurn,
-          },
         ),
-      finishInterruptedRun,
       cleanupRun,
       onFatalError: createAutomationFatalErrorHandler(resolveResult),
     });
@@ -575,8 +619,8 @@ export const createOrchestratorController = (
       void executeOrQueueSystemOrchestratorTurn({
         hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
         queueOrchestratorTurn,
-        execute: async (queuedTurn) => {
-          await startAutomationTurn(queuedTurn, payload, resolve);
+        execute: async () => {
+          await startAutomationTurn(payload, resolve);
         },
       });
     });

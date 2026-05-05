@@ -131,6 +131,7 @@ export type RuntimeInterruptedEvent = {
 export type RuntimeExecutionSessionHandle = {
   runId: string;
   threadKey: string;
+  queueUserMessageId: (userMessageId: string) => void;
   agent: {
     state: {
       isStreaming: boolean;

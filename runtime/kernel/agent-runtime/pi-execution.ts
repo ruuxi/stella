@@ -57,6 +57,7 @@ export const runPiOrchestratorTurn = async (
   opts.onExecutionSessionCreated?.({
     runId,
     threadKey,
+    queueUserMessageId: runEvents.queueUserMessageId,
     agent,
   });
 

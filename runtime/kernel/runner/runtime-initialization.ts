@@ -163,17 +163,14 @@ export const createRuntimeInitialization = (
     context.state.activeOrchestratorRunId = null;
     context.state.activeOrchestratorConversationId = null;
     context.state.activeOrchestratorUiVisibility = "visible";
+    context.state.activeOrchestratorSession = null;
     context.state.queuedOrchestratorTurns.length = 0;
-    context.state.activeToolExecutionCount = 0;
-    context.state.interruptAfterTool = false;
-    context.state.activeInterruptedReplayTurn = null;
     for (const controller of context.state.activeRunAbortControllers.values()) {
       controller.abort();
     }
     context.state.activeRunAbortControllers.clear();
     context.state.conversationCallbacks.clear();
     context.state.runCallbacksByRunId.clear();
-    context.state.interruptedRunIds.clear();
     void context.selfModHmrController?.forceResumeAll();
     context.toolHost.killAllShells();
     const disconnectGoogleWorkspace = context.state.googleWorkspaceDisconnect;

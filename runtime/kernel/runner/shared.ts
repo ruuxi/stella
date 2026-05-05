@@ -28,8 +28,6 @@ export {
   sanitizeConvexDeploymentUrl,
   sanitizeStellaBase,
 };
-export const QUEUED_TURN_INTERRUPT_ERROR =
-  "Interrupted by queued orchestrator turn";
 
 export const defaultPromptForAgentType = (agentType: string): string => {
   if (isOrchestratorAgentType(agentType)) return DEFAULT_ORCHESTRATOR_PROMPT;
