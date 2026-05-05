@@ -10,8 +10,7 @@ export type DisplayFileArtifactKind =
 /**
  * Tagged union for everything the workspace panel can show.
  *
- * - `html`   — freeform HTML produced by the agent's `Display` tool.
- *              Morphdom-applied into the sidebar (existing behavior).
+ * - `html`   — freeform HTML. Morphdom-applied into the sidebar.
  * - `office` — docx/xlsx/pptx live-preview produced by `stella-office preview`.
  *              Renders the existing OfficePreviewCard (iframe + auto-refresh).
  * - `markdown` — local Markdown / MDX files rendered in the panel.
@@ -26,9 +25,8 @@ export type DisplayFileArtifactKind =
  *              owned by the future tab implementation; this payload wires the
  *              display tab, list, and force-delete contracts.
  *
- * The IPC channel `display:update` carries either a raw HTML `string`
- * (legacy compatibility for the runtime worker's existing `displayHtml(html)`
- * call) or a structured `DisplayPayload` object.
+ * The IPC channel `display:update` carries either a raw HTML `string` or a
+ * structured `DisplayPayload` object.
  */
 export type DisplayPayload =
   | { kind: "html"; html: string; title?: string; createdAt?: number }
@@ -76,6 +74,7 @@ export type DisplayPayload =
       jobId?: string;
       capability?: string;
       prompt?: string;
+      presentation?: "inline-image";
       createdAt: number;
     };
 

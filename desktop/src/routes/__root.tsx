@@ -60,7 +60,6 @@ import {
   ensureChatDisplayTab,
   openChatDisplayTab,
 } from "@/shell/display/default-tabs";
-import { liveDisplayStream } from "@/app/chat/live-display-stream";
 
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
@@ -318,10 +317,6 @@ function RootChrome() {
   //
   // - `media` and `url` payloads always open the panel (generated artifacts
   //   and live previews are the user's main goal in that moment).
-  // - `html` payloads from the orchestrator's `Display` tool feed the
-  //   singleton `liveDisplayStream` so the active assistant row's
-  //   `InlineHtmlCanvas` can morph the partial HTML in place. The
-  //   workspace panel never opens a canvas tab for them.
   // - For everything else (office / pdf / markdown / source-diff), keep the
   //   existing behavior: open on the chat home pane, hot-update elsewhere
   //   so we don't steal focus mid-conversation.
@@ -330,10 +325,6 @@ function RootChrome() {
   const isMiniWindow = state.window === "mini";
   const routeDisplayPayload = useCallback(
     (payload: DisplayPayload) => {
-      if (payload.kind === "html") {
-        liveDisplayStream.setHtml(payload.html);
-        return;
-      }
       latestDisplayPayloadRef.current = payload;
       const ds = displaySidebarRef.current;
       if (!ds) return;
@@ -358,7 +349,7 @@ function RootChrome() {
     [chat.showHomeContent, isMiniWindow, isOnChatRoute],
   );
 
-  // Runtime-side `Display` tool / structured payloads from main process.
+  // Structured display payloads from main process.
   useEffect(() => {
     return window.electronAPI?.display.onUpdate((rawPayload) => {
       const payload = normalizeDisplayPayload(rawPayload);
@@ -366,16 +357,6 @@ function RootChrome() {
       routeDisplayPayload(payload);
     });
   }, [routeDisplayPayload]);
-
-  // Once the orchestrator finishes streaming, drop the in-flight Display
-  // partial so the next idle render (and any new turn) starts from a clean
-  // slate. The persisted tool args take over as the source of truth from
-  // here on.
-  const isStreaming = chat.conversation.isStreaming;
-  useEffect(() => {
-    if (isStreaming) return;
-    liveDisplayStream.clear();
-  }, [isStreaming]);
 
   // If the previous agent run left files in deferred-delete trash, seed the
   // workspace panel with a stable tab without opening UI. The actual Trash tab

@@ -31,7 +31,7 @@ const AGENT_WORK_VARIATIONS: readonly string[] = [
 ];
 
 const TOOL_STATUS_BY_NAME: Record<string, readonly string[]> = {
-  display: [
+  image_gen: [
     "Sketching",
     "Drawing",
     "Sketching it out",
@@ -39,20 +39,8 @@ const TOOL_STATUS_BY_NAME: Record<string, readonly string[]> = {
     "Mocking it up",
     "Painting a picture",
     "Whipping up a visual",
-    "Doodling",
-    "Putting it on canvas",
-    "Setting the scene",
-  ],
-  displayguidelines: [
-    "Sketching",
-    "Drawing",
-    "Sketching it out",
-    "Drawing it up",
-    "Mocking it up",
-    "Painting a picture",
-    "Whipping up a visual",
-    "Doodling",
-    "Putting it on canvas",
+    "Making an image",
+    "Starting the render",
     "Setting the scene",
   ],
   web: [

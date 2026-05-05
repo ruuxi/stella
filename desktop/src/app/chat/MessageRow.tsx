@@ -26,6 +26,7 @@ import type {
 import { Markdown } from "@/app/chat/Markdown";
 import { EndResourceCard } from "@/app/chat/EndResourceCard";
 import { InlineHtmlCanvas } from "@/app/chat/InlineHtmlCanvas";
+import { InlineGeneratedImageCard } from "@/app/chat/InlineGeneratedImageCard";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
@@ -291,24 +292,18 @@ export const AssistantMessageRow = memo(
           {row.officePreviewRef && (
             <OfficePreviewCard previewRef={row.officePreviewRef} />
           )}
-          {/* Mount the canvas eagerly while this row is animating so the
-              live `Display` stream can morph partial HTML in place — the
-              persisted html arrives later via `resourcePayload` once the
-              tool call completes. The component stays empty (and hidden
-              via CSS) when neither the live stream nor the persisted
-              prop have html yet. */}
-          {(row.resourcePayload?.kind === "html" || row.isAnimating) && (
+          {row.resourcePayload?.kind === "html" && (
             <InlineHtmlCanvas
-              html={
-                row.resourcePayload?.kind === "html"
-                  ? row.resourcePayload.html
-                  : ""
-              }
+              html={row.resourcePayload.html}
             />
           )}
-          {row.resourcePayload && row.resourcePayload.kind !== "html" && (
+          {row.resourcePayload?.kind === "media" &&
+          row.resourcePayload.presentation === "inline-image" &&
+          row.resourcePayload.asset.kind === "image" ? (
+            <InlineGeneratedImageCard payload={row.resourcePayload} />
+          ) : row.resourcePayload && row.resourcePayload.kind !== "html" ? (
             <EndResourceCard payload={row.resourcePayload} />
-          )}
+          ) : null}
           {row.selfModApplied && (
             <SelfModUndoButton selfModApplied={row.selfModApplied} />
           )}

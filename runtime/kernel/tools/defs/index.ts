@@ -27,7 +27,6 @@ import { applyPatchTool } from "./apply-patch.js";
 import { askQuestionTool } from "./ask-question.js";
 import { askUserQuestionTool } from "./ask-user-question.js";
 import { createComputerTools } from "./computer.js";
-import { createDisplayTools } from "./display.js";
 import { dreamTool } from "./dream.js";
 import { editTool } from "./edit.js";
 import { createExecCommandTool } from "./exec-command.js";
@@ -110,7 +109,6 @@ export const buildBuiltinTools = (
   );
 
   // Orchestrator coordination surface
-  tools.push(...createDisplayTools({ displayHtml: options.displayHtml }));
   tools.push(askQuestionTool);
   tools.push(askUserQuestionTool);
   tools.push(createVoiceActionCompleteTool({

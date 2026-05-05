@@ -12,7 +12,7 @@
  * single payload stream.
  */
 
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/api"
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
@@ -57,6 +57,27 @@ const persistToStorage = (ids: Set<string>): void => {
 // where one writer's mark is invisible to the other (which would happen if
 // each side maintained its own `loadFromStorage()` snapshot).
 const materializedJobs: Set<string> = new Set(loadFromStorage())
+const materializedPayloadsByJobId = new Map<string, DisplayPayload>()
+const materializedPayloadListeners = new Set<() => void>()
+
+export const publishMaterializedMediaPayload = (payload: DisplayPayload): void => {
+  if (payload.kind === "media" && payload.jobId) {
+    materializedPayloadsByJobId.set(payload.jobId, payload)
+  }
+  for (const listener of materializedPayloadListeners) listener()
+}
+
+export const useMaterializedMediaPayload = (
+  jobId: string | undefined,
+): DisplayPayload | null =>
+  useSyncExternalStore(
+    (listener) => {
+      materializedPayloadListeners.add(listener)
+      return () => materializedPayloadListeners.delete(listener)
+    },
+    () => (jobId ? (materializedPayloadsByJobId.get(jobId) ?? null) : null),
+    () => null,
+  )
 
 /**
  * Mark a jobId as already-handled so the materializer skips it. Use this
@@ -185,6 +206,7 @@ export const useMediaMaterializer = ({
             createdAt: completedAt,
           }
 
+          publishMaterializedMediaPayload(payload)
           materializedJobs.add(job.jobId)
           persistToStorage(materializedJobs)
 

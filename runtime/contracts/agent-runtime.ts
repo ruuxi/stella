@@ -407,7 +407,6 @@ export const RUNTIME_RUN_EVENT_TYPES = {
 } as const;
 
 export const TOOL_IDS = {
-  DISPLAY: "Display",
   NO_RESPONSE: "NoResponse",
   MEMORY: "Memory",
   DREAM: "Dream",

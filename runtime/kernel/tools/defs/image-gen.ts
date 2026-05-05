@@ -1,7 +1,8 @@
 /**
- * `image_gen` tool — generate a still image through Stella's managed media
- * gateway. The result is saved under `state/media/outputs/` and surfaced in
- * the sidebar; the model should not download or open it itself.
+ * `image_gen` tool — submit a still image job through Stella's managed media
+ * gateway. The completed output is saved under `state/media/outputs/` and
+ * surfaced in the sidebar by the media materializer; the model should not
+ * wait for, download, or open it itself.
  */
 
 import { createMediaToolHandlers } from "../media.js";
@@ -23,8 +24,8 @@ export const createImageGenTool = (
   return {
     name: "image_gen",
     description:
-      "Generate a still image through Stella's managed media gateway. The result is saved under state/media/outputs/ and shown in the sidebar; do not download or open it yourself. Required: prompt.",
-    promptSnippet: "Generate a still image via Stella's managed media gateway",
+      "Submit a still image job through Stella's managed media gateway. Returns immediately with a jobId; the completed image is saved under state/media/outputs/ and shown in the sidebar later. Do not wait for, download, or open it yourself. Required: prompt.",
+    promptSnippet: "Submit a still image job via Stella's managed media gateway",
     parameters: {
       type: "object",
       properties: {
