@@ -704,17 +704,28 @@ export class WindowManager {
       // on the first construction). For a fresh panel this is a no-op snap
       // to the same coords we baked in.
       miniWindow.setBounds(targetBounds)
-      this.focusAndRaise(miniWindow, 'mini')
-      this.setLastActiveWindowMode('mini')
 
-      if (
-        fullWasHiddenBeforeRaise &&
-        fullWindow &&
-        !fullWindow.isDestroyed() &&
-        fullWindow.isVisible()
-      ) {
-        this.hideWindow(fullWindow, { preserveExternalFocus: true })
+      const raiseMini = () => {
+        if (miniWindow.isDestroyed()) return
+        this.focusAndRaise(miniWindow, 'mini')
+        this.setLastActiveWindowMode('mini')
+
+        if (
+          fullWasHiddenBeforeRaise &&
+          fullWindow &&
+          !fullWindow.isDestroyed() &&
+          fullWindow.isVisible()
+        ) {
+          this.hideWindow(fullWindow, { preserveExternalFocus: true })
+        }
       }
+
+      if (miniWindow.webContents.isLoadingMainFrame()) {
+        miniWindow.webContents.once('did-finish-load', raiseMini)
+        return
+      }
+
+      raiseMini()
       return
     }
 
