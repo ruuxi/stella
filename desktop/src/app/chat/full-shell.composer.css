@@ -1,6 +1,6 @@
 /* Composer — normal flow, centered within parent flex column */
 .composer {
-  --full-chat-composer-max-width: 52rem;
+  --full-chat-composer-max-width: 50rem;
   position: relative;
   flex-shrink: 0;
   display: flex;
