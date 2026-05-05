@@ -194,6 +194,7 @@
   flex-direction: row;
   flex: 1;
   min-height: 0;
+  position: relative;
 }
 
 .shell-topbar {

@@ -15,8 +15,7 @@ import {
   normalizeDisplayPayload,
 } from "@/shared/contracts/display-payload";
 import {
-  DISPLAY_PANEL_MAX_RATIO,
-  DISPLAY_PANEL_MAX_RESERVED_PX,
+  DISPLAY_MAIN_CONTENT_MIN_WIDTH,
   DISPLAY_PANEL_MIN_WIDTH,
   displayTabs,
   useActiveDisplayTab,
@@ -46,18 +45,28 @@ type DisplaySidebarProps = {
   onOpenChange?: (open: boolean) => void;
 };
 
+const readShellSizeVar = (name: string, fallback: number): number => {
+  const shell = document.querySelector<HTMLElement>(".window-shell.full");
+  const raw = shell
+    ? getComputedStyle(shell).getPropertyValue(name).trim()
+    : "";
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 /**
- * Compute the current upper bound for the user-resizable width. Capped at
- * `DISPLAY_PANEL_MAX_RATIO` of the viewport on wide windows so the panel
- * always leaves a usable chat column; falls back to the absolute reserve
- * on narrow windows. The expand toggle is the right tool for the
- * "fully take over" case.
+ * Compute the current upper bound for the user-resizable width from the
+ * main outlet's minimum width. The panel can grow as much as it wants until
+ * it would squeeze the main content below that floor.
  */
 const computeMaxWidth = (): number => {
   const viewport = window.innerWidth;
-  const softCap = Math.floor(viewport * DISPLAY_PANEL_MAX_RATIO);
-  const hardCap = viewport - DISPLAY_PANEL_MAX_RESERVED_PX;
-  return Math.max(DISPLAY_PANEL_MIN_WIDTH, Math.min(softCap, hardCap));
+  const sidebarWidth =
+    document.documentElement.dataset.sidebarRail === "true"
+      ? readShellSizeVar("--shell-sidebar-rail-width", 82)
+      : readShellSizeVar("--shell-sidebar-width", 170);
+  const available = viewport - sidebarWidth - DISPLAY_MAIN_CONTENT_MIN_WIDTH;
+  return Math.max(DISPLAY_PANEL_MIN_WIDTH, Math.floor(available));
 };
 
 const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {

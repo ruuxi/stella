@@ -21,24 +21,20 @@
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
 }
 
-/* Expanded mode: panel takes the full content area. Pair this with the
-   `:has()` rule below that hides `.content-area` so we don't briefly
-   double up. */
+/* Expanded mode overlays the content area instead of participating in the
+   flex row. Normal side-panel mode still consumes layout width; only the
+   explicit expanded state becomes a full content-area replacement. */
 .display-sidebar--open.display-sidebar--expanded {
-  width: 100%;
-  flex: 1;
+  position: absolute;
+  inset: 0 0 0 var(--shell-sidebar-width, 170px);
+  z-index: 60;
+  width: auto;
+  flex: none;
   margin-left: 0;
 }
 
-/* Mirror the chat-sidebar's compact-mode pattern: when a sibling panel
-   wants to take over the content area, hide the chat outlet entirely.
-   Uses `:has()` so we don't have to lift state into the React parent.
-   Requires BOTH `--expanded` and `--open` so the chat outlet reappears
-   when the user closes a panel that was left in expanded mode (the
-   expanded preference is persisted across close so it can be restored
-   on next open). */
-.full-body:has(.display-sidebar--expanded.display-sidebar--open) .content-area {
-  display: none;
+:root[data-sidebar-rail="true"] .display-sidebar--open.display-sidebar--expanded {
+  left: var(--shell-sidebar-rail-width, 82px);
 }
 
 /* While the user is actively dragging the resize handle, suppress the
@@ -157,6 +153,10 @@
   width: 100%;
 }
 
+.shell-topbar[data-display-expanded="true"] .shell-topbar-center {
+  --shell-topbar-center-right-inset: 0px;
+}
+
 html[data-stella-window="mini"] .display-sidebar--open {
   width: 100%;
   flex: 1;
@@ -164,6 +164,9 @@ html[data-stella-window="mini"] .display-sidebar--open {
 
 html[data-stella-window="mini"] .display-sidebar,
 html[data-stella-window="mini"] .display-sidebar--open {
+  position: relative;
+  inset: auto;
+  z-index: auto;
   border-radius: 0;
   margin-left: 0;
   transition: none;

@@ -39,17 +39,13 @@ type TabStoreSnapshot = {
 /**
  * Width clamp applied to the user's resize gesture.
  *
- * `DISPLAY_PANEL_MAX_RATIO` is the soft cap on wide windows — the panel
- * can never grow past 60% of the viewport, so dragging always leaves a
- * usable chat column. `DISPLAY_PANEL_MAX_RESERVED_PX` is the absolute
- * floor: on narrow windows where 70% would still feel too wide, we make
- * sure at least this many pixels remain for the rail + chat. The
- * effective max is `min(width * ratio, width - reserved)`. Use the
- * expand toggle for the "fully take over" case.
+ * The panel itself has only a minimum useful width. Its maximum is derived
+ * at drag time from the available shell width after reserving the left
+ * sidebar/rail and `DISPLAY_MAIN_CONTENT_MIN_WIDTH` for the main outlet.
+ * Use the expand toggle for the "fully take over" case.
  */
 export const DISPLAY_PANEL_MIN_WIDTH = 320;
-export const DISPLAY_PANEL_MAX_RATIO = 0.6;
-export const DISPLAY_PANEL_MAX_RESERVED_PX = 240;
+export const DISPLAY_MAIN_CONTENT_MIN_WIDTH = 400;
 
 const STORAGE_KEY_WIDTH = "stella.displayPanel.width";
 const STORAGE_KEY_EXPANDED = "stella.displayPanel.expanded";
@@ -226,7 +222,7 @@ export const displayTabs = {
   /**
    * Persist the user-chosen width (in CSS pixels). `null` reverts to the
    * stylesheet default. Callers are responsible for clamping to the
-   * `DISPLAY_PANEL_MIN_WIDTH` / window-derived max before invoking this.
+   * panel minimum and main-content-derived maximum before invoking this.
    */
   setPanelWidth(width: number | null): void {
     if (state.panelWidth === width) return;
