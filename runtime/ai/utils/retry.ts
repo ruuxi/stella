@@ -110,7 +110,7 @@ export function isRetryableConnectionError(error: unknown): boolean {
 		return true;
 	}
 	const statusCode = (error as { statusCode?: number }).statusCode;
-	if (statusCode === 429 || statusCode >= 500) return true;
+	if (statusCode === 429 || (typeof statusCode === "number" && statusCode >= 500)) return true;
 
 	const code = (error as { code?: string }).code;
 	if (code === "ECONNREFUSED" || code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND") {
