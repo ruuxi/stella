@@ -165,6 +165,29 @@ describe("resolveLlmRoute", () => {
     expect(refreshAuthToken).toHaveBeenCalledTimes(1);
   });
 
+  it("uses pushed Stella tokens without refreshing before the fallback window", async () => {
+    const refreshAuthToken = vi.fn(async () => "fresh-stella-token");
+    const currentToken = jwtWithExpiry(Date.now() + 30_000);
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
+      modelName: "openai/gpt-5.1-codex",
+      agentType: "general",
+      site: {
+        baseUrl: "https://stella.example.test",
+        getAuthToken: () => currentToken,
+        refreshAuthToken,
+      },
+    });
+
+    expect(resolved.route).toBe("stella");
+    await expect(resolved.getApiKey()).resolves.toBe(currentToken);
+    expect(refreshAuthToken).not.toHaveBeenCalled();
+  });
+
   it("routes by parsed provider id when local keys are enabled", async () => {
     credentials.set("anthropic", "anthropic-key");
     localKeysEnabled = true;

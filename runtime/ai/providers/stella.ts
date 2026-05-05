@@ -334,6 +334,9 @@ export const streamStella: (
 
         for (const rawLine of lines) {
           const line = rawLine.trim();
+          if (line.startsWith(":")) {
+            continue;
+          }
           if (!line.startsWith("data:")) continue;
           const data = line.slice(5).trim();
           if (!data) continue;

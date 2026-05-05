@@ -395,6 +395,25 @@ export class RuntimeClientAdapter {
     await this.client.stop();
   }
 
+  async warmWorker() {
+    if (!this.started) {
+      return;
+    }
+    await this.client.warmWorker();
+    this.lastRuntimeHealth = await this.client.health();
+    this.lastHealth = await this.client.healthCheck();
+    this.emitAvailabilityChange();
+  }
+
+  setHostFocused(focused: boolean) {
+    this.client.setHostFocused(focused);
+    if (focused) {
+      void this.warmWorker().catch((error) => {
+        console.warn("[stella-runtime-adapter] Failed to warm runtime worker:", error);
+      });
+    }
+  }
+
   private queueRuntimeConfigPatch(patch: {
     convexUrl?: string | null;
     convexSiteUrl?: string | null;

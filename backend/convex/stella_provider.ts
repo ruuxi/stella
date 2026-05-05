@@ -103,6 +103,12 @@ type AuthorizedStellaRequest = {
   managedApi: ManagedProtocol;
   serverModelConfig: ResolvedManagedServerModelConfig;
   fallbackModelConfig?: ResolvedManagedServerModelConfig;
+  anonymousUsageRecord?: AnonymousUsageRecord;
+};
+
+type AnonymousUsageRecord = {
+  deviceId: string;
+  clientAddressKey?: string;
 };
 
 const STELLA_REQUEST_PASSTHROUGH_EXCLUSIONS = new Set([
@@ -157,21 +163,21 @@ function toUpstreamHttpError(error: unknown): UpstreamHttpError | null {
   };
 }
 
-async function consumeDeviceRateLimit(
+async function checkDeviceRateLimit(
   ctx: ActionCtx,
   deviceId: string,
   clientAddressKey: string | null,
 ): Promise<boolean> {
   try {
-    const usage = await ctx.runMutation(
-      internal.ai_proxy_data.consumeDeviceAllowance,
+    const usage = await ctx.runQuery(
+      internal.ai_proxy_data.getDeviceUsage,
       {
         deviceId,
-        maxRequests: MAX_ANON_REQUESTS,
+        nowMs: Date.now(),
         clientAddressKey: clientAddressKey ?? undefined,
       },
     );
-    return usage.allowed;
+    return (usage?.requestCount ?? 0) < MAX_ANON_REQUESTS;
   } catch (error) {
     if (!isAnonDeviceHashSaltMissingError(error)) {
       throw error;
@@ -180,6 +186,25 @@ async function consumeDeviceRateLimit(
     return false;
   }
 }
+
+const scheduleAnonymousUsageRecord = async (
+  ctx: ActionCtx,
+  record: AnonymousUsageRecord | undefined,
+): Promise<void> => {
+  if (!record) return;
+  try {
+    await ctx.scheduler.runAfter(0, internal.ai_proxy_data.incrementDeviceUsage, {
+      deviceId: record.deviceId,
+      clientAddressKey: record.clientAddressKey,
+    });
+  } catch (error) {
+    if (isAnonDeviceHashSaltMissingError(error)) {
+      logMissingSaltOnce("stella-provider");
+      return;
+    }
+    console.error("[stella-provider] Failed to record anonymous usage", error);
+  }
+};
 
 async function parseRequestJson(
   request: Request,
@@ -710,6 +735,7 @@ async function authorizeStellaRequest(
   const isAnonymous =
     (identity as Record<string, unknown>).isAnonymous === true;
   let modelAudience: ManagedModelAudience = isAnonymous ? "anonymous" : "free";
+  let anonymousUsageRecord: AnonymousUsageRecord | undefined;
 
   const url = new URL(request.url);
   if (!url.pathname.endsWith(expectedPath)) {
@@ -721,11 +747,13 @@ async function authorizeStellaRequest(
   }
 
   if (isAnonymous) {
-    const allowed = await consumeDeviceRateLimit(
-      ctx,
-      `anon-jwt:${ownerId}`,
-      getClientAddressKey(request),
-    );
+    const deviceId = `anon-jwt:${ownerId}`;
+    const clientAddressKey = getClientAddressKey(request);
+    anonymousUsageRecord = {
+      deviceId,
+      ...(clientAddressKey ? { clientAddressKey } : {}),
+    };
+    const allowed = await checkDeviceRateLimit(ctx, deviceId, clientAddressKey);
     if (!allowed) {
       return stellaProviderErrorResponse(
         429,
@@ -876,6 +904,7 @@ async function authorizeStellaRequest(
         | undefined,
     },
     fallbackModelConfig,
+    anonymousUsageRecord,
   };
 }
 
@@ -1349,6 +1378,7 @@ async function createNativeRuntimeResponse(args: {
   managedApi: ManagedProtocol;
   serverModelConfig: ResolvedManagedServerModelConfig;
   fallbackModelConfig?: ResolvedManagedServerModelConfig;
+  anonymousUsageRecord?: AnonymousUsageRecord;
 }): Promise<Response> {
   const {
     request,
@@ -1362,16 +1392,17 @@ async function createNativeRuntimeResponse(args: {
     managedApi,
     serverModelConfig,
     fallbackModelConfig,
+    anonymousUsageRecord,
   } = args;
   const origin = request.headers.get("origin");
+  const requestStartedAt = Date.now();
+  const encoder = new TextEncoder();
+  const managedModel = buildManagedModel(serverModelConfig, managedApi);
   const responseHeaders: Record<string, string> = {
     ...getCorsHeaders(origin),
     "content-type": "text/event-stream; charset=utf-8",
     "cache-control": "no-cache, no-transform",
   };
-  const requestStartedAt = Date.now();
-  const encoder = new TextEncoder();
-  const managedModel = buildManagedModel(serverModelConfig, managedApi);
 
   const sendEvent = (
     controller: ReadableStreamDefaultController<Uint8Array>,
@@ -1436,6 +1467,7 @@ async function createNativeRuntimeResponse(args: {
         ),
       });
       const iterator = runtimeStream[Symbol.asyncIterator]();
+      let didRecordAnonymousUsage = false;
 
       const handleRuntimeEvent = async (event: AssistantMessageEvent) => {
         const payload = mapAssistantEventToStellaEvent({
@@ -1461,6 +1493,10 @@ async function createNativeRuntimeResponse(args: {
             success: true,
             ...toManagedBillingUsage(event.message, tokenEstimate),
           });
+          if (!didRecordAnonymousUsage) {
+            didRecordAnonymousUsage = true;
+            await scheduleAnonymousUsageRecord(ctx, anonymousUsageRecord);
+          }
           if (!closed) {
             controller.close();
           }
@@ -1735,6 +1771,7 @@ export const stellaProviderRuntime = httpAction(async (ctx, request) => {
     managedApi,
     serverModelConfig,
     fallbackModelConfig,
+    anonymousUsageRecord,
   } = authorized;
 
   const context = parseNativeContext(requestJson.context);
@@ -1761,6 +1798,7 @@ export const stellaProviderRuntime = httpAction(async (ctx, request) => {
     managedApi,
     serverModelConfig,
     fallbackModelConfig,
+    anonymousUsageRecord,
   });
 });
 

@@ -76,6 +76,7 @@ export type StellaHostRunnerOptions = {
       taskPrompt: string;
       conversationId: string;
       succeeded: boolean;
+      skipCommit?: boolean;
       /**
        * Returns a 1-line user-friendly commit subject (≤ 12 words).
        * Returning `null` falls back to the task description.

@@ -1,4 +1,4 @@
-import { app, session } from "electron";
+import { app, BrowserWindow, session } from "electron";
 import { hasMacPermission } from "../utils/macos-permissions.js";
 import path from "path";
 import { resolveStellaHome } from "../../../runtime/kernel/home/stella-home.js";
@@ -125,6 +125,18 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
       services.selectionWatcherService.start();
     });
   }
+
+  app.on("browser-window-focus", () => {
+    state.stellaHostRunner?.setHostFocused(true);
+  });
+  app.on("browser-window-blur", () => {
+    context.state.processRuntime.setManagedTimeout(() => {
+      if (BrowserWindow.getFocusedWindow()) {
+        return;
+      }
+      state.stellaHostRunner?.setHostFocused(false);
+    }, 250);
+  });
 };
 
 export const initializeBootstrapAppShell = async (

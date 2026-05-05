@@ -947,6 +947,15 @@ export class StellaRuntimeClient {
     return { ok: true };
   }
 
+  async warmWorker() {
+    await this.workerController.ensureStarted();
+    return { ok: true };
+  }
+
+  setHostFocused(focused: boolean) {
+    this.workerController.setHostFocused(focused);
+  }
+
   async healthCheck() {
     const health = await this.getWorkerHealth({ ensureWorker: false });
     return health?.health ?? null;

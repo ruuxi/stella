@@ -16,7 +16,7 @@ import { convexClient } from "@/infra/convex-client";
 
 const TOKEN_BOOTSTRAP_RETRY_MS = 3_000;
 const TOKEN_REFRESH_FALLBACK_MS = 3 * 60 * 1000;
-const TOKEN_REFRESH_MARGIN_MS = 45_000;
+const TOKEN_REFRESH_MARGIN_MS = 90_000;
 const TOKEN_MIN_REFRESH_MS = 15_000;
 
 export type AuthBootstrapStatus =
