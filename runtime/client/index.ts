@@ -110,9 +110,8 @@ export type RuntimeHostHandlers = {
   }) => Promise<{ secretId: string; provider: string; label: string }>;
   /**
    * Push a display update to the renderer. The payload is either a raw
-   * HTML string (legacy, used by the agent's `Display` tool) or a
-   * structured payload object that the renderer hands to its workspace
-   * panel tab manager. The host handler is responsible for forwarding
+   * HTML string or a structured payload object that the renderer hands
+   * to its workspace panel tab manager. The host handler is responsible for forwarding
    * whatever it receives to the IPC `display:update` channel as-is so
    * the renderer can normalize it.
    */

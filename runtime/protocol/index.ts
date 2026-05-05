@@ -602,9 +602,8 @@ export type HostHeartbeatSignature = {
 };
 
 /**
- * The host display update bridge accepts either a raw HTML string (legacy
- * `displayHtml(html)` from the agent's Display tool) or a structured
- * payload that the renderer maps to the workspace panel tab manager.
+ * The host display update bridge accepts either a raw HTML string or a
+ * structured payload that the renderer maps to the workspace panel tab manager.
  *
  * Structured payloads use the same `DisplayPayload` shape defined in
  * `desktop/src/shared/contracts/display-payload.ts`. We avoid importing it

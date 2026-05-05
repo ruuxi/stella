@@ -1123,9 +1123,8 @@ export type ElectronDisplayApi = {
   /**
    * Subscribes to runtime-driven workspace panel updates.
    *
-   * Payload is either a raw HTML string (legacy: emitted by the agent's
-   * `Display` tool) or a structured `DisplayPayload` object describing what
-   * to render. Callers should pass through `normalizeDisplayPayload` from
+   * Payload is either a raw HTML string or a structured `DisplayPayload`
+   * object describing what to render. Callers should pass through `normalizeDisplayPayload` from
    * `@/shared/contracts/display-payload` to handle both shapes uniformly.
    */
   onUpdate: (callback: (payload: string | unknown) => void) => () => void;

@@ -7,10 +7,6 @@
  * have to learn about the tab manager — they keep speaking
  * `DisplayPayload` and a single mapper turns each one into a tab spec at
  * the renderer boundary.
- *
- * `html` payloads from the orchestrator's `Display` tool intentionally
- * bypass this bridge — they render inline in the chat (see
- * `InlineHtmlCanvas`) instead of opening a tab.
  */
 
 import { createElement } from "react";

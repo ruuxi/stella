@@ -1,6 +1,4 @@
-import { anyApi } from "convex/server";
 import { promises as fs } from "node:fs";
-import path from "node:path";
 
 import type {
   ToolContext,
@@ -8,84 +6,15 @@ import type {
   ToolHandlerExtras,
   ToolResult,
 } from "./types.js";
-import { fileChange } from "../../contracts/file-changes.js";
 
 export const IMAGE_GEN_TOOL_NAME = "image_gen";
 
 type MediaToolOptions = {
   getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
-  queryConvex?: (
-    ref: unknown,
-    args: Record<string, unknown>,
-  ) => Promise<unknown>;
 };
-
-type MediaJobRecord = {
-  jobId?: string;
-  capability?: string;
-  profile?: string;
-  status?: string;
-  output?: unknown;
-  error?: { message?: string } | null;
-  request?: { prompt?: string } | null;
-};
-
-const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const cleanup = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-    };
-    const finish = () => {
-      cleanup();
-      resolve();
-    };
-    const onAbort = () => {
-      cleanup();
-      reject(signal?.reason ?? new Error("Aborted"));
-    };
-    const timer = setTimeout(finish, ms);
-    if (!signal) return;
-    if (signal.aborted) {
-      onAbort();
-      return;
-    }
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
 
 const asNonEmptyString = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-
-const extractImageUrls = (output: unknown): string[] => {
-  if (!output || typeof output !== "object") return [];
-  const record = output as Record<string, unknown>;
-  const images = Array.isArray(record.images) ? record.images : [];
-  return images
-    .map((entry) =>
-      entry && typeof entry === "object"
-        ? asNonEmptyString((entry as { url?: unknown }).url)
-        : null,
-    )
-    .filter((value): value is string => Boolean(value));
-};
-
-const extensionFromMimeType = (mimeType: string | null): string => {
-  const normalized = mimeType?.toLowerCase() ?? "";
-  if (normalized.includes("jpeg")) return "jpg";
-  if (normalized.includes("webp")) return "webp";
-  if (normalized.includes("gif")) return "gif";
-  return "png";
-};
-
-const extensionFromUrl = (url: string): string | null => {
-  try {
-    const pathname = new URL(url).pathname;
-    const match = pathname.match(/\.([a-z0-9]{2,5})$/i);
-    return match?.[1]?.toLowerCase() ?? null;
-  } catch {
-    return null;
-  }
-};
 
 const mimeTypeFromExtension = (extension: string): string => {
   switch (extension.toLowerCase()) {
@@ -99,37 +28,6 @@ const mimeTypeFromExtension = (extension: string): string => {
     default:
       return "image/png";
   }
-};
-
-const downloadImage = async (args: {
-  url: string;
-  outputDir: string;
-  fileStem: string;
-  signal?: AbortSignal;
-}): Promise<{ filePath: string; mimeType: string }> => {
-  const response = await fetch(args.url, {
-    headers: { "User-Agent": "StellaDesktop/1.0" },
-    redirect: "follow",
-    signal: args.signal,
-  });
-  if (!response.ok) {
-    throw new Error(`Download failed (${response.status})`);
-  }
-
-  const mimeType =
-    asNonEmptyString(response.headers.get("content-type")) ??
-    mimeTypeFromExtension(extensionFromUrl(args.url) ?? "png");
-  const extension =
-    extensionFromUrl(args.url) ?? extensionFromMimeType(mimeType);
-  const filePath = path.join(args.outputDir, `${args.fileStem}.${extension}`);
-  const buffer = Buffer.from(await response.arrayBuffer());
-  await fs.writeFile(filePath, buffer);
-  return {
-    filePath,
-    mimeType: mimeType.startsWith("image/")
-      ? mimeType
-      : mimeTypeFromExtension(extension),
-  };
 };
 
 const parseErrorResponse = async (response: Response): Promise<string> => {
@@ -180,7 +78,7 @@ const createImageGenHandler = (
   context: ToolContext,
   extras?: ToolHandlerExtras,
 ): Promise<ToolResult> => {
-  if (!options.getStellaSiteAuth || !options.queryConvex) {
+  if (!options.getStellaSiteAuth) {
     return {
       error:
         "image_gen is not available because Stella media auth is not configured in this runtime.",
@@ -199,16 +97,6 @@ const createImageGenHandler = (
         "image_gen requires Stella sign-in. Open Stella and finish signing in, then retry.",
     };
   }
-
-  const timeoutMs = Math.max(
-    5_000,
-    Math.min(
-      typeof args.timeout_ms === "number" ? Math.floor(args.timeout_ms) : 180_000,
-      600_000,
-    ),
-  );
-  const pollIntervalMs = 1_500;
-  const deadline = Date.now() + timeoutMs;
 
   const input: Record<string, unknown> = {};
   const profile = asNonEmptyString(args.profile);
@@ -350,103 +238,17 @@ const createImageGenHandler = (
     return { error: "image_gen response did not include a jobId." };
   }
 
-  while (Date.now() < deadline) {
-    if (extras?.signal?.aborted) {
-      return { error: "image_gen was aborted." };
-    }
-
-    let job: MediaJobRecord | null = null;
-    try {
-      const result = await options.queryConvex(
-        (anyApi as { media_jobs: { getByJobId: unknown } }).media_jobs.getByJobId,
-        { jobId },
-      );
-      job = (result as MediaJobRecord | null) ?? null;
-    } catch (error) {
-      return { error: `image_gen polling failed: ${(error as Error).message}` };
-    }
-
-    if (job?.status === "succeeded" && job.output !== undefined) {
-      const urls = extractImageUrls(job.output);
-      if (urls.length === 0) {
-        return {
-          error:
-            "image_gen completed, but the media output did not contain any image URLs.",
-        };
-      }
-
-      const outputDir = path.join(
-        context.stellaRoot ?? process.cwd(),
-        "state",
-        "media",
-        "outputs",
-      );
-      await fs.mkdir(outputDir, { recursive: true });
-
-      const downloads = [];
-      for (let index = 0; index < urls.length; index++) {
-        downloads.push(
-          await downloadImage({
-            url: urls[index]!,
-            outputDir,
-            fileStem: `${jobId}_${index}`,
-            signal: extras?.signal,
-          }),
-        );
-      }
-
-      const markers = downloads
-        .map(
-          ({ filePath, mimeType }) =>
-            `[stella-attach-image] inline=${mimeType} ${filePath}`,
-        )
-        .join("\n");
-      const summary = `Generated ${downloads.length} image${
-        downloads.length === 1 ? "" : "s"
-      } for "${prompt}".`;
-      const savedPaths = downloads
-        .map((entry, index) => `image_${index + 1}: ${entry.filePath}`)
-        .join("\n");
-      const details = {
-        jobId,
-        capability:
-          asNonEmptyString(job.capability) ??
-          asNonEmptyString(accepted.capability) ??
-          capability,
-        profile:
-          asNonEmptyString(job.profile) ??
-          asNonEmptyString(accepted.profile) ??
-          "best",
-        prompt,
-        filePaths: downloads.map((entry) => entry.filePath),
-        output: job.output,
-      };
-      return {
-        result: `${summary}\nSaved image paths:\n${savedPaths}\n${markers}`,
-        details,
-        fileChanges: downloads.map(({ filePath }) =>
-          fileChange(filePath, { type: "add" }),
-        ),
-      };
-    }
-
-    if (job?.status === "failed" || job?.status === "canceled") {
-      return {
-        error:
-          asNonEmptyString(job.error?.message) ??
-          `image_gen ${job.status}.`,
-      };
-    }
-
-    try {
-      await sleep(pollIntervalMs, extras?.signal);
-    } catch {
-      return { error: "image_gen was aborted." };
-    }
-  }
-
+  const details = {
+    jobId,
+    capability: asNonEmptyString(accepted.capability) ?? capability,
+    profile: asNonEmptyString(accepted.profile) ?? profile ?? "best",
+    prompt,
+    status: "submitted",
+  };
   return {
-    error: `image_gen timed out after ${timeoutMs}ms while waiting for job ${jobId}.`,
+    result:
+      `image_gen job ${jobId} submitted. The generated image will appear automatically when it finishes.`,
+    details,
   };
 };
 

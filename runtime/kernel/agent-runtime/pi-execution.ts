@@ -1,5 +1,4 @@
 import { createRuntimeLogger } from "../debug.js";
-import { createDisplayStreamController } from "./display-stream.js";
 import {
   finalizeOrchestratorError,
   finalizeOrchestratorInterrupted,
@@ -92,8 +91,6 @@ export const runPiOrchestratorTurn = async (
     return runId;
   }
 
-  const displayStream = createDisplayStreamController(opts.displayHtml);
-
   try {
     const promptMessages = await buildOrchestratorPromptMessages({
       context: opts.agentContext,
@@ -131,16 +128,9 @@ export const runPiOrchestratorTurn = async (
       recorder: runEvents,
       abortSignal: opts.abortSignal,
       callbacks: opts.callbacks,
-      displayEventHandler: displayStream.handleEvent,
       hookEmitter: opts.hookEmitter,
       threadStore: opts.store,
       threadKey,
-      onAfterPrompt: () => {
-        displayStream.flush();
-      },
-      onCleanup: () => {
-        displayStream.dispose();
-      },
     });
     const interruptedReason = resolveInterruptionReason({
       abortSignal: opts.abortSignal,

@@ -55,8 +55,6 @@ export type { ToolContext, ToolHandlerExtras, ToolResult };
 export type ToolHost = ReturnType<typeof createToolHost>;
 
 const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
-  "Display",
-  "DisplayGuidelines",
   "Schedule",
   "Store",
   "spawn_agent",

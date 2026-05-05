@@ -99,7 +99,9 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("spawn_agent")).toBe(true);
     expect(orchestratorTools.has("send_input")).toBe(true);
     expect(orchestratorTools.has("pause_agent")).toBe(true);
-    expect(orchestratorTools.has("Display")).toBe(true);
+    expect(orchestratorTools.has("Display")).toBe(false);
+    expect(orchestratorTools.has("DisplayGuidelines")).toBe(false);
+    expect(orchestratorTools.has("image_gen")).toBe(true);
     expect(orchestratorTools.has("web")).toBe(true);
     expect(orchestratorTools.has("Memory")).toBe(true);
     expect(orchestratorTools.has("askQuestion")).toBe(true);
@@ -110,6 +112,7 @@ describe("orchestrator direct tool surface", () => {
     );
     expect(generalTools.has("spawn_agent")).toBe(false);
     expect(generalTools.has("Display")).toBe(false);
+    expect(generalTools.has("DisplayGuidelines")).toBe(false);
     expect(generalTools.has("Memory")).toBe(false);
     expect(generalTools.has("askQuestion")).toBe(false);
     expect(generalTools.has("exec_command")).toBe(true);

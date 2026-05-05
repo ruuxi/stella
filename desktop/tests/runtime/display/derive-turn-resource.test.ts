@@ -37,38 +37,6 @@ describe("deriveTurnResource", () => {
     ).toBeNull();
   });
 
-  it("surfaces Display canvas calls as inline chat resources", () => {
-    expect(
-      deriveTurnResource([
-        event({
-          _id: "q1",
-          type: "tool_request",
-          requestId: "display-1",
-          timestamp: 4,
-          payload: {
-            toolName: "Display",
-            args: {
-              i_have_read_guidelines: true,
-              html: "<div><canvas id=\"chart\"></canvas><script>window.ok = true</script></div>",
-            },
-          },
-        }),
-        event({
-          _id: "r1",
-          type: "tool_result",
-          requestId: "display-1",
-          timestamp: 5,
-          payload: { toolName: "Display", result: "Display updated." },
-        }),
-      ]),
-    ).toEqual({
-      kind: "html",
-      html: "<div><canvas id=\"chart\"></canvas><script>window.ok = true</script></div>",
-      title: "Canvas",
-      createdAt: 5,
-    });
-  });
-
   it("derives a payload from a fileChanges record (Write add)", () => {
     expect(
       deriveTurnResource([
@@ -243,6 +211,71 @@ describe("deriveTurnResource", () => {
       jobId: "job-1",
       capability: "text_to_image",
       prompt: "a dog over Tokyo",
+      createdAt: 100,
+    });
+  });
+
+  it("marks orchestrator image_gen results for inline image presentation", () => {
+    const result = deriveTurnResource([
+      event({
+        _id: "ig-1",
+        type: "tool_result",
+        timestamp: 100,
+        payload: {
+          toolName: "image_gen",
+          agentType: "orchestrator",
+          result: {
+            jobId: "job-1",
+            prompt: "a product mockup",
+            filePaths: ["/state/media/outputs/job-1_0.png"],
+          },
+          fileChanges: [
+            {
+              path: "/state/media/outputs/job-1_0.png",
+              kind: { type: "add" },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    expect(result).toMatchObject({
+      kind: "media",
+      asset: {
+        kind: "image",
+        filePaths: ["/state/media/outputs/job-1_0.png"],
+      },
+      presentation: "inline-image",
+    });
+  });
+
+  it("creates a pending inline image payload for submitted orchestrator image_gen jobs", () => {
+    const result = deriveTurnResource([
+      event({
+        _id: "ig-1",
+        type: "tool_result",
+        timestamp: 100,
+        payload: {
+          toolName: "image_gen",
+          agentType: "orchestrator",
+          result: "image_gen job job-1 submitted.",
+          details: {
+            jobId: "job-1",
+            capability: "text_to_image",
+            prompt: "a product mockup",
+            status: "submitted",
+          },
+        },
+      }),
+    ]);
+
+    expect(result).toEqual({
+      kind: "media",
+      asset: { kind: "image", filePaths: [] },
+      jobId: "job-1",
+      capability: "text_to_image",
+      prompt: "a product mockup",
+      presentation: "inline-image",
       createdAt: 100,
     });
   });

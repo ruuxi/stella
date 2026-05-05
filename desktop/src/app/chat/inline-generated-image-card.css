@@ -1,0 +1,61 @@
+.inline-generated-image-card {
+  display: block;
+  position: relative;
+  margin-top: 10px;
+  padding: 0;
+  width: min(100%, 420px);
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--card) 20%, transparent);
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 140ms ease,
+    transform 60ms ease;
+}
+
+.inline-generated-image-card:hover {
+  border-color: color-mix(in srgb, var(--foreground) 18%, transparent);
+}
+
+.inline-generated-image-card:active {
+  transform: translateY(0.5px);
+}
+
+.inline-generated-image-card__frame {
+  display: block;
+  width: 100%;
+  min-height: 180px;
+  background: color-mix(in srgb, var(--card) 28%, transparent);
+}
+
+.inline-generated-image-card__image {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+}
+
+.inline-generated-image-card__placeholder {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  color: var(--text-weak);
+  font-size: 13px;
+}
+
+.inline-generated-image-card__count {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+  color: var(--text-base);
+  font-size: 11px;
+  line-height: 1;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}

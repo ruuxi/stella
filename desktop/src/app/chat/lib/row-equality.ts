@@ -214,6 +214,7 @@ const resourcePayloadEqual = (
     }
     case "media": {
       const bb = b as Extract<DisplayPayload, { kind: "media" }>;
+      if ((a.presentation ?? null) !== (bb.presentation ?? null)) return false;
       if (a.asset.kind !== bb.asset.kind) return false;
       if (a.asset.kind === "image" && bb.asset.kind === "image") {
         return a.asset.filePaths.join("|") === bb.asset.filePaths.join("|");

@@ -185,6 +185,10 @@ const imageGenPayloadsByPath = (
         ? { capability: record.capability }
         : {}),
       ...(typeof record.prompt === "string" ? { prompt: record.prompt } : {}),
+      ...((event.payload as { agentType?: unknown }).agentType ===
+      "orchestrator"
+        ? { presentation: "inline-image" as const }
+        : {}),
     };
     for (const filePath of filePaths) {
       if (!byPath.has(filePath)) byPath.set(filePath, payload);
@@ -192,6 +196,46 @@ const imageGenPayloadsByPath = (
   }
 
   return byPath;
+};
+
+const inlineImageGenSubmissionPayload = (
+  toolEvents: EventRecord[],
+): DisplayPayload | null => {
+  for (let index = toolEvents.length - 1; index >= 0; index -= 1) {
+    const event = toolEvents[index]!;
+    if (!isToolResult(event)) continue;
+    if (event.payload.toolName !== "image_gen" || event.payload.error) continue;
+    if ((event.payload as { agentType?: unknown }).agentType !== "orchestrator") {
+      continue;
+    }
+    const candidate =
+      event.payload.details && typeof event.payload.details === "object"
+        ? event.payload.details
+        : event.payload.result;
+    if (!candidate || typeof candidate !== "object") continue;
+    const record = candidate as Record<string, unknown>;
+    const jobId = asNonEmptyString(record.jobId);
+    if (!jobId) continue;
+    const rawPaths = record.filePaths;
+    const filePaths = Array.isArray(rawPaths)
+      ? rawPaths.filter(
+          (filePath): filePath is string =>
+            typeof filePath === "string" && filePath.trim().length > 0,
+        )
+      : [];
+    return {
+      kind: "media",
+      asset: { kind: "image", filePaths },
+      jobId,
+      ...(typeof record.capability === "string"
+        ? { capability: record.capability }
+        : {}),
+      ...(typeof record.prompt === "string" ? { prompt: record.prompt } : {}),
+      presentation: "inline-image",
+      createdAt: event.timestamp,
+    };
+  }
+  return null;
 };
 
 const buildPayloadFromBarePath = (
@@ -293,40 +337,6 @@ const requestIdForEvent = (event: EventRecord): string | undefined => {
     : undefined;
 };
 
-const requestForToolResult = (
-  toolEvents: EventRecord[],
-  resultEvent: EventRecord,
-): EventRecord | null => {
-  const toolCallId = requestIdForEvent(resultEvent);
-  if (!toolCallId) return null;
-  return (
-    toolEvents.find(
-      (event) => isToolRequest(event) && event.requestId === toolCallId,
-    ) ?? null
-  );
-};
-
-const displayPayloadFromToolCall = (
-  toolEvents: EventRecord[],
-): DisplayPayload | null => {
-  for (let index = toolEvents.length - 1; index >= 0; index -= 1) {
-    const event = toolEvents[index]!;
-    if (!isToolResult(event)) continue;
-    if (event.payload.toolName !== "Display" || event.payload.error) continue;
-    const request = requestForToolResult(toolEvents, event);
-    if (!request || !isToolRequest(request)) continue;
-    const html = asNonEmptyString(request.payload.args?.html);
-    if (!html) continue;
-    return {
-      kind: "html",
-      html,
-      title: "Canvas",
-      createdAt: event.timestamp,
-    };
-  }
-  return null;
-};
-
 /**
  * Extract local file paths referenced via markdown links in the
  * assistant message text. Mirrors Codex's `yde` + `bde` pair: walk the
@@ -391,14 +401,13 @@ export const deriveTurnResource = (
 ): DisplayPayload | null => {
   if (toolEvents.length === 0 && !assistantText) return null;
 
-  const displayPayload = displayPayloadFromToolCall(toolEvents);
-  if (displayPayload) return displayPayload;
-
   // Build payloadByPath using rich signals (office previews + image_gen
   // metadata) so the chosen path resolves to a previewer that keeps
   // session ids / prompts / capability context.
   const payloadByPath: PayloadByPath = new Map();
   const imagePayloads = imageGenPayloadsByPath(toolEvents);
+  const inlineImageSubmissionPayload = inlineImageGenSubmissionPayload(toolEvents);
+  if (inlineImageSubmissionPayload) return inlineImageSubmissionPayload;
 
   for (const [filePath, payload] of imagePayloads) {
     if (!payloadByPath.has(filePath)) {
