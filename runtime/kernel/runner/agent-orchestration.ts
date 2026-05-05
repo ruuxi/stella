@@ -876,6 +876,7 @@ export const createAgentOrchestration = (
                 taskPrompt,
                 conversationId,
                 succeeded: true,
+                skipCommit: effectiveSelfModMetadata?.mode === "author",
                 commitMessageProvider,
                 featureNamerProvider,
               }),

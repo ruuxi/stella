@@ -8,7 +8,7 @@ import type { ResolvedLlmRoute } from "./model-routing.js";
 
 const STELLA_CONTEXT_WINDOW = 256_000;
 const STELLA_MAX_TOKENS = 16_384;
-const STELLA_AUTH_REFRESH_SKEW_MS = 60_000;
+const STELLA_AUTH_REFRESH_SKEW_MS = 15_000;
 export const STELLA_PROVIDER = "stella";
 
 export type StellaSiteConfig = {

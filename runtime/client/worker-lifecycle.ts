@@ -189,6 +189,7 @@ export class RuntimeWorkerLifecycleController {
   private inFlightWorkerRequests = 0;
   private inFlightDrainWaiter: InFlightDrainWaiter | null = null;
   private lastExecutionActivityAt = 0;
+  private hostFocused = true;
 
   constructor(
     private readonly options: RuntimeWorkerLifecycleControllerOptions,
@@ -395,6 +396,18 @@ export class RuntimeWorkerLifecycleController {
     }
   }
 
+  setHostFocused(focused: boolean) {
+    if (this.hostFocused === focused) {
+      return;
+    }
+    this.hostFocused = focused;
+    if (focused) {
+      this.clearIdleTimer();
+      return;
+    }
+    this.scheduleIdleEvaluation(0);
+  }
+
   async getHealth(args: { ensureWorker: boolean }) {
     if (args.ensureWorker) {
       await this.ensureStarted();
@@ -404,13 +417,17 @@ export class RuntimeWorkerLifecycleController {
   }
 
   private scheduleIdleEvaluation(
-    delayMs = this.options.idleTimeoutMs ?? 5 * 60 * 1_000,
+    delayMs = 0,
   ) {
     if (
       !this.connection?.peer ||
       !this.options.isHostStarted() ||
       this.state !== "running"
     ) {
+      return;
+    }
+    if (this.hostFocused) {
+      this.clearIdleTimer();
       return;
     }
     this.clearIdleTimer();
@@ -433,10 +450,8 @@ export class RuntimeWorkerLifecycleController {
       this.scheduleIdleEvaluation(this.options.idleRecheckMs ?? 30_000);
       return;
     }
-    const idleTimeoutMs = this.options.idleTimeoutMs ?? 5 * 60 * 1_000;
-    const idleForMs = Date.now() - this.lastExecutionActivityAt;
-    if (idleForMs < idleTimeoutMs) {
-      this.scheduleIdleEvaluation(idleTimeoutMs - idleForMs);
+    if (this.hostFocused) {
+      this.clearIdleTimer();
       return;
     }
     const health = await this.getHealth({ ensureWorker: false }).catch(
