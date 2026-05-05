@@ -14,6 +14,7 @@ import type {
 	Usage,
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
+import { retryWithBackoff } from "../utils/retry.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.js";
 import { buildBaseOptions, clampReasoning } from "./simple-options.js";
@@ -94,9 +95,9 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 			if (nextParams !== undefined) {
 				params = nextParams as ResponseCreateParamsStreaming;
 			}
-			const openaiStream = await client.responses.create(
-				params,
-				options?.signal ? { signal: options.signal } : undefined,
+			const openaiStream = await retryWithBackoff(
+				() => client.responses.create(params, options?.signal ? { signal: options.signal } : undefined),
+				{ signal: options?.signal },
 			);
 			stream.push({ type: "start", partial: output });
 
@@ -179,6 +180,7 @@ function createClient(
 	return new OpenAI({
 		apiKey,
 		baseURL: model.baseUrl,
+		maxRetries: 0,
 		dangerouslyAllowBrowser: true,
 		defaultHeaders: headers,
 	});
