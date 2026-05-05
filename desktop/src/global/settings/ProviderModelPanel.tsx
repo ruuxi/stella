@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, KeyRound, LogIn, Search } from "lucide-react";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
@@ -40,6 +35,8 @@ interface ProviderModelPanelProps {
   value: string;
   /** Label shown for the default option. */
   defaultLabel: string;
+  /** Label for the currently active selection, whether default or override. */
+  currentLabel: string;
   /** Provider-grouped catalog. */
   groups: ProviderGroup[];
   /** Hide a specific model id from the list (e.g. STELLA_DEFAULT_MODEL). */
@@ -82,6 +79,7 @@ function providerOf(modelId: string): string {
 export function ProviderModelPanel({
   value,
   defaultLabel,
+  currentLabel,
   groups,
   excludeModelId,
   onSelect,
@@ -204,6 +202,10 @@ export function ProviderModelPanel({
       role="group"
       aria-label={ariaLabel}
     >
+      <div className="model-picker-current" aria-live="polite">
+        <span className="model-picker-current-kicker">Selected</span>
+        <span className="model-picker-current-label">{currentLabel}</span>
+      </div>
       <aside className="model-picker-rail" role="tablist">
         <button
           type="button"
@@ -214,7 +216,9 @@ export function ProviderModelPanel({
           onClick={() => handlePick(DEFAULT_TARGET)}
           disabled={disabled}
         >
-          <span className="model-picker-rail-label">{defaultLabel}</span>
+          <span className="model-picker-rail-label">
+            {value ? "Use Stella Recommended" : defaultLabel}
+          </span>
         </button>
         <div className="model-picker-rail-divider" />
         {tabs.map((tab) => {
@@ -351,8 +355,7 @@ function ProviderPane({
   const connected = isStella || Boolean(apiKey) || Boolean(oauthCredential);
   const requiresAuth = !isStella && !connected && Boolean(llmEntry);
   const supportsApiKey =
-    Boolean(llmEntry) &&
-    !isApiKeyOnlyPlaceholder(llmEntry?.placeholder ?? "");
+    Boolean(llmEntry) && !isApiKeyOnlyPlaceholder(llmEntry?.placeholder ?? "");
   const supportsOAuth = Boolean(oauthProvider);
   const isOpenRouter = tab.key === "openrouter";
   let authDescription: string;
@@ -381,9 +384,7 @@ function ProviderPane({
 
       {requiresAuth ? (
         <div className="model-picker-auth">
-          <p className="model-picker-pane-desc">
-            {authDescription}
-          </p>
+          <p className="model-picker-pane-desc">{authDescription}</p>
           {supportsOAuth ? (
             <div className="model-picker-auth-row">
               <LogIn size={13} aria-hidden />
@@ -434,8 +435,8 @@ function ProviderPane({
           {isOpenRouter ? (
             <div className="model-picker-openrouter">
               <div className="model-picker-pane-desc">
-                OpenRouter accepts any <code>vendor/model</code> id. Type one
-                to use it directly.
+                OpenRouter accepts any <code>vendor/model</code> id. Type one to
+                use it directly.
               </div>
               <div className="model-picker-auth-row">
                 <TextField
@@ -536,7 +537,6 @@ function ProviderPane({
           ) : null}
         </footer>
       ) : null}
-
     </div>
   );
 }

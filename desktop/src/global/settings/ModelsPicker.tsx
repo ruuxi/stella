@@ -95,7 +95,7 @@ export function ModelsPicker({
         data-models-picker="true"
       >
         <PopoverBody>
-          <AgentModelPicker onSelected={() => setOpen(false)} />
+          <AgentModelPicker />
           <button
             type="button"
             className="models-picker-more"

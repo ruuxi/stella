@@ -7,6 +7,7 @@ import {
   buildResolvedModelDefaultsMap,
   getConfigurableAgents,
   getDefaultModelOptionLabel,
+  getModelDisplayLabel,
   getLocalModelDefaults,
   normalizeModelOverrides,
   type ModelDefaultEntry,
@@ -115,10 +116,7 @@ export function AgentModelPicker({
 
   const overrides = useMemo<Record<string, string>>(() => {
     if (!preferences) return {};
-    return normalizeModelOverrides(
-      preferences.modelOverrides,
-      defaultModelMap,
-    );
+    return normalizeModelOverrides(preferences.modelOverrides, defaultModelMap);
   }, [defaultModelMap, preferences]);
 
   const [activeAgent, setActiveAgent] = useState<string>("orchestrator");
@@ -154,9 +152,7 @@ export function AgentModelPicker({
         onSelected?.();
       } catch (caught) {
         setPreferences((current) =>
-          current
-            ? { ...current, modelOverrides: previousOverrides }
-            : current,
+          current ? { ...current, modelOverrides: previousOverrides } : current,
         );
         setError(
           caught instanceof Error
@@ -180,6 +176,11 @@ export function AgentModelPicker({
         modelNamesById,
       )
     : "Default";
+  const currentLabel = ready
+    ? current
+      ? getModelDisplayLabel(current, modelNamesById)
+      : defaultLabel
+    : "Loading…";
 
   return (
     <div
@@ -233,6 +234,7 @@ export function AgentModelPicker({
       <ProviderModelPanel
         value={current}
         defaultLabel={defaultLabel}
+        currentLabel={currentLabel}
         groups={groups}
         excludeModelId={STELLA_DEFAULT_MODEL}
         disabled={!ready || pendingAgent !== null}
