@@ -164,6 +164,21 @@ export const TASK_COMPLETION_INDICATOR_MS = 3000
  * working indicator doesn't collapse to a bare "Working".
  */
 const NOISY_STATUS_TEXT_PATTERN = /^using\s+/i
+const STANDALONE_STATUS_TEXT = new Set(['Updating', 'Pausing', 'Queued'])
+const GENERIC_TASK_DESCRIPTION_PATTERN = /^(task|agent|work|help|do this|follow up)$/i
+
+export function isGenericTaskDescription(
+  description: string | undefined,
+): boolean {
+  return !description || GENERIC_TASK_DESCRIPTION_PATTERN.test(description.trim())
+}
+
+export function isStandaloneTaskStatusText(
+  statusText: string | undefined,
+): boolean {
+  const normalized = normalizeTaskDisplayStatusText(statusText)
+  return Boolean(normalized && STANDALONE_STATUS_TEXT.has(normalized))
+}
 
 export function normalizeTaskDisplayStatusText(
   statusText: string | undefined,
@@ -173,6 +188,31 @@ export function normalizeTaskDisplayStatusText(
   if (!trimmed) return undefined
   if (NOISY_STATUS_TEXT_PATTERN.test(trimmed)) return undefined
   return trimmed
+}
+
+export function getTaskDisplayText(task: TaskItem): string {
+  if (task.status === 'running') {
+    return (
+      normalizeTaskDisplayStatusText(task.statusText) ??
+      (isGenericTaskDescription(task.description) ? '' : task.description)
+    )
+  }
+  return isGenericTaskDescription(task.description) ? '' : task.description
+}
+
+export function getTaskWorkingIndicatorText(task: TaskItem): string {
+  const statusText = normalizeTaskDisplayStatusText(task.statusText)
+  if (
+    task.status === 'running' &&
+    statusText &&
+    isStandaloneTaskStatusText(statusText)
+  ) {
+    const description = isGenericTaskDescription(task.description)
+      ? ''
+      : task.description
+    return description ? `${statusText} · ${description}` : statusText
+  }
+  return getTaskDisplayText(task)
 }
 
 // Generic type guard factory — reduces per-event-type boilerplate.
@@ -402,7 +442,10 @@ export function extractTasksFromEvents(
         parentAgentId: event.payload.parentAgentId,
         statusText:
           normalizeTaskDisplayStatusText(event.payload.statusText) ??
-          normalizeTaskDisplayStatusText(previous?.statusText),
+          normalizeTaskDisplayStatusText(previous?.statusText) ??
+          (isGenericTaskDescription(event.payload.description)
+            ? undefined
+            : event.payload.description),
         startedAtMs: event.timestamp,
         completedAtMs: undefined,
         lastUpdatedAtMs: event.timestamp,
@@ -588,7 +631,22 @@ export function mergeFooterTasks(
     ) {
       continue
     }
-    mergedById.set(task.id, persistedTask ? { ...persistedTask, ...task } : task)
+    const nextTask =
+      persistedTask
+        ? {
+            ...persistedTask,
+            ...task,
+            description:
+              isGenericTaskDescription(task.description) &&
+              !isGenericTaskDescription(persistedTask.description)
+                ? persistedTask.description
+                : task.description,
+            statusText:
+              normalizeTaskDisplayStatusText(task.statusText) ??
+              normalizeTaskDisplayStatusText(persistedTask.statusText),
+          }
+        : task
+    mergedById.set(task.id, nextTask)
   }
 
   return sortFooterTasks([...mergedById.values()])

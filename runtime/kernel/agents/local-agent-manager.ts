@@ -569,7 +569,7 @@ export class LocalAgentManager implements AgentToolApi {
       }
       this.runningCount += 1;
       task.status = "running";
-      const startStatusText = task.pendingStartStatusText;
+      const startStatusText = task.pendingStartStatusText ?? task.description;
       task.pendingStartStatusText = undefined;
       this.persistTask(task);
       this.opts.onAgentEvent?.({

@@ -39,6 +39,7 @@ import {
 import { DisplayTabIcon } from "./icons";
 import {
   extractTasksFromEvents,
+  getTaskDisplayText,
   mergeFooterTasks,
   type TaskItem,
 } from "@/app/chat/lib/event-transforms";
@@ -74,10 +75,7 @@ const resolvedPathForChange = (record: FileChangeRecord): string | null => {
 };
 
 const taskLineFor = (task: TaskItem): string => {
-  if (task.status === "running") {
-    return task.statusText ?? task.description;
-  }
-  return task.description;
+  return getTaskDisplayText(task) || task.description;
 };
 
 const taskBadgeFor = (task: TaskItem): string => {
