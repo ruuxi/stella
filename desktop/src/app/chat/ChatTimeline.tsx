@@ -27,6 +27,10 @@ import {
 } from "@/app/chat/MessageRow";
 import type { Attachment } from "@/app/chat/lib/event-transforms";
 import type { AskQuestionState } from "@/app/chat/AskQuestionBubble";
+import {
+  InlineWorkingIndicator,
+  type InlineWorkingIndicatorMountProps,
+} from "./InlineWorkingIndicator";
 
 type ChatTimelineProps = {
   rows: EventRowViewModel[];
@@ -54,6 +58,23 @@ type ChatTimelineProps = {
    */
   extraTail?: React.ReactNode;
   onOpenAttachment?: (attachment: Attachment) => void;
+  /**
+   * Inline working indicator inputs. The indicator is always mounted
+   * inside the tail region — when there's no active work the parent
+   * passes `active: false` and the indicator plays its hold + grow-out
+   * exit before unmounting itself. Mounting it unconditionally is
+   * what keeps the exit animation from being skipped: if we conditionally
+   * rendered it from the parent, React would unmount it the moment
+   * upstream work finished and the `EXIT_HOLD_MS` timer would never
+   * get to run.
+   *
+   * Anchor placement:
+   *  - If there's a row currently `isAnimating`, the indicator is the
+   *    immediate next sibling of that row (Claude pattern — moves down
+   *    line-by-line with the streaming bubble).
+   *  - Otherwise, the indicator sits at the end of the tail region.
+   */
+  indicator?: InlineWorkingIndicatorMountProps;
 };
 
 const renderRow = (
@@ -82,6 +103,7 @@ export const ChatTimeline = memo(function ChatTimeline({
   emptyState,
   extraTail,
   onOpenAttachment,
+  indicator,
 }: ChatTimelineProps) {
   if (isLoadingHistory && rows.length === 0) {
     return (
@@ -113,6 +135,30 @@ export const ChatTimeline = memo(function ChatTimeline({
   const olderRows = rows.slice(0, tailStart);
   const tailRows = rows.slice(tailStart);
 
+  /**
+   * Index (within `tailRows`) of the latest assistant row — animating
+   * or not. The indicator anchors as the immediate next sibling of
+   * that row so each fresh line of streaming text pushes the indicator
+   * down line-by-line, and so the indicator keeps the *same* React
+   * key (`indicator:<row.id>`) across the active → exit transition
+   * (otherwise the parent would unmount it mid-exit and skip the
+   * grow-out animation). If there's no assistant row in the tail yet
+   * (the user just sent a message and we're waiting on the first
+   * token), the indicator anchors at the end of the tail region.
+   */
+  let lastAssistantTailIndex = -1;
+  let lastAssistantTailRow: EventRowViewModel | null = null;
+  for (let i = tailRows.length - 1; i >= 0; i -= 1) {
+    if (tailRows[i].kind === "assistant") {
+      lastAssistantTailIndex = i;
+      lastAssistantTailRow = tailRows[i];
+      break;
+    }
+  }
+  const indicatorKey = lastAssistantTailRow
+    ? `indicator:${lastAssistantTailRow.id}`
+    : "indicator-tail";
+
   return (
     <div className="event-list">
       {isLoadingOlder && hasOlderEvents && (
@@ -125,9 +171,21 @@ export const ChatTimeline = memo(function ChatTimeline({
 
       {(tailRows.length > 0 || pendingAskQuestion) && (
         <div className="event-row-region event-row-region--tail">
-          {tailRows.map((row) => renderRow(row, onOpenAttachment))}
+          {tailRows.flatMap((row, index) => {
+            const node = renderRow(row, onOpenAttachment);
+            if (indicator && index === lastAssistantTailIndex) {
+              return [
+                node,
+                <InlineWorkingIndicator key={indicatorKey} {...indicator} />,
+              ];
+            }
+            return [node];
+          })}
           {pendingAskQuestion && (
             <PendingAskQuestionRow payload={pendingAskQuestion} />
+          )}
+          {indicator && lastAssistantTailIndex < 0 && (
+            <InlineWorkingIndicator key={indicatorKey} {...indicator} />
           )}
         </div>
       )}

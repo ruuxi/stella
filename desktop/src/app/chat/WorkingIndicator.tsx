@@ -5,7 +5,7 @@ import { useWindowType } from "@/shared/hooks/use-window-type";
 import { cn } from "@/shared/lib/utils";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
-import { TextShimmer } from "./TextShimmer";
+import { SwapText } from "./SwapText";
 import { getWorkingIndicatorDisplayStatus } from "./working-indicator-state";
 import "./indicators.css";
 
@@ -87,7 +87,7 @@ export function WorkingIndicator({
           )}
         </div>
       </div>
-      <TextShimmer
+      <SwapText
         text={displayStatus}
         active={shimmerActive}
         className="working-status"

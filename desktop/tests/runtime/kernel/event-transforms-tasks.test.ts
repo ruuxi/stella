@@ -83,7 +83,12 @@ describe("extractTasksFromEvents", () => {
 
     const [task] = extractTasksFromEvents(events);
     expect(task.status).toBe("running");
-    expect(task.statusText).toBe("Using Read");
+    // "Using <toolName>" is general-agent tool-call noise and must be
+    // filtered out of `statusText` so the working indicator falls back
+    // to the stable description ("Open Spotify") instead of leaking
+    // internal tool names into the user-facing copy.
+    expect(task.statusText).toBeUndefined();
+    expect(task.description).toBe("Open Spotify");
   });
 
   it("ignores agent-progress that arrives after agent-completed", () => {

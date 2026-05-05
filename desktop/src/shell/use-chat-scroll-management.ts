@@ -219,7 +219,7 @@ export function useChatScrollManagement({
 
       springRef.current = animate(el.scrollTop, 0, {
         type: 'spring',
-        duration: 0.35,
+        duration: 1.0,
         bounce: 0,
         onUpdate: (value) => {
           el.scrollTop = value

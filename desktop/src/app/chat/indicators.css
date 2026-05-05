@@ -24,60 +24,132 @@
 
 /* Working status text — shimmer handled by TextShimmer component */
 
-/* Footer wrapper — sits between the scroll viewport and the composer
-   in normal flow so it never shifts the chat content. */
-.thinking-footer-overlay {
-  flex-shrink: 0;
+/* SwapText: crossfades + slides between status strings so transitions
+   like Working → Updating → Working, multi-agent rotation row swaps,
+   and same-agent description changes animate instead of snapping. */
+.swap-text {
+  display: inline-grid;
+  grid-template-areas: "stack";
+  align-items: center;
+  min-width: 0;
+}
+
+.swap-text__layer {
+  grid-area: stack;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.swap-text__layer--in {
+  animation: swap-text-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.swap-text__layer--out {
+  animation: swap-text-out 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
   pointer-events: none;
-  max-width: min(50rem, 100%);
-  margin: 0 auto;
-  padding: 12px 24px;
+}
+
+@keyframes swap-text-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes swap-text-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+
+/* Inline working indicator — Claude-style. Renders as the next sibling
+ * after the latest animating assistant row (handled by `ChatTimeline`),
+ * so as text streams in line by line the indicator naturally moves down
+ * each line. On a brand-new turn a fresh placeholder row mounts with a
+ * different React key, the previous indicator unmounts (fades out at
+ * its position), and a new one mounts inside the new turn's anchor
+ * (fades in at the new position) — driven entirely by the enter/exit
+ * animations below.
+ *
+ * The legacy floating `thinking-footer-overlay` and `sticky-thinking-footer`
+ * surfaces are gone: there is no longer any absolutely-positioned strip
+ * over the bottom of the scroll viewport, so no `--chat-content-bottom-clear`
+ * inset is needed to clear it. */
+.inline-working-indicator {
+  display: flex;
+  align-items: center;
   width: 100%;
-  min-height: 52px;
-}
-
-/* Full-shell variant: float over the bottom of the scroll viewport so the
-   chat region extends all the way down to the composer. The viewport's
-   bottom mask fades chat content out behind this strip — content scrolls
-   beneath the working indicator / chips without visually overlapping
-   them. */
-.chat-viewport-region .thinking-footer-overlay {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 12;
-  margin: 0 auto;
-}
-
-/* Compact surfaces (sidebar, mini, orb): left-align, tighter padding.
- * After the unification, the thinking-footer-overlay is a sibling of the
- * scroll viewport (not inside `.chat-conversation-surface` anymore), so
- * the selector targets the parent `.chat-viewport-region--*` instead.
- * Also drop the base `min-height: 52px` — that reserved a fixed gutter at
- * the bottom of the narrow sidebar even when no working indicator was
- * showing, which read as dead space below the latest message. */
-.chat-viewport-region--sidebar .thinking-footer-overlay,
-.chat-viewport-region--mini .thinking-footer-overlay,
-.chat-viewport-region--orb .thinking-footer-overlay {
-  margin: 0;
-  padding: 8px 12px;
-  max-width: none;
-  text-align: left;
-  min-height: 0;
-}
-
-.sticky-thinking-footer {
+  /* Reserve a stable row height equal to a normal `.working-indicator`
+   * pill so the gutter below the assistant message stays put after the
+   * grow-out exit completes. Without this, unmounting the indicator's
+   * inner contents would collapse the row and shift the chat. */
+  min-height: 36px;
   pointer-events: none;
+  /* Mount + cross-turn fade-in. Same easing family as `SwapText` so the
+   * label transitions and the indicator entrance read as one motion. */
+  animation: inline-indicator-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.sticky-thinking-footer__content {
-  animation: stream-fade-in 0.22s ease-out both;
+.chat-viewport-region--sidebar .inline-working-indicator,
+.chat-viewport-region--mini .inline-working-indicator,
+.chat-viewport-region--orb .inline-working-indicator {
+  /* Compact-pill height in the sidebar/mini/orb, matching the smaller
+   * `--compact-chat-item-padding` density. */
+  min-height: 30px;
 }
 
-.sticky-thinking-footer__indicator {
+/* Once the inner content has been removed (post grow-out), the wrapper
+ * stays mounted at its reserved height and goes inert. */
+.inline-working-indicator--vacated {
+  animation: none;
+}
+
+.inline-working-indicator__indicator {
   background: transparent;
   border: none;
+  padding: 0;
+}
+
+.chat-viewport-region--sidebar .inline-working-indicator,
+.chat-viewport-region--mini .inline-working-indicator,
+.chat-viewport-region--orb .inline-working-indicator {
+  /* Compact surfaces left-align with tighter density to match the
+   * surrounding bubbles' `--compact-chat-item-padding`. */
+  padding: 0;
+}
+
+/* Grow-out + fade exit. Slightly longer than the entrance so the
+ * indicator settles for a beat before melting away — matches the
+ * 1s `EXIT_HOLD_MS` + 480ms `EXIT_ANIMATION_MS` in
+ * `InlineWorkingIndicator.tsx`. The scale collapses toward the top
+ * edge of the indicator so it looks like it's tucking up under the
+ * just-completed assistant message rather than drifting off below. */
+.inline-working-indicator--leaving {
+  animation: inline-indicator-out 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: left top;
+}
+
+@keyframes inline-indicator-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes inline-indicator-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.92);
+    filter: blur(2px);
+  }
 }
 
 /* Inline Stella — compact circle */
@@ -162,5 +234,26 @@
     animation: none;
     -webkit-text-fill-color: currentColor;
     background: none;
+  }
+
+  .swap-text__layer--in,
+  .swap-text__layer--out {
+    animation: none;
+  }
+  .swap-text__layer--out {
+    display: none;
+  }
+
+  .inline-working-indicator,
+  .inline-working-indicator--leaving {
+    animation: none;
+  }
+  .inline-working-indicator--leaving {
+    display: none;
+  }
+
+  .session-messages,
+  .chat-sidebar-conversation {
+    transition: none;
   }
 }

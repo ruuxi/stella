@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
+  normalizeTaskDisplayStatusText,
   TASK_COMPLETION_INDICATOR_MS,
   type TaskItem,
 } from '@/app/chat/lib/event-transforms'
@@ -240,7 +241,8 @@ function streamStoreReducer(
         startedAtMs: existing?.startedAtMs ?? action.task.startedAtMs,
         statusText:
           action.task.status === 'running'
-            ? (action.task.statusText ?? existing?.statusText)
+            ? (normalizeTaskDisplayStatusText(action.task.statusText) ??
+              normalizeTaskDisplayStatusText(existing?.statusText))
             : undefined,
         reasoningText:
           typeof action.task.reasoningText === 'string'
@@ -941,7 +943,7 @@ export function useLocalAgentStream({
                   : 'running',
               anchorTurnId: event.userMessageId,
               parentAgentId: event.parentAgentId,
-              statusText: event.statusText,
+              statusText: normalizeTaskDisplayStatusText(event.statusText),
               reasoningText:
                 event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED
                   ? ''
