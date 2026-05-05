@@ -161,6 +161,7 @@ export const createStellaHostRunner = (
     setAuthToken: convexSession.setAuthToken,
     setHasConnectedAccount: convexSession.setHasConnectedAccount,
     setCloudSyncEnabled: convexSession.setCloudSyncEnabled,
+    setModelCatalogUpdatedAt: convexSession.setModelCatalogUpdatedAt,
     start: runtimeInitialization.start,
     stop: runtimeInitialization.stop,
     waitUntilInitialized: async () => {

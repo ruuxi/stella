@@ -80,6 +80,7 @@ type WorkerInitializationState = {
   convexSiteUrl: string | null;
   hasConnectedAccount: boolean;
   cloudSyncEnabled: boolean;
+  modelCatalogUpdatedAt: number | null;
 };
 
 const notifyLocalChatUpdated = (
@@ -1136,6 +1137,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     runner.setAuthToken(init.authToken);
     runner.setHasConnectedAccount(init.hasConnectedAccount);
     runner.setCloudSyncEnabled(init.cloudSyncEnabled);
+    runner.setModelCatalogUpdatedAt(init.modelCatalogUpdatedAt);
     runner.start();
     await runner.waitUntilInitialized();
 
@@ -1217,6 +1219,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     }
     if (patch.cloudSyncEnabled !== undefined) {
       state.runner?.setCloudSyncEnabled(patch.cloudSyncEnabled);
+    }
+    if (patch.modelCatalogUpdatedAt !== undefined) {
+      state.runner?.setModelCatalogUpdatedAt(patch.modelCatalogUpdatedAt);
     }
   };
 

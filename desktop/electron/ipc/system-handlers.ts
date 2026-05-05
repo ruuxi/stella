@@ -61,6 +61,7 @@ import {
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
+  IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT,
   IPC_SYSTEM_OPEN_FDA,
   IPC_SOCIAL_SESSIONS_CREATE,
   IPC_SOCIAL_SESSIONS_GET_STATUS,
@@ -561,6 +562,28 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       options
         .getStellaHostRunner()
         ?.setCloudSyncEnabled(Boolean(payload?.enabled));
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT,
+    (event, payload: { updatedAt?: number | null }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted host:setModelCatalogUpdatedAt request.",
+        );
+      }
+      const updatedAt =
+        typeof payload?.updatedAt === "number" && Number.isFinite(payload.updatedAt)
+          ? payload.updatedAt
+          : null;
+      options.getStellaHostRunner()?.setModelCatalogUpdatedAt(updatedAt);
       return { ok: true };
     },
   );

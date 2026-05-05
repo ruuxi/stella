@@ -3,7 +3,10 @@ import {
   type RuntimeRunCallbacks,
 } from "../agent-runtime.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
-import { resolveRunnerLlmRoute } from "./model-selection.js";
+import {
+  resolveRunnerLlmRoute,
+  resolveRunnerLlmRouteWithMetadata,
+} from "./model-selection.js";
 import { isReportedOrchestratorError } from "../agent-runtime/run-completion.js";
 import { MEMORY_INJECTION_TURN_THRESHOLD } from "../agent-runtime/thread-memory.js";
 import type { QueuedOrchestratorTurn, RunnerContext } from "./types.js";
@@ -96,7 +99,7 @@ export const prepareOrchestratorRun = async (args: {
     ...(args.toolWorkspaceRoot ? { toolWorkspaceRoot: args.toolWorkspaceRoot } : {}),
     ...(shouldInjectDynamicMemory ? { shouldInjectDynamicMemory: true } : {}),
   });
-  const resolvedLlm = resolveRunnerLlmRoute(
+  const resolvedLlm = await resolveRunnerLlmRouteWithMetadata(
     args.context,
     args.agentType,
     agentContext.model,
@@ -190,7 +193,7 @@ export const launchPreparedOrchestratorRun = (args: {
     agentContext: prepared.agentContext,
     callbacks: args.runtimeCallbacks,
     toolCatalog: context.toolHost.getToolCatalog(prepared.agentType, {
-      model: prepared.resolvedLlm.model,
+      model: prepared.resolvedLlm.toolPolicyModel ?? prepared.resolvedLlm.model,
     }),
     toolExecutor: (toolName, toolArgs, toolContext, signal, onUpdate) =>
       context.toolHost.executeTool(

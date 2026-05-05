@@ -21,6 +21,7 @@ import { isLocalLlmKeysEnabled } from "./preferences/local-preferences.js";
 
 export type ResolvedLlmRoute = {
   model: Model<Api>;
+  toolPolicyModel?: Pick<Model<Api>, "api" | "provider" | "id" | "name">;
   route: "direct-provider" | "stella";
   getApiKey: () => Promise<string | undefined> | string | undefined;
   refreshApiKey?: () => Promise<string | undefined> | string | undefined;

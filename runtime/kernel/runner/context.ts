@@ -55,7 +55,7 @@ import {
   sanitizeConvexDeploymentUrl,
   sanitizeStellaBase,
 } from "./shared.js";
-import { resolveRunnerLlmRoute } from "./model-selection.js";
+import { resolveRunnerLlmRouteWithMetadata } from "./model-selection.js";
 import { getResponseLanguageSystemPrompt } from "./locale-prompt.js";
 import {
   getFileEditToolFamily,
@@ -493,6 +493,7 @@ export const createRunnerContext = ({
       convexClientUrl: null,
       hasConnectedAccount: false,
       cloudSyncEnabled: false,
+      modelCatalogUpdatedAt: null,
       isRunning: false,
       isInitialized: false,
       initializationPromise: null,
@@ -567,7 +568,7 @@ export const buildAgentContext = async (
 ): Promise<LocalAgentContext> => {
   const agent = resolveAgent(context, args.agentType);
   const model = getConfiguredModel(context, args.agentType, agent);
-  const resolvedLlm = resolveRunnerLlmRoute(
+  const resolvedLlm = await resolveRunnerLlmRouteWithMetadata(
     context,
     args.agentType,
     model,
@@ -659,7 +660,7 @@ export const buildAgentContext = async (
 
   const fileEditToolFamily = getFileEditToolFamily({
     agentType: args.agentType,
-    model: resolvedLlm.model,
+    model: resolvedLlm.toolPolicyModel ?? resolvedLlm.model,
   });
   const toolsAllowlist = rewriteFileEditToolNames(
     agent?.toolsAllowlist,

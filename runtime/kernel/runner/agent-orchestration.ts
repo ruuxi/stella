@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { resolveLlmRoute } from "../model-routing.js";
+import { withStellaModelCatalogMetadata } from "../stella-model-catalog.js";
 import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
 import { createAgentLifecycleResponseTarget } from "../agent-runtime/response-target.js";
@@ -414,20 +415,27 @@ export const createAgentOrchestration = (
       const shouldAttachSelfModLifecycle =
         Boolean(effectiveSelfModMetadata) && Boolean(context.selfModLifecycle);
 
-      const resolvedLlm = resolveLlmRoute({
-        stellaRoot: context.stellaRoot,
-        modelName: agentContext.model,
-        agentType,
-        site: {
-          baseUrl: context.state.convexSiteUrl,
-          getAuthToken: () => context.state.authToken?.trim(),
-          refreshAuthToken: async () => {
-            const result = await context.requestRuntimeAuthRefresh?.({
-              source: "stella_provider",
-            });
-            return result?.authenticated ? result.token : null;
-          },
+      const site = {
+        baseUrl: context.state.convexSiteUrl,
+        getAuthToken: () => context.state.authToken?.trim(),
+        refreshAuthToken: async () => {
+          const result = await context.requestRuntimeAuthRefresh?.({
+            source: "stella_provider",
+          });
+          return result?.authenticated ? result.token : null;
         },
+      };
+      const resolvedLlm = await withStellaModelCatalogMetadata({
+        route: resolveLlmRoute({
+          stellaRoot: context.stellaRoot,
+          modelName: agentContext.model,
+          agentType,
+          site,
+        }),
+        agentType,
+        site,
+        deviceId: context.deviceId,
+        modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
       });
       const runnerCallbacks =
         (rootRunId ? context.state.runCallbacksByRunId.get(rootRunId) : null) ??
@@ -681,7 +689,7 @@ export const createAgentOrchestration = (
           selfModMetadata: effectiveSelfModMetadata,
           agentContext,
           toolCatalog: context.toolHost.getToolCatalog(agentType, {
-            model: resolvedLlm.model,
+            model: resolvedLlm.toolPolicyModel ?? resolvedLlm.model,
           }),
           toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,

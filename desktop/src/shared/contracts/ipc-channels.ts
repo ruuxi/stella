@@ -149,6 +149,8 @@ export const IPC_PHONE_ACCESS_STOP = "phoneAccess:stopSession" as const;
 export const IPC_HOST_CONFIGURE_RUNTIME = "host:configurePiRuntime" as const;
 export const IPC_AUTH_SET_STATE = "auth:setState" as const;
 export const IPC_HOST_SET_CLOUD_SYNC = "host:setCloudSyncEnabled" as const;
+export const IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT =
+  "host:setModelCatalogUpdatedAt" as const;
 export const IPC_AUTH_CALLBACK = "auth:callback" as const;
 export const IPC_AUTH_CONSUME_PENDING_CALLBACK =
   "auth:consumePendingCallback" as const;

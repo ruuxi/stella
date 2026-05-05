@@ -168,10 +168,12 @@ type WorkerInitializationState = {
   convexSiteUrl: string | null;
   hasConnectedAccount: boolean;
   cloudSyncEnabled: boolean;
+  modelCatalogUpdatedAt: number | null;
 };
 
 const AGENT_EVENT_BUFFER_LIMIT = 1_000;
 const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1_000;
+const WORKER_UNFOCUSED_IDLE_TIMEOUT_MS = 5 * 60 * 1_000;
 const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = ".stella-runtime-reload-state.json";
 const DEVICE_HEARTBEAT_INTERVAL_MS = 30_000;
 
@@ -306,6 +308,7 @@ export class StellaRuntimeClient {
         this.workerHealthCache = snapshot;
         return snapshot;
       },
+      idleTimeoutMs: WORKER_UNFOCUSED_IDLE_TIMEOUT_MS,
     });
   }
 
@@ -1779,6 +1782,7 @@ export class StellaRuntimeClient {
       convexSiteUrl: this.configCache.convexSiteUrl ?? null,
       hasConnectedAccount: this.configCache.hasConnectedAccount ?? false,
       cloudSyncEnabled: this.configCache.cloudSyncEnabled ?? false,
+      modelCatalogUpdatedAt: this.configCache.modelCatalogUpdatedAt ?? null,
     };
   }
 

@@ -7,6 +7,8 @@ import {
   type ManagedModelAudience,
   type ModelMode,
 } from "./agent/model";
+import { query } from "./_generated/server";
+import { v } from "convex/values";
 
 export const STELLA_PROVIDER = "stella";
 export const STELLA_DEFAULT_MODEL = `${STELLA_PROVIDER}/default`;
@@ -17,6 +19,9 @@ export const STELLA_SMART_MODEL = `${STELLA_PROVIDER}/smart`;
 export const STELLA_BEST_MODEL = `${STELLA_PROVIDER}/best`;
 export const STELLA_SOTA_MODEL = `${STELLA_PROVIDER}/sota`;
 export const STELLA_MEDIA_MODEL = `${STELLA_PROVIDER}/media`;
+// Bump this whenever Stella alias/default mappings change. Desktop subscribes
+// to it and passes it to runtime as the model-catalog cache key.
+export const STELLA_MODEL_CATALOG_UPDATED_AT = Date.UTC(2026, 4, 5);
 
 export type StellaCatalogModel = {
   id: string;
@@ -212,3 +217,9 @@ export const listStellaDefaultSelections = (
     model: STELLA_DEFAULT_MODEL,
     resolvedModel: getModelConfig(agentType, audience).model,
   }));
+
+export const getModelCatalogUpdatedAt = query({
+  args: {},
+  returns: v.number(),
+  handler: async () => STELLA_MODEL_CATALOG_UPDATED_AT,
+});

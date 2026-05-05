@@ -596,6 +596,9 @@ export type ElectronSystemApi = {
   setCloudSyncEnabled: (payload: {
     enabled: boolean;
   }) => Promise<{ ok: boolean }>;
+  setModelCatalogUpdatedAt: (payload: {
+    updatedAt: number | null;
+  }) => Promise<{ ok: boolean }>;
   onAuthCallback: (callback: (data: { url: string }) => void) => () => void;
   consumePendingAuthCallback: () => Promise<string | null>;
   onRuntimeAuthRefreshRequested: (
