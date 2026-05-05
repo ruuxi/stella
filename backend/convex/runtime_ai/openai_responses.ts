@@ -5,6 +5,7 @@ import { supportsXhigh } from "./model_utils";
 import {
   convertResponsesMessages,
   convertResponsesTools,
+  normalizeOpenAIFunctionName,
   processResponsesStream,
 } from "./openai_responses_shared";
 import { buildBaseOptions, clampReasoning } from "./simple_options";
@@ -21,6 +22,56 @@ import type {
 } from "./types";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
+
+function readHeader(headers: unknown, name: string): string | undefined {
+  if (!headers) return undefined;
+  if (headers instanceof Headers) return headers.get(name) ?? undefined;
+  if (typeof (headers as { get?: unknown }).get === "function") {
+    const value = (headers as { get: (key: string) => unknown }).get(name);
+    return typeof value === "string" ? value : undefined;
+  }
+  const record = headers as Record<string, unknown>;
+  const value = record[name] ?? record[name.toLowerCase()];
+  return typeof value === "string" ? value : undefined;
+}
+
+function summarizeOpenAIError(error: unknown): Record<string, unknown> {
+  const record = error && typeof error === "object"
+    ? (error as Record<string, unknown>)
+    : {};
+  const nested = record.error && typeof record.error === "object"
+    ? (record.error as Record<string, unknown>)
+    : {};
+  const headers = record.headers ?? record.responseHeaders;
+  const requestId =
+    typeof record.request_id === "string"
+      ? record.request_id
+      : typeof record.requestID === "string"
+        ? record.requestID
+        : readHeader(headers, "x-request-id");
+
+  return {
+    name: error instanceof Error ? error.name : undefined,
+    message: error instanceof Error ? error.message : String(error),
+    status: typeof record.status === "number" ? record.status : undefined,
+    code: typeof record.code === "string"
+      ? record.code
+      : typeof nested.code === "string"
+        ? nested.code
+        : undefined,
+    type: typeof record.type === "string"
+      ? record.type
+      : typeof nested.type === "string"
+        ? nested.type
+        : undefined,
+    param: typeof record.param === "string"
+      ? record.param
+      : typeof nested.param === "string"
+        ? nested.param
+        : undefined,
+    requestId,
+  };
+}
 
 function resolveCacheRetention(cacheRetention?: CacheRetention): CacheRetention {
   return cacheRetention || "short";
@@ -57,12 +108,12 @@ function normalizeResponsesToolChoice(
   const record = toolChoice as Record<string, unknown>;
   const directName = typeof record.name === "string" ? record.name : "";
   if (directName.length > 0) {
-    return { type: "function", name: directName };
+    return { type: "function", name: normalizeOpenAIFunctionName(directName) };
   }
   const nested = record.function as Record<string, unknown> | undefined;
   const nestedName = nested && typeof nested.name === "string" ? nested.name : "";
   if (nestedName.length > 0) {
-    return { type: "function", name: nestedName };
+    return { type: "function", name: normalizeOpenAIFunctionName(nestedName) };
   }
   return undefined;
 }
@@ -124,6 +175,12 @@ export const streamOpenAIResponses: StreamFunction<
       stream.push({ type: "done", reason: output.stopReason, message: output });
       stream.end();
     } catch (error) {
+      console.error("[openai-responses] request failed", {
+        provider: model.provider,
+        model: model.id,
+        baseUrl: model.baseUrl,
+        ...summarizeOpenAIError(error),
+      });
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
       output.errorMessage =
         error instanceof Error ? error.message : JSON.stringify(error);

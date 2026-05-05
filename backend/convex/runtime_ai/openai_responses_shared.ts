@@ -47,6 +47,12 @@ function shortHash(value: string): string {
   return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
 }
 
+export function normalizeOpenAIFunctionName(name: string): string {
+  const sanitized = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const truncated = sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
+  return truncated.replace(/_+$/, "") || "tool";
+}
+
 function encodeTextSignatureV1(id: string, phase?: TextSignatureV1["phase"]): string {
   const payload: TextSignatureV1 = { v: 1, id };
   if (phase) {
@@ -254,7 +260,7 @@ export function convertResponsesMessages<TApi extends Api>(
               ? undefined
               : itemIdRaw,
           call_id: callId,
-          name: block.name,
+          name: normalizeOpenAIFunctionName(block.name),
           arguments: JSON.stringify(block.arguments),
         });
       }
@@ -315,7 +321,7 @@ export function convertResponsesMessages<TApi extends Api>(
 export function convertResponsesTools(tools: Tool[]): OpenAITool[] {
   return tools.map((tool) => ({
     type: "function",
-    name: tool.name,
+    name: normalizeOpenAIFunctionName(tool.name),
     description: tool.description,
     parameters: tool.parameters,
     strict: tool.strict ?? false,
