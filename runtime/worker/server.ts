@@ -1120,7 +1120,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         "stella-office",
         "stella-office.js",
       ),
-      stellaUiCliPath: resolveRuntimeCliPath("stella-ui.js"),
       stellaComputerCliPath: resolveRuntimeCliPath("stella-computer.js"),
       onGoogleWorkspaceAuthRequired: () => {
         peer.notify(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, null);

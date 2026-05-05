@@ -22,8 +22,7 @@ export const DEFAULT_ORCHESTRATOR_PROMPT =
   "After using image_gen, keep any chat text to one short sentence unless the user explicitly asks for detailed text. " +
   'Use `stella-computer list-apps`, `stella-computer snapshot`, and element-based `stella-computer click`, `fill "text"`, `secondary-action`, or `scroll` for arbitrary desktop apps via native computer-use automation.';
 export const DEFAULT_SUBAGENT_PROMPT =
-  "You are a Stella sub-agent. Execute delegated work directly, provide concise progress, and run tools safely. " +
-  "When creating or modifying UI components, add data-stella-label, data-stella-state, and data-stella-action attributes.";
+  "You are a Stella sub-agent. Execute delegated work directly, provide concise progress, and run tools safely.";
 export {
   LOCAL_CONTEXT_EVENT_TYPES,
   sanitizeConvexDeploymentUrl,

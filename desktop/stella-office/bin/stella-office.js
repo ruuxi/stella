@@ -92,7 +92,7 @@ function getBinaryPath() {
 }
 
 function resolveStateRoot() {
-  const stateRoot = process.env.STELLA_UI_STATE_DIR?.trim();
+  const stateRoot = process.env.STELLA_STATE_DIR?.trim();
   if (!stateRoot) {
     throw new Error(
       "Inline office previews are only available from Stella's runtime shell.",

@@ -30,7 +30,6 @@ import {
   type HostRuntimeAuthRefreshResult,
   type HostDisplayUpdateParams,
   type HostHeartbeatSignature,
-  type HostUiActParams,
   type HostWindowTarget,
   type LocalCronJobRecord,
   type LocalHeartbeatConfigRecord,
@@ -94,8 +93,6 @@ type RuntimeClientEvents = {
 };
 
 export type RuntimeHostHandlers = {
-  uiSnapshot: () => Promise<string>;
-  uiAct: (params: HostUiActParams) => Promise<string>;
   getActiveConversationId?: () => Promise<string | null> | string | null;
   getDeviceIdentity: () => Promise<HostDeviceIdentity>;
   signHeartbeatPayload: (signedAtMs: number) => Promise<HostHeartbeatSignature>;
@@ -1828,12 +1825,6 @@ export class StellaRuntimeClient {
   }
 
   private registerHostHandlers(peer: JsonRpcPeer) {
-    peer.registerRequestHandler(METHOD_NAMES.HOST_UI_SNAPSHOT, async () => {
-      return await this.options.hostHandlers.uiSnapshot();
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_UI_ACT, async (params) => {
-      return await this.options.hostHandlers.uiAct(params as HostUiActParams);
-    });
     peer.registerRequestHandler(METHOD_NAMES.HOST_DEVICE_IDENTITY_GET, async () => {
       if (!this.deviceIdentity) {
         this.deviceIdentity = await this.options.hostHandlers.getDeviceIdentity();

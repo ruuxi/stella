@@ -4,8 +4,6 @@ import { RuntimeClientAdapter } from "../../electron/runtime-client-adapter.js";
 const createAdapter = () =>
   new RuntimeClientAdapter({
     hostHandlers: {
-      uiSnapshot: async () => "",
-      uiAct: async () => "",
       getDeviceIdentity: async () => ({ deviceId: "dev-device", publicKey: "pub" }),
       signHeartbeatPayload: async () => ({ publicKey: "pub", signature: "sig" }),
       requestCredential: async () => ({

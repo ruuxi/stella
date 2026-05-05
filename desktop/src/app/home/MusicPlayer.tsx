@@ -167,8 +167,6 @@ export function MusicPlayer() {
   return (
     <div
       className="dashboard-card"
-      data-stella-label="Music Player"
-      data-stella-state={`status: ${status} | mood: ${mood}${isActive ? ` | elapsed: ${formatTime(elapsedSeconds)}` : ""}${lyrics ? " | lyrics: on" : ""}`}
     >
       {/* Waveform visualization */}
       {isActive && <Waveform analyserRef={analyserRef} />}
@@ -180,7 +178,6 @@ export function MusicPlayer() {
             type="text"
             className="music-prompt-input"
             placeholder="Describe your vibe..."
-            data-stella-action="Music vibe prompt"
             value={localHint}
             onChange={(e) => setLocalHint(e.target.value)}
             onKeyDown={(e) => {
@@ -216,7 +213,6 @@ export function MusicPlayer() {
         onFocus={preloadMusic}
         disabled={status === "loading"}
         aria-label={isActive ? "Stop" : "Play"}
-        data-stella-action={isActive ? "Stop music" : "Play music"}
       >
         {status === "loading" ? (
           <span className="music-loading-dot" />
@@ -235,7 +231,6 @@ export function MusicPlayer() {
               key={m}
               className={`music-mood-chip${m === mood ? " music-mood-chip--selected" : ""}`}
               onClick={() => selectMood(m)}
-              data-stella-action={`Set mood: ${m}`}
             >
               {m}
             </button>
@@ -252,4 +247,3 @@ export function MusicPlayer() {
     </div>
   )
 }
-

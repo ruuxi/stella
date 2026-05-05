@@ -26,23 +26,6 @@ const IDLE_HMR_STATE: SelfModHmrState = {
   requiresFullReload: false,
 };
 
-const getRequiredFullWindow = (context: BootstrapContext) => {
-  const window = context.state.windowManager?.getFullWindow() ?? null;
-  if (!window || window.isDestroyed()) {
-    throw new Error("Window not available");
-  }
-  return window;
-};
-
-export const buildHostRunnerUiActScript = (
-  params: Parameters<RuntimeHostHandlers["uiAct"]>[0],
-) =>
-  params.action === "click"
-    ? `window.__stellaUI?.handleCommand("click", [${JSON.stringify(params.ref)}])`
-    : params.action === "fill"
-      ? `window.__stellaUI?.handleCommand("fill", [${JSON.stringify(params.ref)}, ${JSON.stringify(params.value)}])`
-      : `window.__stellaUI?.handleCommand("select", [${JSON.stringify(params.ref)}, ${JSON.stringify(params.value)}])`;
-
 export const createHostRunnerHandlers = (
   context: BootstrapContext,
   options: {
@@ -51,22 +34,6 @@ export const createHostRunnerHandlers = (
     >;
   },
 ): RuntimeHostHandlers => ({
-  uiSnapshot: async () => {
-    const window = getRequiredFullWindow(context);
-    return String(
-      await window.webContents.executeJavaScript(
-        `window.__stellaUI?.snapshot?.() ?? "stella-ui handler not loaded"`,
-      ),
-    );
-  },
-  uiAct: async (params) => {
-    const window = getRequiredFullWindow(context);
-    return String(
-      await window.webContents.executeJavaScript(
-        `${buildHostRunnerUiActScript(params)} ?? "stella-ui handler not loaded"`,
-      ),
-    );
-  },
   getActiveConversationId: () =>
     context.services.uiStateService.state.conversationId?.trim() || null,
   getDeviceIdentity: async () => {

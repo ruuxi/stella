@@ -149,8 +149,6 @@ export const METHOD_NAMES = {
   DISCOVERY_WRITE_CORE_MEMORY: "discovery.writeCoreMemory",
   DISCOVERY_DETECT_PREFERRED_BROWSER: "discovery.detectPreferredBrowser",
   DISCOVERY_LIST_BROWSER_PROFILES: "discovery.listBrowserProfiles",
-  HOST_UI_SNAPSHOT: "host.ui.snapshot",
-  HOST_UI_ACT: "host.ui.act",
   HOST_DEVICE_IDENTITY_GET: "host.deviceIdentity.get",
   HOST_DEVICE_HEARTBEAT_SIGN: "host.deviceHeartbeat.sign",
   HOST_CREDENTIALS_REQUEST: "host.credentials.request",
@@ -586,11 +584,6 @@ export type RuntimeWebSearchResult = {
   text: string;
   results: Array<{ title: string; url: string; snippet: string }>;
 };
-
-export type HostUiActParams =
-  | { action: "click"; ref: string }
-  | { action: "fill"; ref: string; value: string }
-  | { action: "select"; ref: string; value: string };
 
 export type HostDeviceIdentity = {
   deviceId: string;

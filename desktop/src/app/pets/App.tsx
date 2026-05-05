@@ -196,7 +196,6 @@ function PetCard({
       className="pets-card pets-card-wrapper"
       data-pet-state={state}
       data-selected={state === "selected" ? "true" : "false"}
-      data-stella-label={pet.displayName}
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -251,8 +250,6 @@ function PetCard({
             size="small"
             className="pill-btn pill-btn--primary"
             onClick={onGet}
-            data-stella-action="get-pet"
-            data-stella-label={pet.displayName}
           >
             <Plus size={12} />
             Get
@@ -268,9 +265,6 @@ function PetCard({
               }
               onClick={state === "selected" ? undefined : onSelect}
               disabled={state === "selected"}
-              data-stella-action="select-pet"
-              data-stella-label={pet.displayName}
-              data-stella-state={state}
             >
               {state === "selected" ? "Selected" : "Select"}
             </Button>
@@ -281,8 +275,6 @@ function PetCard({
                 size="small"
                 className="pill-btn"
                 onClick={onRemove}
-                data-stella-action="remove-pet"
-                data-stella-label={pet.displayName}
               >
                 Remove
               </Button>
@@ -763,7 +755,7 @@ export const PetsApp = () => {
   );
 
   return (
-    <main className="pets-page" data-stella-section="pets">
+    <main className="pets-page">
       <header className="pets-page-header">
         <div className="pets-page-heading">
           <h1 className="pets-page-title">Pets</h1>
@@ -789,8 +781,6 @@ export const PetsApp = () => {
             className="pets-search-input"
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
-            data-stella-action="search-pets"
-            data-stella-label="Search pets"
           />
         </label>
         <label className="pets-sort">
@@ -799,8 +789,6 @@ export const PetsApp = () => {
             className="pets-sort-select"
             value={sort}
             onChange={(event) => setSort(event.currentTarget.value as SortOption)}
-            data-stella-action="sort-pets"
-            data-stella-label="Sort pets"
           >
             {(Object.keys(SORT_LABELS) as SortOption[]).map((option) => (
               <option key={option} value={option}>
@@ -828,8 +816,6 @@ export const PetsApp = () => {
               }
               setViewMode("mine");
             }}
-            data-stella-action="toggle-pets-view"
-            data-stella-state={viewMode}
           >
             {viewMode === "mine" ? (
               <>
@@ -861,8 +847,6 @@ export const PetsApp = () => {
               }
               setCreateOpen(true);
             }}
-            data-stella-action="create-pet"
-            data-stella-label="Create pet"
           >
             <StellaLogoIcon size={14} aria-hidden />
             Create pet
@@ -884,9 +868,6 @@ export const PetsApp = () => {
                   }
             }
             onClick={handleToggle}
-            data-stella-action="toggle-pet"
-            data-stella-label={petOpen ? "Hide pet" : "Show pet"}
-            data-stella-state={petOpen ? "active" : "inactive"}
           >
             {petOpen ? "Hide pet" : "Show pet"}
           </Button>

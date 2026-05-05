@@ -32,7 +32,6 @@ export type ShellState = {
   secretStateRoot: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
-  stellaUiCliPath?: string;
   stellaComputerCliPath?: string;
   lastDeferredDeleteSweepAt: number;
 };
@@ -40,7 +39,6 @@ export type ShellState = {
 type ShellStateOptions = {
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
-  stellaUiCliPath?: string;
   stellaComputerCliPath?: string;
 };
 
@@ -445,7 +443,6 @@ export function createShellState(
     secretStateRoot,
     stellaBrowserBinPath: options?.stellaBrowserBinPath,
     stellaOfficeBinPath: options?.stellaOfficeBinPath,
-    stellaUiCliPath: options?.stellaUiCliPath,
     stellaComputerCliPath: options?.stellaComputerCliPath,
     lastDeferredDeleteSweepAt: 0,
   };
@@ -478,7 +475,6 @@ const buildProtectedCommand = (
   options?: {
     stellaBrowserBinPath?: string;
     stellaOfficeBinPath?: string;
-    stellaUiCliPath?: string;
     stellaComputerCliPath?: string;
   },
 ) => {
@@ -492,10 +488,6 @@ const buildProtectedCommand = (
   const stellaOfficeBin =
     options?.stellaOfficeBinPath && existsSync(options.stellaOfficeBinPath)
       ? options.stellaOfficeBinPath
-      : "";
-  const stellaUiCli =
-    options?.stellaUiCliPath && existsSync(options.stellaUiCliPath)
-      ? options.stellaUiCliPath
       : "";
   const stellaComputerCli =
     options?.stellaComputerCliPath && existsSync(options.stellaComputerCliPath)
@@ -581,10 +573,9 @@ powershell() { __stella_dd powershell "$PWD" "$(type -P powershell || true)" "$@
 pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
 ${stellaBrowserBin ? `stella-browser() { "$STELLA_NODE_BIN" "$STELLA_BROWSER_BIN" "$@"; }` : ""}
 ${stellaOfficeBin ? `stella-office() { "$STELLA_NODE_BIN" "$STELLA_OFFICE_BIN" "$@"; }` : ""}
-${stellaUiCli ? `stella-ui() { "$STELLA_NODE_BIN" "$STELLA_UI_CLI" "$@"; }` : ""}
 ${stellaComputerCli ? `stella-computer() { "$STELLA_NODE_BIN" "$STELLA_COMPUTER_CLI" "$@"; }` : ""}
 ${pythonFuncs}
-export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaUiCli ? " stella-ui" : ""}${stellaComputerCli ? " stella-computer" : ""}${pythonExports} >/dev/null 2>&1 || true
+export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
@@ -671,7 +662,6 @@ const buildShellEnv = (
     secretStateRoot?: string;
     stellaBrowserBinPath?: string;
     stellaOfficeBinPath?: string;
-    stellaUiCliPath?: string;
     stellaComputerCliPath?: string;
   },
 ) => {
@@ -680,16 +670,13 @@ const buildShellEnv = (
     STELLA_NODE_BIN: process.execPath,
     STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
     ...(options?.secretStateRoot
-      ? { STELLA_UI_STATE_DIR: options.secretStateRoot }
+      ? { STELLA_STATE_DIR: options.secretStateRoot }
       : {}),
     ...(options?.stellaBrowserBinPath
       ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath }
       : {}),
     ...(options?.stellaOfficeBinPath
       ? { STELLA_OFFICE_BIN: options.stellaOfficeBinPath }
-      : {}),
-    ...(options?.stellaUiCliPath
-      ? { STELLA_UI_CLI: options.stellaUiCliPath }
       : {}),
     ...(options?.stellaComputerCliPath
       ? { STELLA_COMPUTER_CLI: options.stellaComputerCliPath }

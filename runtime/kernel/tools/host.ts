@@ -83,7 +83,6 @@ export const createToolHost = ({
   stellaRoot,
   stellaBrowserBinPath: _stellaBrowserBinPath,
   stellaOfficeBinPath: _stellaOfficeBinPath,
-  stellaUiCliPath: _stellaUiCliPath,
   stellaComputerCliPath,
   requestCredential,
   agentApi,
@@ -106,7 +105,6 @@ export const createToolHost = ({
   const shellState: ShellState = createShellState(stateRoot, {
     stellaBrowserBinPath: _stellaBrowserBinPath,
     stellaOfficeBinPath: _stellaOfficeBinPath,
-    stellaUiCliPath: _stellaUiCliPath,
     stellaComputerCliPath,
   });
   const stateContext: StateContext = createStateContext(stateRoot, agentApi);
@@ -143,7 +141,6 @@ export const createToolHost = ({
     stellaRoot,
     stellaBrowserBinPath: _stellaBrowserBinPath,
     stellaOfficeBinPath: _stellaOfficeBinPath,
-    stellaUiCliPath: _stellaUiCliPath,
     stellaComputerCliPath,
     requestCredential,
     agentApi,

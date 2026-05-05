@@ -10,9 +10,7 @@ import "./platform/dev/vite-error-recovery";
 import { App } from "./App.tsx";
 import { AppProviders } from "./context/AppProviders";
 import { DesktopConvexAuthProvider } from "./global/auth/DesktopConvexAuthProvider";
-import { initStellaUiHandler } from "./platform/electron/stella-ui-handler";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
-initStellaUiHandler()
 
 const requestedWindow = new URLSearchParams(window.location.search).get("window");
 document.documentElement.dataset.stellaWindow =

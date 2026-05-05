@@ -119,13 +119,6 @@ transparent on purpose. Apply backgrounds only on raised surfaces
 - `color-mix(in srgb, var(--foreground) 6%, transparent)` for
 theme-adaptive overlays
 
-### Hooks for stella-ui
-
-Tag interactive UI with `data-stella-label`, `data-stella-state`,
-`data-stella-action` so `stella-ui` can drive it without reading
-component trees.
-
 ## Backlinks
 
 - [stella-desktop](../stella-desktop/SKILL.md)
-

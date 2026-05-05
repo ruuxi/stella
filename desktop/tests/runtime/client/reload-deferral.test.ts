@@ -5,8 +5,6 @@ import { METHOD_NAMES } from "../../../../runtime/protocol/index.js";
 const createClient = () =>
   new StellaRuntimeClient({
     hostHandlers: {
-      uiSnapshot: async () => "",
-      uiAct: async () => "",
       getDeviceIdentity: async () => ({ deviceId: "dev-device", publicKey: "pub" }),
       signHeartbeatPayload: async () => ({ publicKey: "pub", signature: "sig" }),
       requestCredential: async () => ({
