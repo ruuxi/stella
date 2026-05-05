@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   useDesktopPermissions,
   type DesktopPermissionKind,
@@ -60,13 +60,15 @@ type OnboardingPermissionsProps = {
 const requestOnboardingScreenAccess = async () => {
   const result = await window.electronAPI?.system.requestPermission?.("screen");
   if (result?.granted) {
-    return true;
+    return { granted: true, openedSettings: false };
   }
 
+  let openedSettings = Boolean(result?.openedSettings);
   if (!result?.openedSettings) {
     await window.electronAPI?.system.openPermissionSettings?.("screen");
+    openedSettings = true;
   }
-  return false;
+  return { granted: false, openedSettings };
 };
 
 const requestMicrophoneForOnboarding = async () => {
@@ -80,9 +82,12 @@ export function OnboardingPermissions({
 }: OnboardingPermissionsProps) {
   /** Windows/Linux: main process cannot read mic TCC; set after successful getUserMedia. */
   const micSessionGrantedRef = useRef(false);
+  const screenSettingsOpenedRef = useRef(false);
+  const screenRestartPendingRef = useRef(false);
   const normalizeOnboardingStatus = useCallback(
     (result: PermissionStatus) => ({
       ...result,
+      screen: result.screen || screenRestartPendingRef.current,
       microphone: result.microphone || micSessionGrantedRef.current,
     }),
     [],
@@ -109,12 +114,54 @@ export function OnboardingPermissions({
   const microphoneDenied =
     platform === "darwin" && status.microphoneStatus === "denied";
 
+  useEffect(() => {
+    if (platform !== "darwin") return;
+
+    const markScreenPendingAfterSettingsReturn = () => {
+      if (
+        !screenSettingsOpenedRef.current ||
+        screenRestartPendingRef.current ||
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+
+      void fetchStatus().then((latestStatus) => {
+        if (!screenSettingsOpenedRef.current || latestStatus?.screen) {
+          screenSettingsOpenedRef.current = false;
+          return;
+        }
+
+        screenRestartPendingRef.current = true;
+        screenSettingsOpenedRef.current = false;
+        void fetchStatus();
+      });
+    };
+
+    window.addEventListener("focus", markScreenPendingAfterSettingsReturn);
+    document.addEventListener(
+      "visibilitychange",
+      markScreenPendingAfterSettingsReturn,
+    );
+
+    return () => {
+      window.removeEventListener("focus", markScreenPendingAfterSettingsReturn);
+      document.removeEventListener(
+        "visibilitychange",
+        markScreenPendingAfterSettingsReturn,
+      );
+    };
+  }, [fetchStatus, platform]);
+
   const handleEnable = useCallback(
     async (card: PermissionCard) => {
       setRequesting(card.kind);
       try {
         if (card.kind === "screen") {
-          await requestOnboardingScreenAccess();
+          const result = await requestOnboardingScreenAccess();
+          if (result.openedSettings && !result.granted) {
+            screenSettingsOpenedRef.current = true;
+          }
           await fetchStatus();
           return;
         }
