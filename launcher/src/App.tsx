@@ -258,6 +258,8 @@ function App() {
     !state.installPathError &&
     state.disk.enoughSpace &&
     !locationBusy;
+  const showLauncherUpdateAction =
+    !state.devMode && !isWorking && state.launcherUpdate.available;
 
   /* ── Render ──────────────────────────────────────────────────── */
 
@@ -472,10 +474,12 @@ function App() {
           </div>
         )}
 
-        {/* ── Complete ────────────────────────────────────── */}
-        {isComplete && (
+        {/* ── Launcher update / Complete ──────────────────── */}
+        {(showLauncherUpdateAction ||
+          isComplete ||
+          state.launcherUpdate.error) && (
           <div className="complete-body">
-            {state.warningMessage && (
+            {isComplete && state.warningMessage && (
               <div className="banner banner-warn" style={{ marginTop: 16 }}>
                 {state.warningMessage}
               </div>
@@ -492,7 +496,7 @@ function App() {
                 {state.launcherUpdate.error}
               </div>
             )}
-            {state.errorMessage && (
+            {isComplete && state.errorMessage && (
               <div className="banner banner-error" style={{ marginTop: 16 }}>
                 {state.errorMessage}
               </div>
@@ -509,7 +513,18 @@ function App() {
           </div>
         )}
         <div className="footer-primary" key={`primary-${state.phase}`}>
-          {isSetup && !state.devMode && (
+          {showLauncherUpdateAction ? (
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={state.launcherUpdate.installing || uninstalling}
+              onClick={() => void handleLauncherUpdate()}
+            >
+              {state.launcherUpdate.installing
+                ? "Updating launcher..."
+                : "Update launcher"}
+            </button>
+          ) : isSetup && !state.devMode ? (
             <button
               type="button"
               className="btn-primary"
@@ -518,7 +533,7 @@ function App() {
             >
               {state.phase === "error" ? "Retry" : "Install"}
             </button>
-          )}
+          ) : null}
 
           {isWorking && (
             <button type="button" className="btn-primary" disabled>
@@ -531,18 +546,8 @@ function App() {
           )}
 
           {isComplete &&
-            (state.launcherUpdate.available ? (
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={state.launcherUpdate.installing || uninstalling}
-                onClick={() => void handleLauncherUpdate()}
-              >
-                {state.launcherUpdate.installing
-                  ? "Updating launcher..."
-                  : "Update launcher"}
-              </button>
-            ) : (
+            !showLauncherUpdateAction &&
+            (state.launcherUpdate.available ? null : (
               <button
                 type="button"
                 className="btn-primary"
