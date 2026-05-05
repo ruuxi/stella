@@ -56,7 +56,7 @@ export type InlineWorkingIndicatorMountProps = InlineWorkingIndicatorProps & {
  * and label just settle for a moment before the indicator gracefully
  * shrinks and fades.
  */
-const EXIT_HOLD_MS = 1000;
+const EXIT_HOLD_MS = 300;
 const EXIT_ANIMATION_MS = 480;
 
 export function InlineWorkingIndicator({
