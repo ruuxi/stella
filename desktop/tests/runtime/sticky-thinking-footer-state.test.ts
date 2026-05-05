@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractTasksFromEvents,
+  getTaskDisplayText,
   getFooterTasksFromEvents,
   mergeFooterTasks,
   type EventRecord,
@@ -142,13 +143,14 @@ describe("scripted agent/orchestrator footer scenarios", () => {
     );
   });
 
-  it("does not show generic task description immediately after spawn", () => {
+  it("uses the spawned agent status text and never displays generic task copy", () => {
     const footerTasks = getFooterTasksFromEvents(
       [
         event("1", 100, "agent-started", {
           agentId: "agent-1",
           description: "Task",
           agentType: "general",
+          statusText: "Build Tic Tac Toe app in Stella",
         }),
       ],
       { nowMs: 125 },
@@ -162,7 +164,10 @@ describe("scripted agent/orchestrator footer scenarios", () => {
           isStreaming: false,
         }),
       }),
-    ).toBe("Working");
+    ).toBe("Working · Build Tic Tac Toe app in Stella");
+    expect(getTaskDisplayText(footerTasks[0]!)).toBe(
+      "Build Tic Tac Toe app in Stella",
+    );
   });
 
   it("rotates display text across numerous running agents", () => {
@@ -354,5 +359,32 @@ describe("scripted agent/orchestrator footer scenarios", () => {
 
     expect(state.shouldRender).toBe(false);
     expect(state.activeTask).toBeNull();
+  });
+
+  it("preserves persisted status text when live state only has a generic placeholder", () => {
+    const persistedTasks = extractTasksFromEvents([
+      event("1", 100, "agent-started", {
+        agentId: "agent-1",
+        description: "Build Tic Tac Toe app in Stella",
+        agentType: "general",
+        statusText: "Build Tic Tac Toe app in Stella",
+      }),
+    ]);
+    const liveTasks: TaskItem[] = [
+      {
+        id: "agent-1",
+        description: "Task",
+        agentType: "general",
+        status: "running",
+        startedAtMs: 100,
+        lastUpdatedAtMs: 200,
+      },
+    ];
+
+    const [task] = mergeFooterTasks(persistedTasks, liveTasks);
+
+    expect(task?.description).toBe("Build Tic Tac Toe app in Stella");
+    expect(task?.statusText).toBe("Build Tic Tac Toe app in Stella");
+    expect(getTaskDisplayText(task!)).toBe("Build Tic Tac Toe app in Stella");
   });
 });

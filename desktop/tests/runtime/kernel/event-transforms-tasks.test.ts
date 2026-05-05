@@ -97,10 +97,9 @@ describe("extractTasksFromEvents", () => {
     const [task] = extractTasksFromEvents(events);
     expect(task.status).toBe("running");
     // "Using <toolName>" is general-agent tool-call noise and must be
-    // filtered out of `statusText` so the working indicator falls back
-    // to the stable description ("Open Spotify") instead of leaking
-    // internal tool names into the user-facing copy.
-    expect(task.statusText).toBeUndefined();
+    // filtered out of `statusText` so the stable user-visible task label
+    // stays put instead of leaking internal tool names into the UI.
+    expect(task.statusText).toBe("Open Spotify");
     expect(task.description).toBe("Open Spotify");
   });
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
+  isGenericTaskDescription,
   normalizeTaskDisplayStatusText,
   TASK_COMPLETION_INDICATOR_MS,
   type TaskItem,
@@ -242,7 +243,10 @@ function streamStoreReducer(
         statusText:
           action.task.status === 'running'
             ? (normalizeTaskDisplayStatusText(action.task.statusText) ??
-              normalizeTaskDisplayStatusText(existing?.statusText))
+              normalizeTaskDisplayStatusText(existing?.statusText) ??
+              (isGenericTaskDescription(nextDescription)
+                ? undefined
+                : nextDescription))
             : undefined,
         reasoningText:
           typeof action.task.reasoningText === 'string'
