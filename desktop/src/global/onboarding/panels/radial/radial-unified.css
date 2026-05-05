@@ -632,6 +632,42 @@
   transform: translate(28px, -54px);
 }
 
+/* Short-viewport rescale: when vertical space is tight, the dial + mock
+ * floors compete with the Continue button below. Lower the floors and
+ * drop the cosmetic translates so the hero shrinks instead of overflowing
+ * its column (which previously let the mock paint over Continue). */
+@media (max-height: 820px) {
+  .radial-hero__dial .radial-dial-interactive {
+    width: clamp(220px, 22vw, 300px);
+    height: clamp(220px, 22vw, 300px);
+  }
+  .radial-hero__dial {
+    transform: none;
+    gap: 0.9rem;
+  }
+  .radial-hero__dial .radial-dial-caption {
+    height: auto;
+    min-height: 6rem;
+  }
+  .radial-hero__mock {
+    min-height: clamp(240px, 32vw, 380px);
+    transform: translateX(20px);
+  }
+  .radial-hero__stage {
+    gap: clamp(1rem, 3vw, 2.4rem);
+  }
+}
+
+@media (max-height: 680px) {
+  .radial-hero__dial .radial-dial-interactive {
+    width: clamp(180px, 18vw, 240px);
+    height: clamp(180px, 18vw, 240px);
+  }
+  .radial-hero__mock {
+    min-height: clamp(200px, 26vw, 300px);
+  }
+}
+
 /* Drop the card frame from the visual — the desktop mock now floats
    directly in the layout, no demo-panel border or shadow. */
 .radial-hero__mock .radial-demo--visual-only {
