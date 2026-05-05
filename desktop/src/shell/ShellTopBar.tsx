@@ -113,6 +113,7 @@ export const ShellTopBar = () => {
       className="shell-topbar"
       data-platform={isMac ? "mac" : "other"}
       data-display-open={panelOpen ? "true" : "false"}
+      data-display-expanded={panelExpanded ? "true" : "false"}
       data-route={isStoreRoute ? "store" : undefined}
     >
       <div className="shell-topbar-left">
