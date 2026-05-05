@@ -123,6 +123,10 @@ function normalizeAnthropicModelId(modelId: string): string {
   return nativeId.replace(/-(\d+)\.(\d+)$/u, "-$1-$2");
 }
 
+function normalizeAnthropicToolUseId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) || "tool";
+}
+
 function convertUserContent(content: string | Array<TextContent | ImageContent>): string | AnthropicContentBlock[] {
   if (typeof content === "string") {
     return sanitizeSurrogates(content);
@@ -208,9 +212,9 @@ function appendToolResultMessages(messages: AnthropicMessage[], message: Extract
   }
 }
 
-function convertMessages(model: Model<"anthropic-messages">, context: Context): AnthropicMessage[] {
+export function convertMessages(model: Model<"anthropic-messages">, context: Context): AnthropicMessage[] {
   const messages: AnthropicMessage[] = [];
-  for (const message of transformMessages(context.messages, model)) {
+  for (const message of transformMessages(context.messages, model, normalizeAnthropicToolUseId)) {
     if (message.role === "system" || message.role === "developer") {
       continue;
     }

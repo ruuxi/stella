@@ -47,10 +47,17 @@ function shortHash(value: string): string {
   return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
 }
 
+const OPENAI_FUNCTION_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+const LEGACY_OPENAI_FUNCTION_NAMES = new Map<string, string>([
+  ["multi_tool_use.parallel", "multi_tool_use_parallel"],
+]);
+
 export function normalizeOpenAIFunctionName(name: string): string {
-  const sanitized = name.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const truncated = sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
-  return truncated.replace(/_+$/, "") || "tool";
+  const migrated = LEGACY_OPENAI_FUNCTION_NAMES.get(name) ?? name;
+  if (!OPENAI_FUNCTION_NAME_PATTERN.test(migrated)) {
+    throw new Error(`Invalid OpenAI Responses function name: ${name}`);
+  }
+  return migrated;
 }
 
 function encodeTextSignatureV1(id: string, phase?: TextSignatureV1["phase"]): string {
