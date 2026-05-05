@@ -553,6 +553,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("dictation:overlayFailed", payload),
     inAppStarted: (payload: { startId?: string }) =>
       ipcRenderer.send("dictation:inAppStarted", payload),
+    activeChanged: (payload: { active: boolean }) =>
+      ipcRenderer.send("dictation:activeChanged", payload),
   },
 
   agent: {

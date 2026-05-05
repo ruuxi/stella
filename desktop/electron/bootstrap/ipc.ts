@@ -272,6 +272,12 @@ export const registerBootstrapIpcHandlers = (
       getPetController: () => state.petController ?? null,
       windowManager: state.windowManager!,
     });
+  let wakeword: WakewordService | null = null;
+  let wakewordPausedForVoice = services.uiStateService.state.isVoiceRtcActive;
+  let wakewordPausedForDictation = false;
+  const syncWakewordPause = () => {
+    wakeword?.setPaused(wakewordPausedForVoice || wakewordPausedForDictation);
+  };
 
   registerVoiceHandlers({
     uiState: services.uiStateService.state,
@@ -293,6 +299,10 @@ export const registerBootstrapIpcHandlers = (
     windowManager: state.windowManager!,
     getOverlayController: () => state.overlayController ?? null,
     getStellaRoot: lifecycle.getStellaRoot,
+    onDictationActiveChanged: (active) => {
+      wakewordPausedForDictation = active;
+      syncWakewordPause();
+    },
   });
   services.radialGestureService.setDictationPushToTalkHandlers(
     dictationPushToTalk,
@@ -318,7 +328,7 @@ export const registerBootstrapIpcHandlers = (
   const wakePrefs = stellaRoot
     ? loadLocalPreferences(stellaRoot)
     : { wakeWordEnabled: false, wakeWordThreshold: 0.55 };
-  const wakeword = new WakewordService({
+  wakeword = new WakewordService({
     threshold: wakePrefs.wakeWordThreshold,
     onWake: (event) => {
       if (services.uiStateService.state.isVoiceRtcActive) return;
@@ -329,14 +339,16 @@ export const registerBootstrapIpcHandlers = (
     },
   });
   services.uiStateService.onVoiceActiveChanged((active) => {
-    wakeword.setPaused(active);
+    wakewordPausedForVoice = active;
+    syncWakewordPause();
   });
+  syncWakewordPause();
   wakeword.setEnabled(wakePrefs.wakeWordEnabled);
   state.processRuntime.registerCleanup(
     "will-quit",
     "wakeword-service",
     () => {
-      wakeword.dispose();
+      wakeword?.dispose();
     },
   );
 

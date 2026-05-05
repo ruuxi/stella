@@ -201,6 +201,9 @@ export const useDictation = ({
       await session.start({
         onStateChange: (next, errMessage) => {
           setState(next);
+          window.electronAPI?.dictation?.activeChanged({
+            active: next === "listening" || next === "transcribing",
+          });
           if (next === "error" && errMessage) {
             console.warn(
               "[dictation] session entered error state:",
@@ -233,6 +236,7 @@ export const useDictation = ({
       const errMessage = (err as Error).message;
       setError(errMessage);
       onErrorRef.current?.(errMessage);
+      window.electronAPI?.dictation?.activeChanged({ active: false });
       sessionRef.current = null;
       setLevels([]);
       setShowControls(false);
@@ -315,6 +319,7 @@ export const useDictation = ({
     return () => {
       const session = sessionRef.current;
       if (session) {
+        window.electronAPI?.dictation?.activeChanged({ active: false });
         void session.cancel().catch(() => undefined);
         sessionRef.current = null;
       }

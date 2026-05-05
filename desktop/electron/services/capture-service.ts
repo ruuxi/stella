@@ -114,6 +114,39 @@ export class CaptureService {
     this.setPendingChatContext({ ...this.pendingChatContext, regionScreenshots: next })
   }
 
+  mergeRegionCaptureResult(result: RegionCaptureResult | null): boolean {
+    if (!result || (!result.screenshot && !result.window)) {
+      return false
+    }
+
+    const ctx = this.getChatContextSnapshot() ?? this.emptyContext()
+    const isWindowClick = Boolean(result.window && result.screenshot)
+    const existing = ctx.regionScreenshots ?? []
+    const nextScreenshots =
+      result.screenshot && !isWindowClick
+        ? [...existing, result.screenshot]
+        : existing
+    const nextWindow = result.window ?? ctx.window
+    const nextWindowScreenshot = isWindowClick
+      ? result.screenshot
+      : (ctx.windowScreenshot ?? null)
+    const isRegionSelection = Boolean(result.screenshot && !result.window)
+
+    this.setPendingChatContext({
+      ...ctx,
+      window: isRegionSelection ? null : nextWindow,
+      windowScreenshot: isRegionSelection ? null : nextWindowScreenshot,
+      windowContextEnabled: isRegionSelection
+        ? undefined
+        : result.window
+          ? undefined
+          : ctx.windowContextEnabled,
+      regionScreenshots: nextScreenshots,
+    })
+    this.broadcastChatContext()
+    return true
+  }
+
   cancelRadialContextCapture() {
     this.radialCaptureRequestId += 1
     this.pendingRadialCapturePromise = null

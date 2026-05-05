@@ -184,6 +184,8 @@ export const createBootstrapServices = (options: {
       captureRadialContext: (x, y, before) =>
         captureService.captureRadialContext(x, y, before),
       startRegionCapture: () => captureService.startRegionCapture(),
+      mergeRegionCaptureResult: (result) =>
+        captureService.mergeRegionCaptureResult(result),
       emptyContext: () => captureService.emptyContext(),
       broadcastChatContext: () => captureService.broadcastChatContext(),
     },
