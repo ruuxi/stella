@@ -18,10 +18,28 @@ import "./AgentModelPicker.css";
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
   modelOverrides: Record<string, string>;
+  reasoningEfforts: Record<string, ReasoningEffort>;
   generalAgentEngine: "default" | "claude_code_local";
   selfModAgentEngine: "default" | "claude_code_local";
   maxAgentConcurrency: number;
 };
+
+type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+
+const REASONING_EFFORT_OPTIONS: Array<{
+  id: ReasoningEffort;
+  label: string;
+}> = [
+  { id: "minimal", label: "Minimal" },
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+  { id: "xhigh", label: "Extra" },
+];
+
+function isReasoningEffort(value: string): value is ReasoningEffort {
+  return REASONING_EFFORT_OPTIONS.some((option) => option.id === value);
+}
 
 interface AgentModelPickerProps {
   /**
@@ -166,6 +184,47 @@ export function AgentModelPicker({
     [activeAgent, onSelected, pendingAgent, preferences],
   );
 
+  const handleReasoningEffortSelect = useCallback(
+    async (effort: ReasoningEffort) => {
+      if (!preferences || pendingAgent) return;
+      const previousReasoningEfforts = {
+        ...(preferences.reasoningEfforts ?? {}),
+      };
+      const nextReasoningEfforts = {
+        ...previousReasoningEfforts,
+        [activeAgent]: effort,
+      };
+      setPendingAgent(activeAgent);
+      setPreferences({
+        ...preferences,
+        reasoningEfforts: nextReasoningEfforts,
+      });
+      try {
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.({
+            reasoningEfforts: nextReasoningEfforts,
+          });
+        if (saved) setPreferences(saved);
+        setError(null);
+        onSelected?.();
+      } catch (caught) {
+        setPreferences((current) =>
+          current
+            ? { ...current, reasoningEfforts: previousReasoningEfforts }
+            : current,
+        );
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Failed to update reasoning effort.",
+        );
+      } finally {
+        setPendingAgent(null);
+      }
+    },
+    [activeAgent, onSelected, pendingAgent, preferences],
+  );
+
   const ready = preferences !== null && modelDefaults !== undefined;
   const current = overrides[activeAgent] ?? "";
   const defaultLabel = ready
@@ -181,6 +240,8 @@ export function AgentModelPicker({
       ? getModelDisplayLabel(current, modelNamesById)
       : defaultLabel
     : "Loading…";
+  const currentReasoningEffort =
+    preferences?.reasoningEfforts?.[activeAgent] ?? "medium";
 
   return (
     <div
@@ -235,11 +296,18 @@ export function AgentModelPicker({
         value={current}
         defaultLabel={defaultLabel}
         currentLabel={currentLabel}
+        reasoningEffort={currentReasoningEffort}
+        reasoningEffortOptions={REASONING_EFFORT_OPTIONS}
         groups={groups}
         excludeModelId={STELLA_DEFAULT_MODEL}
         disabled={!ready || pendingAgent !== null}
         ariaLabel={`${activeAgent} model picker`}
         onSelect={handleSelect}
+        onReasoningEffortSelect={(value) => {
+          if (isReasoningEffort(value)) {
+            void handleReasoningEffortSelect(value);
+          }
+        }}
       />
     </div>
   );

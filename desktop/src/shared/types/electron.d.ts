@@ -672,6 +672,10 @@ export type ElectronSystemApi = {
   getLocalModelPreferences: () => Promise<{
     defaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
+    reasoningEfforts: Record<
+      string,
+      "minimal" | "low" | "medium" | "high" | "xhigh"
+    >;
     generalAgentEngine: "default" | "claude_code_local";
     selfModAgentEngine: "default" | "claude_code_local";
     maxAgentConcurrency: number;
@@ -679,12 +683,20 @@ export type ElectronSystemApi = {
   setLocalModelPreferences: (payload: {
     defaultModels?: Record<string, string>;
     modelOverrides?: Record<string, string>;
+    reasoningEfforts?: Record<
+      string,
+      "minimal" | "low" | "medium" | "high" | "xhigh"
+    >;
     generalAgentEngine?: "default" | "claude_code_local";
     selfModAgentEngine?: "default" | "claude_code_local";
     maxAgentConcurrency?: number;
   }) => Promise<{
     defaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
+    reasoningEfforts: Record<
+      string,
+      "minimal" | "low" | "medium" | "high" | "xhigh"
+    >;
     generalAgentEngine: "default" | "claude_code_local";
     selfModAgentEngine: "default" | "claude_code_local";
     maxAgentConcurrency: number;

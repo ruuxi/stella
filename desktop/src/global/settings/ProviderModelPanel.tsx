@@ -37,12 +37,16 @@ interface ProviderModelPanelProps {
   defaultLabel: string;
   /** Label for the currently active selection, whether default or override. */
   currentLabel: string;
+  /** Reasoning effort shown only for direct non-Stella selections. */
+  reasoningEffort: string;
+  reasoningEffortOptions: Array<{ id: string; label: string }>;
   /** Provider-grouped catalog. */
   groups: ProviderGroup[];
   /** Hide a specific model id from the list (e.g. STELLA_DEFAULT_MODEL). */
   excludeModelId?: string;
   /** Empty string ⇒ default. Any other value ⇒ that model id. */
   onSelect: (value: string) => void;
+  onReasoningEffortSelect: (value: string) => void;
   disabled?: boolean;
   ariaLabel?: string;
 }
@@ -80,9 +84,12 @@ export function ProviderModelPanel({
   value,
   defaultLabel,
   currentLabel,
+  reasoningEffort,
+  reasoningEffortOptions,
   groups,
   excludeModelId,
   onSelect,
+  onReasoningEffortSelect,
   disabled = false,
   ariaLabel,
 }: ProviderModelPanelProps) {
@@ -122,6 +129,8 @@ export function ProviderModelPanel({
     () => tabs.find((tab) => tab.key === activeProvider) ?? tabs[0],
     [activeProvider, tabs],
   );
+  const canEditReasoning =
+    Boolean(value) && providerOf(value) !== STELLA_PROVIDER_KEY;
 
   const filteredModels = useMemo(() => {
     if (!activeTab) return [];
@@ -205,6 +214,24 @@ export function ProviderModelPanel({
       <div className="model-picker-current" aria-live="polite">
         <span className="model-picker-current-kicker">Selected</span>
         <span className="model-picker-current-label">{currentLabel}</span>
+        {canEditReasoning ? (
+          <label className="model-picker-current-reasoning">
+            <span>Reasoning</span>
+            <select
+              value={reasoningEffort}
+              onChange={(event) =>
+                onReasoningEffortSelect(event.currentTarget.value)
+              }
+              disabled={disabled}
+            >
+              {reasoningEffortOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
       <aside className="model-picker-rail" role="tablist">
         <button

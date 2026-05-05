@@ -898,6 +898,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_PREFERENCES_GET_MODELS) as Promise<{
         defaultModels: Record<string, string>;
         modelOverrides: Record<string, string>;
+        reasoningEfforts: Record<
+          string,
+          "minimal" | "low" | "medium" | "high" | "xhigh"
+        >;
         generalAgentEngine: "default" | "claude_code_local";
         selfModAgentEngine: "default" | "claude_code_local";
         maxAgentConcurrency: number;
@@ -905,6 +909,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setLocalModelPreferences: (payload: {
       defaultModels?: Record<string, string>;
       modelOverrides?: Record<string, string>;
+      reasoningEfforts?: Record<
+        string,
+        "minimal" | "low" | "medium" | "high" | "xhigh"
+      >;
       generalAgentEngine?: "default" | "claude_code_local";
       selfModAgentEngine?: "default" | "claude_code_local";
       maxAgentConcurrency?: number;
@@ -912,6 +920,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_PREFERENCES_SET_MODELS, payload) as Promise<{
         defaultModels: Record<string, string>;
         modelOverrides: Record<string, string>;
+        reasoningEfforts: Record<
+          string,
+          "minimal" | "low" | "medium" | "high" | "xhigh"
+        >;
         generalAgentEngine: "default" | "claude_code_local";
         selfModAgentEngine: "default" | "claude_code_local";
         maxAgentConcurrency: number;

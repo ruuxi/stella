@@ -23,12 +23,15 @@ import {
 } from "../../contracts/mini-double-tap.js";
 
 type AgentEngine = "default" | "claude_code_local";
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type LocalPreferences = {
   /** Default models keyed by agent type. */
   defaultModels: Record<string, string>;
   /** Model overrides keyed by agent type, e.g. "orchestrator" -> "anthropic/claude-opus-4.6" */
   modelOverrides: Record<string, string>;
+  /** Reasoning effort overrides keyed by agent type. */
+  reasoningEfforts: Record<string, ReasoningEffort>;
   /** Expression style: "none" | "emoji" | undefined (default) */
   expressionStyle?: string;
   /**
@@ -71,6 +74,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   LocalPreferences,
   | "defaultModels"
   | "modelOverrides"
+  | "reasoningEfforts"
   | "generalAgentEngine"
   | "selfModAgentEngine"
   | "maxAgentConcurrency"
@@ -81,6 +85,7 @@ const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
 const DEFAULT_PREFERENCES: LocalPreferences = {
   defaultModels: {},
   modelOverrides: {},
+  reasoningEfforts: {},
   expressionStyle: undefined,
   personalityVoiceId: undefined,
   generalAgentEngine: "default",
@@ -119,6 +124,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       defaultModels: parsed.defaultModels ?? DEFAULT_PREFERENCES.defaultModels,
       modelOverrides:
         parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
+      reasoningEfforts: normalizeReasoningEfforts(parsed.reasoningEfforts),
       expressionStyle: parsed.expressionStyle,
       personalityVoiceId:
         typeof parsed.personalityVoiceId === "string" &&
@@ -197,6 +203,14 @@ export const getDefaultModel = (
   return prefs.defaultModels[agentType];
 };
 
+export const getReasoningEffort = (
+  stellaHome: string,
+  agentType: string,
+): ReasoningEffort => {
+  const prefs = loadLocalPreferences(stellaHome);
+  return normalizeReasoningEffort(prefs.reasoningEfforts[agentType]);
+};
+
 export const getExpressionStyle = (stellaHome: string): string | undefined => {
   return loadLocalPreferences(stellaHome).expressionStyle;
 };
@@ -241,6 +255,7 @@ export const getLocalModelPreferences = (
   return {
     defaultModels: { ...prefs.defaultModels },
     modelOverrides: { ...prefs.modelOverrides },
+    reasoningEfforts: { ...prefs.reasoningEfforts },
     generalAgentEngine: prefs.generalAgentEngine,
     selfModAgentEngine: prefs.selfModAgentEngine,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
@@ -256,6 +271,10 @@ export const updateLocalModelPreferences = (
     ...prefs,
     defaultModels: patch.defaultModels ?? prefs.defaultModels,
     modelOverrides: patch.modelOverrides ?? prefs.modelOverrides,
+    reasoningEfforts:
+      patch.reasoningEfforts === undefined
+        ? prefs.reasoningEfforts
+        : normalizeReasoningEfforts(patch.reasoningEfforts),
     generalAgentEngine:
       patch.generalAgentEngine === undefined
         ? prefs.generalAgentEngine
@@ -304,6 +323,34 @@ export const getSoundNotificationsEnabled = (stellaHome: string): boolean => {
 const normalizeEngine = (value: unknown): AgentEngine => {
   if (value === "claude_code_local") return "claude_code_local";
   return "default";
+};
+
+const normalizeReasoningEffort = (value: unknown): ReasoningEffort => {
+  if (
+    value === "minimal" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
+  ) {
+    return value;
+  }
+  return "medium";
+};
+
+const normalizeReasoningEfforts = (
+  value: unknown,
+): Record<string, ReasoningEffort> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  const normalized: Record<string, ReasoningEffort> = {};
+  for (const [agentType, effort] of Object.entries(value)) {
+    const trimmedAgentType = agentType.trim();
+    if (!trimmedAgentType) continue;
+    normalized[trimmedAgentType] = normalizeReasoningEffort(effort);
+  }
+  return normalized;
 };
 
 const normalizeConcurrency = (value: unknown): number => {
