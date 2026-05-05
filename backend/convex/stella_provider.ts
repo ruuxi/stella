@@ -942,6 +942,7 @@ async function createStreamingRuntimeResponse(args: {
   const responseId = `chatcmpl_${requestStartedAt}`;
   const created = Math.floor(requestStartedAt / 1000);
   const encoder = new TextEncoder();
+  const primaryManagedModel = buildManagedModel(serverModelConfig, managedApi);
 
   const sendChunk = (
     controller: ReadableStreamDefaultController<Uint8Array>,
@@ -1113,9 +1114,9 @@ async function createStreamingRuntimeResponse(args: {
         if (event.type === "done") {
           const usage = usageSummaryFromAssistant(event.message);
           const executedModel = event.message.model || modelId;
-          const fallbackUsed = executedModel !== modelId;
+          const fallbackUsed = executedModel !== primaryManagedModel.id;
           console.log(
-            `[stella-provider] completed agent=${agentType} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
+            `[stella-provider] completed agent=${agentType} | requestedModel=${modelId} | primaryModel=${primaryManagedModel.id} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
           );
           sendChunk(controller, {
             id: responseId,
@@ -1481,9 +1482,9 @@ async function createNativeRuntimeResponse(args: {
 
         if (event.type === "done") {
           const executedModel = event.message.model || modelId;
-          const fallbackUsed = executedModel !== modelId;
+          const fallbackUsed = executedModel !== managedModel.id;
           console.log(
-            `[stella-provider] completed agent=${agentType} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
+            `[stella-provider] completed agent=${agentType} | requestedModel=${modelId} | primaryModel=${managedModel.id} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
           );
           await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
             ownerId,
@@ -1708,9 +1709,10 @@ export const stellaProviderChatCompletions = httpAction(
       }
 
       const executedModel = message.model || resolvedModel;
-      const fallbackUsed = executedModel !== resolvedModel;
+      const primaryManagedModel = buildManagedModel(serverModelConfig, managedApi);
+      const fallbackUsed = executedModel !== primaryManagedModel.id;
       console.log(
-        `[stella-provider] completed agent=${agentType} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
+        `[stella-provider] completed agent=${agentType} | requestedModel=${resolvedModel} | primaryModel=${primaryManagedModel.id} | model=${executedModel} | fallbackUsed=${fallbackUsed}`,
       );
 
       await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {

@@ -79,6 +79,12 @@ export interface ConvertResponsesToolsOptions {
 	strict?: boolean | null;
 }
 
+export function normalizeOpenAIFunctionName(name: string): string {
+	const sanitized = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+	const normalized = sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
+	return normalized.replace(/_+$/, "") || "tool";
+}
+
 // =============================================================================
 // Message conversion
 // =============================================================================
@@ -206,7 +212,7 @@ export function convertResponsesMessages<TApi extends Api>(
 						type: "function_call",
 						id: itemId,
 						call_id: callId,
-						name: toolCall.name,
+						name: normalizeOpenAIFunctionName(toolCall.name),
 						arguments: JSON.stringify(toolCall.arguments),
 					});
 				}
@@ -268,7 +274,7 @@ export function convertResponsesTools(tools: Tool[], options?: ConvertResponsesT
 	const strict = options?.strict === undefined ? false : options.strict;
 	return tools.map((tool) => ({
 		type: "function",
-		name: tool.name,
+		name: normalizeOpenAIFunctionName(tool.name),
 		description: tool.description,
 		parameters: tool.parameters as any, // TypeBox already generates JSON Schema
 		strict,
