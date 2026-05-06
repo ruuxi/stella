@@ -1,8 +1,8 @@
 /* ModelsPicker — sidebar popover that wraps the AgentModelPicker. */
 
 [data-models-picker] {
-  width: min(960px, calc(100vw - 32px));
-  max-width: min(960px, calc(100vw - 32px));
+  width: min(560px, calc(100vw - 32px));
+  max-width: min(560px, calc(100vw - 32px));
 }
 
 [data-models-picker] [data-slot="popover-body"] {
