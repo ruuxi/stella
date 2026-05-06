@@ -84,6 +84,7 @@ type RadialGestureDeps = {
 export type DictationPushToTalkHandlers = {
   isEnabled: () => boolean;
   start: () => void;
+  reveal: () => void;
   stop: (durationMs: number) => void;
   cancel: () => void;
   discard: () => void;
@@ -302,6 +303,9 @@ export class RadialGestureService {
           this.dictationPushToTalkHandlers?.isEnabled() ?? false,
         onDictationPushToTalkStart: () => {
           this.dictationPushToTalkHandlers?.start();
+        },
+        onDictationPushToTalkReveal: () => {
+          this.dictationPushToTalkHandlers?.reveal();
         },
         onDictationPushToTalkStop: (durationMs) => {
           this.dictationPushToTalkHandlers?.stop(durationMs);

@@ -61,6 +61,7 @@ type DictationMode =
 export type DictationPushToTalkController = {
   isEnabled: () => boolean;
   start: () => void;
+  reveal: () => void;
   stop: (durationMs: number) => void;
   cancel: () => void;
   discard: () => void;
@@ -357,14 +358,20 @@ export const registerDictationHandlers = (
     if (route === "stella-chat") broadcastPetDictationActive(true);
   };
 
+  const revealOverlayPushToTalk = (sessionId: string) => {
+    if (activeOverlaySessionId !== sessionId) return;
+    const overlay = options.getOverlayController();
+    if (!overlay) return;
+    const position = getOverlayDictationPosition();
+    overlay.showDictation(position.x, position.y);
+  };
+
   const startOverlayPushToTalk = (): DictationMode | null => {
     const overlay = options.getOverlayController();
     if (!overlay || activeOverlaySessionId) return null;
     const sessionId = randomUUID();
     activeOverlaySessionId = sessionId;
     setDictationSourceActive(`overlay:${sessionId}`, true);
-    const position = getOverlayDictationPosition();
-    overlay.showDictation(position.x, position.y);
     overlay.send("dictation:overlayStart", { sessionId });
     muteOutputForDictation();
     return { type: "overlay", sessionId };
@@ -400,6 +407,12 @@ export const registerDictationHandlers = (
     }
 
     activePushToTalk = startOverlayPushToTalk();
+  };
+
+  const revealPushToTalk = () => {
+    const active = activePushToTalk;
+    if (!active || active.type !== "overlay") return;
+    revealOverlayPushToTalk(active.sessionId);
   };
 
   const stopPushToTalk = (durationMs: number) => {
@@ -712,6 +725,7 @@ export const registerDictationHandlers = (
       dictationBridgeIsSupported() &&
       currentShortcut === PUSH_TO_TALK_DICTATION_SHORTCUT,
     start: startPushToTalk,
+    reveal: revealPushToTalk,
     stop: stopPushToTalk,
     cancel: cancelPushToTalk,
     discard: discardPushToTalk,

@@ -84,6 +84,7 @@ type MouseHookEvents = {
    * Electron global shortcuts because push-to-talk needs key-down and key-up.
    */
   onDictationPushToTalkStart?: () => void;
+  onDictationPushToTalkReveal?: () => void;
   onDictationPushToTalkStop?: (durationMs: number) => void;
   onDictationPushToTalkCancel?: () => void;
   onDictationPushToTalkDiscard?: () => void;
@@ -300,12 +301,12 @@ export class MouseHookManager {
       this.dictationKeyDownAt === null
     ) {
       this.dictationKeyDownAt = Date.now();
-      this.dictationStarted = false;
+      this.dictationStarted = true;
+      this.events.onDictationPushToTalkStart?.();
       this.dictationStartTimer = setTimeout(() => {
         this.dictationStartTimer = null;
-        if (this.dictationKeyDownAt === null || this.dictationStarted) return;
-        this.dictationStarted = true;
-        this.events.onDictationPushToTalkStart?.();
+        if (this.dictationKeyDownAt === null || !this.dictationStarted) return;
+        this.events.onDictationPushToTalkReveal?.();
       }, DICTATION_PUSH_TO_TALK_TRIGGER_DELAY_MS);
     }
 
