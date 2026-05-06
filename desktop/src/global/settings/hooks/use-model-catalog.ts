@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import type { FunctionReference } from "convex/server";
 import { api } from "@/convex/api";
-import { authClient } from "@/global/auth/lib/auth-client";
+import { useDesktopAuthSession } from "@/global/auth/services/auth-session";
 import { createServiceRequest } from "@/infra/http/service-request";
 import {
   groupCatalogModelsByProvider,
@@ -256,7 +256,7 @@ async function fetchManagedGatewayCatalogModels(
 }
 
 export function useModelCatalog() {
-  const session = authClient.useSession();
+  const session = useDesktopAuthSession();
   const catalogUpdatedAtQuery = (
     api as unknown as {
       stella_models: {
