@@ -9,11 +9,7 @@ import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { HookEventMap } from "../extensions/types.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
-import {
-  extractAssistantText,
-  getToolResultPreview,
-  now,
-} from "./shared.js";
+import { extractAssistantText, getToolResultPreview, now } from "./shared.js";
 import { persistThreadPayloadMessage } from "./thread-memory.js";
 import type {
   RuntimeEndEvent,
@@ -98,23 +94,30 @@ export const createRunEventRecorder = ({
 }: RunRecorderArgs) => {
   let seq = 0;
   let currentUserMessageId = userMessageId;
-  const queuedUserMessageIds: string[] = [];
+  const queuedUserMessageStarts: Array<{
+    userMessageId: string;
+    onStart?: () => void;
+  }> = [];
   const nextSeq = () => ++seq;
 
   return {
-    queueUserMessageId(nextUserMessageId: string): void {
+    queueUserMessageId(nextUserMessageId: string, onStart?: () => void): void {
       const trimmed = nextUserMessageId.trim();
       if (trimmed) {
-        queuedUserMessageIds.push(trimmed);
+        queuedUserMessageStarts.push({
+          userMessageId: trimmed,
+          ...(onStart ? { onStart } : {}),
+        });
       }
     },
 
     recordQueuedUserMessageStart(): RuntimeRunStartedEvent | null {
-      const nextUserMessageId = queuedUserMessageIds.shift();
-      if (!nextUserMessageId) {
+      const nextQueuedUserMessage = queuedUserMessageStarts.shift();
+      if (!nextQueuedUserMessage) {
         return null;
       }
-      currentUserMessageId = nextUserMessageId;
+      nextQueuedUserMessage.onStart?.();
+      currentUserMessageId = nextQueuedUserMessage.userMessageId;
       const responseTarget = getResponseTarget?.();
       return {
         runId,
@@ -238,7 +241,8 @@ export const createRunEventRecorder = ({
         resultPreview,
       });
       const fileChanges =
-        fileChangesFromDetails(args.details) ?? fileChangesFromToolResult(args.result);
+        fileChangesFromDetails(args.details) ??
+        fileChangesFromToolResult(args.result);
       const producedFiles =
         producedFilesFromDetails(args.details) ??
         producedFilesFromToolResult(args.result);
@@ -341,12 +345,12 @@ const emitHook = <E extends "turn_start" | "turn_end">(
     return;
   }
 
-  void hookEmitter
-    .emit(event, payload, { agentType })
-    .catch(() => undefined);
+  void hookEmitter.emit(event, payload, { agentType }).catch(() => undefined);
 };
 
-const extractToolUpdateStatusText = (event: Extract<AgentEvent, { type: "tool_execution_update" }>): string | undefined => {
+const extractToolUpdateStatusText = (
+  event: Extract<AgentEvent, { type: "tool_execution_update" }>,
+): string | undefined => {
   const details =
     typeof event.partialResult.details === "object" &&
     event.partialResult.details !== null
@@ -358,7 +362,9 @@ const extractToolUpdateStatusText = (event: Extract<AgentEvent, { type: "tool_ex
   const firstTextBlock = event.partialResult.content.find(
     (block) => block.type === "text" && block.text.trim().length > 0,
   );
-  return firstTextBlock?.type === "text" ? firstTextBlock.text.trim() : undefined;
+  return firstTextBlock?.type === "text"
+    ? firstTextBlock.text.trim()
+    : undefined;
 };
 
 export const subscribeRuntimeAgentEvents = ({
@@ -427,7 +433,8 @@ export const subscribeRuntimeAgentEvents = ({
         return;
       }
       const previousLength =
-        emittedThinkingLengths.get(event.assistantMessageEvent.contentIndex) ?? 0;
+        emittedThinkingLengths.get(event.assistantMessageEvent.contentIndex) ??
+        0;
       emittedThinkingLengths.set(
         event.assistantMessageEvent.contentIndex,
         previousLength + chunk.length,
@@ -444,7 +451,8 @@ export const subscribeRuntimeAgentEvents = ({
       if (!content) {
         return;
       }
-      const alreadyEmittedLength = emittedThinkingLengths.get(contentIndex) ?? 0;
+      const alreadyEmittedLength =
+        emittedThinkingLengths.get(contentIndex) ?? 0;
       const remaining = content.slice(alreadyEmittedLength);
       if (!remaining) {
         return;
