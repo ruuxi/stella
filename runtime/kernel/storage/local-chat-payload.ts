@@ -33,62 +33,6 @@ const isChannelMessage = (
   return typeof source === "string" && source.trim().toLowerCase().startsWith("channel:");
 };
 
-const normalizeAssistantDisplayText = (text: string): string => {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("[") || !trimmed.includes("output_text")) {
-    return text;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (Array.isArray(parsed)) {
-      const parts = parsed
-        .map((item) =>
-          item && typeof item === "object"
-            ? (item as Record<string, unknown>)
-            : null,
-        )
-        .filter((item): item is Record<string, unknown> => item !== null)
-        .filter((item) => item.type === "output_text" && typeof item.text === "string")
-        .map((item) => item.text as string)
-        .filter((value) => value.length > 0);
-      if (parts.length > 0) {
-        return parts.join("");
-      }
-    }
-  } catch {
-    // Provider compat paths can return Python-repr-style content lists.
-  }
-
-  const parts: string[] = [];
-  const singleQuotedText = /'text'\s*:\s*'((?:\\.|[^'\\])*)'/g;
-  for (const match of trimmed.matchAll(singleQuotedText)) {
-    parts.push(
-      match[1]
-        .replace(/\\'/g, "'")
-        .replace(/\\n/g, "\n")
-        .replace(/\\t/g, "\t")
-        .replace(/\\\\/g, "\\"),
-    );
-  }
-
-  const singleKeyDoubleQuotedText = /'text'\s*:\s*"((?:\\.|[^"\\])*)"/g;
-  for (const match of trimmed.matchAll(singleKeyDoubleQuotedText)) {
-    try {
-      parts.push(JSON.parse(`"${match[1]}"`) as string);
-    } catch {
-      parts.push(
-        match[1]
-          .replace(/\\"/g, "\"")
-          .replace(/\\n/g, "\n")
-          .replace(/\\t/g, "\t")
-          .replace(/\\\\/g, "\\"),
-      );
-    }
-  }
-  return parts.length > 0 ? parts.join("") : text;
-};
-
 export const prepareStoredLocalChatPayload = (args: {
   type: string;
   payload: unknown;
@@ -102,14 +46,7 @@ export const prepareStoredLocalChatPayload = (args: {
   }
 
   if (args.type === "assistant_message") {
-    const rawText = payloadRecord.text;
-    if (typeof rawText !== "string") {
-      return payloadRecord;
-    }
-    return {
-      ...payloadRecord,
-      text: normalizeAssistantDisplayText(rawText),
-    };
+    return payloadRecord;
   }
 
   const nextPayload = { ...payloadRecord };

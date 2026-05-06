@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   extractStepsFromEvents,
   extractTasksFromEvents,
-  getEventText,
   getFooterTasksFromEvents,
   mergeFooterTasks,
   type EventRecord,
@@ -21,18 +20,6 @@ const event = (
 });
 
 describe("extractTasksFromEvents", () => {
-  it("unwraps Fireworks output_text wrappers with single-quoted keys and double-quoted text", () => {
-    const wrappedText = String.raw`[{'type': 'output_text', 'text': "done — it's called Identity and it's sitting in the sidebar now.\n\nhere's what it does:", 'annotations': []}]`;
-
-    expect(
-      getEventText(event("assistant-1", 100, "assistant_message", {
-        text: wrappedText,
-      })),
-    ).toBe(
-      "done — it's called Identity and it's sitting in the sidebar now.\n\nhere's what it does:",
-    );
-  });
-
   it("treats agent-canceled as terminal even if a stale agent-progress arrives later", () => {
     // Race recreated by pause_agent: the orchestrator cancels the task while
     // the subagent's agent loop is still iterating tool calls, so a few

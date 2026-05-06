@@ -438,13 +438,12 @@ export const saveAssistantMessage = internalMutation({
   },
   handler: async (ctx, args) => {
     const timestamp = Date.now();
-    const text = normalizeAssistantDisplayText(args.text);
     const eventId = await ctx.db.insert("events", {
       conversationId: args.conversationId,
       timestamp,
       type: "assistant_message",
       payload: {
-        text,
+        text: args.text,
         ...(args.userMessageId && { userMessageId: args.userMessageId }),
         ...(args.usage && { usage: args.usage }),
       },
@@ -454,60 +453,6 @@ export const saveAssistantMessage = internalMutation({
   },
 });
 
-const normalizeAssistantDisplayText = (text: string): string => {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("[") || !trimmed.includes("output_text")) {
-    return text;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (Array.isArray(parsed)) {
-      const parts = parsed
-        .map((item) =>
-          item && typeof item === "object"
-            ? (item as Record<string, unknown>)
-            : null,
-        )
-        .filter((item): item is Record<string, unknown> => item !== null)
-        .filter((item) => item.type === "output_text" && typeof item.text === "string")
-        .map((item) => item.text as string)
-        .filter((value) => value.length > 0);
-      if (parts.length > 0) {
-        return parts.join("");
-      }
-    }
-  } catch {
-    // Fireworks has been observed returning a Python-repr-style list.
-  }
-
-  const parts: string[] = [];
-  const singleQuotedText = /'text'\s*:\s*'((?:\\.|[^'\\])*)'/g;
-  for (const match of trimmed.matchAll(singleQuotedText)) {
-    parts.push(
-      match[1]
-        .replace(/\\'/g, "'")
-        .replace(/\\n/g, "\n")
-        .replace(/\\t/g, "\t")
-        .replace(/\\\\/g, "\\"),
-    );
-  }
-  const singleKeyDoubleQuotedText = /'text'\s*:\s*"((?:\\.|[^"\\])*)"/g;
-  for (const match of trimmed.matchAll(singleKeyDoubleQuotedText)) {
-    try {
-      parts.push(JSON.parse(`"${match[1]}"`) as string);
-    } catch {
-      parts.push(
-        match[1]
-          .replace(/\\"/g, "\"")
-          .replace(/\\n/g, "\n")
-          .replace(/\\t/g, "\t")
-          .replace(/\\\\/g, "\\"),
-      );
-    }
-  }
-  return parts.length > 0 ? parts.join("") : text;
-};
 const deviceRequiredTypes = new Set([
   "user_message",
   "screen_event",
@@ -551,20 +496,6 @@ const resolveAppendEventPayload = (args: AppendEventArgs) => {
         code: "INVALID_ARGUMENT",
         message: "user_message text exceeds maximum allowed length of 100,000 characters",
       });
-    }
-  }
-
-  if (args.type === "assistant_message") {
-    const payload = args.payload as Record<string, unknown>;
-    if (typeof payload.text === "string") {
-      return {
-        payload: {
-          ...payload,
-          text: normalizeAssistantDisplayText(payload.text),
-        },
-        targetDeviceId: args.targetDeviceId,
-        timestamp: args.timestamp ?? Date.now(),
-      };
     }
   }
 

@@ -42,58 +42,9 @@ export const getEventText = (event: EventRecord): string => {
   if (!event.payload || typeof event.payload !== 'object') return ''
   const payload = event.payload as MessagePayload
   if (typeof payload.text === 'string' && payload.text.trim().length > 0) {
-    return normalizeAssistantDisplayText(payload.text)
+    return payload.text
   }
   return ''
-}
-
-const normalizeAssistantDisplayText = (text: string): string => {
-  const trimmed = text.trim()
-  if (!trimmed.startsWith("[") || !trimmed.includes("output_text")) {
-    return text
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as unknown
-    if (Array.isArray(parsed)) {
-      const parts = parsed
-        .map((item) => item && typeof item === 'object' ? item as Record<string, unknown> : null)
-        .filter((item): item is Record<string, unknown> => item !== null)
-        .filter((item) => item.type === 'output_text' && typeof item.text === 'string')
-        .map((item) => item.text as string)
-        .filter((value) => value.length > 0)
-      if (parts.length > 0) return parts.join('')
-    }
-  } catch {
-    // Fireworks can return a Python-repr-style content list through compat paths.
-  }
-
-  const parts: string[] = []
-  const singleQuotedText = /'text'\s*:\s*'((?:\\.|[^'\\])*)'/g
-  for (const match of trimmed.matchAll(singleQuotedText)) {
-    parts.push(
-      match[1]
-        .replace(/\\'/g, "'")
-        .replace(/\\n/g, "\n")
-        .replace(/\\t/g, "\t")
-        .replace(/\\\\/g, "\\"),
-    )
-  }
-  const singleKeyDoubleQuotedText = /'text'\s*:\s*"((?:\\.|[^"\\])*)"/g
-  for (const match of trimmed.matchAll(singleKeyDoubleQuotedText)) {
-    try {
-      parts.push(JSON.parse(`"${match[1]}"`) as string)
-    } catch {
-      parts.push(
-        match[1]
-          .replace(/\\"/g, '"')
-          .replace(/\\n/g, "\n")
-          .replace(/\\t/g, "\t")
-          .replace(/\\\\/g, "\\"),
-      )
-    }
-  }
-  return parts.length > 0 ? parts.join('') : text
 }
 
 // Persisted lifecycle event payloads (kebab-case `agent-*` events). These
