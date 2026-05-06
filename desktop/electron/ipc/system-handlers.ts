@@ -58,6 +58,8 @@ import {
   IPC_APP_QUIT_FOR_RESTART,
   IPC_AUTH_CONSUME_PENDING_CALLBACK,
   IPC_AUTH_RUNTIME_REFRESH_COMPLETE,
+  IPC_AUTH_STORAGE_GET_ITEM,
+  IPC_AUTH_STORAGE_SET_ITEM,
   IPC_BACKUP_GET_STATUS,
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
@@ -524,6 +526,47 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         payload?.token,
         payload?.hasConnectedAccount,
       );
+      return { ok: true };
+    },
+  );
+
+  ipcMain.on(
+    IPC_AUTH_STORAGE_GET_ITEM,
+    (event: IpcMainEvent, payload: { key?: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "auth:storage:getItem",
+        )
+      ) {
+        event.returnValue = null;
+        return;
+      }
+      const key = typeof payload?.key === "string" ? payload.key : "";
+      event.returnValue = options.authService.getAuthStorageItem(key);
+    },
+  );
+
+  ipcMain.handle(
+    IPC_AUTH_STORAGE_SET_ITEM,
+    (
+      event,
+      payload: {
+        key?: string;
+        value?: string | null;
+      },
+    ) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "auth:storage:setItem",
+        )
+      ) {
+        throw new Error("Blocked untrusted auth storage request.");
+      }
+      const key = typeof payload?.key === "string" ? payload.key : "";
+      const value = typeof payload?.value === "string" ? payload.value : null;
+      options.authService.setAuthStorageItem(key, value);
       return { ok: true };
     },
   );

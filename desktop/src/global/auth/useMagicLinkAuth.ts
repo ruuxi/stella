@@ -12,6 +12,7 @@ import {
 } from "react";
 import { getSetCookie } from "@convex-dev/better-auth/client/plugins";
 import { authClient } from "@/global/auth/lib/auth-client";
+import { desktopAuthStorage } from "@/global/auth/services/auth-storage";
 import { readConfiguredConvexSiteUrl } from "@/shared/lib/convex-urls";
 
 /** Same key as `crossDomainClient()` default in `auth-client.ts`. */
@@ -182,11 +183,23 @@ function useMagicLinkAuthState(): UseMagicLinkAuthResult {
             if (cancelledRef.current) return;
             setStatus("verifying");
             try {
-              const prev = localStorage.getItem(BETTER_AUTH_COOKIE_STORAGE_KEY);
-              const merged = getSetCookie(data.sessionCookie, prev ?? undefined);
-              localStorage.setItem(BETTER_AUTH_COOKIE_STORAGE_KEY, merged);
+              const prev = desktopAuthStorage.getItem(
+                BETTER_AUTH_COOKIE_STORAGE_KEY,
+              );
+              const merged = getSetCookie(
+                data.sessionCookie,
+                prev ?? undefined,
+              );
+              desktopAuthStorage.setItem(
+                BETTER_AUTH_COOKIE_STORAGE_KEY,
+                merged,
+              );
               // Notify the session signal so useSession() re-fetches
-              const store = (authClient as unknown as { $store?: { notify: (s: string) => void } }).$store;
+              const store = (
+                authClient as unknown as {
+                  $store?: { notify: (s: string) => void };
+                }
+              ).$store;
               if (store) {
                 store.notify("$sessionSignal");
               } else {
@@ -260,7 +273,9 @@ export function MagicLinkAuthProvider({ children }: { children: ReactNode }) {
 export const useMagicLinkAuth = (): UseMagicLinkAuthResult => {
   const value = useContext(MagicLinkAuthContext);
   if (!value) {
-    throw new Error("useMagicLinkAuth must be used within MagicLinkAuthProvider");
+    throw new Error(
+      "useMagicLinkAuth must be used within MagicLinkAuthProvider",
+    );
   }
   return value;
 };

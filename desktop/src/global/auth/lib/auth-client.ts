@@ -1,16 +1,27 @@
 import { createAuthClient } from "better-auth/react";
-import { convexClient, crossDomainClient } from "@convex-dev/better-auth/client/plugins";
+import {
+  convexClient,
+  crossDomainClient,
+} from "@convex-dev/better-auth/client/plugins";
 import { anonymousClient, magicLinkClient } from "better-auth/client/plugins";
 import { readConfiguredConvexSiteUrl } from "@/shared/lib/convex-urls";
+import { desktopAuthStorage } from "@/global/auth/services/auth-storage";
 
 // `convexClient()` exposes `authClient.convex.token()`, which is the JWT
 // `desktop/src/global/auth/services/auth-token.ts` actually consumes. The
 // standalone `jwtClient()` was paired with a now-removed `jwt({...})` plugin
 // in `backend/convex/auth.ts` (see comment there) and is intentionally absent.
-const plugins = [convexClient(), crossDomainClient(), anonymousClient(), magicLinkClient()];
+const plugins = [
+  convexClient(),
+  crossDomainClient({ storage: desktopAuthStorage }),
+  anonymousClient(),
+  magicLinkClient(),
+];
 
 // Capture the full plugin-aware return type so signIn.anonymous(), etc. are typed.
-type AuthClient = ReturnType<typeof createAuthClient<{ plugins: typeof plugins }>>;
+type AuthClient = ReturnType<
+  typeof createAuthClient<{ plugins: typeof plugins }>
+>;
 
 let _instance: AuthClient | null = null;
 
@@ -22,7 +33,9 @@ export const authClient = new Proxy({} as AuthClient, {
         import.meta.env.VITE_CONVEX_SITE_URL as string | undefined,
       );
       if (!baseURL) {
-        throw new Error("Convex site URL is not set. Cannot initialize auth client.");
+        throw new Error(
+          "Convex site URL is not set. Cannot initialize auth client.",
+        );
       }
       _instance = createAuthClient({
         baseURL,
