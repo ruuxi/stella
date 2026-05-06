@@ -16,6 +16,7 @@ import {
 import { useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
+import { Select } from "@/ui/select";
 import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import {
   Dialog,
@@ -783,20 +784,21 @@ export const PetsApp = () => {
             onChange={(event) => setQuery(event.currentTarget.value)}
           />
         </label>
-        <label className="pets-sort">
+        <div className="pets-sort">
           <span className="pets-sort-label">Sort</span>
-          <select
+          <Select<SortOption>
             className="pets-sort-select"
             value={sort}
-            onChange={(event) => setSort(event.currentTarget.value as SortOption)}
-          >
-            {(Object.keys(SORT_LABELS) as SortOption[]).map((option) => (
-              <option key={option} value={option}>
-                {SORT_LABELS[option]}
-              </option>
-            ))}
-          </select>
-        </label>
+            onValueChange={(value) => setSort(value)}
+            aria-label="Sort"
+            options={(Object.keys(SORT_LABELS) as SortOption[]).map(
+              (option) => ({
+                value: option,
+                label: SORT_LABELS[option],
+              }),
+            )}
+          />
+        </div>
         <div className="pets-toolbar-actions">
           <Button
             variant="secondary"

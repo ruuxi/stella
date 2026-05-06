@@ -295,7 +295,7 @@
 
 /* ---- Model Controls ---- */
 
-[data-component="native-select"] {
+[data-component="select"] {
   width: 220px;
 }
 

@@ -847,6 +847,16 @@
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
+[data-slot="select-trigger"].fashion-size-input {
+  height: auto;
+}
+
+[data-slot="select-trigger"].fashion-size-input:focus-visible,
+[data-slot="select-trigger"].fashion-size-input[data-state="open"] {
+  border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
 .fashion-sheet-actions {
   display: flex;
   justify-content: flex-end;

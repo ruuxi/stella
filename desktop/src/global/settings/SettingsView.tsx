@@ -20,7 +20,7 @@ import type {
 } from "@/shared/types/electron";
 import type { LegalDocument } from "@/global/legal/legal-text";
 import { Button } from "@/ui/button";
-import { NativeSelect } from "@/ui/native-select";
+import { Select } from "@/ui/select";
 import { AgentModelPicker } from "@/global/settings/AgentModelPicker";
 import {
   findApiKey,
@@ -518,21 +518,17 @@ function ShortcutsSettingsTab() {
             </div>
           </div>
           <div className="settings-row-control">
-            <NativeSelect
+            <Select<RadialTriggerCode>
               className="settings-runtime-select"
               value={radialTriggerKey}
               disabled={!loaded}
               aria-label="Radial dial shortcut"
-              onChange={(event) =>
-                void saveRadialTrigger(event.target.value as RadialTriggerCode)
-              }
-            >
-              {radialOptions.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
+              onValueChange={(value) => void saveRadialTrigger(value)}
+              options={radialOptions.map((option) => ({
+                value: option.code,
+                label: option.label,
+              }))}
+            />
           </div>
         </div>
         <div className="settings-row">
@@ -543,23 +539,17 @@ function ShortcutsSettingsTab() {
             </div>
           </div>
           <div className="settings-row-control">
-            <NativeSelect
+            <Select<MiniDoubleTapModifier>
               className="settings-runtime-select"
               value={miniDoubleTapModifier}
               disabled={!loaded}
               aria-label="Mini window shortcut"
-              onChange={(event) =>
-                void saveMiniDoubleTap(
-                  event.target.value as MiniDoubleTapModifier,
-                )
-              }
-            >
-              {MINI_DOUBLE_TAP_MODIFIER_OPTIONS.map((modifier) => (
-                <option key={modifier} value={modifier}>
-                  {getMiniDoubleTapModifierLabel(modifier, platform)}
-                </option>
-              ))}
-            </NativeSelect>
+              onValueChange={(value) => void saveMiniDoubleTap(value)}
+              options={MINI_DOUBLE_TAP_MODIFIER_OPTIONS.map((modifier) => ({
+                value: modifier,
+                label: getMiniDoubleTapModifierLabel(modifier, platform),
+              }))}
+            />
           </div>
         </div>
       </div>
@@ -952,20 +942,19 @@ function BasicSettingsTab() {
             </div>
           </div>
           <div className="settings-row-control">
-            <NativeSelect
+            <Select
               className="settings-runtime-select"
               value={personalityVoiceId}
               disabled={!personalityVoiceLoaded || isSavingPersonalityVoice}
-              onChange={(event) =>
-                void handlePersonalityVoiceChange(event.target.value)
+              aria-label="Personality"
+              onValueChange={(value) =>
+                void handlePersonalityVoiceChange(value)
               }
-            >
-              {PERSONALITY_VOICES.map((voice) => (
-                <option key={voice.id} value={voice.id}>
-                  {voice.label}
-                </option>
-              ))}
-            </NativeSelect>
+              options={PERSONALITY_VOICES.map((voice) => ({
+                value: voice.id,
+                label: voice.label,
+              }))}
+            />
           </div>
         </div>
       </div>
@@ -1433,19 +1422,19 @@ function BackupSettingsTab() {
             ) : null}
           </div>
           <div className="settings-row-control">
-            <NativeSelect
+            <Select
               className="settings-runtime-select"
               value={syncMode}
-              onChange={(event) =>
-                void handleSyncModeChange(event.target.value)
-              }
+              onValueChange={(value) => void handleSyncModeChange(value)}
               disabled={
                 !backupLoaded || isSavingSyncMode || isBillingStatusLoading
               }
-            >
-              <option value="off">Off</option>
-              <option value="on">Automatic hourly backups</option>
-            </NativeSelect>
+              aria-label="Backups"
+              options={[
+                { value: "off", label: "Off" },
+                { value: "on", label: "Automatic hourly backups" },
+              ]}
+            />
           </div>
         </div>
         <div className="settings-row">
@@ -2269,28 +2258,29 @@ function ModelConfigSection() {
           </div>
           <div className="settings-row-control">
             {runtimePreferencesLoaded ? (
-              <NativeSelect
+              <Select
                 className="settings-runtime-select"
                 value={effectiveGeneralAgentEngine}
-                onChange={(e) =>
-                  void handleAgentEngineChange("general", e.target.value)
+                onValueChange={(value) =>
+                  void handleAgentEngineChange("general", value)
                 }
                 disabled={isSavingRuntimePreference}
-              >
-                {GENERAL_AGENT_ENGINE_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))}
-              </NativeSelect>
+                aria-label="Engine"
+                options={GENERAL_AGENT_ENGINE_OPTIONS.map((option) => ({
+                  value: option.id,
+                  label: option.name,
+                }))}
+              />
             ) : (
-              <NativeSelect
+              <Select
                 className="settings-runtime-select"
                 value="loading"
                 disabled
-              >
-                <option value="loading">Loading saved setting...</option>
-              </NativeSelect>
+                aria-label="Engine"
+                options={[
+                  { value: "loading", label: "Loading saved setting..." },
+                ]}
+              />
             )}
           </div>
         </div>
@@ -2303,28 +2293,29 @@ function ModelConfigSection() {
           </div>
           <div className="settings-row-control">
             {runtimePreferencesLoaded ? (
-              <NativeSelect
+              <Select
                 className="settings-runtime-select"
                 value={String(effectiveMaxAgentConcurrency)}
-                onChange={(e) =>
-                  void handleMaxAgentConcurrencyChange(e.target.value)
+                onValueChange={(value) =>
+                  void handleMaxAgentConcurrencyChange(value)
                 }
                 disabled={isSavingRuntimePreference}
-              >
-                {MAX_AGENT_CONCURRENCY_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </NativeSelect>
+                aria-label="Max running tasks"
+                options={MAX_AGENT_CONCURRENCY_OPTIONS.map((value) => ({
+                  value: String(value),
+                  label: String(value),
+                }))}
+              />
             ) : (
-              <NativeSelect
+              <Select
                 className="settings-runtime-select"
                 value="loading"
                 disabled
-              >
-                <option value="loading">Loading saved setting...</option>
-              </NativeSelect>
+                aria-label="Max running tasks"
+                options={[
+                  { value: "loading", label: "Loading saved setting..." },
+                ]}
+              />
             )}
           </div>
         </div>

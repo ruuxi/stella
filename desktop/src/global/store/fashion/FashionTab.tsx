@@ -21,6 +21,7 @@ import {
   type FashionOutfit,
   type FashionOutfitProduct,
 } from "./use-fashion-data";
+import { Select } from "@/ui/select";
 import "./fashion.css";
 
 const SIZE_FIELDS: Array<{ key: string; label: string; placeholder: string }> = [
@@ -338,17 +339,16 @@ const ProfileSheet = ({
           <div className="fashion-fields">
             <div>
               <label className="fashion-field-label">Gender</label>
-              <select
+              <Select
                 className="fashion-size-input"
                 value={gender}
-                onChange={(e) => setGender(e.target.value)}
-              >
-                {GENDER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(value) => setGender(value)}
+                aria-label="Gender"
+                options={GENDER_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+              />
             </div>
 
             <div>

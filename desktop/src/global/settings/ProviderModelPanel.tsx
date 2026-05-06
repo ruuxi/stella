@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, KeyRound, LogIn, Search } from "lucide-react";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
+import { Select } from "@/ui/select";
 import {
   searchCatalogModels,
   type CatalogModel,
@@ -215,22 +216,19 @@ export function ProviderModelPanel({
         <span className="model-picker-current-kicker">Selected</span>
         <span className="model-picker-current-label">{currentLabel}</span>
         {canEditReasoning ? (
-          <label className="model-picker-current-reasoning">
+          <div className="model-picker-current-reasoning">
             <span>Reasoning</span>
-            <select
+            <Select
               value={reasoningEffort}
-              onChange={(event) =>
-                onReasoningEffortSelect(event.currentTarget.value)
-              }
+              onValueChange={(value) => onReasoningEffortSelect(value)}
               disabled={disabled}
-            >
-              {reasoningEffortOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              aria-label="Reasoning effort"
+              options={reasoningEffortOptions.map((option) => ({
+                value: option.id,
+                label: option.label,
+              }))}
+            />
+          </div>
         ) : null}
       </div>
       <aside className="model-picker-rail" role="tablist">

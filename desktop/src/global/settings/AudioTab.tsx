@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Switch } from "@/ui/switch";
-import { NativeSelect } from "@/ui/native-select";
+import { Select } from "@/ui/select";
 import {
   PREFERRED_MIC_KEY,
   PREFERRED_SPEAKER_KEY,
@@ -335,18 +335,19 @@ export function AudioTab() {
               </div>
             </div>
             <div className="settings-row-control">
-              <NativeSelect
+              <Select
                 className="settings-runtime-select"
                 value={selectedMicId}
-                onChange={(e) => handleMicChange(e.target.value)}
-              >
-                <option value="">System default</option>
-                {audioInputDevices.map((device, index) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Microphone ${index + 1}`}
-                  </option>
-                ))}
-              </NativeSelect>
+                onValueChange={(value) => handleMicChange(value)}
+                aria-label="Microphone"
+                options={[
+                  { value: "", label: "System default" },
+                  ...audioInputDevices.map((device, index) => ({
+                    value: device.deviceId,
+                    label: device.label || `Microphone ${index + 1}`,
+                  })),
+                ]}
+              />
             </div>
           </div>
         ) : null}
@@ -419,18 +420,19 @@ export function AudioTab() {
               </div>
             </div>
             <div className="settings-row-control">
-              <NativeSelect
+              <Select
                 className="settings-runtime-select"
                 value={selectedSpeakerId}
-                onChange={(e) => handleSpeakerChange(e.target.value)}
-              >
-                <option value="">System default</option>
-                {audioOutputDevices.map((device, index) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Speaker ${index + 1}`}
-                  </option>
-                ))}
-              </NativeSelect>
+                onValueChange={(value) => handleSpeakerChange(value)}
+                aria-label="Output device"
+                options={[
+                  { value: "", label: "System default" },
+                  ...audioOutputDevices.map((device, index) => ({
+                    value: device.deviceId,
+                    label: device.label || `Speaker ${index + 1}`,
+                  })),
+                ]}
+              />
             </div>
           </div>
         ) : (
