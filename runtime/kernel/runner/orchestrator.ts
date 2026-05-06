@@ -72,6 +72,29 @@ export const createOrchestratorController = (
   type StartPreparedRunArgs = Parameters<
     typeof startPreparedOrchestratorRun
   >[0];
+  const createSteerableCallbacks = (initialCallbacks: AgentCallbacks) => {
+    let currentCallbacks = initialCallbacks;
+    const callbackProxy: AgentCallbacks = {
+      onRunStarted: (event) => currentCallbacks.onRunStarted?.(event),
+      onUserMessage: (event) => currentCallbacks.onUserMessage?.(event),
+      onStream: (event) => currentCallbacks.onStream(event),
+      onAgentReasoning: (event) => currentCallbacks.onAgentReasoning?.(event),
+      onStatus: (event) => currentCallbacks.onStatus?.(event),
+      onToolStart: (event) => currentCallbacks.onToolStart(event),
+      onToolEnd: (event) => currentCallbacks.onToolEnd(event),
+      onError: (event) => currentCallbacks.onError(event),
+      onInterrupted: (event) => currentCallbacks.onInterrupted?.(event),
+      onEnd: (event) => currentCallbacks.onEnd(event),
+    };
+
+    return {
+      callbackProxy,
+      switchTo(nextCallbacks: AgentCallbacks) {
+        currentCallbacks = nextCallbacks;
+      },
+    };
+  };
+
   const launchOrchestratorRun = async (args: {
     alreadyRunningError: string;
     conversationId: string;
@@ -83,7 +106,10 @@ export const createOrchestratorController = (
     userMessageId: string;
     responseTarget?: StartPreparedRunArgs["responseTarget"];
     callbacks: AgentCallbacks;
-    createRunCallbacks: StartPreparedRunArgs["createRuntimeCallbacks"];
+    createRunCallbacks: (
+      args: Parameters<StartPreparedRunArgs["createRuntimeCallbacks"]>[0],
+      callbacks: AgentCallbacks,
+    ) => ReturnType<StartPreparedRunArgs["createRuntimeCallbacks"]>;
     onPrepared?: StartPreparedRunArgs["onPrepared"];
   }): Promise<{ runId: string }> => {
     if (context.state.activeOrchestratorRunId) {
@@ -91,6 +117,7 @@ export const createOrchestratorController = (
     }
 
     const runId = `local:${crypto.randomUUID()}`;
+    const steerableCallbacks = createSteerableCallbacks(args.callbacks);
     context.state.runCallbacksByRunId.set(runId, args.callbacks);
     if (args.uiVisibility !== UI_VISIBILITY_HIDDEN) {
       context.state.conversationCallbacks.set(
@@ -113,7 +140,8 @@ export const createOrchestratorController = (
       attachments: args.attachments,
       userMessageId: args.userMessageId,
       ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
-      createRuntimeCallbacks: args.createRunCallbacks,
+      createRuntimeCallbacks: (runArgs) =>
+        args.createRunCallbacks(runArgs, steerableCallbacks.callbackProxy),
       cleanupRun,
       onPrepared: (prepared) => {
         args.callbacks.onRunStarted?.({
@@ -134,6 +162,9 @@ export const createOrchestratorController = (
           conversationId: args.conversationId,
           agentType: args.agentType,
           uiVisibility: args.uiVisibility ?? UI_VISIBILITY_VISIBLE,
+          queueCallbackSwitch: (callbacks) => {
+            steerableCallbacks.switchTo(callbacks);
+          },
           queueMessage: (
             message: AgentMessage,
             delivery: "steer" | "followUp",
@@ -194,7 +225,7 @@ export const createOrchestratorController = (
         ? { responseTarget: startArgs.responseTarget }
         : {}),
       callbacks,
-      createRunCallbacks: ({ runId }) =>
+      createRunCallbacks: ({ runId }, callbacks) =>
         createRuntimeCallbacks(runId, callbacks),
     });
   };
@@ -281,6 +312,7 @@ export const createOrchestratorController = (
     userPrompt: string;
     promptMessages?: ChatPayload["promptMessages"];
     attachments: StartPreparedRunArgs["attachments"];
+    callbacks: AgentCallbacks;
   }) => {
     const trimmedUserPrompt = args.userPrompt.trim();
     const promptInputs =
@@ -294,7 +326,9 @@ export const createOrchestratorController = (
         : [{ text: trimmedUserPrompt, messageType: "user" as const }];
     const timestamp = Date.now();
     if (promptInputs.some((message) => message.messageType !== "message")) {
-      args.session.queueUserMessageId(args.userMessageId);
+      args.session.queueUserMessageId(args.userMessageId, () => {
+        args.session.queueCallbackSwitch(args.callbacks);
+      });
     }
     for (const [index, promptInput] of promptInputs.entries()) {
       const message = createRuntimePromptAgentMessage(
@@ -444,7 +478,9 @@ export const createOrchestratorController = (
       input.agentType,
     );
     if (liveSession) {
-      liveSession.queueUserMessageId(userMessageId);
+      liveSession.queueUserMessageId(userMessageId, () => {
+        liveSession.queueCallbackSwitch(callbacks);
+      });
       const message = persistInjectedUserMessage(liveSession, text, timestamp);
       liveSession.queueMessage(message, delivery);
       return;
@@ -499,6 +535,7 @@ export const createOrchestratorController = (
         userPrompt,
         promptMessages,
         attachments,
+        callbacks,
       });
       return { runId: liveSession.runId };
     }
@@ -513,7 +550,7 @@ export const createOrchestratorController = (
       attachments,
       userMessageId: payload.userMessageId,
       callbacks,
-      createRunCallbacks: ({ runId }) =>
+      createRunCallbacks: ({ runId }, callbacks) =>
         createRuntimeCallbacks(runId, callbacks),
       onPrepared: (prepared) => {
         const runId = prepared.runId;

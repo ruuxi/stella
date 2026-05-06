@@ -172,6 +172,7 @@ export type ActiveOrchestratorSession = RuntimeExecutionSessionHandle & {
   conversationId: string;
   agentType: string;
   uiVisibility: "visible" | "hidden";
+  queueCallbackSwitch: (callbacks: AgentCallbacks) => void;
   queueMessage: (message: AgentMessage, delivery: "steer" | "followUp") => void;
 };
 
@@ -295,7 +296,9 @@ export type RunnerContext = {
   toolHost: {
     getToolCatalog: (
       agentType?: string,
-      options?: { model?: Pick<Model<Api>, "api" | "provider" | "id" | "name"> },
+      options?: {
+        model?: Pick<Model<Api>, "api" | "provider" | "id" | "name">;
+      },
     ) => ToolMetadata[];
     executeTool: (
       toolName: string,
