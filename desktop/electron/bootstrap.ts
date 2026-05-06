@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, crashReporter } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
@@ -44,10 +44,25 @@ const configureDevUserDataPath = () => {
   app.setPath("sessionData", path.join(devUserDataPath, "session-data"));
 };
 
+const startLocalCrashReporter = () => {
+  try {
+    crashReporter.start({
+      uploadToServer: false,
+      compress: true,
+      globalExtra: {
+        app: "stella",
+      },
+    });
+  } catch {
+    // Crash reporting is best-effort diagnostics only.
+  }
+};
+
 export const bootstrapMainProcess = () => {
   app.setName(STELLA_APP_NAME);
   installDevBrokenPipeGuards();
   configureDevUserDataPath();
+  startLocalCrashReporter();
   if (process.platform === "win32") {
     app.setAppUserModelId(STELLA_WINDOWS_APP_USER_MODEL_ID);
   }

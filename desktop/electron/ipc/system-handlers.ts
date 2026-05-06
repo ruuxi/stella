@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  contentTracing,
   dialog,
   ipcMain,
   powerSaveBlocker,
@@ -69,6 +70,9 @@ import {
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
+  IPC_DIAGNOSTICS_RECORD_HEAP_TRACE,
+  IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED,
+  IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,
   IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT,
   IPC_SYSTEM_OPEN_FDA,
   IPC_SOCIAL_SESSIONS_CREATE,
@@ -108,6 +112,10 @@ import {
   type ResettableMacPermissionKind,
 } from "../utils/macos-permissions.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
+import {
+  getGlobalShortcutsSuspended,
+  setGlobalShortcutsSuspended,
+} from "./global-shortcuts.js";
 
 import { createRequire } from "node:module";
 
@@ -182,6 +190,12 @@ const openMacPermissionSettings = async (kind: MacPermissionSettingsKind) => {
   }
   await shell.openExternal(url);
   return { opened: true, url };
+};
+
+const clampHeapTraceDurationMs = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 5_000;
+  return Math.min(30_000, Math.max(1_000, Math.floor(parsed)));
 };
 
 type SystemHandlersOptions = {
@@ -570,7 +584,10 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
 
   ipcMain.handle(IPC_AUTH_DELETE_USER, async (event) => {
     if (
-      !options.externalLinkService.assertPrivilegedSender(event, "auth:deleteUser")
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "auth:deleteUser",
+      )
     ) {
       throw new Error("Blocked untrusted account deletion request.");
     }
@@ -586,7 +603,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           "auth:verifyCallbackUrl",
         )
       ) {
-        throw new Error("Blocked untrusted auth callback verification request.");
+        throw new Error(
+          "Blocked untrusted auth callback verification request.",
+        );
       }
       return await options.authService.verifyAuthCallbackUrl(
         typeof payload?.url === "string" ? payload.url : "",
@@ -1180,6 +1199,77 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         saveLocalPreferences(stellaRoot, prefs);
       }
       return { enabled: nextEnabled };
+    },
+  );
+
+  ipcMain.handle(IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED, (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED,
+      )
+    ) {
+      throw new Error(
+        "Blocked untrusted globalShortcuts:getSuspended request.",
+      );
+    }
+    return getGlobalShortcutsSuspended();
+  });
+
+  ipcMain.handle(
+    IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,
+    (event, suspended: boolean) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted globalShortcuts:setSuspended request.",
+        );
+      }
+      return setGlobalShortcutsSuspended(suspended === true);
+    },
+  );
+
+  ipcMain.handle(
+    IPC_DIAGNOSTICS_RECORD_HEAP_TRACE,
+    async (event, payload?: { durationMs?: number }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_DIAGNOSTICS_RECORD_HEAP_TRACE,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted diagnostics:recordHeapTrace request.",
+        );
+      }
+      const durationMs = clampHeapTraceDurationMs(payload?.durationMs);
+      try {
+        await contentTracing.enableHeapProfiling?.();
+        await contentTracing.startRecording({
+          included_categories: ["disabled-by-default-memory-infra"],
+          excluded_categories: ["*"],
+          memory_dump_config: {
+            triggers: [{ mode: "detailed", periodic_interval_ms: 1000 }],
+          },
+        });
+        await new Promise((resolve) => setTimeout(resolve, durationMs));
+        const tracePath = await contentTracing.stopRecording();
+        return { ok: true, path: tracePath };
+      } catch (error) {
+        try {
+          await contentTracing.stopRecording();
+        } catch {
+          // No active trace, or tracing already stopped.
+        }
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
     },
   );
 

@@ -666,6 +666,16 @@ export type ElectronSystemApi = {
   setSoundNotificationsEnabled: (
     enabled: boolean,
   ) => Promise<{ enabled: boolean }>;
+  setGlobalShortcutsSuspended: (
+    suspended: boolean,
+  ) => Promise<{ supported: boolean; suspended: boolean }>;
+  getGlobalShortcutsSuspended: () => Promise<{
+    supported: boolean;
+    suspended: boolean;
+  }>;
+  recordHeapTrace: (
+    durationMs?: number,
+  ) => Promise<{ ok: boolean; path?: string; error?: string }>;
   getWakeWordEnabled: () => Promise<boolean>;
   setWakeWordEnabled: (enabled: boolean) => Promise<{ enabled: boolean }>;
   getPersonalityVoice: () => Promise<string | null>;
@@ -919,6 +929,13 @@ export type ElectronStoreApi = {
     }>;
     oauth?: Array<{ tokenKey: string }>;
   }>;
+  showBlueprintNotification: (payload: {
+    messageId: string;
+    name: string;
+  }) => Promise<{ ok: boolean }>;
+  onBlueprintNotificationActivated: (
+    callback: (payload: { messageId: string | null }) => void,
+  ) => () => void;
 };
 
 export type ElectronStoreWebApi = {

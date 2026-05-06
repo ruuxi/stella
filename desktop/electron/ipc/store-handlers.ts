@@ -1,5 +1,10 @@
 import { promises as fs } from "fs";
-import { ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import {
+  ipcMain,
+  shell,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from "electron";
 import path from "path";
 import type {
   SelfModFeatureSnapshot,
@@ -15,7 +20,11 @@ import {
   listStellaConnectors,
   removeOfficialConnector,
 } from "../../../runtime/kernel/mcp/state.js";
-import { connectMcpOAuth, saveMcpAccessToken } from "../../../runtime/kernel/mcp/oauth.js";
+import {
+  connectMcpOAuth,
+  saveMcpAccessToken,
+} from "../../../runtime/kernel/mcp/oauth.js";
+import { IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION } from "../../src/shared/contracts/ipc-channels.js";
 
 const STORE_INSTALL_ARTIFACT_LIMIT = 20;
 
@@ -42,6 +51,10 @@ type StoreHandlersOptions = {
   goBackInStoreWebView?: () => void;
   goForwardInStoreWebView?: () => void;
   reloadStoreWebView?: () => void;
+  showBlueprintNotification?: (payload: {
+    messageId: string;
+    name: string;
+  }) => void;
   dispatchStoreWebLocalAction?: (
     action: unknown,
     opts?: { timeoutMs?: number },
@@ -81,17 +94,22 @@ const cleanupStoreInstallArtifacts = async (
   const artifactRoot = path.join(stellaRoot, "state", "raw", "store-installs");
   const safePackageSegment = safeStorePackageSegment(payload.packageId);
   const packagePrefix = `${safePackageSegment}-r`;
-  await fs.rm(path.join(artifactRoot, `${packagePrefix}${payload.releaseNumber}`), {
-    recursive: true,
-    force: true,
-  });
+  await fs.rm(
+    path.join(artifactRoot, `${packagePrefix}${payload.releaseNumber}`),
+    {
+      recursive: true,
+      force: true,
+    },
+  );
 
   const entries = await fs
     .readdir(artifactRoot, { withFileTypes: true })
     .catch(() => []);
   await Promise.all(
     entries
-      .filter((entry) => entry.isDirectory() && entry.name.startsWith(packagePrefix))
+      .filter(
+        (entry) => entry.isDirectory() && entry.name.startsWith(packagePrefix),
+      )
       .map((entry) =>
         fs.rm(path.join(artifactRoot, entry.name), {
           recursive: true,
@@ -156,8 +174,30 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
   };
 
   ipcMain.handle(
+    IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION,
+    async (event, payload?: { messageId?: string; name?: string }) => {
+      assertPrivilegedRequest(
+        options,
+        event,
+        IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION,
+      );
+      const messageId =
+        typeof payload?.messageId === "string" ? payload.messageId : "";
+      const name = typeof payload?.name === "string" ? payload.name.trim() : "";
+      if (!messageId || !name) {
+        return { ok: false };
+      }
+      options.showBlueprintNotification?.({ messageId, name });
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
     "storeWeb:show",
-    async (event, payload?: { tab?: string; package?: string; packageId?: string }) => {
+    async (
+      event,
+      payload?: { tab?: string; package?: string; packageId?: string },
+    ) => {
       assertPrivilegedRequest(options, event, "storeWeb:show");
       options.showStoreWebView?.({
         tab: payload?.tab,
@@ -277,13 +317,16 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     });
   });
 
-  ipcMain.handle("storeWeb:installEmojiPack", async (event, payload: unknown) => {
-    assertStoreWebRequest(event, "storeWeb:installEmojiPack");
-    return await handleStoreWebLocalAction({
-      type: "installEmojiPack",
-      payload,
-    });
-  });
+  ipcMain.handle(
+    "storeWeb:installEmojiPack",
+    async (event, payload: unknown) => {
+      assertStoreWebRequest(event, "storeWeb:installEmojiPack");
+      return await handleStoreWebLocalAction({
+        type: "installEmojiPack",
+        payload,
+      });
+    },
+  );
 
   ipcMain.handle("storeWeb:clearEmojiPack", async (event, payload: unknown) => {
     assertStoreWebRequest(event, "storeWeb:clearEmojiPack");
@@ -300,25 +343,28 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     });
   });
 
-  ipcMain.handle("storeWeb:fashionLocalAction", async (event, payload: unknown) => {
-    assertStoreWebRequest(event, "storeWeb:fashionLocalAction");
-    const payloadRecord =
-      payload && typeof payload === "object"
-        ? (payload as Record<string, unknown>)
-        : {};
-    const timeoutMs =
-      payloadRecord.action === "pickAndSaveBodyPhoto" ||
-      payloadRecord.action === "pickTryOnImages"
-        ? 5 * 60 * 1000
-        : undefined;
-    return await handleStoreWebLocalAction(
-      {
-        type: "fashion",
-        payload,
-      },
-      timeoutMs ? { timeoutMs } : undefined,
-    );
-  });
+  ipcMain.handle(
+    "storeWeb:fashionLocalAction",
+    async (event, payload: unknown) => {
+      assertStoreWebRequest(event, "storeWeb:fashionLocalAction");
+      const payloadRecord =
+        payload && typeof payload === "object"
+          ? (payload as Record<string, unknown>)
+          : {};
+      const timeoutMs =
+        payloadRecord.action === "pickAndSaveBodyPhoto" ||
+        payloadRecord.action === "pickTryOnImages"
+          ? 5 * 60 * 1000
+          : undefined;
+      return await handleStoreWebLocalAction(
+        {
+          type: "fashion",
+          payload,
+        },
+        timeoutMs ? { timeoutMs } : undefined,
+      );
+    },
+  );
 
   ipcMain.handle("theme:listInstalled", async () => {
     const stellaRoot = options.getStellaRoot();
@@ -333,9 +379,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       event,
       "store:readFeatureSnapshot",
       async (runner) =>
-        (await runner.readSelfModFeatureSnapshot()) satisfies
-          | SelfModFeatureSnapshot
-          | null,
+        (await runner.readSelfModFeatureSnapshot()) satisfies SelfModFeatureSnapshot | null,
     );
   });
 
@@ -344,45 +388,73 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       event,
       "storeWeb:readFeatureSnapshot",
       async (runner) =>
-        (await runner.readSelfModFeatureSnapshot()) satisfies
-          | SelfModFeatureSnapshot
-          | null,
+        (await runner.readSelfModFeatureSnapshot()) satisfies SelfModFeatureSnapshot | null,
     );
   });
 
   ipcMain.handle("store:listPackages", async (event) => {
-    return await withStoreRunner(event, "store:listPackages", async (runner) =>
-      await runner.listStorePackages() satisfies StorePackageRecord[]);
+    return await withStoreRunner(
+      event,
+      "store:listPackages",
+      async (runner) =>
+        (await runner.listStorePackages()) satisfies StorePackageRecord[],
+    );
   });
 
-  ipcMain.handle("store:getPackage", async (event, payload: { packageId: string }) => {
-    return await withStoreRunner(event, "store:getPackage", async (runner) =>
-      await runner.getStorePackage(payload.packageId) satisfies StorePackageRecord | null);
-  });
+  ipcMain.handle(
+    "store:getPackage",
+    async (event, payload: { packageId: string }) => {
+      return await withStoreRunner(
+        event,
+        "store:getPackage",
+        async (runner) =>
+          (await runner.getStorePackage(
+            payload.packageId,
+          )) satisfies StorePackageRecord | null,
+      );
+    },
+  );
 
-  ipcMain.handle("store:listReleases", async (event, payload: { packageId: string }) => {
-    return await withStoreRunner(event, "store:listReleases", async (runner) =>
-      await runner.listStorePackageReleases(payload.packageId) satisfies StorePackageReleaseRecord[]);
-  });
+  ipcMain.handle(
+    "store:listReleases",
+    async (event, payload: { packageId: string }) => {
+      return await withStoreRunner(
+        event,
+        "store:listReleases",
+        async (runner) =>
+          (await runner.listStorePackageReleases(
+            payload.packageId,
+          )) satisfies StorePackageReleaseRecord[],
+      );
+    },
+  );
 
   ipcMain.handle(
     "store:getRelease",
     async (event, payload: { packageId: string; releaseNumber: number }) =>
-      await withStoreRunner(event, "store:getRelease", async (runner) =>
-        await runner.getStorePackageRelease(
-        payload.packageId,
-        payload.releaseNumber,
-      ) satisfies StorePackageReleaseRecord | null),
+      await withStoreRunner(
+        event,
+        "store:getRelease",
+        async (runner) =>
+          (await runner.getStorePackageRelease(
+            payload.packageId,
+            payload.releaseNumber,
+          )) satisfies StorePackageReleaseRecord | null,
+      ),
   );
 
   ipcMain.handle(
     "storeWeb:getRelease",
     async (event, payload: { packageId: string; releaseNumber: number }) =>
-      await withStoreWebRunner(event, "storeWeb:getRelease", async (runner) =>
-        await runner.getStorePackageRelease(
-          payload.packageId,
-          payload.releaseNumber,
-        ) satisfies StorePackageReleaseRecord | null),
+      await withStoreWebRunner(
+        event,
+        "storeWeb:getRelease",
+        async (runner) =>
+          (await runner.getStorePackageRelease(
+            payload.packageId,
+            payload.releaseNumber,
+          )) satisfies StorePackageReleaseRecord | null,
+      ),
   );
 
   // Install via the new blueprint flow: the renderer fetches the
@@ -404,17 +476,22 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         commits?: Array<{ hash: string; subject: string; diff: string }>;
       },
     ) =>
-      await withStoreRunner(event, "store:installFromBlueprint", async (runner) => {
-        const installRecord =
-          await runner.installFromBlueprint(payload) satisfies StoreInstallRecord;
-        const stellaRoot = options.getStellaRoot();
-        if (stellaRoot) {
-          await cleanupStoreInstallArtifacts(stellaRoot, payload).catch(
-            () => undefined,
-          );
-        }
-        return installRecord;
-      }),
+      await withStoreRunner(
+        event,
+        "store:installFromBlueprint",
+        async (runner) => {
+          const installRecord = (await runner.installFromBlueprint(
+            payload,
+          )) satisfies StoreInstallRecord;
+          const stellaRoot = options.getStellaRoot();
+          if (stellaRoot) {
+            await cleanupStoreInstallArtifacts(stellaRoot, payload).catch(
+              () => undefined,
+            );
+          }
+          return installRecord;
+        },
+      ),
   );
 
   ipcMain.handle(
@@ -429,17 +506,22 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         commits?: Array<{ hash: string; subject: string; diff: string }>;
       },
     ) =>
-      await withStoreWebRunner(event, "storeWeb:installFromBlueprint", async (runner) => {
-        const installRecord =
-          await runner.installFromBlueprint(payload) satisfies StoreInstallRecord;
-        const stellaRoot = options.getStellaRoot();
-        if (stellaRoot) {
-          await cleanupStoreInstallArtifacts(stellaRoot, payload).catch(
-            () => undefined,
-          );
-        }
-        return installRecord;
-      }),
+      await withStoreWebRunner(
+        event,
+        "storeWeb:installFromBlueprint",
+        async (runner) => {
+          const installRecord = (await runner.installFromBlueprint(
+            payload,
+          )) satisfies StoreInstallRecord;
+          const stellaRoot = options.getStellaRoot();
+          if (stellaRoot) {
+            await cleanupStoreInstallArtifacts(stellaRoot, payload).catch(
+              () => undefined,
+            );
+          }
+          return installRecord;
+        },
+      ),
   );
 
   // Renderer-side publish entry point. The renderer collects the form
@@ -467,8 +549,14 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         releaseNotes?: string;
       },
     ) =>
-      await withStoreRunner(event, "store:publishBlueprint", async (runner) =>
-        await runner.publishStoreBlueprint(payload as Parameters<typeof runner.publishStoreBlueprint>[0])),
+      await withStoreRunner(
+        event,
+        "store:publishBlueprint",
+        async (runner) =>
+          await runner.publishStoreBlueprint(
+            payload as Parameters<typeof runner.publishStoreBlueprint>[0],
+          ),
+      ),
   );
 
   ipcMain.handle(
@@ -492,28 +580,48 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         releaseNotes?: string;
       },
     ) =>
-      await withStoreWebRunner(event, "storeWeb:publishBlueprint", async (runner) =>
-        await runner.publishStoreBlueprint(payload as Parameters<typeof runner.publishStoreBlueprint>[0])),
+      await withStoreWebRunner(
+        event,
+        "storeWeb:publishBlueprint",
+        async (runner) =>
+          await runner.publishStoreBlueprint(
+            payload as Parameters<typeof runner.publishStoreBlueprint>[0],
+          ),
+      ),
   );
 
   ipcMain.handle("store:listInstalledMods", async (event) => {
-    return await withStoreRunner(event, "store:listInstalledMods", async (runner) =>
-      await runner.listInstalledMods() satisfies StoreInstallRecord[]);
+    return await withStoreRunner(
+      event,
+      "store:listInstalledMods",
+      async (runner) =>
+        (await runner.listInstalledMods()) satisfies StoreInstallRecord[],
+    );
   });
 
   ipcMain.handle("storeWeb:listInstalledMods", async (event) => {
-    return await withStoreWebRunner(event, "storeWeb:listInstalledMods", async (runner) =>
-      await runner.listInstalledMods() satisfies StoreInstallRecord[]);
+    return await withStoreWebRunner(
+      event,
+      "storeWeb:listInstalledMods",
+      async (runner) =>
+        (await runner.listInstalledMods()) satisfies StoreInstallRecord[],
+    );
   });
 
   ipcMain.handle("store:getThread", async (event) => {
-    return await withStoreRunner(event, "store:getThread", async (runner) =>
-      await runner.getStoreThread());
+    return await withStoreRunner(
+      event,
+      "store:getThread",
+      async (runner) => await runner.getStoreThread(),
+    );
   });
 
   ipcMain.handle("storeWeb:getThread", async (event) => {
-    return await withStoreWebRunner(event, "storeWeb:getThread", async (runner) =>
-      await runner.getStoreThread());
+    return await withStoreWebRunner(
+      event,
+      "storeWeb:getThread",
+      async (runner) => await runner.getStoreThread(),
+    );
   });
 
   ipcMain.handle(
@@ -526,8 +634,11 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         editingBlueprint?: boolean;
       },
     ) =>
-      await withStoreRunner(event, "store:sendThreadMessage", async (runner) =>
-        await runner.sendStoreThreadMessage(payload)),
+      await withStoreRunner(
+        event,
+        "store:sendThreadMessage",
+        async (runner) => await runner.sendStoreThreadMessage(payload),
+      ),
   );
 
   ipcMain.handle(
@@ -540,53 +651,84 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         editingBlueprint?: boolean;
       },
     ) =>
-      await withStoreWebRunner(event, "storeWeb:sendThreadMessage", async (runner) =>
-        await runner.sendStoreThreadMessage(payload)),
+      await withStoreWebRunner(
+        event,
+        "storeWeb:sendThreadMessage",
+        async (runner) => await runner.sendStoreThreadMessage(payload),
+      ),
   );
 
   ipcMain.handle("store:cancelThreadTurn", async (event) => {
-    return await withStoreRunner(event, "store:cancelThreadTurn", async (runner) =>
-      await runner.cancelStoreThreadTurn());
+    return await withStoreRunner(
+      event,
+      "store:cancelThreadTurn",
+      async (runner) => await runner.cancelStoreThreadTurn(),
+    );
   });
 
   ipcMain.handle("storeWeb:cancelThreadTurn", async (event) => {
-    return await withStoreWebRunner(event, "storeWeb:cancelThreadTurn", async (runner) =>
-      await runner.cancelStoreThreadTurn());
+    return await withStoreWebRunner(
+      event,
+      "storeWeb:cancelThreadTurn",
+      async (runner) => await runner.cancelStoreThreadTurn(),
+    );
   });
 
   ipcMain.handle("store:denyLatestBlueprint", async (event) => {
-    return await withStoreRunner(event, "store:denyLatestBlueprint", async (runner) =>
-      await runner.denyLatestStoreBlueprint());
+    return await withStoreRunner(
+      event,
+      "store:denyLatestBlueprint",
+      async (runner) => await runner.denyLatestStoreBlueprint(),
+    );
   });
 
   ipcMain.handle("storeWeb:denyLatestBlueprint", async (event) => {
-    return await withStoreWebRunner(event, "storeWeb:denyLatestBlueprint", async (runner) =>
-      await runner.denyLatestStoreBlueprint());
+    return await withStoreWebRunner(
+      event,
+      "storeWeb:denyLatestBlueprint",
+      async (runner) => await runner.denyLatestStoreBlueprint(),
+    );
   });
 
   ipcMain.handle(
     "store:markBlueprintPublished",
     async (event, payload: { messageId: string; releaseNumber: number }) =>
-      await withStoreRunner(event, "store:markBlueprintPublished", async (runner) =>
-        await runner.markStoreBlueprintPublished(payload)),
+      await withStoreRunner(
+        event,
+        "store:markBlueprintPublished",
+        async (runner) => await runner.markStoreBlueprintPublished(payload),
+      ),
   );
 
   ipcMain.handle(
     "storeWeb:markBlueprintPublished",
     async (event, payload: { messageId: string; releaseNumber: number }) =>
-      await withStoreWebRunner(event, "storeWeb:markBlueprintPublished", async (runner) =>
-        await runner.markStoreBlueprintPublished(payload)),
+      await withStoreWebRunner(
+        event,
+        "storeWeb:markBlueprintPublished",
+        async (runner) => await runner.markStoreBlueprintPublished(payload),
+      ),
   );
 
-  ipcMain.handle("store:uninstallMod", async (event, payload: { packageId: string }) => {
-    return await withStoreRunner(event, "store:uninstallMod", (runner) =>
-      runner.uninstallStoreMod(payload.packageId));
-  });
+  ipcMain.handle(
+    "store:uninstallMod",
+    async (event, payload: { packageId: string }) => {
+      return await withStoreRunner(event, "store:uninstallMod", (runner) =>
+        runner.uninstallStoreMod(payload.packageId),
+      );
+    },
+  );
 
-  ipcMain.handle("storeWeb:uninstallMod", async (event, payload: { packageId: string }) => {
-    return await withStoreWebRunner(event, "storeWeb:uninstallMod", (runner) =>
-      runner.uninstallStoreMod(payload.packageId));
-  });
+  ipcMain.handle(
+    "storeWeb:uninstallMod",
+    async (event, payload: { packageId: string }) => {
+      return await withStoreWebRunner(
+        event,
+        "storeWeb:uninstallMod",
+        (runner) => runner.uninstallStoreMod(payload.packageId),
+      );
+    },
+  );
 
   ipcMain.handle("store:listConnectors", async (event) => {
     assertPrivilegedRequest(options, event, "store:listConnectors");
@@ -604,7 +746,14 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
 
   ipcMain.handle(
     "store:installConnector",
-    async (event, payload: { marketplaceKey: string; credential?: string; config?: Record<string, string> }) => {
+    async (
+      event,
+      payload: {
+        marketplaceKey: string;
+        credential?: string;
+        config?: Record<string, string>;
+      },
+    ) => {
       assertPrivilegedRequest(options, event, "store:installConnector");
       const stellaRoot = options.getStellaRoot();
       if (!stellaRoot) {
@@ -617,8 +766,16 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       );
       const oauthResults = [];
       for (const target of [...installed.servers, ...installed.apis]) {
-        if (target.auth?.type !== "none" && target.auth?.tokenKey && payload.credential) {
-          await saveMcpAccessToken(stellaRoot, target.auth.tokenKey, payload.credential);
+        if (
+          target.auth?.type !== "none" &&
+          target.auth?.tokenKey &&
+          payload.credential
+        ) {
+          await saveMcpAccessToken(
+            stellaRoot,
+            target.auth.tokenKey,
+            payload.credential,
+          );
         }
       }
       for (const [key, value] of Object.entries(payload.config ?? {})) {
@@ -630,11 +787,13 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         if (server.transport !== "streamable_http" || !server.url) continue;
         if (server.auth?.type !== "oauth" || !server.auth.tokenKey) continue;
         try {
-          oauthResults.push(await connectMcpOAuth(stellaRoot, {
-            tokenKey: server.auth.tokenKey,
-            resourceUrl: server.url,
-            openUrl: (url) => shell.openExternal(url),
-          }));
+          oauthResults.push(
+            await connectMcpOAuth(stellaRoot, {
+              tokenKey: server.auth.tokenKey,
+              resourceUrl: server.url,
+              openUrl: (url) => shell.openExternal(url),
+            }),
+          );
         } catch (error) {
           await removeOfficialConnector(stellaRoot, payload.marketplaceKey);
           throw error;
@@ -644,11 +803,13 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         if (!api.baseUrl) continue;
         if (api.auth?.type !== "oauth" || !api.auth.tokenKey) continue;
         try {
-          oauthResults.push(await connectMcpOAuth(stellaRoot, {
-            tokenKey: api.auth.tokenKey,
-            resourceUrl: api.baseUrl,
-            openUrl: (url) => shell.openExternal(url),
-          }));
+          oauthResults.push(
+            await connectMcpOAuth(stellaRoot, {
+              tokenKey: api.auth.tokenKey,
+              resourceUrl: api.baseUrl,
+              openUrl: (url) => shell.openExternal(url),
+            }),
+          );
         } catch (error) {
           await removeOfficialConnector(stellaRoot, payload.marketplaceKey);
           throw error;
@@ -695,8 +856,16 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       );
       const oauthResults = [];
       for (const target of [...installed.servers, ...installed.apis]) {
-        if (target.auth?.type !== "none" && target.auth?.tokenKey && payload.credential) {
-          await saveMcpAccessToken(stellaRoot, target.auth.tokenKey, payload.credential);
+        if (
+          target.auth?.type !== "none" &&
+          target.auth?.tokenKey &&
+          payload.credential
+        ) {
+          await saveMcpAccessToken(
+            stellaRoot,
+            target.auth.tokenKey,
+            payload.credential,
+          );
         }
       }
       for (const [key, value] of Object.entries(payload.config ?? {})) {
@@ -708,11 +877,13 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         if (server.transport !== "streamable_http" || !server.url) continue;
         if (server.auth?.type !== "oauth" || !server.auth.tokenKey) continue;
         try {
-          oauthResults.push(await connectMcpOAuth(stellaRoot, {
-            tokenKey: server.auth.tokenKey,
-            resourceUrl: server.url,
-            openUrl: (url) => shell.openExternal(url),
-          }));
+          oauthResults.push(
+            await connectMcpOAuth(stellaRoot, {
+              tokenKey: server.auth.tokenKey,
+              resourceUrl: server.url,
+              openUrl: (url) => shell.openExternal(url),
+            }),
+          );
         } catch (error) {
           await removeOfficialConnector(stellaRoot, payload.marketplaceKey);
           throw error;
@@ -722,11 +893,13 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         if (!api.baseUrl) continue;
         if (api.auth?.type !== "oauth" || !api.auth.tokenKey) continue;
         try {
-          oauthResults.push(await connectMcpOAuth(stellaRoot, {
-            tokenKey: api.auth.tokenKey,
-            resourceUrl: api.baseUrl,
-            openUrl: (url) => shell.openExternal(url),
-          }));
+          oauthResults.push(
+            await connectMcpOAuth(stellaRoot, {
+              tokenKey: api.auth.tokenKey,
+              resourceUrl: api.baseUrl,
+              openUrl: (url) => shell.openExternal(url),
+            }),
+          );
         } catch (error) {
           await removeOfficialConnector(stellaRoot, payload.marketplaceKey);
           throw error;

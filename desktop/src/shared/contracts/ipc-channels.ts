@@ -200,6 +200,12 @@ export const IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS =
   "preferences:getSoundNotifications" as const;
 export const IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS =
   "preferences:setSoundNotifications" as const;
+export const IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED =
+  "globalShortcuts:setSuspended" as const;
+export const IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED =
+  "globalShortcuts:getSuspended" as const;
+export const IPC_DIAGNOSTICS_RECORD_HEAP_TRACE =
+  "diagnostics:recordHeapTrace" as const;
 export const IPC_PREFERENCES_GET_PERSONALITY_VOICE =
   "preferences:getPersonalityVoice" as const;
 export const IPC_PREFERENCES_SET_PERSONALITY_VOICE =
@@ -221,6 +227,10 @@ export const IPC_APP_RESET_MESSAGES = "app:resetLocalMessages" as const;
 export const IPC_CREDENTIAL_REQUEST = "credential:request" as const;
 export const IPC_CREDENTIAL_SUBMIT = "credential:submit" as const;
 export const IPC_CREDENTIAL_CANCEL = "credential:cancel" as const;
+export const IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION =
+  "store:showBlueprintNotification" as const;
+export const IPC_STORE_BLUEPRINT_NOTIFICATION_ACTIVATED =
+  "store:blueprintNotificationActivated" as const;
 
 // ── Updates ─────────────────────────────────────────────────────────────────
 

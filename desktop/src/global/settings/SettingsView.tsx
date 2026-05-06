@@ -380,23 +380,33 @@ function ShortcutsSettingsTab() {
 
   useEffect(() => {
     if (!capturingShortcut) return;
+    const setShortcutCaptureSuspended = (suspended: boolean) =>
+      window.electronAPI?.system?.setGlobalShortcutsSuspended?.(suspended) ??
+      Promise.resolve({ supported: false, suspended: false });
+    void setShortcutCaptureSuspended(true);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
 
       if (event.key === "Escape") {
+        void setShortcutCaptureSuspended(false);
         setCapturingShortcut(null);
         return;
       }
 
       const accelerator = keyboardEventToAccelerator(event);
       if (!accelerator) return;
-      void saveShortcut(capturingShortcut, accelerator);
+      void setShortcutCaptureSuspended(false).finally(() => {
+        void saveShortcut(capturingShortcut, accelerator);
+      });
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      void setShortcutCaptureSuspended(false);
+    };
   }, [capturingShortcut, saveShortcut]);
 
   const saveRadialTrigger = useCallback(

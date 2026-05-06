@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session } from "electron";
+import { app, BrowserWindow } from "electron";
 import { hasMacPermission } from "../utils/macos-permissions.js";
 import path from "path";
 import { resolveStellaHome } from "../../../runtime/kernel/home/stella-home.js";
@@ -7,6 +7,8 @@ import { OverlayWindowController } from "../windows/overlay-window.js";
 import { PetWindowController } from "../windows/pet-window.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
+import { configureNotificationActivationHandling } from "../services/notification-service.js";
+import { configureStellaSessionPermissions } from "./session-permissions.js";
 import {
   type BootstrapContext,
   getAllWindows,
@@ -62,21 +64,18 @@ const initializeBootstrapLocalState = async (context: BootstrapContext) => {
 const initializeWindowShell = (context: BootstrapContext) => {
   const { config, lifecycle, services, state } = context;
   const preloadPath = path.join(config.electronDir, "preload.js");
-  const storeWebPreloadPath = path.join(config.electronDir, "store-web-preload.js");
+  const storeWebPreloadPath = path.join(
+    config.electronDir,
+    "store-web-preload.js",
+  );
   const storeWebBaseUrl = readStoreWebBaseUrl();
   const allowedStoreWebOrigin = storeWebOrigin(storeWebBaseUrl);
-  const appSession = session.fromPartition(config.sessionPartition);
-
-  appSession.setPermissionRequestHandler(
-    (_webContents, permission, callback) => {
-      if (permission === "media" || permission === "display-capture") {
-        callback(true);
-        return;
-      }
-
-      callback(false);
-    },
-  );
+  configureStellaSessionPermissions({
+    appPartition: config.sessionPartition,
+    isDev: config.isDev,
+    getDevServerUrl,
+  });
+  configureNotificationActivationHandling(context);
 
   state.overlayController = new OverlayWindowController({
     preloadPath,
@@ -103,7 +102,10 @@ const initializeWindowShell = (context: BootstrapContext) => {
       storeWebPreloadPath,
       getStoreWebUrl: (params) => appendStoreWebParams(storeWebBaseUrl, params),
       isAllowedStoreWebUrl: (url) =>
-        Boolean(allowedStoreWebOrigin && storeWebOrigin(url) === allowedStoreWebOrigin),
+        Boolean(
+          allowedStoreWebOrigin &&
+            storeWebOrigin(url) === allowedStoreWebOrigin,
+        ),
       sessionPartition: config.sessionPartition,
       isDev: config.isDev,
       getDevServerUrl,
