@@ -1,5 +1,5 @@
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import {
   ArrowLeft,
   Cpu,
@@ -522,7 +522,12 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
     const handle = scheduleIdle(() => setBillingQueryReady(true));
     return () => cancelIdle(handle);
   }, []);
-  const billingStatus = useQuery(
+  // One-shot, not a subscription: the sidebar is always-on chrome, so
+  // a live `useQuery` here held a Convex watcher open for the entire
+  // session just to render a static "Pro"/"Plus" pill. Billing changes
+  // re-fetch through Sidebar remounts after the `?billingCheckout=
+  // complete` hand-off in `__root.tsx`.
+  const billingStatus = useConvexOneShot(
     api.billing.getSubscriptionStatus,
     hasConnectedAccount && billingQueryReady ? {} : "skip",
   ) as BillingStatusLite | undefined;

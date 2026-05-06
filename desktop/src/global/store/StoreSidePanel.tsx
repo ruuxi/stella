@@ -26,8 +26,8 @@
  * isn't on top.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
+import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import {
   refreshFeatureSnapshot,
   storeSidePanelStore,
@@ -153,7 +153,10 @@ function PublishDialog({
   onClose,
   onPublished,
 }: PublishDialogProps) {
-  const myPackages = useQuery(
+  // One-shot fetch when the dialog opens — the user can't be racing
+  // themselves to publish from another window, so a live subscription
+  // for the duration of the dialog is unnecessary.
+  const myPackages = useConvexOneShot(
     api.data.store_packages.listMyPackages,
     open ? {} : "skip",
   );

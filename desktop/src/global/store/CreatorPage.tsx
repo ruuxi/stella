@@ -5,10 +5,10 @@
  * here once the creator has a social profile handle.
  */
 import { useState } from "react";
-import { useQuery } from "convex/react";
 import { useNavigate } from "@tanstack/react-router";
 import { Share2 } from "lucide-react";
 import { api } from "@/convex/api";
+import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import type { StorePackageRecord } from "@/shared/types/electron";
 import { ShareAddonDialog } from "./ShareAddonDialog";
 import "./store.css";
@@ -18,13 +18,16 @@ type Props = { handle: string };
 export function CreatorPage({ handle }: Props) {
   const navigate = useNavigate();
   const [sharePkg, setSharePkg] = useState<StorePackageRecord | null>(null);
-  const profile = useQuery(api.social.profiles.getProfileByHandle, { handle }) as
-    | { publicHandle: string; displayName: string }
-    | null
-    | undefined;
-  const packages = useQuery(api.data.store_packages.listPackagesByAuthorHandle, {
+  // One-shot, not a subscription: visiting a creator's page is
+  // read-only browsing — neither the profile nor their published
+  // package list will move while the user is on the page.
+  const profile = useConvexOneShot(api.social.profiles.getProfileByHandle, {
     handle,
-  }) as StorePackageRecord[] | undefined;
+  }) as { publicHandle: string; displayName: string } | null | undefined;
+  const packages = useConvexOneShot(
+    api.data.store_packages.listPackagesByAuthorHandle,
+    { handle },
+  ) as StorePackageRecord[] | undefined;
 
   if (profile === undefined || packages === undefined) {
     return (

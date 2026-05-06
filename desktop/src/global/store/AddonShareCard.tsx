@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
+import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import type { StorePackageRecord } from "@/shared/types/electron";
 import type { ParsedShareLink } from "./share-link";
 import "./store.css";
@@ -31,7 +31,11 @@ type AddonShareCardProps = {
  */
 export function AddonShareCard({ link, variant = "wide" }: AddonShareCardProps) {
   const navigate = useNavigate();
-  const pkg = useQuery(api.data.store_packages.getPublicPackage, {
+  // One-shot, not a subscription: this card is embedded inside chat
+  // bubbles (potentially many per conversation), and a published
+  // package's name/description/icon doesn't shift while a user is
+  // reading the message.
+  const pkg = useConvexOneShot(api.data.store_packages.getPublicPackage, {
     packageId: link.packageId,
   }) as StorePackageRecord | null | undefined;
 

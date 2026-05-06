@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
+import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import {
   EmbeddedCheckout,
   EmbeddedCheckoutProvider,
@@ -201,7 +202,12 @@ export function BillingTab() {
   // anonymous-identity paths and returns the plan list either way. Skipping
   // the query when signed-out used to leave the Plans grid blank, which read
   // as "you must sign in to see the plans" — exactly what we don't want.
-  const billingStatus = useQuery(api.billing.getSubscriptionStatus, {
+  //
+  // One-shot rather than a live subscription: the existing `setInterval`
+  // already deliberately re-fires every 60s by bumping `billingNowMs`
+  // (which busts backend cache for the rolling-window snapshot), so a
+  // standing WebSocket subscription was just polling-on-top-of-pushing.
+  const billingStatus = useConvexOneShot(api.billing.getSubscriptionStatus, {
     now: billingNowMs,
   }) as BillingStatus | undefined;
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
+import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import {
   PET_BY_ID_STORAGE_KEY,
   getCachedPetById,
@@ -78,11 +78,16 @@ export const useSelectedPet = (
   // is sufficient — bundled pets aren't in Convex and would always
   // resolve to `null`, which would force a flicker back to the bundled
   // fallback for no benefit.
-  const remote = useQuery(
+  //
+  // One-shot, not a subscription: per-pet metadata is effectively
+  // immutable post-publish, and the pet overlay window is long-lived.
+  // Each `useQuery` here used to keep a Convex watcher open per
+  // selected pet for the whole session.
+  const remote = useConvexOneShot(
     api.data.pets.getByPetId,
     selectedPetId && !bundled ? { id: selectedPetId } : "skip",
   );
-  const userPet = useQuery(
+  const userPet = useConvexOneShot(
     api.data.user_pets.getByPetId,
     selectedPetId && !bundled ? { petId: selectedPetId } : "skip",
   );
@@ -106,8 +111,12 @@ export type TagFacet = { tag: string; count: number };
  * Read the precomputed tag facets used by the pets-page filter pills.
  * Returns `null` while loading so the caller can keep the previously
  * shown set of tags rather than flashing an empty row.
+ *
+ * One-shot fetch: facets are batch-recomputed on the backend and
+ * almost never shift while the user is on the pets page; not worth a
+ * standing subscription.
  */
 export const useTagFacets = (): TagFacet[] | null => {
-  const result = useQuery(api.data.pets.listTagFacets, {});
+  const result = useConvexOneShot(api.data.pets.listTagFacets, {});
   return (result as TagFacet[] | undefined) ?? null;
 };
