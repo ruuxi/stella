@@ -51,7 +51,7 @@ const readFinalMessage = async (api: "openai-responses" | "openai-completions") 
         "",
         'data: {"type":"text_delta","contentIndex":1,"delta":"Done."}',
         "",
-        'data: {"type":"text_end","contentIndex":1,"contentSignature":"{\\"v\\":1,\\"id\\":\\"msg_123\\"}"}',
+        'data: {"type":"text_end","contentIndex":1,"content":"Done.","contentSignature":"{\\"v\\":1,\\"id\\":\\"msg_123\\"}"}',
         "",
         'data: {"type":"done","reason":"stop","usage":{"input":12,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":17,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}}}',
         "",
@@ -136,5 +136,38 @@ describe("streamSimpleStella", () => {
       thinking: "Need to inspect the task.",
       thinkingSignature: '{"type":"reasoning","id":"rs_123"}',
     });
+  });
+
+  it("uses text_end content when Stella sends final text without deltas", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(
+        [
+          'data: {"type":"start","api":"openai-responses","provider":"fireworks","model":"accounts/fireworks/models/kimi-k2p6"}',
+          "",
+          'data: {"type":"text_start","contentIndex":0}',
+          "",
+          'data: {"type":"text_end","contentIndex":0,"content":"Final only."}',
+          "",
+          'data: {"type":"done","reason":"stop","usage":{"input":1,"output":2,"cacheRead":0,"cacheWrite":0,"totalTokens":3,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}}}',
+          "",
+        ].join("\n"),
+        {
+          headers: {
+            "Content-Type": "text/event-stream",
+          },
+        },
+      )));
+
+    const stream = streamSimpleStella(createModel(), createContext(), { apiKey: "token" });
+    let finalMessage: AssistantMessage | null = null;
+    for await (const event of stream) {
+      if (event.type === "done") {
+        finalMessage = event.message;
+      }
+    }
+
+    expect(finalMessage?.content).toEqual([
+      { type: "text", text: "Final only." },
+    ]);
   });
 });
