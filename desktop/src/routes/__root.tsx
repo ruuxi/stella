@@ -20,6 +20,7 @@ import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { AppSuggestionsDialog } from "@/global/onboarding/AppSuggestionsDialog";
+import { ChatColumn } from "@/app/chat/ChatColumn";
 import { useMediaMaterializer } from "@/app/media/use-media-materializer";
 import {
   DisplaySidebar,
@@ -109,7 +110,7 @@ function ModelCatalogUpdatedAtSync() {
  * output.
  */
 function RootLayout() {
-  const { state } = useUiState();
+  const { state, setConversationId } = useUiState();
   const matchRoute = useMatchRoute();
   const isOnChatRoute = Boolean(matchRoute({ to: "/chat" }));
   const routerConversationId = useRouterState({
@@ -120,6 +121,12 @@ function RootLayout() {
   });
   const conversationId = routerConversationId ?? state.conversationId;
   const router = useRouter();
+
+  useEffect(() => {
+    if (routerConversationId && routerConversationId !== state.conversationId) {
+      setConversationId(routerConversationId);
+    }
+  }, [routerConversationId, setConversationId, state.conversationId]);
 
   // Restore the last persisted location exactly once. We read synchronously
   // from `localStorage` (no async hydration race) and only navigate if the
@@ -183,7 +190,6 @@ function RootLayout() {
 
 function RootChrome() {
   const navigate = useNavigate();
-  const matchRoute = useMatchRoute();
   const { dialog: activeDialog } = Route.useSearch();
   const { state } = useUiState();
   const conversationId = state.conversationId;
@@ -205,7 +211,8 @@ function RootChrome() {
   // starts after onboarding exits. Signed-out users still go through auth first.
   const memorySignInPendingRef = useRef(false);
 
-  const isOnChatRoute = Boolean(matchRoute({ to: "/chat" }));
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isOnChatRoute = pathname === "/chat";
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -488,7 +495,6 @@ function RootChrome() {
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
   // Close the mobile drawer whenever the route changes. setState-in-effect is
   // intentional here — the drawer is a UI artifact that should reset on every
   // navigation; the pathname *is* the external state we are syncing from.
@@ -545,7 +551,26 @@ function RootChrome() {
               <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          <Outlet />
+          <div
+            className={`persistent-chat-surface${isOnChatRoute ? " persistent-chat-surface--active" : ""}`}
+            aria-hidden={!isOnChatRoute}
+          >
+            <ChatColumn
+              conversation={chat.conversation}
+              composer={chat.composer}
+              scroll={chat.scroll}
+              conversationId={conversationId}
+              showHomeContent={chat.showHomeContent}
+              onSuggestionClick={chat.onSuggestionClick}
+              onDismissHome={chat.dismissHome}
+            />
+          </div>
+          <div
+            className={`route-outlet-surface${isOnChatRoute ? "" : " route-outlet-surface--active"}`}
+            aria-hidden={isOnChatRoute}
+          >
+            <Outlet />
+          </div>
         </div>
       </StellaContextMenu>
 
