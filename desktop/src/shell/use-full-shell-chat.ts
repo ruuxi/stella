@@ -316,11 +316,6 @@ export function useFullShellChat({
     return resetChatScroll(resetScrollState, scrollToBottom)
   }, [activeConversationId, resetScrollState, scrollToBottom])
 
-  useLayoutEffect(() => {
-    if (!isOnChatRoute) return
-    return resetChatScroll(resetScrollState, scrollToBottom)
-  }, [isOnChatRoute, resetScrollState, scrollToBottom])
-
   const handleSend = useCallback(() => {
     if (showHomeContent) {
       setComposerFocusRequestId((id) => id + 1)

@@ -847,6 +847,31 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   padding-top: 0;
 }
 
+.persistent-chat-surface,
+.route-outlet-surface {
+  position: absolute;
+  top: var(--shell-topbar-height);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.persistent-chat-surface,
+.route-outlet-surface {
+  display: flex;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.persistent-chat-surface--active,
+.route-outlet-surface--active {
+  visibility: visible;
+  pointer-events: auto;
+}
+
 /* Chat column — fills the chat panel or content area */
 .full-body-main {
   position: relative;
