@@ -25,6 +25,7 @@ const PLAINTEXT_PREFIX = 'stella-main-plaintext:v1:'
 const BETTER_AUTH_COOKIE_STORAGE_KEY = 'better-auth_cookie'
 const BETTER_AUTH_SESSION_DATA_STORAGE_KEY = 'better-auth_session_data'
 const AUTH_BASE_PATH = '/api/auth'
+const DESKTOP_AUTH_ORIGIN = 'http://127.0.0.1:57314'
 
 type AuthServiceOptions = {
   authProtocol: string
@@ -182,6 +183,9 @@ export class AuthService {
       throw new Error('Convex site URL is not configured.')
     }
     const headers = new Headers(init.headers)
+    if (!headers.has('origin')) {
+      headers.set('origin', DESKTOP_AUTH_ORIGIN)
+    }
     const cookie = this.getAuthCookieHeader()
     if (cookie) {
       headers.set('cookie', cookie)
@@ -219,7 +223,11 @@ export class AuthService {
   async signInAnonymous() {
     const response = await this.authFetch('/sign-in/anonymous', {
       method: 'POST',
-      headers: { accept: 'application/json' },
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({}),
     })
     if (!response.ok) {
       throw new Error(`Anonymous sign-in failed with HTTP ${response.status}.`)
@@ -230,7 +238,11 @@ export class AuthService {
   async signOut() {
     const response = await this.authFetch('/sign-out', {
       method: 'POST',
-      headers: { accept: 'application/json' },
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({}),
     }).catch((error) => {
       console.debug('[auth] sign-out request failed:', (error as Error).message)
       return null
