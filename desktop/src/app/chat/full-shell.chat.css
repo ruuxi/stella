@@ -54,6 +54,82 @@
   contain-intrinsic-size: none;
 }
 
+/* Queued user messages live in the active tail under the inline working
+   indicator, not above the composer. They keep the same right-aligned
+   bubble language as normal user messages while waiting for their turn. */
+.composer-queued-stack {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.composer-queued-message {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  animation: composer-queued-enter 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: right bottom;
+  will-change: transform, opacity;
+}
+
+.composer-queued-message--leaving {
+  animation: composer-queued-leave 240ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.composer-queued-message__bubble {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  border-bottom-right-radius: 4px;
+  padding: 9px 13px;
+  max-width: 85%;
+  width: fit-content;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text-strong);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  box-shadow: var(--shadow-sm);
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@keyframes composer-queued-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.92);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes composer-queued-leave {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0) scale(0.94);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-queued-message,
+  .composer-queued-message--leaving {
+    animation: none;
+  }
+}
+
 /* Event item - iOS-style speech bubbles */
 .event-item {
   padding: 12px;

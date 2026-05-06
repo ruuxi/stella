@@ -22,6 +22,7 @@ export type {
   RuntimeErrorEvent,
   RuntimeStatusEvent,
   RuntimeEndEvent,
+  RuntimeAssistantMessageEvent,
   RuntimeUserMessageEvent,
   RuntimeRunCallbacks,
 } from "./agent-runtime/types.js";

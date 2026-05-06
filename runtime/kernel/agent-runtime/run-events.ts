@@ -14,6 +14,7 @@ import { persistThreadPayloadMessage } from "./thread-memory.js";
 import type {
   RuntimeEndEvent,
   RuntimeErrorEvent,
+  RuntimeAssistantMessageEvent,
   RuntimeInterruptedEvent,
   RuntimeReasoningEvent,
   RuntimeRunCallbacks,
@@ -124,6 +125,24 @@ export const createRunEventRecorder = ({
         agentType,
         seq: nextSeq(),
         userMessageId: currentUserMessageId,
+        ...(responseTarget ? { responseTarget } : {}),
+        ...(uiVisibility ? { uiVisibility } : {}),
+      };
+    },
+
+    recordAssistantMessageEnd(message: AgentMessage): RuntimeAssistantMessageEvent | null {
+      const text = extractAssistantText(message).trim();
+      if (!text) {
+        return null;
+      }
+      const responseTarget = getResponseTarget?.();
+      return {
+        runId,
+        agentType,
+        seq: nextSeq(),
+        userMessageId: currentUserMessageId,
+        text,
+        timestamp: message.timestamp ?? now(),
         ...(responseTarget ? { responseTarget } : {}),
         ...(uiVisibility ? { uiVisibility } : {}),
       };
@@ -407,6 +426,13 @@ export const subscribeRuntimeAgentEvents = ({
           threadKey,
           payload,
         });
+      }
+    }
+
+    if (event.type === "message_end" && event.message.role === "assistant") {
+      const assistantMessageEvent = recorder.recordAssistantMessageEnd(event.message);
+      if (assistantMessageEvent) {
+        callbacks?.onAssistantMessage?.(assistantMessageEvent);
       }
     }
 
