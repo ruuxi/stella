@@ -12,7 +12,10 @@ import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerPetHandlers } from "../ipc/pet-handlers.js";
 import { ipcMain } from "electron";
-import { togglePetVoice } from "../services/pet-voice-control.js";
+import {
+  cleanupPetVoiceSession,
+  togglePetVoice,
+} from "../services/pet-voice-control.js";
 import { WakewordService } from "../services/wakeword-service.js";
 import {
   loadLocalPreferences,
@@ -327,7 +330,7 @@ export const registerBootstrapIpcHandlers = (
   const stellaRoot = lifecycle.getStellaRoot();
   const wakePrefs = stellaRoot
     ? loadLocalPreferences(stellaRoot)
-    : { wakeWordEnabled: false, wakeWordThreshold: 0.55 };
+    : { wakeWordEnabled: false, wakeWordThreshold: 0.68 };
   wakeword = new WakewordService({
     threshold: wakePrefs.wakeWordThreshold,
     onWake: (event) => {
@@ -340,6 +343,12 @@ export const registerBootstrapIpcHandlers = (
   });
   services.uiStateService.onVoiceActiveChanged((active) => {
     wakewordPausedForVoice = active;
+    if (!active) {
+      cleanupPetVoiceSession({
+        getPetController: () => state.petController ?? null,
+        windowManager: state.windowManager!,
+      });
+    }
     syncWakewordPause();
   });
   syncWakewordPause();

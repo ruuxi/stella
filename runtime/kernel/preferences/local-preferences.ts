@@ -99,7 +99,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   preventComputerSleep: false,
   soundNotificationsEnabled: true,
   wakeWordEnabled: false,
-  wakeWordThreshold: 0.55,
+  wakeWordThreshold: 0.68,
 };
 
 let _cached: LocalPreferences | null = null;

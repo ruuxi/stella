@@ -150,7 +150,11 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
       options.windowManager.showWindow(nextWindow);
     }
     if (isVoiceRtcActive !== undefined) {
-      options.uiState.isVoiceRtcActive = isVoiceRtcActive;
+      if (isVoiceRtcActive) {
+        options.uiState.isVoiceRtcActive = true;
+      } else {
+        options.deactivateVoiceModes();
+      }
     }
     if (Object.keys(rest).length > 0) {
       options.updateUiState(rest);
@@ -162,7 +166,9 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
       options.syncNativeRadialGesture();
     }
     if (isVoiceRtcActive !== undefined) {
-      options.broadcastUiState();
+      if (isVoiceRtcActive) {
+        options.broadcastUiState();
+      }
     }
     return options.uiState;
   });
