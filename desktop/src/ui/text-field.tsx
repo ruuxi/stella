@@ -7,8 +7,6 @@ type TextFieldBaseProps = {
   description?: string;
   error?: string;
   variant?: "normal" | "ghost";
-  surface?: "default" | "subtle" | "glass";
-  size?: "sm" | "md" | "lg";
 };
 
 type SingleLineTextFieldProps = TextFieldBaseProps &
@@ -34,8 +32,6 @@ export const TextField = React.forwardRef<
     description,
     error,
     variant = "normal",
-    surface = "default",
-    size = "md",
     multiline,
     ...fieldProps
   } = props;
@@ -77,12 +73,7 @@ export const TextField = React.forwardRef<
   }, [multiline, textareaValue]);
 
   return (
-    <div
-      data-component="input"
-      data-variant={variant}
-      data-surface={surface}
-      data-size={size}
-    >
+    <div data-component="input" data-variant={variant}>
       {label ? (
         <label
           data-slot="input-label"

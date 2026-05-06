@@ -8,22 +8,15 @@ import {
   parseColor,
 } from "./glyph-atlas";
 import { initRenderer } from "./renderer";
+import { computeAnalyserEnergy } from "@/features/voice/services/audio-energy";
 
 /** Reusable buffer for frequency data — avoids per-frame allocation. */
-let energyBuffer: Uint8Array<ArrayBuffer> | null = null;
+let energyBuffer: Uint8Array | null = null;
 
 function computeEnergy(analyser: AnalyserNode): number {
-  const len = analyser.frequencyBinCount;
-  if (!energyBuffer || energyBuffer.length < len) {
-    energyBuffer = new Uint8Array(len);
-  }
-  analyser.getByteFrequencyData(energyBuffer);
-  let sum = 0;
-  for (let j = 0; j < len; j++) {
-    const v = energyBuffer[j] / 255;
-    sum += v * v;
-  }
-  return Math.sqrt(sum / len);
+  const result = computeAnalyserEnergy(analyser, energyBuffer);
+  energyBuffer = result.buffer;
+  return result.energy;
 }
 
 /**

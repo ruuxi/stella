@@ -1,13 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import {
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -28,8 +21,9 @@ import {
   createShellState,
   handleExecCommand,
 } from "../../../../../runtime/kernel/tools/shell.js";
+import { createAsyncTempDirTracker } from "../../../helpers/temp.js";
 
-const tempDirs: string[] = [];
+const tempDirs = createAsyncTempDirTracker();
 const originalPlatform = process.platform;
 
 afterEach(async () => {
@@ -37,15 +31,11 @@ afterEach(async () => {
     value: originalPlatform,
     configurable: true,
   });
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-  );
+  await tempDirs.cleanup();
 });
 
 const createTempDir = async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "stella-deferred-delete-"));
-  tempDirs.push(dir);
-  return dir;
+  return await tempDirs.create("stella-deferred-delete-");
 };
 
 const forcePlatform = (platform: NodeJS.Platform) => {
@@ -174,10 +164,9 @@ describe("deferred-delete trash", () => {
 
 describe("Windows delete interception", () => {
   it("extracts native cmd and PowerShell delete targets", () => {
-    expect(extractWindowsCmdDeleteTargets('del /q "old file.txt" & rd /s build')).toEqual([
-      "old file.txt",
-      "build",
-    ]);
+    expect(
+      extractWindowsCmdDeleteTargets('del /q "old file.txt" & rd /s build'),
+    ).toEqual(["old file.txt", "build"]);
     expect(
       extractPowerShellDeleteTargets(
         'Remove-Item -LiteralPath "old file.txt" -Recurse -Force',
@@ -222,7 +211,9 @@ describe("Windows delete interception", () => {
       code: "ENOENT",
     });
 
-    const trashFiles = await readdir(getDeferredDeletePaths(stellaHome).trashDir);
+    const trashFiles = await readdir(
+      getDeferredDeletePaths(stellaHome).trashDir,
+    );
     expect(trashFiles).toHaveLength(1);
   });
 });

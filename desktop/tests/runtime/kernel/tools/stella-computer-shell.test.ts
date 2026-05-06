@@ -1,6 +1,6 @@
 import path from "node:path";
 import os from "node:os";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createShellState,
@@ -8,22 +8,14 @@ import {
   runShell,
 } from "../../../../../runtime/kernel/tools/shell.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
+import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
-const tempDirs: string[] = [];
+const tempDirs = createSyncTempDirTracker();
 
-afterEach(() => {
-  while (tempDirs.length > 0) {
-    const tempDir = tempDirs.pop();
-    if (tempDir) {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  }
-});
+afterEach(() => tempDirs.cleanup());
 
 const createTempDir = () => {
-  const tempDir = mkdtempSync(path.join(os.tmpdir(), "stella-computer-shell-"));
-  tempDirs.push(tempDir);
-  return tempDir;
+  return tempDirs.create("stella-computer-shell-");
 };
 
 describe("stella-computer shell bootstrap", () => {

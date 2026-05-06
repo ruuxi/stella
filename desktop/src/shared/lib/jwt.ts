@@ -5,7 +5,12 @@ export function parseJwtPayload<TPayload extends Record<string, unknown>>(
   if (!payload) {
     throw new Error("Missing JWT payload");
   }
-  return JSON.parse(atob(payload)) as TPayload;
+  const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(
+    base64.length + ((4 - (base64.length % 4)) % 4),
+    "=",
+  );
+  return JSON.parse(atob(padded)) as TPayload;
 }
 
 export function getJwtExpMs(token: string): number {

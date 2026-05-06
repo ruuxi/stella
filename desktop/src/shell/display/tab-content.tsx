@@ -28,6 +28,7 @@ import {
 } from "@/shared/hooks/use-display-file-data";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { copyImageBlob } from "@/shell/media-clipboard";
+import { openExternalUrl } from "@/platform/electron/open-external";
 import { useFilePreviewActions } from "@/app/chat/hooks/use-file-preview-actions";
 import { OfficeArtifactPanel } from "./office-artifact-panel";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
@@ -504,7 +505,7 @@ export const UrlTabContent = ({
           <button
             type="button"
             onClick={() => {
-              window.electronAPI?.system?.openExternal?.(url);
+              openExternalUrl(url);
             }}
           >
             Open in browser
