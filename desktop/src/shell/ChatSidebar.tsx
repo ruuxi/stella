@@ -31,6 +31,7 @@ import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/Scree
 import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
+import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
 import { useCapturedChatContext } from "./use-captured-chat-context";
 import {
   updateComposerTextareaExpansion,
@@ -56,6 +57,7 @@ interface ChatPanelTabProps {
   isStreaming: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
+  queuedUserMessages?: QueuedUserMessage[];
   optimisticUserMessageIds: string[];
   selfModMap: Record<string, SelfModAppliedData>;
   liveTasks?: TaskItem[];
@@ -78,6 +80,7 @@ export function ChatPanelTab(
       isStreaming,
       runtimeStatusText,
       pendingUserMessageId,
+      queuedUserMessages,
       optimisticUserMessageIds,
       selfModMap,
       liveTasks,
@@ -265,6 +268,7 @@ export function ChatPanelTab(
               isStreaming={isStreaming}
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}
+              queuedUserMessages={queuedUserMessages}
               optimisticUserMessageIds={optimisticUserMessageIds}
               selfModMap={selfModMap}
               liveTasks={liveTasks}
