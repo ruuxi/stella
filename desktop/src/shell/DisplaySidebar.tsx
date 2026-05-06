@@ -151,6 +151,31 @@ export const DisplaySidebar = forwardRef<
     onOpenChange?.(panelOpen);
   }, [panelOpen, onOpenChange]);
 
+  // Toggling expand/restore swaps the panel between flex-row and absolute
+  // layout instantly (no width animation on the panel itself), so the
+  // tab strip's open/close transition would visibly re-animate from its
+  // expanded full-width slot back to the narrow right-aligned slot. Pin
+  // a one-frame `data-display-expanding` flag on <body> so the topbar
+  // CSS can suppress its transition through the swap, mirroring the
+  // existing `data-display-resizing` pattern used during pointer drags.
+  const isFirstExpandedSync = useRef(true);
+  useEffect(() => {
+    if (isFirstExpandedSync.current) {
+      isFirstExpandedSync.current = false;
+      return;
+    }
+    document.body.dataset.displayExpanding = "true";
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        delete document.body.dataset.displayExpanding;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      delete document.body.dataset.displayExpanding;
+    };
+  }, [panelExpanded]);
+
   // If the window shrinks below the user's chosen width, snap the stored
   // width down so we don't end up wider than the viewport allows.
   useEffect(() => {
