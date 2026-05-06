@@ -301,82 +301,9 @@ function readTextContent(content: unknown): Array<TextContent | ImageContent> {
   return blocks;
 }
 
-function decodeEscapedString(value: string, quote: "'" | "\""): string {
-  if (quote === "\"") {
-    try {
-      return JSON.parse(`"${value}"`) as string;
-    } catch {
-      return value;
-    }
-  }
-
-  const jsonCompatible = value
-    .replace(/\\'/g, "'")
-    .replace(/"/g, "\\\"");
-  try {
-    return JSON.parse(`"${jsonCompatible}"`) as string;
-  } catch {
-    return value.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\\\/g, "\\");
-  }
-}
-
-function readSerializedOutputTextParts(content: string): TextContent[] {
-  const trimmed = content.trim();
-  if (!trimmed.startsWith("[") || !trimmed.includes("output_text")) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    return readAssistantTextBlocks(parsed);
-  } catch {
-    // Some gateways return a Python-repr-ish list with single-quoted keys.
-  }
-
-  const blocks: TextContent[] = [];
-  const singleQuotedText = /'text'\s*:\s*'((?:\\.|[^'\\])*)'/g;
-  for (const match of trimmed.matchAll(singleQuotedText)) {
-    const text = decodeEscapedString(match[1], "'");
-    if (text.length > 0) {
-      blocks.push({ type: "text", text });
-    }
-  }
-
-  if (blocks.length > 0) {
-    return blocks;
-  }
-
-  const singleKeyDoubleQuotedText = /'text'\s*:\s*"((?:\\.|[^"\\])*)"/g;
-  for (const match of trimmed.matchAll(singleKeyDoubleQuotedText)) {
-    const text = decodeEscapedString(match[1], "\"");
-    if (text.length > 0) {
-      blocks.push({ type: "text", text });
-    }
-  }
-
-  if (blocks.length > 0) {
-    return blocks;
-  }
-
-  const doubleQuotedText = /"text"\s*:\s*"((?:\\.|[^"\\])*)"/g;
-  for (const match of trimmed.matchAll(doubleQuotedText)) {
-    const text = decodeEscapedString(match[1], "\"");
-    if (text.length > 0) {
-      blocks.push({ type: "text", text });
-    }
-  }
-
-  return blocks;
-}
-
 function readAssistantTextBlocks(content: unknown): TextContent[] {
   if (typeof content === "string") {
-    const outputTextBlocks = readSerializedOutputTextParts(content);
-    return outputTextBlocks.length > 0
-      ? outputTextBlocks
-      : content.length > 0
-        ? [{ type: "text", text: content }]
-        : [];
+    return content.length > 0 ? [{ type: "text", text: content }] : [];
   }
 
   if (!Array.isArray(content)) {
