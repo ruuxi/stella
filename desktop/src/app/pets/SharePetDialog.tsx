@@ -136,17 +136,21 @@ export function SharePetDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="credential-modal share-addon-dialog">
-        <DialogCloseButton />
-        <DialogTitle>Share {pet.displayName}</DialogTitle>
-        <DialogDescription>
-          {!link
-            ? "This pet doesn't have a public author handle yet, so it can't be shared."
-            : isPrivate
-            ? "This pet is private. Make it unlisted so people you share with can use it."
-            : "Send to friends or copy a link to share anywhere."}
-        </DialogDescription>
-        <DialogBody>
+      <DialogContent fit className="credential-modal-content share-addon-dialog">
+        <DialogCloseButton className="credential-modal-close" />
+        <DialogBody className="credential-modal-body">
+          <div className="share-addon-dialog-intro">
+            <DialogTitle className="share-addon-dialog-title">
+              Share {pet.displayName}
+            </DialogTitle>
+            <DialogDescription className="share-addon-dialog-description">
+              {!link
+                ? "This pet doesn't have a public author handle yet, so it can't be shared."
+                : isPrivate
+                  ? "This pet is private. Make it unlisted so people you share with can use it."
+                  : "Send to friends or copy a link to share anywhere."}
+            </DialogDescription>
+          </div>
           {link && isPrivate ? (
             <div className="share-addon-private-banner">
               <div className="share-addon-private-banner-icon" aria-hidden>

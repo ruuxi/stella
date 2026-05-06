@@ -922,9 +922,7 @@ export const PetsApp = () => {
                         sideOffset={6}
                         className="store-card-menu"
                       >
-                        <DropdownMenuLabel className="store-card-menu-label">
-                          Visibility
-                        </DropdownMenuLabel>
+                        <DropdownMenuLabel>Visibility</DropdownMenuLabel>
                         <DropdownMenuRadioGroup
                           value={pet.visibility}
                           onValueChange={(value) => {
@@ -937,10 +935,7 @@ export const PetsApp = () => {
                             }
                           }}
                         >
-                          <DropdownMenuRadioItem
-                            value="public"
-                            className="store-card-menu-item"
-                          >
+                          <DropdownMenuRadioItem value="public">
                             <div className="store-card-menu-item-text">
                               <span className="store-card-menu-item-title">
                                 Public
@@ -950,10 +945,7 @@ export const PetsApp = () => {
                               </span>
                             </div>
                           </DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem
-                            value="unlisted"
-                            className="store-card-menu-item"
-                          >
+                          <DropdownMenuRadioItem value="unlisted">
                             <div className="store-card-menu-item-text">
                               <span className="store-card-menu-item-title">
                                 Unlisted
@@ -963,10 +955,7 @@ export const PetsApp = () => {
                               </span>
                             </div>
                           </DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem
-                            value="private"
-                            className="store-card-menu-item"
-                          >
+                          <DropdownMenuRadioItem value="private">
                             <div className="store-card-menu-item-text">
                               <span className="store-card-menu-item-title">
                                 Private
@@ -977,15 +966,12 @@ export const PetsApp = () => {
                             </div>
                           </DropdownMenuRadioItem>
                         </DropdownMenuRadioGroup>
-                        <DropdownMenuSeparator className="store-card-menu-separator" />
-                        <DropdownMenuItem
-                          className="store-card-menu-item"
-                          onSelect={() => setShareTarget(pet)}
-                        >
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => setShareTarget(pet)}>
                           Share with friends
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          className="store-card-menu-item store-card-menu-item--danger"
+                          data-variant="destructive"
                           onSelect={() => {
                             const ok = window.confirm(
                               `Delete "${pet.displayName}"? This cannot be undone.`,
@@ -1134,9 +1120,7 @@ export const PetsApp = () => {
                             sideOffset={6}
                             className="store-card-menu"
                           >
-                            <DropdownMenuLabel className="store-card-menu-label">
-                              Visibility
-                            </DropdownMenuLabel>
+                            <DropdownMenuLabel>Visibility</DropdownMenuLabel>
                             <DropdownMenuRadioGroup
                               value={pet.visibility}
                               onValueChange={(value) => {
@@ -1149,10 +1133,7 @@ export const PetsApp = () => {
                                 }
                               }}
                             >
-                              <DropdownMenuRadioItem
-                                value="public"
-                                className="store-card-menu-item"
-                              >
+                              <DropdownMenuRadioItem value="public">
                                 <div className="store-card-menu-item-text">
                                   <span className="store-card-menu-item-title">
                                     Public
@@ -1162,10 +1143,7 @@ export const PetsApp = () => {
                                   </span>
                                 </div>
                               </DropdownMenuRadioItem>
-                              <DropdownMenuRadioItem
-                                value="unlisted"
-                                className="store-card-menu-item"
-                              >
+                              <DropdownMenuRadioItem value="unlisted">
                                 <div className="store-card-menu-item-text">
                                   <span className="store-card-menu-item-title">
                                     Unlisted
@@ -1175,10 +1153,7 @@ export const PetsApp = () => {
                                   </span>
                                 </div>
                               </DropdownMenuRadioItem>
-                              <DropdownMenuRadioItem
-                                value="private"
-                                className="store-card-menu-item"
-                              >
+                              <DropdownMenuRadioItem value="private">
                                 <div className="store-card-menu-item-text">
                                   <span className="store-card-menu-item-title">
                                     Private
@@ -1189,15 +1164,12 @@ export const PetsApp = () => {
                                 </div>
                               </DropdownMenuRadioItem>
                             </DropdownMenuRadioGroup>
-                            <DropdownMenuSeparator className="store-card-menu-separator" />
-                            <DropdownMenuItem
-                              className="store-card-menu-item"
-                              onSelect={() => setShareTarget(pet)}
-                            >
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={() => setShareTarget(pet)}>
                               Share with friends
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              className="store-card-menu-item store-card-menu-item--danger"
+                              data-variant="destructive"
                               onSelect={() => {
                                 const ok = window.confirm(
                                   `Delete "${pet.displayName}"? This cannot be undone.`,

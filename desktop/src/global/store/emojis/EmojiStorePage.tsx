@@ -167,9 +167,7 @@ function PackCard({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={6} className="store-card-menu">
-              <DropdownMenuLabel className="store-card-menu-label">
-                Visibility
-              </DropdownMenuLabel>
+              <DropdownMenuLabel>Visibility</DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={pack.visibility}
                 onValueChange={(value) => {
@@ -182,7 +180,7 @@ function PackCard({
                   }
                 }}
               >
-                <DropdownMenuRadioItem value="public" className="store-card-menu-item">
+                <DropdownMenuRadioItem value="public">
                   <div className="store-card-menu-item-text">
                     <span className="store-card-menu-item-title">Public</span>
                     <span className="store-card-menu-item-sub">
@@ -190,7 +188,7 @@ function PackCard({
                     </span>
                   </div>
                 </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="unlisted" className="store-card-menu-item">
+                <DropdownMenuRadioItem value="unlisted">
                   <div className="store-card-menu-item-text">
                     <span className="store-card-menu-item-title">Unlisted</span>
                     <span className="store-card-menu-item-sub">
@@ -198,22 +196,19 @@ function PackCard({
                     </span>
                   </div>
                 </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="private" className="store-card-menu-item">
+                <DropdownMenuRadioItem value="private">
                   <div className="store-card-menu-item-text">
                     <span className="store-card-menu-item-title">Private</span>
                     <span className="store-card-menu-item-sub">Only you</span>
                   </div>
                 </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator className="store-card-menu-separator" />
-              <DropdownMenuItem
-                className="store-card-menu-item"
-                onSelect={() => onShare()}
-              >
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => onShare()}>
                 Share with friends
               </DropdownMenuItem>
               <DropdownMenuItem
-                className="store-card-menu-item store-card-menu-item--danger"
+                data-variant="destructive"
                 onSelect={() => {
                   const ok = window.confirm(
                     `Delete "${pack.displayName}"? This cannot be undone.`,
