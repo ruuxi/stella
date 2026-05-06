@@ -33,7 +33,8 @@ const mainExplicitEntries = [
   "desktop/src/shared/lib/radial-trigger.ts",
   "desktop/src/shared/stella-api.ts",
 ];
-const preloadEntryPoint = "desktop/electron/preload.ts";
+const preloadEntryPoints = ["desktop/electron/preload.ts"];
+const storeWebPreloadEntryPoints = ["desktop/electron/store-web-preload.ts"];
 
 let buildContexts = [];
 let rebuildTimer = null;
@@ -105,7 +106,9 @@ const getMainEntryPoints = async () => {
   const entryPoints = new Set(
     [...collectedEntries.flat(), ...existingExplicitEntries].map(normalizePath),
   );
-  entryPoints.delete(normalizePath(preloadEntryPoint));
+  for (const preloadEntryPoint of preloadEntryPoints) {
+    entryPoints.delete(normalizePath(preloadEntryPoint));
+  }
   return [...entryPoints].sort();
 };
 
@@ -129,8 +132,21 @@ const createBuildOptions = async () => {
       absWorkingDir: repoRootDir,
       bundle: true,
       external: ["electron"],
-      entryPoints: [preloadEntryPoint],
+      entryPoints: preloadEntryPoints,
       format: "cjs",
+      logLevel: "info",
+      outbase: ".",
+      outdir: path.join("desktop", outdir),
+      platform: "node",
+      target: nodeTarget,
+      tsconfig: path.join("desktop", "tsconfig.preload.json"),
+    },
+    {
+      absWorkingDir: repoRootDir,
+      bundle: true,
+      external: ["electron"],
+      entryPoints: storeWebPreloadEntryPoints,
+      format: "esm",
       logLevel: "info",
       outbase: ".",
       outdir: path.join("desktop", outdir),

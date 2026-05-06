@@ -29,6 +29,17 @@ type StoreHandlersOptions = {
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
+  assertStoreWebSender?: (
+    event: IpcMainEvent | IpcMainInvokeEvent,
+    channel: string,
+  ) => boolean;
+  getStoreAuthToken?: () => Promise<string | null>;
+  showStoreWebView?: (params?: { tab?: string; packageId?: string }) => void;
+  hideStoreWebView?: () => void;
+  goBackInStoreWebView?: () => void;
+  goForwardInStoreWebView?: () => void;
+  reloadStoreWebView?: () => void;
+  dispatchStoreWebLocalAction?: (action: unknown) => Promise<unknown>;
 };
 
 const listInstalledThemes = async (stellaRoot: string) => {
@@ -121,6 +132,131 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     assertPrivilegedRequest(options, event, channel);
     return await action(await waitForRunner());
   };
+  const assertStoreWebRequest = (
+    event: IpcMainEvent | IpcMainInvokeEvent,
+    channel: string,
+  ) => {
+    if (!options.assertStoreWebSender?.(event, channel)) {
+      throw new Error(`Blocked untrusted IPC call to ${channel}`);
+    }
+  };
+  const withStoreWebRunner = async <T>(
+    event: IpcMainEvent | IpcMainInvokeEvent,
+    channel: string,
+    action: (runner: Awaited<ReturnType<typeof waitForRunner>>) => Promise<T>,
+  ) => {
+    assertStoreWebRequest(event, channel);
+    return await action(await waitForRunner());
+  };
+
+  ipcMain.handle(
+    "storeWeb:show",
+    async (event, payload?: { tab?: string; package?: string; packageId?: string }) => {
+      assertPrivilegedRequest(options, event, "storeWeb:show");
+      options.showStoreWebView?.({
+        tab: payload?.tab,
+        packageId: payload?.packageId ?? payload?.package,
+      });
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle("storeWeb:hide", async (event) => {
+    assertPrivilegedRequest(options, event, "storeWeb:hide");
+    options.hideStoreWebView?.();
+    return { ok: true };
+  });
+
+  ipcMain.handle("storeWeb:goBack", async (event) => {
+    assertPrivilegedRequest(options, event, "storeWeb:goBack");
+    options.goBackInStoreWebView?.();
+    return { ok: true };
+  });
+
+  ipcMain.handle("storeWeb:goForward", async (event) => {
+    assertPrivilegedRequest(options, event, "storeWeb:goForward");
+    options.goForwardInStoreWebView?.();
+    return { ok: true };
+  });
+
+  ipcMain.handle("storeWeb:reload", async (event) => {
+    assertPrivilegedRequest(options, event, "storeWeb:reload");
+    options.reloadStoreWebView?.();
+    return { ok: true };
+  });
+
+  ipcMain.handle("storeWeb:getAuthToken", async (event) => {
+    assertStoreWebRequest(event, "storeWeb:getAuthToken");
+    return (await options.getStoreAuthToken?.()) ?? null;
+  });
+
+  const handleStoreWebLocalAction = (action: unknown) => {
+    if (!options.dispatchStoreWebLocalAction) {
+      throw new Error("The local Store bridge is unavailable.");
+    }
+    return options.dispatchStoreWebLocalAction(action);
+  };
+
+  ipcMain.handle("storeWeb:openStorePanel", async (event) => {
+    assertStoreWebRequest(event, "storeWeb:openStorePanel");
+    return await handleStoreWebLocalAction({
+      type: "openStorePanel",
+    });
+  });
+
+  ipcMain.handle("storeWeb:installPet", async (event, payload: unknown) => {
+    assertStoreWebRequest(event, "storeWeb:installPet");
+    return await handleStoreWebLocalAction({
+      type: "installPet",
+      payload,
+    });
+  });
+
+  ipcMain.handle("storeWeb:selectPet", async (event, payload: unknown) => {
+    assertStoreWebRequest(event, "storeWeb:selectPet");
+    return await handleStoreWebLocalAction({
+      type: "selectPet",
+      payload,
+    });
+  });
+
+  ipcMain.handle("storeWeb:removePet", async (event, payload: unknown) => {
+    assertStoreWebRequest(event, "storeWeb:removePet");
+    return await handleStoreWebLocalAction({
+      type: "removePet",
+      payload,
+    });
+  });
+
+  ipcMain.handle("storeWeb:getPetState", async (event) => {
+    assertStoreWebRequest(event, "storeWeb:getPetState");
+    return await handleStoreWebLocalAction({
+      type: "getPetState",
+    });
+  });
+
+  ipcMain.handle("storeWeb:installEmojiPack", async (event, payload: unknown) => {
+    assertStoreWebRequest(event, "storeWeb:installEmojiPack");
+    return await handleStoreWebLocalAction({
+      type: "installEmojiPack",
+      payload,
+    });
+  });
+
+  ipcMain.handle("storeWeb:clearEmojiPack", async (event, payload: unknown) => {
+    assertStoreWebRequest(event, "storeWeb:clearEmojiPack");
+    return await handleStoreWebLocalAction({
+      type: "clearEmojiPack",
+      payload,
+    });
+  });
+
+  ipcMain.handle("storeWeb:getEmojiPackState", async (event) => {
+    assertStoreWebRequest(event, "storeWeb:getEmojiPackState");
+    return await handleStoreWebLocalAction({
+      type: "getEmojiPackState",
+    });
+  });
 
   ipcMain.handle("theme:listInstalled", async () => {
     const stellaRoot = options.getStellaRoot();
@@ -134,6 +270,17 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     return await withStoreRunner(
       event,
       "store:readFeatureSnapshot",
+      async (runner) =>
+        (await runner.readSelfModFeatureSnapshot()) satisfies
+          | SelfModFeatureSnapshot
+          | null,
+    );
+  });
+
+  ipcMain.handle("storeWeb:readFeatureSnapshot", async (event) => {
+    return await withStoreWebRunner(
+      event,
+      "storeWeb:readFeatureSnapshot",
       async (runner) =>
         (await runner.readSelfModFeatureSnapshot()) satisfies
           | SelfModFeatureSnapshot
@@ -166,6 +313,16 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       ) satisfies StorePackageReleaseRecord | null),
   );
 
+  ipcMain.handle(
+    "storeWeb:getRelease",
+    async (event, payload: { packageId: string; releaseNumber: number }) =>
+      await withStoreWebRunner(event, "storeWeb:getRelease", async (runner) =>
+        await runner.getStorePackageRelease(
+          payload.packageId,
+          payload.releaseNumber,
+        ) satisfies StorePackageReleaseRecord | null),
+  );
+
   // Install via the new blueprint flow: the renderer fetches the
   // published release (blueprintMarkdown + reference commits are on
   // the release row), then calls this IPC with that payload. The
@@ -186,6 +343,31 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       },
     ) =>
       await withStoreRunner(event, "store:installFromBlueprint", async (runner) => {
+        const installRecord =
+          await runner.installFromBlueprint(payload) satisfies StoreInstallRecord;
+        const stellaRoot = options.getStellaRoot();
+        if (stellaRoot) {
+          await cleanupStoreInstallArtifacts(stellaRoot, payload).catch(
+            () => undefined,
+          );
+        }
+        return installRecord;
+      }),
+  );
+
+  ipcMain.handle(
+    "storeWeb:installFromBlueprint",
+    async (
+      event,
+      payload: {
+        packageId: string;
+        releaseNumber: number;
+        displayName: string;
+        blueprintMarkdown: string;
+        commits?: Array<{ hash: string; subject: string; diff: string }>;
+      },
+    ) =>
+      await withStoreWebRunner(event, "storeWeb:installFromBlueprint", async (runner) => {
         const installRecord =
           await runner.installFromBlueprint(payload) satisfies StoreInstallRecord;
         const stellaRoot = options.getStellaRoot();
@@ -227,13 +409,48 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         await runner.publishStoreBlueprint(payload as Parameters<typeof runner.publishStoreBlueprint>[0])),
   );
 
+  ipcMain.handle(
+    "storeWeb:publishBlueprint",
+    async (
+      event,
+      payload: {
+        messageId: string;
+        packageId: string;
+        asUpdate: boolean;
+        displayName?: string;
+        description?: string;
+        category?:
+          | "apps-games"
+          | "productivity"
+          | "customization"
+          | "skills-agents"
+          | "integrations"
+          | "other";
+        manifest: Record<string, unknown>;
+        releaseNotes?: string;
+      },
+    ) =>
+      await withStoreWebRunner(event, "storeWeb:publishBlueprint", async (runner) =>
+        await runner.publishStoreBlueprint(payload as Parameters<typeof runner.publishStoreBlueprint>[0])),
+  );
+
   ipcMain.handle("store:listInstalledMods", async (event) => {
     return await withStoreRunner(event, "store:listInstalledMods", async (runner) =>
       await runner.listInstalledMods() satisfies StoreInstallRecord[]);
   });
 
+  ipcMain.handle("storeWeb:listInstalledMods", async (event) => {
+    return await withStoreWebRunner(event, "storeWeb:listInstalledMods", async (runner) =>
+      await runner.listInstalledMods() satisfies StoreInstallRecord[]);
+  });
+
   ipcMain.handle("store:getThread", async (event) => {
     return await withStoreRunner(event, "store:getThread", async (runner) =>
+      await runner.getStoreThread());
+  });
+
+  ipcMain.handle("storeWeb:getThread", async (event) => {
+    return await withStoreWebRunner(event, "storeWeb:getThread", async (runner) =>
       await runner.getStoreThread());
   });
 
@@ -251,13 +468,37 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         await runner.sendStoreThreadMessage(payload)),
   );
 
+  ipcMain.handle(
+    "storeWeb:sendThreadMessage",
+    async (
+      event,
+      payload: {
+        text: string;
+        attachedFeatureNames?: string[];
+        editingBlueprint?: boolean;
+      },
+    ) =>
+      await withStoreWebRunner(event, "storeWeb:sendThreadMessage", async (runner) =>
+        await runner.sendStoreThreadMessage(payload)),
+  );
+
   ipcMain.handle("store:cancelThreadTurn", async (event) => {
     return await withStoreRunner(event, "store:cancelThreadTurn", async (runner) =>
       await runner.cancelStoreThreadTurn());
   });
 
+  ipcMain.handle("storeWeb:cancelThreadTurn", async (event) => {
+    return await withStoreWebRunner(event, "storeWeb:cancelThreadTurn", async (runner) =>
+      await runner.cancelStoreThreadTurn());
+  });
+
   ipcMain.handle("store:denyLatestBlueprint", async (event) => {
     return await withStoreRunner(event, "store:denyLatestBlueprint", async (runner) =>
+      await runner.denyLatestStoreBlueprint());
+  });
+
+  ipcMain.handle("storeWeb:denyLatestBlueprint", async (event) => {
+    return await withStoreWebRunner(event, "storeWeb:denyLatestBlueprint", async (runner) =>
       await runner.denyLatestStoreBlueprint());
   });
 
@@ -268,8 +509,20 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         await runner.markStoreBlueprintPublished(payload)),
   );
 
+  ipcMain.handle(
+    "storeWeb:markBlueprintPublished",
+    async (event, payload: { messageId: string; releaseNumber: number }) =>
+      await withStoreWebRunner(event, "storeWeb:markBlueprintPublished", async (runner) =>
+        await runner.markStoreBlueprintPublished(payload)),
+  );
+
   ipcMain.handle("store:uninstallMod", async (event, payload: { packageId: string }) => {
     return await withStoreRunner(event, "store:uninstallMod", (runner) =>
+      runner.uninstallStoreMod(payload.packageId));
+  });
+
+  ipcMain.handle("storeWeb:uninstallMod", async (event, payload: { packageId: string }) => {
+    return await withStoreWebRunner(event, "storeWeb:uninstallMod", (runner) =>
       runner.uninstallStoreMod(payload.packageId));
   });
 

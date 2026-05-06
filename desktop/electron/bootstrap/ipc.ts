@@ -39,6 +39,24 @@ import { type BootstrapContext, getMobileBroadcast } from "./context.js";
 import type { BootstrapResetFlows } from "./resets.js";
 import { startMobileBridge, stopMobileBridge } from "./aux-runtime.js";
 import { scheduleGlobalInputHooksAfterAppReady } from "./global-input-hooks.js";
+import { randomUUID } from "crypto";
+
+const DEFAULT_STORE_WEB_URL = "https://stella.sh/store";
+
+const readStoreWebBaseUrl = () =>
+  (
+    process.env.STELLA_STORE_WEB_URL ??
+    process.env.VITE_STELLA_STORE_WEB_URL ??
+    DEFAULT_STORE_WEB_URL
+  ).trim() || DEFAULT_STORE_WEB_URL;
+
+const getUrlOrigin = (value: string) => {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+};
 
 export const registerBootstrapIpcHandlers = (
   context: BootstrapContext,
@@ -48,6 +66,42 @@ export const registerBootstrapIpcHandlers = (
   const stopCapturing = startCapturingHandlers();
   const lazyMobileBroadcast = () => getMobileBroadcast(context);
   const { config, lifecycle, services, state } = context;
+  const allowedStoreWebOrigin = getUrlOrigin(readStoreWebBaseUrl());
+  const dispatchStoreWebLocalAction = (action: unknown): Promise<unknown> => {
+    const fullWindow = state.windowManager?.getFullWindow();
+    if (!fullWindow || fullWindow.isDestroyed()) {
+      return Promise.reject(new Error("Stella window is unavailable."));
+    }
+    const requestId = randomUUID();
+    const channel = `storeWeb:localActionResult:${requestId}`;
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        ipcMain.removeAllListeners(channel);
+        reject(new Error("Timed out waiting for the local Store bridge."));
+      }, 10_000);
+      ipcMain.once(channel, (event, payload) => {
+        clearTimeout(timeout);
+        if (!services.externalLinkService.assertPrivilegedSender(event, channel)) {
+          reject(new Error("Rejected untrusted Store bridge response."));
+          return;
+        }
+        const result = payload as {
+          ok?: boolean;
+          result?: unknown;
+          error?: string;
+        };
+        if (result.ok) {
+          resolve(result.result ?? null);
+        } else {
+          reject(new Error(result.error || "Store bridge action failed."));
+        }
+      });
+      fullWindow.webContents.send("storeWeb:localAction", {
+        requestId,
+        action,
+      });
+    });
+  };
 
   registerUiHandlers({
     uiState: services.uiStateService.state,
@@ -246,6 +300,31 @@ export const registerBootstrapIpcHandlers = (
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
+    assertStoreWebSender: (event, channel) => {
+      if (state.windowManager?.isStoreWebViewWebContents(event.sender.id)) {
+        return true;
+      }
+      const senderOrigin = getUrlOrigin(
+        services.externalLinkService.getSenderUrl(event),
+      );
+      const trusted = Boolean(
+        allowedStoreWebOrigin && senderOrigin === allowedStoreWebOrigin,
+      );
+      if (!trusted) {
+        console.warn(
+          `[security] Blocked untrusted Store web IPC ${channel} from ${senderOrigin ?? "unknown"}`,
+        );
+      }
+      return trusted;
+    },
+    getStoreAuthToken: () => services.authService.getConvexAuthToken(),
+    showStoreWebView: (params) => state.windowManager?.showStoreWebView(params),
+    hideStoreWebView: () => state.windowManager?.hideStoreWebView(),
+    goBackInStoreWebView: () => state.windowManager?.goBackInStoreWebView(),
+    goForwardInStoreWebView: () =>
+      state.windowManager?.goForwardInStoreWebView(),
+    reloadStoreWebView: () => state.windowManager?.reloadStoreWebView(),
+    dispatchStoreWebLocalAction,
   });
 
   registerFashionHandlers({

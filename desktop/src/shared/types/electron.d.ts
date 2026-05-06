@@ -921,6 +921,30 @@ export type ElectronStoreApi = {
   }>;
 };
 
+export type ElectronStoreWebApi = {
+  show: (payload?: {
+    tab?: string;
+    package?: string;
+    packageId?: string;
+  }) => Promise<{ ok: boolean }>;
+  hide: () => Promise<{ ok: boolean }>;
+  goBack: () => Promise<{ ok: boolean }>;
+  goForward: () => Promise<{ ok: boolean }>;
+  reload: () => Promise<{ ok: boolean }>;
+};
+
+export type ElectronStoreWebLocalApi = {
+  onAction: (
+    callback: (payload: { requestId: string; action: unknown }) => void,
+  ) => () => void;
+  reply: (payload: {
+    requestId: string;
+    ok: boolean;
+    result?: unknown;
+    error?: string;
+  }) => void;
+};
+
 export type StellaConnectorSummary = {
   id: string;
   displayName: string;
@@ -1200,6 +1224,8 @@ export type ElectronApi = {
   onboarding: ElectronOnboardingApi;
   discovery: ElectronDiscoveryApi;
   browser: ElectronBrowserApi;
+  storeWeb: ElectronStoreWebApi;
+  storeWebLocal: ElectronStoreWebLocalApi;
   media: {
     saveOutput: (
       url: string,

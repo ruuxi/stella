@@ -14,6 +14,37 @@ import {
 } from "./context.js";
 import { startDeferredStartup } from "./deferred-startup.js";
 
+const DEFAULT_STORE_WEB_URL = "https://stella.sh/store";
+
+const readStoreWebBaseUrl = () =>
+  (
+    process.env.STELLA_STORE_WEB_URL ??
+    process.env.VITE_STELLA_STORE_WEB_URL ??
+    DEFAULT_STORE_WEB_URL
+  ).trim() || DEFAULT_STORE_WEB_URL;
+
+const appendStoreWebParams = (
+  rawUrl: string,
+  params?: { tab?: string; packageId?: string },
+) => {
+  const url = new URL(rawUrl);
+  if (params?.tab) {
+    url.searchParams.set("tab", params.tab);
+  }
+  if (params?.packageId) {
+    url.searchParams.set("package", params.packageId);
+  }
+  return url.toString();
+};
+
+const storeWebOrigin = (value: string) => {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+};
+
 const initializeBootstrapLocalState = async (context: BootstrapContext) => {
   const { config, lifecycle, services, state } = context;
   const stellaHome = await resolveStellaHome(app, config.stellaRoot);
@@ -31,6 +62,9 @@ const initializeBootstrapLocalState = async (context: BootstrapContext) => {
 const initializeWindowShell = (context: BootstrapContext) => {
   const { config, lifecycle, services, state } = context;
   const preloadPath = path.join(config.electronDir, "preload.js");
+  const storeWebPreloadPath = path.join(config.electronDir, "store-web-preload.js");
+  const storeWebBaseUrl = readStoreWebBaseUrl();
+  const allowedStoreWebOrigin = storeWebOrigin(storeWebBaseUrl);
   const appSession = session.fromPartition(config.sessionPartition);
 
   appSession.setPermissionRequestHandler(
@@ -66,6 +100,10 @@ const initializeWindowShell = (context: BootstrapContext) => {
     new WindowManager({
       electronDir: config.electronDir,
       preloadPath,
+      storeWebPreloadPath,
+      getStoreWebUrl: (params) => appendStoreWebParams(storeWebBaseUrl, params),
+      isAllowedStoreWebUrl: (url) =>
+        Boolean(allowedStoreWebOrigin && storeWebOrigin(url) === allowedStoreWebOrigin),
       sessionPartition: config.sessionPartition,
       isDev: config.isDev,
       getDevServerUrl,
@@ -142,7 +180,15 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
 export const initializeBootstrapAppShell = async (
   context: BootstrapContext,
 ) => {
+  await prepareBootstrapAppShell(context);
+  launchBootstrapAppShell(context);
+};
+
+export const prepareBootstrapAppShell = async (context: BootstrapContext) => {
   await initializeBootstrapLocalState(context);
   initializeWindowShell(context);
+};
+
+export const launchBootstrapAppShell = (context: BootstrapContext) => {
   finalizeWindowLaunch(context);
 };

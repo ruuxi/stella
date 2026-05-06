@@ -16,7 +16,7 @@ import { useWindowType } from "@/shared/hooks/use-window-type";
 import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
 import { DisplayTabBar } from "@/shell/display/DisplayTabBar";
 import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
-import { ShellTopBarStoreTabs } from "@/shell/ShellTopBarStoreTabs";
+import { ShellTopBarStoreControls } from "@/shell/ShellTopBarStoreControls";
 
 export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
 
@@ -144,7 +144,7 @@ export const ShellTopBar = () => {
        */}
       {isStoreRoute ? (
         <div className="shell-topbar-center">
-          <ShellTopBarStoreTabs />
+          <ShellTopBarStoreControls />
         </div>
       ) : null}
       <div className="shell-topbar-tabs" style={tabsStyle}>

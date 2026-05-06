@@ -1327,6 +1327,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }),
   },
 
+  storeWeb: {
+    show: (payload?: { tab?: string; package?: string; packageId?: string }) =>
+      ipcRenderer.invoke("storeWeb:show", payload),
+    hide: () => ipcRenderer.invoke("storeWeb:hide"),
+    goBack: () => ipcRenderer.invoke("storeWeb:goBack"),
+    goForward: () => ipcRenderer.invoke("storeWeb:goForward"),
+    reload: () => ipcRenderer.invoke("storeWeb:reload"),
+  },
+
+  storeWebLocal: {
+    onAction: (
+      callback: (payload: { requestId: string; action: unknown }) => void,
+    ) => onIpc<{ requestId: string; action: unknown }>("storeWeb:localAction")(callback),
+    reply: (payload: {
+      requestId: string;
+      ok: boolean;
+      result?: unknown;
+      error?: string;
+    }) =>
+      ipcRenderer.send(
+        `storeWeb:localActionResult:${payload.requestId}`,
+        payload,
+      ),
+  },
+
   fashion: {
     pickAndSaveBodyPhoto: () =>
       ipcRenderer.invoke("fashion:pickAndSaveBodyPhoto"),
