@@ -25,24 +25,6 @@ export const ChatColumn = memo(function ChatColumn({
   onSuggestionClick,
   onDismissHome,
 }: ChatColumnProps) {
-  const pendingUserMessageId = conversation.streaming.pendingUserMessageId;
-  const lastSentMessageIdRef = useRef<string | null>(null);
-  const { scrollToBottom } = scroll;
-
-  // On send, nudge the viewport to the newest edge so the freshly-sent
-  // user bubble is in view. Column-reverse + ResizeObserver already
-  // follows new content while the user is at the bottom; this covers
-  // the case where the user had scrolled up to read history.
-  useEffect(() => {
-    if (!pendingUserMessageId) {
-      lastSentMessageIdRef.current = null;
-      return;
-    }
-    if (lastSentMessageIdRef.current === pendingUserMessageId) return;
-    lastSentMessageIdRef.current = pendingUserMessageId;
-    scrollToBottom("smooth");
-  }, [pendingUserMessageId, scrollToBottom]);
-
   // --- Custom scrollbar thumb drag ---
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ y: number; scrollTop: number } | null>(null);
@@ -82,6 +64,7 @@ export const ChatColumn = memo(function ChatColumn({
     setViewportElement,
     showScrollButton,
     isAtBottom,
+    scrollToBottom,
     thumbState,
   } = scroll;
 

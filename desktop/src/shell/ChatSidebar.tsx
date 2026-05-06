@@ -94,7 +94,6 @@ export function ChatPanelTab(
     const [inputText, setInputText] = useState("");
     const [sidebarExpanded, setSidebarExpanded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
-    const lastSentMessageIdRef = useRef<string | null>(null);
 
     /*
      * Own scroll-management instance for the sidebar viewport. Mirrors
@@ -132,23 +131,6 @@ export function ChatPanelTab(
         sidebarScroll.hasScrollElement,
       ],
     );
-
-    /*
-     * On send, nudge the sidebar viewport to the newest edge so the
-     * freshly-sent user bubble is in view. Column-reverse +
-     * ResizeObserver already follows new content while the user is at
-     * the bottom; this covers the case where they had scrolled up.
-     */
-    const { scrollToBottom: sidebarScrollToBottom } = sidebarScrollApi;
-    useEffect(() => {
-      if (!pendingUserMessageId) {
-        lastSentMessageIdRef.current = null;
-        return;
-      }
-      if (lastSentMessageIdRef.current === pendingUserMessageId) return;
-      lastSentMessageIdRef.current = pendingUserMessageId;
-      sidebarScrollToBottom("smooth");
-    }, [pendingUserMessageId, sidebarScrollToBottom]);
 
     const { chatContext, setChatContext, selectedText, setSelectedText } =
       useCapturedChatContext();

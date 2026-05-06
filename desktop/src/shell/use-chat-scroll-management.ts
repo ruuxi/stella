@@ -172,6 +172,26 @@ export function useChatScrollManagement({
       : null
   }, [])
 
+  const syncScrollStateFromDom = useCallback(() => {
+    const el = viewportRef.current
+    if (!el) return
+
+    const atBottom = Math.abs(el.scrollTop) < AT_BOTTOM_THRESHOLD
+    setUserScrolled(!atBottom)
+
+    const shouldShowScrollButton =
+      Math.abs(el.scrollTop) > SCROLL_BUTTON_THRESHOLD
+    setScrollButtonVisible(shouldShowScrollButton)
+
+    updateThumb()
+    captureResizeAnchor()
+  }, [
+    captureResizeAnchor,
+    setScrollButtonVisible,
+    setUserScrolled,
+    updateThumb,
+  ])
+
   const restoreResizeAnchor = useCallback(() => {
     const viewport = viewportRef.current
     const anchor = resizeAnchorRef.current
@@ -311,10 +331,15 @@ export function useChatScrollManagement({
       const grew = newHeight > lastHeight
       lastHeight = newHeight
 
-      if (grew && !userScrolledRef.current) {
+      const atBottom = Math.abs(viewport.scrollTop) < AT_BOTTOM_THRESHOLD
+
+      if (grew && atBottom && !userScrolledRef.current) {
         viewport.scrollTop = 0
         markProgrammatic()
-      } else if (userScrolledRef.current) {
+      } else {
+        if (!atBottom && !userScrolledRef.current) {
+          setUserScrolled(true)
+        }
         restoreResizeAnchor()
       }
 
@@ -328,6 +353,7 @@ export function useChatScrollManagement({
     hasViewport,
     hasContent,
     markProgrammatic,
+    setUserScrolled,
     updateThumb,
     captureResizeAnchor,
     restoreResizeAnchor,
@@ -354,15 +380,19 @@ export function useChatScrollManagement({
     const el = viewportRef.current
     if (!el) return
 
-    const stop = () => stopSpring()
-
-    el.addEventListener('wheel', stop, { passive: true })
-    el.addEventListener('touchstart', stop, { passive: true })
-    return () => {
-      el.removeEventListener('wheel', stop)
-      el.removeEventListener('touchstart', stop)
+    const handleUserScrollIntent = () => {
+      lastProgrammaticRef.current = 0
+      stopSpring()
+      requestAnimationFrame(syncScrollStateFromDom)
     }
-  }, [hasViewport, stopSpring])
+
+    el.addEventListener('wheel', handleUserScrollIntent, { passive: true })
+    el.addEventListener('touchstart', handleUserScrollIntent, { passive: true })
+    return () => {
+      el.removeEventListener('wheel', handleUserScrollIntent)
+      el.removeEventListener('touchstart', handleUserScrollIntent)
+    }
+  }, [hasViewport, stopSpring, syncScrollStateFromDom])
 
   useEffect(() => {
     const el = viewportRef.current
