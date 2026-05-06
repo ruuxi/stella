@@ -61,6 +61,7 @@ import "@/app/chat/compact-conversation.css";
 import "@/app/chat/end-resource-card.css";
 import "@/app/chat/composer-primitives.css";
 import "@/shell/chat-sidebar.css";
+import "./store.css";
 
 const EDIT_BLUEPRINT_PROMPT = "What do you want to change?";
 const EMPTY_STORE_THREAD_MESSAGES: StoreThreadMessage[] = [];

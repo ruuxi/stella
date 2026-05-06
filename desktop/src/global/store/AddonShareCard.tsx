@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import type { StorePackageRecord } from "@/shared/types/electron";
 import type { ParsedShareLink } from "./share-link";
+import "./store.css";
 
 type AddonShareCardProps = {
   link: ParsedShareLink;

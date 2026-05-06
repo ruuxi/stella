@@ -65,7 +65,7 @@
   height: calc(100vh - var(--shell-topbar-height, 38px));
 }
 
-/* The Store nav now lives in the page-sidebar (see StoreView), so the
+/* The Store nav now lives in the page-sidebar, so the
    in-page header / pill row that used to sit at the top of `.store-root`
    is gone. Tab content begins flush with the workspace top edge. */
 
