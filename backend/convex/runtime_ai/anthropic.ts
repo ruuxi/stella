@@ -19,6 +19,17 @@ type CacheControl = { type: "ephemeral"; ttl?: "1h" };
 type AnthropicContentBlock =
   | { type: "text"; text: string; cache_control?: CacheControl }
   | {
+      type: "thinking";
+      thinking: string;
+      signature: string;
+      cache_control?: CacheControl;
+    }
+  | {
+      type: "redacted_thinking";
+      data: string;
+      cache_control?: CacheControl;
+    }
+  | {
       type: "image";
       source: {
         type: "base64";
@@ -79,6 +90,7 @@ type AnthropicStreamEvent = {
     type?: string;
     text?: string;
     thinking?: string;
+    signature?: string;
     partial_json?: string;
     stop_reason?: string;
   };
@@ -86,6 +98,7 @@ type AnthropicStreamEvent = {
     type?: string;
     text?: string;
     thinking?: string;
+    data?: string;
     id?: string;
     name?: string;
     input?: Record<string, unknown>;
@@ -232,8 +245,25 @@ export function convertMessages(model: Model<"anthropic-messages">, context: Con
           continue;
         }
         if (block.type === "thinking") {
+          if (block.redacted) {
+            if (block.thinkingSignature?.trim()) {
+              content.push({
+                type: "redacted_thinking",
+                data: block.thinkingSignature,
+              });
+            }
+            continue;
+          }
           if (block.thinking.trim()) {
-            content.push({ type: "text", text: sanitizeSurrogates(block.thinking) });
+            if (block.thinkingSignature?.trim()) {
+              content.push({
+                type: "thinking",
+                thinking: sanitizeSurrogates(block.thinking),
+                signature: block.thinkingSignature,
+              });
+            } else {
+              content.push({ type: "text", text: sanitizeSurrogates(block.thinking) });
+            }
           }
           continue;
         }
@@ -426,7 +456,19 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamO
             output.content.push({ type: "text", text: event.content_block.text ?? "" });
             stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
           } else if (event.content_block.type === "thinking") {
-            output.content.push({ type: "thinking", thinking: event.content_block.thinking ?? "" });
+            output.content.push({
+              type: "thinking",
+              thinking: event.content_block.thinking ?? "",
+              thinkingSignature: "",
+            });
+            stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
+          } else if (event.content_block.type === "redacted_thinking") {
+            output.content.push({
+              type: "thinking",
+              thinking: "[Reasoning redacted]",
+              thinkingSignature: event.content_block.data,
+              redacted: true,
+            });
             stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
           } else if (event.content_block.type === "tool_use") {
             output.content.push({
@@ -453,6 +495,13 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamO
               delta: event.delta.thinking,
               partial: output,
             });
+          } else if (
+            block.type === "thinking"
+            && event.delta.type === "signature_delta"
+            && typeof event.delta.signature === "string"
+          ) {
+            block.thinkingSignature = block.thinkingSignature || "";
+            block.thinkingSignature += event.delta.signature;
           } else if (block.type === "toolCall" && typeof event.delta.partial_json === "string") {
             const prior = toolInputByIndex.get(event.index) ?? "";
             const next = prior + event.delta.partial_json;
