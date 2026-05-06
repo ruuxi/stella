@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 
 const invoke = <T>(channel: string, payload?: unknown): Promise<T> =>
   ipcRenderer.invoke(channel, payload) as Promise<T>;
@@ -91,13 +91,7 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
       }),
     pickTryOnImages: () =>
       invoke("storeWeb:fashionLocalAction", { action: "pickTryOnImages" }),
-    getDroppedFilePath: (file: File) => {
-      try {
-        return webUtils.getPathForFile(file) || "";
-      } catch {
-        return "";
-      }
-    },
+    getDroppedFilePath: (_file: File) => "",
     startOutfitBatch: (payload: {
       prompt?: string;
       batchId?: string;
