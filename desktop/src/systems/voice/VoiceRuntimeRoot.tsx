@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useUiState } from "@/context/ui-state";
 import { type VoiceSessionState } from "@/features/voice/services/realtime-voice";
 import { VoiceSessionManager } from "@/features/voice/hooks/use-realtime-voice";
+import {
+  acquireSharedMicrophone,
+  type SharedMicrophoneLease,
+} from "@/features/voice/services/shared-microphone";
 
 type RuntimeVoiceState = {
   sessionState: VoiceSessionState;
@@ -71,6 +75,7 @@ export function VoiceRuntimeRoot() {
   const conversationIdRef = useRef<string>(state.conversationId ?? "voice-rtc");
   const inputActiveRef = useRef<boolean>(state.isVoiceRtcActive);
   const managerRef = useRef<VoiceSessionManager | null>(null);
+  const warmMicLeaseRef = useRef<SharedMicrophoneLease | null>(null);
   const publishedStateRef = useRef<RuntimeVoiceState>(DEFAULT_RUNTIME_STATE);
   const levelTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const speakingRef = useRef(false);
@@ -141,6 +146,36 @@ export function VoiceRuntimeRoot() {
   useEffect(() => {
     inputActiveRef.current = state.isVoiceRtcActive;
   }, [state.isVoiceRtcActive]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!wakeWordEnabled) {
+      warmMicLeaseRef.current?.release();
+      warmMicLeaseRef.current = null;
+      return;
+    }
+
+    void acquireSharedMicrophone()
+      .then((lease) => {
+        if (cancelled || !wakeWordEnabled) {
+          lease.release();
+          return;
+        }
+        warmMicLeaseRef.current?.release();
+        warmMicLeaseRef.current = lease;
+      })
+      .catch((error) => {
+        console.debug(
+          "[voice-runtime] Failed to warm microphone for wake word:",
+          (error as Error).message,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wakeWordEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -244,6 +279,8 @@ export function VoiceRuntimeRoot() {
 
   useEffect(() => {
     return () => {
+      warmMicLeaseRef.current?.release();
+      warmMicLeaseRef.current = null;
       stopRuntimeSession();
     };
   }, []);
