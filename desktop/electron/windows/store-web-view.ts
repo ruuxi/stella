@@ -10,6 +10,13 @@ type StoreWebViewControllerOptions = {
 const STORE_VIEW_TOP_INSET = 38;
 const STORE_VIEW_LEFT_INSET = 170;
 
+export type StoreWebViewLayout = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type StoreWebViewParams = {
   tab?: string;
   packageId?: string;
@@ -18,6 +25,7 @@ export type StoreWebViewParams = {
 export class StoreWebViewController {
   private view: WebContentsView | null = null;
   private owner: BrowserWindow | null = null;
+  private layout: StoreWebViewLayout | null = null;
 
   constructor(private readonly options: StoreWebViewControllerOptions) {}
 
@@ -68,12 +76,34 @@ export class StoreWebViewController {
   private syncBounds() {
     if (!this.owner || !this.view || this.owner.isDestroyed()) return;
     const [width, height] = this.owner.getContentSize();
+    if (this.layout) {
+      const x = Math.max(0, Math.min(width, Math.round(this.layout.x)));
+      const y = Math.max(0, Math.min(height, Math.round(this.layout.y)));
+      this.view.setBounds({
+        x,
+        y,
+        width: Math.max(
+          0,
+          Math.min(width - x, Math.round(this.layout.width)),
+        ),
+        height: Math.max(
+          0,
+          Math.min(height - y, Math.round(this.layout.height)),
+        ),
+      });
+      return;
+    }
     this.view.setBounds({
       x: STORE_VIEW_LEFT_INSET,
       y: STORE_VIEW_TOP_INSET,
       width: Math.max(0, width - STORE_VIEW_LEFT_INSET),
       height: Math.max(0, height - STORE_VIEW_TOP_INSET),
     });
+  }
+
+  setLayout(layout: StoreWebViewLayout | null) {
+    this.layout = layout;
+    this.syncBounds();
   }
 
   show(owner: BrowserWindow, params?: StoreWebViewParams) {

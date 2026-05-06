@@ -320,6 +320,8 @@ export const registerBootstrapIpcHandlers = (
     getStoreAuthToken: () => services.authService.getConvexAuthToken(),
     showStoreWebView: (params) => state.windowManager?.showStoreWebView(params),
     hideStoreWebView: () => state.windowManager?.hideStoreWebView(),
+    setStoreWebViewLayout: (layout) =>
+      state.windowManager?.setStoreWebViewLayout(layout),
     goBackInStoreWebView: () => state.windowManager?.goBackInStoreWebView(),
     goForwardInStoreWebView: () =>
       state.windowManager?.goForwardInStoreWebView(),
