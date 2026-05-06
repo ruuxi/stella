@@ -9,9 +9,8 @@ import {
 } from "react";
 import { api } from "@/convex/api";
 import {
-  getLocalEventCount,
-  listLocalEvents,
-  subscribeToLocalChatUpdates,
+  subscribeToLocalConversationEventWindow,
+  type LocalConversationEventSnapshot,
 } from "@/app/chat/services/local-chat-store";
 import { showToast } from "@/ui/toast";
 import { countVisibleChatMessageEvents } from "../../../../../runtime/chat-event-visibility.js";
@@ -27,6 +26,12 @@ const EVENT_PAGE_SIZE = 200;
 const LOCAL_LOAD_RETRY_MS = 300;
 const EMPTY_EVENTS: EventRecord[] = [];
 const NO_OP = () => {};
+const EMPTY_LOCAL_SNAPSHOT: LocalConversationEventSnapshot = {
+  events: EMPTY_EVENTS,
+  count: 0,
+  hasLoaded: false,
+  error: null,
+};
 
 type PaginatedStatus =
   | "LoadingFirstPage"
@@ -77,24 +82,28 @@ export const useConversationEventFeed = (
 ): ConversationEventFeed => {
   const { storageMode } = useChatStore();
   const localWindowKey = `${storageMode}:${conversationId ?? ""}`;
-  const localWindowVisitToken = useMemo(() => Symbol(localWindowKey), [localWindowKey]);
+  const localWindowVisitToken = useMemo(
+    () => Symbol(localWindowKey),
+    [localWindowKey],
+  );
   const [localWindowState, setLocalWindowState] = useState(() => ({
     visitToken: localWindowVisitToken,
     maxItems: EVENT_PAGE_SIZE,
   }));
-  const [pendingLocalWindowState, setPendingLocalWindowState] = useState(() => ({
-    visitToken: localWindowVisitToken,
-    maxItems: null as number | null,
-  }));
+  const [pendingLocalWindowState, setPendingLocalWindowState] = useState(
+    () => ({
+      visitToken: localWindowVisitToken,
+      maxItems: null as number | null,
+    }),
+  );
   const [localSnapshot, setLocalSnapshot] = useState(() => ({
     visitToken: localWindowVisitToken,
-    events: EMPTY_EVENTS,
-    count: 0,
-    hasLoaded: false,
+    snapshot: EMPTY_LOCAL_SNAPSHOT,
   }));
   const lastLocalLoadToastAtRef = useRef(0);
   const [localRetryTick, setLocalRetryTick] = useState(0);
-  const [scheduledEvents, setScheduledEvents] = useState<EventRecord[]>(EMPTY_EVENTS);
+  const [scheduledEvents, setScheduledEvents] =
+    useState<EventRecord[]>(EMPTY_EVENTS);
   const [scheduledEventCount, setScheduledEventCount] = useState(0);
 
   const localMaxItems =
@@ -107,23 +116,19 @@ export const useConversationEventFeed = (
       : null;
   const activeLocalSnapshot =
     localSnapshot.visitToken === localWindowVisitToken
-      ? localSnapshot
-      : { visitToken: localWindowVisitToken, events: EMPTY_EVENTS, count: 0, hasLoaded: false };
+      ? localSnapshot.snapshot
+      : EMPTY_LOCAL_SNAPSHOT;
 
   const cloudResult = usePaginatedQuery(
     api.events.listEvents,
-    storageMode === "cloud" && conversationId
-      ? { conversationId }
-      : "skip",
+    storageMode === "cloud" && conversationId ? { conversationId } : "skip",
     { initialNumItems: EVENT_PAGE_SIZE },
   ) as PaginatedEventsResult | undefined;
 
   useEffect(() => {
     setLocalSnapshot({
       visitToken: localWindowVisitToken,
-      events: EMPTY_EVENTS,
-      count: 0,
-      hasLoaded: false,
+      snapshot: EMPTY_LOCAL_SNAPSHOT,
     });
   }, [localWindowVisitToken]);
 
@@ -131,15 +136,23 @@ export const useConversationEventFeed = (
     if (storageMode !== "local" || !conversationId) {
       setLocalSnapshot({
         visitToken: localWindowVisitToken,
-        events: EMPTY_EVENTS,
-        count: 0,
-        hasLoaded: true,
+        snapshot: {
+          events: EMPTY_EVENTS,
+          count: 0,
+          hasLoaded: true,
+          error: null,
+        },
       });
       return;
     }
 
     let cancelled = false;
     let retryTimer: number | null = null;
+    const options = {
+      conversationId,
+      maxItems: localMaxItems,
+      windowBy: "visible_messages" as const,
+    };
 
     const scheduleRetry = () => {
       if (cancelled || retryTimer !== null) {
@@ -153,89 +166,39 @@ export const useConversationEventFeed = (
       }, LOCAL_LOAD_RETRY_MS);
     };
 
-    const load = async () => {
-      try {
-        const [events, count] = await Promise.all([
-          listLocalEvents(conversationId, localMaxItems, {
-            windowBy: "visible_messages",
-          }),
-          getLocalEventCount(conversationId, {
-            countBy: "visible_messages",
-          }),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        if (retryTimer !== null) {
-          window.clearTimeout(retryTimer);
-          retryTimer = null;
-        }
-        setLocalSnapshot({
-          visitToken: localWindowVisitToken,
-          events,
-          count,
-          hasLoaded: true,
-        });
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        const now = Date.now();
-        if (now - lastLocalLoadToastAtRef.current > 10_000) {
-          lastLocalLoadToastAtRef.current = now;
-          showToast({
-            title: "Couldn’t load chat history",
-            description:
-              error instanceof Error && error.message
-                ? error.message
-                : "Stella will retry in a moment.",
-            variant: "error",
-          });
-        }
-        setLocalSnapshot({
-          visitToken: localWindowVisitToken,
-          events: EMPTY_EVENTS,
-          count: 0,
-          hasLoaded: false,
-        });
-        scheduleRetry();
+    const handleSnapshot = (snapshot: LocalConversationEventSnapshot) => {
+      if (cancelled) {
+        return;
       }
-    };
-
-    void load();
-    const applyUpdatedEvent = (payloadEvent: EventRecord) => {
-      setLocalSnapshot((current) => {
-        if (current.visitToken !== localWindowVisitToken) {
-          return current;
-        }
-        const alreadyPresent = current.events.some(
-          (event) => event._id === payloadEvent._id,
-        );
-        const events = mergeEventSources(current.events, [payloadEvent]);
-        return {
-          visitToken: localWindowVisitToken,
-          events,
-          count: alreadyPresent
-            ? current.count
-            : current.count + countVisibleChatMessageEvents([payloadEvent]),
-          hasLoaded: true,
-        };
-      });
-    };
-
-    const unsubscribe = subscribeToLocalChatUpdates((payload) => {
       if (retryTimer !== null) {
         window.clearTimeout(retryTimer);
         retryTimer = null;
       }
-      if (
-        payload?.event &&
-        (!payload.conversationId || payload.conversationId === conversationId)
-      ) {
-        applyUpdatedEvent(payload.event);
+      setLocalSnapshot({
+        visitToken: localWindowVisitToken,
+        snapshot,
+      });
+
+      if (!snapshot.error) {
+        return;
       }
-      void load();
-    });
+      const now = Date.now();
+      if (now - lastLocalLoadToastAtRef.current > 10_000) {
+        lastLocalLoadToastAtRef.current = now;
+        showToast({
+          title: "Couldn’t load chat history",
+          description:
+            snapshot.error.message || "Stella will retry in a moment.",
+          variant: "error",
+        });
+      }
+      scheduleRetry();
+    };
+
+    const unsubscribe = subscribeToLocalConversationEventWindow(
+      options,
+      handleSnapshot,
+    );
 
     return () => {
       cancelled = true;
@@ -244,10 +207,20 @@ export const useConversationEventFeed = (
       }
       unsubscribe();
     };
-  }, [conversationId, localMaxItems, localRetryTick, localWindowVisitToken, storageMode]);
+  }, [
+    conversationId,
+    localMaxItems,
+    localRetryTick,
+    localWindowVisitToken,
+    storageMode,
+  ]);
 
   useEffect(() => {
-    if (storageMode !== "local" || !conversationId || !window.electronAPI?.schedule) {
+    if (
+      storageMode !== "local" ||
+      !conversationId ||
+      !window.electronAPI?.schedule
+    ) {
       setScheduledEvents(EMPTY_EVENTS);
       setScheduledEventCount(0);
       return;
@@ -301,24 +274,22 @@ export const useConversationEventFeed = (
   );
 
   const localVisibleMessageCount =
-    storageMode === "local" && conversationId
-      ? activeLocalSnapshot.count
-      : 0;
+    storageMode === "local" && conversationId ? activeLocalSnapshot.count : 0;
   const isLocalLoadingOlder =
-    storageMode === "local"
-    && pendingLocalMaxItems !== null
-    && (
-      loadedVisibleLocalMessageCount
-        < Math.min(pendingLocalMaxItems, localVisibleMessageCount)
-      || scheduledEvents.length < Math.min(pendingLocalMaxItems, scheduledEventCount)
-    );
+    storageMode === "local" &&
+    pendingLocalMaxItems !== null &&
+    (loadedVisibleLocalMessageCount <
+      Math.min(pendingLocalMaxItems, localVisibleMessageCount) ||
+      scheduledEvents.length <
+        Math.min(pendingLocalMaxItems, scheduledEventCount));
 
   const cloudResults = cloudResult?.results ?? EMPTY_EVENTS;
   const cloudStatus = cloudResult?.status ?? "Exhausted";
   const cloudLoadMore = cloudResult?.loadMore ?? NO_OP;
 
   const reversedCloudEvents = useMemo(
-    () => (storageMode === "cloud" ? [...cloudResults].reverse() : EMPTY_EVENTS),
+    () =>
+      storageMode === "cloud" ? [...cloudResults].reverse() : EMPTY_EVENTS,
     [cloudResults, storageMode],
   );
 
@@ -349,16 +320,16 @@ export const useConversationEventFeed = (
 
   useEffect(() => {
     if (
-      pendingLocalWindowState.visitToken !== localWindowVisitToken
-      || pendingLocalWindowState.maxItems === null
+      pendingLocalWindowState.visitToken !== localWindowVisitToken ||
+      pendingLocalWindowState.maxItems === null
     ) {
       return;
     }
     if (
-      loadedVisibleLocalMessageCount
-        >= Math.min(pendingLocalWindowState.maxItems, localVisibleMessageCount)
-      && scheduledEvents.length
-        >= Math.min(pendingLocalWindowState.maxItems, scheduledEventCount)
+      loadedVisibleLocalMessageCount >=
+        Math.min(pendingLocalWindowState.maxItems, localVisibleMessageCount) &&
+      scheduledEvents.length >=
+        Math.min(pendingLocalWindowState.maxItems, scheduledEventCount)
     ) {
       setPendingLocalWindowState({
         visitToken: localWindowVisitToken,
@@ -383,7 +354,8 @@ export const useConversationEventFeed = (
     if (storageMode === "local") {
       const hasOlderLocalMessages =
         localVisibleMessageCount > loadedVisibleLocalMessageCount;
-      const hasOlderScheduledEvents = scheduledEventCount > scheduledEvents.length;
+      const hasOlderScheduledEvents =
+        scheduledEventCount > scheduledEvents.length;
       if (!hasOlderLocalMessages && !hasOlderScheduledEvents) {
         return;
       }
@@ -426,13 +398,13 @@ export const useConversationEventFeed = (
       return {
         events,
         hasOlderEvents:
-          localVisibleMessageCount > loadedVisibleLocalMessageCount
-          || scheduledEventCount > scheduledEvents.length,
+          localVisibleMessageCount > loadedVisibleLocalMessageCount ||
+          scheduledEventCount > scheduledEvents.length,
         isLoadingOlder: isLocalLoadingOlder,
         isInitialLoading:
-          Boolean(conversationId)
-          && !activeLocalSnapshot.hasLoaded
-          && pendingLocalMaxItems === null,
+          Boolean(conversationId) &&
+          !activeLocalSnapshot.hasLoaded &&
+          pendingLocalMaxItems === null,
         loadOlder,
       };
     }
