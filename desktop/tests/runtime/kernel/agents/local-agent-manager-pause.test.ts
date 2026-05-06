@@ -6,22 +6,7 @@ import {
   type AgentLifecycleEvent,
 } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type { ToolResult } from "../../../../../runtime/kernel/tools/types.js";
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const waitForTaskCompletion = async (
-  manager: LocalAgentManager,
-  agentId: string,
-): Promise<void> => {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const snapshot = await manager.getAgent(agentId);
-    if (snapshot && snapshot.status !== "running") {
-      return;
-    }
-    await sleep(25);
-  }
-  throw new Error(`Task ${agentId} did not finish in time.`);
-};
+import { waitForAgentSettled } from "../../../helpers/agent.js";
 
 describe("LocalAgentManager pause_agent cancellation", () => {
   it("suppresses in-flight agent-progress events after the task is canceled", async () => {
@@ -101,7 +86,7 @@ describe("LocalAgentManager pause_agent cancellation", () => {
 
     await cancelGatePromise;
     await manager.cancelAgent(created.threadId, AGENT_PAUSE_CANCEL_REASON);
-    await waitForTaskCompletion(manager, created.threadId);
+    await waitForAgentSettled(manager, created.threadId);
 
     const types = lifecycleEvents.map((entry) => entry.type);
     expect(types).toEqual([
@@ -120,8 +105,7 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     expect(
       lifecycleEvents.some(
         (entry) =>
-          entry.type === "agent-progress" &&
-          entry.statusText === "Pausing",
+          entry.type === "agent-progress" && entry.statusText === "Pausing",
       ),
     ).toBe(true);
 
@@ -180,44 +164,31 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     });
 
     await startedPromise;
-    await manager.sendAgentMessage(
-      created.threadId,
-      "later",
-      "orchestrator",
-      { interrupt: false },
-    );
-    await manager.sendAgentMessage(
-      created.threadId,
-      "now",
-      "orchestrator",
-      { interrupt: true },
-    );
+    await manager.sendAgentMessage(created.threadId, "later", "orchestrator", {
+      interrupt: false,
+    });
+    await manager.sendAgentMessage(created.threadId, "now", "orchestrator", {
+      interrupt: true,
+    });
 
     expect(
       lifecycleEvents.some(
         (event) =>
-          event.type === "agent-progress" &&
-          event.statusText === "Queued",
+          event.type === "agent-progress" && event.statusText === "Queued",
       ),
     ).toBe(true);
     expect(
       lifecycleEvents.some(
         (event) =>
-          event.type === "agent-progress" &&
-          event.statusText === "Updating",
+          event.type === "agent-progress" && event.statusText === "Updating",
       ),
     ).toBe(true);
     const progressTexts = lifecycleEvents
       .filter((event) => event.type === "agent-progress")
       .map((event) => event.statusText);
-    expect(progressTexts).toEqual([
-      "Queued",
-      "demo",
-      "Updating",
-      "demo",
-    ]);
+    expect(progressTexts).toEqual(["Queued", "demo", "Updating", "demo"]);
 
     finishRun?.();
-    await waitForTaskCompletion(manager, created.threadId);
+    await waitForAgentSettled(manager, created.threadId);
   });
 });

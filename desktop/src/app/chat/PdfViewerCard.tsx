@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { useFilePreviewActions } from "./hooks/use-file-preview-actions";
+import { FilePreviewCardShell } from "./FilePreviewCardShell";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -95,25 +96,29 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
     };
   }, []);
 
-  const handleLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
-    setNumPages(Math.max(numPages, 1));
-    setStatus("ready");
-  }, []);
+  const handleLoadSuccess = useCallback(
+    ({ numPages }: { numPages: number }) => {
+      setNumPages(Math.max(numPages, 1));
+      setStatus("ready");
+    },
+    [],
+  );
 
   const handleLoadError = useCallback((error: Error) => {
     setStatus("error");
     setErrorMessage(error.message || "Failed to load PDF.");
   }, []);
 
-  const documentFile = useMemo(
-    () => (bytes ? { data: bytes } : null),
-    [bytes],
-  );
+  const documentFile = useMemo(() => (bytes ? { data: bytes } : null), [bytes]);
 
   // Track which page is currently in view by intersection with [data-pdf-page].
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || numPages <= 0 || typeof IntersectionObserver === "undefined") {
+    if (
+      !container ||
+      numPages <= 0 ||
+      typeof IntersectionObserver === "undefined"
+    ) {
       return;
     }
     const observer = new IntersectionObserver(
@@ -145,7 +150,10 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
 
   const headerTitle =
     title?.replace(/\.pdf$/i, "") ??
-    filePath.split("/").pop()?.replace(/\.pdf$/i, "") ??
+    filePath
+      .split("/")
+      .pop()
+      ?.replace(/\.pdf$/i, "") ??
     "PDF";
   const { actionStatus, handleSave, handleCopy } = useFilePreviewActions({
     sourcePath: filePath,
@@ -153,44 +161,25 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
   });
 
   return (
-    <section className="pdf-viewer-card">
-      <header className="pdf-viewer-card__header">
-        <div className="pdf-viewer-card__title-group">
-          <span className="pdf-viewer-card__eyebrow">PDF</span>
-          <div className="pdf-viewer-card__title" title={filePath}>
-            {headerTitle}
-          </div>
-        </div>
-        {status === "ready" && numPages > 0 && (
+    <FilePreviewCardShell
+      className="pdf-viewer-card"
+      headerClassName="pdf-viewer-card__header"
+      eyebrow="PDF"
+      title={headerTitle}
+      titlePath={filePath}
+      meta={
+        status === "ready" && numPages > 0 ? (
           <span className="pdf-viewer-card__page-counter">
             {currentPage} / {numPages}
           </span>
-        )}
-        <div className="pdf-viewer-card__actions">
-          <button
-            type="button"
-            className="pdf-viewer-card__action"
-            onClick={handleSave}
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            className="pdf-viewer-card__action"
-            onClick={handleCopy}
-          >
-            Copy
-          </button>
-          {actionStatus && (
-            <span className="pdf-viewer-card__action-status">
-              {actionStatus}
-            </span>
-          )}
-        </div>
-      </header>
-
+        ) : null
+      }
+      actionStatus={actionStatus}
+      onSave={handleSave}
+      onCopy={handleCopy}
+    >
       {status === "error" ? (
-        <div className="pdf-viewer-card__placeholder pdf-viewer-card__placeholder--error">
+        <div className="file-preview-card__placeholder file-preview-card__placeholder--error pdf-viewer-card__placeholder">
           {errorMessage ?? "Failed to load PDF."}
         </div>
       ) : (
@@ -224,12 +213,12 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
               })}
             </Document>
           ) : (
-            <div className="pdf-viewer-card__placeholder">
+            <div className="file-preview-card__placeholder pdf-viewer-card__placeholder">
               Loading PDF…
             </div>
           )}
         </div>
       )}
-    </section>
+    </FilePreviewCardShell>
   );
 }

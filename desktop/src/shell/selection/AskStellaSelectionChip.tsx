@@ -55,9 +55,7 @@ const isInsideHiddenSurface = (node: Node | null): boolean => {
       ? (node as Element)
       : node.parentElement;
   if (!element) return false;
-  return SELECTION_HIDE_SELECTORS.some((selector) =>
-    element.closest(selector),
-  );
+  return SELECTION_HIDE_SELECTORS.some((selector) => element.closest(selector));
 };
 
 const clampLeft = (rawLeft: number, pillWidth: number): number => {
@@ -79,9 +77,7 @@ const computePillPosition = (rect: DOMRect): { left: number; top: number } => {
   const left = clampLeft(centerX - pillWidth / 2, pillWidth);
   const naturalTop = rect.top - PILL_HEIGHT - PILL_OFFSET;
   const top =
-    naturalTop < VIEWPORT_MARGIN
-      ? rect.bottom + PILL_OFFSET
-      : naturalTop;
+    naturalTop < VIEWPORT_MARGIN ? rect.bottom + PILL_OFFSET : naturalTop;
   return { left, top: clampTop(top) };
 };
 
@@ -125,14 +121,22 @@ export function AskStellaSelectionChip() {
   useEffect(() => {
     const onMouseUp = (event: MouseEvent) => {
       if (event.button !== 0) return;
-      if (chipRef.current && event.target instanceof Node && chipRef.current.contains(event.target)) {
+      if (
+        chipRef.current &&
+        event.target instanceof Node &&
+        chipRef.current.contains(event.target)
+      ) {
         return;
       }
       requestAnimationFrame(refreshFromSelection);
     };
 
     const onMouseDown = (event: MouseEvent) => {
-      if (chipRef.current && event.target instanceof Node && chipRef.current.contains(event.target)) {
+      if (
+        chipRef.current &&
+        event.target instanceof Node &&
+        chipRef.current.contains(event.target)
+      ) {
         return;
       }
       setChip(null);
@@ -217,7 +221,7 @@ export function AskStellaSelectionChip() {
     <button
       ref={chipRef}
       type="button"
-      className="ask-stella-selection-chip"
+      className="floating-selection-chip ask-stella-selection-chip"
       style={{ left: chip.left, top: chip.top }}
       onMouseDown={(event) => event.preventDefault()}
       onClick={handleClick}
@@ -227,9 +231,11 @@ export function AskStellaSelectionChip() {
         src="stella-logo.svg"
         alt=""
         aria-hidden="true"
-        className="ask-stella-selection-chip__logo"
+        className="floating-selection-chip__logo ask-stella-selection-chip__logo"
       />
-      <span className="ask-stella-selection-chip__label">Ask Stella</span>
+      <span className="floating-selection-chip__label ask-stella-selection-chip__label">
+        Ask Stella
+      </span>
     </button>
   );
 }

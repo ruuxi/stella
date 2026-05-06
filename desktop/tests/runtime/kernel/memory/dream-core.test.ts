@@ -1,51 +1,20 @@
-import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { mkdir, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   dreamList,
   dreamMarkProcessed,
 } from "../../../../../runtime/kernel/memory/dream-core.js";
 import { ThreadSummariesStore } from "../../../../../runtime/kernel/memory/thread-summaries-store.js";
-import {
-  getDesktopDatabasePath,
-  initializeDesktopDatabase,
-} from "../../../../../runtime/kernel/storage/database-init.js";
-import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/shared.js";
+import { createSqliteTestContextFactory } from "../../../helpers/sqlite-test-context.js";
 
-type TestContext = {
-  rootPath: string;
-  db: SqliteDatabase;
-  store: ThreadSummariesStore;
-};
+const testContexts = createSqliteTestContextFactory(
+  "stella-dream-core",
+  (db) => new ThreadSummariesStore(db),
+);
+const createTestContext = testContexts.create;
 
-const activeContexts = new Set<TestContext>();
-
-const createTestContext = (): TestContext => {
-  const rootPath = path.join(
-    os.tmpdir(),
-    `stella-dream-core-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
-  const dbPath = getDesktopDatabasePath(rootPath);
-  const db = new DatabaseSync(dbPath, { timeout: 5_000 }) as unknown as SqliteDatabase;
-  initializeDesktopDatabase(db);
-  const context = {
-    rootPath,
-    db,
-    store: new ThreadSummariesStore(db),
-  };
-  activeContexts.add(context);
-  return context;
-};
-
-afterEach(async () => {
-  for (const context of activeContexts) {
-    context.db.close();
-    await rm(context.rootPath, { recursive: true, force: true });
-  }
-  activeContexts.clear();
-});
+afterEach(() => testContexts.cleanup());
 
 describe("dream-core", () => {
   it("does not skip same-timestamp thread summaries after partial processing", async () => {
@@ -70,7 +39,9 @@ describe("dream-core", () => {
       rolloutSummary: "Third summary",
     });
 
-    db.prepare("UPDATE thread_summaries SET source_updated_at = ?").run(1_700_000_000_000);
+    db.prepare("UPDATE thread_summaries SET source_updated_at = ?").run(
+      1_700_000_000_000,
+    );
 
     await dreamMarkProcessed({
       stellaHome: rootPath,
@@ -82,7 +53,9 @@ describe("dream-core", () => {
     });
 
     const result = await dreamList({ stellaHome: rootPath, store });
-    expect(result.threadSummaries.map((entry) => entry.runId)).toEqual(["run-3"]);
+    expect(result.threadSummaries.map((entry) => entry.runId)).toEqual([
+      "run-3",
+    ]);
   });
 
   it("tracks processed extension files individually", async () => {

@@ -1,10 +1,22 @@
 #!/usr/bin/env node
 
-import { chmodSync, createWriteStream, existsSync, readFileSync, unlinkSync } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  readFileSync,
+  unlinkSync,
+} from "node:fs";
 import { get } from "node:https";
-import { ensureBinDir, getBundledBinaryPath, getOfficeCliAssetName } from "./shared.js";
+import {
+  ensureBinDir,
+  finalizeBundledBinary,
+  getBundledBinaryPath,
+  getOfficeCliAssetName,
+} from "./shared.js";
 
-const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const packageJson = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
 const version = packageJson.version;
 const assetName = getOfficeCliAssetName();
 const targetPath = getBundledBinaryPath();
@@ -45,9 +57,7 @@ const downloadFile = async (url, destination) =>
 ensureBinDir();
 
 if (existsSync(targetPath)) {
-  if (process.platform !== "win32") {
-    chmodSync(targetPath, 0o755);
-  }
+  finalizeBundledBinary(targetPath);
   console.log(`stella-office binary already present: ${targetPath}`);
   process.exit(0);
 }
@@ -56,9 +66,7 @@ console.log(`Downloading ${assetName} from ${downloadUrl}`);
 
 try {
   await downloadFile(downloadUrl, targetPath);
-  if (process.platform !== "win32") {
-    chmodSync(targetPath, 0o755);
-  }
+  finalizeBundledBinary(targetPath);
   console.log(`Downloaded native binary to ${targetPath}`);
 } catch (error) {
   console.error(`Failed to download native binary: ${error.message}`);

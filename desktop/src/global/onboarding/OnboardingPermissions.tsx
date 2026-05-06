@@ -4,6 +4,7 @@ import {
   type DesktopPermissionKind,
   type DesktopPermissionStatus,
 } from "@/global/permissions/use-desktop-permissions";
+import { requestBrowserMicrophoneAccess } from "@/global/permissions/microphone-permission";
 import { useMicrophoneRecovery } from "@/global/permissions/use-microphone-recovery";
 
 type PermissionKind = DesktopPermissionKind;
@@ -71,10 +72,7 @@ const requestOnboardingScreenAccess = async () => {
   return { granted: false, openedSettings };
 };
 
-const requestMicrophoneForOnboarding = async () => {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  stream.getTracks().forEach((t) => t.stop());
-};
+const requestMicrophoneForOnboarding = requestBrowserMicrophoneAccess;
 
 export function OnboardingPermissions({
   splitTransitionActive,

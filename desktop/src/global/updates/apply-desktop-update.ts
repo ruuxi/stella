@@ -1,4 +1,5 @@
 import { AGENT_IDS } from "../../../../runtime/contracts/agent-runtime.js";
+import { getDeviceIdOrNull } from "@/platform/electron/device";
 import type { InstallManifestSnapshot } from "@/shared/types/electron";
 
 const DEFAULT_REPO_OWNER = "ruuxi";
@@ -55,8 +56,10 @@ export const applyDesktopUpdate = async (
 
   const platform = electronApi.platform ?? "darwin";
   const timezone =
-    typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
-  const deviceId = (await electronApi.system?.getDeviceId?.()) ?? "";
+    typeof Intl !== "undefined"
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : "UTC";
+  const deviceId = (await getDeviceIdOrNull()) ?? "";
 
   // Subscribe BEFORE startChat so we don't miss a fast-completing run.
   // On a successful RUN_FINISHED for this install-update conversation,

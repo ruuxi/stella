@@ -1,9 +1,6 @@
-import {
-  ipcMain,
-  type IpcMainEvent,
-  type IpcMainInvokeEvent,
-} from "electron";
+import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import type { LocalChatHistoryService } from "../services/local-chat-history-service.js";
+import { assertPrivilegedRequest } from "./privileged-ipc.js";
 
 type LocalChatHandlersOptions = {
   localChatHistoryService: LocalChatHistoryService;
@@ -11,16 +8,6 @@ type LocalChatHandlersOptions = {
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
-};
-
-const assertPrivilegedRequest = (
-  options: LocalChatHandlersOptions,
-  event: IpcMainEvent | IpcMainInvokeEvent,
-  channel: string,
-) => {
-  if (!options.assertPrivilegedSender(event, channel)) {
-    throw new Error(`Blocked untrusted ${channel} request.`);
-  }
 };
 
 const withLocalChatClient = async <T>(
@@ -36,14 +23,17 @@ const withLocalChatClient = async <T>(
 export const registerLocalChatHandlers = (
   options: LocalChatHandlersOptions,
 ) => {
-  ipcMain.handle("localChat:getOrCreateDefaultConversationId", async (event) => {
-    return await withLocalChatClient(
-      options,
-      event,
-      "localChat:getOrCreateDefaultConversationId",
-      (client) => client.getOrCreateDefaultConversationId(),
-    );
-  });
+  ipcMain.handle(
+    "localChat:getOrCreateDefaultConversationId",
+    async (event) => {
+      return await withLocalChatClient(
+        options,
+        event,
+        "localChat:getOrCreateDefaultConversationId",
+        (client) => client.getOrCreateDefaultConversationId(),
+      );
+    },
+  );
 
   ipcMain.handle(
     "localChat:listEvents",
@@ -54,12 +44,18 @@ export const registerLocalChatHandlers = (
         maxItems?: number;
         windowBy?: "events" | "visible_messages";
       },
-    ) => await withLocalChatClient(options, event, "localChat:listEvents", (client) =>
-      client.listEvents({
-        conversationId: payload?.conversationId ?? "",
-        maxItems: payload?.maxItems,
-        windowBy: payload?.windowBy,
-      })),
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:listEvents",
+        (client) =>
+          client.listEvents({
+            conversationId: payload?.conversationId ?? "",
+            maxItems: payload?.maxItems,
+            windowBy: payload?.windowBy,
+          }),
+      ),
   );
 
   ipcMain.handle(
@@ -70,15 +66,17 @@ export const registerLocalChatHandlers = (
         conversationId?: string;
         countBy?: "events" | "visible_messages";
       },
-    ) => await withLocalChatClient(
-      options,
-      event,
-      "localChat:getEventCount",
-      (client) => client.getEventCount({
-        conversationId: payload?.conversationId ?? "",
-        countBy: payload?.countBy,
-      }),
-    ),
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:getEventCount",
+        (client) =>
+          client.getEventCount({
+            conversationId: payload?.conversationId ?? "",
+            countBy: payload?.countBy,
+          }),
+      ),
   );
 
   ipcMain.handle(
@@ -91,17 +89,19 @@ export const registerLocalChatHandlers = (
         suggestions?: unknown[];
         appRecommendations?: unknown[];
       },
-    ) => await withLocalChatClient(
-      options,
-      event,
-      "localChat:persistDiscoveryWelcome",
-      (client) => client.persistDiscoveryWelcome({
-        conversationId: payload?.conversationId ?? "",
-        message: payload?.message ?? "",
-        suggestions: payload?.suggestions,
-        appRecommendations: payload?.appRecommendations,
-      }),
-    ),
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:persistDiscoveryWelcome",
+        (client) =>
+          client.persistDiscoveryWelcome({
+            conversationId: payload?.conversationId ?? "",
+            message: payload?.message ?? "",
+            suggestions: payload?.suggestions,
+            appRecommendations: payload?.appRecommendations,
+          }),
+      ),
   );
 
   ipcMain.handle(
@@ -112,15 +112,17 @@ export const registerLocalChatHandlers = (
         conversationId?: string;
         maxMessages?: number;
       },
-    ) => await withLocalChatClient(
-      options,
-      event,
-      "localChat:listSyncMessages",
-      (client) => client.listSyncMessages({
-        conversationId: payload?.conversationId ?? "",
-        maxMessages: payload?.maxMessages,
-      }),
-    ),
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:listSyncMessages",
+        (client) =>
+          client.listSyncMessages({
+            conversationId: payload?.conversationId ?? "",
+            maxMessages: payload?.maxMessages,
+          }),
+      ),
   );
 
   ipcMain.handle(
@@ -130,14 +132,16 @@ export const registerLocalChatHandlers = (
       payload: {
         conversationId?: string;
       },
-    ) => await withLocalChatClient(
-      options,
-      event,
-      "localChat:getSyncCheckpoint",
-      (client) => client.getSyncCheckpoint({
-        conversationId: payload?.conversationId ?? "",
-      }),
-    ),
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:getSyncCheckpoint",
+        (client) =>
+          client.getSyncCheckpoint({
+            conversationId: payload?.conversationId ?? "",
+          }),
+      ),
   );
 
   ipcMain.handle(
@@ -148,14 +152,16 @@ export const registerLocalChatHandlers = (
         conversationId?: string;
         localMessageId?: string;
       },
-    ) => await withLocalChatClient(
-      options,
-      event,
-      "localChat:setSyncCheckpoint",
-      (client) => client.setSyncCheckpoint({
-        conversationId: payload?.conversationId ?? "",
-        localMessageId: payload?.localMessageId ?? "",
-      }),
-    ),
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:setSyncCheckpoint",
+        (client) =>
+          client.setSyncCheckpoint({
+            conversationId: payload?.conversationId ?? "",
+            localMessageId: payload?.localMessageId ?? "",
+          }),
+      ),
   );
 };

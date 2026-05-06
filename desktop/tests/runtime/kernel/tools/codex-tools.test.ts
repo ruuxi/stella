@@ -1,6 +1,5 @@
-import os from "node:os";
 import path from "node:path";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,23 +12,18 @@ import {
   handleWriteStdin,
 } from "../../../../../runtime/kernel/tools/shell.js";
 import { handleViewImage } from "../../../../../runtime/kernel/tools/view-image.js";
+import { createAsyncTempDirTracker } from "../../../helpers/temp.js";
 
-const tempDirs: string[] = [];
+const tempDirs = createAsyncTempDirTracker();
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../../..",
 );
 
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-  );
-});
+afterEach(() => tempDirs.cleanup());
 
 const createTempDir = async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "stella-codex-tools-"));
-  tempDirs.push(dir);
-  return dir;
+  return await tempDirs.create("stella-codex-tools-");
 };
 
 const ONE_BY_ONE_PNG = Buffer.from(
@@ -48,7 +42,12 @@ describe("codex-style general tools", () => {
         cmd: "printf ready",
         yield_time_ms: 500,
       },
-      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot: root,
+      },
     );
 
     expect(result.error).toBeUndefined();
@@ -80,7 +79,8 @@ describe("codex-style general tools", () => {
     );
 
     expect(started.error).toBeUndefined();
-    const sessionId = (started.result as { session_id: string | null }).session_id;
+    const sessionId = (started.result as { session_id: string | null })
+      .session_id;
     expect(typeof sessionId).toBe("string");
 
     const finished = await handleWriteStdin(
@@ -99,7 +99,9 @@ describe("codex-style general tools", () => {
       running: false,
       exit_code: 0,
     });
-    expect((finished.result as { output: string }).output).toContain("echo:hello world");
+    expect((finished.result as { output: string }).output).toContain(
+      "echo:hello world",
+    );
   });
 
   it("apply_patch updates an existing file", async () => {
@@ -138,7 +140,12 @@ describe("codex-style general tools", () => {
 +stella
 *** End Patch`,
       },
-      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot: root,
+      },
     );
 
     expect(result.error).toBeUndefined();
@@ -329,11 +336,18 @@ EOF`,
 
     const result = await handleViewImage(
       { path: imagePath },
-      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot: root,
+      },
     );
 
     expect(result.error).toBeUndefined();
-    expect(result.result).toBe(`[stella-attach-image] inline=image/png ${imagePath}`);
+    expect(result.result).toBe(
+      `[stella-attach-image] inline=image/png ${imagePath}`,
+    );
   });
 
   it("exec_command payload reports wall_time_seconds and original_token_count", async () => {
@@ -344,11 +358,16 @@ EOF`,
       shellState,
       {
         // Emit ~6KB of output, well above the small budget below so we trigger truncation.
-        cmd: 'printf %.0s_ {1..6000}; echo done',
+        cmd: "printf %.0s_ {1..6000}; echo done",
         yield_time_ms: 1000,
         max_output_tokens: 256,
       },
-      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot: root,
+      },
     );
 
     expect(result.error).toBeUndefined();
@@ -369,7 +388,12 @@ EOF`,
         cmd: "printf ok",
         yield_time_ms: 1000,
       },
-      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot: root,
+      },
     );
 
     expect(result.error).toBeUndefined();
@@ -489,7 +513,11 @@ EOF`,
           requestId: "r1",
           agentType: "general",
           stellaRoot: root,
-          allowedToolNames: ["exec_command", "apply_patch", "multi_tool_use_parallel"],
+          allowedToolNames: [
+            "exec_command",
+            "apply_patch",
+            "multi_tool_use_parallel",
+          ],
         },
       );
 
@@ -548,7 +576,9 @@ EOF`,
       stellaRoot: root,
       webSearch: async (query) => ({
         text: `results for ${query}`,
-        results: [{ title: "Stella", url: "https://stella.sh", snippet: "assistant" }],
+        results: [
+          { title: "Stella", url: "https://stella.sh", snippet: "assistant" },
+        ],
       }),
     });
 

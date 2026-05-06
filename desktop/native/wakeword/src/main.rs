@@ -552,7 +552,7 @@ impl EnergyGate {
         }
     }
 
-    fn update(&mut self, samples: &[i16]) -> EnergyDecision {
+    fn push_tail(&mut self, samples: &[i16]) {
         self.tail.extend_from_slice(samples);
 
         let tail_samples = (MODEL_SAMPLE_RATE as f32 * ENERGY_GATE_TAIL_SECS).round() as usize;
@@ -560,20 +560,16 @@ impl EnergyGate {
             let drop = self.tail.len() - tail_samples;
             self.tail.drain(..drop);
         }
+    }
 
+    fn update(&mut self, samples: &[i16]) -> EnergyDecision {
+        self.push_tail(samples);
         let active = has_recent_energy(&self.tail, self.rms_threshold, self.peak_threshold);
         self.set_active(active)
     }
 
     fn update_unblocked(&mut self, samples: &[i16]) -> EnergyDecision {
-        self.tail.extend_from_slice(samples);
-
-        let tail_samples = (MODEL_SAMPLE_RATE as f32 * ENERGY_GATE_TAIL_SECS).round() as usize;
-        if self.tail.len() > tail_samples {
-            let drop = self.tail.len() - tail_samples;
-            self.tail.drain(..drop);
-        }
-
+        self.push_tail(samples);
         self.set_active(false)
     }
 

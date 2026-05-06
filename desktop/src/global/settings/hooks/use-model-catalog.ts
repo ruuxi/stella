@@ -4,6 +4,7 @@ import type { FunctionReference } from "convex/server";
 import { api } from "@/convex/api";
 import { useDesktopAuthSession } from "@/global/auth/services/auth-session";
 import { createServiceRequest } from "@/infra/http/service-request";
+import { parseJwtPayload } from "@/shared/lib/jwt";
 import {
   groupCatalogModelsByProvider,
   listLocalCatalogModels,
@@ -26,16 +27,19 @@ type CatalogFetchResult = {
   stale: boolean;
 };
 
-type AuthSessionData = {
-  user?: {
-    id?: string | null;
-    email?: string | null;
-    isAnonymous?: boolean | null;
-  } | null;
-  session?: {
-    id?: string | null;
-  } | null;
-} | null | undefined;
+type AuthSessionData =
+  | {
+      user?: {
+        id?: string | null;
+        email?: string | null;
+        isAnonymous?: boolean | null;
+      } | null;
+      session?: {
+        id?: string | null;
+      } | null;
+    }
+  | null
+  | undefined;
 
 type BillingStatus = {
   plan: "free" | "go" | "pro" | "plus" | "ultra";
@@ -73,10 +77,7 @@ function getJwtCacheIdentity(authorization: string | undefined): string {
   }
   const token = authorization.slice("Bearer ".length);
   try {
-    const payload = JSON.parse(atob(token.split(".")[1] ?? "")) as Record<
-      string,
-      unknown
-    >;
+    const payload = parseJwtPayload<Record<string, unknown>>(token);
     const issuer = typeof payload.iss === "string" ? payload.iss : "";
     const subject = typeof payload.sub === "string" ? payload.sub : "";
     const tokenIdentifier =
@@ -273,7 +274,9 @@ export function useModelCatalog() {
     (useQuery(catalogUpdatedAtQuery, {}) as number | undefined) ?? null;
   const sessionData = session.data as AuthSessionData;
   const user = sessionData?.user ?? null;
-  const hasConnectedAccount = Boolean(sessionData && user?.isAnonymous !== true);
+  const hasConnectedAccount = Boolean(
+    sessionData && user?.isAnonymous !== true,
+  );
   const billingStatus = useQuery(
     api.billing.getSubscriptionStatus,
     hasConnectedAccount ? {} : "skip",

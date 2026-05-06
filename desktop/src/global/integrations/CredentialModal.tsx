@@ -11,6 +11,7 @@ import {
 } from "@/ui/dialog";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
+import { getProviderDisplayName } from "@/global/settings/lib/model-catalog";
 import "./credential-modal.css";
 
 type CredentialModalProps = {
@@ -25,12 +26,6 @@ type CredentialModalProps = {
 
 type CredentialModalContentProps = Omit<CredentialModalProps, "open">;
 
-function formatProviderName(provider: string): string {
-  return provider
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
 const CredentialModalContent = ({
   provider,
   label,
@@ -44,7 +39,7 @@ const CredentialModalContent = ({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const providerTitle = label?.trim() || formatProviderName(provider);
+  const providerTitle = label?.trim() || getProviderDisplayName(provider);
 
   const handleSubmit = async (event?: React.FormEvent) => {
     event?.preventDefault();

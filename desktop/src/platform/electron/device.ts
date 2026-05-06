@@ -24,13 +24,19 @@ export const configurePiRuntime = async () => {
     return;
   }
   try {
-    const response = await api.system.configurePiRuntime({ convexUrl, convexSiteUrl });
+    const response = await api.system.configurePiRuntime({
+      convexUrl,
+      convexSiteUrl,
+    });
     if (response?.deviceId) {
       cachedDeviceId = response.deviceId;
       writeLocalDeviceId(response.deviceId);
     }
   } catch (err) {
-    console.debug("[device] configurePiRuntime failed:", (err as Error).message);
+    console.debug(
+      "[device] configurePiRuntime failed:",
+      (err as Error).message,
+    );
   }
 };
 
@@ -52,4 +58,12 @@ export const getOrCreateDeviceId = async () => {
   cachedDeviceId = fromHost;
   writeLocalDeviceId(fromHost);
   return fromHost;
+};
+
+export const getDeviceIdOrNull = async (): Promise<string | null> => {
+  try {
+    return await getOrCreateDeviceId();
+  } catch {
+    return null;
+  }
 };

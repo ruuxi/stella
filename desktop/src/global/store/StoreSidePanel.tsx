@@ -656,6 +656,8 @@ export function StoreSidePanel() {
     };
   }, []);
 
+  const items = state.snapshot?.items ?? [];
+  const messages = thread?.messages ?? EMPTY_STORE_THREAD_MESSAGES;
   useEffect(() => {
     const activatedMessageId = storeSidePanelStore.consumeBlueprintActivation();
     if (activatedMessageId === undefined) return;
@@ -676,9 +678,6 @@ export function StoreSidePanel() {
       }
     }
   }, [messages, state]);
-
-  const items = state.snapshot?.items ?? [];
-  const messages = thread?.messages ?? EMPTY_STORE_THREAD_MESSAGES;
   /** Latest non-denied, unpublished blueprint draft (mirrors the server-side query). */
   const latestPublishableBlueprint = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {

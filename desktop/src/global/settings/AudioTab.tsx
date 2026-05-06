@@ -17,6 +17,7 @@ import {
   setLocalDictationPreference,
 } from "@/features/dictation/services/inworld-dictation";
 import { useMicrophoneRecovery } from "@/global/permissions/use-microphone-recovery";
+import { requestBrowserMicrophoneAccess } from "@/global/permissions/microphone-permission";
 
 type MicrophonePermissionStatus =
   | "not-determined"
@@ -101,17 +102,12 @@ export function AudioTab() {
     };
   }, []);
 
-  const handleWakeWordToggle = useCallback(
-    (checked: boolean) => {
-      setWakeWordEnabled(checked);
-      void window.electronAPI?.system
-        ?.setWakeWordEnabled?.(checked)
-        .catch(() => {
-          setWakeWordEnabled(!checked);
-        });
-    },
-    [],
-  );
+  const handleWakeWordToggle = useCallback((checked: boolean) => {
+    setWakeWordEnabled(checked);
+    void window.electronAPI?.system?.setWakeWordEnabled?.(checked).catch(() => {
+      setWakeWordEnabled(!checked);
+    });
+  }, []);
 
   useEffect(() => {
     if (!micEnabled) {
@@ -150,10 +146,7 @@ export function AudioTab() {
           }
 
           try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-              audio: true,
-            });
-            stream.getTracks().forEach((t) => t.stop());
+            await requestBrowserMicrophoneAccess();
             await syncPermissionStatus();
             await loadDevices();
           } catch {
@@ -200,7 +193,9 @@ export function AudioTab() {
       .then((status) => {
         if (cancelled) return;
         setLocalDictationUnavailableReason(
-          status.available ? null : (status.reason ?? "Unavailable on this Mac."),
+          status.available
+            ? null
+            : (status.reason ?? "Unavailable on this Mac."),
         );
       })
       .catch(() => undefined);
@@ -261,7 +256,10 @@ export function AudioTab() {
           Let Stella hear you so you can talk instead of type.
         </p>
         {permissionError ? (
-          <p className="settings-card-desc settings-card-desc--error" role="alert">
+          <p
+            className="settings-card-desc settings-card-desc--error"
+            role="alert"
+          >
             {permissionError}
           </p>
         ) : null}
@@ -283,7 +281,9 @@ export function AudioTab() {
         {showMicrophoneRecovery ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">{microphoneRecoveryLabel}</div>
+              <div className="settings-row-label">
+                {microphoneRecoveryLabel}
+              </div>
               <div className="settings-row-sublabel">
                 {microphoneRecoveryDescription}
               </div>
@@ -303,7 +303,9 @@ export function AudioTab() {
                 disabled={microphoneRecovery.isResetting}
                 onClick={() => void microphoneRecovery.resetAndRestart()}
               >
-                {microphoneRecovery.isResetting ? "Closing..." : "Reset & Restart"}
+                {microphoneRecovery.isResetting
+                  ? "Closing..."
+                  : "Reset & Restart"}
               </button>
             </div>
           </div>
@@ -373,7 +375,8 @@ export function AudioTab() {
             <div className="settings-row-info">
               <div className="settings-row-label">Enhance transcription</div>
               <div className="settings-row-sublabel">
-                Clean up local dictation text with Stella Fast before inserting it.
+                Clean up local dictation text with Stella Fast before inserting
+                it.
               </div>
             </div>
             <div className="settings-row-control">
