@@ -35,6 +35,7 @@ import {
 } from "./store-side-panel-store";
 import { FileText, RefreshCw, X } from "lucide-react";
 import { showToast } from "@/ui/toast";
+import { Select } from "@/ui/select";
 import { Markdown } from "@/app/chat/Markdown";
 import {
   Dialog,
@@ -322,22 +323,24 @@ function PublishDialog({
           ) : null}
 
           {asUpdate ? (
-            <label className="store-publish-dialog-field">
+            <div className="store-publish-dialog-field">
               <span className="store-publish-dialog-field-label">
                 Existing add-on
               </span>
-              <select
+              <Select
                 value={packageId}
-                onChange={(event) => setPackageId(event.target.value)}
-              >
-                <option value="">Select…</option>
-                {ownedPackages.map((pkg) => (
-                  <option key={pkg.packageId} value={pkg.packageId}>
-                    {pkg.displayName} ({pkg.packageId})
-                  </option>
-                ))}
-              </select>
-            </label>
+                onValueChange={(value) => setPackageId(value)}
+                aria-label="Existing add-on"
+                placeholder="Select…"
+                options={[
+                  { value: "", label: "Select…" },
+                  ...ownedPackages.map((pkg) => ({
+                    value: pkg.packageId,
+                    label: `${pkg.displayName} (${pkg.packageId})`,
+                  })),
+                ]}
+              />
+            </div>
           ) : (
             <>
               <label className="store-publish-dialog-field">
@@ -374,25 +377,28 @@ function PublishDialog({
                   maxLength={4_000}
                 />
               </label>
-              <label className="store-publish-dialog-field">
+              <div className="store-publish-dialog-field">
                 <span className="store-publish-dialog-field-label">
                   Category
                 </span>
-                <select
+                <Select
                   value={category}
-                  onChange={(event) =>
-                    setCategory(event.target.value as typeof category)
+                  onValueChange={(value) =>
+                    setCategory(value as typeof category)
                   }
-                >
-                  <option value="">Pick a category…</option>
-                  <option value="apps-games">Apps & games</option>
-                  <option value="productivity">Productivity</option>
-                  <option value="customization">Customization</option>
-                  <option value="skills-agents">Skills & agents</option>
-                  <option value="integrations">Integrations</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
+                  aria-label="Category"
+                  placeholder="Pick a category…"
+                  options={[
+                    { value: "", label: "Pick a category…" },
+                    { value: "apps-games", label: "Apps & games" },
+                    { value: "productivity", label: "Productivity" },
+                    { value: "customization", label: "Customization" },
+                    { value: "skills-agents", label: "Skills & agents" },
+                    { value: "integrations", label: "Integrations" },
+                    { value: "other", label: "Other" },
+                  ]}
+                />
+              </div>
             </>
           )}
 

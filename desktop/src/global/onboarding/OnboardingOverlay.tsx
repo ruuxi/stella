@@ -32,7 +32,7 @@ import {
   useT,
   type Locale,
 } from "@/shared/i18n";
-import { ChevronDown } from "lucide-react";
+import { Select } from "@/ui/select";
 
 // IMPORTANT: this module is the lazy "onboarding chunk". Do NOT re-export
 // the `useOnboardingOverlay` hook from here — FullShell needs to call
@@ -188,23 +188,15 @@ export function OnboardingView({
       />
       {showLanguageSwitch ? (
         <div className="onboarding-language-switch">
-          <select
+          <Select<Locale>
             className="onboarding-language-switch-select"
             value={locale}
             aria-label={t("common.language")}
-            onChange={(event) => setLocale(event.currentTarget.value as Locale)}
-          >
-            {supportedLocales.map((code) => (
-              <option key={code} value={code}>
-                {LOCALE_NATIVE_LABELS[code]}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            size={12}
-            strokeWidth={2}
-            className="onboarding-language-switch-chevron"
-            aria-hidden
+            onValueChange={(value) => setLocale(value)}
+            options={supportedLocales.map((code) => ({
+              value: code,
+              label: LOCALE_NATIVE_LABELS[code],
+            }))}
           />
         </div>
       ) : null}

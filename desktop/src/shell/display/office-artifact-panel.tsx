@@ -14,6 +14,7 @@ import type {
 } from "../../../../runtime/contracts/office-preview.js";
 import { useOfficePreview } from "@/app/chat/office-preview-store";
 import { useFilePreviewActions } from "@/app/chat/hooks/use-file-preview-actions";
+import { Select } from "@/ui/select";
 
 const ZOOM_OPTIONS = [75, 100, 125, 150] as const;
 
@@ -245,20 +246,18 @@ export function OfficeArtifactPanel({
         <div className="display-artifact-panel__center">{countLabel}</div>
 
         <div className="display-artifact-panel__actions">
-          <select
+          <Select
             className="display-artifact-panel__zoom"
             aria-label="Preview zoom"
-            value={zoomPercent}
-            onChange={(event) => {
-              setZoomPercent(Number(event.target.value));
+            value={String(zoomPercent)}
+            onValueChange={(value) => {
+              setZoomPercent(Number(value));
             }}
-          >
-            {ZOOM_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {value}%
-              </option>
-            ))}
-          </select>
+            options={ZOOM_OPTIONS.map((value) => ({
+              value: String(value),
+              label: `${value}%`,
+            }))}
+          />
           <button
             type="button"
             className="display-artifact-panel__action"

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Compass, MoreHorizontal, Search, User } from "lucide-react";
 import { Button } from "@/ui/button";
+import { Select } from "@/ui/select";
 import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import { showToast } from "@/ui/toast";
 import {
@@ -388,20 +389,21 @@ export function EmojiStorePage() {
             spellCheck={false}
           />
         </label>
-        <label className="emoji-page-sort">
+        <div className="emoji-page-sort">
           <span className="emoji-page-sort-label">Sort</span>
-          <select
+          <Select<EmojiPackSort>
             className="emoji-page-sort-select"
             value={sort}
-            onChange={(event) => setSort(event.currentTarget.value as EmojiPackSort)}
-          >
-            {(Object.keys(SORT_LABELS) as EmojiPackSort[]).map((option) => (
-              <option key={option} value={option}>
-                {SORT_LABELS[option]}
-              </option>
-            ))}
-          </select>
-        </label>
+            onValueChange={(value) => setSort(value)}
+            aria-label="Sort"
+            options={(Object.keys(SORT_LABELS) as EmojiPackSort[]).map(
+              (option) => ({
+                value: option,
+                label: SORT_LABELS[option],
+              }),
+            )}
+          />
+        </div>
         <div className="emoji-page-toolbar-actions">
           <Button
             variant="secondary"

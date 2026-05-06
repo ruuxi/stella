@@ -117,32 +117,31 @@
   font-weight: 600;
 }
 
-.pets-sort-select {
-  appearance: none;
-  -webkit-appearance: none;
+[data-component="select"]:has(> [data-slot="select-trigger"].pets-sort-select) {
+  width: auto;
+}
+
+[data-slot="select-trigger"].pets-sort-select {
+  width: auto;
+  height: auto;
   border: 1px solid var(--border-base);
   background: var(--surface-raised);
   color: var(--text-strong);
-  padding: 6px 26px 6px 10px;
+  padding: 6px 10px;
   border-radius: 999px;
   font-size: 12px;
   cursor: pointer;
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: right 12px center, right 8px center;
-  background-size: 4px 4px, 4px 4px;
-  background-repeat: no-repeat;
   transition:
     border-color 120ms ease,
     background-color 120ms ease,
     box-shadow 120ms ease;
 }
 
-.pets-sort-select:hover {
+[data-slot="select-trigger"].pets-sort-select:hover {
   background-color: var(--surface-raised-hover);
 }
 
-.pets-sort-select:focus-visible {
+[data-slot="select-trigger"].pets-sort-select:focus-visible {
   border-color: var(--ring);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 25%, transparent);
   outline: none;

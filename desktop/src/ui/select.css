@@ -1,0 +1,95 @@
+/* ─────────────────────────────────────────────────────────────
+   Select — Stella-aesthetic replacement for native <select>.
+   Trigger keeps the compact form-control look used in settings;
+   the popup reuses the shared dropdown-menu glass surface.
+   ───────────────────────────────────────────────────────────── */
+
+[data-component="select"] {
+  width: 100%;
+}
+
+[data-component="select"] [data-slot="select-label"] {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted-foreground);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12px;
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
+  line-height: 1.5;
+}
+
+[data-slot="select-trigger"] {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 6px);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12px;
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
+  line-height: 1.5;
+  text-align: left;
+  cursor: default;
+  appearance: none;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+[data-slot="select-trigger"]:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 4%, var(--background));
+}
+
+[data-slot="select-trigger"][data-state="open"] {
+  background: color-mix(in oklch, var(--foreground) 5%, var(--background));
+}
+
+[data-slot="select-trigger"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+[data-slot="select-trigger"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+[data-slot="select-trigger"] [data-slot="select-value"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-slot="select-trigger"] [data-slot="select-icon"] {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+[data-slot="select-content"] {
+  /* Match trigger width so the popup feels anchored, with a sensible
+     minimum for short triggers and a cap for long option labels. */
+  min-width: var(--radix-dropdown-menu-trigger-width, 180px);
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: var(--radix-dropdown-menu-content-available-height, 320px);
+  overflow-y: auto;
+}
+
+[data-slot="select-item-label"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

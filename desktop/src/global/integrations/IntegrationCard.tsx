@@ -9,6 +9,7 @@ import {
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
+import { Select } from "@/ui/select";
 import { showToast } from "@/ui/toast";
 import type { Integration } from "./integration-configs";
 import { sanitizeExternalLinkUrl } from "@/shared/lib/url-safety";
@@ -214,18 +215,16 @@ function LinqSetupView({ integration }: { integration: Integration }) {
           {error && <div className="connect-error">{error}</div>}
           <form className="connect-phone-form" onSubmit={handleSendSms}>
             <div className="connect-phone-input-group">
-              <select
+              <Select
                 className="connect-phone-dial"
                 value={dialCode}
-                onChange={(e) => setDialCode(e.target.value)}
+                onValueChange={(value) => setDialCode(value)}
                 aria-label="Country code"
-              >
-                {COUNTRY_DIAL_CODES.map((c) => (
-                  <option key={`${c.country}${c.code}`} value={c.code}>
-                    {c.country} {c.code}
-                  </option>
-                ))}
-              </select>
+                options={COUNTRY_DIAL_CODES.map((c) => ({
+                  value: c.code,
+                  label: `${c.country} ${c.code}`,
+                }))}
+              />
               <input
                 type="tel"
                 className="connect-phone-input"
