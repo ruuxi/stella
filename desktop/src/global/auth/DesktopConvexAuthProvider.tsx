@@ -63,7 +63,14 @@ const getHostTokenRefreshDelayMs = (token: string): number => {
   }
 };
 
-function useDesktopConvexAuth() {
+/**
+ * `useAuth` hook for `ConvexProviderWithAuth`. Exported so secondary
+ * windows (e.g. the floating pet overlay) can wire Convex auth without
+ * the full `DesktopConvexAuthProvider` bootstrap chain (anonymous-session
+ * creation, magic-link layer, runtime token sync). Those side effects
+ * only belong in the primary shell window.
+ */
+export function useDesktopConvexAuth() {
   const session = useDesktopAuthSession();
 
   const sessionUserId =

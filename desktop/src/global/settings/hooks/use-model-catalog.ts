@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import type { FunctionReference } from "convex/server";
 import { api } from "@/convex/api";
 import { useDesktopAuthSession } from "@/global/auth/services/auth-session";
+import { useModelCatalogUpdatedAt } from "@/global/settings/hooks/model-catalog-updated-at";
 import { createServiceRequest } from "@/infra/http/service-request";
 import { parseJwtPayload } from "@/shared/lib/jwt";
 import {
@@ -258,20 +258,10 @@ async function fetchManagedGatewayCatalogModels(
 
 export function useModelCatalog() {
   const session = useDesktopAuthSession();
-  const catalogUpdatedAtQuery = (
-    api as unknown as {
-      stella_models: {
-        getModelCatalogUpdatedAt: FunctionReference<
-          "query",
-          "public",
-          Record<string, never>,
-          number
-        >;
-      };
-    }
-  ).stella_models.getModelCatalogUpdatedAt;
-  const modelCatalogUpdatedAt =
-    (useQuery(catalogUpdatedAtQuery, {}) as number | undefined) ?? null;
+  // Read the catalog updated-at from the shared provider rather than
+  // opening a second `useQuery` subscription — `__root.tsx` already
+  // mounts `ModelCatalogUpdatedAtProvider` for the whole tree.
+  const modelCatalogUpdatedAt = useModelCatalogUpdatedAt();
   const sessionData = session.data as AuthSessionData;
   const user = sessionData?.user ?? null;
   const hasConnectedAccount = Boolean(

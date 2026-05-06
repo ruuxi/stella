@@ -7,6 +7,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "../_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -39,7 +40,9 @@ import {
 
 const MAX_WORKSPACE_SLUG_LENGTH = 48;
 const MAX_WORKSPACE_FOLDER_NAME_LENGTH = 80;
-const MAX_TURN_LIMIT = 200;
+// Per-page ceiling for `listTurns`. Desktop hook requests 20/page; this
+// is a safety cap, not the steady-state size.
+const MAX_TURNS_PER_PAGE = 50;
 const MAX_FILE_OP_LIMIT = 500;
 const MAX_FILE_BYTES = 700_000;
 const MAX_SESSIONS_PER_ROOM_COLLECT = 100;
@@ -53,6 +56,26 @@ const MAX_CONTENT_HASH_LENGTH = 128;
 const MAX_REQUEST_ID_LENGTH = 200;
 
 const optionalSessionValidator = v.union(v.null(), stellaSessionValidator);
+
+const paginatedSessionTurnsValidator = v.object({
+  page: v.array(stellaSessionTurnValidator),
+  isDone: v.boolean(),
+  continueCursor: v.string(),
+  splitCursor: v.optional(v.union(v.string(), v.null())),
+  pageStatus: v.optional(
+    v.union(
+      v.literal("SplitRecommended"),
+      v.literal("SplitRequired"),
+      v.null(),
+    ),
+  ),
+});
+
+const emptyTurnsPage = (): {
+  page: never[];
+  isDone: true;
+  continueCursor: "";
+} => ({ page: [], isDone: true, continueCursor: "" });
 
 const roomSummaryValidator = v.object({
   room: socialRoomValidator,
@@ -621,22 +644,31 @@ export const updateSessionStatus = mutation({
 export const listTurns = query({
   args: {
     sessionId: v.id("stella_sessions"),
-    limit: v.optional(v.number()),
+    paginationOpts: paginationOptsValidator,
   },
-  returns: v.array(stellaSessionTurnValidator),
+  returns: paginatedSessionTurnsValidator,
   handler: async (ctx, args) => {
     const ownerId = await getConnectedUserIdOrNull(ctx);
     if (!ownerId) {
-      return [];
+      return emptyTurnsPage();
     }
     await requireSessionMembership(ctx, args.sessionId, ownerId);
-    const limit = clampPageLimit(args.limit, 100, MAX_TURN_LIMIT);
-    const turns = await ctx.db
+    const numItems = Math.min(
+      Math.max(args.paginationOpts.numItems, 1),
+      MAX_TURNS_PER_PAGE,
+    );
+    // Order desc on `ordinal` so each page is the next-older slice; the
+    // renderer re-sorts to chronological order for display.
+    return await ctx.db
       .query("stella_session_turns")
-      .withIndex("by_sessionId_and_ordinal", (q) => q.eq("sessionId", args.sessionId))
+      .withIndex("by_sessionId_and_ordinal", (q) =>
+        q.eq("sessionId", args.sessionId),
+      )
       .order("desc")
-      .take(limit);
-    return turns.reverse();
+      .paginate({
+        cursor: args.paginationOpts.cursor,
+        numItems,
+      });
   },
 });
 

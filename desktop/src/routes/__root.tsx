@@ -6,7 +6,6 @@ import {
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
 import {
   startTransition,
   useCallback,
@@ -62,8 +61,7 @@ import {
   ensureChatDisplayTab,
   openChatDisplayTab,
 } from "@/shell/display/default-tabs";
-import { api } from "@/convex/api";
-import type { FunctionReference } from "convex/server";
+import { ModelCatalogUpdatedAtProvider } from "@/global/settings/hooks/model-catalog-updated-at";
 
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
@@ -72,35 +70,6 @@ type PendingAskStellaRequest = {
   id: number;
   text: string;
 };
-
-function ModelCatalogUpdatedAtSync() {
-  const catalogUpdatedAtQuery = (
-    api as unknown as {
-      stella_models: {
-        getModelCatalogUpdatedAt: FunctionReference<
-          "query",
-          "public",
-          Record<string, never>,
-          number
-        >;
-      };
-    }
-  ).stella_models.getModelCatalogUpdatedAt;
-  const updatedAt = useQuery(catalogUpdatedAtQuery, {}) as number | undefined;
-  const lastSentRef = useRef<number | null | undefined>(undefined);
-
-  useEffect(() => {
-    if (updatedAt === undefined || lastSentRef.current === updatedAt) {
-      return;
-    }
-    lastSentRef.current = updatedAt;
-    void window.electronAPI?.system
-      ?.setModelCatalogUpdatedAt?.({ updatedAt })
-      ?.catch(() => undefined);
-  }, [updatedAt]);
-
-  return null;
-}
 
 /**
  * The root route owns the app chrome — sidebar, workspace panel, dialogs,
@@ -179,12 +148,14 @@ function RootLayout() {
   }, [router]);
 
   return (
-    <ChatRuntimeProvider
-      activeConversationId={conversationId}
-      isOnChatRoute={isOnChatRoute}
-    >
-      <RootChrome />
-    </ChatRuntimeProvider>
+    <ModelCatalogUpdatedAtProvider>
+      <ChatRuntimeProvider
+        activeConversationId={conversationId}
+        isOnChatRoute={isOnChatRoute}
+      >
+        <RootChrome />
+      </ChatRuntimeProvider>
+    </ModelCatalogUpdatedAtProvider>
   );
 }
 
@@ -506,8 +477,6 @@ function RootChrome() {
 
   return (
     <>
-      <ModelCatalogUpdatedAtSync />
-
       {drawerOpen && (
         <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
       )}
