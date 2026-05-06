@@ -36,7 +36,7 @@ path = "tests/integration.rs"
 version = "0.17.2"
 
 [dependencies.ort]
-version = "2.0.0-rc.11"
+version = "2.0.0-rc.12"
 features = [
     "ndarray",
     "std",
@@ -57,10 +57,9 @@ version = "2"
 version = "3.5"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies.ort]
-version = "2.0.0-rc.11"
+version = "2.0.0-rc.12"
 features = ["alternative-backend"]
 default-features = false
 
 [target.'cfg(target_arch = "x86_64")'.dependencies.ort-tract]
-version = "0.2.0+0.22"
-
+version = "0.3.0+0.22"

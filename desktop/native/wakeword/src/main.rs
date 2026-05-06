@@ -26,6 +26,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, SampleFormat, StreamConfig};
 use livekit_wakeword::wakeword::WakeWordModel;
 use serde::Serialize;
+use silero::{SampleRate as VadSampleRate, Session as VadSession, StreamState as VadStreamState};
 
 /// Canonical sample rate expected by LiveKit's listener/model path.
 /// Device audio is resampled to this rate before buffering so prediction
@@ -40,12 +41,21 @@ const PREDICT_WINDOW_SECS: f32 = 2.0;
 /// How often we run inference (~100 ms between predict calls on the rolling window).
 const PREDICT_STRIDE_SECS: f32 = 0.10;
 
-/// Very low energy gate: only skip obvious silence before running the model.
-/// Speech in normal rooms is well above this; noisy rooms simply fall through
-/// and preserve model behavior.
+/// Cheap energy gate: skip Silero when input is clearly silent, but never stop
+/// buffering audio. On a silence -> active edge we replay this tail into Silero
+/// so the first syllable of the wake phrase is not clipped.
 const ENERGY_GATE_WINDOW_SECS: f32 = 0.4;
+const ENERGY_GATE_TAIL_SECS: f32 = 0.5;
 const ENERGY_RMS_THRESHOLD: f32 = 0.002;
 const ENERGY_PEAK_THRESHOLD: f32 = 0.015;
+
+/// Silero VAD gate: run the wake-word model only while speech-like audio is
+/// active, plus a short hangover so the wake phrase is not clipped between VAD
+/// frames. Silero's 16 kHz frame is 512 samples (~32 ms).
+const VAD_START_THRESHOLD: f32 = 0.5;
+const VAD_RECENT_FRAMES: usize = 5;
+const VAD_MIN_VOICED_FRAMES: usize = 3;
+const VAD_HANGOVER_MS: u64 = 900;
 
 /// cpal callback chunk size hint, in samples. The OS may give us larger or
 /// smaller chunks regardless; we just buffer.
@@ -361,12 +371,25 @@ fn run_inference_loop(
     let mut last_fire = Instant::now() - Duration::from_secs(60);
     let debounce = Duration::from_millis(debounce_ms);
     let mut resampler = LinearResampler::new(sample_rate, MODEL_SAMPLE_RATE);
+    let mut energy_gate = EnergyGate::new();
+    let mut vad = SileroVadGate::new()?;
 
     while let Ok(chunk) = rx.recv() {
         let chunk = resampler.process(&chunk);
         if chunk.is_empty() {
             continue;
         }
+
+        let energy = energy_gate.update(&chunk);
+        if energy.active {
+            let vad_samples = if energy.rising {
+                energy_gate.tail()
+            } else {
+                chunk.as_slice()
+            };
+            vad.process(vad_samples)?;
+        }
+
         ring.extend_from_slice(&chunk);
         samples_since_predict += chunk.len();
 
@@ -383,7 +406,7 @@ fn run_inference_loop(
         }
         samples_since_predict = 0;
 
-        if !has_recent_energy(&ring, MODEL_SAMPLE_RATE) {
+        if !vad.is_active() {
             continue;
         }
 
@@ -423,8 +446,47 @@ fn run_inference_loop(
     Ok(())
 }
 
-fn has_recent_energy(samples: &[i16], sample_rate: u32) -> bool {
-    let window = (sample_rate as f32 * ENERGY_GATE_WINDOW_SECS).round() as usize;
+struct EnergyDecision {
+    active: bool,
+    rising: bool,
+}
+
+struct EnergyGate {
+    tail: Vec<i16>,
+    was_active: bool,
+}
+
+impl EnergyGate {
+    fn new() -> Self {
+        let tail_samples = (MODEL_SAMPLE_RATE as f32 * ENERGY_GATE_TAIL_SECS).round() as usize;
+        Self {
+            tail: Vec::with_capacity(tail_samples),
+            was_active: false,
+        }
+    }
+
+    fn update(&mut self, samples: &[i16]) -> EnergyDecision {
+        self.tail.extend_from_slice(samples);
+
+        let tail_samples = (MODEL_SAMPLE_RATE as f32 * ENERGY_GATE_TAIL_SECS).round() as usize;
+        if self.tail.len() > tail_samples {
+            let drop = self.tail.len() - tail_samples;
+            self.tail.drain(..drop);
+        }
+
+        let active = has_recent_energy(&self.tail);
+        let rising = active && !self.was_active;
+        self.was_active = active;
+        EnergyDecision { active, rising }
+    }
+
+    fn tail(&self) -> &[i16] {
+        &self.tail
+    }
+}
+
+fn has_recent_energy(samples: &[i16]) -> bool {
+    let window = (MODEL_SAMPLE_RATE as f32 * ENERGY_GATE_WINDOW_SECS).round() as usize;
     let start = samples.len().saturating_sub(window.max(1));
     let recent = &samples[start..];
     if recent.is_empty() {
@@ -440,6 +502,57 @@ fn has_recent_energy(samples: &[i16], sample_rate: u32) -> bool {
     }
     let rms = (sum_squares / recent.len() as f64).sqrt() as f32;
     rms >= ENERGY_RMS_THRESHOLD || peak >= ENERGY_PEAK_THRESHOLD
+}
+
+struct SileroVadGate {
+    session: VadSession,
+    stream: VadStreamState,
+    recent_voiced: std::collections::VecDeque<bool>,
+    last_speech: Option<Instant>,
+}
+
+impl SileroVadGate {
+    fn new() -> Result<Self> {
+        Ok(Self {
+            session: VadSession::bundled().context("load bundled Silero VAD model")?,
+            stream: VadStreamState::new(VadSampleRate::Rate16k),
+            recent_voiced: std::collections::VecDeque::with_capacity(VAD_RECENT_FRAMES),
+            last_speech: None,
+        })
+    }
+
+    fn process(&mut self, samples: &[i16]) -> Result<()> {
+        let mut detected_speech = false;
+        let samples_f32 = samples
+            .iter()
+            .map(|&sample| sample as f32 / 32768.0)
+            .collect::<Vec<_>>();
+
+        self.session
+            .process_stream(&mut self.stream, &samples_f32, |probability| {
+                let voiced = probability >= VAD_START_THRESHOLD;
+                if self.recent_voiced.len() == VAD_RECENT_FRAMES {
+                    self.recent_voiced.pop_front();
+                }
+                self.recent_voiced.push_back(voiced);
+
+                let recent_voiced = self.recent_voiced.iter().filter(|&&v| v).count();
+                if recent_voiced >= VAD_MIN_VOICED_FRAMES {
+                    detected_speech = true;
+                }
+            })?;
+
+        if detected_speech {
+            self.last_speech = Some(Instant::now());
+        }
+        Ok(())
+    }
+
+    fn is_active(&self) -> bool {
+        self.last_speech
+            .map(|last| last.elapsed() <= Duration::from_millis(VAD_HANGOVER_MS))
+            .unwrap_or(false)
+    }
 }
 
 struct LinearResampler {

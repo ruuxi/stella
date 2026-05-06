@@ -93,23 +93,32 @@ fn configure_session(builder: SessionBuilder) -> Result<SessionBuilder, WakeWord
     #[cfg(use_tract)]
     {
         return Ok(builder
-            .with_intra_threads(1)?
-            .with_inter_threads(1)?
-            .with_intra_op_spinning(false)?
-            .with_inter_op_spinning(false)?);
+            .with_intra_threads(1)
+            .map_err(ort::Error::from)?
+            .with_inter_threads(1)
+            .map_err(ort::Error::from)?
+            .with_intra_op_spinning(false)
+            .map_err(ort::Error::from)?
+            .with_inter_op_spinning(false)
+            .map_err(ort::Error::from)?);
     }
 
     #[cfg(not(use_tract))]
     {
         Ok(builder
-            .with_intra_threads(1)?
-            .with_inter_threads(1)?
-            .with_intra_op_spinning(false)?
-            .with_inter_op_spinning(false)?
+            .with_intra_threads(1)
+            .map_err(ort::Error::from)?
+            .with_inter_threads(1)
+            .map_err(ort::Error::from)?
+            .with_intra_op_spinning(false)
+            .map_err(ort::Error::from)?
+            .with_inter_op_spinning(false)
+            .map_err(ort::Error::from)?
             .with_execution_providers([ep::CoreML::default()
                 .with_compute_units(ep::coreml::ComputeUnits::CPUAndNeuralEngine)
                 .with_static_input_shapes(true)
                 .with_model_format(ep::coreml::ModelFormat::MLProgram)
-                .build()])?)
+                .build()])
+            .map_err(ort::Error::from)?)
     }
 }
