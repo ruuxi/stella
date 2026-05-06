@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { SettingsApp } from "@/app/settings/App";
 import { SETTINGS_TAB_KEYS } from "@/global/settings/settings-tabs";
 
 /**
@@ -12,5 +11,4 @@ const SettingsSearch = z.object({
 
 export const Route = createFileRoute("/settings")({
   validateSearch: SettingsSearch,
-  component: SettingsApp,
 });

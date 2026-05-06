@@ -12,6 +12,8 @@ import { ModelsPicker } from "@/global/settings/ModelsPicker";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import { useT } from "@/shared/i18n";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -26,6 +28,14 @@ import {
   dismissPostOnboardingHint,
   usePostOnboardingHint,
 } from "@/global/onboarding/post-onboarding-hints";
+import {
+  preloadAuthDialog,
+  preloadBillingScreen,
+  preloadConnectDialog,
+  preloadModelsPicker,
+  preloadSettingsScreen,
+  preloadSidebarRoute,
+} from "@/shared/lib/sidebar-preloads";
 import {
   useDefaultPageSidebarBack,
   usePageSidebarOverride,
@@ -48,7 +58,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import { FeedbackDialog } from "./FeedbackDialog";
 import {
   CustomDevice as Device,
   CustomLogIn as LogIn,
@@ -56,6 +65,12 @@ import {
 } from "./SidebarIcons";
 import { useFeedbackPrompt } from "./use-feedback-prompt";
 import "./sidebar.css";
+
+const FeedbackDialog = lazy(() =>
+  import("./FeedbackDialog").then((m) => ({
+    default: m.FeedbackDialog,
+  })),
+);
 
 interface SidebarActionsBarProps {
   onConnect?: () => void;
@@ -83,7 +98,12 @@ const SidebarActionsBar = ({
       <button
         type="button"
         className="sidebar-actions-btn"
-        onClick={onOpenSettings}
+        onClick={() => {
+          preloadSettingsScreen();
+          onOpenSettings();
+        }}
+        onFocus={preloadSettingsScreen}
+        onMouseEnter={preloadSettingsScreen}
         aria-label="Settings"
         title="Settings"
       >
@@ -98,6 +118,8 @@ const SidebarActionsBar = ({
             className="sidebar-actions-btn"
             aria-label="Models"
             title="Models"
+            onFocus={preloadModelsPicker}
+            onMouseEnter={preloadModelsPicker}
           >
             <Cpu size={15} strokeWidth={1.75} />
           </button>
@@ -121,6 +143,8 @@ const SidebarActionsBar = ({
         type="button"
         className="sidebar-actions-btn"
         onClick={handleConnectClick}
+        onFocus={preloadConnectDialog}
+        onMouseEnter={preloadConnectDialog}
         aria-label="Connect"
         title="Connect"
       >
@@ -164,12 +188,14 @@ const SidebarActionsMenu = ({
       pendingActionRef.current = null;
       event.preventDefault();
       if (action === "settings") {
+        preloadSettingsScreen();
         onOpenSettings();
       } else if (action === "models") {
         setModelsOpen(true);
       } else if (action === "theme") {
         setThemeOpen(true);
       } else if (action === "connect") {
+        preloadConnectDialog();
         if (connectHint.active) connectHint.dismiss();
         onConnect?.();
       }
@@ -186,6 +212,14 @@ const SidebarActionsMenu = ({
             className="sidebar-actions-btn"
             aria-label="Quick settings"
             title="Quick settings"
+            onFocus={() => {
+              preloadSettingsScreen();
+              preloadConnectDialog();
+            }}
+            onMouseEnter={() => {
+              preloadSettingsScreen();
+              preloadConnectDialog();
+            }}
           >
             <SettingsIcon size={18} strokeWidth={1.75} />
             {connectHint.active && (
@@ -203,6 +237,8 @@ const SidebarActionsMenu = ({
           onCloseAutoFocus={handleCloseAutoFocus}
         >
           <DropdownMenuItem
+            onFocus={preloadSettingsScreen}
+            onMouseEnter={preloadSettingsScreen}
             onSelect={() => {
               pendingActionRef.current = "settings";
             }}
@@ -213,6 +249,8 @@ const SidebarActionsMenu = ({
             Settings
           </DropdownMenuItem>
           <DropdownMenuItem
+            onFocus={preloadModelsPicker}
+            onMouseEnter={preloadModelsPicker}
             onSelect={() => {
               pendingActionRef.current = "models";
             }}
@@ -233,6 +271,8 @@ const SidebarActionsMenu = ({
             Theme
           </DropdownMenuItem>
           <DropdownMenuItem
+            onFocus={preloadConnectDialog}
+            onMouseEnter={preloadConnectDialog}
             onSelect={() => {
               pendingActionRef.current = "connect";
             }}
@@ -360,6 +400,7 @@ const AppNavItem = ({
 
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>) => {
+      preloadSidebarRoute(app.id);
       if (showHint) onHintDismiss?.();
       if (isActive && app.onActiveClick) {
         event.preventDefault();
@@ -374,6 +415,8 @@ const AppNavItem = ({
       to={app.route}
       className={`sidebar-nav-item${isActive ? " sidebar-nav-item--active" : ""}`}
       onClick={handleClick}
+      onFocus={() => preloadSidebarRoute(app.id)}
+      onMouseEnter={() => preloadSidebarRoute(app.id)}
       title={
         showBadge ? `${app.label} (${badgeCount} unread)` : app.label
       }
@@ -455,9 +498,33 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
   // Plans + the user's current tier are public-readable via the same backend
   // query the standalone Billing page uses; running it here lets the pill
   // render "Pro" / "Ultra" / etc. inline instead of always reading "Upgrade".
+  //
+  // The query is deferred to idle so the sidebar's first paint never waits
+  // on Convex. Paid users see "Upgrade" for ~one idle tick, then snap to
+  // their plan name; free users see "Upgrade" the whole time. The pill
+  // route (`/billing`) still preloads on hover, so clicking is unaffected.
+  const [billingQueryReady, setBillingQueryReady] = useState(false);
+  useEffect(() => {
+    const scheduleIdle =
+      window.requestIdleCallback ??
+      ((callback: IdleRequestCallback) =>
+        window.setTimeout(
+          () =>
+            callback({
+              didTimeout: false,
+              timeRemaining: () => 0,
+            } as IdleDeadline),
+          1,
+        ));
+    const cancelIdle =
+      window.cancelIdleCallback ??
+      ((handle: number) => window.clearTimeout(handle));
+    const handle = scheduleIdle(() => setBillingQueryReady(true));
+    return () => cancelIdle(handle);
+  }, []);
   const billingStatus = useQuery(
     api.billing.getSubscriptionStatus,
-    hasConnectedAccount ? {} : "skip",
+    hasConnectedAccount && billingQueryReady ? {} : "skip",
   ) as BillingStatusLite | undefined;
 
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
@@ -499,7 +566,12 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
         <button
           type="button"
           className="sidebar-account-signin"
-          onClick={() => onSignIn?.()}
+          onClick={() => {
+            preloadAuthDialog();
+            onSignIn?.();
+          }}
+          onFocus={preloadAuthDialog}
+          onMouseEnter={preloadAuthDialog}
           title={t("sidebar.signIn")}
           aria-label={t("sidebar.signIn")}
         >
@@ -570,7 +642,12 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
           "sidebar-account-pill" +
           (isPaidPlan ? " sidebar-account-pill--plan" : " sidebar-account-pill--upgrade")
         }
-        onClick={onUpgrade}
+        onClick={() => {
+          preloadBillingScreen();
+          onUpgrade();
+        }}
+        onFocus={preloadBillingScreen}
+        onMouseEnter={preloadBillingScreen}
         title={isPaidPlan ? `${pillLabel} plan — manage billing` : "Upgrade your plan"}
         aria-label={isPaidPlan ? `${pillLabel} plan` : "Upgrade your plan"}
       >
@@ -877,12 +954,16 @@ export const Sidebar = ({
           </>
         )}
       </div>
-      <FeedbackDialog
-        open={feedbackOpen}
-        onOpenChange={setFeedbackOpen}
-        variant={feedbackVariant}
-        onSubmitted={acknowledgeFeedbackPrompt}
-      />
+      {feedbackOpen ? (
+        <Suspense fallback={null}>
+          <FeedbackDialog
+            open
+            onOpenChange={setFeedbackOpen}
+            variant={feedbackVariant}
+            onSubmitted={acknowledgeFeedbackPrompt}
+          />
+        </Suspense>
+      ) : null}
     </aside>
   );
 };

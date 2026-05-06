@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   DEFAULT_STORE_TAB,
@@ -224,6 +224,7 @@ export function StoreApp() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/store" });
   const { panelOpen, panelExpanded, panelWidth } = useDisplayTabs();
+  const layoutFrameRef = useRef<number | null>(null);
 
   const requestedTab = normalizeStoreTab(search.tab);
   const urlIsLegacy = typeof search.tab === "string" && search.tab !== requestedTab;
@@ -242,20 +243,32 @@ export function StoreApp() {
     });
   }, [panelExpanded, panelOpen]);
 
-  useLayoutEffect(() => {
-    syncStoreWebLayout();
+  const scheduleStoreWebLayout = useCallback(() => {
+    if (layoutFrameRef.current !== null) return;
+    layoutFrameRef.current = window.requestAnimationFrame(() => {
+      layoutFrameRef.current = null;
+      syncStoreWebLayout();
+    });
+  }, [syncStoreWebLayout]);
+
+  useEffect(() => {
+    scheduleStoreWebLayout();
     const contentArea = document.querySelector<HTMLElement>(".content-area");
     const displaySidebar =
       document.querySelector<HTMLElement>(".display-sidebar");
-    const resizeObserver = new ResizeObserver(() => syncStoreWebLayout());
+    const resizeObserver = new ResizeObserver(scheduleStoreWebLayout);
     if (contentArea) resizeObserver.observe(contentArea);
     if (displaySidebar) resizeObserver.observe(displaySidebar);
-    window.addEventListener("resize", syncStoreWebLayout);
+    window.addEventListener("resize", scheduleStoreWebLayout);
     return () => {
       resizeObserver.disconnect();
-      window.removeEventListener("resize", syncStoreWebLayout);
+      window.removeEventListener("resize", scheduleStoreWebLayout);
+      if (layoutFrameRef.current !== null) {
+        window.cancelAnimationFrame(layoutFrameRef.current);
+        layoutFrameRef.current = null;
+      }
     };
-  }, [panelExpanded, panelOpen, panelWidth, syncStoreWebLayout]);
+  }, [panelExpanded, panelOpen, panelWidth, scheduleStoreWebLayout]);
 
   // Two redirects share this effect:
   //   - Legacy `?tab=installed`/`?tab=publish` URLs collapse to Discover.
@@ -284,15 +297,21 @@ export function StoreApp() {
   }, [requestedTab]);
 
   useEffect(() => {
-    syncStoreWebLayout();
-    void window.electronAPI?.storeWeb?.show({
-      tab: requestedTab,
-      package:
-        typeof search.package === "string" && search.package.trim()
-          ? search.package
-          : undefined,
+    let cancelled = false;
+    const frame = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      syncStoreWebLayout();
+      void window.electronAPI?.storeWeb?.show({
+        tab: requestedTab,
+        package:
+          typeof search.package === "string" && search.package.trim()
+            ? search.package
+            : undefined,
+      });
     });
     return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
       void window.electronAPI?.storeWeb?.hide();
     };
   }, [requestedTab, search.package, syncStoreWebLayout]);
