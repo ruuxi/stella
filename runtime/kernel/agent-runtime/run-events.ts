@@ -409,8 +409,6 @@ export const subscribeRuntimeAgentEvents = ({
   threadStore?: RuntimeStore;
   threadKey?: string;
 }) => {
-  const emittedThinkingLengths = new Map<number, number>();
-
   return agent.subscribe((event) => {
     if (event.type === "message_start" && event.message.role === "user") {
       const runStartedEvent = recorder.recordQueuedUserMessageStart();
@@ -454,18 +452,9 @@ export const subscribeRuntimeAgentEvents = ({
       event.type === "message_update" &&
       event.assistantMessageEvent.type === "thinking_delta"
     ) {
-      const chunk = event.assistantMessageEvent.delta;
-      if (!chunk) {
-        return;
-      }
-      const previousLength =
-        emittedThinkingLengths.get(event.assistantMessageEvent.contentIndex) ??
-        0;
-      emittedThinkingLengths.set(
-        event.assistantMessageEvent.contentIndex,
-        previousLength + chunk.length,
-      );
-      callbacks?.onReasoning?.(recorder.recordReasoning(chunk));
+      // Provider thinking/reasoning blocks are persisted on the assistant message
+      // so same-provider replay can preserve signatures, but they are not
+      // user-facing chat content.
       return;
     }
 
@@ -473,18 +462,6 @@ export const subscribeRuntimeAgentEvents = ({
       event.type === "message_update" &&
       event.assistantMessageEvent.type === "thinking_end"
     ) {
-      const { contentIndex, content } = event.assistantMessageEvent;
-      if (!content) {
-        return;
-      }
-      const alreadyEmittedLength =
-        emittedThinkingLengths.get(contentIndex) ?? 0;
-      const remaining = content.slice(alreadyEmittedLength);
-      if (!remaining) {
-        return;
-      }
-      emittedThinkingLengths.set(contentIndex, content.length);
-      callbacks?.onReasoning?.(recorder.recordReasoning(remaining));
       return;
     }
 
