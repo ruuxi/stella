@@ -286,6 +286,37 @@ type UseEventRowsResult = {
 const assistantKeyFor = (userMessageId: string) =>
   `assistant-for-${userMessageId}`
 
+export const segmentToolEventsByAssistant = (events: EventRecord[]) => {
+  const byAssistantId = new Map<string, EventRecord[]>()
+  let buffer: EventRecord[] = []
+  for (const event of events) {
+    if (isAssistantMessage(event)) {
+      byAssistantId.set(event._id, buffer)
+      buffer = []
+      continue
+    }
+    if (
+      isToolRequest(event) ||
+      isToolResult(event) ||
+      isAgentCompletedEvent(event)
+    ) {
+      buffer.push(event)
+    }
+  }
+  return { byAssistantId, trailing: buffer }
+}
+
+const stableToolSegmentKey = (events: EventRecord[]): string => {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]!
+    if (typeof event.requestId === 'string' && event.requestId.trim()) {
+      return event.requestId.trim()
+    }
+  }
+  const last = events[events.length - 1]
+  return last?._id ?? 'trailing'
+}
+
 export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
   const developerResourcePreviewsEnabled =
     useDeveloperResourcePreviewsEnabled()
@@ -310,23 +341,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
    * collected during).
    */
   const segmentedToolEvents = useMemo(() => {
-    const byAssistantId = new Map<string, EventRecord[]>()
-    let buffer: EventRecord[] = []
-    for (const event of events) {
-      if (isAssistantMessage(event)) {
-        byAssistantId.set(event._id, buffer)
-        buffer = []
-        continue
-      }
-      if (
-        isToolRequest(event) ||
-        isToolResult(event) ||
-        isAgentCompletedEvent(event)
-      ) {
-        buffer.push(event)
-      }
-    }
-    return byAssistantId
+    return segmentToolEventsByAssistant(events)
   }, [events])
 
   const responseTargetByAssistantId = useMemo(() => {
@@ -436,7 +451,8 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           isPrimaryReply && replyToUserMessageId
             ? assistantKeyFor(replyToUserMessageId)
             : event._id
-        const toolEvents = segmentedToolEvents.get(event._id) ?? []
+        const toolEvents =
+          segmentedToolEvents.byAssistantId.get(event._id) ?? []
         const responseTarget = responseTargetByAssistantId.get(event._id)
         const resourcePayload = deriveTurnResource(
           toolEvents,
@@ -465,6 +481,29 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         }
         computed.push(row)
       }
+    }
+
+    const trailingResourcePayload = deriveTurnResource(
+      segmentedToolEvents.trailing,
+      '',
+      getCwd(segmentedToolEvents.trailing),
+      { developerResourcesEnabled: developerResourcePreviewsEnabled },
+    )
+    if (
+      trailingResourcePayload?.kind === 'media' &&
+      trailingResourcePayload.presentation === 'inline-image' &&
+      trailingResourcePayload.asset.kind === 'image'
+    ) {
+      const stableKey = `assistant-tool-resource-${stableToolSegmentKey(
+        segmentedToolEvents.trailing,
+      )}`
+      computed.push({
+        kind: 'assistant',
+        id: stableKey,
+        text: '',
+        cacheKey: stableKey,
+        resourcePayload: trailingResourcePayload,
+      })
     }
 
     /**
