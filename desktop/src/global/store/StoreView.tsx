@@ -648,7 +648,7 @@ function CardOwnerMenu({
         className="store-card-menu"
         onClick={(e) => e.stopPropagation()}
       >
-        <DropdownMenuLabel className="store-card-menu-label">Visibility</DropdownMenuLabel>
+        <DropdownMenuLabel>Visibility</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={controls.visibility}
           onValueChange={(value) => {
@@ -658,28 +658,28 @@ function CardOwnerMenu({
             }
           }}
         >
-          <DropdownMenuRadioItem value="public" className="store-card-menu-item">
+          <DropdownMenuRadioItem value="public">
             <div className="store-card-menu-item-text">
               <span className="store-card-menu-item-title">Public</span>
               <span className="store-card-menu-item-sub">Listed on the Store</span>
             </div>
           </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="unlisted" className="store-card-menu-item">
+          <DropdownMenuRadioItem value="unlisted">
             <div className="store-card-menu-item-text">
               <span className="store-card-menu-item-title">Unlisted</span>
               <span className="store-card-menu-item-sub">Anyone with the link</span>
             </div>
           </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="private" className="store-card-menu-item">
+          <DropdownMenuRadioItem value="private">
             <div className="store-card-menu-item-text">
               <span className="store-card-menu-item-title">Private</span>
               <span className="store-card-menu-item-sub">Only you</span>
             </div>
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator className="store-card-menu-separator" />
+        <DropdownMenuSeparator />
         <DropdownMenuItem
-          className="store-card-menu-item store-card-menu-item--danger"
+          data-variant="destructive"
           onSelect={() => {
             // Keep the destructive action explicitly confirmed — Radix
             // closes the menu after `onSelect`, so the confirm fires

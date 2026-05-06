@@ -724,18 +724,69 @@
   z-index: 2;
 }
 
-/* === Pack details dialog === */
+/* === Pack details dialog (Connect-style glass, mirrors pet detail) === */
 
-.emoji-details-dialog {
-  max-width: 880px;
+[data-slot="dialog-content"].emoji-details-dialog {
+  --emoji-details-pad-x: 28px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  max-height: 100%;
   width: 100%;
+  max-width: min(880px, 100%);
+}
+
+[data-component="dialog"][data-fit]:has([data-slot="dialog-content"].emoji-details-dialog)
+  [data-slot="dialog-container"] {
+  --dialog-width: 880px;
+  height: min(calc(100vh - 16px), 720px);
+  min-height: min(calc(100vh - 16px), 520px);
+}
+
+.emoji-details-dialog [data-slot="dialog-header"] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  text-align: center;
+  padding: 22px var(--emoji-details-pad-x) 18px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+.emoji-details-title {
+  margin: 0;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 1.7rem;
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--text-strong);
+}
+
+.emoji-details-caption {
+  margin: 0;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12.5px;
+  color: var(--text-weak);
+  letter-spacing: -0.005em;
+}
+
+.emoji-details-dialog [data-slot="dialog-body"].emoji-details-body {
+  flex: 1;
+  min-height: 0;
+  padding: 24px var(--emoji-details-pad-x) 28px;
 }
 
 .emoji-details-body {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
   gap: 24px;
-  padding-top: 8px;
 }
 
 @media (max-width: 760px) {

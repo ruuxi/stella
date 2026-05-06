@@ -5,7 +5,7 @@ import {
   DialogBody,
   DialogCloseButton,
   DialogContent,
-  DialogDescription,
+  DialogHeader,
   DialogTitle,
 } from "@/ui/dialog";
 import { Button } from "@/ui/button";
@@ -108,12 +108,16 @@ export function EmojiPackDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xl" className="emoji-details-dialog">
+      <DialogContent fit className="emoji-details-dialog">
         <DialogCloseButton disabled={submitting} />
-        <DialogTitle>{pack.displayName}</DialogTitle>
-        <DialogDescription>
-          {pack.description?.trim() || `Pack by ${author}`}
-        </DialogDescription>
+        <DialogHeader>
+          <DialogTitle className="emoji-details-title">
+            {pack.displayName}
+          </DialogTitle>
+          <p className="emoji-details-caption">
+            {pack.description?.trim() || `Pack by ${author}`}
+          </p>
+        </DialogHeader>
         <DialogBody className="emoji-details-body">
           <div className="emoji-details-preview">
             <div className="emoji-details-preview-tabs">
