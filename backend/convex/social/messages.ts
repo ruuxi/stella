@@ -6,16 +6,14 @@ import {
   query,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import {
   socialMessageValidator,
   requireRoomMembership,
   refreshRoomUpdatedAt,
 } from "./shared";
-import {
-  clampPageLimit,
-  requireBoundedString,
-} from "../shared_validators";
+import { requireBoundedString } from "../shared_validators";
 import {
   getConnectedUserIdOrNull,
   requireConnectedUserId,
@@ -42,6 +40,32 @@ const SOCIAL_MODERATION_SYSTEM_PROMPT = [
 
 const GLOBAL_CHAT_DISABLED_ERROR = "Global Chat is disabled.";
 
+// Per-page ceiling. The desktop hook requests 50/page by default; this
+// is a safety cap for misbehaving clients, not the steady-state size.
+// Kept close to the requested page size so a single round-trip never
+// pulls more than ~2x the normal slice.
+const MAX_MESSAGES_PER_PAGE = 100;
+
+const paginatedRoomMessagesValidator = v.object({
+  page: v.array(socialMessageValidator),
+  isDone: v.boolean(),
+  continueCursor: v.string(),
+  splitCursor: v.optional(v.union(v.string(), v.null())),
+  pageStatus: v.optional(
+    v.union(
+      v.literal("SplitRecommended"),
+      v.literal("SplitRequired"),
+      v.null(),
+    ),
+  ),
+});
+
+const emptyMessagesPage = (): {
+  page: never[];
+  isDone: true;
+  continueCursor: "";
+} => ({ page: [], isDone: true, continueCursor: "" });
+
 function parseModerationResponse(raw: string): "clean" | "censored" | null {
   const normalized = raw.trim().toUpperCase();
   if (normalized === "YES") return "censored";
@@ -55,31 +79,38 @@ function parseModerationResponse(raw: string): "clean" | "censored" | null {
 export const listRoomMessages = query({
   args: {
     roomId: v.id("social_rooms"),
-    limit: v.optional(v.number()),
-    beforeCreatedAt: v.optional(v.number()),
+    paginationOpts: paginationOptsValidator,
   },
-  returns: v.array(socialMessageValidator),
+  returns: paginatedRoomMessagesValidator,
   handler: async (ctx, args) => {
     const ownerId = await getConnectedUserIdOrNull(ctx);
     if (!ownerId) {
-      return [];
+      return emptyMessagesPage();
     }
     await requireRoomMembership(ctx, args.roomId, ownerId);
     const room = await ctx.db.get(args.roomId);
     if (room?.kind === "global") {
-      return [];
+      return emptyMessagesPage();
     }
-    const limit = clampPageLimit(args.limit, 100, 500);
-    const query = ctx.db
+    // Cap requested page size so a misbehaving client can't pull a whole
+    // room into one round-trip. The desktop hook ships 50/page; this is a
+    // safety ceiling, not the steady-state size.
+    const numItems = Math.min(
+      Math.max(args.paginationOpts.numItems, 1),
+      MAX_MESSAGES_PER_PAGE,
+    );
+    // Order desc so each page is the next-older slice. The renderer
+    // re-sorts to oldest-first for display.
+    return await ctx.db
       .query("social_messages")
       .withIndex("by_roomId_and_createdAt", (q) =>
-        args.beforeCreatedAt !== undefined
-          ? q.eq("roomId", args.roomId).lt("createdAt", args.beforeCreatedAt)
-          : q.eq("roomId", args.roomId),
+        q.eq("roomId", args.roomId),
       )
-      .order("desc");
-    const messages = await query.take(limit);
-    return messages.reverse();
+      .order("desc")
+      .paginate({
+        cursor: args.paginationOpts.cursor,
+        numItems,
+      });
   },
 });
 

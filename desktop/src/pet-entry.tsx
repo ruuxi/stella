@@ -1,11 +1,12 @@
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
-import { ConvexProvider } from "convex/react";
+import { ConvexProviderWithAuth } from "convex/react";
 import "./index.css";
 import "./ui/register-styles";
 import { ThemeProvider } from "./context/theme-context";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { convexClient } from "./infra/convex-client";
+import { useDesktopConvexAuth } from "./global/auth/DesktopConvexAuthProvider";
 import { ToastProvider } from "./ui/toast";
 import { PetOverlay } from "./shell/pet/PetOverlay";
 import type { PetOverlayStatus } from "./shared/contracts/pet";
@@ -71,12 +72,12 @@ export function PetWindowRoot() {
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
-    <ConvexProvider client={convexClient}>
+    <ConvexProviderWithAuth client={convexClient} useAuth={useDesktopConvexAuth}>
       <ThemeProvider>
         <ToastProvider>
           <PetWindowRoot />
         </ToastProvider>
       </ThemeProvider>
-    </ConvexProvider>
+    </ConvexProviderWithAuth>
   </ErrorBoundary>,
 );

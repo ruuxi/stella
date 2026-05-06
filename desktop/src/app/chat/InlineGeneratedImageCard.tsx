@@ -125,9 +125,21 @@ export const InlineGeneratedImageCard = ({
   payload: InlineGeneratedImagePayload;
 }) => {
   const materializedPayload = useMaterializedMediaPayload(payload.jobId);
+  // Skip the per-card Convex subscription whenever we already have what
+  // it would have given us:
+  //   - `materializedPayload` from a sibling/prior session (cached),
+  //   - or resolved `filePaths` baked into the chat event itself (the
+  //     common case for any historical image card).
+  // This used to open one watcher per inline card on first paint of a
+  // long chat; now subscriptions only stay open for cards whose job is
+  // still pending (no asset paths yet).
+  const hasResolvedAssets =
+    payload.asset.kind === "image" && payload.asset.filePaths.length > 0;
   const job = useQuery(
     api.media_jobs.getByJobId,
-    payload.jobId && !materializedPayload ? { jobId: payload.jobId } : "skip",
+    payload.jobId && !materializedPayload && !hasResolvedAssets
+      ? { jobId: payload.jobId }
+      : "skip",
   ) as MediaJobLookup | undefined;
 
   useEffect(() => {

@@ -202,7 +202,7 @@ export type PublicApiType = {
   };
   "social": {
     "messages": {
-      "listRoomMessages": FunctionReference<'query', 'public', { limit?: number | undefined; beforeCreatedAt?: number | undefined; roomId: Id<'social_rooms'>; }, any, string | undefined>;
+      "listRoomMessages": FunctionReference<'query', 'public', { roomId: Id<'social_rooms'>; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
       "sendRoomMessage": FunctionReference<'mutation', 'public', { clientMessageId?: string | undefined; roomId: Id<'social_rooms'>; body: string; }, any, string | undefined>;
     };
     "profiles": {
@@ -239,7 +239,7 @@ export type PublicApiType = {
       "getSession": FunctionReference<'query', 'public', { sessionId: Id<'stella_sessions'>; }, any, string | undefined>;
       "createSession": FunctionReference<'mutation', 'public', { workspaceFolderName?: string | undefined; roomId: Id<'social_rooms'>; hostDeviceId: string; workspaceSlug: string; }, any, string | undefined>;
       "updateSessionStatus": FunctionReference<'mutation', 'public', { status: 'active' | 'paused' | 'ended'; sessionId: Id<'stella_sessions'>; }, any, string | undefined>;
-      "listTurns": FunctionReference<'query', 'public', { limit?: number | undefined; sessionId: Id<'stella_sessions'>; }, any, string | undefined>;
+      "listTurns": FunctionReference<'query', 'public', { sessionId: Id<'stella_sessions'>; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
       "queueTurn": FunctionReference<'mutation', 'public', { agentType?: string | undefined; clientTurnId?: string | undefined; prompt: string; sessionId: Id<'stella_sessions'>; }, any, string | undefined>;
       "listPendingTurnsForHostDevice": FunctionReference<'query', 'public', { deviceId: string; }, any, string | undefined>;
       "claimTurn": FunctionReference<'mutation', 'public', { deviceId: string; sessionId: Id<'stella_sessions'>; turnId: Id<'stella_session_turns'>; }, any, string | undefined>;

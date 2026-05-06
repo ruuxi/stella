@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { Avatar } from "@/ui/avatar";
@@ -70,7 +70,13 @@ export function SocialChatPane({
   const roomData = useQuery(api.social.rooms.getRoom, {
     roomId,
   }) as SocialRoomSummary | null;
-  const { messages, sendMessage } = useSocialMessages(roomId, currentOwnerId);
+  const {
+    messages,
+    sendMessage,
+    loadOlder: loadOlderMessages,
+    hasOlder: hasOlderMessages,
+    isLoadingOlder: isLoadingOlderMessages,
+  } = useSocialMessages(roomId, currentOwnerId);
   const { markRead } = useSocialRooms();
 
   // Drive the unread badge: every time the room's newest visible message id
@@ -78,34 +84,44 @@ export function SocialChatPane({
   // server so this room drops out of the sidebar/Friends counts. Empty rooms
   // with a stale creation timestamp are marked read without a message id.
   // Skipped for Global Chat since it's excluded from the numbered badge.
-  const readMarker = useMemo(() => {
-    if (roomData?.room.kind === "global") return null;
-    if (messages.length) {
-      return { messageId: (messages as MessageDoc[])[messages.length - 1]._id };
-    }
-    const latestMessageAt = roomData?.room.latestMessageAt;
-    const lastReadAt = roomData?.membership.lastReadAt;
-    if (latestMessageAt === undefined) return null;
-    if (lastReadAt !== undefined && latestMessageAt <= lastReadAt) return null;
-    return {};
-  }, [
-    messages,
-    roomData?.membership.lastReadAt,
-    roomData?.room.kind,
-    roomData?.room.latestMessageAt,
-  ]);
+  //
+  // We depend on the *primitive* last-message id (and the empty-room
+  // case's primitive timestamps), not the `messages` array reference —
+  // every Convex tick allocates a new array, which would otherwise refire
+  // `markRead` per tick even when the visible head hasn't moved.
+  const lastMessageId =
+    messages.length > 0
+      ? (messages as MessageDoc[])[messages.length - 1]._id
+      : null;
+  const latestMessageAt = roomData?.room.latestMessageAt;
+  const lastReadAt = roomData?.membership.lastReadAt;
+  const isGlobal = roomData?.room.kind === "global";
 
   useEffect(() => {
-    if (!readMarker) return;
-    void markRead(roomId, readMarker.messageId).catch(() => {
+    if (isGlobal) return;
+    if (lastMessageId !== null) {
+      void markRead(roomId, lastMessageId).catch(() => {
+        // Read-marker writes are best-effort; the next render will retry.
+      });
+      return;
+    }
+    if (latestMessageAt === undefined) return;
+    if (lastReadAt !== undefined && latestMessageAt <= lastReadAt) return;
+    void markRead(roomId).catch(() => {
       // Read-marker writes are best-effort; the next render will retry.
     });
-  }, [roomId, readMarker, markRead]);
+  }, [isGlobal, lastMessageId, latestMessageAt, lastReadAt, markRead, roomId]);
   const socialSessionsApi = window.electronAPI?.socialSessions;
   const isGlobalRoom = roomData?.room.kind === "global";
 
   const [sessionLookupId, setSessionLookupId] = useState<string | null>(null);
-  const { sessionSummary, turns } = useSocialSession(sessionLookupId);
+  const {
+    sessionSummary,
+    turns,
+    loadOlderTurns,
+    hasOlderTurns,
+    isLoadingOlderTurns,
+  } = useSocialSession(sessionLookupId);
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isUpdatingSession, setIsUpdatingSession] = useState(false);
   const [armedForStella, setArmedForStella] = useState(false);
@@ -245,6 +261,46 @@ export function SocialChatPane({
 
     return groups;
   }, [timelineRows]);
+
+  // Pagination wiring — auto-fetch older history. The room timeline
+  // merges chat messages with Stella turns, so a single sentinel near
+  // the top of the scroll viewport drives both `loadOlderMessages` and
+  // `loadOlderTurns` whenever it intersects.
+  //
+  // Scroll-position preservation when prepending older content is
+  // handled by the browser: the viewport uses `flex-direction:
+  // column-reverse` (the established sticky-bottom hack) and modern
+  // browsers' default `overflow-anchor: auto` keeps the user's reading
+  // position stable across prepends. No manual `scrollTop` math here.
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const topSentinelRef = useRef<HTMLDivElement | null>(null);
+  const isLoadingOlder = isLoadingOlderMessages || isLoadingOlderTurns;
+  const hasOlder = hasOlderMessages || hasOlderTurns;
+
+  const requestOlder = useCallback(() => {
+    if (hasOlderMessages) loadOlderMessages();
+    if (hasOlderTurns) loadOlderTurns();
+  }, [hasOlderMessages, hasOlderTurns, loadOlderMessages, loadOlderTurns]);
+
+  useEffect(() => {
+    const root = viewportRef.current;
+    const sentinel = topSentinelRef.current;
+    if (!root || !sentinel) return;
+    if (!hasOlder) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        if (isLoadingOlder) return;
+        requestOlder();
+      },
+      // Fire ~240px ahead so the next page is in flight by the time the
+      // sentinel actually scrolls into view.
+      { root, rootMargin: "240px 0px 0px 0px", threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasOlder, isLoadingOlder, requestOlder]);
 
   const displayName = roomData
     ? getSocialRoomDisplayName(roomData, currentOwnerId)
@@ -466,8 +522,27 @@ export function SocialChatPane({
         </div>
       )}
 
-      <div className="social-messages-viewport">
+      <div className="social-messages-viewport" ref={viewportRef}>
         <div className="social-messages-container">
+          {/*
+            Sentinel for older-history auto-fetch. Sits above the first
+            message group; whenever it intersects the viewport (with
+            ~240px of lookahead), the observer fires `requestOlder`.
+            Hidden once we've reached the start of history so it doesn't
+            churn the observer.
+          */}
+          {hasOlder ? (
+            <div
+              ref={topSentinelRef}
+              className="social-messages-top-sentinel"
+              aria-hidden
+            />
+          ) : null}
+          {isLoadingOlder ? (
+            <div className="social-messages-older-loading" aria-live="polite">
+              Loading older messages…
+            </div>
+          ) : null}
           {messageGroups.length === 0 && (
             <div className="social-empty-state">
               <div className="social-empty-icon">

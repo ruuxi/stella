@@ -32,10 +32,17 @@ const platformKeyForCurrentEnv = (
 };
 
 const detectPlatformKey = (): string => {
-  const electronApi = (typeof window !== "undefined" ? window.electronAPI : null) ?? null;
+  // `electronAPI.platform` and `electronAPI.arch` are forwarded from
+  // `process.platform` / `process.arch` by the preload script — the
+  // authoritative source. UA sniffing for "ARM" was guesswork; if it
+  // returned the wrong key the install would silently report no
+  // updates available because the Convex `currentDesktopRelease` query
+  // is keyed by exact platform.
+  const electronApi =
+    (typeof window !== "undefined" ? window.electronAPI : null) ?? null;
   const electronPlatform = electronApi?.platform ?? "darwin";
-  const archGuess = electronPlatform === "darwin" ? navigator.userAgent.includes("ARM") || navigator.userAgent.includes("arm64") ? "arm64" : "x64" : "x64";
-  return platformKeyForCurrentEnv(electronPlatform, archGuess);
+  const arch = electronApi?.arch ?? "x64";
+  return platformKeyForCurrentEnv(electronPlatform, arch);
 };
 
 type DesktopUpdateState = {
