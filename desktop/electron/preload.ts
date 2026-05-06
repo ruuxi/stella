@@ -54,6 +54,9 @@ import {
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
+  IPC_DIAGNOSTICS_RECORD_HEAP_TRACE,
+  IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED,
+  IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,
   IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT,
   IPC_PERMISSIONS_RESET,
   IPC_PERMISSIONS_RESET_MICROPHONE,
@@ -77,6 +80,8 @@ import {
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
+  IPC_STORE_BLUEPRINT_NOTIFICATION_ACTIVATED,
+  IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION,
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
 } from "../src/shared/contracts/ipc-channels.js";
@@ -893,6 +898,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
         IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
         enabled,
       ) as Promise<{ enabled: boolean }>,
+    setGlobalShortcutsSuspended: (suspended: boolean) =>
+      ipcRenderer.invoke(
+        IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,
+        suspended,
+      ) as Promise<{ supported: boolean; suspended: boolean }>,
+    getGlobalShortcutsSuspended: () =>
+      ipcRenderer.invoke(IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED) as Promise<{
+        supported: boolean;
+        suspended: boolean;
+      }>,
+    recordHeapTrace: (durationMs?: number) =>
+      ipcRenderer.invoke(IPC_DIAGNOSTICS_RECORD_HEAP_TRACE, {
+        durationMs,
+      }) as Promise<{ ok: boolean; path?: string; error?: string }>,
     getWakeWordEnabled: () =>
       ipcRenderer.invoke(IPC_PREFERENCES_GET_WAKE_WORD) as Promise<boolean>,
     setWakeWordEnabled: (enabled: boolean) =>
@@ -1325,6 +1344,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
         credential,
         config,
       }),
+    showBlueprintNotification: (payload: { messageId: string; name: string }) =>
+      ipcRenderer.invoke(IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION, payload),
+    onBlueprintNotificationActivated: (
+      callback: (payload: { messageId: string | null }) => void,
+    ) =>
+      onIpc<{ messageId: string | null }>(
+        IPC_STORE_BLUEPRINT_NOTIFICATION_ACTIVATED,
+      )(callback),
   },
 
   storeWeb: {
@@ -1345,7 +1372,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   storeWebLocal: {
     onAction: (
       callback: (payload: { requestId: string; action: unknown }) => void,
-    ) => onIpc<{ requestId: string; action: unknown }>("storeWeb:localAction")(callback),
+    ) =>
+      onIpc<{ requestId: string; action: unknown }>("storeWeb:localAction")(
+        callback,
+      ),
     reply: (payload: {
       requestId: string;
       ok: boolean;

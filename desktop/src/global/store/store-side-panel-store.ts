@@ -25,6 +25,7 @@ const EMPTY: StoreSidePanelState = {
 
 let state: StoreSidePanelState = EMPTY;
 const listeners = new Set<() => void>();
+let pendingBlueprintActivationMessageId: string | null | undefined;
 
 const emit = (next: StoreSidePanelState): void => {
   state = next;
@@ -70,6 +71,15 @@ export const storeSidePanelStore = {
   },
   reset(): void {
     emit(EMPTY);
+  },
+  requestBlueprintActivation(messageId: string | null): void {
+    pendingBlueprintActivationMessageId = messageId;
+    emit({ ...state });
+  },
+  consumeBlueprintActivation(): string | null | undefined {
+    const messageId = pendingBlueprintActivationMessageId;
+    pendingBlueprintActivationMessageId = undefined;
+    return messageId;
   },
 };
 

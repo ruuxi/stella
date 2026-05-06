@@ -760,6 +760,7 @@ async fn install_payload_dependencies(
     let dir = Some(Path::new(install_dir));
     let result = run_bun_install_with_progress(install_dir, dir, state, app).await;
     if result.ok {
+        ensure_electron_binary_installed(install_dir, state, app).await?;
         // This addon is optional at runtime: the desktop app already falls back to
         // Electron/native-helper permission checks when the native module is missing.
         if let Err(err) = ensure_mac_screen_capture_permissions_built(install_dir).await {
@@ -802,6 +803,44 @@ async fn install_payload_dependencies(
 
         Err(format!("bun install failed: {summary}"))
     }
+}
+
+async fn ensure_electron_binary_installed(
+    install_dir: &str,
+    state: &mut InstallerState,
+    app: &AppHandle,
+) -> Result<(), String> {
+    set_step_progress(
+        state,
+        app,
+        &SetupStepId::Payload,
+        "Preparing Electron",
+        Some(0.95),
+    );
+    log_install(install_dir, "Preparing Electron binary").await;
+
+    let result = run(
+        &["bun", "run", "electron:install"],
+        Some(Path::new(install_dir)),
+    )
+    .await;
+    if result.ok {
+        return Ok(());
+    }
+
+    let summary = if !result.stderr.is_empty() {
+        result.stderr
+    } else if !result.stdout.is_empty() {
+        result.stdout
+    } else {
+        "Electron binary install failed.".into()
+    };
+    log_install(
+        install_dir,
+        &format!("bun run electron:install failed\n{summary}"),
+    )
+    .await;
+    Err(format!("Electron binary install failed: {summary}"))
 }
 
 async fn run_bun_install_with_progress(
@@ -2120,7 +2159,10 @@ mod tests {
         let complete =
             tauri::async_runtime::block_on(parakeet_step_complete(&dir.path.to_string_lossy()));
 
-        assert_eq!(complete, !cfg!(all(target_os = "macos", target_arch = "aarch64")));
+        assert_eq!(
+            complete,
+            !cfg!(all(target_os = "macos", target_arch = "aarch64"))
+        );
     }
 
     #[test]

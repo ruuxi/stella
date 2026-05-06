@@ -24,10 +24,12 @@ import { useOnboardingOverlay } from "@/global/onboarding/use-onboarding-overlay
 import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
 import { useBootstrapState } from "@/systems/boot/bootstrap-state";
 import { useWindowType } from "@/shared/hooks/use-window-type";
+import { storeSidePanelStore } from "@/global/store/store-side-panel-store";
 import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import { MorphInputAbsorber } from "./MorphInputAbsorber";
 import { AskStellaSelectionChip } from "./selection/AskStellaSelectionChip";
+import { openStoreDisplayTab } from "./display/default-tabs";
 import "./full-shell.layout.css";
 import "./mobile.css";
 
@@ -461,6 +463,16 @@ export const FullShell = () => {
     // process relaunch.
     retryRuntimeBootstrap();
   }, [activeConversationId, appReady, retryRuntimeBootstrap, runtimeStatus]);
+
+  useEffect(() => {
+    if (!appReady || isMiniWindow) return;
+    return window.electronAPI?.store?.onBlueprintNotificationActivated?.(
+      ({ messageId }) => {
+        storeSidePanelStore.requestBlueprintActivation(messageId);
+        openStoreDisplayTab();
+      },
+    );
+  }, [appReady, isMiniWindow]);
 
   return (
     <div

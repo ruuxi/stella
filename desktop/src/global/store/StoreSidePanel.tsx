@@ -122,23 +122,11 @@ function deriveBlueprintName(text: string): string {
 // Notifications
 // ---------------------------------------------------------------------------
 
-async function requestNotificationPermission() {
+function fireBlueprintNotification(messageId: string, name: string) {
   try {
-    if (typeof Notification === "undefined") return;
-    if (Notification.permission === "default") {
-      await Notification.requestPermission();
-    }
-  } catch {
-    // ignore
-  }
-}
-
-function fireBlueprintNotification(name: string) {
-  try {
-    if (typeof Notification === "undefined") return;
-    if (Notification.permission !== "granted") return;
-    new Notification("Blueprint draft ready", {
-      body: `${name} is ready to review and publish.`,
+    void window.electronAPI?.store?.showBlueprintNotification?.({
+      messageId,
+      name,
     });
   } catch {
     // ignore
@@ -404,11 +392,7 @@ function PublishDialog({
           )}
 
           <div className="store-publish-dialog-actions">
-            <button
-              type="button"
-              className="pill-btn"
-              onClick={onClose}
-            >
+            <button type="button" className="pill-btn" onClick={onClose}>
               Cancel
             </button>
             <button
@@ -667,11 +651,31 @@ export function StoreSidePanel() {
         if (nextThread) setThread(nextThread);
       })
       .catch(() => undefined);
-    void requestNotificationPermission();
     return () => {
       storeSidePanelStore.reset();
     };
   }, []);
+
+  useEffect(() => {
+    const activatedMessageId = storeSidePanelStore.consumeBlueprintActivation();
+    if (activatedMessageId === undefined) return;
+    if (activatedMessageId) {
+      setEditingBlueprintId(activatedMessageId);
+      return;
+    }
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i];
+      if (
+        msg.role === "assistant" &&
+        msg.isBlueprint &&
+        !msg.denied &&
+        !msg.published
+      ) {
+        setEditingBlueprintId(msg._id);
+        return;
+      }
+    }
+  }, [messages, state]);
 
   const items = state.snapshot?.items ?? [];
   const messages = thread?.messages ?? EMPTY_STORE_THREAD_MESSAGES;
@@ -706,8 +710,7 @@ export function StoreSidePanel() {
   // set on first load so existing drafts don't re-fire on mount.
   useEffect(() => {
     const blueprints = messages.filter(
-      (msg) =>
-        msg.role === "assistant" && msg.isBlueprint && !msg.denied,
+      (msg) => msg.role === "assistant" && msg.isBlueprint && !msg.denied,
     );
     if (!hasSeededBlueprintsRef.current) {
       hasSeededBlueprintsRef.current = true;
@@ -717,7 +720,7 @@ export function StoreSidePanel() {
     for (const msg of blueprints) {
       if (seenBlueprintsRef.current.has(msg._id)) continue;
       seenBlueprintsRef.current.add(msg._id);
-      fireBlueprintNotification(deriveBlueprintName(msg.text));
+      fireBlueprintNotification(msg._id, deriveBlueprintName(msg.text));
     }
   }, [messages]);
 
@@ -927,7 +930,9 @@ export function StoreSidePanel() {
       );
     }
 
-    return <AssistantMessageRow key={message._id} row={toAssistantRow(message)} />;
+    return (
+      <AssistantMessageRow key={message._id} row={toAssistantRow(message)} />
+    );
   };
 
   return (

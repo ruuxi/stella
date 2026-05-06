@@ -1,5 +1,5 @@
 import path from "path";
-import { BrowserWindow, Notification } from "electron";
+import { BrowserWindow } from "electron";
 import {
   getOrCreateDeviceIdentity,
   signDeviceHeartbeat,
@@ -19,6 +19,7 @@ import {
 } from "./context.js";
 import { startOfficePreviewBridge } from "./office-preview-bridge.js";
 import { IPC_AUTH_RUNTIME_REFRESH_REQUESTED } from "../../src/shared/contracts/ipc-channels.js";
+import { showStellaNotification } from "../services/notification-service.js";
 
 const IDLE_HMR_STATE: SelfModHmrState = {
   phase: "idle",
@@ -54,7 +55,11 @@ export const createHostRunnerHandlers = (
     await context.services.authService.requestRuntimeAuthRefresh(
       source,
       (payload) => {
-        broadcastToWindows(context, IPC_AUTH_RUNTIME_REFRESH_REQUESTED, payload);
+        broadcastToWindows(
+          context,
+          IPC_AUTH_RUNTIME_REFRESH_REQUESTED,
+          payload,
+        );
       },
     ),
   requestCredential: (payload) =>
@@ -66,18 +71,19 @@ export const createHostRunnerHandlers = (
     broadcastToWindows(context, "display:update", payload);
   },
   showNotification: ({ title, body, sound }) => {
-    if (Notification.isSupported()) {
-      const stellaRoot = context.state.stellaRoot;
-      const soundEnabled = stellaRoot
-        ? getSoundNotificationsEnabled(stellaRoot)
-        : true;
-      new Notification({
-        title,
-        body,
-        sound: soundEnabled ? sound : undefined,
-        silent: !soundEnabled,
-      }).show();
-    }
+    const stellaRoot = context.state.stellaRoot;
+    const soundEnabled = stellaRoot
+      ? getSoundNotificationsEnabled(stellaRoot)
+      : true;
+    showStellaNotification(context, {
+      id: `stella-runtime-${Date.now()}`,
+      groupId: "stella-runtime",
+      groupTitle: "Stella",
+      title,
+      body,
+      sound: soundEnabled ? sound : undefined,
+      silent: !soundEnabled,
+    });
   },
   openExternal: async (url) => {
     context.services.externalLinkService.openSafeExternalUrl(url);
@@ -118,7 +124,9 @@ export const createHostRunnerHandlers = (
     const canReload =
       requiresFullReload && fullWindow != null && !fullWindow.isDestroyed();
     try {
-      const applyResult = await applyBatch({ suppressClientFullReload: canReload });
+      const applyResult = await applyBatch({
+        suppressClientFullReload: canReload,
+      });
       if (
         (canReload || applyResult?.requiresClientFullReload === true) &&
         fullWindow != null &&
@@ -167,9 +175,10 @@ const connectHostRunner = async (context: BootstrapContext) => {
   state.scheduleUpdateUnsubscribe = runner.onScheduleUpdated(() => {
     broadcastScheduleUpdated(context);
   });
-  state.googleWorkspaceAuthRequiredUnsubscribe = runner.onGoogleWorkspaceAuthRequired(() => {
-    broadcastGoogleWorkspaceAuthRequired(context);
-  });
+  state.googleWorkspaceAuthRequiredUnsubscribe =
+    runner.onGoogleWorkspaceAuthRequired(() => {
+      broadcastGoogleWorkspaceAuthRequired(context);
+    });
 
   await runner.start();
   if (BrowserWindow.getFocusedWindow()) {

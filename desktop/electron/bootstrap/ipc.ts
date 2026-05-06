@@ -40,6 +40,7 @@ import type { BootstrapResetFlows } from "./resets.js";
 import { startMobileBridge, stopMobileBridge } from "./aux-runtime.js";
 import { scheduleGlobalInputHooksAfterAppReady } from "./global-input-hooks.js";
 import { randomUUID } from "crypto";
+import { showStellaNotification } from "../services/notification-service.js";
 
 const DEFAULT_STORE_WEB_URL = "https://stella.sh/store";
 
@@ -84,7 +85,9 @@ export const registerBootstrapIpcHandlers = (
       }, opts?.timeoutMs ?? 10_000);
       ipcMain.once(channel, (event, payload) => {
         clearTimeout(timeout);
-        if (!services.externalLinkService.assertPrivilegedSender(event, channel)) {
+        if (
+          !services.externalLinkService.assertPrivilegedSender(event, channel)
+        ) {
           reject(new Error("Rejected untrusted Store bridge response."));
           return;
         }
@@ -329,6 +332,19 @@ export const registerBootstrapIpcHandlers = (
     goForwardInStoreWebView: () =>
       state.windowManager?.goForwardInStoreWebView(),
     reloadStoreWebView: () => state.windowManager?.reloadStoreWebView(),
+    showBlueprintNotification: ({ messageId, name }) => {
+      showStellaNotification(
+        context,
+        {
+          id: `store-blueprint-${messageId}`,
+          groupId: "stella-store-blueprints",
+          groupTitle: "Stella Store",
+          title: "Blueprint draft ready",
+          body: `${name} is ready to review and publish.`,
+        },
+        { kind: "store-blueprint", messageId },
+      );
+    },
     dispatchStoreWebLocalAction,
   });
 
@@ -437,13 +453,9 @@ export const registerBootstrapIpcHandlers = (
   });
   syncWakewordPause();
   wakeword.setEnabled(wakePrefs.wakeWordEnabled);
-  state.processRuntime.registerCleanup(
-    "will-quit",
-    "wakeword-service",
-    () => {
-      wakeword?.dispose();
-    },
-  );
+  state.processRuntime.registerCleanup("will-quit", "wakeword-service", () => {
+    wakeword?.dispose();
+  });
 
   ipcMain.handle(IPC_PREFERENCES_GET_WAKE_WORD, (event) => {
     if (
@@ -459,28 +471,25 @@ export const registerBootstrapIpcHandlers = (
     return loadLocalPreferences(root).wakeWordEnabled;
   });
 
-  ipcMain.handle(
-    IPC_PREFERENCES_SET_WAKE_WORD,
-    (event, enabled: boolean) => {
-      if (
-        !services.externalLinkService.assertPrivilegedSender(
-          event,
-          IPC_PREFERENCES_SET_WAKE_WORD,
-        )
-      ) {
-        throw new Error("Blocked untrusted preferences:setWakeWord request.");
-      }
-      const next = enabled === true;
-      const root = lifecycle.getStellaRoot();
-      if (root) {
-        const prefs = loadLocalPreferences(root);
-        prefs.wakeWordEnabled = next;
-        saveLocalPreferences(root, prefs);
-      }
-      wakeword.setEnabled(next);
-      return { enabled: next };
-    },
-  );
+  ipcMain.handle(IPC_PREFERENCES_SET_WAKE_WORD, (event, enabled: boolean) => {
+    if (
+      !services.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_SET_WAKE_WORD,
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:setWakeWord request.");
+    }
+    const next = enabled === true;
+    const root = lifecycle.getStellaRoot();
+    if (root) {
+      const prefs = loadLocalPreferences(root);
+      prefs.wakeWordEnabled = next;
+      saveLocalPreferences(root, prefs);
+    }
+    wakeword.setEnabled(next);
+    return { enabled: next };
+  });
 
   stopCapturing();
 };
