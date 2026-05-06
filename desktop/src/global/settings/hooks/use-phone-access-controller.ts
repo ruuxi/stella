@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import QRCode from "qrcode";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
-import { getDeviceIdOrNull } from "@/platform/electron/device";
+import { getOrCreateDeviceId } from "@/platform/electron/device";
 
 type PairingSessionState = {
   pairingCode: string;
@@ -68,7 +68,7 @@ export function usePhoneAccessController(
     let cancelled = false;
     const loadDeviceId = async () => {
       try {
-        const nextDeviceId = await getDeviceIdOrNull();
+        const nextDeviceId = await getOrCreateDeviceId();
         if (!cancelled) {
           setDesktopDeviceId(nextDeviceId ?? null);
           setDeviceLoadError(null);

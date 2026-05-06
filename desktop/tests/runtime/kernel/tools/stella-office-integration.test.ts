@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,6 +6,7 @@ import {
   createShellState,
   runShell,
 } from "../../../../../runtime/kernel/tools/shell.js";
+import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
 const officeWrapperPath = path.resolve(
   process.cwd(),
@@ -16,21 +17,12 @@ const officeWrapperPath = path.resolve(
 const runIfOfficeBinary = existsSync(officeWrapperPath) ? it : it.skip;
 const OFFICE_INTEGRATION_TEST_TIMEOUT_MS = 20_000;
 
-const tempDirs: string[] = [];
+const tempDirs = createSyncTempDirTracker();
 
-afterEach(() => {
-  while (tempDirs.length > 0) {
-    const tempDir = tempDirs.pop();
-    if (tempDir) {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  }
-});
+afterEach(() => tempDirs.cleanup());
 
 const createTempDir = () => {
-  const tempDir = mkdtempSync(path.join(os.tmpdir(), "stella-office-test-"));
-  tempDirs.push(tempDir);
-  return tempDir;
+  return tempDirs.create("stella-office-test-");
 };
 
 const createOfficeShellState = () =>

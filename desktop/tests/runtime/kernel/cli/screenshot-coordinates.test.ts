@@ -1,32 +1,24 @@
-import os from "node:os";
 import path from "node:path";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { screenshotPixelToScreenPoint } from "../../../../../runtime/kernel/cli/screenshot-coordinates.js";
+import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
-const tempDirs: string[] = [];
+const tempDirs = createSyncTempDirTracker();
 
-afterEach(() => {
-  while (tempDirs.length > 0) {
-    const tempDir = tempDirs.pop();
-    if (tempDir) {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  }
-});
+afterEach(() => tempDirs.cleanup());
 
 const createTempDir = () => {
-  const tempDir = mkdtempSync(path.join(os.tmpdir(), "stella-screenshot-coords-"));
-  tempDirs.push(tempDir);
-  return tempDir;
+  return tempDirs.create("stella-screenshot-coords-");
 };
 
-const writeFakePngHeader = (filePath: string, widthPx: number, heightPx: number) => {
+const writeFakePngHeader = (
+  filePath: string,
+  widthPx: number,
+  heightPx: number,
+) => {
   const data = Buffer.alloc(24);
-  data.set(
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    0,
-  );
+  data.set(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), 0);
   data.write("IHDR", 12, "ascii");
   data.writeUInt32BE(widthPx, 16);
   data.writeUInt32BE(heightPx, 20);
@@ -80,6 +72,8 @@ describe("screenshotPixelToScreenPoint", () => {
     );
 
     expect(result.point).toBeUndefined();
-    expect(result.error).toContain("Take a fresh snapshot without `--no-screenshot`");
+    expect(result.error).toContain(
+      "Take a fresh snapshot without `--no-screenshot`",
+    );
   });
 });

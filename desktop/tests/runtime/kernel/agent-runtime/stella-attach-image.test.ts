@@ -1,27 +1,15 @@
 import path from "node:path";
-import os from "node:os";
-import {
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-  mkdirSync,
-} from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { extractAttachImageBlocks } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
+import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
-const tempDirs: string[] = [];
+const tempDirs = createSyncTempDirTracker();
 
-afterEach(() => {
-  while (tempDirs.length > 0) {
-    const tempDir = tempDirs.pop();
-    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
-  }
-});
+afterEach(() => tempDirs.cleanup());
 
 const createTempDir = () => {
-  const tempDir = mkdtempSync(path.join(os.tmpdir(), "stella-attach-image-"));
-  tempDirs.push(tempDir);
-  return tempDir;
+  return tempDirs.create("stella-attach-image-");
 };
 
 // 1x1 transparent PNG (smallest valid PNG bytes).

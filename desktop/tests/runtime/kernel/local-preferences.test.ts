@@ -1,11 +1,14 @@
 import fs from "fs";
-import os from "os";
 import path from "path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { loadLocalPreferences } from "../../../../runtime/kernel/preferences/local-preferences.js";
+import { createSyncTempDirTracker } from "../../helpers/temp.js";
 
-const makeStellaHome = () =>
-  fs.mkdtempSync(path.join(os.tmpdir(), "stella-local-preferences-"));
+const tempDirs = createSyncTempDirTracker();
+
+afterEach(() => tempDirs.cleanup());
+
+const makeStellaHome = () => tempDirs.create("stella-local-preferences-");
 
 const writePreferences = (
   stellaHome: string,

@@ -1,6 +1,5 @@
-import os from "node:os";
 import path from "node:path";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -14,19 +13,14 @@ import {
   handleExecCommand,
   handleWriteStdin,
 } from "../../../../../runtime/kernel/tools/shell.js";
+import { createAsyncTempDirTracker } from "../../../helpers/temp.js";
 
-const tempDirs: string[] = [];
+const tempDirs = createAsyncTempDirTracker();
 
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-  );
-});
+afterEach(() => tempDirs.cleanup());
 
 const createTempDir = async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "stella-file-changes-"));
-  tempDirs.push(dir);
-  return dir;
+  return await tempDirs.create("stella-file-changes-");
 };
 
 describe("fileChanges emission", () => {
@@ -171,7 +165,12 @@ describe("fileChanges emission", () => {
         workdir: root,
         yield_time_ms: 1000,
       },
-      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot: root,
+      },
     );
 
     expect(result.error).toBeUndefined();
@@ -194,7 +193,12 @@ describe("fileChanges emission", () => {
         workdir,
         yield_time_ms: 1000,
       },
-      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot: root,
+      },
     );
 
     expect(result.error).toBeUndefined();
@@ -250,7 +254,12 @@ describe("fileChanges emission", () => {
         workdir: root,
         yield_time_ms: 1000,
       },
-      { conversationId: "c1", deviceId: "d1", requestId: "r1", stellaRoot: root },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot: root,
+      },
     );
 
     expect(result.error).toBeUndefined();
@@ -280,7 +289,8 @@ describe("fileChanges emission", () => {
       context,
     );
 
-    const sessionId = (started.result as { session_id: string | null }).session_id;
+    const sessionId = (started.result as { session_id: string | null })
+      .session_id;
     expect(typeof sessionId).toBe("string");
 
     const finished = await handleWriteStdin(
