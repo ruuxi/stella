@@ -390,7 +390,8 @@
   );
 }
 
-body[data-display-resizing="true"] .shell-topbar-center {
+body[data-display-resizing="true"] .shell-topbar-center,
+body[data-display-expanding="true"] .shell-topbar-center {
   transition: none;
 }
 
@@ -550,7 +551,8 @@ body[data-display-resizing="true"] .shell-topbar-center {
    updates every frame, so the same transition would visibly lag the
    tab strip behind the drag. `DisplaySidebar` toggles this attribute
    for the duration of the gesture. */
-body[data-display-resizing="true"] .shell-topbar-tablist {
+body[data-display-resizing="true"] .shell-topbar-tablist,
+body[data-display-expanding="true"] .shell-topbar-tablist {
   transition: none;
 }
 

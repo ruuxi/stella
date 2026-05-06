@@ -157,6 +157,15 @@
   --shell-topbar-center-right-inset: 0px;
 }
 
+/* When the display panel is expanded it visually owns the full content
+   area to the right of the sidebar, so the tab strip should stretch
+   across that whole region instead of staying pinned to its normal
+   panel-width slice (which left a large empty gap on the left). */
+.shell-topbar[data-display-expanded="true"] .shell-topbar-tablist {
+  flex: 1 1 0;
+  max-width: none;
+}
+
 html[data-stella-window="mini"] .display-sidebar--open {
   width: 100%;
   flex: 1;
