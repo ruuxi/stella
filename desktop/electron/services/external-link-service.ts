@@ -1,7 +1,7 @@
 import { BrowserWindow, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
 const MOBILE_BRIDGE_PROTOCOL = 'stella-mobile-bridge:'
+const MOBILE_BRIDGE_SENDER_URL = 'stella-mobile-bridge://mobile'
 const MAX_EXTERNAL_URL_LENGTH = 4096
 const EXTERNAL_OPEN_MIN_INTERVAL_MS = 300
 const EXTERNAL_OPEN_WINDOW_MS = 15_000
@@ -27,16 +27,11 @@ export class ExternalLinkService {
     }
   }
 
-  private isLoopbackHost(hostname: string) {
-    return LOOPBACK_HOSTS.has(hostname.trim().toLowerCase())
-  }
-
   isAppUrl(url: string) {
     const parsed = this.parseUrl(url)
     if (!parsed) return false
-    if (parsed.protocol === 'file:') return true
     if (parsed.protocol === 'about:' && parsed.href === 'about:blank') return true
-    if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && this.isLoopbackHost(parsed.hostname)) {
+    if (this.trustedDevOrigin && parsed.origin === this.trustedDevOrigin) {
       return true
     }
     return false
@@ -60,9 +55,7 @@ export class ExternalLinkService {
   isTrustedRendererUrl(url: string) {
     const parsed = this.parseUrl(url)
     if (!parsed) return false
-    if (parsed.protocol === MOBILE_BRIDGE_PROTOCOL) return true
-    if (parsed.protocol === 'file:') return true
-    if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && this.isLoopbackHost(parsed.hostname)) {
+    if (parsed.protocol === MOBILE_BRIDGE_PROTOCOL && parsed.href === MOBILE_BRIDGE_SENDER_URL) {
       return true
     }
     if (this.trustedDevOrigin && parsed.origin === this.trustedDevOrigin) {
