@@ -25,6 +25,8 @@ futures-util = "0.3"
 sha2 = "0.11.0"
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-process = "2.3.1"
+keyring = { version = "3", features = ["apple-native"] }
+rand = "0.8"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
