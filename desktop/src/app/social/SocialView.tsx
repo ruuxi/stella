@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { CollaborationIllustration } from "./CollaborationIllustration";
 import { Copy, Globe, Pencil, SquarePen, Users } from "lucide-react";
 import { Avatar } from "@/ui/avatar";
@@ -8,10 +8,30 @@ import { useSocialBadges } from "./hooks/use-social-badges";
 import { useSocialProfile } from "./hooks/use-social-profile";
 import { useSocialRooms, type SocialRoomSummary } from "./hooks/use-social-rooms";
 import { getSocialRoomDisplayName } from "./room-display";
-import { SocialChatPane } from "./SocialChatPane";
-import { FriendsDialog } from "./FriendsDialog";
-import { NewChatDialog } from "./NewChatDialog";
+import {
+  preloadSocialChatPane,
+  preloadSocialFriendsDialog,
+  preloadSocialNewChatDialog,
+} from "@/shared/lib/sidebar-preloads";
 import "./social.css";
+
+const SocialChatPane = lazy(() =>
+  import("./SocialChatPane").then((m) => ({
+    default: m.SocialChatPane,
+  })),
+);
+
+const FriendsDialog = lazy(() =>
+  import("./FriendsDialog").then((m) => ({
+    default: m.FriendsDialog,
+  })),
+);
+
+const NewChatDialog = lazy(() =>
+  import("./NewChatDialog").then((m) => ({
+    default: m.NewChatDialog,
+  })),
+);
 
 type SocialViewProps = {
   onSignIn: () => void;
@@ -182,6 +202,7 @@ export function SocialView({ onSignIn }: SocialViewProps) {
   }, []);
 
   const handleOpenGlobalRoom = useCallback(async () => {
+    preloadSocialChatPane();
     try {
       const room = await joinGlobalRoom();
       setActiveRoomId(room._id);
@@ -195,6 +216,21 @@ export function SocialView({ onSignIn }: SocialViewProps) {
       });
     }
   }, [joinGlobalRoom]);
+
+  const handleOpenFriends = useCallback(() => {
+    preloadSocialFriendsDialog();
+    setFriendsOpen(true);
+  }, []);
+
+  const handleOpenNewChat = useCallback(() => {
+    preloadSocialNewChatDialog();
+    setNewChatOpen(true);
+  }, []);
+
+  const handleOpenRoom = useCallback((roomId: string) => {
+    preloadSocialChatPane();
+    setActiveRoomId(roomId);
+  }, []);
 
   if (!isSignedIn) {
     return (
@@ -240,7 +276,9 @@ export function SocialView({ onSignIn }: SocialViewProps) {
                   ? `Friends, ${incomingFriendRequestCount} new request${incomingFriendRequestCount === 1 ? "" : "s"}`
                   : "Friends"
               }
-              onClick={() => setFriendsOpen(true)}
+              onClick={handleOpenFriends}
+              onFocus={preloadSocialFriendsDialog}
+              onMouseEnter={preloadSocialFriendsDialog}
             >
               <Users size={18} />
               {incomingFriendRequestCount > 0 && (
@@ -255,7 +293,9 @@ export function SocialView({ onSignIn }: SocialViewProps) {
               type="button"
               className="social-sidebar-action"
               title="New message"
-              onClick={() => setNewChatOpen(true)}
+              onClick={handleOpenNewChat}
+              onFocus={preloadSocialNewChatDialog}
+              onMouseEnter={preloadSocialNewChatDialog}
             >
               <SquarePen size={18} />
             </button>
@@ -270,6 +310,8 @@ export function SocialView({ onSignIn }: SocialViewProps) {
               (globalRoom && activeRoomId === globalRoom.room._id) || undefined
             }
             onClick={() => void handleOpenGlobalRoom()}
+            onFocus={preloadSocialChatPane}
+            onMouseEnter={preloadSocialChatPane}
           >
             <div className="social-room-item-avatar social-room-item-avatar--global">
               <Globe size={18} />
@@ -301,7 +343,9 @@ export function SocialView({ onSignIn }: SocialViewProps) {
               <button
                 type="button"
                 className="social-no-rooms-action"
-                onClick={() => setFriendsOpen(true)}
+                onClick={handleOpenFriends}
+                onFocus={preloadSocialFriendsDialog}
+                onMouseEnter={preloadSocialFriendsDialog}
               >
                 <Users size={14} />
                 Add friends
@@ -320,7 +364,9 @@ export function SocialView({ onSignIn }: SocialViewProps) {
                   type="button"
                   className="social-room-item"
                   data-active={isActive || undefined}
-                  onClick={() => setActiveRoomId(room.room._id)}
+                  onClick={() => handleOpenRoom(room.room._id)}
+                  onFocus={preloadSocialChatPane}
+                  onMouseEnter={preloadSocialChatPane}
                 >
                   <div className="social-room-item-avatar">
                     <Avatar
@@ -450,10 +496,12 @@ export function SocialView({ onSignIn }: SocialViewProps) {
       </div>
 
       {activeRoomId && currentOwnerId ? (
-        <SocialChatPane
-          roomId={activeRoomId}
-          currentOwnerId={currentOwnerId}
-        />
+        <Suspense fallback={<SocialChatPaneFallback />}>
+          <SocialChatPane
+            roomId={activeRoomId}
+            currentOwnerId={currentOwnerId}
+          />
+        </Suspense>
       ) : (
         <div className="social-chat-pane">
           <div className="social-empty-state">
@@ -468,17 +516,33 @@ export function SocialView({ onSignIn }: SocialViewProps) {
         </div>
       )}
 
-      <FriendsDialog
-        open={friendsOpen}
-        onOpenChange={setFriendsOpen}
-        onStartChat={handleStartChat}
-      />
-      <NewChatDialog
-        open={newChatOpen}
-        onOpenChange={setNewChatOpen}
-        onSelectFriend={handleStartChat}
-        onCreateGroup={handleCreateGroup}
-      />
+      {friendsOpen ? (
+        <Suspense fallback={null}>
+          <FriendsDialog
+            open
+            onOpenChange={setFriendsOpen}
+            onStartChat={handleStartChat}
+          />
+        </Suspense>
+      ) : null}
+      {newChatOpen ? (
+        <Suspense fallback={null}>
+          <NewChatDialog
+            open
+            onOpenChange={setNewChatOpen}
+            onSelectFriend={handleStartChat}
+            onCreateGroup={handleCreateGroup}
+          />
+        </Suspense>
+      ) : null}
+    </div>
+  );
+}
+
+function SocialChatPaneFallback() {
+  return (
+    <div className="social-chat-pane">
+      <div className="social-empty-state" />
     </div>
   );
 }

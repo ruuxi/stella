@@ -3,12 +3,16 @@ import { ChevronRight } from "lucide-react";
 import {
   cloneElement,
   isValidElement,
+  lazy,
+  Suspense,
   useCallback,
   useState,
   type CSSProperties,
+  type FocusEvent,
+  type MouseEvent,
   type ReactElement,
 } from "react";
-import { AgentModelPicker } from "@/global/settings/AgentModelPicker";
+import { preloadModelsPicker } from "@/shared/lib/sidebar-preloads";
 import {
   Popover,
   PopoverBody,
@@ -17,11 +21,19 @@ import {
 } from "@/ui/popover";
 import "./ModelsPicker.css";
 
+const AgentModelPicker = lazy(() =>
+  import("@/global/settings/AgentModelPicker").then((m) => ({
+    default: m.AgentModelPicker,
+  })),
+);
+
 type ModelsPickerTriggerProps = {
   style?: CSSProperties;
   tabIndex?: number;
   "aria-hidden"?: boolean;
   "data-slot"?: string;
+  onFocus?: (event: FocusEvent<HTMLElement>) => void;
+  onMouseEnter?: (event: MouseEvent<HTMLElement>) => void;
 };
 
 interface ModelsPickerProps {
@@ -55,7 +67,13 @@ export function ModelsPicker({
 }: ModelsPickerProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
-  const setOpen = controlledOnOpenChange ?? setInternalOpen;
+  const setOpen = useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen) preloadModelsPicker();
+      (controlledOnOpenChange ?? setInternalOpen)(nextOpen);
+    },
+    [controlledOnOpenChange],
+  );
   const navigate = useNavigate();
 
   const handleOpenSettings = useCallback(() => {
@@ -67,6 +85,14 @@ export function ModelsPicker({
     trigger && isValidElement<ModelsPickerTriggerProps>(trigger)
       ? cloneElement(trigger, {
           "data-slot": "models-picker-trigger",
+          onFocus: (event: FocusEvent<HTMLElement>) => {
+            preloadModelsPicker();
+            trigger.props.onFocus?.(event);
+          },
+          onMouseEnter: (event: MouseEvent<HTMLElement>) => {
+            preloadModelsPicker();
+            trigger.props.onMouseEnter?.(event);
+          },
           ...(hideTrigger
             ? {
                 style: {
@@ -95,7 +121,9 @@ export function ModelsPicker({
         data-models-picker="true"
       >
         <PopoverBody>
-          <AgentModelPicker />
+          <Suspense fallback={null}>
+            <AgentModelPicker />
+          </Suspense>
           <button
             type="button"
             className="models-picker-more"

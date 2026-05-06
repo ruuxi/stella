@@ -18,7 +18,21 @@ import { routeTree } from "./routeTree.gen";
 export const router = createRouter({
   routeTree,
   history: createMemoryHistory({ initialEntries: ["/chat"] }),
-  defaultPreload: false,
+  // `defaultPreload: "intent"` covers `<Link>` hover/focus on actual route
+  // boundaries (chat / social / store / settings / billing / c.$handle).
+  // The hand-rolled `runOnce` cache in `@/shared/lib/sidebar-preloads`
+  // covers everything *not* in the route graph — popovers, dialogs,
+  // social subdialogs, billing query bundle — so the two layers are
+  // complementary, not redundant. Don't drop either.
+  //
+  // `defaultPendingMs` / `defaultPendingMinMs` are deliberately left at
+  // TSR's defaults (1000 / 500). Intent preload + idle prefetch mean the
+  // pending state effectively never triggers on a real navigation, so
+  // there's no win to overriding them — and a future route-level
+  // `pendingComponent` would otherwise flash without the usual debounce.
+  defaultPreload: "intent",
+  defaultPreloadDelay: 0,
+  defaultPreloadStaleTime: Number.POSITIVE_INFINITY,
   scrollRestoration: false,
   defaultErrorComponent: ({ error, info }) => (
     <CrashSurface
