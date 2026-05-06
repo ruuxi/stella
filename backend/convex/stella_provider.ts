@@ -1241,7 +1241,7 @@ type StellaAssistantMessageEventPayload =
   | { type: "start"; api: ManagedProtocol; provider: string; model: string }
   | { type: "text_start"; contentIndex: number }
   | { type: "text_delta"; contentIndex: number; delta: string }
-  | { type: "text_end"; contentIndex: number; contentSignature?: string }
+  | { type: "text_end"; contentIndex: number; content?: string; contentSignature?: string }
   | { type: "thinking_start"; contentIndex: number }
   | { type: "thinking_delta"; contentIndex: number; delta: string }
   | {
@@ -1299,6 +1299,7 @@ function mapAssistantEventToStellaEvent(args: {
       return {
         type: "text_end",
         contentIndex: event.contentIndex,
+        content: event.content,
         contentSignature:
           content && content.type === "text"
             ? content.textSignature

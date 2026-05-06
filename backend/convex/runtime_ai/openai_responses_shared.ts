@@ -236,6 +236,17 @@ export function convertResponsesMessages<TApi extends Api>(
         }
 
         if (block.type === "text") {
+          if (model.provider === "fireworks") {
+            messages.push({
+              role: "assistant",
+              content: [{
+                type: "input_text",
+                text: sanitizeSurrogates(block.text),
+              }],
+            } as ResponseInput[number]);
+            continue;
+          }
+
           const parsedSignature = parseTextSignature(block.textSignature);
           let messageId = parsedSignature?.id || `msg_${messageIndex}`;
           if (messageId.length > 64) {
@@ -350,6 +361,22 @@ export async function processResponsesStream<TApi extends Api>(
     | null = null;
 
   const contentIndex = () => output.content.length - 1;
+  const ensureTextBlock = () => {
+    if (currentItem?.type === "message" && currentBlock?.type === "text") {
+      return currentBlock;
+    }
+    currentItem = {
+      type: "message",
+      id: `msg_${output.content.length}`,
+      role: "assistant",
+      content: [],
+      status: "in_progress",
+    } as ResponseOutputMessage;
+    currentBlock = { type: "text", text: "" };
+    output.content.push(currentBlock);
+    stream.push({ type: "text_start", contentIndex: contentIndex(), partial: output });
+    return currentBlock;
+  };
 
   for await (const event of openaiStream) {
     if (event.type === "response.created") {
@@ -410,14 +437,40 @@ export async function processResponsesStream<TApi extends Api>(
     }
 
     if (event.type === "response.output_text.delta" || event.type === "response.refusal.delta") {
-      if (currentItem?.type === "message" && currentBlock?.type === "text") {
-        currentBlock.text += event.delta;
-        stream.push({
-          type: "text_delta",
-          contentIndex: contentIndex(),
-          delta: event.delta,
-          partial: output,
-        });
+      const textBlock = ensureTextBlock();
+      textBlock.text += event.delta;
+      stream.push({
+        type: "text_delta",
+        contentIndex: contentIndex(),
+        delta: event.delta,
+        partial: output,
+      });
+      continue;
+    }
+
+    if (event.type === "response.output_text.done" || event.type === "response.refusal.done") {
+      const textBlock = ensureTextBlock();
+      const finalText =
+        "text" in event && typeof event.text === "string"
+          ? event.text
+          : "refusal" in event && typeof event.refusal === "string"
+            ? event.refusal
+            : textBlock.text;
+      if (finalText.startsWith(textBlock.text)) {
+        const delta = finalText.slice(textBlock.text.length);
+        if (delta.length > 0) {
+          textBlock.text = finalText;
+          stream.push({
+            type: "text_delta",
+            contentIndex: contentIndex(),
+            delta,
+            partial: output,
+          });
+        } else {
+          textBlock.text = finalText;
+        }
+      } else {
+        textBlock.text = finalText;
       }
       continue;
     }

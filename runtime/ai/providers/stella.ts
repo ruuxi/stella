@@ -19,7 +19,7 @@ type StellaAssistantMessageEvent =
   | { type: "start"; api?: Api; provider?: string; model?: string; responseId?: string }
   | { type: "text_start"; contentIndex: number }
   | { type: "text_delta"; contentIndex: number; delta: string }
-  | { type: "text_end"; contentIndex: number; contentSignature?: string }
+  | { type: "text_end"; contentIndex: number; content?: string; contentSignature?: string }
   | { type: "thinking_start"; contentIndex: number }
   | { type: "thinking_delta"; contentIndex: number; delta: string }
   | { type: "thinking_end"; contentIndex: number; content?: string; contentSignature?: string }
@@ -122,6 +122,9 @@ function processStellaProxyEvent(
       const content = partial.content[proxyEvent.contentIndex];
       if (content?.type !== "text") {
         throw new Error("Received text_end for non-text content");
+      }
+      if (typeof proxyEvent.content === "string") {
+        content.text = proxyEvent.content;
       }
       content.textSignature = proxyEvent.contentSignature;
       return {
