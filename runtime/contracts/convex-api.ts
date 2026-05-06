@@ -76,15 +76,17 @@ export type PublicApiType = {
     "desktop_releases": {
       "currentDesktopRelease": FunctionReference<'query', 'public', { platform: string; }, any, string | undefined>;
     };
-    "emoji_pack_uploads": {
-      "createUploadUrls": FunctionReference<'action', 'public', { contentType?: string | undefined; coverSha256?: string | undefined; packId: string; sheet1Sha256: string; sheet2Sha256: string; }, any, string | undefined>;
+    "emoji_pack_generation": {
+      "generatePack": FunctionReference<'action', 'public', { visibility: 'public' | 'unlisted' | 'private'; prompt: string; }, any, string | undefined>;
+    };
+    "emoji_pack_grid": {
+      "getManifest": FunctionReference<'query', 'public', {}, any, string | undefined>;
     };
     "emoji_packs": {
-      "listPublicPage": FunctionReference<'query', 'public', { search?: string | undefined; tag?: string | undefined; sort?: 'installs' | 'name' | undefined; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
+      "listPublicPage": FunctionReference<'query', 'public', { search?: string | undefined; sort?: 'name' | 'installs' | undefined; tag?: string | undefined; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
       "listTagFacets": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "listMine": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "getByPackId": FunctionReference<'query', 'public', { packId: string; }, any, string | undefined>;
-      "createPack": FunctionReference<'mutation', 'public', { description?: string | undefined; prompt?: string | undefined; coverUrl?: string | undefined; displayName: string; visibility: 'public' | 'unlisted' | 'private'; packId: string; coverEmoji: string; sheet1Url: string; sheet2Url: string; }, any, string | undefined>;
       "setVisibility": FunctionReference<'mutation', 'public', { visibility: 'public' | 'unlisted' | 'private'; packId: string; }, any, string | undefined>;
       "deletePack": FunctionReference<'mutation', 'public', { packId: string; }, any, string | undefined>;
       "recordInstall": FunctionReference<'mutation', 'public', { packId: string; }, any, string | undefined>;
@@ -253,5 +255,8 @@ export type PublicApiType = {
       "deleteFile": FunctionReference<'mutation', 'public', { sessionId: Id<'stella_sessions'>; relativePath: string; }, any, string | undefined>;
       "uploadFile": FunctionReference<'action', 'public', { contentType?: string | undefined; sessionId: Id<'stella_sessions'>; contentHash: string; relativePath: string; contentBase64: string; }, any, string | undefined>;
     };
+  };
+  "stella_models": {
+    "getModelCatalogUpdatedAt": FunctionReference<'query', 'public', {}, any, string | undefined>;
   };
 } & Record<string, any>;

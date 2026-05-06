@@ -271,9 +271,8 @@ export const enrichEmojiPack = internalAction({
       currentDescription: row.description,
       prompt: row.prompt,
       imageUrls: [
-        row.coverUrl ?? row.sheet1Url,
-        row.sheet1Url,
-        row.sheet2Url,
+        row.coverUrl ?? row.sheetUrls[0],
+        ...row.sheetUrls,
       ],
     });
     const displayName = metadata.displayName ?? row.displayName;

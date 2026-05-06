@@ -243,7 +243,7 @@
 /*
  * AI-generated emoji sprite. The renderer's `<img>` override emits this
  * span instead of a real image — `--ai-emoji-row`/`--ai-emoji-col` pick
- * the cell out of the 8×8 sheet via `background-position`. One sprite
+ * the cell out of the 6×6 sheet via `background-position`. One sprite
  * fetch per sheet (browser-cached after first render), no per-emoji
  * `<img>` reflow.
  */
@@ -252,10 +252,10 @@
   width: 1.25em;
   height: 1.25em;
   vertical-align: -0.25em;
-  background-size: 800% 800%;
+  background-size: 600% 600%;
   background-position:
-    calc(var(--ai-emoji-col, 0) * (100% / 7))
-    calc(var(--ai-emoji-row, 0) * (100% / 7));
+    calc(var(--ai-emoji-col, 0) * (100% / 5))
+    calc(var(--ai-emoji-row, 0) * (100% / 5));
   background-repeat: no-repeat;
   background-color: transparent;
 }

@@ -4,8 +4,7 @@ const ACTIVE_EMOJI_PACK_KEY = "stella:emoji-pack:active";
 
 export type ActiveEmojiPack = {
   packId: string;
-  sheet1Url: string;
-  sheet2Url: string;
+  sheetUrls: string[];
 };
 
 const isActiveEmojiPack = (value: unknown): value is ActiveEmojiPack => {
@@ -14,10 +13,11 @@ const isActiveEmojiPack = (value: unknown): value is ActiveEmojiPack => {
   return (
     typeof record.packId === "string" &&
     record.packId.trim().length > 0 &&
-    typeof record.sheet1Url === "string" &&
-    record.sheet1Url.trim().length > 0 &&
-    typeof record.sheet2Url === "string" &&
-    record.sheet2Url.trim().length > 0
+    Array.isArray(record.sheetUrls) &&
+    record.sheetUrls.length > 0 &&
+    record.sheetUrls.every(
+      (url) => typeof url === "string" && url.trim().length > 0,
+    )
   );
 };
 

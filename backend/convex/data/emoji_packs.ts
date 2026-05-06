@@ -15,7 +15,6 @@ import {
 } from "../auth";
 import {
   RATE_HOT_PATH,
-  RATE_STANDARD,
   enforceMutationRateLimit,
 } from "../lib/rate_limits";
 import { filterDisplayableTags, isBlockedContentTag } from "../lib/content_tags";
@@ -31,6 +30,7 @@ const MAX_DISPLAY_NAME = 80;
 const MAX_DESCRIPTION = 500;
 const MAX_PROMPT = 2_000;
 const MAX_URL = 2_048;
+const EMOJI_SHEET_COUNT = 3;
 const PACK_ID_PATTERN = /^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/;
 
 const paginatedEmojiPacksValidator = v.object({
@@ -112,6 +112,16 @@ const normalizeUrl = (value: string, fieldName: string): string => {
     });
   }
   return normalized;
+};
+
+const normalizeSheetUrls = (value: string[]): string[] => {
+  if (value.length !== EMOJI_SHEET_COUNT) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `Emoji packs must include exactly ${EMOJI_SHEET_COUNT} sheets.`,
+    });
+  }
+  return value.map((url, index) => normalizeUrl(url, `sheetUrls[${index}]`));
 };
 
 const buildSearchText = (args: {
@@ -289,27 +299,21 @@ export const patchGeneratedMetadata = internalMutation({
   },
 });
 
-export const createPack = mutation({
+export const createGeneratedPack = internalMutation({
   args: {
+    ownerId: v.string(),
     packId: v.string(),
     displayName: v.string(),
     description: v.optional(v.string()),
     prompt: v.optional(v.string()),
     coverEmoji: v.string(),
     coverUrl: v.optional(v.string()),
-    sheet1Url: v.string(),
-    sheet2Url: v.string(),
+    sheetUrls: v.array(v.string()),
     visibility: emoji_pack_visibility_validator,
   },
   returns: emoji_pack_validator,
   handler: async (ctx, args): Promise<Doc<"emoji_packs">> => {
-    const ownerId = await requireConnectedUserId(ctx);
-    await enforceMutationRateLimit(
-      ctx,
-      "emojiPacks.createPack",
-      ownerId,
-      RATE_STANDARD,
-    );
+    const ownerId = normalizeRequiredText(args.ownerId, "ownerId", 256);
     const packId = normalizePackId(args.packId);
     const existing = await ctx.db
       .query("emoji_packs")
@@ -323,9 +327,9 @@ export const createPack = mutation({
     }
     const profile: { publicHandle: string; nickname: string } =
       await ctx.runMutation(
-      internal.social.profiles.ensureProfileForOwnerInternal,
-      { ownerId },
-    );
+        internal.social.profiles.ensureProfileForOwnerInternal,
+        { ownerId },
+      );
     const displayName = normalizeRequiredText(
       args.displayName,
       "displayName",
@@ -341,8 +345,7 @@ export const createPack = mutation({
     const coverUrl = args.coverUrl
       ? normalizeUrl(args.coverUrl, "coverUrl")
       : undefined;
-    const sheet1Url = normalizeUrl(args.sheet1Url, "sheet1Url");
-    const sheet2Url = normalizeUrl(args.sheet2Url, "sheet2Url");
+    const sheetUrls = normalizeSheetUrls(args.sheetUrls);
     const authorDisplayName = profile.nickname.trim();
     const authorHandle = profile.publicHandle.trim().toLowerCase();
     const now = Date.now();
@@ -355,8 +358,7 @@ export const createPack = mutation({
       ...(prompt ? { prompt } : {}),
       coverEmoji,
       ...(coverUrl ? { coverUrl } : {}),
-      sheet1Url,
-      sheet2Url,
+      sheetUrls,
       visibility: args.visibility,
       searchText: buildSearchText({
         displayName,

@@ -21,13 +21,13 @@ import type { Image, Parent, Root, RootContent, Text } from "mdast";
 import {
   buildEmojiSpriteUrl,
   cloneEmojiRegex,
-  EMOJI_SPRITE_LOOKUP,
+  getEmojiSpriteCell,
 } from "./sprite-map";
 
 const isText = (node: RootContent): node is Text => node.type === "text";
 
 const buildImageNode = (emoji: string): Image | null => {
-  const cell = EMOJI_SPRITE_LOOKUP.get(emoji);
+  const cell = getEmojiSpriteCell(emoji);
   if (!cell) return null;
   return {
     type: "image",

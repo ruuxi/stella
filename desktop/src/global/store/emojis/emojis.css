@@ -294,6 +294,11 @@
   image-rendering: -webkit-optimize-contrast;
 }
 
+.emoji-pack-cover-glyph {
+  font-size: 32px;
+  line-height: 1;
+}
+
 .emoji-pack-card[data-active] .emoji-pack-cover {
   border-color: var(--primary);
 }
@@ -517,7 +522,7 @@
 
 .emoji-create-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 3px;
   width: 100%;
   /* The preview is a perfect square — keeps the dialog body stable
