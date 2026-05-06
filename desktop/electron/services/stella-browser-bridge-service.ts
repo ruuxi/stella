@@ -18,6 +18,12 @@ const COMMAND_TIMEOUT_MS = 10_000;
 const DAEMON_SHUTDOWN_TIMEOUT_MS = 2_000;
 const DAEMON_READY_PROBE_TIMEOUT_MS = 1_000;
 
+type ProcessRow = {
+  pid: number;
+  ppid: number;
+  command: string;
+};
+
 type StellaBrowserBridgeServiceOptions = {
   stellaRoot: string;
   onUnexpectedExit?: (error: string) => void;
@@ -69,6 +75,7 @@ export class StellaBrowserBridgeService {
 
     await Promise.race([closePromise, delay(1_500)]).catch(() => undefined);
     await this.killDaemonProcess();
+    await this.stopOrphanedBundledDaemons();
     this.daemonProcess = null;
   }
 
@@ -212,6 +219,7 @@ export class StellaBrowserBridgeService {
       this.killProcessListeningOnPort(daemonPort);
       await this.waitForPortToClose(daemonPort, DAEMON_SHUTDOWN_TIMEOUT_MS);
     }
+    await this.stopOrphanedBundledDaemons();
   }
 
   private async sendCommand(
@@ -327,6 +335,116 @@ export class StellaBrowserBridgeService {
       return;
     }
     await stopChildProcessTree(this.daemonProcess);
+  }
+
+  private parseProcessRows(output: string): ProcessRow[] {
+    return output
+      .split(/\r?\n/)
+      .map((line) => {
+        const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
+        if (!match) return null;
+        return {
+          pid: Number.parseInt(match[1]!, 10),
+          ppid: Number.parseInt(match[2]!, 10),
+          command: match[3]!,
+        };
+      })
+      .filter((row): row is ProcessRow =>
+        Boolean(row && Number.isFinite(row.pid) && Number.isFinite(row.ppid)),
+      );
+  }
+
+  private findOrphanedBundledDaemonPids(): number[] {
+    const binDir = path.join(resolveStellaBrowserRoot(), "bin");
+    if (process.platform === "win32") {
+      const binaryPath = path.join(binDir, "stella-browser-win32-x64.exe");
+      const quotedBinaryPath = binaryPath.replace(/'/g, "''");
+      try {
+        const output = execFileSync(
+          "powershell",
+          [
+            "-NoProfile",
+            "-Command",
+            [
+              `$target = '${quotedBinaryPath}'`,
+              "Get-CimInstance Win32_Process -Filter \"Name = 'stella-browser-win32-x64.exe'\"",
+              "| Where-Object { $_.ExecutablePath -eq $target -and $_.ProcessId -ne $PID }",
+              "| Select-Object -ExpandProperty ProcessId -Unique",
+            ].join("; "),
+          ],
+          {
+            encoding: "utf8",
+            windowsHide: true,
+            stdio: ["ignore", "pipe", "ignore"],
+          },
+        );
+        return output
+          .split(/\r?\n/)
+          .map((value) => Number.parseInt(value.trim(), 10))
+          .filter((value) => Number.isFinite(value) && value > 0);
+      } catch {
+        return [];
+      }
+    }
+
+    const binaryNames = [
+      "stella-browser-darwin-arm64",
+      "stella-browser-darwin-x64",
+    ];
+    const binaryPaths = binaryNames.map((name) => path.join(binDir, name));
+
+    try {
+      const output = execFileSync("ps", ["-axo", "pid=,ppid=,command="], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      return this.parseProcessRows(output)
+        .filter(
+          (row) =>
+            row.pid !== process.pid &&
+            row.ppid === 1 &&
+            binaryPaths.some((binaryPath) => row.command.includes(binaryPath)),
+        )
+        .map((row) => row.pid);
+    } catch {
+      return [];
+    }
+  }
+
+  private async stopOrphanedBundledDaemons() {
+    const pids = this.findOrphanedBundledDaemonPids();
+    if (pids.length === 0) return;
+    for (const pid of pids) {
+      if (process.platform === "win32") {
+        try {
+          execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
+            stdio: "ignore",
+            windowsHide: true,
+          });
+          continue;
+        } catch {
+          // Fall through to a direct kill attempt below.
+        }
+      }
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // Already stopped.
+      }
+    }
+    await delay(150);
+    for (const pid of pids) {
+      try {
+        process.kill(pid, 0);
+      } catch {
+        continue;
+      }
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Best-effort stale daemon cleanup.
+      }
+    }
   }
 
   private getListeningProcessesForPort(port: number): number[] {
