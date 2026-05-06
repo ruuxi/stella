@@ -18,7 +18,6 @@ import {
   useActiveEmojiPack,
   type ActiveEmojiPack,
 } from "@/app/chat/emoji-sprites/active-emoji-pack";
-import { EMOJI_SHEETS } from "@/app/chat/emoji-sprites/cells";
 import {
   emojiPackToActivePack,
   useEmojiPackTagFacets,
@@ -32,7 +31,6 @@ import {
 import { CreateEmojiPackDialog } from "./CreateEmojiPackDialog";
 import { ShareEmojiPackDialog } from "./ShareEmojiPackDialog";
 import { EmojiPackDetailsDialog } from "./EmojiPackDetailsDialog";
-import { EmojiCellPreview } from "./EmojiCellPreview";
 import "./emojis.css";
 
 const PAGE_SIZE = 24;
@@ -49,27 +47,6 @@ const formatInstallCount = (count: number | undefined): string => {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M uses`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K uses`;
   return `${n} use${n === 1 ? "" : "s"}`;
-};
-
-/**
- * Pick the right sheet URL for a pack's cover cell. We always store
- * the cover glyph as the literal emoji string, but the cell index has
- * to be re-derived against the same emoji ordering the renderer uses.
- */
-const findCoverCell = (
-  pack: EmojiPackRecord,
-): { sheetUrl: string; cell: number } => {
-  const sheets = [pack.sheet1Url, pack.sheet2Url];
-  const glyph = pack.coverEmoji;
-  for (let s = 0; s < sheets.length; s += 1) {
-    const list = EMOJI_SHEETS[s];
-    if (!list) continue;
-    const idx = list.indexOf(glyph);
-    if (idx !== -1) {
-      return { sheetUrl: sheets[s] ?? sheets[0]!, cell: idx };
-    }
-  }
-  return { sheetUrl: pack.sheet1Url, cell: 0 };
 };
 
 type PackCardProps = {
@@ -91,7 +68,6 @@ function PackCard({
   onShare,
   onDelete,
 }: PackCardProps) {
-  const fallback = useMemo(() => findCoverCell(pack), [pack]);
   const author =
     pack.authorDisplayName?.trim() ||
     (pack.authorHandle ? `@${pack.authorHandle}` : "Unknown");
@@ -114,11 +90,9 @@ function PackCard({
             decoding="async"
           />
         ) : (
-          <EmojiCellPreview
-            sheetUrl={fallback.sheetUrl}
-            cell={fallback.cell}
-            size={56}
-          />
+          <span className="emoji-pack-cover-glyph" aria-hidden>
+            {pack.coverEmoji}
+          </span>
         )}
       </button>
       <div className="emoji-pack-body">
@@ -396,8 +370,8 @@ export function EmojiStorePage() {
           ) : null}
         </div>
         <p className="emoji-page-subtitle">
-          Describe a vibe — Stella generates 128 custom emojis (two sheets of
-          64). Pick a pack to swap the standard emojis in chat. Switch any
+          Describe a vibe — Stella generates 108 custom emojis across three
+          sheets. Pick a pack to swap the standard emojis in chat. Switch any
           time.
         </p>
       </header>

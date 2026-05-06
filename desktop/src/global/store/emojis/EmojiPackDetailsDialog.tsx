@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Dialog,
@@ -11,18 +11,11 @@ import {
 import { Button } from "@/ui/button";
 import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import { showToast } from "@/ui/toast";
-import {
-  EMOJI_SHEETS,
-  EMOJI_SHEET_CELL_COUNT,
-} from "@/app/chat/emoji-sprites/cells";
+import { useEmojiGridManifest } from "@/app/chat/emoji-sprites/use-emoji-grid-manifest";
 import {
   useEmojiPackMutations,
   type EmojiPackRecord,
 } from "./emoji-pack-data";
-import {
-  EMOJI_SHEET_INDICES,
-  type EmojiSheetIndex,
-} from "./emoji-pack-generation";
 import { EmojiCellPreview } from "./EmojiCellPreview";
 
 type EmojiPackDetailsDialogProps = {
@@ -38,8 +31,8 @@ type EmojiPackDetailsDialogProps = {
 /**
  * Pack details + "Get" dialog for the Emoji Store.
  *
- * Browsing the store grid only fetches `coverUrl` (a single emoji). The
- * full `sheet1Url` / `sheet2Url` are heavy WebPs and only get loaded by
+ * Browsing the store grid only renders the literal cover glyph. The full
+ * sheet WebPs are heavy and only get loaded by
  * the renderer when this dialog mounts — that's the explicit "download"
  * step the user sees. Confirming with "Use pack" then activates it for
  * chat. Sign-in is enforced before activation.
@@ -54,18 +47,26 @@ export function EmojiPackDetailsDialog({
   onStop,
 }: EmojiPackDetailsDialogProps) {
   const { setVisibility } = useEmojiPackMutations();
-  const [previewSheet, setPreviewSheet] = useState<EmojiSheetIndex>(0);
+  const [previewSheet, setPreviewSheet] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const emojiGrid = useEmojiGridManifest();
 
-  const sheetUrls = useMemo(
-    () => [pack.sheet1Url, pack.sheet2Url] as const,
-    [pack.sheet1Url, pack.sheet2Url],
-  );
-  const cellsForActiveSheet = EMOJI_SHEETS[previewSheet] ?? [];
+  const sheetUrls = useMemo(() => pack.sheetUrls, [pack.sheetUrls]);
+  const sheets = emojiGrid?.sheets ?? [];
+  const sheetCount = Math.min(sheets.length, sheetUrls.length);
+  const gridSize = emojiGrid?.gridSize ?? 1;
+  const cellCount = gridSize * gridSize;
+  const cellsForActiveSheet = sheets[previewSheet] ?? [];
   const author =
     pack.authorDisplayName?.trim() ||
     (pack.authorHandle ? `@${pack.authorHandle}` : "Unknown");
+
+  useEffect(() => {
+    if (sheetCount > 0 && previewSheet >= sheetCount) {
+      setPreviewSheet(sheetCount - 1);
+    }
+  }, [previewSheet, sheetCount]);
 
   const handlePrimary = useCallback(async () => {
     if (active) {
@@ -128,26 +129,28 @@ export function EmojiPackDetailsDialog({
                 disabled={previewSheet === 0}
                 onClick={() =>
                   setPreviewSheet((current) =>
-                    Math.max(0, current - 1) as EmojiSheetIndex,
+                    Math.max(0, current - 1),
                   )
                 }
               >
                 <ChevronLeft size={16} />
               </button>
               <span className="emoji-create-preview-label">
-                Sheet {previewSheet + 1} of {EMOJI_SHEET_INDICES.length}
+                {sheetCount > 0
+                  ? `Sheet ${previewSheet + 1} of ${sheetCount}`
+                  : "Loading sheets"}
               </span>
               <button
                 type="button"
                 className="emoji-create-arrow"
                 aria-label="Next sheet"
-                disabled={previewSheet === EMOJI_SHEET_INDICES.length - 1}
+                disabled={sheetCount === 0 || previewSheet === sheetCount - 1}
                 onClick={() =>
                   setPreviewSheet((current) =>
                     Math.min(
-                      EMOJI_SHEET_INDICES.length - 1,
+                      sheetCount - 1,
                       current + 1,
-                    ) as EmojiSheetIndex,
+                    ),
                   )
                 }
               >
@@ -155,7 +158,7 @@ export function EmojiPackDetailsDialog({
               </button>
             </div>
             <div className="emoji-create-grid" data-state="ready">
-              {Array.from({ length: EMOJI_SHEET_CELL_COUNT }).map((_, idx) => {
+              {Array.from({ length: cellCount }).map((_, idx) => {
                 const glyph = cellsForActiveSheet[idx] ?? "";
                 return (
                   <div
@@ -168,6 +171,7 @@ export function EmojiPackDetailsDialog({
                       sheetUrl={sheetUrls[previewSheet]!}
                       cell={idx}
                       size={36}
+                      gridSize={gridSize}
                     />
                   </div>
                 );

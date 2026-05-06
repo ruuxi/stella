@@ -18,8 +18,7 @@ const emojiPackFields = {
   /** Tiny single-emoji cover used by the Store grid so we don't need to
    *  fetch the full sheet just to render a card. */
   coverUrl: v.optional(v.string()),
-  sheet1Url: v.string(),
-  sheet2Url: v.string(),
+  sheetUrls: v.array(v.string()),
   visibility: emoji_pack_visibility_validator,
   searchText: v.string(),
   authorDisplayName: v.optional(v.string()),

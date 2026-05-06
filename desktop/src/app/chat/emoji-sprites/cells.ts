@@ -1,63 +1,111 @@
-/**
- * Ordered emoji lists for the AI-generated emoji sprite sheets.
- *
- * Each sheet is an 8×8 grid (64 cells). The index of an emoji in its
- * sheet array maps to its cell position in row-major order: index 0 is
- * top-left, index 7 is top-right, index 8 is second-row first cell,
- * …, index 63 is bottom-right.
- *
- * These arrays are the single source of truth for both:
- *   1. The image-generation prompt that produces `sheet-1.webp` and
- *      `sheet-2.webp` under `desktop/public/emoji-sprites/`.
- *   2. The chat renderer's emoji → sprite-cell lookup.
- *
- * Reordering or replacing an emoji here requires regenerating the
- * corresponding sprite sheet.
- */
+export type EmojiGridManifest = {
+  version: string;
+  gridSize: number;
+  sheets: string[][];
+};
 
-export const EMOJI_SHEET_1: readonly string[] = [
-  // row 0 — positive faces
-  "😀", "😃", "😄", "😁", "😆", "😊", "🙂", "😉",
-  // row 1 — love / joy faces
-  "😍", "🥰", "😘", "😎", "🤩", "🥳", "😋", "🤗",
-  // row 2 — thinking / neutral faces
-  "🤔", "😅", "🙄", "😐", "😑", "😶", "🫡", "🤨",
-  // row 3 — laughing / sad / angry faces
-  "😂", "🤣", "😭", "😢", "😡", "😠", "😱", "🥺",
-  // row 4 — positive hand gestures
-  "👍", "👌", "🙏", "👋", "🙌", "💪", "👏", "✌️",
-  // row 5 — hand gestures & people
-  "👎", "✋", "🤝", "🫶", "🤞", "☝️", "👀", "🧠",
-  // row 6 — hearts & sparkle
-  "❤️", "🧡", "💛", "💚", "💙", "💜", "✨", "💯",
-  // row 7 — status / work icons
-  "✅", "❌", "⚠️", "ℹ️", "🔥", "🚀", "💡", "🎯",
-];
+const CACHE_KEY = "stella-emoji-grid-manifest";
 
-export const EMOJI_SHEET_2: readonly string[] = [
-  // row 0 — quirky / cool faces
-  "😇", "🤓", "😏", "😬", "🤐", "🤫", "🤥", "🤪",
-  // row 1 — sad / worried faces
-  "😔", "😕", "😣", "😤", "😥", "😨", "😰", "😪",
-  // row 2 — sick / overwhelmed faces
-  "🤧", "🤒", "🤕", "🥶", "🥵", "😵", "🤯", "🥱",
-  // row 3 — finger / hand gestures
-  "🤘", "🤙", "🫰", "🫵", "🖐️", "🤲", "🫳", "🫴",
-  // row 4 — hearts variants & star
-  "💔", "💖", "💕", "💞", "💗", "💝", "💘", "⭐",
-  // row 5 — work / notification icons
-  "📝", "🔧", "🛠️", "📌", "🔍", "⏰", "🔔", "📢",
-  // row 6 — tech / objects
-  "💻", "📱", "🎧", "📚", "📦", "🎁", "🔑", "🔒",
-  // row 7 — celebration / nature / food
-  "🎉", "🏆", "☕", "🍕", "🌞", "🌙", "🌈", "🍀",
-];
+let activeManifest: EmojiGridManifest | null = null;
+const listeners = new Set<() => void>();
 
-export const EMOJI_SHEETS: readonly (readonly string[])[] = [
-  EMOJI_SHEET_1,
-  EMOJI_SHEET_2,
-];
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
 
-export const EMOJI_SHEET_GRID_SIZE = 8;
-export const EMOJI_SHEET_CELL_COUNT =
-  EMOJI_SHEET_GRID_SIZE * EMOJI_SHEET_GRID_SIZE;
+export const normalizeEmojiGridManifest = (
+  value: unknown,
+): EmojiGridManifest | null => {
+  if (!value || typeof value !== "object") return null;
+  const record = value as {
+    version?: unknown;
+    gridSize?: unknown;
+    sheets?: unknown;
+  };
+  if (typeof record.version !== "string" || record.version.length === 0) {
+    return null;
+  }
+  if (
+    typeof record.gridSize !== "number" ||
+    !Number.isInteger(record.gridSize) ||
+    record.gridSize <= 0
+  ) {
+    return null;
+  }
+  if (
+    !Array.isArray(record.sheets) ||
+    record.sheets.length === 0 ||
+    !record.sheets.every(isStringArray)
+  ) {
+    return null;
+  }
+  const expectedCells = record.gridSize * record.gridSize;
+  if (!record.sheets.every((sheet) => sheet.length === expectedCells)) {
+    return null;
+  }
+  return {
+    version: record.version,
+    gridSize: record.gridSize,
+    sheets: record.sheets.map((sheet) => [...sheet]),
+  };
+};
+
+const readStoredManifest = (): EmojiGridManifest | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    return normalizeEmojiGridManifest(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredManifest = (manifest: EmojiGridManifest): void => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CACHE_KEY, JSON.stringify(manifest));
+  } catch {
+    // localStorage is best-effort; the in-memory manifest still updates.
+  }
+};
+
+activeManifest = readStoredManifest();
+
+export const getEmojiGridManifest = (): EmojiGridManifest | null =>
+  activeManifest;
+
+export const setEmojiGridManifest = (value: unknown): boolean => {
+  const next = normalizeEmojiGridManifest(value);
+  if (!next) return false;
+  const previous = activeManifest;
+  if (
+    previous &&
+    previous.version === next.version &&
+    previous.gridSize === next.gridSize
+  ) {
+    return true;
+  }
+  activeManifest = next;
+  writeStoredManifest(next);
+  listeners.forEach((listener) => listener());
+  return true;
+};
+
+export const subscribeEmojiGridManifest = (listener: () => void): (() => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+
+export const getEmojiSheets = (): string[][] =>
+  activeManifest?.sheets ?? [];
+
+export const getEmojiSheetGridSize = (): number =>
+  activeManifest?.gridSize ?? 0;
+
+export const getEmojiSheetCellCount = (): number => {
+  const size = getEmojiSheetGridSize();
+  return size * size;
+};
+

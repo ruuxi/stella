@@ -20,8 +20,7 @@ export type EmojiPackRecord = {
   prompt?: string;
   coverEmoji: string;
   coverUrl?: string;
-  sheet1Url: string;
-  sheet2Url: string;
+  sheetUrls: string[];
   visibility: EmojiPackVisibility;
   searchText: string;
   authorDisplayName?: string;
@@ -31,26 +30,11 @@ export type EmojiPackRecord = {
   updatedAt: number;
 };
 
-export type EmojiPackUploadTarget = {
-  key: string;
-  publicUrl: string;
-  putUrl: string;
-  headers: Record<string, string>;
-};
-
-export type EmojiPackUploadUrls = {
-  uploadId: string;
-  sheet1: EmojiPackUploadTarget;
-  sheet2: EmojiPackUploadTarget;
-  cover?: EmojiPackUploadTarget;
-};
-
 export const emojiPackToActivePack = (
-  pack: Pick<EmojiPackRecord, "packId" | "sheet1Url" | "sheet2Url">,
+  pack: Pick<EmojiPackRecord, "packId" | "sheetUrls">,
 ): ActiveEmojiPack => ({
   packId: pack.packId,
-  sheet1Url: pack.sheet1Url,
-  sheet2Url: pack.sheet2Url,
+  sheetUrls: pack.sheetUrls,
 });
 
 export type EmojiPackSort = "installs" | "name";
@@ -101,19 +85,15 @@ export function useEmojiPack(packId: string | null) {
 
 export function useEmojiPackMutations() {
   return {
-    createPack: useMutation(api.data.emoji_packs.createPack),
     setVisibility: useMutation(api.data.emoji_packs.setVisibility),
     deletePack: useMutation(api.data.emoji_packs.deletePack),
     recordInstall: useMutation(api.data.emoji_packs.recordInstall),
   };
 }
 
-export function useCreateEmojiPackUploadUrls() {
-  return useAction(api.data.emoji_pack_uploads.createUploadUrls) as (args: {
-    packId: string;
-    sheet1Sha256: string;
-    sheet2Sha256: string;
-    coverSha256?: string;
-    contentType?: string;
-  }) => Promise<EmojiPackUploadUrls>;
+export function useGenerateEmojiPack() {
+  return useAction(api.data.emoji_pack_generation.generatePack) as (args: {
+    prompt: string;
+    visibility: EmojiPackVisibility;
+  }) => Promise<EmojiPackRecord>;
 }

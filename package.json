@@ -27,7 +27,6 @@
     "electron:build": "bun run native:build && cd desktop && bunx --package typescript@6.0.3 tsc --build && vite build && bunx --package typescript@6.0.3 tsc -p tsconfig.electron.json && bunx --package typescript@6.0.3 tsc -p tsconfig.preload.json && cd .. && electron-builder",
     "electron:preview": "cd desktop && bunx --package typescript@6.0.3 tsc -p tsconfig.electron.json && bunx --package typescript@6.0.3 tsc -p tsconfig.preload.json && cd .. && electron .",
     "morph:test": "cd desktop && node scripts/trigger-morph.mjs",
-    "emoji-sprite:gen": "cd desktop && bun run scripts/generate-emoji-sprite.ts",
     "check:boundary": "node runtime/scripts/check-boundary.mjs"
   },
   "dependencies": {

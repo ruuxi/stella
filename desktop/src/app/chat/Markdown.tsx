@@ -6,8 +6,10 @@ import { useActiveEmojiPack } from "./emoji-sprites/active-emoji-pack";
 import { remarkEmojiSprites } from "./emoji-sprites/remark-emoji-sprites";
 import {
   cellToRowCol,
+  getEmojiSpriteGridSize,
   parseEmojiSpriteUrl,
 } from "./emoji-sprites/sprite-map";
+import { useEmojiGridManifest } from "./emoji-sprites/use-emoji-grid-manifest";
 import "./markdown.css";
 
 interface MarkdownProps {
@@ -48,6 +50,8 @@ const COMPONENTS = {
       return <img {...rest} src={src} alt={alt} className={className} />;
     }
     const { row, col } = cellToRowCol(cell.cell);
+    const gridSize = getEmojiSpriteGridSize();
+    const last = Math.max(1, gridSize - 1);
     return (
       <span
         className={cn("ai-emoji", className)}
@@ -56,6 +60,8 @@ const COMPONENTS = {
             "--ai-emoji-row": String(row),
             "--ai-emoji-col": String(col),
             backgroundImage: `var(--ai-emoji-sheet-${cell.sheet}-url)`,
+            backgroundSize: `${gridSize * 100}% ${gridSize * 100}%`,
+            backgroundPosition: `${(col / last) * 100}% ${(row / last) * 100}%`,
           } as CSSProperties
         }
         role="img"
@@ -71,18 +77,23 @@ export const Markdown = memo(function Markdown({
   isAnimating = false,
 }: MarkdownProps) {
   const [activeEmojiPack] = useActiveEmojiPack();
-  const emojiVars = activeEmojiPack
-    ? ({
-        "--ai-emoji-sheet-0-url": `url("${activeEmojiPack.sheet1Url}")`,
-        "--ai-emoji-sheet-1-url": `url("${activeEmojiPack.sheet2Url}")`,
-      } as CSSProperties)
+  const emojiGrid = useEmojiGridManifest();
+  const emojiVars = activeEmojiPack && emojiGrid
+    ? (Object.fromEntries(
+        activeEmojiPack.sheetUrls.map((url, index) => [
+          `--ai-emoji-sheet-${index}-url`,
+          `url("${url}")`,
+        ]),
+      ) as CSSProperties)
     : undefined;
   return (
     <div style={emojiVars}>
       <Streamdown
         isAnimating={isAnimating}
         className={cn("markdown", className)}
-        remarkPlugins={activeEmojiPack ? REMARK_PLUGINS : EMPTY_REMARK_PLUGINS}
+        remarkPlugins={
+          activeEmojiPack && emojiGrid ? REMARK_PLUGINS : EMPTY_REMARK_PLUGINS
+        }
         components={COMPONENTS}
       >
         {text}

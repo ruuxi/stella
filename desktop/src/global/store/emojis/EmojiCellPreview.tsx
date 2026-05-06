@@ -1,16 +1,15 @@
 import type { CSSProperties } from "react";
 import { cn } from "@/shared/lib/utils";
-import { EMOJI_SHEET_GRID_SIZE } from "@/app/chat/emoji-sprites/cells";
-import { cellToRowCol } from "@/app/chat/emoji-sprites/sprite-map";
 
 type CellPreviewProps = {
   /** Direct URL to the sheet WebP — works for both R2-hosted packs and
    *  local object URLs from in-flight generation. */
   sheetUrl: string;
-  /** Cell index inside the 8×8 sheet (row-major, 0–63). */
+  /** Cell index inside the 6×6 sheet (row-major, 0–35). */
   cell: number;
   /** Render size in px. */
   size?: number;
+  gridSize: number;
   className?: string;
 };
 
@@ -23,16 +22,18 @@ export function EmojiCellPreview({
   sheetUrl,
   cell,
   size = 32,
+  gridSize,
   className,
 }: CellPreviewProps) {
-  const { row, col } = cellToRowCol(cell);
-  const last = EMOJI_SHEET_GRID_SIZE - 1;
+  const row = Math.floor(cell / gridSize);
+  const col = cell % gridSize;
+  const last = Math.max(1, gridSize - 1);
   const style: CSSProperties = {
     width: size,
     height: size,
     backgroundImage: `url("${sheetUrl}")`,
     backgroundRepeat: "no-repeat",
-    backgroundSize: `${EMOJI_SHEET_GRID_SIZE * 100}% ${EMOJI_SHEET_GRID_SIZE * 100}%`,
+    backgroundSize: `${gridSize * 100}% ${gridSize * 100}%`,
     backgroundPosition: `${(col / last) * 100}% ${(row / last) * 100}%`,
     backgroundColor: "transparent",
   };
