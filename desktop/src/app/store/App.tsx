@@ -55,8 +55,34 @@ const normalizeActionRecord = (value: unknown): Record<string, unknown> =>
 
 const normalizeStringArray = (value: unknown): string[] | undefined => {
   if (!Array.isArray(value)) return undefined;
-  const entries = value.filter((entry): entry is string => typeof entry === "string");
+  const entries = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
   return entries.length > 0 ? entries : undefined;
+};
+
+const approvedStoreWebTryOnImagePaths = new Set<string>();
+
+const rememberApprovedTryOnImagePaths = (value: unknown) => {
+  const record = normalizeActionRecord(value);
+  const paths = normalizeStringArray(record.paths);
+  if (!paths) return;
+  for (const imagePath of paths) {
+    approvedStoreWebTryOnImagePaths.add(imagePath);
+  }
+};
+
+const filterApprovedTryOnImagePaths = (value: unknown): string[] | undefined => {
+  const paths = normalizeStringArray(value);
+  if (!paths) return undefined;
+  const approved = paths.filter((imagePath) =>
+    approvedStoreWebTryOnImagePaths.has(imagePath),
+  );
+  if (approved.length !== paths.length) {
+    throw new Error("Choose local try-on images from Stella before using them.");
+  }
+  return approved.length > 0 ? approved : undefined;
 };
 
 const handleStoreWebLocalAction = async (action: unknown): Promise<unknown> => {
@@ -141,8 +167,11 @@ const handleStoreWebLocalAction = async (action: unknown): Promise<unknown> => {
           if (!imagePath) throw new Error("Missing image path.");
           return await fashion?.getLocalImageDataUrl?.(imagePath);
         }
-        case "pickTryOnImages":
-          return await fashion?.pickTryOnImages?.();
+        case "pickTryOnImages": {
+          const result = await fashion?.pickTryOnImages?.();
+          rememberApprovedTryOnImagePaths(result);
+          return result;
+        }
         case "startOutfitBatch":
           return await fashion?.startOutfitBatch?.({
             ...(typeof innerPayload.prompt === "string"
@@ -165,7 +194,10 @@ const handleStoreWebLocalAction = async (action: unknown): Promise<unknown> => {
               ? { seedHints: normalizeStringArray(innerPayload.seedHints) }
               : {}),
           });
-        case "startTryOn":
+        case "startTryOn": {
+          const approvedImagePaths = filterApprovedTryOnImagePaths(
+            innerPayload.imagePaths,
+          );
           return await fashion?.startTryOn?.({
             ...(typeof innerPayload.prompt === "string"
               ? { prompt: innerPayload.prompt }
@@ -173,13 +205,12 @@ const handleStoreWebLocalAction = async (action: unknown): Promise<unknown> => {
             ...(typeof innerPayload.batchId === "string"
               ? { batchId: innerPayload.batchId }
               : {}),
-            ...(normalizeStringArray(innerPayload.imagePaths)
-              ? { imagePaths: normalizeStringArray(innerPayload.imagePaths) }
-              : {}),
+            ...(approvedImagePaths ? { imagePaths: approvedImagePaths } : {}),
             ...(normalizeStringArray(innerPayload.imageUrls)
               ? { imageUrls: normalizeStringArray(innerPayload.imageUrls) }
               : {}),
           });
+        }
         default:
           throw new Error("Unknown Store Fashion bridge action.");
       }

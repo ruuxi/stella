@@ -67,7 +67,10 @@ export const registerBootstrapIpcHandlers = (
   const lazyMobileBroadcast = () => getMobileBroadcast(context);
   const { config, lifecycle, services, state } = context;
   const allowedStoreWebOrigin = getUrlOrigin(readStoreWebBaseUrl());
-  const dispatchStoreWebLocalAction = (action: unknown): Promise<unknown> => {
+  const dispatchStoreWebLocalAction = (
+    action: unknown,
+    opts?: { timeoutMs?: number },
+  ): Promise<unknown> => {
     const fullWindow = state.windowManager?.getFullWindow();
     if (!fullWindow || fullWindow.isDestroyed()) {
       return Promise.reject(new Error("Stella window is unavailable."));
@@ -78,7 +81,7 @@ export const registerBootstrapIpcHandlers = (
       const timeout = setTimeout(() => {
         ipcMain.removeAllListeners(channel);
         reject(new Error("Timed out waiting for the local Store bridge."));
-      }, 10_000);
+      }, opts?.timeoutMs ?? 10_000);
       ipcMain.once(channel, (event, payload) => {
         clearTimeout(timeout);
         if (!services.externalLinkService.assertPrivilegedSender(event, channel)) {

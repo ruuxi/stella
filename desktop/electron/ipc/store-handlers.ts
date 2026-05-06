@@ -42,7 +42,10 @@ type StoreHandlersOptions = {
   goBackInStoreWebView?: () => void;
   goForwardInStoreWebView?: () => void;
   reloadStoreWebView?: () => void;
-  dispatchStoreWebLocalAction?: (action: unknown) => Promise<unknown>;
+  dispatchStoreWebLocalAction?: (
+    action: unknown,
+    opts?: { timeoutMs?: number },
+  ) => Promise<unknown>;
 };
 
 const listInstalledThemes = async (stellaRoot: string) => {
@@ -218,11 +221,14 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     return (await options.getStoreAuthToken?.()) ?? null;
   });
 
-  const handleStoreWebLocalAction = (action: unknown) => {
+  const handleStoreWebLocalAction = (
+    action: unknown,
+    opts?: { timeoutMs?: number },
+  ) => {
     if (!options.dispatchStoreWebLocalAction) {
       throw new Error("The local Store bridge is unavailable.");
     }
-    return options.dispatchStoreWebLocalAction(action);
+    return options.dispatchStoreWebLocalAction(action, opts);
   };
 
   ipcMain.handle("storeWeb:openStorePanel", async (event) => {
@@ -296,10 +302,22 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
 
   ipcMain.handle("storeWeb:fashionLocalAction", async (event, payload: unknown) => {
     assertStoreWebRequest(event, "storeWeb:fashionLocalAction");
-    return await handleStoreWebLocalAction({
-      type: "fashion",
-      payload,
-    });
+    const payloadRecord =
+      payload && typeof payload === "object"
+        ? (payload as Record<string, unknown>)
+        : {};
+    const timeoutMs =
+      payloadRecord.action === "pickAndSaveBodyPhoto" ||
+      payloadRecord.action === "pickTryOnImages"
+        ? 5 * 60 * 1000
+        : undefined;
+    return await handleStoreWebLocalAction(
+      {
+        type: "fashion",
+        payload,
+      },
+      timeoutMs ? { timeoutMs } : undefined,
+    );
   });
 
   ipcMain.handle("theme:listInstalled", async () => {
