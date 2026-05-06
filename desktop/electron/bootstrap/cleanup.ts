@@ -1,4 +1,5 @@
 import { stopAllDesktopAutomationDaemons } from "../services/desktop-automation-cleanup.js";
+import { stopLocalParakeet } from "../dictation/local-parakeet.js";
 import { stopOfficePreviewSessions } from "./office-preview-bridge.js";
 import type { BootstrapContext } from "./context.js";
 
@@ -60,6 +61,13 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
     "desktop-automation-daemon",
     async () => {
       await stopAllDesktopAutomationDaemons();
+    },
+  );
+  processRuntime.registerCleanup(
+    "before-quit",
+    "local-parakeet",
+    () => {
+      stopLocalParakeet();
     },
   );
 };

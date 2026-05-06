@@ -1,7 +1,9 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { resolveStatePath } from "../../../runtime/kernel/cli/shared.js";
+import { resolveNativeHelperPath } from "../native-helper-path.js";
 
 const stellaComputerStateRoot = () =>
   path.join(resolveStatePath(), "stella-computer");
@@ -47,6 +49,50 @@ const trySignal = (pid: number, signal: NodeJS.Signals): boolean => {
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+const parsePsRows = (output: string): Array<{
+  pid: number;
+  ppid: number;
+  command: string;
+}> =>
+  output
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
+      if (!match) return null;
+      return {
+        pid: Number.parseInt(match[1]!, 10),
+        ppid: Number.parseInt(match[2]!, 10),
+        command: match[3]!,
+      };
+    })
+    .filter((row): row is { pid: number; ppid: number; command: string } =>
+      Boolean(row && Number.isFinite(row.pid) && Number.isFinite(row.ppid)),
+    );
+
+const findOrphanedDesktopAutomationPids = (): number[] => {
+  if (process.platform === "win32") return [];
+  const helperPath = resolveNativeHelperPath("desktop_automation");
+  if (!helperPath) return [];
+
+  try {
+    const output = execFileSync("ps", ["-axo", "pid=,ppid=,command="], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return parsePsRows(output)
+      .filter(
+        (row) =>
+          row.pid !== process.pid &&
+          row.ppid === 1 &&
+          row.command.includes(helperPath) &&
+          /\bdaemon\b/.test(row.command),
+      )
+      .map((row) => row.pid);
+  } catch {
+    return [];
+  }
+};
+
 // Stops every long-lived `desktop_automation` daemon spawned by stella-
 // computer. Each session caches a pidfile under
 // `state/stella-computer/sessions/<id>/automation.pid` and a socket
@@ -63,42 +109,43 @@ const sleep = (ms: number) =>
 export const stopAllDesktopAutomationDaemons = async (): Promise<void> => {
   const root = stellaComputerStateRoot();
   const sessions = sessionsDir(root);
-  if (!existsSync(sessions)) return;
 
-  let entries: string[];
-  try {
-    entries = readdirSync(sessions);
-  } catch {
-    return;
-  }
-
-  const targetedPids: number[] = [];
+  const targetedPids = new Set<number>(findOrphanedDesktopAutomationPids());
   const pidFiles: string[] = [];
 
-  for (const name of entries) {
-    const sessionPath = path.join(sessions, name);
-    let isDir = false;
+  if (existsSync(sessions)) {
+    let entries: string[];
     try {
-      isDir = statSync(sessionPath).isDirectory();
+      entries = readdirSync(sessions);
     } catch {
-      continue;
+      entries = [];
     }
-    if (!isDir) continue;
 
-    const pidFile = path.join(sessionPath, "automation.pid");
-    const pid = readPidFile(pidFile);
-    if (pid !== null && isProcessAlive(pid)) {
-      targetedPids.push(pid);
-    }
-    if (existsSync(pidFile)) {
-      pidFiles.push(pidFile);
+    for (const name of entries) {
+      const sessionPath = path.join(sessions, name);
+      let isDir = false;
+      try {
+        isDir = statSync(sessionPath).isDirectory();
+      } catch {
+        continue;
+      }
+      if (!isDir) continue;
+
+      const pidFile = path.join(sessionPath, "automation.pid");
+      const pid = readPidFile(pidFile);
+      if (pid !== null && isProcessAlive(pid)) {
+        targetedPids.add(pid);
+      }
+      if (existsSync(pidFile)) {
+        pidFiles.push(pidFile);
+      }
     }
   }
 
   for (const pid of targetedPids) {
     trySignal(pid, "SIGTERM");
   }
-  if (targetedPids.length > 0) {
+  if (targetedPids.size > 0) {
     await sleep(150);
     for (const pid of targetedPids) {
       if (isProcessAlive(pid)) {

@@ -217,10 +217,26 @@ const failPending = (error: Error) => {
 };
 
 const stopService = () => {
-  if (!serviceProcess) return;
-  serviceProcess.kill();
+  const child = serviceProcess;
+  if (!child) return;
+  failPending(new Error("Local Parakeet helper stopped."));
+  try {
+    child.stdin.end();
+  } catch {
+    // Ignore shutdown races.
+  }
+  try {
+    child.kill();
+  } catch {
+    // Already stopped.
+  }
   serviceProcess = null;
   serviceReady = null;
+  serviceBuffer = "";
+};
+
+export const stopLocalParakeet = (): void => {
+  stopService();
 };
 
 const transcribeWithService = async (audioPath: string): Promise<HelperResponse> => {
