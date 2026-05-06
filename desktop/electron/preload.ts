@@ -1331,6 +1331,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     show: (payload?: { tab?: string; package?: string; packageId?: string }) =>
       ipcRenderer.invoke("storeWeb:show", payload),
     hide: () => ipcRenderer.invoke("storeWeb:hide"),
+    setLayout: (payload: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }) => ipcRenderer.invoke("storeWeb:setLayout", payload),
     goBack: () => ipcRenderer.invoke("storeWeb:goBack"),
     goForward: () => ipcRenderer.invoke("storeWeb:goForward"),
     reload: () => ipcRenderer.invoke("storeWeb:reload"),

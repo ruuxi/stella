@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useLayoutEffect } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   DEFAULT_STORE_TAB,
@@ -12,6 +12,7 @@ import {
   removeInstalledPet,
 } from "@/app/pets/installed-pets";
 import {
+  readPetOpenPreference,
   readSelectedPetId,
   writePetOpenPreference,
   writeSelectedPetId,
@@ -22,6 +23,7 @@ import {
 } from "@/app/chat/emoji-sprites/active-emoji-pack";
 import { writeCachedPetById } from "@/shell/pet/pet-catalog-cache";
 import { normalizePet } from "@/shell/pet/built-in-pets";
+import { useDisplayTabs } from "@/shell/display/tab-store";
 
 // Persist the last-active Store tab so clicking the global sidebar's Store
 // icon reopens to wherever the user was last (Discover by default). The URL
@@ -41,6 +43,7 @@ const readStoredTab = (): StoreTab => {
 const getPetState = () => ({
   installedPetIds: Array.from(readInstalledPetIds()),
   selectedPetId: readSelectedPetId(),
+  petOpen: readPetOpenPreference(),
 });
 
 const getEmojiPackState = () => ({
@@ -50,10 +53,17 @@ const getEmojiPackState = () => ({
 const normalizeActionRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
+const normalizeStringArray = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const entries = value.filter((entry): entry is string => typeof entry === "string");
+  return entries.length > 0 ? entries : undefined;
+};
+
 const handleStoreWebLocalAction = async (action: unknown): Promise<unknown> => {
   const record = normalizeActionRecord(action);
   const type = record.type;
   const payload = normalizeActionRecord(record.payload);
+  const fashion = window.electronAPI?.fashion;
 
   switch (type) {
     case "openStorePanel": {
@@ -88,6 +98,12 @@ const handleStoreWebLocalAction = async (action: unknown): Promise<unknown> => {
     }
     case "getPetState":
       return getPetState();
+    case "setPetOpen": {
+      const open = Boolean(payload.open);
+      writePetOpenPreference(open);
+      window.electronAPI?.pet?.setOpen?.(open);
+      return getPetState();
+    }
     case "installEmojiPack": {
       const packId = typeof payload.packId === "string" ? payload.packId : "";
       const sheetUrls = Array.isArray(payload.sheetUrls)
@@ -109,6 +125,65 @@ const handleStoreWebLocalAction = async (action: unknown): Promise<unknown> => {
     }
     case "getEmojiPackState":
       return getEmojiPackState();
+    case "fashion": {
+      const innerAction = payload.action;
+      const innerPayload = normalizeActionRecord(payload.payload);
+      switch (innerAction) {
+        case "pickAndSaveBodyPhoto":
+          return await fashion?.pickAndSaveBodyPhoto?.();
+        case "getBodyPhotoInfo":
+          return await fashion?.getBodyPhotoInfo?.();
+        case "getBodyPhotoDataUrl":
+          return await fashion?.getBodyPhotoDataUrl?.();
+        case "getLocalImageDataUrl": {
+          const imagePath =
+            typeof innerPayload.path === "string" ? innerPayload.path : "";
+          if (!imagePath) throw new Error("Missing image path.");
+          return await fashion?.getLocalImageDataUrl?.(imagePath);
+        }
+        case "pickTryOnImages":
+          return await fashion?.pickTryOnImages?.();
+        case "startOutfitBatch":
+          return await fashion?.startOutfitBatch?.({
+            ...(typeof innerPayload.prompt === "string"
+              ? { prompt: innerPayload.prompt }
+              : {}),
+            ...(typeof innerPayload.batchId === "string"
+              ? { batchId: innerPayload.batchId }
+              : {}),
+            ...(typeof innerPayload.count === "number"
+              ? { count: innerPayload.count }
+              : {}),
+            ...(normalizeStringArray(innerPayload.excludeProductIds)
+              ? {
+                  excludeProductIds: normalizeStringArray(
+                    innerPayload.excludeProductIds,
+                  ),
+                }
+              : {}),
+            ...(normalizeStringArray(innerPayload.seedHints)
+              ? { seedHints: normalizeStringArray(innerPayload.seedHints) }
+              : {}),
+          });
+        case "startTryOn":
+          return await fashion?.startTryOn?.({
+            ...(typeof innerPayload.prompt === "string"
+              ? { prompt: innerPayload.prompt }
+              : {}),
+            ...(typeof innerPayload.batchId === "string"
+              ? { batchId: innerPayload.batchId }
+              : {}),
+            ...(normalizeStringArray(innerPayload.imagePaths)
+              ? { imagePaths: normalizeStringArray(innerPayload.imagePaths) }
+              : {}),
+            ...(normalizeStringArray(innerPayload.imageUrls)
+              ? { imageUrls: normalizeStringArray(innerPayload.imageUrls) }
+              : {}),
+          });
+        default:
+          throw new Error("Unknown Store Fashion bridge action.");
+      }
+    }
     default:
       throw new Error("Unknown Store bridge action.");
   }
@@ -117,9 +192,39 @@ const handleStoreWebLocalAction = async (action: unknown): Promise<unknown> => {
 export function StoreApp() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/store" });
+  const { panelOpen, panelExpanded, panelWidth } = useDisplayTabs();
 
   const requestedTab = normalizeStoreTab(search.tab);
   const urlIsLegacy = typeof search.tab === "string" && search.tab !== requestedTab;
+
+  const syncStoreWebLayout = useCallback(() => {
+    const contentArea = document.querySelector<HTMLElement>(".content-area");
+    if (!contentArea) return;
+    const rect = contentArea.getBoundingClientRect();
+    const styles = window.getComputedStyle(contentArea);
+    const topInset = Number.parseFloat(styles.paddingTop) || 0;
+    void window.electronAPI?.storeWeb?.setLayout?.({
+      x: Math.round(rect.left),
+      y: Math.round(rect.top + topInset),
+      width: panelOpen && panelExpanded ? 0 : Math.round(rect.width),
+      height: Math.max(0, Math.round(rect.height - topInset)),
+    });
+  }, [panelExpanded, panelOpen]);
+
+  useLayoutEffect(() => {
+    syncStoreWebLayout();
+    const contentArea = document.querySelector<HTMLElement>(".content-area");
+    const displaySidebar =
+      document.querySelector<HTMLElement>(".display-sidebar");
+    const resizeObserver = new ResizeObserver(() => syncStoreWebLayout());
+    if (contentArea) resizeObserver.observe(contentArea);
+    if (displaySidebar) resizeObserver.observe(displaySidebar);
+    window.addEventListener("resize", syncStoreWebLayout);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", syncStoreWebLayout);
+    };
+  }, [panelExpanded, panelOpen, panelWidth, syncStoreWebLayout]);
 
   // Two redirects share this effect:
   //   - Legacy `?tab=installed`/`?tab=publish` URLs collapse to Discover.
@@ -148,6 +253,7 @@ export function StoreApp() {
   }, [requestedTab]);
 
   useEffect(() => {
+    syncStoreWebLayout();
     void window.electronAPI?.storeWeb?.show({
       tab: requestedTab,
       package:
@@ -158,7 +264,7 @@ export function StoreApp() {
     return () => {
       void window.electronAPI?.storeWeb?.hide();
     };
-  }, [requestedTab, search.package]);
+  }, [requestedTab, search.package, syncStoreWebLayout]);
 
   useEffect(() => {
     return window.electronAPI?.storeWebLocal?.onAction?.((payload) => {

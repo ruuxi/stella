@@ -36,6 +36,9 @@ type StoreHandlersOptions = {
   getStoreAuthToken?: () => Promise<string | null>;
   showStoreWebView?: (params?: { tab?: string; packageId?: string }) => void;
   hideStoreWebView?: () => void;
+  setStoreWebViewLayout?: (
+    layout: { x: number; y: number; width: number; height: number } | null,
+  ) => void;
   goBackInStoreWebView?: () => void;
   goForwardInStoreWebView?: () => void;
   reloadStoreWebView?: () => void;
@@ -167,6 +170,31 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     return { ok: true };
   });
 
+  ipcMain.handle(
+    "storeWeb:setLayout",
+    async (
+      event,
+      payload?: { x?: number; y?: number; width?: number; height?: number },
+    ) => {
+      assertPrivilegedRequest(options, event, "storeWeb:setLayout");
+      const layout =
+        payload &&
+        Number.isFinite(payload.x) &&
+        Number.isFinite(payload.y) &&
+        Number.isFinite(payload.width) &&
+        Number.isFinite(payload.height)
+          ? {
+              x: Math.round(payload.x!),
+              y: Math.round(payload.y!),
+              width: Math.max(0, Math.round(payload.width!)),
+              height: Math.max(0, Math.round(payload.height!)),
+            }
+          : null;
+      options.setStoreWebViewLayout?.(layout);
+      return { ok: true };
+    },
+  );
+
   ipcMain.handle("storeWeb:goBack", async (event) => {
     assertPrivilegedRequest(options, event, "storeWeb:goBack");
     options.goBackInStoreWebView?.();
@@ -235,6 +263,14 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     });
   });
 
+  ipcMain.handle("storeWeb:setPetOpen", async (event, payload: unknown) => {
+    assertStoreWebRequest(event, "storeWeb:setPetOpen");
+    return await handleStoreWebLocalAction({
+      type: "setPetOpen",
+      payload,
+    });
+  });
+
   ipcMain.handle("storeWeb:installEmojiPack", async (event, payload: unknown) => {
     assertStoreWebRequest(event, "storeWeb:installEmojiPack");
     return await handleStoreWebLocalAction({
@@ -255,6 +291,14 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     assertStoreWebRequest(event, "storeWeb:getEmojiPackState");
     return await handleStoreWebLocalAction({
       type: "getEmojiPackState",
+    });
+  });
+
+  ipcMain.handle("storeWeb:fashionLocalAction", async (event, payload: unknown) => {
+    assertStoreWebRequest(event, "storeWeb:fashionLocalAction");
+    return await handleStoreWebLocalAction({
+      type: "fashion",
+      payload,
     });
   });
 
@@ -533,10 +577,95 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     return await listStellaConnectors(stellaRoot);
   });
 
+  ipcMain.handle("storeWeb:listConnectors", async (event) => {
+    assertStoreWebRequest(event, "storeWeb:listConnectors");
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return [];
+    return await listStellaConnectors(stellaRoot);
+  });
+
   ipcMain.handle(
     "store:installConnector",
     async (event, payload: { marketplaceKey: string; credential?: string; config?: Record<string, string> }) => {
       assertPrivilegedRequest(options, event, "store:installConnector");
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        throw new Error("Stella root is unavailable.");
+      }
+      const installed = await installOfficialConnector(
+        stellaRoot,
+        payload.marketplaceKey,
+        payload.config ?? {},
+      );
+      const oauthResults = [];
+      for (const target of [...installed.servers, ...installed.apis]) {
+        if (target.auth?.type !== "none" && target.auth?.tokenKey && payload.credential) {
+          await saveMcpAccessToken(stellaRoot, target.auth.tokenKey, payload.credential);
+        }
+      }
+      for (const [key, value] of Object.entries(payload.config ?? {})) {
+        if (value) {
+          await saveMcpAccessToken(stellaRoot, key, value);
+        }
+      }
+      for (const server of installed.servers) {
+        if (server.transport !== "streamable_http" || !server.url) continue;
+        if (server.auth?.type !== "oauth" || !server.auth.tokenKey) continue;
+        try {
+          oauthResults.push(await connectMcpOAuth(stellaRoot, {
+            tokenKey: server.auth.tokenKey,
+            resourceUrl: server.url,
+            openUrl: (url) => shell.openExternal(url),
+          }));
+        } catch (error) {
+          await removeOfficialConnector(stellaRoot, payload.marketplaceKey);
+          throw error;
+        }
+      }
+      for (const api of installed.apis) {
+        if (!api.baseUrl) continue;
+        if (api.auth?.type !== "oauth" || !api.auth.tokenKey) continue;
+        try {
+          oauthResults.push(await connectMcpOAuth(stellaRoot, {
+            tokenKey: api.auth.tokenKey,
+            resourceUrl: api.baseUrl,
+            openUrl: (url) => shell.openExternal(url),
+          }));
+        } catch (error) {
+          await removeOfficialConnector(stellaRoot, payload.marketplaceKey);
+          throw error;
+        }
+      }
+      return {
+        installedServers: installed.servers.map((server) => ({
+          id: server.id,
+          displayName: server.displayName,
+          transport: server.transport,
+          url: server.url,
+          auth: server.auth?.type,
+        })),
+        installedApis: installed.apis.map((api) => ({
+          id: api.id,
+          displayName: api.displayName,
+          baseUrl: api.baseUrl,
+          auth: api.auth?.type,
+        })),
+        oauth: oauthResults,
+      };
+    },
+  );
+
+  ipcMain.handle(
+    "storeWeb:installConnector",
+    async (
+      event,
+      payload: {
+        marketplaceKey: string;
+        credential?: string;
+        config?: Record<string, string>;
+      },
+    ) => {
+      assertStoreWebRequest(event, "storeWeb:installConnector");
       const stellaRoot = options.getStellaRoot();
       if (!stellaRoot) {
         throw new Error("Stella root is unavailable.");

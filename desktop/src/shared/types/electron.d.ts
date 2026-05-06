@@ -928,6 +928,12 @@ export type ElectronStoreWebApi = {
     packageId?: string;
   }) => Promise<{ ok: boolean }>;
   hide: () => Promise<{ ok: boolean }>;
+  setLayout: (payload: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => Promise<{ ok: boolean }>;
   goBack: () => Promise<{ ok: boolean }>;
   goForward: () => Promise<{ ok: boolean }>;
   reload: () => Promise<{ ok: boolean }>;

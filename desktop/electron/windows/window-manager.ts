@@ -4,6 +4,7 @@ import { FullWindowController } from './full-window.js'
 import { MiniWindowController } from './mini-window.js'
 import {
   StoreWebViewController,
+  type StoreWebViewLayout,
   type StoreWebViewParams,
 } from './store-web-view.js'
 import type { UiState } from '../types.js'
@@ -329,6 +330,10 @@ export class WindowManager {
 
   hideStoreWebView() {
     this.storeWebViewController.hide()
+  }
+
+  setStoreWebViewLayout(layout: StoreWebViewLayout | null) {
+    this.storeWebViewController.setLayout(layout)
   }
 
   goBackInStoreWebView() {
