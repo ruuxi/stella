@@ -77,6 +77,8 @@ export const createOrchestratorController = (
     const callbackProxy: AgentCallbacks = {
       onRunStarted: (event) => currentCallbacks.onRunStarted?.(event),
       onUserMessage: (event) => currentCallbacks.onUserMessage?.(event),
+      onAssistantMessage: (event) =>
+        currentCallbacks.onAssistantMessage?.(event),
       onStream: (event) => currentCallbacks.onStream(event),
       onAgentReasoning: (event) => currentCallbacks.onAgentReasoning?.(event),
       onStatus: (event) => currentCallbacks.onStatus?.(event),

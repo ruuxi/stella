@@ -105,6 +105,17 @@ export type RuntimeUserMessageEvent = {
   uiVisibility?: "visible" | "hidden";
 };
 
+export type RuntimeAssistantMessageEvent = {
+  runId: string;
+  agentType: string;
+  seq: number;
+  userMessageId: string;
+  text: string;
+  timestamp: number;
+  uiVisibility?: "visible" | "hidden";
+  responseTarget?: RuntimeAgentEventPayload["responseTarget"];
+};
+
 export type RuntimeEndEvent = {
   runId: string;
   agentType: string;
@@ -144,6 +155,7 @@ export type RuntimeExecutionSessionHandle = {
 export type RuntimeRunCallbacks = {
   onRunStarted?: (event: RuntimeRunStartedEvent) => void;
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
+  onAssistantMessage?: (event: RuntimeAssistantMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
   onReasoning?: (event: RuntimeReasoningEvent) => void;
   onStatus?: (event: RuntimeStatusEvent) => void;

@@ -13,7 +13,10 @@ import type { HookEmitter } from "../extensions/hook-emitter.js";
 import { selectRecentByTokenBudget } from "../local-history.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { estimateRuntimeTokens } from "../runtime-threads.js";
-import { getLocalCliWorkingDirectory } from "../../contracts/agent-runtime.js";
+import {
+  AGENT_IDS,
+  getLocalCliWorkingDirectory,
+} from "../../contracts/agent-runtime.js";
 import { stripStaleImageBlocks } from "./thread-memory.js";
 
 const MAX_RESULT_PREVIEW = 200;
@@ -375,6 +378,9 @@ export const createRuntimeAgent = (args: {
     sessionId: args.cacheSessionId ?? args.agentType,
     convertToLlm: PI_AGENT_MESSAGE_FILTER,
     transformContext: buildDefaultTransformContext(args.resolvedLlm),
+    ...(args.agentType === AGENT_IDS.ORCHESTRATOR
+      ? { steeringMode: "all" as const }
+      : {}),
     getApiKey: () => args.resolvedLlm.getApiKey(),
     refreshApiKey: args.resolvedLlm.refreshApiKey
       ? () => args.resolvedLlm.refreshApiKey?.()

@@ -1,5 +1,6 @@
 import type { Dispatch, RefCallback, SetStateAction } from 'react'
 import type { TaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-summaries'
+import type { QueuedUserMessage } from '@/app/chat/hooks/use-streaming-chat'
 import type { EventRecord, TaskItem } from '@/app/chat/lib/event-transforms'
 import type {
   AgentResponseTarget,
@@ -22,6 +23,7 @@ export type ChatColumnConversation = {
     isStreaming: boolean
     runtimeStatusText?: string | null
     pendingUserMessageId: string | null
+    queuedUserMessages: QueuedUserMessage[]
     optimisticUserMessageIds: string[]
     selfModMap: Record<string, SelfModAppliedData>
     liveTasks?: TaskItem[]

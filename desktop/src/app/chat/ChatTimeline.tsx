@@ -31,6 +31,8 @@ import {
   InlineWorkingIndicator,
   type InlineWorkingIndicatorMountProps,
 } from "./InlineWorkingIndicator";
+import { ComposerQueuedMessages } from "./ComposerQueuedMessages";
+import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
 
 type ChatTimelineProps = {
   rows: EventRowViewModel[];
@@ -75,6 +77,7 @@ type ChatTimelineProps = {
    *  - Otherwise, the indicator sits at the end of the tail region.
    */
   indicator?: InlineWorkingIndicatorMountProps;
+  queuedUserMessages?: QueuedUserMessage[];
 };
 
 const renderRow = (
@@ -104,6 +107,7 @@ export const ChatTimeline = memo(function ChatTimeline({
   extraTail,
   onOpenAttachment,
   indicator,
+  queuedUserMessages,
 }: ChatTimelineProps) {
   if (isLoadingHistory && rows.length === 0) {
     return (
@@ -158,6 +162,12 @@ export const ChatTimeline = memo(function ChatTimeline({
   const indicatorKey = lastAssistantTailRow
     ? `indicator:${lastAssistantTailRow.id}`
     : "indicator-tail";
+  const renderQueuedMessages = () => (
+    <ComposerQueuedMessages
+      key="queued-user-messages"
+      messages={queuedUserMessages ?? []}
+    />
+  );
 
   return (
     <div className="event-list">
@@ -177,6 +187,7 @@ export const ChatTimeline = memo(function ChatTimeline({
               return [
                 node,
                 <InlineWorkingIndicator key={indicatorKey} {...indicator} />,
+                renderQueuedMessages(),
               ];
             }
             return [node];
@@ -187,6 +198,7 @@ export const ChatTimeline = memo(function ChatTimeline({
           {indicator && lastAssistantTailIndex < 0 && (
             <InlineWorkingIndicator key={indicatorKey} {...indicator} />
           )}
+          {(!indicator || lastAssistantTailIndex < 0) && renderQueuedMessages()}
         </div>
       )}
 

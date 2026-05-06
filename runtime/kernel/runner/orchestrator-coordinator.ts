@@ -76,7 +76,9 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
       onCleanup?: () => void;
     },
   ): RuntimeRunCallbacks => ({
+    onRunStarted: callbacks.onRunStarted,
     onUserMessage: callbacks.onUserMessage,
+    onAssistantMessage: callbacks.onAssistantMessage,
     onStream: callbacks.onStream,
     onStatus: callbacks.onStatus,
     onToolStart: (event) => {

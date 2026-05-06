@@ -2,6 +2,7 @@ import type { ConvexClient } from "convex/browser";
 import type { Api, Model } from "../../ai/types.js";
 import type { AgentMessage } from "../agent-core/types.js";
 import type {
+  RuntimeAssistantMessageEvent,
   RuntimeEndEvent,
   RuntimeErrorEvent,
   RuntimeExecutionSessionHandle,
@@ -185,6 +186,7 @@ export type AgentHealth = {
 export type AgentCallbacks = {
   onRunStarted?: (event: RuntimeRunStartedEvent) => void;
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
+  onAssistantMessage?: (event: RuntimeAssistantMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
   onAgentReasoning?: (
     event: RuntimeReasoningEvent & { agentId: string; rootRunId?: string },

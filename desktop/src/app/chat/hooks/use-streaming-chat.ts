@@ -16,6 +16,12 @@ type UseStreamingChatOptions = {
   events: EventRecord[]
 }
 
+export type QueuedUserMessage = {
+  id: string
+  text: string
+  timestamp: number
+}
+
 const createLocalMessageId = () =>
   `local-${crypto.randomUUID()}`
 
@@ -52,6 +58,9 @@ export function useStreamingChat({
 }: UseStreamingChatOptions) {
   const activeConversationId = conversationId
   const [optimisticEvents, setOptimisticEvents] = useState<EventRecord[]>([])
+  const [queuedUserMessages, setQueuedUserMessages] = useState<
+    QueuedUserMessage[]
+  >([])
   const [justSentUserMessageIds, setJustSentUserMessageIds] = useState<string[]>([])
   const justSentTimeoutsRef = useRef(new Map<string, number>())
   const locale = useLocale()
@@ -135,6 +144,15 @@ export function useStreamingChat({
     })
   }, [events, optimisticEvents.length])
 
+  useEffect(() => {
+    if (queuedUserMessages.length === 0) return
+    const persistedIds = new Set(events.map((event) => event._id))
+    setQueuedUserMessages((current) => {
+      const next = current.filter((message) => !persistedIds.has(message.id))
+      return next.length === current.length ? current : next
+    })
+  }, [events, queuedUserMessages.length])
+
   useEffect(
     () => () => {
       for (const timeoutId of justSentTimeoutsRef.current.values()) {
@@ -215,21 +233,33 @@ export function useStreamingChat({
       const optimisticText =
         cleanedText || options.selectedText?.trim() || 'Attached context'
 
-      setOptimisticEvents((current) => [
-        ...current,
-        buildOptimisticUserEvent({
-          id: optimisticUserMessageId,
-          text: optimisticText,
-          timestamp: Date.now(),
-          platform,
-          timezone,
-          locale: requestLocale,
-          ...(options.metadata ? { metadata: options.metadata } : {}),
-          attachments,
-          ...(mode ? { mode } : {}),
-        }),
-      ])
-      markJustSent(optimisticUserMessageId)
+      const messageTimestamp = Date.now()
+      if (mode === 'follow_up') {
+        setQueuedUserMessages((current) => [
+          ...current,
+          {
+            id: optimisticUserMessageId,
+            text: optimisticText,
+            timestamp: messageTimestamp,
+          },
+        ])
+      } else {
+        setOptimisticEvents((current) => [
+          ...current,
+          buildOptimisticUserEvent({
+            id: optimisticUserMessageId,
+            text: optimisticText,
+            timestamp: messageTimestamp,
+            platform,
+            timezone,
+            locale: requestLocale,
+            ...(options.metadata ? { metadata: options.metadata } : {}),
+            attachments,
+            ...(mode ? { mode } : {}),
+          }),
+        ])
+        markJustSent(optimisticUserMessageId)
+      }
       options.onClear()
 
       let deviceId: string
@@ -237,6 +267,9 @@ export function useStreamingChat({
         deviceId = await getOrCreateDeviceId()
       } catch (error) {
         clearOptimisticMessage(optimisticUserMessageId)
+        setQueuedUserMessages((current) =>
+          current.filter((message) => message.id !== optimisticUserMessageId),
+        )
         throw error
       }
 
@@ -257,7 +290,9 @@ export function useStreamingChat({
           attachments,
           userMessageEventId: optimisticUserMessageId,
           onStartFailed: () => {
-            clearOptimisticMessage(optimisticUserMessageId)
+            setQueuedUserMessages((current) =>
+              current.filter((message) => message.id !== optimisticUserMessageId),
+            )
           },
         })
         return
@@ -299,6 +334,7 @@ export function useStreamingChat({
   return {
     liveTasks,
     optimisticEvents,
+    queuedUserMessages,
     justSentUserMessageIds,
     runtimeStatusText,
     streamingText,

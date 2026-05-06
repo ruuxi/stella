@@ -788,6 +788,9 @@ export function useLocalAgentStream({
           if (event.uiVisibility === 'hidden') {
             break
           }
+          if (event.requestId) {
+            pendingRequestIdsRef.current.delete(event.requestId)
+          }
           terminalRunIdsRef.current.delete(event.runId)
           dispatch({
             type: 'run-started',

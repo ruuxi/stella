@@ -1287,57 +1287,67 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       });
       const userMessageTimestamp = Date.now();
       const windowPreviewImageUrl = windowScreenshotAttachment?.url;
-      const userMessageEvent = ensureChatStore().appendEvent({
-        conversationId: payload.conversationId,
-        type: "user_message",
-        ...(payload.userMessageEventId ? { eventId: payload.userMessageEventId } : {}),
-        deviceId: payload.deviceId,
-        timestamp: userMessageTimestamp,
-        payload: prepareStoredLocalChatPayload({
+      const userMessageId = payload.userMessageEventId ?? `local:${crypto.randomUUID()}`;
+      let userMessageEventAppended = false;
+      const appendUserMessageEvent = (timestamp = userMessageTimestamp) => {
+        if (userMessageEventAppended) {
+          return;
+        }
+        userMessageEventAppended = true;
+        const userMessageEvent = ensureChatStore().appendEvent({
+          conversationId: payload.conversationId,
           type: "user_message",
-          payload: {
-            text: visibleUserPrompt,
-            ...(payload.attachments?.length
-              ? { attachments: payload.attachments }
-              : {}),
-            ...(payload.platform ? { platform: payload.platform } : {}),
-            ...(payload.timezone ? { timezone: payload.timezone } : {}),
-            ...(payload.locale ? { locale: payload.locale } : {}),
-            ...(payload.messageMetadata ||
-            windowContextLabel ||
-            windowPreviewImageUrl
-              ? {
-                  metadata: {
-                    ...(payload.messageMetadata ?? {}),
-                    ...(windowContextLabel || windowPreviewImageUrl
-                      ? {
-                          context: {
-                            ...(payload.messageMetadata?.context ?? {}),
-                            ...(windowContextLabel
-                              ? {
-                                  windowLabel: windowContextLabel,
-                                }
-                              : {}),
-                            ...(windowPreviewImageUrl
-                              ? {
-                                  windowPreviewImageUrl,
-                                }
-                              : {}),
-                          },
-                        }
-                      : {}),
-                  },
-                }
-              : {}),
-            ...(payload.mode ? { mode: payload.mode } : {}),
-          },
-          timestamp: userMessageTimestamp,
-          timezone: payload.timezone,
-        }),
-      });
-      notifyLocalChatUpdated(peer, payload.conversationId, userMessageEvent);
+          eventId: userMessageId,
+          deviceId: payload.deviceId,
+          timestamp,
+          payload: prepareStoredLocalChatPayload({
+            type: "user_message",
+            payload: {
+              text: visibleUserPrompt,
+              ...(payload.attachments?.length
+                ? { attachments: payload.attachments }
+                : {}),
+              ...(payload.platform ? { platform: payload.platform } : {}),
+              ...(payload.timezone ? { timezone: payload.timezone } : {}),
+              ...(payload.locale ? { locale: payload.locale } : {}),
+              ...(payload.messageMetadata ||
+              windowContextLabel ||
+              windowPreviewImageUrl
+                ? {
+                    metadata: {
+                      ...(payload.messageMetadata ?? {}),
+                      ...(windowContextLabel || windowPreviewImageUrl
+                        ? {
+                            context: {
+                              ...(payload.messageMetadata?.context ?? {}),
+                              ...(windowContextLabel
+                                ? {
+                                    windowLabel: windowContextLabel,
+                                  }
+                                : {}),
+                              ...(windowPreviewImageUrl
+                                ? {
+                                    windowPreviewImageUrl,
+                                  }
+                                : {}),
+                            },
+                          }
+                        : {}),
+                    },
+                  }
+                : {}),
+              ...(payload.mode ? { mode: payload.mode } : {}),
+            },
+            timestamp,
+            timezone: payload.timezone,
+          }),
+        });
+        notifyLocalChatUpdated(peer, payload.conversationId, userMessageEvent);
+      };
+      if (payload.mode !== "follow_up") {
+        appendUserMessageEvent();
+      }
 
-      const userMessageId = userMessageEvent._id;
       const materializedImageAttachments = await materializeImageAttachments(
         payload.attachments,
       );
@@ -1347,6 +1357,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       let activeRunId = "";
       let syntheticSeq = 1;
       const hiddenSystemRunIds = new Set<string>();
+      const persistedAssistantUserMessageIds = new Set<string>();
       let lastVisibleRunId = "";
       let lastVisibleRequestId = requestId;
       const mergedAttachments = [
@@ -1379,8 +1390,30 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           storageMode: payload.storageMode,
         },
         {
+          onAssistantMessage: (ev) => {
+            if (
+              (ev.agentType ?? AGENT_IDS.ORCHESTRATOR) !==
+              AGENT_IDS.ORCHESTRATOR
+            ) {
+              return;
+            }
+            if (persistedAssistantUserMessageIds.has(ev.userMessageId)) {
+              return;
+            }
+            persistedAssistantUserMessageIds.add(ev.userMessageId);
+            persistAssistantMessage({
+              conversationId: payload.conversationId,
+              text: ev.text,
+              userMessageId: ev.userMessageId,
+              timezone: payload.timezone,
+              responseTarget: ev.responseTarget,
+            });
+          },
           onRunStarted: (ev) => {
             activeRunId = ev.runId;
+            if (ev.userMessageId === userMessageId) {
+              appendUserMessageEvent(Date.now());
+            }
             const isHiddenRun = ev.uiVisibility === "hidden";
             if (isHiddenRun) {
               hiddenSystemRunIds.add(ev.runId);
@@ -1634,8 +1667,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               typeof ev.finalText === "string" ? ev.finalText : "";
             if (
               (ev.agentType ?? AGENT_IDS.ORCHESTRATOR) ===
-              AGENT_IDS.ORCHESTRATOR
+              AGENT_IDS.ORCHESTRATOR &&
+              !persistedAssistantUserMessageIds.has(ev.userMessageId)
             ) {
+              persistedAssistantUserMessageIds.add(ev.userMessageId);
               persistAssistantMessage({
                 conversationId: payload.conversationId,
                 text: finalText,

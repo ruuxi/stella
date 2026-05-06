@@ -18,6 +18,7 @@ import { useEventRows } from "./use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
+import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
 import {
   acknowledgeGoogleWorkspaceAuthRequired,
   getGoogleWorkspaceAuthRequired,
@@ -30,6 +31,7 @@ type Props = {
   streamingText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
+  queuedUserMessages?: QueuedUserMessage[];
   optimisticUserMessageIds?: string[];
   selfModMap?: Record<string, SelfModAppliedData>;
   hasOlderEvents?: boolean;
@@ -52,6 +54,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   streamingText,
   isStreaming,
   pendingUserMessageId,
+  queuedUserMessages,
   optimisticUserMessageIds,
   selfModMap,
   hasOlderEvents,
@@ -104,6 +107,7 @@ export const ConversationEvents = memo(function ConversationEvents({
       isLoadingHistory={isLoadingHistory}
       onOpenAttachment={onOpenAttachment}
       indicator={indicator}
+      queuedUserMessages={queuedUserMessages}
       extraTail={
         <GrowIn animate={true} show={showGwsConnect}>
           <GoogleWorkspaceConnectCard onConnected={handleGwsConnected} />
