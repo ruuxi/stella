@@ -50,6 +50,7 @@ function ChatDisplayTab({
       isStreaming={chat.conversation.isStreaming}
       runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
       pendingUserMessageId={chat.conversation.pendingUserMessageId}
+      queuedUserMessages={chat.conversation.streaming.queuedUserMessages}
       optimisticUserMessageIds={
         chat.conversation.streaming.optimisticUserMessageIds
       }

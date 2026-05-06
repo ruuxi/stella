@@ -5,6 +5,7 @@ import { getCurrentRunningTool } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import { useFooterTasks } from "./hooks/use-footer-tasks";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
+import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
 import type { ChatColumnScroll } from "@/app/chat/chat-column-types";
 import { ConversationEvents } from "./ConversationEvents";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
@@ -35,6 +36,7 @@ type CompactConversationSurfaceProps = {
   isStreaming: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
+  queuedUserMessages?: QueuedUserMessage[];
   optimisticUserMessageIds?: string[];
   selfModMap?: Record<string, SelfModAppliedData>;
   liveTasks?: TaskItem[];
@@ -55,6 +57,7 @@ export function CompactConversationSurface({
   isStreaming,
   runtimeStatusText,
   pendingUserMessageId,
+  queuedUserMessages,
   optimisticUserMessageIds,
   selfModMap,
   liveTasks,
@@ -130,6 +133,7 @@ export function CompactConversationSurface({
               streamingText={streamingText}
               isStreaming={isStreaming}
               pendingUserMessageId={pendingUserMessageId}
+              queuedUserMessages={queuedUserMessages}
               optimisticUserMessageIds={optimisticUserMessageIds}
               selfModMap={selfModMap}
               hasOlderEvents={hasOlderEvents}
