@@ -15,6 +15,7 @@ cpal = "0.15"
 livekit-wakeword = { path = "vendor/livekit-wakeword" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+silero = "=0.2.0"
 
 [profile.release]
 opt-level = 3
