@@ -43,6 +43,8 @@ import {
   IPC_AUTH_CONSUME_PENDING_CALLBACK,
   IPC_AUTH_RUNTIME_REFRESH_COMPLETE,
   IPC_AUTH_RUNTIME_REFRESH_REQUESTED,
+  IPC_AUTH_STORAGE_GET_ITEM,
+  IPC_AUTH_STORAGE_SET_ITEM,
   IPC_BACKUP_GET_STATUS,
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
@@ -767,6 +769,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       token?: string;
       hasConnectedAccount?: boolean;
     }) => ipcRenderer.invoke("auth:setState", payload),
+    getAuthStorageItem: (key: string) =>
+      ipcRenderer.sendSync(IPC_AUTH_STORAGE_GET_ITEM, { key }) as string | null,
+    setAuthStorageItem: (key: string, value: string | null) =>
+      ipcRenderer.invoke(IPC_AUTH_STORAGE_SET_ITEM, { key, value }) as Promise<{
+        ok: boolean;
+      }>,
     completeRuntimeAuthRefresh: (payload: {
       requestId: string;
       authenticated: boolean;

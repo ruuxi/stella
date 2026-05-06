@@ -588,6 +588,11 @@ export type ElectronSystemApi = {
     token?: string;
     hasConnectedAccount?: boolean;
   }) => Promise<{ ok: boolean }>;
+  getAuthStorageItem: (key: string) => string | null;
+  setAuthStorageItem: (
+    key: string,
+    value: string | null,
+  ) => Promise<{ ok: boolean }>;
   completeRuntimeAuthRefresh: (payload: {
     requestId: string;
     authenticated: boolean;

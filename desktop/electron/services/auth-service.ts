@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { app } from 'electron'
+import fs from 'node:fs'
+import path from 'node:path'
 import type { PiRunnerTarget } from '../../../runtime/kernel/lifecycle-targets.js'
 import { readConfiguredConvexSiteUrl } from '../../../runtime/kernel/convex-urls.js'
+import {
+  protectValue,
+  unprotectValue,
+} from '../../../runtime/kernel/shared/protected-storage.js'
 import type {
   HostRuntimeAuthRefreshResult,
   RuntimeAuthRefreshSource,
@@ -9,6 +15,9 @@ import type {
 
 const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/
 const RUNTIME_AUTH_REFRESH_TIMEOUT_MS = 12_000
+const AUTH_STORAGE_SCOPE = 'desktop-better-auth-storage'
+const AUTH_STORAGE_FILE = 'better-auth-storage.json'
+const PLAINTEXT_PREFIX = 'stella-main-plaintext:v1:'
 
 type AuthServiceOptions = {
   authProtocol: string
@@ -27,6 +36,7 @@ export class AuthService {
   private hostAuthAuthenticated = false
   private hostHasConnectedAccount = false
   private hostAuthToken: string | null = null
+  private authStorageCache: Record<string, string | null> | null = null
   private runtimeAuthRefreshPromise: Promise<HostRuntimeAuthRefreshResult> | null = null
   private runtimeAuthRefreshResolve:
     | ((result: HostRuntimeAuthRefreshResult) => void)
@@ -35,6 +45,96 @@ export class AuthService {
   private runtimeAuthRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private readonly options: AuthServiceOptions) {}
+
+  private getAuthStoragePath() {
+    return path.join(app.getPath('userData'), AUTH_STORAGE_FILE)
+  }
+
+  private encodeAuthStorageValue(value: string): string {
+    try {
+      return protectValue(AUTH_STORAGE_SCOPE, value)
+    } catch (error) {
+      console.warn(
+        '[auth] OS protected storage unavailable for Better Auth session; using main-process storage fallback.',
+        error,
+      )
+      return `${PLAINTEXT_PREFIX}${Buffer.from(value, 'utf8').toString('base64url')}`
+    }
+  }
+
+  private decodeAuthStorageValue(value: string): string | null {
+    if (value.startsWith(PLAINTEXT_PREFIX)) {
+      try {
+        return Buffer.from(
+          value.slice(PLAINTEXT_PREFIX.length),
+          'base64url',
+        ).toString('utf8')
+      } catch {
+        return null
+      }
+    }
+    return unprotectValue(AUTH_STORAGE_SCOPE, value)
+  }
+
+  private readAuthStorage(): Record<string, string | null> {
+    if (this.authStorageCache) {
+      return this.authStorageCache
+    }
+    try {
+      const raw = fs.readFileSync(this.getAuthStoragePath(), 'utf8')
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      const next: Record<string, string | null> = {}
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value !== 'string') {
+          continue
+        }
+        next[key] = this.decodeAuthStorageValue(value)
+      }
+      this.authStorageCache = next
+      return next
+    } catch {
+      this.authStorageCache = {}
+      return this.authStorageCache
+    }
+  }
+
+  private writeAuthStorage(values: Record<string, string | null>) {
+    const encoded: Record<string, string> = {}
+    for (const [key, value] of Object.entries(values)) {
+      if (typeof value === 'string') {
+        encoded[key] = this.encodeAuthStorageValue(value)
+      }
+    }
+    fs.mkdirSync(path.dirname(this.getAuthStoragePath()), { recursive: true })
+    fs.writeFileSync(
+      this.getAuthStoragePath(),
+      JSON.stringify(encoded, null, 2),
+      { mode: 0o600 },
+    )
+    this.authStorageCache = { ...values }
+  }
+
+  getAuthStorageItem(key: string): string | null {
+    const normalizedKey = typeof key === 'string' ? key.trim() : ''
+    if (!normalizedKey) {
+      return null
+    }
+    return this.readAuthStorage()[normalizedKey] ?? null
+  }
+
+  setAuthStorageItem(key: string, value: string | null) {
+    const normalizedKey = typeof key === 'string' ? key.trim() : ''
+    if (!normalizedKey) {
+      return
+    }
+    const storage = { ...this.readAuthStorage() }
+    if (typeof value === 'string') {
+      storage[normalizedKey] = value
+    } else {
+      delete storage[normalizedKey]
+    }
+    this.writeAuthStorage(storage)
+  }
 
   private getRuntimeAuthState(): HostRuntimeAuthRefreshResult {
     return {
