@@ -1922,10 +1922,19 @@ pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {
         return None;
     }
 
+    let mut env = dugite_launch_env(dir);
+    if let Ok(exe) = std::env::current_exe() {
+        env.insert(
+            "STELLA_LAUNCHER_PROTECTED_STORAGE_BIN".into(),
+            exe.to_string_lossy().to_string(),
+        );
+    }
+    env.insert("STELLA_LAUNCHER_MANAGED_RUNTIME".into(), "1".into());
+
     Some(LaunchInfo {
         command: vec!["bun".into(), "run".into(), "electron:dev".into()],
         cwd: dir.clone(),
-        env: dugite_launch_env(dir),
+        env,
     })
 }
 

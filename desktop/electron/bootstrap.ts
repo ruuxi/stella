@@ -1,6 +1,6 @@
-import { app, crashReporter } from "electron";
-import path from "path";
-import { fileURLToPath } from "url";
+import { app, crashReporter } from 'electron'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import {
   AUTH_PROTOCOL,
   HARD_RESET_MUTABLE_HOME_PATHS,
@@ -8,41 +8,48 @@ import {
   STELLA_APP_NAME,
   STELLA_SESSION_PARTITION,
   STELLA_WINDOWS_APP_USER_MODEL_ID,
-} from "./bootstrap/constants.js";
-import { createBootstrapContext } from "./bootstrap/context.js";
+} from './bootstrap/constants.js'
+import { createBootstrapContext } from './bootstrap/context.js'
 import {
   initializeBootstrapSingleInstance,
   registerBootstrapLifecycle,
-} from "./bootstrap/lifecycle.js";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const stellaRoot = path.resolve(__dirname, "..", "..", "..", "..");
+} from './bootstrap/lifecycle.js'
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const stellaRoot = path.resolve(__dirname, '..', '..', '..', '..')
 
-const isDev = process.env.NODE_ENV === "development";
-
+const isDev = process.env.NODE_ENV === 'development'
 const installDevBrokenPipeGuards = () => {
   if (!isDev) {
-    return;
+    return
   }
 
   const swallowBrokenPipe = (_error: Error & { code?: string }) => {
     // Dev-mode Electron inherits stdio from the runner process. If that parent
     // pipe disappears, logging should not crash the app.
-  };
+  }
 
-  process.stdout.on("error", swallowBrokenPipe);
-  process.stderr.on("error", swallowBrokenPipe);
-};
+  process.stdout.on('error', swallowBrokenPipe)
+  process.stderr.on('error', swallowBrokenPipe)
+}
 
 const configureDevUserDataPath = () => {
   if (!isDev) {
-    return;
+    return
   }
 
-  const devUserDataPath = path.join(stellaRoot, "state", "electron-user-data");
-  app.setPath("userData", devUserDataPath);
-  app.setPath("sessionData", path.join(devUserDataPath, "session-data"));
-};
+  const devUserDataPath = path.join(stellaRoot, 'state', 'electron-user-data')
+  app.setPath('userData', devUserDataPath)
+  app.setPath('sessionData', path.join(devUserDataPath, 'session-data'))
+}
+
+const configureDevKeychainBehavior = () => {
+  if (!isDev || process.platform !== 'darwin') {
+    return
+  }
+
+  app.commandLine.appendSwitch('use-mock-keychain')
+}
 
 const startLocalCrashReporter = () => {
   try {
@@ -50,21 +57,22 @@ const startLocalCrashReporter = () => {
       uploadToServer: false,
       compress: true,
       globalExtra: {
-        app: "stella",
+        app: 'stella',
       },
-    });
+    })
   } catch {
     // Crash reporting is best-effort diagnostics only.
   }
-};
+}
 
 export const bootstrapMainProcess = () => {
-  app.setName(STELLA_APP_NAME);
-  installDevBrokenPipeGuards();
-  configureDevUserDataPath();
-  startLocalCrashReporter();
-  if (process.platform === "win32") {
-    app.setAppUserModelId(STELLA_WINDOWS_APP_USER_MODEL_ID);
+  app.setName(STELLA_APP_NAME)
+  installDevBrokenPipeGuards()
+  configureDevKeychainBehavior()
+  configureDevUserDataPath()
+  startLocalCrashReporter()
+  if (process.platform === 'win32') {
+    app.setAppUserModelId(STELLA_WINDOWS_APP_USER_MODEL_ID)
   }
 
   const context = createBootstrapContext({
@@ -75,11 +83,11 @@ export const bootstrapMainProcess = () => {
     isDev,
     sessionPartition: STELLA_SESSION_PARTITION,
     startupStageDelayMs: STARTUP_STAGE_DELAY_MS,
-  });
+  })
 
   if (!initializeBootstrapSingleInstance(context)) {
-    return;
+    return
   }
 
-  registerBootstrapLifecycle(context);
-};
+  registerBootstrapLifecycle(context)
+}

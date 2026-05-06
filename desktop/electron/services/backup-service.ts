@@ -12,6 +12,7 @@ import {
   writePrivateFile,
 } from "../../../runtime/kernel/shared/private-fs.js";
 import {
+  deleteProtectedValue,
   protectValue,
   unprotectValue,
 } from "../../../runtime/kernel/shared/protected-storage.js";
@@ -1218,6 +1219,7 @@ export class BackupService {
     const existing = await readJsonFile<BackupConfig>(
       this.getBackupConfigPath(stellaHomePath),
     );
+    const previousWrappedKey = existing?.wrappedKey;
     if (
       existing?.keyFingerprint
       && existing.keyFingerprint !== nextConfig.keyFingerprint
@@ -1225,6 +1227,9 @@ export class BackupService {
       await this.resetLocalBackupCache(stellaHomePath);
     }
     await this.persistBackupConfig(stellaHomePath, nextConfig);
+    if (previousWrappedKey && previousWrappedKey !== wrappedKey) {
+      deleteProtectedValue(ENCRYPTION_SCOPE, previousWrappedKey);
+    }
     return {
       key,
       fingerprint,

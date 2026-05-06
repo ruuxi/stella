@@ -4,6 +4,7 @@
 mod bootstrap;
 mod commands;
 mod disk;
+mod protected_storage;
 mod setup;
 mod shell;
 mod state;
@@ -151,6 +152,13 @@ pub async fn check_for_launcher_update(
 }
 
 fn main() {
+    if protected_storage::maybe_handle_cli() {
+        return;
+    }
+    if std::env::args().any(|arg| arg == "--stella-protected-storage") {
+        std::process::exit(1);
+    }
+
     if bootstrap::maybe_handle_uninstall() {
         return;
     }

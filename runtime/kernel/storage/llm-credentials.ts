@@ -1,7 +1,14 @@
 import fs from "fs";
 import path from "path";
-import { protectValue, unprotectValue } from "../shared/protected-storage.js";
-import { ensurePrivateDirSync, writePrivateFileSync } from "../shared/private-fs.js";
+import {
+  deleteProtectedValue,
+  protectValue,
+  unprotectValue,
+} from "../shared/protected-storage.js";
+import {
+  ensurePrivateDirSync,
+  writePrivateFileSync,
+} from "../shared/private-fs.js";
 
 const LLM_CREDENTIALS_FILE = "llm_credentials.json";
 const LLM_CREDENTIAL_SCOPE_PREFIX = "llm-credential";
@@ -41,7 +48,12 @@ const readCredentialFile = (stellaRoot: string): StoredLlmCredentialFile => {
   try {
     const raw = fs.readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw) as StoredLlmCredentialFile;
-    if (parsed && parsed.version === 1 && parsed.credentials && typeof parsed.credentials === "object") {
+    if (
+      parsed &&
+      parsed.version === 1 &&
+      parsed.credentials &&
+      typeof parsed.credentials === "object"
+    ) {
       return parsed;
     }
   } catch {
@@ -54,7 +66,10 @@ const readCredentialFile = (stellaRoot: string): StoredLlmCredentialFile => {
   };
 };
 
-const writeCredentialFile = (stellaRoot: string, payload: StoredLlmCredentialFile): void => {
+const writeCredentialFile = (
+  stellaRoot: string,
+  payload: StoredLlmCredentialFile,
+): void => {
   const filePath = getLlmCredentialStorePath(stellaRoot);
   ensurePrivateDirSync(path.dirname(filePath));
   writePrivateFileSync(filePath, JSON.stringify(payload, null, 2));
@@ -85,7 +100,10 @@ export const getLocalLlmCredential = (
     return null;
   }
 
-  return unprotectValue(credentialScope(normalizedProvider), record.valueProtected);
+  return unprotectValue(
+    credentialScope(normalizedProvider),
+    record.valueProtected,
+  );
 };
 
 export const saveLocalLlmCredential = (
@@ -105,14 +123,18 @@ export const saveLocalLlmCredential = (
   const file = readCredentialFile(stellaRoot);
   const now = Date.now();
   const existing = file.credentials[provider];
+  const valueProtected = protectValue(credentialScope(provider), plaintext);
   file.credentials[provider] = {
     provider,
     label,
-    valueProtected: protectValue(credentialScope(provider), plaintext),
+    valueProtected,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
   writeCredentialFile(stellaRoot, file);
+  if (existing?.valueProtected && existing.valueProtected !== valueProtected) {
+    deleteProtectedValue(credentialScope(provider), existing.valueProtected);
+  }
 
   return {
     provider,
@@ -132,11 +154,16 @@ export const deleteLocalLlmCredential = (
   }
 
   const file = readCredentialFile(stellaRoot);
-  if (!file.credentials[normalizedProvider]) {
+  const existing = file.credentials[normalizedProvider];
+  if (!existing) {
     return { removed: false };
   }
 
   delete file.credentials[normalizedProvider];
   writeCredentialFile(stellaRoot, file);
+  deleteProtectedValue(
+    credentialScope(normalizedProvider),
+    existing.valueProtected,
+  );
   return { removed: true };
 };

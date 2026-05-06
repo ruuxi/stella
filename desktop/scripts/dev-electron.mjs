@@ -25,7 +25,10 @@ const desktopDir = resolve(scriptDir, '..')
 const repoRootDir = resolve(desktopDir, '..')
 let electronBinary = require('electron')
 const watchedDir = path.join(desktopDir, 'dist-electron')
-const runtimeReloadStateFile = path.join(repoRootDir, '.stella-runtime-reload-state.json')
+const runtimeReloadStateFile = path.join(
+  repoRootDir,
+  '.stella-runtime-reload-state.json',
+)
 const devRuntimeRoot = path.join(desktopDir, DEV_MACOS_RUNTIME_DIR_NAME)
 const prebuiltDisclaimBinary = path.join(
   desktopDir,
@@ -216,7 +219,9 @@ if (process.platform === 'darwin') {
         timeout: 15_000,
       })
     } catch {
-      console.warn('[electron-main] Failed to compile disclaim-spawn; macOS TCC prompts may not appear.')
+      console.warn(
+        '[electron-main] Failed to compile disclaim-spawn; macOS TCC prompts may not appear.',
+      )
       disclaimBinary = null
     }
   } else {
@@ -278,9 +283,9 @@ const listStaleDevAppPids = () => {
         for (const candidateCommand of candidateCommands) {
           const expectedCommandPrefix = `${candidateCommand} `
           if (
-            command === candidateCommand
-            || command === `${candidateCommand} .`
-            || command.startsWith(expectedCommandPrefix)
+            command === candidateCommand ||
+            command === `${candidateCommand} .` ||
+            command.startsWith(expectedCommandPrefix)
           ) {
             return [pid]
           }
@@ -367,7 +372,9 @@ const startApp = () => {
     env: {
       ...process.env,
       NODE_ENV: 'development',
-      STELLA_DEV_INSECURE_PROTECTED_STORAGE: '1',
+      ...(process.env.STELLA_LAUNCHER_PROTECTED_STORAGE_BIN
+        ? {}
+        : { STELLA_DEV_INSECURE_PROTECTED_STORAGE: '1' }),
     },
     stdio: 'inherit',
     detached: process.platform !== 'win32',

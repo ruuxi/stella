@@ -2,13 +2,11 @@ import { randomUUID } from 'node:crypto'
 import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import {
-  getCookie,
-  getSetCookie,
-} from '@convex-dev/better-auth/client/plugins'
+import { getCookie, getSetCookie } from '@convex-dev/better-auth/client/plugins'
 import type { PiRunnerTarget } from '../../../runtime/kernel/lifecycle-targets.js'
 import { readConfiguredConvexSiteUrl } from '../../../runtime/kernel/convex-urls.js'
 import {
+  deleteProtectedValue,
   protectValue,
   unprotectValue,
 } from '../../../runtime/kernel/shared/protected-storage.js'
@@ -53,7 +51,8 @@ export class AuthService {
   private hostHasConnectedAccount = false
   private hostAuthToken: string | null = null
   private authStorageCache: Record<string, string | null> | null = null
-  private runtimeAuthRefreshPromise: Promise<HostRuntimeAuthRefreshResult> | null = null
+  private runtimeAuthRefreshPromise: Promise<HostRuntimeAuthRefreshResult> | null =
+    null
   private runtimeAuthRefreshResolve:
     | ((result: HostRuntimeAuthRefreshResult) => void)
     | null = null
@@ -70,6 +69,9 @@ export class AuthService {
     try {
       return protectValue(AUTH_STORAGE_SCOPE, value)
     } catch (error) {
+      if (process.env.STELLA_LAUNCHER_PROTECTED_STORAGE_BIN) {
+        throw error
+      }
       console.warn(
         '[auth] OS protected storage unavailable for Better Auth session; using main-process storage fallback.',
         error,
@@ -114,11 +116,32 @@ export class AuthService {
     }
   }
 
+  private readEncodedAuthStorage(): Record<string, string> {
+    try {
+      const raw = fs.readFileSync(this.getAuthStoragePath(), 'utf8')
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      const encoded: Record<string, string> = {}
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === 'string') {
+          encoded[key] = value
+        }
+      }
+      return encoded
+    } catch {
+      return {}
+    }
+  }
+
   private writeAuthStorage(values: Record<string, string | null>) {
+    const previousEncoded = this.readEncodedAuthStorage()
     const encoded: Record<string, string> = {}
     for (const [key, value] of Object.entries(values)) {
       if (typeof value === 'string') {
-        encoded[key] = this.encodeAuthStorageValue(value)
+        const previousValue = previousEncoded[key]
+        encoded[key] =
+          previousValue && this.decodeAuthStorageValue(previousValue) === value
+            ? previousValue
+            : this.encodeAuthStorageValue(value)
       }
     }
     fs.mkdirSync(path.dirname(this.getAuthStoragePath()), { recursive: true })
@@ -127,6 +150,12 @@ export class AuthService {
       JSON.stringify(encoded, null, 2),
       { mode: 0o600 },
     )
+    const retained = new Set(Object.values(encoded))
+    for (const previousValue of Object.values(previousEncoded)) {
+      if (!retained.has(previousValue)) {
+        deleteProtectedValue(AUTH_STORAGE_SCOPE, previousValue)
+      }
+    }
     this.authStorageCache = { ...values }
   }
 
@@ -171,7 +200,8 @@ export class AuthService {
   }
 
   private applyAuthResponseCookies(response: Response) {
-    const previous = this.getAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY) ?? undefined
+    const previous =
+      this.getAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY) ?? undefined
     let nextCookie = previous
     const betterAuthCookie = response.headers.get('set-better-auth-cookie')
     if (betterAuthCookie) {
@@ -186,7 +216,8 @@ export class AuthService {
   }
 
   private async authFetch(pathname: string, init: RequestInit = {}) {
-    const siteUrl = this.getConvexSiteUrl() ?? this.getBetterAuthIssuerUrlForStore()
+    const siteUrl =
+      this.getConvexSiteUrl() ?? this.getBetterAuthIssuerUrlForStore()
     if (!siteUrl) {
       throw new Error('Convex site URL is not configured.')
     }
@@ -211,7 +242,11 @@ export class AuthService {
       method: 'GET',
       headers: { accept: 'application/json' },
     })
-    if (response.status === 401 || response.status === 403 || response.status === 404) {
+    if (
+      response.status === 401 ||
+      response.status === 403 ||
+      response.status === 404
+    ) {
       this.setAuthStorageItem(BETTER_AUTH_SESSION_DATA_STORAGE_KEY, null)
       return null
     }
@@ -288,26 +323,33 @@ export class AuthService {
     if (!token || !AUTH_CALLBACK_TOKEN_PATTERN.test(token)) {
       throw new Error('Invalid auth callback token.')
     }
-    const response = await this.authFetch('/cross-domain/one-time-token/verify', {
-      method: 'POST',
-      headers: {
-        accept: 'application/json',
-        'content-type': 'application/json',
+    const response = await this.authFetch(
+      '/cross-domain/one-time-token/verify',
+      {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ token }),
       },
-      body: JSON.stringify({ token }),
-    })
+    )
     if (!response.ok) {
-      throw new Error(`Auth callback verification failed with HTTP ${response.status}.`)
+      throw new Error(
+        `Auth callback verification failed with HTTP ${response.status}.`,
+      )
     }
     return { ok: true }
   }
 
   applySessionCookie(sessionCookie: string) {
-    const normalized = typeof sessionCookie === 'string' ? sessionCookie.trim() : ''
+    const normalized =
+      typeof sessionCookie === 'string' ? sessionCookie.trim() : ''
     if (!normalized) {
       throw new Error('Missing session cookie.')
     }
-    const previous = this.getAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY) ?? undefined
+    const previous =
+      this.getAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY) ?? undefined
     this.setAuthStorageItem(
       BETTER_AUTH_COOKIE_STORAGE_KEY,
       getSetCookie(normalized, previous),
@@ -333,7 +375,8 @@ export class AuthService {
 
   private getRuntimeAuthState(): HostRuntimeAuthRefreshResult {
     return {
-      authenticated: this.hostAuthAuthenticated && Boolean(this.hostAuthToken?.trim()),
+      authenticated:
+        this.hostAuthAuthenticated && Boolean(this.hostAuthToken?.trim()),
       token: this.hostAuthToken?.trim() || null,
       hasConnectedAccount: this.hostHasConnectedAccount,
     }
@@ -353,13 +396,18 @@ export class AuthService {
 
   private getDeepLinkUrl(argv: string[]) {
     const protocol = this.options.authProtocol.toLowerCase()
-    return argv.find((arg) => arg.toLowerCase().startsWith(`${protocol}://`)) || null
+    return (
+      argv.find((arg) => arg.toLowerCase().startsWith(`${protocol}://`)) || null
+    )
   }
 
   private isTrustedAuthCallbackUrl(value: string) {
     try {
       const parsed = new URL(value)
-      if (parsed.protocol.toLowerCase() !== `${this.options.authProtocol.toLowerCase()}:`) {
+      if (
+        parsed.protocol.toLowerCase() !==
+        `${this.options.authProtocol.toLowerCase()}:`
+      ) {
         return false
       }
       const host = parsed.hostname.trim().toLowerCase()
@@ -367,7 +415,11 @@ export class AuthService {
         return false
       }
       const normalizedPath = parsed.pathname.replace(/\/+$/g, '') || '/'
-      if (normalizedPath !== '/' && normalizedPath !== '/auth' && normalizedPath !== '/callback') {
+      if (
+        normalizedPath !== '/' &&
+        normalizedPath !== '/auth' &&
+        normalizedPath !== '/callback'
+      ) {
         return false
       }
       const token = parsed.searchParams.get('ott')
@@ -387,7 +439,11 @@ export class AuthService {
 
   registerAuthProtocol() {
     if (this.options.isDev) {
-      app.setAsDefaultProtocolClient(this.options.authProtocol, process.execPath, [this.options.projectDir])
+      app.setAsDefaultProtocolClient(
+        this.options.authProtocol,
+        process.execPath,
+        [this.options.projectDir],
+      )
       return
     }
     app.setAsDefaultProtocolClient(this.options.authProtocol)
@@ -496,7 +552,9 @@ export class AuthService {
 
   configurePiRuntime(config: { convexUrl: string; convexSiteUrl?: string }) {
     this.pendingConvexUrl = config.convexUrl
-    this.pendingConvexSiteUrl = readConfiguredConvexSiteUrl(config.convexSiteUrl)
+    this.pendingConvexSiteUrl = readConfiguredConvexSiteUrl(
+      config.convexSiteUrl,
+    )
     const runner = this.options.runnerTarget.getRunner()
     runner?.setConvexUrl(config.convexUrl)
     runner?.setConvexSiteUrl(this.getConvexSiteUrl())
@@ -543,7 +601,10 @@ export class AuthService {
 
   async requestRuntimeAuthRefresh(
     source: RuntimeAuthRefreshSource,
-    broadcastRequest: (payload: { requestId: string; source: RuntimeAuthRefreshSource }) => void,
+    broadcastRequest: (payload: {
+      requestId: string
+      source: RuntimeAuthRefreshSource
+    }) => void,
   ): Promise<HostRuntimeAuthRefreshResult> {
     if (this.runtimeAuthRefreshPromise) {
       return await this.runtimeAuthRefreshPromise
@@ -551,21 +612,26 @@ export class AuthService {
 
     const requestId = randomUUID()
     this.runtimeAuthRefreshRequestId = requestId
-    this.runtimeAuthRefreshPromise = new Promise<HostRuntimeAuthRefreshResult>((resolve) => {
-      this.runtimeAuthRefreshResolve = resolve
-      this.runtimeAuthRefreshTimer = setTimeout(() => {
-        console.warn(
-          `[auth] Runtime auth refresh timed out after ${source} request.`,
-        )
-        this.finishRuntimeAuthRefresh(this.getRuntimeAuthState())
-      }, RUNTIME_AUTH_REFRESH_TIMEOUT_MS)
-    })
+    this.runtimeAuthRefreshPromise = new Promise<HostRuntimeAuthRefreshResult>(
+      (resolve) => {
+        this.runtimeAuthRefreshResolve = resolve
+        this.runtimeAuthRefreshTimer = setTimeout(() => {
+          console.warn(
+            `[auth] Runtime auth refresh timed out after ${source} request.`,
+          )
+          this.finishRuntimeAuthRefresh(this.getRuntimeAuthState())
+        }, RUNTIME_AUTH_REFRESH_TIMEOUT_MS)
+      },
+    )
     const pendingRefresh = this.runtimeAuthRefreshPromise
 
     try {
       broadcastRequest({ requestId, source })
     } catch (error) {
-      console.warn('[auth] Failed to broadcast runtime auth refresh request.', error)
+      console.warn(
+        '[auth] Failed to broadcast runtime auth refresh request.',
+        error,
+      )
       this.finishRuntimeAuthRefresh(this.getRuntimeAuthState())
     }
 
