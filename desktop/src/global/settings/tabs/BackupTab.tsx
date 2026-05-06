@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
+import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import { Button } from "@/ui/button";
 import { Select } from "@/ui/select";
 import { showToast } from "@/ui/toast";
@@ -21,7 +22,7 @@ function formatBackupTimestamp(timestamp?: number) {
 export function BackupTab() {
   const { hasConnectedAccount } = useAuthSessionState();
   const [billingNowMs] = useState(() => Date.now());
-  const billingStatus = useQuery(api.billing.getSubscriptionStatus, {
+  const billingStatus = useConvexOneShot(api.billing.getSubscriptionStatus, {
     now: billingNowMs,
   });
   const setRemoteSyncMode = useMutation(api.data.preferences.setSyncMode);
