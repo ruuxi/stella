@@ -2,7 +2,10 @@ import { registerBootstrapIpcHandlers } from "./ipc.js";
 import { createBootstrapResetFlows } from "./resets.js";
 import { initializeStellaHostRunner } from "./host-runner.js";
 import { type BootstrapContext } from "./context.js";
-import { initializeBootstrapAppShell } from "./app-shell.js";
+import {
+  launchBootstrapAppShell,
+  prepareBootstrapAppShell,
+} from "./app-shell.js";
 import { startStellaBrowserBridge } from "./aux-runtime.js";
 import { createManagedResource } from "../managed-resource.js";
 
@@ -16,13 +19,14 @@ export const initializeBootstrapApplication = async (
   services.authService.registerAuthProtocol();
   services.authService.captureInitialAuthUrl(process.argv);
 
-  await initializeBootstrapAppShell(context);
+  await prepareBootstrapAppShell(context);
   registerBootstrapIpcHandlers(
     context,
     createBootstrapResetFlows(context, {
       initializeStellaHostRunner: () => initializeStellaHostRunner(context),
     }),
   );
+  launchBootstrapAppShell(context);
 
   startStellaBrowserBridge(context);
   createManagedResource<null>({

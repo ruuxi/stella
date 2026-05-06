@@ -14,6 +14,7 @@
   },
   "include": [
     "electron/preload.ts",
+    "electron/store-web-preload.ts",
     "../runtime/contracts/**/*",
     "../runtime/protocol/**/*",
     "src/shared/contracts/**/*"

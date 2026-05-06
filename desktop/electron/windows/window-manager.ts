@@ -2,12 +2,19 @@ import { app, BrowserWindow, screen } from 'electron'
 import { MINI_SHELL_SIZE } from '../layout-constants.js'
 import { FullWindowController } from './full-window.js'
 import { MiniWindowController } from './mini-window.js'
+import {
+  StoreWebViewController,
+  type StoreWebViewParams,
+} from './store-web-view.js'
 import type { UiState } from '../types.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
 
 type WindowManagerOptions = {
   electronDir: string
   preloadPath: string
+  storeWebPreloadPath: string
+  getStoreWebUrl: (params?: StoreWebViewParams) => string
+  isAllowedStoreWebUrl: (url: string) => boolean
   sessionPartition: string
   isDev: boolean
   getDevServerUrl: () => string
@@ -106,12 +113,19 @@ export class WindowManager {
   private miniShouldRestoreExternalApp = false
   private miniAlwaysOnTop = true
   private miniIdleDestroyTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly storeWebViewController: StoreWebViewController
   private readonly transientReloadStateByMode = new Map<
     ShellWindowMode,
     TransientReloadState
   >()
 
   constructor(private readonly options: WindowManagerOptions) {
+    this.storeWebViewController = new StoreWebViewController({
+      preloadPath: options.storeWebPreloadPath,
+      sessionPartition: `${options.sessionPartition}:store`,
+      getStoreUrl: options.getStoreWebUrl,
+      isAllowedStoreUrl: options.isAllowedStoreWebUrl,
+    })
     this.fullWindowController = new FullWindowController({
       electronDir: options.electronDir,
       preloadPath: options.preloadPath,
@@ -281,6 +295,7 @@ export class WindowManager {
   createFullWindow() {
     const window = this.fullWindowController.create()
     this.observeShellWindow(window, 'full')
+    this.storeWebViewController.attachResizeTracking(window)
     return window
   }
 
@@ -305,6 +320,31 @@ export class WindowManager {
 
   getAllWindows() {
     return BrowserWindow.getAllWindows()
+  }
+
+  showStoreWebView(params?: StoreWebViewParams) {
+    const fullWindow = this.getFullWindow() ?? this.createFullWindow()
+    this.storeWebViewController.show(fullWindow, params)
+  }
+
+  hideStoreWebView() {
+    this.storeWebViewController.hide()
+  }
+
+  goBackInStoreWebView() {
+    this.storeWebViewController.goBack()
+  }
+
+  goForwardInStoreWebView() {
+    this.storeWebViewController.goForward()
+  }
+
+  reloadStoreWebView() {
+    this.storeWebViewController.reload()
+  }
+
+  isStoreWebViewWebContents(id: number) {
+    return this.storeWebViewController.hasWebContentsId(id)
   }
 
   isCompactMode() {

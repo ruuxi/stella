@@ -399,77 +399,14 @@ body[data-display-expanding="true"] .shell-topbar-center {
   pointer-events: auto;
 }
 
-.shell-topbar-store-tabs {
-  position: relative;
+.shell-topbar-store-controls {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  /* Extra horizontal padding gives the leftmost / rightmost tab pills
-     breathing room from the container's rounded bottom corners so the
-     active indicator never visually clips against the curve. */
-  padding: 6px 12px;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  border-top: none;
-}
-
-.shell-topbar-store-tab-indicator {
-  position: absolute;
-  left: 0;
-  top: 7px;
-  bottom: 7px;
-  width: 0;
-  border-radius: 999px;
-  background: var(--background);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-  pointer-events: none;
-  opacity: 0;
-  transform: translateX(0);
-}
-
-.shell-topbar-store-tab-indicator[data-visible="true"] {
-  opacity: 1;
-}
-
-.shell-topbar-store-tab-indicator[data-animated="true"] {
-  transition:
-    transform 240ms cubic-bezier(0.32, 0.72, 0.16, 1),
-    width 240ms cubic-bezier(0.32, 0.72, 0.16, 1);
-}
-
-.shell-topbar-store-tab {
-  appearance: none;
-  position: relative;
-  z-index: 1;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  font-family: inherit;
-  padding: 4px 14px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: color 160ms ease;
-  white-space: nowrap;
-  line-height: 1.3;
-}
-
-.shell-topbar-store-tab:hover {
-  color: var(--text-strong);
-}
-
-.shell-topbar-store-tab:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--foreground) 30%, transparent);
-  outline-offset: 1px;
-}
-
-.shell-topbar-store-tab[data-active] {
-  color: var(--text-strong);
 }
 
 .shell-topbar-tablist {
@@ -1240,21 +1177,9 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
     display: none;
   }
 
-  .shell-topbar-store-tabs {
-    gap: 3px;
-    padding: 5px 10px;
-  }
-
-  .shell-topbar-store-tab-indicator {
-    top: 6px;
-    bottom: 6px;
-  }
-
-  .shell-topbar-store-tab {
-    font-size: 10.5px;
-    padding: 3px 10px;
-    border-radius: 999px;
-    line-height: 1.2;
+  .shell-topbar-store-controls {
+    gap: 2px;
+    padding: 3px;
   }
 
   .shell-topbar[data-platform="mac"] .shell-topbar-left {

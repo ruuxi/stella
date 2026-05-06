@@ -27,6 +27,14 @@ const BETTER_AUTH_SESSION_DATA_STORAGE_KEY = 'better-auth_session_data'
 const AUTH_BASE_PATH = '/api/auth'
 const DESKTOP_AUTH_ORIGIN = 'http://127.0.0.1:57314'
 
+const decodeBase64UrlJson = (value: string): unknown => {
+  try {
+    return JSON.parse(Buffer.from(value, 'base64url').toString('utf8'))
+  } catch {
+    return null
+  }
+}
+
 type AuthServiceOptions = {
   authProtocol: string
   isDev: boolean
@@ -178,7 +186,7 @@ export class AuthService {
   }
 
   private async authFetch(pathname: string, init: RequestInit = {}) {
-    const siteUrl = this.getConvexSiteUrl()
+    const siteUrl = this.getConvexSiteUrl() ?? this.getBetterAuthIssuerUrlForStore()
     if (!siteUrl) {
       throw new Error('Convex site URL is not configured.')
     }
@@ -508,6 +516,29 @@ export class AuthService {
 
   async getAuthToken(): Promise<string | null> {
     return this.hostAuthToken?.trim() || null
+  }
+
+  getBetterAuthIssuerUrlForStore(): string | null {
+    const storedCookie = this.getAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY)
+    if (!storedCookie) return null
+    try {
+      const parsed = JSON.parse(storedCookie) as Record<
+        string,
+        { value?: unknown }
+      >
+      for (const [key, entry] of Object.entries(parsed)) {
+        if (!key.includes('convex_jwt') || typeof entry?.value !== 'string') {
+          continue
+        }
+        const payload = decodeBase64UrlJson(entry.value.split('.')[1] ?? '')
+        const issuer = (payload as { iss?: unknown } | null)?.iss
+        if (typeof issuer !== 'string' || !issuer.trim()) continue
+        return readConfiguredConvexSiteUrl(issuer)
+      }
+    } catch {
+      return null
+    }
+    return null
   }
 
   async requestRuntimeAuthRefresh(
