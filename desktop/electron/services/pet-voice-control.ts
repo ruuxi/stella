@@ -9,6 +9,25 @@ type PetVoiceControlDeps = {
   windowManager: WindowManager;
 };
 
+let petOpenedByCurrentVoiceSession = false;
+
+const broadcastPetOpen = (windowManager: WindowManager, open: boolean) => {
+  for (const window of windowManager.getAllWindows()) {
+    if (window.isDestroyed()) continue;
+    window.webContents.send(IPC_PET_SET_OPEN, open);
+  }
+};
+
+export const cleanupPetVoiceSession = ({
+  getPetController,
+  windowManager,
+}: Pick<PetVoiceControlDeps, "getPetController" | "windowManager">) => {
+  if (!petOpenedByCurrentVoiceSession) return;
+  petOpenedByCurrentVoiceSession = false;
+  getPetController()?.setOpen(false);
+  broadcastPetOpen(windowManager, false);
+};
+
 /**
  * Single source of truth for "go to voice mode now".
  *
@@ -32,13 +51,13 @@ export const togglePetVoice = (deps: PetVoiceControlDeps) => {
   // arriving).
   const pet = getPetController();
   if (pet) {
+    petOpenedByCurrentVoiceSession = !pet.isVisible();
     pet.setOpen(true);
     // Broadcast so any other window's `pet:setOpen` subscribers
     // (e.g. the settings page toggle button) see the new state.
-    for (const window of windowManager.getAllWindows()) {
-      if (window.isDestroyed()) continue;
-      window.webContents.send(IPC_PET_SET_OPEN, true);
-    }
+    broadcastPetOpen(windowManager, true);
+  } else {
+    petOpenedByCurrentVoiceSession = false;
   }
 
   ui.activateVoiceRtc(ui.state.conversationId);

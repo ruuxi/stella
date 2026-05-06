@@ -6,8 +6,10 @@
 //!     Loads the classifier and prints a single ready event with model names,
 //!     then exits. Useful for smoke tests / Settings UI verification.
 //!
-//!   start --model <path.onnx> [--threshold 0.55] [--debounce-ms 1500]
-//!         [--device <name>]
+//!   start --model <path.onnx> [--threshold 0.55] [--debounce-ms 2000]
+//!         [--predict-stride-ms 80] [--vad-hangover-ms 900]
+//!         [--energy-rms-threshold 0.002] [--energy-peak-threshold 0.015]
+//!         [--disable-energy-gate] [--disable-vad] [--device <name>]
 //!     Streams audio from the default input (or the named device) and emits
 //!     {"event":"wake",...} every time the wake word fires above threshold,
 //!     subject to debounce. Prints a single {"event":"ready",...} on startup
@@ -38,8 +40,10 @@ const MODEL_SAMPLE_RATE: u32 = 16_000;
 /// model.
 const PREDICT_WINDOW_SECS: f32 = 2.0;
 
-/// How often we run inference (~100 ms between predict calls on the rolling window).
-const PREDICT_STRIDE_SECS: f32 = 0.10;
+/// How often we run inference once active. LiveKit's Python listener reads
+/// 1280-sample frames at 16 kHz, which is 80 ms between rolling-window
+/// predictions.
+const PREDICT_STRIDE_MS: u64 = 80;
 
 /// Cheap energy gate: skip Silero when input is clearly silent, but never stop
 /// buffering audio. On a silence -> active edge we replay this tail into Silero
@@ -49,9 +53,11 @@ const ENERGY_GATE_TAIL_SECS: f32 = 0.5;
 const ENERGY_RMS_THRESHOLD: f32 = 0.002;
 const ENERGY_PEAK_THRESHOLD: f32 = 0.015;
 
-/// Silero VAD gate: run the wake-word model only while speech-like audio is
-/// active, plus a short hangover so the wake phrase is not clipped between VAD
-/// frames. Silero's 16 kHz frame is 512 samples (~32 ms).
+/// Silero VAD gate: prefer running the wake-word model while speech-like audio
+/// is active, plus a short hangover so the wake phrase is not clipped between
+/// VAD frames. Energy-active audio can also trigger prediction so a preserved
+/// 2s ring is evaluated immediately while VAD is still catching up. Silero's
+/// 16 kHz frame is 512 samples (~32 ms).
 const VAD_START_THRESHOLD: f32 = 0.5;
 const VAD_RECENT_FRAMES: usize = 5;
 const VAD_MIN_VOICED_FRAMES: usize = 3;
@@ -88,8 +94,20 @@ enum Command {
         model: PathBuf,
         #[arg(long, default_value_t = 0.55)]
         threshold: f32,
-        #[arg(long = "debounce-ms", default_value_t = 1500)]
+        #[arg(long = "debounce-ms", default_value_t = 2000)]
         debounce_ms: u64,
+        #[arg(long = "predict-stride-ms", default_value_t = PREDICT_STRIDE_MS)]
+        predict_stride_ms: u64,
+        #[arg(long = "vad-hangover-ms", default_value_t = VAD_HANGOVER_MS)]
+        vad_hangover_ms: u64,
+        #[arg(long = "energy-rms-threshold", default_value_t = ENERGY_RMS_THRESHOLD)]
+        energy_rms_threshold: f32,
+        #[arg(long = "energy-peak-threshold", default_value_t = ENERGY_PEAK_THRESHOLD)]
+        energy_peak_threshold: f32,
+        #[arg(long = "disable-energy-gate", default_value_t = false)]
+        disable_energy_gate: bool,
+        #[arg(long = "disable-vad", default_value_t = false)]
+        disable_vad: bool,
         /// Optional cpal device name. Defaults to the system default input.
         #[arg(long)]
         device: Option<String>,
@@ -116,6 +134,40 @@ enum Event<'a> {
     },
 }
 
+#[derive(Clone, Copy, Debug)]
+struct WakewordRuntimeOptions {
+    threshold: f32,
+    debounce_ms: u64,
+    predict_stride_ms: u64,
+    vad_hangover_ms: u64,
+    energy_rms_threshold: f32,
+    energy_peak_threshold: f32,
+    disable_energy_gate: bool,
+    disable_vad: bool,
+}
+
+impl WakewordRuntimeOptions {
+    fn validate(&self) -> Result<()> {
+        if !(0.0..=1.0).contains(&self.threshold) {
+            return Err(anyhow!("threshold must be between 0 and 1"));
+        }
+        if self.predict_stride_ms == 0 {
+            return Err(anyhow!("predict-stride-ms must be greater than 0"));
+        }
+        if !self.energy_rms_threshold.is_finite() || self.energy_rms_threshold < 0.0 {
+            return Err(anyhow!(
+                "energy-rms-threshold must be a non-negative finite number"
+            ));
+        }
+        if !self.energy_peak_threshold.is_finite() || self.energy_peak_threshold < 0.0 {
+            return Err(anyhow!(
+                "energy-peak-threshold must be a non-negative finite number"
+            ));
+        }
+        Ok(())
+    }
+}
+
 fn emit(event: &Event<'_>) {
     if let Ok(line) = serde_json::to_string(event) {
         println!("{}", line);
@@ -131,8 +183,27 @@ fn main() {
             model,
             threshold,
             debounce_ms,
+            predict_stride_ms,
+            vad_hangover_ms,
+            energy_rms_threshold,
+            energy_peak_threshold,
+            disable_energy_gate,
+            disable_vad,
             device,
-        } => run_start(model, threshold, debounce_ms, device.as_deref()),
+        } => run_start(
+            model,
+            WakewordRuntimeOptions {
+                threshold,
+                debounce_ms,
+                predict_stride_ms,
+                vad_hangover_ms,
+                energy_rms_threshold,
+                energy_peak_threshold,
+                disable_energy_gate,
+                disable_vad,
+            },
+            device.as_deref(),
+        ),
     };
     if let Err(err) = result {
         let msg = format!("{:#}", err);
@@ -245,10 +316,10 @@ fn pick_input_config(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
 
 fn run_start(
     model_path: PathBuf,
-    threshold: f32,
-    debounce_ms: u64,
+    options: WakewordRuntimeOptions,
     device_name: Option<&str>,
 ) -> Result<()> {
+    options.validate()?;
     let device = pick_device(device_name)?;
     let device_label = device.name().unwrap_or_else(|_| "<unknown>".to_string());
     let (config, sample_format) = pick_input_config(&device)?;
@@ -278,14 +349,7 @@ fn run_start(
         device_name: &device_label,
     });
 
-    run_inference_loop(
-        &mut model,
-        &model_name,
-        threshold,
-        debounce_ms,
-        sample_rate,
-        rx,
-    )?;
+    run_inference_loop(&mut model, &model_name, options, sample_rate, rx)?;
 
     // Keep `stream` alive until the inference loop exits (it owns the cpal
     // input callback). Drop here so the hardware is released cleanly.
@@ -359,20 +423,25 @@ fn downmix_i16(samples: &[i16], channels: u16) -> Vec<i16> {
 fn run_inference_loop(
     model: &mut WakeWordModel,
     model_name: &str,
-    threshold: f32,
-    debounce_ms: u64,
+    options: WakewordRuntimeOptions,
     sample_rate: u32,
     rx: Receiver<Vec<i16>>,
 ) -> Result<()> {
     let window_samples = (MODEL_SAMPLE_RATE as f32 * PREDICT_WINDOW_SECS).round() as usize;
-    let stride_samples = (MODEL_SAMPLE_RATE as f32 * PREDICT_STRIDE_SECS).round() as usize;
+    let stride_samples =
+        ((MODEL_SAMPLE_RATE as f64 * options.predict_stride_ms as f64) / 1000.0).round() as usize;
     let mut ring: Vec<i16> = Vec::with_capacity(window_samples * 2);
     let mut samples_since_predict: usize = 0;
     let mut last_fire = Instant::now() - Duration::from_secs(60);
-    let debounce = Duration::from_millis(debounce_ms);
+    let debounce = Duration::from_millis(options.debounce_ms);
     let mut resampler = LinearResampler::new(sample_rate, MODEL_SAMPLE_RATE);
-    let mut energy_gate = EnergyGate::new();
-    let mut vad = SileroVadGate::new()?;
+    let mut energy_gate =
+        EnergyGate::new(options.energy_rms_threshold, options.energy_peak_threshold);
+    let mut vad = if options.disable_vad {
+        None
+    } else {
+        Some(SileroVadGate::new(options.vad_hangover_ms)?)
+    };
 
     while let Ok(chunk) = rx.recv() {
         let chunk = resampler.process(&chunk);
@@ -380,14 +449,20 @@ fn run_inference_loop(
             continue;
         }
 
-        let energy = energy_gate.update(&chunk);
-        if energy.active {
+        let energy = if options.disable_energy_gate {
+            energy_gate.update_unblocked(&chunk)
+        } else {
+            energy_gate.update(&chunk)
+        };
+        if (energy.active || options.disable_energy_gate) && !options.disable_vad {
             let vad_samples = if energy.rising {
                 energy_gate.tail()
             } else {
                 chunk.as_slice()
             };
-            vad.process(vad_samples)?;
+            if let Some(vad) = vad.as_mut() {
+                vad.process(vad_samples)?;
+            }
         }
 
         ring.extend_from_slice(&chunk);
@@ -401,12 +476,20 @@ fn run_inference_loop(
             ring.drain(..drop);
         }
 
-        if samples_since_predict < stride_samples || ring.len() < window_samples {
+        let enough_audio = ring.len() >= window_samples;
+        let due_for_predict = samples_since_predict >= stride_samples;
+        let gate_opened = !options.disable_energy_gate && energy.rising;
+
+        if !enough_audio || (!due_for_predict && !gate_opened) {
             continue;
         }
         samples_since_predict = 0;
 
-        if !vad.is_active() {
+        let vad_active = vad.as_ref().map(|vad| vad.is_active()).unwrap_or(false);
+        let energy_allows_prediction = !options.disable_energy_gate && energy.active;
+        let vad_allows_prediction = !options.disable_vad && vad_active;
+        let gates_disabled = options.disable_energy_gate && options.disable_vad;
+        if !gates_disabled && !energy_allows_prediction && !vad_allows_prediction {
             continue;
         }
 
@@ -423,7 +506,7 @@ fn run_inference_loop(
             .get(model_name)
             .copied()
             .unwrap_or_else(|| scores.values().copied().fold(f32::NEG_INFINITY, f32::max));
-        if score >= threshold && last_fire.elapsed() >= debounce {
+        if score >= options.threshold && last_fire.elapsed() >= debounce {
             last_fire = Instant::now();
             let timestamp_ms = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -432,7 +515,7 @@ fn run_inference_loop(
             emit(&Event::Wake {
                 model: model_name,
                 score,
-                threshold,
+                threshold: options.threshold,
                 timestamp_ms,
             });
             // Match LiveKit's listener behavior: after a detection, discard the
@@ -454,14 +537,18 @@ struct EnergyDecision {
 struct EnergyGate {
     tail: Vec<i16>,
     was_active: bool,
+    rms_threshold: f32,
+    peak_threshold: f32,
 }
 
 impl EnergyGate {
-    fn new() -> Self {
+    fn new(rms_threshold: f32, peak_threshold: f32) -> Self {
         let tail_samples = (MODEL_SAMPLE_RATE as f32 * ENERGY_GATE_TAIL_SECS).round() as usize;
         Self {
             tail: Vec::with_capacity(tail_samples),
             was_active: false,
+            rms_threshold,
+            peak_threshold,
         }
     }
 
@@ -474,7 +561,23 @@ impl EnergyGate {
             self.tail.drain(..drop);
         }
 
-        let active = has_recent_energy(&self.tail);
+        let active = has_recent_energy(&self.tail, self.rms_threshold, self.peak_threshold);
+        self.set_active(active)
+    }
+
+    fn update_unblocked(&mut self, samples: &[i16]) -> EnergyDecision {
+        self.tail.extend_from_slice(samples);
+
+        let tail_samples = (MODEL_SAMPLE_RATE as f32 * ENERGY_GATE_TAIL_SECS).round() as usize;
+        if self.tail.len() > tail_samples {
+            let drop = self.tail.len() - tail_samples;
+            self.tail.drain(..drop);
+        }
+
+        self.set_active(false)
+    }
+
+    fn set_active(&mut self, active: bool) -> EnergyDecision {
         let rising = active && !self.was_active;
         self.was_active = active;
         EnergyDecision { active, rising }
@@ -485,7 +588,7 @@ impl EnergyGate {
     }
 }
 
-fn has_recent_energy(samples: &[i16]) -> bool {
+fn has_recent_energy(samples: &[i16], rms_threshold: f32, peak_threshold: f32) -> bool {
     let window = (MODEL_SAMPLE_RATE as f32 * ENERGY_GATE_WINDOW_SECS).round() as usize;
     let start = samples.len().saturating_sub(window.max(1));
     let recent = &samples[start..];
@@ -501,7 +604,7 @@ fn has_recent_energy(samples: &[i16]) -> bool {
         peak = peak.max(normalized.abs());
     }
     let rms = (sum_squares / recent.len() as f64).sqrt() as f32;
-    rms >= ENERGY_RMS_THRESHOLD || peak >= ENERGY_PEAK_THRESHOLD
+    rms >= rms_threshold || peak >= peak_threshold
 }
 
 struct SileroVadGate {
@@ -509,15 +612,17 @@ struct SileroVadGate {
     stream: VadStreamState,
     recent_voiced: std::collections::VecDeque<bool>,
     last_speech: Option<Instant>,
+    hangover_ms: u64,
 }
 
 impl SileroVadGate {
-    fn new() -> Result<Self> {
+    fn new(hangover_ms: u64) -> Result<Self> {
         Ok(Self {
             session: VadSession::bundled().context("load bundled Silero VAD model")?,
             stream: VadStreamState::new(VadSampleRate::Rate16k),
             recent_voiced: std::collections::VecDeque::with_capacity(VAD_RECENT_FRAMES),
             last_speech: None,
+            hangover_ms,
         })
     }
 
@@ -550,7 +655,7 @@ impl SileroVadGate {
 
     fn is_active(&self) -> bool {
         self.last_speech
-            .map(|last| last.elapsed() <= Duration::from_millis(VAD_HANGOVER_MS))
+            .map(|last| last.elapsed() <= Duration::from_millis(self.hangover_ms))
             .unwrap_or(false)
     }
 }
