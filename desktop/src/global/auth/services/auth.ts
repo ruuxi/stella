@@ -1,20 +1,22 @@
 import { api } from "@/convex/api";
 import { convexClient } from "@/infra/convex-client";
 import { signOutAuthSession } from "@/global/auth/services/auth-session";
+import { getDeviceIdOrNull } from "@/platform/electron/device";
 
 type SignOutScope = "current_device" | "all_devices";
 
-export const secureSignOut = async (
-  scope: SignOutScope = "current_device",
-) => {
+export const secureSignOut = async (scope: SignOutScope = "current_device") => {
   if (scope === "all_devices") {
     try {
       await convexClient.mutation(api.auth.revokeActiveSessions, {});
     } catch (error) {
-      console.debug('[auth] Session revocation failed (best-effort):', (error as Error).message);
+      console.debug(
+        "[auth] Session revocation failed (best-effort):",
+        (error as Error).message,
+      );
     }
   }
-  const deviceId = await window.electronAPI?.system.getDeviceId?.();
+  const deviceId = await getDeviceIdOrNull();
   if (deviceId) {
     try {
       await convexClient.mutation(api.agent.device_resolver.goOffline, {

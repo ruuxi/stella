@@ -1,6 +1,7 @@
 import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
 import { useOfficePreview } from "./office-preview-store";
 import { useFilePreviewActions } from "./hooks/use-file-preview-actions";
+import { FilePreviewCardShell } from "./FilePreviewCardShell";
 import "./office-preview-card.css";
 
 const formatStatusLabel = (status?: string) => {
@@ -32,44 +33,24 @@ export function OfficePreviewCard({
       : null;
 
   return (
-    <section className="office-preview-card">
-      <header className="office-preview-card__header">
-        <div className="office-preview-card__title-group">
-          <span className="office-preview-card__eyebrow">{statusLabel}</span>
-          <div className="office-preview-card__title" title={previewRef.sourcePath}>
-            {title}
-          </div>
-        </div>
-        {updatedAtLabel && (
+    <FilePreviewCardShell
+      className="office-preview-card"
+      eyebrow={statusLabel}
+      title={title}
+      titlePath={previewRef.sourcePath}
+      meta={
+        updatedAtLabel ? (
           <span className="office-preview-card__timestamp">
             Updated {updatedAtLabel}
           </span>
-        )}
-        <div className="office-preview-card__actions">
-          <button
-            type="button"
-            className="office-preview-card__action"
-            onClick={handleSave}
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            className="office-preview-card__action"
-            onClick={handleCopy}
-          >
-            Copy
-          </button>
-          {actionStatus && (
-            <span className="office-preview-card__action-status">
-              {actionStatus}
-            </span>
-          )}
-        </div>
-      </header>
-
+        ) : null
+      }
+      actionStatus={actionStatus}
+      onSave={handleSave}
+      onCopy={handleCopy}
+    >
       {snapshot?.status === "error" ? (
-        <div className="office-preview-card__placeholder office-preview-card__placeholder--error">
+        <div className="file-preview-card__placeholder file-preview-card__placeholder--error office-preview-card__placeholder">
           {snapshot.error?.trim() || "The preview session reported an error."}
         </div>
       ) : snapshot?.html ? (
@@ -80,10 +61,10 @@ export function OfficePreviewCard({
           srcDoc={snapshot.html}
         />
       ) : (
-        <div className="office-preview-card__placeholder">
+        <div className="file-preview-card__placeholder office-preview-card__placeholder">
           Stella is preparing a live preview for this document.
         </div>
       )}
-    </section>
+    </FilePreviewCardShell>
   );
 }

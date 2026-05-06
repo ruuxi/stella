@@ -1,6 +1,7 @@
-import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
+import { registerPrivilegedHandle } from "./privileged-ipc.js";
 import {
   IPC_GOOGLE_WORKSPACE_AUTH_STATUS,
   IPC_GOOGLE_WORKSPACE_CONNECT,
@@ -28,34 +29,27 @@ export const registerGoogleWorkspaceHandlers = (
       onRunnerChanged: options.onStellaHostRunnerChanged,
     });
 
-  ipcMain.handle(IPC_GOOGLE_WORKSPACE_AUTH_STATUS, async (event) => {
-    if (
-      !options.assertPrivilegedSender(event, IPC_GOOGLE_WORKSPACE_AUTH_STATUS)
-    ) {
-      throw new Error("Blocked untrusted googleWorkspace:authStatus request.");
-    }
-    try {
-      return await (await waitForRunner()).googleWorkspaceGetAuthStatus();
-    } catch {
-      return { connected: false };
-    }
-  });
+  registerPrivilegedHandle(
+    options,
+    IPC_GOOGLE_WORKSPACE_AUTH_STATUS,
+    async () => {
+      try {
+        return await (await waitForRunner()).googleWorkspaceGetAuthStatus();
+      } catch {
+        return { connected: false };
+      }
+    },
+  );
 
-  ipcMain.handle(IPC_GOOGLE_WORKSPACE_CONNECT, async (event) => {
-    if (
-      !options.assertPrivilegedSender(event, IPC_GOOGLE_WORKSPACE_CONNECT)
-    ) {
-      throw new Error("Blocked untrusted googleWorkspace:connect request.");
-    }
+  registerPrivilegedHandle(options, IPC_GOOGLE_WORKSPACE_CONNECT, async () => {
     return await (await waitForRunner(130_000)).googleWorkspaceConnect();
   });
 
-  ipcMain.handle(IPC_GOOGLE_WORKSPACE_DISCONNECT, async (event) => {
-    if (
-      !options.assertPrivilegedSender(event, IPC_GOOGLE_WORKSPACE_DISCONNECT)
-    ) {
-      throw new Error("Blocked untrusted googleWorkspace:disconnect request.");
-    }
-    return await (await waitForRunner()).googleWorkspaceDisconnect();
-  });
+  registerPrivilegedHandle(
+    options,
+    IPC_GOOGLE_WORKSPACE_DISCONNECT,
+    async () => {
+      return await (await waitForRunner()).googleWorkspaceDisconnect();
+    },
+  );
 };

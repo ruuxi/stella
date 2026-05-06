@@ -1,23 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { LocalAgentManager } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
-import type { ToolContext, ToolResult } from "../../../../../runtime/kernel/tools/types.js";
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const waitForTaskCompletion = async (
-  manager: LocalAgentManager,
-  agentId: string,
-): Promise<void> => {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const snapshot = await manager.getAgent(agentId);
-    if (snapshot && snapshot.status !== "running") {
-      return;
-    }
-    await sleep(25);
-  }
-  throw new Error(`Task ${agentId} did not finish in time.`);
-};
+import type {
+  ToolContext,
+  ToolResult,
+} from "../../../../../runtime/kernel/tools/types.js";
+import { waitForAgentSettled } from "../../../helpers/agent.js";
 
 describe("LocalAgentManager Exec fs locking", () => {
   it("serializes mutating Exec calls across concurrent tasks", async () => {
@@ -87,8 +75,8 @@ describe("LocalAgentManager Exec fs locking", () => {
     });
 
     await Promise.all([
-      waitForTaskCompletion(manager, first.threadId),
-      waitForTaskCompletion(manager, second.threadId),
+      waitForAgentSettled(manager, first.threadId),
+      waitForAgentSettled(manager, second.threadId),
     ]);
 
     expect(maxConcurrentCalls).toBe(1);

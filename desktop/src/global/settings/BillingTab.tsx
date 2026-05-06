@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAction, useQuery } from "convex/react";
-import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js";
+import {
+  EmbeddedCheckout,
+  EmbeddedCheckoutProvider,
+} from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
@@ -9,6 +12,7 @@ import {
   consumeBillingCheckoutCompletionMarker,
   withCheckoutMarker,
 } from "@/global/settings/lib/billing-checkout";
+import { openExternalUrl } from "@/platform/electron/open-external";
 import { readConfiguredConvexSiteUrl } from "@/shared/lib/convex-urls";
 import { Button } from "@/ui/button";
 import { useI18n } from "@/shared/i18n";
@@ -64,7 +68,10 @@ const PLAN_ORDER: BillingPlan[] = ["free", "go", "pro", "plus", "ultra"];
 // flight). Stripe Checkout uses the backend's STRIPE_PRICE_* IDs as the actual
 // source of pricing, so any drift here would be a visible bug rather than a
 // silent overcharge.
-const STATIC_PLAN_DISPLAY: Record<BillingPlan, { label: string; monthlyPriceCents: number }> = {
+const STATIC_PLAN_DISPLAY: Record<
+  BillingPlan,
+  { label: string; monthlyPriceCents: number }
+> = {
   free: { label: "Free", monthlyPriceCents: 0 },
   go: { label: "Go", monthlyPriceCents: 2_000 },
   pro: { label: "Pro", monthlyPriceCents: 6_000 },
@@ -194,10 +201,9 @@ export function BillingTab() {
   // anonymous-identity paths and returns the plan list either way. Skipping
   // the query when signed-out used to leave the Plans grid blank, which read
   // as "you must sign in to see the plans" — exactly what we don't want.
-  const billingStatus = useQuery(
-    api.billing.getSubscriptionStatus,
-    { now: billingNowMs },
-  ) as BillingStatus | undefined;
+  const billingStatus = useQuery(api.billing.getSubscriptionStatus, {
+    now: billingNowMs,
+  }) as BillingStatus | undefined;
 
   const openAuthDialog = useCallback(() => {
     void navigate({
@@ -215,8 +221,10 @@ export function BillingTab() {
     api.billing.createBillingPortalSession,
   );
 
-  const [checkoutSession, setCheckoutSession] = useState<EmbeddedCheckoutSessionPayload | null>(null);
-  const [isStartingCheckoutPlan, setIsStartingCheckoutPlan] = useState<PaidBillingPlan | null>(null);
+  const [checkoutSession, setCheckoutSession] =
+    useState<EmbeddedCheckoutSessionPayload | null>(null);
+  const [isStartingCheckoutPlan, setIsStartingCheckoutPlan] =
+    useState<PaidBillingPlan | null>(null);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
@@ -240,11 +248,7 @@ export function BillingTab() {
   };
 
   const openExternal = useCallback((url: string) => {
-    if (window.electronAPI?.system.openExternal) {
-      window.electronAPI.system.openExternal(url);
-      return;
-    }
-    window.open(url, "_blank", "noopener,noreferrer");
+    openExternalUrl(url);
   }, []);
 
   useEffect(() => {
@@ -254,12 +258,16 @@ export function BillingTab() {
 
     setCheckoutSession(null);
     setBillingError(null);
-    setCheckoutNotice("Checkout complete. Stella is syncing your billing status now.");
+    setCheckoutNotice(
+      "Checkout complete. Stella is syncing your billing status now.",
+    );
   }, []);
 
   const handleCheckoutComplete = useCallback(() => {
     setCheckoutSession(null);
-    setCheckoutNotice("Payment complete. Your updated plan will appear shortly.");
+    setCheckoutNotice(
+      "Payment complete. Your updated plan will appear shortly.",
+    );
   }, []);
 
   const handleStartCheckout = useCallback(
@@ -278,11 +286,10 @@ export function BillingTab() {
 
       try {
         const returnUrl = resolveCheckoutReturnUrl();
-        const session =
-          (await createEmbeddedCheckoutSession({
-            plan,
-            returnUrl,
-          })) as EmbeddedCheckoutSessionPayload;
+        const session = (await createEmbeddedCheckoutSession({
+          plan,
+          returnUrl,
+        })) as EmbeddedCheckoutSessionPayload;
         const publishableKey = toSafeString(session?.publishableKey);
         const clientSecret = toSafeString(session?.clientSecret);
         const sessionId = toSafeString(session?.sessionId);
@@ -328,7 +335,10 @@ export function BillingTab() {
       openExternal(billingPortalUrl);
     } catch (error) {
       setBillingError(
-        getSettingsErrorMessage(error, "Unable to open billing management right now."),
+        getSettingsErrorMessage(
+          error,
+          "Unable to open billing management right now.",
+        ),
       );
     } finally {
       setIsOpeningPortal(false);
@@ -339,9 +349,9 @@ export function BillingTab() {
     () =>
       checkoutSession
         ? {
-          clientSecret: checkoutSession.clientSecret,
-          onComplete: handleCheckoutComplete,
-        }
+            clientSecret: checkoutSession.clientSecret,
+            onComplete: handleCheckoutComplete,
+          }
         : null,
     [checkoutSession, handleCheckoutComplete],
   );
@@ -357,11 +367,11 @@ export function BillingTab() {
             className="settings-btn"
             onClick={() => void handleOpenBillingPortal()}
             disabled={
-              !hasConnectedAccount
-              || isOpeningPortal
-              || isLoadingStatus
-              || !planCatalog
-              || currentPlan === "free"
+              !hasConnectedAccount ||
+              isOpeningPortal ||
+              isLoadingStatus ||
+              !planCatalog ||
+              currentPlan === "free"
             }
           >
             {isOpeningPortal ? "Opening..." : "Manage Billing"}
@@ -369,7 +379,8 @@ export function BillingTab() {
         </div>
         {!hasConnectedAccount ? (
           <p className="settings-card-desc">
-            Browse the plans below. Sign in with an account when you're ready to subscribe or manage payment methods.
+            Browse the plans below. Sign in with an account when you're ready to
+            subscribe or manage payment methods.
           </p>
         ) : null}
         {billingError ? (
@@ -405,14 +416,17 @@ export function BillingTab() {
             <div className="settings-row-info">
               <div className="settings-row-label">Usage this month</div>
               <div className="settings-row-sublabel">
-                {usdFormatter.format(usage.monthlyUsedUsd)} / {usdFormatter.format(usage.monthlyLimitUsd)}
+                {usdFormatter.format(usage.monthlyUsedUsd)} /{" "}
+                {usdFormatter.format(usage.monthlyLimitUsd)}
               </div>
             </div>
             <div className="settings-row-control settings-row-control--billing-meter">
               <div className="settings-billing-meter-track">
                 <div
                   className="settings-billing-meter-fill"
-                  style={{ width: `${toUsagePercent(usage.monthlyUsedUsd, usage.monthlyLimitUsd)}%` }}
+                  style={{
+                    width: `${toUsagePercent(usage.monthlyUsedUsd, usage.monthlyLimitUsd)}%`,
+                  }}
                 />
               </div>
             </div>
@@ -439,7 +453,9 @@ export function BillingTab() {
                 className="settings-billing-plan-card"
                 data-active={isCurrentPlan || undefined}
               >
-                <div className="settings-billing-plan-name">{display.label}</div>
+                <div className="settings-billing-plan-name">
+                  {display.label}
+                </div>
                 <div className="settings-billing-plan-price">
                   {display.monthlyPriceCents <= 0
                     ? "Free"
@@ -456,11 +472,10 @@ export function BillingTab() {
                     type="button"
                     variant="ghost"
                     className="settings-btn settings-btn--primary settings-billing-plan-cta"
-                    onClick={() => void handleStartCheckout(plan as PaidBillingPlan)}
-                    disabled={
-                      isCurrentPlan
-                      || isStartingCheckoutPlan !== null
+                    onClick={() =>
+                      void handleStartCheckout(plan as PaidBillingPlan)
                     }
+                    disabled={isCurrentPlan || isStartingCheckoutPlan !== null}
                   >
                     {isCurrentPlan
                       ? "Current Plan"
@@ -493,7 +508,8 @@ export function BillingTab() {
             </Button>
           </div>
           <p className="settings-card-desc">
-            Complete payment below. Stella will update your plan automatically once confirmed.
+            Complete payment below. Stella will update your plan automatically
+            once confirmed.
           </p>
           <div className="settings-billing-checkout-shell">
             <EmbeddedCheckoutProvider

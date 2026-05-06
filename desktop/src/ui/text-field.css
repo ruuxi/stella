@@ -47,12 +47,14 @@
   background: var(--background);
 }
 
-[data-component="input"][data-variant="normal"] [data-slot="input-wrapper"]:focus-within {
+[data-component="input"][data-variant="normal"]
+  [data-slot="input-wrapper"]:focus-within {
   border-color: transparent;
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-[data-component="input"][data-variant="normal"] [data-slot="input-wrapper"]:has([data-invalid]) {
+[data-component="input"][data-variant="normal"]
+  [data-slot="input-wrapper"]:has([data-invalid]) {
   background: color-mix(in srgb, var(--destructive) 10%, var(--background));
   border: 1px solid var(--destructive);
 }
@@ -68,7 +70,28 @@
   border: none;
 }
 
-[data-component="input"][data-variant="normal"] textarea[data-slot="input-input"] {
+[data-component="input"][data-size="sm"] [data-slot="input-input"] {
+  height: 28px;
+  font-size: 13px;
+}
+
+[data-component="input"][data-size="lg"] [data-slot="input-input"] {
+  height: 38px;
+}
+
+[data-component="input"][data-surface="subtle"] [data-slot="input-wrapper"] {
+  border-color: color-mix(in oklch, var(--border) 70%, transparent);
+  background: color-mix(in oklch, var(--muted) 18%, transparent);
+}
+
+[data-component="input"][data-surface="glass"] [data-slot="input-wrapper"] {
+  border-color: color-mix(in oklch, var(--border) 80%, transparent);
+  background: color-mix(in oklch, var(--background) 74%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 6%, transparent);
+}
+
+[data-component="input"][data-variant="normal"]
+  textarea[data-slot="input-input"] {
   height: auto;
   min-height: 32px;
   padding: 6px 12px;
@@ -84,7 +107,8 @@
   line-height: 1.5;
 }
 
-[data-component="input"][data-variant="normal"] [data-slot="input-description"] {
+[data-component="input"][data-variant="normal"]
+  [data-slot="input-description"] {
   color: var(--muted-foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;

@@ -6,6 +6,7 @@ import {
   acquireSharedMicrophone,
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
+import { computeAnalyserEnergy } from "@/features/voice/services/audio-energy";
 
 type RuntimeVoiceState = {
   sessionState: VoiceSessionState;
@@ -26,21 +27,12 @@ const DEFAULT_RUNTIME_STATE: RuntimeVoiceState = {
   outputLevel: 0,
 };
 
-let energyBuffer: Uint8Array<ArrayBuffer> | null = null;
+let energyBuffer: Uint8Array | null = null;
 
 const computeEnergy = (analyser: AnalyserNode | null): number => {
-  if (!analyser) return 0;
-  const len = analyser.frequencyBinCount;
-  if (!energyBuffer || energyBuffer.length < len) {
-    energyBuffer = new Uint8Array(len);
-  }
-  analyser.getByteFrequencyData(energyBuffer);
-  let sum = 0;
-  for (let i = 0; i < len; i++) {
-    const value = energyBuffer[i] / 255;
-    sum += value * value;
-  }
-  return Math.sqrt(sum / Math.max(1, len));
+  const result = computeAnalyserEnergy(analyser, energyBuffer);
+  energyBuffer = result.buffer;
+  return result.energy;
 };
 
 const runtimeStateEquals = (a: RuntimeVoiceState, b: RuntimeVoiceState) =>
@@ -245,8 +237,14 @@ export function VoiceRuntimeRoot() {
         publishRuntimeState({
           sessionState,
           isConnected: sessionState === "connected",
-          micLevel: sessionState === "connected" ? publishedStateRef.current.micLevel : 0,
-          outputLevel: sessionState === "connected" ? publishedStateRef.current.outputLevel : 0,
+          micLevel:
+            sessionState === "connected"
+              ? publishedStateRef.current.micLevel
+              : 0,
+          outputLevel:
+            sessionState === "connected"
+              ? publishedStateRef.current.outputLevel
+              : 0,
         });
       },
       onSpeakingChange: (isSpeaking) => {

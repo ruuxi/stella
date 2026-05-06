@@ -1,31 +1,18 @@
 .ask-stella-selection-chip {
   position: fixed;
   z-index: 1300;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 999px;
   border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
   background: color-mix(in oklch, var(--background) 92%, transparent);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   color: var(--text-base);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
   cursor: pointer;
   box-shadow:
     0 1px 2px color-mix(in oklch, var(--foreground) 10%, transparent),
     0 6px 18px color-mix(in oklch, var(--foreground) 16%, transparent);
   transition:
-    transform 120ms ease,
     background 120ms ease,
     border-color 120ms ease;
-  user-select: none;
-  -webkit-user-select: none;
   animation: ask-stella-selection-chip-in 120ms ease-out;
 }
 
@@ -37,17 +24,6 @@
 
 .ask-stella-selection-chip:active {
   transform: translateY(0);
-}
-
-.ask-stella-selection-chip__logo {
-  width: 14px;
-  height: 14px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
-.ask-stella-selection-chip__label {
-  white-space: nowrap;
 }
 
 @keyframes ask-stella-selection-chip-in {

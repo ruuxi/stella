@@ -81,7 +81,7 @@ export function SelectionChipOverlay({
     <button
       ref={buttonRef}
       type="button"
-      className="selection-chip-overlay"
+      className="floating-selection-chip selection-chip-overlay"
       style={{ left, top }}
       onMouseDown={(event) => event.preventDefault()}
       onClick={(event) => {
@@ -95,9 +95,11 @@ export function SelectionChipOverlay({
         src="stella-logo.svg"
         alt=""
         aria-hidden="true"
-        className="selection-chip-overlay__logo"
+        className="floating-selection-chip__logo selection-chip-overlay__logo"
       />
-      <span className="selection-chip-overlay__label">Ask Stella</span>
+      <span className="floating-selection-chip__label selection-chip-overlay__label">
+        Ask Stella
+      </span>
     </button>
   );
 }

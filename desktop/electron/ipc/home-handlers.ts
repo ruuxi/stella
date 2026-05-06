@@ -1,8 +1,4 @@
-import {
-  ipcMain,
-  type IpcMainEvent,
-  type IpcMainInvokeEvent,
-} from "electron";
+import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import {
   IPC_HOME_CAPTURE_APP_WINDOW,
   IPC_HOME_GET_ACTIVE_BROWSER_TAB,
@@ -11,6 +7,7 @@ import {
 import { getActiveBrowserTabForBundleId } from "../active-browser-tab.js";
 import { captureAppWindow } from "../capture-app-window.js";
 import { listRecentApps } from "../recent-apps.js";
+import { registerPrivilegedHandle } from "./privileged-ipc.js";
 
 type HomeHandlersOptions = {
   assertPrivilegedSender: (
@@ -22,12 +19,10 @@ type HomeHandlersOptions = {
 const DEFAULT_LIMIT = 6;
 
 export const registerHomeHandlers = (options: HomeHandlersOptions) => {
-  ipcMain.handle(
+  registerPrivilegedHandle(
+    options,
     IPC_HOME_LIST_RECENT_APPS,
-    async (event, payload?: { limit?: number }) => {
-      if (!options.assertPrivilegedSender(event, IPC_HOME_LIST_RECENT_APPS)) {
-        throw new Error(`Blocked untrusted ${IPC_HOME_LIST_RECENT_APPS} request.`);
-      }
+    async (_event, payload?: { limit?: number }) => {
       const limit = Number(payload?.limit);
       const apps = await listRecentApps(
         Number.isFinite(limit) && limit > 0 ? limit : DEFAULT_LIMIT,
@@ -36,16 +31,10 @@ export const registerHomeHandlers = (options: HomeHandlersOptions) => {
     },
   );
 
-  ipcMain.handle(
+  registerPrivilegedHandle(
+    options,
     IPC_HOME_GET_ACTIVE_BROWSER_TAB,
-    async (event, payload?: { bundleId?: string | null }) => {
-      if (
-        !options.assertPrivilegedSender(event, IPC_HOME_GET_ACTIVE_BROWSER_TAB)
-      ) {
-        throw new Error(
-          `Blocked untrusted ${IPC_HOME_GET_ACTIVE_BROWSER_TAB} request.`,
-        );
-      }
+    async (_event, payload?: { bundleId?: string | null }) => {
       const bundleId =
         typeof payload?.bundleId === "string" ? payload.bundleId.trim() : "";
       if (!bundleId) {
@@ -56,17 +45,13 @@ export const registerHomeHandlers = (options: HomeHandlersOptions) => {
     },
   );
 
-  ipcMain.handle(
+  registerPrivilegedHandle(
+    options,
     IPC_HOME_CAPTURE_APP_WINDOW,
     async (
-      event,
+      _event,
       payload?: { appName?: string | null; pid?: number | null },
     ) => {
-      if (!options.assertPrivilegedSender(event, IPC_HOME_CAPTURE_APP_WINDOW)) {
-        throw new Error(
-          `Blocked untrusted ${IPC_HOME_CAPTURE_APP_WINDOW} request.`,
-        );
-      }
       const appName =
         typeof payload?.appName === "string" ? payload.appName.trim() : "";
       const rawPid = payload?.pid;

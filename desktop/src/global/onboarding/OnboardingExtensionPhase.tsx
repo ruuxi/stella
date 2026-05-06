@@ -1,3 +1,5 @@
+import { openExternalUrl } from "@/platform/electron/open-external";
+
 const CHROME_WEB_STORE_URL =
   "https://chromewebstore.google.com/detail/kfnchfpocpmdblhfgcnpfaaebaioojnl?utm_source=item-share-cb";
 
@@ -7,11 +9,7 @@ type ExtensionPhaseProps = {
 };
 
 const openWebStore = () => {
-  if (window.electronAPI?.system.openExternal) {
-    window.electronAPI.system.openExternal(CHROME_WEB_STORE_URL);
-    return;
-  }
-  window.open(CHROME_WEB_STORE_URL, "_blank", "noopener,noreferrer");
+  openExternalUrl(CHROME_WEB_STORE_URL);
 };
 
 export function OnboardingExtensionPhase({
@@ -41,8 +39,7 @@ export function OnboardingExtensionPhase({
             Stella for Chrome
           </span>
           <span className="onboarding-extension-card__desc">
-            Lets Stella see the page you're on and take actions in your
-            browser.
+            Lets Stella see the page you're on and take actions in your browser.
           </span>
         </div>
         <button

@@ -9,9 +9,7 @@
  */
 
 import { postServiceJson } from "@/infra/http/service-request";
-import {
-  getVoiceSessionPromptConfig,
-} from "@/prompts";
+import { getVoiceSessionPromptConfig } from "@/prompts";
 import {
   formatRealtimeSystemMessage,
   formatScreenLookFailedSystemReminder,
@@ -24,6 +22,7 @@ import {
   acquireSharedMicrophone,
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
+import { computeAnalyserEnergy } from "@/features/voice/services/audio-energy";
 import type { EventRecord } from "../../../../../runtime/contracts/local-chat.js";
 
 // ---------------------------------------------------------------------------
@@ -142,13 +141,17 @@ function shouldGateVoiceInputForEcho({
 }: VoiceEchoMetrics): boolean {
   const assistantAudioActive =
     assistantSpeaking || recentOutputActiveUntil > now;
-  if (!assistantAudioActive || outputLevel < ECHO_GUARD_OUTPUT_LEVEL_THRESHOLD) {
+  if (
+    !assistantAudioActive ||
+    outputLevel < ECHO_GUARD_OUTPUT_LEVEL_THRESHOLD
+  ) {
     return false;
   }
 
   const userLikelyBargingIn =
     micLevel >= ECHO_GUARD_BARGE_IN_MIN_MIC_LEVEL &&
-    micLevel >= outputLevel * ECHO_GUARD_BARGE_IN_RATIO + ECHO_GUARD_BARGE_IN_MARGIN;
+    micLevel >=
+      outputLevel * ECHO_GUARD_BARGE_IN_RATIO + ECHO_GUARD_BARGE_IN_MARGIN;
 
   return !userLikelyBargingIn;
 }
@@ -169,7 +172,9 @@ const buildVoiceSessionRequestBody = (
     .then((coreMemory) => {
       const instructions = buildVoiceSessionInstructions(coreMemory);
       return {
-        ...(convexConversationId ? { conversationId: convexConversationId } : {}),
+        ...(convexConversationId
+          ? { conversationId: convexConversationId }
+          : {}),
         instructions,
       };
     });
@@ -467,8 +472,13 @@ export class RealtimeVoiceSession {
     this.audioElement.srcObject = stream;
     this.audioElement.autoplay = true;
 
-    const preferredSpeakerId = localStorage.getItem("stella-preferred-speaker-id");
-    if (preferredSpeakerId && typeof this.audioElement.setSinkId === "function") {
+    const preferredSpeakerId = localStorage.getItem(
+      "stella-preferred-speaker-id",
+    );
+    if (
+      preferredSpeakerId &&
+      typeof this.audioElement.setSinkId === "function"
+    ) {
       this.audioElement.setSinkId(preferredSpeakerId).catch((err) => {
         console.debug(
           "[RealtimeVoice] setSinkId failed, using default output:",
@@ -545,34 +555,15 @@ export class RealtimeVoiceSession {
     analyser: AnalyserNode | null,
     kind: "input" | "output",
   ): number {
-    if (!analyser) {
-      return 0;
-    }
-
-    const len = analyser.frequencyBinCount;
     const buffer =
       kind === "input" ? this.inputEnergyBuffer : this.outputEnergyBuffer;
-    if (!buffer || buffer.length < len) {
-      const nextBuffer = new Uint8Array(len);
-      if (kind === "input") {
-        this.inputEnergyBuffer = nextBuffer;
-      } else {
-        this.outputEnergyBuffer = nextBuffer;
-      }
+    const result = computeAnalyserEnergy(analyser, buffer);
+    if (kind === "input") {
+      this.inputEnergyBuffer = result.buffer;
+    } else {
+      this.outputEnergyBuffer = result.buffer;
     }
-
-    const targetBuffer =
-      (kind === "input" ? this.inputEnergyBuffer : this.outputEnergyBuffer)
-      ?? new Uint8Array(len);
-    analyser.getByteFrequencyData(targetBuffer as Uint8Array<ArrayBuffer>);
-
-    let sum = 0;
-    for (let i = 0; i < len; i += 1) {
-      const value = targetBuffer[i] / 255;
-      sum += value * value;
-    }
-
-    return Math.sqrt(sum / Math.max(1, len));
+    return result.energy;
   }
 
   private startEchoGuardMonitor() {
@@ -714,7 +705,9 @@ export class RealtimeVoiceSession {
     this.syncEchoGuard();
 
     try {
-      await this.sender.replaceTrack(this.processedInputTrack ?? this.inputTrack);
+      await this.sender.replaceTrack(
+        this.processedInputTrack ?? this.inputTrack,
+      );
     } catch (err) {
       this.releaseLocalMicrophoneCapture();
       throw err;
@@ -765,11 +758,17 @@ export class RealtimeVoiceSession {
     }
   }
 
-  private syncLocalChatContext(options?: { markExisting?: boolean }): Promise<void> {
+  private syncLocalChatContext(options?: {
+    markExisting?: boolean;
+  }): Promise<void> {
     this.localChatSyncPromise = this.localChatSyncPromise
       .catch(() => undefined)
       .then(async () => {
-        if (this.destroyed || this._state !== "connected" || !this.conversationId) {
+        if (
+          this.destroyed ||
+          this._state !== "connected" ||
+          !this.conversationId
+        ) {
           return;
         }
         const api = window.electronAPI?.localChat;
@@ -847,7 +846,8 @@ export class RealtimeVoiceSession {
       if (payload.source === "voice") {
         return null;
       }
-      const speaker = event.type === "user_message" ? "User" : "Text orchestrator";
+      const speaker =
+        event.type === "user_message" ? "User" : "Text orchestrator";
       return {
         text: `${speaker} message in the synced chat context: ${text}`,
         announce: false,
@@ -855,7 +855,8 @@ export class RealtimeVoiceSession {
     }
 
     if (event.type === "agent-completed") {
-      const result = typeof payload.result === "string" ? payload.result.trim() : "";
+      const result =
+        typeof payload.result === "string" ? payload.result.trim() : "";
       return {
         text: `A delegated agent completed. ${result || "The delegated work is done."} Tell the user the result naturally if they have not already heard it.`,
         announce: true,
@@ -863,7 +864,8 @@ export class RealtimeVoiceSession {
     }
 
     if (event.type === "agent-failed" || event.type === "agent-canceled") {
-      const error = typeof payload.error === "string" ? payload.error.trim() : "";
+      const error =
+        typeof payload.error === "string" ? payload.error.trim() : "";
       const verb = event.type === "agent-failed" ? "failed" : "was canceled";
       return {
         text: `A delegated agent ${verb}. ${error || "No additional details were provided."} Tell the user briefly.`,
@@ -899,7 +901,9 @@ export class RealtimeVoiceSession {
         {
           responseId,
           model,
-          ...(this.conversationId ? { conversationId: this.conversationId } : {}),
+          ...(this.conversationId
+            ? { conversationId: this.conversationId }
+            : {}),
           usage,
         },
         { parseResponse: false },
@@ -924,7 +928,10 @@ export class RealtimeVoiceSession {
     if (!this.inputActive) {
       return;
     }
-    if (!this.conversationId || payload.conversationId !== this.conversationId) {
+    if (
+      !this.conversationId ||
+      payload.conversationId !== this.conversationId
+    ) {
       return;
     }
 
@@ -1139,7 +1146,9 @@ export class RealtimeVoiceSession {
             content: [
               {
                 type: "input_text",
-                text: formatVoiceActionErrorSystemReminder((err as Error).message),
+                text: formatVoiceActionErrorSystemReminder(
+                  (err as Error).message,
+                ),
               },
             ],
           },
@@ -1205,7 +1214,9 @@ export class RealtimeVoiceSession {
             content: [
               {
                 type: "input_text",
-                text: formatWebSearchFailedSystemReminder((err as Error).message),
+                text: formatWebSearchFailedSystemReminder(
+                  (err as Error).message,
+                ),
               },
             ],
           },
@@ -1229,8 +1240,12 @@ export class RealtimeVoiceSession {
         }
 
         const content: Array<
-          { type: "input_text"; text: string } |
-          { type: "input_image"; image_url: string; detail?: "auto" | "low" | "high" }
+          | { type: "input_text"; text: string }
+          | {
+              type: "input_image";
+              image_url: string;
+              detail?: "auto" | "low" | "high";
+            }
         > = [
           {
             type: "input_text",
@@ -1283,7 +1298,9 @@ export class RealtimeVoiceSession {
             content: [
               {
                 type: "input_text",
-                text: formatScreenLookFailedSystemReminder((err as Error).message),
+                text: formatScreenLookFailedSystemReminder(
+                  (err as Error).message,
+                ),
               },
             ],
           },
@@ -1353,13 +1370,13 @@ export class RealtimeVoiceSession {
         result = "Searching now.";
         this.runWebSearchAsync(query, args.category as string | undefined);
       } else if (name === "look_at_screen") {
-        const query =
-          (args.query as string) || this.lastUserTranscript || "";
+        const query = (args.query as string) || this.lastUserTranscript || "";
         result = "Let me take a look.";
         this.runLookAtScreenAsync(query);
       } else if (name === "perform_action") {
         if (!this.inputActive) {
-          result = "Voice mode is no longer active. Do not call tools or continue this voice-only action.";
+          result =
+            "Voice mode is no longer active. Do not call tools or continue this voice-only action.";
           this.emit({ type: "tool-end", name, callId, result });
           this.sendEvent({
             type: "conversation.item.create",
@@ -1399,7 +1416,11 @@ export class RealtimeVoiceSession {
 
     // For async calls, don't request a response here — the async handler
     // will inject the real result and trigger response.create.
-    if (name !== "perform_action" && name !== "web_search" && name !== "look_at_screen") {
+    if (
+      name !== "perform_action" &&
+      name !== "web_search" &&
+      name !== "look_at_screen"
+    ) {
       this.sendEvent({ type: "response.create" });
     }
   }

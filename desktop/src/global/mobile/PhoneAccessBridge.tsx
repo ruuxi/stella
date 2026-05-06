@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { getDeviceIdOrNull } from "@/platform/electron/device";
 
 const DEVICE_ID_RETRY_LIMIT = 8;
 const DEVICE_ID_RETRY_BASE_DELAY_MS = 2_000;
@@ -53,7 +54,7 @@ export function PhoneAccessBridge() {
       attempts += 1;
 
       try {
-        const nextDeviceId = await window.electronAPI?.system.getDeviceId();
+        const nextDeviceId = await getDeviceIdOrNull();
         if (cancelled) {
           return;
         }

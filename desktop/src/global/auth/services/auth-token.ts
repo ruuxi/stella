@@ -9,6 +9,7 @@
  */
 
 import { configurePiRuntime } from "@/platform/electron/device";
+import { getJwtExpMs } from "@/shared/lib/jwt";
 
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
@@ -56,12 +57,12 @@ export async function getConvexToken(
       cachedToken = token;
       // Parse JWT exp claim for precise refresh timing
       try {
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        if (typeof payload.exp !== "number") throw new Error("Missing exp claim");
-        const expMs = payload.exp * 1000;
-        tokenExpiresAt = expMs - REFRESH_MARGIN_MS;
+        tokenExpiresAt = getJwtExpMs(token) - REFRESH_MARGIN_MS;
       } catch (err) {
-        console.debug("[auth-token] JWT parse failed, using 4-minute cache:", (err as Error).message);
+        console.debug(
+          "[auth-token] JWT parse failed, using 4-minute cache:",
+          (err as Error).message,
+        );
         tokenExpiresAt = Date.now() + 4 * 60 * 1000;
       }
 

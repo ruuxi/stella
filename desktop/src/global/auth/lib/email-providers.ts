@@ -1,3 +1,5 @@
+import { openExternalUrl } from "@/platform/electron/open-external";
+
 interface EmailProvider {
   /** Friendly display name, e.g. "Gmail". */
   name: string;
@@ -55,9 +57,5 @@ export function detectEmailProvider(email: string): EmailProvider | null {
 }
 
 export function openEmailProvider(provider: EmailProvider): void {
-  if (window.electronAPI?.system.openExternal) {
-    window.electronAPI.system.openExternal(provider.url);
-    return;
-  }
-  window.open(provider.url, "_blank", "noopener,noreferrer");
+  openExternalUrl(provider.url);
 }

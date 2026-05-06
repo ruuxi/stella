@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { arch, platform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,7 +32,9 @@ export const getOfficeCliAssetName = () => {
   }
 
   if (platform() === "win32") {
-    return arch() === "arm64" ? "officecli-win-arm64.exe" : "officecli-win-x64.exe";
+    return arch() === "arm64"
+      ? "officecli-win-arm64.exe"
+      : "officecli-win-x64.exe";
   }
 
   throw new Error(`Unsupported platform: ${platform()}-${arch()}`);
@@ -46,5 +48,12 @@ export const getBundledBinaryPath = () => join(binDir, getBinaryTargetName());
 export const ensureBinDir = () => {
   if (!existsSync(binDir)) {
     mkdirSync(binDir, { recursive: true });
+  }
+};
+
+export const finalizeBundledBinary = (targetPath = getBundledBinaryPath()) => {
+  ensureBinDir();
+  if (process.platform !== "win32") {
+    chmodSync(targetPath, 0o755);
   }
 };

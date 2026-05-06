@@ -10,12 +10,16 @@ import {
 } from "react";
 import { ConvexProviderWithAuth } from "convex/react";
 import { MagicLinkAuthProvider } from "@/global/auth/useMagicLinkAuth";
-import { getConvexToken, clearCachedToken } from "@/global/auth/services/auth-token";
+import {
+  getConvexToken,
+  clearCachedToken,
+} from "@/global/auth/services/auth-token";
 import {
   signInAnonymous,
   useDesktopAuthSession,
 } from "@/global/auth/services/auth-session";
 import { convexClient } from "@/infra/convex-client";
+import { getJwtExpMs } from "@/shared/lib/jwt";
 
 const TOKEN_BOOTSTRAP_RETRY_MS = 3_000;
 const TOKEN_REFRESH_FALLBACK_MS = 3 * 60 * 1000;
@@ -50,13 +54,9 @@ export function useAuthBootstrapState() {
 
 const getHostTokenRefreshDelayMs = (token: string): number => {
   try {
-    const payload = JSON.parse(atob(token.split(".")[1] ?? ""));
-    if (typeof payload.exp !== "number") {
-      throw new Error("Missing exp claim");
-    }
     return Math.max(
       TOKEN_MIN_REFRESH_MS,
-      payload.exp * 1000 - Date.now() - TOKEN_REFRESH_MARGIN_MS,
+      getJwtExpMs(token) - Date.now() - TOKEN_REFRESH_MARGIN_MS,
     );
   } catch {
     return TOKEN_REFRESH_FALLBACK_MS;
@@ -70,15 +70,21 @@ function useDesktopConvexAuth() {
     (session.data as { user?: { id?: string } } | null | undefined)?.user?.id ??
     null;
   const sessionIsAnonymous =
-    (session.data as { user?: { isAnonymous?: boolean | null } } | null | undefined)
-      ?.user?.isAnonymous === true;
+    (
+      session.data as
+        | { user?: { isAnonymous?: boolean | null } }
+        | null
+        | undefined
+    )?.user?.isAnonymous === true;
 
   useEffect(() => {
     clearCachedToken();
   }, [sessionIsAnonymous, sessionUserId]);
 
   const fetchAccessToken = useCallback(
-    async ({ forceRefreshToken = false }: { forceRefreshToken?: boolean } = {}) => {
+    async ({
+      forceRefreshToken = false,
+    }: { forceRefreshToken?: boolean } = {}) => {
       return await getConvexToken({ forceRefresh: forceRefreshToken });
     },
     // Intentionally keyed on sessionUserId and sessionIsAnonymous so
@@ -105,12 +111,18 @@ function DesktopAuthRuntimeEffects({
 }) {
   const session = useDesktopAuthSession();
   const attemptedAnonAuthRef = useRef(false);
-  const runtimeAuthRefreshHandlerRef = useRef<((args?: {
-    forceRefreshToken?: boolean;
-    requestId?: string;
-  }) => Promise<void>) | null>(null);
+  const runtimeAuthRefreshHandlerRef = useRef<
+    | ((args?: {
+        forceRefreshToken?: boolean;
+        requestId?: string;
+      }) => Promise<void>)
+    | null
+  >(null);
   const sessionUser = (
-    session.data as { user?: { isAnonymous?: boolean | null } } | null | undefined
+    session.data as
+      | { user?: { isAnonymous?: boolean | null } }
+      | null
+      | undefined
   )?.user;
   const hasSession = Boolean(session.data);
   const hasConnectedAccount = hasSession && sessionUser?.isAnonymous !== true;
@@ -160,8 +172,8 @@ function DesktopAuthRuntimeEffects({
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
     if (
-      !systemApi?.onRuntimeAuthRefreshRequested
-      || !systemApi.completeRuntimeAuthRefresh
+      !systemApi?.onRuntimeAuthRefreshRequested ||
+      !systemApi.completeRuntimeAuthRefresh
     ) {
       return;
     }
@@ -243,12 +255,10 @@ function DesktopAuthRuntimeEffects({
       }, getHostTokenRefreshDelayMs(token));
     };
 
-    const syncToken = async (
-      {
-        forceRefreshToken = false,
-        requestId,
-      }: { forceRefreshToken?: boolean; requestId?: string } = {},
-    ) => {
+    const syncToken = async ({
+      forceRefreshToken = false,
+      requestId,
+    }: { forceRefreshToken?: boolean; requestId?: string } = {}) => {
       let token: string | undefined;
       try {
         token =
@@ -313,7 +323,12 @@ function DesktopAuthRuntimeEffects({
       runtimeAuthRefreshHandlerRef.current = null;
       clearTimers();
     };
-  }, [hasConnectedAccount, hasSession, isSessionPending, setAuthBootstrapState]);
+  }, [
+    hasConnectedAccount,
+    hasSession,
+    isSessionPending,
+    setAuthBootstrapState,
+  ]);
 
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
@@ -332,7 +347,11 @@ function DesktopAuthRuntimeEffects({
   return null;
 }
 
-export function DesktopConvexAuthProvider({ children }: { children: ReactNode }) {
+export function DesktopConvexAuthProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const [authBootstrapState, setAuthBootstrapState] =
     useState<AuthBootstrapState>({
       status: "loading_session",
@@ -347,7 +366,10 @@ export function DesktopConvexAuthProvider({ children }: { children: ReactNode })
   );
 
   return (
-    <ConvexProviderWithAuth client={convexClient} useAuth={useDesktopConvexAuth}>
+    <ConvexProviderWithAuth
+      client={convexClient}
+      useAuth={useDesktopConvexAuth}
+    >
       <AuthBootstrapContext.Provider value={authBootstrapValue}>
         <MagicLinkAuthProvider>
           <DesktopAuthRuntimeEffects

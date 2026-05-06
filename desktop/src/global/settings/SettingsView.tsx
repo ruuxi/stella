@@ -63,6 +63,7 @@ import {
   useDesktopPermissions,
   type DesktopPermissionStatus,
 } from "@/global/permissions/use-desktop-permissions";
+import { requestBrowserMicrophoneAccess } from "@/global/permissions/microphone-permission";
 import {
   setDeveloperResourcePreviewsEnabled,
   useDeveloperResourcePreviewsEnabled,
@@ -809,11 +810,6 @@ function BasicSettingsTab() {
     useState(false);
 
   const requestMicrophonePermission = useCallback(async () => {
-    const mediaDevices = navigator.mediaDevices;
-    if (!mediaDevices?.getUserMedia) {
-      throw new Error("Microphone permission requests are unavailable.");
-    }
-
     setRequestingMicrophonePermission(true);
     try {
       const latestStatus = await refreshPermissions();
@@ -826,8 +822,7 @@ function BasicSettingsTab() {
         );
       }
 
-      const stream = await mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
+      await requestBrowserMicrophoneAccess();
 
       const nextStatus = await refreshPermissions();
       if (!nextStatus.microphone) {

@@ -1,76 +1,77 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { useMutation, useQuery } from "convex/react"
-import QRCode from "qrcode"
-import { api } from "@/convex/api"
-import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import QRCode from "qrcode";
+import { api } from "@/convex/api";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { getDeviceIdOrNull } from "@/platform/electron/device";
 
 type PairingSessionState = {
-  pairingCode: string
-  expiresAt: number
-  createdAt: number
-} | null
+  pairingCode: string;
+  expiresAt: number;
+  createdAt: number;
+} | null;
 
 type PairedPhoneRecord = {
-  mobileDeviceId: string
-  displayName?: string
-  platform?: string
-  approvedAt: number
-  lastSeenAt: number
-}
+  mobileDeviceId: string;
+  displayName?: string;
+  platform?: string;
+  approvedAt: number;
+  lastSeenAt: number;
+};
 
 type PhoneAccessState = {
-  activePairing: PairingSessionState
-  pairedDevices: PairedPhoneRecord[]
-}
+  activePairing: PairingSessionState;
+  pairedDevices: PairedPhoneRecord[];
+};
 
 type UsePhoneAccessControllerOptions = {
-  qrCodeWidth?: number
-}
+  qrCodeWidth?: number;
+};
 
-const DEFAULT_QR_CODE_WIDTH = 160
+const DEFAULT_QR_CODE_WIDTH = 160;
 const PHONE_ACCESS_PREPARE_ERROR =
-  "Unable to prepare phone access on this desktop."
+  "Unable to prepare phone access on this desktop.";
 
 export function usePhoneAccessController(
   options: UsePhoneAccessControllerOptions = {},
 ) {
-  const { qrCodeWidth = DEFAULT_QR_CODE_WIDTH } = options
-  const { hasConnectedAccount } = useAuthSessionState()
-  const [desktopDeviceId, setDesktopDeviceId] = useState<string | null>(null)
-  const [deviceLoadError, setDeviceLoadError] = useState<string | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
+  const { qrCodeWidth = DEFAULT_QR_CODE_WIDTH } = options;
+  const { hasConnectedAccount } = useAuthSessionState();
+  const [desktopDeviceId, setDesktopDeviceId] = useState<string | null>(null);
+  const [deviceLoadError, setDeviceLoadError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
   const [removingMobileDeviceId, setRemovingMobileDeviceId] = useState<
     string | null
-  >(null)
-  const [now, setNow] = useState(() => Date.now())
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  >(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   const createPairingSession = useMutation(
     api.mobile_access.createPairingSession,
-  )
+  );
   const revokePairedMobileDevice = useMutation(
     api.mobile_access.revokePairedMobileDevice,
-  )
+  );
 
   const phoneAccessState = useQuery(
     api.mobile_access.getPhoneAccessState,
     hasConnectedAccount && desktopDeviceId ? { desktopDeviceId } : "skip",
-  ) as PhoneAccessState | undefined
+  ) as PhoneAccessState | undefined;
 
   useEffect(() => {
     if (!hasConnectedAccount) {
-      setDesktopDeviceId(null)
-      setDeviceLoadError(null)
-      return
+      setDesktopDeviceId(null);
+      setDeviceLoadError(null);
+      return;
     }
 
-    let cancelled = false
+    let cancelled = false;
     const loadDeviceId = async () => {
       try {
-        const nextDeviceId = await window.electronAPI?.system.getDeviceId()
+        const nextDeviceId = await getDeviceIdOrNull();
         if (!cancelled) {
-          setDesktopDeviceId(nextDeviceId ?? null)
-          setDeviceLoadError(null)
+          setDesktopDeviceId(nextDeviceId ?? null);
+          setDeviceLoadError(null);
         }
       } catch (nextError) {
         if (!cancelled) {
@@ -78,37 +79,37 @@ export function usePhoneAccessController(
             nextError instanceof Error
               ? nextError.message
               : PHONE_ACCESS_PREPARE_ERROR,
-          )
+          );
         }
       }
-    }
+    };
 
-    void loadDeviceId()
+    void loadDeviceId();
     return () => {
-      cancelled = true
-    }
-  }, [hasConnectedAccount])
+      cancelled = true;
+    };
+  }, [hasConnectedAccount]);
 
-  const hasActivePairing = Boolean(phoneAccessState?.activePairing)
+  const hasActivePairing = Boolean(phoneAccessState?.activePairing);
   useEffect(() => {
     if (!hasActivePairing) {
-      return
+      return;
     }
     const intervalId = window.setInterval(() => {
-      setNow(Date.now())
-    }, 1_000)
+      setNow(Date.now());
+    }, 1_000);
     return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [hasActivePairing])
+      window.clearInterval(intervalId);
+    };
+  }, [hasActivePairing]);
 
   const activePairing = useMemo(() => {
-    const pairing = phoneAccessState?.activePairing ?? null
+    const pairing = phoneAccessState?.activePairing ?? null;
     if (!pairing || pairing.expiresAt <= now) {
-      return null
+      return null;
     }
-    return pairing
-  }, [now, phoneAccessState?.activePairing])
+    return pairing;
+  }, [now, phoneAccessState?.activePairing]);
 
   const pairingLink = useMemo(
     () =>
@@ -116,15 +117,15 @@ export function usePhoneAccessController(
         ? `stella-mobile://stella?code=${encodeURIComponent(activePairing.pairingCode)}`
         : null,
     [activePairing],
-  )
+  );
 
   useEffect(() => {
     if (!pairingLink) {
-      setQrDataUrl(null)
-      return
+      setQrDataUrl(null);
+      return;
     }
 
-    let cancelled = false
+    let cancelled = false;
     QRCode.toDataURL(pairingLink, {
       width: qrCodeWidth,
       margin: 2,
@@ -132,48 +133,48 @@ export function usePhoneAccessController(
     })
       .then((url) => {
         if (!cancelled) {
-          setQrDataUrl(url)
+          setQrDataUrl(url);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setQrDataUrl(null)
+          setQrDataUrl(null);
         }
-      })
+      });
 
     return () => {
-      cancelled = true
-    }
-  }, [pairingLink, qrCodeWidth])
+      cancelled = true;
+    };
+  }, [pairingLink, qrCodeWidth]);
 
   const createPairing = useCallback(async (): Promise<boolean> => {
     if (!desktopDeviceId || isCreating) {
-      return false
+      return false;
     }
-    setIsCreating(true)
+    setIsCreating(true);
     try {
-      await createPairingSession({ desktopDeviceId })
-      return true
+      await createPairingSession({ desktopDeviceId });
+      return true;
     } finally {
-      setIsCreating(false)
+      setIsCreating(false);
     }
-  }, [createPairingSession, desktopDeviceId, isCreating])
+  }, [createPairingSession, desktopDeviceId, isCreating]);
 
   const removePhone = useCallback(
     async (mobileDeviceId: string): Promise<boolean> => {
       if (!desktopDeviceId || removingMobileDeviceId) {
-        return false
+        return false;
       }
-      setRemovingMobileDeviceId(mobileDeviceId)
+      setRemovingMobileDeviceId(mobileDeviceId);
       try {
-        await revokePairedMobileDevice({ desktopDeviceId, mobileDeviceId })
-        return true
+        await revokePairedMobileDevice({ desktopDeviceId, mobileDeviceId });
+        return true;
       } finally {
-        setRemovingMobileDeviceId(null)
+        setRemovingMobileDeviceId(null);
       }
     },
     [desktopDeviceId, removingMobileDeviceId, revokePairedMobileDevice],
-  )
+  );
 
   return {
     hasConnectedAccount,
@@ -187,5 +188,5 @@ export function usePhoneAccessController(
     removingMobileDeviceId,
     createPairing,
     removePhone,
-  }
+  };
 }
