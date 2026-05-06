@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { authClient } from "@/global/auth/lib/auth-client";
+import { useDesktopAuthSession } from "@/global/auth/services/auth-session";
 
 type AuthSessionUser = {
   email?: string | null;
@@ -15,7 +15,7 @@ type AuthSessionData = {
 } | null | undefined;
 
 export function useAuthSessionState() {
-  const session = authClient.useSession();
+  const session = useDesktopAuthSession();
   const sessionData = session.data as AuthSessionData;
   const user = sessionData?.user ?? null;
   const hasSession = Boolean(sessionData);
@@ -33,4 +33,3 @@ export function useAuthSessionState() {
     [hasConnectedAccount, hasSession, isAnonymous, session.isPending, user],
   );
 }
-

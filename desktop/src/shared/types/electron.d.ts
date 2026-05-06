@@ -588,11 +588,13 @@ export type ElectronSystemApi = {
     token?: string;
     hasConnectedAccount?: boolean;
   }) => Promise<{ ok: boolean }>;
-  getAuthStorageItem: (key: string) => string | null;
-  setAuthStorageItem: (
-    key: string,
-    value: string | null,
-  ) => Promise<{ ok: boolean }>;
+  getAuthSession: () => Promise<unknown | null>;
+  signInAnonymous: () => Promise<unknown>;
+  signOutAuth: () => Promise<{ ok: boolean }>;
+  deleteAuthUser: () => Promise<{ ok: boolean }>;
+  verifyAuthCallbackUrl: (url: string) => Promise<{ ok: boolean }>;
+  applyAuthSessionCookie: (sessionCookie: string) => Promise<{ ok: boolean }>;
+  getConvexAuthToken: () => Promise<string | null>;
   completeRuntimeAuthRefresh: (payload: {
     requestId: string;
     authenticated: boolean;

@@ -56,10 +56,15 @@ import {
 } from "../../src/shared/lib/mini-double-tap.js";
 import {
   IPC_APP_QUIT_FOR_RESTART,
+  IPC_AUTH_APPLY_SESSION_COOKIE,
   IPC_AUTH_CONSUME_PENDING_CALLBACK,
+  IPC_AUTH_DELETE_USER,
+  IPC_AUTH_GET_CONVEX_TOKEN,
+  IPC_AUTH_GET_SESSION,
   IPC_AUTH_RUNTIME_REFRESH_COMPLETE,
-  IPC_AUTH_STORAGE_GET_ITEM,
-  IPC_AUTH_STORAGE_SET_ITEM,
+  IPC_AUTH_SIGN_IN_ANONYMOUS,
+  IPC_AUTH_SIGN_OUT,
+  IPC_AUTH_VERIFY_CALLBACK_URL,
   IPC_BACKUP_GET_STATUS,
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
@@ -530,46 +535,93 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
-  ipcMain.on(
-    IPC_AUTH_STORAGE_GET_ITEM,
-    (event: IpcMainEvent, payload: { key?: string }) => {
+  ipcMain.handle(IPC_AUTH_GET_SESSION, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "auth:getSession",
+      )
+    ) {
+      throw new Error("Blocked untrusted auth session request.");
+    }
+    return await options.authService.getBetterAuthSession();
+  });
+
+  ipcMain.handle(IPC_AUTH_SIGN_IN_ANONYMOUS, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "auth:signInAnonymous",
+      )
+    ) {
+      throw new Error("Blocked untrusted anonymous sign-in request.");
+    }
+    return await options.authService.signInAnonymous();
+  });
+
+  ipcMain.handle(IPC_AUTH_SIGN_OUT, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(event, "auth:signOut")
+    ) {
+      throw new Error("Blocked untrusted sign-out request.");
+    }
+    return await options.authService.signOut();
+  });
+
+  ipcMain.handle(IPC_AUTH_DELETE_USER, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(event, "auth:deleteUser")
+    ) {
+      throw new Error("Blocked untrusted account deletion request.");
+    }
+    return await options.authService.deleteUser();
+  });
+
+  ipcMain.handle(
+    IPC_AUTH_VERIFY_CALLBACK_URL,
+    async (event, payload: { url?: string }) => {
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
-          "auth:storage:getItem",
+          "auth:verifyCallbackUrl",
         )
       ) {
-        event.returnValue = null;
-        return;
+        throw new Error("Blocked untrusted auth callback verification request.");
       }
-      const key = typeof payload?.key === "string" ? payload.key : "";
-      event.returnValue = options.authService.getAuthStorageItem(key);
+      return await options.authService.verifyAuthCallbackUrl(
+        typeof payload?.url === "string" ? payload.url : "",
+      );
     },
   );
 
   ipcMain.handle(
-    IPC_AUTH_STORAGE_SET_ITEM,
-    (
-      event,
-      payload: {
-        key?: string;
-        value?: string | null;
-      },
-    ) => {
+    IPC_AUTH_APPLY_SESSION_COOKIE,
+    (event, payload: { sessionCookie?: string }) => {
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
-          "auth:storage:setItem",
+          "auth:applySessionCookie",
         )
       ) {
-        throw new Error("Blocked untrusted auth storage request.");
+        throw new Error("Blocked untrusted session-cookie request.");
       }
-      const key = typeof payload?.key === "string" ? payload.key : "";
-      const value = typeof payload?.value === "string" ? payload.value : null;
-      options.authService.setAuthStorageItem(key, value);
-      return { ok: true };
+      return options.authService.applySessionCookie(
+        typeof payload?.sessionCookie === "string" ? payload.sessionCookie : "",
+      );
     },
   );
+
+  ipcMain.handle(IPC_AUTH_GET_CONVEX_TOKEN, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "auth:getConvexToken",
+      )
+    ) {
+      throw new Error("Blocked untrusted Convex token request.");
+    }
+    return await options.authService.getConvexAuthToken();
+  });
 
   // Renderer-pull for the cold-boot deep-link OTT (`stella://auth/callback`).
   // Main captures the URL from argv before any window exists; previously it

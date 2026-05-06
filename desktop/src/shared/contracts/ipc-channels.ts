@@ -148,8 +148,13 @@ export const IPC_PHONE_ACCESS_START = "phoneAccess:startSession" as const;
 export const IPC_PHONE_ACCESS_STOP = "phoneAccess:stopSession" as const;
 export const IPC_HOST_CONFIGURE_RUNTIME = "host:configurePiRuntime" as const;
 export const IPC_AUTH_SET_STATE = "auth:setState" as const;
-export const IPC_AUTH_STORAGE_GET_ITEM = "auth:storage:getItem" as const;
-export const IPC_AUTH_STORAGE_SET_ITEM = "auth:storage:setItem" as const;
+export const IPC_AUTH_GET_SESSION = "auth:getSession" as const;
+export const IPC_AUTH_SIGN_IN_ANONYMOUS = "auth:signInAnonymous" as const;
+export const IPC_AUTH_SIGN_OUT = "auth:signOut" as const;
+export const IPC_AUTH_DELETE_USER = "auth:deleteUser" as const;
+export const IPC_AUTH_VERIFY_CALLBACK_URL = "auth:verifyCallbackUrl" as const;
+export const IPC_AUTH_APPLY_SESSION_COOKIE = "auth:applySessionCookie" as const;
+export const IPC_AUTH_GET_CONVEX_TOKEN = "auth:getConvexToken" as const;
 export const IPC_HOST_SET_CLOUD_SYNC = "host:setCloudSyncEnabled" as const;
 export const IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT =
   "host:setModelCatalogUpdatedAt" as const;

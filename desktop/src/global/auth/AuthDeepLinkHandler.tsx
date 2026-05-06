@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { authClient } from "@/global/auth/lib/auth-client";
+import { refreshAuthSession } from "@/global/auth/services/auth-session";
+import { configurePiRuntime } from "@/platform/electron/device";
 
 const AUTH_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/;
 
@@ -36,16 +37,11 @@ const extractTrustedOtt = (value: string): string | null => {
 };
 
 const verifyOneTimeToken = async (token: string) => {
-  await authClient.$fetch("/cross-domain/one-time-token/verify", {
-    method: "POST",
-    body: { token },
-  });
-  const updateSession = (authClient as unknown as { updateSession?: () => void }).updateSession;
-  if (typeof updateSession === "function") {
-    updateSession();
-  } else {
-    await authClient.getSession();
-  }
+  await configurePiRuntime();
+  await window.electronAPI?.system.verifyAuthCallbackUrl?.(
+    `${STELLA_PROTOCOL}://auth/callback?ott=${encodeURIComponent(token)}`,
+  );
+  await refreshAuthSession();
 };
 
 const handleBrowserAuthCallback = () => {
@@ -90,7 +86,7 @@ export const AuthDeepLinkHandler = () => {
     // effects, so the live broadcast could land before this listener was
     // attached. We pull explicitly here, which is the single source of
     // consumption; the buffer is cleared on the main side once read.
-    void api.system.consumePendingAuthCallback?.().then((url) => {
+    void configurePiRuntime().then(() => api.system.consumePendingAuthCallback?.()).then((url) => {
       if (cancelled || !url) return;
       void processAuthCallbackUrl(url);
     });

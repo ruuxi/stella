@@ -10,7 +10,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
-import { authClient } from "@/global/auth/lib/auth-client";
+import { deleteAuthUser } from "@/global/auth/services/auth-session";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
 import { DesktopUpdateBanner } from "@/global/updates/DesktopUpdateBanner";
 import { showToast } from "@/ui/toast";
@@ -167,13 +167,7 @@ async function clearLocalAccountState() {
 }
 
 async function deleteCurrentBetterAuthUser() {
-  const client = authClient as typeof authClient & {
-    deleteUser?: (body?: { callbackURL?: string }) => Promise<unknown>;
-  };
-  if (typeof client.deleteUser !== "function") {
-    throw new Error("Account deletion is not available.");
-  }
-  await client.deleteUser({ callbackURL: "/" });
+  await deleteAuthUser();
 }
 
 function formatBackupTimestamp(timestamp?: number) {

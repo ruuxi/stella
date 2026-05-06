@@ -40,11 +40,16 @@ import type {
 import type { DiscoveryKnowledgeSeedPayload } from "../../runtime/contracts/discovery.js";
 import {
   IPC_APP_QUIT_FOR_RESTART,
+  IPC_AUTH_APPLY_SESSION_COOKIE,
   IPC_AUTH_CONSUME_PENDING_CALLBACK,
+  IPC_AUTH_DELETE_USER,
+  IPC_AUTH_GET_CONVEX_TOKEN,
+  IPC_AUTH_GET_SESSION,
   IPC_AUTH_RUNTIME_REFRESH_COMPLETE,
   IPC_AUTH_RUNTIME_REFRESH_REQUESTED,
-  IPC_AUTH_STORAGE_GET_ITEM,
-  IPC_AUTH_STORAGE_SET_ITEM,
+  IPC_AUTH_SIGN_IN_ANONYMOUS,
+  IPC_AUTH_SIGN_OUT,
+  IPC_AUTH_VERIFY_CALLBACK_URL,
   IPC_BACKUP_GET_STATUS,
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
@@ -769,12 +774,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
       token?: string;
       hasConnectedAccount?: boolean;
     }) => ipcRenderer.invoke("auth:setState", payload),
-    getAuthStorageItem: (key: string) =>
-      ipcRenderer.sendSync(IPC_AUTH_STORAGE_GET_ITEM, { key }) as string | null,
-    setAuthStorageItem: (key: string, value: string | null) =>
-      ipcRenderer.invoke(IPC_AUTH_STORAGE_SET_ITEM, { key, value }) as Promise<{
+    getAuthSession: () => ipcRenderer.invoke(IPC_AUTH_GET_SESSION),
+    signInAnonymous: () => ipcRenderer.invoke(IPC_AUTH_SIGN_IN_ANONYMOUS),
+    signOutAuth: () =>
+      ipcRenderer.invoke(IPC_AUTH_SIGN_OUT) as Promise<{ ok: boolean }>,
+    deleteAuthUser: () =>
+      ipcRenderer.invoke(IPC_AUTH_DELETE_USER) as Promise<{ ok: boolean }>,
+    verifyAuthCallbackUrl: (url: string) =>
+      ipcRenderer.invoke(IPC_AUTH_VERIFY_CALLBACK_URL, { url }) as Promise<{
         ok: boolean;
       }>,
+    applyAuthSessionCookie: (sessionCookie: string) =>
+      ipcRenderer.invoke(IPC_AUTH_APPLY_SESSION_COOKIE, {
+        sessionCookie,
+      }) as Promise<{ ok: boolean }>,
+    getConvexAuthToken: () =>
+      ipcRenderer.invoke(IPC_AUTH_GET_CONVEX_TOKEN) as Promise<string | null>,
     completeRuntimeAuthRefresh: (payload: {
       requestId: string;
       authenticated: boolean;

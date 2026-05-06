@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
+import {
+  getCookie,
+  getSetCookie,
+} from '@convex-dev/better-auth/client/plugins'
 import type { PiRunnerTarget } from '../../../runtime/kernel/lifecycle-targets.js'
 import { readConfiguredConvexSiteUrl } from '../../../runtime/kernel/convex-urls.js'
 import {
@@ -18,6 +22,9 @@ const RUNTIME_AUTH_REFRESH_TIMEOUT_MS = 12_000
 const AUTH_STORAGE_SCOPE = 'desktop-better-auth-storage'
 const AUTH_STORAGE_FILE = 'better-auth-storage.json'
 const PLAINTEXT_PREFIX = 'stella-main-plaintext:v1:'
+const BETTER_AUTH_COOKIE_STORAGE_KEY = 'better-auth_cookie'
+const BETTER_AUTH_SESSION_DATA_STORAGE_KEY = 'better-auth_session_data'
+const AUTH_BASE_PATH = '/api/auth'
 
 type AuthServiceOptions = {
   authProtocol: string
@@ -114,7 +121,7 @@ export class AuthService {
     this.authStorageCache = { ...values }
   }
 
-  getAuthStorageItem(key: string): string | null {
+  private getAuthStorageItem(key: string): string | null {
     const normalizedKey = typeof key === 'string' ? key.trim() : ''
     if (!normalizedKey) {
       return null
@@ -134,6 +141,174 @@ export class AuthService {
       delete storage[normalizedKey]
     }
     this.writeAuthStorage(storage)
+  }
+
+  private getAuthCookieHeader(): string {
+    const storedCookie = this.getAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY)
+    return getCookie(storedCookie || '{}')
+  }
+
+  private getSetCookieHeaders(headers: Headers): string[] {
+    const maybeHeaders = headers as Headers & {
+      getSetCookie?: () => string[]
+      raw?: () => Record<string, string[]>
+    }
+    const explicit = maybeHeaders.getSetCookie?.()
+    if (explicit?.length) return explicit
+    const rawSetCookie = maybeHeaders.raw?.()['set-cookie']
+    if (rawSetCookie?.length) return rawSetCookie
+    const single = headers.get('set-cookie')
+    return single ? [single] : []
+  }
+
+  private applyAuthResponseCookies(response: Response) {
+    const previous = this.getAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY) ?? undefined
+    let nextCookie = previous
+    const betterAuthCookie = response.headers.get('set-better-auth-cookie')
+    if (betterAuthCookie) {
+      nextCookie = getSetCookie(betterAuthCookie, nextCookie)
+    }
+    for (const setCookie of this.getSetCookieHeaders(response.headers)) {
+      nextCookie = getSetCookie(setCookie, nextCookie)
+    }
+    if (nextCookie !== undefined && nextCookie !== previous) {
+      this.setAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY, nextCookie)
+    }
+  }
+
+  private async authFetch(pathname: string, init: RequestInit = {}) {
+    const siteUrl = this.getConvexSiteUrl()
+    if (!siteUrl) {
+      throw new Error('Convex site URL is not configured.')
+    }
+    const headers = new Headers(init.headers)
+    const cookie = this.getAuthCookieHeader()
+    if (cookie) {
+      headers.set('cookie', cookie)
+    }
+    const response = await fetch(`${siteUrl}${AUTH_BASE_PATH}${pathname}`, {
+      ...init,
+      headers,
+    })
+    this.applyAuthResponseCookies(response)
+    return response
+  }
+
+  async getBetterAuthSession() {
+    const response = await this.authFetch('/get-session', {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    })
+    if (response.status === 401 || response.status === 403 || response.status === 404) {
+      this.setAuthStorageItem(BETTER_AUTH_SESSION_DATA_STORAGE_KEY, null)
+      return null
+    }
+    if (!response.ok) {
+      throw new Error(`Session request failed with HTTP ${response.status}.`)
+    }
+    const data = await response.json().catch(() => null)
+    if (data) {
+      this.setAuthStorageItem(
+        BETTER_AUTH_SESSION_DATA_STORAGE_KEY,
+        JSON.stringify(data),
+      )
+    }
+    return data
+  }
+
+  async signInAnonymous() {
+    const response = await this.authFetch('/sign-in/anonymous', {
+      method: 'POST',
+      headers: { accept: 'application/json' },
+    })
+    if (!response.ok) {
+      throw new Error(`Anonymous sign-in failed with HTTP ${response.status}.`)
+    }
+    return await response.json().catch(() => ({ ok: true }))
+  }
+
+  async signOut() {
+    const response = await this.authFetch('/sign-out', {
+      method: 'POST',
+      headers: { accept: 'application/json' },
+    }).catch((error) => {
+      console.debug('[auth] sign-out request failed:', (error as Error).message)
+      return null
+    })
+    this.setAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY, null)
+    this.setAuthStorageItem(BETTER_AUTH_SESSION_DATA_STORAGE_KEY, null)
+    this.stopAuthRefreshLoop()
+    return { ok: response?.ok !== false }
+  }
+
+  async deleteUser() {
+    const response = await this.authFetch('/delete-user', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ callbackURL: '/' }),
+    })
+    if (!response.ok) {
+      throw new Error(`Account deletion failed with HTTP ${response.status}.`)
+    }
+    this.setAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY, null)
+    this.setAuthStorageItem(BETTER_AUTH_SESSION_DATA_STORAGE_KEY, null)
+    this.stopAuthRefreshLoop()
+    return { ok: true }
+  }
+
+  async verifyAuthCallbackUrl(url: string) {
+    if (!this.isTrustedAuthCallbackUrl(url)) {
+      throw new Error('Blocked untrusted auth callback URL.')
+    }
+    const parsed = new URL(url)
+    const token = parsed.searchParams.get('ott')
+    if (!token || !AUTH_CALLBACK_TOKEN_PATTERN.test(token)) {
+      throw new Error('Invalid auth callback token.')
+    }
+    const response = await this.authFetch('/cross-domain/one-time-token/verify', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ token }),
+    })
+    if (!response.ok) {
+      throw new Error(`Auth callback verification failed with HTTP ${response.status}.`)
+    }
+    return { ok: true }
+  }
+
+  applySessionCookie(sessionCookie: string) {
+    const normalized = typeof sessionCookie === 'string' ? sessionCookie.trim() : ''
+    if (!normalized) {
+      throw new Error('Missing session cookie.')
+    }
+    const previous = this.getAuthStorageItem(BETTER_AUTH_COOKIE_STORAGE_KEY) ?? undefined
+    this.setAuthStorageItem(
+      BETTER_AUTH_COOKIE_STORAGE_KEY,
+      getSetCookie(normalized, previous),
+    )
+    return { ok: true }
+  }
+
+  async getConvexAuthToken() {
+    const response = await this.authFetch('/convex/token', {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    })
+    if (!response.ok) {
+      return null
+    }
+    const data = (await response.json().catch(() => null)) as {
+      token?: string
+    } | null
+    return typeof data?.token === 'string' && data.token.trim()
+      ? data.token.trim()
+      : null
   }
 
   private getRuntimeAuthState(): HostRuntimeAuthRefreshResult {

@@ -8,7 +8,7 @@
  * include it as an Authorization header.
  */
 
-import { authClient } from "@/global/auth/lib/auth-client";
+import { configurePiRuntime } from "@/platform/electron/device";
 
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
@@ -45,10 +45,8 @@ export async function getConvexToken(
 
   inflightTokenPromise = (async () => {
     try {
-      // convexClient() plugin adds .convex.token() but isn't reflected in the base type
-      const convex = (authClient as unknown as { convex: { token(): Promise<{ data?: { token?: string } }> } }).convex;
-      const result = await convex.token();
-      const token: string | undefined = result?.data?.token;
+      await configurePiRuntime();
+      const token = await window.electronAPI?.system.getConvexAuthToken?.();
       if (!token) {
         cachedToken = null;
         tokenExpiresAt = 0;
@@ -100,4 +98,3 @@ export function clearCachedToken(): void {
   tokenExpiresAt = 0;
   inflightTokenPromise = null;
 }
-

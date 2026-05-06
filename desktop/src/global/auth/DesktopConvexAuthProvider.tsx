@@ -9,9 +9,12 @@ import {
   useState,
 } from "react";
 import { ConvexProviderWithAuth } from "convex/react";
-import { authClient } from "@/global/auth/lib/auth-client";
 import { MagicLinkAuthProvider } from "@/global/auth/useMagicLinkAuth";
 import { getConvexToken, clearCachedToken } from "@/global/auth/services/auth-token";
+import {
+  signInAnonymous,
+  useDesktopAuthSession,
+} from "@/global/auth/services/auth-session";
 import { convexClient } from "@/infra/convex-client";
 
 const TOKEN_BOOTSTRAP_RETRY_MS = 3_000;
@@ -61,7 +64,7 @@ const getHostTokenRefreshDelayMs = (token: string): number => {
 };
 
 function useDesktopConvexAuth() {
-  const session = authClient.useSession();
+  const session = useDesktopAuthSession();
 
   const sessionUserId =
     (session.data as { user?: { id?: string } } | null | undefined)?.user?.id ??
@@ -100,7 +103,7 @@ function DesktopAuthRuntimeEffects({
 }: {
   setAuthBootstrapState: (state: AuthBootstrapState) => void;
 }) {
-  const session = authClient.useSession();
+  const session = useDesktopAuthSession();
   const attemptedAnonAuthRef = useRef(false);
   const runtimeAuthRefreshHandlerRef = useRef<((args?: {
     forceRefreshToken?: boolean;
@@ -131,7 +134,7 @@ function DesktopAuthRuntimeEffects({
       error: null,
     });
 
-    void authClient.signIn.anonymous().catch(() => {
+    void signInAnonymous().catch(() => {
       attemptedAnonAuthRef.current = false;
       setAuthBootstrapState({
         status: "failed",
