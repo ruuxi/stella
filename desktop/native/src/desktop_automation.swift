@@ -1443,17 +1443,16 @@ func snapshotRoots(for app: AXUIElement) -> [AXUIElement] {
             kAXFocusedWindowAttribute as String,
             kAXMainWindowAttribute as String,
             kAXFocusedUIElementAttribute as String,
-            kAXMenuBarAttribute as String,
         ]
     )
 
     appendUniqueElement(
-        coerceElement(rootBatch[kAXFocusedWindowAttribute as String]),
+        usableWindowElement(coerceElement(rootBatch[kAXFocusedWindowAttribute as String])),
         into: &roots,
         excluding: app
     )
     appendUniqueElement(
-        coerceElement(rootBatch[kAXMainWindowAttribute as String]),
+        usableWindowElement(coerceElement(rootBatch[kAXMainWindowAttribute as String])),
         into: &roots,
         excluding: app
     )
@@ -1462,21 +1461,70 @@ func snapshotRoots(for app: AXUIElement) -> [AXUIElement] {
         into: &roots,
         excluding: app
     )
-    // Menu bar lives off the app element, not under any window. Including it
-    // is what lets us drive apps in the background even when the window AX
-    // tree is shallow (e.g. Spotify): every app exposes File/Edit/Playback/etc.
-    // as menu bar items, and `AXPress` on a menu item works without focus.
-    appendUniqueElement(
-        coerceElement(rootBatch[kAXMenuBarAttribute as String]),
-        into: &roots,
-        excluding: app
-    )
-
     if roots.isEmpty {
         roots.append(app)
     }
 
     return roots
+}
+
+func isUsableWindowElement(_ element: AXUIElement) -> Bool {
+    axStringValue(element, kAXRoleAttribute as String) == kAXWindowRole as String &&
+        axBoolValue(element, kAXMinimizedAttribute as String) != true
+}
+
+func usableWindowElement(_ element: AXUIElement?) -> AXUIElement? {
+    guard let element, isUsableWindowElement(element) else {
+        return nil
+    }
+    return element
+}
+
+func firstAnyWindow(for app: AXUIElement) -> AXUIElement? {
+    axElementValue(app, kAXFocusedWindowAttribute as String) ??
+        axElementValue(app, kAXMainWindowAttribute as String) ??
+        axElementArrayValue(app, kAXWindowsAttribute as String).first {
+            axStringValue($0, kAXRoleAttribute as String) == kAXWindowRole as String
+        }
+}
+
+func setBoolAttribute(_ attribute: String, on element: AXUIElement, value: Bool) -> Bool {
+    AXUIElementSetAttributeValue(
+        element,
+        attribute as CFString,
+        value ? kCFBooleanTrue : kCFBooleanFalse
+    ) == .success
+}
+
+func recoverHiddenTargetWindowIfNeeded(_ target: AppTarget) {
+    if snapshotRoots(for: target.axApp).contains(where: isUsableWindowElement) {
+        return
+    }
+
+    var recovered = false
+    if target.app.isHidden {
+        recovered = target.app.unhide() || recovered
+    }
+
+    if let window = firstAnyWindow(for: target.axApp) {
+        if axBoolValue(window, kAXMinimizedAttribute as String) == true {
+            recovered = setBoolAttribute(kAXMinimizedAttribute as String, on: window, value: false) || recovered
+        }
+        if axActions(window).contains(where: { normalized($0) == normalized(kAXRaiseAction as String) }) {
+            recovered = AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success || recovered
+        }
+        recovered = setBoolAttribute(kAXMainAttribute as String, on: window, value: true) || recovered
+        recovered = setBoolAttribute(kAXFocusedAttribute as String, on: window, value: true) || recovered
+    }
+
+    if !snapshotRoots(for: target.axApp).contains(where: isUsableWindowElement),
+       let bundleURL = target.app.bundleURL {
+        recovered = openApplication(at: bundleURL) || recovered
+    }
+
+    if recovered {
+        Thread.sleep(forTimeInterval: 0.4)
+    }
 }
 
 func primaryLabel(
@@ -1574,6 +1622,7 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
                 kAXSelectedAttribute as String,
                 kAXExpandedAttribute as String,
                 kAXPlaceholderValueAttribute as String,
+                "AXPlaceholder",
                 kAXPositionAttribute as String,
                 kAXSizeAttribute as String,
                 "AXValueDescription",
@@ -1589,7 +1638,10 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
         // fields (Brave's address bar, Spotlight search, Mail's To:/Subject
         // fields). We only surface it on text-bearing roles to avoid
         // padding every actionable node with empty placeholders.
-        placeholder = truncateValue(coerceString(secondBatch[kAXPlaceholderValueAttribute as String]))
+        placeholder = truncateValue(
+            coerceString(secondBatch[kAXPlaceholderValueAttribute as String]) ??
+                coerceString(secondBatch["AXPlaceholder"])
+        )
         enabled = coerceBool(secondBatch[kAXEnabledAttribute as String])
         selected = coerceBool(secondBatch[kAXSelectedAttribute as String])
         // AXExpanded is only meaningful on disclosable elements. Reading
@@ -1647,6 +1699,9 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
 }
 
 func isActionableNode(_ details: NodeDetails) -> Bool {
+    if details.role == "AXMenuBarItem" || details.role == "AXMenuBar" || details.role == "AXMenu" {
+        return false
+    }
     if !details.actions.isEmpty {
         return true
     }
@@ -1728,14 +1783,9 @@ final class SnapshotBuilder {
         occurrenceCounts[occurrenceKey] = occurrence
 
         var children: [SnapshotNode] = []
-        // Don't recurse into menu bar items. Their submenu trees (Apple ▸
-        // Recent Items, every File submenu, every Help search entry) can
-        // double the snapshot's element count and consume hundreds of
-        // sequential IDs that the wrapper hides anyway. Renderers display
-        // menu bar items name-only; if the agent needs to actuate one it
-        // either uses computer_perform_secondary_action(AXPress) on the
-        // menu bar item or clicks via screenshot pixels. Suppressing the
-        // walk here keeps menu bar IDs compact and contiguous.
+        // Don't recurse into menu bar items if an app exposes them under a
+        // fallback root. They are global app chrome and should not become
+        // default computer-use targets.
         let descendsIntoChildren =
             depth < maxDepth && details.role != "AXMenuBarItem"
         if descendsIntoChildren {
@@ -6790,6 +6840,7 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
         bundleId: options.bundleId
     )
     configureMessagingTimeout(for: target)
+    recoverHiddenTargetWindowIfNeeded(target)
 
     // Snapshot the app's currently relevant window roots. For Electron/CEF
     // hosts, `prepareTargetForAutomation(...)` enables manual accessibility
@@ -6985,24 +7036,15 @@ func allWindowRoots(for app: AXUIElement) -> [AXUIElement] {
         [
             kAXFocusedWindowAttribute as String,
             kAXWindowsAttribute as String,
-            kAXMenuBarAttribute as String,
         ]
     )
     appendUniqueElement(
-        coerceElement(rootBatch[kAXFocusedWindowAttribute as String]),
+        usableWindowElement(coerceElement(rootBatch[kAXFocusedWindowAttribute as String])),
         into: &roots,
         excluding: app
     )
     appendUniqueElements(
-        coerceElementArray(rootBatch[kAXWindowsAttribute as String]),
-        into: &roots,
-        excluding: app
-    )
-    // Same reason as snapshotRoots: surface the menu bar so background AX
-    // actions (e.g. Playback > Play in Spotify) can be driven without raising
-    // the target window.
-    appendUniqueElement(
-        coerceElement(rootBatch[kAXMenuBarAttribute as String]),
+        coerceElementArray(rootBatch[kAXWindowsAttribute as String]).filter(isUsableWindowElement),
         into: &roots,
         excluding: app
     )
