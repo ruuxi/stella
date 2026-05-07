@@ -163,6 +163,27 @@ const assertStellaInitialized = (options: BrowserHandlersOptions) => {
   }
 };
 
+const resolveMediaOutputPath = (dir: string, fileName: string) => {
+  if (
+    !fileName ||
+    fileName === "." ||
+    fileName === ".." ||
+    fileName.includes("\0") ||
+    fileName.includes("/") ||
+    fileName.includes("\\") ||
+    path.isAbsolute(fileName)
+  ) {
+    throw new Error("Invalid media output filename.");
+  }
+
+  const resolvedDir = path.resolve(dir);
+  const destPath = path.resolve(resolvedDir, fileName);
+  if (!destPath.startsWith(`${resolvedDir}${path.sep}`)) {
+    throw new Error("Invalid media output filename.");
+  }
+  return destPath;
+};
+
 export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
   ipcMain.handle(
     IPC_BROWSER_FETCH_JSON,
@@ -212,7 +233,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       try {
         const dir = path.join(stellaRoot, "state", "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
-        const destPath = path.join(dir, payload.fileName);
+        const destPath = resolveMediaOutputPath(dir, payload.fileName);
         const dataUriMatch = payload.url.match(/^data:([^;,]+);base64,(.+)$/is);
         if (dataUriMatch) {
           await fs.writeFile(destPath, Buffer.from(dataUriMatch[2], "base64"));
