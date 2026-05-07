@@ -3,10 +3,8 @@ import {
   runExternalOrchestratorTurn,
   runExternalSubagentTurn,
 } from "./agent-runtime/external-engines.js";
-import {
-  runPiOrchestratorTurn,
-  runPiSubagentTask,
-} from "./agent-runtime/pi-execution.js";
+import { OrchestratorSession } from "./agent-runtime/orchestrator-session.js";
+import { SubagentSession } from "./agent-runtime/subagent-session.js";
 import { DEFAULT_MAX_TURNS } from "./agent-runtime/shared.js";
 import type { SubagentRunResult } from "./agent-runtime/types.js";
 
@@ -39,7 +37,16 @@ export async function runOrchestratorTurn(
   if (integratedResult) {
     return integratedResult;
   }
-  return await runPiOrchestratorTurn(opts);
+  const ownsSession = !opts.orchestratorSession;
+  const session =
+    opts.orchestratorSession ?? new OrchestratorSession(opts.conversationId);
+  try {
+    return await session.runTurn(opts);
+  } finally {
+    if (ownsSession) {
+      session.dispose();
+    }
+  }
 }
 
 export async function runSubagentTask(
@@ -49,7 +56,19 @@ export async function runSubagentTask(
   if (integratedResult) {
     return integratedResult;
   }
-  return await runPiSubagentTask(opts);
+  if (opts.subagentSession) {
+    return await opts.subagentSession.runTurn(opts);
+  }
+  const session = new SubagentSession(
+    opts.agentId ?? opts.runId ?? opts.userMessageId,
+    opts.conversationId,
+    opts.agentType,
+  );
+  try {
+    return await session.runTurn(opts);
+  } finally {
+    session.dispose();
+  }
 }
 
 export const shutdownSubagentRuntimes = (): void => {

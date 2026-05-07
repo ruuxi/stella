@@ -367,6 +367,85 @@ const isStopReason = (
   value === "error" ||
   value === "aborted";
 
+// Reconstructor strategy: validate the shape of fields the runtime currently
+// reads (role, content, timestamps, usage, etc.) so callers can rely on those
+// being well-typed, but pass through any *unlisted* extras unchanged so future
+// fields added to AssistantMessage / ToolResultMessage / UserMessage survive a
+// round-trip without an edit here. The previous strict reconstructor silently
+// dropped unknown fields, which made adding e.g. cache-control or reasoning
+// metadata a multi-file change.
+//
+// The known-key arrays below are linked to the source-of-truth types via a
+// `satisfies (keyof X)[]` annotation. When `UserMessage` /
+// `AssistantMessage` / `ToolResultMessage` add or remove fields, the
+// compiler errors here until the array is updated — which prevents the
+// passthrough path from drifting into "implicitly accept anything." Only
+// fields the parser explicitly validates above need to land in these
+// arrays; any genuinely new field that isn't yet validated (e.g. a future
+// `cacheControl` on AssistantMessage) is preserved through the
+// `collectUnknownExtras` passthrough until validation is added.
+const KNOWN_USER_KEYS_LIST = [
+  "role",
+  "content",
+  "timestamp",
+] as const satisfies readonly (keyof UserMessage)[];
+const KNOWN_USER_KEYS: ReadonlySet<string> = new Set(KNOWN_USER_KEYS_LIST);
+
+const KNOWN_ASSISTANT_KEYS_LIST = [
+  "role",
+  "content",
+  "api",
+  "provider",
+  "model",
+  "usage",
+  "stopReason",
+  "timestamp",
+  "responseId",
+  "errorMessage",
+] as const satisfies readonly (keyof AssistantMessage)[];
+const KNOWN_ASSISTANT_KEYS: ReadonlySet<string> = new Set(
+  KNOWN_ASSISTANT_KEYS_LIST,
+);
+
+const KNOWN_TOOL_RESULT_KEYS_LIST = [
+  "role",
+  "toolCallId",
+  "toolName",
+  "isError",
+  "content",
+  "timestamp",
+] as const satisfies readonly (keyof Omit<ToolResultMessage, "details">)[];
+const KNOWN_TOOL_RESULT_KEYS: ReadonlySet<string> = new Set(
+  KNOWN_TOOL_RESULT_KEYS_LIST,
+);
+
+/**
+ * Type-erased index signature for the unlisted fields preserved by
+ * `parseRuntimeThreadPayload`. The discriminated union
+ * `PersistedRuntimeThreadPayload` doesn't have an index signature
+ * (each branch is a closed object type), so the only way to splice
+ * future-added fields back into the round trip is to widen the
+ * returned object to "this branch + arbitrary unlisted keys" via a
+ * cast at the boundary. Naming the partial shape makes the cast
+ * narrower than a flat `as unknown as PersistedRuntimeThreadPayload`:
+ * the spread can't smuggle in a field whose value type is not
+ * `unknown`-compatible (e.g. a function — JSON.parse can't produce
+ * one, but the type system shouldn't have to know that).
+ */
+type ThreadPayloadExtras = { readonly [key: string]: unknown };
+
+const collectUnknownExtras = (
+  record: Record<string, unknown>,
+  knownKeys: ReadonlySet<string>,
+): ThreadPayloadExtras => {
+  const extras: { [key: string]: unknown } = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (knownKeys.has(key)) continue;
+    extras[key] = value;
+  }
+  return extras;
+};
+
 export const parseRuntimeThreadPayload = (
   value: string | null,
 ): PersistedRuntimeThreadPayload | undefined => {
@@ -383,10 +462,11 @@ export const parseRuntimeThreadPayload = (
       isFiniteTimestamp(record.timestamp)
     ) {
       return {
+        ...collectUnknownExtras(record, KNOWN_USER_KEYS),
         role: "user",
         content: record.content,
         timestamp: record.timestamp,
-      };
+      } as unknown as PersistedRuntimeThreadPayload;
     }
     if (
       record.role === "assistant" &&
@@ -399,6 +479,7 @@ export const parseRuntimeThreadPayload = (
       isFiniteTimestamp(record.timestamp)
     ) {
       return {
+        ...collectUnknownExtras(record, KNOWN_ASSISTANT_KEYS),
         role: "assistant",
         content: record.content,
         api: record.api,
@@ -413,7 +494,7 @@ export const parseRuntimeThreadPayload = (
         ...(typeof record.errorMessage === "string" && record.errorMessage.trim()
           ? { errorMessage: record.errorMessage }
           : {}),
-      };
+      } as unknown as PersistedRuntimeThreadPayload;
     }
     if (
       record.role === "toolResult" &&
@@ -424,13 +505,14 @@ export const parseRuntimeThreadPayload = (
       isFiniteTimestamp(record.timestamp)
     ) {
       return {
+        ...collectUnknownExtras(record, KNOWN_TOOL_RESULT_KEYS),
         role: "toolResult",
         toolCallId: record.toolCallId,
         toolName: record.toolName,
         isError: record.isError,
         content: record.content,
         timestamp: record.timestamp,
-      };
+      } as unknown as PersistedRuntimeThreadPayload;
     }
     return undefined;
   } catch {

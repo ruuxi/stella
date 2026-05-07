@@ -70,6 +70,12 @@ export type ToolMetadata = {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+  /**
+   * Optional declarative gate: when set, only the listed agent types may see
+   * the tool in their catalog and run it via executeTool. Replaces in-line
+   * `agentType === ORCHESTRATOR` checks at the tool-handler layer.
+   */
+  agentTypes?: readonly string[];
 };
 
 export type ShellRecord = {
@@ -362,6 +368,14 @@ export type ToolDefinition = {
   description: string;
   /** JSON Schema for tool arguments. */
   parameters: Record<string, unknown>;
+  /**
+   * Optional declarative agent-type gate. When set, the tool is hidden from
+   * agents not in the list (catalog filter) and rejected at executeTool if
+   * the call still slips through. Prefer this over per-handler `agentType`
+   * checks: it keeps gating colocated with the tool definition and makes the
+   * surface area easy to audit.
+   */
+  agentTypes?: readonly string[];
   /**
    * Optional one-line snippet for an auto-generated "Available tools" block in
    * the agent's system prompt. Tools omit this when their use is so context-

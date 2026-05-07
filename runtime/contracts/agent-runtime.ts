@@ -25,6 +25,37 @@ type AgentModelSettings = {
   order: number;
 };
 
+/**
+ * Declarative runtime behaviors for each agent. Unset flags default to false,
+ * and steering defaults to "one-at-a-time".
+ */
+export type AgentCapabilities = {
+  /** Steering queue mode for this agent's runs. Defaults to "one-at-a-time". */
+  steeringMode?: "all" | "one-at-a-time";
+  /** Inject the user's personality voice into the system prompt at run start. */
+  injectsPersonality?: boolean;
+  /** Inject the dynamic memory bundle on the every-Nth-turn cadence. */
+  injectsDynamicMemory?: boolean;
+  /** Inject runtime reminder hidden messages. */
+  injectsRuntimeReminders?: boolean;
+  /** Inject the skill catalog block into the dynamic context. */
+  injectsSkillCatalog?: boolean;
+  /** Inject the Stella Connect connector list block into the dynamic context. */
+  injectsConnectorList?: boolean;
+  /** Record a `thread_summaries` row on successful run completion. */
+  recordsThreadSummary?: boolean;
+  /** Notify the Dream scheduler on successful run completion. */
+  triggersDreamScheduler?: boolean;
+  /**
+   * Refresh home suggestions on successful run completion (count-based cadence).
+   */
+  triggersHomeSuggestionsRefresh?: boolean;
+  /** Trigger the orchestrator memory-review pass on successful real user turns. */
+  triggersMemoryReview?: boolean;
+  /** Run self-mod baseline capture and detect-applied around the run. */
+  triggersSelfModDetection?: boolean;
+};
+
 type AgentDefinition = {
   id: AgentId;
   name: string;
@@ -40,6 +71,8 @@ type AgentDefinition = {
   localCliWorkingDirectory: LocalCliWorkingDirectory | null;
   agentEnginePreference: AgentEnginePreferenceKey | null;
   modelSettings: AgentModelSettings | null;
+  /** Optional capability bundle. Defaults to no capabilities. */
+  capabilities?: AgentCapabilities;
 };
 
 const BUILTIN_AGENT_DEFINITIONS = [
@@ -59,6 +92,15 @@ const BUILTIN_AGENT_DEFINITIONS = [
     modelSettings: {
       description: "Top-level agent that delegates tasks",
       order: 0,
+    },
+    capabilities: {
+      steeringMode: "all",
+      injectsPersonality: true,
+      injectsDynamicMemory: true,
+      injectsRuntimeReminders: true,
+      injectsSkillCatalog: true,
+      triggersMemoryReview: true,
+      triggersSelfModDetection: true,
     },
   },
   {
@@ -109,6 +151,13 @@ const BUILTIN_AGENT_DEFINITIONS = [
       description:
         "Single execution agent that works from files, manuals, and tools",
       order: 1,
+    },
+    capabilities: {
+      injectsSkillCatalog: true,
+      injectsConnectorList: true,
+      recordsThreadSummary: true,
+      triggersDreamScheduler: true,
+      triggersHomeSuggestionsRefresh: true,
     },
   },
   {
@@ -291,6 +340,24 @@ export const isLocalCliAgentId = (
 
 export const isOrchestratorAgentType = (agentType: string): boolean =>
   getAgentDefinition(agentType)?.promptRole === "orchestrator";
+
+/** Resolve declarative capabilities for an agent. */
+export const getAgentCapabilities = (
+  agentType: string,
+): AgentCapabilities => getAgentDefinition(agentType)?.capabilities ?? {};
+
+export const agentHasCapability = (
+  agentType: string,
+  capability: keyof AgentCapabilities,
+): boolean => {
+  const value = getAgentCapabilities(agentType)[capability];
+  return value !== undefined && value !== false;
+};
+
+export const getAgentSteeringMode = (
+  agentType: string,
+): "all" | "one-at-a-time" =>
+  getAgentCapabilities(agentType).steeringMode ?? "one-at-a-time";
 
 // All IPC stream event types. RUN_FINISHED is the single terminal event for
 // a run; per-agent lifecycle is the AGENT_* family below.

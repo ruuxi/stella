@@ -3,6 +3,7 @@ import {
   type RuntimeRunCallbacks,
 } from "../agent-runtime.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
+import { getOrCreateOrchestratorSession } from "../agent-runtime/orchestrator-session.js";
 import {
   resolveRunnerLlmRoute,
   resolveRunnerLlmRouteWithMetadata,
@@ -14,7 +15,7 @@ import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
 } from "../../protocol/index.js";
-import { AGENT_IDS } from "../../contracts/agent-runtime.js";
+import { agentHasCapability } from "../../contracts/agent-runtime.js";
 
 type BuildAgentContext = (args: {
   conversationId: string;
@@ -61,13 +62,16 @@ export const prepareOrchestratorRun = async (args: {
 }): Promise<PreparedOrchestratorRun> => {
   // Decide whether this turn should re-inject the memory bundle BEFORE we
   // build the agent context, so context construction can skip the snapshot
-  // formatting work on turns we won't inject. Only real Orchestrator user
-  // turns count toward the cadence — synthetic hidden turns coast on
-  // whatever the prior real turn injected.
-  const isRealOrchestratorTurn =
-    args.agentType === AGENT_IDS.ORCHESTRATOR && args.uiVisibility !== "hidden";
+  // formatting work on turns we won't inject. The cadence advances only on
+  // real user-driven turns (uiVisibility !== "hidden") for agents that
+  // declare the `injectsDynamicMemory` capability — synthetic hidden turns
+  // and capability-less agents coast on whatever the prior real turn
+  // injected.
+  const isUserTurn = args.uiVisibility !== "hidden";
+  const advancesMemoryInjection =
+    isUserTurn && agentHasCapability(args.agentType, "injectsDynamicMemory");
   let shouldInjectDynamicMemory = false;
-  if (isRealOrchestratorTurn) {
+  if (advancesMemoryInjection) {
     try {
       const counter =
         args.context.runtimeStore.incrementUserTurnsSinceMemoryInjection(
@@ -110,11 +114,16 @@ export const prepareOrchestratorRun = async (args: {
   const abortController = new AbortController();
   args.context.state.activeRunAbortControllers.set(args.runId, abortController);
 
-  // Increment the memory-review user-turn counter only on real user-driven
-  // Orchestrator turns. Synthetic task-callback turns (uiVisibility === "hidden")
-  // do not count - they would inflate the counter without representing user input.
+  // Increment the memory-review counter only on real user-driven turns
+  // for agents that declare the `triggersMemoryReview` capability.
+  // Synthetic task-callback turns (uiVisibility === "hidden") and
+  // capability-less agents do not count — they would inflate the counter
+  // without representing user input.
   let userTurnsSinceMemoryReview: number | undefined;
-  if (isRealOrchestratorTurn) {
+  if (
+    isUserTurn &&
+    agentHasCapability(args.agentType, "triggersMemoryReview")
+  ) {
     try {
       userTurnsSinceMemoryReview =
         args.context.runtimeStore.incrementUserTurnsSinceMemoryReview(
@@ -159,6 +168,16 @@ export const launchPreparedOrchestratorRun = (args: {
 }): void => {
   const { prepared, context } = args;
 
+  // Long-lived per-conversation session for the Pi engine path. The Pi
+  // path inside `runOrchestratorTurn` routes through `session.runTurn(opts)`
+  // so the underlying `Agent` (and its `state.messages`) survives across
+  // turns. External engines ignore the session and use their own per-turn
+  // flow.
+  const orchestratorSession = getOrCreateOrchestratorSession(
+    context.state.orchestratorSessions,
+    prepared.conversationId,
+  );
+
   void runOrchestratorTurn({
     runId: prepared.runId,
     conversationId: prepared.conversationId,
@@ -198,6 +217,8 @@ export const launchPreparedOrchestratorRun = (args: {
     selfModMonitor: context.selfModMonitor,
     hookEmitter: context.hookEmitter,
     onExecutionSessionCreated: args.onExecutionSessionCreated,
+    orchestratorSession,
+    compactionScheduler: context.state.compactionScheduler,
     ...(prepared.userTurnsSinceMemoryReview != null
       ? { userTurnsSinceMemoryReview: prepared.userTurnsSinceMemoryReview }
       : {}),

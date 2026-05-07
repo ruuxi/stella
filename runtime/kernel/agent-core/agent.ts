@@ -656,6 +656,10 @@ export class Agent {
 				);
 			}
 		} catch (err: unknown) {
+			// Empty-content placeholder with stopReason: "aborted" | "error" is
+			// intentional. It marks the failed turn for the UI / introspection
+			// helpers; transformMessages strips any aborted/errored assistant
+			// before serializing to providers, so the model never sees it.
 			const errorMessage = errorMessageOf(err);
 			const errorMsg: AssistantMessage = {
 				role: "assistant",

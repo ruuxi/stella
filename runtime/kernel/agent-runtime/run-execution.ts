@@ -50,6 +50,8 @@ export const executeRuntimeAgentPrompt = async (args: {
   hookEmitter?: HookEmitter;
   threadStore?: import("../storage/runtime-store.js").RuntimeStore;
   threadKey?: string;
+  conversationId?: string;
+  uiVisibility?: "visible" | "hidden";
   onAfterPrompt?: () => Promise<void> | void;
   onCleanup?: () => Promise<void> | void;
 }): Promise<{ finalText: string; errorMessage?: string }> => {
@@ -67,6 +69,8 @@ export const executeRuntimeAgentPrompt = async (args: {
     hookEmitter: args.hookEmitter,
     threadStore: args.threadStore,
     threadKey: args.threadKey,
+    ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+    ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
   });
 
   try {

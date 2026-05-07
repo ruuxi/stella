@@ -48,25 +48,10 @@ export const buildRunThreadKey = ({
     threadId,
   });
 
-// Vision tool results (computer_get_app_state, view_image, etc.) carry a
-// base64-encoded image content block on every snapshot. Each PNG is roughly
-// 700KB raw → ~1MB base64 → another ~1MB after JSON encoding when sent to
-// the model. After a handful of turns the conversation history balloons
-// past the upstream LLM proxy's per-request memory cap (Convex throws
-// "JavaScript execution ran out of memory (maximum 64 MB)").
-//
-// The model only needs to *see* the most recent screenshot to act; older
-// screenshots have already informed the actions that followed them and
-// just bloat the prompt. So before sending history to the model we keep
-// image content blocks ONLY in the most recent N tool results, replacing
-// older image blocks with a tiny text breadcrumb that preserves provenance
-// (the screenshot file path is still on disk if anything ever needs it).
+// Keep only the most recent screenshot in model history; older base64 image
+// blocks quickly exceed the managed runtime's request-size budget.
 const KEEP_RECENT_IMAGES_IN_HISTORY = 1;
 
-// Generic over the message union: works for both Message[] (history we just
-// reconstituted from SQLite) and AgentMessage[] (the live agent's running
-// state, which may include `runtimeInternal` entries that we leave alone).
-// Only `toolResult` messages with image content blocks are ever rewritten.
 export const stripStaleImageBlocks = <T extends { role: string }>(
   messages: T[],
 ): T[] => {
@@ -108,38 +93,14 @@ export const stripStaleImageBlocks = <T extends { role: string }>(
       content: compactContent,
     } as unknown as T);
   }
-  // Allocating a new array only matters when we actually rewrote something;
-  // keep the input identity stable when no rewrite happened so downstream
-  // callers can fast-path on referential equality.
   return rewroteAny ? out.reverse() : messages;
 };
 
 export const buildHistorySource = (
   context: LocalAgentContext,
 ): AgentMessage[] => {
-  const memoryBootstrapKeysKept = new Set<string>();
-  const memoryBootstrapReplayKey = (entry: AgentMessage): string | null => {
-    if (entry.role !== "runtimeInternal") return null;
-    if (
-      entry.customType !== "bootstrap.memory_file" &&
-      entry.customType !== "bootstrap.memory_snapshot"
-    ) {
-      return null;
-    }
-    const text = Array.isArray(entry.content)
-      ? entry.content
-          .flatMap((block) =>
-            block.type === "text" ? [block.text] : [],
-          )
-          .join("\n")
-      : "";
-    if (entry.customType === "bootstrap.memory_file") {
-      const pathMatch = /<memory_file path="([^"]+)">/.exec(text);
-      return `memory_file:${pathMatch?.[1] ?? text.slice(0, 80)}`;
-    }
-    const targetMatch = /<memory_snapshot target="([^"]+)">/.exec(text);
-    return `memory_snapshot:${targetMatch?.[1] ?? text.slice(0, 80)}`;
-  };
+  // Keep older bootstrap entries so cadence injections do not shift the
+  // prompt-cache prefix on coast turns.
   const messages =
     context.threadHistory
       ?.map((entry): AgentMessage | null => {
@@ -180,16 +141,7 @@ export const buildHistorySource = (
         }
         return null;
       })
-      .filter((entry): entry is AgentMessage => entry !== null)
-      .reverse()
-      .filter((entry) => {
-        const key = memoryBootstrapReplayKey(entry);
-        if (!key) return true;
-        if (memoryBootstrapKeysKept.has(key)) return false;
-        memoryBootstrapKeysKept.add(key);
-        return true;
-      })
-      .reverse() ?? [];
+      .filter((entry): entry is AgentMessage => entry !== null) ?? [];
   return stripStaleImageBlocks(messages);
 };
 
@@ -727,21 +679,24 @@ export const compactRuntimeThreadHistory = async (args: {
   agentType: string;
   overrideSummary?: string;
   preserveLastN?: number;
-}): Promise<void> => {
-  await maybeCompactRuntimeThread({
-    store: args.store,
-    threadKey: args.threadKey,
-    resolvedLlm: args.resolvedLlm,
-    agentType: args.agentType,
-    ...(args.overrideSummary ? { overrideSummary: args.overrideSummary } : {}),
-    ...(args.preserveLastN !== undefined ? { preserveLastN: args.preserveLastN } : {}),
-  }).catch((error) => {
+}): Promise<{ compacted: boolean }> => {
+  try {
+    return await maybeCompactRuntimeThread({
+      store: args.store,
+      threadKey: args.threadKey,
+      resolvedLlm: args.resolvedLlm,
+      agentType: args.agentType,
+      ...(args.overrideSummary ? { overrideSummary: args.overrideSummary } : {}),
+      ...(args.preserveLastN !== undefined ? { preserveLastN: args.preserveLastN } : {}),
+    });
+  } catch (error) {
     logger.warn("thread.compaction.failed", {
       threadKey: args.threadKey,
       agentType: args.agentType,
       error: error instanceof Error ? error.message : String(error),
     });
-  });
+    return { compacted: false };
+  }
 };
 
 export const persistAssistantReply = async (args: {

@@ -2,6 +2,12 @@ import type { AgentMessage } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
+// Type-only imports — both session classes import from this file, so a
+// runtime import would form a cycle. The types are consumed only as
+// opaque options below so type-only resolution at compile time is enough.
+import type { OrchestratorSession } from "./orchestrator-session.js";
+import type { SubagentSession } from "./subagent-session.js";
+import type { BackgroundCompactionScheduler } from "./compaction-scheduler.js";
 import type {
   AgentToolRequest,
   ToolContext,
@@ -218,6 +224,17 @@ export type BaseRunOptions = {
    * the agent that just finalized. Lazy: only invoked when actually needed.
    */
   resolveSubsidiaryLlmRoute?: (agentType: string) => ResolvedLlmRoute;
+  /**
+   * Per-thread compaction scheduler. finalize* paths run thread compaction
+   * in the background AFTER the user-visible `onEnd` fires, so the user
+   * never waits on the summarization LLM.
+   *
+   * One scheduler instance is shared across the runtime — see
+   * `RunnerContext.state.compactionScheduler`. The scheduler enforces
+   * one in-flight compaction per `threadKey`, which is what prevents
+   * double-overlay races when turns finalize back-to-back.
+   */
+  compactionScheduler: BackgroundCompactionScheduler;
 };
 
 export type OrchestratorRunOptions = BaseRunOptions & {
@@ -230,12 +247,30 @@ export type OrchestratorRunOptions = BaseRunOptions & {
    * Undefined for synthetic (uiVisibility=hidden) turns.
    */
   userTurnsSinceMemoryReview?: number;
+  /**
+   * Long-lived per-conversation session. When provided, the Pi engine path
+   * routes through `session.runTurn(opts)` so the underlying `Agent`
+   * survives across turns and provider prompt-cache prefixes stay stable.
+   * The external engine path (`runExternalOrchestratorTurn`) ignores this
+   * field; external engines own their own session concept on the binary
+   * side. Direct test helpers may omit it and get an ephemeral session
+   * through `runOrchestratorTurn`, but the Pi execution path is still the
+   * same session code.
+   */
+  orchestratorSession?: OrchestratorSession;
 };
 
 export type SubagentRunOptions = BaseRunOptions & {
   onProgress?: (chunk: string) => void;
   callbacks?: Partial<RuntimeRunCallbacks>;
   suppressCompletionSideEffects?: boolean;
+  /**
+   * Long-lived per-task subagent session. When provided, the Pi engine
+   * path routes through `session.runTurn(opts)` so the underlying `Agent`
+   * survives across `send_input` / restart-on-input cycles. The external
+   * engine path ignores this. See `SubagentSession` for lifecycle.
+   */
+  subagentSession?: SubagentSession;
 };
 
 export type SubagentRunResult = {

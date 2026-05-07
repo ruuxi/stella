@@ -14,7 +14,7 @@ import { selectRecentByTokenBudget } from "../local-history.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { estimateRuntimeTokens } from "../runtime-threads.js";
 import {
-  AGENT_IDS,
+  getAgentSteeringMode,
   getLocalCliWorkingDirectory,
 } from "../../contracts/agent-runtime.js";
 import { stripStaleImageBlocks } from "./thread-memory.js";
@@ -348,6 +348,18 @@ export const createRuntimeAgent = (args: {
   agentType: string;
   systemPrompt: string;
   resolvedLlm: ResolvedLlmRoute;
+  /**
+   * Optional dynamic resolver for the current `ResolvedLlmRoute`. When
+   * provided, the Agent's `getApiKey`/`refreshApiKey`/`transformContext`
+   * closures read from this getter on every call instead of capturing
+   * `args.resolvedLlm` at construction time. Long-lived sessions
+   * (`OrchestratorSession`) pass this so the user can switch models
+   * mid-conversation: update the ref + `agent.state.model`, and the next
+   * provider call uses the new credentials, base URL, and context-window
+   * budget. Per-turn callers can omit this and the static `resolvedLlm` is
+   * used for the lifetime of the run.
+   */
+  resolvedLlmOverride?: () => ResolvedLlmRoute;
   reasoningEffort?: Exclude<ThinkingLevel, "off">;
   hookEmitter?: HookEmitter;
   tools: AgentTool[];
@@ -366,25 +378,31 @@ export const createRuntimeAgent = (args: {
     | Promise<AfterToolCallResult | undefined>
     | AfterToolCallResult
     | undefined;
-}): Agent =>
-  new Agent({
+}): Agent => {
+  const resolveLlm = args.resolvedLlmOverride ?? (() => args.resolvedLlm);
+  return new Agent({
     initialState: {
       systemPrompt: args.systemPrompt,
-      model: args.resolvedLlm.model,
+      model: resolveLlm().model,
       thinkingLevel: args.reasoningEffort ?? "medium",
       tools: args.tools,
       messages: args.historySource,
     },
     sessionId: args.cacheSessionId ?? args.agentType,
     convertToLlm: PI_AGENT_MESSAGE_FILTER,
-    transformContext: buildDefaultTransformContext(args.resolvedLlm),
-    ...(args.agentType === AGENT_IDS.ORCHESTRATOR
+    // Recompute the context budget against the current model route.
+    transformContext: async (messages, signal) =>
+      buildDefaultTransformContext(resolveLlm())(messages, signal),
+    // Only pass steering mode when the agent opts out of the Pi default.
+    ...(getAgentSteeringMode(args.agentType) === "all"
       ? { steeringMode: "all" as const }
       : {}),
-    getApiKey: () => args.resolvedLlm.getApiKey(),
-    refreshApiKey: args.resolvedLlm.refreshApiKey
-      ? () => args.resolvedLlm.refreshApiKey?.()
-      : undefined,
+    getApiKey: () => resolveLlm().getApiKey(),
+    // Always defined when an override is in play, since the *current*
+    // route may have a refresher even if the original didn't (and vice
+    // versa). The inner `?.()` returns `undefined` when the route lacks
+    // one, which the agent loop already handles.
+    refreshApiKey: () => resolveLlm().refreshApiKey?.(),
     onPayload: createBeforeProviderPayloadTransform(
       args.hookEmitter,
       args.agentType,
@@ -393,3 +411,23 @@ export const createRuntimeAgent = (args: {
       ? async (context, signal) => await args.afterToolCall?.(context, signal)
       : undefined,
   });
+};
+
+/**
+ * Resolve the `thinkingLevel` an Agent should run with for a given turn.
+ *
+ * Long-lived sessions refresh this between turns when the user changes
+ * reasoning-effort preferences or model routes.
+ */
+export const resolveAgentThinkingLevel = (args: {
+  resolvedLlm: ResolvedLlmRoute;
+  agentContextReasoningEffort?: Exclude<ThinkingLevel, "off">;
+}): Exclude<ThinkingLevel, "off"> => {
+  if (
+    args.resolvedLlm.route === "direct-provider" &&
+    args.agentContextReasoningEffort
+  ) {
+    return args.agentContextReasoningEffort;
+  }
+  return "medium";
+};

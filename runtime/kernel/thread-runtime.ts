@@ -560,6 +560,22 @@ const generateThreadSummary = async (args: {
   }
 };
 
+/**
+ * Result of an attempted thread compaction.
+ *
+ * Returns `compacted: true` only when an overlay was actually written
+ * to the store; every short-circuit path (empty thread, below trigger,
+ * no valid cut point, summary generation produced an empty string)
+ * returns `compacted: false` so the caller can avoid downstream
+ * side-effects (e.g. flagging a long-lived `OrchestratorSession`'s
+ * in-memory mirror as stale, which forces a full rebuild of
+ * `agent.state.messages` from the store and defeats the prompt-cache
+ * stability the long-lived session was meant to provide).
+ */
+export type ThreadCompactionResult = {
+  compacted: boolean;
+};
+
 export const maybeCompactRuntimeThread = async (args: {
   store: RuntimeStore;
   threadKey: string;
@@ -567,15 +583,15 @@ export const maybeCompactRuntimeThread = async (args: {
   agentType: string;
   overrideSummary?: string;
   preserveLastN?: number;
-}): Promise<void> => {
+}): Promise<ThreadCompactionResult> => {
   const storedMessages = args.store.loadThreadMessages(args.threadKey);
   if (storedMessages.length === 0) {
-    return;
+    return { compacted: false };
   }
 
   const totalTokens = getThreadTokenEstimate(storedMessages);
   if (totalTokens < getCompactionTriggerTokens(args.resolvedLlm)) {
-    return;
+    return { compacted: false };
   }
 
   const preserveLastN =
@@ -589,7 +605,7 @@ export const maybeCompactRuntimeThread = async (args: {
     preserveLastN,
   );
   if (!splitMessages) {
-    return;
+    return { compacted: false };
   }
 
   const summary =
@@ -600,7 +616,7 @@ export const maybeCompactRuntimeThread = async (args: {
       resolvedLlm: args.resolvedLlm,
     }));
   if (!summary) {
-    return;
+    return { compacted: false };
   }
 
   args.store.compactThread({
@@ -611,4 +627,5 @@ export const maybeCompactRuntimeThread = async (args: {
     tokensBefore: totalTokens,
   });
   args.store.updateThreadSummary(args.threadKey, summary);
+  return { compacted: true };
 };

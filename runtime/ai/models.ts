@@ -58,6 +58,21 @@ export function registerModel(provider: string, model: Model<Api>): void {
 	providerModels.set(model.id, model);
 }
 
+/**
+ * Remove a model from the runtime registry.
+ *
+ * Used by extension hot-reload so deleted or renamed extension models do not
+ * linger until the worker restarts.
+ */
+export function unregisterModel(provider: string, modelId: string): void {
+	const providerModels = modelRegistry.get(provider);
+	if (!providerModels) return;
+	providerModels.delete(modelId);
+	if (providerModels.size === 0) {
+		modelRegistry.delete(provider);
+	}
+}
+
 export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage): Usage["cost"] {
 	usage.cost.input = (model.cost.input / 1000000) * usage.input;
 	usage.cost.output = (model.cost.output / 1000000) * usage.output;

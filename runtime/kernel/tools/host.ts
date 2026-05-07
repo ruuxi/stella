@@ -15,7 +15,10 @@
  */
 
 import path from "node:path";
-import { AGENT_IDS } from "../../contracts/agent-runtime.js";
+import {
+  AGENT_IDS,
+  getAgentDefinition,
+} from "../../contracts/agent-runtime.js";
 
 import type {
   Api,
@@ -157,24 +160,63 @@ export const createToolHost = ({
     executeTool: (toolName, toolArgs, context, signal, onUpdate) =>
       executeTool(toolName, toolArgs, context, signal, onUpdate),
   });
+  // Names of built-in tools live in a dedicated Set so the
+  // extension-registration paths below can reject collisions instead
+  // of silently overwriting handlers. Without this guard, an extension
+  // that registers `web` or `exec_command` would replace the built-in
+  // implementation; on F1 reload `unregisterExtensionTools` would then
+  // delete the name entirely, leaving the runtime without a built-in
+  // handler until the worker restarts.
+  const builtinToolNames = new Set<string>();
   for (const tool of builtinTools) {
     toolCatalog.set(tool.name, {
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters,
+      ...(tool.agentTypes ? { agentTypes: tool.agentTypes } : {}),
     });
     handlers[tool.name] = (args, context, extras) =>
       tool.execute(args, context, extras);
+    builtinToolNames.add(tool.name);
   }
 
-  registerExtensionToolHandlers(handlers, extensionTools);
-  for (const tool of extensionTools ?? []) {
+  // Filter out any startup-time `extensionTools` that collide with
+  // built-ins before letting them touch the catalog or handler map.
+  // Same policy as the runtime `registerExtensionTools` below.
+  const acceptedStartupExtensionTools = (extensionTools ?? []).filter(
+    (tool) => {
+      if (builtinToolNames.has(tool.name)) {
+        logError(
+          `Extension tool "${tool.name}" collides with a built-in tool name; skipping registration. Rename the extension tool to avoid the collision.`,
+        );
+        return false;
+      }
+      return true;
+    },
+  );
+  registerExtensionToolHandlers(handlers, acceptedStartupExtensionTools);
+  for (const tool of acceptedStartupExtensionTools) {
     toolCatalog.set(tool.name, {
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters,
+      ...(tool.agentTypes ? { agentTypes: tool.agentTypes } : {}),
     });
   }
+
+  /**
+   * Defense-in-depth gate consulted both at catalog filter time and at
+   * executeTool time. A tool with no `agentTypes` is unrestricted; a tool
+   * with `agentTypes` must list the requesting agent or it's denied.
+   */
+  const isAgentAllowedForTool = (
+    tool: { agentTypes?: readonly string[] },
+    agentType: string | undefined,
+  ): boolean => {
+    if (!tool.agentTypes || tool.agentTypes.length === 0) return true;
+    if (!agentType) return false;
+    return tool.agentTypes.includes(agentType);
+  };
 
   executeTool = async (
     toolName: string,
@@ -198,6 +240,38 @@ export const createToolHost = ({
     ) {
       return {
         error: `${toolName} is not available to the General agent.`,
+      } satisfies ToolResult;
+    }
+
+    // Declarative agent-type gate. Mirrors the catalog filter so a tool that
+    // declares `agentTypes` is rejected here too, defending against
+    // hallucinated tool names and against any future catalog filter bypass.
+    const catalogEntry = toolCatalog.get(toolName);
+    if (
+      catalogEntry &&
+      !isAgentAllowedForTool(catalogEntry, context.agentType)
+    ) {
+      const allowed = catalogEntry.agentTypes ?? [];
+      // Format the denial message to match historical per-agent wording.
+      // Pre-migration the orchestrator helper read "only available to the
+      // orchestrator" (lowercase agent id, no " agent" suffix) and the
+      // Fashion helper read "only available to the Fashion agent." (capitalized
+      // display name, " agent" suffix). Use the agent definition's `name`
+      // field so the Fashion path doesn't degrade to "the fashion." (broken
+      // grammar, leaked internal id) — but special-case the orchestrator so
+      // existing UI/error consumers and tests pinning that exact substring
+      // keep working.
+      const formatAllowedAgent = (id: string): string => {
+        if (id === AGENT_IDS.ORCHESTRATOR) return "the orchestrator";
+        const def = getAgentDefinition(id);
+        return def?.name ? `the ${def.name} agent` : `the ${id} agent`;
+      };
+      const formatted =
+        allowed.length === 1
+          ? formatAllowedAgent(allowed[0]!)
+          : allowed.map(formatAllowedAgent).join(", ");
+      return {
+        error: `${toolName} is only available to ${formatted}.`,
       } satisfies ToolResult;
     }
 
@@ -271,9 +345,12 @@ export const createToolHost = ({
       agentType,
       model: options?.model,
     });
-    return Array.from(toolCatalog.values()).filter((tool) =>
-      fileEditToolFamily === "write_edit" &&
-      tool.name === APPLY_PATCH_TOOL_NAME
+    return Array.from(toolCatalog.values()).filter((tool) => {
+      // Declarative `agentTypes` is consulted first so a tool with an
+      // explicit gate cannot leak through the legacy name-set checks below.
+      if (!isAgentAllowedForTool(tool, agentType)) return false;
+      return fileEditToolFamily === "write_edit" &&
+        tool.name === APPLY_PATCH_TOOL_NAME
         ? false
         : fileEditToolFamily === "apply_patch" &&
             (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME)
@@ -289,9 +366,14 @@ export const createToolHost = ({
                 : agentType === AGENT_IDS.ORCHESTRATOR ||
                   (subagentExtras !== undefined &&
                     subagentExtras.has(tool.name)) ||
-                  !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name),
-    );
+                  !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name);
+    });
   };
+
+  // Track tool names that came from user-installable extensions so a
+  // reload (F1) can sweep them without touching built-in tools. The Set
+  // is rebuilt on every successful `registerExtensionTools` call.
+  const extensionToolNames = new Set<string>();
 
   return {
     executeTool,
@@ -303,14 +385,47 @@ export const createToolHost = ({
     killShellsByPort,
     shutdown,
     registerExtensionTools: (tools: ToolDefinition[]) => {
-      registerExtensionToolHandlers(handlers, tools);
+      // Reject tools that collide with built-in names. Pre-fix, an
+      // extension registering e.g. `web` or `exec_command` would
+      // overwrite the built-in handler/catalog entry AND get tracked in
+      // `extensionToolNames`. On F1 reload `unregisterExtensionTools`
+      // would then `delete` that name from both maps, leaving the
+      // runtime without a built-in until worker restart. Skipping the
+      // collision keeps the built-in intact — the right user fix is to
+      // rename the extension tool.
+      const accepted: ToolDefinition[] = [];
       for (const tool of tools) {
+        if (builtinToolNames.has(tool.name)) {
+          logError(
+            `Extension tool "${tool.name}" collides with a built-in tool name; skipping registration. Rename the extension tool to avoid the collision.`,
+          );
+          continue;
+        }
+        accepted.push(tool);
+      }
+      registerExtensionToolHandlers(handlers, accepted);
+      for (const tool of accepted) {
         toolCatalog.set(tool.name, {
           name: tool.name,
           description: tool.description,
           parameters: tool.parameters,
+          ...(tool.agentTypes ? { agentTypes: tool.agentTypes } : {}),
         });
+        extensionToolNames.add(tool.name);
       }
+    },
+    /**
+     * Remove all tools that came from user-installable extensions. Used by
+     * F1 (extension hot-reload) before re-registering the freshly-loaded
+     * extension set; built-in tools remain in the catalog and handler
+     * maps untouched.
+     */
+    unregisterExtensionTools: () => {
+      for (const name of extensionToolNames) {
+        toolCatalog.delete(name);
+        delete handlers[name];
+      }
+      extensionToolNames.clear();
     },
   };
 };

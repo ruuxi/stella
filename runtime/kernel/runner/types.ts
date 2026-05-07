@@ -2,6 +2,7 @@ import type { ConvexClient } from "convex/browser";
 import type { Api, Model } from "../../ai/types.js";
 import type { AgentMessage } from "../agent-core/types.js";
 import type { OrchestratorSession } from "../agent-runtime/orchestrator-session.js";
+import type { BackgroundCompactionScheduler } from "../agent-runtime/compaction-scheduler.js";
 import type {
   RuntimeAssistantMessageEvent,
   RuntimeEndEvent,
@@ -243,6 +244,23 @@ export type RunnerState = {
   activeOrchestratorConversationId: string | null;
   activeOrchestratorUiVisibility: "visible" | "hidden";
   activeOrchestratorSession: ActiveOrchestratorSession | null;
+  /**
+   * Long-lived orchestrator sessions keyed by `conversationId`. Each session
+   * owns one live Pi `Agent` for the lifetime of the conversation and is
+   * reused across turns to keep provider prompt-cache prefixes stable. See
+   * `runtime/kernel/agent-runtime/orchestrator-session.ts`. Disposed on
+   * worker shutdown via `runtime-initialization.ts:stop`.
+   */
+  orchestratorSessions: Map<string, OrchestratorSession>;
+  /**
+   * Per-thread background compaction scheduler. Holds at most one
+   * in-flight compaction per `threadKey`; finalize* paths schedule
+   * fire-and-forget after `onEnd` fires so users never wait on the
+   * summarization LLM. Drained on worker shutdown so SQLite writes
+   * complete before the store handle tears down. See
+   * `runtime/kernel/agent-runtime/compaction-scheduler.ts`.
+   */
+  compactionScheduler: BackgroundCompactionScheduler;
   queuedOrchestratorTurns: QueuedOrchestratorTurn[];
   activeRunAbortControllers: Map<string, AbortController>;
   conversationCallbacks: Map<string, AgentCallbacks>;
@@ -309,6 +327,8 @@ export type RunnerContext = {
       onUpdate?: ToolUpdateCallback,
     ) => Promise<ToolResult>;
     registerExtensionTools: (tools: ToolDefinition[]) => void;
+    /** Sweep user-extension tools (F1 hot-reload). Built-ins are untouched. */
+    unregisterExtensionTools: () => void;
     killAllShells: () => void;
     killShell: (sessionId: string) => Promise<void> | void;
     killShellsByPort: (port: number) => void;
@@ -344,7 +364,7 @@ export type RunnerPublicApi = {
   setCloudSyncEnabled: (enabled: boolean) => void;
   setModelCatalogUpdatedAt: (value: number | null) => void;
   start: () => void;
-  stop: () => void;
+  stop: () => Promise<void>;
   waitUntilInitialized: () => Promise<void>;
   subscribeQuery: (
     query: unknown,
