@@ -247,7 +247,7 @@ export const buildDefaultTransformContext = (
     // once at run start, but the agent loop appends fresh tool results
     // (each carrying a base64 PNG) into the live messages array between
     // LLM calls. Without re-stripping, all those screenshots stack up in
-    // the prompt every subsequent turn, and a 4-step computer-use task
+    // the prompt every subsequent turn, and a 4-step stella-computer task
     // overflows the managed runtime's payload budget.
     const stripped = stripStaleImageBlocks(messages);
     const totalTokens = stripped.reduce(

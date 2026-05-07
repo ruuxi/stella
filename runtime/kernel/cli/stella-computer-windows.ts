@@ -967,20 +967,20 @@ const runPowerShell = async (request: PsRequest): Promise<PsResponse> => {
     });
 
     if (result.timedOut) {
-      throw new Error("Windows computer-use runtime timed out after 30s");
+      throw new Error("Windows stella-computer runtime timed out after 30s");
     }
     if (result.error) {
       throw result.error;
     }
     if (result.code !== 0) {
-      throw new Error(stderr.trim() || stdout.trim() || `Windows computer-use runtime exited ${result.code}`);
+      throw new Error(stderr.trim() || stdout.trim() || `Windows stella-computer runtime exited ${result.code}`);
     }
 
     try {
       return JSON.parse(stdout) as PsResponse;
     } catch (error) {
       throw new Error(
-        `Windows computer-use runtime returned invalid JSON: ${
+        `Windows stella-computer runtime returned invalid JSON: ${
           error instanceof Error ? error.message : String(error)
         }: ${stdout.trim() || stderr.trim()}`,
       );
@@ -1003,7 +1003,7 @@ const appFromSnapshotArgs = (args: string[]) => {
   }
   const target = app.value ?? bundle.value ?? pid.value;
   if (!target) {
-    throw new Error("Windows computer-use requires --app, --bundle-id, or --pid.");
+    throw new Error("Windows stella-computer requires --app, --bundle-id, or --pid.");
   }
   return { app: target, args: nextArgs };
 };
@@ -1099,7 +1099,7 @@ const lookupElement = (snapshot: WinSnapshot, elementIndex: string) => {
 const requiredSnapshot = (sessionId: string, app: string) => {
   const snapshot = readSnapshot(sessionId, app);
   if (!snapshot) {
-    throw new Error(`No app state is available for ${app}. Run computer_get_app_state before action tools.`);
+    throw new Error(`No app state is available for ${app}. Run stella-computer snapshot before action commands.`);
   }
   return snapshot;
 };

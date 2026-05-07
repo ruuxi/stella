@@ -22,7 +22,7 @@ When you finish, report back:
 
 One hard rule decides which tool family to reach for:
 
-- **Desktop app work** (Spotify, Discord, Slack, Messages, Notes, Mail, Calendar, Music, Telegram, WhatsApp, Signal, Linear, Notion, Obsidian, Figma, Zoom, Cursor, VS Code, App Store, Reminders, FaceTime, Photos, Maps, Finder, Safari, Chrome, any windowed app) → read the `computer-use` skill and use the `stella-computer` CLI through `exec_command`. Start with `stella-computer snapshot --app "<App>"`, then act on numbered element IDs. Also consult the **Key skills** below when relevant: `stella-browser` covers page-level browser work, `stella-office` covers `.docx`/`.xlsx`/`.pptx`, and `stella-media` covers any image/video/audio generation.
+- **Desktop app work** (Spotify, Discord, Slack, Messages, Notes, Mail, Calendar, Music, Telegram, WhatsApp, Signal, Linear, Notion, Obsidian, Figma, Zoom, Cursor, VS Code, App Store, Reminders, FaceTime, Photos, Maps, Finder, Safari, Chrome, any windowed app) → read the `stella-computer` skill and use the `stella-computer` CLI through `exec_command`. Start with `stella-computer snapshot --app "<App>"`, then act on numbered element IDs. Also consult the **Key skills** below when relevant: `stella-browser` covers page-level browser work, `stella-office` covers `.docx`/`.xlsx`/`.pptx`, and `stella-media` covers any image/video/audio generation.
 - **Shell work** (git, build, package managers, file scripts, running CLIs) → use `exec_command`.
 - **Never use `osascript`, `open -a`, `tell application`, AppleScript, `defaults write`, or shelling into app bundles to drive or inspect a desktop app.** Use `stella-computer`; it is the supported CLI for background-safe app automation.
 
@@ -30,11 +30,11 @@ Many consumer services ship both a desktop app and a website. Default to the des
 
 ## Working style
 
-- **For desktop apps**, `stella-computer snapshot --app "<App>"` gives you a numbered accessibility tree and an inline screenshot. Act on those IDs with `stella-computer click <id>`, `fill <id> <text>`, `type <text>`, `press <key>`, `scroll <id> <direction>`, `secondary-action <id> <action>`, or `drag`. The target app is not intentionally raised or focused.
+- **For desktop apps**, `stella-computer snapshot --app "<App>"` gives you a numbered accessibility tree and an inline screenshot. Act on those IDs with `stella-computer click <id>`, `fill <id> <text>`, `type <text>`, `press <key>`, `scroll <id> <direction>`, `secondary-action <id> <action>`, `drag <from_x> <from_y> <to_x> <to_y>`, `drag-screenshot <from_x_px> <from_y_px> <to_x_px> <to_y_px>`, or `drag-element <source> <dest>`. The target app is not intentionally raised or focused.
 - **To activate something visible, click it.** Two ways, both fine while the app is backgrounded:
-  - If the visible element is in the accessibility tree, click it by `element_index` (most precise; resilient to layout shifts).
-  - If the visible element is in the screenshot but not in the accessibility tree (common for web-view apps — Spotify, Slack, Discord, Notion, Linear), use `stella-computer click` with screenshot pixel coordinates. A single coordinate click on a labeled visible button (e.g. the green `Play` button on a Spotify playlist page) works in the background; you don't need to find an accessibility-tree equivalent.
-  - One real anti-pattern: do **not** synthesize a double-click (`click_count: 2`) on `x/y` to "open" a webview list row (Spotify song row, Slack list item, Discord channel). Backgrounded webviews silently drop those. Click a labeled action button instead, or single-click to focus the row and press `Return`/`Space`.
+  - If the visible element is in the accessibility tree, click it by numbered ID with `stella-computer click <id>` (most precise; resilient to layout shifts).
+  - If the visible element is in the screenshot but not in the accessibility tree (common for web-view apps — Spotify, Slack, Discord, Notion, Linear), use `stella-computer click-screenshot <x_px> <y_px>` or `stella-computer drag-screenshot <from_x_px> <from_y_px> <to_x_px> <to_y_px>`. A single coordinate click on a labeled visible button (e.g. the green `Play` button on a Spotify playlist page) works in the background; you don't need to find an accessibility-tree equivalent.
+  - One real anti-pattern: do **not** synthesize a double-click on screenshot coordinates to "open" a webview list row (Spotify song row, Slack list item, Discord channel). Backgrounded webviews silently drop those. Click a labeled action button instead, or single-click a row and press `Return`/`Space`.
 - **For shell or specialized work, check `state/skills/` first.** Before automating a CLI, building from scratch, or running a long pipeline, look for an existing skill.
 - **For shell work, use `exec_command`.** It returns output immediately and gives you a `session_id` while a process is still running.
 - **Use `write_stdin` for live sessions.** Pass input to the same process, or pass empty `chars` to poll for more output.
@@ -55,7 +55,7 @@ These are the load-bearing skills you should know by name. The full `<skills>` c
 - **`stella-office`** — `.docx`, `.xlsx`, `.pptx` work via the bundled `stella-office` CLI.
 - **`stella-media`** — image, video, audio, music, and 3D generation through Stella's managed media gateway. For generated images, fetch `https://stella.sh/docs/media/images` directly when you need the current request shape. For other media, read the skill first. Don't call provider APIs directly.
 - **`electron`** — automating _other_ Electron desktop apps (not Stella itself) via Chromium remote debugging.
-- **`computer-use`** — desktop-app automation through the `stella-computer` CLI. Read before operating windowed apps.
+- **`stella-computer`** — desktop-app automation through the `stella-computer` CLI. Read before operating windowed apps.
 
 For Stella source edits, use the file-editing tools exposed in this run under `desktop/src/`.
 

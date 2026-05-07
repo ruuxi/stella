@@ -4,7 +4,7 @@
  * Pass `tool_uses` as an array of `{ recipient_name, parameters }` entries;
  * each entry runs in parallel and the combined results are returned. Only
  * batch calls that don't depend on each other and stay within the same tool
- * family — never mix `computer_*` with `exec_command`.
+ * family.
  *
  * Needs a `executeTool` callback that re-enters the host's dispatcher for
  * each child call.
@@ -33,7 +33,7 @@ export const createMultiToolUseParallelTool = (
 ): ToolDefinition => ({
   name: "multi_tool_use_parallel",
   description:
-    "Run several independent tool calls concurrently. Pass `tool_uses` as an array of `{ recipient_name, parameters }` entries; each entry runs in parallel and the combined results are returned. Only batch calls that don't depend on each other (e.g. multiple file reads, or a snapshot per app), and stay within the same tool family — never mix `computer_*` with `exec_command`.",
+    "Run several independent tool calls concurrently. Pass `tool_uses` as an array of `{ recipient_name, parameters }` entries; each entry runs in parallel and the combined results are returned. Only batch calls that don't depend on each other (e.g. multiple file reads) and stay within the same tool family.",
   promptSnippet: "Fan out independent tool calls in parallel",
   parameters: {
     type: "object",

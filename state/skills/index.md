@@ -19,7 +19,7 @@ Each skill is a folder. The folder name is the skill ID. Inside:
 - [stella-media](stella-media/SKILL.md) — image, video, audio, music, and 3D generation through Stella's managed media gateway
 - [pdf](pdf/SKILL.md) — PDF reading, generation, page operations, and render-based quality checks
 - [skill-creator](skill-creator/SKILL.md) — create and update Stella skills under `state/skills`
-- [computer-use](computer-use/SKILL.md) — desktop-app automation through the `stella-computer` CLI
+- [stella-computer](stella-computer/SKILL.md) — desktop-app automation through the `stella-computer` CLI
 - [stella-connect](stella-connect/SKILL.md) — install, import, inspect, and call connector integrations through the `stella-connect` CLI
 - [electron](electron/SKILL.md) — Electron app automation through Chromium remote debugging
 - [user-profile](user-profile/SKILL.md) — structured onboarding memory for the user, including projects, apps, interests, and environment

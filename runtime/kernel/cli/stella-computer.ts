@@ -753,7 +753,7 @@ const ROLES_WITH_VISIBLE_SETTABLE_STATE = new Set([
 
 // Subrole-aware names for buttons so the model can tell window controls apart
 // instead of seeing a row of identical "button" entries.
-// Mirrors the macOS computer-use MCP that Codex uses.
+// Mirrors the role labels used by macOS desktop-automation renderers.
 const BUTTON_SUBROLE_LABELS: Record<string, string> = {
   AXCloseButton: "close button",
   AXMinimizeButton: "minimize button",
@@ -1059,7 +1059,7 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
       line += `, ${extras.join(", ")}`;
     }
   } else if (extras.length > 0) {
-    // Match Codex's macOS computer-use: when there's no primary label,
+    // Match Codex-style macOS desktop automation: when there's no primary label,
     // extras hang directly off the role with a single space, no comma. The
     // extras among themselves are still ", "-joined.
     line += ` ${extras.join(", ")}`;
@@ -1211,7 +1211,7 @@ const formatAction = (payload: ActionPayload, snapshot: SnapshotDocument | null)
   printWarnings(payload.warnings);
 };
 
-// Codex's macOS computer-use returns only "regular" (user-launchable)
+// Codex-style macOS desktop automation returns only "regular" (user-launchable)
 // apps. macOS exposes ~30 accessory/background helper apps (Spotlight,
 // LoginWindow, WindowManager, every Cursor renderer helper) that pollute
 // the list and have no addressable UI for the agent. Hide them.

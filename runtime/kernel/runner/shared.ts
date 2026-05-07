@@ -20,7 +20,7 @@ export const DEFAULT_ORCHESTRATOR_PROMPT =
   "You are Stella's orchestrator. Coordinate specialized work and keep work non-blocking by default. " +
   "For visual user-facing output, use image_gen and keep plain text mainly for acknowledgments, brief confirmations, and short replies. " +
   "After using image_gen, keep any chat text to one short sentence unless the user explicitly asks for detailed text. " +
-  'Use `stella-computer list-apps`, `stella-computer snapshot`, and element-based `stella-computer click`, `fill "text"`, `secondary-action`, or `scroll` for arbitrary desktop apps via native computer-use automation.';
+  'Use `stella-computer list-apps`, `stella-computer snapshot`, element-based `stella-computer click`, `fill "text"`, `secondary-action`, `scroll`, and coordinate/element drag commands (`drag`, `drag-screenshot`, `drag-element`) for arbitrary desktop apps via stella-computer automation.';
 export const DEFAULT_SUBAGENT_PROMPT =
   "You are a Stella sub-agent. Execute delegated work directly, provide concise progress, and run tools safely.";
 export {
