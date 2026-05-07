@@ -204,7 +204,13 @@ export const createBootstrapServices = (options: {
       isMiniShowing: () => state.windowManager?.isMiniShowing() ?? false,
       isMiniAlwaysOnTop: () => state.windowManager?.isMiniAlwaysOnTop() ?? true,
       isWindowFocused: () => state.windowManager?.isWindowFocused() ?? false,
+      isShellWindowVisible: (target) =>
+        state.windowManager?.isShellWindowVisible(target) ?? false,
+      isShellWindowFocused: (target) =>
+        state.windowManager?.isShellWindowFocused(target) ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),
+      restoreWindowVisibility: (target) =>
+        state.windowManager?.restoreWindowVisibility(target),
       minimizeWindow: () => state.windowManager?.minimizeWindow(),
     },
     togglePetVoice: () => {

@@ -56,7 +56,10 @@ export type RadialWindowBridge = {
   isMiniShowing: () => boolean;
   isMiniAlwaysOnTop: () => boolean;
   isWindowFocused: () => boolean;
+  isShellWindowVisible: (target: "full" | "mini") => boolean;
+  isShellWindowFocused: (target: "full" | "mini") => boolean;
   showWindow: (target: "full" | "mini") => void;
+  restoreWindowVisibility: (target: "full" | "mini") => void;
   minimizeWindow: () => void;
 };
 
@@ -176,12 +179,15 @@ export class RadialGestureService {
         updateUiState({ mode: "chat" });
         overlay.hideRadial();
         const targetWindowMode = win.getLastFocusedWindowMode();
+        const targetWindowWasVisible = win.isShellWindowVisible(targetWindowMode);
+        const targetWindowWasFocused = win.isShellWindowFocused(targetWindowMode);
         win.minimizeWindow();
         const regionCapture = await capture.startRegionCapture();
         capture.mergeRegionCaptureResult(regionCapture);
-        // Cancel (Escape / exit without capturing) resolves null; leave the window minimized.
-        if (regionCapture !== null) {
+        if (regionCapture !== null || targetWindowWasFocused) {
           win.showWindow(targetWindowMode);
+        } else if (targetWindowWasVisible) {
+          win.restoreWindowVisibility(targetWindowMode);
         }
         break;
       }
