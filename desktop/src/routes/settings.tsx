@@ -6,7 +6,7 @@ import { SETTINGS_TAB_KEYS } from "@/global/settings/settings-tabs";
  * `?tab=<id>` deep-links to a specific settings tab.
  */
 const SettingsSearch = z.object({
-  tab: z.enum(SETTINGS_TAB_KEYS).optional(),
+  tab: z.enum(SETTINGS_TAB_KEYS).optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/settings")({
