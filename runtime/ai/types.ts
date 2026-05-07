@@ -1,3 +1,4 @@
+import type { AssistantMessageDiagnostic } from "./utils/diagnostics.js";
 import type { AssistantMessageEventStream } from "./utils/event-stream.js";
 
 export type { AssistantMessageEventStream } from "./utils/event-stream.js";
@@ -238,6 +239,7 @@ export interface AssistantMessage {
 	model: string;
 	responseModel?: string; // Concrete upstream model when different from the requested model.
 	responseId?: string; // Provider-specific response/message identifier when the upstream API exposes one
+	diagnostics?: AssistantMessageDiagnostic[]; // Redacted provider/runtime diagnostics for failures and recoveries.
 	usage: Usage;
 	stopReason: StopReason;
 	errorMessage?: string;
