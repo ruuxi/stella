@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { showToast } from '@/ui/toast'
-import {
-  useRafStringAccumulator,
-  useStreamBuffer,
-} from '@/shared/hooks/use-raf-state'
+import { useStreamBuffer } from '@/shared/hooks/use-stream-buffer'
 import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
 import {
   attachmentsForStartChat,
@@ -54,9 +51,6 @@ export function useLocalAgentStream({
     streamStoreReducer,
     initialStoreState,
   )
-  const [rawStreamingText, appendStreamingDelta, resetStreamingText] =
-    useRafStringAccumulator()
-  const [rawReasoningText, , resetReasoningText] = useRafStringAccumulator()
   const [pendingUserMessageId, setPendingUserMessageId] = useState<
     string | null
   >(null)
@@ -91,8 +85,13 @@ export function useLocalAgentStream({
   const isStreaming = Boolean(activeRun && !activeRun.terminal)
   const runtimeStatusText = activeRun?.statusText ?? null
 
-  const streamingText = useStreamBuffer(rawStreamingText, isStreaming)
-  const reasoningText = useStreamBuffer(rawReasoningText, isStreaming)
+  const streamingBuffer = useStreamBuffer(isStreaming)
+  const reasoningBuffer = useStreamBuffer(isStreaming)
+  const streamingText = streamingBuffer.text
+  const reasoningText = reasoningBuffer.text
+  const appendStreamingDelta = streamingBuffer.append
+  const resetStreamingText = streamingBuffer.reset
+  const resetReasoningText = reasoningBuffer.reset
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId

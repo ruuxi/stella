@@ -434,17 +434,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         if (isPendingReply) {
           pendingAssistantWasProjected = true
         }
-        // While streaming, prefer the live buffer if it's longer than
-        // what's been persisted so far (the persisted message generally
-        // arrives in one shot at finish, but this handles the rare case
-        // where partial text lands earlier without flickering shorter).
-        const overlayStreaming =
-          isPendingReply && Boolean(isStreaming) && Boolean(streamingText)
         const text =
-          overlayStreaming &&
-          streamingText &&
-          streamingText.length > persistedText.length
-            ? streamingText
+          isPendingReply && isStreaming
+            ? (streamingText ?? '')
             : persistedText
         const isAnimating = Boolean(isPendingReply && isStreaming)
         const stableKey =
@@ -516,7 +508,8 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     if (
       pendingUserMessageId &&
       !pendingAssistantWasProjected &&
-      (Boolean(isStreaming) || Boolean(streamingText && streamingText.length > 0))
+      (Boolean(isStreaming) ||
+        Boolean(streamingText && streamingText.length > 0))
     ) {
       const stableKey = assistantKeyFor(pendingUserMessageId)
       const placeholder: AssistantRowViewModel = {

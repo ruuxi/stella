@@ -20,6 +20,10 @@ import { useChatScrollManagement } from './use-chat-scroll-management'
 import { useChatHomeSurface } from './use-chat-home-surface'
 import { useAgentInputRouting } from './use-agent-input-routing'
 import { useStellaSendMessageBridge } from './use-stella-send-message-bridge'
+import { smoothScrollTo } from '@/shared/lib/smooth-scroll'
+
+const SENT_MESSAGE_SCROLL_NUDGE_MS = 360
+const SENT_MESSAGE_SCROLL_SETTLE_DELAY_MS = 80
 
 type UseFullShellChatOptions = {
   activeConversationId: string | null
@@ -113,6 +117,8 @@ export function useFullShellChat({
     onListScroll,
     onStartReached,
     isAtBottom,
+    isNearBottom,
+    getIsNearBottom,
     showScrollButton,
     scrollToBottom,
     thumbState,
@@ -125,7 +131,10 @@ export function useFullShellChat({
   // On conversation change, snap to the latest content. `initialScrollAtEnd`
   // covers fresh mounts; this handles in-place conversation switches.
   useEffect(() => {
-    void listRef.current?.scrollToEnd({ animated: false })
+    const list = listRef.current
+    if (!list) return
+    const el = list.getScrollableNode()
+    el?.scrollTo({ top: el.scrollHeight, behavior: 'instant' })
   }, [activeConversationId, listRef])
 
   const onSuggestionClick = useCallback(
@@ -137,6 +146,7 @@ export function useFullShellChat({
   )
 
   const handleSend = useCallback(() => {
+    const shouldNudgeAfterSend = showHomeContent || getIsNearBottom()
     if (showHomeContent) {
       setComposerFocusRequestId((id) => id + 1)
     }
@@ -152,9 +162,29 @@ export function useFullShellChat({
         setChatContext(null)
       },
     })
+    if (shouldNudgeAfterSend) {
+      const scrollToCurrentBottom = () => {
+        const el = listRef.current?.getScrollableNode() as HTMLElement | null
+        if (!el) return
+        smoothScrollTo(
+          el,
+          el.scrollHeight - el.clientHeight,
+          SENT_MESSAGE_SCROLL_NUDGE_MS,
+        )
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToCurrentBottom()
+          window.setTimeout(scrollToCurrentBottom, SENT_MESSAGE_SCROLL_SETTLE_DELAY_MS)
+        })
+      })
+    }
   }, [
     chatContext,
     enterChatSurfaceForInteraction,
+    getIsNearBottom,
+    isAtBottom,
+    listRef,
     message,
     resetIdleTimer,
     selectedText,
@@ -247,6 +277,8 @@ export function useFullShellChat({
       onStartReached,
       showScrollButton,
       isAtBottom,
+      isNearBottom,
+      getIsNearBottom,
       scrollToBottom,
       thumbState,
     }),
@@ -256,6 +288,8 @@ export function useFullShellChat({
       onStartReached,
       showScrollButton,
       isAtBottom,
+      isNearBottom,
+      getIsNearBottom,
       scrollToBottom,
       thumbState,
     ],

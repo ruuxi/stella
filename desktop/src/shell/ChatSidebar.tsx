@@ -25,6 +25,10 @@ import {
   deriveComposerState,
   hasAttachedComposerChips,
 } from "@/app/chat/composer-context";
+import type { InlineWorkingIndicatorMountProps } from "@/app/chat/InlineWorkingIndicator";
+import { getCurrentRunningTool } from "@/app/chat/lib/event-transforms";
+import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
+import { useFooterTasks } from "@/app/chat/hooks/use-footer-tasks";
 import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
 import { DropOverlay } from "@/app/chat/DropOverlay";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
@@ -122,6 +126,8 @@ export function ChatPanelTab(
         onStartReached: sidebarScroll.onStartReached,
         showScrollButton: sidebarScroll.showScrollButton,
         isAtBottom: sidebarScroll.isAtBottom,
+        isNearBottom: sidebarScroll.isNearBottom,
+        getIsNearBottom: sidebarScroll.getIsNearBottom,
         scrollToBottom: sidebarScroll.scrollToBottom,
         thumbState: sidebarScroll.thumbState,
       }),
@@ -131,10 +137,35 @@ export function ChatPanelTab(
         sidebarScroll.onStartReached,
         sidebarScroll.showScrollButton,
         sidebarScroll.isAtBottom,
+        sidebarScroll.isNearBottom,
+        sidebarScroll.getIsNearBottom,
         sidebarScroll.scrollToBottom,
         sidebarScroll.thumbState,
       ],
     );
+
+    const appSessionStartedAtMs = useAgentSessionStartedAt();
+    const runningTool = useMemo(
+      () => getCurrentRunningTool(events),
+      [events],
+    );
+    const footerTasks = useFooterTasks({
+      events,
+      liveTasks,
+      appSessionStartedAtMs,
+    });
+    const hasActiveWork =
+      footerTasks.length > 0 ||
+      Boolean(isStreaming) ||
+      Boolean(runtimeStatusText);
+    const suggestionIndicatorProps: InlineWorkingIndicatorMountProps = {
+      active: hasActiveWork,
+      tasks: footerTasks,
+      runningTool: runningTool?.tool,
+      runningToolId: runningTool?.id,
+      isStreaming,
+      status: runtimeStatusText ?? null,
+    };
 
     const { chatContext, setChatContext, selectedText, setSelectedText } =
       useCapturedChatContext();
@@ -268,6 +299,7 @@ export function ChatPanelTab(
               <ComposerSuggestionContextRow
                 chatContext={chatContext}
                 setChatContext={setChatContext}
+                indicator={suggestionIndicatorProps}
               />
 
               <div ref={shellRef} className="chat-sidebar-shell">

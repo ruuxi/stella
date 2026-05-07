@@ -30,8 +30,7 @@
  * Tail region: wraps the latest user message + every row after it
  * (assistant continuations, the streaming tail, the pending askQuestion
  * bubble). A small fixed floor pre-allocates empty space below the
- * just-sent user bubble so the assistant reply streams *into* that
- * space — no double scroll-jump as content arrives.
+ * just-sent user bubble without reserving the full viewport.
  *
  * `content-visibility: visible` keeps the tail laid out at all times
  * so its size is stable across resizes.
@@ -40,13 +39,13 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  min-height: 280px;
+  min-height: 160px;
 }
 
 .chat-viewport-region--sidebar .event-row-region--tail,
 .chat-viewport-region--mini .event-row-region--tail,
 .chat-viewport-region--orb .event-row-region--tail {
-  min-height: 180px;
+  min-height: 120px;
 }
 
 .chat-viewport-region .event-row-region--tail {

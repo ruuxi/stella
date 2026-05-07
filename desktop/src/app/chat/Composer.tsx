@@ -6,6 +6,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { ComposerContextRow, ComposerSuggestionContextRow } from "./ComposerContextRow";
+import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import { ComposerAddMenu } from "./ComposerAddMenu";
 import {
   ComposerMicButton,
@@ -39,6 +40,7 @@ type ComposerProps = {
   conversationId: string | null;
   onSend: () => void;
   onStop: () => void;
+  indicator?: InlineWorkingIndicatorMountProps;
 };
 
 export function Composer({
@@ -54,6 +56,7 @@ export function Composer({
   conversationId,
   onSend,
   onStop,
+  indicator,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -113,6 +116,7 @@ export function Composer({
       <ComposerSuggestionContextRow
         chatContext={chatContext}
         setChatContext={setChatContext}
+        indicator={indicator}
       />
       <div ref={shellRef} className="composer-shell">
         <div ref={shellContentRef} className="composer-shell-content">
