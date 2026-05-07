@@ -393,6 +393,7 @@ export const registerBootstrapIpcHandlers = (
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     getBroadcastToMobile: lazyMobileBroadcast,
     getOverlayController: () => state.overlayController ?? null,
+    stellaRoot: state.stellaRoot!,
   });
 
   // Register dictation first so we can pass `startPetDictation` into
