@@ -31,7 +31,7 @@ type VoiceHandlersOptions = {
   ) => () => void;
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
   getOverlayController?: () => OverlayWindowController | null;
-  getStellaRoot?: () => string | null;
+  stellaRoot: string;
 };
 
 const DEFAULT_VOICE_RTC_SHORTCUT = "CommandOrControl+Shift+D";
@@ -118,17 +118,13 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   };
 
   const loadConfiguredShortcut = () => {
-    const stellaRoot = options.getStellaRoot?.();
-    if (!stellaRoot) return DEFAULT_VOICE_RTC_SHORTCUT;
-    return loadLocalPreferences(stellaRoot).voiceRtcShortcut;
+    return loadLocalPreferences(options.stellaRoot).voiceRtcShortcut;
   };
 
   const saveConfiguredShortcut = (shortcut: string) => {
-    const stellaRoot = options.getStellaRoot?.();
-    if (!stellaRoot) return;
-    const prefs = loadLocalPreferences(stellaRoot);
+    const prefs = loadLocalPreferences(options.stellaRoot);
     prefs.voiceRtcShortcut = shortcut;
-    saveLocalPreferences(stellaRoot, prefs);
+    saveLocalPreferences(options.stellaRoot, prefs);
   };
 
   const initialVoiceRtcShortcut = applyShortcutRegistration({
@@ -161,11 +157,9 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   ipcMain.handle("voice-rtc:getShortcut", () => currentVoiceRtcShortcut);
 
   ipcMain.handle("voice:getCoreMemory", async () => {
-    const stellaRoot = options.getStellaRoot?.();
-    if (!stellaRoot) return null;
     try {
       return await fs.readFile(
-        path.join(stellaRoot, "state", "core-memory.md"),
+        path.join(options.stellaRoot, "state", "core-memory.md"),
         "utf-8",
       );
     } catch {
