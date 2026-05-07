@@ -11,6 +11,7 @@ import type {
 } from "./types";
 import { AssistantMessageEventStream } from "./event_stream";
 import { headersToRecord } from "./headers";
+import { parseJsonWithRepair } from "./json_parse";
 import { retryProviderRequest } from "./retry";
 import { buildBaseOptions, clampReasoning } from "./simple_options";
 import { transformMessages } from "./transform_messages";
@@ -163,16 +164,9 @@ function providerHttpError(response: Response, body: string): Error {
 
 function parseAnthropicStreamEvent(data: string): AnthropicStreamEvent | null {
   try {
-    return JSON.parse(data) as AnthropicStreamEvent;
+    return parseJsonWithRepair<AnthropicStreamEvent>(data);
   } catch {
-    const repaired = data
-      .replace(/,\s*([}\]])/g, "$1")
-      .replace(/[\u0000-\u001f]+$/g, "");
-    try {
-      return JSON.parse(repaired) as AnthropicStreamEvent;
-    } catch {
-      return null;
-    }
+    return null;
   }
 }
 
@@ -673,7 +667,9 @@ export const streamAnthropic: StreamFunction<
             const next = prior + event.delta.partial_json;
             toolInputByIndex.set(event.index, next);
             try {
-              block.arguments = JSON.parse(next) as Record<string, unknown>;
+              block.arguments = parseJsonWithRepair<Record<string, unknown>>(
+                next,
+              );
             } catch {
               // Keep streaming partial JSON as deltas; parse when complete.
             }
@@ -709,7 +705,9 @@ export const streamAnthropic: StreamFunction<
             const raw = toolInputByIndex.get(event.index);
             if (raw) {
               try {
-                block.arguments = JSON.parse(raw) as Record<string, unknown>;
+                block.arguments = parseJsonWithRepair<Record<string, unknown>>(
+                  raw,
+                );
               } catch {
                 block.arguments = {};
               }
