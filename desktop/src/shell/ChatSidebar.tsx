@@ -39,6 +39,15 @@ import {
 } from "@/shared/hooks/use-animated-composer-shell";
 import "./chat-sidebar.css";
 
+// Legend List sums numeric paddings into its content length; passing
+// strings (`"10px"`) breaks the math. Keep these as numbers.
+const SIDEBAR_CONTENT_STYLE = {
+  paddingLeft: 10,
+  paddingRight: 10,
+  paddingTop: 8,
+  paddingBottom: 4,
+} as const;
+
 interface ChatSidebarOpenOptions {
   /** When provided, attaches/replaces the current chat context before opening. */
   chatContext?: ChatContext | null;
@@ -96,10 +105,10 @@ export function ChatPanelTab(
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     /*
-     * Own scroll-management instance for the sidebar viewport. Mirrors
-     * the full chat (`useFullShellChat` → `useChatScrollManagement`) so
-     * the sidebar gets the same custom auto-anchor and ResizeObserver-
-     * driven follow behavior.
+     * Own scroll-management instance for the sidebar list. Mirrors the
+     * full chat (`useFullShellChat` → `useChatScrollManagement`) so the
+     * sidebar gets the same Legend-List-backed at-bottom tracking and
+     * thumb behavior as the home full chat.
      */
     const sidebarScroll = useChatScrollManagement({
       hasOlderEvents,
@@ -109,26 +118,22 @@ export function ChatPanelTab(
 
     const sidebarScrollApi = useMemo<ChatColumnScroll>(
       () => ({
-        setViewportElement: sidebarScroll.setScrollContainerElement,
-        setContentElement: sidebarScroll.setContentElement,
-        onScroll: sidebarScroll.handleScroll,
+        listRef: sidebarScroll.listRef,
+        onListScroll: sidebarScroll.onListScroll,
+        onStartReached: sidebarScroll.onStartReached,
         showScrollButton: sidebarScroll.showScrollButton,
-        isAtBottom: sidebarScroll.isNearBottom,
+        isAtBottom: sidebarScroll.isAtBottom,
         scrollToBottom: sidebarScroll.scrollToBottom,
-        overflowAnchor: sidebarScroll.overflowAnchor,
         thumbState: sidebarScroll.thumbState,
-        hasScrollElement: sidebarScroll.hasScrollElement,
       }),
       [
-        sidebarScroll.setScrollContainerElement,
-        sidebarScroll.setContentElement,
-        sidebarScroll.handleScroll,
+        sidebarScroll.listRef,
+        sidebarScroll.onListScroll,
+        sidebarScroll.onStartReached,
         sidebarScroll.showScrollButton,
-        sidebarScroll.isNearBottom,
+        sidebarScroll.isAtBottom,
         sidebarScroll.scrollToBottom,
-        sidebarScroll.overflowAnchor,
         sidebarScroll.thumbState,
-        sidebarScroll.hasScrollElement,
       ],
     );
 
@@ -242,10 +247,10 @@ export function ChatPanelTab(
           <div className="chat-sidebar-main">
             <CompactConversationSurface
               className="chat-sidebar-messages"
-              conversationClassName="chat-sidebar-conversation"
               variant="sidebar"
               scroll={sidebarScrollApi}
               events={events}
+              maxItems={2000}
               streamingText={streamingText}
               isStreaming={isStreaming}
               runtimeStatusText={runtimeStatusText}
@@ -257,6 +262,7 @@ export function ChatPanelTab(
               hasOlderEvents={hasOlderEvents}
               isLoadingOlder={isLoadingOlder}
               isLoadingHistory={isInitialLoading}
+              contentContainerStyle={SIDEBAR_CONTENT_STYLE}
             />
 
             <div className="chat-sidebar-composer">

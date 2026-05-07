@@ -893,20 +893,19 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   container-type: size;
 }
 
-/* Session content — column-reverse scroll viewport.
-   scrollTop=0 is at the bottom (newest content).
-   Native bottom-anchoring: new content stays visible without JS. */
+/* Session content — Legend List scroll element.
+ * The list itself owns scrolling/overflow; this rule layers the
+ * Stella-specific mask gradient + native scrollbar suppression on top
+ * of Legend's own scroller styles. Centering and padding live in the
+ * `contentContainerStyle` prop so they sit on the inner content
+ * container rather than on the scroll element (otherwise the
+ * scrollbar overlay would be off-center). */
 .session-content {
-  height: 100%;
-  display: flex;
-  flex-direction: column-reverse;
-  overflow-y: auto;
   scrollbar-width: none;
   /* Top fade always — older history tapers under the title-bar region.
-   * Bottom fade is also always present now: the viewport extends down
-   * behind the floating thinking-footer (working indicator + chips), and
-   * we want chat content to fade out cleanly beneath them rather than
-   * abut their pill backgrounds. */
+   * Bottom fade is also always present so chat content fades out
+   * cleanly beneath the working indicator/chips that overlay the
+   * viewport bottom. */
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
@@ -924,40 +923,8 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   transition: mask-image 160ms ease, -webkit-mask-image 160ms ease;
 }
 
-.session-content:not(.at-bottom) {
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 24px,
-    black calc(100% - 56px),
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 24px,
-    black calc(100% - 56px),
-    transparent 100%
-  );
-}
-
 .session-content::-webkit-scrollbar {
   display: none;
-}
-
-/* Message container — centered, padding reserves space for title bar + composer.
-   min-height: 100% ensures short conversations fill the viewport so content
-   doesn't sit behind the absolutely-positioned composer at the bottom. */
-.session-messages {
-  width: 100%;
-  max-width: min(50rem, 100%);
-  margin: 0 auto;
-  padding: 112px 24px 30px;
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 24px;
 }
 
 /* New session view - minimal home screen */

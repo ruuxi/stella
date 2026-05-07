@@ -1,8 +1,9 @@
-﻿import { usePaginatedQuery } from "convex/react";
+import { usePaginatedQuery } from "convex/react";
 import {
   startTransition,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -301,15 +302,19 @@ export const useConversationEventFeed = (
   // array of new objects and forces O(N) recompute on a chat of size N.
   const stableEventsRef = useRef<StableEventListState | null>(null);
   const cappedEventsRef = useRef<EventRecord[] | null>(null);
-  const events = useMemo(() => {
+  const eventWindowState = useMemo(() => {
     const source =
       storageMode === "local" ? mergedLocalEvents : reversedCloudEvents;
     const stable = stabilizeEventList(source, stableEventsRef.current);
-    stableEventsRef.current = stable;
     const capped = capEventWindow(stable.result, cappedEventsRef.current);
-    cappedEventsRef.current = capped;
-    return capped;
+    return { stable, capped };
   }, [mergedLocalEvents, reversedCloudEvents, storageMode]);
+  const events = eventWindowState.capped;
+
+  useLayoutEffect(() => {
+    stableEventsRef.current = eventWindowState.stable;
+    cappedEventsRef.current = eventWindowState.capped;
+  }, [eventWindowState]);
 
   // Reset stabilizer state when the conversation switches so a brand-new
   // chat doesn't inherit stale entries from the previous one.

@@ -54,6 +54,12 @@
   contain-intrinsic-size: none;
 }
 
+.event-list-extra-tail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 /* Queued user messages live in the active tail under the inline working
    indicator, not above the composer. They keep the same right-aligned
    bubble language as normal user messages while waiting for their turn. */

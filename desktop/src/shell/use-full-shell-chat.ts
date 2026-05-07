@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -55,18 +54,6 @@ function writePersistedChatHomeSurface(surface: ChatHomeSurface): void {
   } catch {
     // Storage is best-effort; the chat route itself still restores normally.
   }
-}
-
-const resetChatScroll = (
-  resetScrollState: () => void,
-  scrollToBottom: (behavior: 'instant' | 'smooth') => void,
-) => {
-  resetScrollState()
-  scrollToBottom('instant')
-  const raf = requestAnimationFrame(() => {
-    scrollToBottom('instant')
-  })
-  return () => cancelAnimationFrame(raf)
 }
 
 const mergeEventSources = (
@@ -292,17 +279,18 @@ export function useFullShellChat({
     return () => window.removeEventListener(STELLA_SHOW_HOME_EVENT, handler)
   }, [forceShowHome])
 
-  // Scroll: column-reverse viewport; ResizeObserver follows newest unless paused while a reply is in flight.
+  /**
+   * Scroll: backed by Legend List (web entry). The list owns scrolling
+   * and content geometry; the hook adapts list state into the surface
+   * UI concerns (at-bottom, custom thumb, scroll-to-bottom button).
+   */
   const {
-    setScrollContainerElement,
-    setContentElement,
-    hasScrollElement,
-    isNearBottom,
+    listRef,
+    onListScroll,
+    onStartReached,
+    isAtBottom,
     showScrollButton,
     scrollToBottom,
-    handleScroll,
-    resetScrollState,
-    overflowAnchor,
     thumbState,
   } = useChatScrollManagement({
     hasOlderEvents,
@@ -311,10 +299,11 @@ export function useFullShellChat({
     isWorking: isStreaming,
   })
 
-  // Reset scroll on conversation change
-  useLayoutEffect(() => {
-    return resetChatScroll(resetScrollState, scrollToBottom)
-  }, [activeConversationId, resetScrollState, scrollToBottom])
+  // On conversation change, snap to the latest content. `initialScrollAtEnd`
+  // covers fresh mounts; this handles in-place conversation switches.
+  useEffect(() => {
+    void listRef.current?.scrollToEnd({ animated: false })
+  }, [activeConversationId, listRef])
 
   const handleSend = useCallback(() => {
     if (showHomeContent) {
@@ -441,26 +430,22 @@ export function useFullShellChat({
 
   const chatColumnScroll = useMemo<ChatColumnScroll>(
     () => ({
-      setViewportElement: setScrollContainerElement,
-      setContentElement,
-      onScroll: handleScroll,
+      listRef,
+      onListScroll,
+      onStartReached,
       showScrollButton,
-      isAtBottom: isNearBottom,
+      isAtBottom,
       scrollToBottom,
-      overflowAnchor,
       thumbState,
-      hasScrollElement,
     }),
     [
-      setScrollContainerElement,
-      setContentElement,
-      handleScroll,
+      listRef,
+      onListScroll,
+      onStartReached,
       showScrollButton,
-      isNearBottom,
+      isAtBottom,
       scrollToBottom,
-      overflowAnchor,
       thumbState,
-      hasScrollElement,
     ],
   )
 
@@ -487,11 +472,7 @@ export function useFullShellChat({
       handleSend,
       handleStop: cancelCurrentStream,
     },
-    scroll: {
-      ...chatColumnScroll,
-      hasScrollElement,
-      setScrollContainerElement,
-    },
+    scroll: chatColumnScroll,
     showHomeContent,
     onSuggestionClick,
     dismissHome,
