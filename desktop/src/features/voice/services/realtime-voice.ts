@@ -360,7 +360,7 @@ export class RealtimeVoiceSession {
       this.model = model;
 
       const sdpResponse = await fetch(
-        `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
+        "https://api.openai.com/v1/realtime/calls",
         {
           method: "POST",
           headers: {
