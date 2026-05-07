@@ -14,6 +14,7 @@ import type {
   ExtensionFactory,
   ExtensionRegistrationApi,
 } from "./types.js";
+import type { ExtensionServices } from "./services.js";
 import { extractFrontmatter } from "../frontmatter.js";
 
 const log = (...args: unknown[]) => console.error("[stella:extensions]", ...args);
@@ -111,6 +112,7 @@ async function importModules<T>(
 async function loadExtensionFactories(
   baseDir: string,
   loadToken: string,
+  services: ExtensionServices,
 ): Promise<LoadedExtensions> {
   const collected: LoadedExtensions = {
     tools: [],
@@ -182,7 +184,7 @@ async function loadExtensionFactories(
         },
       };
 
-      await factory(api);
+      await factory(api, services);
       log(`Loaded extension: ${entry}`);
     } catch (error) {
       logError(`Failed to load extension ${filePath}:`, (error as Error).message);
@@ -246,7 +248,10 @@ async function loadPrompts(dir: string): Promise<PromptTemplate[]> {
 let loadExtensionsCallCount = 0;
 const LOADER_RELOAD_WARN_THRESHOLD = 50;
 
-export async function loadExtensions(baseDir: string): Promise<LoadedExtensions> {
+export async function loadExtensions(
+  baseDir: string,
+  services: ExtensionServices,
+): Promise<LoadedExtensions> {
   loadExtensionsCallCount += 1;
   if (loadExtensionsCallCount === LOADER_RELOAD_WARN_THRESHOLD) {
     // One-shot warning at the threshold. Silent past that — repeated
@@ -283,7 +288,7 @@ export async function loadExtensions(baseDir: string): Promise<LoadedExtensions>
       loadToken,
     ),
     loadPrompts(path.join(baseDir, "prompts")),
-    loadExtensionFactories(baseDir, loadToken),
+    loadExtensionFactories(baseDir, loadToken, services),
   ]);
 
   const loaded: LoadedExtensions = {

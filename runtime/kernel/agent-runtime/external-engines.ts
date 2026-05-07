@@ -290,6 +290,14 @@ export const runExternalOrchestratorTurn = async (
       promptMessages: opts.promptMessages,
       stellaHome: opts.stellaHome,
       stellaRoot: opts.stellaRoot,
+      agentType: opts.agentType,
+      hookContext: {
+        ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
+        conversationId: opts.conversationId,
+        threadKey: session.threadKey,
+        runId: session.runId,
+        ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
+      },
     });
     const result = await runClaudeHostedTurn({
       opts,
@@ -330,6 +338,14 @@ export const runExternalSubagentTurn = async (
       promptMessages: opts.promptMessages,
       stellaHome: opts.stellaHome,
       stellaRoot: opts.stellaRoot,
+      agentType: opts.agentType,
+      hookContext: {
+        ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
+        conversationId: opts.conversationId,
+        threadKey: session.threadKey,
+        runId: session.runId,
+        ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
+      },
     });
     // Thread session.runId so a future `triggersSelfModDetection`
     // subagent (none today) would have the same baseline-capture

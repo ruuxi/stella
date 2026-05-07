@@ -16,6 +16,7 @@ import type {
 } from "../storage/shared.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { createRuntimeLogger } from "../debug.js";
+import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { RuntimePromptMessage } from "../../protocol/index.js";
 import {
   buildRuntimeThreadKey,
@@ -555,20 +556,118 @@ export const buildStartupPromptMessages = async (args: {
   return messages;
 };
 
+/**
+ * Hook context fields passed to the `before_user_message` emitter.
+ * Optional because direct test callers and external engines can build
+ * prompt messages without a hook emitter; in that case the hook fan-out
+ * is skipped and the kernel produces a bundled-startup-only prompt.
+ */
+export type PromptHookContext = {
+  hookEmitter?: HookEmitter;
+  conversationId?: string;
+  threadKey?: string;
+  runId?: string;
+  uiVisibility?: "visible" | "hidden";
+};
+
+const fanOutBeforeUserMessage = async (args: {
+  hookContext: PromptHookContext;
+  agentType: string;
+  userPrompt: string;
+  staleUserReminderText?: string;
+  orchestratorReminderText?: string;
+  shouldInjectDynamicReminder?: boolean;
+}): Promise<{
+  prepend: RuntimePromptMessage[];
+  append: RuntimePromptMessage[];
+}> => {
+  const empty = { prepend: [], append: [] };
+  const { hookEmitter } = args.hookContext;
+  if (!hookEmitter) return empty;
+  const results = await hookEmitter.emitAll(
+    "before_user_message",
+    {
+      agentType: args.agentType,
+      userPrompt: args.userPrompt,
+      ...(args.staleUserReminderText !== undefined
+        ? { staleUserReminderText: args.staleUserReminderText }
+        : {}),
+      ...(args.orchestratorReminderText !== undefined
+        ? { orchestratorReminderText: args.orchestratorReminderText }
+        : {}),
+      ...(args.shouldInjectDynamicReminder !== undefined
+        ? { shouldInjectDynamicReminder: args.shouldInjectDynamicReminder }
+        : {}),
+      ...(args.hookContext.conversationId
+        ? { conversationId: args.hookContext.conversationId }
+        : {}),
+      ...(args.hookContext.threadKey
+        ? { threadKey: args.hookContext.threadKey }
+        : {}),
+      ...(args.hookContext.runId ? { runId: args.hookContext.runId } : {}),
+      ...(args.hookContext.uiVisibility
+        ? { uiVisibility: args.hookContext.uiVisibility }
+        : {}),
+      isUserTurn: args.hookContext.uiVisibility !== "hidden",
+    },
+    { agentType: args.agentType },
+  );
+  const prepend: RuntimePromptMessage[] = [];
+  const append: RuntimePromptMessage[] = [];
+  for (const result of results) {
+    if (result?.prependMessages?.length) {
+      prepend.push(...result.prependMessages);
+    }
+    if (result?.appendMessages?.length) {
+      append.push(...result.appendMessages);
+    }
+  }
+  return { prepend, append };
+};
+
 export const buildSubagentPromptMessages = async (args: {
   context: LocalAgentContext;
   userPrompt: string;
   promptMessages?: RuntimePromptMessage[];
   stellaHome?: string;
   stellaRoot?: string;
+  agentType?: string;
+  hookContext?: PromptHookContext;
 }): Promise<RuntimePromptMessage[]> => {
   const trimmedUserPrompt = args.userPrompt.trim();
-  const messages = await buildStartupPromptMessages({
-    context: args.context,
-    stellaHome: args.stellaHome,
-    stellaRoot: args.stellaRoot,
-    includeDreamMemoryFiles: false,
-  });
+  const messages: RuntimePromptMessage[] = [];
+
+  // `before_user_message` fan-out runs first so extension-injected
+  // context lands at the very top of the prompt-message array.
+  // Subagent reminder fields are intentionally undefined — they're an
+  // orchestrator-only concept on `LocalAgentContext` today.
+  if (args.agentType && args.hookContext) {
+    const { prepend, append } = await fanOutBeforeUserMessage({
+      hookContext: args.hookContext,
+      agentType: args.agentType,
+      userPrompt: args.userPrompt,
+    });
+    messages.push(...prepend);
+    messages.push(
+      ...(await buildStartupPromptMessages({
+        context: args.context,
+        stellaHome: args.stellaHome,
+        stellaRoot: args.stellaRoot,
+        includeDreamMemoryFiles: false,
+      })),
+    );
+    messages.push(...append);
+  } else {
+    messages.push(
+      ...(await buildStartupPromptMessages({
+        context: args.context,
+        stellaHome: args.stellaHome,
+        stellaRoot: args.stellaRoot,
+        includeDreamMemoryFiles: false,
+      })),
+    );
+  }
+
   if (args.promptMessages?.length) {
     messages.push(...args.promptMessages);
   }
@@ -584,37 +683,58 @@ export const buildOrchestratorPromptMessages = async (args: {
   promptMessages?: OrchestratorPromptMessage[];
   stellaHome?: string;
   stellaRoot?: string;
+  agentType?: string;
+  hookContext?: PromptHookContext;
 }): Promise<OrchestratorPromptMessage[]> => {
   const trimmedUserPrompt = args.userPrompt.trim();
-  const staleUserReminder = args.context.staleUserReminderText?.trim();
-  const reminder = args.context.orchestratorReminderText?.trim();
   const messages: OrchestratorPromptMessage[] = [];
-  if (staleUserReminder) {
+
+  // Stale-user / dynamic-memory reminders used to be inline branches
+  // here; they now live as `before_user_message` hooks in
+  // `runtime/extensions/stella-runtime/hooks/`. The reminder text is
+  // forwarded through the hook payload so the hooks can decide whether
+  // to inject. When no hook emitter is wired (legacy / direct test
+  // callers) the prompt builds without reminders, matching the
+  // pre-migration behavior for those callers.
+  if (args.agentType && args.hookContext) {
+    const { prepend, append } = await fanOutBeforeUserMessage({
+      hookContext: args.hookContext,
+      agentType: args.agentType,
+      userPrompt: args.userPrompt,
+      ...(args.context.staleUserReminderText !== undefined
+        ? { staleUserReminderText: args.context.staleUserReminderText }
+        : {}),
+      ...(args.context.orchestratorReminderText !== undefined
+        ? { orchestratorReminderText: args.context.orchestratorReminderText }
+        : {}),
+      ...(args.context.shouldInjectDynamicReminder !== undefined
+        ? {
+            shouldInjectDynamicReminder:
+              args.context.shouldInjectDynamicReminder,
+          }
+        : {}),
+    });
+    messages.push(...prepend);
     messages.push(
-      createInternalPromptMessage(
-        wrapSystemReminder(staleUserReminder),
-        "hidden",
-        "runtime.stale_user_reminder",
-      ),
+      ...(await buildStartupPromptMessages({
+        context: args.context,
+        stellaHome: args.stellaHome,
+        stellaRoot: args.stellaRoot,
+        includeDreamMemoryFiles: true,
+      })),
+    );
+    messages.push(...append);
+  } else {
+    messages.push(
+      ...(await buildStartupPromptMessages({
+        context: args.context,
+        stellaHome: args.stellaHome,
+        stellaRoot: args.stellaRoot,
+        includeDreamMemoryFiles: true,
+      })),
     );
   }
-  if (args.context.shouldInjectDynamicReminder && reminder) {
-    messages.push(
-      createInternalPromptMessage(
-        wrapSystemReminder(reminder),
-        "hidden",
-        "runtime.orchestrator_reminder",
-      ),
-    );
-  }
-  messages.push(
-    ...(await buildStartupPromptMessages({
-      context: args.context,
-      stellaHome: args.stellaHome,
-      stellaRoot: args.stellaRoot,
-      includeDreamMemoryFiles: true,
-    })),
-  );
+
   if (args.promptMessages?.length) {
     messages.push(...args.promptMessages);
   }

@@ -5,6 +5,7 @@ import type {
   AgentToolResult,
 } from "../agent-core/types.js";
 import type { AssistantMessageEvent } from "../../ai/types.js";
+import type { RuntimePromptMessage } from "../../protocol/index.js";
 
 export interface ToolDefinition {
   /** Tool name (must be unique). */
@@ -26,6 +27,7 @@ export type HookEvent =
   | "before_tool"
   | "after_tool"
   | "before_agent_start"
+  | "before_user_message"
   | "agent_start"
   | "agent_end"
   | "turn_start"
@@ -88,6 +90,47 @@ export type BeforeAgentStartPayload = HookRuntimeContext & {
 export type BeforeAgentStartHookResult = {
   systemPromptAppend?: string;
   systemPromptReplace?: string;
+};
+
+/**
+ * Payload for `before_user_message` — fires once per turn during prompt-
+ * message assembly, BEFORE the bundled startup messages (memory bundle,
+ * registry, core memory) and BEFORE the user's typed prompt. Hooks
+ * return messages to splice into the prompt-message array.
+ *
+ * Fires for both orchestrator (`buildOrchestratorPromptMessages`) and
+ * subagent (`buildSubagentPromptMessages`) prompt builds. Read
+ * `payload.agentType` to scope behavior to a specific agent.
+ *
+ * Reminder fields (`staleUserReminderText`, `orchestratorReminderText`,
+ * `shouldInjectDynamicReminder`) are forwarded from the orchestrator's
+ * agent-context so the stella-runtime reminder hooks can read them
+ * without the kernel passing an opaque agentContext blob through the
+ * payload. They're undefined for subagent builds.
+ */
+export type BeforeUserMessagePayload = HookRuntimeContext & {
+  agentType: string;
+  userPrompt: string;
+  staleUserReminderText?: string;
+  orchestratorReminderText?: string;
+  shouldInjectDynamicReminder?: boolean;
+};
+
+export type BeforeUserMessageHookResult = {
+  /**
+   * Messages prepended to the prompt-message array in registration
+   * order. Each hook's prepends land before any bundled startup
+   * messages and before the user's typed prompt. Use `display: false`
+   * (or `uiVisibility: "hidden"`) to keep the message out of the
+   * user-facing chat surface.
+   */
+  prependMessages?: RuntimePromptMessage[];
+  /**
+   * Messages appended just before the user's typed prompt. Useful for
+   * context that should land close to the user's text without sitting
+   * inside the bundled startup section.
+   */
+  appendMessages?: RuntimePromptMessage[];
 };
 
 export type AgentStartPayload = HookRuntimeContext & {
@@ -225,6 +268,7 @@ export interface HookEventMap {
   before_tool: { payload: BeforeToolPayload; result: BeforeToolHookResult };
   after_tool: { payload: AfterToolPayload; result: AfterToolHookResult };
   before_agent_start: { payload: BeforeAgentStartPayload; result: BeforeAgentStartHookResult };
+  before_user_message: { payload: BeforeUserMessagePayload; result: BeforeUserMessageHookResult };
   agent_start: { payload: AgentStartPayload; result: void };
   agent_end: { payload: AgentEndPayload; result: AgentEndHookResult };
   turn_start: { payload: TurnStartPayload; result: TurnStartHookResult };
@@ -323,8 +367,19 @@ export interface ExtensionRegistrationApi {
   registerAgent(agent: ParsedAgent): void;
 }
 
+/**
+ * Extension factory contract.
+ *
+ * The second argument carries runtime services (see
+ * `runtime/kernel/extensions/services.ts`) that bundled-as-extension
+ * hooks like personality + self-mod need access to at registration
+ * time. Third-party extensions are free to ignore the services arg —
+ * but the field is non-optional in the type so the loader can always
+ * pass it without conditional plumbing.
+ */
 export type ExtensionFactory = (
   api: ExtensionRegistrationApi,
+  services: import("./services.js").ExtensionServices,
 ) => void | Promise<void>;
 
 // ---------------------------------------------------------------------------

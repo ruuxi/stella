@@ -1,6 +1,6 @@
-import { agentHasCapability } from "../../../../contracts/agent-runtime.js";
-import type { HookDefinition } from "../../../extensions/types.js";
-import type { SelfModMonitor } from "../../types.js";
+import { agentHasCapability } from "../../../contracts/agent-runtime.js";
+import type { HookDefinition } from "../../../kernel/extensions/types.js";
+import type { SelfModMonitor } from "../../../kernel/agent-runtime/types.js";
 
 type BaselineCache = Map<string, string | null>;
 
@@ -8,10 +8,32 @@ const shouldRun = (agentType: string, isUserTurn?: boolean): boolean =>
   isUserTurn !== false &&
   agentHasCapability(agentType, "triggersSelfModDetection");
 
+/**
+ * Self-modification baseline + detect-applied (stella-runtime).
+ *
+ * A pair of hooks that bookend the run:
+ *
+ *   before_agent_start  → snapshot the repo HEAD into a runId-keyed cache.
+ *   agent_end           → diff HEAD against the cached baseline and return
+ *                          the resulting `selfModApplied` payload so the
+ *                          runtime can thread it onto the outgoing
+ *                          RuntimeEndEvent (drives the morph overlay).
+ *
+ * Gated by the `triggersSelfModDetection` capability and `isUserTurn`.
+ * Synthetic hidden turns and capability-less agents skip both hooks.
+ * The detection only runs on `outcome === "success"`; error / interrupted
+ * runs still hit `agent_end` so the cache can be reclaimed.
+ *
+ * Lives in the stella-runtime extension; `stellaRoot` and
+ * `selfModMonitor` are supplied by the extension factory's services arg.
+ */
 export const createSelfModHooks = (opts: {
-  stellaRoot?: string;
-  selfModMonitor?: SelfModMonitor | null;
+  stellaRoot: string;
+  selfModMonitor: SelfModMonitor | null;
 }): HookDefinition[] => {
+  // Per-runId baseline cache. Cleaned up at agent_end (success or error
+  // path — see fix history). If a run never fires agent_end (process
+  // crash mid-flight) the entry leaks until process exit; bounded.
   const baselines: BaselineCache = new Map();
 
   const beforeAgentStart: HookDefinition<"before_agent_start"> = {
@@ -44,6 +66,9 @@ export const createSelfModHooks = (opts: {
 
       if (!opts.selfModMonitor || !opts.stellaRoot) return;
       if (!shouldRun(payload.agentType, payload.isUserTurn)) return;
+      // Treats undefined as non-success so a third-party emitter that
+      // omits `outcome` doesn't accidentally trigger the expensive
+      // detect-applied path.
       if (payload.outcome !== "success") return;
       if (!hadEntry) return;
 
@@ -56,6 +81,7 @@ export const createSelfModHooks = (opts: {
           return { selfModApplied: applied };
         }
       } catch {
+        // Detection failures must not break the finalize path.
       }
       return;
     },
