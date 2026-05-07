@@ -56,5 +56,5 @@ export const createExecCommandTool = (
     required: ["cmd"],
   },
   execute: (args, context, extras) =>
-    handleExecCommand(shellState, args, context, extras?.signal),
+    handleExecCommand(shellState, args, context, extras?.signal, extras?.onUpdate),
 });

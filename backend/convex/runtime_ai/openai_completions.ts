@@ -9,6 +9,7 @@ import type {
   ChatCompletionToolMessageParam,
 } from "openai/resources/chat/completions.js";
 import { AssistantMessageEventStream } from "./event_stream";
+import { headersToRecord } from "./headers";
 import { parseStreamingJson } from "./json_parse";
 import { supportsXhigh } from "./model_utils";
 import { sanitizeSurrogates } from "./sanitize_unicode";
@@ -49,8 +50,8 @@ export function hasToolHistory(messages: Message[]): boolean {
       return true;
     }
     if (
-      message.role === "assistant"
-      && message.content.some((block) => block.type === "toolCall")
+      message.role === "assistant" &&
+      message.content.some((block) => block.type === "toolCall")
     ) {
       return true;
     }
@@ -71,13 +72,19 @@ export interface OpenAICompletionsOptions extends StreamOptions {
 
 function normalizeChatToolChoice(
   toolChoice: OpenAICompletionsOptions["toolChoice"],
-): "auto" | "none" | "required" | { type: "function"; function: { name: string } } | undefined {
+):
+  | "auto"
+  | "none"
+  | "required"
+  | { type: "function"; function: { name: string } }
+  | undefined {
   if (!toolChoice || typeof toolChoice === "string") {
     return toolChoice;
   }
   const record = toolChoice as Record<string, unknown>;
   const nested = record.function as Record<string, unknown> | undefined;
-  const nestedName = nested && typeof nested.name === "string" ? nested.name : "";
+  const nestedName =
+    nested && typeof nested.name === "string" ? nested.name : "";
   if (nestedName.length > 0) {
     return { type: "function", function: { name: nestedName } };
   }
@@ -90,21 +97,33 @@ function normalizeChatToolChoice(
 
 type ReasoningField = "reasoning_content" | "reasoning" | "reasoning_text";
 type ReasoningDetail = { type?: string; id?: string; data?: string };
-type CompletionDeltaWithReasoning = NonNullable<ChatCompletionChunk.Choice["delta"]>
-  & Partial<Record<ReasoningField, string | null>>
-  & { reasoning_details?: ReasoningDetail[] };
-type AssistantMessageWithExtras = ChatCompletionAssistantMessageParam
-  & Partial<Record<ReasoningField, string>>
-  & { reasoning_details?: ReasoningDetail[] };
-type ToolResultMessageWithName = ChatCompletionToolMessageParam & { name?: string };
+type CompletionDeltaWithReasoning = NonNullable<
+  ChatCompletionChunk.Choice["delta"]
+> &
+  Partial<Record<ReasoningField, string | null>> & {
+    reasoning_details?: ReasoningDetail[];
+  };
+type AssistantMessageWithExtras = ChatCompletionAssistantMessageParam &
+  Partial<Record<ReasoningField, string>> & {
+    reasoning_details?: ReasoningDetail[];
+  };
+type ToolResultMessageWithName = ChatCompletionToolMessageParam & {
+  name?: string;
+};
 type OpenAIErrorWithMetadata = { error?: { metadata?: { raw?: string } } };
 
-function toChatCompletionImagePart(
-  item: { type: "image"; url?: string; mimeType?: string; data?: string; detail?: "auto" | "low" | "high" },
-): ChatCompletionContentPartImage | null {
-  const url = item.url || (
-    item.mimeType && item.data ? `data:${item.mimeType};base64,${item.data}` : null
-  );
+function toChatCompletionImagePart(item: {
+  type: "image";
+  url?: string;
+  mimeType?: string;
+  data?: string;
+  detail?: "auto" | "low" | "high";
+}): ChatCompletionContentPartImage | null {
+  const url =
+    item.url ||
+    (item.mimeType && item.data
+      ? `data:${item.mimeType};base64,${item.data}`
+      : null);
   if (!url) {
     return null;
   }
@@ -143,30 +162,62 @@ export const streamOpenAICompletions: StreamFunction<
     };
 
     try {
-      const client = createClient(model, options?.apiKey, options?.headers);
+      const compat = getCompat(model);
+      const cacheSessionId =
+        options?.cacheRetention === "none" ? undefined : options?.sessionId;
+      const client = createClient(
+        model,
+        options?.apiKey,
+        options?.headers,
+        cacheSessionId,
+        compat,
+      );
       let params = buildOpenAICompletionsParams(model, context, options, true);
       const nextParams = await options?.onPayload?.(params, model);
       if (nextParams !== undefined) {
         params = nextParams as typeof params;
       }
 
-      const openaiStream = await client.chat.completions.create(
-        params as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
-        options?.signal ? { signal: options.signal } : undefined,
+      const requestOptions = {
+        ...(options?.signal ? { signal: options.signal } : {}),
+        ...(options?.timeoutMs !== undefined
+          ? { timeout: options.timeoutMs }
+          : {}),
+        ...(options?.maxRetries !== undefined
+          ? { maxRetries: options.maxRetries }
+          : {}),
+      };
+      const { data: openaiStream, response } = await client.chat.completions
+        .create(
+          params as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+          requestOptions,
+        )
+        .withResponse();
+      await options?.onResponse?.(
+        { status: response.status, headers: headersToRecord(response.headers) },
+        model,
       );
       stream.push({ type: "start", partial: output });
+
+      type StreamingToolCallBlock = ToolCall & {
+        partialArgs?: string;
+        streamIndex?: number;
+      };
 
       let currentBlock:
         | TextContent
         | ThinkingContent
-        | (ToolCall & { partialArgs?: string })
+        | StreamingToolCallBlock
         | null = null;
 
       const finishCurrentBlock = (block: typeof currentBlock) => {
         if (!block) {
           return;
         }
-        const contentIndex = output.content.length - 1;
+        const contentIndex = output.content.indexOf(block);
+        if (contentIndex === -1) {
+          return;
+        }
         if (block.type === "text") {
           stream.push({
             type: "text_end",
@@ -201,6 +252,13 @@ export const streamOpenAICompletions: StreamFunction<
         // OpenAI documents ChatCompletionChunk.id as the unique chat completion identifier,
         // and each chunk in a streamed completion carries the same id.
         output.responseId ||= chunk.id;
+        if (
+          typeof chunk.model === "string" &&
+          chunk.model.length > 0 &&
+          chunk.model !== model.id
+        ) {
+          output.responseModel ||= chunk.model;
+        }
 
         if (chunk.usage) {
           output.usage = parseOpenAIChatUsage(chunk.usage, model);
@@ -220,7 +278,9 @@ export const streamOpenAICompletions: StreamFunction<
         }
 
         if (choice.finish_reason) {
-          const finishReasonResult = mapStopReasonDetailed(choice.finish_reason);
+          const finishReasonResult = mapStopReasonDetailed(
+            choice.finish_reason,
+          );
           output.stopReason = finishReasonResult.stopReason;
           if (finishReasonResult.errorMessage) {
             output.errorMessage = finishReasonResult.errorMessage;
@@ -231,7 +291,10 @@ export const streamOpenAICompletions: StreamFunction<
         }
 
         const deltaWithReasoning = choice.delta as CompletionDeltaWithReasoning;
-        if (typeof choice.delta.content === "string" && choice.delta.content.length > 0) {
+        if (
+          typeof choice.delta.content === "string" &&
+          choice.delta.content.length > 0
+        ) {
           if (!currentBlock || currentBlock.type !== "text") {
             finishCurrentBlock(currentBlock);
             currentBlock = { type: "text", text: "" };
@@ -294,10 +357,16 @@ export const streamOpenAICompletions: StreamFunction<
 
         if (choice.delta.tool_calls) {
           for (const toolCall of choice.delta.tool_calls) {
+            const streamIndex =
+              typeof toolCall.index === "number" ? toolCall.index : undefined;
             if (
-              !currentBlock
-              || currentBlock.type !== "toolCall"
-              || (toolCall.id && currentBlock.id !== toolCall.id)
+              !currentBlock ||
+              currentBlock.type !== "toolCall" ||
+              (streamIndex !== undefined &&
+                currentBlock.streamIndex !== streamIndex) ||
+              (streamIndex === undefined &&
+                toolCall.id &&
+                currentBlock.id !== toolCall.id)
             ) {
               finishCurrentBlock(currentBlock);
               currentBlock = {
@@ -306,6 +375,7 @@ export const streamOpenAICompletions: StreamFunction<
                 name: toolCall.function?.name || "",
                 arguments: {},
                 partialArgs: "",
+                streamIndex,
               };
               output.content.push(currentBlock);
               stream.push({
@@ -324,8 +394,11 @@ export const streamOpenAICompletions: StreamFunction<
 
             const delta = toolCall.function?.arguments || "";
             if (delta) {
-              currentBlock.partialArgs = (currentBlock.partialArgs || "") + delta;
-              currentBlock.arguments = parseStreamingJson(currentBlock.partialArgs);
+              currentBlock.partialArgs =
+                (currentBlock.partialArgs || "") + delta;
+              currentBlock.arguments = parseStreamingJson(
+                currentBlock.partialArgs,
+              );
             }
             stream.push({
               type: "toolcall_delta",
@@ -338,7 +411,11 @@ export const streamOpenAICompletions: StreamFunction<
 
         if (deltaWithReasoning.reasoning_details) {
           for (const detail of deltaWithReasoning.reasoning_details) {
-            if (detail.type === "reasoning.encrypted" && detail.id && detail.data) {
+            if (
+              detail.type === "reasoning.encrypted" &&
+              detail.id &&
+              detail.data
+            ) {
               const matchingToolCall = output.content.find(
                 (block) => block.type === "toolCall" && block.id === detail.id,
               );
@@ -359,7 +436,9 @@ export const streamOpenAICompletions: StreamFunction<
         throw new Error("Request was aborted");
       }
       if (output.stopReason === "error") {
-        throw new Error(output.errorMessage || "Provider returned an error stop reason");
+        throw new Error(
+          output.errorMessage || "Provider returned an error stop reason",
+        );
       }
 
       stream.push({ type: "done", reason: output.stopReason, message: output });
@@ -368,7 +447,8 @@ export const streamOpenAICompletions: StreamFunction<
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
       output.errorMessage =
         error instanceof Error ? error.message : JSON.stringify(error);
-      const rawMetadata = (error as OpenAIErrorWithMetadata | null)?.error?.metadata?.raw;
+      const rawMetadata = (error as OpenAIErrorWithMetadata | null)?.error
+        ?.metadata?.raw;
       if (rawMetadata) {
         output.errorMessage += `\n${rawMetadata}`;
       }
@@ -388,8 +468,10 @@ export const streamSimpleOpenAICompletions: StreamFunction<
   const reasoningEffort = supportsXhigh(model)
     ? options?.reasoning
     : clampReasoning(options?.reasoning);
-  const toolChoice = (options as OpenAICompletionsOptions | undefined)?.toolChoice;
-  const responseFormat = (options as OpenAICompletionsOptions | undefined)?.responseFormat;
+  const toolChoice = (options as OpenAICompletionsOptions | undefined)
+    ?.toolChoice;
+  const responseFormat = (options as OpenAICompletionsOptions | undefined)
+    ?.responseFormat;
 
   return streamOpenAICompletions(model, context, {
     ...base,
@@ -403,19 +485,28 @@ function createClient(
   model: Model<"openai-completions">,
   apiKey?: string,
   optionsHeaders?: Record<string, string>,
+  sessionId?: string,
+  compat: Required<OpenAICompletionsCompat> = getCompat(model),
 ) {
   if (!apiKey) {
     throw new Error(`No API key for provider: ${model.provider}`);
+  }
+
+  const defaultHeaders: Record<string, string> = {
+    ...model.headers,
+    ...optionsHeaders,
+  };
+  if (sessionId && compat.sendSessionAffinityHeaders) {
+    defaultHeaders.session_id = sessionId;
+    defaultHeaders["x-client-request-id"] = sessionId;
+    defaultHeaders["x-session-affinity"] = sessionId;
   }
 
   return new OpenAI({
     apiKey,
     baseURL: model.baseUrl,
     maxRetries: 0,
-    defaultHeaders: {
-      ...model.headers,
-      ...optionsHeaders,
-    },
+    defaultHeaders,
   });
 }
 
@@ -441,12 +532,19 @@ export function buildOpenAICompletionsParams(
   // provider supports it) all honor `prompt_cache_key`. Harmless to send
   // when ignored. Skip when caller explicitly opts out via cacheRetention.
   if (
-    options?.sessionId
-    && options.sessionId.length > 0
-    && (options as { cacheRetention?: string }).cacheRetention !== "none"
-    && params.prompt_cache_key === undefined
+    options?.sessionId &&
+    options.sessionId.length > 0 &&
+    (options as { cacheRetention?: string }).cacheRetention !== "none" &&
+    params.prompt_cache_key === undefined
   ) {
     params.prompt_cache_key = options.sessionId;
+  }
+  if (
+    options?.cacheRetention === "long" &&
+    compat.supportsLongCacheRetention &&
+    params.prompt_cache_retention === undefined
+  ) {
+    params.prompt_cache_retention = "24h";
   }
 
   if (stream && compat.supportsUsageInStreaming !== false) {
@@ -481,31 +579,56 @@ export function buildOpenAICompletionsParams(
     params.enable_thinking = !!options?.reasoningEffort;
   } else if (compat.thinkingFormat === "qwen" && model.reasoning) {
     params.enable_thinking = !!options?.reasoningEffort;
-  } else if (compat.thinkingFormat === "qwen-chat-template" && model.reasoning) {
-    params.chat_template_kwargs = { enable_thinking: !!options?.reasoningEffort };
+  } else if (
+    compat.thinkingFormat === "qwen-chat-template" &&
+    model.reasoning
+  ) {
+    params.chat_template_kwargs = {
+      enable_thinking: !!options?.reasoningEffort,
+    };
+  } else if (compat.thinkingFormat === "deepseek" && model.reasoning) {
+    params.thinking = {
+      type: options?.reasoningEffort ? "enabled" : "disabled",
+    };
+    if (options?.reasoningEffort) {
+      params.reasoning_effort = mapReasoningEffort(
+        options.reasoningEffort,
+        compat.reasoningEffortMap,
+      );
+    }
   } else if (compat.thinkingFormat === "openrouter" && model.reasoning) {
     // OpenRouter normalizes reasoning across providers via a nested reasoning object.
     if (options?.reasoningEffort) {
       params.reasoning = {
-        effort: mapReasoningEffort(options.reasoningEffort, compat.reasoningEffortMap),
+        effort: mapReasoningEffort(
+          options.reasoningEffort,
+          compat.reasoningEffortMap,
+        ),
       };
     } else {
       params.reasoning = { effort: "none" };
     }
-  } else if (options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
+  } else if (
+    options?.reasoningEffort &&
+    model.reasoning &&
+    compat.supportsReasoningEffort
+  ) {
     params.reasoning_effort = mapReasoningEffort(
       options.reasoningEffort,
       compat.reasoningEffortMap,
     );
   }
 
-  if (model.baseUrl.includes("openrouter.ai") && model.compat?.openRouterRouting) {
+  if (
+    model.baseUrl.includes("openrouter.ai") &&
+    model.compat?.openRouterRouting
+  ) {
     params.provider = model.compat.openRouterRouting;
   }
 
   if (
-    model.baseUrl.includes("ai-gateway.vercel.sh")
-    && model.compat?.vercelGatewayRouting
+    model.baseUrl.includes("ai-gateway.vercel.sh") &&
+    model.compat?.vercelGatewayRouting
   ) {
     const gatewayOptions: Record<string, string[]> = {};
     if (model.compat.vercelGatewayRouting.only) {
@@ -524,7 +647,9 @@ export function buildOpenAICompletionsParams(
 
 function mapReasoningEffort(
   effort: NonNullable<OpenAICompletionsOptions["reasoningEffort"]>,
-  reasoningEffortMap: Partial<Record<NonNullable<OpenAICompletionsOptions["reasoningEffort"]>, string>>,
+  reasoningEffortMap: Partial<
+    Record<NonNullable<OpenAICompletionsOptions["reasoningEffort"]>, string>
+  >,
 ): string {
   return reasoningEffortMap[effort] ?? effort;
 }
@@ -555,7 +680,11 @@ function maybeAddOpenRouterAnthropicCacheControl(
     if (!Array.isArray(message.content)) {
       continue;
     }
-    for (let partIndex = message.content.length - 1; partIndex >= 0; partIndex -= 1) {
+    for (
+      let partIndex = message.content.length - 1;
+      partIndex >= 0;
+      partIndex -= 1
+    ) {
       const part = message.content[partIndex];
       if (part?.type === "text") {
         Object.assign(part, { cache_control: { type: "ephemeral" } });
@@ -583,11 +712,18 @@ export function convertMessages<TApi extends Api>(
     return model.provider === "openai" && id.length > 40 ? id.slice(0, 40) : id;
   };
 
-  const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
+  const transformedMessages = transformMessages(
+    context.messages,
+    model,
+    normalizeToolCallId,
+  );
 
   if (context.systemPrompt) {
     params.push({
-      role: model.reasoning && compat.supportsDeveloperRole ? "developer" : "system",
+      role:
+        model.reasoning && compat.supportsDeveloperRole
+          ? "developer"
+          : "system",
       content: sanitizeSurrogates(context.systemPrompt),
     });
   }
@@ -597,9 +733,9 @@ export function convertMessages<TApi extends Api>(
     const message = transformedMessages[index];
 
     if (
-      compat.requiresAssistantAfterToolResult
-      && lastRole === "toolResult"
-      && message.role === "user"
+      compat.requiresAssistantAfterToolResult &&
+      lastRole === "toolResult" &&
+      message.role === "user"
     ) {
       params.push({
         role: "assistant",
@@ -614,17 +750,19 @@ export function convertMessages<TApi extends Api>(
           content: sanitizeSurrogates(message.content),
         });
       } else {
-        const content: ChatCompletionContentPart[] = message.content.map(
-          (item): ChatCompletionContentPart => {
+        const content: ChatCompletionContentPart[] = message.content
+          .map((item): ChatCompletionContentPart => {
             if (item.type === "text") {
               return {
                 type: "text",
                 text: sanitizeSurrogates(item.text),
               } satisfies ChatCompletionContentPartText;
             }
-            return toChatCompletionImagePart(item) as ChatCompletionContentPartImage;
-          },
-        ).filter(Boolean);
+            return toChatCompletionImagePart(
+              item,
+            ) as ChatCompletionContentPartImage;
+          })
+          .filter(Boolean);
         const filtered = model.input.includes("image")
           ? content
           : content.filter((part) => part.type !== "image_url");
@@ -643,7 +781,8 @@ export function convertMessages<TApi extends Api>(
     if (message.role === "system" || message.role === "developer") {
       params.push({
         role:
-          message.role === "developer" && !(model.reasoning && compat.supportsDeveloperRole)
+          message.role === "developer" &&
+          !(model.reasoning && compat.supportsDeveloperRole)
             ? "system"
             : message.role,
         content: sanitizeSurrogates(message.content),
@@ -709,9 +848,9 @@ export function convertMessages<TApi extends Api>(
       }
 
       const hasContent =
-        assistantMessage.content !== null
-        && assistantMessage.content !== undefined
-        && (typeof assistantMessage.content === "string"
+        assistantMessage.content !== null &&
+        assistantMessage.content !== undefined &&
+        (typeof assistantMessage.content === "string"
           ? assistantMessage.content.length > 0
           : assistantMessage.content.length > 0);
       if (!hasContent && !assistantMessage.tool_calls) {
@@ -723,12 +862,15 @@ export function convertMessages<TApi extends Api>(
       continue;
     }
 
-    const imageBlocks: Array<{ type: "image_url"; image_url: { url: string } }> = [];
+    const imageBlocks: Array<{
+      type: "image_url";
+      image_url: { url: string };
+    }> = [];
     let nextIndex = index;
     for (
       ;
-      nextIndex < transformedMessages.length
-      && transformedMessages[nextIndex].role === "toolResult";
+      nextIndex < transformedMessages.length &&
+      transformedMessages[nextIndex].role === "toolResult";
       nextIndex += 1
     ) {
       const toolMessage = transformedMessages[nextIndex] as ToolResultMessage;
@@ -800,7 +942,9 @@ export function convertTools(
   }));
 }
 
-export function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | string): StopReason {
+export function mapStopReason(
+  reason: ChatCompletionChunk.Choice["finish_reason"] | string,
+): StopReason {
   return mapStopReasonDetailed(reason).stopReason;
 }
 
@@ -818,9 +962,15 @@ function mapStopReasonDetailed(
     case "tool_calls":
       return { stopReason: "toolUse" };
     case "content_filter":
-      return { stopReason: "error", errorMessage: "Provider finish_reason: content_filter" };
+      return {
+        stopReason: "error",
+        errorMessage: "Provider finish_reason: content_filter",
+      };
     case "network_error":
-      return { stopReason: "error", errorMessage: "Provider finish_reason: network_error" };
+      return {
+        stopReason: "error",
+        errorMessage: "Provider finish_reason: network_error",
+      };
     default:
       return {
         stopReason: "error",
@@ -837,16 +987,16 @@ function detectCompat(
   const isZai = provider === "zai" || baseUrl.includes("api.z.ai");
   const isMistral = provider === "mistral" || baseUrl.includes("mistral.ai");
   const isNonStandard =
-    provider === "cerebras"
-    || baseUrl.includes("cerebras.ai")
-    || provider === "xai"
-    || baseUrl.includes("api.x.ai")
-    || isMistral
-    || baseUrl.includes("chutes.ai")
-    || baseUrl.includes("deepseek.com")
-    || isZai
-    || provider === "opencode"
-    || baseUrl.includes("opencode.ai");
+    provider === "cerebras" ||
+    baseUrl.includes("cerebras.ai") ||
+    provider === "xai" ||
+    baseUrl.includes("api.x.ai") ||
+    isMistral ||
+    baseUrl.includes("chutes.ai") ||
+    baseUrl.includes("deepseek.com") ||
+    isZai ||
+    provider === "opencode" ||
+    baseUrl.includes("opencode.ai");
 
   const isGroq = provider === "groq" || baseUrl.includes("groq.com");
   const reasoningEffortMap =
@@ -876,13 +1026,17 @@ function detectCompat(
     requiresMistralToolIds: isMistral,
     thinkingFormat: isZai
       ? "zai"
-      : provider === "openrouter" || baseUrl.includes("openrouter.ai")
-        ? "openrouter"
-        : "openai",
+      : provider === "deepseek" || baseUrl.includes("deepseek.com")
+        ? "deepseek"
+        : provider === "openrouter" || baseUrl.includes("openrouter.ai")
+          ? "openrouter"
+          : "openai",
     openRouterRouting: {},
     vercelGatewayRouting: {},
     zaiToolStream: false,
     supportsStrictMode: true,
+    sendSessionAffinityHeaders: false,
+    supportsLongCacheRetention: false,
   };
 }
 
@@ -902,23 +1056,31 @@ function getCompat(
     reasoningEffortMap:
       model.compat.reasoningEffortMap ?? detected.reasoningEffortMap,
     supportsUsageInStreaming:
-      model.compat.supportsUsageInStreaming ?? detected.supportsUsageInStreaming,
+      model.compat.supportsUsageInStreaming ??
+      detected.supportsUsageInStreaming,
     maxTokensField: model.compat.maxTokensField ?? detected.maxTokensField,
     requiresToolResultName:
       model.compat.requiresToolResultName ?? detected.requiresToolResultName,
     requiresAssistantAfterToolResult:
-      model.compat.requiresAssistantAfterToolResult
-      ?? detected.requiresAssistantAfterToolResult,
+      model.compat.requiresAssistantAfterToolResult ??
+      detected.requiresAssistantAfterToolResult,
     requiresThinkingAsText:
       model.compat.requiresThinkingAsText ?? detected.requiresThinkingAsText,
     requiresMistralToolIds:
       model.compat.requiresMistralToolIds ?? detected.requiresMistralToolIds,
     thinkingFormat: model.compat.thinkingFormat ?? detected.thinkingFormat,
-    openRouterRouting: model.compat.openRouterRouting ?? detected.openRouterRouting,
+    openRouterRouting:
+      model.compat.openRouterRouting ?? detected.openRouterRouting,
     vercelGatewayRouting:
       model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
     zaiToolStream: model.compat.zaiToolStream ?? detected.zaiToolStream,
     supportsStrictMode:
       model.compat.supportsStrictMode ?? detected.supportsStrictMode,
+    sendSessionAffinityHeaders:
+      model.compat.sendSessionAffinityHeaders ??
+      detected.sendSessionAffinityHeaders,
+    supportsLongCacheRetention:
+      model.compat.supportsLongCacheRetention ??
+      detected.supportsLongCacheRetention,
   };
 }

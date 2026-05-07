@@ -150,6 +150,7 @@ import type * as reset from "../reset.js";
 import type * as runtime_ai_anthropic from "../runtime_ai/anthropic.js";
 import type * as runtime_ai_event_stream from "../runtime_ai/event_stream.js";
 import type * as runtime_ai_google from "../runtime_ai/google.js";
+import type * as runtime_ai_headers from "../runtime_ai/headers.js";
 import type * as runtime_ai_json_parse from "../runtime_ai/json_parse.js";
 import type * as runtime_ai_managed from "../runtime_ai/managed.js";
 import type * as runtime_ai_model_utils from "../runtime_ai/model_utils.js";
@@ -354,6 +355,7 @@ declare const fullApi: ApiFromModules<{
   "runtime_ai/anthropic": typeof runtime_ai_anthropic;
   "runtime_ai/event_stream": typeof runtime_ai_event_stream;
   "runtime_ai/google": typeof runtime_ai_google;
+  "runtime_ai/headers": typeof runtime_ai_headers;
   "runtime_ai/json_parse": typeof runtime_ai_json_parse;
   "runtime_ai/managed": typeof runtime_ai_managed;
   "runtime_ai/model_utils": typeof runtime_ai_model_utils;

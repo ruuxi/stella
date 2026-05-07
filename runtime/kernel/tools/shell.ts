@@ -14,7 +14,12 @@ import {
   type FileChangeRecord,
   type ProducedFileRecord,
 } from "../../contracts/file-changes.js";
-import type { ToolContext, ToolResult, ShellRecord } from "./types.js";
+import type {
+  ToolContext,
+  ToolResult,
+  ShellRecord,
+  ToolUpdateCallback,
+} from "./types.js";
 import { truncate } from "./utils.js";
 import { isDangerousCommand } from "./command-safety.js";
 import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
@@ -917,6 +922,7 @@ export const startShell = (
   onClose?: () => void,
   startSnapshot?: FileSnapshot | null,
   externalCandidateSnapshots?: ExternalCandidateSnapshot[],
+  onActivity?: (record: ManagedShellRecord) => void,
 ) => {
   maybeSweepDeferredDeletes(state);
   const id = crypto.randomUUID();
@@ -978,6 +984,7 @@ export const startShell = (
     record.output = truncate(`${record.output}${chunk}`);
     record.unreadOutput = truncate(`${record.unreadOutput}${chunk}`, 200_000);
     notifyShellActivity(record);
+    onActivity?.(record);
   };
 
   child.stdout.on("data", append);
@@ -997,6 +1004,7 @@ export const startShell = (
     record.completedAt = Date.now();
     record.stdinOpen = false;
     notifyShellActivity(record);
+    onActivity?.(record);
     if (onClose) {
       onClose();
     }
@@ -1007,6 +1015,7 @@ export const startShell = (
     record.completedAt = Date.now();
     record.stdinOpen = false;
     notifyShellActivity(record);
+    onActivity?.(record);
     if (onClose) {
       onClose();
     }
@@ -1177,6 +1186,7 @@ export const handleExecCommand = async (
   args: Record<string, unknown>,
   context?: ToolContext,
   signal?: AbortSignal,
+  onUpdate?: ToolUpdateCallback,
 ): Promise<ToolResult> => {
   const callStartedAt = Date.now();
   const prepared = resolveManagedShellCommand(args, context);
@@ -1206,6 +1216,22 @@ export const handleExecCommand = async (
     snapshotRoot,
     context,
   );
+  let lastUpdateAt = 0;
+  const maxOutputChars = outputCharBudgetFromTokens(args.max_output_tokens);
+  const emitUpdate = (record: ManagedShellRecord) => {
+    if (!onUpdate) return;
+    const now = Date.now();
+    if (record.running && now - lastUpdateAt < 250) return;
+    lastUpdateAt = now;
+    const unread = record.unreadOutput;
+    const drained = {
+      text: truncateRecent(unread, maxOutputChars),
+      originalLength: unread.length,
+      truncated: unread.length > maxOutputChars,
+    };
+    const payload = buildExecToolPayload(record, drained, callStartedAt);
+    onUpdate({ result: payload, details: payload });
+  };
   const record = startShell(
     state,
     prepared.command,
@@ -1214,6 +1240,7 @@ export const handleExecCommand = async (
     undefined,
     beforeSideEffects.rootSnapshot,
     beforeSideEffects.externalCandidateSnapshots,
+    emitUpdate,
   );
   const observedVersion = record.outputVersion;
   try {
@@ -1228,10 +1255,7 @@ export const handleExecCommand = async (
   }
   await settleCompletedShell(record, signal);
 
-  const drained = drainUnreadOutput(
-    record,
-    outputCharBudgetFromTokens(args.max_output_tokens),
-  );
+  const drained = drainUnreadOutput(record, maxOutputChars);
   const payload = buildExecToolPayload(record, drained, callStartedAt);
   const producedFiles = !record.running
     ? await takeCompletedProducedFiles(record)

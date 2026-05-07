@@ -1,9 +1,9 @@
 export interface RetryOptions {
-	/** Total attempts including the first try. Default: 4. */
+	/** Total attempts including the first try. Default: 10. */
 	maxAttempts?: number;
-	/** Initial retry delay. Default: 2000 ms. */
+	/** Fixed delay for the first retry window. Default: 1000 ms. */
 	baseDelayMs?: number;
-	/** Ceiling for non-header retry delays. Default: 30000 ms. */
+	/** Ceiling for non-header retry delays. Default: 64000 ms. */
 	maxDelayMs?: number;
 	signal?: AbortSignal;
 	/** Return `true` for errors that should be retried. Falls back to `isRetryableConnectionError`. */
@@ -11,9 +11,9 @@ export interface RetryOptions {
 }
 
 export async function retryWithBackoff<T>(fn: () => Promise<T>, options?: RetryOptions): Promise<T> {
-	const maxAttempts = options?.maxAttempts ?? 4;
-	const baseDelayMs = options?.baseDelayMs ?? 2_000;
-	const maxDelayMs = options?.maxDelayMs ?? 30_000;
+	const maxAttempts = options?.maxAttempts ?? 10;
+	const baseDelayMs = options?.baseDelayMs ?? 1_000;
+	const maxDelayMs = options?.maxDelayMs ?? 64_000;
 	const signal = options?.signal;
 	const isRetryable = options?.isRetryable ?? isRetryableConnectionError;
 
@@ -43,7 +43,8 @@ export async function retryWithBackoff<T>(fn: () => Promise<T>, options?: RetryO
 }
 
 function retryDelay(retryIndex: number, baseDelayMs: number, maxDelayMs: number): number {
-	return Math.min(baseDelayMs * 2 ** retryIndex, maxDelayMs);
+	if (retryIndex < 3) return baseDelayMs;
+	return Math.min(baseDelayMs * 2 ** (retryIndex - 2), maxDelayMs);
 }
 
 function retrySleep(ms: number, signal?: AbortSignal): Promise<void> {

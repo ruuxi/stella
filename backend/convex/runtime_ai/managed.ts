@@ -3,8 +3,16 @@ import {
   resolveManagedGatewayConfig,
   type ManagedGatewayProvider,
 } from "../lib/managed_gateway";
-import { buildOpenAICompletionsParams, mapStopReason } from "./openai_completions";
-import { isRetryableProviderError, retryDelayMs, retryProviderRequest } from "./retry";
+import {
+  buildOpenAICompletionsParams,
+  mapStopReason,
+} from "./openai_completions";
+import {
+  DEFAULT_PROVIDER_RETRY_ATTEMPTS,
+  isRetryableProviderError,
+  retryDelayMs,
+  retryProviderRequest,
+} from "./retry";
 import { completeSimple, streamSimple } from "./stream";
 import { parseOpenAIChatUsage } from "./usage";
 import type {
@@ -74,7 +82,10 @@ type ChatRequestMessage = {
   name?: unknown;
 };
 
-type ChatCompletionReasoningField = "reasoning_content" | "reasoning" | "reasoning_text";
+type ChatCompletionReasoningField =
+  | "reasoning_content"
+  | "reasoning"
+  | "reasoning_text";
 
 type ChatCompletionReasoningDetail = {
   type?: unknown;
@@ -101,9 +112,7 @@ function emptyUsage() {
   };
 }
 
-function normalizeReasoning(
-  value: unknown,
-): ThinkingLevel | undefined {
+function normalizeReasoning(value: unknown): ThinkingLevel | undefined {
   switch (value) {
     case "minimal":
     case "low":
@@ -125,7 +134,10 @@ function readReasoningText(value: unknown): string | undefined {
   if (Array.isArray(value)) {
     const parts = value
       .map((entry) => readReasoningText(entry))
-      .filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+      .filter(
+        (entry): entry is string =>
+          typeof entry === "string" && entry.length > 0,
+      );
     return parts.length > 0 ? parts.join("\n") : undefined;
   }
 
@@ -137,7 +149,9 @@ function readReasoningText(value: unknown): string | undefined {
   const preferredKeys = ["text", "thinking", "summary", "content"];
   const parts = preferredKeys
     .map((key) => readReasoningText(record[key]))
-    .filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+    .filter(
+      (entry): entry is string => typeof entry === "string" && entry.length > 0,
+    );
 
   return parts.length > 0 ? parts.join("\n") : undefined;
 }
@@ -227,7 +241,8 @@ function asStringArray(value: unknown): string[] | undefined {
     return undefined;
   }
   const filtered = value.filter(
-    (item): item is string => typeof item === "string" && item.trim().length > 0,
+    (item): item is string =>
+      typeof item === "string" && item.trim().length > 0,
   );
   return filtered.length > 0 ? filtered : undefined;
 }
@@ -247,8 +262,10 @@ function readTextContent(content: unknown): Array<TextContent | ImageContent> {
     }
     const record = part as Record<string, unknown>;
     if (
-      (record.type === "text" || record.type === "input_text" || record.type === "output_text")
-      && typeof record.text === "string"
+      (record.type === "text" ||
+        record.type === "input_text" ||
+        record.type === "output_text") &&
+      typeof record.text === "string"
     ) {
       if (record.text.length > 0) {
         blocks.push({ type: "text", text: record.text });
@@ -273,9 +290,7 @@ function readTextContent(content: unknown): Array<TextContent | ImageContent> {
         continue;
       }
 
-      const detail = normalizeImageDetail(
-        imageRecord?.detail ?? record.detail,
-      );
+      const detail = normalizeImageDetail(imageRecord?.detail ?? record.detail);
       if (imageUrl.startsWith("data:")) {
         const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
         if (!match) {
@@ -317,9 +332,9 @@ function readAssistantTextBlocks(content: unknown): TextContent[] {
     }
     const record = part as Record<string, unknown>;
     if (
-      (record.type === "text" || record.type === "output_text")
-      && typeof record.text === "string"
-      && record.text.length > 0
+      (record.type === "text" || record.type === "output_text") &&
+      typeof record.text === "string" &&
+      record.text.length > 0
     ) {
       blocks.push({ type: "text", text: record.text });
       continue;
@@ -389,15 +404,17 @@ function readAssistantReasoningBlocks(
     if (!thinking) {
       continue;
     }
-    return [{
-      type: "thinking",
-      thinking,
-      thinkingSignature:
-        typeof message.reasoning_signature === "string"
-        && message.reasoning_signature.trim().length > 0
-          ? message.reasoning_signature.trim()
-          : field,
-    }];
+    return [
+      {
+        type: "thinking",
+        thinking,
+        thinkingSignature:
+          typeof message.reasoning_signature === "string" &&
+          message.reasoning_signature.trim().length > 0
+            ? message.reasoning_signature.trim()
+            : field,
+      },
+    ];
   }
   return [];
 }
@@ -420,7 +437,8 @@ function readTools(value: unknown): Tool[] | undefined {
     if (!functionRecord) {
       continue;
     }
-    const name = typeof functionRecord.name === "string" ? functionRecord.name : "";
+    const name =
+      typeof functionRecord.name === "string" ? functionRecord.name : "";
     if (!name) {
       continue;
     }
@@ -431,7 +449,8 @@ function readTools(value: unknown): Tool[] | undefined {
           ? functionRecord.description
           : "",
       parameters:
-        functionRecord.parameters && typeof functionRecord.parameters === "object"
+        functionRecord.parameters &&
+        typeof functionRecord.parameters === "object"
           ? (functionRecord.parameters as Record<string, unknown>)
           : { type: "object", properties: {} },
       strict: functionRecord.strict === true,
@@ -548,7 +567,9 @@ export function buildContextFromChatMessages(
   }
 
   return {
-    ...(systemParts.length > 0 ? { systemPrompt: systemParts.join("\n\n") } : {}),
+    ...(systemParts.length > 0
+      ? { systemPrompt: systemParts.join("\n\n") }
+      : {}),
     messages: runtimeMessages,
     ...(readTools(tools) ? { tools: readTools(tools) } : {}),
   };
@@ -563,9 +584,11 @@ function buildSimpleOptions(args: {
   extraBody?: Record<string, unknown>;
 } {
   const reasoning =
-    normalizeReasoning(args.config.providerOptions?.openai?.reasoningEffort)
-    || (args.config.providerOptions?.openai?.forceReasoning ? "high" : undefined)
-    || args.request?.reasoning;
+    normalizeReasoning(args.config.providerOptions?.openai?.reasoningEffort) ||
+    (args.config.providerOptions?.openai?.forceReasoning
+      ? "high"
+      : undefined) ||
+    args.request?.reasoning;
 
   const managedGateway = resolveManagedGatewayConfig({
     model: args.config.model,
@@ -577,31 +600,31 @@ function buildSimpleOptions(args: {
   const gatewayRouting = args.config.providerOptions?.gateway;
 
   if (
-    managedGateway.baseURL.includes("openrouter.ai")
-    && gatewayRouting
-    && extraBody.provider === undefined
+    managedGateway.baseURL.includes("openrouter.ai") &&
+    gatewayRouting &&
+    extraBody.provider === undefined
   ) {
     extraBody.provider = gatewayRouting;
   }
 
   if (
-    managedGateway.baseURL.includes("ai-gateway.vercel.sh")
-    && gatewayRouting
-    && extraBody.providerOptions === undefined
+    managedGateway.baseURL.includes("ai-gateway.vercel.sh") &&
+    gatewayRouting &&
+    extraBody.providerOptions === undefined
   ) {
     extraBody.providerOptions = { gateway: gatewayRouting };
   }
 
   if (
-    args.request?.toolChoice !== undefined
-    && extraBody.tool_choice === undefined
+    args.request?.toolChoice !== undefined &&
+    extraBody.tool_choice === undefined
   ) {
     extraBody.tool_choice = args.request.toolChoice;
   }
 
   if (
-    args.request?.responseFormat !== undefined
-    && extraBody.response_format === undefined
+    args.request?.responseFormat !== undefined &&
+    extraBody.response_format === undefined
   ) {
     extraBody.response_format = args.request.responseFormat;
   }
@@ -655,8 +678,9 @@ async function completeManagedOpenAICompletions(args: {
         request: args.request,
       }),
       reasoningEffort:
-        normalizeReasoning(args.config.providerOptions?.openai?.reasoningEffort)
-        || args.request?.reasoning,
+        normalizeReasoning(
+          args.config.providerOptions?.openai?.reasoningEffort,
+        ) || args.request?.reasoning,
       toolChoice: args.request?.toolChoice,
       responseFormat: args.request?.responseFormat,
     },
@@ -672,7 +696,9 @@ async function completeManagedOpenAICompletions(args: {
   const stopReason = mapStopReason(choice?.finish_reason ?? "stop");
 
   const content: AssistantMessage["content"] = [];
-  const reasoningMessage = message as Partial<Record<ChatCompletionReasoningField, unknown>> & {
+  const reasoningMessage = message as Partial<
+    Record<ChatCompletionReasoningField, unknown>
+  > & {
     reasoning_details?: unknown;
   };
   const reasoningFields: ChatCompletionReasoningField[] = [
@@ -700,7 +726,9 @@ async function completeManagedOpenAICompletions(args: {
       }
       let parsedArguments: Record<string, unknown> = {};
       try {
-        parsedArguments = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
+        parsedArguments = JSON.parse(
+          toolCall.function.arguments || "{}",
+        ) as Record<string, unknown>;
       } catch {
         parsedArguments = {};
       }
@@ -715,9 +743,9 @@ async function completeManagedOpenAICompletions(args: {
   if (Array.isArray(reasoningMessage.reasoning_details)) {
     for (const detail of reasoningMessage.reasoning_details as ChatCompletionReasoningDetail[]) {
       if (
-        detail?.type !== "reasoning.encrypted"
-        || typeof detail.id !== "string"
-        || typeof detail.data !== "string"
+        detail?.type !== "reasoning.encrypted" ||
+        typeof detail.id !== "string" ||
+        typeof detail.data !== "string"
       ) {
         continue;
       }
@@ -824,20 +852,25 @@ export function streamManagedChat(args: {
 
   return (async function* () {
     let emittedOutput = false;
-    const maxAttempts = 4;
+    const maxAttempts = DEFAULT_PROVIDER_RETRY_ATTEMPTS;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         let retryPrimary = false;
         for await (const event of streamForConfig(args.config)) {
           if (event.type === "error" && !emittedOutput) {
-            if (attempt < maxAttempts && isRetryableProviderError(event.error)) {
+            if (
+              attempt < maxAttempts &&
+              isRetryableProviderError(event.error)
+            ) {
               const delayMs = retryDelayMs(attempt, event.error);
               console.warn(
                 `[managed-model] retrying provider stream | model=${args.config.model} | attempt=${attempt} | delayMs=${delayMs} | error=${
                   event.error.errorMessage || event.reason
                 }`,
               );
-              await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+              await new Promise<void>((resolve) =>
+                setTimeout(resolve, delayMs),
+              );
               retryPrimary = true;
               break;
             }
@@ -847,7 +880,9 @@ export function streamManagedChat(args: {
                   event.error.errorMessage || event.reason
                 }`,
               );
-              for await (const fallbackEvent of streamForConfig(fallbackConfig)) {
+              for await (const fallbackEvent of streamForConfig(
+                fallbackConfig,
+              )) {
                 yield fallbackEvent;
               }
             } else {

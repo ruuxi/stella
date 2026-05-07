@@ -4,19 +4,25 @@ import {
   isContextOverflowError,
 } from "../lib/error_classification";
 
-const RETRY_INITIAL_DELAY_MS = 2_000;
+const RETRY_INITIAL_DELAY_MS = 1_000;
 const RETRY_BACKOFF_FACTOR = 2;
-const RETRY_MAX_DELAY_NO_HEADERS_MS = 30_000;
+const RETRY_MAX_DELAY_NO_HEADERS_MS = 64_000;
 const RETRY_MAX_DELAY_MS = 2_147_483_647;
+export const DEFAULT_PROVIDER_RETRY_ATTEMPTS = 10;
 
 type RetryOptions = {
   maxAttempts?: number;
   signal?: AbortSignal;
   isRetryable?: (error: unknown) => boolean;
-  onRetry?: (info: { attempt: number; delayMs: number; error: unknown }) => void;
+  onRetry?: (info: {
+    attempt: number;
+    delayMs: number;
+    error: unknown;
+  }) => void;
 };
 
-const capDelay = (ms: number): number => Math.min(Math.max(0, ms), RETRY_MAX_DELAY_MS);
+const capDelay = (ms: number): number =>
+  Math.min(Math.max(0, ms), RETRY_MAX_DELAY_MS);
 
 const readHeader = (headers: unknown, name: string): string | undefined => {
   if (!headers) return undefined;
@@ -45,7 +51,8 @@ export const readRetryAfterMs = (error: unknown): number | undefined => {
   const retryAfter = readHeader(headers, "retry-after");
   if (!retryAfter) return undefined;
   const seconds = Number.parseFloat(retryAfter);
-  if (Number.isFinite(seconds) && seconds >= 0) return capDelay(Math.ceil(seconds * 1000));
+  if (Number.isFinite(seconds) && seconds >= 0)
+    return capDelay(Math.ceil(seconds * 1000));
   const dateMs = Date.parse(retryAfter) - Date.now();
   if (Number.isFinite(dateMs) && dateMs > 0) return capDelay(Math.ceil(dateMs));
   return undefined;
@@ -55,7 +62,10 @@ export const retryDelayMs = (attempt: number, error?: unknown): number =>
   readRetryAfterMs(error) ??
   capDelay(
     Math.min(
-      RETRY_INITIAL_DELAY_MS * RETRY_BACKOFF_FACTOR ** Math.max(0, attempt - 1),
+      attempt <= 3
+        ? RETRY_INITIAL_DELAY_MS
+        : RETRY_INITIAL_DELAY_MS *
+            RETRY_BACKOFF_FACTOR ** Math.max(0, attempt - 3),
       RETRY_MAX_DELAY_NO_HEADERS_MS,
     ),
   );
@@ -73,8 +83,11 @@ const errorMessage = (error: unknown): string => {
 
 export const isRetryableProviderError = (error: unknown): boolean => {
   if (isAbortError(error) || isContextOverflowError(error)) return false;
-  const status = (error as { status?: number })?.status ?? (error as { statusCode?: number })?.statusCode;
-  if (status === 429 || (typeof status === "number" && status >= 500)) return true;
+  const status =
+    (error as { status?: number })?.status ??
+    (error as { statusCode?: number })?.statusCode;
+  if (status === 429 || (typeof status === "number" && status >= 500))
+    return true;
   const msg = errorMessage(error).toLowerCase();
   return (
     msg.includes("rate limit") ||
@@ -94,7 +107,10 @@ export async function retryProviderRequest<T>(
   fn: () => Promise<T>,
   options: RetryOptions = {},
 ): Promise<T> {
-  const maxAttempts = Math.max(1, options.maxAttempts ?? 4);
+  const maxAttempts = Math.max(
+    1,
+    options.maxAttempts ?? DEFAULT_PROVIDER_RETRY_ATTEMPTS,
+  );
   const isRetryable = options.isRetryable ?? isRetryableProviderError;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -102,7 +118,11 @@ export async function retryProviderRequest<T>(
     try {
       return await fn();
     } catch (error) {
-      if (isAbortError(error) || attempt === maxAttempts || !isRetryable(error)) {
+      if (
+        isAbortError(error) ||
+        attempt === maxAttempts ||
+        !isRetryable(error)
+      ) {
         throw error;
       }
       const delayMs = retryDelayMs(attempt, error);
