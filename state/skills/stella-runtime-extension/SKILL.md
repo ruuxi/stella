@@ -15,6 +15,7 @@ Stella's runtime extension system is Pi-shaped. The extension loader discovers f
 - Extension loader: `runtime/kernel/extensions/loader.ts`
 - Built-in extension: `runtime/extensions/stella-runtime/`
 - Built-in agent prompts: `runtime/extensions/stella-runtime/agents/*.md`
+- Built-in Stella hooks: `runtime/extensions/stella-runtime/hooks/*.hook.ts`
 - Minimal agent-extension example: `runtime/extensions/examples/subagent-reference/`
 - Parsed markdown agents: `runtime/kernel/agents/markdown-agent-loader.ts`
 - Built-in tool definitions: `runtime/kernel/tools/defs/`
@@ -50,6 +51,20 @@ The loader also imports extension folders that have `index.ts`. Those factories 
 - `registerProvider(provider)`
 - `registerPrompt(prompt)`
 - `on(event, handler, filter?)`
+
+The factory's second argument is `ExtensionServices`. Use it for runtime-owned services such as `stellaHome`, `stellaRoot`, `store`, `memoryStore`, and `selfModMonitor` instead of reaching through runner internals.
+
+## Built-In Stella Runtime
+
+Stella-specific behavior should live in `runtime/extensions/stella-runtime/`, not as hardcoded branches in the kernel. Existing hooks there cover:
+
+- Personality injection
+- Self-mod baseline capture and detect-applied
+- Stale-user and dynamic-memory reminders
+- Memory injection cadence and bundle assembly
+- Memory review, Dream scheduler notifications, home suggestion refresh, and thread-summary recording
+
+When moving behavior out of the kernel, preserve capability gates through `AgentCapabilities` in `runtime/contracts/agent-runtime.ts` and register the hook from `runtime/extensions/stella-runtime/index.ts`.
 
 ## Adding An Agent
 
@@ -96,11 +111,25 @@ Hook events are typed in `runtime/kernel/extensions/types.ts`. Available hook po
 - `before_tool`
 - `after_tool`
 - `before_agent_start`
+- `before_user_message`
+- `agent_start`
 - `agent_end`
 - `turn_start`
 - `turn_end`
+- `message_start`
+- `message_update`
+- `message_end`
+- `tool_execution_start`
+- `tool_execution_update`
+- `tool_execution_end`
 - `before_compact`
+- `session_compact`
 - `before_provider_request`
+- `after_provider_response`
+- `session_start`
+- `session_shutdown`
+
+Use `before_agent_start` for system-prompt changes and `before_user_message` for hidden prompt messages around the user turn. Hooks may be filtered by agent type; prefer capability checks for behavioral gates that should follow an agent definition.
 
 Providers implement `ProviderDefinition` from `runtime/kernel/extensions/types.ts`. Use providers only when adding a real model backend or compatibility layer; routine model defaults usually belong in backend model config instead.
 
@@ -117,6 +146,13 @@ Run the narrowest relevant checks:
 ```bash
 bun run test:run -- tests/runtime/kernel/tools/codex-tools.test.ts
 bun run electron:typecheck
+```
+
+For lifecycle hook changes, add focused tests under `desktop/tests/runtime/extensions/` or `desktop/tests/runtime/kernel/extensions/` and run:
+
+```bash
+bun run test:run -- runtime/extensions/<extension-or-hook>.test.ts
+bun run check:boundary
 ```
 
 For loader or agent prompt changes, also search for direct factory references:
