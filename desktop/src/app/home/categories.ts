@@ -91,10 +91,12 @@ export function usePersonalizedCategories(
   useEffect(() => {
     if (!conversationId) {
       // No conversation yet — defaults are the final answer.
+      setPersisted(null)
       setReady(true)
       return
     }
     setReady(false)
+    setPersisted(null)
 
     let cancelled = false
 
@@ -110,9 +112,11 @@ export function usePersonalizedCategories(
           setPersisted(
             (suggestionsEvent.payload as { suggestions: OnboardingHomeSuggestion[] }).suggestions,
           )
+        } else {
+          setPersisted(null)
         }
       } catch {
-        // fall through - defaults will be used
+        if (!cancelled) setPersisted(null)
       } finally {
         if (!cancelled) setReady(true)
       }

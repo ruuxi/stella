@@ -129,6 +129,7 @@ function HomeIdeasFooter({
     conversationId,
     categories,
     categoriesReady,
+    true,
   );
   const [openLabel, setOpenLabel] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
