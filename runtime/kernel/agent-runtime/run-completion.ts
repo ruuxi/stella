@@ -1,22 +1,11 @@
-import {
-  AGENT_IDS,
-  agentHasCapability,
-} from "../../contracts/agent-runtime.js";
 import type { Agent } from "../agent-core/agent.js";
+import type { AgentMessage } from "../agent-core/types.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RuntimeRunEventRecorder } from "./run-events.js";
 import {
   compactRuntimeThreadHistory,
   updateOrchestratorReminderState,
 } from "./thread-memory.js";
-import {
-  MEMORY_REVIEW_TURN_THRESHOLD,
-  spawnMemoryReview,
-} from "./memory-review.js";
-import {
-  HOME_SUGGESTIONS_REFRESH_THRESHOLD,
-  spawnHomeSuggestionsRefresh,
-} from "./home-suggestions-refresh.js";
 import type {
   OrchestratorRunOptions,
   SelfModAppliedPayload,
@@ -94,7 +83,12 @@ export const isReportedOrchestratorError = (error: unknown): boolean =>
 
 const emitAgentEndHook = async (
   opts: OrchestratorRunOptions,
-  args: { finalText: string; runId: string; threadKey: string },
+  args: {
+    finalText: string;
+    runId: string;
+    threadKey: string;
+    messagesSnapshot: AgentMessage[];
+  },
 ): Promise<SelfModAppliedPayload | null> => {
   if (!opts.hookEmitter) {
     return null;
@@ -111,6 +105,25 @@ const emitAgentEndHook = async (
         runId: args.runId,
         ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
         isUserTurn: opts.uiVisibility !== "hidden",
+        // Stella-runtime post-finalize hooks (memory review, dream
+        // notify, home suggestions, thread summaries) read accessors
+        // off `services` instead of being baked into the kernel.
+        services: {
+          resolvedLlm: opts.resolvedLlm,
+          messagesSnapshot: args.messagesSnapshot,
+          ...(opts.appendLocalChatEvent
+            ? { appendLocalChatEvent: opts.appendLocalChatEvent }
+            : {}),
+          ...(opts.listLocalChatEvents
+            ? { listLocalChatEvents: opts.listLocalChatEvents }
+            : {}),
+          ...(opts.resolveSubsidiaryLlmRoute
+            ? { resolveSubsidiaryLlmRoute: opts.resolveSubsidiaryLlmRoute }
+            : {}),
+          ...(opts.userTurnsSinceMemoryReview != null
+            ? { userTurnsSinceMemoryReview: opts.userTurnsSinceMemoryReview }
+            : {}),
+        },
       },
       { agentType: opts.agentType },
     );
@@ -166,6 +179,18 @@ const emitSubagentAgentEnd = (
     threadKey: string;
     outcome: "success" | "error" | "interrupted";
     finalText: string;
+    /**
+     * `suppressCompletionSideEffects` flag that the subagent finalize
+     * path uses for one-shot internal calls (commit-subject namer,
+     * feature-snapshot namer, …). When true, we still fire `agent_end`
+     * so balanced-lifecycle hooks (self-mod baseline cleanup, etc.)
+     * run, but `services` is intentionally minimal so post-finalize
+     * side-effect hooks (dream notify, home suggestions refresh,
+     * thread summaries record) self-skip. Pre-migration these were
+     * inline if-branches inside `finalizeSubagentSuccess` gated on
+     * `sideEffectsAllowed`; now the gate lives on the hook side.
+     */
+    sideEffectsAllowed: boolean;
   },
 ): void => {
   if (!opts.hookEmitter) return;
@@ -181,14 +206,32 @@ const emitSubagentAgentEnd = (
         runId: args.runId,
         ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
         isUserTurn: opts.uiVisibility !== "hidden",
+        // Only populate services when side-effects are allowed; the
+        // post-finalize hooks read accessors off `services` and
+        // self-skip when omitted.
+        ...(args.sideEffectsAllowed
+          ? {
+              services: {
+                resolvedLlm: opts.resolvedLlm,
+                ...(opts.appendLocalChatEvent
+                  ? { appendLocalChatEvent: opts.appendLocalChatEvent }
+                  : {}),
+                ...(opts.listLocalChatEvents
+                  ? { listLocalChatEvents: opts.listLocalChatEvents }
+                  : {}),
+                ...(opts.resolveSubsidiaryLlmRoute
+                  ? {
+                      resolveSubsidiaryLlmRoute: opts.resolveSubsidiaryLlmRoute,
+                    }
+                  : {}),
+              },
+            }
+          : {}),
       },
       { agentType: opts.agentType },
     )
     .catch(() => undefined);
 };
-
-const shouldRecordThreadSummary = (agentType: string): boolean =>
-  agentHasCapability(agentType, "recordsThreadSummary");
 
 type CompactableAgentState = {
   state: Pick<Agent["state"], "messages">;
@@ -318,6 +361,11 @@ export const finalizeOrchestratorSuccess = async (args: {
     finalText: args.finalText,
     runId: args.runId,
     threadKey: args.threadKey,
+    // Snapshot the messages array now so memory-review / other
+    // post-finalize hooks see the state at end-of-turn rather than a
+    // mutated state if a follow-up turn lands before the hook handler
+    // runs.
+    messagesSnapshot: [...args.agent.state.messages],
   });
 
   // Finish the visible turn before scheduling compaction.
@@ -353,19 +401,11 @@ export const finalizeOrchestratorSuccess = async (args: {
     finalText: args.finalText,
   });
 
-  // Fire after onEnd so memory review never delays the user-visible response.
-  if (
-    agentHasCapability(args.opts.agentType, "triggersMemoryReview")
-    && args.opts.userTurnsSinceMemoryReview != null
-    && args.opts.userTurnsSinceMemoryReview >= MEMORY_REVIEW_TURN_THRESHOLD
-  ) {
-    spawnMemoryReview({
-      conversationId: args.opts.conversationId,
-      messagesSnapshot: [...args.agent.state.messages],
-      resolvedLlm: args.opts.resolvedLlm,
-      store: args.opts.store,
-    });
-  }
+  // Memory review now lives as an `agent_end` hook in
+  // `runtime/extensions/stella-runtime/hooks/memory-review.hook.ts`.
+  // The hook reads `userTurnsSinceMemoryReview` off
+  // `payload.services` (populated by `emitAgentEndHook` above) and
+  // self-skips when the threshold isn't met.
 };
 
 export const finalizeOrchestratorError = (args: {
@@ -417,97 +457,19 @@ export const finalizeSubagentSuccess = async (args: {
   result: string;
   agentMessageCount?: number;
 }): Promise<SubagentRunResult> => {
+  // Thread-summaries record, dream-scheduler notify, and
+  // home-suggestions refresh used to be inline branches here. They now
+  // live as `agent_end` hooks in `runtime/extensions/stella-runtime/`.
+  // The kernel just fires the lifecycle event with the per-run services
+  // populated; each hook self-skips when its capability gate doesn't
+  // match.
   const sideEffectsAllowed = !args.opts.suppressCompletionSideEffects;
-  const recordsThreadSummaryFlag =
-    sideEffectsAllowed && shouldRecordThreadSummary(args.opts.agentType);
-  const triggersDreamScheduler =
-    sideEffectsAllowed &&
-    agentHasCapability(args.opts.agentType, "triggersDreamScheduler");
-  const triggersHomeSuggestionsRefresh =
-    sideEffectsAllowed &&
-    agentHasCapability(args.opts.agentType, "triggersHomeSuggestionsRefresh");
-
-  if (recordsThreadSummaryFlag) {
-    try {
-      args.opts.store.threadSummariesStore.record({
-        threadId: args.threadKey,
-        runId: args.runId,
-        agentType: args.opts.agentType,
-        rolloutSummary: args.result,
-      });
-    } catch (error) {
-      logger.debug("thread-summaries.record-failed", {
-        threadKey: args.threadKey,
-        runId: args.runId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  if (triggersDreamScheduler) {
-    try {
-      const { maybeSpawnDreamRun } = await import("./dream-scheduler.js");
-      void maybeSpawnDreamRun({
-        stellaHome: args.opts.stellaHome,
-        store: args.opts.store,
-        resolvedLlm: args.opts.resolvedLlm,
-        trigger: "subagent_finalize",
-      }).catch((error) => {
-        logger.debug("dream-scheduler.notify-failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-    } catch (error) {
-      logger.debug("dream-scheduler.notify-failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  if (triggersHomeSuggestionsRefresh) {
-    if (
-      args.opts.appendLocalChatEvent &&
-      args.opts.listLocalChatEvents &&
-      args.opts.conversationId
-    ) {
-      try {
-        const finalizes = args.opts.store
-          .incrementGeneralFinalizesSinceHomeSuggestionsRefresh(
-            args.opts.conversationId,
-          );
-        if (finalizes >= HOME_SUGGESTIONS_REFRESH_THRESHOLD) {
-          let resolvedLlm = args.opts.resolvedLlm;
-          if (args.opts.resolveSubsidiaryLlmRoute) {
-            try {
-              resolvedLlm = args.opts.resolveSubsidiaryLlmRoute(
-                AGENT_IDS.HOME_SUGGESTIONS,
-              );
-            } catch (error) {
-              logger.debug("home-suggestions-refresh.route-fallback", {
-                error: error instanceof Error ? error.message : String(error),
-              });
-            }
-          }
-          spawnHomeSuggestionsRefresh({
-            conversationId: args.opts.conversationId,
-            resolvedLlm,
-            store: args.opts.store,
-            appendLocalChatEvent: args.opts.appendLocalChatEvent,
-            listLocalChatEvents: args.opts.listLocalChatEvents,
-          });
-        }
-      } catch (error) {
-        logger.debug("home-suggestions-refresh.tick-failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-  }
   emitSubagentAgentEnd(args.opts, {
     runId: args.runId,
     threadKey: args.threadKey,
     outcome: "success",
     finalText: args.result,
+    sideEffectsAllowed,
   });
 
   // Finish the parent-visible run before scheduling subagent compaction.
@@ -563,6 +525,8 @@ export const finalizeSubagentError = (args: {
       threadKey: args.threadKey,
       outcome: "error",
       finalText: errorMessage,
+      // Error path never fires post-finalize side-effects.
+      sideEffectsAllowed: false,
     });
   }
   return {
@@ -588,6 +552,8 @@ export const finalizeSubagentInterrupted = (args: {
       threadKey: args.threadKey,
       outcome: "interrupted",
       finalText: args.reason,
+      // Interrupted path never fires post-finalize side-effects.
+      sideEffectsAllowed: false,
     });
   }
   return {

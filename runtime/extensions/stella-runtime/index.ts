@@ -1,9 +1,16 @@
 import { loadParsedAgentsFromDir } from "../../kernel/agents/markdown-agent-loader.js";
-import type { ExtensionFactory } from "../../kernel/extensions/types.js";
+import type {
+  ExtensionFactory,
+  HookDefinition,
+} from "../../kernel/extensions/types.js";
+import { createDreamSchedulerNotifyHook } from "./hooks/dream-scheduler-notify.hook.js";
 import { createDynamicMemoryReminderHook } from "./hooks/dynamic-memory-reminder.hook.js";
+import { createHomeSuggestionsRefreshHook } from "./hooks/home-suggestions-refresh.hook.js";
+import { createMemoryReviewHook } from "./hooks/memory-review.hook.js";
 import { createPersonalityHook } from "./hooks/personality.hook.js";
 import { createSelfModHooks } from "./hooks/self-mod.hook.js";
 import { createStaleUserReminderHook } from "./hooks/stale-user-reminder.hook.js";
+import { createThreadSummariesRecordHook } from "./hooks/thread-summaries-record.hook.js";
 
 const AGENTS_DIR = new URL("./agents/", import.meta.url);
 
@@ -14,50 +21,56 @@ const AGENTS_DIR = new URL("./agents/", import.meta.url);
  * hardcoded calls inside the kernel:
  *
  *   - Agent prompt registration (markdown agents under `./agents/`)
- *   - Personality injection (orchestrator system-prompt hook)
- *   - Self-mod baseline + detect-applied (orchestrator lifecycle hooks)
- *   - Stale-user reminder (orchestrator user-message hook)
- *   - Dynamic memory reminder (orchestrator user-message hook)
- *
- *   …with more migrations to follow (memory injection cadence,
- *   post-finalize side effects).
+ *   - Personality injection
+ *   - Self-mod baseline + detect-applied
+ *   - Stale-user reminder
+ *   - Dynamic memory reminder
+ *   - Memory review spawn (post-orchestrator finalize)
+ *   - Dream scheduler notify (post-subagent finalize)
+ *   - Home-suggestions refresh tick (post-subagent finalize)
+ *   - Thread-summaries record (post-subagent finalize, capability-gated)
  *
  * Lives in `runtime/extensions/stella-runtime/` so power users can fork
  * any of these behaviors in place. The kernel has no special "bundled"
  * tier anymore — this extension goes through the same loader path as
  * any third-party extension, with `services` (stellaHome, stellaRoot,
- * selfModMonitor) supplied by the runtime at registration time.
+ * selfModMonitor, store) supplied by the runtime at registration time.
  */
 const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   for (const agent of loadParsedAgentsFromDir(AGENTS_DIR)) {
     pi.registerAgent(agent);
   }
 
-  const personality = createPersonalityHook({
-    stellaHome: services.stellaHome,
-  });
-  pi.on(personality.event, personality.handler, personality.filter);
+  // Orchestrator + subagent lifecycle hooks. Each `create…Hook` returns
+  // a HookDefinition closing over whatever subset of services it
+  // needs; we register them via a single helper to keep the factory
+  // body flat.
+  const register = <E extends Parameters<typeof pi.on>[0]>(
+    hook: HookDefinition<E>,
+  ): void => {
+    pi.on(hook.event, hook.handler, hook.filter);
+  };
+
+  register(createPersonalityHook({ stellaHome: services.stellaHome }));
 
   for (const hook of createSelfModHooks({
     stellaRoot: services.stellaRoot,
     selfModMonitor: services.selfModMonitor,
   })) {
-    pi.on(hook.event, hook.handler, hook.filter);
+    register(hook);
   }
 
-  const staleUserReminder = createStaleUserReminderHook();
-  pi.on(
-    staleUserReminder.event,
-    staleUserReminder.handler,
-    staleUserReminder.filter,
+  register(createStaleUserReminderHook());
+  register(createDynamicMemoryReminderHook());
+  register(createMemoryReviewHook({ store: services.store }));
+  register(
+    createDreamSchedulerNotifyHook({
+      stellaHome: services.stellaHome,
+      store: services.store,
+    }),
   );
-
-  const dynamicMemoryReminder = createDynamicMemoryReminderHook();
-  pi.on(
-    dynamicMemoryReminder.event,
-    dynamicMemoryReminder.handler,
-    dynamicMemoryReminder.filter,
-  );
+  register(createHomeSuggestionsRefreshHook({ store: services.store }));
+  register(createThreadSummariesRecordHook({ store: services.store }));
 };
 
 export default stellaRuntimeExtension;
