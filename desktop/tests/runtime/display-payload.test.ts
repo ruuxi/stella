@@ -65,6 +65,40 @@ describe("normalizeDisplayPayload", () => {
     expect(normalizeDisplayPayload(sourceDiff)).toBe(sourceDiff);
   });
 
+  it("passes through http and https URL payloads", () => {
+    const local: DisplayPayload = {
+      kind: "url",
+      url: "http://localhost:5173/social/session-1",
+      title: "Social",
+      tabId: "social:session-1",
+    };
+    const secure: DisplayPayload = {
+      kind: "url",
+      url: "https://example.com/preview",
+      title: "Preview",
+      tabId: "preview",
+    };
+
+    expect(normalizeDisplayPayload(local)).toBe(local);
+    expect(normalizeDisplayPayload(secure)).toBe(secure);
+  });
+
+  it("rejects URL payloads with non-web protocols", () => {
+    const base = {
+      kind: "url",
+      title: "Preview",
+      tabId: "preview",
+    };
+
+    expect(
+      normalizeDisplayPayload({ ...base, url: "file:///Users/me/.ssh/id_rsa" }),
+    ).toBeNull();
+    expect(
+      normalizeDisplayPayload({ ...base, url: "javascript:alert(1)" }),
+    ).toBeNull();
+    expect(normalizeDisplayPayload({ ...base, url: "/relative" })).toBeNull();
+  });
+
 
   it("passes through valid media payloads", () => {
     const image: DisplayPayload = {

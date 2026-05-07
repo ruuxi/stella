@@ -98,6 +98,16 @@ export type MediaAsset =
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object";
 
+const isHttpUrl = (value: unknown): value is string => {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const isMediaAsset = (value: unknown): value is MediaAsset => {
   if (!isRecord(value)) return false;
   switch (value.kind) {
@@ -135,7 +145,7 @@ export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
   }
   if (value.kind === "url") {
     return (
-      typeof (value as { url?: unknown }).url === "string" &&
+      isHttpUrl((value as { url?: unknown }).url) &&
       typeof (value as { title?: unknown }).title === "string" &&
       typeof (value as { tabId?: unknown }).tabId === "string"
     );
