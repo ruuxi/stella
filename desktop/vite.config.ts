@@ -239,6 +239,39 @@ const readDiskOrEmpty = (absPath: string): string => {
   }
 }
 
+const reconcileAppliedOverlayFileToDisk = (file: {
+  absPath: string
+  content: string | null
+  deleted: boolean
+}): boolean => {
+  if (file.deleted) {
+    try {
+      fs.rmSync(file.absPath, { force: true })
+      return true
+    } catch (error) {
+      console.warn(
+        '[self-mod-hmr] Failed to delete applied overlay file:',
+        file.absPath,
+        (error as Error).message,
+      )
+      return false
+    }
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(file.absPath), { recursive: true })
+    fs.writeFileSync(file.absPath, file.content ?? '', 'utf-8')
+    return true
+  } catch (error) {
+    console.warn(
+      '[self-mod-hmr] Failed to write applied overlay file:',
+      file.absPath,
+      (error as Error).message,
+    )
+    return false
+  }
+}
+
 const isAuthorizedSelfModRequest = (
   req: import('node:http').IncomingMessage,
 ): boolean => {
@@ -602,16 +635,21 @@ function selfModHmrControl(): Plugin {
           options?.forceClientFullReload === true
         const modulesToReload: import('vite').ModuleNode[] = []
         const seenModules = new Set<import('vite').ModuleNode>()
+        const appliedOverlayPaths = new Set<string>()
 
         for (const run of runs) {
           releaseRuns([run.runId])
           for (const file of run.files) {
             const absPath = file.absPath
             untrackPath(absPath)
+            const diskReconciled = reconcileAppliedOverlayFileToDisk(file)
             if (file.deleted) {
               appliedOverlay.set(absPath, { content: DELETED_OVERLAY_MODULE, mtime: Date.now() })
             } else {
               appliedOverlay.set(absPath, { content: file.content ?? '', mtime: Date.now() })
+            }
+            if (diskReconciled) {
+              appliedOverlayPaths.add(absPath)
             }
             appliedPaths += 1
 
@@ -640,6 +678,9 @@ function selfModHmrControl(): Plugin {
           )
         }
         if (suppressClientFullReload) {
+          for (const absPath of appliedOverlayPaths) {
+            appliedOverlay.delete(absPath)
+          }
           return {
             appliedPaths,
             reloadedModules,
@@ -648,30 +689,36 @@ function selfModHmrControl(): Plugin {
         }
 
         let reloadFailed = false
-        for (const mod of modulesToReload) {
-          try {
-            await server.reloadModule(mod)
-            reloadedModules += 1
-          } catch (error) {
-            console.error(
-              '[self-mod-hmr] Failed to reload module after apply:',
-              (error as Error).message,
-            )
-            reloadFailed = true
-            break
+        try {
+          for (const mod of modulesToReload) {
+            try {
+              await server.reloadModule(mod)
+              reloadedModules += 1
+            } catch (error) {
+              console.error(
+                '[self-mod-hmr] Failed to reload module after apply:',
+                (error as Error).message,
+              )
+              reloadFailed = true
+              break
+            }
           }
-        }
 
-        if (forceClientFullReload || reloadFailed) {
-          server.ws.send({ type: 'full-reload', path: '*' })
-        }
-        return {
-          appliedPaths,
-          reloadedModules,
-          requiresClientFullReload:
-            forceClientFullReload ||
-            reloadFailed ||
-            clientFullReloadRequestedDuringApply,
+          if (forceClientFullReload || reloadFailed) {
+            server.ws.send({ type: 'full-reload', path: '*' })
+          }
+          return {
+            appliedPaths,
+            reloadedModules,
+            requiresClientFullReload:
+              forceClientFullReload ||
+              reloadFailed ||
+              clientFullReloadRequestedDuringApply,
+          }
+        } finally {
+          for (const absPath of appliedOverlayPaths) {
+            appliedOverlay.delete(absPath)
+          }
         }
         })
 
