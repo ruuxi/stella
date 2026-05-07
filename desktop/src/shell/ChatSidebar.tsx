@@ -113,7 +113,6 @@ export function ChatPanelTab(
     const sidebarScroll = useChatScrollManagement({
       hasOlderEvents,
       isLoadingOlder,
-      isWorking: isStreaming,
     });
 
     const sidebarScrollApi = useMemo<ChatColumnScroll>(

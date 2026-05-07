@@ -43,6 +43,8 @@ import {
   LegendList,
   type LegendListRef,
   type LegendListRenderItemProps,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "@legendapp/list/react";
 import {
   AssistantMessageRow,
@@ -95,9 +97,17 @@ type ChatTimelineProps = {
    * here so the hook can call `scrollToEnd`/`getState` etc.
    */
   listRef?: RefObject<LegendListRef | null>;
-  onListScroll?: (event: Parameters<NonNullable<Parameters<typeof LegendList>[0]["onScroll"]>>[0]) => void;
+  onListScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onStartReached?: () => void;
-  /** Per-surface row recycling toggle. Default true. */
+  /**
+   * Per-surface row recycling toggle. Defaults to `true` — recycling
+   * reuses outer item containers as rows scroll out of the
+   * virtualization window, which is the main perf benefit of legend-list
+   * for long threads. Row identity (`row.id` via `keyExtractor`) keeps
+   * the inner React subtree fresh per item, so per-row state (user
+   * message expand/collapse, hovercards, Streamdown's parse cache) does
+   * not leak across recycled containers.
+   */
   recycleItems?: boolean;
   /**
    * If true, anchors items to the bottom when the content is shorter
@@ -164,7 +174,7 @@ export const ChatTimeline = memo(function ChatTimeline({
   listRef,
   onListScroll,
   onStartReached,
-  recycleItems = false,
+  recycleItems = true,
   alignItemsAtEnd = false,
   estimatedItemSize = 120,
   className,

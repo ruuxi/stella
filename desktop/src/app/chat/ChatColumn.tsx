@@ -116,7 +116,6 @@ export const ChatColumn = memo(function ChatColumn({
 
   const {
     onListScroll,
-    isAtBottom,
     showScrollButton,
     scrollToBottom,
     thumbState,
@@ -236,7 +235,7 @@ export const ChatColumn = memo(function ChatColumn({
           listRef={listRef}
           onListScroll={onListScroll}
           onStartReached={scroll.onStartReached}
-          className={`session-content${isAtBottom ? " at-bottom" : ""}`}
+          className="session-content"
           contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
           estimatedItemSize={140}
         />

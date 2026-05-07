@@ -120,7 +120,7 @@ export function CompactConversationSurface({
             listRef={scroll.listRef}
             onListScroll={scroll.onListScroll}
             onStartReached={scroll.onStartReached}
-            className={cn(className, scroll.isAtBottom && "at-bottom")}
+            className={className}
             contentContainerStyle={contentContainerStyle}
             estimatedItemSize={estimatedItemSize}
           />

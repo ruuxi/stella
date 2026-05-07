@@ -296,7 +296,6 @@ export function useFullShellChat({
     hasOlderEvents,
     isLoadingOlder,
     onLoadOlder: loadOlder,
-    isWorking: isStreaming,
   })
 
   // On conversation change, snap to the latest content. `initialScrollAtEnd`
