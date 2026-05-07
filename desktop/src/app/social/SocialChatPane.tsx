@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
+import {
+  LegendList,
+  type LegendListRenderItemProps,
+} from "@legendapp/list/react";
 import { api } from "@/convex/api";
 import { Avatar } from "@/ui/avatar";
 import { showToast } from "@/ui/toast";
+import { useChatScrollManagement } from "@/shell/use-chat-scroll-management";
 import { getSocialActionErrorMessage } from "./social-errors";
 import { useSocialMessages } from "./hooks/use-social-messages";
 import { useSocialRooms } from "./hooks/use-social-rooms";
@@ -51,6 +56,16 @@ function formatMessageTime(timestamp: number) {
   const date = new Date(timestamp);
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
+
+/**
+ * 16-px spacer rendered between adjacent virtualized groups. Replaces
+ * the prior `.social-message-group + .social-message-group { margin-top }`
+ * sibling rule, which no longer matches once each group is its own
+ * virtualized list item rendered in isolation.
+ */
+const SocialItemSeparator = () => (
+  <div style={{ height: 16 }} aria-hidden="true" />
+);
 
 function getProfileForOwner(
   roomData: SocialRoomSummary,
@@ -263,17 +278,15 @@ export function SocialChatPane({
   }, [timelineRows]);
 
   // Pagination wiring — auto-fetch older history. The room timeline
-  // merges chat messages with Stella turns, so a single sentinel near
-  // the top of the scroll viewport drives both `loadOlderMessages` and
-  // `loadOlderTurns` whenever it intersects.
+  // merges chat messages with Stella turns, so a single `onStartReached`
+  // signal from the virtualized list drives both `loadOlderMessages`
+  // and `loadOlderTurns` whenever the user scrolls near the top.
   //
-  // Scroll-position preservation when prepending older content is
-  // handled by the browser: the viewport uses `flex-direction:
-  // column-reverse` (the established sticky-bottom hack) and modern
-  // browsers' default `overflow-anchor: auto` keeps the user's reading
-  // position stable across prepends. No manual `scrollTop` math here.
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const topSentinelRef = useRef<HTMLDivElement | null>(null);
+  // Scroll-position preservation across prepends is handled by Legend
+  // List's `maintainVisibleContentPosition` (replaces the previous
+  // `column-reverse` + browser `overflow-anchor: auto` trick). The list
+  // also owns sticky-bottom via `maintainScrollAtEnd` +
+  // `initialScrollAtEnd`.
   const isLoadingOlder = isLoadingOlderMessages || isLoadingOlderTurns;
   const hasOlder = hasOlderMessages || hasOlderTurns;
 
@@ -282,25 +295,132 @@ export function SocialChatPane({
     if (hasOlderTurns) loadOlderTurns();
   }, [hasOlderMessages, hasOlderTurns, loadOlderMessages, loadOlderTurns]);
 
-  useEffect(() => {
-    const root = viewportRef.current;
-    const sentinel = topSentinelRef.current;
-    if (!root || !sentinel) return;
-    if (!hasOlder) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (!entry?.isIntersecting) return;
-        if (isLoadingOlder) return;
-        requestOlder();
-      },
-      // Fire ~240px ahead so the next page is in flight by the time the
-      // sentinel actually scrolls into view.
-      { root, rootMargin: "240px 0px 0px 0px", threshold: 0 },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasOlder, isLoadingOlder, requestOlder]);
+  const socialScroll = useChatScrollManagement({
+    hasOlderEvents: hasOlder,
+    isLoadingOlder,
+    onLoadOlder: requestOlder,
+  });
+
+  /**
+   * Each `messageGroups` entry becomes one virtualized list item: a
+   * sender-grouped block of bubbles (header + 1..N bubbles, or a single
+   * system bubble). System messages always live in their own group of
+   * one because the grouping logic forbids merging across `kind`.
+   */
+  const renderGroup = useCallback(
+    ({
+      item: group,
+    }: LegendListRenderItemProps<(typeof messageGroups)[number]>) => {
+      if (!roomData) return null;
+
+      const isSelf = group.senderOwnerId === currentOwnerId;
+      const isStella = group.senderOwnerId === STELLA_SENDER_OWNER_ID;
+      const isSystem = group.messages[0].kind === "system";
+      const profile = isStella
+        ? { nickname: "Stella" }
+        : getProfileForOwner(
+            roomData,
+            senderProfiles ?? [],
+            group.senderOwnerId,
+          );
+
+      if (isSystem) {
+        const msg = group.messages[0];
+        return (
+          <div
+            key={msg.id}
+            className="social-message-bubble"
+            data-role="system"
+          >
+            {msg.body}
+          </div>
+        );
+      }
+
+      const role = isStella ? "stella" : isSelf ? "self" : "other";
+
+      return (
+        <div className="social-message-group">
+          {!isSelf && (
+            <div className="social-message-sender">
+              {isStella ? (
+                <span className="social-message-sender-avatar social-message-sender-avatar--stella">
+                  <img src="stella-logo.svg" alt="" />
+                </span>
+              ) : (
+                <Avatar
+                  fallback={profile.nickname}
+                  src={profile.avatarUrl}
+                  size="small"
+                />
+              )}
+              <span
+                className="social-message-sender-name"
+                data-stella={isStella || undefined}
+              >
+                {profile.nickname}
+              </span>
+              {isGlobalRoom && !isStella && (
+                <AddFriendInlineButton
+                  targetOwnerId={group.senderOwnerId}
+                  status={friendStatusByOwnerId.get(group.senderOwnerId)}
+                  sendFriendRequest={sendFriendRequestByOwnerId}
+                />
+              )}
+              <span className="social-message-sender-time">
+                {formatMessageTime(group.firstTimestamp)}
+              </span>
+            </div>
+          )}
+          {isSelf && (
+            <div
+              className="social-message-sender"
+              style={{ justifyContent: "flex-end" }}
+            >
+              <span className="social-message-sender-time">
+                {formatMessageTime(group.firstTimestamp)}
+              </span>
+            </div>
+          )}
+          {group.messages.map((msg) => {
+            // Whole-body Stella share links render as an embedded
+            // add-on card instead of a plain text bubble. The bubble
+            // gets `data-embed` so the CSS strips its padding/bg and
+            // lets the card become the message.
+            const shareLink = parseShareLink(msg.body);
+            return (
+              <div
+                key={msg.id}
+                className="social-message-bubble"
+                data-role={role}
+                data-pending={msg.pending || undefined}
+                data-embed={shareLink ? "addon-share" : undefined}
+              >
+                {shareLink ? (
+                  <AddonShareCard link={shareLink} variant="wide" />
+                ) : (
+                  msg.body
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    },
+    [
+      currentOwnerId,
+      friendStatusByOwnerId,
+      isGlobalRoom,
+      roomData,
+      senderProfiles,
+      sendFriendRequestByOwnerId,
+    ],
+  );
+
+  const groupKeyExtractor = useCallback(
+    (group: (typeof messageGroups)[number]) => group.messages[0].id,
+    [],
+  );
 
   const displayName = roomData
     ? getSocialRoomDisplayName(roomData, currentOwnerId)
@@ -522,132 +642,47 @@ export function SocialChatPane({
         </div>
       )}
 
-      <div className="social-messages-viewport" ref={viewportRef}>
-        <div className="social-messages-container">
-          {/*
-            Sentinel for older-history auto-fetch. Sits above the first
-            message group; whenever it intersects the viewport (with
-            ~240px of lookahead), the observer fires `requestOlder`.
-            Hidden once we've reached the start of history so it doesn't
-            churn the observer.
-          */}
-          {hasOlder ? (
-            <div
-              ref={topSentinelRef}
-              className="social-messages-top-sentinel"
-              aria-hidden
-            />
-          ) : null}
-          {isLoadingOlder ? (
-            <div className="social-messages-older-loading" aria-live="polite">
-              Loading older messages…
+      <div className="social-messages-viewport">
+        {messageGroups.length === 0 ? (
+          <div className="social-empty-state">
+            <div className="social-empty-icon">
+              <MessageSquare size={22} />
             </div>
-          ) : null}
-          {messageGroups.length === 0 && (
-            <div className="social-empty-state">
-              <div className="social-empty-icon">
-                <MessageSquare size={22} />
-              </div>
-              <div className="social-empty-subtitle">
-                Say hello to start the conversation
-              </div>
+            <div className="social-empty-subtitle">
+              Say hello to start the conversation
             </div>
-          )}
-          {messageGroups.map((group) => {
-            const isSelf = group.senderOwnerId === currentOwnerId;
-            const isStella = group.senderOwnerId === STELLA_SENDER_OWNER_ID;
-            const isSystem = group.messages[0].kind === "system";
-            const profile = isStella
-              ? { nickname: "Stella" }
-              : getProfileForOwner(
-                  roomData,
-                  senderProfiles ?? [],
-                  group.senderOwnerId,
-                );
-
-            if (isSystem) {
-              return group.messages.map((msg) => (
+          </div>
+        ) : (
+          <LegendList
+            ref={socialScroll.listRef}
+            data={messageGroups}
+            keyExtractor={groupKeyExtractor}
+            renderItem={renderGroup}
+            estimatedItemSize={60}
+            recycleItems
+            maintainVisibleContentPosition
+            maintainScrollAtEnd={{ animated: false }}
+            maintainScrollAtEndThreshold={0.02}
+            initialScrollAtEnd
+            onScroll={socialScroll.onListScroll}
+            onStartReached={socialScroll.onStartReached}
+            onStartReachedThreshold={0.5}
+            ListHeaderComponent={
+              isLoadingOlder ? (
                 <div
-                  key={msg.id}
-                  className="social-message-bubble"
-                  data-role="system"
+                  className="social-messages-older-loading"
+                  aria-live="polite"
                 >
-                  {msg.body}
+                  Loading older messages…
                 </div>
-              ));
+              ) : undefined
             }
-
-            const role = isStella ? "stella" : isSelf ? "self" : "other";
-
-            return (
-              <div key={group.messages[0].id} className="social-message-group">
-                {!isSelf && (
-                  <div className="social-message-sender">
-                    {isStella ? (
-                      <span className="social-message-sender-avatar social-message-sender-avatar--stella">
-                        <img src="stella-logo.svg" alt="" />
-                      </span>
-                    ) : (
-                      <Avatar
-                        fallback={profile.nickname}
-                        src={profile.avatarUrl}
-                        size="small"
-                      />
-                    )}
-                    <span
-                      className="social-message-sender-name"
-                      data-stella={isStella || undefined}
-                    >
-                      {profile.nickname}
-                    </span>
-                    {isGlobalRoom && !isStella && (
-                      <AddFriendInlineButton
-                        targetOwnerId={group.senderOwnerId}
-                        status={friendStatusByOwnerId.get(group.senderOwnerId)}
-                        sendFriendRequest={sendFriendRequestByOwnerId}
-                      />
-                    )}
-                    <span className="social-message-sender-time">
-                      {formatMessageTime(group.firstTimestamp)}
-                    </span>
-                  </div>
-                )}
-                {isSelf && (
-                  <div
-                    className="social-message-sender"
-                    style={{ justifyContent: "flex-end" }}
-                  >
-                    <span className="social-message-sender-time">
-                      {formatMessageTime(group.firstTimestamp)}
-                    </span>
-                  </div>
-                )}
-                {group.messages.map((msg) => {
-                  // Whole-body Stella share links render as an embedded
-                  // add-on card instead of a plain text bubble. The bubble
-                  // gets `data-embed` so the CSS strips its padding/bg
-                  // and lets the card become the message.
-                  const shareLink = parseShareLink(msg.body);
-                  return (
-                    <div
-                      key={msg.id}
-                      className="social-message-bubble"
-                      data-role={role}
-                      data-pending={msg.pending || undefined}
-                      data-embed={shareLink ? "addon-share" : undefined}
-                    >
-                      {shareLink ? (
-                        <AddonShareCard link={shareLink} variant="wide" />
-                      ) : (
-                        msg.body
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
+            ItemSeparatorComponent={SocialItemSeparator}
+            className="social-messages-list"
+            contentContainerStyle={{ padding: 24 }}
+            style={{ height: "100%", width: "100%" }}
+          />
+        )}
       </div>
 
       <div className="social-composer-stack">
