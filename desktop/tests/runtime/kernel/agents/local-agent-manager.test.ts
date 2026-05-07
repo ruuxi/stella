@@ -7,6 +7,9 @@ import type {
 } from "../../../../../runtime/kernel/tools/types.js";
 import { waitForAgentSettled } from "../../../helpers/agent.js";
 
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 describe("LocalAgentManager Exec fs locking", () => {
   it("serializes mutating Exec calls across concurrent tasks", async () => {
     let activeCalls = 0;
@@ -49,8 +52,11 @@ describe("LocalAgentManager Exec fs locking", () => {
         expect(toolName).toBe("Exec");
         activeCalls += 1;
         maxConcurrentCalls = Math.max(maxConcurrentCalls, activeCalls);
-        await sleep(75);
-        activeCalls -= 1;
+        try {
+          await sleep(75);
+        } finally {
+          activeCalls -= 1;
+        }
         return { result: "ok" };
       },
       createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
@@ -79,6 +85,12 @@ describe("LocalAgentManager Exec fs locking", () => {
       waitForAgentSettled(manager, second.threadId),
     ]);
 
+    await expect(manager.getAgent(first.threadId)).resolves.toMatchObject({
+      status: "completed",
+    });
+    await expect(manager.getAgent(second.threadId)).resolves.toMatchObject({
+      status: "completed",
+    });
     expect(maxConcurrentCalls).toBe(1);
   });
 });
