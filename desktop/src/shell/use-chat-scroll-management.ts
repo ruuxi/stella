@@ -6,7 +6,7 @@
  *   - "is the user at the bottom" → drives `at-bottom` styling and
  *     scroll-to-bottom button visibility,
  *   - custom scrollbar thumb position/height,
- *   - `scrollToBottom` / `scrollToOffset` via the list ref,
+ *   - `scrollToBottom` via the list ref,
  *   - `onStartReached` → load older history.
  *
  * The list scroll element, ResizeObserver, and resize-anchor logic that
@@ -30,13 +30,17 @@ type ThumbState = {
 const SCROLL_BUTTON_THRESHOLD = 180
 const THUMB_MIN_HEIGHT = 24
 const THUMB_FADE_MS = 1200
+/**
+ * Suppress thumb-state setState calls when nothing visible has moved.
+ * Sub-pixel jitter from Legend's continuous content-length measurements
+ * during streaming would otherwise re-render every scroll frame.
+ */
+const THUMB_EPSILON_PX = 0.5
 
 type ChatScrollManagementOptions = {
   hasOlderEvents?: boolean
   isLoadingOlder?: boolean
   onLoadOlder?: () => void
-  /** Reserved for future "settle"/idle behaviors. Currently unused. */
-  isWorking?: boolean
 }
 
 export function useChatScrollManagement({
@@ -54,26 +58,42 @@ export function useChatScrollManagement({
   })
   const thumbFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const updateThumb = useCallback((scroll: number, scrollLength: number, contentLength: number) => {
-    if (contentLength <= scrollLength || scrollLength <= 0) {
-      setThumbState((thumb) => (thumb.visible ? { top: 0, height: 0, visible: false } : thumb))
-      return
-    }
+  const updateThumb = useCallback(
+    (scroll: number, scrollLength: number, contentLength: number) => {
+      if (contentLength <= scrollLength || scrollLength <= 0) {
+        setThumbState((thumb) =>
+          thumb.visible ? { top: 0, height: 0, visible: false } : thumb,
+        )
+        return
+      }
 
-    const ratio = scrollLength / contentLength
-    const thumbHeight = Math.max(THUMB_MIN_HEIGHT, ratio * scrollLength)
-    const maxScroll = Math.max(1, contentLength - scrollLength)
-    const progress = Math.max(0, Math.min(1, scroll / maxScroll))
-    const maxThumbTop = Math.max(0, scrollLength - thumbHeight)
-    const thumbTop = progress * maxThumbTop
+      const ratio = scrollLength / contentLength
+      const thumbHeight = Math.max(THUMB_MIN_HEIGHT, ratio * scrollLength)
+      const maxScroll = Math.max(1, contentLength - scrollLength)
+      const progress = Math.max(0, Math.min(1, scroll / maxScroll))
+      const maxThumbTop = Math.max(0, scrollLength - thumbHeight)
+      const thumbTop = progress * maxThumbTop
 
-    setThumbState({ top: thumbTop, height: thumbHeight, visible: true })
+      setThumbState((prev) => {
+        if (
+          prev.visible &&
+          Math.abs(prev.top - thumbTop) < THUMB_EPSILON_PX &&
+          Math.abs(prev.height - thumbHeight) < THUMB_EPSILON_PX
+        ) {
+          return prev
+        }
+        return { top: thumbTop, height: thumbHeight, visible: true }
+      })
 
-    if (thumbFadeRef.current) clearTimeout(thumbFadeRef.current)
-    thumbFadeRef.current = setTimeout(() => {
-      setThumbState((thumb) => ({ ...thumb, visible: false }))
-    }, THUMB_FADE_MS)
-  }, [])
+      if (thumbFadeRef.current) clearTimeout(thumbFadeRef.current)
+      thumbFadeRef.current = setTimeout(() => {
+        setThumbState((thumb) =>
+          thumb.visible ? { ...thumb, visible: false } : thumb,
+        )
+      }, THUMB_FADE_MS)
+    },
+    [],
+  )
 
   const onListScroll = useCallback(
     (_event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -81,6 +101,8 @@ export function useChatScrollManagement({
       if (!list) return
       const state = list.getState()
       const { scroll, scrollLength, contentLength, isAtEnd } = state
+      // Booleans bail out on === inside React's setState, so these are
+      // effectively no-ops while nothing has changed.
       setIsAtBottom(isAtEnd)
       const distFromEnd = Math.max(0, contentLength - scrollLength - scroll)
       setShowScrollButton(distFromEnd > SCROLL_BUTTON_THRESHOLD)
@@ -95,14 +117,12 @@ export function useChatScrollManagement({
     onLoadOlder()
   }, [hasOlderEvents, isLoadingOlder, onLoadOlder])
 
-  const scrollToBottom = useCallback((behavior: 'instant' | 'smooth' = 'smooth') => {
-    void listRef.current?.scrollToEnd({ animated: behavior !== 'instant' })
-  }, [])
-
-  /** Imperative scrollTop write — used by the custom scrollbar thumb drag. */
-  const scrollToOffset = useCallback((offset: number) => {
-    void listRef.current?.scrollToOffset({ offset, animated: false })
-  }, [])
+  const scrollToBottom = useCallback(
+    (behavior: 'instant' | 'smooth' = 'smooth') => {
+      void listRef.current?.scrollToEnd({ animated: behavior !== 'instant' })
+    },
+    [],
+  )
 
   useEffect(() => {
     return () => {
@@ -118,7 +138,6 @@ export function useChatScrollManagement({
     isNearBottom: isAtBottom,
     showScrollButton,
     scrollToBottom,
-    scrollToOffset,
     thumbState,
   }
 }
