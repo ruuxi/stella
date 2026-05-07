@@ -15,24 +15,23 @@ import {
   handleFashionMarkOutfitReady,
   handleFashionSearchProducts,
 } from "../fashion.js";
-import type {
-  FashionToolApi,
-  ToolContext,
-  ToolDefinition,
-  ToolResult,
-} from "../types.js";
+import type { FashionToolApi, ToolDefinition } from "../types.js";
 
 export type FashionControlOptions = {
   fashionApi?: FashionToolApi;
 };
 
-const requireFashionAgent = (
-  toolName: string,
-  context: ToolContext,
-): ToolResult | null =>
-  context.agentType === AGENT_IDS.FASHION
-    ? null
-    : { error: `${toolName} is only available to the Fashion agent.` };
+// Agent-gating contract for every Fashion tool. Pre-migration each tool
+// duplicated a `requireFashionAgent` runtime check inside `execute`,
+// which (a) still surfaced the tool in non-Fashion agents' catalogs and
+// (b) drifted from the declarative `agentTypes` pattern used by every
+// other orchestrator-only tool. Centralizing it via `tools/host.ts`
+// means non-Fashion agents never see these tools in their catalog and
+// any direct execute call from another agent is rejected by the
+// shared denial path. The wording (`"only available to the Fashion
+// agent."`) is reproduced by the host's `formatAllowedAgent` helper
+// from the agent definition's `name`.
+const FASHION_ONLY = [AGENT_IDS.FASHION] as const;
 
 export const createFashionControlTools = (
   options: FashionControlOptions,
@@ -41,13 +40,12 @@ export const createFashionControlTools = (
     name: "FashionGetContext",
     description:
       "Load the user's Fashion context: profile (sizes, style preferences) and recent likes / cart / outfit-product history. Call once at the start of every batch to bias selections.",
+    agentTypes: FASHION_ONLY,
     parameters: {
       type: "object",
       properties: {},
     },
-    execute: async (_args, context) => {
-      const denied = requireFashionAgent("FashionGetContext", context);
-      if (denied) return denied;
+    execute: async () => {
       try {
         return await handleFashionGetContext(options.fashionApi);
       } catch (error) {
@@ -59,6 +57,7 @@ export const createFashionControlTools = (
     name: "FashionSearchProducts",
     description:
       "Search the global Shopify (UCP) catalog for products matching a slot-specific query. Returns a small list of {productId, variantId, title, vendor, price, currency, imageUrl, productUrl, merchantOrigin}. Run multiple searches in parallel via multi_tool_use_parallel when filling slots.",
+    agentTypes: FASHION_ONLY,
     parameters: {
       type: "object",
       properties: {
@@ -85,9 +84,7 @@ export const createFashionControlTools = (
       },
       required: ["query"],
     },
-    execute: async (args, context) => {
-      const denied = requireFashionAgent("FashionSearchProducts", context);
-      if (denied) return denied;
+    execute: async (args) => {
       try {
         return await handleFashionSearchProducts(options.fashionApi, args);
       } catch (error) {
@@ -99,6 +96,7 @@ export const createFashionControlTools = (
     name: "FashionGetProductDetails",
     description:
       "Fetch full UCP product detail (variants, options, full description) for a productId returned by FashionSearchProducts. Use sparingly — only when you need variant-level info to pick a size or color.",
+    agentTypes: FASHION_ONLY,
     parameters: {
       type: "object",
       properties: {
@@ -109,9 +107,7 @@ export const createFashionControlTools = (
       },
       required: ["productId"],
     },
-    execute: async (args, context) => {
-      const denied = requireFashionAgent("FashionGetProductDetails", context);
-      if (denied) return denied;
+    execute: async (args) => {
       try {
         return await handleFashionGetProductDetails(options.fashionApi, args);
       } catch (error) {
@@ -123,6 +119,7 @@ export const createFashionControlTools = (
     name: "FashionCreateOutfit",
     description:
       "Reserve a Fashion-feed card for an assembled outfit. Returns an outfitId. Call this BEFORE rendering with image_gen so the UI shows a placeholder card while the try-on image is being generated.",
+    agentTypes: FASHION_ONLY,
     parameters: {
       type: "object",
       properties: {
@@ -185,9 +182,7 @@ export const createFashionControlTools = (
       },
       required: ["batchId", "ordinal", "themeLabel", "products"],
     },
-    execute: async (args, context) => {
-      const denied = requireFashionAgent("FashionCreateOutfit", context);
-      if (denied) return denied;
+    execute: async (args) => {
       try {
         return await handleFashionCreateOutfit(options.fashionApi, args);
       } catch (error) {
@@ -199,6 +194,7 @@ export const createFashionControlTools = (
     name: "FashionMarkOutfitReady",
     description:
       "Attach a rendered try-on image to an outfit card. Call after image_gen succeeds. Provide tryOnImagePath (absolute local path returned by image_gen) and/or tryOnImageUrl.",
+    agentTypes: FASHION_ONLY,
     parameters: {
       type: "object",
       properties: {
@@ -217,9 +213,7 @@ export const createFashionControlTools = (
       },
       required: ["outfitId"],
     },
-    execute: async (args, context) => {
-      const denied = requireFashionAgent("FashionMarkOutfitReady", context);
-      if (denied) return denied;
+    execute: async (args) => {
       try {
         return await handleFashionMarkOutfitReady(options.fashionApi, args);
       } catch (error) {
@@ -231,6 +225,7 @@ export const createFashionControlTools = (
     name: "FashionMarkOutfitFailed",
     description:
       "Mark an outfit card as failed (image_gen errored, no usable products, etc.). The UI will hide it from the feed.",
+    agentTypes: FASHION_ONLY,
     parameters: {
       type: "object",
       properties: {
@@ -245,9 +240,7 @@ export const createFashionControlTools = (
       },
       required: ["outfitId", "errorMessage"],
     },
-    execute: async (args, context) => {
-      const denied = requireFashionAgent("FashionMarkOutfitFailed", context);
-      if (denied) return denied;
+    execute: async (args) => {
       try {
         return await handleFashionMarkOutfitFailed(options.fashionApi, args);
       } catch (error) {
@@ -259,6 +252,7 @@ export const createFashionControlTools = (
     name: "FashionCreateCheckout",
     description:
       "Open a UCP checkout session for a list of selected variants from a single merchant. Falls back to a Shopify cart permalink when the merchant doesn't expose Checkout MCP. Reserved for direct-purchase flows; the Fashion UI usually calls this from the renderer rather than the agent.",
+    agentTypes: FASHION_ONLY,
     parameters: {
       type: "object",
       properties: {
@@ -281,9 +275,7 @@ export const createFashionControlTools = (
       },
       required: ["merchantOrigin", "lines"],
     },
-    execute: async (args, context) => {
-      const denied = requireFashionAgent("FashionCreateCheckout", context);
-      if (denied) return denied;
+    execute: async (args) => {
       try {
         return await handleFashionCreateCheckout(options.fashionApi, args);
       } catch (error) {

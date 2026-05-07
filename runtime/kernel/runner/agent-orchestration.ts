@@ -404,6 +404,7 @@ export const createAgentOrchestration = (
       taskPrompt,
       abortSignal,
       selfModMetadata,
+      subagentSession,
       onProgress,
       toolExecutor,
     }) => {
@@ -699,6 +700,8 @@ export const createAgentOrchestration = (
           abortSignal,
           stellaRoot: context.stellaRoot,
           ...(toolWorkspaceRoot ? { toolWorkspaceRoot } : {}),
+          ...(subagentSession ? { subagentSession } : {}),
+          compactionScheduler: context.state.compactionScheduler,
           selfModMonitor: context.selfModMonitor,
           onProgress,
           ...(context.appendLocalChatEvent
@@ -832,6 +835,7 @@ export const createAgentOrchestration = (
                 resolvedLlm,
                 store: context.runtimeStore,
                 suppressCompletionSideEffects: true,
+                compactionScheduler: context.state.compactionScheduler,
                 ...(abortSignal ? { abortSignal } : {}),
                 stellaRoot: context.stellaRoot,
               });

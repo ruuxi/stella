@@ -10,9 +10,7 @@ import { handleSchedule } from "../schedule.js";
 import type {
   ScheduleToolApi,
   AgentToolApi,
-  ToolContext,
   ToolDefinition,
-  ToolResult,
 } from "../types.js";
 
 export type ScheduleToolOptions = {
@@ -20,18 +18,13 @@ export type ScheduleToolOptions = {
   scheduleApi?: ScheduleToolApi;
 };
 
-const requireOrchestrator = (
-  toolName: string,
-  context: ToolContext,
-): ToolResult | null =>
-  context.agentType === AGENT_IDS.ORCHESTRATOR
-    ? null
-    : { error: `${toolName} is only available to the orchestrator.` };
-
 export const createScheduleTool = (
   options: ScheduleToolOptions,
 ): ToolDefinition => ({
   name: "Schedule",
+  // Orchestrator-only: gated declaratively. The catalog filter and
+  // executeTool dispatcher in `tools/host.ts` enforce this for any agent.
+  agentTypes: [AGENT_IDS.ORCHESTRATOR],
   description:
     "Handle local scheduling requests in plain language. Delegates to the schedule specialist and returns a short summary.",
   parameters: {
@@ -46,8 +39,6 @@ export const createScheduleTool = (
     required: ["prompt"],
   },
   execute: async (args, context) => {
-    const denied = requireOrchestrator("Schedule", context);
-    if (denied) return denied;
     try {
       return await handleSchedule(
         options.agentApi,

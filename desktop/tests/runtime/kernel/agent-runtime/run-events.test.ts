@@ -39,7 +39,8 @@ const assistantMessage = {
 };
 
 describe("subscribeRuntimeAgentEvents", () => {
-  it("does not surface provider thinking summaries as chat reasoning", () => {
+  it("routes provider thinking_delta to onReasoning (NOT onStream) and skips thinking_end", () => {
+    // Reasoning deltas feed the per-agent reasoning UI, not the visible chat stream.
     let listener: ((event: AgentEvent) => void) | undefined;
     const agent = {
       state: { messages: [] },
@@ -106,9 +107,56 @@ describe("subscribeRuntimeAgentEvents", () => {
       },
     });
 
-    expect(onReasoning).not.toHaveBeenCalled();
+    expect(onReasoning).toHaveBeenCalledTimes(1);
+    expect(onReasoning).toHaveBeenCalledWith(
+      expect.objectContaining({ chunk: "Need to inspect the task." }),
+    );
+    expect(onReasoning).not.toHaveBeenCalledWith(
+      expect.objectContaining({ chunk: "" }),
+    );
+    expect(onStream).toHaveBeenCalledTimes(1);
     expect(onStream).toHaveBeenCalledWith(
       expect.objectContaining({ chunk: "Done." }),
     );
+  });
+
+  it("skips empty thinking_delta chunks", () => {
+    let listener: ((event: AgentEvent) => void) | undefined;
+    const agent = {
+      state: { messages: [] },
+      subscribe: vi.fn((next: (event: AgentEvent) => void) => {
+        listener = next;
+        return () => undefined;
+      }),
+    };
+    const store = { recordRunEvent: vi.fn() };
+    const onReasoning = vi.fn();
+
+    subscribeRuntimeAgentEvents({
+      agent,
+      runId: "run-1",
+      agentType: "general",
+      recorder: createRunEventRecorder({
+        store: store as never,
+        runId: "run-1",
+        conversationId: "conversation-1",
+        agentType: "general",
+        userMessageId: "user-1",
+      }),
+      callbacks: { onReasoning },
+    });
+
+    listener?.({
+      type: "message_update",
+      message: assistantMessage,
+      assistantMessageEvent: {
+        type: "thinking_delta",
+        contentIndex: 0,
+        delta: "",
+        partial: assistantMessage,
+      },
+    });
+
+    expect(onReasoning).not.toHaveBeenCalled();
   });
 });

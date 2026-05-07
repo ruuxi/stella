@@ -93,7 +93,8 @@ describe("buildStartupPromptMessages", () => {
 });
 
 describe("buildHistorySource", () => {
-  it("replays the latest persisted memory bundle on coast turns", () => {
+  // Retaining older bootstrap entries keeps the prompt-cache prefix stable.
+  it("retains all persisted memory bundle entries in chronological order", () => {
     const history = buildHistorySource({
       systemPrompt: "system",
       dynamicContext: "",
@@ -170,9 +171,16 @@ describe("buildHistorySource", () => {
       })
       .join("\n");
 
+    expect(replayedText).toContain("old summary");
+    expect(replayedText).toContain("old user");
     expect(replayedText).toContain("new summary");
     expect(replayedText).toContain("new memory");
-    expect(replayedText).not.toContain("old summary");
-    expect(replayedText).not.toContain("old user");
+
+    expect(replayedText.indexOf("old summary")).toBeLessThan(
+      replayedText.indexOf("new summary"),
+    );
+    expect(replayedText.indexOf("old user")).toBeLessThan(
+      replayedText.indexOf("new memory"),
+    );
   });
 });

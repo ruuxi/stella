@@ -8,19 +8,11 @@
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import type { MemoryStore, MemoryTarget } from "../../memory/memory-store.js";
-import type { ToolContext, ToolDefinition, ToolResult } from "../types.js";
+import type { ToolDefinition } from "../types.js";
 
 export type MemoryToolOptions = {
   memoryStore: MemoryStore;
 };
-
-const requireOrchestrator = (
-  toolName: string,
-  context: ToolContext,
-): ToolResult | null =>
-  context.agentType === AGENT_IDS.ORCHESTRATOR
-    ? null
-    : { error: `${toolName} is only available to the orchestrator.` };
 
 const isMemoryTarget = (value: unknown): value is MemoryTarget =>
   value === "memory" || value === "user";
@@ -34,6 +26,9 @@ export const createMemoryTool = (
   options: MemoryToolOptions,
 ): ToolDefinition => ({
   name: "Memory",
+  // Orchestrator-only: gated declaratively. Catalog filter + executeTool
+  // dispatcher in `tools/host.ts` enforce this.
+  agentTypes: [AGENT_IDS.ORCHESTRATOR],
   description:
     'Manage durable memory entries that survive across sessions (`target: "user"` or `target: "memory"`).',
   parameters: {
@@ -63,9 +58,7 @@ export const createMemoryTool = (
     },
     required: ["action", "target"],
   },
-  execute: async (args, context) => {
-    const denied = requireOrchestrator("Memory", context);
-    if (denied) return denied;
+  execute: async (args) => {
     const action = isMemoryAction(args.action) ? args.action : null;
     const target = isMemoryTarget(args.target) ? args.target : null;
     if (!action) {

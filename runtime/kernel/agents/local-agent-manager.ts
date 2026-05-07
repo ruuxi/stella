@@ -23,6 +23,10 @@ import type {
 } from "../storage/shared.js";
 import type { RuntimeThreadRecord } from "../runtime-threads.js";
 import type { ReasoningEffort } from "../preferences/local-preferences.js";
+import {
+  type SubagentSession,
+  getOrCreateSubagentSession,
+} from "../agent-runtime/subagent-session.js";
 
 export type LocalAgentContext = {
   systemPrompt: string;
@@ -170,6 +174,13 @@ type LocalAgentManagerOpts = {
     enableRemoteTools: boolean;
     abortSignal: AbortSignal;
     selfModMetadata?: AgentToolRequest["selfModMetadata"];
+    /**
+     * Long-lived session bound to the durable subagent threadId. The
+     * runner forwards this to `runSubagentTask` so the underlying Pi
+     * `Agent` survives across restart-on-input cycles. Disposed by the
+     * manager when the task reaches a terminal status.
+     */
+    subagentSession?: SubagentSession;
     onProgress?: (chunk: string) => void;
     onToolStart?: (event: {
       runId: string;
@@ -371,6 +382,13 @@ export class LocalAgentManager implements AgentToolApi {
   private runningCount = 0;
   private readonly activeFsLocks: FsLock[] = [];
   private readonly fsLockWaiters: Array<() => void> = [];
+  /**
+   * Long-lived per-task subagent sessions keyed by durable threadId (E2).
+   * Created lazily on first `executeTask` for a thread, reused across
+   * restart-on-input attempts within the same thread, disposed when the
+   * task reaches a terminal status. Paused tasks keep their session.
+   */
+  private readonly subagentSessions = new Map<string, SubagentSession>();
   private static readonly MAX_QUEUE_MESSAGES = 32;
   private static readonly MAX_LOG_MESSAGES = 80;
   private nextId = 0;
@@ -657,6 +675,16 @@ export class LocalAgentManager implements AgentToolApi {
       const taskPrompt = this.buildTaskPrompt(task);
       task.attemptCount += 1;
 
+      // Long-lived session for this durable threadId. First attempt builds
+      // the Pi `Agent`; restart-on-input attempts reuse it. Disposed when
+      // the task terminates (see end of `executeTask`).
+      const subagentSession = getOrCreateSubagentSession(
+        this.subagentSessions,
+        task.threadId,
+        task.conversationId,
+        task.agentType,
+      );
+
       const result = await this.opts.runSubagent({
         conversationId: task.conversationId,
         userMessageId: runId,
@@ -669,6 +697,7 @@ export class LocalAgentManager implements AgentToolApi {
         taskDescription: task.description,
         taskPrompt,
         agentContext: context,
+        subagentSession,
         persistToConvex: task.storageMode === "cloud",
         enableRemoteTools: true,
         abortSignal: task.controller.signal,
@@ -786,6 +815,22 @@ export class LocalAgentManager implements AgentToolApi {
     if (this.shouldRestartTask(task)) {
       this.requeueTaskForUpdate(task);
       return;
+    }
+
+    // Task has reached a terminal status (completed/error/canceled). Drop
+    // the long-lived SubagentSession so its Agent + message array can be
+    // reclaimed; future tasks for this threadId would build a fresh
+    // session if the runtime ever re-enqueues this thread (rare — terminal
+    // is sticky). Done before persistTask + lifecycle emit so any
+    // listener-triggered work (e.g. cloud sync) doesn't see stale state.
+    const session = this.subagentSessions.get(task.threadId);
+    if (session) {
+      this.subagentSessions.delete(task.threadId);
+      try {
+        session.dispose();
+      } catch {
+        // Best-effort: dispose just aborts the agent and frees the ref.
+      }
     }
 
     this.persistTask(task);
@@ -958,7 +1003,18 @@ export class LocalAgentManager implements AgentToolApi {
   }
 
   getActiveAgentCount(): number {
-    return this.tasks.size;
+    let count = 0;
+    for (const task of this.tasks.values()) {
+      if (
+        task.status === "completed" ||
+        task.status === "error" ||
+        task.status === "canceled"
+      ) {
+        continue;
+      }
+      count++;
+    }
+    return count;
   }
 
   shutdown(reason = AGENT_SHUTDOWN_CANCEL_REASON): void {
@@ -1000,6 +1056,27 @@ export class LocalAgentManager implements AgentToolApi {
         statusText: "Pausing",
       });
       local.controller.abort(new Error(local.error));
+      // Dispose the long-lived `SubagentSession` eagerly here too.
+      // `executeTask` disposes at the end of the run, which is the
+      // happy path for normal cancellation (abort propagates into
+      // `runTurn`, the interrupted finalize fires, executeTask
+      // reaches its dispose block). But if the abort gets swallowed
+      // mid-flight (e.g. a tool executor doesn't honor the signal,
+      // or executeTask isn't running yet because the task was still
+      // pending), the session's Pi `Agent` would stay allocated
+      // forever — the canceled task never re-enters `executeTask`.
+      // `PiSessionCore.dispose` is idempotent and guarded against
+      // already-null state, so calling it from both paths is safe;
+      // the second call is a no-op.
+      const session = this.subagentSessions.get(agentId);
+      if (session) {
+        this.subagentSessions.delete(agentId);
+        try {
+          session.dispose();
+        } catch {
+          // Best-effort.
+        }
+      }
       if (
         !local.terminalEventEmitted &&
         (previousStatus === "pending" || previousStatus === "running")

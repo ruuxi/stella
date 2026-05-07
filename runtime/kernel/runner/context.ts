@@ -38,14 +38,17 @@ import type {
 } from "./types.js";
 import {
   AGENT_IDS,
+  agentHasCapability,
   getAgentEnginePreference,
   isLocalCliAgentId,
+  isOrchestratorAgentType,
 } from "../../contracts/agent-runtime.js";
 import type {
   PersistedRuntimeThreadPayload,
   RuntimeThreadMessage,
 } from "../storage/shared.js";
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
+import { BackgroundCompactionScheduler } from "../agent-runtime/compaction-scheduler.js";
 import {
   defaultPromptForAgentType,
   DEFAULT_MAX_AGENT_DEPTH,
@@ -511,6 +514,8 @@ export const createRunnerContext = ({
       activeOrchestratorConversationId: null,
       activeOrchestratorUiVisibility: "visible",
       activeOrchestratorSession: null,
+      orchestratorSessions: new Map(),
+      compactionScheduler: new BackgroundCompactionScheduler(),
       queuedOrchestratorTurns: [],
       activeRunAbortControllers: new Map(),
       conversationCallbacks: new Map(),
@@ -601,10 +606,16 @@ export const buildAgentContext = async (
   // make a fresh, smaller fetch since they don't otherwise need the
   // local-events stream.
   let userLocale: string | undefined;
-  if (
-    args.agentType === AGENT_IDS.ORCHESTRATOR &&
-    context.listLocalChatEvents
-  ) {
+  // The orchestrator-shape thread history (merged stored thread messages +
+  // recent local events) and the runtime reminders (stale-user reminder,
+  // active-threads prompt) are gated by the `injectsRuntimeReminders`
+  // capability rather than a literal `agentType === ORCHESTRATOR` check, so
+  // future user-facing agents inherit the shape by data, not code.
+  const injectsRuntimeReminders = agentHasCapability(
+    args.agentType,
+    "injectsRuntimeReminders",
+  );
+  if (injectsRuntimeReminders && context.listLocalChatEvents) {
     const localEvents = context
       .listLocalChatEvents(args.conversationId, 800)
       .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
@@ -625,12 +636,11 @@ export const buildAgentContext = async (
     }
   }
 
-  const activeThreadsPrompt =
-    args.agentType === AGENT_IDS.ORCHESTRATOR
-      ? buildActiveThreadsPrompt(
-          context.runtimeStore.listActiveThreads(args.conversationId),
-        )
-      : "";
+  const activeThreadsPrompt = injectsRuntimeReminders
+    ? buildActiveThreadsPrompt(
+        context.runtimeStore.listActiveThreads(args.conversationId),
+      )
+    : "";
   const isSelfModTask = Boolean(args.selfModMetadata);
 
   const dynamicContextSections: string[] = [];
@@ -657,7 +667,7 @@ export const buildAgentContext = async (
     );
   }
   const reminderState =
-    args.agentType === AGENT_IDS.ORCHESTRATOR && activeThreadsPrompt
+    injectsRuntimeReminders && activeThreadsPrompt
       ? context.runtimeStore.getOrchestratorReminderState(args.conversationId)
       : {
           shouldInjectDynamicReminder: false,
@@ -674,7 +684,7 @@ export const buildAgentContext = async (
     fileEditToolFamily,
   );
   if (
-    args.agentType !== AGENT_IDS.ORCHESTRATOR &&
+    !isOrchestratorAgentType(args.agentType) &&
     fileEditToolFamily === "write_edit"
   ) {
     dynamicContextSections.push(
@@ -685,15 +695,12 @@ export const buildAgentContext = async (
       ].join("\n"),
     );
   }
-  if (
-    args.agentType === AGENT_IDS.ORCHESTRATOR ||
-    args.agentType === AGENT_IDS.GENERAL
-  ) {
+  if (agentHasCapability(args.agentType, "injectsSkillCatalog")) {
     dynamicContextSections.push(
       await renderSkillCatalogBlock(context.stellaRoot),
     );
   }
-  if (args.agentType === AGENT_IDS.GENERAL) {
+  if (agentHasCapability(args.agentType, "injectsConnectorList")) {
     const connectors = await listStellaConnectors(context.stellaRoot);
     const installed = connectors.filter((connector) => connector.installed);
     const available = connectors.filter(
@@ -713,12 +720,13 @@ export const buildAgentContext = async (
     dynamicContextSections.push(lines.join("\n"));
   }
 
-  // Memory snapshot is only built for Orchestrator turns that the caller
-  // marked as "inject this turn" — every Nth user turn. Skipping the work
-  // on coast turns keeps both the prompt and the snapshot rebuild cheap.
+  // Memory snapshot is only built for agents that declare the
+  // `injectsDynamicMemory` capability AND that the caller marked as "inject
+  // this turn" — every Nth user turn. Skipping the work on coast turns
+  // keeps both the prompt and the snapshot rebuild cheap.
   let memorySnapshot: { memory?: string; user?: string } | undefined;
   const shouldInjectDynamicMemory =
-    args.agentType === AGENT_IDS.ORCHESTRATOR &&
+    agentHasCapability(args.agentType, "injectsDynamicMemory") &&
     args.shouldInjectDynamicMemory === true;
   if (shouldInjectDynamicMemory) {
     const memoryStore = context.runtimeStore.memoryStore;

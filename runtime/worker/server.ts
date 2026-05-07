@@ -302,7 +302,11 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.socialSessionService?.stop();
   state.socialSessionService = null;
   state.voiceService = null;
-  state.runner?.stop();
+  // `runner.stop()` now awaits a bounded drain of the background
+  // compaction scheduler so SQLite writes complete before we close
+  // `state.db`. Without this await, an in-flight `compactThread` could
+  // race the `db.close()` below.
+  await state.runner?.stop();
   state.runner = null;
   state.chatStore = null;
   state.runtimeStore = null;

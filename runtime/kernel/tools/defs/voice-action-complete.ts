@@ -1,5 +1,5 @@
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
-import type { ToolContext, ToolDefinition, ToolResult } from "../types.js";
+import type { ToolDefinition } from "../types.js";
 
 type VoiceActionCompleteOptions = {
   notifyVoiceActionComplete?: (payload: {
@@ -9,14 +9,6 @@ type VoiceActionCompleteOptions = {
   }) => Promise<void> | void;
 };
 
-const requireOrchestrator = (
-  toolName: string,
-  context: ToolContext,
-): ToolResult | null =>
-  context.agentType === AGENT_IDS.ORCHESTRATOR
-    ? null
-    : { error: `${toolName} is only available to the orchestrator.` };
-
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
@@ -24,6 +16,10 @@ export const createVoiceActionCompleteTool = (
   options: VoiceActionCompleteOptions,
 ): ToolDefinition => ({
   name: "voice_result",
+  // Orchestrator-only: previously gated only at execute-time, which let the
+  // tool surface in non-orchestrator catalogs and meant the model could
+  // hallucinate it. Declarative agentTypes hides it everywhere else.
+  agentTypes: [AGENT_IDS.ORCHESTRATOR],
   description:
     "Notify the live voice agent that a delegated voice action is genuinely complete or failed. Use this only for voice-originated work that has reached a real terminal state.",
   parameters: {
@@ -43,9 +39,6 @@ export const createVoiceActionCompleteTool = (
     required: ["status", "message"],
   },
   execute: async (args, context) => {
-    const denied = requireOrchestrator("voice_result", context);
-    if (denied) return denied;
-
     const status = asTrimmedString(args.status);
     const message = asTrimmedString(args.message);
     if (status !== "completed" && status !== "failed") {

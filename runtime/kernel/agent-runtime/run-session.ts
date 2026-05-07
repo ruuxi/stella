@@ -1,53 +1,149 @@
-import crypto from "crypto";
-import { createRuntimeAgent } from "./shared.js";
-import { buildHistorySource, buildRunThreadKey } from "./thread-memory.js";
-import { createPiTools } from "./tool-adapters.js";
+import { buildRunThreadKey } from "./thread-memory.js";
 import { createRunEventRecorder } from "./run-events.js";
-import type { OrchestratorResponseTargetTracker } from "./response-target.js";
+import {
+  finalizeOrchestratorError,
+  finalizeOrchestratorInterrupted,
+  finalizeOrchestratorSuccess,
+  finalizeSubagentError,
+  finalizeSubagentInterrupted,
+  finalizeSubagentSuccess,
+} from "./run-completion.js";
+import {
+  createOrchestratorResponseTargetTracker,
+  type OrchestratorResponseTargetTracker,
+} from "./response-target.js";
 import type {
-  BaseRunOptions,
   OrchestratorRunOptions,
   SubagentRunOptions,
+  SubagentRunResult,
 } from "./types.js";
 
-type SessionOptions = Pick<
-  BaseRunOptions,
-  | "runId"
-  | "rootRunId"
-  | "agentId"
-  | "conversationId"
-  | "userMessageId"
-  | "uiVisibility"
-  | "agentType"
-  | "agentContext"
-  | "toolCatalog"
-  | "deviceId"
-  | "stellaRoot"
-  | "toolWorkspaceRoot"
-  | "store"
-  | "toolExecutor"
-  | "hookEmitter"
-  | "resolvedLlm"
-  | "responseTarget"
-> & {
-  systemPrompt: string;
-  runIdPrefix?: string;
-  responseTargetTracker?: OrchestratorResponseTargetTracker;
-};
-
-export type RuntimeExecutionSession = {
+/**
+ * Engine-independent per-run state.
+ *
+ * External engines (Claude Code, future CLIs) own one of these because their
+ * loop is provided by the engine binary, not the Pi `Agent`. Pi execution now
+ * routes exclusively through long-lived `OrchestratorSession` /
+ * `SubagentSession` instances.
+ */
+export type RuntimeExecutionSessionBase = {
   runId: string;
   threadKey: string;
   runEvents: ReturnType<typeof createRunEventRecorder>;
-  tools: ReturnType<typeof createPiTools>;
-  agent: ReturnType<typeof createRuntimeAgent>;
 };
 
-export const createRuntimeExecutionSession = (
-  opts: SessionOptions,
-): RuntimeExecutionSession => {
-  const runId =
-    opts.runId ?? `${opts.runIdPrefix ?? "local"}:${crypto.randomUUID()}`;
+/**
+ * Engine-agnostic finalize surface used by every run-flow caller. Both
+ * external orchestrator/subagent paths get a session that satisfies this base.
+ */
+export type OrchestratorRunSessionBase = RuntimeExecutionSessionBase & {
+  kind: "orchestrator";
+  responseTargetTracker: OrchestratorResponseTargetTracker;
+  finalizeSuccess: (finalText: string) => Promise<string>;
+  finalizeError: (error: unknown) => string;
+  finalizeInterrupted: (reason: string) => string;
+};
+
+export type ExternalOrchestratorRunSession = OrchestratorRunSessionBase;
+
+export type SubagentRunSessionBase = RuntimeExecutionSessionBase & {
+  kind: "subagent";
+  finalizeSuccess: (finalText: string) => Promise<SubagentRunResult>;
+  finalizeError: (error: unknown) => SubagentRunResult;
+  finalizeInterrupted: (reason: string) => SubagentRunResult;
+};
+
+export type ExternalSubagentRunSession = SubagentRunSessionBase;
+
+/**
+ * External-engine orchestrator session (Claude Code, etc.).
+ *
+ * Builds `runEvents` + threadKey + response-target tracker the same way the
+ * Pi factory does, and binds the same finalize helpers. Skips Pi-only
+ * fields (`agent`, `tools`) because the engine loop is provided by the
+ * external binary, not by the Pi `Agent`. The internal `agent` stub passed
+ * to `finalizeOrchestratorSuccess` carries an empty messages array for
+ * `before_compact`'s message-count payload — same behavior as the prior
+ * inline call site in `external-engines.ts`.
+ */
+const EMPTY_AGENT_STUB = {
+  state: { messages: [] as never[] },
+} as const;
+
+export const createExternalOrchestratorRunSession = (
+  opts: OrchestratorRunOptions,
+  args: { runId: string },
+): ExternalOrchestratorRunSession => {
+  const { runId } = args;
+  const threadKey = buildRunThreadKey({
+    conversationId: opts.conversationId,
+    agentType: opts.agentType,
+    runId,
+    threadId: opts.agentContext.activeThreadId,
+  });
+  const responseTargetTracker = createOrchestratorResponseTargetTracker(
+    opts.responseTarget,
+  );
+  const runEvents = createRunEventRecorder({
+    store: opts.store,
+    runId,
+    conversationId: opts.conversationId,
+    agentType: opts.agentType,
+    userMessageId: opts.userMessageId,
+    uiVisibility: opts.uiVisibility,
+    getResponseTarget: () =>
+      responseTargetTracker.resolve() ?? opts.responseTarget,
+  });
+  return {
+    kind: "orchestrator",
+    runId,
+    threadKey,
+    runEvents,
+    responseTargetTracker,
+    async finalizeSuccess(finalText: string): Promise<string> {
+      await finalizeOrchestratorSuccess({
+        opts,
+        runId,
+        threadKey,
+        runEvents,
+        agent: EMPTY_AGENT_STUB,
+        finalText,
+        responseTarget: responseTargetTracker.resolve(),
+      });
+      return runId;
+    },
+    finalizeError(error: unknown): string {
+      finalizeOrchestratorError({
+        opts,
+        runEvents,
+        error,
+        runId,
+        threadKey,
+      });
+      return runId;
+    },
+    finalizeInterrupted(reason: string): string {
+      finalizeOrchestratorInterrupted({
+        opts,
+        runEvents,
+        reason,
+        runId,
+        threadKey,
+      });
+      return runId;
+    },
+  };
+};
+
+/**
+ * External-engine subagent session. Same shape as the Pi subagent factory
+ * minus the `agent`/`tools` Pi-only fields.
+ */
+export const createExternalSubagentRunSession = (
+  opts: SubagentRunOptions,
+  args: { runId: string },
+): ExternalSubagentRunSession => {
+  const { runId } = args;
   const threadKey = buildRunThreadKey({
     conversationId: opts.conversationId,
     agentType: opts.agentType,
@@ -61,70 +157,39 @@ export const createRuntimeExecutionSession = (
     agentType: opts.agentType,
     userMessageId: opts.userMessageId,
     uiVisibility: opts.uiVisibility,
-    getResponseTarget: () =>
-      opts.responseTargetTracker?.resolve() ?? opts.responseTarget,
+    getResponseTarget: () => opts.responseTarget,
   });
-
-  const tools = createPiTools({
-    runId,
-    rootRunId: opts.rootRunId ?? runId,
-    agentId: opts.agentId,
-    conversationId: opts.conversationId,
-    agentType: opts.agentType,
-    deviceId: opts.deviceId,
-    stellaRoot: opts.stellaRoot,
-    toolWorkspaceRoot: opts.toolWorkspaceRoot,
-    agentDepth: opts.agentContext.agentDepth ?? 0,
-    maxAgentDepth: opts.agentContext.maxAgentDepth,
-    toolsAllowlist: opts.agentContext.toolsAllowlist,
-    toolCatalog: opts.toolCatalog,
-    store: opts.store,
-    toolExecutor: opts.toolExecutor,
-    hookEmitter: opts.hookEmitter,
-  });
-
-  const historySource = buildHistorySource(opts.agentContext);
-  const agent = createRuntimeAgent({
-    agentType: opts.agentType,
-    systemPrompt: opts.systemPrompt,
-    resolvedLlm: opts.resolvedLlm,
-    reasoningEffort:
-      opts.resolvedLlm.route === "direct-provider"
-        ? opts.agentContext.reasoningEffort
-        : undefined,
-    hookEmitter: opts.hookEmitter,
-    tools,
-    historySource,
-    cacheSessionId: threadKey,
-    afterToolCall: async (context) => {
-      opts.responseTargetTracker?.noteToolEnd(
-        context.toolCall.name,
-        context.result.details,
-      );
-      return undefined;
-    },
-  });
-
   return {
+    kind: "subagent",
     runId,
     threadKey,
     runEvents,
-    tools,
-    agent,
+    async finalizeSuccess(finalText: string): Promise<SubagentRunResult> {
+      return await finalizeSubagentSuccess({
+        opts,
+        runEvents,
+        runId,
+        threadKey,
+        result: finalText,
+      });
+    },
+    finalizeError(error: unknown): SubagentRunResult {
+      return finalizeSubagentError({
+        opts,
+        runEvents,
+        runId,
+        error,
+        threadKey,
+      });
+    },
+    finalizeInterrupted(reason: string): SubagentRunResult {
+      return finalizeSubagentInterrupted({
+        opts,
+        runEvents,
+        runId,
+        reason,
+        threadKey,
+      });
+    },
   };
 };
-
-export const createOrchestratorExecutionSession = (
-  opts: OrchestratorRunOptions & {
-    systemPrompt: string;
-    responseTargetTracker?: OrchestratorResponseTargetTracker;
-  },
-) => createRuntimeExecutionSession(opts);
-
-export const createSubagentExecutionSession = (
-  opts: SubagentRunOptions & { systemPrompt: string },
-) =>
-  createRuntimeExecutionSession({
-    ...opts,
-    runIdPrefix: "local:sub",
-  });

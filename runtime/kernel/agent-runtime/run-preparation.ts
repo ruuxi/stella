@@ -4,9 +4,6 @@ import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
 } from "../../protocol/index.js";
-import { AGENT_IDS } from "../../contracts/agent-runtime.js";
-import { readOrSeedPersonality } from "../personality/personality.js";
-import { getPersonalityVoiceId } from "../preferences/local-preferences.js";
 import { resolveLocalCliCwd } from "./shared.js";
 import { buildSystemPrompt } from "./thread-memory.js";
 import type { OrchestratorRunOptions, SubagentRunOptions } from "./types.js";
@@ -72,8 +69,6 @@ export const createRuntimePromptAgentMessage = (
   };
 };
 
-const PERSONALITY_MARKER = "<!-- personality -->";
-
 const appendCurrentWorkingDirectory = (
   systemPrompt: string,
   opts: Pick<OrchestratorRunOptions, "agentType" | "stellaRoot">,
@@ -88,55 +83,80 @@ const appendCurrentWorkingDirectory = (
   return `${systemPrompt}\n\nCurrent working directory: ${cwd}`;
 };
 
-const maybeInjectPersonality = (
-  opts: OrchestratorRunOptions,
-  systemPrompt: string,
-): string => {
-  if (opts.agentType !== AGENT_IDS.ORCHESTRATOR) {
-    return systemPrompt;
-  }
-  try {
-    const voiceId = getPersonalityVoiceId(opts.stellaHome);
-    const personality = readOrSeedPersonality(opts.stellaHome, voiceId);
-    if (systemPrompt.includes(PERSONALITY_MARKER)) {
-      return systemPrompt.replace(
-        PERSONALITY_MARKER,
-        personality?.trim() ?? "",
-      );
-    }
-    if (!personality) {
-      return systemPrompt;
-    }
-    return `${personality}\n\n${systemPrompt}`;
-  } catch {
-    return systemPrompt.replace(PERSONALITY_MARKER, "");
-  }
-};
-
 export const buildRuntimeSystemPrompt = async (
-  opts: OrchestratorRunOptions,
+  opts: OrchestratorRunOptions & { runId?: string },
 ): Promise<string> => {
   const effectiveSystemPrompt = appendCurrentWorkingDirectory(
-    maybeInjectPersonality(opts, buildSystemPrompt(opts.agentContext)),
+    buildSystemPrompt(opts.agentContext),
     opts,
   );
   if (!opts.hookEmitter) {
     return effectiveSystemPrompt;
   }
 
-  const hookResult = await opts.hookEmitter.emit(
+  // Compose every hook result in registration order; `emit` would only keep
+  // the last non-empty result.
+  const hookResults = await opts.hookEmitter.emitAll(
     "before_agent_start",
-    { agentType: opts.agentType, systemPrompt: effectiveSystemPrompt },
+    {
+      agentType: opts.agentType,
+      systemPrompt: effectiveSystemPrompt,
+      conversationId: opts.conversationId,
+      ...(opts.runId ? { runId: opts.runId } : {}),
+      ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
+      isUserTurn: opts.uiVisibility !== "hidden",
+    },
     { agentType: opts.agentType },
   );
-  if (hookResult?.systemPromptReplace) {
-    return hookResult.systemPromptReplace;
+  let prompt = effectiveSystemPrompt;
+  for (const result of hookResults) {
+    if (result?.systemPromptReplace) {
+      prompt = result.systemPromptReplace;
+    }
+    if (result?.systemPromptAppend) {
+      prompt = `${prompt}\n${result.systemPromptAppend}`;
+    }
   }
-  if (hookResult?.systemPromptAppend) {
-    return `${effectiveSystemPrompt}\n${hookResult.systemPromptAppend}`;
-  }
-  return effectiveSystemPrompt;
+  return prompt;
 };
 
-export const buildSubagentSystemPrompt = (opts: SubagentRunOptions): string =>
-  appendCurrentWorkingDirectory(buildSystemPrompt(opts.agentContext), opts);
+export const buildSubagentSystemPrompt = async (
+  opts: SubagentRunOptions & { runId?: string },
+): Promise<string> => {
+  const effectiveSystemPrompt = appendCurrentWorkingDirectory(
+    buildSystemPrompt(opts.agentContext),
+    opts,
+  );
+  // Symmetric with `buildRuntimeSystemPrompt` (orchestrator). Subagents
+  // get the same `before_agent_start` fan-out so user extensions that
+  // subscribe to the event for a subagent agentType (e.g. layering
+  // additional system-prompt context onto General/Explore runs) are
+  // actually invoked. The bundled self-mod hook is a no-op here because
+  // it gates on `triggersSelfModDetection`, which only the orchestrator
+  // declares — but extensions don't need to know that.
+  if (!opts.hookEmitter) {
+    return effectiveSystemPrompt;
+  }
+  const hookResults = await opts.hookEmitter.emitAll(
+    "before_agent_start",
+    {
+      agentType: opts.agentType,
+      systemPrompt: effectiveSystemPrompt,
+      conversationId: opts.conversationId,
+      ...(opts.runId ? { runId: opts.runId } : {}),
+      ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
+      isUserTurn: opts.uiVisibility !== "hidden",
+    },
+    { agentType: opts.agentType },
+  );
+  let prompt = effectiveSystemPrompt;
+  for (const result of hookResults) {
+    if (result?.systemPromptReplace) {
+      prompt = result.systemPromptReplace;
+    }
+    if (result?.systemPromptAppend) {
+      prompt = `${prompt}\n${result.systemPromptAppend}`;
+    }
+  }
+  return prompt;
+};

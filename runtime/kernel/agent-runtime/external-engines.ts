@@ -5,7 +5,6 @@ import {
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
 } from "../integrations/claude-code-session-runtime.js";
-import { createRunEventRecorder } from "./run-events.js";
 import {
   buildRuntimeSystemPrompt,
   buildSubagentSystemPrompt,
@@ -13,22 +12,18 @@ import {
 } from "./run-preparation.js";
 import { executeRuntimeToolCall, getRuntimeToolMetadata } from "./tool-adapters.js";
 import {
-  finalizeOrchestratorError,
-  finalizeOrchestratorInterrupted,
-  finalizeOrchestratorSuccess,
-  finalizeSubagentError,
-  finalizeSubagentInterrupted,
-  finalizeSubagentSuccess,
   markOrchestratorErrorReported,
   resolveInterruptionReason,
 } from "./run-completion.js";
 import {
-  createOrchestratorResponseTargetTracker,
-} from "./response-target.js";
+  createExternalOrchestratorRunSession,
+  createExternalSubagentRunSession,
+  type ExternalOrchestratorRunSession,
+  type ExternalSubagentRunSession,
+} from "./run-session.js";
 import { now, resolveLocalCliCwd, textFromUnknown } from "./shared.js";
 import {
   buildOrchestratorPromptMessages,
-  buildRunThreadKey,
   buildSubagentPromptMessages,
   persistAssistantReply,
   persistThreadPayloadMessage,
@@ -136,28 +131,19 @@ export const buildClaudePromptFromMessages = (
 
 const runClaudeHostedTurn = async (args: {
   opts: BaseRunOptions;
-  runId: string;
+  session: ExternalOrchestratorRunSession | ExternalSubagentRunSession;
   systemPrompt: string;
   promptMessages: RuntimePromptMessage[];
   callbacks?: Partial<RuntimeRunCallbacks>;
-  responseTargetTracker?: ReturnType<typeof createOrchestratorResponseTargetTracker>;
-}) => {
-  const threadKey = buildRunThreadKey({
-    conversationId: args.opts.conversationId,
-    agentType: args.opts.agentType,
-    runId: args.runId,
-    threadId: args.opts.agentContext.activeThreadId,
-  });
-  const runEvents = createRunEventRecorder({
-    store: args.opts.store,
-    runId: args.runId,
-    conversationId: args.opts.conversationId,
-    agentType: args.opts.agentType,
-    userMessageId: args.opts.userMessageId,
-    uiVisibility: args.opts.uiVisibility,
-    getResponseTarget: () =>
-      args.responseTargetTracker?.resolve() ?? args.opts.responseTarget,
-  });
+}): Promise<{ finalText: string; sessionId: string }> => {
+  const { runId, threadKey, runEvents } = args.session;
+  // Orchestrator sessions own the response-target tracker; subagent sessions
+  // do not (they don't drive the user-facing chat surface).
+  const responseTargetTracker =
+    args.session.kind === "orchestrator"
+      ? args.session.responseTargetTracker
+      : undefined;
+
   runEvents.recordRunStart();
   persistUserPrompt(args.opts, threadKey);
 
@@ -171,7 +157,7 @@ const runClaudeHostedTurn = async (args: {
   });
   const sessionKey = args.opts.agentContext.activeThreadId
     ? `${args.opts.conversationId}:${args.opts.agentContext.activeThreadId}`
-    : `${args.opts.conversationId}:run:${args.runId}`;
+    : `${args.opts.conversationId}:run:${runId}`;
   const persistedSessionId =
     args.opts.store.getThreadExternalSessionId(threadKey);
   const toolMetadata = getRuntimeToolMetadata({
@@ -180,7 +166,7 @@ const runClaudeHostedTurn = async (args: {
   });
 
   const result = await runClaudeCodeTurn({
-    runId: args.runId,
+    runId,
     sessionKey,
     persistedSessionId,
     modelId: args.opts.agentContext.model ?? args.opts.resolvedLlm.model.id,
@@ -196,7 +182,7 @@ const runClaudeHostedTurn = async (args: {
       );
     },
     executeTool: async (toolCallId, toolName, toolArgs, signal) => {
-      args.responseTargetTracker?.noteToolStart(toolName, toolArgs);
+      responseTargetTracker?.noteToolStart(toolName, toolArgs);
       args.callbacks?.onToolStart?.(
         runEvents.recordToolStart({
           toolCallId,
@@ -216,8 +202,8 @@ const runClaudeHostedTurn = async (args: {
         toolCallId,
         toolName,
         args: toolArgs,
-        runId: args.runId,
-        rootRunId: args.opts.rootRunId ?? args.runId,
+        runId,
+        rootRunId: args.opts.rootRunId ?? runId,
         agentId: args.opts.agentId,
         conversationId: args.opts.conversationId,
         agentType: args.opts.agentType,
@@ -232,7 +218,7 @@ const runClaudeHostedTurn = async (args: {
         hookEmitter: args.opts.hookEmitter,
         signal,
       });
-      args.responseTargetTracker?.noteToolEnd(toolName, toolResult.details);
+      responseTargetTracker?.noteToolEnd(toolName, toolResult.details);
       args.callbacks?.onToolEnd?.(
         runEvents.recordToolEnd({
           toolCallId,
@@ -266,9 +252,6 @@ const runClaudeHostedTurn = async (args: {
   args.opts.store.setThreadExternalSessionId(threadKey, result.sessionId);
 
   return {
-    runId: args.runId,
-    threadKey,
-    runEvents,
     finalText: result.text,
     sessionId: result.sessionId,
   };
@@ -281,19 +264,26 @@ export const runExternalOrchestratorTurn = async (
     return null;
   }
 
-  const runId = opts.runId ?? `local:${crypto.randomUUID()}`;
-  const baselineHead =
-    opts.stellaRoot && opts.selfModMonitor
-      ? await opts.selfModMonitor
-          .getBaselineHead(opts.stellaRoot)
-          .catch(() => null)
-      : null;
-  const responseTargetTracker = createOrchestratorResponseTargetTracker(
-    opts.responseTarget,
-  );
+  // Self-mod baseline capture is performed by the bundled self-mod hook on
+  // `before_agent_start`; the matching detect-applied runs on `agent_end`
+  // and threads the result onto RuntimeEndEvent.selfModApplied.
+  const session = createExternalOrchestratorRunSession(opts, {
+    runId: opts.runId ?? `local:${crypto.randomUUID()}`,
+  });
 
   try {
-    const systemPrompt = await buildRuntimeSystemPrompt(opts);
+    // Thread `session.runId` into the prompt build so the
+    // `before_agent_start` hook's payload carries the run id. Without
+    // this, the bundled self-mod hook bails (it requires `payload.runId`
+    // to key its baseline cache), the cache stays empty, and the
+    // matching `agent_end` finds no entry — silently breaking the
+    // morph overlay for the Claude Code orchestrator path. The Pi
+    // path threads the session runId through `OrchestratorSession.runTurn`
+    // already; mirror that here.
+    const systemPrompt = await buildRuntimeSystemPrompt({
+      ...opts,
+      runId: session.runId,
+    });
     const promptMessages = await buildOrchestratorPromptMessages({
       context: opts.agentContext,
       userPrompt: opts.userPrompt,
@@ -303,53 +293,21 @@ export const runExternalOrchestratorTurn = async (
     });
     const result = await runClaudeHostedTurn({
       opts,
-      runId,
+      session,
       systemPrompt,
       promptMessages,
       callbacks: opts.callbacks,
-      responseTargetTracker,
     });
-    await finalizeOrchestratorSuccess({
-      opts,
-      runId,
-      threadKey: result.threadKey,
-      runEvents: result.runEvents,
-      agent: { state: { messages: [] } },
-      finalText: result.finalText,
-      baselineHead,
-      responseTarget: responseTargetTracker.resolve(),
-    });
-    return runId;
+    return await session.finalizeSuccess(result.finalText);
   } catch (error) {
     const interruptedReason = resolveInterruptionReason({
       abortSignal: opts.abortSignal,
       error,
     });
     if (interruptedReason) {
-      finalizeOrchestratorInterrupted({
-        opts,
-        runEvents: createRunEventRecorder({
-          store: opts.store,
-          runId,
-          conversationId: opts.conversationId,
-          agentType: opts.agentType,
-          userMessageId: opts.userMessageId,
-        }),
-        reason: interruptedReason,
-      });
-      return runId;
+      return session.finalizeInterrupted(interruptedReason);
     }
-    finalizeOrchestratorError({
-      opts,
-      runEvents: createRunEventRecorder({
-        store: opts.store,
-        runId,
-        conversationId: opts.conversationId,
-        agentType: opts.agentType,
-        userMessageId: opts.userMessageId,
-      }),
-      error,
-    });
+    session.finalizeError(error);
     throw markOrchestratorErrorReported(error);
   }
 };
@@ -361,7 +319,9 @@ export const runExternalSubagentTurn = async (
     return null;
   }
 
-  const runId = opts.runId ?? `local:sub:${crypto.randomUUID()}`;
+  const session = createExternalSubagentRunSession(opts, {
+    runId: opts.runId ?? `local:sub:${crypto.randomUUID()}`,
+  });
 
   try {
     const promptMessages = await buildSubagentPromptMessages({
@@ -371,51 +331,30 @@ export const runExternalSubagentTurn = async (
       stellaHome: opts.stellaHome,
       stellaRoot: opts.stellaRoot,
     });
+    // Thread session.runId so a future `triggersSelfModDetection`
+    // subagent (none today) would have the same baseline-capture
+    // wiring as the orchestrator.
+    const systemPrompt = await buildSubagentSystemPrompt({
+      ...opts,
+      runId: session.runId,
+    });
     const result = await runClaudeHostedTurn({
       opts,
-      runId,
-      systemPrompt: buildSubagentSystemPrompt(opts),
+      session,
+      systemPrompt,
       promptMessages,
       callbacks: opts.callbacks,
     });
-    return await finalizeSubagentSuccess({
-      opts,
-      runEvents: result.runEvents,
-      runId,
-      threadKey: result.threadKey,
-      result: result.finalText,
-    });
+    return await session.finalizeSuccess(result.finalText);
   } catch (error) {
     const interruptedReason = resolveInterruptionReason({
       abortSignal: opts.abortSignal,
       error,
     });
     if (interruptedReason) {
-      return finalizeSubagentInterrupted({
-        opts,
-        runEvents: createRunEventRecorder({
-          store: opts.store,
-          runId,
-          conversationId: opts.conversationId,
-          agentType: opts.agentType,
-          userMessageId: opts.userMessageId,
-        }),
-        runId,
-        reason: interruptedReason,
-      });
+      return session.finalizeInterrupted(interruptedReason);
     }
-    return finalizeSubagentError({
-      opts,
-      runEvents: createRunEventRecorder({
-        store: opts.store,
-        runId,
-        conversationId: opts.conversationId,
-        agentType: opts.agentType,
-        userMessageId: opts.userMessageId,
-      }),
-      runId,
-      error,
-    });
+    return session.finalizeError(error);
   }
 };
 

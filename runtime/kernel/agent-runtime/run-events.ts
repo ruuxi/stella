@@ -6,7 +6,11 @@ import {
 import type { AgentEvent, AgentMessage } from "../agent-core/types.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
-import type { HookEventMap } from "../extensions/types.js";
+import type {
+  HookEvent,
+  HookEventMap,
+  HookRuntimeContext,
+} from "../extensions/types.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { extractAssistantText, getToolResultPreview, now } from "./shared.js";
@@ -354,18 +358,39 @@ export const createRunEventRecorder = ({
   };
 };
 
-const emitHook = <E extends "turn_start" | "turn_end">(
+const emitHook = <E extends HookEvent>(
   hookEmitter: HookEmitter | undefined,
   event: E,
   payload: HookEventMap[E]["payload"],
-  agentType: string,
+  filterContext: { tool?: string; agentType?: string },
 ) => {
   if (!hookEmitter) {
     return;
   }
 
-  void hookEmitter.emit(event, payload, { agentType }).catch(() => undefined);
+  void hookEmitter.emit(event, payload, filterContext).catch(() => undefined);
 };
+
+/**
+ * Build the common runtime context block injected into hook payloads.
+ *
+ * Centralized so every hook emission inside the run loop carries a consistent
+ * shape (conversationId, threadKey, runId, isUserTurn, uiVisibility) without
+ * each call site reconstructing it. Hooks that don't care can ignore the
+ * extras; hooks that do care don't have to root around for them.
+ */
+const buildHookRuntimeContext = (args: {
+  conversationId?: string;
+  threadKey?: string;
+  runId: string;
+  uiVisibility?: "visible" | "hidden";
+}): HookRuntimeContext => ({
+  ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+  ...(args.threadKey ? { threadKey: args.threadKey } : {}),
+  runId: args.runId,
+  ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
+  isUserTurn: args.uiVisibility !== "hidden",
+});
 
 const extractToolUpdateStatusText = (
   event: Extract<AgentEvent, { type: "tool_execution_update" }>,
@@ -397,6 +422,8 @@ export const subscribeRuntimeAgentEvents = ({
   hookEmitter,
   threadStore,
   threadKey,
+  conversationId,
+  uiVisibility,
 }: {
   agent: RuntimeAgentLike;
   runId: string;
@@ -408,60 +435,110 @@ export const subscribeRuntimeAgentEvents = ({
   hookEmitter?: HookEmitter;
   threadStore?: RuntimeStore;
   threadKey?: string;
+  conversationId?: string;
+  uiVisibility?: "visible" | "hidden";
 }) => {
+  // Stable run-level fields shared by every hook payload from this subscription.
+  const hookContext = buildHookRuntimeContext({
+    ...(conversationId ? { conversationId } : {}),
+    ...(threadKey ? { threadKey } : {}),
+    runId,
+    ...(uiVisibility ? { uiVisibility } : {}),
+  });
+  const hookFilter = { agentType };
+
   return agent.subscribe((event) => {
-    if (event.type === "message_start" && event.message.role === "user") {
-      const runStartedEvent = recorder.recordQueuedUserMessageStart();
-      if (runStartedEvent) {
-        callbacks?.onRunStarted?.(runStartedEvent);
-      }
-    }
-
-    if (event.type === "message_end" && threadStore && threadKey) {
-      const payload = toPersistedThreadPayload(event.message);
-      if (payload && payload.role !== "user") {
-        persistThreadPayloadMessage(threadStore, {
-          threadKey,
-          payload,
-        });
-      }
-    }
-
-    if (event.type === "message_end" && event.message.role === "assistant") {
-      const assistantMessageEvent = recorder.recordAssistantMessageEnd(event.message);
-      if (assistantMessageEvent) {
-        callbacks?.onAssistantMessage?.(assistantMessageEvent);
-      }
-    }
-
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "text_delta"
-    ) {
-      const chunk = event.assistantMessageEvent.delta;
-      if (!chunk) {
-        return;
-      }
-      const streamEvent = recorder.recordStream(chunk);
-      onProgress?.(chunk);
-      callbacks?.onStream?.(streamEvent);
+    if (event.type === "agent_start") {
+      emitHook(
+        hookEmitter,
+        "agent_start",
+        { ...hookContext, agentType },
+        hookFilter,
+      );
       return;
     }
 
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "thinking_delta"
-    ) {
-      // Provider thinking/reasoning blocks are persisted on the assistant message
-      // so same-provider replay can preserve signatures, but they are not
-      // user-facing chat content.
+    if (event.type === "message_start") {
+      // Keep queued user-message ids consistent between recorder and hooks.
+      if (event.message.role === "user") {
+        const runStartedEvent = recorder.recordQueuedUserMessageStart();
+        if (runStartedEvent) {
+          callbacks?.onRunStarted?.(runStartedEvent);
+        }
+      }
+      emitHook(
+        hookEmitter,
+        "message_start",
+        { ...hookContext, agentType, message: event.message },
+        hookFilter,
+      );
       return;
     }
 
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "thinking_end"
-    ) {
+    if (event.type === "message_end") {
+      if (threadStore && threadKey) {
+        const payload = toPersistedThreadPayload(event.message);
+        if (payload && payload.role !== "user") {
+          persistThreadPayloadMessage(threadStore, {
+            threadKey,
+            payload,
+          });
+        }
+      }
+
+      if (event.message.role === "assistant") {
+        const assistantMessageEvent = recorder.recordAssistantMessageEnd(
+          event.message,
+        );
+        if (assistantMessageEvent) {
+          callbacks?.onAssistantMessage?.(assistantMessageEvent);
+        }
+      }
+
+      // Observation-only; this fires after persistence and cannot replace the message.
+      emitHook(
+        hookEmitter,
+        "message_end",
+        { ...hookContext, agentType, message: event.message },
+        hookFilter,
+      );
+      return;
+    }
+
+    if (event.type === "message_update") {
+      // Recorder + IPC receive deltas before hooks observe the normalized update.
+      if (event.assistantMessageEvent.type === "text_delta") {
+        const chunk = event.assistantMessageEvent.delta;
+        if (chunk) {
+          const streamEvent = recorder.recordStream(chunk);
+          onProgress?.(chunk);
+          callbacks?.onStream?.(streamEvent);
+        }
+      } else if (event.assistantMessageEvent.type === "thinking_delta") {
+        // Reasoning deltas stream to the per-agent reasoning section, not chat text.
+        const chunk = event.assistantMessageEvent.delta;
+        if (chunk) {
+          const reasoningEvent = recorder.recordReasoning(chunk);
+          callbacks?.onReasoning?.(reasoningEvent);
+        }
+      } else if (event.assistantMessageEvent.type === "thinking_end") {
+        // Persisted on the assistant message; no user-facing event.
+      }
+
+      // Avoid per-token hook payload work when no hook consumes message updates.
+      if (hookEmitter && hookEmitter.has("message_update")) {
+        emitHook(
+          hookEmitter,
+          "message_update",
+          {
+            ...hookContext,
+            agentType,
+            message: event.message,
+            assistantMessageEvent: event.assistantMessageEvent,
+          },
+          hookFilter,
+        );
+      }
       return;
     }
 
@@ -483,6 +560,18 @@ export const subscribeRuntimeAgentEvents = ({
         toolArgs: (event.args as Record<string, unknown>) ?? {},
       });
       callbacks?.onToolStart?.(toolStartEvent);
+      emitHook(
+        hookEmitter,
+        "tool_execution_start",
+        {
+          ...hookContext,
+          agentType,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          args: (event.args as Record<string, unknown>) ?? {},
+        },
+        { agentType, tool: event.toolName },
+      );
       return;
     }
 
@@ -500,15 +589,40 @@ export const subscribeRuntimeAgentEvents = ({
         resultPreview: toolEndEvent.resultPreview.slice(0, 200),
       });
       callbacks?.onToolEnd?.(toolEndEvent);
+      emitHook(
+        hookEmitter,
+        "tool_execution_end",
+        {
+          ...hookContext,
+          agentType,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          result: event.result,
+          isError: event.isError,
+        },
+        { agentType, tool: event.toolName },
+      );
       return;
     }
 
     if (event.type === "tool_execution_update") {
       const statusText = extractToolUpdateStatusText(event);
-      if (!statusText) {
-        return;
+      if (statusText) {
+        callbacks?.onStatus?.(recorder.recordStatus(statusText));
       }
-      callbacks?.onStatus?.(recorder.recordStatus(statusText));
+      emitHook(
+        hookEmitter,
+        "tool_execution_update",
+        {
+          ...hookContext,
+          agentType,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          args: (event.args as Record<string, unknown>) ?? {},
+          partialResult: event.partialResult,
+        },
+        { agentType, tool: event.toolName },
+      );
       return;
     }
 
@@ -517,10 +631,11 @@ export const subscribeRuntimeAgentEvents = ({
         hookEmitter,
         "turn_start",
         {
+          ...hookContext,
           agentType,
           messageCount: agent.state.messages.length,
         },
-        agentType,
+        hookFilter,
       );
       return;
     }
@@ -533,8 +648,8 @@ export const subscribeRuntimeAgentEvents = ({
       emitHook(
         hookEmitter,
         "turn_end",
-        { agentType, assistantText: turnText },
-        agentType,
+        { ...hookContext, agentType, assistantText: turnText },
+        hookFilter,
       );
     }
   });

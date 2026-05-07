@@ -10,20 +10,13 @@
  */
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
-import type { ToolContext, ToolDefinition, ToolResult } from "../types.js";
-
-const requireUserFacingAgent = (
-  toolName: string,
-  context: ToolContext,
-): ToolResult | null =>
-  context.agentType === AGENT_IDS.ORCHESTRATOR
-    ? null
-    : {
-        error: `${toolName} is only available to the orchestrator.`,
-      };
+import type { ToolDefinition } from "../types.js";
 
 export const askQuestionTool: ToolDefinition = {
   name: "askQuestion",
+  // Orchestrator-only: catalog filter + executeTool dispatcher in
+  // `tools/host.ts` enforce this declaratively.
+  agentTypes: [AGENT_IDS.ORCHESTRATOR],
   description:
     "Ask the user one or more multiple-choice questions inline in the chat. Use when you need a quick decision the user can make by tapping an option. Renders a fade-in questions tray bubble.",
   parameters: {
@@ -68,10 +61,7 @@ export const askQuestionTool: ToolDefinition = {
     },
     required: ["questions"],
   },
-  execute: async (args, context) => {
-    const denied = requireUserFacingAgent("askQuestion", context);
-    if (denied) return denied;
-
+  execute: async (args) => {
     const rawQuestions = Array.isArray(args.questions) ? args.questions : null;
     if (!rawQuestions || rawQuestions.length === 0) {
       return {
