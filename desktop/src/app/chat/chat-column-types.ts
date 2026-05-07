@@ -67,6 +67,10 @@ export type ChatColumnScroll = {
   showScrollButton: boolean
   /** True when the user is at (or within ~1px of) the newest-content edge. */
   isAtBottom: boolean
+  /** True when close enough to the bottom that auto-follow affordances apply. */
+  isNearBottom: boolean
+  /** Reads the live list geometry, avoiding one-render-late scroll state. */
+  getIsNearBottom: () => boolean
   scrollToBottom: (behavior?: 'instant' | 'smooth') => void
   thumbState: ChatColumnThumbState
 }

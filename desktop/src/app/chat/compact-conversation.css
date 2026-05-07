@@ -31,7 +31,18 @@
  * it needs to be a true flex slot inside `.chat-viewport-region` so the
  * list can claim a definite height. The Store panel keeps the original
  * `min-height: 100%` flow because its messages render flat (no list).
+ *
+ * `.chat-viewport-region` is a non-flex block in compact surfaces (the
+ * full chat puts the LegendList directly inside it, so it never needed
+ * to be a flex column). Make it a flex column here so the surface child
+ * gets a definite height; otherwise the LegendList's `height: 100%`
+ * collapses to 0 and the sidebar can't scroll.
  */
+.chat-viewport-region:has(> .chat-conversation-surface) {
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-viewport-region > .chat-conversation-surface {
   flex: 1;
   min-height: 0;

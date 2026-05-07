@@ -5,7 +5,7 @@
  * and mounts the shared `<ChatTimeline>`. Renders the Google Workspace
  * connect card outside the timeline data — it's a local-chat-only
  * affordance — but threads it into `extraTail` so it lives inside the
- * same Legend List footer as the inline working indicator.
+ * same Legend List footer as the conversation content.
  */
 import {
   memo,
@@ -27,7 +27,6 @@ import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCar
 import { GrowIn } from "@/app/chat/GrowIn";
 import { useEventRows } from "./use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
-import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
 import {
@@ -51,13 +50,6 @@ type Props = {
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
-  /**
-   * Inline working-indicator inputs. Forwarded to `ChatTimeline` which
-   * mounts the indicator inside the list footer. The indicator handles
-   * its own hold + grow-out exit when `active` flips false, so this
-   * prop is always defined.
-   */
-  indicator?: InlineWorkingIndicatorMountProps;
   /** Threaded through to `<ChatTimeline>` → `<LegendList>`. */
   listRef?: RefObject<LegendListRef | null>;
   onListScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -109,7 +101,6 @@ export const ConversationEvents = memo(function ConversationEvents({
   isLoadingOlder,
   isLoadingHistory,
   onOpenAttachment,
-  indicator,
   listRef,
   onListScroll,
   onStartReached,
@@ -165,7 +156,6 @@ export const ConversationEvents = memo(function ConversationEvents({
       isLoadingOlder={isLoadingOlder}
       isLoadingHistory={isLoadingHistory}
       onOpenAttachment={onOpenAttachment}
-      indicator={indicator}
       queuedUserMessages={queuedUserMessages}
       listRef={listRef}
       onListScroll={onListScroll}

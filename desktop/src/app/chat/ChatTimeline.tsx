@@ -4,7 +4,7 @@
  * Renders the chat as a virtualized list using `@legendapp/list/react`
  * (Legend List v3 web entry). Both the home full chat and the sidebar
  * mount this same component — they only differ in the props they pass
- * (rows, indicator, listRef from their own scroll-management instance)
+ * (rows, listRef from their own scroll-management instance)
  * and the surface-level CSS that wraps the list.
  *
  * Virtualization rules of thumb that this surface honors:
@@ -17,11 +17,9 @@
  *    the row's component instance are reused (no remount, no flash).
  *  - `maintainVisibleContentPosition` replaces the prior column-reverse
  *    + manual `captureResizeAnchor`/`restoreResizeAnchor` dance.
- *  - `maintainScrollAtEnd` keeps the user pinned to the bottom while
- *    the streaming row grows line-by-line. The active tail is rendered
- *    as one synthetic list item so its `.event-row-region--tail`
- *    min-height preserves the pre-virtualization "latest user message +
- *    following assistant rows + indicator" floor.
+ *  - The active tail is rendered as one synthetic list item so its
+ *    `.event-row-region--tail` min-height preserves the pre-virtualization
+ *    "latest user message + following assistant rows" floor.
  *  - `onStartReached` triggers older-history pagination.
  *
  * Empty / loading-history states render outside the list, matching the
@@ -33,9 +31,7 @@ import {
   Fragment,
   memo,
   useCallback,
-  useEffect,
   useMemo,
-  useRef,
   type CSSProperties,
   type RefObject,
 } from "react";
@@ -54,10 +50,6 @@ import {
 } from "@/app/chat/MessageRow";
 import type { Attachment } from "@/app/chat/lib/event-transforms";
 import type { AskQuestionState } from "@/app/chat/AskQuestionBubble";
-import {
-  InlineWorkingIndicator,
-  type InlineWorkingIndicatorMountProps,
-} from "./InlineWorkingIndicator";
 import { ComposerQueuedMessages } from "./ComposerQueuedMessages";
 import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
 
@@ -82,14 +74,6 @@ type ChatTimelineProps = {
    */
   extraTail?: React.ReactNode;
   onOpenAttachment?: (attachment: Attachment) => void;
-  /**
-   * Inline working indicator inputs. The indicator is always mounted
-   * inside the active tail region — when there's no active work the
-   * parent passes `active: false` and the indicator plays its hold +
-   * grow-out exit before unmounting itself. Mounting it unconditionally
-   * is what keeps the exit animation from being skipped.
-   */
-  indicator?: InlineWorkingIndicatorMountProps;
   queuedUserMessages?: QueuedUserMessage[];
   /**
    * Ref to the underlying Legend List instance. Surfaces (full chat,
@@ -169,7 +153,6 @@ export const ChatTimeline = memo(function ChatTimeline({
   emptyState,
   extraTail,
   onOpenAttachment,
-  indicator,
   queuedUserMessages,
   listRef,
   onListScroll,
@@ -202,18 +185,6 @@ export const ChatTimeline = memo(function ChatTimeline({
     return items;
   }, [hasTailItem, olderRows, tailRows]);
 
-  let lastAssistantTailIndex = -1;
-  let lastAssistantTailRow: EventRowViewModel | null = null;
-  for (let i = tailRows.length - 1; i >= 0; i -= 1) {
-    if (tailRows[i].kind === "assistant") {
-      lastAssistantTailIndex = i;
-      lastAssistantTailRow = tailRows[i];
-      break;
-    }
-  }
-  const indicatorKey = lastAssistantTailRow
-    ? `indicator:${lastAssistantTailRow.id}`
-    : "indicator-tail";
   const renderQueuedMessages = () => (
     <ComposerQueuedMessages
       key="queued-user-messages"
@@ -229,64 +200,22 @@ export const ChatTimeline = memo(function ChatTimeline({
 
       return (
         <div className="event-row-region event-row-region--tail">
-          {item.rows.flatMap((row, index) => {
-            const node = (
-              <Fragment key={row.id}>{renderRow(row, onOpenAttachment)}</Fragment>
-            );
-            if (indicator && index === lastAssistantTailIndex) {
-              return [
-                node,
-                <InlineWorkingIndicator key={indicatorKey} {...indicator} />,
-                renderQueuedMessages(),
-              ];
-            }
-            return [node];
-          })}
+          {item.rows.map((row) => (
+            <Fragment key={row.id}>{renderRow(row, onOpenAttachment)}</Fragment>
+          ))}
           {pendingAskQuestion && (
             <PendingAskQuestionRow payload={pendingAskQuestion} />
           )}
-          {indicator && lastAssistantTailIndex < 0 && (
-            <InlineWorkingIndicator key={indicatorKey} {...indicator} />
-          )}
-          {(!indicator || lastAssistantTailIndex < 0) && renderQueuedMessages()}
+          {renderQueuedMessages()}
         </div>
       );
     },
     [
-      indicator,
-      indicatorKey,
-      lastAssistantTailIndex,
       onOpenAttachment,
       pendingAskQuestion,
       queuedUserMessages,
     ],
   );
-
-  /**
-   * Initial-scroll fallback. `initialScrollAtEnd` can abort during
-   * bootstrap when row sizes diverge sharply from `estimatedItemSize`
-   * (Legend logs "bootstrap initial scroll aborted after exceeding
-   * convergence bounds"). When that happens the list renders rows at
-   * `scrollTop: 0` even though the user expects to be at the bottom.
-   *
-   * Defense in depth: when the row count first becomes non-zero, force
-   * a single `scrollToEnd({ animated: false })`. Also re-snap when the
-   * row count climbs (new history loads, first-paint of an existing
-   * thread). The host owns conversation-change snapping, so we only
-   * react to first-content arrival here.
-   */
-  const hasContentRef = useRef(false);
-  useEffect(() => {
-    if (rows.length === 0) {
-      hasContentRef.current = false;
-      return;
-    }
-    if (hasContentRef.current) return;
-    hasContentRef.current = true;
-    const list = listRef?.current;
-    if (!list) return;
-    void list.scrollToEnd({ animated: false });
-  }, [listRef, rows.length]);
 
   const keyExtractor = useCallback((item: TimelineListItem) => item.id, []);
 
@@ -345,15 +274,6 @@ export const ChatTimeline = memo(function ChatTimeline({
       recycleItems={recycleItems}
       alignItemsAtEnd={alignItemsAtEnd}
       maintainVisibleContentPosition
-      maintainScrollAtEnd={{ animated: false }}
-      // Treat "at end" as essentially-touching-the-bottom (~2% of the
-      // viewport, ≈16px on the full chat). At Legend's default of 0.1
-      // any scroll-up within ~80px of the bottom is still considered
-      // "at end", so the next streaming-token / layout-change event
-      // snaps the user back and fights manual scrolling. A small
-      // threshold lets the user scroll up freely while still keeping
-      // the bottom pinned during real streaming.
-      maintainScrollAtEndThreshold={0.02}
       initialScrollAtEnd
       onScroll={onListScroll}
       onStartReached={onStartReached}

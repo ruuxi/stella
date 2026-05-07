@@ -1,14 +1,9 @@
-import { useMemo } from "react";
 import { cn } from "@/shared/lib/utils";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
-import { getCurrentRunningTool } from "./lib/event-transforms";
-import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
-import { useFooterTasks } from "./hooks/use-footer-tasks";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
 import type { ChatColumnScroll } from "@/app/chat/chat-column-types";
 import { ConversationEvents } from "./ConversationEvents";
-import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import "./full-shell.chat.css";
 import "./compact-conversation.css";
 
@@ -57,38 +52,16 @@ export function CompactConversationSurface({
   maxItems,
   streamingText,
   isStreaming,
-  runtimeStatusText,
   pendingUserMessageId,
   queuedUserMessages,
   optimisticUserMessageIds,
   selfModMap,
-  liveTasks,
   hasOlderEvents,
   isLoadingOlder,
   isLoadingHistory,
   showConversation = true,
   estimatedItemSize = 96,
 }: CompactConversationSurfaceProps) {
-  const appSessionStartedAtMs = useAgentSessionStartedAt();
-  const runningTool = useMemo(() => getCurrentRunningTool(events), [events]);
-  const footerTasks = useFooterTasks({
-    events,
-    liveTasks,
-    appSessionStartedAtMs,
-  });
-  const hasActiveWork =
-    footerTasks.length > 0 ||
-    Boolean(isStreaming) ||
-    Boolean(runtimeStatusText);
-  const indicatorProps: InlineWorkingIndicatorMountProps = {
-    active: hasActiveWork,
-    tasks: footerTasks,
-    runningTool: runningTool?.tool,
-    runningToolId: runningTool?.id,
-    isStreaming,
-    status: runtimeStatusText,
-  };
-
   return (
     <div
       className={cn(
@@ -116,7 +89,6 @@ export function CompactConversationSurface({
             hasOlderEvents={hasOlderEvents}
             isLoadingOlder={isLoadingOlder}
             isLoadingHistory={isLoadingHistory}
-            indicator={indicatorProps}
             listRef={scroll.listRef}
             onListScroll={scroll.onListScroll}
             onStartReached={scroll.onStartReached}

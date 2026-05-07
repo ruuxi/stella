@@ -189,6 +189,7 @@ export const ChatColumn = memo(function ChatColumn({
       conversationId={conversationId}
       onSend={composer.onSend}
       onStop={composer.onStop}
+      indicator={indicatorProps}
     />
   );
 
@@ -215,9 +216,7 @@ export const ChatColumn = memo(function ChatColumn({
   return (
     <div className="full-body-main" {...dropHandlers}>
       <DropOverlay visible={isDragOver} variant="surface" />
-      {/* Viewport region: list + overlays (custom scrollbar, scroll-to-bottom).
-          The working indicator renders in the list footer (below the latest
-          assistant text), not as a floating overlay. */}
+      {/* Viewport region: list + overlays (custom scrollbar, scroll-to-bottom). */}
       <div className="chat-viewport-region">
         <ConversationEvents
           events={conversation.events}
@@ -231,7 +230,6 @@ export const ChatColumn = memo(function ChatColumn({
           hasOlderEvents={conversation.history.hasOlderEvents}
           isLoadingOlder={conversation.history.isLoadingOlder}
           isLoadingHistory={conversation.history.isInitialLoading}
-          indicator={indicatorProps}
           listRef={listRef}
           onListScroll={onListScroll}
           onStartReached={scroll.onStartReached}

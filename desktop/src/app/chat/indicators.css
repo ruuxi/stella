@@ -87,6 +87,20 @@
   /* Mount + cross-turn fade-in. Same easing family as `SwapText` so the
    * label transitions and the indicator entrance read as one motion. */
   animation: inline-indicator-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Anchor to the viewport bottom once the assistant message grows past
+   * the viewport. Without this, the indicator's natural slot sits at
+   * the very bottom of scroll content; every new streamed line would
+   * push that slot down by ~one line, then Legend's
+   * `maintainScrollAtEnd` rAF-deferred scroll would pull it back, and
+   * the indicator visibly bobbed each frame. Sticky pins it relative
+   * to the viewport instead, so the rAF scroll lag is invisible. The
+   * `bottom: 56px` matches the `.session-content` bottom mask fade so
+   * the indicator sits just above the fade region. While the assistant
+   * is short enough that the indicator's natural slot is above this
+   * line, sticky is inert — the indicator flows normally. */
+  position: sticky;
+  bottom: 56px;
+  z-index: 1;
 }
 
 .chat-viewport-region--sidebar .inline-working-indicator,
@@ -95,6 +109,10 @@
   /* Compact-pill height in the sidebar/mini/orb, matching the smaller
    * `--compact-chat-item-padding` density. */
   min-height: 30px;
+  /* Compact surfaces have a tighter bottom inset; the chat viewport
+   * isn't masked the same way, so a smaller stick offset reads as
+   * tucked-in rather than floating. */
+  bottom: 24px;
 }
 
 /* Once the inner content has been removed (post grow-out), the wrapper
