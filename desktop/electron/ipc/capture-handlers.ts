@@ -143,12 +143,9 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     return image.toDataURL();
   });
 
-  // Composer "+ menu" entry point. Mirrors the radial dial's "capture" wedge
-  // (minimize → overlay → merge into chatContext → restore), with one
-  // intentional divergence: cancel still restores the window, because the
-  // user came from inside Stella and bailing should hand them back the chat
-  // they were typing in. The radial path leaves the window down because the
-  // user invoked it from outside the app.
+  // Composer "+ menu" entry point. Mirrors the radial dial's "capture" wedge:
+  // minimize, run the overlay, merge any capture, then restore the Stella
+  // window to its pre-capture visibility/focus state when capture is cancelled.
   ipcMain.handle("capture:beginRegionCapture", async (event) => {
     if (!options.assertPrivilegedSender(event, "capture:beginRegionCapture")) {
       throw new Error("Blocked untrusted request.");
@@ -159,13 +156,19 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
 
     const wm = options.windowManager;
     const targetWindowMode = wm.getLastFocusedWindowMode();
+    const targetWindowWasVisible = wm.isShellWindowVisible(targetWindowMode);
+    const targetWindowWasFocused = wm.isShellWindowFocused(targetWindowMode);
     wm.minimizeWindow();
 
     const result = await options.captureService.startRegionCapture();
 
     options.captureService.mergeRegionCaptureResult(result);
 
-    wm.showWindow(targetWindowMode);
+    if (result !== null || targetWindowWasFocused) {
+      wm.showWindow(targetWindowMode);
+    } else if (targetWindowWasVisible) {
+      wm.restoreWindowVisibility(targetWindowMode);
+    }
 
     return result === null
       ? ({ cancelled: true } as const)

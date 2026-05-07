@@ -368,6 +368,16 @@ export class WindowManager {
     return this.getFocusedShellWindow() !== null
   }
 
+  isShellWindowVisible(mode: ShellWindowMode) {
+    const window = this.getShellWindow(mode)
+    return Boolean(window && !window.isDestroyed() && window.isVisible())
+  }
+
+  isShellWindowFocused(mode: ShellWindowMode) {
+    const window = this.getShellWindow(mode)
+    return Boolean(window && !window.isDestroyed() && window.isFocused())
+  }
+
   isFullWindowMacFullscreen() {
     if (process.platform !== 'darwin') {
       return false
@@ -657,6 +667,27 @@ export class WindowManager {
 
   restoreFullSize() {
     this.showWindow('full')
+  }
+
+  restoreWindowVisibility(target: ShellWindowMode) {
+    const window = this.getShellWindow(target)
+    if (!window || window.isDestroyed()) return
+
+    if (target === 'mini') {
+      this.cancelMiniIdleDestroy()
+      if (process.platform === 'darwin') {
+        window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+        window.setAlwaysOnTop(this.miniAlwaysOnTop, 'screen-saver')
+      }
+    }
+
+    if (window.isMinimized()) {
+      window.restore()
+    }
+    if (!window.isVisible()) {
+      window.showInactive()
+    }
+    this.setLastActiveWindowMode(target)
   }
 
   private focusAndRaise(window: BrowserWindow, mode: ShellWindowMode) {
