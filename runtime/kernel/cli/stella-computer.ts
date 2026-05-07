@@ -228,7 +228,7 @@ Notes:
   - snapshots are also cached per target under sessions/<session>/targets/<target>/last-snapshot.json so one session can retain multiple apps
   - snapshot captures a window screenshot by default; pass --no-screenshot to skip it
   - --all-windows enumerates every accessibility window the app advertises (default: focused only)
-  - menu bar items render as compact name-only entries; submenu contents are intentionally omitted to keep the snapshot small (drive visible UI via screenshot pixels with click-screenshot instead)
+  - menu bar items are intentionally omitted from snapshots so app-window automation does not open global menus by mistake
   - successful actions refresh the numbered snapshot state and the attached screenshot automatically
   - screenshots are auto-attached inline (base64 PNG); pass --no-inline-screenshot to keep only the file path
   - the agent runtime detects "[stella-attach-image]" markers in output and attaches the image as vision input on the next turn
@@ -516,6 +516,16 @@ const resetAutomationDaemonFiles = (sessionPaths: SessionPaths) => {
   fs.rmSync(automationSocketPath(sessionPaths), { force: true });
 };
 
+const helperNewerThanDaemon = (helperPath: string, pidPath: string) => {
+  try {
+    const helperMtimeMs = fs.statSync(helperPath).mtimeMs;
+    const pidFileMtimeMs = fs.statSync(pidPath).mtimeMs;
+    return helperMtimeMs > pidFileMtimeMs + 500;
+  } catch {
+    return false;
+  }
+};
+
 const filteredAutomationDaemonEnv = () =>
   Object.fromEntries(
     Object.entries(process.env).filter(
@@ -527,20 +537,23 @@ const filteredAutomationDaemonEnv = () =>
 const ensureAutomationDaemon = async (sessionPaths: SessionPaths) => {
   const pidPath = automationPidPath(sessionPaths);
   const socketPath = automationSocketPath(sessionPaths);
+  const helperPath = resolveNativeHelperPath("desktop_automation");
+  if (!helperPath) {
+    return false;
+  }
   const existingPid = readPidFile(pidPath);
   if (existingPid && pidIsRunning(existingPid) && fs.existsSync(socketPath)) {
-    return true;
+    if (!helperNewerThanDaemon(helperPath, pidPath)) {
+      return true;
+    }
+    killDetachedProcess(existingPid);
+    resetAutomationDaemonFiles(sessionPaths);
   }
   if (existingPid && pidIsRunning(existingPid) && !fs.existsSync(socketPath)) {
     killDetachedProcess(existingPid);
   }
   resetAutomationDaemonFiles(sessionPaths);
   fs.mkdirSync(automationSocketsDir(), { recursive: true });
-
-  const helperPath = resolveNativeHelperPath("desktop_automation");
-  if (!helperPath) {
-    return false;
-  }
 
   const child = spawn(
     helperPath,
@@ -754,6 +767,9 @@ const BUTTON_SUBROLE_LABELS: Record<string, string> = {
 
 const formatUrlLike = (value: string) => value.replace(/^https?:\/\//, "");
 
+const escapeMarkdownLinkText = (value: string) =>
+  value.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+
 const humanActionName = (action: string) => {
   const trimmed = action.startsWith("AX") ? action.slice(2) : action;
   return trimmed.replace(/([a-z])([A-Z])/g, "$1 $2");
@@ -860,6 +876,16 @@ const choosePrimaryLabel = (node: SnapshotNode) => {
   return null;
 };
 
+const primaryLabelForLine = (node: SnapshotNode, primaryLabel: string | null) => {
+  if (node.role !== "AXLink" || !node.url || !primaryLabel) {
+    return primaryLabel;
+  }
+  if (primaryLabel === node.url) {
+    return primaryLabel;
+  }
+  return `[${escapeMarkdownLinkText(primaryLabel)}](${node.url})`;
+};
+
 const annotationSegment = (node: SnapshotNode) => {
   const flags: string[] = [];
   if (node.enabled === false) flags.push("disabled");
@@ -916,29 +942,21 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
       ? String(node.index)
       : (node.ref ?? "_");
 
-  // Compact menu-bar item rendering: name-only, no recursion into the menu
-  // tree. The full submenu structure (Apple > Recent Items, every File
-  // submenu, every Help search entry) balloons snapshots into the megabytes
-  // for zero benefit — the visible UI is always reachable via the inline
-  // screenshot's pixel coordinates with `click-screenshot`.
+  // Menu bar items are globally positioned app chrome, not the target window
+  // content. Hiding them prevents the agent from opening menus while trying
+  // to act on visible app UI.
   if (node.role === "AXMenuBarItem") {
-    const label = choosePrimaryLabel(node);
-    // Hide the universal Apple menu (About This Mac, System Settings, Sleep,
-    // Restart, Shut Down, ...). It's identical across every macOS app and
-    // any user request that needs it would be expressed via system-level
-    // controls or shortcuts, not as a per-app target. Codex hides it too.
-    if (label === "Apple") {
-      return [];
-    }
-    return [`${indent}${id}${annotationSegment(node)}${label ? ` ${truncate(label, 120)}` : ""}`];
+    return [];
   }
 
   const role = humanRole(node);
-  const primaryLabel = choosePrimaryLabel(node);
+  const rawPrimaryLabel = choosePrimaryLabel(node);
+  const primaryLabel = primaryLabelForLine(node, rawPrimaryLabel);
   const extras: string[] = [];
 
   if (
     node.description &&
+    node.description !== rawPrimaryLabel &&
     node.description !== primaryLabel &&
     (node.role === "AXLink" ||
       node.role === "AXCheckBox" ||
@@ -957,7 +975,7 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
   }
 
   const renderedValue = displayValue(node);
-  if (renderedValue && renderedValue !== primaryLabel) {
+  if (renderedValue && renderedValue !== rawPrimaryLabel && renderedValue !== primaryLabel) {
     extras.push(`Value: ${truncate(renderedValue, 120)}`);
   }
 
@@ -971,6 +989,7 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
 
   if (
     node.identifier &&
+    node.identifier !== rawPrimaryLabel &&
     node.identifier !== primaryLabel &&
     node.identifier !== node.description &&
     node.identifier !== node.value &&
@@ -981,7 +1000,9 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
 
   if (node.url) {
     const renderedUrl = truncate(formatUrlLike(node.url), 100);
-    if (node.role === "AXLink" && !renderedValue) {
+    if (node.role === "AXLink" && primaryLabel !== rawPrimaryLabel) {
+      // The markdown link already carries the destination.
+    } else if (node.role === "AXLink" && !renderedValue) {
       extras.push(`Value: ${renderedUrl}`);
     } else {
       extras.push(`URL: ${renderedUrl}`);
@@ -994,6 +1015,7 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
   // doesn't already carry a typed value to display.
   if (
     node.placeholder &&
+    node.placeholder !== rawPrimaryLabel &&
     node.placeholder !== primaryLabel &&
     node.placeholder !== node.description &&
     node.placeholder !== renderedValue &&
@@ -1199,11 +1221,9 @@ const formatListApps = (payload: ListAppsPayload) => {
   const visible = payload.apps.filter((app) =>
     LISTED_ACTIVATION_POLICIES.has(app.activationPolicy),
   );
-  // Match Codex's desktop automation order: most-used first, ties broken by name. Active
-  // app no longer needs to float — it's marked with `[running, active]`
-  // and the model can scan for it. Sorting by usage gives the model a
-  // useful prior for which app it should reach for.
+  // Put the user's current app first, then keep the usage prior for the rest.
   visible.sort((a, b) => {
+    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
     const usesA = a.useCount ?? -1;
     const usesB = b.useCount ?? -1;
     if (usesA !== usesB) return usesB - usesA;
@@ -1216,7 +1236,7 @@ const formatListApps = (payload: ListAppsPayload) => {
       flags.push("running");
     }
     if (app.isActive) {
-      flags.push("active");
+      flags.push("frontmost");
     }
     if (app.lastUsedDate) {
       flags.push(`last-used=${app.lastUsedDate}`);
