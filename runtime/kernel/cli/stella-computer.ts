@@ -189,7 +189,7 @@ const automationDaemonStartupBudgetMs = 1_500;
 // 30s covers heavy AppKit apps (Mail with thousands of messages, Notes with
 // large note bodies, Music with full library indexed) where the AX walk
 // reaches the maxNodes cap of 1500 before the daemon can return. Lighter
-// apps (Spotify, Notes empty) finish in 1–3s. Codex's MCP also runs ~10s
+// apps (Spotify, Notes empty) finish in 1–3s. Codex's desktop automation also runs ~10s
 // for a busy Mail snapshot and ~3s for everything else.
 const automationDaemonRequestTimeoutMs = 30_000;
 const sessionPruneIntervalMs = 24 * 60 * 60 * 1000;
@@ -1037,7 +1037,7 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
       line += `, ${extras.join(", ")}`;
     }
   } else if (extras.length > 0) {
-    // Match Codex's macOS computer-use MCP: when there's no primary label,
+    // Match Codex's macOS computer-use: when there's no primary label,
     // extras hang directly off the role with a single space, no comma. The
     // extras among themselves are still ", "-joined.
     line += ` ${extras.join(", ")}`;
@@ -1189,7 +1189,7 @@ const formatAction = (payload: ActionPayload, snapshot: SnapshotDocument | null)
   printWarnings(payload.warnings);
 };
 
-// Codex's macOS computer-use MCP returns only "regular" (user-launchable)
+// Codex's macOS computer-use returns only "regular" (user-launchable)
 // apps. macOS exposes ~30 accessory/background helper apps (Spotlight,
 // LoginWindow, WindowManager, every Cursor renderer helper) that pollute
 // the list and have no addressable UI for the agent. Hide them.
@@ -1199,7 +1199,7 @@ const formatListApps = (payload: ListAppsPayload) => {
   const visible = payload.apps.filter((app) =>
     LISTED_ACTIVATION_POLICIES.has(app.activationPolicy),
   );
-  // Match Codex's MCP order: most-used first, ties broken by name. Active
+  // Match Codex's desktop automation order: most-used first, ties broken by name. Active
   // app no longer needs to float — it's marked with `[running, active]`
   // and the model can scan for it. Sorting by usage gives the model a
   // useful prior for which app it should reach for.

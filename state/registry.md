@@ -16,7 +16,8 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 - Browser automation: [stella-browser](skills/stella-browser/SKILL.md)
 - Office documents: [stella-office](skills/stella-office/SKILL.md)
-- macOS desktop app automation: [computer-use](skills/computer-use/SKILL.md) through the deferred `MCP` tool; `computer_list_apps` is available directly for quick app checks
+- Desktop app automation: [computer-use](skills/computer-use/SKILL.md) through the `stella-computer` CLI
+- Connected services: [stella-connect](skills/stella-connect/SKILL.md) through the `stella-connect` CLI
 - Electron app control: [electron](skills/electron/SKILL.md)
 - Modify Stella's own desktop app: [stella-desktop](skills/stella-desktop/SKILL.md)
 - User profile and context: [user-profile](skills/user-profile/SKILL.md)
@@ -34,7 +35,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 ## Tools
 
-The General agent uses a codex-style tool pack: `exec_command`, `write_stdin`, provider-selected file editing (`apply_patch` for OpenAI-authored models, `Write`/`Edit` for other models), `web`, `RequestCredential`, `MCP`, `multi_tool_use_parallel`, `view_image`, and `computer_list_apps`. Internal specialist agents still use narrower tools like `Read`, `Grep`, `Dream`, `image_gen`, and scheduling surfaces when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large.
+The General agent uses a codex-style tool pack: `exec_command`, `write_stdin`, provider-selected file editing (`apply_patch` for OpenAI-authored models, `Write`/`Edit` for other models), `web`, `RequestCredential`, `multi_tool_use_parallel`, and `view_image`. Stella CLIs such as `stella-browser`, `stella-office`, `stella-computer`, and `stella-connect` are injected into the shell. Internal specialist agents still use narrower tools like `Read`, `Grep`, `Dream`, `image_gen`, and scheduling surfaces when allowed. The runtime inlines a full skill catalog while `state/skills/` stays small, then falls back to automatic Explore discovery when the catalog grows too large.
 
 ## Dream
 

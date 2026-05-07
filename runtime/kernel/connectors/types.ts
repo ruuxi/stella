@@ -1,10 +1,10 @@
-export type McpTransport = "stdio" | "streamable_http";
+export type ConnectorCommandTransport = "stdio" | "streamable_http";
 
-export type McpServerConfig = {
+export type ConnectorCommandConfig = {
   id: string;
   displayName: string;
   description?: string;
-  transport: McpTransport;
+  transport: ConnectorCommandTransport;
   command?: string;
   args?: string[];
   cwd?: string;
@@ -48,7 +48,7 @@ export type StellaConnectorRecord = {
   marketplaceKey: string;
   category?: string;
   appIds: string[];
-  mcpServers: string[];
+  commandConnectors: string[];
   officialSource?: string;
   integrationPath?: string;
   auth?: string;
@@ -57,13 +57,13 @@ export type StellaConnectorRecord = {
   configFields?: ConnectorConfigField[];
   status:
     | "local"
-    | "official-mcp"
+    | "official-cli"
     | "official-api"
     | "implemented";
   installed: boolean;
 };
 
-export type McpToolInfo = {
+export type ConnectorToolInfo = {
   name: string;
   title?: string;
   description?: string;
@@ -71,7 +71,7 @@ export type McpToolInfo = {
   annotations?: Record<string, unknown>;
 };
 
-export type McpCallResult = {
+export type ConnectorToolCallResult = {
   content?: unknown[];
   structuredContent?: unknown;
   isError?: boolean;

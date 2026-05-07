@@ -162,6 +162,7 @@ export type ToolHostOptions = {
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
+  stellaConnectCliPath?: string;
   agentApi?: AgentToolApi;
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;

@@ -4,7 +4,7 @@
  * Nine sibling tools that drive the user's apps through the `stella-computer`
  * CLI. macOS uses Accessibility + ScreenCaptureKit; Windows uses UI
  * Automation first with Win32 window-message fallbacks. Surface
- * mirrors the upstream computer-use MCP shape so model skill transfers 1:1:
+ * mirrors the upstream computer-use command shape so model skill transfers 1:1:
  * `computer_list_apps`, `computer_get_app_state`, `computer_click`,
  * `computer_drag`, `computer_perform_secondary_action`, `computer_press_key`,
  * `computer_scroll`, `computer_set_value`, `computer_type_text`.

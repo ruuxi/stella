@@ -1,4 +1,4 @@
-import { loadMcpAccessToken } from "./oauth.js";
+import { loadConnectorAccessToken } from "./oauth.js";
 import type { ApiConnectorConfig } from "./types.js";
 
 const buildAuthHeader = async (
@@ -6,7 +6,7 @@ const buildAuthHeader = async (
   api: ApiConnectorConfig,
 ) => {
   if (!api.auth || api.auth.type === "none") return {};
-  const token = await loadMcpAccessToken(stellaRoot, api.auth.tokenKey);
+  const token = await loadConnectorAccessToken(stellaRoot, api.auth.tokenKey);
   if (!token) {
     throw new Error(`${api.displayName} is not connected. Add its credential in Store Connect first.`);
   }

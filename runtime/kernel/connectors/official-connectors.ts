@@ -1,14 +1,14 @@
-import type { ApiConnectorConfig, ConnectorConfigField, McpServerConfig } from "./types.js";
+import type { ApiConnectorConfig, ConnectorConfigField, ConnectorCommandConfig } from "./types.js";
 
 export type OfficialConnectorDefinition = {
   marketplaceKey: string;
   displayName: string;
-  status: "official-mcp" | "official-api";
+  status: "official-cli" | "official-api";
   officialSource?: string;
   integrationPath?: string;
   auth?: string;
   configFields?: ConnectorConfigField[];
-  servers?: McpServerConfig[];
+  commands?: ConnectorCommandConfig[];
   apis?: ApiConnectorConfig[];
   notes?: string;
 };
@@ -17,7 +17,7 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
   {
     marketplaceKey: "alpaca",
     displayName: "Alpaca",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.alpaca.markets/docs/alpaca-mcp-server",
     integrationPath: "Official local/self-hosted MCP server",
     auth: "Alpaca Trading API keys",
@@ -27,7 +27,7 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
     ],
     notes:
       "Remote hosting is not yet available from Alpaca; Stella should run the official server locally or point at a user-hosted endpoint.",
-    servers: [
+    commands: [
       {
         id: "alpaca",
         displayName: "Alpaca",
@@ -50,11 +50,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "amplitude",
     displayName: "Amplitude",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://amplitude.com/docs/amplitude-ai/amplitude-mcp",
     integrationPath: "Official remote MCP server",
     auth: "OAuth",
-    servers: [
+    commands: [
       {
         id: "amplitude-us",
         displayName: "Amplitude",
@@ -84,12 +84,12 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "atlassian-rovo",
     displayName: "Atlassian Rovo",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource:
       "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/",
     integrationPath: "Official remote MCP server",
     auth: "OAuth 2.1 or admin-enabled API token",
-    servers: [
+    commands: [
       {
         id: "atlassian-rovo",
         displayName: "Atlassian Rovo",
@@ -108,11 +108,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "attio",
     displayName: "Attio",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.attio.com/mcp/overview",
     integrationPath: "Official remote MCP server",
     auth: "OAuth",
-    servers: [
+    commands: [
       {
         id: "attio",
         displayName: "Attio",
@@ -151,12 +151,12 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "biorender",
     displayName: "BioRender",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource:
       "https://help.biorender.com/hc/en-gb/articles/30870978672157-How-to-use-the-BioRender-MCP-connector",
     integrationPath: "Official remote MCP server",
     auth: "OAuth",
-    servers: [
+    commands: [
       {
         id: "biorender",
         displayName: "BioRender",
@@ -175,11 +175,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "box",
     displayName: "Box",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://developer.box.com/guides/box-mcp/remote/",
     integrationPath: "Official remote MCP server",
     auth: "OAuth",
-    servers: [
+    commands: [
       {
         id: "box",
         displayName: "Box",
@@ -197,11 +197,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "brand24",
     displayName: "Brand24",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://help.brand24.com/en/articles/13011375-brand24-mcp",
     integrationPath: "Official remote MCP server",
     auth: "OAuth",
-    servers: [
+    commands: [
       {
         id: "brand24",
         displayName: "Brand24",
@@ -219,11 +219,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "canva",
     displayName: "Canva",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://www.canva.dev/docs/mcp/",
     integrationPath: "Official remote MCP server",
     auth: "OAuth with Dynamic Client Registration; redirect URI allowlist required",
-    servers: [
+    commands: [
       {
         id: "canva",
         displayName: "Canva",
@@ -241,11 +241,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "circleback",
     displayName: "Circleback",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://support.circleback.ai/en/articles/13249081-circleback-mcp",
     integrationPath: "Official remote MCP server",
     auth: "OAuth with Dynamic Client Registration",
-    servers: [
+    commands: [
       {
         id: "circleback",
         displayName: "Circleback",
@@ -263,11 +263,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "clickup",
     displayName: "ClickUp",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://developer.clickup.com/docs/connect-an-ai-assistant-to-clickups-mcp-server-1",
     integrationPath: "Official remote MCP server",
     auth: "OAuth",
-    servers: [
+    commands: [
       {
         id: "clickup",
         displayName: "ClickUp",
@@ -285,12 +285,12 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "cloudflare",
     displayName: "Cloudflare",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource:
       "https://developers.cloudflare.com/agents/model-context-protocol/mcp-servers-for-cloudflare/",
     integrationPath: "Official remote MCP server",
     auth: "OAuth or Cloudflare API token",
-    servers: [
+    commands: [
       {
         id: "cloudflare-api",
         displayName: "Cloudflare API",
@@ -309,11 +309,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "cloudinary",
     displayName: "Cloudinary",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://cloudinary.com/documentation/cloudinary_llm_mcp",
     integrationPath: "Official remote MCP servers",
     auth: "OAuth or Cloudinary API credentials via headers",
-    servers: [
+    commands: [
       {
         id: "cloudinary-asset-mgmt",
         displayName: "Cloudinary Asset Management",
@@ -367,11 +367,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "common-room",
     displayName: "Common Room",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://www.commonroom.io/docs/using-common-room/mcp-server/",
     integrationPath: "Official remote MCP server",
     auth: "OAuth 2.1",
-    servers: [
+    commands: [
       {
         id: "common-room",
         displayName: "Common Room",
@@ -389,14 +389,14 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "conductor",
     displayName: "Conductor",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.conductor.is/usage/mcp",
     integrationPath: "Official local MCP server",
     auth: "Conductor secret key",
     configFields: [
       { key: "CONDUCTOR_SECRET_KEY", label: "Conductor secret key", secret: true },
     ],
-    servers: [
+    commands: [
       {
         id: "conductor",
         displayName: "Conductor",
@@ -418,14 +418,14 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "coupler-io",
     displayName: "Coupler.io",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://www.coupler.io/mcp",
     integrationPath: "Official MCP; server URL is configured inside Coupler.io",
     auth: "Coupler.io account and personal access token",
     configFields: [
       { key: "COUPLER_MCP_URL", label: "Coupler.io MCP URL", placeholder: "https://..." },
     ],
-    servers: [
+    commands: [
       {
         id: "coupler-io",
         displayName: "Coupler.io",
@@ -443,11 +443,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "coveo",
     displayName: "Coveo",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.coveo.com/en/q1mb0212/",
     integrationPath: "Official hosted MCP server",
     auth: "OAuth or anonymous API key",
-    servers: [
+    commands: [
       {
         id: "coveo",
         displayName: "Coveo",
@@ -465,14 +465,14 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "cube",
     displayName: "Cube",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://cube.dev/docs/product/apis-integrations/mcp-server",
     integrationPath: "Official tenant remote MCP server",
     auth: "OAuth with tenant-specific endpoint",
     configFields: [
       { key: "CUBE_MCP_URL", label: "Cube MCP URL", placeholder: "https://<host>/api/mcp" },
     ],
-    servers: [
+    commands: [
       {
         id: "cube",
         displayName: "Cube",
@@ -490,11 +490,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "daloopa",
     displayName: "Daloopa",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.daloopa.com/docs/daloopa-mcp",
     integrationPath: "Official remote MCP server",
     auth: "OAuth",
-    servers: [
+    commands: [
       {
         id: "daloopa",
         displayName: "Daloopa",
@@ -512,11 +512,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "domotz-preview",
     displayName: "Domotz (Preview)",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://help.domotz.com/integrations/domotz-mcp-server-setup/",
     integrationPath: "Official remote MCP server",
     auth: "Domotz account; beta access required",
-    servers: [
+    commands: [
       {
         id: "domotz-prod",
         displayName: "Domotz",
@@ -534,11 +534,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "dovetail",
     displayName: "Dovetail",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://developers.dovetail.com/docs/mcp",
     integrationPath: "Official hosted MCP server",
     auth: "OAuth or Dovetail API token",
-    servers: [
+    commands: [
       {
         id: "dovetail",
         displayName: "Dovetail",
@@ -556,12 +556,12 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "egnyte",
     displayName: "Egnyte",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource:
       "https://helpdesk.egnyte.com/hc/en-us/articles/43305899030797-Egnyte-Remote-MCP-Server-Overview",
     integrationPath: "Official remote MCP server",
     auth: "Egnyte OAuth 2.0",
-    servers: [
+    commands: [
       {
         id: "egnyte",
         displayName: "Egnyte",
@@ -580,12 +580,12 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "figma",
     displayName: "Figma",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource:
       "https://help.figma.com/hc/en-us/articles/32132100833559-Guide-to-the-Dev-Mode-MCP-Server",
     integrationPath: "Official Figma Dev Mode local MCP server",
     auth: "Figma Desktop app, paid Dev or Full seat for desktop server",
-    servers: [
+    commands: [
       {
         id: "figma-dev-mode",
         displayName: "Figma Dev Mode",
@@ -604,11 +604,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "github",
     displayName: "GitHub",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.github.com/en/copilot/concepts/context/copilot-extensions",
     integrationPath: "Official remote GitHub MCP server",
     auth: "GitHub OAuth/Copilot auth",
-    servers: [
+    commands: [
       {
         id: "github",
         displayName: "GitHub",
@@ -683,11 +683,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "granola",
     displayName: "Granola",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.granola.ai/help-center/sharing/integrations/mcp",
     integrationPath: "Official remote MCP server",
     auth: "Granola browser OAuth 2.0 with DCR",
-    servers: [
+    commands: [
       {
         id: "granola",
         displayName: "Granola",
@@ -705,11 +705,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "fireflies",
     displayName: "Fireflies",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.fireflies.ai/mcp-tools/overview",
     integrationPath: "Official remote MCP server",
     auth: "OAuth or Fireflies API key",
-    servers: [
+    commands: [
       {
         id: "fireflies",
         displayName: "Fireflies",
@@ -738,11 +738,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "hubspot",
     displayName: "HubSpot",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://developers.hubspot.com/mcp",
     integrationPath: "Official remote MCP plus official local Developer MCP via HubSpot CLI",
     auth: "HubSpot OAuth; local CLI auth for Developer MCP",
-    servers: [
+    commands: [
       {
         id: "hubspot",
         displayName: "HubSpot",
@@ -794,11 +794,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "highlevel",
     displayName: "HighLevel",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://marketplace.gohighlevel.com/docs/other/mcp/index.html",
     integrationPath: "Official remote MCP server",
     auth: "HighLevel Private Integration Token plus optional locationId",
-    servers: [
+    commands: [
       {
         id: "highlevel",
         displayName: "HighLevel",
@@ -820,14 +820,14 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "hostinger",
     displayName: "Hostinger",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://support.hostinger.com/en/articles/11079316-hostinger-api-mcp-server",
     integrationPath: "Official local MCP server via hostinger-api-mcp",
     auth: "Hostinger API token",
     configFields: [
       { key: "HOSTINGER_API_TOKEN", label: "Hostinger API token", secret: true },
     ],
-    servers: [
+    commands: [
       {
         id: "hostinger",
         displayName: "Hostinger",
@@ -849,11 +849,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "hugging-face",
     displayName: "Hugging Face",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://huggingface.co/docs/hub/agents-mcp",
     integrationPath: "Official hosted MCP server",
     auth: "Hugging Face account/OAuth from MCP settings",
-    servers: [
+    commands: [
       {
         id: "hugging-face",
         displayName: "Hugging Face",
@@ -871,11 +871,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "jam",
     displayName: "Jam",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://jam.dev/docs/debug-a-jam/mcp",
     integrationPath: "Official remote MCP server",
     auth: "Jam OAuth",
-    servers: [
+    commands: [
       {
         id: "jam",
         displayName: "Jam",
@@ -893,11 +893,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "linear",
     displayName: "Linear",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://linear.app/docs/mcp",
     integrationPath: "Official remote MCP server",
     auth: "OAuth",
-    servers: [
+    commands: [
       {
         id: "linear",
         displayName: "Linear",
@@ -915,11 +915,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "monday-com",
     displayName: "Monday.com",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://support.monday.com/hc/en-us/articles/29491651933074-Connect-monday-MCP-with-ChatGPT",
     integrationPath: "Official hosted MCP server",
     auth: "monday.com OAuth; workspace MCP app install required",
-    servers: [
+    commands: [
       {
         id: "monday-com",
         displayName: "Monday.com",
@@ -938,11 +938,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "mem",
     displayName: "Mem",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.mem.ai/mcp/setup",
     integrationPath: "Official remote MCP server",
     auth: "Mem OAuth",
-    servers: [
+    commands: [
       {
         id: "mem",
         displayName: "Mem",
@@ -960,11 +960,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "motherduck",
     displayName: "MotherDuck",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://motherduck.com/docs/sql-reference/mcp/",
     integrationPath: "Official remote MCP server",
     auth: "MotherDuck OAuth",
-    servers: [
+    commands: [
       {
         id: "motherduck",
         displayName: "MotherDuck",
@@ -982,11 +982,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "neon-postgres",
     displayName: "Neon Postgres",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://mcp.neon.tech/",
     integrationPath: "Official remote MCP server",
     auth: "OAuth/API key via Neon",
-    servers: [
+    commands: [
       {
         id: "neon-postgres",
         displayName: "Neon Postgres",
@@ -1004,11 +1004,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "notion",
     displayName: "Notion",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://developers.notion.com/docs/get-started-with-mcp",
     integrationPath: "Official hosted MCP server",
     auth: "OAuth",
-    servers: [
+    commands: [
       {
         id: "notion",
         displayName: "Notion",
@@ -1026,11 +1026,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "netlify",
     displayName: "Netlify",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.netlify.com/build/build-with-ai/netlify-mcp-server/",
     integrationPath: "Official local MCP server via @netlify/mcp",
     auth: "Netlify CLI login or NETLIFY_PERSONAL_ACCESS_TOKEN",
-    servers: [
+    commands: [
       {
         id: "netlify",
         displayName: "Netlify",
@@ -1084,7 +1084,7 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "omni-analytics",
     displayName: "Omni Analytics",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs-legacy.omni.co/docs/ai/mcp",
     integrationPath: "Official tenant-scoped MCP: `https://<YOUR-OMNI-INSTANCE>/mcp/https`",
     auth: "Omni API key plus model/topic headers",
@@ -1092,7 +1092,7 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
       { key: "OMNI_MCP_URL", label: "Omni MCP URL", placeholder: "https://<instance>/mcp/https" },
       { key: "OMNI_API_KEY", label: "Omni API key", secret: true },
     ],
-    servers: [
+    commands: [
       {
         id: "omni-analytics",
         displayName: "Omni Analytics",
@@ -1113,11 +1113,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "otter-ai",
     displayName: "Otter.ai",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://help.otter.ai/hc/en-us/articles/35287607569687-Otter-MCP-Server",
     integrationPath: "Official remote MCP server",
     auth: "Otter OAuth",
-    servers: [
+    commands: [
       {
         id: "otter-ai",
         displayName: "Otter.ai",
@@ -1216,11 +1216,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "quicknode",
     displayName: "Quicknode",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://www.quicknode.com/docs/build-with-ai/quicknode-mcp",
     integrationPath: "Official remote MCP server",
     auth: "Quicknode OAuth 2.1 or API key bearer token",
-    servers: [
+    commands: [
       {
         id: "quicknode",
         displayName: "Quicknode",
@@ -1238,11 +1238,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "razorpay",
     displayName: "Razorpay",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://razorpay.com/docs/mcp-server/remote/",
     integrationPath: "Official remote MCP server",
     auth: "Razorpay API key/secret as Basic authorization or OAuth",
-    servers: [
+    commands: [
       {
         id: "razorpay",
         displayName: "Razorpay",
@@ -1287,11 +1287,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "read-ai",
     displayName: "Read AI",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://support.read.ai/hc/en-us/articles/49381158409491",
     integrationPath: "Official remote MCP server",
     auth: "Read AI OAuth 2.1",
-    servers: [
+    commands: [
       {
         id: "read-ai",
         displayName: "Read AI",
@@ -1309,11 +1309,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "readwise",
     displayName: "Readwise",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.readwise.io/tools/mcp",
     integrationPath: "Official remote MCP server",
     auth: "Readwise OAuth",
-    servers: [
+    commands: [
       {
         id: "readwise",
         displayName: "Readwise",
@@ -1331,12 +1331,12 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "responsive",
     displayName: "Responsive",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource:
       "https://help.responsive.io/en-US/responsive/article/duV3ckq5-connecting-responsive-mcp-server-to-generative-ai-tools",
     integrationPath: "Official remote MCP server",
     auth: "Responsive login/OAuth; API tokens for REST API",
-    servers: [
+    commands: [
       {
         id: "responsive",
         displayName: "Responsive",
@@ -1355,11 +1355,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "semrush",
     displayName: "Semrush",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://developer.semrush.com/api/introduction/semrush-mcp/",
     integrationPath: "Official remote MCP server",
     auth: "Semrush OAuth 2.1 or API key",
-    servers: [
+    commands: [
       {
         id: "semrush",
         displayName: "Semrush",
@@ -1377,11 +1377,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "slack",
     displayName: "Slack",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.slack.dev/ai/slack-mcp-server/",
     integrationPath: "Official remote MCP server",
     auth: "Slack confidential OAuth app credentials",
-    servers: [
+    commands: [
       {
         id: "slack",
         displayName: "Slack",
@@ -1420,11 +1420,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "skywatch",
     displayName: "SkyWatch",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.skywatch.com/docs/",
     integrationPath: "Official remote MCP server plus REST API",
     auth: "SkyWatch API key in x-api-key header",
-    servers: [
+    commands: [
       {
         id: "skywatch",
         displayName: "SkyWatch",
@@ -1446,11 +1446,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "statsig",
     displayName: "Statsig",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://www.statsig.com/blog/statsig-mcp-server-guide",
     integrationPath: "Official remote MCP server",
     auth: "Statsig OAuth",
-    servers: [
+    commands: [
       {
         id: "statsig",
         displayName: "Statsig",
@@ -1468,11 +1468,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "stripe",
     displayName: "Stripe",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.stripe.com/mcp",
     integrationPath: "Official remote MCP server",
     auth: "OAuth or Stripe API key bearer token",
-    servers: [
+    commands: [
       {
         id: "stripe",
         displayName: "Stripe",
@@ -1529,11 +1529,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "teamwork-com",
     displayName: "Teamwork.com",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://github.com/Teamwork/mcp",
     integrationPath: "Official Teamwork.com MCP server",
     auth: "Teamwork bearer token or OAuth2",
-    servers: [
+    commands: [
       {
         id: "teamwork-com",
         displayName: "Teamwork.com",
@@ -1551,11 +1551,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "vercel",
     displayName: "Vercel",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://vercel.com/docs/mcp/vercel-mcp",
     integrationPath: "Official remote MCP server",
     auth: "Vercel OAuth",
-    servers: [
+    commands: [
       {
         id: "vercel",
         displayName: "Vercel",
@@ -1573,11 +1573,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "vantage",
     displayName: "Vantage",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.vantage.sh/vantage_mcp",
     integrationPath: "Official remote MCP server plus self-hosted option",
     auth: "Vantage OAuth",
-    servers: [
+    commands: [
       {
         id: "vantage",
         displayName: "Vantage",
@@ -1595,11 +1595,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "windsor-ai",
     displayName: "Windsor.ai",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://learn.microsoft.com/en-us/connectors/windsorai/",
     integrationPath: "Official Windsor.ai MCP server connector",
     auth: "Windsor.ai OAuth 2.0",
-    servers: [
+    commands: [
       {
         id: "windsor-ai",
         displayName: "Windsor.ai",
@@ -1617,11 +1617,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "yepcode",
     displayName: "YepCode",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://yepcode.io/docs/mcp-server/",
     integrationPath: "Official hosted MCP server plus self-hosted option",
     auth: "YepCode OAuth or API token",
-    servers: [
+    commands: [
       {
         id: "yepcode",
         displayName: "YepCode",
@@ -1639,13 +1639,13 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "build-ios-apps",
     displayName: "Build iOS Apps",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://www.xcodebuildmcp.com/",
     integrationPath: "Open-source local MCP server for Xcode automation",
     auth: "Local Xcode/macOS permissions; no service OAuth",
     notes:
       "Use the provider-neutral XcodeBuildMCP package directly instead of any Codex-branded marketplace wrapper.",
-    servers: [
+    commands: [
       {
         id: "xcodebuildmcp",
         displayName: "XcodeBuildMCP",
@@ -1687,11 +1687,11 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "marcopolo",
     displayName: "MarcoPolo",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://docs.marcopolo.dev/",
     integrationPath: "Official remote MCP server",
     auth: "OAuth with dynamic discovery",
-    servers: [
+    commands: [
       {
         id: "marcopolo",
         displayName: "MarcoPolo",
@@ -1759,7 +1759,7 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
 {
     marketplaceKey: "particl-market-research",
     displayName: "Particl Market Research",
-    status: "official-mcp",
+    status: "official-cli",
     officialSource: "https://www.particl.com/docs/mcp/data-privacy",
     integrationPath: "Official Particl MCP connector",
     auth: "Particl account",
@@ -1769,7 +1769,7 @@ export const OFFICIAL_CONNECTOR_DEFINITIONS: OfficialConnectorDefinition[] = [
     ],
     notes:
       "Particl publishes MCP data-privacy documentation for its market research connector; endpoint is resolved by provider/client setup.",
-    servers: [
+    commands: [
       {
         id: "particl-market-research",
         displayName: "Particl Market Research",

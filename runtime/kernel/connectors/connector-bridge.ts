@@ -2,8 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import readline from "node:readline";
 
-import { loadMcpAccessToken } from "./oauth.js";
-import type { McpCallResult, McpServerConfig, McpToolInfo } from "./types.js";
+import { loadConnectorAccessToken } from "./oauth.js";
+import type { ConnectorToolCallResult, ConnectorCommandConfig, ConnectorToolInfo } from "./types.js";
 
 type RpcMessage = {
   jsonrpc?: "2.0";
@@ -48,20 +48,20 @@ const replaceSecretPlaceholders = async (stellaRoot: string, value: string) => {
   let cursor = 0;
   for (const match of value.matchAll(/\$\{([a-zA-Z0-9_.-]+)\}/gu)) {
     parts.push(value.slice(cursor, match.index));
-    parts.push((await loadMcpAccessToken(stellaRoot, match[1])) ?? match[0]);
+    parts.push((await loadConnectorAccessToken(stellaRoot, match[1])) ?? match[0]);
     cursor = match.index + match[0].length;
   }
   parts.push(value.slice(cursor));
   return parts.join("");
 };
 
-class HttpMcpSession {
+class HttpConnectorBridgeSession {
   private sessionId: string | null = null;
   private initialized = false;
 
   constructor(
     private readonly stellaRoot: string,
-    private readonly server: McpServerConfig,
+    private readonly server: ConnectorCommandConfig,
   ) {}
 
   private async headers() {
@@ -70,7 +70,7 @@ class HttpMcpSession {
       "content-type": "application/json",
       ...(this.server.headers ?? {}),
     };
-    const token = await loadMcpAccessToken(this.stellaRoot, this.server.auth?.tokenKey);
+    const token = await loadConnectorAccessToken(this.stellaRoot, this.server.auth?.tokenKey);
     if (token) {
       const scheme = this.server.auth?.scheme ?? "bearer";
       const value =
@@ -113,7 +113,7 @@ class HttpMcpSession {
     if (responseSessionId) this.sessionId = responseSessionId;
     const text = await response.text();
     if (!response.ok) {
-      throw new Error(`${this.server.displayName} MCP request failed (${response.status}): ${text.slice(0, 500)}`);
+      throw new Error(`${this.server.displayName} connector request failed (${response.status}): ${text.slice(0, 500)}`);
     }
     const contentType = response.headers.get("content-type") ?? "";
     const messages = contentType.includes("text/event-stream")
@@ -160,20 +160,20 @@ class HttpMcpSession {
     this.initialized = true;
   }
 
-  async listTools(): Promise<McpToolInfo[]> {
+  async listTools(): Promise<ConnectorToolInfo[]> {
     await this.initialize();
     const result = await this.request("tools/list");
     const tools = (result as { tools?: unknown[] })?.tools;
-    return Array.isArray(tools) ? (tools as McpToolInfo[]) : [];
+    return Array.isArray(tools) ? (tools as ConnectorToolInfo[]) : [];
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<McpCallResult> {
+  async callTool(name: string, args: Record<string, unknown>): Promise<ConnectorToolCallResult> {
     await this.initialize();
     const result = await this.request("tools/call", {
       name,
       arguments: args,
     });
-    return result as McpCallResult;
+    return result as ConnectorToolCallResult;
   }
 
   close() {
@@ -182,7 +182,7 @@ class HttpMcpSession {
   }
 }
 
-class StdioMcpSession {
+class StdioConnectorBridgeSession {
   private child: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
   private pending = new Map<string, {
@@ -193,7 +193,7 @@ class StdioMcpSession {
 
   constructor(
     private readonly stellaRoot: string,
-    private readonly server: McpServerConfig,
+    private readonly server: ConnectorCommandConfig,
   ) {}
 
   private async start() {
@@ -210,7 +210,7 @@ class StdioMcpSession {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child.stderr.on("data", () => {
-      // Drain diagnostics so verbose MCP servers cannot block on a full pipe.
+      // Drain diagnostics so verbose connector commands cannot block on a full pipe.
     });
     this.child.on("exit", () => {
       for (const pending of this.pending.values()) {
@@ -241,7 +241,7 @@ class StdioMcpSession {
       if (!pending) return;
       this.pending.delete(String(message.id));
       if (message.error) {
-        pending.reject(new Error(message.error.message ?? "MCP request failed."));
+        pending.reject(new Error(message.error.message ?? "connector request failed."));
       } else {
         pending.resolve(message.result);
       }
@@ -289,20 +289,20 @@ class StdioMcpSession {
     this.initialized = true;
   }
 
-  async listTools(): Promise<McpToolInfo[]> {
+  async listTools(): Promise<ConnectorToolInfo[]> {
     await this.initialize();
     const result = await this.request("tools/list");
     const tools = (result as { tools?: unknown[] })?.tools;
-    return Array.isArray(tools) ? (tools as McpToolInfo[]) : [];
+    return Array.isArray(tools) ? (tools as ConnectorToolInfo[]) : [];
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<McpCallResult> {
+  async callTool(name: string, args: Record<string, unknown>): Promise<ConnectorToolCallResult> {
     await this.initialize();
     const result = await this.request("tools/call", {
       name,
       arguments: args,
     });
-    return result as McpCallResult;
+    return result as ConnectorToolCallResult;
   }
 
   close() {
@@ -316,33 +316,33 @@ class StdioMcpSession {
   }
 }
 
-const sessions = new Map<string, HttpMcpSession | StdioMcpSession>();
+const sessions = new Map<string, HttpConnectorBridgeSession | StdioConnectorBridgeSession>();
 
-const getSession = (stellaRoot: string, server: McpServerConfig) => {
+const getSession = (stellaRoot: string, server: ConnectorCommandConfig) => {
   const key = `${stellaRoot}:${server.id}`;
   const existing = sessions.get(key);
   if (existing) return existing;
   const session =
     server.transport === "stdio"
-      ? new StdioMcpSession(stellaRoot, server)
-      : new HttpMcpSession(stellaRoot, server);
+      ? new StdioConnectorBridgeSession(stellaRoot, server)
+      : new HttpConnectorBridgeSession(stellaRoot, server);
   sessions.set(key, session);
   return session;
 };
 
-export const listMcpServerTools = async (
+export const listConnectorBridgeTools = async (
   stellaRoot: string,
-  server: McpServerConfig,
+  server: ConnectorCommandConfig,
 ) => getSession(stellaRoot, server).listTools();
 
-export const callMcpServerTool = async (
+export const callConnectorBridgeTool = async (
   stellaRoot: string,
-  server: McpServerConfig,
+  server: ConnectorCommandConfig,
   toolName: string,
   args: Record<string, unknown>,
 ) => getSession(stellaRoot, server).callTool(toolName, args);
 
-export const closeMcpServerSessions = (
+export const closeConnectorBridgeSessions = (
   stellaRoot: string,
   serverIds: Iterable<string>,
 ) => {

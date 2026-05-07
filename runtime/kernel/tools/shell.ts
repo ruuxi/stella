@@ -38,6 +38,7 @@ export type ShellState = {
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
+  stellaConnectCliPath?: string;
   lastDeferredDeleteSweepAt: number;
 };
 
@@ -45,6 +46,7 @@ type ShellStateOptions = {
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
+  stellaConnectCliPath?: string;
 };
 
 type ManagedShellRecord = ShellRecord & {
@@ -449,6 +451,7 @@ export function createShellState(
     stellaBrowserBinPath: options?.stellaBrowserBinPath,
     stellaOfficeBinPath: options?.stellaOfficeBinPath,
     stellaComputerCliPath: options?.stellaComputerCliPath,
+    stellaConnectCliPath: options?.stellaConnectCliPath,
     lastDeferredDeleteSweepAt: 0,
   };
 }
@@ -481,6 +484,7 @@ const buildProtectedCommand = (
     stellaBrowserBinPath?: string;
     stellaOfficeBinPath?: string;
     stellaComputerCliPath?: string;
+    stellaConnectCliPath?: string;
   },
 ) => {
   if (!deferredDeleteHelperPath) {
@@ -497,6 +501,10 @@ const buildProtectedCommand = (
   const stellaComputerCli =
     options?.stellaComputerCliPath && existsSync(options.stellaComputerCliPath)
       ? options.stellaComputerCliPath
+      : "";
+  const stellaConnectCli =
+    options?.stellaConnectCliPath && existsSync(options.stellaConnectCliPath)
+      ? options.stellaConnectCliPath
       : "";
 
   // Dynamically detect python-like invocations (python, python3, python3.11, py, etc.)
@@ -579,8 +587,9 @@ pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
 ${stellaBrowserBin ? `stella-browser() { "$STELLA_NODE_BIN" "$STELLA_BROWSER_BIN" "$@"; }` : ""}
 ${stellaOfficeBin ? `stella-office() { "$STELLA_NODE_BIN" "$STELLA_OFFICE_BIN" "$@"; }` : ""}
 ${stellaComputerCli ? `stella-computer() { "$STELLA_NODE_BIN" "$STELLA_COMPUTER_CLI" "$@"; }` : ""}
+${stellaConnectCli ? `stella-connect() { "$STELLA_NODE_BIN" "$STELLA_CONNECT_CLI" "$@"; }` : ""}
 ${pythonFuncs}
-export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${pythonExports} >/dev/null 2>&1 || true
+export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${stellaConnectCli ? " stella-connect" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
@@ -668,6 +677,7 @@ const buildShellEnv = (
     stellaBrowserBinPath?: string;
     stellaOfficeBinPath?: string;
     stellaComputerCliPath?: string;
+    stellaConnectCliPath?: string;
   },
 ) => {
   const mergedEnv = {
@@ -685,6 +695,9 @@ const buildShellEnv = (
       : {}),
     ...(options?.stellaComputerCliPath
       ? { STELLA_COMPUTER_CLI: options.stellaComputerCliPath }
+      : {}),
+    ...(options?.stellaConnectCliPath
+      ? { STELLA_CONNECT_CLI: options.stellaConnectCliPath }
       : {}),
   };
 

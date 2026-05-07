@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { getOfficialConnector, OFFICIAL_CONNECTOR_DEFINITIONS, type OfficialConnectorDefinition } from "./official-connectors.js";
-import type { ApiConnectorConfig, ConnectorConfigField, McpServerConfig, StellaConnectorRecord } from "./types.js";
+import type { ApiConnectorConfig, ConnectorConfigField, ConnectorCommandConfig, StellaConnectorRecord } from "./types.js";
 
 const safeName = (value: string) => {
   const name = value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
@@ -47,14 +47,14 @@ const getInterpolationConfig = (
   );
 };
 
-export const getMcpStateRoot = (stellaRoot: string) =>
-  path.join(stellaRoot, "state", "mcp");
+export const getConnectorStateRoot = (stellaRoot: string) =>
+  path.join(stellaRoot, "state", "connectors");
 
-export const getConfiguredServersPath = (stellaRoot: string) =>
-  path.join(getMcpStateRoot(stellaRoot), "servers.json");
+export const getConfiguredCommandsPath = (stellaRoot: string) =>
+  path.join(getConnectorStateRoot(stellaRoot), "commands.json");
 
 export const getConfiguredApiConnectorsPath = (stellaRoot: string) =>
-  path.join(getMcpStateRoot(stellaRoot), "api-connectors.json");
+  path.join(getConnectorStateRoot(stellaRoot), "api-connectors.json");
 
 const getCodexMarketplaceRoot = () =>
   process.env.STELLA_CONNECT_PLUGIN_MARKETPLACE_ROOT ??
@@ -91,19 +91,19 @@ const listLocalMarketplaceEntries = async (): Promise<StellaConnectorRecord[]> =
     const appConfig = await readJson<{ apps?: Record<string, { id?: string }> }>(
       path.join(sourcePath, ".app.json"),
     );
-    const mcpConfig = await readJson<{ mcpServers?: Record<string, unknown> } | Record<string, unknown>>(
+    const sourceConnectorConfig = await readJson<{ mcpServers?: Record<string, unknown> } | Record<string, unknown>>(
       path.join(sourcePath, ".mcp.json"),
     );
 
     const appIds = Object.values(appConfig?.apps ?? {})
       .map((entry) => entry?.id)
       .filter((id): id is string => typeof id === "string");
-    const mcpServers = Object.keys(
-      ((mcpConfig as { mcpServers?: Record<string, unknown> } | null)?.mcpServers ??
-        mcpConfig ??
+    const commandConnectors = Object.keys(
+      ((sourceConnectorConfig as { mcpServers?: Record<string, unknown> } | null)?.mcpServers ??
+        sourceConnectorConfig ??
         {}) as Record<string, unknown>,
     );
-    if (appIds.length === 0 && mcpServers.length === 0) continue;
+    if (appIds.length === 0 && commandConnectors.length === 0) continue;
 
     const interfaceData = manifest?.interface as Record<string, unknown> | undefined;
     const displayName =
@@ -111,7 +111,7 @@ const listLocalMarketplaceEntries = async (): Promise<StellaConnectorRecord[]> =
       (typeof manifest?.name === "string" && manifest.name) ||
       key;
     const official = getOfficialConnector(key);
-    const executable = Boolean(official?.servers?.length || official?.apis?.length);
+    const executable = Boolean(official?.commands?.length || official?.apis?.length);
     const requiresCredential = official
       ? officialConnectorRequiresCredentialInput(official)
       : false;
@@ -128,7 +128,7 @@ const listLocalMarketplaceEntries = async (): Promise<StellaConnectorRecord[]> =
         (typeof interfaceData?.category === "string" && interfaceData.category) ||
         undefined,
       appIds,
-      mcpServers,
+      commandConnectors,
       officialSource: official?.officialSource,
       integrationPath: official?.integrationPath,
       auth: official?.auth,
@@ -149,13 +149,13 @@ const listLocalMarketplaceEntries = async (): Promise<StellaConnectorRecord[]> =
 export const listStellaConnectors = async (
   stellaRoot: string,
 ): Promise<StellaConnectorRecord[]> => {
-  const [entries, servers, apis] = await Promise.all([
+  const [entries, commands, apis] = await Promise.all([
     listLocalMarketplaceEntries(),
-    listConfiguredMcpServers(stellaRoot),
+    listConfiguredConnectorCommands(stellaRoot),
     listConfiguredApiConnectors(stellaRoot),
   ]);
   const installedKeys = new Set(
-    [...servers, ...apis]
+    [...commands, ...apis]
       .map((entry) => entry.source?.marketplaceKey)
       .filter((key): key is string => Boolean(key)),
   );
@@ -172,7 +172,7 @@ export const officialConnectorRequiresSetup = (
   Boolean(
     connector.configFields?.length ||
       connector.apis?.some((api) => api.auth && api.auth.type !== "none") ||
-      connector.servers?.some((server) => server.auth && server.auth.type !== "none"),
+      connector.commands?.some((server) => server.auth && server.auth.type !== "none"),
   );
 
 const officialConnectorRequiresCredentialInput = (
@@ -181,7 +181,7 @@ const officialConnectorRequiresCredentialInput = (
   Boolean(
     connector.configFields?.length ||
       connector.apis?.some((api) => api.auth?.type === "api_key") ||
-      connector.servers?.some((server) => server.auth?.type === "api_key"),
+      connector.commands?.some((server) => server.auth?.type === "api_key"),
   );
 
 export const listConfiguredApiConnectors = async (
@@ -202,24 +202,24 @@ export const saveConfiguredApiConnectors = async (
   await fs.writeFile(filePath, `${JSON.stringify({ apis }, null, 2)}\n`, "utf-8");
 };
 
-export const listConfiguredMcpServers = async (
+export const listConfiguredConnectorCommands = async (
   stellaRoot: string,
-): Promise<McpServerConfig[]> => {
-  const configured = await readJson<{ servers?: McpServerConfig[] }>(
-    getConfiguredServersPath(stellaRoot),
+): Promise<ConnectorCommandConfig[]> => {
+  const configured = await readJson<{ commands?: ConnectorCommandConfig[] }>(
+    getConfiguredCommandsPath(stellaRoot),
   );
-  return Array.isArray(configured?.servers) ? configured.servers : [];
+  return Array.isArray(configured?.commands) ? configured.commands : [];
 };
 
-export const saveConfiguredMcpServers = async (
+export const saveConfiguredConnectorCommands = async (
   stellaRoot: string,
-  servers: McpServerConfig[],
+  commands: ConnectorCommandConfig[],
 ) => {
-  const filePath = getConfiguredServersPath(stellaRoot);
+  const filePath = getConfiguredCommandsPath(stellaRoot);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(
     filePath,
-    `${JSON.stringify({ servers }, null, 2)}\n`,
+    `${JSON.stringify({ commands }, null, 2)}\n`,
     "utf-8",
   );
 };
@@ -231,14 +231,14 @@ export const installOfficialConnector = async (
 ) => {
   const safeKey = safeName(marketplaceKey);
   const official = getOfficialConnector(safeKey);
-  if (!official?.servers?.length && !official?.apis?.length) {
+  if (!official?.commands?.length && !official?.apis?.length) {
     throw new Error(`No Stella-native connector configuration is available for ${marketplaceKey} yet.`);
   }
   const persistedConfig = getInterpolationConfig(config, official.configFields);
   const localSourcePath = await findLocalMarketplaceSourcePath(safeKey);
-  const existing = await listConfiguredMcpServers(stellaRoot);
+  const existing = await listConfiguredConnectorCommands(stellaRoot);
   const byId = new Map(existing.map((server) => [server.id, server]));
-  for (const server of official.servers ?? []) {
+  for (const server of official.commands ?? []) {
     const interpolated = interpolateConfig(server, persistedConfig);
     byId.set(server.id, {
       ...interpolated,
@@ -247,10 +247,10 @@ export const installOfficialConnector = async (
         : {}),
     });
   }
-  const servers = [...byId.values()].sort((left, right) =>
+  const commands = [...byId.values()].sort((left, right) =>
     left.displayName.localeCompare(right.displayName),
   );
-  await saveConfiguredMcpServers(stellaRoot, servers);
+  await saveConfiguredConnectorCommands(stellaRoot, commands);
   const existingApis = await listConfiguredApiConnectors(stellaRoot);
   const apiById = new Map(existingApis.map((api) => [api.id, api]));
   for (const api of official.apis ?? []) {
@@ -261,7 +261,7 @@ export const installOfficialConnector = async (
   );
   await saveConfiguredApiConnectors(stellaRoot, apis);
   return {
-    servers: (official.servers ?? []).map((server) => interpolateConfig(server, persistedConfig)),
+    commands: (official.commands ?? []).map((server) => interpolateConfig(server, persistedConfig)),
     apis: (official.apis ?? []).map((api) => interpolateConfig(api, persistedConfig)),
   };
 };
@@ -271,34 +271,34 @@ export const removeOfficialConnector = async (
   marketplaceKey: string,
 ) => {
   const safeKey = safeName(marketplaceKey);
-  const [servers, apis] = await Promise.all([
-    listConfiguredMcpServers(stellaRoot),
+  const [commands, apis] = await Promise.all([
+    listConfiguredConnectorCommands(stellaRoot),
     listConfiguredApiConnectors(stellaRoot),
   ]);
-  const removedServers = servers.filter((server) => server.source?.marketplaceKey === safeKey);
+  const removedCommands = commands.filter((command) => command.source?.marketplaceKey === safeKey);
   const removedApis = apis.filter((api) => api.source?.marketplaceKey === safeKey);
   const official = getOfficialConnector(safeKey);
   const tokenKeys = [
-    ...removedServers.map((server) => server.auth?.tokenKey),
+    ...removedCommands.map((command) => command.auth?.tokenKey),
     ...removedApis.map((api) => api.auth?.tokenKey),
-    ...(official?.servers ?? []).map((server) => server.auth?.tokenKey),
+    ...(official?.commands ?? []).map((server) => server.auth?.tokenKey),
     ...(official?.apis ?? []).map((api) => api.auth?.tokenKey),
     ...(official?.configFields ?? []).map((field) => field.key),
   ];
-  const { deleteMcpAccessTokens } = await import("./oauth.js");
+  const { deleteConnectorAccessTokens } = await import("./oauth.js");
   await Promise.all([
-    saveConfiguredMcpServers(
+    saveConfiguredConnectorCommands(
       stellaRoot,
-      servers.filter((server) => server.source?.marketplaceKey !== safeKey),
+      commands.filter((server) => server.source?.marketplaceKey !== safeKey),
     ),
     saveConfiguredApiConnectors(
       stellaRoot,
       apis.filter((api) => api.source?.marketplaceKey !== safeKey),
     ),
-    deleteMcpAccessTokens(stellaRoot, tokenKeys),
+    deleteConnectorAccessTokens(stellaRoot, tokenKeys),
   ]);
-  const { closeMcpServerSessions } = await import("./client.js");
-  closeMcpServerSessions(stellaRoot, removedServers.map((server) => server.id));
+  const { closeConnectorBridgeSessions } = await import("./connector-bridge.js");
+  closeConnectorBridgeSessions(stellaRoot, removedCommands.map((command) => command.id));
 };
 
 export const listOfficialConnectorDefinitions = () =>

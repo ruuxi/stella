@@ -19,11 +19,11 @@ import {
   installOfficialConnector,
   listStellaConnectors,
   removeOfficialConnector,
-} from "../../../runtime/kernel/mcp/state.js";
+} from "../../../runtime/kernel/connectors/state.js";
 import {
-  connectMcpOAuth,
-  saveMcpAccessToken,
-} from "../../../runtime/kernel/mcp/oauth.js";
+  connectConnectorOAuth,
+  saveConnectorAccessToken,
+} from "../../../runtime/kernel/connectors/oauth.js";
 import { IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION } from "../../src/shared/contracts/ipc-channels.js";
 
 const STORE_INSTALL_ARTIFACT_LIMIT = 20;
@@ -765,13 +765,13 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         payload.config ?? {},
       );
       const oauthResults = [];
-      for (const target of [...installed.servers, ...installed.apis]) {
+      for (const target of [...installed.commands, ...installed.apis]) {
         if (
           target.auth?.type !== "none" &&
           target.auth?.tokenKey &&
           payload.credential
         ) {
-          await saveMcpAccessToken(
+          await saveConnectorAccessToken(
             stellaRoot,
             target.auth.tokenKey,
             payload.credential,
@@ -780,15 +780,15 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       }
       for (const [key, value] of Object.entries(payload.config ?? {})) {
         if (value) {
-          await saveMcpAccessToken(stellaRoot, key, value);
+          await saveConnectorAccessToken(stellaRoot, key, value);
         }
       }
-      for (const server of installed.servers) {
+      for (const server of installed.commands) {
         if (server.transport !== "streamable_http" || !server.url) continue;
         if (server.auth?.type !== "oauth" || !server.auth.tokenKey) continue;
         try {
           oauthResults.push(
-            await connectMcpOAuth(stellaRoot, {
+            await connectConnectorOAuth(stellaRoot, {
               tokenKey: server.auth.tokenKey,
               resourceUrl: server.url,
               openUrl: (url) => shell.openExternal(url),
@@ -804,7 +804,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         if (api.auth?.type !== "oauth" || !api.auth.tokenKey) continue;
         try {
           oauthResults.push(
-            await connectMcpOAuth(stellaRoot, {
+            await connectConnectorOAuth(stellaRoot, {
               tokenKey: api.auth.tokenKey,
               resourceUrl: api.baseUrl,
               openUrl: (url) => shell.openExternal(url),
@@ -816,7 +816,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         }
       }
       return {
-        installedServers: installed.servers.map((server) => ({
+        installedCommands: installed.commands.map((server) => ({
           id: server.id,
           displayName: server.displayName,
           transport: server.transport,
@@ -855,13 +855,13 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         payload.config ?? {},
       );
       const oauthResults = [];
-      for (const target of [...installed.servers, ...installed.apis]) {
+      for (const target of [...installed.commands, ...installed.apis]) {
         if (
           target.auth?.type !== "none" &&
           target.auth?.tokenKey &&
           payload.credential
         ) {
-          await saveMcpAccessToken(
+          await saveConnectorAccessToken(
             stellaRoot,
             target.auth.tokenKey,
             payload.credential,
@@ -870,15 +870,15 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       }
       for (const [key, value] of Object.entries(payload.config ?? {})) {
         if (value) {
-          await saveMcpAccessToken(stellaRoot, key, value);
+          await saveConnectorAccessToken(stellaRoot, key, value);
         }
       }
-      for (const server of installed.servers) {
+      for (const server of installed.commands) {
         if (server.transport !== "streamable_http" || !server.url) continue;
         if (server.auth?.type !== "oauth" || !server.auth.tokenKey) continue;
         try {
           oauthResults.push(
-            await connectMcpOAuth(stellaRoot, {
+            await connectConnectorOAuth(stellaRoot, {
               tokenKey: server.auth.tokenKey,
               resourceUrl: server.url,
               openUrl: (url) => shell.openExternal(url),
@@ -894,7 +894,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         if (api.auth?.type !== "oauth" || !api.auth.tokenKey) continue;
         try {
           oauthResults.push(
-            await connectMcpOAuth(stellaRoot, {
+            await connectConnectorOAuth(stellaRoot, {
               tokenKey: api.auth.tokenKey,
               resourceUrl: api.baseUrl,
               openUrl: (url) => shell.openExternal(url),
@@ -906,7 +906,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         }
       }
       return {
-        installedServers: installed.servers.map((server) => ({
+        installedCommands: installed.commands.map((server) => ({
           id: server.id,
           displayName: server.displayName,
           transport: server.transport,
