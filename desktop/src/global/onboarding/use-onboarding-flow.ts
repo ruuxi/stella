@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
 
 // Permissions are macOS TCC concepts (Accessibility, Screen Capture);
@@ -45,6 +45,12 @@ export function useOnboardingFlow({
   onPhaseChange,
   skippedPhases,
 }: UseOnboardingFlowArgs) {
+  const effectiveSkippedPhases = useMemo(() => {
+    if (!skippedPhases || skippedPhases.size === 0) return PLATFORM_SKIPPED_PHASES;
+    if (PLATFORM_SKIPPED_PHASES.size === 0) return skippedPhases;
+    return new Set<Phase>([...PLATFORM_SKIPPED_PHASES, ...skippedPhases]);
+  }, [skippedPhases]);
+
   const [phase, setPhase] = useState<Phase>(initialPhase);
   const [leaving, setLeaving] = useState(false);
   const [rippleActive, setRippleActive] = useState(initialPhase === "intro");
@@ -140,7 +146,7 @@ export function useOnboardingFlow({
 
   const nextSplitStep = useCallback(() => {
     const index = SPLIT_STEP_ORDER.indexOf(phase);
-    const nextIndex = advancePastSkipped(index + 1, 1, skippedPhases);
+    const nextIndex = advancePastSkipped(index + 1, 1, effectiveSkippedPhases);
     if (nextIndex < SPLIT_STEP_ORDER.length) {
       onInteract?.();
       transitionTo(SPLIT_STEP_ORDER[nextIndex]);
@@ -149,16 +155,16 @@ export function useOnboardingFlow({
 
     onInteract?.();
     transitionTo("complete");
-  }, [onInteract, phase, skippedPhases, transitionTo]);
+  }, [effectiveSkippedPhases, onInteract, phase, transitionTo]);
 
   const prevSplitStep = useCallback(() => {
     const index = SPLIT_STEP_ORDER.indexOf(phase);
-    const prevIndex = advancePastSkipped(index - 1, -1, skippedPhases);
+    const prevIndex = advancePastSkipped(index - 1, -1, effectiveSkippedPhases);
     if (prevIndex >= 0) {
       onInteract?.();
       transitionTo(SPLIT_STEP_ORDER[prevIndex]);
     }
-  }, [onInteract, phase, skippedPhases, transitionTo]);
+  }, [effectiveSkippedPhases, onInteract, phase, transitionTo]);
 
   const continueIntro = useCallback(() => {
     onInteract?.();
