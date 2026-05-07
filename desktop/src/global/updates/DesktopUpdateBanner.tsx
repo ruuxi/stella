@@ -21,25 +21,57 @@ export const DesktopUpdateBanner = () => {
     publishedCommit,
     installedCommit,
     updateAvailable,
+    refreshManifest,
   } = useDesktopUpdate();
-  const [busy, setBusy] = useState(false);
+  const [updateState, setUpdateState] = useState<
+    "idle" | "starting" | "running"
+  >("idle");
+  const [cancelUpdate, setCancelUpdate] = useState<(() => boolean) | null>(
+    null,
+  );
 
   const handleUpdate = useCallback(async () => {
     if (!installManifest || !currentRelease || !publishedCommit) return;
-    setBusy(true);
+    if (updateState !== "idle") return;
+    setUpdateState("starting");
+    setCancelUpdate(null);
+    let finished = false;
     try {
       const result = await applyDesktopUpdate({
         installManifest,
         publishedCommit,
         publishedTag: currentRelease.tag,
         publishedAt: currentRelease.publishedAt,
+        onAppliedCommit: refreshManifest,
+        onFinished: (event) => {
+          finished = true;
+          setUpdateState("idle");
+          setCancelUpdate(null);
+          if (event.outcome !== "completed") {
+            showToast({
+              title:
+                event.outcome === "canceled"
+                  ? "Update canceled"
+                  : "Update didn't finish",
+              description:
+                event.outcome === "canceled"
+                  ? "No changes were recorded."
+                  : (event.reason ?? event.error ?? "Please try again."),
+              variant: "error",
+            });
+          }
+        },
       });
       if (result) {
-        showToast({
-          title: "Update started",
-          description:
-            "Stella is applying the new release in a dedicated agent thread.",
-        });
+        if (!finished) {
+          setCancelUpdate(() => result.cancel);
+          setUpdateState("running");
+          showToast({
+            title: "Update started",
+            description:
+              "Stella is applying the new release in a dedicated agent thread.",
+          });
+        }
       }
     } catch (error) {
       showToast({
@@ -47,10 +79,33 @@ export const DesktopUpdateBanner = () => {
         description: (error as Error).message ?? "Please try again.",
         variant: "error",
       });
-    } finally {
-      setBusy(false);
+      setUpdateState("idle");
+      setCancelUpdate(null);
     }
-  }, [installManifest, currentRelease, publishedCommit]);
+  }, [
+    installManifest,
+    currentRelease,
+    publishedCommit,
+    refreshManifest,
+    updateState,
+  ]);
+
+  const handleCancel = useCallback(() => {
+    if (!cancelUpdate) return;
+    if (!cancelUpdate()) {
+      showToast({
+        title: "Update is still starting",
+        description: "Cancel will be available once Stella begins applying it.",
+        variant: "error",
+      });
+      return;
+    }
+    setCancelUpdate(null);
+    showToast({
+      title: "Canceling update",
+      description: "Stella is stopping the update thread.",
+    });
+  }, [cancelUpdate]);
 
   if (!updateAvailable || !currentRelease) return null;
 
@@ -70,14 +125,30 @@ export const DesktopUpdateBanner = () => {
           </div>
         </div>
       </div>
-      <Button
-        variant="primary"
-        size="small"
-        onClick={() => void handleUpdate()}
-        disabled={busy}
-      >
-        {busy ? "Starting…" : "Update Stella"}
-      </Button>
+      <div className="desktop-update-banner__actions">
+        {updateState === "running" ? (
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={() => void handleCancel()}
+            disabled={!cancelUpdate}
+          >
+            Cancel
+          </Button>
+        ) : null}
+        <Button
+          variant="primary"
+          size="small"
+          onClick={() => void handleUpdate()}
+          disabled={updateState !== "idle"}
+        >
+          {updateState === "starting"
+            ? "Starting..."
+            : updateState === "running"
+              ? "Updating..."
+              : "Update Stella"}
+        </Button>
+      </div>
     </div>
   );
 };
