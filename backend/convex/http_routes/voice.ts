@@ -190,7 +190,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
         ]);
 
         const tools = getVoiceToolSchemas();
-        const model = body.model ?? "gpt-realtime-1.5";
+        const model = body.model ?? "gpt-realtime-2";
         const voice = body.voice ?? "marin";
 
         // Request ephemeral client secret from OpenAI
@@ -213,19 +213,28 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
               };
 
         const sessionConfig = {
-          model,
-          voice,
-          instructions,
-          tools,
-          input_audio_transcription: {
-            model: "gpt-4o-transcribe",
+          session: {
+            type: "realtime",
+            model,
+            instructions,
+            tools,
+            audio: {
+              output: {
+                voice,
+              },
+              input: {
+                transcription: {
+                  model: "gpt-4o-transcribe",
+                },
+                turn_detection: turnDetection,
+              },
+            },
           },
-          turn_detection: turnDetection,
         };
 
         try {
           const openaiResponse = await fetch(
-            "https://api.openai.com/v1/realtime/sessions",
+            "https://api.openai.com/v1/realtime/client_secrets",
             {
               method: "POST",
               headers: {
@@ -254,9 +263,11 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           return jsonResponse(
             {
               clientSecret:
+                openaiData.value ??
                 openaiData.client_secret?.value ??
                 openaiData.client_secret,
-              expiresAt: openaiData.client_secret?.expires_at,
+              expiresAt:
+                openaiData.expires_at ?? openaiData.client_secret?.expires_at,
               sessionId:
                 typeof openaiData.id === "string" ? openaiData.id : undefined,
               model,
