@@ -752,24 +752,19 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           conversationId,
           commitMessageProvider,
           featureNamerProvider,
-          skipCommit,
         }) => {
           // Git commit happens BEFORE the apply so the overlay's
           // "read from disk at apply time" sees the post-commit content.
           // (For most cases the disk hasn't moved between write and
           // commit, but this ordering is cheaper to reason about than
           // racing them.)
-          if (skipCommit) {
-            storeModService.cancelSelfModRun(runId);
-          } else {
-            await storeModService.finalizeSelfModRun({
-              runId,
-              succeeded,
-              ...(conversationId ? { conversationId } : {}),
-              ...(commitMessageProvider ? { commitMessageProvider } : {}),
-              ...(featureNamerProvider ? { featureNamerProvider } : {}),
-            });
-          }
+          await storeModService.finalizeSelfModRun({
+            runId,
+            succeeded,
+            ...(conversationId ? { conversationId } : {}),
+            ...(commitMessageProvider ? { commitMessageProvider } : {}),
+            ...(featureNamerProvider ? { featureNamerProvider } : {}),
+          });
 
           if (!selfModHmrController.hasRun(runId)) {
             // Run was never registered with the contention tracker
