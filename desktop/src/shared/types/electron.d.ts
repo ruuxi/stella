@@ -914,7 +914,7 @@ export type ElectronStoreApi = {
     credential?: string,
     config?: Record<string, string>,
   ) => Promise<{
-    installedServers: Array<{
+    installedCommands: Array<{
       id: string;
       displayName: string;
       transport: string;
@@ -985,7 +985,7 @@ export type StellaConnectorSummary = {
   marketplaceKey: string;
   category?: string;
   appIds: string[];
-  mcpServers: string[];
+  commandConnectors: string[];
   officialSource?: string;
   integrationPath?: string;
   auth?: string;
@@ -997,7 +997,7 @@ export type StellaConnectorSummary = {
     secret?: boolean;
     placeholder?: string;
   }>;
-  status: "local" | "official-mcp" | "official-api" | "implemented";
+  status: "local" | "official-cli" | "official-api" | "implemented";
   installed: boolean;
 };
 

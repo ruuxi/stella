@@ -76,7 +76,7 @@ const SOCIAL_SESSION_TOOL_NAMES = new Set([
   "multi_tool_use_parallel",
 ]);
 
-const WORKER_ONLY_TOOL_NAMES = new Set(["MCP"]);
+const WORKER_ONLY_TOOL_NAMES = new Set<string>();
 
 const GENERAL_EXCLUDED_TOOL_NAMES = new Set(["image_gen"]);
 
@@ -87,6 +87,7 @@ export const createToolHost = ({
   stellaBrowserBinPath: _stellaBrowserBinPath,
   stellaOfficeBinPath: _stellaOfficeBinPath,
   stellaComputerCliPath,
+  stellaConnectCliPath,
   requestCredential,
   agentApi,
   scheduleApi,
@@ -108,6 +109,7 @@ export const createToolHost = ({
     stellaBrowserBinPath: _stellaBrowserBinPath,
     stellaOfficeBinPath: _stellaOfficeBinPath,
     stellaComputerCliPath,
+    stellaConnectCliPath,
   });
   const stateContext: StateContext = createStateContext(stateRoot, agentApi);
 
@@ -144,6 +146,7 @@ export const createToolHost = ({
     stellaBrowserBinPath: _stellaBrowserBinPath,
     stellaOfficeBinPath: _stellaOfficeBinPath,
     stellaComputerCliPath,
+    stellaConnectCliPath,
     requestCredential,
     agentApi,
     scheduleApi,

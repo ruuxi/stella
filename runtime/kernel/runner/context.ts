@@ -30,7 +30,7 @@ import {
 import { anyApi } from "convex/server";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { renderSkillCatalogBlock } from "../shared/skill-catalog.js";
-import { listStellaConnectors } from "../mcp/state.js";
+import { listStellaConnectors } from "../connectors/state.js";
 import type {
   RunnerContext,
   ParsedAgentLike,
@@ -289,6 +289,7 @@ export const createRunnerContext = ({
   stellaBrowserBinPath,
   stellaOfficeBinPath,
   stellaComputerCliPath,
+  stellaConnectCliPath,
   selfModMonitor,
   selfModLifecycle,
   selfModHmrController,
@@ -360,6 +361,7 @@ export const createRunnerContext = ({
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaComputerCliPath,
+    stellaConnectCliPath,
     requestCredential,
     notifyVoiceActionComplete,
     scheduleApi,
@@ -699,11 +701,11 @@ export const buildAgentContext = async (
     const installed = connectors.filter((connector) => connector.installed);
     const available = connectors.filter(
       (connector) =>
-        !connector.installed && connector.status === "official-mcp",
+        !connector.installed && connector.status === "official-cli",
     );
     const lines = [
       "## Stella Connect",
-      "Connected-service tools are discovered on demand through the `MCP` tool; full tool schemas are not preloaded.",
+      "Connected-service actions are discovered and called on demand through the `stella-connect` CLI; full schemas are not preloaded.",
       installed.length > 0
         ? `Installed: ${installed.map((entry) => entry.displayName).join(", ")}.`
         : "Installed: none.",

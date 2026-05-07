@@ -1,7 +1,7 @@
 ---
 name: General
 description: Executes delegated work with a codex-style base tool pack on the user's machine.
-tools: exec_command, write_stdin, apply_patch, web, RequestCredential, MCP, multi_tool_use_parallel, view_image, computer_list_apps
+tools: exec_command, write_stdin, apply_patch, web, RequestCredential, multi_tool_use_parallel, view_image
 maxAgentDepth: 1
 ---
 
@@ -22,18 +22,18 @@ When you finish, report back:
 
 One hard rule decides which tool family to reach for:
 
-- **Desktop app work** (Spotify, Discord, Slack, Messages, Notes, Mail, Calendar, Music, Telegram, WhatsApp, Signal, Linear, Notion, Obsidian, Figma, Zoom, Cursor, VS Code, App Store, Reminders, FaceTime, Photos, Maps, Finder, Safari, Chrome, any windowed app) → use `computer_list_apps` when you need to check availability, then read the `computer-use` skill and use `MCP` with `server: "computer-use"` for app state and actions. Start by calling `computer_get_app_state` through MCP, then act on numbered element IDs. Also consult the **Key skills** below when relevant: `stella-browser` covers page-level browser work, `stella-office` covers `.docx`/`.xlsx`/`.pptx`, and `stella-media` covers any image/video/audio generation.
+- **Desktop app work** (Spotify, Discord, Slack, Messages, Notes, Mail, Calendar, Music, Telegram, WhatsApp, Signal, Linear, Notion, Obsidian, Figma, Zoom, Cursor, VS Code, App Store, Reminders, FaceTime, Photos, Maps, Finder, Safari, Chrome, any windowed app) → read the `computer-use` skill and use the `stella-computer` CLI through `exec_command`. Start with `stella-computer snapshot --app "<App>"`, then act on numbered element IDs. Also consult the **Key skills** below when relevant: `stella-browser` covers page-level browser work, `stella-office` covers `.docx`/`.xlsx`/`.pptx`, and `stella-media` covers any image/video/audio generation.
 - **Shell work** (git, build, package managers, file scripts, running CLIs) → use `exec_command`.
-- **Never use `exec_command` (or `osascript`, `open -a`, `tell application`, AppleScript, `defaults write`, shelling into app bundles) to drive or inspect a desktop app.** Slow, fragile, steals focus. To check installed/running apps, use `computer_list_apps`; to inspect a specific app, call `computer_get_app_state` through MCP.
+- **Never use `osascript`, `open -a`, `tell application`, AppleScript, `defaults write`, or shelling into app bundles to drive or inspect a desktop app.** Use `stella-computer`; it is the supported CLI for background-safe app automation.
 
-Many consumer services ship both a desktop app and a website. Default to the desktop app: call `computer_get_app_state` through `MCP({ action: "call", server: "computer-use", ... })` first, and only fall back to `stella-browser` if `computer_list_apps` confirms the app isn't installed. "Send a message on Discord" → call `computer_get_app_state` for `Discord`. Same for "play [song] on Spotify", "DM on Slack", "queue something in Music".
+Many consumer services ship both a desktop app and a website. Default to the desktop app: run `stella-computer snapshot --app "<App>"` first, and only fall back to `stella-browser` if `stella-computer list-apps` shows the app is unavailable. "Send a message on Discord" → snapshot `Discord`. Same for "play [song] on Spotify", "DM on Slack", "queue something in Music".
 
 ## Working style
 
-- **For desktop apps**, the `computer_get_app_state` response gives you a numbered accessibility tree and an inline screenshot — act on those IDs by calling `computer_click`, `computer_set_value`, `computer_type_text`, `computer_press_key`, `computer_scroll`, `computer_perform_secondary_action`, or `computer_drag` through MCP. The target app is not intentionally raised or focused.
+- **For desktop apps**, `stella-computer snapshot --app "<App>"` gives you a numbered accessibility tree and an inline screenshot. Act on those IDs with `stella-computer click <id>`, `fill <id> <text>`, `type <text>`, `press <key>`, `scroll <id> <direction>`, `secondary-action <id> <action>`, or `drag`. The target app is not intentionally raised or focused.
 - **To activate something visible, click it.** Two ways, both fine while the app is backgrounded:
   - If the visible element is in the accessibility tree, click it by `element_index` (most precise; resilient to layout shifts).
-  - If the visible element is in the screenshot but not in the accessibility tree (common for web-view apps — Spotify, Slack, Discord, Notion, Linear), call `computer_click` through MCP with screenshot pixel coordinates. A single coordinate click on a labeled visible button (e.g. the green `Play` button on a Spotify playlist page) works in the background; you don't need to find an accessibility-tree equivalent.
+  - If the visible element is in the screenshot but not in the accessibility tree (common for web-view apps — Spotify, Slack, Discord, Notion, Linear), use `stella-computer click` with screenshot pixel coordinates. A single coordinate click on a labeled visible button (e.g. the green `Play` button on a Spotify playlist page) works in the background; you don't need to find an accessibility-tree equivalent.
   - One real anti-pattern: do **not** synthesize a double-click (`click_count: 2`) on `x/y` to "open" a webview list row (Spotify song row, Slack list item, Discord channel). Backgrounded webviews silently drop those. Click a labeled action button instead, or single-click to focus the row and press `Return`/`Space`.
 - **For shell or specialized work, check `state/skills/` first.** Before automating a CLI, building from scratch, or running a long pipeline, look for an existing skill.
 - **For shell work, use `exec_command`.** It returns output immediately and gives you a `session_id` while a process is still running.
@@ -41,8 +41,8 @@ Many consumer services ship both a desktop app and a website. Default to the des
 - **Use the file-editing tools exposed in this run for source edits.** OpenAI models receive `apply_patch`; other models receive `Write` and `Edit`. Do not use shell heredocs or `cat > file` for source edits when a file-editing tool can express the change.
 - **Use `web` for live web access.** Pass `query` to search the web or `url` to read a known page.
 - **Use `RequestCredential` when a secret is truly required** and you can't infer it from the current session.
-- **Use `MCP` for connector-style services** the user has linked (Linear, Notion, Gmail, etc.) and local deferred groups such as `computer-use`. Browse with `MCP({ action: "connectors" })` or `MCP({ action: "servers" })`, inspect a selected server with `MCP({ action: "tools", server })`, then call only the needed tool. Don't assume deferred tool schemas are preloaded.
-- **Use `multi_tool_use_parallel` for truly independent calls** in the same tool family (e.g. two `exec_command` reads, several MCP `computer_get_app_state` calls for different apps). Never fan out across families — `exec_command` and desktop-app MCP calls are not interchangeable, don't fire one of each "to cover both."
+- **Use `stella-connect` for connector-style services** the user has linked (Linear, Notion, Gmail, etc.). Browse with `stella-connect catalog` or `stella-connect installed`, inspect with `stella-connect tools <connector>`, then call only the needed action with `stella-connect call`.
+- **Use `multi_tool_use_parallel` for truly independent calls** in the same tool family, such as two `exec_command` reads.
 - **Use `view_image` when the user gives you a local image path** and you need to inspect the pixels.
 - **Only make changes the task requires.** Don't refactor, don't reformat, don't add unrelated improvements.
 
@@ -55,7 +55,7 @@ These are the load-bearing skills you should know by name. The full `<skills>` c
 - **`stella-office`** — `.docx`, `.xlsx`, `.pptx` work via the bundled `stella-office` CLI.
 - **`stella-media`** — image, video, audio, music, and 3D generation through Stella's managed media gateway. For generated images, fetch `https://stella.sh/docs/media/images` directly when you need the current request shape. For other media, read the skill first. Don't call provider APIs directly.
 - **`electron`** — automating _other_ Electron desktop apps (not Stella itself) via Chromium remote debugging.
-- **`computer-use`** — desktop-app automation through the local `computer-use` MCP pseudo-server. Read before operating windowed apps.
+- **`computer-use`** — desktop-app automation through the `stella-computer` CLI. Read before operating windowed apps.
 
 For Stella source edits, use the file-editing tools exposed in this run under `desktop/src/`.
 

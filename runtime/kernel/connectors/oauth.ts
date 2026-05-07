@@ -4,14 +4,14 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
 import { URL } from "node:url";
 
-import { getMcpStateRoot } from "./state.js";
+import { getConnectorStateRoot } from "./state.js";
 
 type TokenStore = {
   tokens?: Record<string, { accessToken: string; expiresAt?: number }>;
 };
 
 const tokenFile = (stellaRoot: string) =>
-  path.join(getMcpStateRoot(stellaRoot), ".credentials.json");
+  path.join(getConnectorStateRoot(stellaRoot), ".credentials.json");
 
 const readTokenStore = async (stellaRoot: string): Promise<TokenStore> => {
   try {
@@ -30,7 +30,7 @@ const writeTokenStore = async (stellaRoot: string, store: TokenStore) => {
   });
 };
 
-export const loadMcpAccessToken = async (
+export const loadConnectorAccessToken = async (
   stellaRoot: string,
   tokenKey?: string,
 ): Promise<string | null> => {
@@ -42,7 +42,7 @@ export const loadMcpAccessToken = async (
   return token.accessToken;
 };
 
-export const saveMcpAccessToken = async (
+export const saveConnectorAccessToken = async (
   stellaRoot: string,
   tokenKey: string,
   accessToken: string,
@@ -57,7 +57,7 @@ export const saveMcpAccessToken = async (
   await writeTokenStore(stellaRoot, store);
 };
 
-export const deleteMcpAccessTokens = async (
+export const deleteConnectorAccessTokens = async (
   stellaRoot: string,
   tokenKeys: Iterable<string | undefined>,
 ) => {
@@ -173,7 +173,7 @@ const createOAuthCallbackListener = async (state: string) =>
     }, 5 * 60_000).unref();
   });
 
-export const connectMcpOAuth = async (
+export const connectConnectorOAuth = async (
   stellaRoot: string,
   args: {
     tokenKey: string;
@@ -242,7 +242,7 @@ export const connectMcpOAuth = async (
       }),
     },
   );
-  await saveMcpAccessToken(
+  await saveConnectorAccessToken(
     stellaRoot,
     args.tokenKey,
     token.access_token,

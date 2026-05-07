@@ -1,65 +1,53 @@
 ---
 name: computer-use
-description: Desktop-app automation through Stella's local computer-use MCP pseudo-server.
+description: Desktop-app automation through Stella's stella-computer CLI.
 ---
 
 # Computer Use
 
 Use this skill when the user asks you to inspect or operate a desktop app, including Spotify, Discord, Slack, Messages, Notes, Mail, Calendar, Music, Telegram, WhatsApp, Signal, Linear, Notion, Obsidian, Figma, Zoom, Cursor, VS Code, App Store, Reminders, FaceTime, Photos, Maps, Finder, Safari, Chrome, or any other windowed app.
 
-Most computer-use tools are deferred behind `MCP`; `computer_list_apps` is also available as a direct tool for quick app availability checks.
+Use `stella-computer` through `exec_command`.
 
 ## Discover
 
-Use direct `computer_list_apps` when you only need to see available apps. For app state and actions, list local and connected MCP servers:
+List available apps:
 
-```ts
-MCP({ action: "servers" })
+```bash
+stella-computer list-apps
 ```
 
-Inspect the computer-use tool catalog:
+Snapshot a target app:
 
-```ts
-MCP({ action: "tools", server: "computer-use" })
+```bash
+stella-computer snapshot --app "Spotify"
 ```
 
-## Call Pattern
+Start every desktop-app turn with `snapshot` for the target app. It returns a numbered accessibility tree and an inline screenshot. Act on the returned element IDs with the interaction commands below.
 
-Call computer-use action tools through MCP:
+## Commands
 
-```ts
-MCP({
-  action: "call",
-  server: "computer-use",
-  tool: "computer_get_app_state",
-  arguments: { app: "Spotify" }
-})
-```
-
-Start every desktop-app turn with `computer_get_app_state` for the target app. It returns a numbered accessibility tree and an inline screenshot. Act on the returned element IDs with the interaction tools below.
-
-## Tools
-
-- `computer_list_apps` — list apps on this device. macOS returns running and recently used apps; Windows returns running top-level apps. Prefer the direct tool for this one.
-- `computer_get_app_state` — start a session for an app if needed, then return its current accessibility tree and screenshot. Required: `app`.
-- `computer_click` — click an element by `element_index`, or click screenshot coordinates with `x` and `y`. Required: `app`.
-- `computer_drag` — drag from one screenshot pixel to another. Required: `app`, `from_x`, `from_y`, `to_x`, `to_y`.
-- `computer_perform_secondary_action` — invoke a secondary Accessibility action such as `AXPress`, `AXRaise`, or `AXShowMenu`. Required: `app`, `element_index`, `action`.
-- `computer_press_key` — press a key or key combination with the target app focused. Required: `app`, `key`.
-- `computer_scroll` — scroll an element. Required: `app`, `element_index`, `direction`.
-- `computer_set_value` — set a settable Accessibility element value. Required: `app`, `element_index`, `value`.
-- `computer_type_text` — type literal text through the keyboard. Required: `app`, `text`.
+- `stella-computer list-apps` - list apps on this device.
+- `stella-computer snapshot --app "<App>"` - return the current accessibility tree and screenshot.
+- `stella-computer click <id> --app "<App>"` - click an accessibility element from the latest snapshot.
+- `stella-computer click-screenshot <x> <y> --app "<App>"` - click screenshot coordinates.
+- `stella-computer drag --app "<App>" --from-x <x> --from-y <y> --to-x <x> --to-y <y>` - drag inside the screenshot.
+- `stella-computer secondary-action <id> AXPress --app "<App>"` - invoke an Accessibility action.
+- `stella-computer press Return --app "<App>"` - press a key or key combination.
+- `stella-computer scroll <id> down --app "<App>"` - scroll an element.
+- `stella-computer fill <id> "text" --app "<App>"` - set or fill a settable Accessibility value.
+- `stella-computer type "text" --app "<App>"` - type literal text through the keyboard.
 
 ## Interaction Rules
 
-Use `element_index` when the visible UI is exposed in the accessibility tree. It is the most precise and resilient option.
+Use `--element-index` when the visible UI is exposed in the accessibility tree. It is the most precise and resilient option.
 
-Use screenshot `x`/`y` coordinates when the element is visible in the screenshot but not addressable through the accessibility tree. This is common in web-view-backed apps like Spotify, Slack, Discord, Notion, and Linear.
+Use screenshot `--x` / `--y` coordinates when the element is visible in the screenshot but not addressable through the accessibility tree. This is common in web-view-backed apps like Spotify, Slack, Discord, Notion, and Linear.
 
-Avoid synthesized double-clicks with `click_count: 2` on screenshot coordinates in web-view apps. Backgrounded webviews often drop them. Prefer a labeled action button, or single-click a row and press `Return` or `Space`.
+Avoid synthesized double-clicks with screenshot coordinates in web-view apps. Backgrounded webviews often drop them. Prefer a labeled action button, or single-click a row and press `Return` or `Space`.
 
 The target app is not intentionally raised or focused. To activate something visible, click it.
 
-For consumer services with both an app and a website, default to the desktop app. Try `computer_get_app_state` first, then fall back to `stella-browser` only if `computer_list_apps` confirms the app is unavailable.
+For consumer services with both an app and a website, default to the desktop app. Try `stella-computer snapshot --app "<App>"` first, then fall back to `stella-browser` only if `stella-computer list-apps` confirms the app is unavailable.
 
-Do not use `exec_command`, `osascript`, `open -a`, AppleScript, `defaults write`, or shelling into app bundles to drive or inspect desktop apps.
+Do not use `osascript`, `open -a`, AppleScript, `defaults write`, or shelling into app bundles to drive or inspect desktop apps.
