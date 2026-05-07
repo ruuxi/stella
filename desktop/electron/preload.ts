@@ -1352,6 +1352,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       onIpc<{ messageId: string | null }>(
         IPC_STORE_BLUEPRINT_NOTIFICATION_ACTIVATED,
       )(callback),
+    onThreadUpdated: onIpc<
+      import("../../runtime/contracts/index.js").StoreThreadSnapshot
+    >("store:threadUpdated"),
   },
 
   storeWeb: {

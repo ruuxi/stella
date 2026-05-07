@@ -24,6 +24,7 @@ import {
   updateHistoryEntry,
 } from "./media-store";
 import { markMediaJobMaterialized } from "./use-media-materializer";
+import { fileToDataUri } from "@/shell/display/media-tab/media-files";
 import "./media-studio.css";
 
 function FolderIcon() {
@@ -247,17 +248,6 @@ async function generateMedia(
   return res.json() as Promise<GenerateResponse>;
 }
 
-/* ── File helpers ── */
-
-function readFileAsDataUri(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
 /* ── Component ── */
 
 export default function MediaStudio() {
@@ -456,7 +446,7 @@ export default function MediaStudio() {
 
   const ingestFile = useCallback(async (file: File) => {
     try {
-      const dataUri = await readFileAsDataUri(file);
+      const dataUri = await fileToDataUri(file);
       setSourceUri(dataUri);
       setSourceFileName(file.name);
       setError(null);

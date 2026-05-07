@@ -936,6 +936,16 @@ export type ElectronStoreApi = {
   onBlueprintNotificationActivated: (
     callback: (payload: { messageId: string | null }) => void,
   ) => () => void;
+  /**
+   * Push-based subscription to Store-thread changes. Fires whenever a
+   * thread message is appended/patched/cleared/deleted/denied or marked
+   * as published — both renderer flows that mutate the thread (sending
+   * a turn, denying a draft) and runtime-side mutations (the agent
+   * polling loop completing) emit the same event. Replaces polling.
+   */
+  onThreadUpdated: (
+    callback: (snapshot: StoreThreadSnapshot) => void,
+  ) => () => void;
 };
 
 export type ElectronStoreWebApi = {
