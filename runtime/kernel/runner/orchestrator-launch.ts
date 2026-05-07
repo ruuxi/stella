@@ -9,7 +9,6 @@ import {
   resolveRunnerLlmRouteWithMetadata,
 } from "./model-selection.js";
 import { isReportedOrchestratorError } from "../agent-runtime/run-completion.js";
-import { MEMORY_INJECTION_TURN_THRESHOLD } from "../agent-runtime/thread-memory.js";
 import type { RunnerContext } from "./types.js";
 import type {
   RuntimeAttachmentRef,
@@ -23,7 +22,6 @@ type BuildAgentContext = (args: {
   runId: string;
   threadId?: string;
   toolWorkspaceRoot?: string;
-  shouldInjectDynamicMemory?: boolean;
 }) => Promise<LocalAgentContext>;
 
 export type PreparedOrchestratorRun = {
@@ -60,45 +58,13 @@ export const prepareOrchestratorRun = async (args: {
   attachments: RuntimeAttachmentRef[];
   toolWorkspaceRoot?: string;
 }): Promise<PreparedOrchestratorRun> => {
-  // Decide whether this turn should re-inject the memory bundle BEFORE we
-  // build the agent context, so context construction can skip the snapshot
-  // formatting work on turns we won't inject. The cadence advances only on
-  // real user-driven turns (uiVisibility !== "hidden") for agents that
-  // declare the `injectsDynamicMemory` capability — synthetic hidden turns
-  // and capability-less agents coast on whatever the prior real turn
-  // injected.
   const isUserTurn = args.uiVisibility !== "hidden";
-  const advancesMemoryInjection =
-    isUserTurn && agentHasCapability(args.agentType, "injectsDynamicMemory");
-  let shouldInjectDynamicMemory = false;
-  if (advancesMemoryInjection) {
-    try {
-      const counter =
-        args.context.runtimeStore.incrementUserTurnsSinceMemoryInjection(
-          args.conversationId,
-        );
-      if (counter === 1 || counter > MEMORY_INJECTION_TURN_THRESHOLD) {
-        shouldInjectDynamicMemory = true;
-        if (counter > 1) {
-          // Roll the counter back to 1 so the next 40 turns coast again.
-          args.context.runtimeStore.resetUserTurnsSinceMemoryInjection(
-            args.conversationId,
-          );
-        }
-      }
-    } catch {
-      // Memory injection cadence is best-effort. Counter failure must not
-      // block the turn — fall back to "don't inject" to avoid spamming the
-      // bundle on every failure.
-    }
-  }
 
   const agentContext = await args.buildAgentContext({
     conversationId: args.conversationId,
     agentType: args.agentType,
     runId: args.runId,
     ...(args.toolWorkspaceRoot ? { toolWorkspaceRoot: args.toolWorkspaceRoot } : {}),
-    ...(shouldInjectDynamicMemory ? { shouldInjectDynamicMemory: true } : {}),
   });
   const resolvedLlm = await resolveRunnerLlmRouteWithMetadata(
     args.context,

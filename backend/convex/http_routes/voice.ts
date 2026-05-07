@@ -248,7 +248,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           const responseText = await openaiResponse.text();
           if (!openaiResponse.ok) {
             console.error(
-              "[voice/session] OpenAI sessions failed:",
+              "[voice/client_secrets] OpenAI client secret creation failed:",
               openaiResponse.status,
               responseText,
             );

@@ -52,7 +52,6 @@ export const createOrchestratorController = (
       runId: string;
       threadId?: string;
       selfModMetadata?: import("../tools/types.js").AgentToolRequest["selfModMetadata"];
-      shouldInjectDynamicMemory?: boolean;
     }) => Promise<LocalAgentContext>;
     resolveAgent: (agentType: string) => unknown;
     getConfiguredModel: (

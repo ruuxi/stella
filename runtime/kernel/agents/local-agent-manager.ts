@@ -40,21 +40,6 @@ export type LocalAgentContext = {
   agentDepth?: number;
   maxAgentDepth: number;
   coreMemory?: string;
-  /**
-   * Frozen MEMORY + USER PROFILE snapshot for the system prompt.
-   * Populated only for the Orchestrator (General agents do not see memory).
-   * Each block is the rendered text from MemoryStore.formatForSystemPrompt or undefined when empty.
-   * Only populated when `shouldInjectDynamicMemory` is true so we don't pay
-   * for the snapshot work on turns that won't inject the bundle.
-   */
-  memorySnapshot?: { memory?: string; user?: string };
-  /**
-   * True only on orchestrator turns that should re-inject the dynamic memory
-   * bundle (memory_summary.md, MEMORY.md, MEMORY/USER snapshots). Set every
-   * Nth real user turn by prepareOrchestratorRun; on every other turn the
-   * orchestrator coasts on what it already has in conversation context.
-   */
-  shouldInjectDynamicMemory?: boolean;
   threadHistory?: Array<{
     timestamp?: number;
     role: string;
@@ -158,7 +143,6 @@ type LocalAgentManagerOpts = {
     threadId?: string;
     toolWorkspaceRoot?: string;
     selfModMetadata?: AgentToolRequest["selfModMetadata"];
-    shouldInjectDynamicMemory?: boolean;
   }) => Promise<LocalAgentContext>;
   runSubagent: (args: {
     conversationId: string;

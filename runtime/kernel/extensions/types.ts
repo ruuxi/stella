@@ -94,9 +94,9 @@ export type BeforeAgentStartHookResult = {
 
 /**
  * Payload for `before_user_message` — fires once per turn during prompt-
- * message assembly, BEFORE the bundled startup messages (memory bundle,
- * registry, core memory) and BEFORE the user's typed prompt. Hooks
- * return messages to splice into the prompt-message array.
+ * message assembly, before built-in startup docs and before the user's
+ * typed prompt. Hooks return messages to splice into the prompt-message
+ * array.
  *
  * Fires for both orchestrator (`buildOrchestratorPromptMessages`) and
  * subagent (`buildSubagentPromptMessages`) prompt builds. Read

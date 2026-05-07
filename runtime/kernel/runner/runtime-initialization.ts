@@ -175,6 +175,7 @@ export const createRuntimeInitialization = (
     stellaRoot: context.stellaRoot,
     selfModMonitor: context.selfModMonitor ?? null,
     store: context.runtimeStore,
+    memoryStore: context.runtimeStore.memoryStore,
   });
 
   /**

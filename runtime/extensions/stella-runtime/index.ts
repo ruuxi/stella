@@ -6,6 +6,7 @@ import type {
 import { createDreamSchedulerNotifyHook } from "./hooks/dream-scheduler-notify.hook.js";
 import { createDynamicMemoryReminderHook } from "./hooks/dynamic-memory-reminder.hook.js";
 import { createHomeSuggestionsRefreshHook } from "./hooks/home-suggestions-refresh.hook.js";
+import { createMemoryInjectionHook } from "./hooks/memory-injection.hook.js";
 import { createMemoryReviewHook } from "./hooks/memory-review.hook.js";
 import { createPersonalityHook } from "./hooks/personality.hook.js";
 import { createSelfModHooks } from "./hooks/self-mod.hook.js";
@@ -25,6 +26,7 @@ const AGENTS_DIR = new URL("./agents/", import.meta.url);
  *   - Self-mod baseline + detect-applied
  *   - Stale-user reminder
  *   - Dynamic memory reminder
+ *   - Memory injection cadence + bundle assembly
  *   - Memory review spawn (post-orchestrator finalize)
  *   - Dream scheduler notify (post-subagent finalize)
  *   - Home-suggestions refresh tick (post-subagent finalize)
@@ -62,6 +64,16 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
 
   register(createStaleUserReminderHook());
   register(createDynamicMemoryReminderHook());
+  // Keep memory injection after reminder hooks: reminders prepend near the
+  // top, while the memory bundle appends close to the user's message.
+  register(
+    createMemoryInjectionHook({
+      stellaHome: services.stellaHome,
+      stellaRoot: services.stellaRoot,
+      store: services.store,
+      memoryStore: services.memoryStore,
+    }),
+  );
   register(createMemoryReviewHook({ store: services.store }));
   register(
     createDreamSchedulerNotifyHook({

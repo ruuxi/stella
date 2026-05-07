@@ -324,7 +324,6 @@ export const createAgentOrchestration = (
       runId: string;
       threadId?: string;
       selfModMetadata?: AgentToolRequest["selfModMetadata"];
-      shouldInjectDynamicMemory?: boolean;
     }) => Promise<LocalAgentContext>;
     sendMessage: (input: {
       conversationId: string;
