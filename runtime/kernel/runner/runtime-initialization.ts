@@ -1,7 +1,7 @@
 import { watch as fsWatch, type FSWatcher } from "node:fs";
 import { loadBundledAgents } from "../agents/agents.js";
-import { registerBundledHooks } from "../agent-runtime/hooks/index.js";
 import { loadExtensions } from "../extensions/loader.js";
+import type { ExtensionServices } from "../extensions/services.js";
 import { loadGoogleWorkspaceTools } from "../google-workspace/load-google-workspace-tools.js";
 import { registerModel, unregisterModel } from "../../ai/models.js";
 import type { Api, Model } from "../../ai/types.js";
@@ -163,6 +163,20 @@ export const createRuntimeInitialization = (
   };
 
   /**
+   * Build the runtime services object once. Forwarded to every extension
+   * factory invocation (initial load + every F1 reload) so factories can
+   * close over the services they need at registration time. Today the
+   * runner stores both the repo root and the user-data root under
+   * `context.stellaRoot`; when the user-data root migrates to `~/.stella`
+   * the `stellaHome` field will diverge.
+   */
+  const buildExtensionServices = (): ExtensionServices => ({
+    stellaHome: context.stellaRoot,
+    stellaRoot: context.stellaRoot,
+    selfModMonitor: context.selfModMonitor ?? null,
+  });
+
+  /**
    * Load extensions from disk and register hooks/tools/providers/agents.
    * Used by initial startup. The F1 reload path uses
    * `loadExtensions` + `installLoadedExtensions` directly so it can
@@ -170,7 +184,10 @@ export const createRuntimeInitialization = (
    */
   const loadAndRegisterExtensions = async (): Promise<void> => {
     try {
-      const extensions = await loadExtensions(context.paths.extensionsPath);
+      const extensions = await loadExtensions(
+        context.paths.extensionsPath,
+        buildExtensionServices(),
+      );
       installLoadedExtensions(extensions);
     } catch (error) {
       context.state.loadedAgents = loadBundledAgents();
@@ -182,23 +199,12 @@ export const createRuntimeInitialization = (
   };
 
   const initializeRuntime = () => {
-    // Register bundled lifecycle hooks (personality, memory injection,
-    // self-mod detection, etc.) before loading user extensions, so user
-    // extensions register *after* and can observe / layer on top of the
-    // baseline behavior the bundled hooks establish.
-    registerBundledHooks(context.hookEmitter, {
-      // Today the runner stores both the repo root and the user-data
-      // root under `context.stellaRoot`, so we forward the same value
-      // to both fields. When the user-data root migrates to ~/.stella
-      // the personality hook should follow the new location while the
-      // self-mod hook stays pointed at the repo checkout.
-      stellaHome: context.stellaRoot,
-      stellaRoot: context.stellaRoot,
-      ...(context.selfModMonitor
-        ? { selfModMonitor: context.selfModMonitor }
-        : {}),
-    });
-
+    // Stella's lifecycle hooks (personality, self-mod, …) live in the
+    // stella-runtime extension and register through the same loader path
+    // as user extensions. There's no separate "bundled" registration
+    // step — the loader is the one place hooks/tools/providers/agents
+    // get installed. Stella-runtime is just an extension that ships in
+    // the source tree.
     const extensionsLoad = loadAndRegisterExtensions();
 
     context.state.initializationPromise = Promise.all([extensionsLoad]).then(() => {
@@ -271,7 +277,10 @@ export const createRuntimeInitialization = (
     // middle of a synchronous block.
     let extensions: Awaited<ReturnType<typeof loadExtensions>>;
     try {
-      extensions = await loadExtensions(context.paths.extensionsPath);
+      extensions = await loadExtensions(
+        context.paths.extensionsPath,
+        buildExtensionServices(),
+      );
     } catch (error) {
       // Disk-read failure: leave the old extension state in place. The
       // initial-load behavior of falling back to bundled agents only

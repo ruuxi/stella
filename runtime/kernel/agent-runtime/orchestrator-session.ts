@@ -183,6 +183,14 @@ export class OrchestratorSession extends PiSessionCore {
         promptMessages: opts.promptMessages,
         stellaHome: opts.stellaHome,
         stellaRoot: opts.stellaRoot,
+        agentType: opts.agentType,
+        hookContext: {
+          ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
+          conversationId: opts.conversationId,
+          threadKey: this.threadKey,
+          runId,
+          ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
+        },
       });
 
       const { finalText, errorMessage } = await executeRuntimeAgentPrompt({
