@@ -7,6 +7,7 @@ import type {
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import { readOrSeedPersonality } from "../personality/personality.js";
 import { getPersonalityVoiceId } from "../preferences/local-preferences.js";
+import { resolveLocalCliCwd } from "./shared.js";
 import { buildSystemPrompt } from "./thread-memory.js";
 import type { OrchestratorRunOptions, SubagentRunOptions } from "./types.js";
 
@@ -73,6 +74,20 @@ export const createRuntimePromptAgentMessage = (
 
 const PERSONALITY_MARKER = "<!-- personality -->";
 
+const appendCurrentWorkingDirectory = (
+  systemPrompt: string,
+  opts: Pick<OrchestratorRunOptions, "agentType" | "stellaRoot">,
+): string => {
+  const cwd = resolveLocalCliCwd({
+    agentType: opts.agentType,
+    stellaRoot: opts.stellaRoot,
+  });
+  if (!cwd) {
+    return systemPrompt;
+  }
+  return `${systemPrompt}\n\nCurrent working directory: ${cwd}`;
+};
+
 const maybeInjectPersonality = (
   opts: OrchestratorRunOptions,
   systemPrompt: string,
@@ -101,9 +116,9 @@ const maybeInjectPersonality = (
 export const buildRuntimeSystemPrompt = async (
   opts: OrchestratorRunOptions,
 ): Promise<string> => {
-  const effectiveSystemPrompt = maybeInjectPersonality(
+  const effectiveSystemPrompt = appendCurrentWorkingDirectory(
+    maybeInjectPersonality(opts, buildSystemPrompt(opts.agentContext)),
     opts,
-    buildSystemPrompt(opts.agentContext),
   );
   if (!opts.hookEmitter) {
     return effectiveSystemPrompt;
@@ -124,4 +139,4 @@ export const buildRuntimeSystemPrompt = async (
 };
 
 export const buildSubagentSystemPrompt = (opts: SubagentRunOptions): string =>
-  buildSystemPrompt(opts.agentContext);
+  appendCurrentWorkingDirectory(buildSystemPrompt(opts.agentContext), opts);
