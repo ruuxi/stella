@@ -1,15 +1,29 @@
 import { AGENT_IDS } from "../../../../runtime/contracts/agent-runtime.js";
 import { getDeviceIdOrNull } from "@/platform/electron/device";
-import type { InstallManifestSnapshot } from "@/shared/types/electron";
+import type {
+  AgentStreamIpcEvent,
+  InstallManifestSnapshot,
+} from "@/shared/types/electron";
 
 const DEFAULT_REPO_OWNER = "ruuxi";
 const DEFAULT_REPO_NAME = "stella";
+let activeInstallUpdateConversationId: string | null = null;
 
 type ApplyDesktopUpdateOptions = {
   installManifest: InstallManifestSnapshot;
   publishedCommit: string;
   publishedTag: string;
   publishedAt: number;
+  onAppliedCommit?: (
+    manifest: InstallManifestSnapshot | null,
+  ) => void | Promise<void>;
+  onFinished?: (event: AgentStreamIpcEvent) => void;
+};
+
+type ApplyDesktopUpdateResult = {
+  requestId: string;
+  conversationId: string;
+  cancel: () => boolean;
 };
 
 /**
@@ -22,10 +36,19 @@ type ApplyDesktopUpdateOptions = {
  */
 export const applyDesktopUpdate = async (
   options: ApplyDesktopUpdateOptions,
-): Promise<{ requestId: string; conversationId: string } | null> => {
+): Promise<ApplyDesktopUpdateResult | null> => {
   const electronApi = window.electronAPI;
   if (!electronApi?.agent?.startChat) {
     throw new Error("Stella runtime is not available.");
+  }
+  if (
+    !electronApi.agent.onStream ||
+    !electronApi.updates?.recordAppliedCommit
+  ) {
+    throw new Error("Stella update tracking is not available.");
+  }
+  if (activeInstallUpdateConversationId) {
+    throw new Error("A Stella update is already running.");
   }
 
   const baseCommit =
@@ -38,6 +61,7 @@ export const applyDesktopUpdate = async (
   }
 
   const conversationId = `install-update-${crypto.randomUUID()}`;
+  activeInstallUpdateConversationId = conversationId;
   const repoOwner = DEFAULT_REPO_OWNER;
   const repoName = DEFAULT_REPO_NAME;
 
@@ -66,31 +90,43 @@ export const applyDesktopUpdate = async (
   // persist the applied commit into the launcher manifest. The
   // subscription auto-cleans on terminal outcome.
   let unsubscribe: (() => void) | null = null;
-  unsubscribe =
-    electronApi.agent.onStream?.((event) => {
-      if (
-        event.type !== "run-finished" ||
-        event.conversationId !== conversationId ||
-        event.agentType !== AGENT_IDS.INSTALL_UPDATE
-      ) {
-        return;
-      }
+  let activeRunId: string | null = null;
+  unsubscribe = electronApi.agent.onStream((event) => {
+    if (
+      event.type === "run-started" &&
+      event.conversationId === conversationId &&
+      event.agentType === AGENT_IDS.INSTALL_UPDATE
+    ) {
+      activeRunId = event.runId;
+      return;
+    }
+    if (
+      event.type !== "run-finished" ||
+      event.conversationId !== conversationId ||
+      event.agentType !== AGENT_IDS.INSTALL_UPDATE
+    ) {
+      return;
+    }
+    void (async () => {
       try {
         if (event.outcome === "completed") {
-          void electronApi.updates
-            ?.recordAppliedCommit(options.publishedCommit)
-            .catch((err) => {
-              console.warn(
-                "[install-update] Failed to record applied commit:",
-                err,
-              );
-            });
+          const manifest = await electronApi.updates.recordAppliedCommit(
+            options.publishedCommit,
+          );
+          await options.onAppliedCommit?.(manifest);
         }
+      } catch (err) {
+        console.warn("[install-update] Failed to record applied commit:", err);
       } finally {
+        options.onFinished?.(event);
+        if (activeInstallUpdateConversationId === conversationId) {
+          activeInstallUpdateConversationId = null;
+        }
         unsubscribe?.();
         unsubscribe = null;
       }
-    }) ?? null;
+    })();
+  });
 
   try {
     const result = await electronApi.agent.startChat({
@@ -113,8 +149,21 @@ export const applyDesktopUpdate = async (
         },
       },
     });
-    return { requestId: result.requestId, conversationId };
+    return {
+      requestId: result.requestId,
+      conversationId,
+      cancel: () => {
+        if (!activeRunId) {
+          return false;
+        }
+        electronApi.agent.cancelChat(activeRunId);
+        return true;
+      },
+    };
   } catch (err) {
+    if (activeInstallUpdateConversationId === conversationId) {
+      activeInstallUpdateConversationId = null;
+    }
     unsubscribe?.();
     throw err;
   }
