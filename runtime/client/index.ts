@@ -113,9 +113,7 @@ export type RuntimeHostHandlers = {
    * whatever it receives to the IPC `display:update` channel as-is so
    * the renderer can normalize it.
    */
-  displayUpdate: (payload: string | Record<string, unknown>) =>
-    | Promise<void>
-    | void;
+  displayUpdate: (payload: Record<string, unknown>) => Promise<void> | void;
   showNotification?: (payload: {
     title: string;
     body: string;
@@ -179,13 +177,9 @@ type RemoteTurnAuthSource = HostRuntimeAuthRefreshParams["source"];
 
 const parseDisplayUpdateParams = (
   params: unknown,
-): string | Record<string, unknown> => {
-  if (typeof params === "string") return params;
+): Record<string, unknown> => {
   if (params && typeof params === "object") {
     const record = params as Record<string, unknown>;
-    if (typeof record.html === "string") {
-      return record.html;
-    }
     if (record.payload && typeof record.payload === "object") {
       return record.payload as Record<string, unknown>;
     }

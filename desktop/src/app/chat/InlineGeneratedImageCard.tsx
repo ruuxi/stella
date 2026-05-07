@@ -34,7 +34,7 @@ type MediaJobLookup = {
 
 const mediaPayloadFromJob = async (
   job: Exclude<MediaJobLookup, null>,
-): Promise<DisplayPayload | null> => {
+): Promise<InlineGeneratedImagePayload | null> => {
   if (job.output === undefined) return null;
   const extracted = extractOutput(job.output);
   if (extracted.kind === "unknown") return null;

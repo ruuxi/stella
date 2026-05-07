@@ -90,7 +90,6 @@ export const createToolHost = ({
 
   fashionApi,
   extensionTools,
-  displayHtml,
   webSearch,
   getStellaSiteAuth,
   queryConvex,
@@ -148,7 +147,6 @@ export const createToolHost = ({
 
     fashionApi,
     extensionTools,
-    displayHtml,
     webSearch,
     getStellaSiteAuth,
     queryConvex,

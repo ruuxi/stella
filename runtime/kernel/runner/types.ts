@@ -1,6 +1,7 @@
 import type { ConvexClient } from "convex/browser";
 import type { Api, Model } from "../../ai/types.js";
 import type { AgentMessage } from "../agent-core/types.js";
+import type { OrchestratorSession } from "../agent-runtime/orchestrator-session.js";
 import type {
   RuntimeAssistantMessageEvent,
   RuntimeEndEvent,
@@ -126,7 +127,6 @@ export type StellaHostRunnerOptions = {
   }) => Promise<void> | void;
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;
-  displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
   /**
    * Optional MemoryStore wired to the orchestrator's memory surface.
@@ -286,7 +286,6 @@ export type RunnerContext = {
   requestRuntimeAuthRefresh?: StellaHostRunnerOptions["requestRuntimeAuthRefresh"];
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;
-  displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
   listLocalChatEvents?: StellaHostRunnerOptions["listLocalChatEvents"];
   appendLocalChatEvent?: StellaHostRunnerOptions["appendLocalChatEvent"];

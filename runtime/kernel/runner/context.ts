@@ -295,7 +295,6 @@ export const createRunnerContext = ({
   scheduleApi,
 
   fashionApi,
-  displayHtml,
   runtimeStore,
   listLocalChatEvents,
   appendLocalChatEvent,
@@ -360,7 +359,6 @@ export const createRunnerContext = ({
     stellaComputerCliPath,
     requestCredential,
     notifyVoiceActionComplete,
-    displayHtml,
     scheduleApi,
 
     fashionApi: resolvedFashionApi,
@@ -489,7 +487,6 @@ export const createRunnerContext = ({
     scheduleApi,
 
     fashionApi: resolvedFashionApi,
-    displayHtml,
     runtimeStore,
     listLocalChatEvents,
     appendLocalChatEvent,

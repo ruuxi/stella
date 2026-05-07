@@ -33,23 +33,11 @@ vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
   TrashTabContent: () => null,
 }));
 
-import type { DisplayPayload } from "../../../src/shared/contracts/display-payload";
-
 const { payloadToTabSpec } = await import(
   "../../../src/shell/display/payload-to-tab-spec"
 );
 
 describe("payloadToTabSpec", () => {
-  it("refuses to build a tab spec for html canvas payloads (renders inline)", () => {
-    const payload: DisplayPayload = {
-      kind: "html",
-      html: "<canvas></canvas><script>window.ready = true</script>",
-      title: "Canvas",
-      createdAt: 42,
-    };
-    expect(() => payloadToTabSpec(payload)).toThrow();
-  });
-
   it("keeps docx office previews as office-document tabs", () => {
     const payload: DisplayPayload = {
       kind: "office",
@@ -160,8 +148,17 @@ describe("payloadToTabSpec", () => {
       createdAt: 2,
     });
 
-    expect(first.id).toBe("media:image:generated");
-    expect(second.id).toBe("media:image:generated");
-    expect(second.metadata?.filePaths).toEqual(["/out/a.png", "/out/b.png"]);
+    expect(first.id).toBe("media:generated");
+    expect(second.id).toBe("media:generated");
+    expect(second.metadata?.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          asset: { kind: "image", filePaths: ["/out/a.png"] },
+        }),
+        expect.objectContaining({
+          asset: { kind: "image", filePaths: ["/out/b.png", "/out/a.png"] },
+        }),
+      ]),
+    );
   });
 });

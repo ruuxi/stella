@@ -8,7 +8,10 @@
  */
 
 import { useCallback, useMemo } from "react";
-import type { DisplayPayload } from "@/shared/contracts/display-payload";
+import type {
+  DisplayPayload,
+  DisplayTabPayload,
+} from "@/shared/contracts/display-payload";
 import { getDisplayPayloadTitle } from "@/shared/contracts/display-payload";
 import { displayTabs } from "@/shell/display/tab-store";
 import { payloadToTabSpec } from "@/shell/display/payload-to-tab-spec";
@@ -80,7 +83,7 @@ const tooltipForPayload = (payload: DisplayPayload): string | undefined => {
   }
 };
 
-export const EndResourceCard = ({ payload }: { payload: DisplayPayload }) => {
+export const EndResourceCard = ({ payload }: { payload: DisplayTabPayload }) => {
   const spec = useMemo(() => payloadToTabSpec(payload), [payload]);
   const label = labelForPayload(payload);
   const tooltip = tooltipForPayload(payload);

@@ -196,7 +196,6 @@ export type BaseRunOptions = {
   toolWorkspaceRoot?: string;
   selfModMonitor?: SelfModMonitor | null;
   hookEmitter?: HookEmitter;
-  displayHtml?: (html: string) => void;
   responseTarget?: RuntimeAgentEventPayload["responseTarget"];
   /**
    * Append a local-chat event for the conversation. Routes through the

@@ -8,9 +8,9 @@ export type DisplayFileArtifactKind =
   | "delimited-table";
 
 /**
- * Tagged union for everything the workspace panel can show.
+ * Tagged union for resources Stella can surface in chat or the workspace panel.
  *
- * - `html`   — freeform HTML. Morphdom-applied into the sidebar.
+ * - `html`   — freeform HTML. Rendered inline in chat.
  * - `office` — docx/xlsx/pptx live-preview produced by `stella-office preview`.
  *              Renders the existing OfficePreviewCard (iframe + auto-refresh).
  * - `markdown` — local Markdown / MDX files rendered in the panel.
@@ -25,8 +25,8 @@ export type DisplayFileArtifactKind =
  *              owned by the future tab implementation; this payload wires the
  *              display tab, list, and force-delete contracts.
  *
- * The IPC channel `display:update` carries either a raw HTML `string` or a
- * structured `DisplayPayload` object.
+ * The IPC channel `display:update` carries structured, tab-compatible
+ * `DisplayPayload` objects.
  */
 export type DisplayPayload =
   | { kind: "html"; html: string; title?: string; createdAt?: number }
@@ -79,6 +79,8 @@ export type DisplayPayload =
       presentation?: "inline-image";
       createdAt: number;
     };
+
+export type DisplayTabPayload = Exclude<DisplayPayload, { kind: "html" }>;
 
 /**
  * What was generated. Mirrors the shape of `OutputMedia` in
@@ -187,19 +189,18 @@ export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
   return false;
 };
 
+export const isDisplayTabPayload = (
+  value: unknown,
+): value is DisplayTabPayload =>
+  isDisplayPayload(value) && value.kind !== "html";
+
 /**
- * Normalize legacy `string` payloads (raw HTML pushed by the agent's
- * `Display` tool) into the tagged union shape. Returns `null` when the
- * input is neither a string nor a recognized payload.
+ * Validate payloads accepted by the workspace panel's display channel.
+ * HTML resources render inline in chat and are intentionally excluded here.
  */
 export const normalizeDisplayPayload = (
   value: unknown,
-): DisplayPayload | null => {
-  if (typeof value === "string") {
-    return value.trim().length > 0 ? { kind: "html", html: value } : null;
-  }
-  return isDisplayPayload(value) ? value : null;
-};
+): DisplayTabPayload | null => (isDisplayTabPayload(value) ? value : null);
 
 /** Quick title helper for the sidebar header / external open. */
 export const getDisplayPayloadTitle = (payload: DisplayPayload): string => {

@@ -18,6 +18,7 @@ import { api } from "@/convex/api"
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
 import type {
   DisplayPayload,
+  DisplayTabPayload,
   MediaAsset,
 } from "@/shared/contracts/display-payload"
 import {
@@ -181,7 +182,7 @@ type MaterializerJob = {
 }
 
 type UseMediaMaterializerOptions = {
-  onMaterialized: (payload: DisplayPayload) => void
+  onMaterialized: (payload: DisplayTabPayload) => void
   /**
    * If true, suppress the `onMaterialized` dispatch (the file is still
    * downloaded to disk, but no payload is fired). Used when the user is
