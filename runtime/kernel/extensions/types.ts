@@ -147,6 +147,15 @@ export type AgentEndPayload = HookRuntimeContext & {
   finalText: string;
   /** Fires for every terminal outcome; success-only consumers must gate explicitly. */
   outcome: "success" | "error" | "interrupted";
+  /**
+   * Per-run runtime services. Populated by emit sites that have them
+   * wired (the orchestrator and subagent finalize paths); undefined
+   * for synthetic emit sites (cleanup-only emissions on
+   * error/interrupted, test fixtures without a runtime). Stella-runtime
+   * post-finalize hooks (memory review, dream notify, home suggestions
+   * refresh, thread summaries record) read from here.
+   */
+  services?: import("./services.js").RuntimeRunServices;
 };
 
 export type AgentEndHookResult = {
