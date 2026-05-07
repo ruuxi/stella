@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import type {
   AssistantMessage,
@@ -23,9 +22,9 @@ import {
   maybeCompactRuntimeThread,
 } from "../thread-runtime.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
-import { wrapSystemReminder } from "../message-timestamp.js";
 import { now } from "./shared.js";
 import type { AgentMessage } from "../agent-core/types.js";
+import { readOptionalTextFile } from "../shared/read-optional-text-file.js";
 
 const logger = createRuntimeLogger("agent-runtime.thread-memory");
 const LIFE_REGISTRY_DISPLAY_PATH = "state/registry.md";
@@ -369,15 +368,6 @@ export const buildSystemPrompt = (
   return sections.filter(Boolean).join("\n\n");
 };
 
-const readOptionalTextFile = async (filePath: string): Promise<string | null> => {
-  try {
-    const content = (await fs.readFile(filePath, "utf8")).trim();
-    return content.length > 0 ? content : null;
-  } catch {
-    return null;
-  }
-};
-
 const buildStartupDocMessage = (
   displayPath: string,
   content: string,
@@ -387,62 +377,6 @@ const buildStartupDocMessage = (
     content,
     "</startup_doc>",
   ].join("\n");
-};
-
-const buildMemoryFileMessage = (
-  displayPath: string,
-  content: string,
-): string => {
-  return [
-    `<memory_file path="${displayPath}">`,
-    content,
-    "</memory_file>",
-  ].join("\n");
-};
-
-const DREAM_MEMORY_DISPLAY_PATH = "state/memories/MEMORY.md";
-const DREAM_MEMORY_SUMMARY_DISPLAY_PATH = "state/memories/memory_summary.md";
-
-/**
- * Cadence for re-injecting the dynamic memory bundle (memory_summary.md +
- * MEMORY.md + MEMORY/USER snapshots) into the Orchestrator prompt. The
- * runtime persists the injected bundle as hidden transcript messages; turns
- * between injections replay that stored bundle without rebuilding it. Inject
- * on turn 1, then every Nth turn after (turns 41, 81, ...).
- */
-export const MEMORY_INJECTION_TURN_THRESHOLD = 40;
-
-const injectDreamMemoryFiles = async (args: {
-  messages: RuntimePromptMessage[];
-  stellaHome?: string;
-  stellaRoot?: string;
-}): Promise<void> => {
-  const home = args.stellaHome?.trim() || args.stellaRoot?.trim();
-  if (!home) return;
-
-  const summaryPath = path.join(home, "state", "memories", "memory_summary.md");
-  const summary = await readOptionalTextFile(summaryPath);
-  if (summary) {
-    args.messages.push(
-      createInternalPromptMessage(
-        buildMemoryFileMessage(DREAM_MEMORY_SUMMARY_DISPLAY_PATH, summary),
-        "hidden",
-        "bootstrap.memory_file",
-      ),
-    );
-  }
-
-  const memoryPath = path.join(home, "state", "memories", "MEMORY.md");
-  const memory = await readOptionalTextFile(memoryPath);
-  if (memory) {
-    args.messages.push(
-      createInternalPromptMessage(
-        buildMemoryFileMessage(DREAM_MEMORY_DISPLAY_PATH, memory),
-        "hidden",
-        "bootstrap.memory_file",
-      ),
-    );
-  }
 };
 
 export type OrchestratorPromptMessage = RuntimePromptMessage;
@@ -483,7 +417,6 @@ export const buildStartupPromptMessages = async (args: {
   context: LocalAgentContext;
   stellaHome?: string;
   stellaRoot?: string;
-  includeDreamMemoryFiles?: boolean;
 }): Promise<RuntimePromptMessage[]> => {
   const messages: RuntimePromptMessage[] = [];
   const shouldIncludeStartupDocs = !(args.context.threadHistory?.length);
@@ -512,44 +445,6 @@ export const buildStartupPromptMessages = async (args: {
           "bootstrap.startup_doc",
         ),
       );
-    }
-  }
-
-  // Dream-managed memory files (memory_summary.md, MEMORY.md) and the
-  // frozen MEMORY/USER snapshots are the "dynamic memory bundle" — only
-  // re-injected on Orchestrator turns the runner marked with
-  // shouldInjectDynamicMemory (cold start + every Nth user turn). The runtime
-  // persists those hidden bootstrap messages so fresh agent sessions can
-  // replay the latest bundle on coast turns without rebuilding it every time.
-  if (args.includeDreamMemoryFiles && args.context.shouldInjectDynamicMemory) {
-    await injectDreamMemoryFiles({
-      messages,
-      stellaHome: args.stellaHome,
-      stellaRoot: args.stellaRoot,
-    });
-
-    const memorySnapshot = args.context.memorySnapshot;
-    if (memorySnapshot) {
-      const userBlock = memorySnapshot.user?.trim();
-      if (userBlock) {
-        messages.push(
-          createInternalPromptMessage(
-            `<memory_snapshot target="user">\n${userBlock}\n</memory_snapshot>`,
-            "hidden",
-            "bootstrap.memory_snapshot",
-          ),
-        );
-      }
-      const memoryBlock = memorySnapshot.memory?.trim();
-      if (memoryBlock) {
-        messages.push(
-          createInternalPromptMessage(
-            `<memory_snapshot target="memory">\n${memoryBlock}\n</memory_snapshot>`,
-            "hidden",
-            "bootstrap.memory_snapshot",
-          ),
-        );
-      }
     }
   }
 
@@ -653,7 +548,6 @@ export const buildSubagentPromptMessages = async (args: {
         context: args.context,
         stellaHome: args.stellaHome,
         stellaRoot: args.stellaRoot,
-        includeDreamMemoryFiles: false,
       })),
     );
     messages.push(...append);
@@ -663,7 +557,6 @@ export const buildSubagentPromptMessages = async (args: {
         context: args.context,
         stellaHome: args.stellaHome,
         stellaRoot: args.stellaRoot,
-        includeDreamMemoryFiles: false,
       })),
     );
   }
@@ -720,7 +613,6 @@ export const buildOrchestratorPromptMessages = async (args: {
         context: args.context,
         stellaHome: args.stellaHome,
         stellaRoot: args.stellaRoot,
-        includeDreamMemoryFiles: true,
       })),
     );
     messages.push(...append);
@@ -730,7 +622,6 @@ export const buildOrchestratorPromptMessages = async (args: {
         context: args.context,
         stellaHome: args.stellaHome,
         stellaRoot: args.stellaRoot,
-        includeDreamMemoryFiles: true,
       })),
     );
   }

@@ -568,12 +568,6 @@ export const buildAgentContext = async (
       releaseNumber?: number;
       mode?: "author" | "install" | "update" | "uninstall";
     };
-    /**
-     * True only on Orchestrator turns that should re-inject the dynamic
-     * memory bundle. Computed by prepareOrchestratorRun on the every-N-turn
-     * cadence; subagent paths leave this undefined and never see memory.
-     */
-    shouldInjectDynamicMemory?: boolean;
   },
 ): Promise<LocalAgentContext> => {
   const agent = resolveAgent(context, args.agentType);
@@ -720,29 +714,6 @@ export const buildAgentContext = async (
     dynamicContextSections.push(lines.join("\n"));
   }
 
-  // Memory snapshot is only built for agents that declare the
-  // `injectsDynamicMemory` capability AND that the caller marked as "inject
-  // this turn" — every Nth user turn. Skipping the work on coast turns
-  // keeps both the prompt and the snapshot rebuild cheap.
-  let memorySnapshot: { memory?: string; user?: string } | undefined;
-  const shouldInjectDynamicMemory =
-    agentHasCapability(args.agentType, "injectsDynamicMemory") &&
-    args.shouldInjectDynamicMemory === true;
-  if (shouldInjectDynamicMemory) {
-    const memoryStore = context.runtimeStore.memoryStore;
-    // Freeze a fresh snapshot for this run so new writes appear on the next
-    // turn without changing the current run's prefix.
-    memoryStore.loadSnapshot();
-    const memoryBlock = memoryStore.formatForSystemPrompt("memory");
-    const userBlock = memoryStore.formatForSystemPrompt("user");
-    if (memoryBlock || userBlock) {
-      memorySnapshot = {
-        ...(memoryBlock ? { memory: memoryBlock } : {}),
-        ...(userBlock ? { user: userBlock } : {}),
-      };
-    }
-  }
-
   return {
     systemPrompt:
       agent?.systemPrompt || defaultPromptForAgentType(args.agentType),
@@ -755,8 +726,6 @@ export const buildAgentContext = async (
     reasoningEffort: getReasoningEffort(context.stellaRoot, args.agentType),
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
     coreMemory: readCoreMemory(context.stellaRoot),
-    ...(memorySnapshot ? { memorySnapshot } : {}),
-    ...(shouldInjectDynamicMemory ? { shouldInjectDynamicMemory: true } : {}),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine: isSelfModTask
