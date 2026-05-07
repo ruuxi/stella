@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
 import type { MessagePayload } from '@/app/chat/lib/event-transforms'
 import {
@@ -546,11 +546,16 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     null,
   )
 
-  const stableRows = useMemo(() => {
-    const next = stabilizeTurnRows(allRows, rowsStableRef.current, eventRowEqual)
-    rowsStableRef.current = next
-    return next.result
-  }, [allRows])
+  const stableRowsState = useMemo(
+    () => stabilizeTurnRows(allRows, rowsStableRef.current, eventRowEqual),
+    [allRows],
+  )
+
+  useLayoutEffect(() => {
+    rowsStableRef.current = stableRowsState
+  }, [stableRowsState])
+
+  const stableRows = stableRowsState.result
 
   const slicedRows = useMemo(() => {
     if (typeof maxItems !== 'number') return stableRows

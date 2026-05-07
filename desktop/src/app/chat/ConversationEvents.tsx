@@ -3,11 +3,22 @@
  *
  * Projects local `EventRecord[]` into row view models via `useEventRows`
  * and mounts the shared `<ChatTimeline>`. Renders the Google Workspace
- * connect card outside the timeline because it's a local-chat-only
- * affordance — other surfaces (Store thread, sidebar) reuse the timeline
- * without dragging in this dependency.
+ * connect card outside the timeline data — it's a local-chat-only
+ * affordance — but threads it into `extraTail` so it lives inside the
+ * same Legend List footer as the inline working indicator.
  */
-import { memo, useCallback, useSyncExternalStore } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type RefObject,
+} from "react";
+import type { LegendListRef, NativeScrollEvent, NativeSyntheticEvent } from "@legendapp/list/react";
 import type {
   Attachment,
   EventRecord,
@@ -25,6 +36,8 @@ import {
   subscribeGoogleWorkspaceAuthRequired,
 } from "@/global/integrations/google-workspace-auth-state";
 
+const USER_MESSAGE_ENTER_MS = 360;
+
 type Props = {
   events: EventRecord[];
   maxItems?: number;
@@ -40,13 +53,48 @@ type Props = {
   onOpenAttachment?: (attachment: Attachment) => void;
   /**
    * Inline working-indicator inputs. Forwarded to `ChatTimeline` which
-   * keeps the indicator mounted as the next sibling after the latest
-   * assistant row in the tail. The indicator handles its own hold +
-   * grow-out exit when `active` flips false, so this prop is always
-   * defined.
+   * mounts the indicator inside the list footer. The indicator handles
+   * its own hold + grow-out exit when `active` flips false, so this
+   * prop is always defined.
    */
   indicator?: InlineWorkingIndicatorMountProps;
+  /** Threaded through to `<ChatTimeline>` → `<LegendList>`. */
+  listRef?: RefObject<LegendListRef | null>;
+  onListScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onStartReached?: () => void;
+  className?: string;
+  contentContainerStyle?: CSSProperties;
+  estimatedItemSize?: number;
 };
+
+function useOneShotIds(ids: readonly string[], durationMs: number): Set<string> {
+  const playedRef = useRef(new Set<string>());
+  const [active, setActive] = useState(() => new Set<string>());
+  const key = useMemo(() => [...new Set(ids)].sort().join("\n"), [ids]);
+
+  useEffect(() => {
+    if (!key) return;
+    const fresh = key
+      .split("\n")
+      .filter((id) => id && !playedRef.current.has(id));
+    if (fresh.length === 0) return;
+
+    fresh.forEach((id) => playedRef.current.add(id));
+    setActive((current) => new Set([...current, ...fresh]));
+
+    const timeoutId = window.setTimeout(() => {
+      setActive((current) => {
+        const next = new Set(current);
+        fresh.forEach((id) => next.delete(id));
+        return next;
+      });
+    }, durationMs);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [durationMs, key]);
+
+  return active;
+}
 
 export const ConversationEvents = memo(function ConversationEvents({
   events,
@@ -62,6 +110,12 @@ export const ConversationEvents = memo(function ConversationEvents({
   isLoadingHistory,
   onOpenAttachment,
   indicator,
+  listRef,
+  onListScroll,
+  onStartReached,
+  className,
+  contentContainerStyle,
+  estimatedItemSize,
 }: Props) {
   const showGwsConnect = useSyncExternalStore(
     subscribeGoogleWorkspaceAuthRequired,
@@ -82,16 +136,21 @@ export const ConversationEvents = memo(function ConversationEvents({
     selfModMap,
   });
 
-  const justSentIds =
-    optimisticUserMessageIds && optimisticUserMessageIds.length > 0
-      ? new Set(optimisticUserMessageIds)
-      : null;
+  const justSentCandidates = useMemo(() => {
+    const ids: string[] = [];
+    if (pendingUserMessageId) ids.push(pendingUserMessageId);
+    if (optimisticUserMessageIds) ids.push(...optimisticUserMessageIds);
+    return ids;
+  }, [optimisticUserMessageIds, pendingUserMessageId]);
+  const animatingJustSentIds = useOneShotIds(
+    justSentCandidates,
+    USER_MESSAGE_ENTER_MS,
+  );
+
   const rows =
-    pendingUserMessageId || justSentIds
+    animatingJustSentIds.size > 0
       ? projectedRows.map((row) =>
-          row.kind === "user" &&
-          (row.id === pendingUserMessageId ||
-            (justSentIds ? justSentIds.has(row.id) : false))
+          row.kind === "user" && animatingJustSentIds.has(row.id)
             ? { ...row, justSent: true }
             : row,
         )
@@ -108,6 +167,12 @@ export const ConversationEvents = memo(function ConversationEvents({
       onOpenAttachment={onOpenAttachment}
       indicator={indicator}
       queuedUserMessages={queuedUserMessages}
+      listRef={listRef}
+      onListScroll={onListScroll}
+      onStartReached={onStartReached}
+      className={className}
+      contentContainerStyle={contentContainerStyle}
+      estimatedItemSize={estimatedItemSize}
       extraTail={
         <GrowIn animate={true} show={showGwsConnect}>
           <GoogleWorkspaceConnectCard onConnected={handleGwsConnected} />

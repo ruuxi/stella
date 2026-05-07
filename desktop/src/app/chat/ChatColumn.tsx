@@ -1,8 +1,28 @@
 /**
- * ChatColumn: column-reverse scroll viewport, message rendering, custom scrollbar, composer.
+ * ChatColumn: virtualized chat viewport (Legend List v3 web entry),
+ * custom scrollbar overlay, composer.
+ *
+ * Layout:
+ *   .full-body-main
+ *     .chat-viewport-region (relative; hosts the absolute scrollbar +
+ *       scroll-to-bottom button overlays)
+ *       <ConversationEvents> → <ChatTimeline> → <LegendList />
+ *     .composer-wrap
+ *
+ * The list element itself is the scroll container — there is no
+ * column-reverse wrapper anymore. `useChatScrollManagement` drives the
+ * thumb / at-bottom state from Legend's `onScroll` synthetic event and
+ * `getState()` snapshot rather than reading `scrollTop` from a manual
+ * div.
  */
-
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { DropOverlay } from "./DropOverlay";
@@ -15,6 +35,25 @@ import { useFileDrop } from "./hooks/use-file-drop";
 import type { ChatColumnProps } from "./chat-column-types";
 import "./full-shell.chat.css";
 
+/**
+ * Inline content-container style for Legend List.
+ *
+ * Important: Legend sums `paddingTop`/`paddingBottom` as numbers when
+ * computing `contentLength`. Strings like `"112px"` get string-concat'd
+ * (`"25656" + "112px" + "30px"`) and the resulting non-numeric
+ * `contentLength` poisons every "is at end" / "scroll target" computation
+ * and stops items from rendering. Always pass paddings as numbers (px).
+ */
+const FULL_CHAT_CONTENT_STYLE = {
+  maxWidth: "min(50rem, 100%)",
+  marginLeft: "auto",
+  marginRight: "auto",
+  paddingLeft: 24,
+  paddingRight: 24,
+  paddingTop: 112,
+  paddingBottom: 30,
+} as const;
+
 export const ChatColumn = memo(function ChatColumn({
   conversation,
   composer,
@@ -25,32 +64,50 @@ export const ChatColumn = memo(function ChatColumn({
   onSuggestionClick,
   onDismissHome,
 }: ChatColumnProps) {
-  // --- Custom scrollbar thumb drag ---
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ y: number; scrollTop: number } | null>(null);
-  const viewportForDragRef = useRef<HTMLDivElement | null>(null);
 
-  const handleThumbDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    isDraggingRef.current = true;
-    const el = viewportForDragRef.current;
-    if (!el) return;
-    dragStartRef.current = { y: e.clientY, scrollTop: el.scrollTop };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, []);
+  /**
+   * The Legend List exposes its scroll element via `getScrollableNode()`.
+   * We only need it inside drag handlers, so we resolve lazily rather
+   * than caching a ref that could go stale across surface remounts.
+   */
+  const getScrollNode = useCallback((): HTMLElement | null => {
+    const list = scroll.listRef.current;
+    if (!list) return null;
+    return list.getScrollableNode();
+  }, [scroll.listRef]);
 
-  const handleThumbMove = useCallback((e: React.PointerEvent) => {
-    if (!isDraggingRef.current || !dragStartRef.current) return;
-    const el = viewportForDragRef.current;
-    if (!el) return;
-    const trackHeight = el.clientHeight;
-    const scrollRange = el.scrollHeight - el.clientHeight;
-    const dy = e.clientY - dragStartRef.current.y;
-    // Thumb is inverted to feel natural: dragging down → newer content (scrollTop → 0).
-    const scrollDelta = (dy / trackHeight) * scrollRange;
-    el.scrollTop = dragStartRef.current.scrollTop + scrollDelta;
-  }, []);
+  const handleThumbDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const el = getScrollNode();
+      if (!el) return;
+      isDraggingRef.current = true;
+      dragStartRef.current = { y: e.clientY, scrollTop: el.scrollTop };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [getScrollNode],
+  );
+
+  const handleThumbMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!isDraggingRef.current || !dragStartRef.current) return;
+      const el = getScrollNode();
+      if (!el) return;
+      const trackHeight = el.clientHeight;
+      const scrollRange = Math.max(1, el.scrollHeight - el.clientHeight);
+      const dy = e.clientY - dragStartRef.current.y;
+      const scrollDelta = (dy / trackHeight) * scrollRange;
+      const next = Math.max(
+        0,
+        Math.min(scrollRange, dragStartRef.current.scrollTop + scrollDelta),
+      );
+      el.scrollTop = next;
+    },
+    [getScrollNode],
+  );
 
   const handleThumbUp = useCallback(() => {
     isDraggingRef.current = false;
@@ -58,19 +115,20 @@ export const ChatColumn = memo(function ChatColumn({
   }, []);
 
   const {
-    onScroll,
-    overflowAnchor,
-    setContentElement,
-    setViewportElement,
-    showScrollButton,
+    onListScroll,
     isAtBottom,
+    showScrollButton,
     scrollToBottom,
     thumbState,
+    listRef,
   } = scroll;
 
-  // Delay unmount of home content so fade-out can play. Synchronous setState
-  // here is intentional — the fade-out timer needs immediate state to drive
-  // the leave animation; there's no external system to subscribe to.
+  /**
+   * Delay unmount of home content so the fade-out can play. Synchronous
+   * setState here is intentional — the fade-out timer needs immediate
+   * state to drive the leave animation; there's no external system to
+   * subscribe to.
+   */
   const [homeVisible, setHomeVisible] = useState(Boolean(showHomeContent));
   const [homeLeaving, setHomeLeaving] = useState(false);
 
@@ -87,8 +145,6 @@ export const ChatColumn = memo(function ChatColumn({
       return () => clearTimeout(timer);
     }
     return undefined;
-    // homeVisible intentionally excluded — re-running this effect when it
-    // flips would defeat the fade-out timing logic.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showHomeContent]);
 
@@ -106,12 +162,6 @@ export const ChatColumn = memo(function ChatColumn({
     footerTasks.length > 0 ||
     Boolean(conversation.streaming.isStreaming) ||
     Boolean(conversation.streaming.runtimeStatusText);
-  // Always pass the indicator with `active` reflecting work state.
-  // `InlineWorkingIndicator` itself handles the post-active hold +
-  // grow-out exit and snapshots its last-known props for the duration
-  // of that exit, so it's safe to keep feeding it the live (possibly
-  // empty) values from the runtime — when `active` flips false it
-  // freezes whichever props it had at that moment.
   const indicatorProps: InlineWorkingIndicatorMountProps = {
     active: hasActiveWork,
     tasks: footerTasks,
@@ -125,15 +175,6 @@ export const ChatColumn = memo(function ChatColumn({
     setChatContext: composer.setChatContext,
     disabled: conversation.streaming.isStreaming,
   });
-
-  // Capture viewport ref for drag operations
-  const assignViewport = useCallback(
-    (node: HTMLDivElement | null) => {
-      viewportForDragRef.current = node;
-      setViewportElement(node);
-    },
-    [setViewportElement],
-  );
 
   const composerElement = (
     <Composer
@@ -175,33 +216,30 @@ export const ChatColumn = memo(function ChatColumn({
   return (
     <div className="full-body-main" {...dropHandlers}>
       <DropOverlay visible={isDragOver} variant="surface" />
-      {/* Viewport region: scroll container + overlays (scrollbar, scroll-to-bottom).
-          The working indicator now renders inline as the next sibling of the
-          latest animating assistant row (Claude pattern), so there's no
-          floating overlay to clear at the viewport bottom. */}
+      {/* Viewport region: list + overlays (custom scrollbar, scroll-to-bottom).
+          The working indicator renders in the list footer (below the latest
+          assistant text), not as a floating overlay. */}
       <div className="chat-viewport-region">
-        <div
+        <ConversationEvents
+          events={conversation.events}
+          maxItems={2000}
+          streamingText={conversation.streaming.text}
+          isStreaming={conversation.streaming.isStreaming}
+          pendingUserMessageId={conversation.streaming.pendingUserMessageId}
+          queuedUserMessages={conversation.streaming.queuedUserMessages}
+          optimisticUserMessageIds={conversation.streaming.optimisticUserMessageIds}
+          selfModMap={conversation.streaming.selfModMap}
+          hasOlderEvents={conversation.history.hasOlderEvents}
+          isLoadingOlder={conversation.history.isLoadingOlder}
+          isLoadingHistory={conversation.history.isInitialLoading}
+          indicator={indicatorProps}
+          listRef={listRef}
+          onListScroll={onListScroll}
+          onStartReached={scroll.onStartReached}
           className={`session-content${isAtBottom ? " at-bottom" : ""}`}
-          ref={assignViewport}
-          onScroll={onScroll}
-          style={{ overflowAnchor }}
-        >
-          <div className="session-messages" ref={setContentElement}>
-            <ConversationEvents
-              events={conversation.events}
-              streamingText={conversation.streaming.text}
-              isStreaming={conversation.streaming.isStreaming}
-              pendingUserMessageId={conversation.streaming.pendingUserMessageId}
-              queuedUserMessages={conversation.streaming.queuedUserMessages}
-              optimisticUserMessageIds={conversation.streaming.optimisticUserMessageIds}
-              selfModMap={conversation.streaming.selfModMap}
-              hasOlderEvents={conversation.history.hasOlderEvents}
-              isLoadingOlder={conversation.history.isLoadingOlder}
-              isLoadingHistory={conversation.history.isInitialLoading}
-              indicator={indicatorProps}
-            />
-          </div>
-        </div>
+          contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
+          estimatedItemSize={140}
+        />
 
         {/* Custom scrollbar thumb overlay */}
         <div className="chat-scrollbar">

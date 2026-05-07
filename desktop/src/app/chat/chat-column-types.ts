@@ -1,4 +1,5 @@
-import type { Dispatch, RefCallback, SetStateAction } from 'react'
+import type { Dispatch, RefObject, SetStateAction } from 'react'
+import type { LegendListRef, NativeScrollEvent, NativeSyntheticEvent } from '@legendapp/list/react'
 import type { TaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-summaries'
 import type { QueuedUserMessage } from '@/app/chat/hooks/use-streaming-chat'
 import type { EventRecord, TaskItem } from '@/app/chat/lib/event-transforms'
@@ -49,17 +50,25 @@ export type ChatColumnComposer = {
   onStop: () => void
 }
 
+/**
+ * Scroll API for chat surfaces.
+ *
+ * Backed by `@legendapp/list/react` (Legend List v3 web entry):
+ * the surface attaches `listRef` to the `<LegendList>` and forwards
+ * `onListScroll` to its `onScroll` prop. The hook drives custom
+ * scrollbar thumb state, "at bottom" tracking, and `scrollToBottom`
+ * via the list's imperative API.
+ */
 export type ChatColumnScroll = {
-  setViewportElement: RefCallback<HTMLDivElement>
-  setContentElement: RefCallback<HTMLDivElement>
-  onScroll: () => void
+  listRef: RefObject<LegendListRef | null>
+  onListScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void
+  /** Forwarded to Legend List's `onStartReached` for older-history pagination. */
+  onStartReached: () => void
   showScrollButton: boolean
   /** True when the user is at (or within ~1px of) the newest-content edge. */
   isAtBottom: boolean
-  scrollToBottom: (behavior?: ScrollBehavior) => void
-  overflowAnchor: 'auto' | 'none'
+  scrollToBottom: (behavior?: 'instant' | 'smooth') => void
   thumbState: ChatColumnThumbState
-  hasScrollElement?: boolean
 }
 
 export type ChatColumnProps = {

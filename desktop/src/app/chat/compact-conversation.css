@@ -26,6 +26,17 @@
   --compact-chat-assistant-streaming-opacity: 1;
 }
 
+/*
+ * When the surface hosts the virtualized LegendList (sidebar, mini, orb),
+ * it needs to be a true flex slot inside `.chat-viewport-region` so the
+ * list can claim a definite height. The Store panel keeps the original
+ * `min-height: 100%` flow because its messages render flat (no list).
+ */
+.chat-viewport-region > .chat-conversation-surface {
+  flex: 1;
+  min-height: 0;
+}
+
 .chat-conversation-surface--mini {
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;

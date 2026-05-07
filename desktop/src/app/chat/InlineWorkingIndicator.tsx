@@ -77,9 +77,13 @@ export function InlineWorkingIndicator({
     [isStreaming, runningTool, runningToolId, status, tasks],
   );
   const frozenPropsRef = useRef<InlineWorkingIndicatorProps>(liveProps);
-  if (active) {
-    frozenPropsRef.current = liveProps;
-  }
+
+  useEffect(() => {
+    if (active) {
+      frozenPropsRef.current = liveProps;
+    }
+  }, [active, liveProps]);
+
   const displayProps = active ? liveProps : frozenPropsRef.current;
 
   const indicatorState = useMemo(
