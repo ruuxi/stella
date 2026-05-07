@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { AssistantMessageEventStream } from "./event_stream";
+import { headersToRecord } from "./headers";
 import { supportsXhigh } from "./model_utils";
 import {
   convertResponsesMessages,
@@ -21,7 +22,11 @@ import type {
   Usage,
 } from "./types";
 
-const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
+const OPENAI_TOOL_CALL_PROVIDERS = new Set([
+  "openai",
+  "openai-codex",
+  "opencode",
+]);
 
 function readHeader(headers: unknown, name: string): string | undefined {
   if (!headers) return undefined;
@@ -36,12 +41,14 @@ function readHeader(headers: unknown, name: string): string | undefined {
 }
 
 function summarizeOpenAIError(error: unknown): Record<string, unknown> {
-  const record = error && typeof error === "object"
-    ? (error as Record<string, unknown>)
-    : {};
-  const nested = record.error && typeof record.error === "object"
-    ? (record.error as Record<string, unknown>)
-    : {};
+  const record =
+    error && typeof error === "object"
+      ? (error as Record<string, unknown>)
+      : {};
+  const nested =
+    record.error && typeof record.error === "object"
+      ? (record.error as Record<string, unknown>)
+      : {};
   const headers = record.headers ?? record.responseHeaders;
   const requestId =
     typeof record.request_id === "string"
@@ -54,26 +61,31 @@ function summarizeOpenAIError(error: unknown): Record<string, unknown> {
     name: error instanceof Error ? error.name : undefined,
     message: error instanceof Error ? error.message : String(error),
     status: typeof record.status === "number" ? record.status : undefined,
-    code: typeof record.code === "string"
-      ? record.code
-      : typeof nested.code === "string"
-        ? nested.code
-        : undefined,
-    type: typeof record.type === "string"
-      ? record.type
-      : typeof nested.type === "string"
-        ? nested.type
-        : undefined,
-    param: typeof record.param === "string"
-      ? record.param
-      : typeof nested.param === "string"
-        ? nested.param
-        : undefined,
+    code:
+      typeof record.code === "string"
+        ? record.code
+        : typeof nested.code === "string"
+          ? nested.code
+          : undefined,
+    type:
+      typeof record.type === "string"
+        ? record.type
+        : typeof nested.type === "string"
+          ? nested.type
+          : undefined,
+    param:
+      typeof record.param === "string"
+        ? record.param
+        : typeof nested.param === "string"
+          ? nested.param
+          : undefined,
     requestId,
   };
 }
 
-function resolveCacheRetention(cacheRetention?: CacheRetention): CacheRetention {
+function resolveCacheRetention(
+  cacheRetention?: CacheRetention,
+): CacheRetention {
   return cacheRetention || "short";
 }
 
@@ -101,7 +113,12 @@ export interface OpenAIResponsesOptions extends StreamOptions {
 
 function normalizeResponsesToolChoice(
   toolChoice: OpenAIResponsesOptions["toolChoice"],
-): "auto" | "none" | "required" | { type: "function"; name: string } | undefined {
+):
+  | "auto"
+  | "none"
+  | "required"
+  | { type: "function"; name: string }
+  | undefined {
   if (!toolChoice || typeof toolChoice === "string") {
     return toolChoice;
   }
@@ -111,7 +128,8 @@ function normalizeResponsesToolChoice(
     return { type: "function", name: normalizeOpenAIFunctionName(directName) };
   }
   const nested = record.function as Record<string, unknown> | undefined;
-  const nestedName = nested && typeof nested.name === "string" ? nested.name : "";
+  const nestedName =
+    nested && typeof nested.name === "string" ? nested.name : "";
   if (nestedName.length > 0) {
     return { type: "function", name: normalizeOpenAIFunctionName(nestedName) };
   }
@@ -144,16 +162,36 @@ export const streamOpenAIResponses: StreamFunction<
     };
 
     try {
-      const client = createClient(model, options?.apiKey, options?.headers);
+      const cacheRetention = resolveCacheRetention(options?.cacheRetention);
+      const cacheSessionId =
+        cacheRetention === "none" ? undefined : options?.sessionId;
+      const client = createClient(
+        model,
+        options?.apiKey,
+        options?.headers,
+        cacheSessionId,
+      );
       let params = buildParams(model, context, options);
       const nextParams = await options?.onPayload?.(params, model);
       if (nextParams !== undefined) {
         params = nextParams as typeof params;
       }
 
-      const openaiStream = await client.responses.create(
-        params,
-        options?.signal ? { signal: options.signal } : undefined,
+      const requestOptions = {
+        ...(options?.signal ? { signal: options.signal } : {}),
+        ...(options?.timeoutMs !== undefined
+          ? { timeout: options.timeoutMs }
+          : {}),
+        ...(options?.maxRetries !== undefined
+          ? { maxRetries: options.maxRetries }
+          : {}),
+      };
+      const { data: openaiStream, response } = await client.responses
+        .create(params, requestOptions)
+        .withResponse();
+      await options?.onResponse?.(
+        { status: response.status, headers: headersToRecord(response.headers) },
+        model,
       );
       stream.push({ type: "start", partial: output });
 
@@ -169,7 +207,9 @@ export const streamOpenAIResponses: StreamFunction<
         throw new Error("Request was aborted");
       }
       if (output.stopReason === "error") {
-        throw new Error(output.errorMessage || "Provider returned an error stop reason");
+        throw new Error(
+          output.errorMessage || "Provider returned an error stop reason",
+        );
       }
 
       stream.push({ type: "done", reason: output.stopReason, message: output });
@@ -200,13 +240,14 @@ export const streamSimpleOpenAIResponses: StreamFunction<
   const reasoningEffort = supportsXhigh(model)
     ? options?.reasoning
     : clampReasoning(options?.reasoning);
-  const toolChoice = (options as OpenAIResponsesOptions | undefined)?.toolChoice;
-  const responseFormat = (options as OpenAIResponsesOptions | undefined)?.responseFormat;
-  const reasoningSummary =
-    reasoningEffort
-      ? ((options as OpenAIResponsesOptions | undefined)?.reasoningSummary
-        ?? "detailed")
-      : (options as OpenAIResponsesOptions | undefined)?.reasoningSummary;
+  const toolChoice = (options as OpenAIResponsesOptions | undefined)
+    ?.toolChoice;
+  const responseFormat = (options as OpenAIResponsesOptions | undefined)
+    ?.responseFormat;
+  const reasoningSummary = reasoningEffort
+    ? ((options as OpenAIResponsesOptions | undefined)?.reasoningSummary ??
+      "detailed")
+    : (options as OpenAIResponsesOptions | undefined)?.reasoningSummary;
 
   return streamOpenAIResponses(model, context, {
     ...base,
@@ -221,19 +262,26 @@ function createClient(
   model: Model<"openai-responses">,
   apiKey?: string,
   optionsHeaders?: Record<string, string>,
+  sessionId?: string,
 ) {
   if (!apiKey) {
     throw new Error(`No API key for provider: ${model.provider}`);
+  }
+
+  const compat = model.compat ?? {};
+  const defaultHeaders: Record<string, string> = {
+    ...model.headers,
+    ...optionsHeaders,
+  };
+  if (sessionId && compat.sendSessionIdHeader) {
+    defaultHeaders.session_id = sessionId;
   }
 
   return new OpenAI({
     apiKey,
     baseURL: model.baseUrl,
     maxRetries: 0,
-    defaultHeaders: {
-      ...model.headers,
-      ...optionsHeaders,
-    },
+    defaultHeaders,
   });
 }
 
@@ -253,8 +301,12 @@ function buildParams(
     model: model.id,
     input: messages,
     stream: true,
-    prompt_cache_key: cacheRetention === "none" ? undefined : options?.sessionId,
-    prompt_cache_retention: getPromptCacheRetention(model.baseUrl, cacheRetention),
+    prompt_cache_key:
+      cacheRetention === "none" ? undefined : options?.sessionId,
+    prompt_cache_retention:
+      model.compat?.supportsLongCacheRetention === false
+        ? undefined
+        : getPromptCacheRetention(model.baseUrl, cacheRetention),
     store: false,
   };
 
@@ -297,7 +349,8 @@ function buildParams(
   }
 
   if (options?.responseFormat !== undefined) {
-    (params as unknown as Record<string, unknown>).response_format = options.responseFormat;
+    (params as unknown as Record<string, unknown>).response_format =
+      options.responseFormat;
   }
 
   return params;
@@ -329,5 +382,8 @@ function applyServiceTierPricing(
   usage.cost.cacheRead *= multiplier;
   usage.cost.cacheWrite *= multiplier;
   usage.cost.total =
-    usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
+    usage.cost.input +
+    usage.cost.output +
+    usage.cost.cacheRead +
+    usage.cost.cacheWrite;
 }

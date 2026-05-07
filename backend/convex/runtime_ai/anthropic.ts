@@ -10,6 +10,8 @@ import type {
   ToolCall,
 } from "./types";
 import { AssistantMessageEventStream } from "./event_stream";
+import { headersToRecord } from "./headers";
+import { retryProviderRequest } from "./retry";
 import { buildBaseOptions, clampReasoning } from "./simple_options";
 import { transformMessages } from "./transform_messages";
 import { sanitizeSurrogates } from "./sanitize_unicode";
@@ -60,7 +62,11 @@ type AnthropicToolBlock =
       cache_control?: CacheControl;
     };
 
-type AnthropicSystemBlock = { type: "text"; text: string; cache_control?: CacheControl };
+type AnthropicSystemBlock = {
+  type: "text";
+  text: string;
+  cache_control?: CacheControl;
+};
 
 type AnthropicToolDef = {
   name: string;
@@ -77,7 +83,9 @@ type AnthropicRequestBody = {
   temperature?: number;
   stream: true;
   tools?: AnthropicToolDef[];
-  tool_choice?: { type: "auto" | "any" | "none" } | { type: "tool"; name: string };
+  tool_choice?:
+    | { type: "auto" | "any" | "none" }
+    | { type: "tool"; name: string };
   thinking?: { type: "enabled"; budget_tokens: number };
 };
 
@@ -120,6 +128,54 @@ type AnthropicStreamEvent = {
   };
 };
 
+function createRequestSignal(
+  signal: AbortSignal | undefined,
+  timeoutMs: number | undefined,
+): { signal?: AbortSignal; cleanup: () => void } {
+  if (timeoutMs === undefined) {
+    return { signal, cleanup: () => {} };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  signal?.addEventListener("abort", onAbort, { once: true });
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+    },
+  };
+}
+
+function providerHttpError(response: Response, body: string): Error {
+  const error = new Error(
+    body || `Anthropic request failed with status ${response.status}`,
+  ) as Error & {
+    status?: number;
+    responseHeaders?: Headers;
+  };
+  error.status = response.status;
+  error.responseHeaders = response.headers;
+  return error;
+}
+
+function parseAnthropicStreamEvent(data: string): AnthropicStreamEvent | null {
+  try {
+    return JSON.parse(data) as AnthropicStreamEvent;
+  } catch {
+    const repaired = data
+      .replace(/,\s*([}\]])/g, "$1")
+      .replace(/[\u0000-\u001f]+$/g, "");
+    try {
+      return JSON.parse(repaired) as AnthropicStreamEvent;
+    } catch {
+      return null;
+    }
+  }
+}
+
 function emptyUsage(): AssistantMessage["usage"] {
   return {
     input: 0,
@@ -132,7 +188,9 @@ function emptyUsage(): AssistantMessage["usage"] {
 }
 
 function normalizeAnthropicModelId(modelId: string): string {
-  const nativeId = modelId.startsWith("anthropic/") ? modelId.slice("anthropic/".length) : modelId;
+  const nativeId = modelId.startsWith("anthropic/")
+    ? modelId.slice("anthropic/".length)
+    : modelId;
   return nativeId.replace(/-(\d+)\.(\d+)$/u, "-$1-$2");
 }
 
@@ -140,7 +198,9 @@ function normalizeAnthropicToolUseId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) || "tool";
 }
 
-function convertUserContent(content: string | Array<TextContent | ImageContent>): string | AnthropicContentBlock[] {
+function convertUserContent(
+  content: string | Array<TextContent | ImageContent>,
+): string | AnthropicContentBlock[] {
   if (typeof content === "string") {
     return sanitizeSurrogates(content);
   }
@@ -165,7 +225,11 @@ function convertUserContent(content: string | Array<TextContent | ImageContent>)
         type: "image",
         source: {
           type: "base64",
-          media_type: block.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+          media_type: block.mimeType as
+            | "image/jpeg"
+            | "image/png"
+            | "image/gif"
+            | "image/webp",
           data: block.data,
         },
       };
@@ -177,7 +241,9 @@ function convertUserContent(content: string | Array<TextContent | ImageContent>)
   return blocks;
 }
 
-function anthropicImageBlock(block: ImageContent): AnthropicContentBlock | null {
+function anthropicImageBlock(
+  block: ImageContent,
+): AnthropicContentBlock | null {
   if (!block.data || !block.mimeType) {
     return null;
   }
@@ -185,13 +251,20 @@ function anthropicImageBlock(block: ImageContent): AnthropicContentBlock | null 
     type: "image",
     source: {
       type: "base64",
-      media_type: block.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+      media_type: block.mimeType as
+        | "image/jpeg"
+        | "image/png"
+        | "image/gif"
+        | "image/webp",
       data: block.data,
     },
   };
 }
 
-function appendToolResultMessages(messages: AnthropicMessage[], message: Extract<Context["messages"][number], { role: "toolResult" }>): void {
+function appendToolResultMessages(
+  messages: AnthropicMessage[],
+  message: Extract<Context["messages"][number], { role: "toolResult" }>,
+): void {
   const text = message.content
     .filter((block): block is TextContent => block.type === "text")
     .map((block) => block.text)
@@ -203,12 +276,16 @@ function appendToolResultMessages(messages: AnthropicMessage[], message: Extract
 
   messages.push({
     role: "user",
-    content: [{
-      type: "tool_result",
-      tool_use_id: message.toolCallId,
-      content: sanitizeSurrogates(text || (images.length > 0 ? "(screenshot attached below)" : "")),
-      is_error: message.isError,
-    }],
+    content: [
+      {
+        type: "tool_result",
+        tool_use_id: message.toolCallId,
+        content: sanitizeSurrogates(
+          text || (images.length > 0 ? "(screenshot attached below)" : ""),
+        ),
+        is_error: message.isError,
+      },
+    ],
   });
 
   if (images.length > 0) {
@@ -225,14 +302,24 @@ function appendToolResultMessages(messages: AnthropicMessage[], message: Extract
   }
 }
 
-export function convertMessages(model: Model<"anthropic-messages">, context: Context): AnthropicMessage[] {
+export function convertMessages(
+  model: Model<"anthropic-messages">,
+  context: Context,
+): AnthropicMessage[] {
   const messages: AnthropicMessage[] = [];
-  for (const message of transformMessages(context.messages, model, normalizeAnthropicToolUseId)) {
+  for (const message of transformMessages(
+    context.messages,
+    model,
+    normalizeAnthropicToolUseId,
+  )) {
     if (message.role === "system" || message.role === "developer") {
       continue;
     }
     if (message.role === "user") {
-      messages.push({ role: "user", content: convertUserContent(message.content) });
+      messages.push({
+        role: "user",
+        content: convertUserContent(message.content),
+      });
       continue;
     }
     if (message.role === "assistant") {
@@ -240,7 +327,10 @@ export function convertMessages(model: Model<"anthropic-messages">, context: Con
       for (const block of message.content) {
         if (block.type === "text") {
           if (block.text.trim()) {
-            content.push({ type: "text", text: sanitizeSurrogates(block.text) });
+            content.push({
+              type: "text",
+              text: sanitizeSurrogates(block.text),
+            });
           }
           continue;
         }
@@ -262,7 +352,10 @@ export function convertMessages(model: Model<"anthropic-messages">, context: Con
                 signature: block.thinkingSignature,
               });
             } else {
-              content.push({ type: "text", text: sanitizeSurrogates(block.thinking) });
+              content.push({
+                type: "text",
+                text: sanitizeSurrogates(block.thinking),
+              });
             }
           }
           continue;
@@ -286,7 +379,10 @@ export function convertMessages(model: Model<"anthropic-messages">, context: Con
   return messages;
 }
 
-function reasoningBudget(reasoning: SimpleStreamOptions["reasoning"], maxTokens: number): number | undefined {
+function reasoningBudget(
+  reasoning: SimpleStreamOptions["reasoning"],
+  maxTokens: number,
+): number | undefined {
   switch (clampReasoning(reasoning)) {
     case "minimal":
       return Math.min(1024, maxTokens - 1);
@@ -326,7 +422,9 @@ function applyCacheBreakpoints(body: AnthropicRequestBody): void {
     if (message.role !== "user") continue;
     if (typeof message.content === "string") {
       if (message.content.length === 0) continue;
-      message.content = [{ type: "text", text: message.content, cache_control: EPHEMERAL_CACHE }];
+      message.content = [
+        { type: "text", text: message.content, cache_control: EPHEMERAL_CACHE },
+      ];
       return;
     }
     const blocks = message.content;
@@ -359,14 +457,20 @@ function buildRequestBody(
       description: tool.description,
       input_schema: tool.parameters,
     })),
-    tool_choice: context.tools && context.tools.length > 0 ? { type: "auto" } : undefined,
-    thinking: budget && budget > 0 ? { type: "enabled", budget_tokens: budget } : undefined,
+    tool_choice:
+      context.tools && context.tools.length > 0 ? { type: "auto" } : undefined,
+    thinking:
+      budget && budget > 0
+        ? { type: "enabled", budget_tokens: budget }
+        : undefined,
   };
   applyCacheBreakpoints(body);
   return body;
 }
 
-async function* parseSse(response: Response): AsyncGenerator<AnthropicStreamEvent> {
+async function* parseSse(
+  response: Response,
+): AsyncGenerator<AnthropicStreamEvent> {
   if (!response.body) return;
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -387,7 +491,10 @@ async function* parseSse(response: Response): AsyncGenerator<AnthropicStreamEven
           .join("\n")
           .trim();
         if (data && data !== "[DONE]") {
-          yield JSON.parse(data) as AnthropicStreamEvent;
+          const event = parseAnthropicStreamEvent(data);
+          if (event) {
+            yield event;
+          }
         }
         index = buffer.indexOf("\n\n");
       }
@@ -408,11 +515,10 @@ function mapStopReason(reason?: string): AssistantMessage["stopReason"] {
   }
 }
 
-export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamOptions> = (
-  model,
-  context,
-  options,
-) => {
+export const streamAnthropic: StreamFunction<
+  "anthropic-messages",
+  SimpleStreamOptions
+> = (model, context, options) => {
   const stream = new AssistantMessageEventStream();
   void (async () => {
     const output: AssistantMessage = {
@@ -431,37 +537,74 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamO
       let body = buildRequestBody(model, context, options);
       const nextBody = await options?.onPayload?.(body, model);
       if (nextBody !== undefined) body = nextBody as AnthropicRequestBody;
-      const response = await fetch(`${model.baseUrl.replace(/\/+$/, "")}/messages`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "anthropic-version": "2023-06-01",
-          "anthropic-beta": "prompt-caching-2024-07-31,output-128k-2025-02-19",
-          "x-api-key": apiKey,
-          ...model.headers,
-          ...options?.headers,
+      const response = await retryProviderRequest(
+        async () => {
+          const requestSignal = createRequestSignal(
+            options?.signal,
+            options?.timeoutMs,
+          );
+          try {
+            const nextResponse = await fetch(
+              `${model.baseUrl.replace(/\/+$/, "")}/messages`,
+              {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  "anthropic-version": "2023-06-01",
+                  "anthropic-beta":
+                    "prompt-caching-2024-07-31,output-128k-2025-02-19",
+                  "x-api-key": apiKey,
+                  ...model.headers,
+                  ...options?.headers,
+                },
+                body: JSON.stringify(body),
+                signal: requestSignal.signal,
+              },
+            );
+            if (!nextResponse.ok) {
+              throw providerHttpError(nextResponse, await nextResponse.text());
+            }
+            return nextResponse;
+          } finally {
+            requestSignal.cleanup();
+          }
         },
-        body: JSON.stringify(body),
-        signal: options?.signal,
-      });
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
+        {
+          signal: options?.signal,
+          maxAttempts: options?.maxRetries,
+        },
+      );
+      await options?.onResponse?.(
+        { status: response.status, headers: headersToRecord(response.headers) },
+        model,
+      );
 
       stream.push({ type: "start", partial: output });
       const toolInputByIndex = new Map<number, string>();
+      let messageStopSeen = false;
       for await (const event of parseSse(response)) {
         if (event.type === "content_block_start" && event.content_block) {
           if (event.content_block.type === "text") {
-            output.content.push({ type: "text", text: event.content_block.text ?? "" });
-            stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
+            output.content.push({
+              type: "text",
+              text: event.content_block.text ?? "",
+            });
+            stream.push({
+              type: "text_start",
+              contentIndex: output.content.length - 1,
+              partial: output,
+            });
           } else if (event.content_block.type === "thinking") {
             output.content.push({
               type: "thinking",
               thinking: event.content_block.thinking ?? "",
               thinkingSignature: "",
             });
-            stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
+            stream.push({
+              type: "thinking_start",
+              contentIndex: output.content.length - 1,
+              partial: output,
+            });
           } else if (event.content_block.type === "redacted_thinking") {
             output.content.push({
               type: "thinking",
@@ -469,7 +612,11 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamO
               thinkingSignature: event.content_block.data,
               redacted: true,
             });
-            stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
+            stream.push({
+              type: "thinking_start",
+              contentIndex: output.content.length - 1,
+              partial: output,
+            });
           } else if (event.content_block.type === "tool_use") {
             output.content.push({
               type: "toolCall",
@@ -477,17 +624,33 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamO
               name: event.content_block.name ?? "",
               arguments: event.content_block.input ?? {},
             });
-            stream.push({ type: "toolcall_start", contentIndex: output.content.length - 1, partial: output });
+            stream.push({
+              type: "toolcall_start",
+              contentIndex: output.content.length - 1,
+              partial: output,
+            });
           }
           continue;
         }
-        if (event.type === "content_block_delta" && typeof event.index === "number" && event.delta) {
+        if (
+          event.type === "content_block_delta" &&
+          typeof event.index === "number" &&
+          event.delta
+        ) {
           const block = output.content[event.index];
           if (!block) continue;
           if (block.type === "text" && typeof event.delta.text === "string") {
             block.text += event.delta.text;
-            stream.push({ type: "text_delta", contentIndex: event.index, delta: event.delta.text, partial: output });
-          } else if (block.type === "thinking" && typeof event.delta.thinking === "string") {
+            stream.push({
+              type: "text_delta",
+              contentIndex: event.index,
+              delta: event.delta.text,
+              partial: output,
+            });
+          } else if (
+            block.type === "thinking" &&
+            typeof event.delta.thinking === "string"
+          ) {
             block.thinking += event.delta.thinking;
             stream.push({
               type: "thinking_delta",
@@ -496,13 +659,16 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamO
               partial: output,
             });
           } else if (
-            block.type === "thinking"
-            && event.delta.type === "signature_delta"
-            && typeof event.delta.signature === "string"
+            block.type === "thinking" &&
+            event.delta.type === "signature_delta" &&
+            typeof event.delta.signature === "string"
           ) {
             block.thinkingSignature = block.thinkingSignature || "";
             block.thinkingSignature += event.delta.signature;
-          } else if (block.type === "toolCall" && typeof event.delta.partial_json === "string") {
+          } else if (
+            block.type === "toolCall" &&
+            typeof event.delta.partial_json === "string"
+          ) {
             const prior = toolInputByIndex.get(event.index) ?? "";
             const next = prior + event.delta.partial_json;
             toolInputByIndex.set(event.index, next);
@@ -520,10 +686,18 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamO
           }
           continue;
         }
-        if (event.type === "content_block_stop" && typeof event.index === "number") {
+        if (
+          event.type === "content_block_stop" &&
+          typeof event.index === "number"
+        ) {
           const block = output.content[event.index];
           if (block?.type === "text") {
-            stream.push({ type: "text_end", contentIndex: event.index, content: block.text, partial: output });
+            stream.push({
+              type: "text_end",
+              contentIndex: event.index,
+              content: block.text,
+              partial: output,
+            });
           } else if (block?.type === "thinking") {
             stream.push({
               type: "thinking_end",
@@ -540,7 +714,12 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamO
                 block.arguments = {};
               }
             }
-            stream.push({ type: "toolcall_end", contentIndex: event.index, toolCall: block, partial: output });
+            stream.push({
+              type: "toolcall_end",
+              contentIndex: event.index,
+              toolCall: block,
+              partial: output,
+            });
           }
           continue;
         }
@@ -550,28 +729,53 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamO
           if (usage) {
             output.usage.input = usage.input_tokens ?? output.usage.input;
             output.usage.output = usage.output_tokens ?? output.usage.output;
-            output.usage.cacheRead = usage.cache_read_input_tokens ?? output.usage.cacheRead;
-            output.usage.cacheWrite = usage.cache_creation_input_tokens ?? output.usage.cacheWrite;
+            output.usage.cacheRead =
+              usage.cache_read_input_tokens ?? output.usage.cacheRead;
+            output.usage.cacheWrite =
+              usage.cache_creation_input_tokens ?? output.usage.cacheWrite;
             output.usage.totalTokens =
-              output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+              output.usage.input +
+              output.usage.output +
+              output.usage.cacheRead +
+              output.usage.cacheWrite;
           }
           continue;
         }
         if (event.type === "message_start" && event.message?.usage) {
           output.usage.input = event.message.usage.input_tokens ?? 0;
-          output.usage.cacheRead = event.message.usage.cache_read_input_tokens ?? 0;
-          output.usage.cacheWrite = event.message.usage.cache_creation_input_tokens ?? 0;
-          output.usage.totalTokens = output.usage.input + output.usage.cacheRead + output.usage.cacheWrite;
+          output.usage.cacheRead =
+            event.message.usage.cache_read_input_tokens ?? 0;
+          output.usage.cacheWrite =
+            event.message.usage.cache_creation_input_tokens ?? 0;
+          output.usage.totalTokens =
+            output.usage.input +
+            output.usage.cacheRead +
+            output.usage.cacheWrite;
+        }
+        if (event.type === "message_stop") {
+          messageStopSeen = true;
         }
       }
-      if (output.content.some((block): block is ToolCall => block.type === "toolCall")) {
+      if (!messageStopSeen) {
+        throw new Error("Anthropic stream ended before message_stop");
+      }
+      if (
+        output.content.some(
+          (block): block is ToolCall => block.type === "toolCall",
+        )
+      ) {
         output.stopReason = "toolUse";
       }
-      stream.push({ type: "done", reason: output.stopReason as "stop" | "length" | "toolUse", message: output });
+      stream.push({
+        type: "done",
+        reason: output.stopReason as "stop" | "length" | "toolUse",
+        message: output,
+      });
       stream.end();
     } catch (error) {
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = error instanceof Error ? error.message : String(error);
+      output.errorMessage =
+        error instanceof Error ? error.message : String(error);
       stream.push({ type: "error", reason: output.stopReason, error: output });
       stream.end();
     }
@@ -579,8 +783,12 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", SimpleStreamO
   return stream;
 };
 
-export const streamSimpleAnthropic: StreamFunction<"anthropic-messages", SimpleStreamOptions> = (
-  model,
-  context,
-  options,
-) => streamAnthropic(model, context, buildBaseOptions(model, options, options?.apiKey) as SimpleStreamOptions);
+export const streamSimpleAnthropic: StreamFunction<
+  "anthropic-messages",
+  SimpleStreamOptions
+> = (model, context, options) =>
+  streamAnthropic(
+    model,
+    context,
+    buildBaseOptions(model, options, options?.apiKey) as SimpleStreamOptions,
+  );
