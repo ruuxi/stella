@@ -12,17 +12,16 @@
  *
  * Storage shape (single localStorage key per conversation):
  *
- *   stella.home.ideasSeen.<conversationId> = { [categoryLabel]: <hash> }
+ *   stella.home.ideasSeen.v2.<conversationId> = { [categoryLabel]: <hash> }
  *
- * On first encounter for a category we silently seed the current hash so
- * the dot only ever appears after a real refresh diverges from the seeded
- * baseline. Marking seen happens the moment the dropup opens (not on
- * option select) — opening counts as "I saw it."
+ * First-display welcome suggestions start with visible dots. Marking seen
+ * happens the moment the dropup opens (not on option select) — opening counts
+ * as "I saw it."
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const STORAGE_PREFIX = "stella.home.ideasSeen.";
+const STORAGE_PREFIX = "stella.home.ideasSeen.v2.";
 
 type Stored = Record<string, string>;
 
@@ -85,6 +84,10 @@ export function useIdeasSeen(
    * never gets baked into localStorage as the baseline.
    */
   ready: boolean,
+  /**
+   * Welcome suggestions should notify on first display.
+   */
+  notifyOnFirstReady = false,
 ): {
   isUnseen: (label: string) => boolean;
   markSeen: (label: string) => void;
@@ -113,14 +116,13 @@ export function useIdeasSeen(
     return map;
   }, [categories]);
 
-  // Silent seeding: only fill in baselines for labels we've never seen
-  // before. Functional `setStored` so we always merge into the freshest
-  // state — using the closed-over `stored` here was the bug that wiped
-  // user acks on remount. Skipped while `!ready` so an interim defaults
-  // render doesn't lock in the wrong baseline before personalized
-  // categories arrive.
+  // Silent seeding: only fill in baselines for labels we've never seen when
+  // first-display notifications are disabled. Functional `setStored` so we
+  // always merge into the freshest state. Skipped while `!ready` so an
+  // interim defaults render doesn't lock in the wrong baseline before
+  // personalized categories arrive.
   useEffect(() => {
-    if (!storageKey || !ready) return;
+    if (!storageKey || !ready || notifyOnFirstReady) return;
     setStored((prev) => {
       let changed = false;
       const next: Stored = { ...prev };
@@ -134,7 +136,7 @@ export function useIdeasSeen(
       safeWrite(storageKey, next);
       return next;
     });
-  }, [storageKey, currentHashes, ready]);
+  }, [storageKey, currentHashes, ready, notifyOnFirstReady]);
 
   const isUnseen = useCallback(
     (label: string) => {
@@ -144,10 +146,11 @@ export function useIdeasSeen(
       if (!ready) return false;
       const current = currentHashes[label];
       const seen = stored[label];
-      if (current === undefined || seen === undefined) return false;
+      if (current === undefined) return false;
+      if (seen === undefined) return notifyOnFirstReady;
       return current !== seen;
     },
-    [currentHashes, stored, ready],
+    [currentHashes, stored, ready, notifyOnFirstReady],
   );
 
   const markSeen = useCallback(
