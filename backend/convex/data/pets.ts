@@ -281,7 +281,20 @@ export const upsertMany = internalMutation({
         .query("pet_catalog")
         .withIndex("by_petId", (q) => q.eq("id", pet.id))
         .unique();
-      const downloads = Math.max(0, Math.floor(pet.downloads ?? existing?.downloads ?? 0));
+      // Preserve the in-app download counter on every resync. The
+      // upstream share publishes its own `downloadCount`, but that's a
+      // share-site metric and doesn't reflect how many of *our* users
+      // have selected the pet. We keep whichever value is larger so a
+      // cross-deployment seed can still bump the counter forward, but a
+      // seed that arrives with `downloads: 0` (the typical case for a
+      // brand-new sprite) never resets a row that's already been
+      // selected by users.
+      const incomingDownloads = Math.max(
+        0,
+        Math.floor(pet.downloads ?? 0),
+      );
+      const existingDownloads = Math.max(0, existing?.downloads ?? 0);
+      const downloads = Math.max(existingDownloads, incomingDownloads);
       const searchText = buildSearchText(sanitizedPet);
       let petDocId: Id<"pet_catalog">;
       if (existing) {
