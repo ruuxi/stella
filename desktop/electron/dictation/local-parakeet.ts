@@ -137,6 +137,23 @@ const startService = async (): Promise<void> => {
   }
 
   serviceReady = new Promise((resolve, reject) => {
+    let readySettled = false;
+    let readyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const resolveReady = () => {
+      if (readySettled) return;
+      readySettled = true;
+      if (readyTimeout) clearTimeout(readyTimeout);
+      resolve();
+    };
+
+    const rejectReady = (error: Error) => {
+      if (readySettled) return;
+      readySettled = true;
+      if (readyTimeout) clearTimeout(readyTimeout);
+      reject(error);
+    };
+
     const child = spawn(
       helperPath,
       ["--serve", "--cache-root", parakeetCacheRoot()],
@@ -147,8 +164,8 @@ const startService = async (): Promise<void> => {
     );
     serviceProcess = child;
 
-    const readyTimeout = setTimeout(() => {
-      reject(new Error("Local Parakeet helper did not become ready."));
+    readyTimeout = setTimeout(() => {
+      rejectReady(new Error("Local Parakeet helper did not become ready."));
       stopService();
     }, SERVICE_READY_TIMEOUT_MS);
 
@@ -159,24 +176,23 @@ const startService = async (): Promise<void> => {
       while (newlineIndex >= 0) {
         const line = serviceBuffer.slice(0, newlineIndex).trim();
         serviceBuffer = serviceBuffer.slice(newlineIndex + 1);
-        handleServiceLine(line, resolve, readyTimeout);
+        handleServiceLine(line, resolveReady, rejectReady);
         newlineIndex = serviceBuffer.indexOf("\n");
       }
     });
 
     child.once("error", (error) => {
-      clearTimeout(readyTimeout);
-      reject(error);
+      rejectReady(error);
       failPending(error);
       serviceProcess = null;
       serviceReady = null;
     });
 
     child.once("exit", (code, signal) => {
-      clearTimeout(readyTimeout);
       const error = new Error(
         `Local Parakeet helper exited (${signal ?? code ?? "unknown"}).`,
       );
+      rejectReady(error);
       failPending(error);
       serviceProcess = null;
       serviceReady = null;
@@ -190,14 +206,17 @@ const startService = async (): Promise<void> => {
 const handleServiceLine = (
   line: string,
   readyResolve: () => void,
-  readyTimeout: ReturnType<typeof setTimeout>,
+  readyReject: (error: Error) => void,
 ) => {
   const parsed = parseHelperResponse(line);
   if (!parsed) return;
   if (!parsed.id) {
     if (parsed.ok) {
-      clearTimeout(readyTimeout);
       readyResolve();
+    } else {
+      readyReject(
+        new Error(parsed.error ?? "Local Parakeet helper failed to start."),
+      );
     }
     return;
   }
