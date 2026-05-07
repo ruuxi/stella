@@ -5,13 +5,13 @@ import {
   STELLA_OPEN_PANEL_CHAT_EVENT,
   type StellaOpenPanelChatDetail,
 } from "@/shared/lib/stella-orb-chat";
-import type { DisplayPayload } from "@/shared/contracts/display-payload";
+import type { DisplayTabPayload } from "@/shared/contracts/display-payload";
 import type { DisplaySidebarHandle } from "@/shell/DisplaySidebar";
 import { displayTabs } from "@/shell/display/tab-store";
 
 type UseWorkspacePanelEventsOptions = {
   displaySidebarRef: RefObject<DisplaySidebarHandle | null>;
-  latestDisplayPayloadRef: RefObject<DisplayPayload | null>;
+  latestDisplayPayloadRef: RefObject<DisplayTabPayload | null>;
   openChatPanel: (detail?: StellaOpenPanelChatDetail) => void;
 };
 

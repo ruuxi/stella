@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useMediaMaterializer } from "@/app/media/use-media-materializer";
 import {
-  type DisplayPayload,
+  type DisplayTabPayload,
   normalizeDisplayPayload,
 } from "@/shared/contracts/display-payload";
 import type { DisplaySidebarHandle } from "@/shell/DisplaySidebar";
@@ -14,13 +14,13 @@ type UseDisplayPayloadRoutingOptions = {
 };
 
 type UseDisplayPayloadRoutingResult = {
-  routeDisplayPayload: (payload: DisplayPayload) => void;
+  routeDisplayPayload: (payload: DisplayTabPayload) => void;
   /**
    * The most recently routed payload, kept around so the workspace
    * panel can fall back to it when the user manually summons the
    * panel without an active payload (see `useWorkspacePanelEvents`).
    */
-  latestDisplayPayloadRef: RefObject<DisplayPayload | null>;
+  latestDisplayPayloadRef: RefObject<DisplayTabPayload | null>;
 };
 
 /**
@@ -46,10 +46,10 @@ export function useDisplayPayloadRouting({
   isOnChatRoute,
   showHomeContent,
 }: UseDisplayPayloadRoutingOptions): UseDisplayPayloadRoutingResult {
-  const latestDisplayPayloadRef = useRef<DisplayPayload | null>(null);
+  const latestDisplayPayloadRef = useRef<DisplayTabPayload | null>(null);
 
   const routeDisplayPayload = useCallback(
-    (payload: DisplayPayload) => {
+    (payload: DisplayTabPayload) => {
       latestDisplayPayloadRef.current = payload;
       const ds = displaySidebarRef.current;
       if (!ds) return;

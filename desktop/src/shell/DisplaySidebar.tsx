@@ -11,7 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
-  type DisplayPayload,
+  type DisplayTabPayload,
   normalizeDisplayPayload,
 } from "@/shared/contracts/display-payload";
 import {
@@ -27,16 +27,14 @@ import "./display-sidebar.css";
 export interface DisplaySidebarHandle {
   /**
    * Open (or refresh) a tab for the given payload and activate it. The
-   * panel auto-opens as a side effect of `displayTabs.openTab`. Strings
-   * are accepted for legacy compatibility with the runtime worker's
-   * `displayHtml(...)` IPC, which still streams raw HTML.
+   * panel auto-opens as a side effect of `displayTabs.openTab`.
    */
-  open(payload: DisplayPayload | string): void;
+  open(payload: DisplayTabPayload): void;
   /**
    * Refresh a tab's content without forcing the panel open or stealing
    * focus from another active tab.
    */
-  update(payload: DisplayPayload | string): void;
+  update(payload: DisplayTabPayload): void;
   /** Close the panel; tabs are kept in memory for the next open. */
   close(): void;
 }

@@ -670,9 +670,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         await peer.request(METHOD_NAMES.HOST_CREDENTIALS_REQUEST, payload),
       requestRuntimeAuthRefresh: async (payload) =>
         await peer.request(METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH, payload),
-      displayHtml: async (html) => {
-        await peer.request(METHOD_NAMES.HOST_DISPLAY_UPDATE, { html });
-      },
       scheduleApi: {
         listCronJobs: async () =>
           await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_LIST_CRON_JOBS),

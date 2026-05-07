@@ -37,7 +37,6 @@ const createTestHost = async (): Promise<TestHostContext> => {
   initializeDesktopDatabase(db);
 
   const createdTasks: Array<Record<string, unknown>> = [];
-  const displayCalls: string[] = [];
   const memoryStore = new MemoryStore(db);
 
   const host = createToolHost({
@@ -54,9 +53,6 @@ const createTestHost = async (): Promise<TestHostContext> => {
       getAgent: async () => null,
       cancelAgent: async () => ({ canceled: false }),
     },
-    displayHtml: (html) => {
-      displayCalls.push(html);
-    },
     webSearch: async (query) => ({ text: `results for ${query}` }),
     memoryStore,
   });
@@ -66,7 +62,6 @@ const createTestHost = async (): Promise<TestHostContext> => {
     db,
     host,
     createdTasks,
-    displayCalls,
   };
   activeContexts.add(context);
   return context;

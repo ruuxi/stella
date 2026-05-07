@@ -197,7 +197,6 @@ export const launchPreparedOrchestratorRun = (args: {
       : {}),
     selfModMonitor: context.selfModMonitor,
     hookEmitter: context.hookEmitter,
-    displayHtml: context.displayHtml,
     onExecutionSessionCreated: args.onExecutionSessionCreated,
     ...(prepared.userTurnsSinceMemoryReview != null
       ? { userTurnsSinceMemoryReview: prepared.userTurnsSinceMemoryReview }

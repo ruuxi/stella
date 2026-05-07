@@ -29,7 +29,10 @@ import {
   isProducedFileRecordArray,
   type FileChangeRecord,
 } from "../../../../runtime/contracts/file-changes.js";
-import type { DisplayPayload } from "@/shared/contracts/display-payload";
+import {
+  isDisplayTabPayload,
+  type DisplayTabPayload,
+} from "@/shared/contracts/display-payload";
 import { displayTabs } from "./tab-store";
 import { payloadToTabSpec } from "./payload-to-tab-spec";
 import {
@@ -61,7 +64,7 @@ const NEXT_RUN_TICK_MS = 30_000;
 type FileEntry = {
   path: string;
   timestamp: number;
-  payload: DisplayPayload;
+  payload: DisplayTabPayload;
 };
 
 const resolvedPathForChange = (record: FileChangeRecord): string | null => {
@@ -318,7 +321,7 @@ export function ChatHomeOverview() {
         const path = resolvedPathForChange(record);
         if (!path) continue;
         const filePayload = fileArtifactPayloadForPath(path, event.timestamp);
-        if (!filePayload) continue;
+        if (!filePayload || !isDisplayTabPayload(filePayload)) continue;
         // Most-recent occurrence wins so the timestamp reflects the
         // latest activity for that file.
         seen.set(path, {

@@ -1197,11 +1197,11 @@ export type ElectronDisplayApi = {
   /**
    * Subscribes to runtime-driven workspace panel updates.
    *
-   * Payload is either a raw HTML string or a structured `DisplayPayload`
-   * object describing what to render. Callers should pass through `normalizeDisplayPayload` from
-   * `@/shared/contracts/display-payload` to handle both shapes uniformly.
+   * Payload is a structured `DisplayPayload` object describing what to render.
+   * Callers should pass through `normalizeDisplayPayload` from
+   * `@/shared/contracts/display-payload` before routing it to the panel.
    */
-  onUpdate: (callback: (payload: string | unknown) => void) => () => void;
+  onUpdate: (callback: (payload: unknown) => void) => () => void;
   /**
    * Reads a file as base64 from the main process. Used by the PDF viewer
    * to load local PDFs without giving the renderer file:// access.

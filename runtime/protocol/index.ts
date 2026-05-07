@@ -597,18 +597,16 @@ export type HostHeartbeatSignature = {
 };
 
 /**
- * The host display update bridge accepts either a raw HTML string or a
- * structured payload that the renderer maps to the workspace panel tab manager.
+ * The host display update bridge accepts structured payloads that the renderer
+ * maps to the workspace panel tab manager.
  *
  * Structured payloads use the same `DisplayPayload` shape defined in
  * `desktop/src/shared/contracts/display-payload.ts`. We avoid importing it
  * here so the runtime protocol stays free of desktop-only types — the
  * renderer is the single source of truth for the union and validates the
- * payload shape with `isDisplayPayload`.
+ * payload shape before routing it to the panel.
  */
-export type HostDisplayUpdateParams =
-  | { html: string }
-  | { payload: unknown };
+export type HostDisplayUpdateParams = { payload: unknown };
 
 export type HostWindowTarget = "mini" | "full";
 

@@ -7,21 +7,15 @@ import {
 } from "../../src/shared/contracts/display-payload";
 
 describe("normalizeDisplayPayload", () => {
-  it("wraps a non-empty string into { kind: 'html' }", () => {
-    expect(normalizeDisplayPayload("<p>hi</p>")).toEqual({
-      kind: "html",
-      html: "<p>hi</p>",
-    });
-  });
-
-  it("returns null for blank strings", () => {
+  it("rejects string payloads", () => {
+    expect(normalizeDisplayPayload("<p>hi</p>")).toBeNull();
     expect(normalizeDisplayPayload("")).toBeNull();
     expect(normalizeDisplayPayload("   \n\t")).toBeNull();
   });
 
-  it("passes through valid html payloads", () => {
+  it("rejects html payloads from the workspace panel channel", () => {
     const payload: DisplayPayload = { kind: "html", html: "<x/>" };
-    expect(normalizeDisplayPayload(payload)).toBe(payload);
+    expect(normalizeDisplayPayload(payload)).toBeNull();
   });
 
   it("passes through valid office payloads", () => {

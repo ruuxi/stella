@@ -160,7 +160,6 @@ export type ToolHostOptions = {
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;
   extensionTools?: import("../extensions/types.js").ToolDefinition[];
-  displayHtml?: (html: string) => void;
   /**
    * Optional handler for Stella's search-backed `web` tool. When omitted,
    * search mode is unavailable.

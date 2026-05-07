@@ -10,7 +10,10 @@
  */
 
 import { createElement } from "react";
-import type { DisplayPayload } from "@/shared/contracts/display-payload";
+import type {
+  DisplayPayload,
+  DisplayTabPayload,
+} from "@/shared/contracts/display-payload";
 import { getDisplayPayloadTitle } from "@/shared/contracts/display-payload";
 import {
   UrlTabContent,
@@ -98,12 +101,9 @@ export const removeGeneratedMediaItem = (id: string): GeneratedMediaItem[] => {
   return [...generatedMediaItems];
 };
 
-export const payloadToTabSpec = (payload: DisplayPayload): DisplayTabSpec => {
-  if (payload.kind === "html") {
-    // `html` payloads render inline in the chat. They never become a
-    // tab; the workspace panel doesn't know about them.
-    throw new Error("html payloads do not have a tab spec");
-  }
+export const payloadToTabSpec = (
+  payload: DisplayTabPayload,
+): DisplayTabSpec => {
   const title = getDisplayPayloadTitle(payload);
 
   switch (payload.kind) {
