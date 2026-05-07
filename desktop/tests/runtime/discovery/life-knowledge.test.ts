@@ -46,7 +46,7 @@ const createTempHome = async () => {
       "",
       "## Entries",
       "",
-      "- [computer-use](computer-use/SKILL.md): browser and desktop-app operating guidance.",
+      "- [stella-computer](stella-computer/SKILL.md): browser and desktop-app operating guidance.",
       "- [user-profile](user-profile/SKILL.md): structured onboarding memory for the user, including projects, apps, interests, and environment.",
       "",
       "## Related Abilities",

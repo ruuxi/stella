@@ -1,9 +1,9 @@
 ---
-name: computer-use
+name: stella-computer
 description: Desktop-app automation through Stella's stella-computer CLI.
 ---
 
-# Computer Use
+# Stella Computer
 
 Use this skill when the user asks you to inspect or operate a desktop app, including Spotify, Discord, Slack, Messages, Notes, Mail, Calendar, Music, Telegram, WhatsApp, Signal, Linear, Notion, Obsidian, Figma, Zoom, Cursor, VS Code, App Store, Reminders, FaceTime, Photos, Maps, Finder, Safari, Chrome, or any other windowed app.
 
@@ -31,7 +31,9 @@ Start every desktop-app turn with `snapshot` for the target app. It returns a nu
 - `stella-computer snapshot --app "<App>"` - return the current accessibility tree and screenshot.
 - `stella-computer click <id> --app "<App>"` - click an accessibility element from the latest snapshot.
 - `stella-computer click-screenshot <x> <y> --app "<App>"` - click screenshot coordinates.
-- `stella-computer drag --app "<App>" --from-x <x> --from-y <y> --to-x <x> --to-y <y>` - drag inside the screenshot.
+- `stella-computer drag <from_x> <from_y> <to_x> <to_y> --app "<App>"` - drag between screen coordinates.
+- `stella-computer drag-screenshot <from_x> <from_y> <to_x> <to_y> --app "<App>"` - drag between screenshot coordinates.
+- `stella-computer drag-element <source-id> <dest-id> --app "<App>"` - drag an element to another element when the app exposes usable AX refs.
 - `stella-computer secondary-action <id> AXPress --app "<App>"` - invoke an Accessibility action.
 - `stella-computer press Return --app "<App>"` - press a key or key combination.
 - `stella-computer scroll <id> down --app "<App>"` - scroll an element.
@@ -40,9 +42,9 @@ Start every desktop-app turn with `snapshot` for the target app. It returns a nu
 
 ## Interaction Rules
 
-Use `--element-index` when the visible UI is exposed in the accessibility tree. It is the most precise and resilient option.
+Use numbered element IDs when the visible UI is exposed in the accessibility tree. It is the most precise and resilient option.
 
-Use screenshot `--x` / `--y` coordinates when the element is visible in the screenshot but not addressable through the accessibility tree. This is common in web-view-backed apps like Spotify, Slack, Discord, Notion, and Linear.
+Use screenshot pixel coordinates with `click-screenshot` or `drag-screenshot` when the element is visible in the screenshot but not addressable through the accessibility tree. Use `drag-element` for source/destination AX refs when the app exposes a real draggable item. This is common in web-view-backed apps like Spotify, Slack, Discord, Notion, and Linear.
 
 Avoid synthesized double-clicks with screenshot coordinates in web-view apps. Backgrounded webviews often drop them. Prefer a labeled action button, or single-click a row and press `Return` or `Space`.
 

@@ -26,7 +26,6 @@ import type {
 import { applyPatchTool } from "./apply-patch.js";
 import { askQuestionTool } from "./ask-question.js";
 import { askUserQuestionTool } from "./ask-user-question.js";
-import { createComputerTools } from "./computer.js";
 import { dreamTool } from "./dream.js";
 import { editTool } from "./edit.js";
 import { createExecCommandTool } from "./exec-command.js";
@@ -95,12 +94,6 @@ export const buildBuiltinTools = (
     requestCredential: options.requestCredential,
   }));
   tools.push(createWebTool({ webSearch: options.webSearch }));
-  // macOS computer-use surface (9 sibling tools sharing one CLI wrapper).
-  tools.push(
-    ...createComputerTools({
-      stellaComputerCliPath: options.stellaComputerCliPath,
-    }),
-  );
 
   // Orchestrator coordination surface
   tools.push(askQuestionTool);

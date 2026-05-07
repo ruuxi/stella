@@ -363,7 +363,7 @@ export type ToolHandler = (
  * see it.
  */
 export type ToolDefinition = {
-  /** Tool name surfaced to the model (e.g. `web`, `exec_command`, `computer_click`). */
+  /** Tool name surfaced to the model (e.g. `web`, `exec_command`). */
   name: string;
   /** Description string shown in the model's tool list. */
   description: string;
