@@ -88,6 +88,7 @@ type RuntimeClientEvents = {
   "voice-self-mod-hmr-state": RuntimeVoiceHmrStatePayload;
   "voice-action-completed": RuntimeVoiceActionCompletedPayload;
   "local-chat-updated": LocalChatUpdatedPayload | null;
+  "store-thread-updated": StoreThreadSnapshot;
   "schedule-updated": void;
   "google-workspace-auth-required": void;
 };
@@ -2061,6 +2062,15 @@ export class StellaRuntimeClient {
     peer.registerNotificationHandler(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, (params) => {
       this.events.emit("local-chat-updated", params as LocalChatUpdatedPayload | null);
     });
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.STORE_THREAD_UPDATED,
+      (params) => {
+        this.events.emit(
+          "store-thread-updated",
+          params as StoreThreadSnapshot,
+        );
+      },
+    );
     peer.registerNotificationHandler(NOTIFICATION_NAMES.SCHEDULE_UPDATED, () => {
       this.events.emit("schedule-updated", undefined);
     });

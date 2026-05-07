@@ -33,6 +33,33 @@ interface StepItem {
 }
 
 /**
+ * Merge two event lists by `_id`, sorting by `(timestamp, _id)`.
+ *
+ * Used to layer optimistic / scheduled / local sources on top of the
+ * paginated cloud events. The first list wins on duplicate ids; the
+ * second is the in-flight overlay.
+ */
+export const mergeEventSources = (
+  primary: EventRecord[],
+  overlay: EventRecord[],
+): EventRecord[] => {
+  if (overlay.length === 0) return primary
+  const merged = new Map<string, EventRecord>()
+  for (const event of primary) {
+    merged.set(event._id, event)
+  }
+  for (const event of overlay) {
+    if (!merged.has(event._id)) {
+      merged.set(event._id, event)
+    }
+  }
+  return [...merged.values()].sort((a, b) => {
+    if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
+    return a._id.localeCompare(b._id)
+  })
+}
+
+/**
  * Extract the human-readable text from an event payload.
  *
  * Checks `text`, `content`, and `message` fields (in that order), returning

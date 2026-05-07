@@ -952,6 +952,14 @@ export class RuntimeClientAdapter {
     return this.client.on("local-chat-updated", listener);
   }
 
+  onStoreThreadUpdated(
+    listener: (
+      payload: import("../../runtime/contracts/index.js").StoreThreadSnapshot,
+    ) => void,
+  ) {
+    return this.client.on("store-thread-updated", listener);
+  }
+
   onGoogleWorkspaceAuthRequired(listener: () => void) {
     return this.client.on("google-workspace-auth-required", listener);
   }

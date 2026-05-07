@@ -131,9 +131,34 @@ const toStoreThreadMessage = (
  * the side panel renders. No commit history, no per-feature index — the
  * snapshot is regenerated wholesale by the namer LLM after every
  * self-mod commit.
+ *
+ * The optional thread-updated listener (set via
+ * `setThreadUpdatedListener`) fires after every mutation to the store
+ * thread (append/patch/clear/delete/deny/markPublished) so the worker
+ * server can push a fresh snapshot to subscribers instead of forcing
+ * the renderer to poll.
  */
 export class StoreModStore {
+  private threadUpdatedListener: (() => void) | null = null;
+
   constructor(private readonly db: SqliteDatabase) {}
+
+  setThreadUpdatedListener(listener: (() => void) | null): void {
+    this.threadUpdatedListener = listener;
+  }
+
+  private notifyThreadUpdated(): void {
+    const listener = this.threadUpdatedListener;
+    if (!listener) return;
+    try {
+      listener();
+    } catch (error) {
+      console.warn(
+        "[store-mod-store] threadUpdatedListener threw:",
+        (error as Error).message,
+      );
+    }
+  }
 
   recordInstall(args: {
     packageId: string;
@@ -337,7 +362,7 @@ export class StoreModStore {
         args.editingBlueprint ? 1 : 0,
         createdAt,
       );
-    return {
+    const result: StoreThreadMessage = {
       _id: id,
       role: args.role,
       text: args.text,
@@ -352,6 +377,8 @@ export class StoreModStore {
       attachedFeatureNames,
       createdAt,
     };
+    this.notifyThreadUpdated();
+    return result;
   }
 
   patchStoreThreadMessage(
@@ -398,6 +425,7 @@ export class StoreModStore {
         `UPDATE store_thread_messages SET ${assignments.join(", ")} WHERE id = ?`,
       )
       .run(...values);
+    this.notifyThreadUpdated();
   }
 
   clearPendingStoreThreadMessages(text: string): void {
@@ -410,6 +438,7 @@ export class StoreModStore {
     `,
       )
       .run(text);
+    this.notifyThreadUpdated();
   }
 
   deleteStoreThreadMessages(ids: string[]): void {
@@ -419,6 +448,7 @@ export class StoreModStore {
     this.db
       .prepare(`DELETE FROM store_thread_messages WHERE id IN (${placeholders})`)
       .run(...uniqueIds);
+    this.notifyThreadUpdated();
   }
 
   findLatestPublishableBlueprint(): StoreThreadMessage | null {

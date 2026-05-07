@@ -15,6 +15,7 @@ import {
   broadcastGoogleWorkspaceAuthRequired,
   broadcastLocalChatUpdated,
   broadcastScheduleUpdated,
+  broadcastStoreThreadUpdated,
   broadcastToWindows,
 } from "./context.js";
 import { startOfficePreviewBridge } from "./office-preview-bridge.js";
@@ -145,6 +146,8 @@ const clearHostRunnerSubscriptions = (context: BootstrapContext) => {
 
   state.localChatUpdateUnsubscribe?.();
   state.localChatUpdateUnsubscribe = null;
+  state.storeThreadUpdateUnsubscribe?.();
+  state.storeThreadUpdateUnsubscribe = null;
   state.scheduleUpdateUnsubscribe?.();
   state.scheduleUpdateUnsubscribe = null;
   state.googleWorkspaceAuthRequiredUnsubscribe?.();
@@ -172,6 +175,11 @@ const connectHostRunner = async (context: BootstrapContext) => {
   state.localChatUpdateUnsubscribe = runner.onLocalChatUpdated((payload) => {
     broadcastLocalChatUpdated(context, payload);
   });
+  state.storeThreadUpdateUnsubscribe = runner.onStoreThreadUpdated(
+    (snapshot) => {
+      broadcastStoreThreadUpdated(context, snapshot);
+    },
+  );
   state.scheduleUpdateUnsubscribe = runner.onScheduleUpdated(() => {
     broadcastScheduleUpdated(context);
   });

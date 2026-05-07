@@ -309,6 +309,7 @@ export const NOTIFICATION_NAMES = {
   VOICE_SELF_MOD_HMR_STATE: "voice.selfModHmrState",
   VOICE_ACTION_COMPLETED: "voice.actionCompleted",
   LOCAL_CHAT_UPDATED: "localChat.updated",
+  STORE_THREAD_UPDATED: "store.threadUpdated",
   SCHEDULE_UPDATED: "schedule.updated",
   APPROVAL_REQUESTED: "approval.requested",
   GOOGLE_WORKSPACE_AUTH_REQUIRED: "googleWorkspace.authRequired",

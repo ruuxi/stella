@@ -20,48 +20,36 @@ import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { AppSuggestionsDialog } from "@/global/onboarding/AppSuggestionsDialog";
 import { ChatColumn } from "@/app/chat/ChatColumn";
-import { useMediaMaterializer } from "@/app/media/use-media-materializer";
 import {
   DisplaySidebar,
   type DisplaySidebarHandle,
 } from "@/shell/DisplaySidebar";
 import { ShellTopBar } from "@/shell/ShellTopBar";
-import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
+import { useDisplayTabs } from "@/shell/display/tab-store";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import {
-  type DisplayPayload,
-  normalizeDisplayPayload,
-} from "@/shared/contracts/display-payload";
-import { hasBillingCheckoutCompletionMarker } from "@/global/settings/lib/billing-checkout";
-import {
-  readPersistedLastLocation,
-  writePersistedLastLocation,
-} from "@/shared/lib/last-location";
-import {
-  STELLA_CLOSE_PANEL_EVENT,
-  STELLA_OPEN_WORKSPACE_PANEL_EVENT,
-  STELLA_OPEN_PANEL_CHAT_EVENT,
-  type StellaOpenPanelChatDetail,
-} from "@/shared/lib/stella-orb-chat";
-import {
-  clearRequestSignInAfterOnboarding,
-  consumeRequestSignInAfterOnboarding,
   dispatchClosePanel,
   dispatchOpenWorkspacePanel,
+  type StellaOpenPanelChatDetail,
 } from "@/shared/lib/stella-orb-chat";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import {
   dispatchStellaSendMessage,
   WORKSPACE_CREATION_TRIGGER_KIND,
 } from "@/shared/lib/stella-send-message";
-import { DICTATION_TOGGLE_EVENT } from "@/features/dictation/hooks/use-dictation";
 import {
   ensureChatDisplayTab,
   openChatDisplayTab,
 } from "@/shell/display/default-tabs";
 import { ModelCatalogUpdatedAtProvider } from "@/global/settings/hooks/model-catalog-updated-at";
+import { useDictationToggleBridge } from "@/shell/root-chrome/use-dictation-toggle-bridge";
+import { useDisplayPayloadRouting } from "@/shell/root-chrome/use-display-payload-routing";
+import { useLastLocationRestore } from "@/shell/root-chrome/use-last-location-restore";
+import { useOnboardingMemoryPromotion } from "@/shell/root-chrome/use-onboarding-memory-promotion";
+import { usePersistLastLocation } from "@/shell/root-chrome/use-persist-last-location";
+import { useWorkspacePanelEvents } from "@/shell/root-chrome/use-workspace-panel-events";
 
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
@@ -97,55 +85,8 @@ function RootLayout() {
     }
   }, [routerConversationId, setConversationId, state.conversationId]);
 
-  // Restore the last persisted location exactly once. We read synchronously
-  // from `localStorage` (no async hydration race) and only navigate if the
-  // pathname matches a registered route in this router. Anything else falls
-  // through to the memory-history default (`/chat`).
-  //
-  // Special case: a Stripe checkout return URL carries the
-  // `?billingCheckout=complete` marker on `window.location`. When we see it,
-  // we skip the persisted restore and go straight to `/billing` — the
-  // BillingScreen consumes the marker (see
-  // `consumeBillingCheckoutCompletionMarker`) so reloading later doesn't
-  // bounce the user back here.
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (restoredRef.current) return;
-    restoredRef.current = true;
-
-    if (hasBillingCheckoutCompletionMarker()) {
-      void router.navigate({ to: "/billing" });
-      return;
-    }
-
-    const target = readPersistedLastLocation();
-    if (!target || target === "/chat" || target === "/") return;
-
-    const queryIndex = target.indexOf("?");
-    const pathname = queryIndex === -1 ? target : target.slice(0, queryIndex);
-    const knownPaths = router.routesByPath as unknown as Record<
-      string,
-      unknown
-    >;
-    if (!Object.prototype.hasOwnProperty.call(knownPaths, pathname)) return;
-
-    const search = queryIndex === -1 ? "" : target.slice(queryIndex + 1);
-    const searchParams = Object.fromEntries(new URLSearchParams(search));
-
-    void router.navigate({
-      to: pathname,
-      search: searchParams as never,
-    });
-  }, [router]);
-
-  // Persist every router resolution to renderer-side `localStorage` so a
-  // fresh launch can restore where the user was. We deliberately don't
-  // round-trip this through IPC — no other window cares.
-  useEffect(() => {
-    return router.subscribe("onResolved", ({ toLocation }) => {
-      writePersistedLastLocation(toLocation.href);
-    });
-  }, [router]);
+  useLastLocationRestore(router);
+  usePersistLastLocation(router);
 
   return (
     <ModelCatalogUpdatedAtProvider>
@@ -172,18 +113,13 @@ function RootChrome() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
-  const latestDisplayPayloadRef = useRef<DisplayPayload | null>(null);
 
   const { hasConnectedAccount, isLoading: isAuthLoading } =
     useAuthSessionState();
 
-  // Set when the user opted into Live Memory during onboarding. We hold the
-  // request until the real app chrome mounts so the Chronicle/Dream sidecar
-  // starts after onboarding exits. Signed-out users still go through auth first.
-  const memorySignInPendingRef = useRef(false);
-
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isOnChatRoute = pathname === "/chat";
+  const isMiniWindow = state.window === "mini";
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -211,37 +147,11 @@ function RootChrome() {
     [setDialogSearch],
   );
 
-  // One-shot consumer for "user opted into Live Memory during onboarding".
-  // On first render after onboarding, promote immediately if signed in; otherwise
-  // open auth and remember the intent so auth completion can promote it.
-  // We deliberately wait for the auth session to finish loading before
-  // deciding — otherwise we'd flash the dialog on every refresh.
-  useEffect(() => {
-    if (isAuthLoading) return;
-    if (!consumeRequestSignInAfterOnboarding()) return;
-    if (hasConnectedAccount) {
-      // Already signed in (e.g. user signed in mid-onboarding). Just
-      // promote the pending intent — no dialog needed.
-      void window.electronAPI?.memory?.promotePending().catch(() => {
-        // Best-effort; user can re-toggle from Settings.
-      });
-      return;
-    }
-    memorySignInPendingRef.current = true;
-    showAuthDialog();
-  }, [hasConnectedAccount, isAuthLoading, showAuthDialog]);
-
-  // Once the user successfully signs in (after we opened the dialog for
-  // memory), promote Live Memory's pending intent into a real enable.
-  useEffect(() => {
-    if (!hasConnectedAccount) return;
-    if (!memorySignInPendingRef.current) return;
-    memorySignInPendingRef.current = false;
-    clearRequestSignInAfterOnboarding();
-    void window.electronAPI?.memory?.promotePending().catch(() => {
-      // Best-effort; user can re-toggle from Settings.
-    });
-  }, [hasConnectedAccount]);
+  useOnboardingMemoryPromotion({
+    hasConnectedAccount,
+    isAuthLoading,
+    showAuthDialog,
+  });
 
   const handlePendingAskStellaHandled = useCallback((requestId: number) => {
     setPendingAskStellaRequest((current) =>
@@ -323,139 +233,20 @@ function RootChrome() {
     pendingAskStellaRequest,
   ]);
 
-  // Push payloads into the workspace panel.
-  //
-  // - `media` and `url` payloads always open the panel (generated artifacts
-  //   and live previews are the user's main goal in that moment).
-  // - For everything else (office / pdf / markdown / source-diff), keep the
-  //   existing behavior: open on the chat home pane, hot-update elsewhere
-  //   so we don't steal focus mid-conversation.
-  // - In the mini window, register payloads passively (`ds.update`) and let
-  //   the user summon the panel via the right-click context menu.
-  const isMiniWindow = state.window === "mini";
-  const routeDisplayPayload = useCallback(
-    (payload: DisplayPayload) => {
-      latestDisplayPayloadRef.current = payload;
-      const ds = displaySidebarRef.current;
-      if (!ds) return;
-      if (isMiniWindow) {
-        ds.update(payload);
-        return;
-      }
-      if (
-        payload.kind === "media" ||
-        payload.kind === "url" ||
-        payload.kind === "trash"
-      ) {
-        ds.open(payload);
-        return;
-      }
-      if (chat.showHomeContent && isOnChatRoute) {
-        ds.open(payload);
-      } else {
-        ds.update(payload);
-      }
-    },
-    [chat.showHomeContent, isMiniWindow, isOnChatRoute],
-  );
+  const { latestDisplayPayloadRef } = useDisplayPayloadRouting({
+    displaySidebarRef,
+    isMiniWindow,
+    isOnChatRoute,
+    showHomeContent: chat.showHomeContent,
+  });
 
-  // Structured display payloads from main process.
-  useEffect(() => {
-    return window.electronAPI?.display.onUpdate((rawPayload) => {
-      const payload = normalizeDisplayPayload(rawPayload);
-      if (!payload) return;
-      routeDisplayPayload(payload);
-    });
-  }, [routeDisplayPayload]);
+  useDictationToggleBridge();
 
-  // If the previous agent run left files in deferred-delete trash, seed the
-  // workspace panel with a stable tab without opening UI. The actual Trash tab
-  // UI is intentionally deferred; this just wires discovery and tab routing.
-  useEffect(() => {
-    let cancelled = false;
-    void window.electronAPI?.display
-      ?.listTrash?.()
-      ?.then((result: { items?: unknown[] } | null) => {
-        if (cancelled || !result || !Array.isArray(result.items)) return;
-        if (result.items.length === 0) return;
-        displaySidebarRef.current?.update({
-          kind: "trash",
-          title: "Trash",
-          createdAt: Date.now(),
-        });
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Owner-scoped materializer: any media job (this conversation, another
-  // device, the agent, the studio, ...) gets downloaded into
-  // `state/media/outputs/` and surfaced in the workspace panel.
-  useMediaMaterializer({ onMaterialized: routeDisplayPayload });
-
-  // Global Cmd/Ctrl+Shift+M (or any dictation accelerator the user picks)
-  // arrives here as an IPC signal from the focused window. Re-dispatch as
-  // a window event so the active composer's `useDictation` hook can toggle
-  // its STT session — this avoids each composer talking to IPC directly.
-  useEffect(() => {
-    return window.electronAPI?.dictation?.onToggle((payload) => {
-      window.dispatchEvent(
-        new CustomEvent(DICTATION_TOGGLE_EVENT, {
-          detail: payload,
-        }),
-      );
-    });
-  }, []);
-
-  // Window-event wiring for the workspace panel.
-  useEffect(() => {
-    const handleOpen = (event: Event) => {
-      const detail = (event as CustomEvent<StellaOpenPanelChatDetail>).detail;
-      openChatPanel(detail ?? {});
-    };
-
-    const handleClose = () => displayTabs.setPanelOpen(false);
-
-    const handleOpenDisplay = () => {
-      // Prefer reopening whatever tabs are already in the manager; only
-      // fall back to re-routing the last payload when nothing has been
-      // opened yet this session. If there is no display payload yet, seed
-      // the panel with Chat so the workspace panel is always openable.
-      if (displayTabs.getSnapshot().tabs.length > 0) {
-        displayTabs.setPanelOpen(true);
-        return;
-      }
-      const payload = latestDisplayPayloadRef.current;
-      if (!payload) {
-        openChatPanel();
-        return;
-      }
-      displaySidebarRef.current?.open(payload);
-    };
-
-    window.addEventListener(STELLA_OPEN_PANEL_CHAT_EVENT, handleOpen);
-    window.addEventListener(STELLA_CLOSE_PANEL_EVENT, handleClose);
-    window.addEventListener(
-      STELLA_OPEN_WORKSPACE_PANEL_EVENT,
-      handleOpenDisplay,
-    );
-
-    const cleanupIpcOpen = window.electronAPI?.ui.onOpenChatSidebar?.(() => {
-      openChatPanel();
-    });
-
-    return () => {
-      window.removeEventListener(STELLA_OPEN_PANEL_CHAT_EVENT, handleOpen);
-      window.removeEventListener(STELLA_CLOSE_PANEL_EVENT, handleClose);
-      window.removeEventListener(
-        STELLA_OPEN_WORKSPACE_PANEL_EVENT,
-        handleOpenDisplay,
-      );
-      cleanupIpcOpen?.();
-    };
-  }, [openChatPanel]);
+  useWorkspacePanelEvents({
+    displaySidebarRef,
+    latestDisplayPayloadRef,
+    openChatPanel,
+  });
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 600px)");
