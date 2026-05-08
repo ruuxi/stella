@@ -7,15 +7,10 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
   getAuthToken: () => invoke<string | null>("storeWeb:getAuthToken"),
   readFeatureSnapshot: () => invoke("storeWeb:readFeatureSnapshot"),
   listInstalledMods: () => invoke("storeWeb:listInstalledMods"),
-  getRelease: (payload: { packageId: string; releaseNumber: number }) =>
-    invoke("storeWeb:getRelease", payload),
-  installFromBlueprint: (payload: {
+  requestPackageInstall: (payload: {
     packageId: string;
     releaseNumber: number;
-    displayName: string;
-    blueprintMarkdown: string;
-    commits?: Array<{ hash: string; subject: string; diff: string }>;
-  }) => invoke("storeWeb:installFromBlueprint", payload),
+  }) => invoke("storeWeb:requestPackageInstall", payload),
   uninstallPackage: (packageId: string) =>
     invoke("storeWeb:uninstallMod", { packageId }),
   getThread: () => invoke("storeWeb:getThread"),
@@ -41,6 +36,7 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
     releaseNotes?: string;
   }) => invoke("storeWeb:publishBlueprint", payload),
   openStorePanel: () => invoke("storeWeb:openStorePanel"),
+  openSignIn: () => invoke("storeWeb:openSignIn"),
   listConnectors: () => invoke("storeWeb:listConnectors"),
   installConnector: (
     marketplaceKey: string,

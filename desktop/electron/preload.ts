@@ -1306,8 +1306,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     installFromBlueprint: (payload: {
       packageId: string;
       releaseNumber: number;
-      displayName: string;
-      blueprintMarkdown: string;
     }) => ipcRenderer.invoke("store:installFromBlueprint", payload),
     getThread: () => ipcRenderer.invoke("store:getThread"),
     sendThreadMessage: (payload: {

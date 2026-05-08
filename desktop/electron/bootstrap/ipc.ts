@@ -303,6 +303,7 @@ export const registerBootstrapIpcHandlers = (
   registerStoreHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
     getStellaHostRunner: lifecycle.getRunner,
+    getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
