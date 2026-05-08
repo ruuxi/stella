@@ -253,7 +253,27 @@ export function useChatScrollManagement({
           return
         }
         if (!grew || !followRef.current) return
-        const target = newHeight - attached.clientHeight
+        const naturalTarget = newHeight - attached.clientHeight
+        // Cap the auto-follow at "streaming assistant row pinned to the
+        // top of the viewport" so a long reply stops scrolling once the
+        // user has a full viewport of fresh assistant text to read,
+        // instead of chasing the bottom forever. `min` with the natural
+        // bottom means short replies (cap > naturalTarget) and the
+        // pre-mount window (no streaming row yet) fall through to the
+        // existing bottom-follow behavior unchanged.
+        const streamingRow = attached.querySelector<HTMLElement>(
+          '.event-row--streaming',
+        )
+        let target = naturalTarget
+        if (streamingRow) {
+          const cap = Math.max(
+            0,
+            streamingRow.getBoundingClientRect().top -
+              attached.getBoundingClientRect().top +
+              attached.scrollTop,
+          )
+          target = Math.min(naturalTarget, cap)
+        }
         if (target <= attached.scrollTop + 0.5) return
         smoothScrollTo(attached, target, FOLLOW_TWEEN_MS)
       })
