@@ -216,6 +216,7 @@ export type QueuedOrchestratorTurn = {
 export type ParsedAgentLike = {
   id: string;
   name: string;
+  description: string;
   systemPrompt: string;
   agentTypes: string[];
   toolsAllowlist?: string[];
