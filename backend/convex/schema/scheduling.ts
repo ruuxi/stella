@@ -19,16 +19,17 @@ export const cronScheduleValidator = v.union(
 
 export const cronPayloadValidator = v.union(
   v.object({
-    kind: v.literal("systemEvent"),
+    kind: v.literal("notify"),
     text: v.string(),
-    agentType: v.optional(v.string()),
-    deliver: v.optional(v.boolean()),
   }),
   v.object({
-    kind: v.literal("agentTurn"),
-    message: v.string(),
+    kind: v.literal("script"),
+    scriptPath: v.string(),
+  }),
+  v.object({
+    kind: v.literal("agent"),
+    prompt: v.string(),
     agentType: v.optional(v.string()),
-    deliver: v.optional(v.boolean()),
   }),
 );
 

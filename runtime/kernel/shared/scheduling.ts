@@ -14,18 +14,36 @@ export type LocalCronSchedule =
       tz?: string
     }
 
+/**
+ * Three-tier delivery contract for cron fires.
+ *
+ *  - `notify` — literal text. The scheduler delivers `text` directly as an
+ *    assistant message and an OS notification. No worker turn, no LLM, no
+ *    tokens. Use for fixed reminders whose body is fully knowable at
+ *    schedule-creation time.
+ *  - `script` — programmatic. The scheduler runs `scriptPath` with `bun run`,
+ *    captures `stdout` (trimmed) as the message body, and only delivers when
+ *    stdout is non-empty. Use for deterministic recurring work (HTTP fetch,
+ *    diff against last-seen state, etc.). The script may write a sidecar
+ *    `<scriptPath>.state.json` for cross-run memory.
+ *  - `agent` — agent turn. The scheduler runs an isolated worker turn against
+ *    `agentType` (defaults to general) with the fixed `prompt`. Use only when
+ *    the fire genuinely needs reasoning, multi-tool work, or unbounded
+ *    interpretation each tick.
+ */
 export type LocalCronPayload =
   | {
-      kind: 'systemEvent'
+      kind: 'notify'
       text: string
-      agentType?: string
-      deliver?: boolean
     }
   | {
-      kind: 'agentTurn'
-      message: string
+      kind: 'script'
+      scriptPath: string
+    }
+  | {
+      kind: 'agent'
+      prompt: string
       agentType?: string
-      deliver?: boolean
     }
 
 export type LocalHeartbeatActiveHours = {
@@ -41,8 +59,14 @@ export type LocalCronJobRecord = {
   description?: string
   enabled: boolean
   schedule: LocalCronSchedule
-  sessionTarget: 'main' | 'isolated'
   payload: LocalCronPayload
+  /**
+   * Whether the cron should deliver an assistant message + OS notification
+   * when its fire produces text. Defaults to `true`. Heartbeats and most
+   * crons want this on; some "background bookkeeping" crons (e.g. silent
+   * polling that only logs to lastError) can set it false.
+   */
+  deliver?: boolean
   deleteAfterRun?: boolean
   nextRunAtMs: number
   runningAtMs?: number
@@ -95,10 +119,10 @@ export type LocalCronJobCreateInput = {
   name: string
   schedule: LocalCronSchedule
   payload: LocalCronPayload
-  sessionTarget: 'main' | 'isolated'
   conversationId: string
   description?: string
   enabled?: boolean
+  deliver?: boolean
   deleteAfterRun?: boolean
 }
 
@@ -106,10 +130,10 @@ export type LocalCronJobUpdatePatch = {
   name?: string
   schedule?: LocalCronSchedule
   payload?: LocalCronPayload
-  sessionTarget?: 'main' | 'isolated'
   conversationId?: string
   description?: string
   enabled?: boolean
+  deliver?: boolean
   deleteAfterRun?: boolean
 }
 

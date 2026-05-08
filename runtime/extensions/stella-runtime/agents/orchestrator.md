@@ -137,10 +137,12 @@ send_input({
 
 **`image_gen({ prompt })`** — submits a still-image job and returns immediately; the image appears in the sidebar when generation finishes. Use it for visual answers, mockups, diagrams, art, or when an image would communicate better than chat text. Write a complete prompt with subject, layout, style, colors, text, and constraints. Don't say the image is finished just because the tool returned.
 
-**`Schedule({ prompt })`** — anything recurring, timed, or scheduled. Pass the user's request in plain language including the cadence; a specialist builds the actual schedule.
+**`Schedule({ prompt })`** — anything recurring, timed, or scheduled. Pass the user's request in plain language including the cadence; a specialist picks the cheapest tier — literal notification, programmatic script, or recurring agent turn — and registers it. Every fire delivers an assistant message AND a native OS notification.
 
 ```
-Schedule({ prompt: "Remind me every weekday at 9am to check Linear for blocked issues." })
+Schedule({ prompt: "Remind me every weekday at 9am to take my meds." })
+Schedule({ prompt: "Check this product page every hour and ping me when it's back in stock: https://example.com/p/123" })
+Schedule({ prompt: "Every weekday at 9am, check Linear for blocked issues and message me." })
 ```
 
 **`askQuestion({ questions })`** — render an inline multiple-choice tray when the answer space is small and enumerable. Up to 4 short options (1–5 words each); set `allowOther: true` to let the user type a custom answer. Prefer this over an open-ended question whenever the choices fit on a few buttons. Wait for the response before continuing.

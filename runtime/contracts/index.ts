@@ -402,14 +402,14 @@ export type LocalCronSchedule =
   | { kind: "every"; everyMs: number; anchorMs?: number }
   | { kind: "cron"; expr: string; tz?: string };
 
+/**
+ * Three-tier cron-fire delivery contract. See
+ * `runtime/kernel/shared/scheduling.ts` for the canonical doc-comment.
+ */
 export type LocalCronPayload =
-  | { kind: "systemEvent"; text: string; agentType?: string; deliver?: boolean }
-  | {
-      kind: "agentTurn";
-      message: string;
-      agentType?: string;
-      deliver?: boolean;
-    };
+  | { kind: "notify"; text: string }
+  | { kind: "script"; scriptPath: string }
+  | { kind: "agent"; prompt: string; agentType?: string };
 
 export type LocalHeartbeatActiveHours = {
   start: string;
@@ -424,8 +424,8 @@ export type LocalCronJobRecord = {
   description?: string;
   enabled: boolean;
   schedule: LocalCronSchedule;
-  sessionTarget: "main" | "isolated";
   payload: LocalCronPayload;
+  deliver?: boolean;
   deleteAfterRun?: boolean;
   nextRunAtMs: number;
   runningAtMs?: number;
@@ -473,10 +473,10 @@ export type LocalCronJobUpdatePatch = {
   name?: string;
   schedule?: LocalCronSchedule;
   payload?: LocalCronPayload;
-  sessionTarget?: "main" | "isolated";
   conversationId?: string;
   description?: string;
   enabled?: boolean;
+  deliver?: boolean;
   deleteAfterRun?: boolean;
 };
 

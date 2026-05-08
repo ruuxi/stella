@@ -84,7 +84,6 @@ async function completeCronTurnResultCore(
         source: "cron",
         cronJobId: asOptionalString(requestPayload.cronJobId),
         cronJobName: asOptionalString(requestPayload.cronJobName),
-        sessionTarget: asOptionalString(requestPayload.sessionTarget),
       },
     });
   }

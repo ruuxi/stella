@@ -6,6 +6,10 @@ import {
   ensurePrivateDirSync,
   writePrivateFileSync,
 } from './shared/private-fs.js'
+import {
+  runScheduleScript,
+  scheduleScriptsDir,
+} from './shared/schedule-scripts.js'
 import type { StellaHostRunnerTarget } from './lifecycle-targets.js'
 import type {
   LocalCronJobCreateInput,
@@ -38,9 +42,25 @@ type LocalSchedulerState = {
   generatedEvents: Record<string, ScheduledConversationEvent[]>
 }
 
+/**
+ * Optional OS-notification surface. The runtime client wires this to the
+ * Electron-side `showStellaNotification` so each delivered scheduled
+ * message also pops a native banner. Headless contexts (tests, the
+ * mobile/social runtime if it ever embeds the scheduler) leave it
+ * undefined and silently skip notifications.
+ */
+export type LocalSchedulerNotifier = (params: {
+  title: string
+  body: string
+  conversationId: string
+  source: 'cron' | 'heartbeat'
+  refId: string
+}) => void
+
 type LocalSchedulerServiceOptions = {
   stellaHome: string
   runnerTarget: StellaHostRunnerTarget
+  showNotification?: LocalSchedulerNotifier
 }
 
 const createEmptyState = (): LocalSchedulerState => ({
@@ -99,13 +119,6 @@ const ensureName = (value: unknown) => {
   return name
 }
 
-const ensureSessionTarget = (value: unknown): 'main' | 'isolated' => {
-  if (value === 'main' || value === 'isolated') {
-    return value
-  }
-  throw new Error('sessionTarget must be "main" or "isolated".')
-}
-
 const assertValidSchedule = (schedule: unknown): LocalCronSchedule => {
   if (!schedule || typeof schedule !== 'object') {
     throw new Error('schedule must be an object.')
@@ -146,55 +159,62 @@ const assertValidSchedule = (schedule: unknown): LocalCronSchedule => {
   throw new Error('schedule.kind must be "at", "every", or "cron".')
 }
 
-const assertValidPayload = (payload: unknown): LocalCronPayload => {
+const assertValidScriptPath = (
+  value: unknown,
+  scriptsDir: string,
+): string => {
+  const raw = asTrimmedString(value)
+  if (!raw) {
+    throw new Error('payload.kind="script" requires scriptPath.')
+  }
+  if (!path.isAbsolute(raw)) {
+    throw new Error('payload.scriptPath must be absolute.')
+  }
+  const normalized = path.resolve(raw)
+  const dir = path.resolve(scriptsDir)
+  const rel = path.relative(dir, normalized)
+  if (rel.startsWith('..') || path.isAbsolute(rel) || rel.length === 0) {
+    throw new Error(
+      `payload.scriptPath must live inside ${dir} (got ${normalized}).`,
+    )
+  }
+  return normalized
+}
+
+const assertValidPayload = (
+  payload: unknown,
+  scriptsDir: string,
+): LocalCronPayload => {
   if (!payload || typeof payload !== 'object') {
     throw new Error('payload must be an object.')
   }
   const record = payload as Record<string, unknown>
   const kind = asTrimmedString(record.kind)
-  const agentType = asTrimmedString(record.agentType) || undefined
-  const deliver =
-    typeof record.deliver === 'boolean' ? record.deliver : undefined
 
-  if (kind === 'systemEvent') {
+  if (kind === 'notify') {
     const text = asTrimmedString(record.text)
     if (!text) {
-      throw new Error('payload.kind="systemEvent" requires text.')
+      throw new Error('payload.kind="notify" requires text.')
     }
+    return { kind: 'notify', text }
+  }
+  if (kind === 'script') {
+    const scriptPath = assertValidScriptPath(record.scriptPath, scriptsDir)
+    return { kind: 'script', scriptPath }
+  }
+  if (kind === 'agent') {
+    const prompt = asTrimmedString(record.prompt)
+    if (!prompt) {
+      throw new Error('payload.kind="agent" requires prompt.')
+    }
+    const agentType = asTrimmedString(record.agentType) || undefined
     return {
-      kind: 'systemEvent',
-      text,
+      kind: 'agent',
+      prompt,
       ...(agentType ? { agentType } : {}),
-      ...(deliver !== undefined ? { deliver } : {}),
     }
   }
-  if (kind === 'agentTurn') {
-    const message = asTrimmedString(record.message)
-    if (!message) {
-      throw new Error('payload.kind="agentTurn" requires message.')
-    }
-    return {
-      kind: 'agentTurn',
-      message,
-      ...(agentType ? { agentType } : {}),
-      ...(deliver !== undefined ? { deliver } : {}),
-    }
-  }
-  throw new Error('payload.kind must be "systemEvent" or "agentTurn".')
-}
-
-const assertValidPayloadForSession = (
-  payload: LocalCronPayload,
-  sessionTarget: 'main' | 'isolated',
-) => {
-  if (sessionTarget === 'main' && payload.kind !== 'systemEvent') {
-    throw new Error('sessionTarget="main" requires payload.kind="systemEvent".')
-  }
-  if (sessionTarget === 'isolated' && payload.kind !== 'agentTurn') {
-    throw new Error(
-      'sessionTarget="isolated" requires payload.kind="agentTurn".',
-    )
-  }
+  throw new Error('payload.kind must be "notify", "script", or "agent".')
 }
 
 const computeNextRunAtMs = (schedule: LocalCronSchedule, nowMs: number) => {
@@ -436,28 +456,28 @@ const isScheduledConversationEvent = (
   )
 }
 
-const isCronJobRecord = (value: unknown): value is LocalCronJobRecord => {
-  if (!value || typeof value !== 'object') {
-    return false
+const buildCronJobRecordValidator = (scriptsDir: string) =>
+  (value: unknown): value is LocalCronJobRecord => {
+    if (!value || typeof value !== 'object') {
+      return false
+    }
+    try {
+      const record = value as Record<string, unknown>
+      assertValidSchedule(record.schedule)
+      assertValidPayload(record.payload, scriptsDir)
+      ensureConversationId(record.conversationId)
+      ensureName(record.name)
+      return (
+        typeof record.id === 'string' &&
+        typeof record.enabled === 'boolean' &&
+        typeof record.nextRunAtMs === 'number' &&
+        typeof record.createdAt === 'number' &&
+        typeof record.updatedAt === 'number'
+      )
+    } catch {
+      return false
+    }
   }
-  try {
-    const record = value as Record<string, unknown>
-    assertValidSchedule(record.schedule)
-    assertValidPayload(record.payload)
-    ensureSessionTarget(record.sessionTarget)
-    ensureConversationId(record.conversationId)
-    ensureName(record.name)
-    return (
-      typeof record.id === 'string' &&
-      typeof record.enabled === 'boolean' &&
-      typeof record.nextRunAtMs === 'number' &&
-      typeof record.createdAt === 'number' &&
-      typeof record.updatedAt === 'number'
-    )
-  } catch {
-    return false
-  }
-}
 
 const isHeartbeatRecord = (
   value: unknown,
@@ -478,10 +498,14 @@ const isHeartbeatRecord = (
   )
 }
 
-const sanitizeState = (value: unknown): LocalSchedulerState => {
+const sanitizeState = (
+  value: unknown,
+  scriptsDir: string,
+): LocalSchedulerState => {
   if (!value || typeof value !== 'object') {
     return createEmptyState()
   }
+  const isCronJobRecord = buildCronJobRecordValidator(scriptsDir)
   const record = value as Record<string, unknown>
   const cronJobs = Array.isArray(record.cronJobs)
     ? record.cronJobs.filter(isCronJobRecord).map(cloneCronJob)
@@ -521,6 +545,7 @@ const sanitizeState = (value: unknown): LocalSchedulerState => {
 
 export class LocalSchedulerService {
   private readonly statePath: string
+  private readonly scriptsDir: string
   private readonly listeners = new Set<() => void>()
   private state = createEmptyState()
   private timer: NodeJS.Timeout | null = null
@@ -533,6 +558,16 @@ export class LocalSchedulerService {
       'state',
       'local-scheduler.json',
     )
+    this.scriptsDir = scheduleScriptsDir(options.stellaHome)
+  }
+
+  /**
+   * Absolute directory under which `payload.kind === 'script'` cron jobs
+   * live. Surfaced so the `ScriptDraft` tool can resolve the same path
+   * the scheduler validates against.
+   */
+  getScheduleScriptsDir(): string {
+    return this.scriptsDir
   }
 
   start() {
@@ -547,6 +582,7 @@ export class LocalSchedulerService {
     if (this.clearRecoveredRunningFlags()) {
       this.persistState()
     }
+    this.collectOrphanScripts()
     this.scheduleNextTick(250)
   }
 
@@ -592,9 +628,7 @@ export class LocalSchedulerService {
     const conversationId = ensureConversationId(input.conversationId)
     const name = ensureName(input.name)
     const schedule = assertValidSchedule(input.schedule)
-    const payload = assertValidPayload(input.payload)
-    const sessionTarget = ensureSessionTarget(input.sessionTarget)
-    assertValidPayloadForSession(payload, sessionTarget)
+    const payload = assertValidPayload(input.payload, this.scriptsDir)
     const enabled = input.enabled !== false
     const nextRunAtMs = computeNextRunAtMs(schedule, now)
 
@@ -607,8 +641,8 @@ export class LocalSchedulerService {
         : {}),
       enabled,
       schedule,
-      sessionTarget,
       payload,
+      ...(typeof input.deliver === 'boolean' ? { deliver: input.deliver } : {}),
       ...(typeof input.deleteAfterRun === 'boolean'
         ? { deleteAfterRun: input.deleteAfterRun }
         : {}),
@@ -633,15 +667,12 @@ export class LocalSchedulerService {
         : job.schedule
     const nextPayload =
       patch.payload !== undefined
-        ? assertValidPayload(patch.payload)
+        ? assertValidPayload(patch.payload, this.scriptsDir)
         : job.payload
-    const nextSessionTarget =
-      patch.sessionTarget !== undefined
-        ? ensureSessionTarget(patch.sessionTarget)
-        : job.sessionTarget
-    assertValidPayloadForSession(nextPayload, nextSessionTarget)
 
     const now = Date.now()
+    const priorScriptPath =
+      job.payload.kind === 'script' ? job.payload.scriptPath : null
     job.name = patch.name !== undefined ? ensureName(patch.name) : job.name
     job.conversationId =
       patch.conversationId !== undefined
@@ -649,7 +680,6 @@ export class LocalSchedulerService {
         : job.conversationId
     job.schedule = nextSchedule
     job.payload = nextPayload
-    job.sessionTarget = nextSessionTarget
     if (patch.description !== undefined) {
       const description = asTrimmedString(patch.description)
       job.description = description || undefined
@@ -657,12 +687,27 @@ export class LocalSchedulerService {
     if (patch.enabled !== undefined) {
       job.enabled = Boolean(patch.enabled)
     }
+    if (patch.deliver !== undefined) {
+      job.deliver = patch.deliver
+    }
     if (patch.deleteAfterRun !== undefined) {
       job.deleteAfterRun = patch.deleteAfterRun
     }
     job.runningAtMs = undefined
     job.nextRunAtMs = computeNextRunAtMs(nextSchedule, now)
     job.updatedAt = now
+
+    // If we replaced a `script` payload (or swapped to a different kind),
+    // the prior script file is now orphaned. Clean it up immediately so
+    // we don't accumulate dead `.ts` files in `~/.stella/state/schedule-scripts`.
+    if (
+      priorScriptPath &&
+      (nextPayload.kind !== 'script' ||
+        nextPayload.scriptPath !== priorScriptPath) &&
+      !this.isScriptPathReferenced(priorScriptPath, job.id)
+    ) {
+      this.removeScriptFile(priorScriptPath)
+    }
 
     this.afterMutation()
     return cloneCronJob(job)
@@ -673,7 +718,14 @@ export class LocalSchedulerService {
     if (index < 0) {
       return false
     }
+    const removed = this.state.cronJobs[index]
     this.state.cronJobs.splice(index, 1)
+    if (
+      removed.payload.kind === 'script' &&
+      !this.isScriptPathReferenced(removed.payload.scriptPath, removed.id)
+    ) {
+      this.removeScriptFile(removed.payload.scriptPath)
+    }
     this.afterMutation()
     return true
   }
@@ -804,9 +856,73 @@ export class LocalSchedulerService {
   private readState(): LocalSchedulerState {
     try {
       const raw = fs.readFileSync(this.statePath, 'utf-8')
-      return sanitizeState(JSON.parse(raw))
+      return sanitizeState(JSON.parse(raw), this.scriptsDir)
     } catch {
       return createEmptyState()
+    }
+  }
+
+  /**
+   * Sweep the schedule-scripts directory and remove any `.ts` file (and
+   * matching `.state.json` sidecar) not referenced by an active cron's
+   * `payload.scriptPath`. Runs once at startup so iterated `ScriptDraft`
+   * attempts that the agent ultimately abandoned don't accumulate.
+   *
+   * Best-effort: any failure is swallowed — the scripts directory is just
+   * a cache of authored work, never load-bearing for live cron firing.
+   */
+  private collectOrphanScripts() {
+    let entries: string[]
+    try {
+      entries = fs.readdirSync(this.scriptsDir)
+    } catch {
+      return
+    }
+    const referenced = new Set<string>()
+    for (const job of this.state.cronJobs) {
+      if (job.payload.kind === 'script') {
+        referenced.add(path.resolve(job.payload.scriptPath))
+      }
+    }
+    for (const entry of entries) {
+      if (!entry.endsWith('.ts') && !entry.endsWith('.state.json')) {
+        continue
+      }
+      const abs = path.resolve(this.scriptsDir, entry)
+      const tsAbs = entry.endsWith('.state.json')
+        ? abs.replace(/\.state\.json$/, '.ts')
+        : abs
+      if (referenced.has(tsAbs)) {
+        continue
+      }
+      try {
+        fs.rmSync(abs, { force: true })
+      } catch {
+        // Ignore — best-effort cleanup.
+      }
+    }
+  }
+
+  private isScriptPathReferenced(scriptPath: string, exceptJobId?: string) {
+    const target = path.resolve(scriptPath)
+    return this.state.cronJobs.some(
+      (job) =>
+        job.id !== exceptJobId &&
+        job.payload.kind === 'script' &&
+        path.resolve(job.payload.scriptPath) === target,
+    )
+  }
+
+  private removeScriptFile(scriptPath: string) {
+    try {
+      fs.rmSync(scriptPath, { force: true })
+    } catch {
+      // Ignore — script may already be gone.
+    }
+    try {
+      fs.rmSync(`${scriptPath}.state.json`, { force: true })
+    } catch {
+      // Ignore — sidecar is optional.
     }
   }
 
@@ -936,6 +1052,13 @@ export class LocalSchedulerService {
       : { kind: 'heartbeat', record: heartbeatCandidate }
   }
 
+  private requiresRunner(
+    item: NonNullable<ReturnType<LocalSchedulerService['getNextDueItem']>>,
+  ): boolean {
+    if (item.kind === 'heartbeat') return true
+    return item.record.payload.kind === 'agent'
+  }
+
   private async runDueItems() {
     if (!this.started || this.tickInFlight) {
       return
@@ -950,8 +1073,11 @@ export class LocalSchedulerService {
           break
         }
 
-        const runner = this.getRunner()
-        if (!runner) {
+        const needsRunner = this.requiresRunner(dueItem)
+        const runner = needsRunner ? this.getRunner() : null
+        if (needsRunner && !runner) {
+          // Worker isn't ready yet; back off and retry. notify/script
+          // fires don't need the runner so they continue to drain.
           nextDelayOverride = 5_000
           break
         }
@@ -959,7 +1085,7 @@ export class LocalSchedulerService {
         const result =
           dueItem.kind === 'cron'
             ? await this.executeCronJob(dueItem.record, runner)
-            : await this.executeHeartbeat(dueItem.record, runner)
+            : await this.executeHeartbeat(dueItem.record, runner!)
 
         if (result === 'busy') {
           nextDelayOverride = 5_000
@@ -990,9 +1116,62 @@ export class LocalSchedulerService {
     this.state.generatedEvents[conversationId] = bucket
   }
 
+  private fireOsNotification(params: {
+    title: string
+    body: string
+    conversationId: string
+    source: 'cron' | 'heartbeat'
+    refId: string
+  }) {
+    if (!this.options.showNotification) return
+    try {
+      this.options.showNotification(params)
+    } catch {
+      // Best-effort: never let a notifier failure break the scheduler tick.
+    }
+  }
+
+  /**
+   * Advance a fired cron's nextRunAtMs / enabled / deleteAfterRun
+   * book-keeping. Centralizes the at-vs-recurring policy that ran inline
+   * inside the old monolithic executor.
+   *
+   * Returns whether the job survived (`true`) or was deleted (`false`).
+   */
+  private advanceCronAfterRun(
+    active: LocalCronJobRecord,
+    finishedAt: number,
+    failed: boolean,
+  ): boolean {
+    if (active.schedule.kind === 'at') {
+      if (failed) {
+        active.enabled = false
+        return true
+      }
+      if (active.deleteAfterRun) {
+        const removedScript =
+          active.payload.kind === 'script' ? active.payload.scriptPath : null
+        this.state.cronJobs = this.state.cronJobs.filter(
+          (entry) => entry.id !== active.id,
+        )
+        if (
+          removedScript &&
+          !this.isScriptPathReferenced(removedScript, active.id)
+        ) {
+          this.removeScriptFile(removedScript)
+        }
+        return false
+      }
+      active.enabled = false
+      return true
+    }
+    active.nextRunAtMs = computeNextRunAtMs(active.schedule, finishedAt)
+    return true
+  }
+
   private async executeCronJob(
     job: LocalCronJobRecord,
-    runner: NonNullable<ReturnType<LocalSchedulerService['getRunner']>>,
+    runner: ReturnType<LocalSchedulerService['getRunner']> | null,
   ): Promise<'done' | 'busy'> {
     const active = this.state.cronJobs.find((entry) => entry.id === job.id)
     if (!active || !active.enabled) {
@@ -1006,14 +1185,145 @@ export class LocalSchedulerService {
     this.persistState()
     this.emitChange()
 
-    const prompt =
-      active.payload.kind === 'systemEvent'
-        ? active.payload.text
-        : active.payload.message
+    switch (active.payload.kind) {
+      case 'notify':
+        return this.executeCronNotify(active, startedAt)
+      case 'script':
+        return this.executeCronScript(active, startedAt)
+      case 'agent':
+        if (!runner) {
+          // Shouldn't happen — `requiresRunner` gates this — but if the
+          // runner went away mid-tick treat it as busy and retry.
+          active.runningAtMs = undefined
+          active.updatedAt = Date.now()
+          this.persistState()
+          this.emitChange()
+          return 'busy'
+        }
+        return this.executeCronAgent(active, runner, startedAt)
+    }
+  }
+
+  private executeCronNotify(
+    active: LocalCronJobRecord,
+    startedAt: number,
+  ): 'done' {
+    if (active.payload.kind !== 'notify') return 'done'
+    const finishedAt = Date.now()
+    const text = active.payload.text.trim()
+    const deliver = active.deliver !== false
+    active.runningAtMs = undefined
+    active.lastRunAtMs = finishedAt
+    active.lastDurationMs = finishedAt - startedAt
+    active.lastStatus = text ? 'ok' : 'no-response'
+    active.lastError = undefined
+    active.lastOutputPreview = text ? truncatePreview(text) : undefined
+    active.updatedAt = finishedAt
+
+    if (deliver && text) {
+      this.appendGeneratedAssistantMessage(active.conversationId, {
+        text,
+        source: 'cron',
+        cronJobId: active.id,
+        cronJobName: active.name,
+      })
+      this.fireOsNotification({
+        title: active.name?.trim() || 'Stella',
+        body: text,
+        conversationId: active.conversationId,
+        source: 'cron',
+        refId: active.id,
+      })
+    }
+
+    this.advanceCronAfterRun(active, finishedAt, false)
+    this.persistState()
+    this.emitChange()
+    return 'done'
+  }
+
+  private async executeCronScript(
+    active: LocalCronJobRecord,
+    startedAt: number,
+  ): Promise<'done'> {
+    if (active.payload.kind !== 'script') return 'done'
+    const scriptPath = active.payload.scriptPath
+    let runResult
+    try {
+      runResult = await runScheduleScript(scriptPath)
+    } catch (error) {
+      runResult = {
+        exitCode: -1,
+        stdout: '',
+        stderr: (error as Error).message,
+        durationMs: Date.now() - startedAt,
+        timedOut: false,
+      }
+    }
+
+    const finishedAt = Date.now()
+    active.runningAtMs = undefined
+    active.lastRunAtMs = finishedAt
+    active.lastDurationMs = finishedAt - startedAt
+    active.updatedAt = finishedAt
+
+    const failed = runResult.exitCode !== 0
+    if (failed) {
+      const errParts = [
+        runResult.timedOut
+          ? `script timed out after ${runResult.durationMs}ms`
+          : `exit ${runResult.exitCode}`,
+      ]
+      const stderrTrim = runResult.stderr.trim()
+      if (stderrTrim) errParts.push(stderrTrim)
+      active.lastStatus = runResult.timedOut ? 'timeout' : 'error'
+      active.lastError = truncatePreview(errParts.join('\n'))
+      active.lastOutputPreview = undefined
+      this.advanceCronAfterRun(active, finishedAt, true)
+      this.persistState()
+      this.emitChange()
+      return 'done'
+    }
+
+    const text = runResult.stdout.trim()
+    const deliver = active.deliver !== false
+    active.lastStatus = text ? 'ok' : 'no-response'
+    active.lastError = undefined
+    active.lastOutputPreview = text ? truncatePreview(text) : undefined
+
+    if (deliver && text) {
+      this.appendGeneratedAssistantMessage(active.conversationId, {
+        text,
+        source: 'cron',
+        cronJobId: active.id,
+        cronJobName: active.name,
+      })
+      this.fireOsNotification({
+        title: active.name?.trim() || 'Stella',
+        body: text,
+        conversationId: active.conversationId,
+        source: 'cron',
+        refId: active.id,
+      })
+    }
+
+    this.advanceCronAfterRun(active, finishedAt, false)
+    this.persistState()
+    this.emitChange()
+    return 'done'
+  }
+
+  private async executeCronAgent(
+    active: LocalCronJobRecord,
+    runner: NonNullable<ReturnType<LocalSchedulerService['getRunner']>>,
+    startedAt: number,
+  ): Promise<'done' | 'busy'> {
+    if (active.payload.kind !== 'agent') return 'done'
+
     const runResult = await runner.runAutomationTurn({
       conversationId: active.conversationId,
-      userPrompt: prompt,
-      agentType: active.payload.agentType ?? 'orchestrator',
+      userPrompt: active.payload.prompt,
+      agentType: active.payload.agentType ?? 'general',
     })
 
     if (runResult.status === 'busy') {
@@ -1034,23 +1344,17 @@ export class LocalSchedulerService {
       active.lastStatus = 'error'
       active.lastError = runResult.error
       active.lastOutputPreview = undefined
-      if (active.schedule.kind === 'at') {
-        active.enabled = false
-      } else {
-        active.nextRunAtMs = computeNextRunAtMs(active.schedule, finishedAt)
-      }
+      this.advanceCronAfterRun(active, finishedAt, true)
       this.persistState()
       this.emitChange()
       return 'done'
     }
 
     const finalText = runResult.finalText.trim()
-    const deliver = active.payload.deliver !== false
+    const deliver = active.deliver !== false
     active.lastStatus = finalText ? 'ok' : 'no-response'
     active.lastError = undefined
-    active.lastOutputPreview = finalText
-      ? truncatePreview(finalText)
-      : undefined
+    active.lastOutputPreview = finalText ? truncatePreview(finalText) : undefined
 
     if (deliver && finalText) {
       this.appendGeneratedAssistantMessage(active.conversationId, {
@@ -1058,22 +1362,17 @@ export class LocalSchedulerService {
         source: 'cron',
         cronJobId: active.id,
         cronJobName: active.name,
-        sessionTarget: active.sessionTarget,
+      })
+      this.fireOsNotification({
+        title: active.name?.trim() || 'Stella',
+        body: finalText,
+        conversationId: active.conversationId,
+        source: 'cron',
+        refId: active.id,
       })
     }
 
-    if (active.schedule.kind === 'at') {
-      if (active.deleteAfterRun) {
-        this.state.cronJobs = this.state.cronJobs.filter(
-          (entry) => entry.id !== active.id,
-        )
-      } else {
-        active.enabled = false
-      }
-    } else {
-      active.nextRunAtMs = computeNextRunAtMs(active.schedule, finishedAt)
-    }
-
+    this.advanceCronAfterRun(active, finishedAt, false)
     this.persistState()
     this.emitChange()
     return 'done'
@@ -1184,6 +1483,13 @@ export class LocalSchedulerService {
         source: 'heartbeat',
         heartbeatConfigId: active.id,
         reason: 'scheduled',
+      })
+      this.fireOsNotification({
+        title: 'Stella check-in',
+        body: finalText,
+        conversationId: active.conversationId,
+        source: 'heartbeat',
+        refId: active.id,
       })
       active.lastSentText = finalText
       active.lastSentAtMs = finishedAt
