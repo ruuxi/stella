@@ -303,33 +303,46 @@ export function convertResponsesMessages<TApi extends Api>(
     );
     const [callId] = message.toolCallId.split("|");
 
-    let output: string | ResponseFunctionCallOutputItemList;
+    // Always emit `function_call_output` with text-only content. Several
+    // OpenAI-Responses-compatible providers (notably Fireworks routers,
+    // including kimi-k2p6-turbo and kimi-k2p5-turbo) do NOT parse
+    // `input_image` parts inside `function_call_output.output` — they
+    // stringify the entire array, including the base64 data URL, which
+    // tokenizes into hundreds of thousands of input tokens and busts the
+    // model's context window. The image is forwarded as a follow-up
+    // user message below using the same shape `openai_completions.ts`
+    // uses for the chat-completions API. Verified via direct Fireworks
+    // POST: 451K tokens (mixed-content output) → 2K tokens
+    // (follow-up user image), with the model correctly describing the
+    // screenshot in the second case.
+    messages.push({
+      type: "function_call_output",
+      call_id: callId,
+      output: sanitizeSurrogates(textResult || "(see attached image)"),
+    });
+
     if (hasImages && model.input.includes("image")) {
-      const outputParts: ResponseFunctionCallOutputItemList = [];
-      if (textResult) {
-        outputParts.push({
+      const followUpContent: ResponseInputContent[] = [
+        {
           type: "input_text",
-          text: sanitizeSurrogates(textResult),
-        });
-      }
+          text: "Attached image(s) from the previous tool result:",
+        } satisfies ResponseInputText,
+      ];
       for (const block of message.content) {
         if (block.type === "image") {
           const inputImage = toInputImage(block);
           if (inputImage) {
-            outputParts.push(inputImage);
+            followUpContent.push(inputImage);
           }
         }
       }
-      output = outputParts;
-    } else {
-      output = sanitizeSurrogates(textResult || "(see attached image)");
+      if (followUpContent.length > 1) {
+        messages.push({
+          role: "user",
+          content: followUpContent,
+        });
+      }
     }
-
-    messages.push({
-      type: "function_call_output",
-      call_id: callId,
-      output,
-    });
     messageIndex += 1;
   }
 
