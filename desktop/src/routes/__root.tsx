@@ -25,7 +25,7 @@ import {
   type DisplaySidebarHandle,
 } from "@/shell/DisplaySidebar";
 import { ShellTopBar } from "@/shell/ShellTopBar";
-import { useDisplayTabs } from "@/shell/display/tab-store";
+import { useDisplayPanelLayout } from "@/shell/display/tab-store";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
@@ -106,7 +106,7 @@ function RootChrome() {
   const { state } = useUiState();
   const conversationId = state.conversationId;
   const chat = useChatRuntime();
-  const { panelOpen } = useDisplayTabs();
+  const { panelOpen } = useDisplayPanelLayout();
 
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);

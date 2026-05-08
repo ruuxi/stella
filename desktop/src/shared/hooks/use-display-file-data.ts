@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 type DisplayFileReadResult = {
-  contentsBase64: string;
+  bytes: Uint8Array;
   sizeBytes: number;
   mimeType: string;
 };
@@ -16,28 +16,7 @@ const isDisplayFileApiAvailable = (): boolean =>
   typeof window !== "undefined" &&
   typeof window.electronAPI?.display?.readFile === "function";
 
-const decodeBase64ToUint8Array = (base64: string): Uint8Array => {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
-};
-
-const decodeBase64ToBlob = (base64: string, mimeType: string): Blob => {
-  const decoded = decodeBase64ToUint8Array(base64);
-  // Allocate an `ArrayBuffer` (not `SharedArrayBuffer`) so BlobPart stays
-  // compatible with TS strict DOM typings.
-  const buffer = new ArrayBuffer(decoded.byteLength);
-  const bytes = new Uint8Array(buffer);
-  bytes.set(decoded);
-  return new Blob([buffer], {
-    type: mimeType || "application/octet-stream",
-  });
-};
-
-const readDisplayFile = async (
+const readDisplayFileRaw = async (
   filePath: string,
   unavailableMessage?: string,
 ): Promise<DisplayFileReadResult> => {
@@ -49,6 +28,122 @@ const readDisplayFile = async (
   return await window.electronAPI!.display.readFile(filePath);
 };
 
+/**
+ * Refcounted cache for display-file reads.
+ *
+ * Many sidebar viewers want the same file at the same time — e.g. the
+ * Media tab's selected image is consumed by `MediaTile`, `MediaActionBar`,
+ * and the hero `MediaPreviewCard` simultaneously. Without a shared
+ * cache each consumer would issue its own IPC read, allocate its own
+ * `Blob`, and create its own `URL.createObjectURL`, multiplying both
+ * IPC traffic and renderer memory. The cache keys on the file path,
+ * lazily creates a single in-flight promise, and ref-counts consumers
+ * so the underlying blob URL is only revoked once nobody is using it.
+ *
+ * Entries that drop to zero refs aren't immediately freed — a short
+ * grace window lets a re-render that briefly switches consumers (e.g.
+ * key change) reuse the same Blob/URL instead of re-reading from disk.
+ */
+
+type CacheEntry = {
+  promise: Promise<DisplayFileReadResult>;
+  /** Resolved value (filled once `promise` settles). */
+  resolved: DisplayFileReadResult | null;
+  /** Lazily-allocated Blob + objectURL for consumers that want either. */
+  blob: Blob | null;
+  url: string | null;
+  refCount: number;
+  /** Pending eviction timer set when refCount drops to zero. */
+  evictionTimer: ReturnType<typeof setTimeout> | null;
+};
+
+const cache = new Map<string, CacheEntry>();
+const CACHE_GRACE_MS = 750;
+
+const blobFromBytes = (entry: CacheEntry): Blob => {
+  if (entry.blob) return entry.blob;
+  const resolved = entry.resolved;
+  if (!resolved) {
+    throw new Error("Cache entry has no resolved bytes yet.");
+  }
+  // Allocate a fresh `ArrayBuffer` for the Blob so it owns memory
+  // independent of any other view derived from `resolved.bytes`.
+  const buffer = new ArrayBuffer(resolved.bytes.byteLength);
+  new Uint8Array(buffer).set(resolved.bytes);
+  const blob = new Blob([buffer], {
+    type: resolved.mimeType || "application/octet-stream",
+  });
+  entry.blob = blob;
+  return blob;
+};
+
+const objectUrlFor = (entry: CacheEntry): string => {
+  if (entry.url) return entry.url;
+  entry.url = URL.createObjectURL(blobFromBytes(entry));
+  return entry.url;
+};
+
+const finalizeEvict = (filePath: string, entry: CacheEntry) => {
+  if (entry.url) {
+    URL.revokeObjectURL(entry.url);
+    entry.url = null;
+  }
+  entry.blob = null;
+  cache.delete(filePath);
+};
+
+const acquire = (
+  filePath: string,
+  unavailableMessage: string | undefined,
+): CacheEntry => {
+  let entry = cache.get(filePath);
+  if (!entry) {
+    const promise = readDisplayFileRaw(filePath, unavailableMessage);
+    entry = {
+      promise,
+      resolved: null,
+      blob: null,
+      url: null,
+      refCount: 0,
+      evictionTimer: null,
+    };
+    cache.set(filePath, entry);
+    void promise
+      .then((result) => {
+        // Guard against the entry having been evicted while the IPC was
+        // in flight (no consumers ever subscribed).
+        const live = cache.get(filePath);
+        if (live === entry) {
+          entry!.resolved = result;
+        }
+      })
+      .catch(() => {
+        // Swallow — the consumer's own promise observer will surface the
+        // error. Re-throwing here would leave an unhandled rejection.
+      });
+  }
+  if (entry.evictionTimer) {
+    clearTimeout(entry.evictionTimer);
+    entry.evictionTimer = null;
+  }
+  entry.refCount += 1;
+  return entry;
+};
+
+const release = (filePath: string, entry: CacheEntry) => {
+  entry.refCount = Math.max(0, entry.refCount - 1);
+  if (entry.refCount > 0) return;
+  if (entry.evictionTimer) clearTimeout(entry.evictionTimer);
+  entry.evictionTimer = setTimeout(() => {
+    if (entry.refCount === 0) finalizeEvict(filePath, entry);
+  }, CACHE_GRACE_MS);
+};
+
+/**
+ * Read a file's bytes through the cache. The returned promise resolves
+ * once the underlying IPC completes; subsequent callers piggyback on
+ * the in-flight or already-resolved entry.
+ */
 export function useDisplayFileBytes(
   filePath: string,
   unavailableMessage?: string,
@@ -63,23 +158,23 @@ export function useDisplayFileBytes(
     setError(null);
     setBytes(null);
 
-    void (async () => {
-      try {
-        const result = await readDisplayFile(filePath, unavailableMessage);
+    const entry = acquire(filePath, unavailableMessage);
+    void entry.promise
+      .then((result) => {
         if (cancelled) return;
-        setBytes(decodeBase64ToUint8Array(result.contentsBase64));
-      } catch (caught) {
+        setBytes(result.bytes);
+      })
+      .catch((caught) => {
         if (cancelled) return;
         setError(caught instanceof Error ? caught.message : String(caught));
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    })();
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     return () => {
       cancelled = true;
+      release(filePath, entry);
     };
   }, [filePath, unavailableMessage]);
 
@@ -95,48 +190,54 @@ export function useDisplayFileBlobs(
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // `filePaths` reference changes on every render, so key off contents.
   const key = useMemo(() => filePaths.join("|"), [filePaths]);
 
   useEffect(() => {
     let cancelled = false;
-    const createdUrls: string[] = [];
     setLoading(true);
     setError(null);
     setFiles(filePaths.map(() => null));
 
-    void (async () => {
-      const results = await Promise.all(
-        filePaths.map(async (filePath): Promise<DisplayFileBlob | null> => {
-          try {
-            const result = await readDisplayFile(filePath, unavailableMessage);
-            const blob = decodeBase64ToBlob(
-              result.contentsBase64,
-              result.mimeType,
-            );
-            const url = URL.createObjectURL(blob);
-            createdUrls.push(url);
-            return { url, mimeType: result.mimeType, blob };
-          } catch (caught) {
-            if (!cancelled) {
-              setError(caught instanceof Error ? caught.message : String(caught));
-            }
-            return null;
+    const acquired: { filePath: string; entry: CacheEntry }[] = filePaths.map(
+      (filePath) => ({
+        filePath,
+        entry: acquire(filePath, unavailableMessage),
+      }),
+    );
+
+    void Promise.all(
+      acquired.map(async ({ entry }) => {
+        try {
+          await entry.promise;
+        } catch (caught) {
+          if (!cancelled) {
+            setError(caught instanceof Error ? caught.message : String(caught));
           }
-        }),
-      );
-      if (cancelled) {
-        for (const url of createdUrls) URL.revokeObjectURL(url);
-        return;
-      }
+          return null;
+        }
+        const url = objectUrlFor(entry);
+        const blob = entry.blob!;
+        return {
+          url,
+          mimeType: entry.resolved?.mimeType ?? "application/octet-stream",
+          blob,
+        } satisfies DisplayFileBlob;
+      }),
+    ).then((results) => {
+      if (cancelled) return;
       setFiles(results);
       setLoading(false);
-    })();
+    });
 
     return () => {
       cancelled = true;
-      for (const url of createdUrls) URL.revokeObjectURL(url);
+      // Pair each acquire with its release. The cache's eviction grace
+      // window lets a quick remount (e.g. parent re-render flicker)
+      // reuse the same Blob/URL instead of re-fetching, so consumers
+      // don't see broken images during transient unmount/remount.
+      for (const { filePath, entry } of acquired) release(filePath, entry);
     };
-    // `filePaths` reference changes on every render, so key off contents.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, unavailableMessage]);
 

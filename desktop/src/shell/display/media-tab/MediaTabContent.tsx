@@ -26,7 +26,7 @@ import "../media-tab.css";
 export const MediaTabContent = ({
   items: incomingItems,
 }: {
-  items: MediaTabItem[];
+  items: ReadonlyArray<MediaTabItem>;
 }) => {
   const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
   const items = useMemo(

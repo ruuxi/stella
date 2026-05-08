@@ -19,7 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import { displayTabs, useDisplayTabs } from "./tab-store";
+import { displayTabs, useDisplayTabList } from "./tab-store";
 import { DisplayTabIcon } from "./icons";
 import type { DisplayTabKind } from "./types";
 import {
@@ -43,7 +43,7 @@ type AddMenuOption = {
 };
 
 export const DisplayTabAddMenu = () => {
-  const { tabs } = useDisplayTabs();
+  const { tabs } = useDisplayTabList();
   const knownIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
 
   const openOrActivate = useCallback(

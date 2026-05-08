@@ -1201,12 +1201,14 @@ export type ElectronDisplayApi = {
    */
   onUpdate: (callback: (payload: unknown) => void) => () => void;
   /**
-   * Reads a file as base64 from the main process. Used by the PDF viewer
-   * to load local PDFs without giving the renderer file:// access.
+   * Reads a file's raw bytes from the main process. Used by the PDF
+   * viewer / canvas / media previewers to load local files without
+   * giving the renderer file:// access. Bytes are transferred directly
+   * via Electron's structured-clone IPC (no base64 round-trip).
    */
   readFile: (
     filePath: string,
-  ) => Promise<{ contentsBase64: string; sizeBytes: number; mimeType: string }>;
+  ) => Promise<{ bytes: Uint8Array; sizeBytes: number; mimeType: string }>;
   listTrash: () => Promise<{
     items: Array<{
       id: string;

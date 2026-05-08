@@ -27,7 +27,19 @@ const items: CanvasHtmlItem[] = [];
 const itemsByPath = new Map<string, CanvasHtmlItem>();
 const listeners = new Set<() => void>();
 
+// Cached snapshot reference for `useSyncExternalStore`. The contract is
+// that `getSnapshot` must return the same reference between mutations,
+// otherwise React believes the store is constantly changing and may
+// re-render in a loop. We refresh this only when the underlying items
+// list mutates.
+let snapshot: ReadonlyArray<CanvasHtmlItem> = [];
+
+const refreshSnapshot = () => {
+  snapshot = items.slice();
+};
+
 const emit = () => {
+  refreshSnapshot();
   for (const listener of listeners) listener();
 };
 
@@ -41,7 +53,7 @@ const titleFromPayload = (
 /** Add or refresh a canvas item; returns the up-to-date snapshot. */
 export const addCanvasHtmlItem = (
   payload: Extract<DisplayPayload, { kind: "canvas-html" }>,
-): CanvasHtmlItem[] => {
+): ReadonlyArray<CanvasHtmlItem> => {
   const next: CanvasHtmlItem = {
     id: payload.filePath,
     filePath: payload.filePath,
@@ -61,19 +73,21 @@ export const addCanvasHtmlItem = (
     itemsByPath.set(payload.filePath, next);
   }
   emit();
-  return [...items];
+  return snapshot;
 };
 
-export const removeCanvasHtmlItem = (filePath: string): CanvasHtmlItem[] => {
+export const removeCanvasHtmlItem = (
+  filePath: string,
+): ReadonlyArray<CanvasHtmlItem> => {
   const idx = items.findIndex((item) => item.filePath === filePath);
-  if (idx === -1) return [...items];
+  if (idx === -1) return snapshot;
   items.splice(idx, 1);
   itemsByPath.delete(filePath);
   emit();
-  return [...items];
+  return snapshot;
 };
 
-export const getCanvasHtmlItems = (): CanvasHtmlItem[] => [...items];
+export const getCanvasHtmlItems = (): ReadonlyArray<CanvasHtmlItem> => snapshot;
 
 export const subscribeCanvasHtmlItems = (listener: () => void): (() => void) => {
   listeners.add(listener);

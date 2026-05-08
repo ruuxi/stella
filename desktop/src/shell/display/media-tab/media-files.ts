@@ -40,12 +40,47 @@ export const fileToDataUri = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
+// Tiny base64 encoder for Uint8Array. Used only when we need to feed a
+// `data:` URI into a downstream API (e.g. the media generation source
+// hand-off). For the generic byte-shipping path we keep raw `Uint8Array`
+// in `useDisplayFileBytes` and avoid this conversion entirely.
+const BASE64_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  let out = "";
+  let i = 0;
+  for (; i + 2 < bytes.length; i += 3) {
+    const b0 = bytes[i]!;
+    const b1 = bytes[i + 1]!;
+    const b2 = bytes[i + 2]!;
+    out += BASE64_ALPHABET[b0 >> 2]!;
+    out += BASE64_ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)]!;
+    out += BASE64_ALPHABET[((b1 & 0x0f) << 2) | (b2 >> 6)]!;
+    out += BASE64_ALPHABET[b2 & 0x3f]!;
+  }
+  if (i < bytes.length) {
+    const b0 = bytes[i]!;
+    const b1 = bytes[i + 1];
+    out += BASE64_ALPHABET[b0 >> 2]!;
+    if (b1 === undefined) {
+      out += BASE64_ALPHABET[(b0 & 0x03) << 4]!;
+      out += "==";
+    } else {
+      out += BASE64_ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)]!;
+      out += BASE64_ALPHABET[(b1 & 0x0f) << 2]!;
+      out += "=";
+    }
+  }
+  return out;
+};
+
 export const readSourceAsDataUri = async (
   filePath: string,
 ): Promise<string | null> => {
   const result = await window.electronAPI?.display?.readFile?.(filePath);
   if (!result) return null;
-  return `data:${result.mimeType};base64,${result.contentsBase64}`;
+  return `data:${result.mimeType};base64,${bytesToBase64(result.bytes)}`;
 };
 
 const assetForImportedFile = (
