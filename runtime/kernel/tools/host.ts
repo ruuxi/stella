@@ -42,7 +42,11 @@ import type {
 import { log, logError, recoverStaleSecretFiles } from "./utils.js";
 import { setFileToolsConfig } from "./file.js";
 import { createShellState, type ShellState } from "./shell.js";
-import { createStateContext, type StateContext } from "./state.js";
+import {
+  createStateContext,
+  getAvailableSubagentTypes,
+  type StateContext,
+} from "./state.js";
 import {
   createShellToolHandlers,
   mergeToolHandlers,
@@ -90,6 +94,7 @@ export const createToolHost = ({
   stellaConnectCliPath,
   requestCredential,
   agentApi,
+  getSubagentTypes,
   scheduleApi,
 
   fashionApi,
@@ -111,7 +116,11 @@ export const createToolHost = ({
     stellaComputerCliPath,
     stellaConnectCliPath,
   });
-  const stateContext: StateContext = createStateContext(stateRoot, agentApi);
+  const stateContext: StateContext = createStateContext(
+    stateRoot,
+    agentApi,
+    getSubagentTypes,
+  );
 
   void recoverStaleSecretFiles(stateRoot)
     .then((result) => {
@@ -370,6 +379,28 @@ export const createToolHost = ({
                   (subagentExtras !== undefined &&
                     subagentExtras.has(tool.name)) ||
                   !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name);
+    }).map((tool) => {
+      if (tool.name !== "spawn_agent") {
+        return tool;
+      }
+      const subagentTypes = getAvailableSubagentTypes(
+        stateContext.getSubagentTypes,
+      );
+      return {
+        ...tool,
+        parameters: {
+          ...tool.parameters,
+          properties: {
+            ...(tool.parameters.properties as Record<string, unknown> | undefined),
+            agent_type: {
+              type: "string",
+              enum: subagentTypes,
+              description:
+                "Optional agent type to spawn. Defaults to `general`. Use one of the available values in this schema.",
+            },
+          },
+        },
+      };
     });
   };
 

@@ -23,7 +23,9 @@ type TestHostContext = {
 
 const activeContexts = new Set<TestHostContext>();
 
-const createTestHost = async (): Promise<TestHostContext> => {
+const createTestHost = async (
+  getSubagentTypes?: () => readonly string[],
+): Promise<TestHostContext> => {
   const rootPath = path.join(
     os.tmpdir(),
     `stella-orchestrator-tools-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -53,6 +55,7 @@ const createTestHost = async (): Promise<TestHostContext> => {
       getAgent: async () => null,
       cancelAgent: async () => ({ canceled: false }),
     },
+    getSubagentTypes,
     webSearch: async (query) => ({ text: `results for ${query}` }),
     memoryStore,
   });
@@ -101,6 +104,16 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("Memory")).toBe(true);
     expect(orchestratorTools.has("askQuestion")).toBe(true);
     expect(orchestratorTools.has("Fashion")).toBe(false);
+
+    const spawnAgentTool = host
+      .getToolCatalog("orchestrator")
+      .find((tool) => tool.name === "spawn_agent");
+    expect(
+      (
+        (spawnAgentTool?.parameters.properties as Record<string, unknown>)
+          .agent_type as { enum?: string[] }
+      ).enum,
+    ).toEqual(["general"]);
 
     const generalTools = new Set(
       host.getToolCatalog("general").map((tool) => tool.name),
@@ -227,5 +240,35 @@ describe("orchestrator direct tool surface", () => {
     );
 
     expect(generalResult.error).toContain("only available to the orchestrator");
+  });
+
+  it("surfaces custom agent types in spawn_agent schema", async () => {
+    const { host } = await createTestHost(() => ["general", "research"]);
+
+    const spawnAgentTool = host
+      .getToolCatalog("orchestrator")
+      .find((tool) => tool.name === "spawn_agent");
+
+    expect(
+      (
+        (spawnAgentTool?.parameters.properties as Record<string, unknown>)
+          .agent_type as { enum?: string[] }
+      ).enum,
+    ).toEqual(["general", "research"]);
+  });
+
+  it("falls back to general when custom agent type discovery returns empty", async () => {
+    const { host } = await createTestHost(() => []);
+
+    const spawnAgentTool = host
+      .getToolCatalog("orchestrator")
+      .find((tool) => tool.name === "spawn_agent");
+
+    expect(
+      (
+        (spawnAgentTool?.parameters.properties as Record<string, unknown>)
+          .agent_type as { enum?: string[] }
+      ).enum,
+    ).toEqual(["general"]);
   });
 });

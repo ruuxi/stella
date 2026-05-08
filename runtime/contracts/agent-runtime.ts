@@ -294,6 +294,19 @@ export const BUNDLED_CORE_AGENT_IDS = Object.freeze(
   ) as BundledCoreAgentId[],
 );
 
+export const ORCHESTRATOR_RESERVED_BUILTIN_AGENT_IDS = Object.freeze(
+  BUILTIN_AGENT_DEFINITIONS.filter((entry) => entry.id !== AGENT_IDS.GENERAL).map(
+    (entry) => entry.id,
+  ) as AgentId[],
+);
+
+const ORCHESTRATOR_RESERVED_BUILTIN_AGENT_ID_SET = new Set<string>(
+  ORCHESTRATOR_RESERVED_BUILTIN_AGENT_IDS,
+);
+
+export const isOrchestratorReservedBuiltinAgentId = (agentId: string): boolean =>
+  ORCHESTRATOR_RESERVED_BUILTIN_AGENT_ID_SET.has(agentId);
+
 export const MODEL_SETTINGS_AGENTS = Object.freeze(
   BUILTIN_AGENT_DEFINITIONS.filter(
     (
