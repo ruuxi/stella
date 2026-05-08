@@ -1232,6 +1232,8 @@ export const upsertManagedModelPrices = internalMutation({
       cacheReadPerMillionUsd: v.number(),
       cacheWritePerMillionUsd: v.number(),
       reasoningPerMillionUsd: v.number(),
+      modalitiesInput: v.array(v.string()),
+      modalitiesOutput: v.array(v.string()),
       sourceUpdatedAt: v.string(),
       syncedAt: v.number(),
     })),

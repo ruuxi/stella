@@ -54,6 +54,15 @@ export const billingSchema = {
     cacheReadPerMillionUsd: v.number(),
     cacheWritePerMillionUsd: v.number(),
     reasoningPerMillionUsd: v.number(),
+    /**
+     * Input modalities advertised by models.dev (or its fallback). Optional
+     * because pre-existing rows pre-date the modality sync; readers default
+     * to ["text"] when missing so unknown models drop images at the gateway
+     * boundary instead of being silently forwarded as data URLs.
+     */
+    modalitiesInput: v.optional(v.array(v.string())),
+    /** Output modalities advertised by models.dev. Defaults to ["text"]. */
+    modalitiesOutput: v.optional(v.array(v.string())),
     sourceUpdatedAt: v.string(),
     syncedAt: v.number(),
   })

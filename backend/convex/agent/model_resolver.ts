@@ -6,6 +6,7 @@
  */
 
 import type { ActionCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
 import {
   getModelConfig,
   type ManagedModelAudience,
@@ -22,6 +23,43 @@ export type ResolvedModelConfig = {
   temperature?: number;
   maxOutputTokens?: number;
   providerOptions?: Record<string, Record<string, unknown>>;
+  /**
+   * Input modalities resolved from `billing_model_prices` (synced from
+   * models.dev). Forwarded to `buildManagedModel` so unsupported parts
+   * (image/audio/video/pdf) are dropped at the gateway boundary instead of
+   * being shipped to providers that may tokenize the data URLs as raw
+   * characters. Defaults to ["text"] when the row is missing or
+   * unpopulated.
+   */
+  modalitiesInput?: ("text" | "image" | "audio" | "video" | "pdf")[];
+};
+
+const TEXT_ONLY: ("text" | "image" | "audio" | "video" | "pdf")[] = ["text"];
+
+const KNOWN_MODALITIES = new Set(["text", "image", "audio", "video", "pdf"]);
+
+const sanitizeStoredModalities = (
+  modalities: readonly string[] | undefined,
+): ("text" | "image" | "audio" | "video" | "pdf")[] => {
+  if (!modalities || modalities.length === 0) return TEXT_ONLY;
+  const filtered = modalities.filter(
+    (m): m is "text" | "image" | "audio" | "video" | "pdf" =>
+      KNOWN_MODALITIES.has(m),
+  );
+  return filtered.length > 0 ? filtered : TEXT_ONLY;
+};
+
+type RunQueryCtx = { runQuery: ActionCtx["runQuery"] };
+
+const lookupModalitiesInput = async (
+  ctx: RunQueryCtx,
+  model: string,
+): Promise<("text" | "image" | "audio" | "video" | "pdf")[]> => {
+  const row = await ctx.runQuery(internal.billing.getManagedModelPrice, {
+    model,
+  });
+  if (!row) return TEXT_ONLY;
+  return sanitizeStoredModalities(row.modalitiesInput);
 };
 
 export const toResolvedModelConfig = (
@@ -32,6 +70,7 @@ export const toResolvedModelConfig = (
     maxOutputTokens?: number;
     providerOptions?: unknown;
   },
+  modalitiesInput?: ResolvedModelConfig["modalitiesInput"],
 ): ResolvedModelConfig => ({
   model: config.model,
   managedGatewayProvider: resolveManagedGatewayProvider({
@@ -41,6 +80,7 @@ export const toResolvedModelConfig = (
   temperature: config.temperature,
   maxOutputTokens: config.maxOutputTokens,
   providerOptions: config.providerOptions as Record<string, Record<string, unknown>> | undefined,
+  modalitiesInput,
 });
 
 type ResolveModelConfigOptions = {
@@ -49,21 +89,20 @@ type ResolveModelConfigOptions = {
 };
 
 export async function resolveModelConfig(
-  ctx: unknown,
+  ctx: RunQueryCtx,
   agentType: string,
   ownerId?: string,
   options?: ResolveModelConfigOptions,
 ): Promise<ResolvedModelConfig> {
   const audience = options?.access?.modelAudience ?? options?.audience ?? "free";
   const defaults = getModelConfig(agentType, audience);
-
-  void ctx;
+  const modalitiesInput = await lookupModalitiesInput(ctx, defaults.model);
   void ownerId;
-  return toResolvedModelConfig(defaults);
+  return toResolvedModelConfig(defaults, modalitiesInput);
 }
 
 export async function resolveFallbackConfig(
-  ctx: { runQuery: ActionCtx["runQuery"] },
+  ctx: RunQueryCtx,
   agentType: string,
   ownerId?: string,
   options?: ResolveModelConfigOptions,
@@ -71,16 +110,19 @@ export async function resolveFallbackConfig(
   const audience = options?.access?.modelAudience ?? options?.audience ?? "free";
   const defaults = getModelConfig(agentType, audience);
   if (!defaults.fallback) return null;
+  const modalitiesInput = await lookupModalitiesInput(ctx, defaults.fallback);
 
-  const resolvedFallback = toResolvedModelConfig({
-    model: defaults.fallback,
-    managedGatewayProvider: defaults.fallbackManagedGatewayProvider,
-    temperature: defaults.temperature,
-    maxOutputTokens: defaults.maxOutputTokens,
-    providerOptions: defaults.fallbackProviderOptions,
-  });
+  const resolvedFallback = toResolvedModelConfig(
+    {
+      model: defaults.fallback,
+      managedGatewayProvider: defaults.fallbackManagedGatewayProvider,
+      temperature: defaults.temperature,
+      maxOutputTokens: defaults.maxOutputTokens,
+      providerOptions: defaults.fallbackProviderOptions,
+    },
+    modalitiesInput,
+  );
 
-  void ctx;
   void ownerId;
   return resolvedFallback;
 }
