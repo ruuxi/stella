@@ -236,37 +236,43 @@ export function convertResponsesMessages<TApi extends Api>(
 			const hasText = textResult.length > 0;
 			const [callId] = msg.toolCallId.split("|");
 
-			let output: string | ResponseFunctionCallOutputItemList;
-			if (hasImages && model.input.includes("image")) {
-				const contentParts: ResponseFunctionCallOutputItemList = [];
-
-				if (hasText) {
-					contentParts.push({
-						type: "input_text",
-						text: sanitizeSurrogates(textResult),
-					});
-				}
-
-				for (const block of msg.content) {
-					if (block.type === "image") {
-						contentParts.push({
-							type: "input_image",
-							detail: "auto",
-							image_url: `data:${block.mimeType};base64,${block.data}`,
-						});
-					}
-				}
-
-				output = contentParts;
-			} else {
-				output = sanitizeSurrogates(hasText ? textResult : "(see attached image)");
-			}
-
+			// `function_call_output.output` is always a string. Several
+			// OpenAI-Responses-compatible providers (Fireworks routers
+			// including kimi-k2p6-turbo, kimi-k2p5-turbo) cannot parse
+			// `input_image` parts inside the output array — they
+			// stringify the entire array (data URL included) and tokenize
+			// it as raw text, blowing past the model's context window.
+			// The image is forwarded as a follow-up user message instead,
+			// matching `openai_completions.ts` and the backend variant.
 			messages.push({
 				type: "function_call_output",
 				call_id: callId,
-				output,
+				output: sanitizeSurrogates(hasText ? textResult : "(see attached image)"),
 			});
+
+			if (hasImages && model.input.includes("image")) {
+				const followUpContent: ResponseInputContent[] = [
+					{
+						type: "input_text",
+						text: "Attached image(s) from the previous tool result:",
+					} satisfies ResponseInputText,
+				];
+				for (const block of msg.content) {
+					if (block.type === "image") {
+						followUpContent.push({
+							type: "input_image",
+							detail: "auto",
+							image_url: `data:${block.mimeType};base64,${block.data}`,
+						} satisfies ResponseInputImage);
+					}
+				}
+				if (followUpContent.length > 1) {
+					messages.push({
+						role: "user",
+						content: followUpContent,
+					});
+				}
+			}
 		}
 		msgIndex++;
 	}
