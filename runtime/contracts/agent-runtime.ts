@@ -42,6 +42,8 @@ export type AgentCapabilities = {
   injectsSkillCatalog?: boolean;
   /** Inject the Stella Connect connector list block into the dynamic context. */
   injectsConnectorList?: boolean;
+  /** Inject the available-subagents roster block into the dynamic context. */
+  injectsSubagentRoster?: boolean;
   /** Record a `thread_summaries` row on successful run completion. */
   recordsThreadSummary?: boolean;
   /** Notify the Dream scheduler on successful run completion. */
@@ -99,6 +101,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
       injectsDynamicMemory: true,
       injectsRuntimeReminders: true,
       injectsSkillCatalog: true,
+      injectsSubagentRoster: true,
       triggersMemoryReview: true,
       triggersSelfModDetection: true,
     },

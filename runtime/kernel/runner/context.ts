@@ -40,10 +40,13 @@ import {
   AGENT_IDS,
   agentHasCapability,
   getAgentEnginePreference,
-  isOrchestratorReservedBuiltinAgentId,
   isLocalCliAgentId,
   isOrchestratorAgentType,
 } from "../../contracts/agent-runtime.js";
+import {
+  collectSubagentRoster,
+  renderSubagentRosterBlock,
+} from "./subagent-roster.js";
 import type {
   PersistedRuntimeThreadPayload,
   RuntimeThreadMessage,
@@ -365,24 +368,10 @@ export const createRunnerContext = ({
     stellaConnectCliPath,
     requestCredential,
     notifyVoiceActionComplete,
-    getSubagentTypes: () => {
-      const seen = new Set<string>();
-      const subagentTypes: string[] = [];
-      for (const agent of context.state.loadedAgents) {
-        const candidateTypes = agent.agentTypes.length > 0 ? agent.agentTypes : [agent.id];
-        for (const agentType of candidateTypes) {
-          if (isOrchestratorReservedBuiltinAgentId(agentType) || seen.has(agentType)) {
-            continue;
-          }
-          seen.add(agentType);
-          subagentTypes.push(agentType);
-        }
-      }
-      if (!seen.has(AGENT_IDS.GENERAL)) {
-        subagentTypes.unshift(AGENT_IDS.GENERAL);
-      }
-      return subagentTypes;
-    },
+    getSubagentTypes: () =>
+      collectSubagentRoster(context.state.loadedAgents).map(
+        (entry) => entry.type,
+      ),
     scheduleApi,
 
     fashionApi: resolvedFashionApi,
@@ -733,6 +722,13 @@ export const buildAgentContext = async (
         : "",
     ].filter(Boolean);
     dynamicContextSections.push(lines.join("\n"));
+  }
+  if (agentHasCapability(args.agentType, "injectsSubagentRoster")) {
+    dynamicContextSections.push(
+      renderSubagentRosterBlock(
+        collectSubagentRoster(context.state.loadedAgents),
+      ),
+    );
   }
 
   return {
