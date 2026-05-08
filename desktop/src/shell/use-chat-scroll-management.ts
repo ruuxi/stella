@@ -194,6 +194,7 @@ export function useChatScrollManagement({
       cleanup()
       attached = node
       let lastScrollHeight = node.scrollHeight
+      let lastClientWidth = node.clientWidth
 
       const cancelTween = () => {
         if (attached) cancelSmoothScroll(attached)
@@ -228,9 +229,29 @@ export function useChatScrollManagement({
       resizeObserver = new ResizeObserver(() => {
         if (!attached) return
         const newHeight = attached.scrollHeight
-        if (newHeight === lastScrollHeight) return
+        const newWidth = attached.clientWidth
+        const widthChanged = newWidth !== lastClientWidth
+        if (newHeight === lastScrollHeight && !widthChanged) return
         const grew = newHeight > lastScrollHeight
         lastScrollHeight = newHeight
+        lastClientWidth = newWidth
+        // Width changes (e.g. the display sidebar sliding open) reflow the
+        // chat narrower, which makes `scrollHeight` grow on every observer
+        // tick of the 460ms transition. That is not new content — running
+        // the smooth follow tween for it produces a "scroll for no reason"
+        // during the slide. If the user was pinned to the bottom we snap
+        // instantly to keep them there; otherwise we leave their scroll
+        // position alone.
+        if (widthChanged) {
+          if (followRef.current) {
+            const target = newHeight - attached.clientHeight
+            if (target > attached.scrollTop + 0.5) {
+              cancelTween()
+              attached.scrollTop = target
+            }
+          }
+          return
+        }
         if (!grew || !followRef.current) return
         const target = newHeight - attached.clientHeight
         if (target <= attached.scrollTop + 0.5) return
