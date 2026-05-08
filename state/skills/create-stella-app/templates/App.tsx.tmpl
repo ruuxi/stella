@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Spinner } from "@/ui/spinner";
+import "./{{ID}}.css";
 
 const {{COMPONENT}}View = lazy(() =>
   import("./{{COMPONENT}}View").then((m) => ({ default: m.{{COMPONENT}}View })),
@@ -7,19 +8,15 @@ const {{COMPONENT}}View = lazy(() =>
 
 export function {{COMPONENT}}App() {
   return (
-    <div className="workspace-area">
-      <div className="workspace-content workspace-content--full">
-        <Suspense
-          fallback={
-            <div className="workspace-placeholder">
-              <Spinner size="md" />
-            </div>
-          }
-        >
-          <{{COMPONENT}}View />
-        </Suspense>
-      </div>
-    </div>
+    <Suspense
+      fallback={
+        <div className="{{ID}}-placeholder">
+          <Spinner size="md" />
+        </div>
+      }
+    >
+      <{{COMPONENT}}View />
+    </Suspense>
   );
 }
 
