@@ -398,25 +398,34 @@ export const createOrchestratorController = (
       return;
     }
 
-    const promptText = input.wakePrompt?.trim() || text;
+    const wakePrompt = input.wakePrompt?.trim();
     await executeOrQueueSystemOrchestratorTurn({
       hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
       queueOrchestratorTurn,
       execute: async () => {
+        const promptMessages: NonNullable<ChatPayload["promptMessages"]> = [
+          {
+            text,
+            messageType: "message",
+            customType: input.customType ?? "runtime.send_message",
+            ...(input.display !== undefined
+              ? { display: input.display }
+              : {}),
+          },
+        ];
+        if (wakePrompt) {
+          promptMessages.push({
+            text: wakePrompt,
+            messageType: "message",
+            customType: "runtime.wake_prompt",
+            display: false,
+          });
+        }
         await startStreamingOrchestratorTurn(
           {
             conversationId: input.conversationId,
             userPrompt: "",
-            promptMessages: [
-              {
-                text: promptText,
-                messageType: "message",
-                customType: input.customType ?? "runtime.send_message",
-                ...(input.display !== undefined
-                  ? { display: input.display }
-                  : {}),
-              },
-            ],
+            promptMessages,
             agentType: input.agentType ?? AGENT_IDS.ORCHESTRATOR,
             userMessageId: `message:${crypto.randomUUID()}`,
             uiVisibility: UI_VISIBILITY_VISIBLE,

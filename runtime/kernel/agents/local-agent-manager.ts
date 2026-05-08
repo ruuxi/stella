@@ -425,6 +425,10 @@ export class LocalAgentManager implements AgentToolApi {
     return task.restartRequested && task.status !== "canceled";
   }
 
+  private shouldContinueWithQueuedInput(task: RuntimeAgentRecord): boolean {
+    return task.toSubagentQueue.length > 0 && task.status === "completed";
+  }
+
   private toPersistedStatus(
     status: LocalAgentStatus,
   ): PersistedAgentRecord["status"] {
@@ -548,7 +552,8 @@ export class LocalAgentManager implements AgentToolApi {
   }
 
   private requeueTaskForUpdate(task: RuntimeAgentRecord): void {
-    this.resetTaskForNextAttempt(task, task.prompt);
+    const prompt = this.buildTaskPrompt(task);
+    this.resetTaskForNextAttempt(task, prompt);
     task.recentActivity = ["Applying task update from orchestrator."];
     this.pendingQueue.unshift(task.threadId);
     this.persistTask(task);
@@ -796,7 +801,7 @@ export class LocalAgentManager implements AgentToolApi {
       }
     }
 
-    if (this.shouldRestartTask(task)) {
+    if (this.shouldRestartTask(task) || this.shouldContinueWithQueuedInput(task)) {
       this.requeueTaskForUpdate(task);
       return;
     }

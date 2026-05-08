@@ -8,6 +8,17 @@ import {
 import type { ToolResult } from "../../../../../runtime/kernel/tools/types.js";
 import { waitForAgentSettled } from "../../../helpers/agent.js";
 
+const waitFor = async (
+  predicate: () => boolean,
+  message: string,
+): Promise<void> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(message);
+};
+
 describe("LocalAgentManager pause_agent cancellation", () => {
   it("suppresses in-flight agent-progress events after the task is canceled", async () => {
     // Reproduces the regression that left a phantom "Working … Task" chip
@@ -190,5 +201,67 @@ describe("LocalAgentManager pause_agent cancellation", () => {
 
     finishRun?.();
     await waitForAgentSettled(manager, created.threadId);
+  });
+
+  it("continues with queued send_input after the current run completes", async () => {
+    const prompts: string[] = [];
+    let startedFirst: (() => void) | null = null;
+    let finishFirst: (() => void) | null = null;
+    const startedFirstPromise = new Promise<void>((resolve) => {
+      startedFirst = resolve;
+    });
+    const finishFirstPromise = new Promise<void>((resolve) => {
+      finishFirst = resolve;
+    });
+
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => {
+        prompts.push(args.taskPrompt);
+        if (prompts.length === 1) {
+          startedFirst?.();
+          await finishFirstPromise;
+        }
+        return { runId: args.runId, result: `done-${prompts.length}` };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "ok" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const created = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "demo",
+      prompt: "initial prompt",
+      agentType: "general",
+      storageMode: "local",
+    });
+
+    await startedFirstPromise;
+    await manager.sendAgentMessage(created.threadId, "queued follow-up", "orchestrator", {
+      interrupt: false,
+    });
+    finishFirst?.();
+
+    await waitFor(
+      () => prompts.length === 2,
+      "Queued send_input did not start a follow-up run.",
+    );
+    await waitForAgentSettled(manager, created.threadId);
+
+    expect(prompts[0]).toBe("initial prompt");
+    expect(prompts[1]).toContain("Task update from orchestrator:");
+    expect(prompts[1]).toContain("queued follow-up");
+    await expect(manager.getAgent(created.threadId)).resolves.toMatchObject({
+      status: "completed",
+      result: "done-2",
+    });
   });
 });
