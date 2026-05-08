@@ -20,7 +20,7 @@ export function getVoiceToolSchemas(): VoiceToolSchema[] {
       description:
         "Search the web for current information. Use natural language queries, not keywords. " +
         "Call this for any question needing up-to-date facts: news, prices, current events, people's roles, product info. " +
-        "Results are displayed on the canvas panel. Speak a concise summary of the key findings.",
+        "Speak a concise summary of the key findings.",
       parameters: {
         type: "object",
         properties: {

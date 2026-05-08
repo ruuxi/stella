@@ -217,6 +217,9 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
             type: "realtime",
             model,
             instructions,
+            reasoning: {
+              effort: "minimal",
+            },
             tools,
             audio: {
               output: {
