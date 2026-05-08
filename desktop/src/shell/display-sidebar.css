@@ -39,6 +39,14 @@
   left: var(--shell-sidebar-rail-width, 82px);
 }
 
+/* The expanded display panel is intentionally transparent, so remove the
+   underlying route/chat surface while the panel owns the full content area. */
+.full-body:has(.display-sidebar--open.display-sidebar--expanded)
+  > .content-area {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* While the user is actively dragging the resize handle, suppress the
    width transition so the panel tracks the cursor 1:1 instead of
    easing toward each new width value. */
