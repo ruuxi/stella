@@ -4,6 +4,7 @@ import { authComponent, createAuth } from "./auth";
 import { corsPreflightHandler } from "./http_shared/cors";
 
 // Route modules
+import { registerAdminRoutes } from "./http_routes/admin";
 import { registerConnectorWebhookRoutes } from "./http_routes/connectors";
 import { registerBackupRoutes } from "./http_routes/backups";
 import { registerDesktopReleaseRoutes } from "./http_routes/desktop_releases";
@@ -40,6 +41,7 @@ authComponent.registerRoutes(http, createAuth, { cors: true });
 // Feature Routes
 // ---------------------------------------------------------------------------
 
+registerAdminRoutes(http);
 registerSynthesisRoutes(http);
 registerConnectorWebhookRoutes(http);
 registerBackupRoutes(http);

@@ -346,6 +346,50 @@ export const upsertMany = internalMutation({
 });
 
 /**
+ * Operational cleanup helper for removing a public catalog pet by its string
+ * id. Deletes the parent row plus derived tag membership/facet rows.
+ */
+export const deleteByPetId = internalMutation({
+  args: { id: v.string() },
+  returns: v.object({
+    deleted: v.boolean(),
+    id: v.string(),
+    displayName: v.optional(v.string()),
+    ownerName: v.optional(v.union(v.string(), v.null())),
+  }),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("pet_catalog")
+      .withIndex("by_petId", (q) => q.eq("id", args.id))
+      .unique();
+    if (!row) {
+      return { deleted: false, id: args.id };
+    }
+
+    const memberships = await ctx.db
+      .query("pet_tag_membership")
+      .withIndex("by_petId", (q) => q.eq("petId", row._id))
+      .collect();
+    for (const membership of memberships) {
+      await ctx.db.delete(membership._id);
+    }
+    if (row.published) {
+      for (const tag of new Set(filterDisplayableTags(row.tags))) {
+        await applyFacetDelta(ctx, tag, -1);
+      }
+    }
+    await ctx.db.delete(row._id);
+
+    return {
+      deleted: true,
+      id: row.id,
+      displayName: row.displayName,
+      ownerName: row.ownerName,
+    };
+  },
+});
+
+/**
  * Replace the membership rows for one pet so they exactly mirror the
  * pet's current tag set / display name / downloads. Bounded by the
  * pet's own tag count (a handful), so a `.collect()` on the pet's prior
