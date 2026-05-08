@@ -7,7 +7,46 @@ import type {
 
 const DEFAULT_REPO_OWNER = "ruuxi";
 const DEFAULT_REPO_NAME = "stella";
-let activeInstallUpdateConversationId: string | null = null;
+
+export type ActiveDesktopUpdate = {
+  status: "starting" | "running";
+  conversationId: string;
+  requestId?: string;
+  runId?: string;
+  targetCommit: string;
+  targetTag: string;
+};
+
+let activeDesktopUpdate: ActiveDesktopUpdate | null = null;
+const activeDesktopUpdateListeners = new Set<() => void>();
+
+const emitActiveDesktopUpdateChange = () => {
+  for (const listener of activeDesktopUpdateListeners) {
+    listener();
+  }
+};
+
+const setActiveDesktopUpdate = (next: ActiveDesktopUpdate | null) => {
+  activeDesktopUpdate = next;
+  emitActiveDesktopUpdateChange();
+};
+
+export const getActiveDesktopUpdate = (): ActiveDesktopUpdate | null =>
+  activeDesktopUpdate;
+
+export const subscribeActiveDesktopUpdate = (listener: () => void) => {
+  activeDesktopUpdateListeners.add(listener);
+  return () => {
+    activeDesktopUpdateListeners.delete(listener);
+  };
+};
+
+export const cancelActiveDesktopUpdate = (): boolean => {
+  const runId = activeDesktopUpdate?.runId;
+  if (!runId) return false;
+  window.electronAPI?.agent?.cancelChat?.(runId);
+  return true;
+};
 
 type ApplyDesktopUpdateOptions = {
   installManifest: InstallManifestSnapshot;
@@ -47,7 +86,7 @@ export const applyDesktopUpdate = async (
   ) {
     throw new Error("Stella update tracking is not available.");
   }
-  if (activeInstallUpdateConversationId) {
+  if (activeDesktopUpdate) {
     throw new Error("A Stella update is already running.");
   }
 
@@ -61,9 +100,14 @@ export const applyDesktopUpdate = async (
   }
 
   const conversationId = `install-update-${crypto.randomUUID()}`;
-  activeInstallUpdateConversationId = conversationId;
   const repoOwner = DEFAULT_REPO_OWNER;
   const repoName = DEFAULT_REPO_NAME;
+  setActiveDesktopUpdate({
+    status: "starting",
+    conversationId,
+    targetCommit: options.publishedCommit,
+    targetTag: options.publishedTag,
+  });
 
   const prompt = [
     "You are the install-update agent. Apply the upstream change set below.",
@@ -90,14 +134,19 @@ export const applyDesktopUpdate = async (
   // persist the applied commit into the launcher manifest. The
   // subscription auto-cleans on terminal outcome.
   let unsubscribe: (() => void) | null = null;
-  let activeRunId: string | null = null;
   unsubscribe = electronApi.agent.onStream((event) => {
     if (
       event.type === "run-started" &&
       event.conversationId === conversationId &&
       event.agentType === AGENT_IDS.INSTALL_UPDATE
     ) {
-      activeRunId = event.runId;
+      if (activeDesktopUpdate?.conversationId === conversationId) {
+        setActiveDesktopUpdate({
+          ...activeDesktopUpdate,
+          status: "running",
+          runId: event.runId,
+        });
+      }
       return;
     }
     if (
@@ -119,8 +168,8 @@ export const applyDesktopUpdate = async (
         console.warn("[install-update] Failed to record applied commit:", err);
       } finally {
         options.onFinished?.(event);
-        if (activeInstallUpdateConversationId === conversationId) {
-          activeInstallUpdateConversationId = null;
+        if (activeDesktopUpdate?.conversationId === conversationId) {
+          setActiveDesktopUpdate(null);
         }
         unsubscribe?.();
         unsubscribe = null;
@@ -149,20 +198,21 @@ export const applyDesktopUpdate = async (
         },
       },
     });
+    const currentActiveUpdate = getActiveDesktopUpdate();
+    if (currentActiveUpdate?.conversationId === conversationId) {
+      setActiveDesktopUpdate({
+        ...currentActiveUpdate,
+        requestId: result.requestId,
+      });
+    }
     return {
       requestId: result.requestId,
       conversationId,
-      cancel: () => {
-        if (!activeRunId) {
-          return false;
-        }
-        electronApi.agent.cancelChat(activeRunId);
-        return true;
-      },
+      cancel: cancelActiveDesktopUpdate,
     };
   } catch (err) {
-    if (activeInstallUpdateConversationId === conversationId) {
-      activeInstallUpdateConversationId = null;
+    if (getActiveDesktopUpdate()?.conversationId === conversationId) {
+      setActiveDesktopUpdate(null);
     }
     unsubscribe?.();
     throw err;
