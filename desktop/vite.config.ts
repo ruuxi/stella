@@ -990,19 +990,11 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     target: 'chrome134',
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
         overlay: path.resolve(__dirname, 'overlay.html'),
         pet: path.resolve(__dirname, 'pet.html'),
-      },
-      output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('@radix-ui')) return 'vendor-radix'
-            if (id.includes('react-dom')) return 'vendor-react'
-          }
-        },
       },
     },
   },
