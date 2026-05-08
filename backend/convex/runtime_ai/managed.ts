@@ -45,6 +45,16 @@ export type ManagedModelConfig = {
   temperature?: number;
   maxOutputTokens?: number;
   providerOptions?: Record<string, Record<string, unknown>>;
+  /**
+   * Input modalities the upstream model actually supports. Resolved at the
+   * request entry point from `billing_model_prices` (synced from
+   * models.dev). When omitted, `buildManagedModel` defaults to ["text"]
+   * so unknown models drop image/audio/video/pdf at the gateway boundary
+   * (`transformMessages` swaps unsupported parts for text placeholders)
+   * instead of forwarding multi-megabyte data URLs that some providers
+   * tokenize as raw character streams.
+   */
+  modalitiesInput?: ("text" | "image" | "audio" | "video" | "pdf")[];
 };
 
 type ManagedCompletionRequest = {
@@ -460,6 +470,26 @@ function readTools(value: unknown): Tool[] | undefined {
   return tools.length > 0 ? tools : undefined;
 }
 
+/**
+ * Derives the `Model.input` modality set from the resolved
+ * `ManagedModelConfig.modalitiesInput`. Stella's `Model.input` only
+ * tracks "text" and "image" today (audio/video/pdf are not natively
+ * supported on the runtime side), so we narrow models.dev's broader
+ * modality list to that subset. Defaults to ["text"] when modalities
+ * are unknown so unknown models drop image data URLs at the gateway
+ * boundary instead of being forwarded to a provider that may tokenize
+ * the data URL as raw characters.
+ */
+function resolveModelInput(
+  modalitiesInput: ManagedModelConfig["modalitiesInput"],
+): ("text" | "image")[] {
+  if (!modalitiesInput || modalitiesInput.length === 0) {
+    return ["text"];
+  }
+  const supportsImage = modalitiesInput.includes("image");
+  return supportsImage ? ["text", "image"] : ["text"];
+}
+
 export function buildManagedModel<TApi extends Api>(
   config: ManagedModelConfig,
   api: TApi,
@@ -478,7 +508,7 @@ export function buildManagedModel<TApi extends Api>(
     provider,
     baseUrl: managedGateway.baseURL,
     reasoning: true,
-    input: ["text", "image"],
+    input: resolveModelInput(config.modalitiesInput),
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 256_000,
     maxTokens: config.maxOutputTokens ?? 16_384,

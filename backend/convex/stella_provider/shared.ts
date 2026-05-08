@@ -28,6 +28,14 @@ export type ResolvedManagedServerModelConfig = {
   temperature?: number;
   maxOutputTokens?: number;
   providerOptions?: Record<string, Record<string, unknown>>;
+  /**
+   * Input modalities resolved from `billing_model_prices` (synced from
+   * models.dev). Forwarded into `ManagedModelConfig.modalitiesInput` so
+   * `buildManagedModel` can derive the correct `Model.input` set instead
+   * of the previous hardcoded ["text", "image"]. When omitted the
+   * downstream layer defaults to ["text"] (text-only).
+   */
+  modalitiesInput?: ("text" | "image" | "audio" | "video" | "pdf")[];
 };
 
 export type AuthorizedStellaRequest = {

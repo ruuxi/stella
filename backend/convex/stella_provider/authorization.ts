@@ -33,6 +33,44 @@ function stellaProviderErrorResponse(
   return errorResponse(status, message, request.headers.get("origin"));
 }
 
+const TEXT_ONLY_MODALITIES: ("text" | "image" | "audio" | "video" | "pdf")[] = [
+  "text",
+];
+
+const KNOWN_MODALITIES = new Set(["text", "image", "audio", "video", "pdf"]);
+
+const sanitizeStoredModalities = (
+  modalities: readonly string[] | undefined,
+): ("text" | "image" | "audio" | "video" | "pdf")[] => {
+  if (!modalities || modalities.length === 0) {
+    return TEXT_ONLY_MODALITIES;
+  }
+  const filtered = modalities.filter((m): m is "text" | "image" | "audio" | "video" | "pdf" =>
+    KNOWN_MODALITIES.has(m),
+  );
+  return filtered.length > 0 ? filtered : TEXT_ONLY_MODALITIES;
+};
+
+/**
+ * Look up a managed model's input modalities from `billing_model_prices`
+ * (synced from models.dev). Returns `["text"]` when the row is missing or
+ * the modality column hasn't been populated yet, so unknown models drop
+ * non-text parts at the gateway boundary instead of forwarding base64
+ * data URLs to providers that may tokenize them as raw text.
+ */
+async function resolveModalitiesInput(
+  ctx: ActionCtx,
+  model: string,
+): Promise<("text" | "image" | "audio" | "video" | "pdf")[]> {
+  const row = await ctx.runQuery(internal.billing.getManagedModelPrice, {
+    model,
+  });
+  if (!row) {
+    return TEXT_ONLY_MODALITIES;
+  }
+  return sanitizeStoredModalities(row.modalitiesInput);
+}
+
 export async function authorizeStellaRequest(
   ctx: ActionCtx,
   request: Request,
@@ -183,6 +221,18 @@ export async function authorizeStellaRequest(
     `[stella-provider] agent=${agentType} | requestedModel=${requestedModel} | resolvedModel=${resolvedModel} | fallbackModel=${config.fallback ?? "none"} | gateway=${managedGatewayProvider} | api=${managedApi}`,
   );
 
+  // Resolve input modalities from `billing_model_prices` for both the
+  // primary and fallback models in parallel. The lookups are tiny indexed
+  // queries; doing them at the request boundary keeps `buildManagedModel`
+  // synchronous and the rest of the streaming/provider plumbing
+  // unchanged.
+  const [primaryModalitiesInput, fallbackModalitiesInput] = await Promise.all([
+    resolveModalitiesInput(ctx, resolvedModel),
+    config.fallback
+      ? resolveModalitiesInput(ctx, config.fallback)
+      : Promise.resolve(TEXT_ONLY_MODALITIES),
+  ]);
+
   const fallbackModelConfig: ResolvedManagedServerModelConfig | undefined =
     config.fallback
       ? {
@@ -196,6 +246,7 @@ export async function authorizeStellaRequest(
           providerOptions: config.fallbackProviderOptions as
             | Record<string, Record<string, unknown>>
             | undefined,
+          modalitiesInput: fallbackModalitiesInput,
         }
       : undefined;
 
@@ -214,6 +265,7 @@ export async function authorizeStellaRequest(
       providerOptions: config.providerOptions as
         | Record<string, Record<string, unknown>>
         | undefined,
+      modalitiesInput: primaryModalitiesInput,
     },
     fallbackModelConfig,
     anonymousUsageRecord,
