@@ -5779,6 +5779,7 @@ enum SkyLightEventPost {
     }()
 
     private typealias SetWindowLocationFn = @convention(c) (CGEvent, CGPoint) -> Void
+    private typealias SetIntegerValueFieldFn = @convention(c) (CGEvent, UInt32, Int64) -> Void
     private typealias PostEventRecordToFn = @convention(c) (
         UnsafeRawPointer,
         UnsafePointer<UInt8>
@@ -5792,6 +5793,14 @@ enum SkyLightEventPost {
             return nil
         }
         return unsafeBitCast(pointer, to: SetWindowLocationFn.self)
+    }()
+
+    private static let setIntegerValueFieldFn: SetIntegerValueFieldFn? = {
+        _ = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
+        guard let pointer = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "SLEventSetIntegerValueField") else {
+            return nil
+        }
+        return unsafeBitCast(pointer, to: SetIntegerValueFieldFn.self)
     }()
 
     private static let postEventRecordToFn: PostEventRecordToFn? = {
@@ -5839,6 +5848,13 @@ enum SkyLightEventPost {
     static func setWindowLocation(_ event: CGEvent, _ point: CGPoint) -> Bool {
         guard let setWindowLocationFn else { return false }
         setWindowLocationFn(event, point)
+        return true
+    }
+
+    @discardableResult
+    static func setIntegerField(_ event: CGEvent, field: UInt32, value: Int64) -> Bool {
+        guard let setIntegerValueFieldFn else { return false }
+        setIntegerValueFieldFn(event, field, value)
         return true
     }
 
@@ -5932,6 +5948,28 @@ func onScreenWindowForClick(pid: pid_t, point: CGPoint) -> WindowEntry? {
         .first
 }
 
+func frontmostOnScreenWindow(pid: pid_t) -> WindowEntry? {
+    enumerateOnScreenWindows()
+        .filter { $0.pid == pid }
+        .sorted { lhs, rhs in
+            if lhs.layer != rhs.layer {
+                return lhs.layer < rhs.layer
+            }
+            let lhsArea = lhs.frame.width * lhs.frame.height
+            let rhsArea = rhs.frame.width * rhs.frame.height
+            return lhsArea > rhsArea
+        }
+        .first
+}
+
+func windowLocalPoint(_ point: CGPoint, in window: WindowEntry?) -> CGPoint? {
+    guard let window else { return nil }
+    return CGPoint(
+        x: point.x - window.frame.minX,
+        y: point.y - window.frame.minY
+    )
+}
+
 func buildMouseCGEvent(
     type: NSEvent.EventType,
     point: CGPoint,
@@ -5953,7 +5991,7 @@ func buildMouseCGEvent(
         location: cocoaLocation(fromScreenPoint: point),
         modifierFlags: [],
         timestamp: ProcessInfo.processInfo.systemUptime,
-        windowNumber: 0,
+        windowNumber: Int(windowID ?? 0),
         context: nil,
         eventNumber: 0,
         clickCount: clickCount,
@@ -5965,6 +6003,10 @@ func buildMouseCGEvent(
     event.setIntegerValueField(.mouseEventButtonNumber, value: Int64(eventButton))
     event.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
     event.setIntegerValueField(.mouseEventSubtype, value: 3)
+    if let windowID {
+        event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowID))
+        event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowID))
+    }
     return event
 }
 
@@ -5973,9 +6015,90 @@ func postPidMouseEvent(_ event: CGEvent, pid: pid_t, windowLocalPoint: CGPoint?)
     if let windowLocalPoint {
         _ = SkyLightEventPost.setWindowLocation(event, windowLocalPoint)
     }
+    _ = SkyLightEventPost.setIntegerField(event, field: 40, value: Int64(pid))
     event.timestamp = CGEventTimestamp(clock_gettime_nsec_np(CLOCK_UPTIME_RAW))
     _ = SkyLightEventPost.postToPid(pid, event: event, attachAuthMessage: false)
     event.postToPid(pid)
+    return true
+}
+
+func clickViaSignedPidPost(
+    at point: CGPoint,
+    pid: pid_t,
+    clickCount: Int
+) -> Bool {
+    let count = max(1, min(2, clickCount))
+    let window = onScreenWindowForClick(pid: pid, point: point)
+        ?? frontmostOnScreenWindow(pid: pid)
+    let windowID = window?.windowID
+    let targetLocalPoint = windowLocalPoint(point, in: window)
+
+    if let windowID {
+        _ = FocusWithoutRaise.activateWithoutRaise(targetPid: pid, targetWindowID: windowID)
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+
+    guard let move = buildMouseCGEvent(
+        type: .mouseMoved,
+        point: point,
+        clickCount: 0,
+        button: .left,
+        windowID: windowID
+    ) else {
+        return false
+    }
+    move.setIntegerValueField(.mouseEventClickState, value: 1)
+    postPidMouseEvent(move, pid: pid, windowLocalPoint: targetLocalPoint)
+    Thread.sleep(forTimeInterval: 0.015)
+
+    let primerPoint = CGPoint(x: -1, y: -1)
+    guard let primerDown = buildMouseCGEvent(
+        type: .leftMouseDown,
+        point: primerPoint,
+        clickCount: 1,
+        button: .left,
+        windowID: windowID
+    ),
+    let primerUp = buildMouseCGEvent(
+        type: .leftMouseUp,
+        point: primerPoint,
+        clickCount: 1,
+        button: .left,
+        windowID: windowID
+    ) else {
+        return false
+    }
+    postPidMouseEvent(primerDown, pid: pid, windowLocalPoint: primerPoint)
+    Thread.sleep(forTimeInterval: 0.001)
+    postPidMouseEvent(primerUp, pid: pid, windowLocalPoint: primerPoint)
+    Thread.sleep(forTimeInterval: 0.10)
+
+    for clickIndex in 1...count {
+        guard let down = buildMouseCGEvent(
+            type: .leftMouseDown,
+            point: point,
+            clickCount: clickIndex,
+            button: .left,
+            windowID: windowID
+        ),
+        let up = buildMouseCGEvent(
+            type: .leftMouseUp,
+            point: point,
+            clickCount: clickIndex,
+            button: .left,
+            windowID: windowID
+        ) else {
+            return false
+        }
+        down.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
+        up.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
+        postPidMouseEvent(down, pid: pid, windowLocalPoint: targetLocalPoint)
+        Thread.sleep(forTimeInterval: 0.001)
+        postPidMouseEvent(up, pid: pid, windowLocalPoint: targetLocalPoint)
+        if clickIndex < count {
+            Thread.sleep(forTimeInterval: 0.08)
+        }
+    }
     return true
 }
 
@@ -5992,8 +6115,20 @@ func simulateLeftClickToPid(
     button: CGMouseButton = .left
 ) -> Bool {
     let count = max(1, clickCount)
-    let downType: CGEventType
-    let upType: CGEventType
+    let window = onScreenWindowForClick(pid: pid, point: point)
+        ?? frontmostOnScreenWindow(pid: pid)
+    let windowID = window?.windowID
+    let localPoint = windowLocalPoint(point, in: window)
+
+    if button == .left,
+       count <= 2,
+       clickViaSignedPidPost(at: point, pid: pid, clickCount: count) {
+        trace("input:click path=skylight-signed-postToPid pid=\(pid)")
+        return true
+    }
+
+    let downType: NSEvent.EventType
+    let upType: NSEvent.EventType
     switch button {
     case .right:
         downType = .rightMouseDown
@@ -6006,21 +6141,18 @@ func simulateLeftClickToPid(
         upType = .otherMouseUp
     }
 
-    guard let source = CGEventSource(stateID: .combinedSessionState) else {
-        return false
-    }
-
-    func post(_ type: CGEventType, clickState: Int) -> Bool {
-        guard let event = CGEvent(
-            mouseEventSource: source,
-            mouseType: type,
-            mouseCursorPosition: point,
-            mouseButton: button
+    func post(_ type: NSEvent.EventType, clickState: Int) -> Bool {
+        guard let event = buildMouseCGEvent(
+            type: type,
+            point: point,
+            clickCount: clickState,
+            button: button,
+            windowID: windowID
         ) else {
             return false
         }
         event.setIntegerValueField(.mouseEventClickState, value: Int64(clickState))
-        event.postToPid(pid)
+        postPidMouseEvent(event, pid: pid, windowLocalPoint: localPoint)
         Thread.sleep(forTimeInterval: 0.03)
         return true
     }
@@ -6049,8 +6181,12 @@ func simulateUnicodeTextToPid(_ text: String, pid: pid_t) -> Bool {
         }
         down.keyboardSetUnicodeString(stringLength: 1, unicodeString: &mutableCharacter)
         up.keyboardSetUnicodeString(stringLength: 1, unicodeString: &mutableCharacter)
-        down.postToPid(pid)
-        up.postToPid(pid)
+        if !SkyLightEventPost.postToPid(pid, event: down) {
+            down.postToPid(pid)
+        }
+        if !SkyLightEventPost.postToPid(pid, event: up) {
+            up.postToPid(pid)
+        }
         Thread.sleep(forTimeInterval: 0.02)
     }
     return true
@@ -6104,7 +6240,9 @@ func simulateKeyChordToPid(_ keySpec: String, pid: pid_t) -> Bool {
         }
         activeFlags.insert(modifier.flag)
         event.flags = activeFlags
-        event.postToPid(pid)
+        if !SkyLightEventPost.postToPid(pid, event: event) {
+            event.postToPid(pid)
+        }
     }
 
     guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: mainKeyCode, keyDown: true),
@@ -6113,15 +6251,21 @@ func simulateKeyChordToPid(_ keySpec: String, pid: pid_t) -> Bool {
     }
     keyDown.flags = activeFlags
     keyUp.flags = activeFlags
-    keyDown.postToPid(pid)
-    keyUp.postToPid(pid)
+    if !SkyLightEventPost.postToPid(pid, event: keyDown) {
+        keyDown.postToPid(pid)
+    }
+    if !SkyLightEventPost.postToPid(pid, event: keyUp) {
+        keyUp.postToPid(pid)
+    }
 
     for modifier in parsedModifiers.reversed() {
         guard let event = CGEvent(keyboardEventSource: nil, virtualKey: modifier.code, keyDown: false) else {
             return false
         }
         event.flags = activeFlags
-        event.postToPid(pid)
+        if !SkyLightEventPost.postToPid(pid, event: event) {
+            event.postToPid(pid)
+        }
         activeFlags.remove(modifier.flag)
     }
 
