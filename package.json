@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "cd desktop && vite",
     "preview": "cd desktop && vite preview",
-    "build": "bun run routes:generate && cd desktop && bunx --package typescript@6.0.3 tsc --build && vite build",
+    "build": "bun run routes:generate && cd desktop && tsc --build && vite build",
     "format": "bunx prettier@3.6.2 --write .",
     "format:check": "bunx prettier@3.6.2 --check .",
     "lint": "cd desktop && eslint .",
@@ -23,11 +23,14 @@
     "workspace:create-app": "cd desktop && node scripts/create-workspace-app.mjs",
     "electron:install": "install-electron",
     "electron:dev": "node desktop/scripts/electron-dev-runner.mjs",
-    "electron:typecheck": "cd desktop && bunx --package typescript@6.0.3 tsc -p tsconfig.electron.json --pretty false --noEmit && bunx --package typescript@6.0.3 tsc -p tsconfig.preload.json --pretty false --noEmit",
-    "electron:typecheck:watch": "cd desktop && concurrently -k --kill-others-on-fail \"bunx --package typescript@6.0.3 tsc -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"bunx --package typescript@6.0.3 tsc -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",
-    "electron:build": "bun run native:build && cd desktop && bunx --package typescript@6.0.3 tsc --build && vite build && bunx --package typescript@6.0.3 tsc -p tsconfig.electron.json && bunx --package typescript@6.0.3 tsc -p tsconfig.preload.json && cd .. && electron-builder",
-    "electron:preview": "cd desktop && bunx --package typescript@6.0.3 tsc -p tsconfig.electron.json && bunx --package typescript@6.0.3 tsc -p tsconfig.preload.json && cd .. && electron .",
-    "check:boundary": "node runtime/scripts/check-boundary.mjs"
+    "electron:typecheck": "cd desktop && tsc -p tsconfig.electron.json --pretty false --noEmit && tsc -p tsconfig.preload.json --pretty false --noEmit",
+    "electron:typecheck:watch": "cd desktop && concurrently -k --kill-others-on-fail \"tsc -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"tsc -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",
+    "electron:build": "bun run native:build && cd desktop && tsc --build && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && cd .. && electron-builder",
+    "electron:preview": "cd desktop && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && cd .. && electron .",
+    "check:boundary": "node runtime/scripts/check-boundary.mjs",
+    "postinstall": "bun scripts/install-tsc-shim.mjs",
+    "tsc": "tsgo",
+    "tsc6": "bunx --package typescript@6.0.3 tsc"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
@@ -111,6 +114,7 @@
     "jsdom": "^29.1.1",
     "tar": "^7.5.13",
     "tw-animate-css": "^1.4.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260508.1",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.59.1",
     "vite": "8.0.11",

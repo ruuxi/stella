@@ -1121,6 +1121,21 @@ const resolveManagedShellCommand = (
   const browserOwnerId =
     context?.agentId ?? context?.runId ?? context?.rootRunId;
   const stellaComputerSessionId = getStellaComputerSessionId(context);
+  const localBinPaths = [
+    path.join(path.resolve(cwd), "node_modules", ".bin"),
+    ...(context?.stellaRoot
+      ? [path.join(path.resolve(context.stellaRoot), "node_modules", ".bin")]
+      : []),
+  ].filter(
+    (entry, index, entries) =>
+      existsSync(entry) && entries.indexOf(entry) === index,
+  );
+
+  if (localBinPaths.length > 0) {
+    envOverrides.PATH = [...localBinPaths, process.env.PATH ?? ""]
+      .filter(Boolean)
+      .join(path.delimiter);
+  }
 
   if (shouldUseStellaBrowserBridge(command)) {
     command = normalizeComputerAgentShellCommand(command);
