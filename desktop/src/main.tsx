@@ -1,4 +1,3 @@
-import "@vitejs/plugin-react/preamble";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./ui/register-styles";
