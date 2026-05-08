@@ -185,7 +185,7 @@ const defaultSessionStateExample = path.join(
 const defaultLockTimeoutMs = 30_000;
 const staleLockTimeoutMs = 90_000;
 const lockPollIntervalMs = 125;
-const automationDaemonStartupBudgetMs = 1_500;
+const automationDaemonStartupBudgetMs = 7_500;
 // 30s covers heavy AppKit apps (Mail with thousands of messages, Notes with
 // large note bodies, Music with full library indexed) where the AX walk
 // reaches the maxNodes cap of 1500 before the daemon can return. Lighter
@@ -215,8 +215,8 @@ Usage:
   stella-computer [--session ID] scroll <element> <up|down|left|right> [--pages N] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] drag <from_x> <from_y> <to_x> <to_y> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] drag-element <source-element> (<dest-element> | <to_x> <to_y> | --to-ref REF | --to-x N --to-y N) [--type file|url|text] [--operation copy|link|move|every] [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
-  stella-computer [--session ID] click-point <x> <y> [--mouse-button left|right|middle] [--click-count N] [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
-  stella-computer [--session ID] click-screenshot <x_px> <y_px> [--mouse-button left|right|middle] [--click-count N] [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] click-point <x> <y> [--mouse-button left|right|middle] [--click-count N] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] click-screenshot <x_px> <y_px> [--mouse-button left|right|middle] [--click-count N] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] drag-screenshot <from_x_px> <from_y_px> <to_x_px> <to_y_px> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] type <text> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] press <key> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
@@ -234,7 +234,7 @@ Notes:
   - the agent runtime detects "[stella-attach-image]" markers in output and attaches the image as vision input on the next turn
   - Stella isolates default state/screenshot files by session; agent runs set that session automatically
   - non-snapshot commands may also use --app/--bundle-id/--pid to select a cached target snapshot inside the current session
-  - HID fallbacks require --allow-hid (or STELLA_COMPUTER_ALLOW_HID=1) because they can interfere with active user input
+  - Global HID fallbacks require --allow-hid (or STELLA_COMPUTER_ALLOW_HID=1) because they can interfere with active user input
   - element actions accept the numbered IDs shown in snapshot output (and still accept legacy @d refs); macOS Accessibility is tried first so Stella avoids taking over the physical cursor
   - click-screenshot / drag-screenshot interpret coordinates in attached screenshot pixels, then map them back into screen space using the saved window frame
   - --raise (or STELLA_COMPUTER_RAISE=1) is OFF by default; only opt in for HID coordinate clicks/keystrokes that genuinely need the target frontmost. The legacy --no-raise / STELLA_COMPUTER_NO_RAISE flags are accepted as no-ops.
@@ -601,7 +601,7 @@ const runAutomationDaemonCommand = async (
     return {
       status: 1,
       stdout: "",
-      stderr: "desktop_automation daemon failed to start",
+      stderr: `desktop_automation daemon failed to start after ${automationDaemonStartupBudgetMs}ms`,
     };
   }
 
@@ -723,6 +723,7 @@ const ACTIONS_TO_HIDE = new Set([
   "AXScrollToVisible",
   "AXIncrement",
   "AXDecrement",
+  "AXRaise",
   // AppKit table/outline rows expose Show Default UI / Show Alternate UI
   // alongside the user-meaningful AX actions. They flip an internal styling
   // pair and are not actuatable affordances; surface only the real actions
@@ -1761,7 +1762,6 @@ const validateHidAccess = (
   if (
     (command === "drag" ||
       command === "drag-element" ||
-      command === "click-point" ||
       command === "type" ||
       command === "press") &&
     !hidAllowed(args)
