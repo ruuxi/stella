@@ -134,6 +134,18 @@
 
 .canvas-tab__frame-state--tile {
   font-size: 9px;
+  /* Tile placeholder painted while we wait for the IO observer to flag
+     the tile as visible (and as the permanent state for the active tile,
+     whose hero already shows the live canvas). Solid soft fill so the
+     rail still reads as a strip of canvas thumbnails even before any
+     iframes have spun up. */
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.canvas-tab__frame-state--active {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
 }
 
 .canvas-tab__hero-empty {

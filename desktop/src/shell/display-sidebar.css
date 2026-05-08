@@ -8,9 +8,11 @@
   position: relative;
   /* Width slide. The `overflow: hidden` clip produces a clean reveal; the
      inner separately fades + translates its content in/out so opening
-     and closing read like an Apple-style reveal rather than a hard wipe. */
+     and closing read like an Apple-style reveal rather than a hard wipe.
+     `will-change: width` is intentionally omitted — width can't be
+     GPU-accelerated (it triggers layout) and a permanent hint just
+     reserves a compositor layer for nothing. */
   transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
-  will-change: width;
   /* Scope layout/paint to this subtree so width-driven reflows don't
      cascade into siblings (and vice-versa). Crucial during the slide
      because the panel can host heavy content (HTML viewer, PDF). */

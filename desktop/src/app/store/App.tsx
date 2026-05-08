@@ -23,7 +23,7 @@ import {
 } from "@/app/chat/emoji-sprites/active-emoji-pack";
 import { writeCachedPetById } from "@/shell/pet/pet-catalog-cache";
 import { normalizePet } from "@/shell/pet/built-in-pets";
-import { useDisplayTabs } from "@/shell/display/tab-store";
+import { useDisplayPanelLayout } from "@/shell/display/tab-store";
 
 // Persist the last-active Store tab so clicking the global sidebar's Store
 // icon reopens to wherever the user was last (Discover by default). The URL
@@ -234,7 +234,7 @@ const handleStoreWebLocalAction = async (
 export function StoreApp() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/store" });
-  const { panelOpen, panelExpanded, panelWidth } = useDisplayTabs();
+  const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
   const layoutFrameRef = useRef<number | null>(null);
 
   const requestedTab = normalizeStoreTab(search.tab);

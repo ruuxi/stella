@@ -130,8 +130,16 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
       }
 
       const buffer = await fs.readFile(resolved);
+      // Return the raw bytes; Electron's structured-clone IPC transport
+      // ships `Uint8Array` directly without the +33% base64 overhead and
+      // without forcing the renderer to spin a JS loop to decode it.
+      const bytes = new Uint8Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength,
+      );
       return {
-        contentsBase64: buffer.toString("base64"),
+        bytes,
         sizeBytes: stats.size,
         mimeType: MIME_BY_EXTENSION[extension] ?? "application/octet-stream",
       };

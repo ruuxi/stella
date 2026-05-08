@@ -34,10 +34,12 @@ import {
   type DisplayTabPayload,
 } from "@/shared/contracts/display-payload";
 import { displayTabs } from "./tab-store";
-import { payloadToTabSpec } from "./payload-to-tab-spec";
+import {
+  displayTabKindForPayload,
+  payloadToTabSpec,
+} from "./payload-to-tab-spec";
 import {
   basenameOf,
-  fileArtifactPayloadForPath,
 } from "./path-to-viewer";
 import { DisplayTabIcon } from "./icons";
 import {
@@ -46,6 +48,7 @@ import {
   mergeFooterTasks,
   type TaskItem,
 } from "@/app/chat/lib/event-transforms";
+import { buildPayloadFromBarePath } from "@/app/chat/lib/derive-turn-resource";
 import {
   useConversationSchedules,
   type ScheduleEntry,
@@ -320,7 +323,9 @@ export function ChatHomeOverview() {
       for (const record of [...fileChanges, ...produced]) {
         const path = resolvedPathForChange(record);
         if (!path) continue;
-        const filePayload = fileArtifactPayloadForPath(path, event.timestamp);
+        const filePayload = buildPayloadFromBarePath(path, event.timestamp, {
+          produced: true,
+        });
         if (!filePayload || !isDisplayTabPayload(filePayload)) continue;
         // Most-recent occurrence wins so the timestamp reflects the
         // latest activity for that file.
@@ -415,7 +420,7 @@ export function ChatHomeOverview() {
         <div className="chat-home-overview__section-body">
           {allFiles.length === 0 ? (
             <p className="chat-home-overview__empty">
-              Files Stella changes will show up here.
+              Files Stella changes or creates will show up here.
             </p>
           ) : (
             <ul className="chat-home-overview__files">
@@ -428,7 +433,7 @@ export function ChatHomeOverview() {
                     title={entry.path}
                   >
                     <DisplayTabIcon
-                      kind={payloadToTabSpec(entry.payload).kind}
+                      kind={displayTabKindForPayload(entry.payload)}
                       size={18}
                     />
                     <span className="chat-home-overview__file-name">

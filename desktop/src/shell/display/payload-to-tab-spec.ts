@@ -28,7 +28,7 @@ import {
 } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
 import { addCanvasHtmlItem } from "./canvas-tab/canvas-items";
-import type { DisplayTabSpec } from "./types";
+import type { DisplayTabKind, DisplayTabSpec } from "./types";
 import { kindForPath } from "./path-to-viewer";
 
 export const CANVAS_HTML_TAB_ID = "canvas:html";
@@ -46,6 +46,14 @@ export type GeneratedMediaItem = {
 
 const generatedMediaItems: GeneratedMediaItem[] = [];
 const generatedMediaItemIds = new Set<string>();
+// Cached snapshot reference. Refresh only when the underlying list
+// actually mutates so consumers can rely on referential equality to
+// skip work.
+let generatedMediaSnapshot: ReadonlyArray<GeneratedMediaItem> = [];
+
+const refreshGeneratedMediaSnapshot = () => {
+  generatedMediaSnapshot = generatedMediaItems.slice();
+};
 
 const hashText = (text: string): string => {
   let hash = 5381;
@@ -74,7 +82,7 @@ const idForMediaPayload = (
 
 const addGeneratedMediaItem = (
   payload: Extract<DisplayPayload, { kind: "media" }>,
-): GeneratedMediaItem[] => {
+): ReadonlyArray<GeneratedMediaItem> => {
   const id = idForMediaPayload(payload);
   if (!generatedMediaItemIds.has(id)) {
     generatedMediaItemIds.add(id);
@@ -85,24 +93,77 @@ const addGeneratedMediaItem = (
       ...(payload.capability ? { capability: payload.capability } : {}),
       createdAt: payload.createdAt,
     });
+    refreshGeneratedMediaSnapshot();
   }
-  return [...generatedMediaItems];
+  return generatedMediaSnapshot;
 };
 
-export const getGeneratedMediaItems = (): GeneratedMediaItem[] => [
-  ...generatedMediaItems,
-];
+export const getGeneratedMediaItems = (): ReadonlyArray<GeneratedMediaItem> =>
+  generatedMediaSnapshot;
 
 /**
  * Remove a generated media item from the shared store. Returns the new
  * snapshot so callers can re-register the tab to surface the change.
  */
-export const removeGeneratedMediaItem = (id: string): GeneratedMediaItem[] => {
+export const removeGeneratedMediaItem = (
+  id: string,
+): ReadonlyArray<GeneratedMediaItem> => {
   const idx = generatedMediaItems.findIndex((item) => item.id === id);
-  if (idx === -1) return [...generatedMediaItems];
+  if (idx === -1) return generatedMediaSnapshot;
   generatedMediaItems.splice(idx, 1);
   generatedMediaItemIds.delete(id);
-  return [...generatedMediaItems];
+  refreshGeneratedMediaSnapshot();
+  return generatedMediaSnapshot;
+};
+
+/**
+ * Pure mapping from a `DisplayPayload` to the `DisplayTabKind` used by
+ * the icon set. Lifted out of `payloadToTabSpec` so callers that just
+ * need the icon (e.g. the home overview's recent-files list) don't have
+ * to invoke the side-effecting tab-spec builder.
+ */
+export const displayTabKindForPayload = (
+  payload: DisplayTabPayload,
+): DisplayTabKind => {
+  switch (payload.kind) {
+    case "canvas-html":
+      return "canvas";
+    case "url":
+      return "url";
+    case "markdown":
+      return "markdown";
+    case "source-diff":
+      return "source-diff";
+    case "office": {
+      const inferred = kindForPath(payload.previewRef.sourcePath);
+      return inferred === "office-spreadsheet" || inferred === "office-slides"
+        ? inferred
+        : "office-document";
+    }
+    case "file-artifact":
+      return payload.artifactKind === "delimited-table"
+        ? "office-spreadsheet"
+        : payload.artifactKind;
+    case "pdf":
+      return "pdf";
+    case "trash":
+      return "trash";
+    case "media":
+      switch (payload.asset.kind) {
+        case "image":
+          return "image";
+        case "video":
+          return "video";
+        case "audio":
+          return "audio";
+        case "model3d":
+          return "model3d";
+        case "download":
+          return "download";
+        case "text":
+          return "text";
+      }
+  }
 };
 
 export const payloadToTabSpec = (

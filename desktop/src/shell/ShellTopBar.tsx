@@ -13,7 +13,10 @@ import {
 } from "lucide-react";
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
-import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
+import {
+  displayTabs,
+  useDisplayPanelLayout,
+} from "@/shell/display/tab-store";
 import { DisplayTabBar } from "@/shell/display/DisplayTabBar";
 import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
 import { ShellTopBarStoreControls } from "@/shell/ShellTopBarStoreControls";
@@ -77,7 +80,7 @@ export const ShellTopBar = () => {
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
   const isMiniWindow = useWindowType() === "mini";
-  const { panelOpen, panelExpanded, panelWidth } = useDisplayTabs();
+  const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
   // Only the Store route adapts the top bar — other routes keep the
   // default layout (display tab strip on the right).
   const pathname = useRouterState({ select: (state) => state.location.pathname });

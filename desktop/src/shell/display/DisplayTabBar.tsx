@@ -7,7 +7,7 @@
 
 import type { CSSProperties } from "react";
 import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
-import { displayTabs, useDisplayTabs } from "./tab-store";
+import { displayTabs, useDisplayTabList } from "./tab-store";
 import { DisplayTabIcon } from "./icons";
 import { DisplayTabAddMenu } from "./DisplayTabAddMenu";
 
@@ -17,7 +17,7 @@ const closeIconStyle: CSSProperties = {
 };
 
 export const DisplayTabBar = () => {
-  const { tabs, activeTabId } = useDisplayTabs();
+  const { tabs, activeTabId } = useDisplayTabList();
   const tablistRef = useEdgeFadeRef<HTMLDivElement>();
 
   return (

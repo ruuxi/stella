@@ -19,7 +19,7 @@ import {
   DISPLAY_PANEL_MIN_WIDTH,
   displayTabs,
   useActiveDisplayTab,
-  useDisplayTabs,
+  useDisplayPanelLayout,
 } from "./display/tab-store";
 import { payloadToTabSpec } from "./display/payload-to-tab-spec";
 import "./display-sidebar.css";
@@ -93,7 +93,7 @@ export const DisplaySidebar = forwardRef<
   DisplaySidebarHandle,
   DisplaySidebarProps
 >(function DisplaySidebar({ onOpenChange }, ref) {
-  const { panelOpen, panelExpanded, panelWidth } = useDisplayTabs();
+  const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
   const activeTab = useActiveDisplayTab();
   const asideRef = useRef<HTMLElement | null>(null);
 
@@ -200,6 +200,12 @@ export const DisplaySidebar = forwardRef<
       const startX = event.clientX;
       const pointerId = event.pointerId;
       const handle = event.currentTarget;
+      // Compute the upper bound once at pointerdown — recomputing per
+      // move would force a `getComputedStyle` layout flush at 60–120 Hz
+      // for a value that doesn't change unless the OS window is
+      // simultaneously resized (which is exceedingly rare during a
+      // user-initiated panel drag).
+      const maxWidth = computeMaxWidth();
 
       // Pin the cursor / disable selection globally so dragging across
       // the chat outlet doesn't accidentally start a text selection.
@@ -217,10 +223,9 @@ export const DisplaySidebar = forwardRef<
       const onMove = (ev: PointerEvent) => {
         // Panel sits on the right edge, so dragging left increases width.
         const delta = startX - ev.clientX;
-        const max = computeMaxWidth();
         const next = Math.max(
           DISPLAY_PANEL_MIN_WIDTH,
-          Math.min(max, startWidth + delta),
+          Math.min(maxWidth, startWidth + delta),
         );
         displayTabs.setPanelWidth(next);
       };
@@ -236,6 +241,10 @@ export const DisplaySidebar = forwardRef<
         document.body.style.userSelect = previousUserSelect;
         aside?.classList.remove("display-sidebar--resizing");
         delete document.body.dataset.displayResizing;
+        // Force any pending coalesced width to disk so the user's most
+        // recent position survives a reload, even if the next debounce
+        // tick was still in flight.
+        displayTabs.flushPersistedWidth();
       };
 
       window.addEventListener("pointermove", onMove);

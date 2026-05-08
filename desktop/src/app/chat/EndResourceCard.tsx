@@ -7,14 +7,17 @@
  * the singleton `displayTabs` store.
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import type {
   DisplayPayload,
   DisplayTabPayload,
 } from "@/shared/contracts/display-payload";
 import { getDisplayPayloadTitle } from "@/shared/contracts/display-payload";
 import { displayTabs } from "@/shell/display/tab-store";
-import { payloadToTabSpec } from "@/shell/display/payload-to-tab-spec";
+import {
+  displayTabKindForPayload,
+  payloadToTabSpec,
+} from "@/shell/display/payload-to-tab-spec";
 import { DisplayTabIcon } from "@/shell/display/icons";
 import { basenameOf } from "@/shell/display/path-to-viewer";
 import "./end-resource-card.css";
@@ -84,14 +87,14 @@ const tooltipForPayload = (payload: DisplayPayload): string | undefined => {
 };
 
 export const EndResourceCard = ({ payload }: { payload: DisplayTabPayload }) => {
-  const spec = useMemo(() => payloadToTabSpec(payload), [payload]);
+  const kind = displayTabKindForPayload(payload);
   const label = labelForPayload(payload);
   const tooltip = tooltipForPayload(payload);
 
   const handleClick = useCallback(() => {
-    // Re-build on click rather than reusing the memoized spec — this
-    // ensures the captured `payload` props (especially media asset
-    // contents) are always the freshest copy. payloadToTabSpec is cheap.
+    // Build the spec on click only — `payloadToTabSpec` is the path
+    // that registers media/canvas items into shared stores, so we
+    // defer it to the moment the user actually opens the tab.
     displayTabs.openTab(payloadToTabSpec(payload));
   }, [payload]);
 
@@ -103,7 +106,7 @@ export const EndResourceCard = ({ payload }: { payload: DisplayTabPayload }) => 
       title={tooltip}
     >
       <span className="end-resource-card__icon">
-        <DisplayTabIcon kind={spec.kind} size={26} />
+        <DisplayTabIcon kind={kind} size={26} />
       </span>
       <span className="end-resource-card__text">
         <span className="end-resource-card__label">{label}</span>

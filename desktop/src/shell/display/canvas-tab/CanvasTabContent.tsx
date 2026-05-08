@@ -6,20 +6,23 @@
  * middle, and a horizontal rail of sibling thumbnails along the bottom.
  * The hero is a sandboxed iframe rendering the file as `srcdoc` so the
  * canvas can run its own scripts without leaking globals into the
- * renderer; thumbnails are scaled-down clones of the same iframe so the
- * preview reflects the real artifact (no separate snapshot pipeline).
+ * renderer; tile thumbnails reuse the same iframe approach but only
+ * mount the live frame when the tile is actually visible (so a session
+ * with N canvases doesn't keep N JS realms alive in the rail).
  */
 
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { ArrowUpRight, Sparkles, Trash2 } from "lucide-react";
 import { displayTabs } from "../tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
+import { useHasBeenVisible } from "@/shared/hooks/use-has-been-visible";
 import {
   type CanvasHtmlItem,
   getCanvasHtmlItems,
@@ -39,33 +42,27 @@ const decoder = new TextDecoder("utf-8");
 const createAppPrompt = (item: CanvasHtmlItem): string =>
   `Build this canvas as a real Stella app. Use it as the design and behavior reference: ${item.filePath}`;
 
-const CanvasFrame = ({
-  item,
-  variant,
-}: {
-  item: CanvasHtmlItem;
-  variant: "hero" | "tile";
-}) => {
-  // Re-load when the underlying file changes — `createdAt` advances on
-  // every successful html tool write, so it's the right cache buster.
-  const filePath = item.filePath;
+/**
+ * Hero variant: always live (the user is looking right at it).
+ */
+const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
   const { bytes, error, loading } = useDisplayFileBytes(
-    filePath,
+    item.filePath,
     "Canvas preview requires the Stella desktop app.",
   );
   const html = useMemo(() => (bytes ? decoder.decode(bytes) : ""), [bytes]);
 
   if (error) {
     return (
-      <div className={`canvas-tab__frame-state canvas-tab__frame-state--${variant}`}>
+      <div className="canvas-tab__frame-state canvas-tab__frame-state--hero">
         Couldn't load canvas
       </div>
     );
   }
   if (loading || !html) {
     return (
-      <div className={`canvas-tab__frame-state canvas-tab__frame-state--${variant}`}>
-        {variant === "hero" ? "Loading…" : ""}
+      <div className="canvas-tab__frame-state canvas-tab__frame-state--hero">
+        Loading…
       </div>
     );
   }
@@ -74,24 +71,88 @@ const CanvasFrame = ({
     <iframe
       key={`${item.id}:${item.createdAt}`}
       title={item.title}
-      className={
-        variant === "hero" ? "canvas-tab__iframe" : "canvas-tab__tile-iframe"
-      }
+      className="canvas-tab__iframe"
       srcDoc={html}
       sandbox="allow-scripts allow-popups allow-modals allow-forms"
       referrerPolicy="no-referrer"
-      // Tile variant has its own pointer-events:none in CSS so clicks
-      // hit the wrapper button instead of the iframe contents.
     />
   );
 };
 
-const useCanvasItems = (initial: CanvasHtmlItem[]): CanvasHtmlItem[] => {
+/**
+ * Tile variant. Until the tile scrolls into view we paint a lightweight
+ * placeholder — no IPC read, no Blob, no iframe — so a session with
+ * dozens of canvases doesn't keep dozens of live JS realms alive in
+ * the rail. The active item never paints a tile iframe at all because
+ * the hero already shows the live canvas.
+ */
+const CanvasTileFrame = ({
+  item,
+  isActive,
+}: {
+  item: CanvasHtmlItem;
+  isActive: boolean;
+}) => {
+  const slotRef = useRef<HTMLSpanElement | null>(null);
+  // The active tile mirrors the hero, so there's no point booting up a
+  // second iframe for the same file. Show a static "active" indicator.
+  // Non-active tiles wait until they scroll into view.
+  const visible = useHasBeenVisible(slotRef);
+  const shouldMountFrame = !isActive && visible;
+
+  return (
+    <span ref={slotRef} className="canvas-tab__tile-frame" aria-hidden>
+      {shouldMountFrame ? (
+        <CanvasTileIframe item={item} />
+      ) : (
+        <CanvasTilePlaceholder active={isActive} />
+      )}
+    </span>
+  );
+};
+
+const CanvasTilePlaceholder = ({ active }: { active: boolean }) => (
+  <span
+    className={
+      active
+        ? "canvas-tab__frame-state canvas-tab__frame-state--tile canvas-tab__frame-state--active"
+        : "canvas-tab__frame-state canvas-tab__frame-state--tile"
+    }
+  />
+);
+
+const CanvasTileIframe = ({ item }: { item: CanvasHtmlItem }) => {
+  const { bytes, error, loading } = useDisplayFileBytes(
+    item.filePath,
+    "Canvas preview requires the Stella desktop app.",
+  );
+  const html = useMemo(() => (bytes ? decoder.decode(bytes) : ""), [bytes]);
+  if (error || loading || !html) {
+    return <CanvasTilePlaceholder active={false} />;
+  }
+  return (
+    <iframe
+      key={`${item.id}:${item.createdAt}`}
+      title={item.title}
+      className="canvas-tab__tile-iframe"
+      srcDoc={html}
+      sandbox="allow-scripts allow-popups allow-modals allow-forms"
+      referrerPolicy="no-referrer"
+      loading="lazy"
+    />
+  );
+};
+
+const useCanvasItems = (
+  initial: ReadonlyArray<CanvasHtmlItem>,
+): ReadonlyArray<CanvasHtmlItem> => {
   // External-store subscription keeps the rail and hero in sync with
   // any new canvases the orchestrator emits while the panel is open.
+  // The snapshot getter returns a stable cached reference between
+  // mutations so React doesn't think the store is constantly changing.
   return useSyncExternalStore(
     subscribeCanvasHtmlItems,
-    () => getCanvasHtmlItems(),
+    getCanvasHtmlItems,
     () => initial,
   );
 };
@@ -99,7 +160,7 @@ const useCanvasItems = (initial: CanvasHtmlItem[]): CanvasHtmlItem[] => {
 export const CanvasTabContent = ({
   items: initialItems,
 }: {
-  items: CanvasHtmlItem[];
+  items: ReadonlyArray<CanvasHtmlItem>;
 }) => {
   const items = useCanvasItems(initialItems);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -185,7 +246,7 @@ export const CanvasTabContent = ({
 
       <div className="canvas-tab__hero">
         {selectedItem ? (
-          <CanvasFrame item={selectedItem} variant="hero" />
+          <CanvasHeroFrame item={selectedItem} />
         ) : (
           <div className="canvas-tab__hero-empty">
             <div className="canvas-tab__hero-empty-title">No canvases yet</div>
@@ -215,9 +276,7 @@ export const CanvasTabContent = ({
                 title={item.title}
                 aria-label={item.title}
               >
-                <span className="canvas-tab__tile-frame" aria-hidden>
-                  <CanvasFrame item={item} variant="tile" />
-                </span>
+                <CanvasTileFrame item={item} isActive={isActive} />
                 <span className="canvas-tab__tile-label">{item.title}</span>
               </button>
             );

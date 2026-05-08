@@ -176,7 +176,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onUpdate: onIpc<string | unknown>("display:update"),
     readFile: (filePath: string) =>
       ipcRenderer.invoke("display:readFile", { filePath }) as Promise<{
-        contentsBase64: string;
+        bytes: Uint8Array;
         sizeBytes: number;
         mimeType: string;
       }>,
