@@ -1,7 +1,9 @@
 import { promises as fs } from "fs";
 import {
+  dialog,
   ipcMain,
   shell,
+  type BrowserWindow,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
@@ -31,6 +33,7 @@ const STORE_INSTALL_ARTIFACT_LIMIT = 20;
 type StoreHandlersOptions = {
   getStellaRoot: () => string | null;
   getStellaHostRunner: () => StellaHostRunner | null;
+  getFullWindow?: () => BrowserWindow | null;
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
   ) => () => void;
@@ -86,6 +89,94 @@ const listInstalledThemes = async (stellaRoot: string) => {
 
 const safeStorePackageSegment = (packageId: string) =>
   packageId.replace(/[^a-z0-9_-]/gi, "_");
+
+const confirmStoreWebInstall = async (
+  release: StorePackageReleaseRecord,
+  ownerWindow?: BrowserWindow | null,
+) => {
+  const name = release.manifest.displayName || release.packageId;
+  const description = release.manifest.description?.trim();
+  const result = ownerWindow
+    ? await dialog.showMessageBox(ownerWindow, {
+        type: "question",
+        buttons: ["Install", "Cancel"],
+        defaultId: 0,
+        cancelId: 1,
+        title: `Install ${name}?`,
+        message: `Install ${name}?`,
+        detail: [
+          description,
+          `Release ${release.releaseNumber} from the Stella Store will be applied to this desktop app.`,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        noLink: true,
+      })
+    : await dialog.showMessageBox({
+        type: "question",
+        buttons: ["Install", "Cancel"],
+        defaultId: 0,
+        cancelId: 1,
+        title: `Install ${name}?`,
+        message: `Install ${name}?`,
+        detail: [
+          description,
+          `Release ${release.releaseNumber} from the Stella Store will be applied to this desktop app.`,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        noLink: true,
+      });
+  return result.response === 0;
+};
+
+const installConfirmedStoreRelease = async (
+  options: StoreHandlersOptions,
+  runner: StellaHostRunner,
+  payload: { packageId?: unknown; releaseNumber?: unknown },
+) => {
+  const packageId =
+    typeof payload?.packageId === "string" ? payload.packageId : "";
+  const releaseNumber =
+    typeof payload?.releaseNumber === "number" &&
+    Number.isFinite(payload.releaseNumber)
+      ? payload.releaseNumber
+      : NaN;
+  if (!packageId || !Number.isFinite(releaseNumber)) {
+    throw new Error("Invalid Store install request.");
+  }
+  const release = (await runner.getStorePackageRelease(
+    packageId,
+    releaseNumber,
+  )) satisfies StorePackageReleaseRecord | null;
+  if (!release?.blueprintMarkdown) {
+    throw new Error("This package is missing its install blueprint.");
+  }
+  const approved = await confirmStoreWebInstall(
+    release,
+    options.getFullWindow?.(),
+  );
+  if (!approved) {
+    return null;
+  }
+  const installPayload = {
+    packageId: release.packageId,
+    releaseNumber: release.releaseNumber,
+    displayName: release.manifest.displayName,
+    blueprintMarkdown: release.blueprintMarkdown,
+    commits: release.commits,
+  };
+  const installRecord = (await runner.installFromBlueprint(
+    installPayload,
+  )) satisfies StoreInstallRecord;
+  const stellaRoot = options.getStellaRoot();
+  if (stellaRoot) {
+    await cleanupStoreInstallArtifacts(stellaRoot, installPayload).catch(
+      () => undefined,
+    );
+  }
+  return installRecord;
+};
 
 const cleanupStoreInstallArtifacts = async (
   stellaRoot: string,
@@ -278,6 +369,13 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     });
   });
 
+  ipcMain.handle("storeWeb:openSignIn", async (event) => {
+    assertStoreWebRequest(event, "storeWeb:openSignIn");
+    return await handleStoreWebLocalAction({
+      type: "openSignIn",
+    });
+  });
+
   ipcMain.handle("storeWeb:installPet", async (event, payload: unknown) => {
     assertStoreWebRequest(event, "storeWeb:installPet");
     return await handleStoreWebLocalAction({
@@ -443,84 +541,40 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       ),
   );
 
-  ipcMain.handle(
-    "storeWeb:getRelease",
-    async (event, payload: { packageId: string; releaseNumber: number }) =>
-      await withStoreWebRunner(
-        event,
-        "storeWeb:getRelease",
-        async (runner) =>
-          (await runner.getStorePackageRelease(
-            payload.packageId,
-            payload.releaseNumber,
-          )) satisfies StorePackageReleaseRecord | null,
-      ),
-  );
-
-  // Install via the new blueprint flow: the renderer fetches the
-  // published release (blueprintMarkdown + reference commits are on
-  // the release row), then calls this IPC with that payload. The
-  // worker materialises the spec + diffs into `state/raw/<pkg>-<rel>/`
-  // and runs a general agent that implements the change, adapting the
-  // diffs to the installer's possibly-divergent tree. The runtime's
-  // self-mod commit captures whatever changed.
+  // Renderer install requests name a Store package/release only. Main fetches
+  // the release, asks for native confirmation, then installs the fetched
+  // blueprint so a compromised renderer cannot supply install contents.
   ipcMain.handle(
     "store:installFromBlueprint",
     async (
       event,
       payload: {
-        packageId: string;
-        releaseNumber: number;
-        displayName: string;
-        blueprintMarkdown: string;
-        commits?: Array<{ hash: string; subject: string; diff: string }>;
+        packageId?: unknown;
+        releaseNumber?: unknown;
       },
     ) =>
       await withStoreRunner(
         event,
         "store:installFromBlueprint",
-        async (runner) => {
-          const installRecord = (await runner.installFromBlueprint(
-            payload,
-          )) satisfies StoreInstallRecord;
-          const stellaRoot = options.getStellaRoot();
-          if (stellaRoot) {
-            await cleanupStoreInstallArtifacts(stellaRoot, payload).catch(
-              () => undefined,
-            );
-          }
-          return installRecord;
-        },
+        async (runner) =>
+          await installConfirmedStoreRelease(options, runner, payload),
       ),
   );
 
   ipcMain.handle(
-    "storeWeb:installFromBlueprint",
+    "storeWeb:requestPackageInstall",
     async (
       event,
       payload: {
-        packageId: string;
-        releaseNumber: number;
-        displayName: string;
-        blueprintMarkdown: string;
-        commits?: Array<{ hash: string; subject: string; diff: string }>;
+        packageId?: unknown;
+        releaseNumber?: unknown;
       },
     ) =>
       await withStoreWebRunner(
         event,
-        "storeWeb:installFromBlueprint",
-        async (runner) => {
-          const installRecord = (await runner.installFromBlueprint(
-            payload,
-          )) satisfies StoreInstallRecord;
-          const stellaRoot = options.getStellaRoot();
-          if (stellaRoot) {
-            await cleanupStoreInstallArtifacts(stellaRoot, payload).catch(
-              () => undefined,
-            );
-          }
-          return installRecord;
-        },
+        "storeWeb:requestPackageInstall",
+        async (runner) =>
+          await installConfirmedStoreRelease(options, runner, payload),
       ),
   );
 

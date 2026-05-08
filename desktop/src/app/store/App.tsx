@@ -85,7 +85,14 @@ const filterApprovedTryOnImagePaths = (value: unknown): string[] | undefined => 
   return approved.length > 0 ? approved : undefined;
 };
 
-const handleStoreWebLocalAction = async (action: unknown): Promise<unknown> => {
+type StoreWebLocalActionHandlers = {
+  openSignIn: () => void;
+};
+
+const handleStoreWebLocalAction = async (
+  action: unknown,
+  handlers: StoreWebLocalActionHandlers,
+): Promise<unknown> => {
   const record = normalizeActionRecord(action);
   const type = record.type;
   const payload = normalizeActionRecord(record.payload);
@@ -94,6 +101,10 @@ const handleStoreWebLocalAction = async (action: unknown): Promise<unknown> => {
   switch (type) {
     case "openStorePanel": {
       openStoreDisplayTab();
+      return { ok: true };
+    }
+    case "openSignIn": {
+      handlers.openSignIn();
       return { ok: true };
     }
     case "installPet": {
@@ -243,6 +254,16 @@ export function StoreApp() {
     });
   }, [panelExpanded, panelOpen]);
 
+  const openSignIn = useCallback(() => {
+    void navigate({
+      to: ".",
+      search: (prev: Record<string, unknown> | undefined) => ({
+        ...(prev ?? {}),
+        dialog: "auth" as const,
+      }),
+    });
+  }, [navigate]);
+
   const scheduleStoreWebLayout = useCallback(() => {
     if (layoutFrameRef.current !== null) return;
     layoutFrameRef.current = window.requestAnimationFrame(() => {
@@ -318,7 +339,7 @@ export function StoreApp() {
 
   useEffect(() => {
     return window.electronAPI?.storeWebLocal?.onAction?.((payload) => {
-      void handleStoreWebLocalAction(payload.action)
+      void handleStoreWebLocalAction(payload.action, { openSignIn })
         .then((result) => {
           window.electronAPI?.storeWebLocal?.reply({
             requestId: payload.requestId,
@@ -334,7 +355,7 @@ export function StoreApp() {
           });
         });
     });
-  }, []);
+  }, [openSignIn]);
 
   return (
     <div className="workspace-area">

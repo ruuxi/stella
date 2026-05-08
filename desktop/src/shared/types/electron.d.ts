@@ -873,9 +873,7 @@ export type ElectronStoreApi = {
   installFromBlueprint: (payload: {
     packageId: string;
     releaseNumber: number;
-    displayName: string;
-    blueprintMarkdown: string;
-  }) => Promise<StoreInstallRecord>;
+  }) => Promise<StoreInstallRecord | null>;
   getThread: () => Promise<StoreThreadSnapshot>;
   sendThreadMessage: (payload: {
     text: string;
