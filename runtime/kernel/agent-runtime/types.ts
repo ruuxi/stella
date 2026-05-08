@@ -240,6 +240,12 @@ export type BaseRunOptions = {
 export type OrchestratorRunOptions = BaseRunOptions & {
   callbacks: RuntimeRunCallbacks;
   onExecutionSessionCreated?: (session: RuntimeExecutionSessionHandle) => void;
+  beforeRunEnd?: (args: {
+    runId: string;
+    threadKey: string;
+    finalText: string;
+    outcome: "success";
+  }) => Promise<void> | void;
   /**
    * Memory-review user-turn counter AFTER incrementing for this run, threaded
    * from prepareOrchestratorRun. Consumed by finalizeOrchestratorSuccess to

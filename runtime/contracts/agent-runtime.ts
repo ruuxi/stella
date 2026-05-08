@@ -268,7 +268,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     includeInAgentRoster: false,
     usesLocalCliRuntime: true,
     promptRole: "subagent",
-    controlsSelfModHmr: false,
+    controlsSelfModHmr: true,
     localCliWorkingDirectory: "frontend",
     agentEnginePreference: "general",
     modelSettings: null,
@@ -369,6 +369,9 @@ export const agentHasCapability = (
   const value = getAgentCapabilities(agentType)[capability];
   return value !== undefined && value !== false;
 };
+
+export const agentControlsSelfModHmr = (agentType: string): boolean =>
+  getAgentDefinition(agentType)?.controlsSelfModHmr === true;
 
 export const getAgentSteeringMode = (
   agentType: string,
