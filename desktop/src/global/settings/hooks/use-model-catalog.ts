@@ -4,7 +4,6 @@ import { api } from "@/convex/api";
 import { useDesktopAuthSession } from "@/global/auth/services/auth-session";
 import { useModelCatalogUpdatedAt } from "@/global/settings/hooks/model-catalog-updated-at";
 import { createServiceRequest } from "@/infra/http/service-request";
-import { parseJwtPayload } from "@/shared/lib/jwt";
 import {
   groupCatalogModelsByProvider,
   listLocalCatalogModels,
@@ -56,55 +55,25 @@ type BillingStatus = {
 type CatalogCacheEntry = {
   models: CatalogModel[];
   defaults: CatalogDefaultModel[];
+  fetchedAt: number;
 };
 
 const ENABLE_CATALOG_CACHE = import.meta.env.MODE !== "test";
+const MODEL_CATALOG_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 const inFlightCatalogRequests = new Map<string, Promise<CatalogFetchResult>>();
 const catalogCache = new Map<string, CatalogCacheEntry>();
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
-let managedGatewayCatalogCache: CatalogModel[] | null = null;
+let managedGatewayCatalogCache: {
+  models: CatalogModel[];
+  fetchedAt: number;
+} | null = null;
 let inFlightManagedGatewayCatalogRequest: Promise<CatalogModel[]> | null = null;
 
 const toErrorMessage = (error: unknown): string =>
   error instanceof Error && error.message
     ? error.message
     : "Unable to load model catalog.";
-
-function getJwtCacheIdentity(authorization: string | undefined): string {
-  if (!authorization?.startsWith("Bearer ")) {
-    return "auth:none";
-  }
-  const token = authorization.slice("Bearer ".length);
-  try {
-    const payload = parseJwtPayload<Record<string, unknown>>(token);
-    const issuer = typeof payload.iss === "string" ? payload.iss : "";
-    const subject = typeof payload.sub === "string" ? payload.sub : "";
-    const tokenIdentifier =
-      typeof payload.tokenIdentifier === "string"
-        ? payload.tokenIdentifier
-        : "";
-    const audience = Array.isArray(payload.aud)
-      ? payload.aud.join(",")
-      : typeof payload.aud === "string"
-        ? payload.aud
-        : "";
-    const isAnonymous =
-      typeof payload.isAnonymous === "boolean"
-        ? String(payload.isAnonymous)
-        : "";
-    return [
-      "auth:jwt",
-      issuer,
-      subject,
-      tokenIdentifier,
-      audience,
-      isAnonymous,
-    ].join(":");
-  } catch {
-    return "auth:jwt-unreadable";
-  }
-}
 
 function getCatalogRequestCacheKey(
   request: Awaited<ReturnType<typeof createServiceRequest>>,
@@ -115,9 +84,12 @@ function getCatalogRequestCacheKey(
     request.endpoint,
     authAudienceKey,
     `modelCatalogUpdatedAt:${modelCatalogUpdatedAt ?? "none"}`,
-    getJwtCacheIdentity(request.headers.Authorization),
     request.headers["X-Device-ID"] ?? "device:none",
   ].join("|");
+}
+
+function isCatalogCacheFresh(entry: Pick<CatalogCacheEntry, "fetchedAt">) {
+  return Date.now() - entry.fetchedAt < MODEL_CATALOG_REFRESH_INTERVAL_MS;
 }
 
 function getBillingAudienceKey(
@@ -152,6 +124,7 @@ function getSessionCacheKey(sessionData: AuthSessionData): string {
 async function fetchCatalogModels(
   authAudienceKey: string,
   modelCatalogUpdatedAt: number | null,
+  options: { forceRefresh?: boolean } = {},
 ): Promise<CatalogFetchResult> {
   const request = await createServiceRequest(STELLA_MODELS_PATH);
   const cacheKey = getCatalogRequestCacheKey(
@@ -160,7 +133,12 @@ async function fetchCatalogModels(
     modelCatalogUpdatedAt,
   );
   const cachedCatalog = catalogCache.get(cacheKey);
-  if (ENABLE_CATALOG_CACHE && cachedCatalog) {
+  if (
+    ENABLE_CATALOG_CACHE &&
+    cachedCatalog &&
+    !options.forceRefresh &&
+    isCatalogCacheFresh(cachedCatalog)
+  ) {
     return {
       models: cachedCatalog.models,
       defaults: cachedCatalog.defaults,
@@ -169,9 +147,13 @@ async function fetchCatalogModels(
     };
   }
 
+  if (options.forceRefresh) {
+    inFlightCatalogRequests.delete(cacheKey);
+  }
+
   let inFlightCatalogRequest = inFlightCatalogRequests.get(cacheKey);
   if (!inFlightCatalogRequest) {
-    inFlightCatalogRequest = (async () => {
+    const requestPromise = (async () => {
       try {
         const res = await fetch(request.endpoint, { headers: request.headers });
         if (!res.ok) {
@@ -188,6 +170,7 @@ async function fetchCatalogModels(
           catalogCache.set(cacheKey, {
             models: result.models,
             defaults: result.defaults,
+            fetchedAt: Date.now(),
           });
         }
 
@@ -217,6 +200,7 @@ async function fetchCatalogModels(
         inFlightCatalogRequests.delete(cacheKey);
       }
     })();
+    inFlightCatalogRequest = requestPromise;
     inFlightCatalogRequests.set(cacheKey, inFlightCatalogRequest);
   }
 
@@ -230,8 +214,12 @@ async function fetchManagedGatewayCatalogModels(
     managedGatewayCatalogCache = null;
     inFlightManagedGatewayCatalogRequest = null;
   }
-  if (ENABLE_CATALOG_CACHE && managedGatewayCatalogCache) {
-    return managedGatewayCatalogCache;
+  if (
+    ENABLE_CATALOG_CACHE &&
+    managedGatewayCatalogCache &&
+    isCatalogCacheFresh(managedGatewayCatalogCache)
+  ) {
+    return managedGatewayCatalogCache.models;
   }
   if (!inFlightManagedGatewayCatalogRequest) {
     inFlightManagedGatewayCatalogRequest = (async () => {
@@ -243,11 +231,14 @@ async function fetchManagedGatewayCatalogModels(
         const data = (await res.json()) as ModelsDevApi;
         const models = normalizeManagedGatewayCatalogModels(data);
         if (ENABLE_CATALOG_CACHE) {
-          managedGatewayCatalogCache = models;
+          managedGatewayCatalogCache = {
+            models,
+            fetchedAt: Date.now(),
+          };
         }
         return models;
       } catch {
-        return managedGatewayCatalogCache ?? [];
+        return managedGatewayCatalogCache?.models ?? [];
       } finally {
         inFlightManagedGatewayCatalogRequest = null;
       }
@@ -292,7 +283,6 @@ export function useModelCatalog() {
   const [defaults, setDefaults] = useState<CatalogDefaultModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshTick, setRefreshTick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const localModels = useMemo(() => listLocalCatalogModels(), []);
   const stellaModels = useMemo(
@@ -313,7 +303,7 @@ export function useModelCatalog() {
   );
 
   useEffect(() => {
-    if (!authAudienceKey) {
+    if (!authAudienceKey || modelCatalogUpdatedAt === null) {
       setLoading(true);
       return;
     }
@@ -340,11 +330,11 @@ export function useModelCatalog() {
     return () => {
       canceled = true;
     };
-  }, [authAudienceKey, modelCatalogUpdatedAt, refreshTick]);
+  }, [authAudienceKey, modelCatalogUpdatedAt]);
 
   useEffect(() => {
     let canceled = false;
-    void fetchManagedGatewayCatalogModels(refreshTick > 0).then((next) => {
+    void fetchManagedGatewayCatalogModels().then((next) => {
       if (!canceled) {
         setManagedGatewayModels(next);
       }
@@ -352,10 +342,10 @@ export function useModelCatalog() {
     return () => {
       canceled = true;
     };
-  }, [refreshTick]);
+  }, []);
 
   const refresh = useCallback(async () => {
-    if (!authAudienceKey) return;
+    if (!authAudienceKey || modelCatalogUpdatedAt === null) return;
     setRefreshing(true);
     catalogCache.delete(
       getCatalogRequestCacheKey(
@@ -364,12 +354,19 @@ export function useModelCatalog() {
         modelCatalogUpdatedAt,
       ),
     );
-    setRefreshTick((tick) => tick + 1);
     try {
-      await Promise.all([
-        fetchCatalogModels(authAudienceKey, modelCatalogUpdatedAt),
+      const [catalogResult, managedModels] = await Promise.all([
+        fetchCatalogModels(authAudienceKey, modelCatalogUpdatedAt, {
+          forceRefresh: true,
+        }),
         fetchManagedGatewayCatalogModels(true),
       ]);
+      if (catalogResult.models.length > 0 || catalogResult.defaults.length > 0) {
+        setModels(catalogResult.models);
+        setDefaults(catalogResult.defaults);
+      }
+      setManagedGatewayModels(managedModels);
+      setError(catalogResult.error);
     } finally {
       setRefreshing(false);
     }
