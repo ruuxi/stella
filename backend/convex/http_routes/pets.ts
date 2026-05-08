@@ -1,8 +1,10 @@
 import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { requireAdminRequest } from "../http_shared/admin";
 
 const PET_CATALOG_SEED_PATH = "/api/pets/seed";
+const ADMIN_PET_CATALOG_DELETE_PATH = "/api/admin/pets/delete";
 
 const getSeedSecret = () => process.env.PET_CATALOG_SEED_SECRET?.trim() ?? "";
 
@@ -24,6 +26,10 @@ type PetSeedRequestBody = {
   }>;
 };
 
+type PetDeleteRequestBody = {
+  id?: string;
+};
+
 const errorResponse = (status: number, message: string) =>
   new Response(JSON.stringify({ error: message }), {
     status,
@@ -32,9 +38,9 @@ const errorResponse = (status: number, message: string) =>
 
 const parseRequestJson = async (
   request: Request,
-): Promise<PetSeedRequestBody | null> => {
+): Promise<unknown> => {
   try {
-    return (await request.json()) as PetSeedRequestBody;
+    return await request.json();
   } catch {
     return null;
   }
@@ -88,7 +94,7 @@ export const registerPetRoutes = (http: HttpRouter) => {
         return errorResponse(401, "Invalid seed credentials.");
       }
 
-      const body = await parseRequestJson(request);
+      const body = (await parseRequestJson(request)) as PetSeedRequestBody | null;
       if (!body || !Array.isArray(body.pets)) {
         return errorResponse(400, "Missing pets array.");
       }
@@ -105,6 +111,33 @@ export const registerPetRoutes = (http: HttpRouter) => {
       await ctx.runMutation(internal.data.pets.upsertMany, { pets });
 
       return new Response(JSON.stringify({ seeded: pets.length }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
+  });
+
+  http.route({
+    path: ADMIN_PET_CATALOG_DELETE_PATH,
+    method: "POST",
+    handler: httpAction(async (ctx, request) => {
+      const admin = requireAdminRequest(request);
+      if (!admin.ok) return admin.response;
+
+      const body = (await parseRequestJson(request)) as PetDeleteRequestBody | null;
+      const id =
+        body && "id" in body && typeof body.id === "string"
+          ? body.id.trim()
+          : "";
+      if (!id) {
+        return errorResponse(400, "Missing pet id.");
+      }
+
+      const result = await ctx.runMutation(internal.data.pets.deleteByPetId, {
+        id,
+      });
+
+      return new Response(JSON.stringify(result), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });

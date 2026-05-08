@@ -9,6 +9,7 @@
  */
 
 import type * as account_deletion from "../account_deletion.js";
+import type * as admin_deletes from "../admin_deletes.js";
 import type * as agent_agents from "../agent/agents.js";
 import type * as agent_context_budget from "../agent/context_budget.js";
 import type * as agent_device_resolver from "../agent/device_resolver.js";
@@ -71,6 +72,7 @@ import type * as data_user_pets from "../data/user_pets.js";
 import type * as events from "../events.js";
 import type * as feedback from "../feedback.js";
 import type * as http from "../http.js";
+import type * as http_routes_admin from "../http_routes/admin.js";
 import type * as http_routes_backups from "../http_routes/backups.js";
 import type * as http_routes_connectors from "../http_routes/connectors.js";
 import type * as http_routes_desktop_releases from "../http_routes/desktop_releases.js";
@@ -82,6 +84,7 @@ import type * as http_routes_pets from "../http_routes/pets.js";
 import type * as http_routes_stripe from "../http_routes/stripe.js";
 import type * as http_routes_synthesis from "../http_routes/synthesis.js";
 import type * as http_routes_voice from "../http_routes/voice.js";
+import type * as http_shared_admin from "../http_shared/admin.js";
 import type * as http_shared_anon_device from "../http_shared/anon_device.js";
 import type * as http_shared_cors from "../http_shared/cors.js";
 import type * as http_shared_request from "../http_shared/request.js";
@@ -214,6 +217,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   account_deletion: typeof account_deletion;
+  admin_deletes: typeof admin_deletes;
   "agent/agents": typeof agent_agents;
   "agent/context_budget": typeof agent_context_budget;
   "agent/device_resolver": typeof agent_device_resolver;
@@ -276,6 +280,7 @@ declare const fullApi: ApiFromModules<{
   events: typeof events;
   feedback: typeof feedback;
   http: typeof http;
+  "http_routes/admin": typeof http_routes_admin;
   "http_routes/backups": typeof http_routes_backups;
   "http_routes/connectors": typeof http_routes_connectors;
   "http_routes/desktop_releases": typeof http_routes_desktop_releases;
@@ -287,6 +292,7 @@ declare const fullApi: ApiFromModules<{
   "http_routes/stripe": typeof http_routes_stripe;
   "http_routes/synthesis": typeof http_routes_synthesis;
   "http_routes/voice": typeof http_routes_voice;
+  "http_shared/admin": typeof http_shared_admin;
   "http_shared/anon_device": typeof http_shared_anon_device;
   "http_shared/cors": typeof http_shared_cors;
   "http_shared/request": typeof http_shared_request;
