@@ -26,8 +26,12 @@ import {
   MediaTabContent,
   TrashTabContent,
 } from "./tab-content";
+import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
+import { addCanvasHtmlItem } from "./canvas-tab/canvas-items";
 import type { DisplayTabSpec } from "./types";
 import { kindForPath } from "./path-to-viewer";
+
+export const CANVAS_HTML_TAB_ID = "canvas:html";
 
 export const GENERATED_MEDIA_TAB_ID = "media:generated";
 export const GENERATED_IMAGE_TAB_ID = GENERATED_MEDIA_TAB_ID;
@@ -107,6 +111,18 @@ export const payloadToTabSpec = (
   const title = getDisplayPayloadTitle(payload);
 
   switch (payload.kind) {
+    case "canvas-html": {
+      const items = addCanvasHtmlItem(payload);
+      return {
+        id: CANVAS_HTML_TAB_ID,
+        kind: "canvas",
+        title: "Canvas",
+        tooltip: payload.title ?? "HTML canvas",
+        metadata: { kind: "canvas-html", items, latest: payload.filePath },
+        render: () => createElement(CanvasTabContent, { items }),
+      };
+    }
+
     case "url":
       return {
         id: payload.tabId,

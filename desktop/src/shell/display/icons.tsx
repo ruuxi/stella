@@ -373,6 +373,52 @@ const MediaIcon = ({ size = 18, style }: IconProps) => (
   </svg>
 );
 
+/**
+ * Canvas tab icon — a stylized "framed page" silhouette evoking a
+ * rendered HTML artifact (header bar + content lines) without leaning on
+ * developer iconography (no `<>`/code glyphs). Reads as "document with
+ * structure" at thumbnail size.
+ */
+const CanvasIcon = ({ size = 18, style }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={style}
+  >
+    <rect
+      x="3.5"
+      y="4.5"
+      width="17"
+      height="15"
+      rx="2.4"
+      stroke="currentColor"
+      strokeOpacity="0.75"
+      strokeWidth="1.5"
+      fill="currentColor"
+      fillOpacity="0.07"
+    />
+    <path
+      d="M3.5 8.5h17"
+      stroke="currentColor"
+      strokeOpacity="0.55"
+      strokeWidth="1.2"
+    />
+    <circle cx="6" cy="6.5" r="0.7" fill="currentColor" fillOpacity="0.55" />
+    <circle cx="8.2" cy="6.5" r="0.7" fill="currentColor" fillOpacity="0.55" />
+    <circle cx="10.4" cy="6.5" r="0.7" fill="currentColor" fillOpacity="0.55" />
+    <path
+      d="M6.5 11.6h11M6.5 14.2h8M6.5 16.8h6"
+      stroke="currentColor"
+      strokeOpacity="0.55"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 const ChatIcon = ({ size = 18, style }: IconProps) => (
   <svg
     width={size}
@@ -467,6 +513,8 @@ export const DisplayTabIcon = ({
   switch (kind) {
     case "chat":
       return <ChatIcon size={size} style={style} />;
+    case "canvas":
+      return <CanvasIcon size={size} style={style} />;
     case "image":
       return <ImageIcon size={size} style={style} />;
     case "media":

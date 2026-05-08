@@ -158,14 +158,15 @@ const resourcePayloadEqual = (
   if (!a || !b) return a === b;
   if (a.kind !== b.kind) return false;
   switch (a.kind) {
-    case "html":
+    case "canvas-html": {
+      const bb = b as Extract<DisplayPayload, { kind: "canvas-html" }>;
       return (
-        a.html === (b as { html: string }).html &&
-        (a.title ?? null) ===
-          ((b as Extract<DisplayPayload, { kind: "html" }>).title ?? null) &&
-        (a.createdAt ?? null) ===
-          ((b as Extract<DisplayPayload, { kind: "html" }>).createdAt ?? null)
+        a.filePath === bb.filePath &&
+        (a.title ?? null) === (bb.title ?? null) &&
+        (a.slug ?? null) === (bb.slug ?? null) &&
+        a.createdAt === bb.createdAt
       );
+    }
     case "office":
       return (
         a.previewRef.sourcePath ===

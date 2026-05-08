@@ -13,9 +13,15 @@ describe("normalizeDisplayPayload", () => {
     expect(normalizeDisplayPayload("   \n\t")).toBeNull();
   });
 
-  it("rejects html payloads from the workspace panel channel", () => {
-    const payload: DisplayPayload = { kind: "html", html: "<x/>" };
-    expect(normalizeDisplayPayload(payload)).toBeNull();
+  it("passes through canvas-html payloads", () => {
+    const payload: DisplayPayload = {
+      kind: "canvas-html",
+      filePath: "/state/outputs/html/plan.html",
+      title: "Onboarding plan",
+      slug: "plan",
+      createdAt: 1,
+    };
+    expect(normalizeDisplayPayload(payload)).toBe(payload);
   });
 
   it("passes through valid office payloads", () => {
@@ -127,7 +133,13 @@ describe("normalizeDisplayPayload", () => {
     expect(normalizeDisplayPayload(null)).toBeNull();
     expect(normalizeDisplayPayload(undefined)).toBeNull();
     expect(normalizeDisplayPayload(42)).toBeNull();
-    expect(normalizeDisplayPayload({ kind: "html" })).toBeNull();
+    expect(normalizeDisplayPayload({ kind: "canvas-html" })).toBeNull();
+    expect(
+      normalizeDisplayPayload({
+        kind: "canvas-html",
+        filePath: "/x.html",
+      }),
+    ).toBeNull();
     expect(
       normalizeDisplayPayload({ kind: "office", previewRef: {} }),
     ).toBeNull();
@@ -155,12 +167,32 @@ describe("normalizeDisplayPayload", () => {
   });
 
   it("isDisplayPayload narrows correctly", () => {
-    expect(isDisplayPayload({ kind: "html", html: "x" })).toBe(true);
-    expect(isDisplayPayload({ kind: "html" })).toBe(false);
+    expect(
+      isDisplayPayload({
+        kind: "canvas-html",
+        filePath: "/x.html",
+        createdAt: 1,
+      }),
+    ).toBe(true);
+    expect(isDisplayPayload({ kind: "canvas-html" })).toBe(false);
   });
 
   it("derives reasonable titles", () => {
-    expect(getDisplayPayloadTitle({ kind: "html", html: "x" })).toBe("Canvas");
+    expect(
+      getDisplayPayloadTitle({
+        kind: "canvas-html",
+        filePath: "/state/outputs/html/plan.html",
+        createdAt: 1,
+      }),
+    ).toBe("plan.html");
+    expect(
+      getDisplayPayloadTitle({
+        kind: "canvas-html",
+        filePath: "/state/outputs/html/plan.html",
+        title: "Onboarding plan",
+        createdAt: 1,
+      }),
+    ).toBe("Onboarding plan");
     expect(
       getDisplayPayloadTitle({
         kind: "office",

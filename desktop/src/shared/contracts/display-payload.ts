@@ -10,7 +10,9 @@ export type DisplayFileArtifactKind =
 /**
  * Tagged union for resources Stella can surface in chat or the workspace panel.
  *
- * - `html`   — freeform HTML. Rendered inline in chat.
+ * - `canvas-html` — file-backed self-contained HTML written by the orchestrator's
+ *              `html` tool to `state/outputs/html/<slug>.html`. Rendered as an
+ *              inline artifact card in chat AND opened in the Canvas panel tab.
  * - `office` — docx/xlsx/pptx live-preview produced by `stella-office preview`.
  *              Renders the existing OfficePreviewCard (iframe + auto-refresh).
  * - `markdown` — local Markdown / MDX files rendered in the panel.
@@ -29,7 +31,13 @@ export type DisplayFileArtifactKind =
  * `DisplayPayload` objects.
  */
 export type DisplayPayload =
-  | { kind: "html"; html: string; title?: string; createdAt?: number }
+  | {
+      kind: "canvas-html";
+      filePath: string;
+      title?: string;
+      slug?: string;
+      createdAt: number;
+    }
   | {
       /**
        * Live URL preview (e.g., per-social-session Vite dev server).
@@ -80,7 +88,12 @@ export type DisplayPayload =
       createdAt: number;
     };
 
-export type DisplayTabPayload = Exclude<DisplayPayload, { kind: "html" }>;
+/**
+ * All current display payload kinds can render in the workspace panel as a
+ * tab. The historical `html` (inline-only) kind has been replaced by
+ * `canvas-html`, which is file-backed and lives in the Canvas tab.
+ */
+export type DisplayTabPayload = DisplayPayload;
 
 /**
  * What was generated. Mirrors the shape of `OutputMedia` in
@@ -133,14 +146,16 @@ const isMediaAsset = (value: unknown): value is MediaAsset => {
 
 export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
   if (!isRecord(value)) return false;
-  if (value.kind === "html") {
+  if (value.kind === "canvas-html") {
     const createdAt = (value as { createdAt?: unknown }).createdAt;
     return (
-      typeof value.html === "string" &&
+      typeof (value as { filePath?: unknown }).filePath === "string" &&
+      typeof createdAt === "number" &&
+      Number.isFinite(createdAt) &&
       ((value as { title?: unknown }).title === undefined ||
         typeof (value as { title?: unknown }).title === "string") &&
-      (createdAt === undefined ||
-        (typeof createdAt === "number" && Number.isFinite(createdAt)))
+      ((value as { slug?: unknown }).slug === undefined ||
+        typeof (value as { slug?: unknown }).slug === "string")
     );
   }
   if (value.kind === "url") {
@@ -201,20 +216,18 @@ export const isDisplayPayload = (value: unknown): value is DisplayPayload => {
 
 export const isDisplayTabPayload = (
   value: unknown,
-): value is DisplayTabPayload =>
-  isDisplayPayload(value) && value.kind !== "html";
+): value is DisplayTabPayload => isDisplayPayload(value);
 
-/**
- * Validate payloads accepted by the workspace panel's display channel.
- * HTML resources render inline in chat and are intentionally excluded here.
- */
+/** Validate payloads accepted by the workspace panel's display channel. */
 export const normalizeDisplayPayload = (
   value: unknown,
 ): DisplayTabPayload | null => (isDisplayTabPayload(value) ? value : null);
 
 /** Quick title helper for the sidebar header / external open. */
 export const getDisplayPayloadTitle = (payload: DisplayPayload): string => {
-  if (payload.kind === "html") return payload.title ?? "Canvas";
+  if (payload.kind === "canvas-html") {
+    return payload.title ?? payload.filePath.split("/").pop() ?? "Canvas";
+  }
   if (payload.kind === "url") return payload.title;
   if (payload.kind === "office") {
     return payload.title ?? payload.previewRef.title;

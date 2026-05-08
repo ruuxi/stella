@@ -23,8 +23,10 @@ import { displayTabs, useDisplayTabs } from "./tab-store";
 import { DisplayTabIcon } from "./icons";
 import type { DisplayTabKind } from "./types";
 import {
+  CANVAS_DISPLAY_TAB_ID,
   CHAT_DISPLAY_TAB_ID,
   MEDIA_DISPLAY_TAB_ID,
+  openCanvasDisplayTab,
   openChatDisplayTab,
   openMediaDisplayTab,
   openStoreDisplayTab,
@@ -67,12 +69,17 @@ export const DisplayTabAddMenu = () => {
     openOrActivate(MEDIA_DISPLAY_TAB_ID, openMediaDisplayTab);
   }, [openOrActivate]);
 
+  const openCanvas = useCallback(() => {
+    openOrActivate(CANVAS_DISPLAY_TAB_ID, openCanvasDisplayTab);
+  }, [openOrActivate]);
+
   const openTrash = useCallback(() => {
     openOrActivate(TRASH_DISPLAY_TAB_ID, openTrashDisplayTab);
   }, [openOrActivate]);
 
   const options: AddMenuOption[] = [
     { id: "chat", label: "Chat", kind: "chat", onSelect: openChat },
+    { id: "canvas", label: "Canvas", kind: "canvas", onSelect: openCanvas },
     { id: "media", label: "Media", kind: "media", onSelect: openMedia },
     { id: "store", label: "Store", kind: "store", onSelect: openStore },
     { id: "trash", label: "Trash", kind: "trash", onSelect: openTrash },

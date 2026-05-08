@@ -59,6 +59,7 @@ export function useDisplayPayloadRouting({
       }
       if (
         payload.kind === "media" ||
+        payload.kind === "canvas-html" ||
         payload.kind === "url" ||
         payload.kind === "trash"
       ) {
