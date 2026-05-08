@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Native helper build scripts for Stella desktop",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "build:windows-computer": "bash build-windows-computer.sh"
   }
 }
