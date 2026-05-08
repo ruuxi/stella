@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/ui/button";
 import { Select } from "@/ui/select";
 import { Switch } from "@/ui/switch";
-import { DesktopUpdateBanner } from "@/global/updates/DesktopUpdateBanner";
 import { LanguageSettingsRow } from "@/global/settings/LanguageSettingsRow";
 import {
   useDesktopPermissions,
@@ -353,7 +352,6 @@ export function BasicTab() {
 
   return (
     <div className="settings-tab-content">
-      <DesktopUpdateBanner />
       <LanguageSettingsRow />
       <div className="settings-card">
         <h3 className="settings-card-title">Chat previews</h3>
