@@ -322,12 +322,10 @@ export const handleCronAdd = async (
     name: typeof args.name === "string" ? args.name : "",
     schedule: args.schedule as never,
     payload: args.payload as never,
-    sessionTarget: (typeof args.sessionTarget === "string"
-      ? args.sessionTarget
-      : "") as "main" | "isolated",
     conversationId: getConversationId(args, context),
     ...(typeof args.description === "string" ? { description: args.description } : {}),
     ...(typeof args.enabled === "boolean" ? { enabled: args.enabled } : {}),
+    ...(typeof args.deliver === "boolean" ? { deliver: args.deliver } : {}),
     ...(typeof args.deleteAfterRun === "boolean"
       ? { deleteAfterRun: args.deleteAfterRun }
       : {}),
@@ -348,14 +346,12 @@ export const handleCronUpdate = async (
     ...(typeof patch.name === "string" ? { name: patch.name } : {}),
     ...(patch.schedule !== undefined ? { schedule: patch.schedule as never } : {}),
     ...(patch.payload !== undefined ? { payload: patch.payload as never } : {}),
-    ...(typeof patch.sessionTarget === "string"
-      ? { sessionTarget: patch.sessionTarget as "main" | "isolated" }
-      : {}),
     ...(typeof patch.conversationId === "string"
       ? { conversationId: patch.conversationId }
       : {}),
     ...(typeof patch.description === "string" ? { description: patch.description } : {}),
     ...(typeof patch.enabled === "boolean" ? { enabled: patch.enabled } : {}),
+    ...(typeof patch.deliver === "boolean" ? { deliver: patch.deliver } : {}),
     ...(typeof patch.deleteAfterRun === "boolean"
       ? { deleteAfterRun: patch.deleteAfterRun }
       : {}),

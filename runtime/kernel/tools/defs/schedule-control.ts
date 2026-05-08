@@ -36,7 +36,7 @@ const CRON_JOB_ID_PROPERTY = {
 } as const;
 
 const CRON_JOB_PAYLOAD_PROPERTIES = {
-  name: { type: "string", description: "Human label for the job." },
+  name: { type: "string", description: "Human label shown to the user." },
   description: {
     type: "string",
     description: "Optional explanation shown in CronList.",
@@ -44,22 +44,23 @@ const CRON_JOB_PAYLOAD_PROPERTIES = {
   schedule: {
     type: "object",
     description:
-      "Schedule definition (cron string, interval, etc) — passed through to the local scheduler.",
+      "Schedule definition: { kind: 'at', atMs } | { kind: 'every', everyMs, anchorMs? } | { kind: 'cron', expr, tz? }.",
   },
   payload: {
     type: "object",
     description:
-      "Payload delivered to the runtime when the cron fires (typically a prompt or instruction).",
-  },
-  sessionTarget: {
-    type: "string",
-    enum: ["main", "isolated"],
-    description: "Which session the job runs in.",
+      "Three tiers — pick the cheapest that fits.\n• `{ kind: 'notify', text }` — literal message delivered each fire (and an OS notification). No LLM, no script.\n• `{ kind: 'script', scriptPath }` — runs the file at scriptPath via `bun run`; trimmed stdout becomes the message (empty = silent fire). Author & test the script first via `ScriptDraft`, then pass the returned `scriptPath` here.\n• `{ kind: 'agent', prompt, agentType? }` — runs an isolated worker turn each fire with the fixed prompt; defaults to the general agent. Use only when reasoning or multi-tool work is required at fire time.",
   },
   enabled: { type: "boolean", description: "Whether the job is active." },
+  deliver: {
+    type: "boolean",
+    description:
+      "When false, suppress the message + OS notification even if the fire produces text. Defaults to true.",
+  },
   deleteAfterRun: {
     type: "boolean",
-    description: "Remove the job once it has fired successfully.",
+    description:
+      "Remove the job (and its script file, if any) once it has fired successfully. Only meaningful for `schedule.kind = 'at'`.",
   },
 } as const;
 
@@ -157,7 +158,7 @@ export const createScheduleControlTools = (
         ...HEARTBEAT_CONVERSATION_PROPERTIES,
         ...CRON_JOB_PAYLOAD_PROPERTIES,
       },
-      required: ["name", "schedule", "payload", "sessionTarget"],
+      required: ["name", "schedule", "payload"],
     },
     execute: (args, context) =>
       handleCronAdd(options.scheduleApi, args, context),

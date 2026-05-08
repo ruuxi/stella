@@ -1613,6 +1613,7 @@ export class StellaRuntimeClient {
     this.deviceIdentity = await this.options.hostHandlers.getDeviceIdentity();
     this.ensureHostRemoteTurnBridge();
 
+    const showNotificationHandler = this.options.hostHandlers.showNotification;
     const scheduler = new LocalSchedulerService({
       stellaHome: this.options.initializeParams.stellaRoot,
       runnerTarget: {
@@ -1629,6 +1630,16 @@ export class StellaRuntimeClient {
           getActiveOrchestratorRun: async () => await this.getActiveRun(),
         }),
       },
+      // Pop a native banner whenever a scheduled fire delivers a message.
+      // Routed through the same Electron handler the runtime uses for
+      // in-app notifications (sound preference + grouping respected).
+      ...(showNotificationHandler
+        ? {
+            showNotification: ({ title, body }) => {
+              void showNotificationHandler({ title, body });
+            },
+          }
+        : {}),
     });
     scheduler.start();
     this.schedulerService = scheduler;

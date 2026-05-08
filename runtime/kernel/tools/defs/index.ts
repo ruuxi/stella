@@ -38,6 +38,7 @@ import { readTool } from "./read.js";
 import { createRequestCredentialTool } from "./request-credential.js";
 import { createScheduleTool } from "./schedule.js";
 import { createScheduleControlTools } from "./schedule-control.js";
+import { createScriptDraftTool } from "./script-draft.js";
 import { strReplaceTool } from "./str-replace.js";
 import { createAgentTools } from "./task.js";
 import { viewImageTool } from "./view-image.js";
@@ -116,6 +117,7 @@ export const buildBuiltinTools = (
   tools.push(
     ...createScheduleControlTools({ scheduleApi: options.scheduleApi }),
   );
+  tools.push(createScriptDraftTool({ stellaRoot: options.stellaRoot }));
 
   // (Store agent moved to backend — no local tools.)
 
