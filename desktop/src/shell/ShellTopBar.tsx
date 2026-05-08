@@ -17,6 +17,7 @@ import { displayTabs, useDisplayTabs } from "@/shell/display/tab-store";
 import { DisplayTabBar } from "@/shell/display/DisplayTabBar";
 import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
 import { ShellTopBarStoreControls } from "@/shell/ShellTopBarStoreControls";
+import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
 
 export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
 
@@ -135,6 +136,7 @@ export const ShellTopBar = () => {
         >
           <ArrowRight size={15} strokeWidth={1.75} />
         </button>
+        <ShellTopBarUpdatePill />
       </div>
       {/*
        * Centered route-specific nav: rendered as an absolutely-positioned
