@@ -164,6 +164,7 @@ export type ToolHostOptions = {
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
   agentApi?: AgentToolApi;
+  getSubagentTypes?: () => readonly string[];
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;
   extensionTools?: import("../extensions/types.js").ToolDefinition[];

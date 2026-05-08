@@ -13,12 +13,16 @@ import {
   type RuntimeThreadRecord,
 } from "../runtime-threads.js";
 import { AGENT_PAUSE_CANCEL_REASON } from "../agents/local-agent-manager.js";
-import { AGENT_IDS } from "../../contracts/agent-runtime.js";
+import {
+  AGENT_IDS,
+  isOrchestratorReservedBuiltinAgentId,
+} from "../../contracts/agent-runtime.js";
 
 export type StateContext = {
   stateRoot: string;
   tasks: Map<string, AgentRecord>;
   agentApi?: AgentToolApi;
+  getSubagentTypes?: () => readonly string[];
 };
 
 const toOptionalString = (value: unknown): string | undefined => {
@@ -51,6 +55,24 @@ const logWorkingIndicatorTrace = (label: string, payload: Record<string, unknown
   process.stderr.write(`${JSON.stringify({ label, ...payload })}\n`);
 };
 
+export const getAvailableSubagentTypes = (
+  getSubagentTypes?: () => readonly string[],
+): readonly string[] => {
+  const seen = new Set<string>();
+  const subagentTypes: string[] = [];
+  for (const agentType of getSubagentTypes?.() ?? []) {
+    if (isOrchestratorReservedBuiltinAgentId(agentType) || seen.has(agentType)) {
+      continue;
+    }
+    seen.add(agentType);
+    subagentTypes.push(agentType);
+  }
+  if (!seen.has(AGENT_IDS.GENERAL)) {
+    subagentTypes.unshift(AGENT_IDS.GENERAL);
+  }
+  return subagentTypes;
+};
+
 const buildOtherThreadsResult = (
   threads: Array<Pick<RuntimeThreadRecord, "threadId" | "description" | "lastUsedAt">>,
   currentThreadId: string,
@@ -67,10 +89,12 @@ const buildOtherThreadsResult = (
 export const createStateContext = (
   stateRoot: string,
   agentApi?: AgentToolApi,
+  getSubagentTypes?: () => readonly string[],
 ): StateContext => ({
   stateRoot,
   tasks: new Map(),
   agentApi,
+  getSubagentTypes,
 });
 
 export const handleSendInput = async (
@@ -153,7 +177,7 @@ export const handleSpawnAgent = async (
     };
   }
 
-  const agentType = AGENT_IDS.GENERAL;
+  const agentType = toOptionalString(args.agent_type) ?? AGENT_IDS.GENERAL;
   const parentAgentId =
     toOptionalString(context.cloudAgentId) ??
     toOptionalString(context.agentId);
@@ -165,6 +189,16 @@ export const handleSpawnAgent = async (
   if (context.agentType !== AGENT_IDS.ORCHESTRATOR) {
     return {
       error: "Only the orchestrator can create tasks.",
+    };
+  }
+
+  const subagentTypes = getAvailableSubagentTypes(ctx.getSubagentTypes);
+  if (
+    isOrchestratorReservedBuiltinAgentId(agentType) ||
+    !subagentTypes.includes(agentType)
+  ) {
+    return {
+      error: `Unknown or unavailable agent_type: ${agentType}. Available agent_type values: ${subagentTypes.join(", ")}`,
     };
   }
 

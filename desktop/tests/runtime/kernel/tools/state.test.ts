@@ -5,7 +5,7 @@ import { AGENT_PAUSE_CANCEL_REASON } from "../../../../../runtime/kernel/agents/
 import type { AgentToolRequest } from "../../../../../runtime/kernel/tools/types.js";
 
 describe("state tools", () => {
-  it("always creates general tasks from orchestrator requests", async () => {
+  it("defaults spawn_agent to the general agent", async () => {
     const now = Date.now();
     let createdRequest: AgentToolRequest | null = null;
     const ctx = createStateContext("/tmp", {
@@ -45,8 +45,7 @@ describe("state tools", () => {
       ctx,
       {
         description: "Do work",
-        prompt: "Use the schedule agent",
-        subagent_type: "schedule",
+        prompt: "Do the work",
       },
       {
         conversationId: "conversation-1",
@@ -74,6 +73,108 @@ describe("state tools", () => {
           },
         ],
       },
+    });
+  });
+
+  it("forwards an available custom agent_type", async () => {
+    let createdRequest: AgentToolRequest | null = null;
+    const ctx = createStateContext(
+      "/tmp",
+      {
+        createAgent: async (request) => {
+          createdRequest = request;
+          return { threadId: "thread-1" };
+        },
+        getAgent: async () => null,
+        cancelAgent: async () => ({ canceled: false }),
+      },
+      () => [AGENT_IDS.GENERAL, "research"],
+    );
+
+    const result = await handleSpawnAgent(
+      ctx,
+      {
+        description: "Research account setup",
+        prompt: "Research the user's account setup options.",
+        agent_type: "research",
+      },
+      {
+        conversationId: "conversation-1",
+        deviceId: "device-1",
+        requestId: "request-1",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+      },
+    );
+
+    expect(createdRequest?.agentType).toBe("research");
+    expect(result).toMatchObject({
+      result: {
+        thread_id: "thread-1",
+        created: true,
+      },
+    });
+  });
+
+  it("rejects built-in Stella agents even when requested by agent_type", async () => {
+    const ctx = createStateContext(
+      "/tmp",
+      {
+        createAgent: async () => ({ threadId: "thread-1" }),
+        getAgent: async () => null,
+        cancelAgent: async () => ({ canceled: false }),
+      },
+      () => [AGENT_IDS.GENERAL],
+    );
+
+    const result = await handleSpawnAgent(
+      ctx,
+      {
+        description: "Run schedule work",
+        prompt: "Schedule this.",
+        agent_type: AGENT_IDS.SCHEDULE,
+      },
+      {
+        conversationId: "conversation-1",
+        deviceId: "device-1",
+        requestId: "request-1",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+      },
+    );
+
+    expect(result).toEqual({
+      error: `Unknown or unavailable agent_type: ${AGENT_IDS.SCHEDULE}. Available agent_type values: general`,
+    });
+  });
+
+  it("rejects unknown custom agent_type values with available options", async () => {
+    const ctx = createStateContext(
+      "/tmp",
+      {
+        createAgent: async () => ({ threadId: "thread-1" }),
+        getAgent: async () => null,
+        cancelAgent: async () => ({ canceled: false }),
+      },
+      () => [AGENT_IDS.GENERAL, "research"],
+    );
+
+    const result = await handleSpawnAgent(
+      ctx,
+      {
+        description: "Do something",
+        prompt: "Do the work.",
+        agent_type: "totally_made_up",
+      },
+      {
+        conversationId: "conversation-1",
+        deviceId: "device-1",
+        requestId: "request-1",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+      },
+    );
+
+    expect(result).toEqual({
+      error:
+        "Unknown or unavailable agent_type: totally_made_up. Available agent_type values: general, research",
     });
   });
 
@@ -142,7 +243,12 @@ describe("state tools", () => {
 
     const result = await handleSpawnAgent(
       ctx,
-      { action: "cancel", thread_id: "thread-7", reason: "user changed their mind" },
+      {
+        action: "cancel",
+        thread_id: "thread-7",
+        reason: "user changed their mind",
+        agent_type: AGENT_IDS.SCHEDULE,
+      },
       {
         conversationId: "conversation-1",
         deviceId: "device-1",

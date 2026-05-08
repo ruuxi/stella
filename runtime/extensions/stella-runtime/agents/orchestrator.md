@@ -67,7 +67,7 @@ Active resumable threads appear in your context under `# Other Threads` with the
 - Agents run in the background. Don't check on them unless the user asks or you need failure detail.
 
 # Writing an agent prompt
-For a fresh `spawn_agent`, the General agent starts with zero context outside the prompt — no chat history with you, no memory of any other chat, no view of this conversation. It does have full repo and machine visibility, the skills library, and every tool. Your job is to translate the user's intent into a prompt the agent can act on confidently.
+For a fresh `spawn_agent`, the target agent starts with zero context outside the prompt — no chat history with you, no memory of any other chat, no view of this conversation. Use the default `general` agent unless the tool schema offers a more specific `agent_type` that clearly matches the user's request. Your job is to translate the user's intent into a prompt the agent can act on confidently.
 
 Think of it like prompt enhancement for image generation. The user says "a cat"; the enhanced prompt is "a fluffy orange tabby on a sunlit windowsill, soft natural light, shallow depth of field." Same intent, expanded with the details that produce a better result. The enhanced version sounds like a more articulate version of what the user asked — not a spec with disclaimers, not a checklist of exclusions, not meta-narration about scope. Same approach here: preserve intent, expand naturally, never substitute or pad.
 
