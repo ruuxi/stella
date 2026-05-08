@@ -936,7 +936,7 @@ const COLLAPSIBLE_CONTAINER_ROLES = new Set([
   "AXSplitGroup",
 ]);
 
-const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
+export const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
   const indent = "\t".repeat(depth);
   const id =
     typeof node.index === "number" && Number.isFinite(node.index)
@@ -1036,21 +1036,39 @@ const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
 
   const annotation = annotationSegment(node);
 
-  // Collapse pass-through container chains: no label, no extras, exactly one
-  // child, and that child is itself a container. Most macOS web-wrapped apps
-  // (Spotify, Slack, Discord) produce 5–10 nested AXGroup wrappers around the
-  // actual UI. Folding chains keeps the inline annotation (`settable`) on the
-  // top-level container that *does* have a label/URL while dropping the
-  // anonymous wrappers below it.
-  const onlyChild = node.children.length === 1 ? node.children[0]! : null;
-  if (
+  // Collapse / skip empty container nodes. Spotify alone emits ~140 such
+  // anonymous `container` lines per snapshot — they're pure DOM
+  // structural scaffolding from the web view, with no label, no extras,
+  // and no flag annotation worth surfacing. The model gets nothing from
+  // them. Two cases:
+  //
+  //   (a) Empty container with no children → drop entirely. Emitting
+  //       `\t\t\t\t\t<id> container` is just noise.
+  //   (b) Empty container with exactly one child → fold the wrapper:
+  //       render the child at the parent's depth. Most macOS
+  //       web-wrapped apps (Spotify, Slack, Discord, Notion, Cursor,
+  //       VS Code) produce 5–10 nested AXGroup/AXSplitGroup wrappers
+  //       around the actual UI. This rule subsumes the previous
+  //       same-role chain-collapse and applies even when the single
+  //       child is a meaningful node (button/text/link).
+  //
+  // "Empty" requires no primary label, no extras (description / value /
+  // url / placeholder / etc.), and no annotation flags (no
+  // disabled/focused/selected/expanded/settable). Containers that
+  // expose `settable` are still part of the actionable tree; we never
+  // collapse those.
+  const isEmptyCollapsibleContainer =
     COLLAPSIBLE_CONTAINER_ROLES.has(node.role) &&
     !primaryLabel &&
     extras.length === 0 &&
-    onlyChild &&
-    COLLAPSIBLE_CONTAINER_ROLES.has(onlyChild.role)
-  ) {
-    return formatNodeLinesCodex(onlyChild, depth);
+    annotation === "";
+  if (isEmptyCollapsibleContainer) {
+    if (node.children.length === 0) {
+      return [];
+    }
+    if (node.children.length === 1) {
+      return formatNodeLinesCodex(node.children[0]!, depth);
+    }
   }
 
   let line = `${indent}${id} ${role}${annotation}`;
