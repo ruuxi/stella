@@ -357,6 +357,15 @@ export const finalizeOrchestratorSuccess = async (args: {
     finalTextPreview: args.finalText.slice(0, 300),
   });
 
+  await Promise.resolve(
+    args.opts.beforeRunEnd?.({
+      runId: args.runId,
+      threadKey: args.threadKey,
+      finalText: args.finalText,
+      outcome: "success",
+    }),
+  );
+
   const selfModApplied = await emitAgentEndHook(args.opts, {
     finalText: args.finalText,
     runId: args.runId,
