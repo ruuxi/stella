@@ -25,7 +25,7 @@ import type {
 } from "@/app/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
 import { EndResourceCard } from "@/app/chat/EndResourceCard";
-import { InlineHtmlCanvas } from "@/app/chat/InlineHtmlCanvas";
+import { InlineHtmlArtifactCard } from "@/app/chat/InlineHtmlArtifactCard";
 import { InlineGeneratedImageCard } from "@/app/chat/InlineGeneratedImageCard";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
@@ -292,16 +292,13 @@ export const AssistantMessageRow = memo(
           {row.officePreviewRef && (
             <OfficePreviewCard previewRef={row.officePreviewRef} />
           )}
-          {row.resourcePayload?.kind === "html" && (
-            <InlineHtmlCanvas
-              html={row.resourcePayload.html}
-            />
-          )}
-          {row.resourcePayload?.kind === "media" &&
-          row.resourcePayload.presentation === "inline-image" &&
-          row.resourcePayload.asset.kind === "image" ? (
+          {row.resourcePayload?.kind === "canvas-html" ? (
+            <InlineHtmlArtifactCard payload={row.resourcePayload} />
+          ) : row.resourcePayload?.kind === "media" &&
+            row.resourcePayload.presentation === "inline-image" &&
+            row.resourcePayload.asset.kind === "image" ? (
             <InlineGeneratedImageCard payload={row.resourcePayload} />
-          ) : row.resourcePayload && row.resourcePayload.kind !== "html" ? (
+          ) : row.resourcePayload ? (
             <EndResourceCard payload={row.resourcePayload} />
           ) : null}
           {row.selfModApplied && (

@@ -31,6 +31,7 @@ import { editTool } from "./edit.js";
 import { createExecCommandTool } from "./exec-command.js";
 import { createFashionControlTools } from "./fashion-control.js";
 import { grepTool } from "./grep.js";
+import { createHtmlTool } from "./html.js";
 import { createImageGenTool } from "./image-gen.js";
 import { createMemoryTool } from "./memory.js";
 import { createMultiToolUseParallelTool } from "./multi-tool-use-parallel.js";
@@ -99,6 +100,7 @@ export const buildBuiltinTools = (
   // Orchestrator coordination surface
   tools.push(askQuestionTool);
   tools.push(askUserQuestionTool);
+  tools.push(createHtmlTool({ stellaRoot: options.stellaRoot }));
   tools.push(createVoiceActionCompleteTool({
     notifyVoiceActionComplete: options.notifyVoiceActionComplete,
   }));

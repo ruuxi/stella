@@ -69,6 +69,7 @@ const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
   "pause_agent",
   "Memory",
   "askQuestion",
+  "html",
 ]);
 
 const SOCIAL_SESSION_TOOL_NAMES = new Set([

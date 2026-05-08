@@ -222,6 +222,54 @@ const imageGenPayloadsByPath = (
   return byPath;
 };
 
+/**
+ * Pull the orchestrator's last `html` tool result for this turn and build
+ * a file-backed `canvas-html` payload from it. The tool writes a
+ * self-contained HTML document under `state/outputs/html/<slug>.html` and
+ * we surface it as both an inline artifact card AND a Canvas display tab.
+ *
+ * Mirrors `inlineImageGenSubmissionPayload`: orchestrator-only, latest
+ * call wins (the assistant rarely emits more than one canvas per turn,
+ * but if it does, the freshest one is the right artifact to anchor the
+ * row).
+ */
+const orchestratorHtmlPayload = (
+  toolEvents: EventRecord[],
+): DisplayPayload | null => {
+  for (let index = toolEvents.length - 1; index >= 0; index -= 1) {
+    const event = toolEvents[index]!;
+    if (!isToolResult(event)) continue;
+    if (event.payload.toolName !== "html" || event.payload.error) continue;
+    if (
+      (event.payload as { agentType?: unknown }).agentType !== "orchestrator"
+    ) {
+      continue;
+    }
+    const candidate =
+      event.payload.details && typeof event.payload.details === "object"
+        ? event.payload.details
+        : event.payload.result;
+    if (!candidate || typeof candidate !== "object") continue;
+    const record = candidate as Record<string, unknown>;
+    const filePath = asNonEmptyString(record.filePath);
+    if (!filePath) continue;
+    const title = asNonEmptyString(record.title) ?? undefined;
+    const slug = asNonEmptyString(record.slug) ?? undefined;
+    const createdAtNum =
+      typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
+        ? record.createdAt
+        : event.timestamp;
+    return {
+      kind: "canvas-html",
+      filePath,
+      ...(title ? { title } : {}),
+      ...(slug ? { slug } : {}),
+      createdAt: createdAtNum,
+    };
+  }
+  return null;
+};
+
 const inlineImageGenSubmissionPayload = (
   toolEvents: EventRecord[],
 ): DisplayPayload | null => {
@@ -270,7 +318,7 @@ const inlineImageGenSubmissionPayload = (
   return null;
 };
 
-const buildPayloadFromBarePath = (
+export const buildPayloadFromBarePath = (
   filePath: string,
   createdAt: number,
   options?: {
@@ -433,6 +481,13 @@ export const deriveTurnResource = (
   options?: { developerResourcesEnabled?: boolean },
 ): DisplayPayload | null => {
   if (toolEvents.length === 0 && !assistantText) return null;
+
+  // Orchestrator's `html` tool wins outright when present — its purpose
+  // is "show this canvas inline + open it in the panel", and an HTML
+  // canvas is never the same artifact as an unrelated edited file, so
+  // we skip the file-pool merge and surface it directly.
+  const htmlPayload = orchestratorHtmlPayload(toolEvents);
+  if (htmlPayload) return htmlPayload;
 
   // Build payloadByPath using rich signals (office previews + image_gen
   // metadata) so the chosen path resolves to a previewer that keeps

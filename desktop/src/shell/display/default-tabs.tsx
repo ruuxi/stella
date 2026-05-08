@@ -6,8 +6,11 @@ import { StoreSidePanel } from "@/global/store/StoreSidePanel";
 import { TrashTabContent } from "./TrashTabContent";
 import { ChatHomeOverview } from "./ChatHomeOverview";
 import { MediaTabContent } from "./tab-content";
+import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
+import { getCanvasHtmlItems } from "./canvas-tab/canvas-items";
 import { displayTabs } from "./tab-store";
 import {
+  CANVAS_HTML_TAB_ID,
   GENERATED_MEDIA_TAB_ID,
   getGeneratedMediaItems,
 } from "./payload-to-tab-spec";
@@ -17,6 +20,7 @@ export const CHAT_DISPLAY_TAB_ID = "chat";
 export const STORE_DISPLAY_TAB_ID = "store:side-panel";
 export const TRASH_DISPLAY_TAB_ID = "trash:deferred-delete";
 export const MEDIA_DISPLAY_TAB_ID = GENERATED_MEDIA_TAB_ID;
+export const CANVAS_DISPLAY_TAB_ID = CANVAS_HTML_TAB_ID;
 
 /**
  * Chat display tab body. Always mounted via the singleton tab store; its
@@ -118,5 +122,17 @@ export function openMediaDisplayTab(): void {
     tooltip: "Generated media",
     metadata: { kind: "media", items },
     render: () => createElement(MediaTabContent, { items }),
+  });
+}
+
+export function openCanvasDisplayTab(): void {
+  const items = getCanvasHtmlItems();
+  displayTabs.openTab({
+    id: CANVAS_DISPLAY_TAB_ID,
+    kind: "canvas",
+    title: "Canvas",
+    tooltip: "HTML canvases Stella has shown you",
+    metadata: { kind: "canvas-html", items },
+    render: () => createElement(CanvasTabContent, { items }),
   });
 }

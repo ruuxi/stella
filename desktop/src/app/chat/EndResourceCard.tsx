@@ -21,7 +21,7 @@ import "./end-resource-card.css";
 
 const labelForPayload = (payload: DisplayPayload): string => {
   switch (payload.kind) {
-    case "html":
+    case "canvas-html":
       return getDisplayPayloadTitle(payload);
     case "url":
       return payload.title;
