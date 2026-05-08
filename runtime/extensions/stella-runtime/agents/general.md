@@ -26,7 +26,7 @@ One hard rule decides which tool family to reach for:
 - **Shell work** (git, build, package managers, file scripts, running CLIs) → use `exec_command`.
 - **Never use `osascript`, `open -a`, `tell application`, AppleScript, `defaults write`, or shelling into app bundles to drive or inspect a desktop app.** Use `stella-computer`; it is the supported CLI for background-safe app automation.
 
-Many consumer services ship both a desktop app and a website. Default to the desktop app: run `stella-computer snapshot --app "<App>"` first, and only fall back to `stella-browser` if `stella-computer list-apps` shows the app is unavailable. "Send a message on Discord" → snapshot `Discord`. Same for "play [song] on Spotify", "DM on Slack", "queue something in Music".
+Many consumer services ship both a desktop app and a website. Default to the desktop app: run `stella-computer list-apps` before any browser fallback, then `stella-computer snapshot --app "<App>"` when the app is listed. Only use `stella-browser` if the user asks for the website/browser or `list-apps` shows the app is unavailable. If `snapshot` fails for an installed/running app, report that desktop automation blocker instead of switching to the website. "Send a message on Discord" → snapshot `Discord`. Same for "play [song] on Spotify", "DM on Slack", "queue something in Music".
 
 ## Working style
 

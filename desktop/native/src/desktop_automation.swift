@@ -7674,12 +7674,6 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         )
     case "click-point":
         let options = try actionOptions(from: commandArgs)
-        guard options.allowHid else {
-            throw NSError(domain: "desktop_automation", code: 12, userInfo: [
-                NSLocalizedDescriptionKey:
-                    "click-point requires --allow-hid or STELLA_COMPUTER_ALLOW_HID=1."
-            ])
-        }
         let positional = positionalArguments(commandArgs)
         guard positional.count >= 2,
               let x = Double(positional[0]),
