@@ -20,6 +20,7 @@ import {
   AGENT_STREAM_EVENT_TYPES,
 } from '../../../../../runtime/contracts/agent-runtime.js'
 import { toRunTaskId, type StreamStoreAction } from './store'
+import { resolveStellaProviderErrorToast } from './stella-provider-error-toast'
 import type {
   AgentResponseTarget,
   AgentStreamEvent,
@@ -159,11 +160,7 @@ export function useAgentEventHandler({
           conversationId === activeConversationIdRef.current &&
           args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR
         ) {
-          showToast({
-            title: 'Something went wrong',
-            description: args.reason || event.error || undefined,
-            variant: 'error',
-          })
+          showToast(resolveStellaProviderErrorToast(args.reason || event.error))
         }
         if (args.outcome !== AGENT_RUN_FINISH_OUTCOMES.COMPLETED) {
           resetStreamingText()

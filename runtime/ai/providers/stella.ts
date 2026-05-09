@@ -72,7 +72,27 @@ const readStellaErrorMessage = async (response: Response): Promise<string> => {
   try {
     const text = await response.text();
     if (text.trim()) {
-      errorMessage = text.trim();
+      const trimmed = text.trim();
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        if (parsed && typeof parsed === "object") {
+          const record = parsed as { error?: unknown; message?: unknown };
+          if (typeof record.error === "string" && record.error.trim()) {
+            errorMessage = record.error.trim();
+          } else if (
+            typeof record.message === "string" &&
+            record.message.trim()
+          ) {
+            errorMessage = record.message.trim();
+          } else {
+            errorMessage = trimmed;
+          }
+        } else {
+          errorMessage = trimmed;
+        }
+      } catch {
+        errorMessage = trimmed;
+      }
     }
   } catch {
     // Ignore body parse failures.
