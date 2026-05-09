@@ -76,6 +76,7 @@ interface ChatPanelTabProps {
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
+  delayedQueuedUserMessageIds?: string[];
   optimisticUserMessageIds: string[];
   selfModMap: Record<string, SelfModAppliedData>;
   liveTasks?: TaskItem[];
@@ -99,6 +100,7 @@ export function ChatPanelTab(
       runtimeStatusText,
       pendingUserMessageId,
       queuedUserMessages,
+      delayedQueuedUserMessageIds,
       optimisticUserMessageIds,
       selfModMap,
       liveTasks,
@@ -323,6 +325,7 @@ export function ChatPanelTab(
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}
               queuedUserMessages={queuedUserMessages}
+              delayedQueuedUserMessageIds={delayedQueuedUserMessageIds}
               optimisticUserMessageIds={optimisticUserMessageIds}
               selfModMap={selfModMap}
               liveTasks={liveTasks}
