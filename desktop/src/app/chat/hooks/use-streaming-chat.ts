@@ -11,7 +11,6 @@ import {
 } from '../streaming/message-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 import { useLocale } from '@/shared/i18n'
-import { QUEUED_USER_MESSAGE_EXIT_MS } from '../queued-message-timing'
 
 type UseStreamingChatOptions = {
   conversationId: string | null
@@ -81,9 +80,6 @@ export function useStreamingChat({
   >([])
   const [justSentUserMessageIds, setJustSentUserMessageIds] = useState<string[]>([])
   const justSentTimeoutsRef = useRef(new Map<string, number>())
-  const [delayedQueuedUserMessageIds, setDelayedQueuedUserMessageIds] =
-    useState<string[]>([])
-  const queuedSentTimeoutsRef = useRef(new Map<string, number>())
   const locale = useLocale()
   const {
     isLocalStorage,
@@ -165,6 +161,25 @@ export function useStreamingChat({
     })
   }, [events, optimisticEvents.length])
 
+  useEffect(() => {
+    if (queuedUserMessages.length === 0) return
+    const persistedIds = new Set(events.map((event) => event._id))
+    setQueuedUserMessages((current) => {
+      const next = current.filter((message) => !persistedIds.has(message.id))
+      return next.length === current.length ? current : next
+    })
+  }, [events, queuedUserMessages.length])
+
+  useEffect(
+    () => () => {
+      for (const timeoutId of justSentTimeoutsRef.current.values()) {
+        window.clearTimeout(timeoutId)
+      }
+      justSentTimeoutsRef.current.clear()
+    },
+    [],
+  )
+
   const markJustSent = useCallback((messageId: string) => {
     setJustSentUserMessageIds((current) =>
       current.includes(messageId) ? current : [...current, messageId],
@@ -181,56 +196,6 @@ export function useStreamingChat({
     }, JUST_SENT_CLASS_MS)
     justSentTimeoutsRef.current.set(messageId, timeoutId)
   }, [])
-
-  useEffect(() => {
-    if (queuedUserMessages.length === 0) return
-    const persistedIds = new Set(events.map((event) => event._id))
-    const persistedQueuedIds = queuedUserMessages
-      .filter((message) => persistedIds.has(message.id))
-      .map((message) => message.id)
-
-    if (persistedQueuedIds.length > 0) {
-      setDelayedQueuedUserMessageIds((current) => {
-        let next = current
-        for (const messageId of persistedQueuedIds) {
-          if (!next.includes(messageId)) {
-            next = next === current ? [...current] : next
-            next.push(messageId)
-          }
-          if (!queuedSentTimeoutsRef.current.has(messageId)) {
-            const timeoutId = window.setTimeout(() => {
-              queuedSentTimeoutsRef.current.delete(messageId)
-              setDelayedQueuedUserMessageIds((ids) =>
-                ids.filter((id) => id !== messageId),
-              )
-              markJustSent(messageId)
-            }, QUEUED_USER_MESSAGE_EXIT_MS)
-            queuedSentTimeoutsRef.current.set(messageId, timeoutId)
-          }
-        }
-        return next
-      })
-    }
-
-    setQueuedUserMessages((current) => {
-      const next = current.filter((message) => !persistedIds.has(message.id))
-      return next.length === current.length ? current : next
-    })
-  }, [events, markJustSent, queuedUserMessages])
-
-  useEffect(
-    () => () => {
-      for (const timeoutId of justSentTimeoutsRef.current.values()) {
-        window.clearTimeout(timeoutId)
-      }
-      justSentTimeoutsRef.current.clear()
-      for (const timeoutId of queuedSentTimeoutsRef.current.values()) {
-        window.clearTimeout(timeoutId)
-      }
-      queuedSentTimeoutsRef.current.clear()
-    },
-    [],
-  )
 
   const clearOptimisticMessage = useCallback((messageId: string) => {
     setOptimisticEvents((current) =>
@@ -391,7 +356,6 @@ export function useStreamingChat({
     liveTasks,
     optimisticEvents,
     queuedUserMessages,
-    delayedQueuedUserMessageIds,
     justSentUserMessageIds,
     runtimeStatusText,
     streamingText,

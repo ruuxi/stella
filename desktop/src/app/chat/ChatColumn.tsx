@@ -225,9 +225,6 @@ export const ChatColumn = memo(function ChatColumn({
           isStreaming={conversation.streaming.isStreaming}
           pendingUserMessageId={conversation.streaming.pendingUserMessageId}
           queuedUserMessages={conversation.streaming.queuedUserMessages}
-          delayedQueuedUserMessageIds={
-            conversation.streaming.delayedQueuedUserMessageIds
-          }
           optimisticUserMessageIds={conversation.streaming.optimisticUserMessageIds}
           selfModMap={conversation.streaming.selfModMap}
           hasOlderEvents={conversation.history.hasOlderEvents}
