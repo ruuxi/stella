@@ -223,25 +223,7 @@ export function ProviderModelPanel({
       role="group"
       aria-label={ariaLabel}
     >
-      <div className="model-picker-current" aria-live="polite">
-        <span className="model-picker-current-kicker">Selected</span>
-        <span className="model-picker-current-label">{currentLabel}</span>
-      </div>
       <aside className="model-picker-rail" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!value}
-          className="model-picker-rail-item model-picker-rail-item--default"
-          data-selected={!value || undefined}
-          onClick={() => handlePick(DEFAULT_TARGET)}
-          disabled={disabled}
-        >
-          <span className="model-picker-rail-label">
-            {value ? "Use Stella Recommended" : defaultLabel}
-          </span>
-        </button>
-        <div className="model-picker-rail-divider" />
         {tabs.map((tab) => {
           const isActive = tab.key === activeProvider;
           const connected = isProviderConnected(tab.key);
@@ -282,6 +264,8 @@ export function ProviderModelPanel({
             filteredModels={filteredModels}
             onPick={handlePick}
             isStella={activeTab.key === STELLA_PROVIDER_KEY}
+            currentLabel={currentLabel}
+            defaultLabel={defaultLabel}
             apiKey={findApiKey(credentials.apiKeys, activeTab.key)}
             oauthProvider={findOauthProvider(
               credentials.oauthProviders,
@@ -330,6 +314,8 @@ interface ProviderPaneProps {
   filteredModels: CatalogModel[];
   onPick: (modelId: string) => void;
   isStella: boolean;
+  currentLabel: string;
+  defaultLabel: string;
   apiKey: ReturnType<typeof findApiKey>;
   oauthProvider: ReturnType<typeof findOauthProvider>;
   oauthCredential: ReturnType<typeof findOauthCredential>;
@@ -359,6 +345,8 @@ function ProviderPane({
   filteredModels,
   onPick,
   isStella,
+  currentLabel,
+  defaultLabel,
   apiKey,
   oauthProvider,
   oauthCredential,
@@ -404,10 +392,17 @@ function ProviderPane({
     authDescription = `Add a ${tab.label} API key to use this provider. Stella stores the key on this device only.`;
   }
 
+  const isDefaultSelected = !selectedModelId;
+
   return (
     <div className="model-picker-pane-inner">
       <header className="model-picker-pane-header">
-        <div className="model-picker-pane-title">{tab.label}</div>
+        <div className="model-picker-pane-title">
+          <span className="model-picker-pane-kicker">Selected</span>
+          <span className="model-picker-pane-current" title={currentLabel}>
+            {currentLabel}
+          </span>
+        </div>
         {isLocal ? (
           <span className="model-picker-pane-badge" data-tone="ok">
             Ready
@@ -563,6 +558,26 @@ function ProviderPane({
             />
           </div>
           <div className="model-picker-models" role="listbox">
+            {isStella && !query.trim() ? (
+              <button
+                type="button"
+                role="option"
+                aria-selected={isDefaultSelected}
+                className="model-picker-model model-picker-model--default"
+                data-selected={isDefaultSelected || undefined}
+                onClick={() => onPick(DEFAULT_TARGET)}
+                disabled={disabled}
+              >
+                <span className="model-picker-model-text">
+                  <span className="model-picker-model-name">
+                    {defaultLabel}
+                  </span>
+                </span>
+                {isDefaultSelected ? (
+                  <Check size={13} className="model-picker-model-check" />
+                ) : null}
+              </button>
+            ) : null}
             {filteredModels.length === 0 ? (
               <div className="model-picker-empty">
                 {tab.models.length === 0

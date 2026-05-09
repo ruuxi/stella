@@ -570,71 +570,71 @@ export function AgentModelPicker({
       className={["agent-model-picker", className].filter(Boolean).join(" ")}
     >
       <div className="agent-model-picker-header">
-        <div className="agent-model-picker-toggle" role="tablist">
-          {configurableAgents.length === 0
-            ? null
-            : configurableAgents.map((agent) => {
-                const isActive = agent.key === activeAgent;
-                return (
-                  <button
-                    key={agent.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    className="agent-model-picker-toggle-btn"
-                    data-active={isActive || undefined}
-                    onClick={() => setActiveAgent(agent.key)}
-                    disabled={pendingAgent !== null}
-                    title={agent.desc}
-                  >
-                    {agent.label}
-                  </button>
-                );
-              })}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeImage}
-            className="agent-model-picker-toggle-btn"
-            data-active={activeImage || undefined}
-            onClick={() => setActiveAgent(IMAGE_TARGET)}
-            disabled={pendingAgent !== null}
-            title="Image generation provider"
-          >
-            Image
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeVoice}
-            className="agent-model-picker-toggle-btn"
-            data-active={activeVoice || undefined}
-            onClick={() => setActiveAgent(VOICE_TARGET)}
-            disabled={pendingAgent !== null}
-            title="Voice provider"
-          >
-            Voice
-          </button>
+        <div
+          className="agent-model-picker-toggle"
+          role="tablist"
+          aria-label="Agent"
+        >
+          {(() => {
+            const priority = ["orchestrator", "general"];
+            const head = priority
+              .map((key) => configurableAgents.find((a) => a.key === key))
+              .filter(
+                (a): a is (typeof configurableAgents)[number] => a !== undefined,
+              );
+            const tail = configurableAgents.filter(
+              (a) => !priority.includes(a.key),
+            );
+            const agentBtn = (agent: (typeof configurableAgents)[number]) => {
+              const isActive = agent.key === activeAgent;
+              return (
+                <button
+                  key={agent.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className="agent-model-picker-toggle-btn"
+                  data-active={isActive || undefined}
+                  onClick={() => setActiveAgent(agent.key)}
+                  disabled={pendingAgent !== null}
+                  title={agent.desc}
+                >
+                  {agent.label}
+                </button>
+              );
+            };
+            return (
+              <>
+                {head.map(agentBtn)}
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeImage}
+                  className="agent-model-picker-toggle-btn"
+                  data-active={activeImage || undefined}
+                  onClick={() => setActiveAgent(IMAGE_TARGET)}
+                  disabled={pendingAgent !== null}
+                  title="Image generation provider"
+                >
+                  Image
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeVoice}
+                  className="agent-model-picker-toggle-btn"
+                  data-active={activeVoice || undefined}
+                  onClick={() => setActiveAgent(VOICE_TARGET)}
+                  disabled={pendingAgent !== null}
+                  title="Voice provider"
+                >
+                  Voice
+                </button>
+                {tail.map(agentBtn)}
+              </>
+            );
+          })()}
         </div>
-        {activeProviderSetting ? null : (
-          <div className="agent-model-picker-reasoning">
-            <span>Reasoning</span>
-            <Select
-              value={currentReasoningEffort}
-              onValueChange={(value) => {
-                if (isReasoningEffort(value)) {
-                  void handleReasoningEffortSelect(value);
-                }
-              }}
-              disabled={pendingAgent !== null}
-              aria-label="Reasoning effort"
-              options={REASONING_EFFORT_OPTIONS.map((option) => ({
-                value: option.id,
-                label: option.label,
-              }))}
-            />
-          </div>
-        )}
         <button
           type="button"
           className="agent-model-picker-refresh"
@@ -702,19 +702,38 @@ export function AgentModelPicker({
       )}
 
       {activeProviderSetting ? null : (
-        <button
-          type="button"
-          className="agent-model-picker-toggle-more"
-          onClick={() => setExpanded((prev) => !prev)}
-          aria-expanded={expanded}
-        >
-          <span>{expanded ? "Less options" : "More options"}</span>
-          <ChevronDown
-            size={14}
-            strokeWidth={1.75}
-            data-rotated={expanded || undefined}
-          />
-        </button>
+        <div className="agent-model-picker-footer">
+          <div className="agent-model-picker-reasoning">
+            <span>Reasoning</span>
+            <Select
+              value={currentReasoningEffort}
+              onValueChange={(value) => {
+                if (isReasoningEffort(value)) {
+                  void handleReasoningEffortSelect(value);
+                }
+              }}
+              disabled={pendingAgent !== null}
+              aria-label="Reasoning effort"
+              options={REASONING_EFFORT_OPTIONS.map((option) => ({
+                value: option.id,
+                label: option.label,
+              }))}
+            />
+          </div>
+          <button
+            type="button"
+            className="agent-model-picker-toggle-more"
+            onClick={() => setExpanded((prev) => !prev)}
+            aria-expanded={expanded}
+          >
+            <span>{expanded ? "Less options" : "More options"}</span>
+            <ChevronDown
+              size={14}
+              strokeWidth={1.75}
+              data-rotated={expanded || undefined}
+            />
+          </button>
+        </div>
       )}
     </div>
   );
