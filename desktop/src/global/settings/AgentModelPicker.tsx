@@ -15,8 +15,15 @@ import {
   normalizeModelOverrides,
   type ModelDefaultEntry,
 } from "@/global/settings/lib/model-defaults";
+import type { ProviderGroup } from "@/global/settings/lib/model-catalog";
 import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
 import "./AgentModelPicker.css";
+
+type ImageGenerationProvider = "stella" | "openai" | "openrouter" | "fal";
+type ImageGenerationPreferences = {
+  provider: ImageGenerationProvider;
+  model?: string;
+};
 
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
@@ -24,6 +31,7 @@ type LocalModelPreferences = {
   reasoningEfforts: Record<string, ReasoningEffort>;
   agentRuntimeEngine: "default" | "claude_code_local";
   maxAgentConcurrency: number;
+  imageGeneration: ImageGenerationPreferences;
 };
 
 type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -37,6 +45,91 @@ const REASONING_EFFORT_OPTIONS: Array<{
   { id: "medium", label: "Medium" },
   { id: "high", label: "High" },
   { id: "xhigh", label: "Extra" },
+];
+
+const IMAGE_TARGET = "__image__";
+const DEFAULT_IMAGE_GENERATION: ImageGenerationPreferences = {
+  provider: "stella",
+};
+
+const DEFAULT_IMAGE_MODEL_BY_PROVIDER: Record<
+  Exclude<ImageGenerationProvider, "stella">,
+  string
+> = {
+  openai: "openai/gpt-image-1.5",
+  openrouter: "openrouter/openai/gpt-image-2",
+  fal: "fal/openai/gpt-image-2",
+};
+
+const IMAGE_PROVIDER_GROUPS: ProviderGroup[] = [
+  {
+    provider: "stella",
+    providerName: "Stella",
+    models: [
+      {
+        id: "stella",
+        name: "Stella",
+        provider: "stella",
+        providerName: "Stella",
+        modelId: "stella",
+        source: "stella",
+      },
+    ],
+  },
+  {
+    provider: "openai",
+    providerName: "OpenAI",
+    models: [
+      {
+        id: "openai/gpt-image-1.5",
+        name: "GPT Image 1.5",
+        provider: "openai",
+        providerName: "OpenAI",
+        modelId: "gpt-image-1.5",
+        upstreamModel: "gpt-image-1.5",
+        source: "local",
+      },
+      {
+        id: "openai/gpt-image-1",
+        name: "GPT Image 1",
+        provider: "openai",
+        providerName: "OpenAI",
+        modelId: "gpt-image-1",
+        upstreamModel: "gpt-image-1",
+        source: "local",
+      },
+    ],
+  },
+  {
+    provider: "openrouter",
+    providerName: "OpenRouter",
+    models: [
+      {
+        id: "openrouter/openai/gpt-image-2",
+        name: "GPT Image 2",
+        provider: "openrouter",
+        providerName: "OpenRouter",
+        modelId: "openai/gpt-image-2",
+        upstreamModel: "openai/gpt-image-2",
+        source: "local",
+      },
+    ],
+  },
+  {
+    provider: "fal",
+    providerName: "fal",
+    models: [
+      {
+        id: "fal/openai/gpt-image-2",
+        name: "GPT Image 2",
+        provider: "fal",
+        providerName: "fal",
+        modelId: "openai/gpt-image-2",
+        upstreamModel: "openai/gpt-image-2",
+        source: "local",
+      },
+    ],
+  },
 ];
 
 function isReasoningEffort(value: string): value is ReasoningEffort {
@@ -150,15 +243,17 @@ export function AgentModelPicker({
   }, [defaultModelMap, preferences]);
 
   const [activeAgent, setActiveAgent] = useState<string>("orchestrator");
+  const activeImage = activeAgent === IMAGE_TARGET;
 
   // Snap to the first available configurable agent if `orchestrator` is
   // somehow missing from the catalog. We don't auto-jump after the user has
   // picked a tab — only when the active agent isn't actually configurable.
   useEffect(() => {
+    if (activeImage) return;
     if (configurableAgents.length === 0) return;
     if (configurableAgents.some((agent) => agent.key === activeAgent)) return;
     setActiveAgent(configurableAgents[0].key);
-  }, [activeAgent, configurableAgents]);
+  }, [activeAgent, activeImage, configurableAgents]);
 
   const handleSelect = useCallback(
     async (value: string) => {
@@ -194,6 +289,53 @@ export function AgentModelPicker({
       }
     },
     [activeAgent, onSelected, pendingAgent, preferences],
+  );
+
+  const handleImageSelect = useCallback(
+    async (value: string) => {
+      if (!preferences || pendingAgent) return;
+      const previousImageGeneration =
+        preferences.imageGeneration ?? DEFAULT_IMAGE_GENERATION;
+      const nextImageGeneration: ImageGenerationPreferences =
+        value === "" || value === "stella"
+          ? { provider: "stella" }
+          : value.startsWith("openai/")
+            ? { provider: "openai", model: value }
+            : value.startsWith("openrouter/")
+              ? { provider: "openrouter", model: value }
+              : value.startsWith("fal/")
+                ? { provider: "fal", model: value }
+                : { provider: "stella" };
+
+      setPendingAgent(IMAGE_TARGET);
+      setPreferences({
+        ...preferences,
+        imageGeneration: nextImageGeneration,
+      });
+      try {
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.({
+            imageGeneration: nextImageGeneration,
+          });
+        if (saved) setPreferences(saved);
+        setError(null);
+        onSelected?.();
+      } catch (caught) {
+        setPreferences((current) =>
+          current
+            ? { ...current, imageGeneration: previousImageGeneration }
+            : current,
+        );
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Failed to update image setting.",
+        );
+      } finally {
+        setPendingAgent(null);
+      }
+    },
+    [onSelected, pendingAgent, preferences],
   );
 
   const handleReasoningEffortSelect = useCallback(
@@ -237,23 +379,49 @@ export function AgentModelPicker({
     [activeAgent, onSelected, pendingAgent, preferences],
   );
 
-  const ready = preferences !== null && modelDefaults !== undefined;
-  const current = overrides[activeAgent] ?? "";
-  const defaultLabel = ready
-    ? getDefaultModelOptionLabel(
-        activeAgent,
-        defaultModelMap,
-        resolvedDefaultModelMap,
-        modelNamesById,
-      )
-    : "Default";
-  const currentLabel = ready
+  const ready =
+    preferences !== null && (activeImage || modelDefaults !== undefined);
+  const imagePreferences =
+    preferences?.imageGeneration ?? DEFAULT_IMAGE_GENERATION;
+  const current = activeImage
+    ? imagePreferences.provider === "stella"
+      ? ""
+      : (imagePreferences.model ??
+        DEFAULT_IMAGE_MODEL_BY_PROVIDER[imagePreferences.provider])
+    : (overrides[activeAgent] ?? "");
+  const defaultLabel =
+    !activeImage && ready
+      ? getDefaultModelOptionLabel(
+          activeAgent,
+          defaultModelMap,
+          resolvedDefaultModelMap,
+          modelNamesById,
+        )
+      : activeImage
+        ? "Stella"
+        : "Default";
+  const imageModelNamesById = useMemo(() => {
+    const next = new Map<string, string>();
+    for (const group of IMAGE_PROVIDER_GROUPS) {
+      for (const model of group.models) {
+        next.set(model.id, model.name);
+      }
+    }
+    next.set("stella", "Stella");
+    return next;
+  }, []);
+  const currentLabel = activeImage
     ? current
-      ? getModelDisplayLabel(current, modelNamesById)
-      : defaultLabel
-    : "Loading…";
+      ? getModelDisplayLabel(current, imageModelNamesById)
+      : "Stella"
+    : ready
+      ? current
+        ? getModelDisplayLabel(current, modelNamesById)
+        : defaultLabel
+      : "Loading…";
   const currentReasoningEffort =
     preferences?.reasoningEfforts?.[activeAgent] ?? "medium";
+  const showFullPanel = expanded || activeImage;
 
   return (
     <div
@@ -281,6 +449,18 @@ export function AgentModelPicker({
                   </button>
                 );
               })}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeImage}
+            className="agent-model-picker-toggle-btn"
+            data-active={activeImage || undefined}
+            onClick={() => setActiveAgent(IMAGE_TARGET)}
+            disabled={pendingAgent !== null}
+            title="Image generation provider"
+          >
+            Image
+          </button>
         </div>
         <button
           type="button"
@@ -304,7 +484,7 @@ export function AgentModelPicker({
         </p>
       ) : null}
 
-      {expanded ? (
+      {showFullPanel ? (
         <>
           <ProviderModelPanel
             value={current}
@@ -312,18 +492,23 @@ export function AgentModelPicker({
             currentLabel={currentLabel}
             reasoningEffort={currentReasoningEffort}
             reasoningEffortOptions={REASONING_EFFORT_OPTIONS}
-            groups={groups}
-            excludeModelId={STELLA_DEFAULT_MODEL}
+            groups={activeImage ? IMAGE_PROVIDER_GROUPS : groups}
+            excludeModelId={activeImage ? undefined : STELLA_DEFAULT_MODEL}
             disabled={!ready || pendingAgent !== null}
-            ariaLabel={`${activeAgent} model picker`}
-            onSelect={handleSelect}
+            ariaLabel={
+              activeImage
+                ? "Image provider picker"
+                : `${activeAgent} model picker`
+            }
+            onSelect={activeImage ? handleImageSelect : handleSelect}
             onReasoningEffortSelect={(value) => {
               if (isReasoningEffort(value)) {
                 void handleReasoningEffortSelect(value);
               }
             }}
+            showReasoning={!activeImage}
           />
-          <LocalRuntimeOptions />
+          {activeImage ? null : <LocalRuntimeOptions />}
         </>
       ) : (
         <CompactStellaModelList
@@ -335,19 +520,21 @@ export function AgentModelPicker({
         />
       )}
 
-      <button
-        type="button"
-        className="agent-model-picker-toggle-more"
-        onClick={() => setExpanded((prev) => !prev)}
-        aria-expanded={expanded}
-      >
-        <span>{expanded ? "Less options" : "More options"}</span>
-        <ChevronDown
-          size={14}
-          strokeWidth={1.75}
-          data-rotated={expanded || undefined}
-        />
-      </button>
+      {activeImage ? null : (
+        <button
+          type="button"
+          className="agent-model-picker-toggle-more"
+          onClick={() => setExpanded((prev) => !prev)}
+          aria-expanded={expanded}
+        >
+          <span>{expanded ? "Less options" : "More options"}</span>
+          <ChevronDown
+            size={14}
+            strokeWidth={1.75}
+            data-rotated={expanded || undefined}
+          />
+        </button>
+      )}
     </div>
   );
 }

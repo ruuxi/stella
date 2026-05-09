@@ -950,6 +950,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
         generalAgentEngine: "default" | "claude_code_local";
         selfModAgentEngine: "default" | "claude_code_local";
         maxAgentConcurrency: number;
+        imageGeneration: {
+          provider: "stella" | "openai" | "openrouter" | "fal";
+          model?: string;
+        };
       } | null>,
     setLocalModelPreferences: (payload: {
       defaultModels?: Record<string, string>;
@@ -961,6 +965,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       generalAgentEngine?: "default" | "claude_code_local";
       selfModAgentEngine?: "default" | "claude_code_local";
       maxAgentConcurrency?: number;
+      imageGeneration?: {
+        provider: "stella" | "openai" | "openrouter" | "fal";
+        model?: string;
+      };
     }) =>
       ipcRenderer.invoke(IPC_PREFERENCES_SET_MODELS, payload) as Promise<{
         defaultModels: Record<string, string>;
@@ -972,6 +980,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
         generalAgentEngine: "default" | "claude_code_local";
         selfModAgentEngine: "default" | "claude_code_local";
         maxAgentConcurrency: number;
+        imageGeneration: {
+          provider: "stella" | "openai" | "openrouter" | "fal";
+          model?: string;
+        };
       } | null>,
     listLlmCredentials: () =>
       ipcRenderer.invoke("llmCredentials:list") as Promise<

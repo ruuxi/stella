@@ -50,6 +50,7 @@ interface ProviderModelPanelProps {
   /** Empty string ⇒ default. Any other value ⇒ that model id. */
   onSelect: (value: string) => void;
   onReasoningEffortSelect: (value: string) => void;
+  showReasoning?: boolean;
   disabled?: boolean;
   ariaLabel?: string;
 }
@@ -93,6 +94,7 @@ export function ProviderModelPanel({
   excludeModelId,
   onSelect,
   onReasoningEffortSelect,
+  showReasoning = true,
   disabled = false,
   ariaLabel,
 }: ProviderModelPanelProps) {
@@ -133,7 +135,9 @@ export function ProviderModelPanel({
     [activeProvider, tabs],
   );
   const canEditReasoning =
-    Boolean(value) && providerOf(value) !== STELLA_PROVIDER_KEY;
+    showReasoning &&
+    Boolean(value) &&
+    providerOf(value) !== STELLA_PROVIDER_KEY;
 
   const filteredModels = useMemo(() => {
     if (!activeTab) return [];
