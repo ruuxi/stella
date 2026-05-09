@@ -105,6 +105,29 @@
   margin: 0;
 }
 
+[data-component="toast"] [data-slot="toast-action-button"] {
+  align-self: flex-start;
+  margin-top: 8px;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--border-base);
+  background: var(--button-primary-bg, var(--accent));
+  color: var(--button-primary-text, var(--accent-foreground));
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: default;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+
+[data-component="toast"] [data-slot="toast-action-button"]:hover {
+  background: var(--button-primary-hover-bg, var(--accent));
+  border-color: color-mix(in oklch, var(--border-base) 70%, var(--foreground));
+  transform: translateY(-1px);
+}
+
 [data-component="toast"] [data-slot="toast-close-button"] {
   flex-shrink: 0;
   display: flex;

@@ -13,13 +13,20 @@ interface Toast {
   description?: string;
   variant?: "default" | "success" | "error" | "loading";
   duration?: number;
+  action?: ToastAction;
 }
 
-interface ToastOptions {
+type ToastAction = {
+  label: string;
+  onClick: () => void;
+};
+
+export interface ToastOptions {
   title?: string;
   description?: string;
   variant?: "default" | "success" | "error" | "loading";
   duration?: number;
+  action?: ToastAction;
 }
 
 const ToastContext = React.createContext<ToastContextValue | null>(null);
@@ -118,11 +125,25 @@ interface ToastItemProps {
 }
 
 function ToastItem({ toast, onClose }: ToastItemProps) {
+  const handleActionClick = React.useCallback(() => {
+    toast.action?.onClick();
+    onClose();
+  }, [onClose, toast.action]);
+
   return (
     <li data-component="toast" data-variant={toast.variant}>
       <div data-slot="toast-content">
         {toast.title && <div data-slot="toast-title">{toast.title}</div>}
         {toast.description && <div data-slot="toast-description">{toast.description}</div>}
+        {toast.action && (
+          <button
+            data-slot="toast-action-button"
+            onClick={handleActionClick}
+            type="button"
+          >
+            {toast.action.label}
+          </button>
+        )}
       </div>
       <button data-slot="toast-close-button" onClick={onClose} type="button">
         <X size={16} />
