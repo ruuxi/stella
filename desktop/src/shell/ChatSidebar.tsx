@@ -42,6 +42,7 @@ import {
   updateComposerTextareaExpansion,
   useAnimatedComposerShell,
 } from "@/shared/hooks/use-animated-composer-shell";
+import { smoothScrollTo } from "@/shared/lib/smooth-scroll";
 import "./chat-sidebar.css";
 
 // Legend List sums numeric paddings into its content length; passing
@@ -52,6 +53,9 @@ const SIDEBAR_CONTENT_STYLE = {
   paddingTop: 8,
   paddingBottom: 4,
 } as const;
+
+const SENT_MESSAGE_SCROLL_NUDGE_MS = 360;
+const SENT_MESSAGE_SCROLL_SETTLE_DELAY_MS = 80;
 
 interface ChatSidebarOpenOptions {
   /** When provided, attaches/replaces the current chat context before opening. */
@@ -229,35 +233,66 @@ export function ChatPanelTab(
       syncOnNextFrame: true,
     });
 
-    const handleSubmit = useCallback(
-      (event: React.FormEvent) => {
-        event.preventDefault();
-        const { canSubmit, trimmedMessage } = deriveComposerState({
-          message: inputText,
-          chatContext,
+    const nudgeToCurrentBottomAfterSend = useCallback(() => {
+      const scrollToCurrentBottom = () => {
+        const el = sidebarScroll.listRef.current?.getScrollableNode() as
+          | HTMLElement
+          | null;
+        if (!el) return;
+        smoothScrollTo(
+          el,
+          el.scrollHeight - el.clientHeight,
+          SENT_MESSAGE_SCROLL_NUDGE_MS,
+        );
+      };
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToCurrentBottom();
+          window.setTimeout(
+            scrollToCurrentBottom,
+            SENT_MESSAGE_SCROLL_SETTLE_DELAY_MS,
+          );
         });
-        if (!canSubmit) return;
-        onSend(trimmedMessage, chatContext, selectedText);
-        setInputText("");
-        setChatContext(null);
-        setSelectedText(null);
-        setSidebarExpanded(false);
-      },
-      [inputText, chatContext, onSend, selectedText, setChatContext, setSelectedText],
-    );
+      });
+    }, [sidebarScroll.listRef]);
 
-    const submitFromDictation = useCallback(() => {
+    const sendCurrentMessage = useCallback(() => {
       const { canSubmit, trimmedMessage } = deriveComposerState({
         message: inputText,
         chatContext,
       });
       if (!canSubmit) return;
+      const shouldNudgeAfterSend = sidebarScrollApi.getIsNearBottom();
       onSend(trimmedMessage, chatContext, selectedText);
       setInputText("");
       setChatContext(null);
       setSelectedText(null);
       setSidebarExpanded(false);
-    }, [inputText, chatContext, onSend, selectedText, setChatContext, setSelectedText]);
+      if (shouldNudgeAfterSend) {
+        nudgeToCurrentBottomAfterSend();
+      }
+    }, [
+      inputText,
+      chatContext,
+      nudgeToCurrentBottomAfterSend,
+      onSend,
+      selectedText,
+      setChatContext,
+      setSelectedText,
+      sidebarScrollApi,
+    ]);
+
+    const handleSubmit = useCallback(
+      (event: React.FormEvent) => {
+        event.preventDefault();
+        sendCurrentMessage();
+      },
+      [sendCurrentMessage],
+    );
+
+    const submitFromDictation = useCallback(() => {
+      sendCurrentMessage();
+    }, [sendCurrentMessage]);
 
     useEffect(() => {
       submitFromDictationRef.current = submitFromDictation;
