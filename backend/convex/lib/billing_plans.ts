@@ -9,7 +9,6 @@ export type PlanConfig = {
   rollingWindowHours: number;
   weeklyLimitUsd: number;
   monthlyLimitUsd: number;
-  tokensPerMinute: number;
 };
 
 export type PlanCatalog = Record<SubscriptionPlan, PlanConfig>;
@@ -21,14 +20,12 @@ const DEFAULT_FREE_PLAN: PlanConfig = {
   rollingWindowHours: 5,
   weeklyLimitUsd: 2,
   monthlyLimitUsd: 4,
-  tokensPerMinute: 100_000,
 };
 
 const DEFAULT_INCLUDED_USAGE_UTILIZATION_RATE = 0.7;
 const DEFAULT_ROLLING_WINDOW_HOURS = 5;
 const DEFAULT_ROLLING_LIMIT_SHARE = 0.2;
 const DEFAULT_WEEKLY_LIMIT_SHARE = 0.5;
-const DEFAULT_TOKENS_PER_MINUTE_PER_INCLUDED_DOLLAR = 500_000 / 60;
 
 const roundUsd = (value: number): number =>
   Math.max(0, Math.round(value * 100) / 100);
@@ -64,10 +61,6 @@ export const buildPaidPlanConfig = (
     rollingWindowHours: DEFAULT_ROLLING_WINDOW_HOURS,
     weeklyLimitUsd: roundUsd(monthlyLimitUsd * DEFAULT_WEEKLY_LIMIT_SHARE),
     monthlyLimitUsd,
-    tokensPerMinute: Math.max(
-      1,
-      Math.round(monthlyLimitUsd * DEFAULT_TOKENS_PER_MINUTE_PER_INCLUDED_DOLLAR),
-    ),
   };
 };
 
@@ -112,7 +105,6 @@ const mergePlanOverride = (
     rollingWindowHours: parsePositiveNumber(record.rollingWindowHours, fallback.rollingWindowHours),
     weeklyLimitUsd: parsePositiveNumber(record.weeklyLimitUsd, fallback.weeklyLimitUsd),
     monthlyLimitUsd: parsePositiveNumber(record.monthlyLimitUsd, fallback.monthlyLimitUsd),
-    tokensPerMinute: parsePositiveNumber(record.tokensPerMinute, fallback.tokensPerMinute),
   };
 };
 

@@ -32,7 +32,6 @@ export type ManagedModelAccess = {
   modelAudience: ManagedModelAudience;
   retryAfterMs: number;
   message: string;
-  tokensPerMinute: number;
 };
 
 const toLogPayload = (args: ManagedUsageLogArgs) => ({
