@@ -312,6 +312,37 @@ describe("self-mod HMR controller", () => {
     }
   });
 
+  it("returns shell-guard changed paths from the Vite endpoint", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/end-shell-mutation")) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            changedPaths: ["desktop/src/routeTree.gen.ts"],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+    const controller = createSelfModHmrController({
+      enabled: true,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: makeTempRoot(),
+    });
+
+    try {
+      await expect(controller.endShellMutationGuard()).resolves.toEqual({
+        ok: true,
+        changedPaths: ["desktop/src/routeTree.gen.ts"],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("discards only Vite-trackable paths after a failed apply", async () => {
     const originalFetch = globalThis.fetch;
     let body: unknown = null;

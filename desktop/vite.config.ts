@@ -692,6 +692,19 @@ function selfModHmrControl(): Plugin {
     shellSnapshotPaths.add(absPath)
   }
 
+  const promoteSuppressedShellUpdatePaths = (): string[] => {
+    const promoted: string[] = []
+    for (const absPath of suppressedHotUpdatePaths) {
+      if (!isViteTrackableAbsolutePath(absPath)) continue
+      const repoRelative = normalizeContentionPath(absPath, STELLA_REPO_ROOT)
+      if (!repoRelative) continue
+      shellSnapshotPaths.delete(absPath)
+      trackPath(absPath)
+      promoted.push(repoRelative)
+    }
+    return promoted
+  }
+
   const releaseShellSnapshotPaths = () => {
     for (const absPath of shellSnapshotPaths) {
       untrackPath(absPath)
@@ -1164,7 +1177,9 @@ function selfModHmrControl(): Plugin {
 
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/end-shell-mutation`) {
           shellMutationDepth = Math.max(0, shellMutationDepth - 1)
+          let changedPaths: string[] = []
           if (shellMutationDepth === 0) {
+            changedPaths = promoteSuppressedShellUpdatePaths()
             releaseShellSnapshotPaths()
           }
           sendJson(200, {
@@ -1172,6 +1187,7 @@ function selfModHmrControl(): Plugin {
             shellMutationDepth,
             inFlightPaths: inFlightPaths.size,
             shellSnapshotPaths: shellSnapshotPaths.size,
+            changedPaths,
           })
           return
         }

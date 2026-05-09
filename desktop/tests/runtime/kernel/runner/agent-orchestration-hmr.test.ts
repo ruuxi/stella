@@ -28,6 +28,7 @@ type MockRuntimeState = {
     | "safe_shell"
     | "safe_shell_alias"
     | "real_shell_write"
+    | "shell_suppressed_route_tree"
     | "shell_alias_write"
     | "running_shell"
     | "parallel_running_shell";
@@ -41,6 +42,7 @@ const mockRuntime: MockRuntimeState = {
     | "safe_shell"
     | "safe_shell_alias"
     | "real_shell_write"
+    | "shell_suppressed_route_tree"
     | "shell_alias_write"
     | "running_shell"
     | "parallel_running_shell",
@@ -123,6 +125,12 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
                         ),
                       ].join(" "),
                     },
+                    context,
+                  )
+              : runtime.mode === "shell_suppressed_route_tree"
+                ? await opts.toolExecutor(
+                    "exec_command",
+                    { cmd: "cd desktop && bunx @tanstack/router-cli generate" },
                     context,
                   )
               : runtime.mode === "shell_alias_write"
@@ -535,6 +543,67 @@ describe("agent orchestration self-mod HMR tracking", () => {
     );
     expect(controller.endShellMutationGuard).toHaveBeenCalledTimes(1);
     expect(callOrder).toEqual(["guard-begin", "record-write", "guard-end"]);
+  });
+
+  it("records suppressed Vite shell updates when producedFiles misses a generated file", async () => {
+    const root = await makeTempRoot();
+    const routeTreePath = path.join(root, "desktop/src/routeTree.gen.ts");
+    await mkdir(path.dirname(routeTreePath), { recursive: true });
+    await writeFile(routeTreePath, "export const routeTree = 'before';\n");
+    mockRuntime.root = root;
+    mockRuntime.mode = "shell_suppressed_route_tree";
+    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
+      .__stellaOrchHmrMock = mockRuntime;
+    const callOrder: string[] = [];
+    const controller = {
+      beginRun: vi.fn(),
+      recordWrite: vi.fn(async () => {
+        callOrder.push("record-write");
+      }),
+      beginShellMutationGuard: vi.fn(async () => {
+        callOrder.push("guard-begin");
+        return true;
+      }),
+      endShellMutationGuard: vi.fn(async () => {
+        callOrder.push("guard-end");
+        return {
+          ok: true,
+          changedPaths: ["desktop/src/routeTree.gen.ts"],
+        };
+      }),
+      hasRun: vi.fn(() => true),
+    };
+    const context = createTestContext(root, controller);
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "generate route tree",
+      prompt: "generate route tree",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({ status: "completed" });
+    expect(controller.beginShellMutationGuard).toHaveBeenCalledTimes(1);
+    expect(controller.recordWrite).toHaveBeenCalledWith(
+      expect.any(String),
+      [routeTreePath],
+      undefined,
+    );
+    expect(controller.endShellMutationGuard).toHaveBeenCalledTimes(1);
+    expect(callOrder).toEqual(["guard-begin", "guard-end", "record-write"]);
   });
 
   it("kills still-running guarded shell sessions and cancels self-mod finalize", async () => {
