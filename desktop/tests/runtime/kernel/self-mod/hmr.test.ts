@@ -175,6 +175,34 @@ describe("self-mod HMR controller", () => {
     ]);
   });
 
+  it("marks sidebar app metadata writes as full-window reload relevant", async () => {
+    const root = makeTempRoot();
+    const metadataPath = path.join(
+      root,
+      "desktop/src/app/launch-checklist/metadata.ts",
+    );
+    mkdirSync(path.dirname(metadataPath), { recursive: true });
+    writeFileSync(metadataPath, "export default { id: 'launch-checklist' };\n");
+    const controller = createSelfModHmrController({
+      enabled: false,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+
+    await controller.beginRun("run-a");
+    await controller.recordWrite("run-a", [metadataPath]);
+    const result = controller.finalize("run-a");
+
+    expect(result.appliedRuns).toHaveLength(1);
+    expect(result.appliedRuns[0]!.paths).toEqual([
+      "desktop/src/app/launch-checklist/metadata.ts",
+    ]);
+    expect(result.appliedRuns[0]!.fullReloadRelevantPaths).toEqual([
+      "desktop/src/app/launch-checklist/metadata.ts",
+    ]);
+    expect(result.hasFullReloadRelevantPaths).toBe(true);
+  });
+
   it("captures the generated route tree at finalize time", async () => {
     const root = makeTempRoot();
     const routePath = path.join(root, "desktop/src/routes/settings.tsx");
