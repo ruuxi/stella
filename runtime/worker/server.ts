@@ -997,6 +997,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       const {
         visibleUserPrompt,
         windowContextLabel,
+        appSelectionLabel,
         promptMessages,
         windowScreenshotAttachment,
       } = buildChatPromptMessages({
@@ -1033,11 +1034,14 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               ...(payload.locale ? { locale: payload.locale } : {}),
               ...(payload.messageMetadata ||
               windowContextLabel ||
+              appSelectionLabel ||
               windowPreviewImageUrl
                 ? {
                     metadata: {
                       ...(payload.messageMetadata ?? {}),
-                      ...(windowContextLabel || windowPreviewImageUrl
+                      ...(windowContextLabel ||
+                      appSelectionLabel ||
+                      windowPreviewImageUrl
                         ? {
                             context: {
                               ...(payload.messageMetadata?.context ?? {}),
@@ -1049,6 +1053,11 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
                               ...(windowPreviewImageUrl
                                 ? {
                                     windowPreviewImageUrl,
+                                  }
+                                : {}),
+                              ...(appSelectionLabel
+                                ? {
+                                    appSelectionLabel,
                                   }
                                 : {}),
                             },
@@ -1089,6 +1098,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         conversationId: payload.conversationId,
         visibleUserPrompt,
         windowContextLabel,
+        appSelectionLabel,
         promptMessages: (promptMessages ?? []).map((message, index) => ({
           index,
           uiVisibility: message.uiVisibility ?? "visible",

@@ -20,6 +20,29 @@ const buildWindowSnippet = (chatContext: ChatContext | null | undefined) => {
     .join(" - ");
 };
 
+const buildAppSelectionSnippet = (
+  chatContext: ChatContext | null | undefined,
+) => {
+  const selection = chatContext?.appSelection;
+  if (!selection?.snapshot?.trim()) return "";
+
+  const label = selection.label?.trim() || "Selected area";
+  return `<selected-stella-area label="${escapeXmlAttribute(label)}">\n${escapeXmlText(selection.snapshot.trim())}\n</selected-stella-area>`;
+};
+
+const escapeXmlAttribute = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+const escapeXmlText = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
 export const buildChatPromptMessages = ({
   userPrompt,
   selectedText,
@@ -28,12 +51,15 @@ export const buildChatPromptMessages = ({
 }: BuildChatPromptMessagesArgs): {
   visibleUserPrompt: string;
   windowContextLabel?: string;
+  appSelectionLabel?: string;
   promptMessages?: RuntimePromptMessage[];
   windowScreenshotAttachment?: RuntimeAttachmentRef;
 } => {
   const cleanedUserPrompt = userPrompt.trim();
   const selectedSnippet = selectedText?.trim() ?? "";
   const windowSnippet = buildWindowSnippet(chatContext);
+  const appSelectionSnippet = buildAppSelectionSnippet(chatContext);
+  const appSelectionLabel = chatContext?.appSelection?.label?.trim();
   const visibleParts: string[] = [];
   const hiddenContextParts: string[] = [];
   const windowScreenshotDataUrl = chatContext?.windowScreenshot?.dataUrl ?? "";
@@ -44,6 +70,12 @@ export const buildChatPromptMessages = ({
   if (windowSnippet) {
     hiddenContextParts.push(
       `<active-window context="The user's currently focused window. May or may not be relevant to their request.">${windowSnippet}</active-window>`,
+    );
+  }
+
+  if (appSelectionSnippet) {
+    hiddenContextParts.push(
+      `The user selected this specific area inside Stella. Treat it as the main referenced UI context when relevant.\n${appSelectionSnippet}`,
     );
   }
 
@@ -94,6 +126,7 @@ export const buildChatPromptMessages = ({
   return {
     visibleUserPrompt,
     ...(windowSnippet ? { windowContextLabel: windowSnippet } : {}),
+    ...(appSelectionLabel ? { appSelectionLabel } : {}),
     ...(promptMessages.length > 0 ? { promptMessages } : {}),
     ...(windowScreenshotAttachment ? { windowScreenshotAttachment } : {}),
   };

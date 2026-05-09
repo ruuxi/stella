@@ -7,6 +7,7 @@ import {
   type InlineWorkingIndicatorMountProps,
 } from "./InlineWorkingIndicator";
 import {
+  ComposerAppSelectionContextSection,
   ComposerCaptureContextSection,
   ComposerFileContextSection,
   ComposerSelectedTextContextSection,
@@ -63,6 +64,11 @@ export function ComposerContextRow({
         variant={variant}
         selectedText={selectedText}
         setSelectedText={setSelectedText}
+        setChatContext={setChatContext}
+      />
+      <ComposerAppSelectionContextSection
+        variant={variant}
+        chatContext={chatContext}
         setChatContext={setChatContext}
       />
       <ComposerWindowContextSection

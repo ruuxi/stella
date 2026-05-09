@@ -317,6 +317,10 @@
   white-space: nowrap;
 }
 
+.event-window-badge--app-selection {
+  align-self: flex-start;
+}
+
 .event-window-badge-hovercard:focus-within .event-window-badge {
   outline: none;
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 24%, transparent);

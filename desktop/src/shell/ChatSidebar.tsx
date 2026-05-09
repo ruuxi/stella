@@ -13,6 +13,7 @@ import {
   ComposerSuggestionContextRow,
 } from "@/app/chat/ComposerContextRow";
 import { ComposerAddMenu } from "@/app/chat/ComposerAddMenu";
+import { ComposerAreaSelectOverlay } from "@/app/chat/ComposerAreaSelectOverlay";
 import {
   ComposerMicButton,
   ComposerSubmitButton,
@@ -106,6 +107,7 @@ export function ChatPanelTab(
   ) {
     const [inputText, setInputText] = useState("");
     const [sidebarExpanded, setSidebarExpanded] = useState(false);
+    const [areaSelectActive, setAreaSelectActive] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     /*
@@ -331,6 +333,7 @@ export function ChatPanelTab(
                       className="composer-add-button"
                       title="Add"
                       setChatContext={setChatContext}
+                      onSelectArea={() => setAreaSelectActive(true)}
                       disabled={isStreaming}
                     />
 
@@ -375,6 +378,7 @@ export function ChatPanelTab(
                               className="composer-add-button composer-add-button--toolbar"
                               title="Add"
                               setChatContext={setChatContext}
+                              onSelectArea={() => setAreaSelectActive(true)}
                               disabled={isStreaming}
                             />
                           </div>
@@ -419,6 +423,11 @@ export function ChatPanelTab(
             onClose={() => setPreviewScreenshotIndex(null)}
           />
         )}
+        <ComposerAreaSelectOverlay
+          active={areaSelectActive}
+          setChatContext={setChatContext}
+          onCancel={() => setAreaSelectActive(false)}
+        />
       </div>
     );
 }

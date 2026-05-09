@@ -51,6 +51,7 @@ export type UserRowViewModel = {
   justSent?: boolean;
   windowLabel?: string;
   windowPreviewImageUrl?: string;
+  appSelectionLabel?: string;
   attachments: Attachment[];
   channelEnvelope?: ChannelEnvelope;
 };
@@ -149,6 +150,7 @@ type UserRowProps = {
 export const UserMessageRow = memo(
   function UserMessageRow({ row, onOpenAttachment }: UserRowProps) {
     const { text, windowLabel, attachments, channelEnvelope } = row;
+    const appSelectionLabel = row.appSelectionLabel?.trim();
     const windowPreviewImageUrl = sanitizeAttachmentImageUrl(
       row.windowPreviewImageUrl,
     );
@@ -179,6 +181,11 @@ export const UserMessageRow = memo(
                   />
                 </div>
               )}
+            </span>
+          )}
+          {appSelectionLabel && (
+            <span className="event-window-badge event-window-badge--app-selection">
+              {appSelectionLabel}
             </span>
           )}
           {hasChannelMeta && (
