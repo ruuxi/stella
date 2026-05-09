@@ -9,10 +9,16 @@ export const subscriptionPlanValidator = v.union(
   v.literal("ultra"),
 );
 
+export const billingUsageModeValidator = v.union(
+  v.literal("default"),
+  v.literal("unlimited"),
+);
+
 export const billingSchema = {
   billing_profiles: defineTable({
     ownerId: v.string(),
     activePlan: subscriptionPlanValidator,
+    usageMode: v.optional(billingUsageModeValidator),
     subscriptionStatus: v.string(),
     stripeCustomerId: v.string(),
     stripeSubscriptionId: v.string(),

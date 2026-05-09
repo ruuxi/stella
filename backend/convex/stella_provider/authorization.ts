@@ -115,9 +115,7 @@ export async function authorizeStellaRequest(
     const subscriptionCheck = await resolveManagedModelAccess(ctx, ownerId);
     modelAudience = subscriptionCheck.modelAudience;
 
-    const usageBlocked =
-      !subscriptionCheck.allowed && subscriptionCheck.plan !== "free";
-    if (usageBlocked) {
+    if (!subscriptionCheck.allowed) {
       const response = stellaProviderErrorResponse(
         429,
         subscriptionCheck.message,
@@ -134,7 +132,7 @@ export async function authorizeStellaRequest(
       return response;
     }
 
-    if (subscriptionCheck.plan !== "free") {
+    if (!subscriptionCheck.unlimited) {
       const rateCheck = await ctx.runMutation(
         internal.ai_proxy_data.checkProxyRateLimit,
         {

@@ -27,6 +27,7 @@ export type ManagedUsageLogArgs = {
 export type ManagedModelAccess = {
   allowed: boolean;
   plan: "free" | "go" | "pro" | "plus" | "ultra";
+  unlimited: boolean;
   downgraded: boolean;
   modelAudience: ManagedModelAudience;
   retryAfterMs: number;
