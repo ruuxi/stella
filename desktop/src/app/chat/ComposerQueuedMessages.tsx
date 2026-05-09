@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
-import { QUEUED_USER_MESSAGE_EXIT_MS } from "./queued-message-timing";
+
+const EXIT_MS = 260;
 
 type VisibleItem = QueuedUserMessage & { leaving: boolean };
 
@@ -48,7 +49,7 @@ export function ComposerQueuedMessages({
             setVisible((entries) =>
               entries.filter((entry) => entry.id !== item.id),
             );
-          }, QUEUED_USER_MESSAGE_EXIT_MS);
+          }, EXIT_MS);
           exitTimersRef.current.set(item.id, timeoutId);
         }
       }
