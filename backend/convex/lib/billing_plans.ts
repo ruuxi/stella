@@ -14,15 +14,14 @@ export type PlanConfig = {
 
 export type PlanCatalog = Record<SubscriptionPlan, PlanConfig>;
 
-/** Local/testing: very high caps so free-tier billing rarely blocks. Re-tighten before production. */
 const DEFAULT_FREE_PLAN: PlanConfig = {
   label: "Free",
   monthlyPriceCents: 0,
-  rollingLimitUsd: 50_000,
+  rollingLimitUsd: 1,
   rollingWindowHours: 5,
-  weeklyLimitUsd: 100_000,
-  monthlyLimitUsd: 100_000,
-  tokensPerMinute: 2_000_000_000,
+  weeklyLimitUsd: 2,
+  monthlyLimitUsd: 4,
+  tokensPerMinute: 100_000,
 };
 
 const DEFAULT_INCLUDED_USAGE_UTILIZATION_RATE = 0.7;

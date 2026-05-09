@@ -67,10 +67,10 @@ type SynthesizeResponse = {
 const DEFAULT_WELCOME_MESSAGE =
   "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 /**
- * Per-anonymous-device cap. Set effectively unlimited while testing; tighten
- * before shipping strict anon quotas.
+ * Per-anonymous-device cap. Synthesis fans out into multiple LLM calls,
+ * so this is intentionally low.
  */
-const MAX_ANON_SYNTHESIS_REQUESTS = Number.MAX_SAFE_INTEGER;
+const MAX_ANON_SYNTHESIS_REQUESTS = 20;
 /**
  * Per-authenticated-owner cap on the same endpoint. Same rationale —
  * synthesis is one of the most expensive LLM endpoints in the stack, so
@@ -177,17 +177,15 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           const usageBlocked =
             modelAccess
             && !modelAccess.allowed
-            && modelAccess.plan !== "free"
-            && !isAnonymousIdentity;
+            && !modelAccess.unlimited;
           if (usageBlocked) {
             return errorResponse(429, modelAccess.message, origin);
           }
 
           if (
             ownerId
-            && !isAnonymousIdentity
             && modelAccess
-            && modelAccess.plan !== "free"
+            && !modelAccess.unlimited
           ) {
             const rateLimit = await consumeWebhookRateLimit(ctx, {
               scope: "synthesize_owner",

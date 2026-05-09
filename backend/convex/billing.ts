@@ -52,6 +52,11 @@ const paidPlanValidator = v.union(
   v.literal("ultra"),
 );
 
+const usageModeValidator = v.union(
+  v.literal("default"),
+  v.literal("unlimited"),
+);
+
 const planConfigShapeValidator = v.object({
   label: v.string(),
   monthlyPriceCents: v.number(),
@@ -91,12 +96,16 @@ const ACTIVE_SUBSCRIPTION_STATUSES = new Set([
   "trialing",
   "past_due",
 ]);
+const UNLIMITED_TOKENS_PER_MINUTE = Number.MAX_SAFE_INTEGER;
 
 const emptyString = "";
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
 
 const isAnonymousIdentity = (identity: unknown) =>
   Boolean(identity && typeof identity === "object" && (identity as Record<string, unknown>).isAnonymous === true);
+
+const hasUnlimitedUsage = (profile: { usageMode?: string }) =>
+  profile.usageMode === "unlimited";
 
 const getStripeClient = () => {
   const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
@@ -359,6 +368,7 @@ const buildDowngradeMessage = (plan: Exclude<SubscriptionPlan, "free">) =>
 type ManagedModelAccessResult = {
   allowed: boolean;
   plan: SubscriptionPlan;
+  unlimited: boolean;
   downgraded: boolean;
   modelAudience: ReturnType<typeof resolveManagedModelAudience>;
   retryAfterMs: number;
@@ -369,16 +379,21 @@ type ManagedModelAccessResult = {
 const buildManagedModelAccessResult = (args: {
   plan: SubscriptionPlan;
   isAnonymous?: boolean;
+  unlimited?: boolean;
   exceededWindow: UsageSnapshot["rolling"] | UsageSnapshot["weekly"] | UsageSnapshot["monthly"] | null;
   now: number;
 }): ManagedModelAccessResult => {
   const { plan, exceededWindow, now } = args;
-  const tokensPerMinute = getPlanConfig(plan).tokensPerMinute;
+  const unlimited = args.unlimited === true;
+  const tokensPerMinute = unlimited
+    ? UNLIMITED_TOKENS_PER_MINUTE
+    : getPlanConfig(plan).tokensPerMinute;
 
-  if (!exceededWindow) {
+  if (!exceededWindow || unlimited) {
     return {
       allowed: true,
       plan,
+      unlimited,
       downgraded: false,
       modelAudience: resolveManagedModelAudience({
         plan,
@@ -395,6 +410,7 @@ const buildManagedModelAccessResult = (args: {
     return {
       allowed: false,
       plan,
+      unlimited: false,
       downgraded: false,
       modelAudience: resolveManagedModelAudience({
         plan,
@@ -409,6 +425,7 @@ const buildManagedModelAccessResult = (args: {
   return {
     allowed: true,
     plan,
+    unlimited: false,
     downgraded: true,
     modelAudience: resolveManagedModelAudience({
       plan,
@@ -1002,6 +1019,73 @@ export const syncSubscriptionFromStripe = internalMutation({
   },
 });
 
+export const setAdminBillingPlan = internalMutation({
+  args: {
+    ownerId: v.string(),
+    plan: v.optional(planValidator),
+    usageMode: v.optional(usageModeValidator),
+    subscriptionStatus: v.optional(v.string()),
+    resetUsage: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = args.ownerId.trim();
+    if (!ownerId) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "ownerId is required.",
+      });
+    }
+
+    const { profile, usage } = await ensureBillingRecordsForOwner(ctx, ownerId);
+    const now = Date.now();
+    const nextPlan = args.plan ?? (profile.activePlan as SubscriptionPlan);
+    const planChanged = profile.activePlan !== nextPlan;
+    const nextUsageMode =
+      args.usageMode ?? (planChanged ? "default" : profile.usageMode ?? "default");
+    const normalizedStatus = args.subscriptionStatus?.trim().toLowerCase()
+      || (nextPlan === "free" ? "none" : "active");
+    const usageModeChanged = (profile.usageMode ?? "default") !== nextUsageMode;
+    const shouldResetUsage = args.resetUsage ?? (planChanged || usageModeChanged);
+    const nextAnchor =
+      nextPlan === "free"
+        ? (profile.monthlyAnchorAt > 0 ? profile.monthlyAnchorAt : now)
+        : now;
+
+    await ctx.db.patch(profile._id, {
+      activePlan: nextPlan,
+      usageMode: nextUsageMode,
+      subscriptionStatus: normalizedStatus,
+      currentPeriodStart: nextPlan === "free" ? 0 : now,
+      currentPeriodEnd: 0,
+      cancelAtPeriodEnd: false,
+      monthlyAnchorAt: nextAnchor,
+      updatedAt: now,
+    });
+
+    if (shouldResetUsage) {
+      const week = getWeekBounds(new Date(now));
+      const month = getMonthlyBounds(new Date(now), new Date(nextAnchor));
+      await ctx.db.patch(usage._id, {
+        rollingUsageMicroCents: 0,
+        rollingWindowStartedAt: now,
+        weeklyUsageMicroCents: 0,
+        weeklyWindowStartedAt: week.start.getTime(),
+        monthlyUsageMicroCents: 0,
+        monthlyWindowStartedAt: month.start.getTime(),
+        updatedAt: now,
+      });
+    }
+
+    return {
+      ownerId,
+      activePlan: nextPlan,
+      usageMode: nextUsageMode,
+      subscriptionStatus: normalizedStatus,
+      resetUsage: shouldResetUsage,
+    };
+  },
+});
+
 export const recordInvoicePayment = internalMutation({
   args: {
     ownerId: v.optional(v.string()),
@@ -1085,6 +1169,7 @@ export const resolveManagedModelAccess = internalMutation({
     const { profile, usage } = await ensureBillingRecordsForOwner(ctx, args.ownerId);
     const now = Date.now();
     const plan = profile.activePlan as SubscriptionPlan;
+    const unlimited = hasUnlimitedUsage(profile);
     const snapshot = buildUsageSnapshot({
       profile,
       usage,
@@ -1111,6 +1196,7 @@ export const resolveManagedModelAccess = internalMutation({
     return buildManagedModelAccessResult({
       plan,
       isAnonymous: args.isAnonymous,
+      unlimited,
       exceededWindow: firstExceeded,
       now,
     });
@@ -1126,6 +1212,7 @@ export const enforceManagedUsageLimit = internalMutation({
     const { profile, usage } = await ensureBillingRecordsForOwner(ctx, args.ownerId);
     const now = Date.now();
     const plan = profile.activePlan as SubscriptionPlan;
+    const unlimited = hasUnlimitedUsage(profile);
     const snapshot = buildUsageSnapshot({
       profile,
       usage,
@@ -1138,6 +1225,17 @@ export const enforceManagedUsageLimit = internalMutation({
         ...snapshot.normalizedUsage,
         updatedAt: now,
       });
+    }
+
+    if (unlimited) {
+      return {
+        allowed: true,
+        plan,
+        unlimited: true,
+        retryAfterMs: 0,
+        message: emptyString,
+        tokensPerMinute: UNLIMITED_TOKENS_PER_MINUTE,
+      };
     }
 
     const minimumRemainingMicroCents = Math.max(
@@ -1164,6 +1262,7 @@ export const enforceManagedUsageLimit = internalMutation({
         message: buildLimitMessage(plan),
         retryAfterMs: Math.max(1_000, firstExceeded.resetAt - now),
         tokensPerMinute: getPlanConfig(plan).tokensPerMinute,
+        unlimited: false,
       };
     }
 
@@ -1173,6 +1272,7 @@ export const enforceManagedUsageLimit = internalMutation({
       retryAfterMs: 0,
       message: emptyString,
       tokensPerMinute: getPlanConfig(plan).tokensPerMinute,
+      unlimited: false,
     };
   },
 });

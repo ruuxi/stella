@@ -30,6 +30,7 @@ import {
   handleCorsRequest,
   jsonResponse,
 } from "./http_shared/cors";
+import { getClientAddressKey } from "./lib/http_utils";
 import {
   buildContextFromChatMessages,
   buildManagedModel,
@@ -88,7 +89,7 @@ export const stellaProviderModels = httpAction(async (ctx, request) =>
         : "free"
       : "anonymous";
 
-    let rateLimitPaidSubscriber = false;
+    let shouldRateLimitModels = true;
     if (
       identity &&
       (identity as Record<string, unknown>).isAnonymous !== true
@@ -98,15 +99,15 @@ export const stellaProviderModels = httpAction(async (ctx, request) =>
         identity.tokenIdentifier,
       );
       audience = access.modelAudience;
-      rateLimitPaidSubscriber = access.plan !== "free";
+      shouldRateLimitModels = !access.unlimited;
     }
 
-    if (rateLimitPaidSubscriber) {
+    if (shouldRateLimitModels) {
       const rateLimit = await ctx.runMutation(
         internal.rate_limits.consumeWebhookRateLimit,
         {
           scope: "stella_models",
-          key: identity!.tokenIdentifier,
+          key: identity?.tokenIdentifier ?? getClientAddressKey(request) ?? "anon",
           limit: STELLA_MODELS_RATE_LIMIT,
           windowMs: STELLA_MODELS_RATE_WINDOW_MS,
           blockMs: STELLA_MODELS_RATE_WINDOW_MS,

@@ -37,10 +37,11 @@ export type AnonymousUsageRecord = {
 };
 
 /**
- * Per-anonymous-device cap on the Stella provider. Set effectively
- * unlimited while iterating on the provider; tighten before wide release.
+ * Per-anonymous-device cap on the Stella provider endpoint. Each call
+ * runs a managed-LLM completion that Stella pays for, so this stays
+ * enforced server-side.
  */
-export const MAX_ANON_REQUESTS = Number.MAX_SAFE_INTEGER;
+export const MAX_ANON_REQUESTS = 60;
 export const DEFAULT_RETRY_AFTER_MS = 60_000;
 export const STELLA_MODELS_RATE_LIMIT = 60;
 export const STELLA_MODELS_RATE_WINDOW_MS = 60_000;
