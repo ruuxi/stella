@@ -25,6 +25,7 @@ export type ChatColumnConversation = {
     runtimeStatusText?: string | null
     pendingUserMessageId: string | null
     queuedUserMessages: QueuedUserMessage[]
+    delayedQueuedUserMessageIds: string[]
     optimisticUserMessageIds: string[]
     selfModMap: Record<string, SelfModAppliedData>
     liveTasks?: TaskItem[]

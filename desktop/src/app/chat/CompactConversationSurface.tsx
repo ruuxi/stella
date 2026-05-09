@@ -32,6 +32,7 @@ type CompactConversationSurfaceProps = {
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
+  delayedQueuedUserMessageIds?: string[];
   optimisticUserMessageIds?: string[];
   selfModMap?: Record<string, SelfModAppliedData>;
   liveTasks?: TaskItem[];
@@ -54,6 +55,7 @@ export function CompactConversationSurface({
   isStreaming,
   pendingUserMessageId,
   queuedUserMessages,
+  delayedQueuedUserMessageIds,
   optimisticUserMessageIds,
   selfModMap,
   hasOlderEvents,
@@ -84,6 +86,7 @@ export function CompactConversationSurface({
             isStreaming={isStreaming}
             pendingUserMessageId={pendingUserMessageId}
             queuedUserMessages={queuedUserMessages}
+            delayedQueuedUserMessageIds={delayedQueuedUserMessageIds}
             optimisticUserMessageIds={optimisticUserMessageIds}
             selfModMap={selfModMap}
             hasOlderEvents={hasOlderEvents}

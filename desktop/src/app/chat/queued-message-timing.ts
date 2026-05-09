@@ -1,0 +1,1 @@
+export const QUEUED_USER_MESSAGE_EXIT_MS = 260;

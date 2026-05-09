@@ -44,6 +44,7 @@ type Props = {
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   queuedUserMessages?: QueuedUserMessage[];
+  delayedQueuedUserMessageIds?: string[];
   optimisticUserMessageIds?: string[];
   selfModMap?: Record<string, SelfModAppliedData>;
   hasOlderEvents?: boolean;
@@ -95,6 +96,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   isStreaming,
   pendingUserMessageId,
   queuedUserMessages,
+  delayedQueuedUserMessageIds,
   optimisticUserMessageIds,
   selfModMap,
   hasOlderEvents,
@@ -127,25 +129,56 @@ export const ConversationEvents = memo(function ConversationEvents({
     selfModMap,
   });
 
+  const delayedQueuedUserMessageIdSet = useMemo(
+    () => new Set(delayedQueuedUserMessageIds ?? []),
+    [delayedQueuedUserMessageIds],
+  );
+
   const justSentCandidates = useMemo(() => {
     const ids: string[] = [];
-    if (pendingUserMessageId) ids.push(pendingUserMessageId);
-    if (optimisticUserMessageIds) ids.push(...optimisticUserMessageIds);
+    if (
+      pendingUserMessageId &&
+      !delayedQueuedUserMessageIdSet.has(pendingUserMessageId)
+    ) {
+      ids.push(pendingUserMessageId);
+    }
+    if (optimisticUserMessageIds) {
+      ids.push(
+        ...optimisticUserMessageIds.filter(
+          (id) => !delayedQueuedUserMessageIdSet.has(id),
+        ),
+      );
+    }
     return ids;
-  }, [optimisticUserMessageIds, pendingUserMessageId]);
+  }, [
+    delayedQueuedUserMessageIdSet,
+    optimisticUserMessageIds,
+    pendingUserMessageId,
+  ]);
   const animatingJustSentIds = useOneShotIds(
     justSentCandidates,
     USER_MESSAGE_ENTER_MS,
   );
 
-  const rows =
-    animatingJustSentIds.size > 0
-      ? projectedRows.map((row) =>
-          row.kind === "user" && animatingJustSentIds.has(row.id)
-            ? { ...row, justSent: true }
-            : row,
-        )
-      : projectedRows;
+  const rows = useMemo(() => {
+    if (
+      delayedQueuedUserMessageIdSet.size === 0 &&
+      animatingJustSentIds.size === 0
+    ) {
+      return projectedRows;
+    }
+
+    return projectedRows
+      .filter(
+        (row) =>
+          row.kind !== "user" || !delayedQueuedUserMessageIdSet.has(row.id),
+      )
+      .map((row) =>
+        row.kind === "user" && animatingJustSentIds.has(row.id)
+          ? { ...row, justSent: true }
+          : row,
+      );
+  }, [animatingJustSentIds, delayedQueuedUserMessageIdSet, projectedRows]);
 
   return (
     <ChatTimeline
