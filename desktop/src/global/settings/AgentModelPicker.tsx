@@ -136,6 +136,25 @@ function isReasoningEffort(value: string): value is ReasoningEffort {
   return REASONING_EFFORT_OPTIONS.some((option) => option.id === value);
 }
 
+function getModelPickerDisplayLabel(
+  modelId: string,
+  modelNamesById: ReadonlyMap<string, string>,
+): string {
+  if (modelId.startsWith("local/")) {
+    const localId = modelId.slice("local/".length);
+    const slash = localId.indexOf("/");
+    if (slash > 0) {
+      const maybeBaseUrl = decodeURIComponent(localId.slice(0, slash));
+      const customModel = localId.slice(slash + 1).trim();
+      if (/^https?:\/\//i.test(maybeBaseUrl) && customModel) {
+        return `Local ${customModel}`;
+      }
+    }
+    return `Local ${localId}`;
+  }
+  return getModelDisplayLabel(modelId, modelNamesById);
+}
+
 interface AgentModelPickerProps {
   /**
    * Called whenever the user finishes a real selection (model picked or
@@ -412,11 +431,11 @@ export function AgentModelPicker({
   }, []);
   const currentLabel = activeImage
     ? current
-      ? getModelDisplayLabel(current, imageModelNamesById)
+      ? getModelPickerDisplayLabel(current, imageModelNamesById)
       : "Stella"
     : ready
       ? current
-        ? getModelDisplayLabel(current, modelNamesById)
+        ? getModelPickerDisplayLabel(current, modelNamesById)
         : defaultLabel
       : "Loading…";
   const currentReasoningEffort =

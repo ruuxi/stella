@@ -24,7 +24,9 @@ import {
 import "./ProviderModelPicker.css";
 
 const STELLA_PROVIDER_KEY = "stella";
+const LOCAL_PROVIDER_KEY = "local";
 const DEFAULT_TARGET = "__default__";
+const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11434/v1";
 
 type ProviderTab = {
   key: string;
@@ -75,6 +77,8 @@ function buildProviderTabs(
   return Array.from(tabs.values()).sort((a, b) => {
     if (a.key === STELLA_PROVIDER_KEY) return -1;
     if (b.key === STELLA_PROVIDER_KEY) return 1;
+    if (a.key === LOCAL_PROVIDER_KEY) return -1;
+    if (b.key === LOCAL_PROVIDER_KEY) return 1;
     return a.label.localeCompare(b.label);
   });
 }
@@ -118,6 +122,8 @@ export function ProviderModelPanel({
   const [oauthProvider, setOauthProvider] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [openRouterCustomId, setOpenRouterCustomId] = useState("");
+  const [localBaseUrl, setLocalBaseUrl] = useState(DEFAULT_LOCAL_BASE_URL);
+  const [localModelId, setLocalModelId] = useState("");
 
   // Whenever the externally-driven `value` switches to a different provider
   // (e.g. the user toggles agents in the parent), re-anchor the rail to that
@@ -128,6 +134,8 @@ export function ProviderModelPanel({
     setDraftKey("");
     setAuthError(null);
     setOpenRouterCustomId("");
+    setLocalBaseUrl(DEFAULT_LOCAL_BASE_URL);
+    setLocalModelId("");
   }, [initialTab]);
 
   const activeTab = useMemo(
@@ -210,6 +218,18 @@ export function ProviderModelPanel({
       : `openrouter/${trimmed}`;
     onSelect(fullId);
   }, [onSelect, openRouterCustomId]);
+
+  const handleSubmitLocal = useCallback(() => {
+    const modelId = localModelId.trim();
+    if (!modelId) return;
+    const baseUrl = localBaseUrl.trim() || DEFAULT_LOCAL_BASE_URL;
+    const encodedBaseUrl = encodeURIComponent(baseUrl);
+    onSelect(
+      modelId.startsWith(`${LOCAL_PROVIDER_KEY}/`)
+        ? modelId
+        : `${LOCAL_PROVIDER_KEY}/${encodedBaseUrl}/${modelId}`,
+    );
+  }, [localBaseUrl, localModelId, onSelect]);
 
   return (
     <div
@@ -315,6 +335,11 @@ export function ProviderModelPanel({
             openRouterCustomId={openRouterCustomId}
             onOpenRouterCustomIdChange={setOpenRouterCustomId}
             onSubmitOpenRouterCustomId={handleSubmitOpenRouter}
+            localBaseUrl={localBaseUrl}
+            onLocalBaseUrlChange={setLocalBaseUrl}
+            localModelId={localModelId}
+            onLocalModelIdChange={setLocalModelId}
+            onSubmitLocalModelId={handleSubmitLocal}
             disabled={disabled}
           />
         ) : null}
@@ -348,6 +373,11 @@ interface ProviderPaneProps {
   openRouterCustomId: string;
   onOpenRouterCustomIdChange: (next: string) => void;
   onSubmitOpenRouterCustomId: () => void;
+  localBaseUrl: string;
+  onLocalBaseUrlChange: (next: string) => void;
+  localModelId: string;
+  onLocalModelIdChange: (next: string) => void;
+  onSubmitLocalModelId: () => void;
   disabled: boolean;
 }
 
@@ -372,6 +402,11 @@ function ProviderPane({
   openRouterCustomId,
   onOpenRouterCustomIdChange,
   onSubmitOpenRouterCustomId,
+  localBaseUrl,
+  onLocalBaseUrlChange,
+  localModelId,
+  onLocalModelIdChange,
+  onSubmitLocalModelId,
   disabled,
 }: ProviderPaneProps) {
   const llmEntry =
@@ -384,7 +419,8 @@ function ProviderPane({
         }
       : undefined);
   const connected = isStella || Boolean(apiKey) || Boolean(oauthCredential);
-  const requiresAuth = !isStella && !connected && Boolean(llmEntry);
+  const isLocal = tab.key === LOCAL_PROVIDER_KEY;
+  const requiresAuth = !isStella && !isLocal && !connected && Boolean(llmEntry);
   const supportsApiKey =
     Boolean(llmEntry) && !isApiKeyOnlyPlaceholder(llmEntry?.placeholder ?? "");
   const supportsOAuth = Boolean(oauthProvider);
@@ -402,7 +438,11 @@ function ProviderPane({
     <div className="model-picker-pane-inner">
       <header className="model-picker-pane-header">
         <div className="model-picker-pane-title">{tab.label}</div>
-        {apiKey || oauthCredential ? (
+        {isLocal ? (
+          <span className="model-picker-pane-badge" data-tone="ok">
+            Ready
+          </span>
+        ) : apiKey || oauthCredential ? (
           <span className="model-picker-pane-badge" data-tone="ok">
             {apiKey ? "API key connected" : "Signed in"}
           </span>
@@ -463,6 +503,49 @@ function ProviderPane({
         </div>
       ) : (
         <>
+          {isLocal ? (
+            <div className="model-picker-local">
+              <p className="model-picker-pane-desc">
+                Use any local OpenAI-compatible server. Ollama usually runs at
+                the URL below.
+              </p>
+              <div className="model-picker-auth-row">
+                <TextField
+                  label="Local URL"
+                  hideLabel
+                  placeholder={DEFAULT_LOCAL_BASE_URL}
+                  value={localBaseUrl}
+                  onChange={(e) => onLocalBaseUrlChange(e.target.value)}
+                  disabled={disabled}
+                />
+              </div>
+              <div className="model-picker-auth-row">
+                <TextField
+                  label="Local model"
+                  hideLabel
+                  placeholder="llama3.2"
+                  value={localModelId}
+                  onChange={(e) => onLocalModelIdChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") onSubmitLocalModelId();
+                  }}
+                  disabled={disabled}
+                />
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={onSubmitLocalModelId}
+                  disabled={!localModelId.trim() || disabled}
+                >
+                  Use model
+                </Button>
+              </div>
+              <div className="model-picker-pane-divider">
+                <span>or pick from the list</span>
+              </div>
+            </div>
+          ) : null}
+
           {isOpenRouter ? (
             <div className="model-picker-openrouter">
               <div className="model-picker-pane-desc">

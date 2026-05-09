@@ -306,4 +306,43 @@ describe("resolveLlmRoute", () => {
     expect(resolved.model.provider).toBe("anthropic");
     await expect(resolved.getApiKey()).resolves.toBe("anthropic-oauth-token");
   });
+
+  it("routes local OpenAI-compatible models directly without credentials", async () => {
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
+      modelName: "local/llama3.2",
+      agentType: "general",
+      site,
+    });
+
+    expect(resolved.route).toBe("direct-provider");
+    expect(resolved.model.provider).toBe("local");
+    expect(resolved.model.id).toBe("llama3.2");
+    expect(resolved.model.api).toBe("openai-completions");
+    expect(resolved.model.baseUrl).toBe("http://127.0.0.1:11434/v1");
+    expect(await Promise.resolve(resolved.getApiKey())).toBe("");
+  });
+
+  it("routes local OpenAI-compatible models with a custom base URL", async () => {
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaRoot: "/tmp/stella",
+      modelName: `local/${encodeURIComponent("http://127.0.0.1:8000/v1")}/qwen3-coder`,
+      agentType: "general",
+      site,
+    });
+
+    expect(resolved.route).toBe("direct-provider");
+    expect(resolved.model.provider).toBe("local");
+    expect(resolved.model.id).toBe("qwen3-coder");
+    expect(resolved.model.baseUrl).toBe("http://127.0.0.1:8000/v1");
+    expect(await Promise.resolve(resolved.getApiKey())).toBe("");
+  });
 });

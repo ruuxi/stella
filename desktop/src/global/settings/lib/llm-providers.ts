@@ -14,6 +14,7 @@ export type LlmProviderEntry = {
 };
 
 export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
+  { key: "local", label: "Local", placeholder: "No API key needed" },
   { key: "anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
   { key: "openai", label: "OpenAI", placeholder: "sk-..." },
   { key: "openai-codex", label: "OpenAI Codex", placeholder: "eyJ..." },
