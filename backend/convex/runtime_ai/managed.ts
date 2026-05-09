@@ -614,11 +614,11 @@ function buildSimpleOptions(args: {
   extraBody?: Record<string, unknown>;
 } {
   const reasoning =
-    normalizeReasoning(args.config.providerOptions?.openai?.reasoningEffort) ||
+    args.request?.reasoning ??
+    normalizeReasoning(args.config.providerOptions?.openai?.reasoningEffort) ??
     (args.config.providerOptions?.openai?.forceReasoning
       ? "high"
-      : undefined) ||
-    args.request?.reasoning;
+      : undefined);
 
   const managedGateway = resolveManagedGatewayConfig({
     model: args.config.model,

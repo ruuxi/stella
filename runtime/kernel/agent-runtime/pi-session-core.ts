@@ -84,10 +84,12 @@ export class PiSessionCore {
         systemPrompt: args.systemPrompt,
         resolvedLlm: args.resolvedLlm,
         resolvedLlmOverride: () => this.currentResolvedLlm ?? args.resolvedLlm,
-        ...(args.resolvedLlm.route === "direct-provider" &&
-        args.agentContext.reasoningEffort
-          ? { reasoningEffort: args.agentContext.reasoningEffort }
-          : {}),
+        reasoningEffort: resolveAgentThinkingLevel({
+          resolvedLlm: args.resolvedLlm,
+          ...(args.agentContext.reasoningEffort
+            ? { agentContextReasoningEffort: args.agentContext.reasoningEffort }
+            : {}),
+        }),
         ...(args.hookEmitter ? { hookEmitter: args.hookEmitter } : {}),
         tools: args.tools,
         historySource,

@@ -26,7 +26,7 @@ const directRoute = (): ResolvedLlmRoute =>
 
 const stellaRoute = (): ResolvedLlmRoute =>
   ({
-    route: "stella-provider",
+    route: "stella",
     model: fakeModel,
     getApiKey: async () => "stella-token",
     refreshApiKey: async () => null,
@@ -54,19 +54,34 @@ describe("resolveAgentThinkingLevel", () => {
         resolvedLlm: directRoute(),
       }),
     ).toBe("medium");
+    expect(
+      resolveAgentThinkingLevel({
+        resolvedLlm: directRoute(),
+        agentContextReasoningEffort: "default",
+      }),
+    ).toBe("medium");
   });
 
-  it("forces medium on Stella-routed runs regardless of preference", () => {
+  it("omits client reasoning on default Stella-routed runs", () => {
+    expect(
+      resolveAgentThinkingLevel({
+        resolvedLlm: stellaRoute(),
+        agentContextReasoningEffort: "default",
+      }),
+    ).toBe("off");
+    expect(
+      resolveAgentThinkingLevel({
+        resolvedLlm: stellaRoute(),
+      }),
+    ).toBe("off");
+  });
+
+  it("uses explicit effort on Stella-routed runs", () => {
     expect(
       resolveAgentThinkingLevel({
         resolvedLlm: stellaRoute(),
         agentContextReasoningEffort: "high",
       }),
-    ).toBe("medium");
-    expect(
-      resolveAgentThinkingLevel({
-        resolvedLlm: stellaRoute(),
-      }),
-    ).toBe("medium");
+    ).toBe("high");
   });
 });

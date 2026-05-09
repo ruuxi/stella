@@ -23,7 +23,13 @@ import {
 } from "../../contracts/mini-double-tap.js";
 
 type AgentEngine = "default" | "claude_code_local";
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ReasoningEffort =
+  | "default"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
 export type ImageGenerationProvider =
   | "stella"
   | "openai"
@@ -344,6 +350,7 @@ const normalizeEngine = (value: unknown): AgentEngine => {
 
 const normalizeReasoningEffort = (value: unknown): ReasoningEffort => {
   if (
+    value === "default" ||
     value === "minimal" ||
     value === "low" ||
     value === "medium" ||
@@ -352,7 +359,7 @@ const normalizeReasoningEffort = (value: unknown): ReasoningEffort => {
   ) {
     return value;
   }
-  return "medium";
+  return "default";
 };
 
 const normalizeReasoningEfforts = (

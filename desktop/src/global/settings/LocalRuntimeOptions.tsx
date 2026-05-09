@@ -17,7 +17,7 @@ type LocalModelPreferences = {
   modelOverrides: Record<string, string>;
   reasoningEfforts: Record<
     string,
-    "minimal" | "low" | "medium" | "high" | "xhigh"
+    "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
   >;
   agentRuntimeEngine: EngineId;
   maxAgentConcurrency: number;
