@@ -319,6 +319,7 @@ export type RunnerContext = {
       agentType?: string,
       options?: {
         model?: Pick<Model<Api>, "api" | "provider" | "id" | "name">;
+        agentEngine?: import("../tools/file-edit-policy.js").FileEditAgentEngine;
       },
     ) => ToolMetadata[];
     executeTool: (

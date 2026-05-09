@@ -4,11 +4,10 @@ import { createToolHost } from "../tools/host.js";
 import { HookEmitter } from "../extensions/hook-emitter.js";
 import {
   getDefaultModel,
-  getGeneralAgentEngine,
+  getAgentRuntimeEngine,
   getMaxAgentConcurrency,
   getModelOverride,
   getReasoningEffort,
-  getSelfModAgentEngine,
 } from "../preferences/local-preferences.js";
 import {
   type LocalContextEvent,
@@ -39,9 +38,7 @@ import type {
 import {
   AGENT_IDS,
   agentHasCapability,
-  getAgentEnginePreference,
   isLocalCliAgentId,
-  isOrchestratorAgentType,
 } from "../../contracts/agent-runtime.js";
 import {
   collectSubagentRoster,
@@ -645,8 +642,6 @@ export const buildAgentContext = async (
         context.runtimeStore.listActiveThreads(args.conversationId),
       )
     : "";
-  const isSelfModTask = Boolean(args.selfModMetadata);
-
   const dynamicContextSections: string[] = [];
 
   // Inject the user's response-language directive at the top of the
@@ -677,20 +672,18 @@ export const buildAgentContext = async (
           shouldInjectDynamicReminder: false,
           reminderTokensSinceLastInjection: 0,
         };
-  const enginePref = getAgentEnginePreference(args.agentType);
+  const agentEngine = getAgentRuntimeEngine(context.stellaRoot);
 
   const fileEditToolFamily = getFileEditToolFamily({
     agentType: args.agentType,
     model: resolvedLlm.toolPolicyModel ?? resolvedLlm.model,
+    agentEngine,
   });
   const toolsAllowlist = rewriteFileEditToolNames(
     agent?.toolsAllowlist,
     fileEditToolFamily,
   );
-  if (
-    !isOrchestratorAgentType(args.agentType) &&
-    fileEditToolFamily === "write_edit"
-  ) {
+  if (fileEditToolFamily === "write_edit") {
     dynamicContextSections.push(
       [
         "## File Editing Tools",
@@ -745,11 +738,7 @@ export const buildAgentContext = async (
     coreMemory: readCoreMemory(context.stellaRoot),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
-    agentEngine: isSelfModTask
-      ? getSelfModAgentEngine(context.stellaRoot)
-      : enginePref === "general"
-        ? getGeneralAgentEngine(context.stellaRoot)
-        : undefined,
+    agentEngine,
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)
       ? getMaxAgentConcurrency(context.stellaRoot)
       : undefined,

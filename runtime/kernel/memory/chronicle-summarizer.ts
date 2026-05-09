@@ -38,6 +38,11 @@ import {
   type ResolvedLlmRoute,
 } from "../model-routing.js";
 import { createRuntimeLogger } from "../debug.js";
+import {
+  runClaudeCodeAgentTextCompletion,
+  shouldUseClaudeCodeAgentRuntime,
+} from "../integrations/claude-code-agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 
 const logger = createRuntimeLogger("memory.chronicle-summarizer");
 
@@ -399,8 +404,18 @@ export const runChronicleSummary = async (args: {
     };
   }
 
-  const apiKey = await getResolvedLlmApiKey(args.resolvedLlm);
-  if (!apiKey && !resolvedLlmSupportsCredentiallessCalls(args.resolvedLlm)) {
+  const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
+    stellaRoot: args.stellaHome,
+    modelId: args.resolvedLlm.model.id,
+  });
+  const apiKey = useClaudeCode
+    ? undefined
+    : await getResolvedLlmApiKey(args.resolvedLlm);
+  if (
+    !useClaudeCode &&
+    !apiKey &&
+    !resolvedLlmSupportsCredentiallessCalls(args.resolvedLlm)
+  ) {
     return {
       wrote: false,
       window: args.window,
@@ -479,12 +494,22 @@ export const runChronicleSummary = async (args: {
 
     let responseText: string;
     try {
-      const response = await completeSimple(
-        args.resolvedLlm.model,
-        context,
-        apiKey ? { apiKey } : undefined,
-      );
-      responseText = readAssistantText(response).trim();
+      if (useClaudeCode) {
+        responseText = (
+          await runClaudeCodeAgentTextCompletion({
+            stellaRoot: args.stellaHome,
+            agentType: AGENT_IDS.CHRONICLE,
+            context,
+          })
+        ).trim();
+      } else {
+        const response = await completeSimple(
+          args.resolvedLlm.model,
+          context,
+          apiKey ? { apiKey } : undefined,
+        );
+        responseText = readAssistantText(response).trim();
+      }
     } catch (error) {
       logger.debug("chronicle.summary.llm-failed", {
         window: args.window,

@@ -32,6 +32,10 @@ import type { RuntimeStore } from "../storage/runtime-store.js";
 import { createMemoryTool } from "../tools/defs/memory.js";
 import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
 import { createRuntimeLogger } from "../debug.js";
+import {
+  runClaudeCodeAgentTextCompletion,
+  shouldUseClaudeCodeAgentRuntime,
+} from "../integrations/claude-code-agent-runtime.js";
 
 const logger = createRuntimeLogger("agent-runtime.memory-review");
 
@@ -157,12 +161,19 @@ const toToolResultMessage = (
 
 const runReview = async (args: {
   conversationId: string;
+  stellaRoot: string;
   messagesSnapshot: AgentMessage[];
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;
 }): Promise<void> => {
-  const apiKey = (await args.resolvedLlm.getApiKey())?.trim();
-  if (!apiKey) {
+  const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
+    stellaRoot: args.stellaRoot,
+    modelId: args.resolvedLlm.model.id,
+  });
+  const apiKey = useClaudeCode
+    ? undefined
+    : (await args.resolvedLlm.getApiKey())?.trim();
+  if (!useClaudeCode && !apiKey) {
     logger.debug("memory-review.skipped.no-api-key");
     return;
   }
@@ -189,6 +200,46 @@ const runReview = async (args: {
   ];
 
   let totalToolCalls = 0;
+
+  if (useClaudeCode) {
+    try {
+      const finalText = await runClaudeCodeAgentTextCompletion({
+        stellaRoot: args.stellaRoot,
+        agentType: "memory_review",
+        context: {
+          systemPrompt: reviewSystemPrompt,
+          messages,
+          tools: [memoryTool],
+        },
+        executeTool: async (_toolCallId, toolName, toolArgs) => {
+          totalToolCalls += 1;
+          const dispatch = await dispatchLocalTool(toolName, toolArgs, {
+            conversationId: args.conversationId,
+            store: { memoryStore: args.store.memoryStore },
+          });
+          if (!dispatch.handled) {
+            return {
+              error: JSON.stringify({
+                success: false,
+                error: `Tool ${toolName} not available in memory review (only Memory is exposed).`,
+              }),
+            };
+          }
+          return { result: dispatch.text };
+        },
+      });
+      logger.debug("memory-review.completed", {
+        iterations: 1,
+        toolCalls: totalToolCalls,
+        finalText: finalText.slice(0, 80),
+      });
+    } catch (error) {
+      logger.debug("memory-review.claude-code.failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
     const context: Context = {
@@ -277,6 +328,7 @@ const runReview = async (args: {
  */
 export const spawnMemoryReview = (args: {
   conversationId: string;
+  stellaRoot: string;
   messagesSnapshot: AgentMessage[];
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;

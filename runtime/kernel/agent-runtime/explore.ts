@@ -36,6 +36,10 @@ import { createRunnerSiteConfig } from "../runner/model-selection.js";
 import { getExploreModel } from "../preferences/local-preferences.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RunnerContext } from "../runner/types.js";
+import {
+  runClaudeCodeAgentTextCompletion,
+  shouldUseClaudeCodeAgentRuntime,
+} from "../integrations/claude-code-agent-runtime.js";
 
 const logger = createRuntimeLogger("agent-runtime.explore");
 
@@ -235,6 +239,78 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
       error: error instanceof Error ? error.message : String(error),
     });
     return FALLBACK_FINDINGS;
+  }
+
+  if (
+    shouldUseClaudeCodeAgentRuntime({
+      stellaRoot: context.stellaRoot,
+    })
+  ) {
+    const tools = buildExploreTools();
+    const userText = taskDescription.trim()
+      ? `Task: ${taskDescription.trim()}\n\n${taskPrompt.trim()}`
+      : taskPrompt.trim();
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: userText }],
+        timestamp: Date.now(),
+      },
+    ];
+    const abortController = new AbortController();
+    const handleAbort = () => abortController.abort(signal?.reason);
+    signal?.addEventListener("abort", handleAbort, { once: true });
+    try {
+      const text = await withTimeout(
+        runClaudeCodeAgentTextCompletion({
+          stellaRoot: context.stellaRoot,
+          agentType: AGENT_IDS.EXPLORE,
+          context: {
+            systemPrompt: exploreSystemPrompt,
+            messages,
+            tools,
+          },
+          abortSignal: abortController.signal,
+          executeTool: async (_toolCallId, toolName, toolArgs, toolSignal) => {
+            if (!EXPLORE_TOOL_NAMES.includes(toolName as typeof EXPLORE_TOOL_NAMES[number])) {
+              return {
+                error: `tool ${toolName} is not available to Explore. Only Read and Grep are exposed.`,
+              };
+            }
+            const sanitized = await sanitizeExploreToolArgs(
+              toolName as typeof EXPLORE_TOOL_NAMES[number],
+              toolArgs,
+              context.stellaRoot,
+            );
+            if (!sanitized.ok) {
+              return { error: sanitized.error };
+            }
+            return context.toolHost.executeTool(
+              toolName,
+              sanitized.args,
+              {
+                conversationId,
+                deviceId: context.deviceId,
+                requestId: `explore-${Date.now()}`,
+                agentType: AGENT_IDS.EXPLORE,
+                stellaRoot: context.stellaRoot,
+              },
+              toolSignal ?? abortController.signal,
+            );
+          },
+        }),
+        EXPLORE_TIMEOUT_MS,
+        abortController,
+      );
+      return text.trim() ? wrapFindings(text.trim()) : FALLBACK_FINDINGS;
+    } catch (error) {
+      logger.debug("explore.claude-code.failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return FALLBACK_FINDINGS;
+    } finally {
+      signal?.removeEventListener("abort", handleAbort);
+    }
   }
 
   let resolvedLlm;

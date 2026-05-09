@@ -38,6 +38,7 @@ const logger = createRuntimeLogger("stella-runtime.home-suggestions-refresh");
  *     the home-suggestions agent's route).
  */
 export const createHomeSuggestionsRefreshHook = (opts: {
+  stellaRoot: string;
   store: RuntimeStore;
 }): HookDefinition<"agent_end"> => ({
   event: "agent_end",
@@ -81,6 +82,7 @@ export const createHomeSuggestionsRefreshHook = (opts: {
 
       spawnHomeSuggestionsRefresh({
         conversationId: payload.conversationId,
+        stellaRoot: opts.stellaRoot,
         resolvedLlm,
         store: opts.store,
         appendLocalChatEvent: services.appendLocalChatEvent,

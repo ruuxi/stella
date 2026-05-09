@@ -148,7 +148,7 @@ export function LocalRuntimeOptions() {
         <div className="local-runtime-options-row-info">
           <div className="local-runtime-options-row-label">Engine</div>
           <div className="local-runtime-options-row-sublabel">
-            Powers Stella's local agents. Claude Code requires the{" "}
+            Powers Stella's agents. Claude Code requires the{" "}
             <code>claude</code> command on your computer.
           </div>
         </div>

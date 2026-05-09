@@ -698,8 +698,7 @@ export type ElectronSystemApi = {
       string,
       "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
-    generalAgentEngine: "default" | "claude_code_local";
-    selfModAgentEngine: "default" | "claude_code_local";
+    agentRuntimeEngine: "default" | "claude_code_local";
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -713,8 +712,7 @@ export type ElectronSystemApi = {
       string,
       "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
-    generalAgentEngine?: "default" | "claude_code_local";
-    selfModAgentEngine?: "default" | "claude_code_local";
+    agentRuntimeEngine?: "default" | "claude_code_local";
     maxAgentConcurrency?: number;
     imageGeneration?: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -727,8 +725,7 @@ export type ElectronSystemApi = {
       string,
       "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
-    generalAgentEngine: "default" | "claude_code_local";
-    selfModAgentEngine: "default" | "claude_code_local";
+    agentRuntimeEngine: "default" | "claude_code_local";
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";

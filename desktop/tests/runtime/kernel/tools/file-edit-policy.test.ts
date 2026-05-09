@@ -44,7 +44,24 @@ describe("file edit tool policy", () => {
     ).toEqual(["exec_command", "Write", "Edit", "web"]);
   });
 
-  it("does not swap orchestrator tool policy", () => {
+  it("uses Write/Edit for Claude Code runtime even when the configured model is OpenAI-authored", () => {
+    expect(
+      getFileEditToolFamily({
+        agentType: "general",
+        model: model("openai", "gpt-5", "openai-responses"),
+        agentEngine: "claude_code_local",
+      }),
+    ).toBe("write_edit");
+    expect(
+      getFileEditToolFamily({
+        agentType: "schedule",
+        model: model("openai", "gpt-5", "openai-responses"),
+        agentEngine: "claude_code_local",
+      }),
+    ).toBe("write_edit");
+  });
+
+  it("keeps apply_patch for the orchestrator on the default runtime", () => {
     expect(
       getFileEditToolFamily({
         agentType: "orchestrator",
@@ -52,5 +69,14 @@ describe("file edit tool policy", () => {
       }),
     ).toBe("apply_patch");
   });
-});
 
+  it("uses Write/Edit for the orchestrator on the Claude Code runtime", () => {
+    expect(
+      getFileEditToolFamily({
+        agentType: "orchestrator",
+        model: model("openai", "gpt-5", "openai-responses"),
+        agentEngine: "claude_code_local",
+      }),
+    ).toBe("write_edit");
+  });
+});

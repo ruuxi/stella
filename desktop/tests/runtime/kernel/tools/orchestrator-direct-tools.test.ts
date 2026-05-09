@@ -131,6 +131,40 @@ describe("orchestrator direct tool surface", () => {
     expect(generalTools.has("view_image")).toBe(true);
     expect(generalTools.has("image_gen")).toBe(false);
 
+    const claudeCodeGeneralTools = new Set(
+      host
+        .getToolCatalog("general", {
+          model: {
+            api: "openai-responses",
+            provider: "openai",
+            id: "gpt-5",
+            name: "gpt-5",
+          },
+          agentEngine: "claude_code_local",
+        })
+        .map((tool) => tool.name),
+    );
+    expect(claudeCodeGeneralTools.has("apply_patch")).toBe(false);
+    expect(claudeCodeGeneralTools.has("Write")).toBe(true);
+    expect(claudeCodeGeneralTools.has("Edit")).toBe(true);
+
+    const claudeCodeOrchestratorTools = new Set(
+      host
+        .getToolCatalog("orchestrator", {
+          model: {
+            api: "openai-responses",
+            provider: "openai",
+            id: "gpt-5",
+            name: "gpt-5",
+          },
+          agentEngine: "claude_code_local",
+        })
+        .map((tool) => tool.name),
+    );
+    expect(claudeCodeOrchestratorTools.has("apply_patch")).toBe(false);
+    expect(claudeCodeOrchestratorTools.has("Write")).toBe(true);
+    expect(claudeCodeOrchestratorTools.has("Edit")).toBe(true);
+
     const generalImageResult = await host.executeTool(
       "image_gen",
       { prompt: "Generate a small test image." },

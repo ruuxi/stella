@@ -7,6 +7,7 @@ export const EDIT_TOOL_NAME = "Edit";
 export const WRITE_EDIT_TOOL_NAMES = [WRITE_TOOL_NAME, EDIT_TOOL_NAME] as const;
 
 export type FileEditToolFamily = "apply_patch" | "write_edit";
+export type FileEditAgentEngine = "default" | "claude_code_local";
 
 type ModelIdentity = Pick<Model<Api>, "api" | "provider" | "id" | "name">;
 
@@ -44,7 +45,11 @@ export const isOpenAiAuthoredModel = (model?: ModelIdentity | null): boolean => 
 export const getFileEditToolFamily = (args: {
   agentType?: string;
   model?: ModelIdentity | null;
+  agentEngine?: FileEditAgentEngine;
 }): FileEditToolFamily => {
+  if (args.agentEngine === "claude_code_local") {
+    return "write_edit";
+  }
   if (!args.agentType || args.agentType === AGENT_IDS.ORCHESTRATOR) {
     return "apply_patch";
   }
@@ -85,4 +90,3 @@ export const rewriteFileEditToolNames = (
 
   return rewritten;
 };
-

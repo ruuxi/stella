@@ -74,14 +74,24 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
       memoryStore: services.memoryStore,
     }),
   );
-  register(createMemoryReviewHook({ store: services.store }));
+  register(
+    createMemoryReviewHook({
+      stellaRoot: services.stellaRoot,
+      store: services.store,
+    }),
+  );
   register(
     createDreamSchedulerNotifyHook({
       stellaHome: services.stellaHome,
       store: services.store,
     }),
   );
-  register(createHomeSuggestionsRefreshHook({ store: services.store }));
+  register(
+    createHomeSuggestionsRefreshHook({
+      stellaRoot: services.stellaRoot,
+      store: services.store,
+    }),
+  );
   register(createThreadSummariesRecordHook({ store: services.store }));
 };
 
