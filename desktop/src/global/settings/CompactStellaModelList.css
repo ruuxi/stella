@@ -1,0 +1,89 @@
+.compact-stella-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.compact-stella-list-item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md, 8px);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-strong);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+}
+
+.compact-stella-list-item:hover:not(:disabled),
+.compact-stella-list-item:focus-visible {
+  background: color-mix(in oklch, var(--text-strong) 5%, transparent);
+  outline: none;
+}
+
+.compact-stella-list-item[data-selected] {
+  background: color-mix(in oklch, var(--text-strong) 8%, transparent);
+}
+
+.compact-stella-list-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.compact-stella-list-item-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.compact-stella-list-item-name {
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-stella-list-item-sub {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weak);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.compact-stella-list-item--default .compact-stella-list-item-name {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.compact-stella-list-item-check {
+  flex-shrink: 0;
+  color: var(--text-strong);
+}
+
+.compact-stella-list-empty {
+  padding: 10px;
+  font-size: 11.5px;
+  color: var(--text-weak);
+  text-align: center;
+}

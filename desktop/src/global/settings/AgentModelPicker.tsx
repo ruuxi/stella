@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
+import { CompactStellaModelList } from "@/global/settings/CompactStellaModelList";
+import { LocalRuntimeOptions } from "@/global/settings/LocalRuntimeOptions";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
+import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
   buildModelDefaultsMap,
   buildResolvedModelDefaultsMap,
@@ -19,8 +22,7 @@ type LocalModelPreferences = {
   defaultModels: Record<string, string>;
   modelOverrides: Record<string, string>;
   reasoningEfforts: Record<string, ReasoningEffort>;
-  generalAgentEngine: "default" | "claude_code_local";
-  selfModAgentEngine: "default" | "claude_code_local";
+  agentRuntimeEngine: "default" | "claude_code_local";
   maxAgentConcurrency: number;
 };
 
@@ -50,6 +52,12 @@ interface AgentModelPickerProps {
   onSelected?: () => void;
   /** Optional className appended to the root element. */
   className?: string;
+  /**
+   * When true the picker mounts already expanded (shows the full provider
+   * rail + local runtime options). Defaults to false: callers see just the
+   * curated Stella presets and a "More options" toggle.
+   */
+  defaultExpanded?: boolean;
 }
 
 /**
@@ -61,7 +69,9 @@ interface AgentModelPickerProps {
 export function AgentModelPicker({
   onSelected,
   className,
+  defaultExpanded = false,
 }: AgentModelPickerProps) {
+  const [expanded, setExpanded] = useState<boolean>(defaultExpanded);
   const {
     models: stellaModels,
     defaults: stellaDefaultModels,
@@ -112,8 +122,10 @@ export function AgentModelPicker({
   const modelNamesById = useMemo(() => {
     const next = new Map<string, string>();
     for (const model of stellaModels) {
-      next.set(model.id, model.name);
-      if (model.upstreamModel) next.set(model.upstreamModel, model.name);
+      const label =
+        model.provider === "stella" ? getStellaDisplayName(model) : model.name;
+      next.set(model.id, label);
+      if (model.upstreamModel) next.set(model.upstreamModel, label);
     }
     return next;
   }, [stellaModels]);
@@ -292,23 +304,50 @@ export function AgentModelPicker({
         </p>
       ) : null}
 
-      <ProviderModelPanel
-        value={current}
-        defaultLabel={defaultLabel}
-        currentLabel={currentLabel}
-        reasoningEffort={currentReasoningEffort}
-        reasoningEffortOptions={REASONING_EFFORT_OPTIONS}
-        groups={groups}
-        excludeModelId={STELLA_DEFAULT_MODEL}
-        disabled={!ready || pendingAgent !== null}
-        ariaLabel={`${activeAgent} model picker`}
-        onSelect={handleSelect}
-        onReasoningEffortSelect={(value) => {
-          if (isReasoningEffort(value)) {
-            void handleReasoningEffortSelect(value);
-          }
-        }}
-      />
+      {expanded ? (
+        <>
+          <ProviderModelPanel
+            value={current}
+            defaultLabel={defaultLabel}
+            currentLabel={currentLabel}
+            reasoningEffort={currentReasoningEffort}
+            reasoningEffortOptions={REASONING_EFFORT_OPTIONS}
+            groups={groups}
+            excludeModelId={STELLA_DEFAULT_MODEL}
+            disabled={!ready || pendingAgent !== null}
+            ariaLabel={`${activeAgent} model picker`}
+            onSelect={handleSelect}
+            onReasoningEffortSelect={(value) => {
+              if (isReasoningEffort(value)) {
+                void handleReasoningEffortSelect(value);
+              }
+            }}
+          />
+          <LocalRuntimeOptions />
+        </>
+      ) : (
+        <CompactStellaModelList
+          stellaModels={stellaModels}
+          value={current}
+          defaultLabel={defaultLabel}
+          onSelect={handleSelect}
+          disabled={!ready || pendingAgent !== null}
+        />
+      )}
+
+      <button
+        type="button"
+        className="agent-model-picker-toggle-more"
+        onClick={() => setExpanded((prev) => !prev)}
+        aria-expanded={expanded}
+      >
+        <span>{expanded ? "Less options" : "More options"}</span>
+        <ChevronDown
+          size={14}
+          strokeWidth={1.75}
+          data-rotated={expanded || undefined}
+        />
+      </button>
     </div>
   );
 }

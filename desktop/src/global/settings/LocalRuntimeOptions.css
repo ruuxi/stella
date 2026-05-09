@@ -1,0 +1,129 @@
+.local-runtime-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+}
+
+.local-runtime-options-title {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weak);
+}
+
+.local-runtime-options-error {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--danger, #c2410c);
+}
+
+.local-runtime-options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.local-runtime-options-row-info {
+  min-width: 0;
+}
+
+.local-runtime-options-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.local-runtime-options-row-sublabel {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-weak);
+}
+
+.local-runtime-options-row-sublabel code {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+}
+
+.local-runtime-options-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--text-strong) 6%, transparent);
+  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+}
+
+.local-runtime-options-toggle-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 4px 14px;
+  border-radius: var(--radius-full);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.local-runtime-options-toggle-btn:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
+.local-runtime-options-toggle-btn[data-active] {
+  background: var(--background, #fff);
+  color: var(--text-strong);
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.08);
+}
+
+.local-runtime-options-toggle-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.local-runtime-options-number {
+  flex-shrink: 0;
+  width: 72px;
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-strong);
+  background: var(--background, #fff);
+  border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+  border-radius: var(--radius-md, 8px);
+  text-align: center;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.local-runtime-options-number:hover:not(:disabled),
+.local-runtime-options-number:focus-visible {
+  border-color: var(--border);
+  outline: none;
+}
+
+.local-runtime-options-number:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--text-strong) 12%, transparent);
+}
+
+.local-runtime-options-number:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.local-runtime-options-number::-webkit-outer-spin-button,
+.local-runtime-options-number::-webkit-inner-spin-button {
+  margin: 0;
+  opacity: 0.5;
+}

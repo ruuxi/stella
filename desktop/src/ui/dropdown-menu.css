@@ -17,7 +17,10 @@
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: var(--shadow-overlay);
-  z-index: 50;
+  /* Sit above popovers (zIndex 9999) so Selects rendered inside a popover
+     — e.g. the model picker's "More options" runtime selectors — aren't
+     clipped behind the popover surface. */
+  z-index: 10000;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

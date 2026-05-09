@@ -1,13 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { Button } from "@/ui/button";
-import { Select } from "@/ui/select";
 import {
   findApiKey,
   findOauthCredential,
   useLlmCredentials,
 } from "@/global/settings/hooks/use-llm-credentials";
 import { LLM_PROVIDERS } from "@/global/settings/lib/llm-providers";
-import { getSettingsErrorMessage } from "./shared";
 
 const AgentModelPicker = lazy(() =>
   import("@/global/settings/AgentModelPicker").then((m) => ({
@@ -15,257 +13,18 @@ const AgentModelPicker = lazy(() =>
   })),
 );
 
-const GENERAL_AGENT_ENGINE_OPTIONS = [
-  { id: "default", name: "Stella" },
-  { id: "claude_code_local", name: "Claude Code" },
-] as const;
-
-const MAX_AGENT_CONCURRENCY_OPTIONS = Array.from(
-  { length: 24 },
-  (_, index) => index + 1,
-);
-
-type LocalModelPreferences = {
-  defaultModels: Record<string, string>;
-  modelOverrides: Record<string, string>;
-  reasoningEfforts: Record<
-    string,
-    "minimal" | "low" | "medium" | "high" | "xhigh"
-  >;
-  generalAgentEngine: "default" | "claude_code_local";
-  selfModAgentEngine: "default" | "claude_code_local";
-  maxAgentConcurrency: number;
-};
-
 function ModelConfigSection() {
-  const [modelPreferences, setModelPreferences] =
-    useState<LocalModelPreferences | null>(null);
-  const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<
-    "default" | "claude_code_local" | null
-  >(null);
-  const [localMaxAgentConcurrency, setLocalMaxAgentConcurrency] = useState<
-    number | null
-  >(null);
-  const [runtimeError, setRuntimeError] = useState<string | null>(null);
-  const [isSavingRuntimePreference, setIsSavingRuntimePreference] =
-    useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadPreferences = async () => {
-      try {
-        const next =
-          await window.electronAPI?.system?.getLocalModelPreferences?.();
-        if (!cancelled) {
-          setModelPreferences(next ?? null);
-          setRuntimeError(null);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setRuntimeError(
-            getSettingsErrorMessage(error, "Failed to load model settings."),
-          );
-        }
-      }
-    };
-
-    void loadPreferences();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const runtimePreferencesLoaded = modelPreferences !== null;
-
-  const effectiveGeneralAgentEngine =
-    (localGeneralAgentEngine !== null &&
-    localGeneralAgentEngine !== modelPreferences?.generalAgentEngine
-      ? localGeneralAgentEngine
-      : null) ??
-    modelPreferences?.generalAgentEngine ??
-    "default";
-  const effectiveMaxAgentConcurrency =
-    (localMaxAgentConcurrency !== null &&
-    localMaxAgentConcurrency !== modelPreferences?.maxAgentConcurrency
-      ? localMaxAgentConcurrency
-      : null) ??
-    modelPreferences?.maxAgentConcurrency ??
-    24;
-
-  const handleAgentEngineChange = useCallback(
-    async (_agentType: "general", value: string) => {
-      if (isSavingRuntimePreference) {
-        return;
-      }
-
-      const engine =
-        value === "claude_code_local" ? "claude_code_local" : "default";
-      const previousValue = localGeneralAgentEngine;
-
-      setRuntimeError(null);
-      setIsSavingRuntimePreference(true);
-      setLocalGeneralAgentEngine(engine);
-
-      try {
-        const saved =
-          await window.electronAPI?.system?.setLocalModelPreferences?.({
-            generalAgentEngine: engine,
-          });
-        if (saved) {
-          setModelPreferences(saved);
-        }
-      } catch (error) {
-        setLocalGeneralAgentEngine(previousValue);
-        setRuntimeError(
-          getSettingsErrorMessage(
-            error,
-            "Failed to update the general agent runtime.",
-          ),
-        );
-      } finally {
-        setIsSavingRuntimePreference(false);
-      }
-    },
-    [isSavingRuntimePreference, localGeneralAgentEngine],
-  );
-
-  const handleMaxAgentConcurrencyChange = useCallback(
-    async (value: string) => {
-      if (isSavingRuntimePreference) {
-        return;
-      }
-
-      const parsed = Number(value);
-      const normalized =
-        Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 24;
-      const previousValue = localMaxAgentConcurrency;
-
-      setRuntimeError(null);
-      setIsSavingRuntimePreference(true);
-      setLocalMaxAgentConcurrency(normalized);
-
-      try {
-        const saved =
-          await window.electronAPI?.system?.setLocalModelPreferences?.({
-            maxAgentConcurrency: normalized,
-          });
-        if (saved) {
-          setModelPreferences(saved);
-        }
-      } catch (error) {
-        setLocalMaxAgentConcurrency(previousValue);
-        setRuntimeError(
-          getSettingsErrorMessage(
-            error,
-            "Failed to update max agent concurrency.",
-          ),
-        );
-      } finally {
-        setIsSavingRuntimePreference(false);
-      }
-    },
-    [isSavingRuntimePreference, localMaxAgentConcurrency],
-  );
-
   return (
-    <>
-      <div className="settings-card">
-        <h3 className="settings-card-title">Agents</h3>
-        <p className="settings-card-desc">
-          Choose how Stella runs background tasks on your computer.
-        </p>
-        {runtimeError ? (
-          <p
-            className="settings-card-desc settings-card-desc--error"
-            role="alert"
-          >
-            {runtimeError}
-          </p>
-        ) : null}
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">Engine</div>
-            <div className="settings-row-sublabel">
-              Powers Stella's main assistant. Choosing Claude Code requires the{" "}
-              <code>claude</code> command installed on your computer.
-            </div>
-          </div>
-          <div className="settings-row-control">
-            {runtimePreferencesLoaded ? (
-              <Select
-                className="settings-runtime-select"
-                value={effectiveGeneralAgentEngine}
-                onValueChange={(value) =>
-                  void handleAgentEngineChange("general", value)
-                }
-                disabled={isSavingRuntimePreference}
-                aria-label="Engine"
-                options={GENERAL_AGENT_ENGINE_OPTIONS.map((option) => ({
-                  value: option.id,
-                  label: option.name,
-                }))}
-              />
-            ) : (
-              <Select
-                className="settings-runtime-select"
-                value="loading"
-                disabled
-                aria-label="Engine"
-                options={[
-                  { value: "loading", label: "Loading saved setting..." },
-                ]}
-              />
-            )}
-          </div>
-        </div>
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">Max running tasks</div>
-            <div className="settings-row-sublabel">
-              How many background tasks Stella can run at the same time.
-            </div>
-          </div>
-          <div className="settings-row-control">
-            {runtimePreferencesLoaded ? (
-              <Select
-                className="settings-runtime-select"
-                value={String(effectiveMaxAgentConcurrency)}
-                onValueChange={(value) =>
-                  void handleMaxAgentConcurrencyChange(value)
-                }
-                disabled={isSavingRuntimePreference}
-                aria-label="Max running tasks"
-                options={MAX_AGENT_CONCURRENCY_OPTIONS.map((value) => ({
-                  value: String(value),
-                  label: String(value),
-                }))}
-              />
-            ) : (
-              <Select
-                className="settings-runtime-select"
-                value="loading"
-                disabled
-                aria-label="Max running tasks"
-                options={[
-                  { value: "loading", label: "Loading saved setting..." },
-                ]}
-              />
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="settings-card">
-        <h3 className="settings-card-title">Models</h3>
-        <p className="settings-card-desc">
-          Pick which model and provider Stella uses for each kind of task. The
-          toggle below switches between the two agents.
-        </p>
-        <Suspense fallback={null}>
-          <AgentModelPicker />
-        </Suspense>
-      </div>
-    </>
+    <div className="settings-card">
+      <h3 className="settings-card-title">Models</h3>
+      <p className="settings-card-desc">
+        Pick which Stella model each agent uses. Open “More options” for the
+        full provider catalog and local runtime settings.
+      </p>
+      <Suspense fallback={null}>
+        <AgentModelPicker />
+      </Suspense>
+    </div>
   );
 }
 

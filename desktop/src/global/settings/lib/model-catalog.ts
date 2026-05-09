@@ -227,6 +227,46 @@ export function groupCatalogModelsByProvider(
     });
 }
 
+/**
+ * Strip provider prefixes from a Stella model identifier so the visible
+ * label is just the trailing model slug (e.g. `openai/gpt-5` → `gpt-5`,
+ * `accounts/fireworks/models/qwen-coder-32b` → `qwen-coder-32b`). For
+ * preset Stella models with no slash in the modelId we keep the
+ * pre-formatted display name (e.g. "Stella Best") because that's already
+ * the friendly form. Only applied to Stella models — every other provider
+ * keeps its standard label.
+ */
+export function getStellaDisplayName(model: CatalogModel): string {
+  if (model.provider !== "stella") return model.name;
+  if (!model.name.includes("/")) return model.name;
+  const lastSlash = model.name.lastIndexOf("/");
+  const tail = model.name.slice(lastSlash + 1).trim();
+  return tail || model.name;
+}
+
+/**
+ * For Stella preset modes ("Stella Best", "Stella Smart", …) returns the
+ * resolved upstream model id with provider prefixes stripped, so users
+ * see *both* the friendly preset label and the actual model it currently
+ * maps to. Returns null when there's no useful subtitle (e.g. for non-
+ * Stella models, or when the upstream slug equals the display name).
+ */
+export function getStellaSubtitle(model: CatalogModel): string | null {
+  if (model.provider !== "stella") return null;
+  const candidate = model.upstreamModel?.trim();
+  if (!candidate) return null;
+  const trimmed = candidate.startsWith("accounts/fireworks/models/")
+    ? candidate.slice("accounts/fireworks/models/".length)
+    : candidate.startsWith("accounts/fireworks/routers/")
+      ? candidate.slice("accounts/fireworks/routers/".length)
+      : candidate;
+  const lastSlash = trimmed.lastIndexOf("/");
+  const tail = (lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed).trim();
+  if (!tail) return null;
+  if (tail.toLowerCase() === model.name.toLowerCase()) return null;
+  return tail;
+}
+
 export function searchCatalogModels(
   models: readonly CatalogModel[],
   query: string,

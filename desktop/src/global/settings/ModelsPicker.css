@@ -12,26 +12,3 @@
 [data-models-picker] .agent-model-picker {
   gap: 10px;
 }
-
-[data-models-picker] .models-picker-more {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  margin-top: 4px;
-  padding: 8px 4px 2px;
-  background: none;
-  border: none;
-  border-top: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
-  color: var(--text-weak);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color 120ms ease;
-}
-
-[data-models-picker] .models-picker-more:hover,
-[data-models-picker] .models-picker-more:focus-visible {
-  color: var(--text-strong);
-  outline: none;
-}
