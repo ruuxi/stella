@@ -167,8 +167,14 @@ const applyCapabilityDefaults = (args: {
   if (args.capability.id === "icon") {
     normalized.image_size = { width: 512, height: 512 };
   }
-  if (args.capability.id === "image_edit" && args.profile?.id === "fast") {
+  if (
+    (args.capability.id === "text_to_image" ||
+      args.capability.id === "image_edit") &&
+    normalized.quality === undefined
+  ) {
     normalized.quality = "low";
+  }
+  if (args.capability.id === "image_edit" && args.profile?.id === "fast") {
     normalized.image_size = "auto";
   }
   return normalized;
@@ -183,12 +189,13 @@ const applyCapabilityDefaults = (args: {
  */
 const applyEndpointTransforms = (args: {
   capability: MediaCapability;
+  profile?: MediaProfile;
   input: Record<string, unknown>;
 }): Record<string, unknown> => {
   const normalized = { ...args.input };
-  const targetsGptImage2 = args.capability.profiles.some((p) =>
-    isGptImage2Endpoint(p.endpointId),
-  );
+  const targetsGptImage2 = args.profile
+    ? isGptImage2Endpoint(args.profile.endpointId)
+    : args.capability.profiles.some((p) => isGptImage2Endpoint(p.endpointId));
   if (targetsGptImage2 && typeof normalized.aspect_ratio === "string") {
     if (normalized.image_size === undefined) {
       const mapped = GPT_IMAGE_2_ASPECT_PRESETS[normalized.aspect_ratio.trim()];
@@ -197,6 +204,13 @@ const applyEndpointTransforms = (args: {
       }
     }
     delete normalized.aspect_ratio;
+  }
+  if (
+    targetsGptImage2 &&
+    args.capability.id === "text_to_image" &&
+    normalized.image_size === undefined
+  ) {
+    normalized.image_size = "auto";
   }
   return normalized;
 };
@@ -358,6 +372,7 @@ export const applyConvenienceInput = (args: {
   }
   return applyEndpointTransforms({
     capability: args.capability,
+    profile: args.profile,
     input: normalized,
   });
 };
