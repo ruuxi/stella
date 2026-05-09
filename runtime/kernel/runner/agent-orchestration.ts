@@ -486,14 +486,31 @@ export const createAgentOrchestration = (
       const guardedShellLeaseSessions = new Map<string, Set<string>>();
 
       const endShellMutationGuard = async () => {
-        await context.selfModHmrController
+        const result = await context.selfModHmrController
           ?.endShellMutationGuard()
           .catch((error) => {
             console.warn(
               "[self-mod-hmr] failed to end shell mutation guard:",
               (error as Error).message,
             );
+            return null;
           });
+        if (result?.ok && result.changedPaths.length > 0) {
+          try {
+            await recordWritePaths(
+              result.changedPaths.map((repoRelativePath) =>
+                context.stellaRoot
+                  ? `${context.stellaRoot}/${repoRelativePath}`
+                  : repoRelativePath,
+              ),
+            );
+          } catch (error) {
+            console.warn(
+              "[self-mod-hmr] failed to record suppressed shell updates:",
+              (error as Error).message,
+            );
+          }
+        }
       };
 
       const releaseGuardedShellSessions = async () => {

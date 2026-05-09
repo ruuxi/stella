@@ -53,6 +53,11 @@ export type HmrStatus = {
   appliedOverlayPaths: number;
 };
 
+export type ShellMutationGuardEndResult = {
+  ok: boolean;
+  changedPaths: string[];
+};
+
 export type AppliedRun = {
   runId: string;
   paths: string[];
@@ -360,7 +365,7 @@ export type SelfModHmrController = {
   discard: (appliedRuns: AppliedRun[]) => Promise<boolean>;
   releaseRuns: (runIds: string[]) => Promise<boolean>;
   beginShellMutationGuard: () => Promise<boolean>;
-  endShellMutationGuard: () => Promise<boolean>;
+  endShellMutationGuard: () => Promise<ShellMutationGuardEndResult>;
   /**
    * Emergency: clear all tracker state and tell Vite to drop overlays.
    * Used from runtime initialization and after fatal errors so a stale
@@ -651,7 +656,25 @@ export const createSelfModHmrController = (
     },
 
     async endShellMutationGuard() {
-      return await postGuard(`${HMR_ENDPOINT_BASE}/end-shell-mutation`);
+      if (!options.enabled) return { ok: true, changedPaths: [] };
+      const response = await postJsonWithRetry<Partial<ShellMutationGuardEndResult>>({
+        getDevServerUrl: options.getDevServerUrl,
+        path: `${HMR_ENDPOINT_BASE}/end-shell-mutation`,
+        maxWaitMs: TRACK_MAX_WAIT_MS,
+        authToken: options.authToken,
+      });
+      if (!response?.ok) {
+        return { ok: false, changedPaths: [] };
+      }
+      return {
+        ok: true,
+        changedPaths: Array.isArray(response.changedPaths)
+          ? response.changedPaths.filter(
+              (path): path is string =>
+                typeof path === "string" && path.length > 0,
+            )
+          : [],
+      };
     },
 
     async forceResumeAll() {

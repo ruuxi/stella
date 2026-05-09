@@ -303,12 +303,31 @@ export const launchPreparedOrchestratorRun = (args: {
   const guardedShellLeaseSessions = new Map<string, string>();
 
   const endShellMutationGuard = async () => {
-    await context.selfModHmrController?.endShellMutationGuard().catch((error) => {
-      console.warn(
-        "[self-mod-hmr] failed to end shell mutation guard:",
-        (error as Error).message,
-      );
-    });
+    const result = await context.selfModHmrController
+      ?.endShellMutationGuard()
+      .catch((error) => {
+        console.warn(
+          "[self-mod-hmr] failed to end shell mutation guard:",
+          (error as Error).message,
+        );
+        return null;
+      });
+    if (result?.ok && result.changedPaths.length > 0) {
+      try {
+        await recordWritePaths(
+          result.changedPaths.map((repoRelativePath) =>
+            context.stellaRoot
+              ? `${context.stellaRoot}/${repoRelativePath}`
+              : repoRelativePath,
+          ),
+        );
+      } catch (error) {
+        console.warn(
+          "[self-mod-hmr] failed to record suppressed shell updates:",
+          (error as Error).message,
+        );
+      }
+    }
   };
 
   const retainShellGuardLease = (sessionIds: string[]): boolean => {
