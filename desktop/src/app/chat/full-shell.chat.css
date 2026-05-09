@@ -80,7 +80,7 @@
 }
 
 .composer-queued-message--leaving {
-  animation: composer-queued-leave 240ms cubic-bezier(0.4, 0, 1, 1) both;
+  animation: composer-queued-leave 90ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
 .composer-queued-message__bubble {

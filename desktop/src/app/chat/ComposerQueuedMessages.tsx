@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
 
-const EXIT_MS = 260;
+const EXIT_MS = 100;
 
 type VisibleItem = QueuedUserMessage & { leaving: boolean };
 
