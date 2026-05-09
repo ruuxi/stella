@@ -446,7 +446,12 @@ export type ElectronDictationApi = {
    * `useDictation` hook listens to so the active composer toggles its
    * speech-to-text session.
    */
-  onToggle: (callback: (data: { startId?: string }) => void) => () => void;
+  onToggle: (
+    callback: (data: {
+      startId?: string;
+      action?: "toggle" | "start" | "reveal" | "stop" | "cancel";
+    }) => void,
+  ) => () => void;
   /** Programmatically trigger the same toggle from the renderer. */
   trigger: () => Promise<{ ok: boolean }>;
   /** Returns the currently registered global shortcut accelerator. */

@@ -30,7 +30,7 @@ export const DICTATION_TOGGLE_EVENT = "stella:dictation-toggle";
 
 type DictationToggleEventDetail = {
   startId?: string;
-  action?: "toggle" | "start" | "stop" | "cancel";
+  action?: "toggle" | "start" | "reveal" | "stop" | "cancel";
 };
 
 /** How many waveform bars we retain. The session emits ~12.5 ticks/sec, so
@@ -56,6 +56,7 @@ interface UseDictationOptions {
 
 interface UseDictationResult {
   isRecording: boolean;
+  isRecordingVisible: boolean;
   isTranscribing: boolean;
   showControls: boolean;
   state: DictationSessionState;
@@ -96,6 +97,7 @@ export const useDictation = ({
   const [levels, setLevels] = useState<number[]>([]);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [showControls, setShowControls] = useState(false);
+  const [showRecordingBar, setShowRecordingBar] = useState(false);
 
   const sessionRef = useRef<InworldDictationSession | null>(null);
   const baseTextRef = useRef("");
@@ -181,6 +183,7 @@ export const useDictation = ({
     if (!session) return;
     setLevels([]);
     setShowControls(false);
+    setShowRecordingBar(false);
     void session.cancel().catch((err: Error) => {
       console.debug("[dictation] cancel failed:", err.message);
     });
@@ -196,6 +199,7 @@ export const useDictation = ({
     setLevels([]);
     setElapsedMs(0);
     setShowControls(source === "button");
+    setShowRecordingBar(source === "button");
 
     try {
       await session.start({
@@ -216,6 +220,7 @@ export const useDictation = ({
             sessionRef.current = null;
             setLevels([]);
             setShowControls(false);
+            setShowRecordingBar(false);
             // For success paths the inworld session emits `idle` before
             // `onFinalTranscript`; defer to a microtask so commit fires
             // after the transcript has been appended. For no-audio /
@@ -240,6 +245,7 @@ export const useDictation = ({
       sessionRef.current = null;
       setLevels([]);
       setShowControls(false);
+      setShowRecordingBar(false);
     }
   }, [disabled]);
 
@@ -290,6 +296,12 @@ export const useDictation = ({
         }
         return;
       }
+      if (action === "reveal") {
+        if (current === "listening") {
+          setShowRecordingBar(true);
+        }
+        return;
+      }
       if (action === "stop") {
         if (current === "listening") {
           sendAfterCommitRef.current = false;
@@ -328,6 +340,7 @@ export const useDictation = ({
 
   return {
     isRecording: state === "listening",
+    isRecordingVisible: state === "listening" && showRecordingBar,
     isTranscribing: state === "transcribing",
     showControls,
     state,

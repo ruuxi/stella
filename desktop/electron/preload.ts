@@ -521,7 +521,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   dictation: {
-    onToggle: onIpc<{ startId?: string }>("dictation:toggle"),
+    onToggle: onIpc<{
+      startId?: string;
+      action?: "toggle" | "start" | "reveal" | "stop" | "cancel";
+    }>("dictation:toggle"),
     trigger: () =>
       ipcRenderer.invoke("dictation:trigger") as Promise<{ ok: boolean }>,
     getShortcut: () =>

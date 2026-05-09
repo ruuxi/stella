@@ -334,7 +334,7 @@ export function ChatPanelTab(
                       disabled={isStreaming}
                     />
 
-                    {dictation.isRecording ? (
+                    {dictation.isRecordingVisible ? (
                       <DictationRecordingBar
                         levels={dictation.levels}
                         elapsedMs={dictation.elapsedMs}

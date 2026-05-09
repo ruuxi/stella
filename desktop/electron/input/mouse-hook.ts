@@ -36,6 +36,9 @@ const LEFT_MOUSE_BUTTON = 1;
 // the gesture to count as a "double-tap". 350ms matches the typical OS
 // double-click threshold and feels fast-but-not-twitchy in practice.
 const DOUBLE_TAP_WINDOW_MS = 350;
+// Audio capture starts immediately on Option/Alt down so speech from the first
+// 150ms is not lost when the user intended dictation. This delay only gates the
+// visible push-to-talk affordance / chord cancellation window.
 const DICTATION_PUSH_TO_TALK_TRIGGER_DELAY_MS = 150;
 
 export type LeftMouseUpEvent = {
