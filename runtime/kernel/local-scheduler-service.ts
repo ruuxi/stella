@@ -1011,10 +1011,6 @@ export class LocalSchedulerService {
     return nextDueAt
   }
 
-  private getRunner() {
-    return this.options.runnerTarget.getRunner()
-  }
-
   private getNextDueItem(
     now: number,
   ):
@@ -1074,7 +1070,7 @@ export class LocalSchedulerService {
         }
 
         const needsRunner = this.requiresRunner(dueItem)
-        const runner = needsRunner ? this.getRunner() : null
+        const runner = needsRunner ? this.options.runnerTarget.getRunner() : null
         if (needsRunner && !runner) {
           // Worker isn't ready yet; back off and retry. notify/script
           // fires don't need the runner so they continue to drain.

@@ -272,20 +272,6 @@ export const createOrchestratorController = (
     return session;
   };
 
-  const buildInjectedInternalMessage = (
-    input: RuntimeSendMessageInput,
-    timestamp: number,
-  ): AgentMessage =>
-    createRuntimePromptAgentMessage(
-      {
-        text: input.text.trim(),
-        messageType: "message",
-        customType: input.customType ?? "runtime.send_message",
-        ...(input.display !== undefined ? { display: input.display } : {}),
-      },
-      timestamp,
-    );
-
   const persistInjectedUserMessage = (
     session: ActiveOrchestratorSession,
     text: string,
@@ -351,25 +337,6 @@ export const createOrchestratorController = (
     }
   };
 
-  const appendVisibleUserChatEvent = (args: {
-    conversationId: string;
-    userMessageId: string;
-    text: string;
-    timestamp: number;
-    metadata?: Record<string, unknown>;
-  }) => {
-    context.appendLocalChatEvent?.({
-      conversationId: args.conversationId,
-      type: "user_message",
-      requestId: args.userMessageId,
-      timestamp: args.timestamp,
-      payload: {
-        text: args.text,
-        ...(args.metadata ? { metadata: args.metadata } : {}),
-      },
-    });
-  };
-
   const sendMessage = async (input: RuntimeSendMessageInput): Promise<void> => {
     const text = input.text.trim();
     if (!text) {
@@ -393,7 +360,15 @@ export const createOrchestratorController = (
     );
     if (liveSession) {
       const timestamp = Date.now();
-      const message = buildInjectedInternalMessage(input, timestamp);
+      const message = createRuntimePromptAgentMessage(
+        {
+          text,
+          messageType: "message",
+          customType: input.customType ?? "runtime.send_message",
+          ...(input.display !== undefined ? { display: input.display } : {}),
+        },
+        timestamp,
+      );
       liveSession.queueMessage(message, delivery);
       return;
     }
@@ -475,12 +450,15 @@ export const createOrchestratorController = (
           }
         : undefined;
     if (uiVisibility !== UI_VISIBILITY_HIDDEN) {
-      appendVisibleUserChatEvent({
+      context.appendLocalChatEvent?.({
         conversationId: input.conversationId,
-        userMessageId,
-        text,
+        type: "user_message",
+        requestId: userMessageId,
         timestamp,
-        ...(nextMetadata ? { metadata: nextMetadata } : {}),
+        payload: {
+          text,
+          ...(nextMetadata ? { metadata: nextMetadata } : {}),
+        },
       });
     }
     const liveSession = getLiveOrchestratorSession(

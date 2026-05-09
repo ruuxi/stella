@@ -425,16 +425,6 @@ export class LocalAgentManager implements AgentToolApi {
     return task.restartRequested && task.status !== "canceled";
   }
 
-  private shouldContinueWithQueuedInput(task: RuntimeAgentRecord): boolean {
-    return task.toSubagentQueue.length > 0 && task.status === "completed";
-  }
-
-  private toPersistedStatus(
-    status: LocalAgentStatus,
-  ): PersistedAgentRecord["status"] {
-    return status === "pending" ? "running" : status;
-  }
-
   private persistTask(task: RuntimeAgentRecord): void {
     this.opts.saveAgentRecord?.({
       threadId: task.threadId,
@@ -449,7 +439,7 @@ export class LocalAgentManager implements AgentToolApi {
       ...(task.selfModMetadata
         ? { selfModMetadata: task.selfModMetadata }
         : {}),
-      status: this.toPersistedStatus(task.status),
+      status: task.status === "pending" ? "running" : task.status,
       startedAt: task.startedAt,
       completedAt: task.completedAt,
       ...(typeof task.result === "string" ? { result: task.result } : {}),
@@ -801,7 +791,10 @@ export class LocalAgentManager implements AgentToolApi {
       }
     }
 
-    if (this.shouldRestartTask(task) || this.shouldContinueWithQueuedInput(task)) {
+    if (
+      this.shouldRestartTask(task) ||
+      (task.toSubagentQueue.length > 0 && task.status === "completed")
+    ) {
       this.requeueTaskForUpdate(task);
       return;
     }
