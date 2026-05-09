@@ -81,7 +81,8 @@ export const parseGoogleWorkspaceProfile = (
   };
 };
 
-const AUTH_PENDING_PATTERN = /\bauth\b|oauth|sign[._-]?in|login|consent|credential|unauthorized|unauthenticated|\b403\b|\b401\b/i;
+const AUTH_PENDING_PATTERN =
+  /\bauth\b|oauth|sign[._-]?in|login|consent|credential|unauthorized|unauthenticated|\b403\b|\b401\b/i;
 
 const parseGoogleProfileResult = (
   result: ToolResult,
@@ -126,7 +127,13 @@ export const createStellaHostRunner = (
       if (result) {
         convexSession.setHasConnectedAccount(result.hasConnectedAccount);
       }
-      return result ?? { authenticated: false, token: null, hasConnectedAccount: false };
+      return (
+        result ?? {
+          authenticated: false,
+          token: null,
+          hasConnectedAccount: false,
+        }
+      );
     };
   }
   context.state.webSearch = convexSession.webSearch;
@@ -217,9 +224,13 @@ export const createStellaHostRunner = (
     convexAction: async (ref: unknown, args: unknown): Promise<unknown> => {
       const client = convexSession.ensureConvexClient();
       if (!client) {
-        throw new Error("Convex client not available — check connection and auth.");
+        throw new Error(
+          "Convex client not available — check connection and auth.",
+        );
       }
-      return (client as { action: (ref: unknown, args: unknown) => Promise<unknown> }).action(ref, args);
+      return (
+        client as { action: (ref: unknown, args: unknown) => Promise<unknown> }
+      ).action(ref, args);
     },
 
     googleWorkspaceGetAuthStatus: async () => {
@@ -268,18 +279,13 @@ export const createStellaHostRunner = (
 
     triggerDreamNow: async (trigger = "manual") => {
       try {
-        const { countPendingDreamExtensions } = await import(
-          "./memory/dream-core.js"
-        );
-        const { maybeSpawnDreamRun } = await import(
-          "./agent-runtime/dream-scheduler.js"
-        );
-        const { resolveRunnerLlmRoute } = await import(
-          "./runner/model-selection.js"
-        );
-        const { AGENT_IDS } = await import(
-          "../contracts/agent-runtime.js"
-        );
+        const { countPendingDreamExtensions } =
+          await import("./memory/dream-core.js");
+        const { maybeSpawnDreamRun } =
+          await import("./agent-runtime/dream-scheduler.js");
+        const { resolveRunnerLlmRoute } =
+          await import("./runner/model-selection.js");
+        const { AGENT_IDS } = await import("../contracts/agent-runtime.js");
         const pendingThreadSummaries =
           context.runtimeStore.threadSummariesStore.countUnprocessed();
         const pendingExtensions = await countPendingDreamExtensions(
@@ -293,10 +299,16 @@ export const createStellaHostRunner = (
             pendingExtensions,
           };
         }
+        const dreamAgent = resolveAgent(context, AGENT_IDS.DREAM);
+        const dreamModel = getConfiguredModel(
+          context,
+          AGENT_IDS.DREAM,
+          dreamAgent,
+        );
         const resolvedLlm = resolveRunnerLlmRoute(
           context,
           AGENT_IDS.DREAM,
-          undefined,
+          dreamModel,
         );
         return await maybeSpawnDreamRun({
           stellaHome: context.stellaRoot,
@@ -318,19 +330,21 @@ export const createStellaHostRunner = (
 
     runChronicleSummaryTick: async (window) => {
       try {
-        const { runChronicleSummary } = await import(
-          "./memory/chronicle-summarizer.js"
-        );
-        const { resolveRunnerLlmRoute } = await import(
-          "./runner/model-selection.js"
-        );
-        const { AGENT_IDS } = await import(
-          "../contracts/agent-runtime.js"
+        const { runChronicleSummary } =
+          await import("./memory/chronicle-summarizer.js");
+        const { resolveRunnerLlmRoute } =
+          await import("./runner/model-selection.js");
+        const { AGENT_IDS } = await import("../contracts/agent-runtime.js");
+        const chronicleAgent = resolveAgent(context, AGENT_IDS.CHRONICLE);
+        const chronicleModel = getConfiguredModel(
+          context,
+          AGENT_IDS.CHRONICLE,
+          chronicleAgent,
         );
         const resolvedLlm = resolveRunnerLlmRoute(
           context,
           AGENT_IDS.CHRONICLE,
-          undefined,
+          chronicleModel,
         );
         return await runChronicleSummary({
           stellaHome: context.stellaRoot,

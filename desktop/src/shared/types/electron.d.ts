@@ -420,6 +420,14 @@ export type ElectronVoiceApi = {
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
+  createOpenAISession: (payload: { instructions?: string }) => Promise<{
+    provider: "openai";
+    clientSecret: string;
+    model: string;
+    voice: string;
+    expiresAt?: number;
+    sessionId?: string;
+  }>;
   getCoreMemory: () => Promise<string>;
   getRuntimeState: () => Promise<VoiceRuntimeSnapshot>;
   onRuntimeState: (
@@ -704,6 +712,10 @@ export type ElectronSystemApi = {
       provider: "stella" | "openai" | "openrouter" | "fal";
       model?: string;
     };
+    realtimeVoice: {
+      provider: "stella" | "openai";
+      model?: string;
+    };
   } | null>;
   setLocalModelPreferences: (payload: {
     defaultModels?: Record<string, string>;
@@ -718,6 +730,10 @@ export type ElectronSystemApi = {
       provider: "stella" | "openai" | "openrouter" | "fal";
       model?: string;
     };
+    realtimeVoice?: {
+      provider: "stella" | "openai";
+      model?: string;
+    };
   }) => Promise<{
     defaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
@@ -729,6 +745,10 @@ export type ElectronSystemApi = {
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
+      model?: string;
+    };
+    realtimeVoice: {
+      provider: "stella" | "openai";
       model?: string;
     };
   } | null>;

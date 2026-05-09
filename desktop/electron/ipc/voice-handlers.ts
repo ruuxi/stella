@@ -9,9 +9,13 @@ import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 import { applyShortcutRegistration } from "./shortcut-registration.js";
 import type { VoiceRuntimeSnapshot } from "../../../runtime/contracts/index.js";
 import {
+  getRealtimeVoicePreferences,
   loadLocalPreferences,
   saveLocalPreferences,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
+import { getLocalLlmCredential } from "../../../runtime/kernel/storage/llm-credentials.js";
+import { getLocalLlmOAuthApiKey } from "../../../runtime/kernel/storage/llm-oauth-credentials.js";
+import { IPC_VOICE_CREATE_OPENAI_SESSION } from "../../src/shared/contracts/ipc-channels.js";
 
 type VoiceHandlersOptions = {
   uiState: UiState;
@@ -29,12 +33,16 @@ type VoiceHandlersOptions = {
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
   ) => () => void;
-  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
+  getBroadcastToMobile?: () =>
+    | ((channel: string, data: unknown) => void)
+    | null;
   getOverlayController?: () => OverlayWindowController | null;
   stellaRoot: string;
 };
 
 const DEFAULT_VOICE_RTC_SHORTCUT = "CommandOrControl+Shift+D";
+const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime";
+const DEFAULT_OPENAI_REALTIME_VOICE = "marin";
 
 const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
   sessionState: "idle",
@@ -92,9 +100,11 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     unsubscribeVoiceActionCompleted?.();
     unsubscribeVoiceActionCompleted = null;
     if (!runner) return;
-    unsubscribeVoiceActionCompleted = runner.onVoiceActionCompleted((payload) => {
-      emitVoiceActionCompleted(payload);
-    });
+    unsubscribeVoiceActionCompleted = runner.onVoiceActionCompleted(
+      (payload) => {
+        emitVoiceActionCompleted(payload);
+      },
+    );
   };
   bindVoiceActionCompletion(options.getStellaHostRunner());
   options.onStellaHostRunnerChanged?.(bindVoiceActionCompletion);
@@ -167,6 +177,92 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     }
   });
 
+  ipcMain.handle(
+    IPC_VOICE_CREATE_OPENAI_SESSION,
+    async (
+      _event,
+      payload: {
+        instructions?: string;
+      },
+    ) => {
+      const preferences = getRealtimeVoicePreferences(options.stellaRoot);
+      if (preferences.provider !== "openai") {
+        throw new Error("OpenAI is not selected for voice.");
+      }
+      const apiKey =
+        getLocalLlmCredential(options.stellaRoot, "openai")?.trim() ||
+        (await getLocalLlmOAuthApiKey(options.stellaRoot, "openai"))?.trim();
+      if (!apiKey) {
+        throw new Error("Connect OpenAI in Settings to use it for voice.");
+      }
+      const model = preferences.model?.startsWith("openai/")
+        ? preferences.model.slice("openai/".length)
+        : preferences.model || DEFAULT_OPENAI_REALTIME_MODEL;
+      const response = await fetch(
+        "https://api.openai.com/v1/realtime/client_secrets",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            session: {
+              type: "realtime",
+              model,
+              instructions:
+                typeof payload?.instructions === "string"
+                  ? payload.instructions
+                  : undefined,
+              audio: {
+                output: {
+                  voice: DEFAULT_OPENAI_REALTIME_VOICE,
+                },
+              },
+            },
+          }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(
+          `Failed to create OpenAI voice session: ${response.status} ${await response.text()}`,
+        );
+      }
+      const data = (await response.json()) as {
+        value?: unknown;
+        client_secret?: { value?: unknown; expires_at?: unknown };
+        expires_at?: unknown;
+        session?: { id?: unknown; model?: unknown };
+      };
+      const clientSecret =
+        typeof data.value === "string"
+          ? data.value
+          : typeof data.client_secret?.value === "string"
+            ? data.client_secret.value
+            : null;
+      if (!clientSecret) {
+        throw new Error(
+          "OpenAI voice session response did not include a client secret.",
+        );
+      }
+      return {
+        provider: "openai" as const,
+        clientSecret,
+        model:
+          typeof data.session?.model === "string" ? data.session.model : model,
+        voice: DEFAULT_OPENAI_REALTIME_VOICE,
+        expiresAt:
+          typeof data.expires_at === "number"
+            ? data.expires_at
+            : typeof data.client_secret?.expires_at === "number"
+              ? data.client_secret.expires_at
+              : undefined,
+        sessionId:
+          typeof data.session?.id === "string" ? data.session.id : undefined,
+      };
+    },
+  );
+
   ipcMain.on(
     "voice:persistTranscript",
     (
@@ -196,10 +292,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
 
   ipcMain.handle(
     "voice:orchestratorChat",
-    async (
-      _event,
-      payload: { conversationId: string; message: string },
-    ) => {
+    async (_event, payload: { conversationId: string; message: string }) => {
       console.log(
         `[${ts()}] [Voice] orchestratorChat request:`,
         payload.message,
@@ -287,5 +380,4 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       broadcastRuntimeState();
     },
   );
-
 };

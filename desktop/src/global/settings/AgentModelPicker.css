@@ -15,11 +15,13 @@
 }
 
 .agent-model-picker-toggle {
-  display: inline-flex;
+  display: flex;
   flex: 0 1 auto;
+  flex-wrap: wrap;
   gap: 2px;
+  min-width: 0;
   padding: 3px;
-  border-radius: var(--radius-full);
+  border-radius: 12px;
   background: color-mix(in oklch, var(--text-strong) 6%, transparent);
   border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
 }

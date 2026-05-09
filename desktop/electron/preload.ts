@@ -84,6 +84,7 @@ import {
   IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION,
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
+  IPC_VOICE_CREATE_OPENAI_SESSION,
 } from "../src/shared/contracts/ipc-channels.js";
 import type { RuntimeSocialSessionStatus } from "../../runtime/protocol/index.js";
 
@@ -461,6 +462,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("voice:webSearch", payload) as Promise<{
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
+      }>,
+    createOpenAISession: (payload: { instructions?: string }) =>
+      ipcRenderer.invoke(IPC_VOICE_CREATE_OPENAI_SESSION, payload) as Promise<{
+        provider: "openai";
+        clientSecret: string;
+        model: string;
+        voice: string;
+        expiresAt?: number;
+        sessionId?: string;
       }>,
     getCoreMemory: () =>
       ipcRenderer.invoke("voice:getCoreMemory") as Promise<string>,
@@ -945,12 +955,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
         modelOverrides: Record<string, string>;
         reasoningEfforts: Record<
           string,
-          "minimal" | "low" | "medium" | "high" | "xhigh"
+          "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
         >;
         agentRuntimeEngine: "default" | "claude_code_local";
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
+          model?: string;
+        };
+        realtimeVoice: {
+          provider: "stella" | "openai";
           model?: string;
         };
       } | null>,
@@ -959,12 +973,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
       modelOverrides?: Record<string, string>;
       reasoningEfforts?: Record<
         string,
-        "minimal" | "low" | "medium" | "high" | "xhigh"
+        "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
       >;
       agentRuntimeEngine?: "default" | "claude_code_local";
       maxAgentConcurrency?: number;
       imageGeneration?: {
         provider: "stella" | "openai" | "openrouter" | "fal";
+        model?: string;
+      };
+      realtimeVoice?: {
+        provider: "stella" | "openai";
         model?: string;
       };
     }) =>
@@ -973,12 +991,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
         modelOverrides: Record<string, string>;
         reasoningEfforts: Record<
           string,
-          "minimal" | "low" | "medium" | "high" | "xhigh"
+          "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
         >;
         agentRuntimeEngine: "default" | "claude_code_local";
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
+          model?: string;
+        };
+        realtimeVoice: {
+          provider: "stella" | "openai";
           model?: string;
         };
       } | null>,

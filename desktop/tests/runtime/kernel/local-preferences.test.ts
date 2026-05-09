@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   loadLocalPreferences,
   normalizeImageGenerationPreferences,
+  normalizeRealtimeVoicePreferences,
   updateLocalModelPreferences,
 } from "../../../../runtime/kernel/preferences/local-preferences.js";
 import { createSyncTempDirTracker } from "../../helpers/temp.js";
@@ -89,6 +90,52 @@ describe("loadLocalPreferences", () => {
     });
     expect(loadLocalPreferences(stellaHome).imageGeneration).toEqual(
       saved.imageGeneration,
+    );
+  });
+
+  it("defaults realtime voice to Stella", () => {
+    const stellaHome = makeStellaHome();
+    writePreferences(stellaHome, {});
+
+    expect(loadLocalPreferences(stellaHome).realtimeVoice).toEqual({
+      provider: "stella",
+    });
+  });
+
+  it("normalizes direct realtime voice preferences", () => {
+    expect(
+      normalizeRealtimeVoicePreferences({
+        provider: "openai",
+        model: " openai/gpt-realtime ",
+      }),
+    ).toEqual({
+      provider: "openai",
+      model: "openai/gpt-realtime",
+    });
+    expect(
+      normalizeRealtimeVoicePreferences({
+        provider: "fal",
+        model: "openai/gpt-realtime",
+      }),
+    ).toEqual({ provider: "stella" });
+  });
+
+  it("saves realtime voice in the model preference snapshot", () => {
+    const stellaHome = makeStellaHome();
+
+    const saved = updateLocalModelPreferences(stellaHome, {
+      realtimeVoice: {
+        provider: "openai",
+        model: "openai/gpt-realtime",
+      },
+    });
+
+    expect(saved.realtimeVoice).toEqual({
+      provider: "openai",
+      model: "openai/gpt-realtime",
+    });
+    expect(loadLocalPreferences(stellaHome).realtimeVoice).toEqual(
+      saved.realtimeVoice,
     );
   });
 });
