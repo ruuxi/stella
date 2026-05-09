@@ -6,6 +6,7 @@ import type {
   ToolHandlerExtras,
   ToolResult,
 } from "./types.js";
+import { runLocalImageGeneration } from "./local-image-generation.js";
 
 export const IMAGE_GEN_TOOL_NAME = "image_gen";
 
@@ -76,24 +77,9 @@ const createImageGenHandler =
     context: ToolContext,
     extras?: ToolHandlerExtras,
   ): Promise<ToolResult> => {
-    if (!options.getStellaSiteAuth) {
-      return {
-        error:
-          "image_gen is not available because Stella media auth is not configured in this runtime.",
-      };
-    }
-
     const prompt = asNonEmptyString(args.prompt);
     if (!prompt) {
       return { error: "prompt is required." };
-    }
-
-    const siteAuth = options.getStellaSiteAuth();
-    if (!siteAuth) {
-      return {
-        error:
-          "image_gen requires Stella sign-in. Open Stella and finish signing in, then retry.",
-      };
     }
 
     const input: Record<string, unknown> = {};
@@ -187,6 +173,32 @@ const createImageGenHandler =
       input.image_urls = imageUrls;
     }
     const capability = useImageEdit ? "image_edit" : "text_to_image";
+
+    const localResult = await runLocalImageGeneration({
+      args,
+      context,
+      extras,
+      prompt,
+      aspectRatio,
+      referenceImagePaths: referencePaths,
+      referenceImageUrls: referenceUrls,
+    });
+    if (localResult) return localResult;
+
+    if (!options.getStellaSiteAuth) {
+      return {
+        error:
+          "image_gen is not available because Stella media auth is not configured in this runtime.",
+      };
+    }
+
+    const siteAuth = options.getStellaSiteAuth();
+    if (!siteAuth) {
+      return {
+        error:
+          "image_gen requires Stella sign-in. Open Stella and finish signing in, then retry.",
+      };
+    }
 
     let submitResponse: Response;
     try {

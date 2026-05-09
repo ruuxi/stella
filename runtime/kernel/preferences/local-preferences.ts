@@ -24,6 +24,16 @@ import {
 
 type AgentEngine = "default" | "claude_code_local";
 export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ImageGenerationProvider =
+  | "stella"
+  | "openai"
+  | "openrouter"
+  | "fal";
+
+export type ImageGenerationPreferences = {
+  provider: ImageGenerationProvider;
+  model?: string;
+};
 
 export type LocalPreferences = {
   /** Default models keyed by agent type. */
@@ -43,6 +53,8 @@ export type LocalPreferences = {
   agentRuntimeEngine: AgentEngine;
   /** Shared max concurrency across all agent task execution */
   maxAgentConcurrency: number;
+  /** Image generation provider/model. Stella is the managed default. */
+  imageGeneration: ImageGenerationPreferences;
   /** Sync mode: "on" | "off". Defaults to off so cloud persistence is opt-in. */
   syncMode: "on" | "off";
   /** Hold key used to open the radial dial. */
@@ -75,6 +87,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "reasoningEfforts"
   | "agentRuntimeEngine"
   | "maxAgentConcurrency"
+  | "imageGeneration"
 >;
 
 const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
@@ -88,6 +101,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   personalityVoiceId: undefined,
   agentRuntimeEngine: "default",
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
+  imageGeneration: { provider: "stella" },
   syncMode: "off",
   radialTriggerKey: DEFAULT_RADIAL_TRIGGER_CODE,
   dictationShortcut: "Alt",
@@ -130,6 +144,9 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
           : DEFAULT_PREFERENCES.personalityVoiceId,
       agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
+      imageGeneration: normalizeImageGenerationPreferences(
+        parsed.imageGeneration,
+      ),
       syncMode: parsed.syncMode === "on" ? "on" : "off",
       radialTriggerKey: normalizeRadialTriggerCode(parsed.radialTriggerKey),
       dictationShortcut:
@@ -240,6 +257,14 @@ export const getMaxAgentConcurrency = (stellaHome: string): number => {
   return loadLocalPreferences(stellaHome).maxAgentConcurrency;
 };
 
+export const getImageGenerationPreferences = (
+  stellaHome: string,
+): ImageGenerationPreferences => {
+  return normalizeImageGenerationPreferences(
+    loadLocalPreferences(stellaHome).imageGeneration,
+  );
+};
+
 export const getLocalModelPreferences = (
   stellaHome: string,
 ): LocalModelPreferencesSnapshot => {
@@ -250,6 +275,7 @@ export const getLocalModelPreferences = (
     reasoningEfforts: { ...prefs.reasoningEfforts },
     agentRuntimeEngine: prefs.agentRuntimeEngine,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
+    imageGeneration: { ...prefs.imageGeneration },
   };
 };
 
@@ -274,6 +300,10 @@ export const updateLocalModelPreferences = (
       patch.maxAgentConcurrency === undefined
         ? prefs.maxAgentConcurrency
         : normalizeConcurrency(patch.maxAgentConcurrency),
+    imageGeneration:
+      patch.imageGeneration === undefined
+        ? prefs.imageGeneration
+        : normalizeImageGenerationPreferences(patch.imageGeneration),
   };
   saveLocalPreferences(stellaHome, next);
   return getLocalModelPreferences(stellaHome);
@@ -347,4 +377,26 @@ const normalizeConcurrency = (value: unknown): number => {
   }
   const rounded = Math.floor(parsed);
   return Math.min(MAX_AGENT_CONCURRENCY_CEILING, rounded);
+};
+
+export const normalizeImageGenerationPreferences = (
+  value: unknown,
+): ImageGenerationPreferences => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { provider: "stella" };
+  }
+  const record = value as { provider?: unknown; model?: unknown };
+  const provider =
+    record.provider === "openai" ||
+    record.provider === "openrouter" ||
+    record.provider === "fal"
+      ? record.provider
+      : "stella";
+  const model =
+    typeof record.model === "string" && record.model.trim().length > 0
+      ? record.model.trim()
+      : undefined;
+  return provider === "stella"
+    ? { provider }
+    : { provider, ...(model ? { model } : {}) };
 };

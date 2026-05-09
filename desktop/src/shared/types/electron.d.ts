@@ -701,6 +701,10 @@ export type ElectronSystemApi = {
     generalAgentEngine: "default" | "claude_code_local";
     selfModAgentEngine: "default" | "claude_code_local";
     maxAgentConcurrency: number;
+    imageGeneration: {
+      provider: "stella" | "openai" | "openrouter" | "fal";
+      model?: string;
+    };
   } | null>;
   setLocalModelPreferences: (payload: {
     defaultModels?: Record<string, string>;
@@ -712,6 +716,10 @@ export type ElectronSystemApi = {
     generalAgentEngine?: "default" | "claude_code_local";
     selfModAgentEngine?: "default" | "claude_code_local";
     maxAgentConcurrency?: number;
+    imageGeneration?: {
+      provider: "stella" | "openai" | "openrouter" | "fal";
+      model?: string;
+    };
   }) => Promise<{
     defaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
@@ -722,6 +730,10 @@ export type ElectronSystemApi = {
     generalAgentEngine: "default" | "claude_code_local";
     selfModAgentEngine: "default" | "claude_code_local";
     maxAgentConcurrency: number;
+    imageGeneration: {
+      provider: "stella" | "openai" | "openrouter" | "fal";
+      model?: string;
+    };
   } | null>;
   listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>;
   listLlmOAuthProviders: () => Promise<LocalLlmOAuthProviderSummary[]>;

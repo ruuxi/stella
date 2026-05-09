@@ -25,6 +25,7 @@ export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
   { key: "mistral", label: "Mistral", placeholder: "..." },
   { key: "cerebras", label: "Cerebras", placeholder: "..." },
   { key: "openrouter", label: "OpenRouter", placeholder: "sk-or-..." },
+  { key: "fal", label: "fal", placeholder: "fal-..." },
   { key: "vercel-ai-gateway", label: "Vercel AI Gateway", placeholder: "..." },
   { key: "opencode", label: "OpenCode Zen", placeholder: "..." },
   { key: "github-copilot", label: "GitHub Copilot", placeholder: "OAuth only" },

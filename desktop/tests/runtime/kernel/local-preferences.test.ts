@@ -1,7 +1,11 @@
 import fs from "fs";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadLocalPreferences } from "../../../../runtime/kernel/preferences/local-preferences.js";
+import {
+  loadLocalPreferences,
+  normalizeImageGenerationPreferences,
+  updateLocalModelPreferences,
+} from "../../../../runtime/kernel/preferences/local-preferences.js";
 import { createSyncTempDirTracker } from "../../helpers/temp.js";
 
 const tempDirs = createSyncTempDirTracker();
@@ -40,5 +44,51 @@ describe("loadLocalPreferences", () => {
     writePreferences(disabledHome, { wakeWordEnabled: false });
 
     expect(loadLocalPreferences(disabledHome).wakeWordEnabled).toBe(false);
+  });
+
+  it("defaults image generation to Stella", () => {
+    const stellaHome = makeStellaHome();
+    writePreferences(stellaHome, {});
+
+    expect(loadLocalPreferences(stellaHome).imageGeneration).toEqual({
+      provider: "stella",
+    });
+  });
+
+  it("normalizes direct image provider preferences", () => {
+    expect(
+      normalizeImageGenerationPreferences({
+        provider: "openai",
+        model: " openai/gpt-image-1.5 ",
+      }),
+    ).toEqual({
+      provider: "openai",
+      model: "openai/gpt-image-1.5",
+    });
+    expect(
+      normalizeImageGenerationPreferences({
+        provider: "unknown",
+        model: "openai/gpt-image-1.5",
+      }),
+    ).toEqual({ provider: "stella" });
+  });
+
+  it("saves image generation in the model preference snapshot", () => {
+    const stellaHome = makeStellaHome();
+
+    const saved = updateLocalModelPreferences(stellaHome, {
+      imageGeneration: {
+        provider: "fal",
+        model: "fal/openai/gpt-image-2",
+      },
+    });
+
+    expect(saved.imageGeneration).toEqual({
+      provider: "fal",
+      model: "fal/openai/gpt-image-2",
+    });
+    expect(loadLocalPreferences(stellaHome).imageGeneration).toEqual(
+      saved.imageGeneration,
+    );
   });
 });

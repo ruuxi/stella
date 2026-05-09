@@ -18,6 +18,7 @@ import {
   getSoundNotificationsEnabled,
   getSyncMode,
   loadLocalPreferences,
+  normalizeImageGenerationPreferences,
   saveLocalPreferences,
   setPersonalityVoiceId,
   updateLocalModelPreferences,
@@ -1391,6 +1392,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
       if (payload?.maxAgentConcurrency !== undefined) {
         patch.maxAgentConcurrency = maxAgentConcurrency;
+      }
+      if (payload?.imageGeneration !== undefined) {
+        patch.imageGeneration = normalizeImageGenerationPreferences(
+          payload.imageGeneration,
+        );
       }
       return updateLocalModelPreferences(stellaRoot, patch);
     },
