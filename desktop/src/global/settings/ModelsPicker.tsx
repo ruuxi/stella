@@ -1,5 +1,3 @@
-import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight } from "lucide-react";
 import {
   cloneElement,
   isValidElement,
@@ -74,13 +72,6 @@ export function ModelsPicker({
     },
     [controlledOnOpenChange],
   );
-  const navigate = useNavigate();
-
-  const handleOpenSettings = useCallback(() => {
-    setOpen(false);
-    void navigate({ to: "/settings", search: { tab: "models" } });
-  }, [navigate, setOpen]);
-
   const triggerElement =
     trigger && isValidElement<ModelsPickerTriggerProps>(trigger)
       ? cloneElement(trigger, {
@@ -124,14 +115,6 @@ export function ModelsPicker({
           <Suspense fallback={null}>
             <AgentModelPicker />
           </Suspense>
-          <button
-            type="button"
-            className="models-picker-more"
-            onClick={handleOpenSettings}
-          >
-            <span>More options</span>
-            <ChevronRight size={14} strokeWidth={1.75} />
-          </button>
         </PopoverBody>
       </PopoverContent>
     </Popover>

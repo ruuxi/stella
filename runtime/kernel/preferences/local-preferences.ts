@@ -39,10 +39,8 @@ export type LocalPreferences = {
    * Undefined falls back to the default voice.
    */
   personalityVoiceId?: string;
-  /** General agent engine: "default" | "claude_code_local" */
-  generalAgentEngine: AgentEngine;
-  /** Self-mod agent engine: "default" | "claude_code_local" */
-  selfModAgentEngine: AgentEngine;
+  /** Runtime engine shared by every local CLI-backed agent. */
+  agentRuntimeEngine: AgentEngine;
   /** Shared max concurrency across all agent task execution */
   maxAgentConcurrency: number;
   /** Sync mode: "on" | "off". Defaults to off so cloud persistence is opt-in. */
@@ -75,12 +73,12 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "defaultModels"
   | "modelOverrides"
   | "reasoningEfforts"
-  | "generalAgentEngine"
-  | "selfModAgentEngine"
+  | "agentRuntimeEngine"
   | "maxAgentConcurrency"
 >;
 
 const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
+const MAX_AGENT_CONCURRENCY_CEILING = 48;
 
 const DEFAULT_PREFERENCES: LocalPreferences = {
   defaultModels: {},
@@ -88,8 +86,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   reasoningEfforts: {},
   expressionStyle: undefined,
   personalityVoiceId: undefined,
-  generalAgentEngine: "default",
-  selfModAgentEngine: "default",
+  agentRuntimeEngine: "default",
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   syncMode: "off",
   radialTriggerKey: DEFAULT_RADIAL_TRIGGER_CODE,
@@ -131,8 +128,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         parsed.personalityVoiceId.trim().length > 0
           ? parsed.personalityVoiceId.trim()
           : DEFAULT_PREFERENCES.personalityVoiceId,
-      generalAgentEngine: normalizeEngine(parsed.generalAgentEngine),
-      selfModAgentEngine: normalizeEngine(parsed.selfModAgentEngine),
+      agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
       syncMode: parsed.syncMode === "on" ? "on" : "off",
       radialTriggerKey: normalizeRadialTriggerCode(parsed.radialTriggerKey),
@@ -236,12 +232,8 @@ export const setPersonalityVoiceId = (
   saveLocalPreferences(stellaHome, next);
 };
 
-export const getGeneralAgentEngine = (stellaHome: string): AgentEngine => {
-  return loadLocalPreferences(stellaHome).generalAgentEngine;
-};
-
-export const getSelfModAgentEngine = (stellaHome: string): AgentEngine => {
-  return loadLocalPreferences(stellaHome).selfModAgentEngine;
+export const getAgentRuntimeEngine = (stellaHome: string): AgentEngine => {
+  return loadLocalPreferences(stellaHome).agentRuntimeEngine;
 };
 
 export const getMaxAgentConcurrency = (stellaHome: string): number => {
@@ -256,8 +248,7 @@ export const getLocalModelPreferences = (
     defaultModels: { ...prefs.defaultModels },
     modelOverrides: { ...prefs.modelOverrides },
     reasoningEfforts: { ...prefs.reasoningEfforts },
-    generalAgentEngine: prefs.generalAgentEngine,
-    selfModAgentEngine: prefs.selfModAgentEngine,
+    agentRuntimeEngine: prefs.agentRuntimeEngine,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
   };
 };
@@ -275,14 +266,10 @@ export const updateLocalModelPreferences = (
       patch.reasoningEfforts === undefined
         ? prefs.reasoningEfforts
         : normalizeReasoningEfforts(patch.reasoningEfforts),
-    generalAgentEngine:
-      patch.generalAgentEngine === undefined
-        ? prefs.generalAgentEngine
-        : normalizeEngine(patch.generalAgentEngine),
-    selfModAgentEngine:
-      patch.selfModAgentEngine === undefined
-        ? prefs.selfModAgentEngine
-        : normalizeEngine(patch.selfModAgentEngine),
+    agentRuntimeEngine:
+      patch.agentRuntimeEngine === undefined
+        ? prefs.agentRuntimeEngine
+        : normalizeEngine(patch.agentRuntimeEngine),
     maxAgentConcurrency:
       patch.maxAgentConcurrency === undefined
         ? prefs.maxAgentConcurrency
@@ -359,5 +346,5 @@ const normalizeConcurrency = (value: unknown): number => {
     return DEFAULT_MAX_AGENT_CONCURRENCY;
   }
   const rounded = Math.floor(parsed);
-  return Math.min(DEFAULT_MAX_AGENT_CONCURRENCY, rounded);
+  return Math.min(MAX_AGENT_CONCURRENCY_CEILING, rounded);
 };

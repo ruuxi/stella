@@ -4,6 +4,8 @@ import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import { Select } from "@/ui/select";
 import {
+  getStellaDisplayName,
+  getStellaSubtitle,
   searchCatalogModels,
   type CatalogModel,
   type ProviderGroup,
@@ -513,8 +515,13 @@ function ProviderPane({
             ) : (
               filteredModels.map((model) => {
                 const selected = model.id === selectedModelId;
-                const subtitle =
-                  model.upstreamModel && model.upstreamModel !== model.name
+                const isStellaModel = model.provider === "stella";
+                const displayName = isStellaModel
+                  ? getStellaDisplayName(model)
+                  : model.name;
+                const subtitle = isStellaModel
+                  ? getStellaSubtitle(model)
+                  : model.upstreamModel && model.upstreamModel !== model.name
                     ? model.upstreamModel
                     : model.id !== model.name
                       ? model.id
@@ -532,7 +539,7 @@ function ProviderPane({
                   >
                     <span className="model-picker-model-text">
                       <span className="model-picker-model-name">
-                        {model.name}
+                        {displayName}
                       </span>
                       {subtitle ? (
                         <span className="model-picker-model-sub">

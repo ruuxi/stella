@@ -102,3 +102,35 @@
 .agent-model-picker .model-picker-shell {
   overflow: hidden;
 }
+
+.agent-model-picker-toggle-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 4px 2px;
+  background: none;
+  border: none;
+  border-top: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  color: var(--text-weak);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.agent-model-picker-toggle-more:hover,
+.agent-model-picker-toggle-more:focus-visible {
+  color: var(--text-strong);
+  outline: none;
+}
+
+.agent-model-picker-toggle-more svg {
+  transition: transform 160ms ease;
+}
+
+.agent-model-picker-toggle-more svg[data-rotated] {
+  transform: rotate(180deg);
+}
