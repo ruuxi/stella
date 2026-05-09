@@ -155,6 +155,46 @@ describe("backend Anthropic message conversion", () => {
     ]);
   });
 
+  it("drops cross-model thinking instead of replaying it as Anthropic text", () => {
+    const context: Context = {
+      messages: [
+        {
+          role: "assistant",
+          provider: "openrouter",
+          api: "openai-responses",
+          model: "openai/gpt-5.4",
+          usage,
+          stopReason: "stop",
+          timestamp: 1,
+          content: [
+            {
+              type: "thinking",
+              thinking: "The user is asking a health question. I should answer carefully.",
+            },
+            {
+              type: "text",
+              text: "Final answer.",
+            },
+          ],
+        },
+      ],
+    };
+
+    const messages = convertMessages(anthropicModel, context);
+    const assistant = messages[0];
+    const content =
+      assistant?.role === "assistant" && Array.isArray(assistant.content)
+        ? assistant.content
+        : [];
+
+    expect(content).toEqual([
+      {
+        type: "text",
+        text: "Final answer.",
+      },
+    ]);
+  });
+
   it("captures Anthropic thinking signatures while streaming", async () => {
     const priorFetch = globalThis.fetch;
     const encoder = new TextEncoder();
@@ -169,6 +209,7 @@ describe("backend Anthropic message conversion", () => {
       { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "Final." } },
       { type: "content_block_stop", index: 1 },
       { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 4 } },
+      { type: "message_stop" },
     ]
       .map((event) => `data: ${JSON.stringify(event)}\n\n`)
       .join("");

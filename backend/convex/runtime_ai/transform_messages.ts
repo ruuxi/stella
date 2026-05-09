@@ -45,7 +45,7 @@ export function transformMessages<TApi extends Api>(
         if (!block.thinking || block.thinking.trim() === "") {
           return [];
         }
-        return isSameModel ? block : { type: "text" as const, text: block.thinking };
+        return isSameModel ? block : [];
       }
 
       if (block.type === "text") {
