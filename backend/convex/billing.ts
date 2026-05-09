@@ -1405,7 +1405,7 @@ export const syncManagedModelPricesFromModelsDev = internalAction({
  * `billing_usage_windows` row without recomputing window expiration. When
  * supplied, callers MUST bucket the value (e.g. floor to a minute) so
  * `useQuery` subscribers don't invalidate on every render — see
- * `desktop/src/global/settings/BillingTab.tsx` for the canonical pattern
+ * `desktop/src/global/billing/BillingScreen.tsx` for the canonical pattern
  * (60-second `setInterval`).
  */
 export const getSubscriptionStatus = query({
