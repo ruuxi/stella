@@ -26,6 +26,12 @@ type ImageGenerationPreferences = {
   model?: string;
 };
 
+type RealtimeVoiceProvider = "stella" | "openai";
+type RealtimeVoicePreferences = {
+  provider: RealtimeVoiceProvider;
+  model?: string;
+};
+
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
   modelOverrides: Record<string, string>;
@@ -33,6 +39,7 @@ type LocalModelPreferences = {
   agentRuntimeEngine: "default" | "claude_code_local";
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
+  realtimeVoice: RealtimeVoicePreferences;
 };
 
 type ReasoningEffort =
@@ -56,7 +63,11 @@ const REASONING_EFFORT_OPTIONS: Array<{
 ];
 
 const IMAGE_TARGET = "__image__";
+const VOICE_TARGET = "__voice__";
 const DEFAULT_IMAGE_GENERATION: ImageGenerationPreferences = {
+  provider: "stella",
+};
+const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
   provider: "stella",
 };
 
@@ -134,6 +145,54 @@ const IMAGE_PROVIDER_GROUPS: ProviderGroup[] = [
         providerName: "fal",
         modelId: "openai/gpt-image-2",
         upstreamModel: "openai/gpt-image-2",
+        source: "local",
+      },
+    ],
+  },
+];
+
+const DEFAULT_VOICE_MODEL_BY_PROVIDER: Record<
+  Exclude<RealtimeVoiceProvider, "stella">,
+  string
+> = {
+  openai: "openai/gpt-realtime",
+};
+
+const VOICE_PROVIDER_GROUPS: ProviderGroup[] = [
+  {
+    provider: "stella",
+    providerName: "Stella",
+    models: [
+      {
+        id: "stella",
+        name: "Stella",
+        provider: "stella",
+        providerName: "Stella",
+        modelId: "stella",
+        source: "stella",
+      },
+    ],
+  },
+  {
+    provider: "openai",
+    providerName: "OpenAI",
+    models: [
+      {
+        id: "openai/gpt-realtime",
+        name: "GPT Realtime",
+        provider: "openai",
+        providerName: "OpenAI",
+        modelId: "gpt-realtime",
+        upstreamModel: "gpt-realtime",
+        source: "local",
+      },
+      {
+        id: "openai/gpt-4o-realtime-preview",
+        name: "GPT-4o Realtime Preview",
+        provider: "openai",
+        providerName: "OpenAI",
+        modelId: "gpt-4o-realtime-preview",
+        upstreamModel: "gpt-4o-realtime-preview",
         source: "local",
       },
     ],
@@ -271,16 +330,18 @@ export function AgentModelPicker({
 
   const [activeAgent, setActiveAgent] = useState<string>("orchestrator");
   const activeImage = activeAgent === IMAGE_TARGET;
+  const activeVoice = activeAgent === VOICE_TARGET;
+  const activeProviderSetting = activeImage || activeVoice;
 
   // Snap to the first available configurable agent if `orchestrator` is
   // somehow missing from the catalog. We don't auto-jump after the user has
   // picked a tab — only when the active agent isn't actually configurable.
   useEffect(() => {
-    if (activeImage) return;
+    if (activeProviderSetting) return;
     if (configurableAgents.length === 0) return;
     if (configurableAgents.some((agent) => agent.key === activeAgent)) return;
     setActiveAgent(configurableAgents[0].key);
-  }, [activeAgent, activeImage, configurableAgents]);
+  }, [activeAgent, activeProviderSetting, configurableAgents]);
 
   const handleSelect = useCallback(
     async (value: string) => {
@@ -365,6 +426,49 @@ export function AgentModelPicker({
     [onSelected, pendingAgent, preferences],
   );
 
+  const handleVoiceSelect = useCallback(
+    async (value: string) => {
+      if (!preferences || pendingAgent) return;
+      const previousRealtimeVoice =
+        preferences.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      const nextRealtimeVoice: RealtimeVoicePreferences =
+        value === "" || value === "stella"
+          ? { provider: "stella" }
+          : value.startsWith("openai/")
+            ? { provider: "openai", model: value }
+            : { provider: "stella" };
+
+      setPendingAgent(VOICE_TARGET);
+      setPreferences({
+        ...preferences,
+        realtimeVoice: nextRealtimeVoice,
+      });
+      try {
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.({
+            realtimeVoice: nextRealtimeVoice,
+          });
+        if (saved) setPreferences(saved);
+        setError(null);
+        onSelected?.();
+      } catch (caught) {
+        setPreferences((current) =>
+          current
+            ? { ...current, realtimeVoice: previousRealtimeVoice }
+            : current,
+        );
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Failed to update voice setting.",
+        );
+      } finally {
+        setPendingAgent(null);
+      }
+    },
+    [onSelected, pendingAgent, preferences],
+  );
+
   const handleReasoningEffortSelect = useCallback(
     async (effort: ReasoningEffort) => {
       if (!preferences || pendingAgent) return;
@@ -411,29 +515,36 @@ export function AgentModelPicker({
   );
 
   const ready =
-    preferences !== null && (activeImage || modelDefaults !== undefined);
+    preferences !== null &&
+    (activeProviderSetting || modelDefaults !== undefined);
   const imagePreferences =
     preferences?.imageGeneration ?? DEFAULT_IMAGE_GENERATION;
+  const voicePreferences = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
   const current = activeImage
     ? imagePreferences.provider === "stella"
       ? ""
       : (imagePreferences.model ??
         DEFAULT_IMAGE_MODEL_BY_PROVIDER[imagePreferences.provider])
-    : (overrides[activeAgent] ?? "");
+    : activeVoice
+      ? voicePreferences.provider === "stella"
+        ? ""
+        : (voicePreferences.model ??
+          DEFAULT_VOICE_MODEL_BY_PROVIDER[voicePreferences.provider])
+      : (overrides[activeAgent] ?? "");
   const defaultLabel =
-    !activeImage && ready
+    !activeProviderSetting && ready
       ? getDefaultModelOptionLabel(
           activeAgent,
           defaultModelMap,
           resolvedDefaultModelMap,
           modelNamesById,
         )
-      : activeImage
+      : activeProviderSetting
         ? "Stella"
         : "Default";
-  const imageModelNamesById = useMemo(() => {
+  const providerModelNamesById = useMemo(() => {
     const next = new Map<string, string>();
-    for (const group of IMAGE_PROVIDER_GROUPS) {
+    for (const group of [...IMAGE_PROVIDER_GROUPS, ...VOICE_PROVIDER_GROUPS]) {
       for (const model of group.models) {
         next.set(model.id, model.name);
       }
@@ -441,9 +552,9 @@ export function AgentModelPicker({
     next.set("stella", "Stella");
     return next;
   }, []);
-  const currentLabel = activeImage
+  const currentLabel = activeProviderSetting
     ? current
-      ? getModelPickerDisplayLabel(current, imageModelNamesById)
+      ? getModelPickerDisplayLabel(current, providerModelNamesById)
       : "Stella"
     : ready
       ? current
@@ -452,7 +563,7 @@ export function AgentModelPicker({
       : "Loading…";
   const currentReasoningEffort =
     preferences?.reasoningEfforts?.[activeAgent] ?? "default";
-  const showFullPanel = expanded || activeImage;
+  const showFullPanel = expanded || activeProviderSetting;
 
   return (
     <div
@@ -492,8 +603,20 @@ export function AgentModelPicker({
           >
             Image
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeVoice}
+            className="agent-model-picker-toggle-btn"
+            data-active={activeVoice || undefined}
+            onClick={() => setActiveAgent(VOICE_TARGET)}
+            disabled={pendingAgent !== null}
+            title="Voice provider"
+          >
+            Voice
+          </button>
         </div>
-        {activeImage ? null : (
+        {activeProviderSetting ? null : (
           <div className="agent-model-picker-reasoning">
             <span>Reasoning</span>
             <Select
@@ -540,17 +663,33 @@ export function AgentModelPicker({
             value={current}
             defaultLabel={defaultLabel}
             currentLabel={currentLabel}
-            groups={activeImage ? IMAGE_PROVIDER_GROUPS : groups}
-            excludeModelId={activeImage ? undefined : STELLA_DEFAULT_MODEL}
+            groups={
+              activeImage
+                ? IMAGE_PROVIDER_GROUPS
+                : activeVoice
+                  ? VOICE_PROVIDER_GROUPS
+                  : groups
+            }
+            excludeModelId={
+              activeProviderSetting ? undefined : STELLA_DEFAULT_MODEL
+            }
             disabled={!ready || pendingAgent !== null}
             ariaLabel={
               activeImage
                 ? "Image provider picker"
-                : `${activeAgent} model picker`
+                : activeVoice
+                  ? "Voice provider picker"
+                  : `${activeAgent} model picker`
             }
-            onSelect={activeImage ? handleImageSelect : handleSelect}
+            onSelect={
+              activeImage
+                ? handleImageSelect
+                : activeVoice
+                  ? handleVoiceSelect
+                  : handleSelect
+            }
           />
-          {activeImage ? null : <LocalRuntimeOptions />}
+          {activeProviderSetting ? null : <LocalRuntimeOptions />}
         </>
       ) : (
         <CompactStellaModelList
@@ -562,7 +701,7 @@ export function AgentModelPicker({
         />
       )}
 
-      {activeImage ? null : (
+      {activeProviderSetting ? null : (
         <button
           type="button"
           className="agent-model-picker-toggle-more"

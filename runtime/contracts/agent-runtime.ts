@@ -114,7 +114,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    modelSettings: null,
+    modelSettings: {
+      description: "Turns plain-language requests into local schedules",
+      order: 2,
+    },
   },
   {
     id: AGENT_IDS.FASHION,
@@ -129,7 +132,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    modelSettings: null,
+    modelSettings: {
+      description: "Builds outfit looks and fashion outputs",
+      order: 8,
+    },
   },
   {
     id: AGENT_IDS.GENERAL,
@@ -169,7 +175,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    modelSettings: null,
+    modelSettings: {
+      description: "Works inside shared Stella Together folders",
+      order: 10,
+    },
   },
   {
     id: AGENT_IDS.OFFLINE_RESPONDER,
@@ -182,7 +191,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    modelSettings: null,
+    modelSettings: {
+      description: "Responds when Stella is offline",
+      order: 9,
+    },
   },
   {
     id: AGENT_IDS.EXPLORE,
@@ -197,7 +209,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    modelSettings: null,
+    modelSettings: {
+      description: "Finds relevant context before a task starts",
+      order: 3,
+    },
   },
   {
     id: AGENT_IDS.STORE,
@@ -212,7 +227,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    modelSettings: null,
+    modelSettings: {
+      description: "Drafts Store blueprints",
+      order: 4,
+    },
   },
   {
     id: AGENT_IDS.DREAM,
@@ -227,7 +245,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    modelSettings: null,
+    modelSettings: {
+      description: "Consolidates memory in the background",
+      order: 5,
+    },
   },
   {
     id: AGENT_IDS.CHRONICLE,
@@ -242,7 +263,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    modelSettings: null,
+    modelSettings: {
+      description: "Summarizes screen activity for memory",
+      order: 6,
+    },
   },
   {
     id: AGENT_IDS.INSTALL_UPDATE,
@@ -257,7 +281,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: true,
     localCliWorkingDirectory: null,
-    modelSettings: null,
+    modelSettings: {
+      description: "Applies Stella updates",
+      order: 7,
+    },
   },
 ] as const satisfies readonly AgentDefinition[];
 
@@ -284,17 +311,18 @@ export const BUNDLED_CORE_AGENT_IDS = Object.freeze(
 );
 
 export const ORCHESTRATOR_RESERVED_BUILTIN_AGENT_IDS = Object.freeze(
-  BUILTIN_AGENT_DEFINITIONS.filter((entry) => entry.id !== AGENT_IDS.GENERAL).map(
-    (entry) => entry.id,
-  ) as AgentId[],
+  BUILTIN_AGENT_DEFINITIONS.filter(
+    (entry) => entry.id !== AGENT_IDS.GENERAL,
+  ).map((entry) => entry.id) as AgentId[],
 );
 
 const ORCHESTRATOR_RESERVED_BUILTIN_AGENT_ID_SET = new Set<string>(
   ORCHESTRATOR_RESERVED_BUILTIN_AGENT_IDS,
 );
 
-export const isOrchestratorReservedBuiltinAgentId = (agentId: string): boolean =>
-  ORCHESTRATOR_RESERVED_BUILTIN_AGENT_ID_SET.has(agentId);
+export const isOrchestratorReservedBuiltinAgentId = (
+  agentId: string,
+): boolean => ORCHESTRATOR_RESERVED_BUILTIN_AGENT_ID_SET.has(agentId);
 
 export const MODEL_SETTINGS_AGENTS = Object.freeze(
   BUILTIN_AGENT_DEFINITIONS.filter(
@@ -339,9 +367,8 @@ export const isOrchestratorAgentType = (agentType: string): boolean =>
   getAgentDefinition(agentType)?.promptRole === "orchestrator";
 
 /** Resolve declarative capabilities for an agent. */
-export const getAgentCapabilities = (
-  agentType: string,
-): AgentCapabilities => getAgentDefinition(agentType)?.capabilities ?? {};
+export const getAgentCapabilities = (agentType: string): AgentCapabilities =>
+  getAgentDefinition(agentType)?.capabilities ?? {};
 
 export const agentHasCapability = (
   agentType: string,

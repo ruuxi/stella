@@ -50,6 +50,7 @@ export type VoiceSessionEvent =
 type VoiceSessionListener = (event: VoiceSessionEvent) => void;
 
 type VoiceSessionToken = {
+  provider?: "stella" | "openai";
   clientSecret: string;
   model: string;
   voice: string;
@@ -232,6 +233,7 @@ export class RealtimeVoiceSession {
   private listeners = new Set<VoiceSessionListener>();
   private conversationId: string | null = null;
   private model: string | null = null;
+  private sessionProvider: "stella" | "openai" = "stella";
 
   // Last finalized user transcript, used as fallback context for voice tools.
   private lastUserTranscript = "";
@@ -312,16 +314,25 @@ export class RealtimeVoiceSession {
 
       // A) Create the ephemeral session token in parallel with local setup.
       const keyPromise = (async () => {
-        return postServiceJson<VoiceSessionToken>(
-          "/api/voice/session",
-          await buildVoiceSessionRequestBody(conversationId),
-          {
-            errorMessage: async (response) => {
-              const detail = await response.text();
-              return `Failed to create voice session: ${response.status} ${detail}`;
-            },
+        const body = await buildVoiceSessionRequestBody(conversationId);
+        const preferences = await window.electronAPI?.system
+          ?.getLocalModelPreferences?.()
+          .catch(() => null);
+        if (preferences?.realtimeVoice?.provider === "openai") {
+          const voiceApi = window.electronAPI?.voice;
+          if (!voiceApi) {
+            throw new Error("Voice API is not available.");
+          }
+          return await voiceApi.createOpenAISession({
+            instructions: body.instructions,
+          });
+        }
+        return postServiceJson<VoiceSessionToken>("/api/voice/session", body, {
+          errorMessage: async (response) => {
+            const detail = await response.text();
+            return `Failed to create voice session: ${response.status} ${detail}`;
           },
-        );
+        });
       })();
 
       // B) Create RTCPeerConnection + SDP offer locally (no network, no mic needed)
@@ -358,6 +369,7 @@ export class RealtimeVoiceSession {
 
       const { clientSecret, model } = keyResult;
       this.model = model;
+      this.sessionProvider = keyResult.provider ?? "stella";
 
       const sdpResponse = await fetch(
         "https://api.openai.com/v1/realtime/calls",
@@ -891,7 +903,7 @@ export class RealtimeVoiceSession {
         : null;
     const model = this.model;
 
-    if (!usage || !responseId || !model) {
+    if (!usage || !responseId || !model || this.sessionProvider !== "stella") {
       return;
     }
 
@@ -1480,6 +1492,7 @@ export class RealtimeVoiceSession {
     this.pendingRemoteStream = null;
 
     this.model = null;
+    this.sessionProvider = "stella";
     this.inputEnergyBuffer = null;
     this.outputEnergyBuffer = null;
   }

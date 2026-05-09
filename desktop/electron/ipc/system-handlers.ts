@@ -19,6 +19,7 @@ import {
   getSyncMode,
   loadLocalPreferences,
   normalizeImageGenerationPreferences,
+  normalizeRealtimeVoicePreferences,
   saveLocalPreferences,
   setPersonalityVoiceId,
   updateLocalModelPreferences,
@@ -1389,6 +1390,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (payload?.imageGeneration !== undefined) {
         patch.imageGeneration = normalizeImageGenerationPreferences(
           payload.imageGeneration,
+        );
+      }
+      if (payload?.realtimeVoice !== undefined) {
+        patch.realtimeVoice = normalizeRealtimeVoicePreferences(
+          payload.realtimeVoice,
         );
       }
       return updateLocalModelPreferences(stellaRoot, patch);

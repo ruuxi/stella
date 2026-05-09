@@ -41,6 +41,13 @@ export type ImageGenerationPreferences = {
   model?: string;
 };
 
+export type RealtimeVoiceProvider = "stella" | "openai";
+
+export type RealtimeVoicePreferences = {
+  provider: RealtimeVoiceProvider;
+  model?: string;
+};
+
 export type LocalPreferences = {
   /** Default models keyed by agent type. */
   defaultModels: Record<string, string>;
@@ -61,6 +68,8 @@ export type LocalPreferences = {
   maxAgentConcurrency: number;
   /** Image generation provider/model. Stella is the managed default. */
   imageGeneration: ImageGenerationPreferences;
+  /** Realtime voice provider/model. Stella is the managed default. */
+  realtimeVoice: RealtimeVoicePreferences;
   /** Sync mode: "on" | "off". Defaults to off so cloud persistence is opt-in. */
   syncMode: "on" | "off";
   /** Hold key used to open the radial dial. */
@@ -94,6 +103,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "agentRuntimeEngine"
   | "maxAgentConcurrency"
   | "imageGeneration"
+  | "realtimeVoice"
 >;
 
 const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
@@ -108,6 +118,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   agentRuntimeEngine: "default",
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   imageGeneration: { provider: "stella" },
+  realtimeVoice: { provider: "stella" },
   syncMode: "off",
   radialTriggerKey: DEFAULT_RADIAL_TRIGGER_CODE,
   dictationShortcut: "Alt",
@@ -153,6 +164,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       imageGeneration: normalizeImageGenerationPreferences(
         parsed.imageGeneration,
       ),
+      realtimeVoice: normalizeRealtimeVoicePreferences(parsed.realtimeVoice),
       syncMode: parsed.syncMode === "on" ? "on" : "off",
       radialTriggerKey: normalizeRadialTriggerCode(parsed.radialTriggerKey),
       dictationShortcut:
@@ -271,6 +283,14 @@ export const getImageGenerationPreferences = (
   );
 };
 
+export const getRealtimeVoicePreferences = (
+  stellaHome: string,
+): RealtimeVoicePreferences => {
+  return normalizeRealtimeVoicePreferences(
+    loadLocalPreferences(stellaHome).realtimeVoice,
+  );
+};
+
 export const getLocalModelPreferences = (
   stellaHome: string,
 ): LocalModelPreferencesSnapshot => {
@@ -282,6 +302,7 @@ export const getLocalModelPreferences = (
     agentRuntimeEngine: prefs.agentRuntimeEngine,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
     imageGeneration: { ...prefs.imageGeneration },
+    realtimeVoice: { ...prefs.realtimeVoice },
   };
 };
 
@@ -310,6 +331,10 @@ export const updateLocalModelPreferences = (
       patch.imageGeneration === undefined
         ? prefs.imageGeneration
         : normalizeImageGenerationPreferences(patch.imageGeneration),
+    realtimeVoice:
+      patch.realtimeVoice === undefined
+        ? prefs.realtimeVoice
+        : normalizeRealtimeVoicePreferences(patch.realtimeVoice),
   };
   saveLocalPreferences(stellaHome, next);
   return getLocalModelPreferences(stellaHome);
@@ -399,6 +424,23 @@ export const normalizeImageGenerationPreferences = (
     record.provider === "fal"
       ? record.provider
       : "stella";
+  const model =
+    typeof record.model === "string" && record.model.trim().length > 0
+      ? record.model.trim()
+      : undefined;
+  return provider === "stella"
+    ? { provider }
+    : { provider, ...(model ? { model } : {}) };
+};
+
+export const normalizeRealtimeVoicePreferences = (
+  value: unknown,
+): RealtimeVoicePreferences => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { provider: "stella" };
+  }
+  const record = value as { provider?: unknown; model?: unknown };
+  const provider = record.provider === "openai" ? "openai" : "stella";
   const model =
     typeof record.model === "string" && record.model.trim().length > 0
       ? record.model.trim()
