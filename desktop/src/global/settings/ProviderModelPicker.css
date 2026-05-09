@@ -7,40 +7,10 @@
 
 .model-picker-shell {
   display: grid;
-  grid-template-columns: 200px 1fr;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: 180px 1fr;
+  grid-template-rows: minmax(0, 1fr);
   height: clamp(360px, 60vh, 480px);
   min-height: 0;
-}
-
-.model-picker-current {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  padding: 9px 12px;
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
-}
-
-.model-picker-current-kicker {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-weak);
-}
-
-.model-picker-current-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-strong);
 }
 
 .model-picker-current-reasoning {
@@ -76,7 +46,6 @@
 }
 
 .model-picker-rail {
-  grid-row: 2;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -164,7 +133,6 @@
 /* ----------------------------------------------------------- Right pane */
 
 .model-picker-pane {
-  grid-row: 2;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -188,7 +156,34 @@
 }
 
 .model-picker-pane-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.model-picker-pane-kicker {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weak);
+}
+
+.model-picker-pane-current {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.model-picker-model--default .model-picker-model-name {
   font-weight: 600;
   color: var(--text-strong);
 }
