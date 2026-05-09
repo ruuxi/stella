@@ -360,7 +360,7 @@ export const createRuntimeAgent = (args: {
    * used for the lifetime of the run.
    */
   resolvedLlmOverride?: () => ResolvedLlmRoute;
-  reasoningEffort?: Exclude<ThinkingLevel, "off">;
+  reasoningEffort?: ThinkingLevel;
   hookEmitter?: HookEmitter;
   tools: AgentTool[];
   historySource: AgentMessage[];
@@ -384,7 +384,9 @@ export const createRuntimeAgent = (args: {
     initialState: {
       systemPrompt: args.systemPrompt,
       model: resolveLlm().model,
-      thinkingLevel: args.reasoningEffort ?? "medium",
+      thinkingLevel:
+        args.reasoningEffort ??
+        resolveAgentThinkingLevel({ resolvedLlm: args.resolvedLlm }),
       tools: args.tools,
       messages: args.historySource,
     },
@@ -421,13 +423,13 @@ export const createRuntimeAgent = (args: {
  */
 export const resolveAgentThinkingLevel = (args: {
   resolvedLlm: ResolvedLlmRoute;
-  agentContextReasoningEffort?: Exclude<ThinkingLevel, "off">;
-}): Exclude<ThinkingLevel, "off"> => {
+  agentContextReasoningEffort?: Exclude<ThinkingLevel, "off"> | "default";
+}): ThinkingLevel => {
   if (
-    args.resolvedLlm.route === "direct-provider" &&
-    args.agentContextReasoningEffort
+    args.agentContextReasoningEffort &&
+    args.agentContextReasoningEffort !== "default"
   ) {
     return args.agentContextReasoningEffort;
   }
-  return "medium";
+  return args.resolvedLlm.route === "direct-provider" ? "medium" : "off";
 };

@@ -16,11 +16,33 @@
 
 .agent-model-picker-toggle {
   display: inline-flex;
+  flex: 0 1 auto;
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-full);
   background: color-mix(in oklch, var(--text-strong) 6%, transparent);
   border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+}
+
+.agent-model-picker-reasoning {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--text-weak);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.agent-model-picker-reasoning [data-component="select"] {
+  min-width: 98px;
+}
+
+.agent-model-picker-reasoning [data-slot="select-trigger"] {
+  min-height: 26px;
+  padding-inline: 10px 8px;
+  border-radius: var(--radius-full);
 }
 
 .agent-model-picker-refresh {

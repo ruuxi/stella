@@ -696,7 +696,7 @@ export type ElectronSystemApi = {
     modelOverrides: Record<string, string>;
     reasoningEfforts: Record<
       string,
-      "minimal" | "low" | "medium" | "high" | "xhigh"
+      "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
     agentRuntimeEngine: "default" | "claude_code_local";
     maxAgentConcurrency: number;
@@ -710,7 +710,7 @@ export type ElectronSystemApi = {
     modelOverrides?: Record<string, string>;
     reasoningEfforts?: Record<
       string,
-      "minimal" | "low" | "medium" | "high" | "xhigh"
+      "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
     agentRuntimeEngine?: "default" | "claude_code_local";
     maxAgentConcurrency?: number;
@@ -723,7 +723,7 @@ export type ElectronSystemApi = {
     modelOverrides: Record<string, string>;
     reasoningEfforts: Record<
       string,
-      "minimal" | "low" | "medium" | "high" | "xhigh"
+      "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
     agentRuntimeEngine: "default" | "claude_code_local";
     maxAgentConcurrency: number;

@@ -3,6 +3,7 @@ import { ChevronDown, RefreshCw } from "lucide-react";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
 import { CompactStellaModelList } from "@/global/settings/CompactStellaModelList";
 import { LocalRuntimeOptions } from "@/global/settings/LocalRuntimeOptions";
+import { Select } from "@/ui/select";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
@@ -34,12 +35,19 @@ type LocalModelPreferences = {
   imageGeneration: ImageGenerationPreferences;
 };
 
-type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+type ReasoningEffort =
+  | "default"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
 
 const REASONING_EFFORT_OPTIONS: Array<{
   id: ReasoningEffort;
   label: string;
 }> = [
+  { id: "default", label: "Default" },
   { id: "minimal", label: "Minimal" },
   { id: "low", label: "Low" },
   { id: "medium", label: "Medium" },
@@ -365,8 +373,12 @@ export function AgentModelPicker({
       };
       const nextReasoningEfforts = {
         ...previousReasoningEfforts,
-        [activeAgent]: effort,
       };
+      if (effort === "default") {
+        delete nextReasoningEfforts[activeAgent];
+      } else {
+        nextReasoningEfforts[activeAgent] = effort;
+      }
       setPendingAgent(activeAgent);
       setPreferences({
         ...preferences,
@@ -439,7 +451,7 @@ export function AgentModelPicker({
         : defaultLabel
       : "Loading…";
   const currentReasoningEffort =
-    preferences?.reasoningEfforts?.[activeAgent] ?? "medium";
+    preferences?.reasoningEfforts?.[activeAgent] ?? "default";
   const showFullPanel = expanded || activeImage;
 
   return (
@@ -481,6 +493,25 @@ export function AgentModelPicker({
             Image
           </button>
         </div>
+        {activeImage ? null : (
+          <div className="agent-model-picker-reasoning">
+            <span>Reasoning</span>
+            <Select
+              value={currentReasoningEffort}
+              onValueChange={(value) => {
+                if (isReasoningEffort(value)) {
+                  void handleReasoningEffortSelect(value);
+                }
+              }}
+              disabled={pendingAgent !== null}
+              aria-label="Reasoning effort"
+              options={REASONING_EFFORT_OPTIONS.map((option) => ({
+                value: option.id,
+                label: option.label,
+              }))}
+            />
+          </div>
+        )}
         <button
           type="button"
           className="agent-model-picker-refresh"
@@ -509,8 +540,6 @@ export function AgentModelPicker({
             value={current}
             defaultLabel={defaultLabel}
             currentLabel={currentLabel}
-            reasoningEffort={currentReasoningEffort}
-            reasoningEffortOptions={REASONING_EFFORT_OPTIONS}
             groups={activeImage ? IMAGE_PROVIDER_GROUPS : groups}
             excludeModelId={activeImage ? undefined : STELLA_DEFAULT_MODEL}
             disabled={!ready || pendingAgent !== null}
@@ -520,12 +549,6 @@ export function AgentModelPicker({
                 : `${activeAgent} model picker`
             }
             onSelect={activeImage ? handleImageSelect : handleSelect}
-            onReasoningEffortSelect={(value) => {
-              if (isReasoningEffort(value)) {
-                void handleReasoningEffortSelect(value);
-              }
-            }}
-            showReasoning={!activeImage}
           />
           {activeImage ? null : <LocalRuntimeOptions />}
         </>
