@@ -16,25 +16,74 @@ import {
 } from "./context.js";
 import { startDeferredStartup } from "./deferred-startup.js";
 
-const DEFAULT_STORE_WEB_URL = "https://stella.sh/store";
+const DEFAULT_STELLA_WEB_URL = "https://stella.sh";
 
-const readStoreWebBaseUrl = () =>
-  (
+const readStellaWebBaseUrl = () => {
+  const raw = (
+    process.env.STELLA_WEB_URL ??
+    process.env.VITE_STELLA_WEB_URL ??
     process.env.STELLA_STORE_WEB_URL ??
     process.env.VITE_STELLA_STORE_WEB_URL ??
-    DEFAULT_STORE_WEB_URL
-  ).trim() || DEFAULT_STORE_WEB_URL;
+    DEFAULT_STELLA_WEB_URL
+  ).trim() || DEFAULT_STELLA_WEB_URL;
+  try {
+    const url = new URL(raw);
+    return url.origin;
+  } catch {
+    return DEFAULT_STELLA_WEB_URL;
+  }
+};
 
 const appendStoreWebParams = (
   rawUrl: string,
-  params?: { tab?: string; packageId?: string },
+  params?: {
+    route?: "store" | "billing";
+    tab?: string;
+    packageId?: string;
+    embedded?: boolean;
+    theme?: {
+      mode?: "light" | "dark";
+      foreground?: string;
+      foregroundWeak?: string;
+      border?: string;
+      primary?: string;
+      surface?: string;
+      background?: string;
+    };
+  },
 ) => {
   const url = new URL(rawUrl);
-  if (params?.tab) {
+  url.pathname = params?.route === "billing" ? "/billing" : "/store";
+  url.search = "";
+  if (params?.route !== "billing" && params?.tab) {
     url.searchParams.set("tab", params.tab);
   }
-  if (params?.packageId) {
+  if (params?.route !== "billing" && params?.packageId) {
     url.searchParams.set("package", params.packageId);
+  }
+  // Embedded mode + theme tokens are sent as URL params so the website
+  // can apply them synchronously before first paint (no flash of the
+  // default light gradient). Live theme updates afterwards flow through
+  // the `WebsiteViewController.setTheme` IPC bridge instead, so we don't
+  // re-navigate when the user toggles a theme inside Stella.
+  if (params?.embedded) {
+    url.searchParams.set("embedded", "1");
+    const theme = params.theme;
+    if (theme) {
+      const setIfPresent = (key: string, value: string | undefined) => {
+        const trimmed = value?.trim();
+        if (trimmed) url.searchParams.set(key, trimmed);
+      };
+      if (theme.mode === "light" || theme.mode === "dark") {
+        url.searchParams.set("mode", theme.mode);
+      }
+      setIfPresent("fg", theme.foreground);
+      setIfPresent("fg-weak", theme.foregroundWeak);
+      setIfPresent("border", theme.border);
+      setIfPresent("primary", theme.primary);
+      setIfPresent("surface", theme.surface);
+      setIfPresent("bg", theme.background);
+    }
   }
   return url.toString();
 };
@@ -68,7 +117,7 @@ const initializeWindowShell = (context: BootstrapContext) => {
     config.electronDir,
     "store-web-preload.js",
   );
-  const storeWebBaseUrl = readStoreWebBaseUrl();
+  const storeWebBaseUrl = readStellaWebBaseUrl();
   const allowedStoreWebOrigin = storeWebOrigin(storeWebBaseUrl);
   configureStellaSessionPermissions({
     appPartition: config.sessionPartition,

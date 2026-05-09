@@ -980,11 +980,24 @@ export type ElectronStoreApi = {
   ) => () => void;
 };
 
+export type EmbeddedWebsiteTheme = {
+  mode?: "light" | "dark";
+  foreground?: string;
+  foregroundWeak?: string;
+  border?: string;
+  primary?: string;
+  surface?: string;
+  background?: string;
+};
+
 export type ElectronStoreWebApi = {
   show: (payload?: {
+    route?: "store" | "billing";
     tab?: string;
     package?: string;
     packageId?: string;
+    embedded?: boolean;
+    theme?: EmbeddedWebsiteTheme;
   }) => Promise<{ ok: boolean }>;
   hide: () => Promise<{ ok: boolean }>;
   setLayout: (payload: {
@@ -993,6 +1006,7 @@ export type ElectronStoreWebApi = {
     width: number;
     height: number;
   }) => Promise<{ ok: boolean }>;
+  setTheme: (payload: EmbeddedWebsiteTheme) => Promise<{ ok: boolean }>;
   goBack: () => Promise<{ ok: boolean }>;
   goForward: () => Promise<{ ok: boolean }>;
   reload: () => Promise<{ ok: boolean }>;
