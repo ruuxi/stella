@@ -64,7 +64,6 @@ const planConfigShapeValidator = v.object({
   rollingWindowHours: v.number(),
   weeklyLimitUsd: v.number(),
   monthlyLimitUsd: v.number(),
-  tokensPerMinute: v.number(),
 });
 
 const subscriptionStatusReturnValidator = v.object({
@@ -96,8 +95,6 @@ const ACTIVE_SUBSCRIPTION_STATUSES = new Set([
   "trialing",
   "past_due",
 ]);
-const UNLIMITED_TOKENS_PER_MINUTE = Number.MAX_SAFE_INTEGER;
-
 const emptyString = "";
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
 
@@ -373,7 +370,6 @@ type ManagedModelAccessResult = {
   modelAudience: ReturnType<typeof resolveManagedModelAudience>;
   retryAfterMs: number;
   message: string;
-  tokensPerMinute: number;
 };
 
 const buildManagedModelAccessResult = (args: {
@@ -385,9 +381,6 @@ const buildManagedModelAccessResult = (args: {
 }): ManagedModelAccessResult => {
   const { plan, exceededWindow, now } = args;
   const unlimited = args.unlimited === true;
-  const tokensPerMinute = unlimited
-    ? UNLIMITED_TOKENS_PER_MINUTE
-    : getPlanConfig(plan).tokensPerMinute;
 
   if (!exceededWindow || unlimited) {
     return {
@@ -401,7 +394,6 @@ const buildManagedModelAccessResult = (args: {
       }),
       retryAfterMs: 0,
       message: emptyString,
-      tokensPerMinute,
     };
   }
 
@@ -418,7 +410,6 @@ const buildManagedModelAccessResult = (args: {
       }),
       retryAfterMs,
       message: buildLimitMessage(plan),
-      tokensPerMinute,
     };
   }
 
@@ -433,7 +424,6 @@ const buildManagedModelAccessResult = (args: {
     }),
     retryAfterMs,
     message: buildDowngradeMessage(plan),
-    tokensPerMinute,
   };
 };
 
@@ -1234,7 +1224,6 @@ export const enforceManagedUsageLimit = internalMutation({
         unlimited: true,
         retryAfterMs: 0,
         message: emptyString,
-        tokensPerMinute: UNLIMITED_TOKENS_PER_MINUTE,
       };
     }
 
@@ -1261,7 +1250,6 @@ export const enforceManagedUsageLimit = internalMutation({
         plan,
         message: buildLimitMessage(plan),
         retryAfterMs: Math.max(1_000, firstExceeded.resetAt - now),
-        tokensPerMinute: getPlanConfig(plan).tokensPerMinute,
         unlimited: false,
       };
     }
@@ -1271,7 +1259,6 @@ export const enforceManagedUsageLimit = internalMutation({
       plan,
       retryAfterMs: 0,
       message: emptyString,
-      tokensPerMinute: getPlanConfig(plan).tokensPerMinute,
       unlimited: false,
     };
   },

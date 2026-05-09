@@ -29,7 +29,6 @@ type BillingPlanConfig = {
   rollingWindowHours: number;
   weeklyLimitUsd: number;
   monthlyLimitUsd: number;
-  tokensPerMinute: number;
 };
 
 type BillingUsage = {

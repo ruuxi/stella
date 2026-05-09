@@ -131,33 +131,6 @@ export async function authorizeStellaRequest(
       );
       return response;
     }
-
-    if (!subscriptionCheck.unlimited) {
-      const rateCheck = await ctx.runMutation(
-        internal.ai_proxy_data.checkProxyRateLimit,
-        {
-          ownerId,
-          tokensPerMinuteLimit: subscriptionCheck.tokensPerMinute,
-        },
-      );
-
-      if (!rateCheck.allowed) {
-        const response = stellaProviderErrorResponse(
-          429,
-          "Rate limit exceeded",
-          request,
-        );
-        response.headers.set(
-          "Retry-After",
-          String(
-            Math.ceil(
-              (rateCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000,
-            ),
-          ),
-        );
-        return response;
-      }
-    }
   }
 
   const requestJson = await parseRequestJson(request);
