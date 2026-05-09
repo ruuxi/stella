@@ -329,6 +329,8 @@ export const registerBootstrapIpcHandlers = (
     hideStoreWebView: () => state.windowManager?.hideStoreWebView(),
     setStoreWebViewLayout: (layout) =>
       state.windowManager?.setStoreWebViewLayout(layout),
+    setStoreWebViewTheme: (theme) =>
+      state.windowManager?.setStoreWebViewTheme(theme),
     goBackInStoreWebView: () => state.windowManager?.goBackInStoreWebView(),
     goForwardInStoreWebView: () =>
       state.windowManager?.goForwardInStoreWebView(),

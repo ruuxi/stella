@@ -3,8 +3,36 @@ import { contextBridge, ipcRenderer } from "electron";
 const invoke = <T>(channel: string, payload?: unknown): Promise<T> =>
   ipcRenderer.invoke(channel, payload) as Promise<T>;
 
+const WEBSITE_VIEW_THEME_CHANNEL = "stellaDesktopWebsite:themeChanged";
+
+type WebsiteEmbeddedTheme = {
+  mode?: "light" | "dark";
+  foreground?: string;
+  foregroundWeak?: string;
+  border?: string;
+  primary?: string;
+  surface?: string;
+  background?: string;
+};
+
 contextBridge.exposeInMainWorld("stellaDesktopStore", {
   getAuthToken: () => invoke<string | null>("storeWeb:getAuthToken"),
+  /**
+   * Subscribe to live theme updates from Stella's desktop app. Stella
+   * pushes a fresh `WebsiteEmbeddedTheme` every time the user changes
+   * theme/color-mode/gradient settings, so the embedded `/store` and
+   * `/billing` pages can adapt their text and surface tokens without
+   * reloading. Returns an unsubscribe function.
+   */
+  onThemeChanged: (callback: (theme: WebsiteEmbeddedTheme) => void) => {
+    const listener = (_event: unknown, theme: WebsiteEmbeddedTheme) => {
+      callback(theme);
+    };
+    ipcRenderer.on(WEBSITE_VIEW_THEME_CHANNEL, listener);
+    return () => {
+      ipcRenderer.removeListener(WEBSITE_VIEW_THEME_CHANNEL, listener);
+    };
+  },
   readFeatureSnapshot: () => invoke("storeWeb:readFeatureSnapshot"),
   listInstalledMods: () => invoke("storeWeb:listInstalledMods"),
   requestPackageInstall: (payload: {

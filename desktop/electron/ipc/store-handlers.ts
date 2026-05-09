@@ -30,6 +30,51 @@ import { IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION } from "../../src/shared/contract
 
 const STORE_INSTALL_ARTIFACT_LIMIT = 20;
 
+/** Minimal theme payload forwarded to the embedded website view. Mirrors
+ *  `WebsiteViewTheme` in `desktop/electron/windows/website-view.ts`; the
+ *  type is duplicated locally because this module is also imported by the
+ *  IPC layer that doesn't otherwise depend on the controller. */
+type WebsiteViewThemePayload = {
+  mode?: "light" | "dark";
+  foreground?: string;
+  foregroundWeak?: string;
+  border?: string;
+  primary?: string;
+  surface?: string;
+  background?: string;
+};
+
+const sanitizeWebsiteViewTheme = (
+  raw: unknown,
+): WebsiteViewThemePayload | undefined => {
+  if (!raw || typeof raw !== "object") return undefined;
+  const value = raw as Record<string, unknown>;
+  const pickString = (key: string): string | undefined => {
+    const candidate = value[key];
+    if (typeof candidate !== "string") return undefined;
+    const trimmed = candidate.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+  const mode =
+    value.mode === "light" || value.mode === "dark"
+      ? (value.mode as "light" | "dark")
+      : undefined;
+  const sanitized: WebsiteViewThemePayload = {
+    ...(mode ? { mode } : {}),
+    ...(pickString("foreground") ? { foreground: pickString("foreground") } : {}),
+    ...(pickString("foregroundWeak")
+      ? { foregroundWeak: pickString("foregroundWeak") }
+      : {}),
+    ...(pickString("border") ? { border: pickString("border") } : {}),
+    ...(pickString("primary") ? { primary: pickString("primary") } : {}),
+    ...(pickString("surface") ? { surface: pickString("surface") } : {}),
+    ...(pickString("background")
+      ? { background: pickString("background") }
+      : {}),
+  };
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+};
+
 type StoreHandlersOptions = {
   getStellaRoot: () => string | null;
   getStellaHostRunner: () => StellaHostRunner | null;
@@ -46,11 +91,18 @@ type StoreHandlersOptions = {
     channel: string,
   ) => boolean;
   getStoreAuthToken?: () => Promise<string | null>;
-  showStoreWebView?: (params?: { tab?: string; packageId?: string }) => void;
+  showStoreWebView?: (params?: {
+    route?: "store" | "billing";
+    tab?: string;
+    packageId?: string;
+    embedded?: boolean;
+    theme?: WebsiteViewThemePayload;
+  }) => void;
   hideStoreWebView?: () => void;
   setStoreWebViewLayout?: (
     layout: { x: number; y: number; width: number; height: number } | null,
   ) => void;
+  setStoreWebViewTheme?: (theme: WebsiteViewThemePayload) => void;
   goBackInStoreWebView?: () => void;
   goForwardInStoreWebView?: () => void;
   reloadStoreWebView?: () => void;
@@ -287,16 +339,35 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     "storeWeb:show",
     async (
       event,
-      payload?: { tab?: string; package?: string; packageId?: string },
+      payload?: {
+        route?: "store" | "billing";
+        tab?: string;
+        package?: string;
+        packageId?: string;
+        embedded?: boolean;
+        theme?: unknown;
+      },
     ) => {
       assertPrivilegedRequest(options, event, "storeWeb:show");
       options.showStoreWebView?.({
+        route: payload?.route,
         tab: payload?.tab,
         packageId: payload?.packageId ?? payload?.package,
+        embedded: payload?.embedded === true,
+        theme: sanitizeWebsiteViewTheme(payload?.theme),
       });
       return { ok: true };
     },
   );
+
+  ipcMain.handle("storeWeb:setTheme", async (event, payload?: unknown) => {
+    assertPrivilegedRequest(options, event, "storeWeb:setTheme");
+    const theme = sanitizeWebsiteViewTheme(payload);
+    if (theme) {
+      options.setStoreWebViewTheme?.(theme);
+    }
+    return { ok: true };
+  });
 
   ipcMain.handle("storeWeb:hide", async (event) => {
     assertPrivilegedRequest(options, event, "storeWeb:hide");

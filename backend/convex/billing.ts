@@ -1392,7 +1392,7 @@ export const syncManagedModelPricesFromModelsDev = internalAction({
  * `billing_usage_windows` row without recomputing window expiration. When
  * supplied, callers MUST bucket the value (e.g. floor to a minute) so
  * `useQuery` subscribers don't invalidate on every render — see
- * `desktop/src/global/billing/BillingScreen.tsx` for the canonical pattern
+ * `../stella-website/src/app/billing/billing-client.tsx` for the canonical pattern
  * (60-second `setInterval`).
  */
 export const getSubscriptionStatus = query({
@@ -1582,6 +1582,16 @@ export const createEmbeddedCheckoutSession = action({
           ownerId,
           plan: args.plan,
         },
+      },
+      // The desktop renders embedded checkout inside a white popover dialog.
+      // Stripe's `embedded_page` mode draws its own page canvas around the
+      // form, defaulting to a light gray that reads as awkward padding when
+      // mounted in our compact dialog. Per Stripe's documented integration
+      // path we override the canvas color via branding_settings so the iframe
+      // visually merges with the surrounding dialog. See
+      // https://docs.stripe.com/payments/checkout/customization/appearance?payment-ui=embedded-page
+      branding_settings: {
+        background_color: "#ffffff",
       },
     });
 

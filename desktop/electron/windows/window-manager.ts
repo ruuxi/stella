@@ -3,10 +3,11 @@ import { MINI_SHELL_SIZE } from '../layout-constants.js'
 import { FullWindowController } from './full-window.js'
 import { MiniWindowController } from './mini-window.js'
 import {
-  StoreWebViewController,
-  type StoreWebViewLayout,
-  type StoreWebViewParams,
-} from './store-web-view.js'
+  WebsiteViewController,
+  type WebsiteViewLayout,
+  type WebsiteViewParams,
+  type WebsiteViewTheme,
+} from './website-view.js'
 import type { UiState } from '../types.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
 
@@ -14,7 +15,7 @@ type WindowManagerOptions = {
   electronDir: string
   preloadPath: string
   storeWebPreloadPath: string
-  getStoreWebUrl: (params?: StoreWebViewParams) => string
+  getStoreWebUrl: (params?: WebsiteViewParams) => string
   isAllowedStoreWebUrl: (url: string) => boolean
   sessionPartition: string
   isDev: boolean
@@ -114,18 +115,18 @@ export class WindowManager {
   private miniShouldRestoreExternalApp = false
   private miniAlwaysOnTop = true
   private miniIdleDestroyTimer: ReturnType<typeof setTimeout> | null = null
-  private readonly storeWebViewController: StoreWebViewController
+  private readonly websiteViewController: WebsiteViewController
   private readonly transientReloadStateByMode = new Map<
     ShellWindowMode,
     TransientReloadState
   >()
 
   constructor(private readonly options: WindowManagerOptions) {
-    this.storeWebViewController = new StoreWebViewController({
+    this.websiteViewController = new WebsiteViewController({
       preloadPath: options.storeWebPreloadPath,
-      sessionPartition: `${options.sessionPartition}:store`,
-      getStoreUrl: options.getStoreWebUrl,
-      isAllowedStoreUrl: options.isAllowedStoreWebUrl,
+      sessionPartition: `${options.sessionPartition}:website`,
+      getUrl: options.getStoreWebUrl,
+      isAllowedUrl: options.isAllowedStoreWebUrl,
     })
     this.fullWindowController = new FullWindowController({
       electronDir: options.electronDir,
@@ -296,7 +297,7 @@ export class WindowManager {
   createFullWindow() {
     const window = this.fullWindowController.create()
     this.observeShellWindow(window, 'full')
-    this.storeWebViewController.attachResizeTracking(window)
+    this.websiteViewController.attachResizeTracking(window)
     return window
   }
 
@@ -323,33 +324,43 @@ export class WindowManager {
     return BrowserWindow.getAllWindows()
   }
 
-  showStoreWebView(params?: StoreWebViewParams) {
+  showStoreWebView(params?: WebsiteViewParams) {
     const fullWindow = this.getFullWindow() ?? this.createFullWindow()
-    this.storeWebViewController.show(fullWindow, params)
+    this.websiteViewController.show(fullWindow, {
+      route: params?.route ?? 'store',
+      tab: params?.tab,
+      packageId: params?.packageId,
+      embedded: params?.embedded,
+      theme: params?.theme,
+    })
   }
 
   hideStoreWebView() {
-    this.storeWebViewController.hide()
+    this.websiteViewController.hide()
   }
 
-  setStoreWebViewLayout(layout: StoreWebViewLayout | null) {
-    this.storeWebViewController.setLayout(layout)
+  setStoreWebViewLayout(layout: WebsiteViewLayout | null) {
+    this.websiteViewController.setLayout(layout)
+  }
+
+  setStoreWebViewTheme(theme: WebsiteViewTheme) {
+    this.websiteViewController.setTheme(theme)
   }
 
   goBackInStoreWebView() {
-    this.storeWebViewController.goBack()
+    this.websiteViewController.goBack()
   }
 
   goForwardInStoreWebView() {
-    this.storeWebViewController.goForward()
+    this.websiteViewController.goForward()
   }
 
   reloadStoreWebView() {
-    this.storeWebViewController.reload()
+    this.websiteViewController.reload()
   }
 
   isStoreWebViewWebContents(id: number) {
-    return this.storeWebViewController.hasWebContentsId(id)
+    return this.websiteViewController.hasWebContentsId(id)
   }
 
   isCompactMode() {

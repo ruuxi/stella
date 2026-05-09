@@ -24,6 +24,7 @@ import {
 import { writeCachedPetById } from "@/shell/pet/pet-catalog-cache";
 import { normalizePet } from "@/shell/pet/built-in-pets";
 import { useDisplayPanelLayout } from "@/shell/display/tab-store";
+import { useEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
 
 // Persist the last-active Store tab so clicking the global sidebar's Store
 // icon reopens to wherever the user was last (Discover by default). The URL
@@ -236,6 +237,7 @@ export function StoreApp() {
   const search = useSearch({ from: "/store" });
   const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
   const layoutFrameRef = useRef<number | null>(null);
+  const embeddedTheme = useEmbeddedWebsiteTheme();
 
   const requestedTab = normalizeStoreTab(search.tab);
   const urlIsLegacy = typeof search.tab === "string" && search.tab !== requestedTab;
@@ -323,11 +325,14 @@ export function StoreApp() {
       if (cancelled) return;
       syncStoreWebLayout();
       void window.electronAPI?.storeWeb?.show({
+        route: "store",
         tab: requestedTab,
         package:
           typeof search.package === "string" && search.package.trim()
             ? search.package
             : undefined,
+        embedded: true,
+        theme: embeddedTheme,
       });
     });
     return () => {
@@ -335,6 +340,11 @@ export function StoreApp() {
       window.cancelAnimationFrame(frame);
       void window.electronAPI?.storeWeb?.hide();
     };
+    // `embeddedTheme` intentionally omitted: live theme updates flow
+    // through `useEmbeddedWebsiteTheme`'s own `setTheme` IPC, so we don't
+    // re-issue `show()` (which can race the route navigation) every time
+    // the user previews a theme.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedTab, search.package, syncStoreWebLayout]);
 
   useEffect(() => {
