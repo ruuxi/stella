@@ -131,13 +131,11 @@ export function useOnboardingOverlay() {
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const windowType = useWindowType();
 
-  // While onboarding is active, expand the (transparent) main window to cover
-  // the current display so the renderer's radial fog mask fades to full
-  // transparency well inside the window bounds — no perceivable rectangle.
-  // Trigger the restore at the START of the exit phase (`onboardingExiting`
-  // flips true ~600ms before `onboardingDone`) so the animated window resize
-  // runs concurrently with the fog fade-out, giving a single coordinated
-  // transition rather than a snap once onboarding completes.
+  // While onboarding is active, expand the main window to cover the current
+  // display. Trigger the restore at the START of the exit phase
+  // (`onboardingExiting` flips true ~600ms before `onboardingDone`) so the
+  // animated window resize finishes with the onboarding handoff instead of
+  // snapping once onboarding completes.
   //
   // Onboarding only ever runs in the full window — the mini and overlay
   // renderers also mount `FullShell` and would otherwise drive this IPC,
