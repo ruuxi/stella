@@ -26,6 +26,63 @@ export type ResolvedLlmRoute = {
   refreshApiKey?: () => Promise<string | undefined> | string | undefined;
 };
 
+const LOCAL_PROVIDER = "local";
+const DEFAULT_LOCAL_OPENAI_BASE_URL = "http://127.0.0.1:11434/v1";
+
+const createLocalOpenAICompatibleModel = (
+  modelId: string,
+  baseUrl = DEFAULT_LOCAL_OPENAI_BASE_URL,
+): Model<"openai-completions"> => ({
+  id: modelId,
+  name: modelId,
+  api: "openai-completions",
+  provider: LOCAL_PROVIDER,
+  baseUrl,
+  reasoning: false,
+  input: ["text"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 128_000,
+  maxTokens: 8_192,
+  compat: {
+    supportsStore: false,
+    supportsDeveloperRole: false,
+    supportsReasoningEffort: false,
+    supportsUsageInStreaming: false,
+    maxTokensField: "max_tokens",
+    supportsStrictMode: false,
+    supportsLongCacheRetention: false,
+  },
+});
+
+const parseLocalModelId = (
+  rawModelId: string,
+): { modelId: string; baseUrl: string } | null => {
+  const trimmed = rawModelId.trim();
+  if (!trimmed) return null;
+
+  const slash = trimmed.indexOf("/");
+  if (slash > 0) {
+    let maybeBaseUrl: string;
+    try {
+      maybeBaseUrl = decodeURIComponent(trimmed.slice(0, slash));
+    } catch {
+      maybeBaseUrl = "";
+    }
+    const modelId = trimmed.slice(slash + 1).trim();
+    if (/^https?:\/\//i.test(maybeBaseUrl) && modelId) {
+      return {
+        modelId,
+        baseUrl: maybeBaseUrl,
+      };
+    }
+  }
+
+  return {
+    modelId: trimmed,
+    baseUrl: DEFAULT_LOCAL_OPENAI_BASE_URL,
+  };
+};
+
 export const getResolvedLlmApiKey = async (
   resolved: ResolvedLlmRoute,
 ): Promise<string | undefined> => {
@@ -36,14 +93,16 @@ export const getResolvedLlmApiKey = async (
 export const resolvedLlmSupportsCredentiallessCalls = (
   resolved: ResolvedLlmRoute,
 ): boolean =>
-  resolved.route === "direct-provider" && resolved.model.baseUrl.trim().length > 0;
+  resolved.route === "direct-provider" &&
+  resolved.model.baseUrl.trim().length > 0;
 
-const getCredential = (
+const getCredential = (stellaRoot: string, providerId: string): string | null =>
+  getLocalLlmCredential(stellaRoot, providerId);
+
+const hasLocalProviderAuth = (
   stellaRoot: string,
   providerId: string,
-): string | null => getLocalLlmCredential(stellaRoot, providerId);
-
-const hasLocalProviderAuth = (stellaRoot: string, providerId: string): boolean =>
+): boolean =>
   Boolean(getCredential(stellaRoot, providerId)) ||
   hasLocalLlmOAuthCredential(stellaRoot, providerId);
 
@@ -53,7 +112,9 @@ const getLocalProviderApiKey = async (
 ): Promise<string | undefined> => {
   const apiKey = getCredential(stellaRoot, providerId)?.trim();
   if (apiKey) return apiKey;
-  const oauthKey = (await getLocalLlmOAuthApiKey(stellaRoot, providerId))?.trim();
+  const oauthKey = (
+    await getLocalLlmOAuthApiKey(stellaRoot, providerId)
+  )?.trim();
   return oauthKey || undefined;
 };
 
@@ -76,7 +137,10 @@ const getDirectProviderCandidates = (
       return {
         credentialProvider: "anthropic",
         registryProvider: "anthropic",
-        candidates: uniqueModelCandidates([modelId, modelId.replace(/\./g, "-")]),
+        candidates: uniqueModelCandidates([
+          modelId,
+          modelId.replace(/\./g, "-"),
+        ]),
       };
     case "moonshotai":
       return {
@@ -103,7 +167,10 @@ const getDirectProviderCandidates = (
       return {
         credentialProvider: provider,
         registryProvider: provider,
-        candidates: uniqueModelCandidates([modelId, modelId.replace(/\./g, "-")]),
+        candidates: uniqueModelCandidates([
+          modelId,
+          modelId.replace(/\./g, "-"),
+        ]),
       };
     default: {
       // Plugin providers register themselves in the AI registry; if they show
@@ -114,7 +181,10 @@ const getDirectProviderCandidates = (
           credentialProvider: provider,
           registryProvider: provider,
           allowBaseUrlWithoutCredential: true,
-          candidates: uniqueModelCandidates([modelId, modelId.replace(/\./g, "-")]),
+          candidates: uniqueModelCandidates([
+            modelId,
+            modelId.replace(/\./g, "-"),
+          ]),
         };
       }
       return null;
@@ -128,7 +198,20 @@ const resolveDirectProviderRoute = (args: {
   modelId: string;
   fullModelId: string;
 }): ResolvedLlmRoute | null => {
-  const directProvider = getDirectProviderCandidates(args.provider, args.modelId);
+  if (args.provider === LOCAL_PROVIDER && args.modelId.trim()) {
+    const local = parseLocalModelId(args.modelId);
+    if (!local) return null;
+    return {
+      model: createLocalOpenAICompatibleModel(local.modelId, local.baseUrl),
+      route: "direct-provider",
+      getApiKey: () => "",
+    };
+  }
+
+  const directProvider = getDirectProviderCandidates(
+    args.provider,
+    args.modelId,
+  );
   if (!directProvider) {
     return null;
   }
@@ -146,7 +229,9 @@ const resolveDirectProviderRoute = (args: {
     return null;
   }
 
-  if (hasLocalProviderAuth(args.stellaRoot, directProvider.credentialProvider)) {
+  if (
+    hasLocalProviderAuth(args.stellaRoot, directProvider.credentialProvider)
+  ) {
     return {
       model: directModel,
       route: "direct-provider",

@@ -66,6 +66,7 @@ const PROVIDER_NAMES: Record<string, string> = {
   "google-vertex": "Google Vertex",
   groq: "Groq",
   huggingface: "Hugging Face",
+  local: "Local",
   "kimi-coding": "Kimi",
   minimax: "MiniMax",
   "minimax-cn": "MiniMax China",
@@ -117,27 +118,43 @@ function toDirectModelId(model: Model<Api>): string {
 }
 
 export function listLocalCatalogModels(): CatalogModel[] {
-  return getAllModels()
-    .filter(
-      (model) =>
-        model.api !== "stella" && LOCAL_MODEL_PROVIDER_KEYS.has(model.provider),
-    )
-    .map((model) => ({
-      id: toDirectModelId(model),
-      modelId: model.id,
-      name: model.name || model.id,
-      provider: model.provider,
-      providerName: getProviderDisplayName(model.provider),
-      source: "local" as const,
-      contextWindow: model.contextWindow,
-      maxTokens: model.maxTokens,
-      input: model.input,
-      reasoning: model.reasoning,
-    }))
-    .sort((a, b) => {
-      const providerSort = a.providerName.localeCompare(b.providerName);
-      return providerSort || a.name.localeCompare(b.name);
-    });
+  const localUrlModels: CatalogModel[] = [
+    {
+      id: "local/llama3.2",
+      modelId: "llama3.2",
+      name: "llama3.2",
+      provider: "local",
+      providerName: getProviderDisplayName("local"),
+      source: "local",
+      input: ["text"],
+      reasoning: false,
+    },
+  ];
+
+  return [
+    ...localUrlModels,
+    ...getAllModels()
+      .filter(
+        (model) =>
+          model.api !== "stella" &&
+          LOCAL_MODEL_PROVIDER_KEYS.has(model.provider),
+      )
+      .map((model) => ({
+        id: toDirectModelId(model),
+        modelId: model.id,
+        name: model.name || model.id,
+        provider: model.provider,
+        providerName: getProviderDisplayName(model.provider),
+        source: "local" as const,
+        contextWindow: model.contextWindow,
+        maxTokens: model.maxTokens,
+        input: model.input,
+        reasoning: model.reasoning,
+      })),
+  ].sort((a, b) => {
+    const providerSort = a.providerName.localeCompare(b.providerName);
+    return providerSort || a.name.localeCompare(b.name);
+  });
 }
 
 export function normalizeStellaCatalogModels(

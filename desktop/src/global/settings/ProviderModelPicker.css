@@ -300,15 +300,17 @@
   height: 30px;
 }
 
-/* ----------------------------------------------------------- OpenRouter */
+/* ----------------------------------------------------------- Custom model inputs */
 
-.model-picker-openrouter {
+.model-picker-openrouter,
+.model-picker-local {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.model-picker-openrouter code {
+.model-picker-openrouter code,
+.model-picker-local code {
   font-family: var(--font-family-mono, ui-monospace, monospace);
   font-size: 11px;
   padding: 1px 5px;
