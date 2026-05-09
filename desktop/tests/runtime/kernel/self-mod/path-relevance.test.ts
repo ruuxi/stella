@@ -176,6 +176,12 @@ describe("isFullReloadRelevantPath", () => {
     expect(isFullReloadRelevantPath("desktop/index.html")).toBe(true);
   });
 
+  it("flags sidebar app metadata because it changes the eager app glob", () => {
+    expect(
+      isFullReloadRelevantPath("desktop/src/app/launch-checklist/metadata.ts"),
+    ).toBe(true);
+  });
+
   it("does not pretend manifests or Vite config can be fixed by browser reload", () => {
     expect(isFullReloadRelevantPath("package.json")).toBe(false);
     expect(isFullReloadRelevantPath("bun.lock")).toBe(false);
@@ -186,6 +192,11 @@ describe("isFullReloadRelevantPath", () => {
 
   it("does not flag ordinary desktop modules", () => {
     expect(isFullReloadRelevantPath("desktop/src/app.tsx")).toBe(false);
+    expect(
+      isFullReloadRelevantPath(
+        "desktop/src/app/launch-checklist/LaunchChecklistView.tsx",
+      ),
+    ).toBe(false);
   });
 });
 

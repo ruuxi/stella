@@ -121,6 +121,8 @@ const FULL_WINDOW_RELOAD_FILES = new Set<string>([
   "desktop/index.html",
 ]);
 
+const SIDEBAR_APP_METADATA_RE = /^desktop\/src\/app\/[^/]+\/metadata\.ts$/;
+
 /**
  * Top-level files (no directory prefix) that still count as relevant —
  * config / manifests that affect the app, but are not renderer-HMR-able.
@@ -292,7 +294,10 @@ export const isRestartRelevantPath = isWorkerRestartRelevantPath;
 export const isFullWindowReloadRelevantPath = (repoRelativePath: string): boolean => {
   if (!repoRelativePath) return false;
   const normalized = stripTrailingSlash(toPosix(repoRelativePath));
-  return FULL_WINDOW_RELOAD_FILES.has(normalized);
+  return (
+    FULL_WINDOW_RELOAD_FILES.has(normalized) ||
+    SIDEBAR_APP_METADATA_RE.test(normalized)
+  );
 };
 
 export const isFullReloadRelevantPath = isFullWindowReloadRelevantPath;
