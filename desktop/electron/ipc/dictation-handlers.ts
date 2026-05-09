@@ -411,8 +411,16 @@ export const registerDictationHandlers = (
 
   const revealPushToTalk = () => {
     const active = activePushToTalk;
-    if (!active || active.type !== "overlay") return;
-    revealOverlayPushToTalk(active.sessionId);
+    if (!active) return;
+    if (active.type === "overlay") {
+      revealOverlayPushToTalk(active.sessionId);
+      return;
+    }
+    if (active.window.isDestroyed()) return;
+    active.window.webContents.send("dictation:toggle", {
+      startId: active.startId,
+      action: "reveal",
+    });
   };
 
   const stopPushToTalk = (durationMs: number) => {

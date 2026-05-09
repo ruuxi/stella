@@ -148,7 +148,7 @@ export function Composer({
               disabled={isStreaming}
             />
 
-            {dictation.isRecording ? (
+            {dictation.isRecordingVisible ? (
               <DictationRecordingBar
                 levels={dictation.levels}
                 elapsedMs={dictation.elapsedMs}
