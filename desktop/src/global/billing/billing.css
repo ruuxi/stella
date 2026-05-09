@@ -320,12 +320,7 @@
   line-height: 1.45;
   color: var(--bl-muted);
   letter-spacing: -0.01em;
-  min-height: 32px;
-}
-
-.bl-plan-allotment strong {
-  color: var(--bl-fg);
-  font-weight: 500;
+  margin: 0;
 }
 
 .bl-plan-rule {

@@ -73,14 +73,25 @@ const RECOMMENDED_PLAN: BillingPlan = "pro";
 // rather than a silent overcharge.
 const STATIC_PLAN_DISPLAY: Record<
   BillingPlan,
-  { label: string; monthlyPriceCents: number; estimatedUsageUsd: number }
+  { label: string; monthlyPriceCents: number }
 > = {
-  free: { label: "Free", monthlyPriceCents: 0, estimatedUsageUsd: 4 },
-  // Estimated usage = price / 0.7 utilization rate (matches backend default).
-  go: { label: "Go", monthlyPriceCents: 2_000, estimatedUsageUsd: 28.57 },
-  pro: { label: "Pro", monthlyPriceCents: 6_000, estimatedUsageUsd: 85.71 },
-  plus: { label: "Plus", monthlyPriceCents: 10_000, estimatedUsageUsd: 142.86 },
-  ultra: { label: "Ultra", monthlyPriceCents: 20_000, estimatedUsageUsd: 285.71 },
+  free: { label: "Free", monthlyPriceCents: 0 },
+  go: { label: "Go", monthlyPriceCents: 2_000 },
+  pro: { label: "Pro", monthlyPriceCents: 6_000 },
+  plus: { label: "Plus", monthlyPriceCents: 10_000 },
+  ultra: { label: "Ultra", monthlyPriceCents: 20_000 },
+};
+
+// Usage taglines are expressed as multiples of the entry paid plan (Go) so
+// users get a quick relative sense of scale without us having to surface the
+// underlying dollar limits. Mirrors the price ratios in
+// backend/convex/lib/billing_plans.ts ($20 / $60 / $100 / $200).
+const PLAN_USAGE_TAGLINE: Record<BillingPlan, string> = {
+  free: "Light usage to try Stella",
+  go: "Baseline monthly usage",
+  pro: "3× the usage of Go",
+  plus: "5× the usage of Go",
+  ultra: "10× the usage of Go",
 };
 
 const SHARED_FEATURES: readonly string[] = [
@@ -219,8 +230,6 @@ export function BillingScreen() {
       return {
         label: live?.label ?? fallback.label,
         monthlyPriceCents: live?.monthlyPriceCents ?? fallback.monthlyPriceCents,
-        monthlyUsageUsd:
-          live?.monthlyLimitUsd ?? fallback.estimatedUsageUsd,
       };
     },
     [planCatalog],
@@ -337,26 +346,6 @@ export function BillingScreen() {
       setPendingPlan(null);
     }
   }, []);
-
-  const formatUsageLine = (plan: BillingPlan) => {
-    const display = getPlanDisplay(plan);
-    if (plan === "free") {
-      return (
-        <>
-          A taste of Stella with{" "}
-          <strong>{usdFormatter.format(display.monthlyUsageUsd)}</strong> of
-          included monthly usage.
-        </>
-      );
-    }
-    return (
-      <>
-        Around{" "}
-        <strong>{usdFormatter.format(display.monthlyUsageUsd)}</strong> of
-        included usage each month.
-      </>
-    );
-  };
 
   return (
     <div className="bl">
@@ -480,7 +469,9 @@ export function BillingScreen() {
                     ) : null}
                   </div>
 
-                  <p className="bl-plan-allotment">{formatUsageLine(plan)}</p>
+                  <p className="bl-plan-allotment">
+                    {PLAN_USAGE_TAGLINE[plan]}
+                  </p>
 
                   <hr className="bl-plan-rule" />
 
