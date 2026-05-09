@@ -26,6 +26,11 @@ export type ChatContext = {
     app: string;
     bounds: WindowBounds;
   } | null;
+  appSelection?: {
+    label: string;
+    snapshot: string;
+    bounds: WindowBounds;
+  } | null;
   windowContextEnabled?: boolean;
   browserUrl?: string | null;
   selectedText?: string | null;

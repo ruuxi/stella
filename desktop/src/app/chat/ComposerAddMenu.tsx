@@ -12,7 +12,7 @@
  */
 import { useCallback, useRef } from "react";
 import type { ChangeEvent, Dispatch, SetStateAction } from "react";
-import { Camera, Paperclip } from "lucide-react";
+import { Camera, Paperclip, Scan } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +33,7 @@ import "./composer-add-menu.css";
 
 type ComposerAddMenuProps = {
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
+  onSelectArea: () => void;
   className?: string;
   disabled?: boolean;
   title?: string;
@@ -59,6 +60,7 @@ function truncateFileName(
 
 export function ComposerAddMenu({
   setChatContext,
+  onSelectArea,
   className,
   disabled,
   title,
@@ -135,6 +137,12 @@ export function ComposerAddMenu({
               <Camera size={14} strokeWidth={1.75} />
             </span>
             Capture
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onSelectArea}>
+            <span data-slot="dropdown-menu-item-icon">
+              <Scan size={14} strokeWidth={1.75} />
+            </span>
+            Select area
           </DropdownMenuItem>
 
           {recentFiles.length > 0 && (

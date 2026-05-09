@@ -4,6 +4,7 @@ import { cn } from "@/shared/lib/utils";
 import { ChipPreviewPortal } from "./ChipPreviewPortal";
 import { useHoverPreview } from "./use-hover-preview";
 import {
+  clearComposerAppSelectionContext,
   clearComposerSelectedTextContext,
   clearComposerWindowContext,
   removeComposerFileContext,
@@ -123,6 +124,35 @@ export function SelectedTextChip({
       }}
     >
       <span className={cn(textClassName)}>&quot;{displayText}&quot;</span>
+    </button>
+  );
+}
+
+type AppSelectionChipProps = {
+  appSelection: NonNullable<ChatContext["appSelection"]>;
+  setChatContext: SetChatContext;
+  className?: string;
+  textClassName?: string;
+};
+
+export function AppSelectionChip({
+  appSelection,
+  setChatContext,
+  className,
+  textClassName,
+}: AppSelectionChipProps) {
+  const label = appSelection.label || "Selected area";
+  return (
+    <button
+      type="button"
+      className={cn(className)}
+      title={`${label} — click to remove selected area`}
+      onClick={(event) => {
+        clearComposerAppSelectionContext(setChatContext);
+        event.currentTarget.blur();
+      }}
+    >
+      <span className={cn(textClassName)}>{truncateChipLabel(label)}</span>
     </button>
   );
 }

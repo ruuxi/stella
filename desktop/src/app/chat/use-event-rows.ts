@@ -387,12 +387,18 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           contextMetadata.windowPreviewImageUrl.trim()
             ? contextMetadata.windowPreviewImageUrl.trim()
             : undefined
+        const appSelectionLabel =
+          typeof contextMetadata?.appSelectionLabel === 'string' &&
+          contextMetadata.appSelectionLabel.trim()
+            ? contextMetadata.appSelectionLabel.trim()
+            : undefined
         const row: UserRowViewModel = {
           kind: 'user',
           id: event._id,
           text: getDisplayUserText(event),
           ...(windowLabel ? { windowLabel } : {}),
           ...(windowPreviewImageUrl ? { windowPreviewImageUrl } : {}),
+          ...(appSelectionLabel ? { appSelectionLabel } : {}),
           attachments: getAttachments(event),
           ...(getChannelEnvelope(event)
             ? { channelEnvelope: getChannelEnvelope(event) }

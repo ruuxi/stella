@@ -3,6 +3,7 @@ import { getPlatform } from '@/platform/electron/platform'
 import { useChatStore } from '@/context/chat-store'
 import { getOrCreateDeviceId } from '@/platform/electron/device'
 import type { SendMessageArgs } from '../streaming/chat-types'
+import type { MessageMetadata } from '@/app/chat/lib/event-transforms'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
 import { resolveComposerContextState } from '../composer-context'
 import {
@@ -26,6 +27,22 @@ const createLocalMessageId = () =>
   `local-${crypto.randomUUID()}`
 
 const JUST_SENT_CLASS_MS = 900
+
+const buildContextMessageMetadata = (
+  chatContext: SendMessageArgs['chatContext'],
+  base?: MessageMetadata,
+): MessageMetadata | undefined => {
+  const appSelectionLabel = chatContext?.appSelection?.label?.trim()
+  if (!appSelectionLabel) return base
+
+  return {
+    ...(base ?? {}),
+    context: {
+      ...(base?.context ?? {}),
+      appSelectionLabel,
+    },
+  }
+}
 
 const buildOptimisticUserEvent = (args: {
   id: string
@@ -214,6 +231,10 @@ export function useStreamingChat({
       const attachments = isLocalStorage && hasAttachments
         ? buildAllLocalAttachments(options.chatContext)
         : []
+      const messageMetadata = buildContextMessageMetadata(
+        options.chatContext,
+        options.metadata,
+      )
       const platform = getPlatform()
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
       const requestLocale = locale
@@ -253,7 +274,7 @@ export function useStreamingChat({
             platform,
             timezone,
             locale: requestLocale,
-            ...(options.metadata ? { metadata: options.metadata } : {}),
+            ...(messageMetadata ? { metadata: messageMetadata } : {}),
             attachments,
             ...(mode ? { mode } : {}),
           }),
@@ -286,7 +307,7 @@ export function useStreamingChat({
           timezone,
           locale: requestLocale,
           ...(mode ? { mode } : {}),
-          ...(options.metadata ? { messageMetadata: options.metadata } : {}),
+          ...(messageMetadata ? { messageMetadata } : {}),
           attachments,
           userMessageEventId: optimisticUserMessageId,
           onStartFailed: () => {
@@ -309,7 +330,7 @@ export function useStreamingChat({
         platform,
         timezone,
         locale: requestLocale,
-        ...(options.metadata ? { messageMetadata: options.metadata } : {}),
+        ...(messageMetadata ? { messageMetadata } : {}),
         attachments,
         userMessageEventId: optimisticUserMessageId,
         onStartFailed: () => {

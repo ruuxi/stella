@@ -91,6 +91,7 @@ export type MessageMetadata = {
   context?: {
     windowLabel?: string;
     windowPreviewImageUrl?: string;
+    appSelectionLabel?: string;
   };
   trigger?: {
     kind?: string;

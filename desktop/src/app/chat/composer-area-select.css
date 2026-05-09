@@ -1,0 +1,42 @@
+.composer-area-select-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  cursor: crosshair;
+}
+
+.composer-area-select-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklch, black 12%, transparent);
+}
+
+.composer-area-select-ring {
+  position: fixed;
+  border: 2px solid color-mix(in oklch, var(--primary, #5aa9ff) 78%, white);
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, black 35%, transparent),
+    0 0 24px color-mix(in oklch, var(--primary, #5aa9ff) 26%, transparent);
+  background: color-mix(in oklch, var(--primary, #5aa9ff) 5%, transparent);
+}
+
+.composer-area-select-label {
+  position: absolute;
+  left: 8px;
+  top: -30px;
+  max-width: min(280px, calc(100vw - 24px));
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--primary, #5aa9ff) 45%, transparent);
+  background: var(--surface-raised-stronger-non-alpha, var(--popover));
+  color: var(--text-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

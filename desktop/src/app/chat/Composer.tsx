@@ -8,6 +8,7 @@ import type { ChatContext } from "@/shared/types/electron";
 import { ComposerContextRow, ComposerSuggestionContextRow } from "./ComposerContextRow";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import { ComposerAddMenu } from "./ComposerAddMenu";
+import { ComposerAreaSelectOverlay } from "./ComposerAreaSelectOverlay";
 import {
   ComposerMicButton,
   ComposerStopButton,
@@ -63,6 +64,7 @@ export function Composer({
   const shellRef = useRef<HTMLDivElement | null>(null);
   const shellContentRef = useRef<HTMLDivElement | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [areaSelectActive, setAreaSelectActive] = useState(false);
   const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
     useScreenshotPreview(chatContext);
 
@@ -145,6 +147,7 @@ export function Composer({
               className="composer-add-button"
               title="Add"
               setChatContext={setChatContext}
+              onSelectArea={() => setAreaSelectActive(true)}
               disabled={isStreaming}
             />
 
@@ -189,6 +192,7 @@ export function Composer({
                       className="composer-add-button composer-add-button--toolbar"
                       title="Add"
                       setChatContext={setChatContext}
+                      onSelectArea={() => setAreaSelectActive(true)}
                       disabled={isStreaming}
                     />
                   </div>
@@ -231,6 +235,11 @@ export function Composer({
           onClose={() => setPreviewScreenshotIndex(null)}
         />
       )}
+      <ComposerAreaSelectOverlay
+        active={areaSelectActive}
+        setChatContext={setChatContext}
+        onCancel={() => setAreaSelectActive(false)}
+      />
     </div>
   );
 }

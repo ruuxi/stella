@@ -4,6 +4,7 @@ import type { ChatContext } from "@/shared/types/electron";
 type ComposerContextState = {
   hasScreenshotContext: boolean;
   hasFileContext: boolean;
+  hasAppSelectionContext: boolean;
   hasWindowContext: boolean;
   hasVisibleWindowContext: boolean;
   hasSelectedTextContext: boolean;
@@ -56,6 +57,7 @@ export const hasAttachedComposerChips = (
   if (selectedText) return true;
   if (!chatContext) return false;
   if (chatContext.window) return true;
+  if (chatContext.appSelection) return true;
   if (chatContext.browserUrl) return true;
   if (chatContext.regionScreenshots && chatContext.regionScreenshots.length > 0)
     return true;
@@ -74,12 +76,14 @@ export const resolveComposerContextState = (
   );
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasFileContext = Boolean(chatContext?.files?.length);
+  const hasAppSelectionContext = Boolean(chatContext?.appSelection?.snapshot);
   const hasWindowContext = windowContextEnabled;
   const hasSelectedTextContext = Boolean(selectedText);
   const hasPendingCaptureContext = Boolean(chatContext?.capturePending);
   const hasSubmittableContext = Boolean(
     hasScreenshotContext
       || hasFileContext
+      || hasAppSelectionContext
       || hasWindowContext
       || hasSelectedTextContext,
   );
@@ -87,6 +91,7 @@ export const resolveComposerContextState = (
   return {
     hasScreenshotContext,
     hasFileContext,
+    hasAppSelectionContext,
     hasWindowContext,
     hasVisibleWindowContext,
     hasSelectedTextContext,
@@ -109,6 +114,9 @@ const resolveComposerPlaceholder = ({
   }
   if (contextState.hasFileContext) {
     return "Ask about the file...";
+  }
+  if (contextState.hasAppSelectionContext) {
+    return "Ask about the selected area...";
   }
   if (contextState.hasWindowContext) {
     return "Ask about this window...";
@@ -149,6 +157,11 @@ export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
   ));
 };
 
+export const clearComposerAppSelectionContext = (setChatContext: SetChatContext) => {
+  setChatContext((prev) => (
+    prev ? { ...prev, appSelection: null } : prev
+  ));
+};
 
 export const clearComposerSelectedTextContext = (
   setSelectedText: SetSelectedText,

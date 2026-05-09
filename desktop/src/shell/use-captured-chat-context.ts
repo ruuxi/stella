@@ -14,6 +14,7 @@ function normalizeChatContext(context: ChatContext | null): ChatContext | null {
   const hasWindow = Boolean(context.window)
   const hasBrowserUrl = Boolean(context.browserUrl)
   const hasSelectedText = Boolean(context.selectedText)
+  const hasAppSelection = Boolean(context.appSelection?.snapshot)
   const hasScreenshots = Boolean(context.regionScreenshots?.length)
   const hasFiles = Boolean(context.files?.length)
   const hasPendingCapture = Boolean(context.capturePending)
@@ -23,6 +24,7 @@ function normalizeChatContext(context: ChatContext | null): ChatContext | null {
     !hasWindow &&
     !hasBrowserUrl &&
     !hasSelectedText &&
+    !hasAppSelection &&
     !hasScreenshots &&
     !hasFiles &&
     !hasPendingCapture &&
