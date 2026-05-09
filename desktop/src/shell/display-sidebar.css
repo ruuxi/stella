@@ -39,6 +39,19 @@
   left: var(--shell-sidebar-rail-width, 82px);
 }
 
+/* Expanded mode overlays the content area but `.display-sidebar-inner` is
+   transparent, so without this rule the chat / route outlet behind it
+   bleeds through. Use opacity (not visibility/display) because
+   `.persistent-chat-surface--active` / `.route-outlet-surface--active`
+   inside `.content-area` re-assert `visibility: visible`, which would
+   defeat a parent `visibility: hidden`. Opacity keeps the subtree
+   mounted (preserves scroll/virtualization state) and cascades
+   regardless of descendant rules. */
+.full-body:has(.display-sidebar--open.display-sidebar--expanded) .content-area {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* The expanded display panel is intentionally transparent, so remove the
    underlying route/chat surface while the panel owns the full content area. */
 .full-body:has(.display-sidebar--open.display-sidebar--expanded)
