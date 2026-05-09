@@ -91,10 +91,6 @@ type OnboardingExperienceProps = {
   authBootstrapStatus: AuthBootstrapStatus;
   isPreparingStartup: boolean;
   startupError: string | null;
-  onShellStateChange: (state: {
-    exiting: boolean;
-    phase: OnboardingPhase;
-  }) => void;
   onRetryStartup: () => void;
   onEnteredApp: () => void;
 };
@@ -105,7 +101,6 @@ function OnboardingExperience({
   authBootstrapStatus,
   isPreparingStartup,
   startupError,
-  onShellStateChange,
   onRetryStartup,
   onEnteredApp,
 }: OnboardingExperienceProps) {
@@ -117,7 +112,6 @@ function OnboardingExperience({
     useState<OnboardingPhase>("intro");
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDemoRef = useRef<OnboardingDemo>(null);
-  const fogDefsRef = useRef<SVGSVGElement | null>(null);
   const onboarding = useOnboardingOverlay();
   const {
     handleDiscoveryConfirm,
@@ -201,20 +195,6 @@ function OnboardingExperience({
   // by `stellaHiddenByPhase` above, which both hides AND pauses.)
   const stellaPausedByHeavyPhase = onboardingPhase === "capabilities";
 
-  useEffect(() => {
-    const fogDefs = fogDefsRef.current;
-    if (!fogDefs) return;
-
-    // Pause the fog drift during creation-phase morphs and during the
-    // onboarding exit transition (so the fade-out reads as a calm dissolve
-    // rather than a moving texture being clipped to nothing).
-    if (onboardingDemoMorphing || onboarding.onboardingExiting) {
-      fogDefs.pauseAnimations();
-    } else {
-      fogDefs.unpauseAnimations();
-    }
-  }, [onboardingDemoMorphing, onboarding.onboardingExiting]);
-
   const showOnboardingDemos = activeDemo || demoClosing;
   const pauseOnboardingMotion =
     onboardingDemoMorphing || onboarding.onboardingExiting;
@@ -225,84 +205,12 @@ function OnboardingExperience({
     stellaPausedByHeavyPhase;
 
   useEffect(() => {
-    onShellStateChange({
-      exiting: onboarding.onboardingExiting,
-      phase: onboardingPhase,
-    });
-  }, [onShellStateChange, onboarding.onboardingExiting, onboardingPhase]);
-
-  useEffect(() => {
     if (!onboarding.onboardingDone) return;
     onEnteredApp();
   }, [onEnteredApp, onboarding.onboardingDone]);
 
   return (
     <>
-      <svg
-        ref={fogDefsRef}
-        className="onboarding-fog-defs"
-        width="0"
-        height="0"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <defs>
-          <filter
-            id="stella-fog-distort"
-            x="-8%"
-            y="-8%"
-            width="116%"
-            height="116%"
-            colorInterpolationFilters="sRGB"
-          >
-            {/* Filter values are tuned for a 600x400 source element
-             * (see .window-shell.full[data-window-mode="onboarding"]::after).
-             * The CSS-scale multiplier on that element is roughly 3x on a
-             * typical window, so baseFrequency is 3x the original "screen
-             * pixel" tuning and displacement scale is 1/3 — giving the
-             * same on-screen noise wavelength and warp distance as before
-             * while filtering ~9x fewer pixels. */}
-            {/* Static, single-octave `turbulence` (not `fractalNoise`):
-             * the noise tile is generated once and reused every frame
-             * instead of re-rasterizing on the CPU per paint. The slow
-             * frequency drift the previous version animated was visually
-             * indistinguishable from a still pattern at this wavelength —
-             * the breathing motion users perceive comes from the
-             * displacement `scale` warp below, not from frequency drift.
-             * `numOctaves="1"` halves turbulence cost vs the previous 2.
-             * The filter region is also tightened (16% slack vs 30%) so
-             * the sampler covers fewer pixels. */}
-            <feTurbulence
-              type="turbulence"
-              baseFrequency="0.018 0.027"
-              numOctaves="1"
-              seed="7"
-              result="fogNoise"
-            />
-            {/* Only the displacement `scale` animates, and at a much
-             * slower 72s loop on a single channel — displacement is
-             * cheap because it reuses the precomputed noise tile, but
-             * slowing the keyframes still lowers per-frame work and
-             * keeps the boundary drift subtly organic. */}
-            <feDisplacementMap
-              in="SourceGraphic"
-              in2="fogNoise"
-              scale="17"
-              xChannelSelector="R"
-              yChannelSelector="G"
-            >
-              <animate
-                attributeName="scale"
-                dur="72s"
-                values="17;22;15;19;17"
-                keyTimes="0;0.25;0.5;0.75;1"
-                calcMode="linear"
-                repeatCount="indefinite"
-              />
-            </feDisplacementMap>
-          </filter>
-        </defs>
-      </svg>
       <div
         className="onboarding-layout"
         data-split={onboarding.splitMode || undefined}
@@ -385,13 +293,6 @@ export const FullShell = () => {
   const { gradientMode, gradientColor } = useTheme();
   const { completed: onboardingDone } = useOnboardingState();
   const [hasEnteredApp, setHasEnteredApp] = useState(false);
-  const [onboardingShellState, setOnboardingShellState] = useState<{
-    exiting: boolean;
-    phase: OnboardingPhase;
-  }>({
-    exiting: false,
-    phase: "intro",
-  });
   const {
     runtimeAuthReady,
     status: authBootstrapStatus,
@@ -501,12 +402,6 @@ export const FullShell = () => {
     <div
       className="window-shell full"
       data-window-mode={needsOnboarding ? "onboarding" : "app"}
-      data-onboarding-exiting={
-        needsOnboarding && onboardingShellState.exiting ? "true" : undefined
-      }
-      data-onboarding-phase={
-        needsOnboarding ? onboardingShellState.phase : undefined
-      }
     >
       <ShiftingGradient
         mode={gradientMode}
@@ -528,7 +423,6 @@ export const FullShell = () => {
             authBootstrapStatus={authBootstrapStatus}
             isPreparingStartup={isPreparingStartup}
             startupError={startupError}
-            onShellStateChange={setOnboardingShellState}
             onRetryStartup={handleRetryStartup}
             onEnteredApp={() => setHasEnteredApp(true)}
           />
