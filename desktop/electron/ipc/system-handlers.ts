@@ -1360,13 +1360,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         payload?.reasoningEfforts,
       );
 
-      const generalAgentEngine =
-        payload?.generalAgentEngine === "claude_code_local"
-          ? payload.generalAgentEngine
-          : "default";
-      const selfModAgentEngine =
-        payload?.selfModAgentEngine === "claude_code_local"
-          ? payload.selfModAgentEngine
+      const agentRuntimeEngine =
+        payload?.agentRuntimeEngine === "claude_code_local"
+          ? payload.agentRuntimeEngine
           : "default";
       const parsedConcurrency = Number(payload?.maxAgentConcurrency);
       const maxAgentConcurrency =
@@ -1384,11 +1380,8 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (payload?.reasoningEfforts !== undefined) {
         patch.reasoningEfforts = nextReasoningEfforts;
       }
-      if (payload?.generalAgentEngine !== undefined) {
-        patch.generalAgentEngine = generalAgentEngine;
-      }
-      if (payload?.selfModAgentEngine !== undefined) {
-        patch.selfModAgentEngine = selfModAgentEngine;
+      if (payload?.agentRuntimeEngine !== undefined) {
+        patch.agentRuntimeEngine = agentRuntimeEngine;
       }
       if (payload?.maxAgentConcurrency !== undefined) {
         patch.maxAgentConcurrency = maxAgentConcurrency;

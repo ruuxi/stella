@@ -52,6 +52,11 @@ import { dreamTool } from "../tools/defs/dream.js";
 import { readTool } from "../tools/defs/read.js";
 import { strReplaceTool } from "../tools/defs/str-replace.js";
 import { createRuntimeLogger } from "../debug.js";
+import {
+  runClaudeCodeAgentTextCompletion,
+  shouldUseClaudeCodeAgentRuntime,
+} from "../integrations/claude-code-agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 
 const logger = createRuntimeLogger("agent-runtime.dream-scheduler");
 
@@ -201,8 +206,18 @@ const runDream = async (args: {
   store: RuntimeStore;
   resolvedLlm: ResolvedLlmRoute;
 }): Promise<void> => {
-  const apiKey = await getResolvedLlmApiKey(args.resolvedLlm);
-  if (!apiKey && !resolvedLlmSupportsCredentiallessCalls(args.resolvedLlm)) {
+  const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
+    stellaRoot: args.stellaHome,
+    modelId: args.resolvedLlm.model.id,
+  });
+  const apiKey = useClaudeCode
+    ? undefined
+    : await getResolvedLlmApiKey(args.resolvedLlm);
+  if (
+    !useClaudeCode &&
+    !apiKey &&
+    !resolvedLlmSupportsCredentiallessCalls(args.resolvedLlm)
+  ) {
     logger.debug("dream.skipped.no-api-key");
     return;
   }
@@ -223,6 +238,50 @@ const runDream = async (args: {
     },
   ];
   let totalToolCalls = 0;
+
+  if (useClaudeCode) {
+    try {
+      const finalText = await runClaudeCodeAgentTextCompletion({
+        stellaRoot: args.stellaHome,
+        agentType: AGENT_IDS.DREAM,
+        context: {
+          systemPrompt: buildDreamSystemPrompt(),
+          messages,
+          tools,
+        },
+        executeTool: async (_toolCallId, toolName, toolArgs) => {
+          totalToolCalls += 1;
+          const dispatch = await dispatchLocalTool(toolName, toolArgs, {
+            conversationId: "dream",
+            store: {
+              memoryStore: args.store.memoryStore,
+              threadSummariesStore: args.store.threadSummariesStore,
+            },
+            dream: { stellaHome: args.stellaHome },
+          });
+          if (!dispatch.handled) {
+            return {
+              error: JSON.stringify({
+                success: false,
+                error: `Tool ${toolName} not available to the Dream agent.`,
+              }),
+            };
+          }
+          return { result: dispatch.text };
+        },
+      });
+      logger.debug("dream.completed", {
+        iterations: 1,
+        toolCalls: totalToolCalls,
+        finalText: finalText.slice(0, 80),
+      });
+    } catch (error) {
+      logger.debug("dream.claude-code.failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
     const context: Context = {

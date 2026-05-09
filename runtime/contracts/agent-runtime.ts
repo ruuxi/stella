@@ -18,8 +18,6 @@ export type AgentIdLike = AgentId | (string & {});
 
 type AgentPromptRole = "orchestrator" | "subagent";
 type LocalCliWorkingDirectory = "home" | "frontend";
-type AgentEnginePreferenceKey = "general";
-
 type AgentModelSettings = {
   description?: string;
   order: number;
@@ -71,7 +69,6 @@ type AgentDefinition = {
   promptRole: AgentPromptRole;
   controlsSelfModHmr: boolean;
   localCliWorkingDirectory: LocalCliWorkingDirectory | null;
-  agentEnginePreference: AgentEnginePreferenceKey | null;
   modelSettings: AgentModelSettings | null;
   /** Optional capability bundle. Defaults to no capabilities. */
   capabilities?: AgentCapabilities;
@@ -90,7 +87,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "orchestrator",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: "frontend",
-    agentEnginePreference: "general",
     modelSettings: {
       description: "Top-level agent that delegates tasks",
       order: 0,
@@ -118,7 +114,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    agentEnginePreference: null,
     modelSettings: null,
   },
   {
@@ -134,7 +129,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    agentEnginePreference: null,
     modelSettings: null,
   },
   {
@@ -149,7 +143,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: "frontend",
-    agentEnginePreference: "general",
     modelSettings: {
       description:
         "Single execution agent that works from files, manuals, and tools",
@@ -176,7 +169,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    agentEnginePreference: "general",
     modelSettings: null,
   },
   {
@@ -190,7 +182,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    agentEnginePreference: null,
     modelSettings: null,
   },
   {
@@ -206,7 +197,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    agentEnginePreference: "general",
     modelSettings: null,
   },
   {
@@ -222,7 +212,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    agentEnginePreference: "general",
     modelSettings: null,
   },
   {
@@ -238,7 +227,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    agentEnginePreference: "general",
     modelSettings: null,
   },
   {
@@ -254,7 +242,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     controlsSelfModHmr: false,
     localCliWorkingDirectory: null,
-    agentEnginePreference: null,
     modelSettings: null,
   },
   {
@@ -266,11 +253,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     bundledCore: true,
     runsAsSubagent: false,
     includeInAgentRoster: false,
-    usesLocalCliRuntime: true,
+    usesLocalCliRuntime: false,
     promptRole: "subagent",
     controlsSelfModHmr: true,
-    localCliWorkingDirectory: "frontend",
-    agentEnginePreference: "general",
+    localCliWorkingDirectory: null,
     modelSettings: null,
   },
 ] as const satisfies readonly AgentDefinition[];
@@ -339,11 +325,6 @@ export const getAgentDefinition = (
 
 export const getAgentActivityLabel = (agentType: string): string | null =>
   getAgentDefinition(agentType)?.activityLabel ?? null;
-
-export const getAgentEnginePreference = (
-  agentType: string,
-): AgentEnginePreferenceKey | null =>
-  getAgentDefinition(agentType)?.agentEnginePreference ?? null;
 
 export const getLocalCliWorkingDirectory = (
   agentType: string,

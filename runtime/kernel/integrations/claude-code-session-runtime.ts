@@ -4,7 +4,12 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import type { RuntimeAttachmentRef } from "../../protocol/index.js";
-import type { ToolMetadata, ToolResult } from "../tools/types.js";
+import type {
+  ToolMetadata,
+  ToolResult,
+  ToolUpdateCallback,
+} from "../tools/types.js";
+import { extractAttachImageBlocks } from "../agent-runtime/tool-adapters.js";
 
 const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
@@ -70,7 +75,14 @@ type ClaudeCodeTurnRequest = {
     toolName: string,
     args: Record<string, unknown>,
     signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
+  onToolUpdate?: (args: {
+    toolCallId: string;
+    toolName: string;
+    update: ToolResult;
+  }) => void;
+  onStream?: (chunk: string) => void;
   onStatusChange?: (status: ClaudeCodeStatusChange) => void;
   abortSignal?: AbortSignal;
 };
@@ -81,6 +93,29 @@ type QueueJob = {
   reject: (reason?: unknown) => void;
 };
 
+type StructuredStepResult = {
+  action: ClaudeCodeDecision;
+  sessionId: string;
+  usage?: ClaudeUsage;
+};
+
+type PendingStructuredPrompt = {
+  request: ClaudeCodeTurnRequest;
+  resolve: (value: StructuredStepResult) => void;
+  reject: (reason?: unknown) => void;
+  emitStreamDelta: (event: Record<string, unknown>) => void;
+  abortListener?: () => void;
+};
+
+type ClaudeCodeStreamingProcess = {
+  child: ChildProcessWithoutNullStreams;
+  stdoutBuffer: string;
+  stderrText: string;
+  finalSessionId: string;
+  pending: PendingStructuredPrompt[];
+  closed: boolean;
+};
+
 type SessionState = {
   sessionId: string;
   cwd?: string;
@@ -89,6 +124,7 @@ type SessionState = {
   running: boolean;
   queue: QueueJob[];
   artifactDir?: string;
+  process?: ClaudeCodeStreamingProcess;
 };
 
 const asNumber = (value: unknown): number | undefined =>
@@ -247,17 +283,29 @@ const buildInitialPrompt = (
     .join("\n\n");
 };
 
-const buildToolResultPrompt = (args: {
+export const buildToolResultPrompt = async (args: {
   toolCallId: string;
   toolName: string;
   toolArgs: Record<string, unknown>;
   toolResult: ToolResult;
-}): string => {
+}): Promise<string> => {
+  const rawResultText = stringifyUnknown(args.toolResult.result);
+  const { text: forwardedResultText, images } =
+    await extractAttachImageBlocks(rawResultText);
   const serializedResult = trimForPrompt(
     stringifyUnknown({
-      result: args.toolResult.result,
+      result: forwardedResultText || args.toolResult.result,
       details: args.toolResult.details,
       error: args.toolResult.error ?? null,
+      attachments:
+        images.length > 0
+          ? images.map((image, index) => ({
+              index: index + 1,
+              type: image.type,
+              mimeType: image.mimeType,
+              sizeBytes: Math.round((image.data.length * 3) / 4),
+            }))
+          : undefined,
     }),
   );
   return [
@@ -266,10 +314,22 @@ const buildToolResultPrompt = (args: {
     `Tool name: ${args.toolName}`,
     "Tool arguments:",
     stringifyUnknown(args.toolArgs),
+    images.length > 0
+      ? [
+          "Tool result attachments:",
+          ...images.map(
+            (image, index) =>
+              `- Attachment ${index + 1}: ${image.mimeType}, ${Math.round((image.data.length * 3) / 4 / 1024)}KB`,
+          ),
+          "The text result below had Stella inline image markers resolved so the next decision can account for attached screenshot output.",
+        ].join("\n")
+      : "",
     "Tool result:",
     serializedResult,
     "Decide the next step and respond with JSON only.",
-  ].join("\n\n");
+  ]
+    .filter((section) => section.trim().length > 0)
+    .join("\n\n");
 };
 
 const CLAUDE_CODE_RESPONSE_SCHEMA = JSON.stringify({
@@ -296,9 +356,8 @@ export const buildClaudeCodeToolRuntimePrompt = (
     "Stella Claude Code runtime contract:",
     "Claude Code built-in tools are disabled for this session. Only Stella-hosted tools are available.",
     "Never mention MCP, missing Claude tools, or the raw tool protocol to the user.",
-    "For every turn, respond with a JSON object that matches the provided schema.",
     'Use `{\"type\":\"tool_request\",\"toolName\":\"...\",\"args\":{...}}` when you need a Stella tool.',
-    'Use `{\"type\":\"final\",\"message\":\"...\"}` when you are ready to answer the user.',
+    "When you are ready to answer the user, answer normally. Stella also accepts the schema final form if Claude Code emits structured output.",
     'If you call `NoResponse` and do not need to say anything else, return `{\"type\":\"final\",\"message\":\"\"}` on the next turn.',
     "Only request one tool at a time.",
     "Available Stella tools:",
@@ -357,6 +416,64 @@ const parseStreamJsonLine = (line: string): Record<string, unknown> | null => {
   } catch {
     return null;
   }
+};
+
+export const getClaudeCodeTextDeltaFromStreamEvent = (
+  event: Record<string, unknown>,
+): string | null => {
+  if (event.type !== "stream_event") {
+    return null;
+  }
+  const nested = asObject(event.event);
+  const source = nested ?? event;
+  if (source.type === "content_block_delta") {
+    const delta = asObject(source.delta);
+    if (!delta) return null;
+    if (
+      (delta.type === "text_delta" || delta.type === "thinking_delta") &&
+      typeof delta.text === "string"
+    ) {
+      return delta.text;
+    }
+    if (typeof delta.text === "string") {
+      return delta.text;
+    }
+    return null;
+  }
+  if (
+    (source.type === "text_delta" || source.type === "thinking_delta") &&
+    typeof source.text === "string"
+  ) {
+    return source.text;
+  }
+  return null;
+};
+
+const createClaudeCodeStreamEmitter = (onStream?: (chunk: string) => void) => {
+  let mode: "unknown" | "emit" | "suppress" = "unknown";
+  let pending = "";
+  return (event: Record<string, unknown>) => {
+    const delta = getClaudeCodeTextDeltaFromStreamEvent(event);
+    if (!delta) return;
+    if (mode === "emit") {
+      onStream?.(delta);
+      return;
+    }
+    if (mode === "suppress") {
+      return;
+    }
+    pending += delta;
+    const firstVisible = pending.trimStart().at(0);
+    if (!firstVisible) return;
+    if (firstVisible === "{" || firstVisible === "[") {
+      pending = "";
+      mode = "suppress";
+      return;
+    }
+    mode = "emit";
+    onStream?.(pending);
+    pending = "";
+  };
 };
 
 export const getClaudeCodeStatusChangeFromStreamEvent = (
@@ -421,6 +538,14 @@ const cleanupSessionArtifacts = (session: SessionState) => {
   session.artifactDir = undefined;
 };
 
+const cleanupSessionProcess = (session: SessionState) => {
+  if (!session.process) {
+    return;
+  }
+  killProcess(session.process.child);
+  session.process = undefined;
+};
+
 const ensureSessionState = (
   sessions: Map<string, SessionState>,
   request: Pick<ClaudeCodeTurnRequest, "sessionKey" | "persistedSessionId" | "cwd">,
@@ -438,6 +563,7 @@ const ensureSessionState = (
       }
       return existing;
     }
+    cleanupSessionProcess(existing);
     cleanupSessionArtifacts(existing);
     const replacement: SessionState = {
       sessionId: persistedSessionId ?? crypto.randomUUID(),
@@ -487,6 +613,7 @@ class ClaudeCodeSessionRuntime {
     }
     this.activeProcesses.clear();
     for (const session of this.sessions.values()) {
+      cleanupSessionProcess(session);
       cleanupSessionArtifacts(session);
     }
     this.sessions.clear();
@@ -497,6 +624,7 @@ class ClaudeCodeSessionRuntime {
     for (const [sessionKey, session] of this.sessions.entries()) {
       if (session.running || session.queue.length > 0) continue;
       if (now - session.lastUsedAt > SESSION_IDLE_TTL_MS) {
+        cleanupSessionProcess(session);
         cleanupSessionArtifacts(session);
         this.sessions.delete(sessionKey);
       }
@@ -548,17 +676,26 @@ class ClaudeCodeSessionRuntime {
           usage,
         };
       }
+      const toolName = response.action.toolName;
+      const toolArgs = response.action.args;
       const toolCallId = crypto.randomUUID();
       const toolResult = await request.executeTool(
         toolCallId,
-        response.action.toolName,
-        response.action.args,
+        toolName,
+        toolArgs,
         request.abortSignal,
+        (update) => {
+          request.onToolUpdate?.({
+            toolCallId,
+            toolName,
+            update,
+          });
+        },
       );
-      nextPrompt = buildToolResultPrompt({
+      nextPrompt = await buildToolResultPrompt({
         toolCallId,
-        toolName: response.action.toolName,
-        toolArgs: response.action.args,
+        toolName,
+        toolArgs,
         toolResult,
       });
     }
@@ -593,11 +730,37 @@ class ClaudeCodeSessionRuntime {
     effectiveSystemPrompt: string,
     prompt: string,
     useResume: boolean,
-  ): Promise<{
-    action: ClaudeCodeDecision;
-    sessionId: string;
-    usage?: ClaudeUsage;
-  }> {
+  ): Promise<StructuredStepResult> {
+    try {
+      const processState = this.ensureStreamingProcess(
+        session,
+        request,
+        effectiveSystemPrompt,
+        useResume,
+      );
+      return await this.sendStreamingPrompt(session, processState, request, prompt);
+    } catch (error) {
+      const message = normalizeErrorMessage(error);
+      if (!useResume && isSessionAlreadyInUseError(message)) {
+        this.resetStreamingProcess(request.sessionKey, session);
+        return await this.executeStructuredStepWithMode(
+          session,
+          request,
+          effectiveSystemPrompt,
+          prompt,
+          true,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private buildClaudeCodeArgs(
+    session: SessionState,
+    request: ClaudeCodeTurnRequest,
+    effectiveSystemPrompt: string,
+    useResume: boolean,
+  ): string[] {
     const modelName = parseClaudeCodeModel(request.modelId);
     const args = [
       "-p",
@@ -606,9 +769,12 @@ class ClaudeCodeSessionRuntime {
       "--mcp-config",
       '{"mcpServers":{}}',
       "--disable-slash-commands",
+      "--input-format",
+      "stream-json",
       "--output-format",
       "stream-json",
       "--verbose",
+      "--include-partial-messages",
       "--include-hook-events",
       "--settings",
       CLAUDE_CODE_HOOK_SETTINGS,
@@ -626,42 +792,44 @@ class ClaudeCodeSessionRuntime {
     if (useResume) {
       args.push("--resume", session.sessionId);
     }
+    return args;
+  }
 
-    const child = spawn("claude", args, {
+  private ensureStreamingProcess(
+    session: SessionState,
+    request: ClaudeCodeTurnRequest,
+    effectiveSystemPrompt: string,
+    useResume: boolean,
+  ): ClaudeCodeStreamingProcess {
+    if (session.process && !session.process.closed) {
+      return session.process;
+    }
+
+    const child = spawn("claude", this.buildClaudeCodeArgs(
+      session,
+      request,
+      effectiveSystemPrompt,
+      useResume,
+    ), {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       cwd: request.cwd,
     });
-    this.activeProcesses.set(request.runId, child);
-
-    let abortListener: (() => void) | null = null;
-    if (request.abortSignal) {
-      abortListener = () => abortProcess(child);
-      if (request.abortSignal.aborted) {
-        abortListener();
-      } else {
-        request.abortSignal.addEventListener("abort", abortListener, { once: true });
-      }
-    }
-
-    let stderrText = "";
-    let stdoutText = "";
-    let stdoutBuffer = "";
-    let finalSessionId = session.sessionId;
-    let resultError: string | undefined;
-    let resultPayload: Record<string, unknown> | null = null;
-
-    const cleanUp = () => {
-      if (abortListener && request.abortSignal) {
-        request.abortSignal.removeEventListener("abort", abortListener);
-      }
-      this.activeProcesses.delete(request.runId);
+    const processState: ClaudeCodeStreamingProcess = {
+      child,
+      stdoutBuffer: "",
+      stderrText: "",
+      finalSessionId: session.sessionId,
+      pending: [],
+      closed: false,
     };
+    session.process = processState;
+    this.activeProcesses.set(request.sessionKey, child);
 
     const consumeStdout = (flush = false) => {
-      const segments = flush ? [stdoutBuffer] : stdoutBuffer.split("\n");
+      const segments = flush ? [processState.stdoutBuffer] : processState.stdoutBuffer.split("\n");
       const completeSegments = flush ? segments : segments.slice(0, -1);
-      stdoutBuffer = flush ? "" : segments[segments.length - 1] ?? "";
+      processState.stdoutBuffer = flush ? "" : segments[segments.length - 1] ?? "";
       for (const segment of completeSegments) {
         const line = segment.trim();
         if (!line) {
@@ -675,72 +843,159 @@ class ClaudeCodeSessionRuntime {
           typeof parsedLine.session_id === "string" &&
           parsedLine.session_id.trim()
         ) {
-          finalSessionId = parsedLine.session_id.trim();
+          processState.finalSessionId = parsedLine.session_id.trim();
+          session.sessionId = processState.finalSessionId;
         }
-        emitClaudeCodeStatusFromStreamEvent(parsedLine, request.onStatusChange);
+        const current = processState.pending[0];
+        if (current) {
+          emitClaudeCodeStatusFromStreamEvent(
+            parsedLine,
+            current.request.onStatusChange,
+          );
+          current.emitStreamDelta(parsedLine);
+        }
         if (parsedLine.type === "result") {
-          resultPayload = parsedLine;
+          const completed = processState.pending.shift();
+          if (!completed) {
+            continue;
+          }
+          this.detachAbortListener(completed);
+          try {
+            completed.resolve(
+              this.parseStructuredResultPayload(
+                session,
+                parsedLine,
+                processState.stderrText,
+              ),
+            );
+          } catch (error) {
+            completed.reject(error);
+          }
         }
       }
     };
 
-    const stdoutDone = new Promise<void>((resolve) => {
-      child.stdout.on("data", (chunk: Buffer) => {
-        const text = chunk.toString("utf8");
-        stdoutText += text;
-        stdoutBuffer += text;
-        consumeStdout(false);
-      });
-      child.stdout.once("close", resolve);
+    child.stdout.on("data", (chunk: Buffer) => {
+      processState.stdoutBuffer += chunk.toString("utf8");
+      consumeStdout(false);
     });
 
-    const stderrDone = new Promise<void>((resolve) => {
-      child.stderr.on("data", (chunk: Buffer) => {
-        if (stderrText.length >= MAX_STDERR_CAPTURE) return;
-        stderrText += chunk.toString("utf8");
-        if (stderrText.length > MAX_STDERR_CAPTURE) {
-          stderrText = stderrText.slice(0, MAX_STDERR_CAPTURE);
-        }
-      });
-      child.stderr.once("close", () => resolve());
-    });
-
-    const exitCode = await new Promise<number | null>((resolve, reject) => {
-      child.once("error", (error) => {
-        reject(new Error(`Failed to start Claude Code: ${normalizeErrorMessage(error)}`));
-      });
-      child.once("close", (code) => {
-        resolve(code);
-      });
-
-      child.stdin.end(prompt);
-    }).finally(cleanUp);
-
-    await Promise.all([stdoutDone, stderrDone]);
-
-    if (request.abortSignal?.aborted) {
-      throw new Error("Claude Code run aborted.");
-    }
-    consumeStdout(true);
-    if (exitCode !== 0 && !stdoutText.trim()) {
-      const stderrMessage = stderrText.trim();
-      if (!useResume && isSessionAlreadyInUseError(stderrMessage)) {
-        return await this.executeStructuredStepWithMode(
-          session,
-          request,
-          effectiveSystemPrompt,
-          prompt,
-          true,
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (processState.stderrText.length >= MAX_STDERR_CAPTURE) return;
+      processState.stderrText += chunk.toString("utf8");
+      if (processState.stderrText.length > MAX_STDERR_CAPTURE) {
+        processState.stderrText = processState.stderrText.slice(
+          0,
+          MAX_STDERR_CAPTURE,
         );
       }
-      throw new Error(stderrMessage || `Claude Code exited with code ${exitCode ?? "unknown"}.`);
-    }
+    });
 
-    const parsed = resultPayload as Record<string, unknown> | null;
-    if (parsed === null) {
-      const stderrMessage = stderrText.trim();
-      throw new Error(stderrMessage || "Claude Code returned invalid stream output.");
+    child.once("error", (error) => {
+      const wrapped = new Error(
+        `Failed to start Claude Code: ${normalizeErrorMessage(error)}`,
+      );
+      processState.closed = true;
+      if (session.process === processState) {
+        session.process = undefined;
+      }
+      this.activeProcesses.delete(request.sessionKey);
+      for (const pending of processState.pending.splice(0)) {
+        this.detachAbortListener(pending);
+        pending.reject(wrapped);
+      }
+    });
+
+    child.once("close", (code) => {
+      consumeStdout(true);
+      processState.closed = true;
+      if (session.process === processState) {
+        session.process = undefined;
+      }
+      this.activeProcesses.delete(request.sessionKey);
+      const message =
+        processState.stderrText.trim() ||
+        `Claude Code exited with code ${code ?? "unknown"}.`;
+      for (const pending of processState.pending.splice(0)) {
+        this.detachAbortListener(pending);
+        pending.reject(
+          pending.request.abortSignal?.aborted
+            ? new Error("Claude Code run aborted.")
+            : new Error(message),
+        );
+      }
+    });
+
+    return processState;
+  }
+
+  private async sendStreamingPrompt(
+    session: SessionState,
+    processState: ClaudeCodeStreamingProcess,
+    request: ClaudeCodeTurnRequest,
+    prompt: string,
+  ): Promise<StructuredStepResult> {
+    if (processState.closed || processState.child.stdin.destroyed) {
+      throw new Error("Claude Code stream is closed.");
     }
+    return await new Promise<StructuredStepResult>((resolve, reject) => {
+      const pending: PendingStructuredPrompt = {
+        request,
+        resolve,
+        reject,
+        emitStreamDelta: createClaudeCodeStreamEmitter(request.onStream),
+      };
+      if (request.abortSignal) {
+        pending.abortListener = () => abortProcess(processState.child);
+        if (request.abortSignal.aborted) {
+          pending.abortListener();
+        } else {
+          request.abortSignal.addEventListener("abort", pending.abortListener, {
+            once: true,
+          });
+        }
+      }
+      processState.pending.push(pending);
+      const payload = JSON.stringify({
+        type: "user",
+        session_id: session.sessionId,
+        message: {
+          role: "user",
+          content: prompt,
+        },
+        parent_tool_use_id: null,
+      });
+      processState.child.stdin.write(`${payload}\n`, (error) => {
+        if (!error) {
+          return;
+        }
+        const index = processState.pending.indexOf(pending);
+        if (index >= 0) {
+          processState.pending.splice(index, 1);
+        }
+        this.detachAbortListener(pending);
+        reject(
+          new Error(`Failed to write Claude Code prompt: ${normalizeErrorMessage(error)}`),
+        );
+      });
+    });
+  }
+
+  private detachAbortListener(pending: PendingStructuredPrompt): void {
+    if (pending.abortListener && pending.request.abortSignal) {
+      pending.request.abortSignal.removeEventListener(
+        "abort",
+        pending.abortListener,
+      );
+    }
+  }
+
+  private parseStructuredResultPayload(
+    session: SessionState,
+    parsed: Record<string, unknown>,
+    stderrText: string,
+  ): StructuredStepResult {
+    let resultError: string | undefined;
     if (parsed.is_error === true) {
       const parsedError =
         (typeof parsed.result === "string" && parsed.result.trim()) ||
@@ -749,15 +1004,6 @@ class ClaudeCodeSessionRuntime {
       resultError = parsedError || "Claude Code reported an error.";
     }
     if (resultError) {
-      if (!useResume && isSessionAlreadyInUseError(resultError)) {
-        return await this.executeStructuredStepWithMode(
-          session,
-          request,
-          effectiveSystemPrompt,
-          prompt,
-          true,
-        );
-      }
       throw new Error(resultError);
     }
     const usageRaw = parsed.usage as Record<string, unknown> | undefined;
@@ -780,6 +1026,20 @@ class ClaudeCodeSessionRuntime {
             })(),
           )
         : null);
+    const naturalResult =
+      typeof parsed.result === "string" ? parsed.result.trim() : "";
+    if (!decision && naturalResult && !naturalResult.startsWith("{")) {
+      session.turnCount += 1;
+      session.lastUsedAt = Date.now();
+      return {
+        action: {
+          type: "final",
+          message: naturalResult,
+        },
+        sessionId: session.sessionId,
+        usage,
+      };
+    }
     if (!decision) {
       const stderrMessage = stderrText.trim();
       throw new Error(
@@ -787,15 +1047,23 @@ class ClaudeCodeSessionRuntime {
       );
     }
 
-    session.sessionId = finalSessionId;
     session.turnCount += 1;
     session.lastUsedAt = Date.now();
 
     return {
       action: decision,
-      sessionId: finalSessionId,
+      sessionId: session.sessionId,
       usage,
     };
+  }
+
+  private resetStreamingProcess(sessionKey: string, session: SessionState): void {
+    if (!session.process) {
+      return;
+    }
+    killProcess(session.process.child);
+    session.process = undefined;
+    this.activeProcesses.delete(sessionKey);
   }
 }
 

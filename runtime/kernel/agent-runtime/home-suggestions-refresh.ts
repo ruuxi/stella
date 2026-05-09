@@ -25,6 +25,11 @@ import type { LocalChatAppendEventArgs } from "../storage/shared.js";
 import type { LocalContextEvent } from "../local-history.js";
 import type { ThreadSummaryRow } from "../memory/thread-summaries-store.js";
 import { createRuntimeLogger } from "../debug.js";
+import {
+  runClaudeCodeAgentTextCompletion,
+  shouldUseClaudeCodeAgentRuntime,
+} from "../integrations/claude-code-agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 
 const logger = createRuntimeLogger("agent-runtime.home-suggestions-refresh");
 
@@ -211,6 +216,7 @@ const readCurrentSuggestions = (events: LocalContextEvent[]): HomeSuggestion[] =
 
 type RefreshDeps = {
   conversationId: string;
+  stellaRoot: string;
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;
   appendLocalChatEvent: (args: LocalChatAppendEventArgs) => void;
@@ -221,8 +227,14 @@ type RefreshDeps = {
 };
 
 const runRefresh = async (deps: RefreshDeps): Promise<void> => {
-  const apiKey = (await deps.resolvedLlm.getApiKey())?.trim();
-  if (!apiKey) {
+  const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
+    stellaRoot: deps.stellaRoot,
+    modelId: deps.resolvedLlm.model.id,
+  });
+  const apiKey = useClaudeCode
+    ? undefined
+    : (await deps.resolvedLlm.getApiKey())?.trim();
+  if (!useClaudeCode && !apiKey) {
     logger.debug("home-suggestions-refresh.skipped.no-api-key");
     return;
   }
@@ -257,10 +269,18 @@ const runRefresh = async (deps: RefreshDeps): Promise<void> => {
 
   let responseText: string;
   try {
-    const response = await completeSimple(deps.resolvedLlm.model, context, {
-      apiKey,
-    });
-    responseText = readAssistantText(response);
+    if (useClaudeCode) {
+      responseText = await runClaudeCodeAgentTextCompletion({
+        stellaRoot: deps.stellaRoot,
+        agentType: AGENT_IDS.HOME_SUGGESTIONS,
+        context,
+      });
+    } else {
+      const response = await completeSimple(deps.resolvedLlm.model, context, {
+        apiKey,
+      });
+      responseText = readAssistantText(response);
+    }
   } catch (error) {
     logger.debug("home-suggestions-refresh.completeSimple.failed", {
       error: error instanceof Error ? error.message : String(error),

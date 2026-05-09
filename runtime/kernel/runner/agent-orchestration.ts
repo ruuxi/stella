@@ -690,6 +690,7 @@ export const createAgentOrchestration = (
           agentContext,
           toolCatalog: context.toolHost.getToolCatalog(agentType, {
             model: resolvedLlm.toolPolicyModel ?? resolvedLlm.model,
+            agentEngine: agentContext.agentEngine,
           }),
           toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,

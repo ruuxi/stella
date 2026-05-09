@@ -511,6 +511,7 @@ export const launchPreparedOrchestratorRun = (args: {
       toolCatalog: context.toolHost.getToolCatalog(prepared.agentType, {
         model:
           prepared.resolvedLlm.toolPolicyModel ?? prepared.resolvedLlm.model,
+        agentEngine: prepared.agentContext.agentEngine,
       }),
       toolExecutor,
       deviceId: context.deviceId,

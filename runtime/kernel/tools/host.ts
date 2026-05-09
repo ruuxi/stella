@@ -27,6 +27,7 @@ import type {
 import {
   APPLY_PATCH_TOOL_NAME,
   EDIT_TOOL_NAME,
+  type FileEditAgentEngine,
   getFileEditToolFamily,
   WRITE_TOOL_NAME,
 } from "./file-edit-policy.js";
@@ -349,7 +350,10 @@ export const createToolHost = ({
 
   const getToolCatalog = (
     agentType?: string,
-    options?: { model?: Pick<Model<Api>, "api" | "provider" | "id" | "name"> },
+    options?: {
+      model?: Pick<Model<Api>, "api" | "provider" | "id" | "name">;
+      agentEngine?: FileEditAgentEngine;
+    },
   ) => {
     const subagentExtras = agentType
       ? SUBAGENT_USER_FACING_TOOL_NAMES[agentType]
@@ -357,6 +361,7 @@ export const createToolHost = ({
     const fileEditToolFamily = getFileEditToolFamily({
       agentType,
       model: options?.model,
+      agentEngine: options?.agentEngine,
     });
     return Array.from(toolCatalog.values()).filter((tool) => {
       // Declarative `agentTypes` is consulted first so a tool with an

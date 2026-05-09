@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
+  buildToolResultPrompt,
   buildClaudeCodeToolRuntimePrompt,
   getClaudeCodeStatusChangeFromStreamEvent,
+  getClaudeCodeTextDeltaFromStreamEvent,
   isClaudeCodeModel,
   parseClaudeCodeDecision,
+  runClaudeCodeTurn,
+  shutdownClaudeCodeRuntime,
 } from "../../../../../runtime/kernel/integrations/claude-code-session-runtime.js";
 import { buildClaudePromptFromMessages } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
 
@@ -101,6 +108,156 @@ describe("claude-code-session-runtime", () => {
         subtype: "message",
       }),
     ).toBeNull();
+  });
+
+  it("extracts text deltas from Claude Code stream events", () => {
+    expect(
+      getClaudeCodeTextDeltaFromStreamEvent({
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          delta: { type: "text_delta", text: "hello" },
+        },
+      }),
+    ).toBe("hello");
+
+    expect(
+      getClaudeCodeTextDeltaFromStreamEvent({
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          delta: { type: "input_json_delta", partial_json: "{\"type\"" },
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("summarizes Stella inline image tool attachments without forwarding raw markers", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-claude-test-"));
+    try {
+      const imagePath = path.join(dir, "snapshot.png");
+      fs.writeFileSync(
+        imagePath,
+        Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lPZP5QAAAABJRU5ErkJggg==",
+          "base64",
+        ),
+      );
+
+      const prompt = await buildToolResultPrompt({
+        toolCallId: "tool-1",
+        toolName: "stella-computer",
+        toolArgs: { action: "snapshot" },
+        toolResult: {
+          result: `visible tree\n[stella-attach-image][ 1x1][ 1KB][ inline=image/png] ${imagePath}`,
+        },
+      });
+
+      expect(prompt).toContain("Tool result attachments:");
+      expect(prompt).toContain("image/png");
+      expect(prompt).toContain("visible tree");
+      expect(prompt).not.toContain("[stella-attach-image]");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a Claude Code stream-json input process open across Stella tool steps", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-"));
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "prompts.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "let buffer = '';",
+        "let count = 0;",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "function writeResult(payload) {",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    session_id: 'fake-session',",
+        "    is_error: false,",
+        "    usage: { input_tokens: 1, output_tokens: 1 },",
+        "    ...payload,",
+        "  }) + '\\n');",
+        "}",
+        "function handle(line) {",
+        "  const parsed = JSON.parse(line);",
+        "  count += 1;",
+        "  fs.appendFileSync(logPath, JSON.stringify({",
+        "    count,",
+        "    argv: process.argv.slice(2),",
+        "    content: parsed.message.content,",
+        "  }) + '\\n');",
+        "  if (count === 1) {",
+        "    writeResult({ structured_output: {",
+        "      type: 'tool_request',",
+        "      toolName: 'Read',",
+        "      args: { file_path: 'a.txt' },",
+        "    }});",
+        "    return;",
+        "  }",
+        "  writeResult({ result: 'Done from fake Claude.' });",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle(line);",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-1",
+        sessionKey: `test:${Date.now()}`,
+        prompt: "Please read a.txt.",
+        modelId: "claude-code/default",
+        tools: [
+          {
+            name: "Read",
+            description: "Read a file",
+            parameters: { type: "object" },
+          },
+        ],
+        executeTool: async () => ({ result: "file contents" }),
+      });
+
+      const records = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { argv: string[]; content: string });
+      expect(result.text).toBe("Done from fake Claude.");
+      expect(records).toHaveLength(2);
+      expect(records[0]?.argv).toContain("--input-format");
+      expect(records[0]?.argv).toContain("stream-json");
+      expect(records[0]?.content).toContain("Please read a.txt.");
+      expect(records[1]?.content).toContain("A Stella tool request has completed.");
+      expect(records[1]?.content).toContain("file contents");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("preserves ordered hidden and visible prompt messages for Claude Code", () => {

@@ -31,6 +31,7 @@ import type { RuntimeStore } from "../../../kernel/storage/runtime-store.js";
  *     counter to compare against threshold.
  */
 export const createMemoryReviewHook = (opts: {
+  stellaRoot: string;
   store: RuntimeStore;
 }): HookDefinition<"agent_end"> => ({
   event: "agent_end",
@@ -47,6 +48,7 @@ export const createMemoryReviewHook = (opts: {
 
     spawnMemoryReview({
       conversationId: payload.conversationId,
+      stellaRoot: opts.stellaRoot,
       messagesSnapshot: services.messagesSnapshot,
       resolvedLlm: services.resolvedLlm,
       store: opts.store,
