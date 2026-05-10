@@ -198,26 +198,6 @@
   flex-shrink: 0;
 }
 
-/* Pinned Global Chat entry */
-.social-room-item--global {
-  margin-bottom: 4px;
-}
-
-.social-room-item-avatar--global {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: color-mix(in oklch, var(--social-fg) 6%, transparent);
-  color: var(--social-muted);
-}
-
-.social-room-item--global:hover .social-room-item-avatar--global {
-  color: var(--text-strong);
-}
-
 /* Profile Card */
 .social-profile-card {
   display: flex;
@@ -684,56 +664,6 @@
   font-size: 10.5px;
   color: var(--social-muted);
   opacity: 0.5;
-}
-
-/* Inline friend-status chip next to a sender name (Global Chat only) */
-.social-friend-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 999px;
-  border: 1px solid var(--social-border);
-  background: transparent;
-  font-family: inherit;
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--social-muted);
-  white-space: nowrap;
-  transition: opacity 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.social-friend-chip[data-status="friends"] {
-  color: color-mix(in oklch, var(--social-fg) 80%, #1f7a45 20%);
-  border-color: color-mix(in oklch, var(--social-fg) 14%, transparent);
-}
-
-.social-friend-chip[data-status="outgoing"],
-.social-friend-chip[data-status="incoming"] {
-  opacity: 0.7;
-}
-
-.social-friend-chip--action {
-  cursor: default;
-  color: var(--social-fg);
-  opacity: 0;
-}
-
-.social-message-sender:hover .social-friend-chip--action,
-.social-friend-chip--action:focus-visible,
-.social-friend-chip--action:disabled {
-  opacity: 0.85;
-}
-
-.social-friend-chip--action:hover:not(:disabled) {
-  opacity: 1;
-  border-color: color-mix(in oklch, var(--social-fg) 30%, transparent);
-}
-
-.social-friend-chip--action:disabled {
-  cursor: not-allowed;
 }
 
 .social-message-bubble {

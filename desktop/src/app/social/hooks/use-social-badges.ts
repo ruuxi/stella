@@ -25,11 +25,8 @@ export function useSocialBadges() {
   ) as number | undefined;
 
   return useMemo(() => {
-    // Global Chat is intentionally excluded — it's a public firehose, so
-    // background traffic there shouldn't pull the user back into the app.
     let unreadRoomCount = 0;
     for (const room of rooms) {
-      if (room.room.kind === "global") continue;
       if (roomHasUnread(room)) unreadRoomCount += 1;
     }
 

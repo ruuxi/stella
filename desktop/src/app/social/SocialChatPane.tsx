@@ -19,8 +19,7 @@ import {
 import { SocialComposer } from "./SocialComposer";
 import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import type { SocialProfile } from "./hooks/use-social-profile";
-import { useSocialFriends } from "./hooks/use-social-friends";
-import { Check, Clock, Globe, MessageSquare, UserPlus } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { AddonShareCard } from "@/global/store/AddonShareCard";
 import { parseShareLink } from "@/global/store/share-link";
 
@@ -98,8 +97,6 @@ export function SocialChatPane({
   // changes (open, new incoming message, send), bump `lastReadAt` on the
   // server so this room drops out of the sidebar/Friends counts. Empty rooms
   // with a stale creation timestamp are marked read without a message id.
-  // Skipped for Global Chat since it's excluded from the numbered badge.
-  //
   // We depend on the *primitive* last-message id (and the empty-room
   // case's primitive timestamps), not the `messages` array reference —
   // every Convex tick allocates a new array, which would otherwise refire
@@ -110,10 +107,8 @@ export function SocialChatPane({
       : null;
   const latestMessageAt = roomData?.room.latestMessageAt;
   const lastReadAt = roomData?.membership.lastReadAt;
-  const isGlobal = roomData?.room.kind === "global";
 
   useEffect(() => {
-    if (isGlobal) return;
     if (lastMessageId !== null) {
       void markRead(roomId, lastMessageId).catch(() => {
         // Read-marker writes are best-effort; the next render will retry.
@@ -125,9 +120,8 @@ export function SocialChatPane({
     void markRead(roomId).catch(() => {
       // Read-marker writes are best-effort; the next render will retry.
     });
-  }, [isGlobal, lastMessageId, latestMessageAt, lastReadAt, markRead, roomId]);
+  }, [lastMessageId, latestMessageAt, lastReadAt, markRead, roomId]);
   const socialSessionsApi = window.electronAPI?.socialSessions;
-  const isGlobalRoom = roomData?.room.kind === "global";
 
   const [sessionLookupId, setSessionLookupId] = useState<string | null>(null);
   const {
@@ -205,46 +199,6 @@ export function SocialChatPane({
     return rows;
   }, [messages, turns]);
 
-  // For Global Chat, the room has no per-user membership preview, so resolve
-  // the unique senders of the loaded messages on demand. Stella's sentinel id
-  // is excluded — it doesn't have a profile.
-  const senderOwnerIds = useMemo(() => {
-    if (!isGlobalRoom) return [] as string[];
-    const seen = new Set<string>();
-    for (const msg of messages) {
-      if (
-        msg.senderOwnerId !== STELLA_SENDER_OWNER_ID &&
-        !seen.has(msg.senderOwnerId)
-      ) {
-        seen.add(msg.senderOwnerId);
-      }
-    }
-    return [...seen];
-  }, [isGlobalRoom, messages]);
-
-  const senderProfiles = useQuery(
-    api.social.profiles.getProfilesByOwnerIds,
-    isGlobalRoom && senderOwnerIds.length > 0
-      ? { ownerIds: senderOwnerIds }
-      : "skip",
-  ) as SocialProfile[] | undefined;
-
-  const { friends, pendingRequests, sendFriendRequestByOwnerId } =
-    useSocialFriends();
-  const friendStatusByOwnerId = useMemo(() => {
-    const map = new Map<string, "friends" | "outgoing" | "incoming">();
-    for (const friend of friends) {
-      map.set(friend.profile.ownerId, "friends");
-    }
-    for (const request of pendingRequests.outgoing) {
-      map.set(request.relationship.addresseeOwnerId, "outgoing");
-    }
-    for (const request of pendingRequests.incoming) {
-      map.set(request.relationship.requesterOwnerId, "incoming");
-    }
-    return map;
-  }, [friends, pendingRequests]);
-
   const messageGroups = useMemo(() => {
     if (!timelineRows.length) return [];
 
@@ -318,11 +272,7 @@ export function SocialChatPane({
       const isSystem = group.messages[0].kind === "system";
       const profile = isStella
         ? { nickname: "Stella" }
-        : getProfileForOwner(
-            roomData,
-            senderProfiles ?? [],
-            group.senderOwnerId,
-          );
+        : getProfileForOwner(roomData, [], group.senderOwnerId);
 
       if (isSystem) {
         const msg = group.messages[0];
@@ -360,13 +310,6 @@ export function SocialChatPane({
               >
                 {profile.nickname}
               </span>
-              {isGlobalRoom && !isStella && (
-                <AddFriendInlineButton
-                  targetOwnerId={group.senderOwnerId}
-                  status={friendStatusByOwnerId.get(group.senderOwnerId)}
-                  sendFriendRequest={sendFriendRequestByOwnerId}
-                />
-              )}
               <span className="social-message-sender-time">
                 {formatMessageTime(group.firstTimestamp)}
               </span>
@@ -407,14 +350,7 @@ export function SocialChatPane({
         </div>
       );
     },
-    [
-      currentOwnerId,
-      friendStatusByOwnerId,
-      isGlobalRoom,
-      roomData,
-      senderProfiles,
-      sendFriendRequestByOwnerId,
-    ],
+    [currentOwnerId, roomData],
   );
 
   const groupKeyExtractor = useCallback(
@@ -534,23 +470,12 @@ export function SocialChatPane({
   return (
     <div className="social-chat-pane">
       <div className="social-chat-header">
-        {isGlobalRoom && (
-          <div className="social-chat-header-icon" aria-hidden>
-            <Globe size={18} />
-          </div>
-        )}
         <div className="social-chat-header-info">
           <div className="social-chat-header-name">{displayName}</div>
-          {isGlobalRoom ? (
+          {roomData.memberProfiles.length > 2 && (
             <div className="social-chat-header-meta">
-              Public chat for everyone on Stella
+              {roomData.memberProfiles.length} people
             </div>
-          ) : (
-            roomData.memberProfiles.length > 2 && (
-              <div className="social-chat-header-meta">
-                {roomData.memberProfiles.length} people
-              </div>
-            )
           )}
         </div>
         {/*
@@ -558,7 +483,7 @@ export function SocialChatPane({
           session is active — saves a whole row of vertical space below.
           Once a session exists, a compact status bar mounts below the header.
         */}
-        {!isGlobalRoom && !activeSession && (
+        {!activeSession && (
           <button
             type="button"
             className="social-stella-pill"
@@ -576,7 +501,7 @@ export function SocialChatPane({
         )}
       </div>
 
-      {!isGlobalRoom && activeSession && (
+      {activeSession && (
         <div className="social-session-bar" data-state={activeSession.status}>
           <div className="social-session-bar-info">
             <img
@@ -712,105 +637,10 @@ export function SocialChatPane({
           placeholder={
             stellaArmed
               ? "Tell Stella what you want..."
-              : isGlobalRoom
-                ? "Say something to Global Chat..."
-                : `Message ${displayName}`
+              : `Message ${displayName}`
           }
         />
       </div>
     </div>
-  );
-}
-
-type FriendStatus = "friends" | "outgoing" | "incoming" | undefined;
-
-function AddFriendInlineButton({
-  targetOwnerId,
-  status,
-  sendFriendRequest,
-}: {
-  targetOwnerId: string;
-  status: FriendStatus;
-  sendFriendRequest: (targetOwnerId: string) => Promise<unknown>;
-}) {
-  // Optimistic local override so the chip flips to "Requested" immediately
-  // even before the friends/pending queries refresh.
-  const [optimisticPending, setOptimisticPending] = useState(false);
-  const [isSending, setIsSending] = useState(false);
-
-  const effectiveStatus: FriendStatus =
-    status ?? (optimisticPending ? "outgoing" : undefined);
-
-  const handleClick = useCallback(async () => {
-    if (isSending) return;
-    if (effectiveStatus === "friends" || effectiveStatus === "outgoing") return;
-    setIsSending(true);
-    try {
-      await sendFriendRequest(targetOwnerId);
-      setOptimisticPending(true);
-      showToast({
-        variant: "success",
-        description: "Friend request sent.",
-      });
-    } catch (error) {
-      showToast({
-        variant: "error",
-        description: getSocialActionErrorMessage(
-          "Couldn't send friend request. Please try again.",
-          error,
-        ),
-      });
-    } finally {
-      setIsSending(false);
-    }
-  }, [effectiveStatus, isSending, sendFriendRequest, targetOwnerId]);
-
-  if (effectiveStatus === "friends") {
-    return (
-      <span
-        className="social-friend-chip"
-        data-status="friends"
-        title="Friends"
-      >
-        <Check size={11} aria-hidden />
-        Friends
-      </span>
-    );
-  }
-  if (effectiveStatus === "incoming") {
-    return (
-      <span
-        className="social-friend-chip"
-        data-status="incoming"
-        title="They sent you a friend request — open Friends to accept."
-      >
-        Wants to be friends
-      </span>
-    );
-  }
-  if (effectiveStatus === "outgoing") {
-    return (
-      <span
-        className="social-friend-chip"
-        data-status="outgoing"
-        title="Friend request sent"
-      >
-        <Clock size={11} aria-hidden />
-        Requested
-      </span>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      className="social-friend-chip social-friend-chip--action"
-      onClick={() => void handleClick()}
-      disabled={isSending}
-      title="Send a friend request"
-    >
-      <UserPlus size={11} aria-hidden />
-      {isSending ? "Sending..." : "Add friend"}
-    </button>
   );
 }
