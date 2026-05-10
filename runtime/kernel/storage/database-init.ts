@@ -101,6 +101,29 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec("DROP TABLE IF EXISTS runtime_tasks;");
   db.exec("DROP TABLE IF EXISTS self_mod_batches;");
   db.exec("DROP TABLE IF EXISTS self_mod_features;");
+
+  // Worker-side ring buffer of streamed run events. Each row represents one
+  // notification the worker sent to a connected client over JSON-RPC. The
+  // client (Electron host) subscribes via NOTIFICATION_NAMES.RUN_EVENT and
+  // is expected to ack with run.ackEvents { runId, lastSeq } so the worker
+  // can prune. On host reconnect (after Electron restart, mini-window
+  // open, etc.) the new client calls run.resumeEvents { runId, lastSeq }
+  // to replay everything past `lastSeq`. The fallback retention is the
+  // periodic time-based sweep below — acks are an optimization, not a
+  // correctness requirement.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS run_event_log (
+      run_id TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (run_id, seq)
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_run_event_log_created
+    ON run_event_log(created_at);
+  `);
   // Old install ledger that tracked apply-commit hashes per package.
   // Replaced by `store_installs` (one row per installed package, single
   // commit hash captured from the blueprint-implementing general-agent run).

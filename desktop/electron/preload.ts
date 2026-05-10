@@ -751,6 +751,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
       reasoningText?: string;
     }>("agent:event"),
     onSelfModHmrState: onIpc<SelfModHmrState>("agent:selfModHmrState"),
+    /**
+     * Subscribe to runtime client availability transitions. The host
+     * adapter fires this whenever the worker connection drops or
+     * reattaches — most notably after Electron restarts and reconnects
+     * to the still-running detached worker. Renderer hooks listen so
+     * they can re-trigger chat-resume the moment the runtime is back.
+     */
+    onAvailability: onIpc<{
+      connected: boolean;
+      ready: boolean;
+      reason?: string;
+    }>("runtime:availability"),
     selfModRevert: (featureId?: string, steps?: number) =>
       ipcRenderer.invoke("selfmod:revert", { featureId, steps }),
     getCrashRecoveryStatus: () =>

@@ -391,10 +391,10 @@ export class RuntimeClientAdapter {
     this.emitAvailabilityChange();
   }
 
-  async stop() {
+  async stop(options?: { killWorker?: boolean }) {
     this.started = false;
     this.clearLocalChatSessions();
-    await this.client.stop();
+    await this.client.stop(options);
   }
 
   async warmWorker() {
@@ -556,6 +556,10 @@ export class RuntimeClientAdapter {
       this.activeRun = null;
     }
     return this.activeRun;
+  }
+
+  async listActiveRuns() {
+    return await this.client.listActiveRuns();
   }
 
   async resumeRunEvents(payload: { runId: string; lastSeq: number }) {
