@@ -2,10 +2,11 @@ import crypto from "node:crypto";
 import { existsSync, promises as fsPromises } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { JsonRpcPeer } from "../protocol/rpc-peer.js";
+import type { WorkerPeerLike } from "./peer-broker.js";
 import {
   METHOD_NAMES,
   NOTIFICATION_NAMES,
+  STELLA_RUNTIME_PROTOCOL_VERSION,
   type AgentHealth,
   type HostDeviceIdentity,
   type RuntimeAttachmentRef,
@@ -59,6 +60,7 @@ import { StoreModService } from "../kernel/self-mod/store-mod-service.js";
 import { createDesktopDatabase } from "../kernel/storage/database.js";
 import { ChatStore } from "../kernel/storage/chat-store.js";
 import { RuntimeStore } from "../kernel/storage/runtime-store.js";
+import { RunEventLog } from "../kernel/storage/run-event-log.js";
 import { StoreModStore } from "../kernel/storage/store-mod-store.js";
 import type {
   LocalChatEventRecord,
@@ -71,6 +73,7 @@ import { VoiceRuntimeService } from "./voice/service.js";
 import { createRuntimeLogger } from "../kernel/debug.js";
 
 type WorkerInitializationState = {
+  protocolVersion?: string;
   stellaRoot: string;
   stellaWorkspacePath: string;
   authToken: string | null;
@@ -82,7 +85,7 @@ type WorkerInitializationState = {
 };
 
 const notifyLocalChatUpdated = (
-  peer: JsonRpcPeer,
+  peer: WorkerPeerLike,
   conversationId?: string,
   event?: LocalChatEventRecord,
 ) => {
@@ -168,6 +171,14 @@ type WorkerState = {
   selfModHmrController: SelfModHmrController | null;
   activeStoreThreadAgentId: string | null;
   activeStoreThreadMessageId: string | null;
+  /**
+   * Persistent ring buffer for streaming run events. Every event we emit
+   * via NOTIFICATION_NAMES.RUN_EVENT also gets persisted here so that a
+   * reconnecting host (post-Electron-restart, post-mini-window-open, etc.)
+   * can replay anything past its `lastSeq` without losing in-flight work.
+   * See runtime/kernel/storage/run-event-log.ts.
+   */
+  runEventLog: RunEventLog | null;
 };
 
 /**
@@ -316,11 +327,13 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.selfModHmrController = null;
   state.activeStoreThreadAgentId = null;
   state.activeStoreThreadMessageId = null;
+  state.runEventLog?.stop();
+  state.runEventLog = null;
   state.db?.close();
   state.db = null;
 };
 
-export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
+export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   let shuttingDown = false;
   const state: WorkerState = {
     init: null,
@@ -337,6 +350,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     selfModHmrController: null,
     activeStoreThreadAgentId: null,
     activeStoreThreadMessageId: null,
+    runEventLog: null,
   };
   const pendingApplyBatches = new Map<string, PendingApplyBatch>();
   const selfModRunRootIds = new Map<string, string>();
@@ -352,10 +366,14 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     await Promise.all(
       runIds.map(async (runId) => {
         try {
-          await peer.request(METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME, {
-            runId,
-            allowDeferredReload: options?.allowDeferredReload !== false,
-          });
+          await peer.request(
+            METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME,
+            {
+              runId,
+              allowDeferredReload: options?.allowDeferredReload !== false,
+            },
+            { retryOnDisconnect: true },
+          );
         } catch (error) {
           console.warn(
             "[self-mod-reload] Failed to resume host runtime reloads:",
@@ -414,6 +432,16 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   };
 
   const emitRunEvent = (event: AgentEventPayload) => {
+    // Persist to the run event log BEFORE emitting on the wire so a host
+    // that disconnects mid-notify still sees the event on reconnect.
+    // INSERT OR IGNORE collapses (runId, seq) collisions for the rare
+    // synthetic terminal markers (e.g. seq=MAX_SAFE_INTEGER) — both copies
+    // describe the same terminal state, so retaining the first is fine.
+    state.runEventLog?.append({
+      runId: event.runId,
+      seq: event.seq,
+      payload: event as unknown as Record<string, unknown>,
+    });
     peer.notify(NOTIFICATION_NAMES.RUN_EVENT, event);
   };
 
@@ -442,6 +470,33 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     message: string;
   }) => {
     peer.notify(NOTIFICATION_NAMES.VOICE_ACTION_COMPLETED, payload);
+  };
+
+  const hasActiveWork = (): boolean => {
+    // Keep this in sync with host-side shouldKeepWorkerAlive plus
+    // worker-only work that the host cannot observe after disconnect
+    // (active request handlers and pending self-mod apply batches).
+    const socialSessions =
+      state.socialSessionService?.getSnapshot() ??
+      createEmptySocialSessionServiceSnapshot();
+    const socialPinned =
+      socialSessions.sessionCount > 0 ||
+      Boolean(socialSessions.processingTurnId);
+    const voicePinned =
+      (state.voiceService?.isBusy() ?? false) ||
+      (state.voiceService?.getPendingRequestCount() ?? 0) > 0;
+    const storePinned = Boolean(state.activeStoreThreadAgentId);
+    const requestPinned = (peer.activeRequestHandlerCount?.() ?? 0) > 0;
+    const pendingApplyPinned = pendingApplyBatches.size > 0;
+    return Boolean(
+      state.runner?.getActiveOrchestratorRun() ||
+        (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
+        requestPinned ||
+        pendingApplyPinned ||
+        storePinned ||
+        socialPinned ||
+        voicePinned,
+    );
   };
 
   const persistAssistantMessage = (args: {
@@ -532,6 +587,25 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   };
 
   const initializeWorker = async (init: WorkerInitializationState) => {
+    if (
+      init.protocolVersion &&
+      init.protocolVersion !== STELLA_RUNTIME_PROTOCOL_VERSION
+    ) {
+      throw new Error(
+        `Runtime protocol mismatch: host=${init.protocolVersion} worker=${STELLA_RUNTIME_PROTOCOL_VERSION}.`,
+      );
+    }
+    const sameRuntimeRoot =
+      state.init?.stellaRoot === init.stellaRoot &&
+      state.init?.stellaWorkspacePath === init.stellaWorkspacePath;
+    if (sameRuntimeRoot && state.runner) {
+      applyConfigPatch(init);
+      return {
+        protocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
+        pid: process.pid,
+        deviceId: state.deviceId,
+      };
+    }
     await stopWorkerServices(state);
     await releasePendingApplyBatches("worker initialization");
     state.init = init;
@@ -542,6 +616,25 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     const storeModStore = new StoreModStore(db);
     const socialSessionStore = new SocialSessionStore(db);
     const storeModService = new StoreModService(init.stellaRoot, storeModStore);
+    const runEventLog = new RunEventLog(db);
+    for (const buffered of runEventLog.listBufferedRuns()) {
+      if (buffered.hasTerminalEvent) continue;
+      runEventLog.append({
+        runId: buffered.runId,
+        seq: Number.MAX_SAFE_INTEGER,
+        payload: {
+          type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+          runId: buffered.runId,
+          seq: Number.MAX_SAFE_INTEGER,
+          conversationId: buffered.conversationId,
+          outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
+          reason: "worker_restart",
+          error: "Stella restarted before this run could finish.",
+          rootRunId: buffered.runId,
+        },
+      });
+    }
+    runEventLog.startBackgroundSweep();
     const deviceIdentity = await peer.request<HostDeviceIdentity>(
       METHOD_NAMES.HOST_DEVICE_IDENTITY_GET,
     );
@@ -567,6 +660,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     state.storeModStore = storeModStore;
     state.storeModService = storeModService;
     state.socialSessionStore = socialSessionStore;
+    state.runEventLog = runEventLog;
 
     // Push a fresh snapshot to subscribers whenever the Store thread mutates
     // (matches the localChat updated-channel pattern). The renderer
@@ -613,12 +707,16 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         requiresFullReload,
       });
       try {
-        await peer.request(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, {
-          transitionId,
-          runIds: applyResult.restartRelevantRunIds,
-          stateRunIds,
-          requiresFullReload,
-        });
+        await peer.request(
+          METHOD_NAMES.HOST_HMR_RUN_TRANSITION,
+          {
+            transitionId,
+            runIds: applyResult.restartRelevantRunIds,
+            stateRunIds,
+            requiresFullReload,
+          },
+          { retryOnDisconnect: true },
+        );
       } catch (error) {
         console.warn(
           "[self-mod-hmr] HOST_HMR_RUN_TRANSITION failed; applying without morph cover:",
@@ -671,46 +769,73 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       getDefaultConversationId: () =>
         chatStore.getOrCreateDefaultConversationId(),
       requestCredential: async (payload) =>
-        await peer.request(METHOD_NAMES.HOST_CREDENTIALS_REQUEST, payload),
+        await peer.request(METHOD_NAMES.HOST_CREDENTIALS_REQUEST, payload, {
+          retryOnDisconnect: true,
+        }),
       requestRuntimeAuthRefresh: async (payload) =>
-        await peer.request(METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH, payload),
+        await peer.request(METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH, payload, {
+          retryOnDisconnect: true,
+        }),
       scheduleApi: {
         listCronJobs: async () =>
-          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_LIST_CRON_JOBS),
+          await peer.request(
+            METHOD_NAMES.INTERNAL_SCHEDULE_LIST_CRON_JOBS,
+            undefined,
+            { retryOnDisconnect: true },
+          ),
         addCronJob: async (input) =>
           await peer.request(
             METHOD_NAMES.INTERNAL_SCHEDULE_ADD_CRON_JOB,
             input,
+            { retryOnDisconnect: true },
           ),
         updateCronJob: async (jobId, patch) =>
-          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_UPDATE_CRON_JOB, {
-            jobId,
-            patch,
-          }),
+          await peer.request(
+            METHOD_NAMES.INTERNAL_SCHEDULE_UPDATE_CRON_JOB,
+            {
+              jobId,
+              patch,
+            },
+            { retryOnDisconnect: true },
+          ),
         removeCronJob: async (jobId) =>
-          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_REMOVE_CRON_JOB, {
-            jobId,
-          }),
+          await peer.request(
+            METHOD_NAMES.INTERNAL_SCHEDULE_REMOVE_CRON_JOB,
+            {
+              jobId,
+            },
+            { retryOnDisconnect: true },
+          ),
         runCronJob: async (jobId) =>
-          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_RUN_CRON_JOB, {
-            jobId,
-          }),
+          await peer.request(
+            METHOD_NAMES.INTERNAL_SCHEDULE_RUN_CRON_JOB,
+            {
+              jobId,
+            },
+            { retryOnDisconnect: true },
+          ),
         getHeartbeatConfig: async (conversationId) =>
           await peer.request(
             METHOD_NAMES.INTERNAL_SCHEDULE_GET_HEARTBEAT_CONFIG,
             {
               conversationId,
             },
+            { retryOnDisconnect: true },
           ),
         upsertHeartbeat: async (input) =>
           await peer.request(
             METHOD_NAMES.INTERNAL_SCHEDULE_UPSERT_HEARTBEAT,
             input,
+            { retryOnDisconnect: true },
           ),
         runHeartbeat: async (conversationId) =>
-          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_RUN_HEARTBEAT, {
-            conversationId,
-          }),
+          await peer.request(
+            METHOD_NAMES.INTERNAL_SCHEDULE_RUN_HEARTBEAT,
+            {
+              conversationId,
+            },
+            { retryOnDisconnect: true },
+          ),
       },
       // Store agent moved to backend — no local agent surface.
       selfModMonitor: {
@@ -875,7 +1000,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         // host display update bridge. The renderer normalizes it via
         // `normalizeDisplayPayload` and routes it to the workspace panel.
         void peer
-          .request(METHOD_NAMES.HOST_DISPLAY_UPDATE, { payload })
+          .request(METHOD_NAMES.HOST_DISPLAY_UPDATE, { payload }, {
+            retryOnDisconnect: true,
+          })
           .catch(() => undefined);
       },
     });
@@ -899,6 +1026,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     });
 
     return {
+      protocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
       pid: process.pid,
       deviceId: state.deviceId,
     };
@@ -970,6 +1098,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       health,
       activeRun: state.runner?.getActiveOrchestratorRun() ?? null,
       activeAgentCount: state.runner?.getActiveAgentCount() ?? 0,
+      protocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
       pid: process.pid,
       deviceId: state.deviceId,
       voiceBusy: state.voiceService?.isBusy() ?? false,
@@ -1561,6 +1690,90 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     async (params) => {
       ensureRunner().cancelLocalChat((params as { runId: string }).runId);
       return { ok: true };
+    },
+  );
+
+  // Worker-side replay: read everything past `lastSeq` for `runId` from
+  // the persistent ring buffer. This is the path Electron takes after a
+  // restart — by the time the host reconnects, the in-memory host buffer
+  // is gone but the worker still has every event.
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_RESUME_EVENTS,
+    async (params) => {
+      const payload = params as { runId?: unknown; lastSeq?: unknown };
+      const runId =
+        typeof payload?.runId === "string" ? payload.runId.trim() : "";
+      if (!runId) {
+        return { events: [] as AgentEventPayload[], exhausted: true };
+      }
+      const lastSeq = Number.isFinite(Number(payload?.lastSeq))
+        ? Number(payload.lastSeq)
+        : 0;
+      const log = state.runEventLog;
+      if (!log) {
+        return { events: [] as AgentEventPayload[], exhausted: true };
+      }
+      const result = log.resumeAfter({ runId, lastSeq });
+      const events = result.events.map(
+        (record) => record.payload as unknown as AgentEventPayload,
+      );
+      return { events, exhausted: result.exhausted };
+    },
+  );
+
+  // Host ack — every event the host successfully forwards to the renderer
+  // gets acked back so the worker can prune. Best-effort: under-acking
+  // just retains rows longer; over-acking before the renderer actually
+  // saw an event would lose it on reconnect, so the host should only
+  // ack after `webContents.send` resolves.
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_ACK_EVENTS,
+    async (params) => {
+      const payload = params as { runId?: unknown; lastSeq?: unknown };
+      const runId =
+        typeof payload?.runId === "string" ? payload.runId.trim() : "";
+      const lastSeq = Number.isFinite(Number(payload?.lastSeq))
+        ? Number(payload.lastSeq)
+        : Number.NaN;
+      if (!runId || !Number.isFinite(lastSeq)) {
+        return { pruned: 0 };
+      }
+      const pruned = state.runEventLog?.ack({ runId, lastSeq }) ?? 0;
+      return { pruned };
+    },
+  );
+
+  // Probe used by a reconnecting host to discover which runs are still
+  // worth subscribing to — combines the live runner's active run with
+  // retained event-log rows (a run that just completed but whose terminal
+  // event hasn't been acked is still resumable).
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LIST_ACTIVE_RUNS,
+    async () => {
+      const runner = state.runner;
+      const activeRun = runner?.getActiveOrchestratorRun() ?? null;
+      const result: Array<{
+        runId: string;
+        conversationId: string;
+        kind: "active" | "buffered";
+      }> = [];
+      if (activeRun) {
+        result.push({
+          runId: activeRun.runId,
+          conversationId: activeRun.conversationId,
+          kind: "active",
+        });
+      }
+      const activeRunId = activeRun?.runId ?? null;
+      for (const buffered of state.runEventLog?.listBufferedRuns() ?? []) {
+        if (buffered.runId === activeRunId) continue;
+        result.push({
+          runId: buffered.runId,
+          conversationId: buffered.conversationId,
+          kind: "buffered",
+        });
+      }
+      return { runs: result };
     },
   );
 
@@ -2744,4 +2957,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   process.once("exit", () => {
     void shutdownWorker();
   });
+
+  return {
+    hasActiveWork,
+  };
 };

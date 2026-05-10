@@ -12,6 +12,7 @@ import {
   setDeveloperResourcePreviewsEnabled,
   useDeveloperResourcePreviewsEnabled,
 } from "@/shared/lib/developer-resource-previews";
+import { openExternalUrl } from "@/platform/electron/open-external";
 import {
   DEFAULT_PERSONALITY_VOICE_ID,
   PERSONALITY_VOICES,
@@ -19,6 +20,8 @@ import {
 import { getSettingsErrorMessage } from "./shared";
 
 const SETTINGS_PERMISSION_RESTART_KINDS = ["screen"] as const;
+const STELLA_CHROME_EXTENSION_URL =
+  "https://chromewebstore.google.com/detail/kfnchfpocpmdblhfgcnpfaaebaioojnl?utm_source=item-share-cb";
 
 export function BasicTab() {
   const platform = window.electronAPI?.platform;
@@ -476,6 +479,33 @@ export function BasicTab() {
               }
               hideLabel
             />
+          </div>
+        </div>
+      </div>
+      <div className="settings-card">
+        <h3 className="settings-card-title">Browser extension</h3>
+        <p className="settings-card-desc">
+          Add the Stella extension to Chrome so Stella can read the page you're
+          on, follow links, and act on your behalf inside the browser. Works in
+          Chrome and Chromium-based browsers like Arc, Brave, and Edge.
+        </p>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Stella for Chrome</div>
+            <div className="settings-row-sublabel">
+              Lets Stella see the page you're on and take actions in your
+              browser.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn"
+              onClick={() => openExternalUrl(STELLA_CHROME_EXTENSION_URL)}
+            >
+              Get extension
+            </Button>
           </div>
         </div>
       </div>

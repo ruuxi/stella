@@ -22,9 +22,11 @@ import type {
 } from "../contracts/discovery.js";
 import type { LocalChatUpdatedPayload } from "../contracts/local-chat.js";
 import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
+import { AGENT_STREAM_EVENT_TYPES } from "../contracts/agent-runtime.js";
 import {
   METHOD_NAMES,
   NOTIFICATION_NAMES,
+  STELLA_RUNTIME_PROTOCOL_VERSION,
   type HostDeviceIdentity,
   type HostRuntimeAuthRefreshParams,
   type HostRuntimeAuthRefreshResult,
@@ -64,6 +66,7 @@ import {
   type StoreThreadSendInput,
   type StoreThreadSnapshot,
   type RuntimeInitializeParams,
+  type RuntimeInitializeResult,
 } from "../protocol/index.js";
 import {
   createRuntimeUnavailableError,
@@ -75,6 +78,10 @@ import {
   type WorkerHealthSnapshot,
   type WorkerLifecycleState,
 } from "./worker-lifecycle.js";
+import {
+  buildUdsConnectionFactory,
+  killDetachedWorker,
+} from "./uds-connection.js";
 
 type RuntimeClientEvents = {
   "runtime-connected": void;
@@ -157,6 +164,7 @@ export type StellaRuntimeClientOptions = {
 };
 
 type WorkerInitializationState = {
+  protocolVersion: string;
   stellaRoot: string;
   stellaWorkspacePath: string;
   authToken: string | null;
@@ -218,6 +226,9 @@ const bufferAgentEvent = (
 };
 
 export class StellaRuntimeClient {
+  // This is the Electron-side host adapter for the detached runtime
+  // worker. It still lives under runtime/client from the pre-detach shape;
+  // rename it to runtime/host after the lifecycle split settles.
   private readonly events = new EventEmitter();
   private readonly agentEventBuffers = new Map<
     string,
@@ -248,19 +259,47 @@ export class StellaRuntimeClient {
   private hostRemoteTurnAuthWindowStartedAt = 0;
   private hostRemoteTurnUnauthenticatedFailures = 0;
   private hostRemoteTurnAuthRecoveryPromise: Promise<boolean> | null = null;
+  private pendingRunEventAcks = new Map<string, number>();
+  private runEventAckTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly options: StellaRuntimeClientOptions) {
+    const stellaRoot = this.options.initializeParams.stellaRoot;
+    const udsFactory = buildUdsConnectionFactory({
+      stellaRoot,
+      expectedProtocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
+      hostExecutablePath: process.execPath,
+      onError: (error) => {
+        console.error("[runtime-client] worker RPC error:", error);
+      },
+    });
     this.workerController = new RuntimeWorkerLifecycleController({
       workerEntryPath: resolveDefaultWorkerEntryPath(this.options),
       isHostStarted: () => this.started,
+      // Worker self-supervises in the UDS path. Closing the IPC channel
+      // (stop "stopped" / "idle") leaves the worker running for the next
+      // host to attach; only "restart" actually kills the pid.
+      killWorkerOnStop: (reason) => reason === "restart",
+      killWorker: async () => {
+        await killDetachedWorker(stellaRoot);
+      },
+      createConnectionAsync: udsFactory,
       initializeConnection: async (connection) => {
         await this.resetRuntimeReloadPauses();
         this.registerHostHandlers(connection.peer);
         this.registerNotifications(connection.peer);
-        await connection.peer.request(
-          METHOD_NAMES.INTERNAL_WORKER_INITIALIZE,
-          this.buildWorkerInitializationState(),
-        );
+        const initializeResult =
+          await connection.peer.request<RuntimeInitializeResult>(
+            METHOD_NAMES.INTERNAL_WORKER_INITIALIZE,
+            this.buildWorkerInitializationState(),
+          );
+        if (
+          initializeResult.protocolVersion !==
+          STELLA_RUNTIME_PROTOCOL_VERSION
+        ) {
+          throw new Error(
+            `Runtime worker protocol mismatch: host=${STELLA_RUNTIME_PROTOCOL_VERSION} worker=${initializeResult.protocolVersion ?? "unknown"}.`,
+          );
+        }
         if (Object.keys(this.configCache).length > 0) {
           await connection.peer.request(
             METHOD_NAMES.INTERNAL_WORKER_CONFIGURE,
@@ -303,6 +342,16 @@ export class StellaRuntimeClient {
       idleTimeoutMs: WORKER_UNFOCUSED_IDLE_TIMEOUT_MS,
     });
   }
+
+  /*
+   * The detached worker keeps agent runs, shell/tool execution, and the
+   * persistent run-event log alive across an Electron restart. Host-owned
+   * services below still pause during the gap: LocalSchedulerService,
+   * remote-turn Convex subscriptions, device heartbeats, dev file watching,
+   * and the runtime-reload state-file writer. Those surfaces are expected
+   * to recover on host reconnect; they are not part of the sidecar's
+   * survival guarantee.
+   */
 
   private getRuntimeReloadStateFilePath() {
     return path.join(
@@ -899,12 +948,15 @@ export class StellaRuntimeClient {
     this.startDevWatcher(resolveDefaultWorkerEntryPath(this.options));
   }
 
-  async stop() {
+  async stop(options?: { killWorker?: boolean }) {
     this.started = false;
     this.hostReady = false;
     this.workerHealthCache = null;
     this.workerGeneration = 0;
     this.agentEventBuffers.clear();
+    this.pendingRunEventAcks.clear();
+    if (this.runEventAckTimer) clearTimeout(this.runEventAckTimer);
+    this.runEventAckTimer = null;
     this.pausedRuntimeReloadRuns.clear();
     this.deferredRuntimeReload = false;
     this.scheduledRuntimeReload = false;
@@ -913,7 +965,7 @@ export class StellaRuntimeClient {
     this.watcher?.close();
     this.watcher = null;
     await this.persistRuntimeReloadPauseState().catch(() => undefined);
-    await this.workerController.stop("stopped");
+    await this.workerController.stop(options?.killWorker ? "restart" : "stopped");
     await this.stopHostServices();
     this.deviceIdentity = null;
     this.configCache = {};
@@ -960,6 +1012,24 @@ export class StellaRuntimeClient {
     return health?.activeRun ?? null;
   }
 
+  async listActiveRuns() {
+    try {
+      return await this.requestWorker<{
+        runs: Array<{
+          runId: string;
+          conversationId: string;
+          kind: "active" | "buffered";
+        }>;
+      }>(
+        METHOD_NAMES.INTERNAL_WORKER_LIST_ACTIVE_RUNS,
+        {},
+        { ensureWorker: false, recordActivity: false },
+      );
+    } catch {
+      return { runs: [] };
+    }
+  }
+
   async startChat(payload: RuntimeChatPayload) {
     return await this.requestWorker<{ runId: string; userMessageId: string }>(
       METHOD_NAMES.INTERNAL_WORKER_START_CHAT,
@@ -1001,16 +1071,69 @@ export class StellaRuntimeClient {
     lastSeq: number;
   }): Promise<RunResumeEventsResult> {
     pruneAgentEventBuffers(this.agentEventBuffers);
+    // Fast path: host-side in-memory buffer covers the renderer-reload
+    // case (renderer reloads but host process is still alive). Falls
+    // through to the worker for the host-restart case where the buffer
+    // is gone but the worker still has the persistent event log.
     const buffer = this.agentEventBuffers.get(payload.runId);
-    if (!buffer) {
+    if (buffer) {
+      const oldestSeq = buffer.events[0]?.seq ?? null;
+      const events = buffer.events.filter(
+        (event) => event.seq > payload.lastSeq,
+      );
+      const exhausted =
+        oldestSeq !== null && payload.lastSeq < oldestSeq - 1;
+      if (events.length > 0 || !exhausted) {
+        return { events, exhausted };
+      }
+    }
+
+    // Worker fallback. We only call this when the in-memory buffer
+    // missed — keeps the cost off the hot path during normal streaming.
+    try {
+      const remote = await this.requestWorker<RunResumeEventsResult>(
+        METHOD_NAMES.INTERNAL_WORKER_RESUME_EVENTS,
+        { runId: payload.runId, lastSeq: payload.lastSeq },
+        { ensureWorker: false, recordActivity: false },
+      );
+      return remote;
+    } catch {
       return { events: [], exhausted: true };
     }
-    const oldestSeq = buffer.events[0]?.seq ?? null;
-    const exhausted = oldestSeq !== null && payload.lastSeq < oldestSeq - 1;
-    return {
-      events: buffer.events.filter((event) => event.seq > payload.lastSeq),
-      exhausted,
-    };
+  }
+
+  /**
+   * Ack an event the host has successfully forwarded to the renderer.
+   * Best-effort and async-fire-and-forget — a missed ack just keeps
+   * the row in the worker's ring buffer a little longer; the periodic
+   * sweep eventually drops aged entries regardless.
+   */
+  private flushRunEventAcks() {
+    if (this.runEventAckTimer) {
+      clearTimeout(this.runEventAckTimer);
+      this.runEventAckTimer = null;
+    }
+    const pending = this.pendingRunEventAcks;
+    if (pending.size === 0) return;
+    this.pendingRunEventAcks = new Map();
+    for (const [runId, lastSeq] of pending) {
+      void this.requestWorker(
+        METHOD_NAMES.INTERNAL_WORKER_ACK_EVENTS,
+        { runId, lastSeq },
+        { ensureWorker: false, recordActivity: false },
+      ).catch(() => undefined);
+    }
+  }
+
+  private scheduleRunEventAck(runId: string, lastSeq: number) {
+    if (!runId || !Number.isFinite(lastSeq)) return;
+    const previous = this.pendingRunEventAcks.get(runId) ?? 0;
+    this.pendingRunEventAcks.set(runId, Math.max(previous, lastSeq));
+    if (this.runEventAckTimer) return;
+    this.runEventAckTimer = setTimeout(() => {
+      this.flushRunEventAcks();
+    }, 150);
+    this.runEventAckTimer.unref?.();
   }
 
   async runAutomationTurn(payload: RuntimeAutomationTurnRequest) {
@@ -1778,6 +1901,7 @@ export class StellaRuntimeClient {
 
   private buildWorkerInitializationState(): WorkerInitializationState {
     return {
+      protocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
       stellaRoot: this.options.initializeParams.stellaRoot,
       stellaWorkspacePath: this.options.initializeParams.stellaWorkspacePath,
       authToken: this.configCache.authToken ?? null,
@@ -2036,6 +2160,16 @@ export class StellaRuntimeClient {
       bufferAgentEvent(this.agentEventBuffers, payload);
       pruneAgentEventBuffers(this.agentEventBuffers);
       this.events.emit("run-event", payload);
+      // Ack back to the worker so the persistent event log can prune.
+      // The host's own buffer is what consumers read from on
+      // renderer-reload, so by this point we've taken responsibility
+      // for the event.
+      if (payload.runId && Number.isFinite(payload.seq)) {
+        this.scheduleRunEventAck(payload.runId, payload.seq);
+        if (payload.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED) {
+          this.flushRunEventAcks();
+        }
+      }
     });
     peer.registerNotificationHandler(NOTIFICATION_NAMES.RUN_SELF_MOD_HMR_STATE, (params) => {
       this.events.emit(

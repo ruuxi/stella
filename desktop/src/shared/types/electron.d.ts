@@ -567,6 +567,18 @@ export type ElectronAgentApi = {
   }>;
   onStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void;
   onSelfModHmrState: (callback: (event: SelfModHmrState) => void) => () => void;
+  /**
+   * Runtime availability transitions (worker disconnected / reconnected).
+   * Renderer hooks subscribe so they can re-resume chat replay after the
+   * detached worker reattaches following an Electron restart.
+   */
+  onAvailability: (
+    callback: (snapshot: {
+      connected: boolean;
+      ready: boolean;
+      reason?: string;
+    }) => void,
+  ) => () => void;
   selfModRevert: (featureId?: string, steps?: number) => Promise<unknown>;
   getCrashRecoveryStatus: () => Promise<
     | {

@@ -12,6 +12,9 @@ docs/
 /node_modules/
 /runtime/node_modules/
 /.stella-runtime-reload-state.json
+/.stella-dev-splash.html
+/.stella-dev-splash.lock
+/.stella-dev-splash.ready
 
 # TypeScript incremental build artifacts (machine-generated; never commit).
 *.tsbuildinfo

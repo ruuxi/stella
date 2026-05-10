@@ -6,6 +6,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   writeFileSync,
   watch,
 } from 'node:fs'
@@ -423,6 +424,7 @@ const startApp = () => {
     env: {
       ...process.env,
       NODE_ENV: 'development',
+      STELLA_DEV_SPLASH_READY_FILE: splashReadyFile,
       ...(process.env.STELLA_LAUNCHER_PROTECTED_STORAGE_BIN
         ? {}
         : { STELLA_DEV_INSECURE_PROTECTED_STORAGE: '1' }),
@@ -520,6 +522,128 @@ const stopApp = async () => {
   })
 }
 
+/**
+ * Pre-restart splash window. Shown briefly between killing the current
+ * Electron and spawning the next one so the user sees "Restarting to
+ * apply change..." instead of a stretch of blank desktop. With the
+ * detached worker, in-flight runs survive across this restart, so the
+ * splash is honest — no work is being lost behind it.
+ *
+ * Implemented via a tiny standalone Electron process loading an inline
+ * data: URL. Killed automatically once the new Electron emits its
+ * first ready signal (it touches a sentinel file), or after a 10s
+ * fallback so a startup hang doesn't leave the splash stranded.
+ */
+let splashChild = null
+const splashSentinelFile = path.join(repoRootDir, '.stella-dev-splash.lock')
+const splashReadyFile = path.join(repoRootDir, '.stella-dev-splash.ready')
+const splashFallbackTimeoutMs = 10_000
+
+const writeSplashHtml = () => {
+  const tmpHtml = path.join(repoRootDir, '.stella-dev-splash.html')
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Stella</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: rgba(15, 15, 18, 0.92); color: rgba(255, 255, 255, 0.9); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+  .label { font-size: 13px; letter-spacing: 0.01em; opacity: 0.85; }
+  .sub { font-size: 11px; opacity: 0.5; }
+  .spinner { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.18); border-top-color: rgba(255,255,255,0.7); animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="spinner"></div>
+  <div class="label">Restarting to apply change…</div>
+  <div class="sub">In-flight work is preserved.</div>
+</body>
+</html>`
+  writeFileSync(tmpHtml, html, 'utf8')
+  return tmpHtml
+}
+
+const showRestartSplash = () => {
+  if (splashChild || shuttingDown) return
+  try {
+    const splashHtml = writeSplashHtml()
+    const splashScript = `
+      const { app, BrowserWindow } = require('electron')
+      const path = require('path')
+      const fs = require('fs')
+      app.dock?.hide()
+      app.whenReady().then(() => {
+        const win = new BrowserWindow({
+          width: 320,
+          height: 160,
+          frame: false,
+          transparent: true,
+          alwaysOnTop: true,
+          resizable: false,
+          movable: false,
+          show: false,
+          skipTaskbar: true,
+          webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+        })
+        win.loadFile(${JSON.stringify(splashHtml)}).then(() => win.show())
+        const sentinel = ${JSON.stringify(splashSentinelFile)}
+        const ready = ${JSON.stringify(splashReadyFile)}
+        const interval = setInterval(() => {
+          if (!fs.existsSync(sentinel) || fs.existsSync(ready)) {
+            clearInterval(interval)
+            try { fs.unlinkSync(sentinel) } catch {}
+            try { fs.unlinkSync(ready) } catch {}
+            try { win.close() } catch {}
+            app.quit()
+          }
+        }, 100)
+        const fallback = setTimeout(() => {
+          try { fs.unlinkSync(sentinel) } catch {}
+          try { win.close() } catch {}
+          app.quit()
+        }, ${splashFallbackTimeoutMs})
+        fallback.unref?.()
+      })
+    `
+    rmSync(splashReadyFile, { force: true })
+    writeFileSync(splashSentinelFile, String(Date.now()), 'utf8')
+    splashChild = spawn(electronBinary, [
+      '-e',
+      splashScript,
+    ], {
+      cwd: repoRootDir,
+      stdio: 'ignore',
+      detached: true,
+      env: {
+        ...process.env,
+        ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+      },
+    })
+    splashChild.unref?.()
+    splashChild.once('exit', () => {
+      splashChild = null
+    })
+  } catch {
+    splashChild = null
+  }
+}
+
+const dismissRestartSplash = () => {
+  try {
+    if (existsSync(splashSentinelFile)) {
+      rmSync(splashSentinelFile, { force: true })
+    }
+    if (existsSync(splashReadyFile)) {
+      rmSync(splashReadyFile, { force: true })
+    }
+  } catch {
+    // The splash also has its own fallback timeout, so a failed unlink
+    // just means the splash stays for ~10s longer.
+  }
+}
+
 const scheduleRestart = () => {
   if (shuttingDown) {
     return
@@ -534,10 +658,13 @@ const scheduleRestart = () => {
     restartQueue = restartQueue
       .catch(() => undefined)
       .then(async () => {
+        showRestartSplash()
         await stopApp()
         if (!shuttingDown) {
           restartRequestedByWatcher = false
           startApp()
+        } else {
+          dismissRestartSplash()
         }
       })
   }, restartDebounceMs)
@@ -573,6 +700,7 @@ const shutdown = async (exitCode) => {
 
   watcher?.close()
   rootWatcher?.close()
+  dismissRestartSplash()
   await stopApp()
   process.exit(exitCode)
 }

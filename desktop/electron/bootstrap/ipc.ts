@@ -1,4 +1,5 @@
 import { registerAgentHandlers } from "../ipc/agent-handlers.js";
+import { registerRuntimeAvailabilityBridge } from "../ipc/runtime-availability-bridge.js";
 import { registerBrowserHandlers } from "../ipc/browser-handlers.js";
 import { registerDiscoveryHandlers } from "../ipc/discovery-handlers.js";
 import { registerGoogleWorkspaceHandlers } from "../ipc/google-workspace-handlers.js";
@@ -287,6 +288,11 @@ export const registerBootstrapIpcHandlers = (
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     getBroadcastToMobile: lazyMobileBroadcast,
+  });
+
+  registerRuntimeAvailabilityBridge({
+    getStellaHostRunner: lifecycle.getRunner,
+    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
   });
 
   registerLocalChatHandlers({

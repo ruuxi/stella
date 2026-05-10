@@ -12,6 +12,10 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
   processRuntime.registerCleanup("before-quit", "runtime-shells", () => {
     context.state.stellaHostRunner?.killAllShells();
   });
+  processRuntime.registerCleanup("before-quit", "runtime-worker", async () => {
+    await context.state.stellaHostRunner?.stop({ killWorker: false });
+    context.state.stellaHostRunner = null;
+  });
   processRuntime.registerCleanup("before-quit", "browser-bridge", async () => {
     await context.state.stellaBrowserBridgeService?.stop();
   });

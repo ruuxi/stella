@@ -69,6 +69,11 @@ interface UseResumeAgentRunOptions {
 /**
  * Hydrates renderer state from runtime-owned execution state.
  * The renderer never infers lifecycle here — it only applies runtime snapshots/events.
+ *
+ * Runs once on mount per conversation, and re-runs whenever the host
+ * adapter transitions back to "connected" — that's the signal that the
+ * detached worker reattached after an Electron restart and may have
+ * buffered new events for us in its persistent run-event log.
  */
 export function useResumeAgentRun({
   activeConversationId,
@@ -91,41 +96,69 @@ export function useResumeAgentRun({
     }
 
     let cancelled = false;
+    let inFlight = false;
+    let pending = false;
 
-    void (async () => {
-      ensureAgentStreamSubscription();
-
-      const lastSeq =
-        lastSeqByConversationRef.current.get(activeConversationId) ?? 0;
-      const replay = await window.electronAPI!.agent.resumeConversationExecution({
-        conversationId: activeConversationId,
-        lastSeq,
-      });
-      if (cancelled) {
+    const runResume = async () => {
+      if (cancelled) return;
+      if (inFlight) {
+        pending = true;
         return;
       }
+      inFlight = true;
+      try {
+        ensureAgentStreamSubscription();
 
-      applyResumeSnapshot({
-        conversationId: activeConversationId,
-        activeRun: replay.activeRun,
-        tasks: replay.tasks,
-      });
+        // Orchestrator turns are serialized per conversation, so one
+        // conversation-level cursor is enough for replay. If we ever allow
+        // overlapping root runs in the same conversation, this should become
+        // a per-run cursor.
+        const lastSeq =
+          lastSeqByConversationRef.current.get(activeConversationId) ?? 0;
+        const replay = await window.electronAPI!.agent.resumeConversationExecution({
+          conversationId: activeConversationId,
+          lastSeq,
+        });
+        if (cancelled) return;
 
-      for (const replayEvent of replay.events) {
-        if (cancelled) {
-          return;
+        applyResumeSnapshot({
+          conversationId: activeConversationId,
+          activeRun: replay.activeRun,
+          tasks: replay.tasks,
+        });
+
+        for (const replayEvent of replay.events) {
+          if (cancelled) return;
+          handleAgentEvent(replayEvent);
         }
-        handleAgentEvent(replayEvent);
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Failed to resume conversation execution:", error);
+      } finally {
+        inFlight = false;
+        if (pending && !cancelled) {
+          pending = false;
+          void runResume();
+        }
       }
-    })().catch((error) => {
-      if (cancelled) {
-        return;
-      }
-      console.error("Failed to resume conversation execution:", error);
-    });
+    };
+
+    void runResume();
+
+    // Re-run resume whenever the runtime client reconnects after a
+    // disconnect. The detached worker may have streamed events to its
+    // persistent log while we were gone — `lastSeq` tells the worker
+    // exactly what to replay.
+    const unsubscribeAvailability =
+      window.electronAPI?.agent?.onAvailability?.((snapshot) => {
+        if (cancelled) return;
+        if (!snapshot.connected) return;
+        void runResume();
+      }) ?? null;
 
     return () => {
       cancelled = true;
+      unsubscribeAvailability?.();
     };
   }, [
     activeConversationId,

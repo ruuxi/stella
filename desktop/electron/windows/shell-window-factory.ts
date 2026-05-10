@@ -35,6 +35,16 @@ type ShellWindowLoadOptions = Pick<
 >
 
 const shouldOpenDevTools = process.env.STELLA_OPEN_DEVTOOLS === '1'
+const splashReadyFile = process.env.STELLA_DEV_SPLASH_READY_FILE
+
+const signalDevSplashReady = () => {
+  if (!splashReadyFile) return
+  try {
+    fs.writeFileSync(splashReadyFile, String(Date.now()), 'utf8')
+  } catch {
+    // Best-effort dev nicety only.
+  }
+}
 
 const loadShellMainWindow = (
   window: BrowserWindow,
@@ -55,6 +65,10 @@ export const createShellWindow = (options: ShellWindowFactoryOptions) => {
 
   if (options.isDev && shouldOpenDevTools) {
     window.webContents.openDevTools()
+  }
+
+  if (options.isDev && options.mode === 'full') {
+    window.once('ready-to-show', signalDevSplashReady)
   }
 
   window.webContents.on('did-start-loading', () => {

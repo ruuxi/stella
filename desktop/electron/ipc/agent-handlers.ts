@@ -388,17 +388,38 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         };
       }
       const buffer = conversationEventBuffers.get(conversationId);
-      const activeRun = activeRunByConversation.get(conversationId) ?? null;
+      let activeRun = activeRunByConversation.get(conversationId) ?? null;
+      let resumeRunId = activeRun?.runId ?? null;
+      if (!resumeRunId) {
+        const stellaHostRunner = options.getStellaHostRunner();
+        const discovered = await stellaHostRunner
+          ?.listActiveRuns()
+          .catch(() => ({ runs: [] }));
+        const match = discovered?.runs.find(
+          (run) => run.conversationId === conversationId,
+        );
+        if (match) {
+          resumeRunId = match.runId;
+          if (match.kind === "active") {
+            activeRun = {
+              runId: match.runId,
+              conversationId,
+            };
+            activeRunByConversation.set(conversationId, activeRun);
+          }
+          runToConversationId.set(match.runId, conversationId);
+        }
+      }
       const bufferedEvents = buffer
         ? buffer.events.filter((agentEvent) => agentEvent.seq > lastSeq)
         : [];
       let events = bufferedEvents;
-      if (activeRun && events.length === 0) {
+      if (resumeRunId && events.length === 0) {
         const stellaHostRunner = options.getStellaHostRunner();
         if (stellaHostRunner) {
           try {
             const replay = await stellaHostRunner.resumeRunEvents({
-              runId: activeRun.runId,
+              runId: resumeRunId,
               lastSeq,
             });
             if (!replay.exhausted) {

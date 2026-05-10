@@ -39,6 +39,7 @@ export type {
 };
 
 export const STELLA_RUNTIME_PROTOCOL_VERSION = "v1";
+export const STELLA_RUNTIME_READY_METHOD = "internal.worker.readyz";
 
 export type JsonRpcId = number | string;
 
@@ -93,7 +94,7 @@ export const METHOD_NAMES = {
   RUN_GET_ACTIVE: "run.getActive",
   RUN_START_CHAT: "run.startChat",
   RUN_CANCEL: "run.cancel",
-  RUN_RESUME_EVENTS: "run.resumeEvents",
+  RUN_ACK_EVENTS: "run.ackEvents",
   RUN_AUTOMATION: "run.automation",
   AGENT_RUN_BLOCKING: "agent.runBlocking",
   AGENT_CREATE_BACKGROUND: "agent.createBackground",
@@ -167,6 +168,9 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_GET_ACTIVE: "internal.worker.getActive",
   INTERNAL_WORKER_START_CHAT: "internal.worker.startChat",
   INTERNAL_WORKER_CANCEL: "internal.worker.cancel",
+  INTERNAL_WORKER_RESUME_EVENTS: "internal.worker.resumeEvents",
+  INTERNAL_WORKER_ACK_EVENTS: "internal.worker.ackEvents",
+  INTERNAL_WORKER_LIST_ACTIVE_RUNS: "internal.worker.listActiveRuns",
   INTERNAL_WORKER_RUN_AUTOMATION: "internal.worker.runAutomation",
   INTERNAL_WORKER_RUN_BLOCKING_AGENT: "internal.worker.runBlockingAgent",
   INTERNAL_WORKER_CREATE_BACKGROUND_AGENT:

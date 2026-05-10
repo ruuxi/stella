@@ -29,6 +29,7 @@ export type WorkerHealthSnapshot = {
   health: AgentHealth;
   activeRun: RuntimeActiveRun | null;
   activeAgentCount: number;
+  protocolVersion?: string;
   pid: number;
   deviceId: string | null;
   voiceBusy?: boolean;
@@ -121,6 +122,60 @@ export const waitForWorkerProcessExit = async (
   });
 };
 
+/**
+ * Wait for the connection's `exit` event without sending any signal.
+ * Used by the UDS path's "soft restart" branch where the worker pid was
+ * already SIGTERM'd by an external `killWorker()` callback.
+ */
+export const waitForWorkerExitEvent = async (
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs = 5_000,
+) => {
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    child.once("exit", finish);
+    const timer = setTimeout(finish, timeoutMs);
+    timer.unref?.();
+  });
+};
+
+/**
+ * Close the IPC channel without killing the worker process. Used when
+ * the worker self-supervises (UDS detached mode) so an Electron restart
+ * leaves the worker running for the next host to attach.
+ */
+export const disconnectWorker = async (
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs = 1_500,
+) => {
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    child.once("exit", finish);
+    // For UDS adapters, buildProcessShim intentionally maps stdin to the
+    // underlying Socket; ending stdin is the IPC-disconnect operation. For
+    // real ChildProcessWithoutNullStreams, ending stdin makes the child read
+    // EOF and exit naturally — but we give it a timeout fallback so a
+    // noncooperative worker doesn't hang the host.
+    try {
+      child.stdin?.end();
+    } catch {
+      // Best effort.
+    }
+    const timer = setTimeout(finish, timeoutMs);
+    timer.unref?.();
+  });
+};
+
 const createWorkerConnection = (workerEntryPath: string) => {
   const child = spawn("bun", ["run", workerEntryPath], {
     env: { ...process.env },
@@ -149,7 +204,23 @@ const createWorkerConnection = (workerEntryPath: string) => {
 export type RuntimeWorkerLifecycleControllerOptions = {
   workerEntryPath: string;
   isHostStarted: () => boolean;
+  /**
+   * Sync connection factory. Used by tests that mock the connection
+   * directly. Production uses `createConnectionAsync` (the detached-UDS
+   * spawn path).
+   */
   createConnection?: (workerEntryPath: string) => WorkerConnection;
+  /**
+   * Async connection factory. Production path: spawns or attaches to the
+   * detached worker via `runtime/host/lifecycle.ts`, then wraps the
+   * resulting Unix-domain-socket in a JsonRpcPeer. Returns a
+   * `WorkerConnection` whose `process.kill()` only kills the worker if
+   * `killWorkerOnStop?.(reason)` is true (so an Electron restart leaves
+   * the worker running for the next host).
+   */
+  createConnectionAsync?: (
+    workerEntryPath: string,
+  ) => Promise<WorkerConnection>;
   initializeConnection: (connection: WorkerConnection) => Promise<void>;
   onConnectionStarted: (connection: WorkerConnection) => Promise<void>;
   onUnexpectedExit: () => Promise<void> | void;
@@ -160,6 +231,25 @@ export type RuntimeWorkerLifecycleControllerOptions = {
   ) => Promise<WorkerHealthSnapshot | null>;
   idleTimeoutMs?: number;
   idleRecheckMs?: number;
+  /**
+   * Decide whether `stop(reason)` should also kill the underlying worker
+   * process via SIGTERM/SIGKILL, or whether closing the IPC channel is
+   * enough because the worker self-supervises (UDS-detached path).
+   * Defaults to "always kill" (legacy stdio-child semantics).
+   *
+   * Production passes `(reason) => reason === "restart"` so:
+   *   - "stopped" / "idle" close the socket; worker stays alive ~10s
+   *     so the next Electron host can reattach without loss.
+   *   - "restart" actually kills the worker pid (e.g. runtime code
+   *     reload that needs a fresh process).
+   */
+  killWorkerOnStop?: (reason: "idle" | "restart" | "stopped") => boolean;
+  /**
+   * Optional explicit worker kill — used by the UDS path when
+   * `killWorkerOnStop` returns true. Falls back to
+   * `connection.process.kill("SIGTERM")` when omitted.
+   */
+  killWorker?: () => Promise<void>;
 };
 
 const shouldKeepWorkerAlive = (health: WorkerHealthSnapshot) => {
@@ -270,10 +360,17 @@ export class RuntimeWorkerLifecycleController {
 
     this.setState("starting");
     this.startupPromise = (async () => {
-      await stopStaleWorkerProcesses(this.options.workerEntryPath);
-      const connection = (
-        this.options.createConnection ?? createWorkerConnection
-      )(this.options.workerEntryPath);
+      // The detached-UDS path manages its own lifecycle (single-instance
+      // via flock, idempotent attach), so we only sweep stale stdio
+      // children when the host is still using the legacy spawn factory.
+      if (!this.options.createConnectionAsync) {
+        await stopStaleWorkerProcesses(this.options.workerEntryPath);
+      }
+      const connection = this.options.createConnectionAsync
+        ? await this.options.createConnectionAsync(this.options.workerEntryPath)
+        : (this.options.createConnection ?? createWorkerConnection)(
+            this.options.workerEntryPath,
+          );
       this.connection = connection;
       this.stoppingPid = null;
 
@@ -332,16 +429,23 @@ export class RuntimeWorkerLifecycleController {
     }
     this.setState("stopping");
     this.stoppingPid = connection.pid;
-    this.stopPromise = waitForWorkerProcessExit(connection.process).finally(
-      () => {
-        if (this.connection?.pid === connection.pid) {
-          this.connection = null;
-        }
-        this.stoppingPid = null;
-        this.stopPromise = null;
-        this.setState("idle");
-      },
-    );
+    const shouldKill =
+      this.options.killWorkerOnStop?.(reason) ?? true;
+    this.stopPromise = (shouldKill
+      ? this.options.killWorker
+        ? this.options.killWorker().then(() =>
+            waitForWorkerExitEvent(connection.process),
+          )
+        : waitForWorkerProcessExit(connection.process)
+      : disconnectWorker(connection.process)
+    ).finally(() => {
+      if (this.connection?.pid === connection.pid) {
+        this.connection = null;
+      }
+      this.stoppingPid = null;
+      this.stopPromise = null;
+      this.setState("idle");
+    });
     await this.stopPromise;
     if (this.options.isHostStarted()) {
       await this.options.onAfterStop(reason);
