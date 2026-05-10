@@ -41,7 +41,7 @@ export type AnonymousUsageRecord = {
  * runs a managed-LLM completion that Stella pays for, so this stays
  * enforced server-side.
  */
-export const MAX_ANON_REQUESTS = 60;
+export const MAX_ANON_REQUESTS = 1;
 export const DEFAULT_RETRY_AFTER_MS = 60_000;
 export const STELLA_MODELS_RATE_LIMIT = 60;
 export const STELLA_MODELS_RATE_WINDOW_MS = 60_000;
@@ -61,6 +61,30 @@ export async function checkDeviceRateLimit(
       },
     );
     return (usage?.requestCount ?? 0) < MAX_ANON_REQUESTS;
+  } catch (error) {
+    if (!isAnonDeviceHashSaltMissingError(error)) {
+      throw error;
+    }
+    logMissingSaltOnce("stella-provider");
+    return false;
+  }
+}
+
+export async function consumeAnonymousRequestAllowance(
+  ctx: ActionCtx,
+  deviceId: string,
+  clientAddressKey: string | null,
+): Promise<boolean> {
+  try {
+    const usage = await ctx.runMutation(
+      internal.ai_proxy_data.consumeDeviceAllowance,
+      {
+        deviceId,
+        maxRequests: MAX_ANON_REQUESTS,
+        clientAddressKey: clientAddressKey ?? undefined,
+      },
+    );
+    return usage.allowed;
   } catch (error) {
     if (!isAnonDeviceHashSaltMissingError(error)) {
       throw error;

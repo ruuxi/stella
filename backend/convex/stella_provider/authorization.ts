@@ -10,7 +10,7 @@ import {
 } from "../lib/managed_gateway";
 import { resolveManagedModelAccess } from "../lib/managed_billing";
 import {
-  checkDeviceRateLimit,
+  consumeAnonymousRequestAllowance,
   DEFAULT_RETRY_AFTER_MS,
   type AnonymousUsageRecord,
 } from "./billing";
@@ -99,11 +99,11 @@ export async function authorizeStellaRequest(
   if (isAnonymous) {
     const deviceId = `anon-jwt:${ownerId}`;
     const clientAddressKey = getClientAddressKey(request);
-    anonymousUsageRecord = {
+    const allowed = await consumeAnonymousRequestAllowance(
+      ctx,
       deviceId,
-      ...(clientAddressKey ? { clientAddressKey } : {}),
-    };
-    const allowed = await checkDeviceRateLimit(ctx, deviceId, clientAddressKey);
+      clientAddressKey,
+    );
     if (!allowed) {
       return stellaProviderErrorResponse(
         429,

@@ -1,6 +1,5 @@
 import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
-import { internal } from "../_generated/api";
 import { MANAGED_GATEWAY } from "../agent/model";
 import { resolveModelConfig } from "../agent/model_resolver";
 import {
@@ -22,11 +21,7 @@ import {
   consumeWebhookRateLimit,
   rateLimitResponse,
 } from "../http_shared/webhook_controls";
-import {
-  getAnonDeviceId,
-  isAnonDeviceHashSaltMissingError,
-  logMissingSaltOnce,
-} from "../http_shared/anon_device";
+import { getAnonDeviceId } from "../http_shared/anon_device";
 import { getClientAddressKey } from "../lib/http_utils";
 import {
   resolveManagedModelAccess,
@@ -67,10 +62,11 @@ type SynthesizeResponse = {
 const DEFAULT_WELCOME_MESSAGE =
   "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 /**
- * Per-anonymous-device cap. Synthesis fans out into multiple LLM calls,
- * so this is intentionally low.
+ * Anonymous onboarding synthesis is allowed before sign-in so Stella can build
+ * first-run memory, the welcome message, suggestions, and app recommendations.
  */
-const MAX_ANON_SYNTHESIS_REQUESTS = 20;
+const ANON_SYNTHESIS_RATE_LIMIT = 6;
+const ANON_SYNTHESIS_RATE_WINDOW_MS = 60 * 60_000;
 /**
  * Per-authenticated-owner cap on the same endpoint. Same rationale —
  * synthesis is one of the most expensive LLM endpoints in the stack, so
@@ -82,6 +78,15 @@ const SYNTHESIS_OWNER_RATE_WINDOW_MS = 60_000;
 export const getHomeSuggestionsText = (
   result: { result: Parameters<typeof assistantText>[0] } | null | undefined,
 ): string => (result ? assistantText(result.result) : "");
+
+const buildAnonymousSynthesisRateKey = (
+  identity: { tokenIdentifier?: string } | null,
+  anonDeviceId: string | null,
+  request: Request,
+) => [
+  identity?.tokenIdentifier ?? anonDeviceId ?? "anon",
+  getClientAddressKey(request) ?? "unknown",
+].join(":");
 
 export const registerSynthesisRoutes = (http: HttpRouter) => {
   registerCorsOptions(http, ["/api/synthesize"]);
@@ -143,34 +148,22 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           const ownerId = identity?.tokenIdentifier;
           const isAnonymousIdentity =
             (identity as Record<string, unknown> | null)?.isAnonymous === true;
-          const modelAccess = ownerId
+          const modelAccess = ownerId && !isAnonymousIdentity
             ? await resolveManagedModelAccess(ctx, ownerId, {
-              isAnonymous: isAnonymousIdentity,
+              isAnonymous: false,
             })
             : undefined;
 
-          if (!identity && anonDeviceId) {
-            try {
-              const usage = await ctx.runMutation(
-                internal.ai_proxy_data.consumeDeviceAllowance,
-                {
-                  deviceId: anonDeviceId,
-                  maxRequests: MAX_ANON_SYNTHESIS_REQUESTS,
-                  clientAddressKey: getClientAddressKey(request) ?? undefined,
-                },
-              );
-              if (!usage.allowed) {
-                return errorResponse(
-                  429,
-                  "Rate limit exceeded. Please create an account for continued access.",
-                  origin,
-                );
-              }
-            } catch (error) {
-              if (!isAnonDeviceHashSaltMissingError(error)) {
-                throw error;
-              }
-              logMissingSaltOnce("synthesize");
+          if (isAnonymousIdentity || (!identity && anonDeviceId)) {
+            const rateLimit = await consumeWebhookRateLimit(ctx, {
+              scope: "synthesize_anonymous",
+              key: buildAnonymousSynthesisRateKey(identity, anonDeviceId, request),
+              limit: ANON_SYNTHESIS_RATE_LIMIT,
+              windowMs: ANON_SYNTHESIS_RATE_WINDOW_MS,
+              blockMs: ANON_SYNTHESIS_RATE_WINDOW_MS,
+            });
+            if (!rateLimit.allowed) {
+              return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
             }
           }
 
@@ -184,6 +177,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
 
           if (
             ownerId
+            && !isAnonymousIdentity
             && modelAccess
             && !modelAccess.unlimited
           ) {
@@ -199,9 +193,10 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             }
           }
 
-          const synthesisConfig = await resolveModelConfig(ctx, "synthesis", ownerId, {
+          const billingOwnerId = ownerId && !isAnonymousIdentity ? ownerId : undefined;
+          const synthesisConfig = await resolveModelConfig(ctx, "synthesis", billingOwnerId, {
             access: modelAccess,
-            audience: ownerId ? undefined : "anonymous",
+            audience: billingOwnerId ? undefined : "anonymous",
           });
 
           let synthesisInput: string;
@@ -271,13 +266,13 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               }),
             );
 
-            if (ownerId) {
+            if (billingOwnerId) {
               await Promise.all(
                 analysisResults
                   .filter((result) => result.generated)
                   .map((result) =>
                     scheduleManagedUsage(ctx, {
-                      ownerId,
+                      ownerId: billingOwnerId,
                       agentType: "service:synthesis:category_analysis",
                       model: synthesisConfig.model,
                       durationMs: result.durationMs,
@@ -327,9 +322,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             },
           });
 
-          if (ownerId) {
+          if (billingOwnerId) {
             await scheduleManagedUsage(ctx, {
-              ownerId,
+              ownerId: billingOwnerId,
               agentType: "service:synthesis:core_memory",
               model: synthesisConfig.model,
               durationMs: Date.now() - coreSynthesisStartedAt,
@@ -346,9 +341,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             `[synthesize] Core memory synthesis complete in ${Date.now() - coreSynthesisStartedAt}ms. Output length: ${coreMemory.length} chars`,
           );
 
-          const welcomeConfig = await resolveModelConfig(ctx, "welcome", ownerId, {
+          const welcomeConfig = await resolveModelConfig(ctx, "welcome", billingOwnerId, {
             access: modelAccess,
-            audience: ownerId ? undefined : "anonymous",
+            audience: billingOwnerId ? undefined : "anonymous",
           });
 
           console.log(
@@ -424,9 +419,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             `[synthesize] Welcome / home suggestions / app recommendations complete. welcome: ${welcomeResult.durationMs}ms, suggestions: ${suggestionsResult?.durationMs ?? "failed"}ms, apps: ${appsResult?.durationMs ?? "failed"}ms`,
           );
 
-          if (ownerId) {
+          if (billingOwnerId) {
             await scheduleManagedUsage(ctx, {
-              ownerId,
+              ownerId: billingOwnerId,
               agentType: "service:synthesis:welcome_message",
               model: welcomeConfig.model,
               durationMs: welcomeResult.durationMs,
@@ -436,7 +431,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
 
             if (suggestionsResult) {
               await scheduleManagedUsage(ctx, {
-                ownerId,
+                ownerId: billingOwnerId,
                 agentType: "service:synthesis:home_suggestions",
                 model: welcomeConfig.model,
                 durationMs: suggestionsResult.durationMs,
@@ -447,7 +442,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
 
             if (appsResult) {
               await scheduleManagedUsage(ctx, {
-                ownerId,
+                ownerId: billingOwnerId,
                 agentType: "service:synthesis:app_recommendations",
                 model: welcomeConfig.model,
                 durationMs: appsResult.durationMs,
