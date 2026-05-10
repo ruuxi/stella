@@ -494,8 +494,12 @@ function createClient(
 
   const defaultHeaders: Record<string, string> = {
     ...model.headers,
-    ...optionsHeaders,
   };
+  if (model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai")) {
+    defaultHeaders["HTTP-Referer"] ??= "https://stella.sh";
+    defaultHeaders["X-OpenRouter-Title"] ??= "Stella";
+  }
+  Object.assign(defaultHeaders, optionsHeaders);
   if (sessionId && compat.sendSessionAffinityHeaders) {
     defaultHeaders.session_id = sessionId;
     defaultHeaders["x-client-request-id"] = sessionId;
