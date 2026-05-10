@@ -27,22 +27,26 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  scroll-snap-type: x proximity;
-  scroll-padding-inline: 6px;
+  --agent-toggle-fade-start: transparent 0, #000 12px;
+  --agent-toggle-fade-end: #000 calc(100% - 12px), transparent 100%;
   -webkit-mask-image: linear-gradient(
     to right,
-    transparent 0,
-    #000 12px,
-    #000 calc(100% - 12px),
-    transparent 100%
+    var(--agent-toggle-fade-start),
+    var(--agent-toggle-fade-end)
   );
   mask-image: linear-gradient(
     to right,
-    transparent 0,
-    #000 12px,
-    #000 calc(100% - 12px),
-    transparent 100%
+    var(--agent-toggle-fade-start),
+    var(--agent-toggle-fade-end)
   );
+}
+
+.agent-model-picker-toggle[data-at-start] {
+  --agent-toggle-fade-start: #000 0, #000 12px;
+}
+
+.agent-model-picker-toggle[data-at-end] {
+  --agent-toggle-fade-end: #000 calc(100% - 12px), #000 100%;
 }
 
 .agent-model-picker-toggle::-webkit-scrollbar {
@@ -135,7 +139,6 @@
   cursor: pointer;
   flex-shrink: 0;
   white-space: nowrap;
-  scroll-snap-align: start;
   transition:
     background 120ms ease,
     color 120ms ease;
