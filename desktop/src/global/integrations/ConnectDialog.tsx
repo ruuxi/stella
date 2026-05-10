@@ -14,6 +14,7 @@ import { IntegrationGridCard, IntegrationDetailArea } from "./IntegrationCard";
 import { PhoneAccessConnectCard } from "@/global/settings/PhoneAccessCard";
 import { ConnectHeroAnimation } from "./ConnectHeroAnimation";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { useNativeWebsiteBlockingOverlay } from "@/shared/lib/native-website-overlay";
 import "./ConnectDialog.css";
 
 interface ConnectDialogProps {
@@ -33,6 +34,7 @@ const PHONE_ICON = (
 const allIntegrations = INTEGRATIONS;
 
 export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
+  useNativeWebsiteBlockingOverlay(open);
   const [selectedProvider, setSelectedProvider] = useState<string | undefined>(
     undefined,
   );
