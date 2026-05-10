@@ -63,6 +63,8 @@ type LocalSchedulerServiceOptions = {
   showNotification?: LocalSchedulerNotifier
 }
 
+type LocalSchedulerRunner = ReturnType<StellaHostRunnerTarget['getRunner']>
+
 const createEmptyState = (): LocalSchedulerState => ({
   version: STATE_VERSION,
   cronJobs: [],
@@ -1167,7 +1169,7 @@ export class LocalSchedulerService {
 
   private async executeCronJob(
     job: LocalCronJobRecord,
-    runner: ReturnType<LocalSchedulerService['getRunner']> | null,
+    runner: LocalSchedulerRunner,
   ): Promise<'done' | 'busy'> {
     const active = this.state.cronJobs.find((entry) => entry.id === job.id)
     if (!active || !active.enabled) {
@@ -1311,7 +1313,7 @@ export class LocalSchedulerService {
 
   private async executeCronAgent(
     active: LocalCronJobRecord,
-    runner: NonNullable<ReturnType<LocalSchedulerService['getRunner']>>,
+    runner: NonNullable<LocalSchedulerRunner>,
     startedAt: number,
   ): Promise<'done' | 'busy'> {
     if (active.payload.kind !== 'agent') return 'done'
@@ -1376,7 +1378,7 @@ export class LocalSchedulerService {
 
   private async executeHeartbeat(
     config: LocalHeartbeatConfigRecord,
-    runner: NonNullable<ReturnType<LocalSchedulerService['getRunner']>>,
+    runner: NonNullable<LocalSchedulerRunner>,
   ): Promise<'done' | 'busy'> {
     const active = this.state.heartbeats.find((entry) => entry.id === config.id)
     if (!active || !active.enabled) {
