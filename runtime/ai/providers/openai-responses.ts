@@ -177,6 +177,10 @@ function createClient(
 
 	const compat = getCompat(model);
 	const headers = { ...model.headers };
+	if (model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai")) {
+		headers["HTTP-Referer"] ??= "https://stella.sh";
+		headers["X-OpenRouter-Title"] ??= "Stella";
+	}
 	if (model.provider === "github-copilot") {
 		const hasImages = hasCopilotVisionInput(context.messages);
 		const copilotHeaders = buildCopilotDynamicHeaders({

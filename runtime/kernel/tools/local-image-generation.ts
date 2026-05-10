@@ -412,6 +412,8 @@ const runOpenRouter = async (
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://stella.sh",
+        "X-OpenRouter-Title": "Stella",
       },
       body: JSON.stringify({
         model,

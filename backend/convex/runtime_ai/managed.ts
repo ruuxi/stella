@@ -501,6 +501,11 @@ export function buildManagedModel<TApi extends Api>(
   });
   const provider = providerFromBaseUrl(managedGateway.baseURL);
   const modelId = modelIdForGateway(config.model, provider);
+  const defaultHeaders: Record<string, string> = { ...headers };
+  if (provider === "openrouter" || managedGateway.baseURL.includes("openrouter.ai")) {
+    defaultHeaders["HTTP-Referer"] ??= "https://stella.sh";
+    defaultHeaders["X-OpenRouter-Title"] ??= "Stella";
+  }
   return {
     id: modelId,
     name: modelId,
@@ -512,7 +517,7 @@ export function buildManagedModel<TApi extends Api>(
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 256_000,
     maxTokens: config.maxOutputTokens ?? 16_384,
-    headers,
+    headers: defaultHeaders,
     compat:
       api === "openai-completions"
         ? (inferCompat(config, provider) as Model<TApi>["compat"])
