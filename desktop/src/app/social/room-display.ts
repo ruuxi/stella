@@ -20,8 +20,6 @@ export function getSocialRoomDisplayName(
           .map((member) => member.nickname)
           .join(", ") || "Group"
       );
-    case "global":
-      return "Global Chat";
     default: {
       const exhaustiveCheck: never = room.room.kind;
       return exhaustiveCheck;

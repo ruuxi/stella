@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { CollaborationIllustration } from "./CollaborationIllustration";
-import { Copy, Globe, Pencil, SquarePen, Users } from "lucide-react";
+import { Copy, Pencil, SquarePen, Users } from "lucide-react";
 import { Avatar } from "@/ui/avatar";
 import { showToast } from "@/ui/toast";
 import { getSocialActionErrorMessage } from "./social-errors";
@@ -68,8 +68,6 @@ function getRoomAvatar(
     }
     case "group":
       return { fallback: room.room.title ?? "G" };
-    case "global":
-      return { fallback: "Global" };
     default: {
       const exhaustiveCheck: never = room.room.kind;
       return exhaustiveCheck;
@@ -86,8 +84,7 @@ function hasUnread(room: SocialRoomSummary): boolean {
 export function SocialView({ onSignIn }: SocialViewProps) {
   const { profile, isSignedIn, ensureProfile, updateNickname } =
     useSocialProfile();
-  const { rooms, openDm, createGroup, joinGlobalRoom, globalRoom } =
-    useSocialRooms();
+  const { rooms, openDm, createGroup } = useSocialRooms();
   const { incomingFriendRequestCount } = useSocialBadges();
 
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
@@ -201,22 +198,6 @@ export function SocialView({ onSignIn }: SocialViewProps) {
     setNicknameError(null);
   }, []);
 
-  const handleOpenGlobalRoom = useCallback(async () => {
-    preloadSocialChatPane();
-    try {
-      const room = await joinGlobalRoom();
-      setActiveRoomId(room._id);
-    } catch (error) {
-      showToast({
-        variant: "error",
-        description: getSocialActionErrorMessage(
-          "Couldn't open Global Chat. Please try again.",
-          error,
-        ),
-      });
-    }
-  }, [joinGlobalRoom]);
-
   const handleOpenFriends = useCallback(() => {
     preloadSocialFriendsDialog();
     setFriendsOpen(true);
@@ -303,38 +284,6 @@ export function SocialView({ onSignIn }: SocialViewProps) {
         </div>
 
         <div className="social-room-list">
-          <button
-            type="button"
-            className="social-room-item social-room-item--global"
-            data-active={
-              (globalRoom && activeRoomId === globalRoom.room._id) || undefined
-            }
-            onClick={() => void handleOpenGlobalRoom()}
-            onFocus={preloadSocialChatPane}
-            onMouseEnter={preloadSocialChatPane}
-          >
-            <div className="social-room-item-avatar social-room-item-avatar--global">
-              <Globe size={18} />
-            </div>
-            <div className="social-room-item-content">
-              <div className="social-room-item-row">
-                <span className="social-room-item-name">Global Chat</span>
-                {globalRoom?.room.latestMessageAt !== undefined && (
-                  <span className="social-room-item-time">
-                    {formatRoomTime(globalRoom.room.latestMessageAt)}
-                  </span>
-                )}
-              </div>
-              <span className="social-room-item-preview">
-                {globalRoom?.latestMessage?.body ??
-                  "Open chat with everyone on Stella"}
-              </span>
-            </div>
-            {globalRoom && hasUnread(globalRoom) && (
-              <span className="social-room-item-unread" />
-            )}
-          </button>
-
           {rooms.length === 0 ? (
             <div className="social-no-rooms">
               <div className="social-no-rooms-text">
