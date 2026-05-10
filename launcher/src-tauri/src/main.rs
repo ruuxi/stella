@@ -210,6 +210,7 @@ fn main() {
             let app_state = AppState {
                 installer: Mutex::new(initial_state),
                 context: ctx,
+                desktop_watcher: std::sync::Mutex::new(None),
             };
 
             app.manage(app_state);
