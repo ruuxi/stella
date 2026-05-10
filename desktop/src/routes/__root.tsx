@@ -24,10 +24,7 @@ import {
   DisplaySidebar,
   type DisplaySidebarHandle,
 } from "@/shell/DisplaySidebar";
-import {
-  ShellTopBar,
-  STELLA_TOGGLE_SIDEBAR_RAIL_EVENT,
-} from "@/shell/ShellTopBar";
+import { ShellTopBar } from "@/shell/ShellTopBar";
 import { useDisplayPanelLayout } from "@/shell/display/tab-store";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
@@ -115,7 +112,6 @@ function RootChrome() {
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [miniRailOpen, setMiniRailOpen] = useState(false);
 
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
 
@@ -270,14 +266,6 @@ function RootChrome() {
   }, [pathname]);
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
-  const handleToggleSidebarRail = useCallback(() => {
-    if (isMiniWindow) {
-      setMiniRailOpen((open) => !open);
-      return;
-    }
-    window.dispatchEvent(new Event(STELLA_TOGGLE_SIDEBAR_RAIL_EVENT));
-  }, [isMiniWindow]);
-  const showSidebar = !isMiniWindow || miniRailOpen;
 
   return (
     <>
@@ -285,9 +273,9 @@ function RootChrome() {
         <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
       )}
 
-      <ShellTopBar onToggleSidebarRail={handleToggleSidebarRail} />
+      <ShellTopBar />
 
-      {showSidebar && (
+      {!isMiniWindow && (
         <Sidebar
           className={drawerOpen ? "sidebar--drawer-open" : undefined}
           onSignIn={showAuthDialog}

@@ -65,7 +65,7 @@ export class MiniWindowController {
           frame: !isMac,
           transparent: isMac,
           titleBarStyle: isMac ? 'hidden' : undefined,
-          trafficLightPosition: isMac ? { x: 7, y: 13 } : undefined,
+          trafficLightPosition: isMac ? { x: 16, y: 13 } : undefined,
           fullscreenable: false,
           backgroundColor: isMac ? '#00000000' : '#101016',
           ...(isMac ? { hiddenInMissionControl: true } : {}),
