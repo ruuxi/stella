@@ -40,10 +40,10 @@ SVG component there first, then re-run with `--icon Custom<Name>`.
 
 After scaffolding, replace `<Component>View.tsx` with the real surface.
 If you need a new package, run `bun add <pkg>` from the repo root (never
-`npm` or `pnpm`). Then validate:
+`npm` or `pnpm`). Then validate from the install root:
 
 ```sh
-bunx --package typescript@6.0.3 tsc -p desktop/tsconfig.app.json --noEmit
+bunx tsgo -p desktop/tsconfig.app.json --noEmit
 bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
 ```
 

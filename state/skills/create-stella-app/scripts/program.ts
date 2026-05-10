@@ -186,8 +186,8 @@ function main(): void {
   console.log(`scaffolded sidebar app "${args.label}" (id=${args.id}, slot=${args.slot}, order=${args.order})`);
   console.log("next steps:");
   console.log(`  1. replace ${Component}View.tsx body with the real surface`);
-  console.log("  2. validate:");
-  console.log("     bunx --package typescript@5.9.3 tsc -p desktop/tsconfig.app.json --noEmit");
+  console.log("  2. validate (run from the Stella install root):");
+  console.log("     bunx tsgo -p desktop/tsconfig.app.json --noEmit");
   console.log(
     "     bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts",
   );

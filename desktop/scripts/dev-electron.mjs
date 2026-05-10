@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   renameSync,
   writeFileSync,
   watch,
@@ -68,11 +69,61 @@ let rootWatcher = null
 let pendingRestartWhilePaused = false
 const expectedExits = new WeakSet()
 
+/**
+ * Last-seen content hash for every restart-relevant build output under
+ * `dist-electron/`. The fs watcher fires on mtime/write events, but
+ * esbuild's incremental rebuild (`context.watch()`) sometimes rewrites
+ * a bundle with byte-identical content as a side effect of unrelated
+ * package-manager operations — `bunx --package <pkg> tsc …` taps the
+ * tsconfig graph + bun cache enough that esbuild flushes the output
+ * even though the source is unchanged.
+ *
+ * Without a content gate, that spurious rewrite tears down Electron
+ * (and the in-flight self-mod morph cover with it) for nothing. We
+ * record the hash on every observed change and skip the restart when
+ * the new bytes match the previous emit.
+ *
+ * `null` here means "the file has been deleted"; `undefined` means
+ * "we have not seen this path before".
+ */
+const lastBuildHashes = new Map()
+
 const readHash = (filePath) => {
   if (!existsSync(filePath)) {
     return null
   }
   return createHash('md5').update(readFileSync(filePath)).digest('hex')
+}
+
+/**
+ * Walk `dist-electron/` once at startup and record the hash of every
+ * file matching the restart filter. The first `watch` events that
+ * fire after a cold start would otherwise look like "first sighting"
+ * for each path (`previousHash === undefined`) and trip a restart on
+ * the next esbuild touch even when the bytes haven't changed.
+ */
+const seedLastBuildHashes = () => {
+  const visit = (dir) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const absPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        visit(absPath)
+        continue
+      }
+      if (!entry.isFile()) continue
+      const relPath = path.relative(watchedDir, absPath)
+      if (!shouldRestartElectronForBuildPath(relPath)) continue
+      const hash = readHash(absPath)
+      if (hash != null) lastBuildHashes.set(absPath, hash)
+    }
+  }
+  visit(watchedDir)
 }
 
 /**
@@ -532,10 +583,28 @@ await waitOn({
 
 await terminateStaleDevApps()
 
+seedLastBuildHashes()
+
 watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
   if (!shouldRestartElectronForBuildPath(filename)) {
     return
   }
+
+  // Content gate: only honor the watcher tick when the file's bytes
+  // actually changed. esbuild routinely rewrites identical output as
+  // a side effect of upstream watchers (tsconfig graph reaches into
+  // node_modules, bunx mutates bun.lock, etc.). Restarting Electron
+  // for those is the visible failure that kills self-mod morph
+  // covers.
+  const absPath = path.join(watchedDir, filename)
+  const currentHash = readHash(absPath)
+  const previousHash = lastBuildHashes.has(absPath)
+    ? lastBuildHashes.get(absPath)
+    : undefined
+  if (previousHash !== undefined && currentHash === previousHash) {
+    return
+  }
+  lastBuildHashes.set(absPath, currentHash)
 
   if (!watchReady) {
     scheduleWatchReady()
