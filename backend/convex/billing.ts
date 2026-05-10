@@ -119,21 +119,6 @@ const getStripeClient = () => {
   });
 };
 
-const getStripePublishableKey = () => {
-  const key =
-    process.env.STRIPE_PUBLISHABLE_KEY?.trim()
-    ?? process.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim()
-    ?? emptyString;
-
-  if (!key) {
-    throw new ConvexError({
-      code: "SERVICE_UNAVAILABLE",
-      message: "Stripe publishable key is not configured.",
-    });
-  }
-  return key;
-};
-
 const toCurrencyAmount = (microCents: number) =>
   Number(microCentsToDollars(microCents).toFixed(4));
 
@@ -744,9 +729,12 @@ const normalizeReturnUrl = (value: string): string => {
   return parsed.toString();
 };
 
-const withCheckoutSessionPlaceholder = (returnUrl: string) => {
+const appendCheckoutStatus = (
+  returnUrl: string,
+  status: "success" | "cancel",
+) => {
   const parsed = new URL(returnUrl);
-  parsed.searchParams.set("checkoutSessionId", "{CHECKOUT_SESSION_ID}");
+  parsed.searchParams.set("checkout", status);
   return parsed.toString();
 };
 
@@ -1392,7 +1380,8 @@ export const syncManagedModelPricesFromModelsDev = internalAction({
  * `billing_usage_windows` row without recomputing window expiration. When
  * supplied, callers MUST bucket the value (e.g. floor to a minute) so
  * `useQuery` subscribers don't invalidate on every render — see
- * `../stella-website/src/app/billing/billing-client.tsx` for the canonical pattern
+ * `projects/stella-website/src/app/billing/billing-client.tsx` for the
+ * canonical pattern
  * (60-second `setInterval`).
  */
 export const getSubscriptionStatus = query({
@@ -1489,17 +1478,16 @@ export const getSubscriptionStatus = query({
   },
 });
 
-export const createEmbeddedCheckoutSession = action({
+export const createCheckoutSession = action({
   args: {
     plan: paidPlanValidator,
     returnUrl: v.string(),
   },
   returns: v.object({
-    publishableKey: v.string(),
-    clientSecret: v.string(),
+    url: v.string(),
     sessionId: v.string(),
   }),
-  handler: async (ctx, args): Promise<{ publishableKey: string; clientSecret: string; sessionId: string }> => {
+  handler: async (ctx, args): Promise<{ url: string; sessionId: string }> => {
     const identity = await requireSensitiveUserIdentityAction(ctx);
     if (isAnonymousIdentity(identity)) {
       throw new ConvexError({
@@ -1519,8 +1507,9 @@ export const createEmbeddedCheckoutSession = action({
       "Too many checkout requests. Please wait a moment and try again.",
     );
     const normalizedReturnUrl = normalizeReturnUrl(args.returnUrl);
+    const successUrl = appendCheckoutStatus(normalizedReturnUrl, "success");
+    const cancelUrl = appendCheckoutStatus(normalizedReturnUrl, "cancel");
     const stripe = getStripeClient();
-    const publishableKey = getStripePublishableKey();
 
     const billing: {
       ownerId: string;
@@ -1561,9 +1550,19 @@ export const createEmbeddedCheckoutSession = action({
       });
     }
 
-    const checkoutSession = await stripe.checkout.sessions.create({
+    // Stripe-hosted Checkout: returns a `url` we open in the user's
+    // system browser. This avoids the awkward in-app embedding we
+    // experimented with — Stripe owns the entire payment surface, the
+    // user comes back to `/billing` once Stripe redirects to the
+    // success/cancel URL, and Stella's webhook updates the local plan.
+    //
+    // `managed_payments` is a preview feature that lets Stripe handle
+    // payment-method orchestration (saved methods, dynamic ordering,
+    // etc.) without us having to enumerate `payment_method_types`.
+    // The Stripe SDK's typings don't include it yet, hence the cast.
+    const sessionParams = {
       mode: "subscription",
-      ui_mode: "embedded_page",
+      ui_mode: "hosted_page",
       customer: stripeCustomerId,
       line_items: [
         {
@@ -1572,7 +1571,9 @@ export const createEmbeddedCheckoutSession = action({
         },
       ],
       allow_promotion_codes: true,
-      return_url: withCheckoutSessionPlaceholder(normalizedReturnUrl),
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      managed_payments: { enabled: true },
       metadata: {
         ownerId,
         plan: args.plan,
@@ -1583,28 +1584,21 @@ export const createEmbeddedCheckoutSession = action({
           plan: args.plan,
         },
       },
-      // The desktop renders embedded checkout inside a white popover dialog.
-      // Stripe's `embedded_page` mode draws its own page canvas around the
-      // form, defaulting to a light gray that reads as awkward padding when
-      // mounted in our compact dialog. Per Stripe's documented integration
-      // path we override the canvas color via branding_settings so the iframe
-      // visually merges with the surrounding dialog. See
-      // https://docs.stripe.com/payments/checkout/customization/appearance?payment-ui=embedded-page
-      branding_settings: {
-        background_color: "#ffffff",
-      },
-    });
+    } as Stripe.Checkout.SessionCreateParams;
 
-    if (!checkoutSession.client_secret) {
+    const checkoutSession = await stripe.checkout.sessions.create(
+      sessionParams,
+    );
+
+    if (!checkoutSession.url) {
       throw new ConvexError({
         code: "INTERNAL_ERROR",
-        message: "Stripe did not return a checkout client secret.",
+        message: "Stripe did not return a checkout URL.",
       });
     }
 
     return {
-      publishableKey,
-      clientSecret: checkoutSession.client_secret,
+      url: checkoutSession.url,
       sessionId: checkoutSession.id,
     };
   },

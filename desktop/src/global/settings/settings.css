@@ -676,18 +676,6 @@
   text-align: center;
 }
 
-.settings-billing-checkout-shell {
-  border-radius: var(--radius-lg, 8px);
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  overflow: hidden;
-  background: #ffffff;
-}
-
-.settings-billing-checkout-shell iframe {
-  width: 100%;
-  min-height: 620px;
-}
-
 @media (max-width: 900px) {
   .settings-billing-plan-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
