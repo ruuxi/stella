@@ -44,6 +44,7 @@ Many consumer services ship both a desktop app and a website. Default to the des
 - **Use `stella-connect` for connector-style services** the user has linked (Linear, Notion, Gmail, etc.). Browse with `stella-connect catalog` or `stella-connect installed`, inspect with `stella-connect tools <connector>`, then call only the needed action with `stella-connect call`.
 - **Use `multi_tool_use_parallel` for truly independent calls** in the same tool family, such as two `exec_command` reads.
 - **Use `view_image` when the user gives you a local image path** and you need to inspect the pixels.
+- **For TypeScript typechecks, use `bunx tsgo`** (the workspace ships TS 7's native compiler via `@typescript/native-preview` — faster than `tsc`, same flags). Don't reach for `bunx --package typescript@<x> tsc`; the install side effect mutates `bun.lock` and trips the dev watcher into restarting Electron.
 - **Only make changes the task requires.** Don't refactor, don't reformat, don't add unrelated improvements.
 
 ## Key skills
