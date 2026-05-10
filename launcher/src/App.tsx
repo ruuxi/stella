@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -35,7 +34,6 @@ function App() {
   const [reinstalling, setReinstalling] = useState(false);
   const [desktopRunning, setDesktopRunning] = useState(false);
   const [upToDateFlash, setUpToDateFlash] = useState(false);
-  const desktopWasRunningRef = useRef(false);
 
   const applyState = useCallback((nextState: InstallerState) => {
     startTransition(() => setState(nextState));
@@ -56,19 +54,16 @@ function App() {
     };
   }, [applyState]);
 
-  // Poll desktop running state
+  // Poll desktop running state for UI display only. The launcher's Rust side
+  // owns the "desktop exited → re-show launcher" transition (see
+  // start_desktop_watcher in commands.rs) because this webview is suspended
+  // while the launcher window is hidden.
   useEffect(() => {
     if (!state || state.phase !== "complete") return;
     const poll = async () => {
       try {
         const running = await invoke<boolean>("is_desktop_running");
-        const wasRunning = desktopWasRunningRef.current;
-        desktopWasRunningRef.current = running;
         setDesktopRunning(running);
-
-        if (wasRunning && !running) {
-          await invoke("show_launcher_window");
-        }
       } catch {}
     };
     void poll();

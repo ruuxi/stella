@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Mutex as StdMutex;
+use tauri::async_runtime::JoinHandle;
 use tokio::sync::Mutex;
 
 // ── Step types ──────────────────────────────────────────────────────
@@ -156,4 +158,9 @@ pub struct LaunchInfo {
 pub struct AppState {
     pub installer: Mutex<InstallerState>,
     pub context: InstallerContext,
+    /// Background tokio task that watches the desktop pid file and re-shows
+    /// the launcher window when the desktop exits. Held here so a second
+    /// `launch_desktop` doesn't spawn duplicate watchers, and so the previous
+    /// watcher can be aborted on relaunch / app exit.
+    pub desktop_watcher: StdMutex<Option<JoinHandle<()>>>,
 }

@@ -99,6 +99,53 @@ pub fn stop_desktop_by_path(install_path: &str) {
     }
 }
 
+/// Spawn a background tokio task that watches the desktop dev runner's pid
+/// file. Once the desktop is observed running and then exits, re-shows the
+/// launcher window. Safe to call repeatedly: any prior watcher is aborted
+/// first so we never run two in parallel.
+///
+/// We do this in Rust (not the renderer) because the renderer's webview is
+/// suspended while the launcher window is hidden + in macOS Accessory
+/// activation policy, so JS `setInterval` stops firing reliably.
+fn start_desktop_watcher(app: &AppHandle, install_path: String) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+
+    if let Ok(mut guard) = state.desktop_watcher.lock() {
+        if let Some(prev) = guard.take() {
+            prev.abort();
+        }
+    }
+
+    let app_for_task = app.clone();
+    let handle = tauri::async_runtime::spawn(async move {
+        let mut saw_running = false;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let running = is_desktop_alive(&install_path);
+            if running {
+                saw_running = true;
+                continue;
+            }
+            if saw_running {
+                show_main_window(&app_for_task);
+                break;
+            }
+        }
+
+        if let Some(state) = app_for_task.try_state::<AppState>() {
+            if let Ok(mut guard) = state.desktop_watcher.lock() {
+                *guard = None;
+            }
+        }
+    });
+
+    if let Ok(mut guard) = state.desktop_watcher.lock() {
+        *guard = Some(handle);
+    };
+}
+
 fn spawn_detached(info: &LaunchInfo) -> bool {
     let mut cmd = StdCommand::new(&info.command[0]);
     cmd.args(&info.command[1..])
@@ -280,6 +327,7 @@ pub async fn start_install(state: State<'_, AppState>, app: AppHandle) -> Result
     if result.is_ok() && installer.run_after_install && installer.can_launch {
         if let Some(info) = setup::get_launch_info(&installer).await {
             if spawn_detached(&info) {
+                start_desktop_watcher(&app, installer.install_path.clone());
                 hide_main_window(&app);
             }
         }
@@ -296,6 +344,7 @@ pub async fn launch_desktop(
     let installer = state.installer.lock().await;
 
     if is_desktop_alive(&installer.install_path) {
+        start_desktop_watcher(&app, installer.install_path.clone());
         hide_main_window(&app);
         return Ok(OkResult { ok: true });
     }
@@ -303,6 +352,7 @@ pub async fn launch_desktop(
     if let Some(info) = setup::get_launch_info(&installer).await {
         let ok = spawn_detached(&info);
         if ok {
+            start_desktop_watcher(&app, installer.install_path.clone());
             hide_main_window(&app);
         }
         Ok(OkResult { ok })
