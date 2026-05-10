@@ -899,6 +899,18 @@ function selfModHmrControl(): Plugin {
         const modulesToReload: import('vite').ModuleNode[] = []
         const seenModules = new Set<import('vite').ModuleNode>()
         const appliedOverlayPaths = new Set<string>()
+        // A "new" file is one Vite has never resolved before, so no module
+        // currently imports it. `import.meta.glob` callers (e.g. the sidebar's
+        // `app/*/metadata.ts` enumeration) are NOT in `getModulesByFile`'s
+        // result for these paths because their relationship is via a glob
+        // pattern resolved at transform time, not a static import edge. Vite
+        // normally re-runs the importGlob plugin's `hotUpdate({type: 'create'})`
+        // path when its filesystem watcher sees an `add`, which invalidates
+        // every glob-importer that matches the new file. Self-mod's overlay
+        // applies file content out-of-band (Vite's watcher never sees it
+        // during a paused run), so we have to nudge that pipeline ourselves
+        // when finalizing.
+        let hasNewFileForGlobInvalidation = false
 
         for (const run of runs) {
           releaseRuns([run.runId])
@@ -917,13 +929,35 @@ function selfModHmrControl(): Plugin {
             appliedPaths += 1
 
             const mods = server.moduleGraph.getModulesByFile(absPath)
-            if (!mods) continue
+            if (!mods || mods.size === 0) {
+              if (!file.deleted) hasNewFileForGlobInvalidation = true
+              continue
+            }
             for (const mod of mods) {
               if (seenModules.has(mod)) continue
               seenModules.add(mod)
               modulesToReload.push(mod)
             }
           }
+        }
+
+        // When a self-mod batch introduces a NEW file, blow away the entire
+        // module-graph cache. Vite's `import.meta.glob` plugin maintains a
+        // per-environment map of glob importers and only re-evaluates them
+        // through its `hotUpdate({type:'create'})` path -- which is gated on
+        // the filesystem watcher firing an `add` event. Self-mod's overlay
+        // applies file content out-of-band (Vite's watcher never sees the
+        // change during a paused run), so the importGlob plugin never learns
+        // about the new file and the cached `Sidebar.tsx` transform keeps
+        // serving the pre-add glob expansion. The renderer's hard reload
+        // (`reloadIgnoringCache`) clears the browser cache but NOT the Vite
+        // server's transform cache -- so without this invalidation the new
+        // sidebar app stays invisible until the user fully relaunches Stella.
+        // The cost (re-transform on next module request) is acceptable
+        // because a renderer reload is essentially always paired with new-
+        // file additions in self-mod batches.
+        if (hasNewFileForGlobInvalidation) {
+          server.moduleGraph.invalidateAll()
         }
 
         // Invalidate the module graph synchronously so follow-up reloads see
