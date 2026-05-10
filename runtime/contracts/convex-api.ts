@@ -44,7 +44,7 @@ export type PublicApiType = {
   };
   "billing": {
     "getSubscriptionStatus": FunctionReference<'query', 'public', { now?: number | undefined; }, any, string | undefined>;
-    "createEmbeddedCheckoutSession": FunctionReference<'action', 'public', { plan: 'go' | 'pro' | 'plus' | 'ultra'; returnUrl: string; }, any, string | undefined>;
+    "createCheckoutSession": FunctionReference<'action', 'public', { plan: 'go' | 'pro' | 'plus' | 'ultra'; returnUrl: string; }, { url: string; sessionId: string; }, string | undefined>;
     "createBillingPortalSession": FunctionReference<'action', 'public', { returnUrl: string; }, any, string | undefined>;
     "getCurrentPlan": FunctionReference<'query', 'public', {}, any, string | undefined>;
   };
