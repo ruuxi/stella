@@ -32,10 +32,20 @@
       color-mix(in srgb, var(--surface-raised-stronger-non-alpha, var(--background)) 92%, transparent),
       color-mix(in srgb, var(--background) 84%, transparent)
     );
-  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--foreground) 8%, transparent);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    rgba(0, 0, 0, 0.6) 18%,
+    #000 38%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    rgba(0, 0, 0, 0.6) 18%,
+    #000 38%
+  );
   transition: opacity 180ms ease;
 }
 
