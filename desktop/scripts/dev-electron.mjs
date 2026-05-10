@@ -537,6 +537,7 @@ const stopApp = async () => {
 let splashChild = null
 const splashSentinelFile = path.join(repoRootDir, '.stella-dev-splash.lock')
 const splashReadyFile = path.join(repoRootDir, '.stella-dev-splash.ready')
+const splashMainFile = path.join(repoRootDir, '.stella-dev-splash-main.cjs')
 const splashFallbackTimeoutMs = 10_000
 
 const writeSplashHtml = () => {
@@ -595,12 +596,14 @@ const showRestartSplash = () => {
             clearInterval(interval)
             try { fs.unlinkSync(sentinel) } catch {}
             try { fs.unlinkSync(ready) } catch {}
+            try { fs.unlinkSync(__filename) } catch {}
             try { win.close() } catch {}
             app.quit()
           }
         }, 100)
         const fallback = setTimeout(() => {
           try { fs.unlinkSync(sentinel) } catch {}
+          try { fs.unlinkSync(__filename) } catch {}
           try { win.close() } catch {}
           app.quit()
         }, ${splashFallbackTimeoutMs})
@@ -609,10 +612,8 @@ const showRestartSplash = () => {
     `
     rmSync(splashReadyFile, { force: true })
     writeFileSync(splashSentinelFile, String(Date.now()), 'utf8')
-    splashChild = spawn(electronBinary, [
-      '-e',
-      splashScript,
-    ], {
+    writeFileSync(splashMainFile, splashScript, 'utf8')
+    splashChild = spawn(electronBinary, [splashMainFile], {
       cwd: repoRootDir,
       stdio: 'ignore',
       detached: true,
@@ -637,6 +638,9 @@ const dismissRestartSplash = () => {
     }
     if (existsSync(splashReadyFile)) {
       rmSync(splashReadyFile, { force: true })
+    }
+    if (existsSync(splashMainFile)) {
+      rmSync(splashMainFile, { force: true })
     }
   } catch {
     // The splash also has its own fallback timeout, so a failed unlink
