@@ -14,6 +14,7 @@ import { getJwtExpMs } from "@/shared/lib/jwt";
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 let inflightTokenPromise: Promise<string | null> | null = null;
+let tokenRequestVersion = 0;
 
 // JWT lifetime is 5 minutes; refresh 60s early to avoid races
 const REFRESH_MARGIN_MS = 60_000;
@@ -31,6 +32,13 @@ export async function getConvexToken(
 ): Promise<string | null> {
   const forceRefresh = options.forceRefresh ?? false;
 
+  if (forceRefresh) {
+    tokenRequestVersion += 1;
+    cachedToken = null;
+    tokenExpiresAt = 0;
+    inflightTokenPromise = null;
+  }
+
   if (!forceRefresh && cachedToken && Date.now() < tokenExpiresAt) {
     return cachedToken;
   }
@@ -39,19 +47,21 @@ export async function getConvexToken(
     return inflightTokenPromise;
   }
 
-  if (forceRefresh) {
-    cachedToken = null;
-    tokenExpiresAt = 0;
-  }
-
+  const requestVersion = tokenRequestVersion;
   inflightTokenPromise = (async () => {
     try {
       await configurePiRuntime();
       const token = await window.electronAPI?.system.getConvexAuthToken?.();
       if (!token) {
-        cachedToken = null;
-        tokenExpiresAt = 0;
+        if (requestVersion === tokenRequestVersion) {
+          cachedToken = null;
+          tokenExpiresAt = 0;
+        }
         return null;
+      }
+
+      if (requestVersion !== tokenRequestVersion) {
+        return token;
       }
 
       cachedToken = token;
@@ -69,11 +79,15 @@ export async function getConvexToken(
       return token;
     } catch (err) {
       console.debug("[auth-token] token fetch failed:", (err as Error).message);
-      cachedToken = null;
-      tokenExpiresAt = 0;
+      if (requestVersion === tokenRequestVersion) {
+        cachedToken = null;
+        tokenExpiresAt = 0;
+      }
       return null;
     } finally {
-      inflightTokenPromise = null;
+      if (requestVersion === tokenRequestVersion) {
+        inflightTokenPromise = null;
+      }
     }
   })();
 
@@ -95,6 +109,7 @@ export async function getAuthHeaders(
 
 /** Clear cached token (e.g. on sign-out). */
 export function clearCachedToken(): void {
+  tokenRequestVersion += 1;
   cachedToken = null;
   tokenExpiresAt = 0;
   inflightTokenPromise = null;
