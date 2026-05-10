@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
 import { CompactStellaModelList } from "@/global/settings/CompactStellaModelList";
@@ -265,9 +265,29 @@ export function AgentModelPicker({
   const [pendingAgent, setPendingAgent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const toggleRef = useRef<HTMLDivElement | null>(null);
+  const updateToggleEdges = useCallback(() => {
+    const el = toggleRef.current;
+    if (!el) return;
+    const overflows = el.scrollWidth - el.clientWidth > 1;
+    const atStart = !overflows || el.scrollLeft <= 1;
+    const atEnd =
+      !overflows || el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+    el.toggleAttribute("data-at-start", atStart);
+    el.toggleAttribute("data-at-end", atEnd);
+  }, []);
+  useEffect(() => {
+    updateToggleEdges();
+    const el = toggleRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(updateToggleEdges);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [updateToggleEdges]);
+
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const load = async () => {
       try {
         const next =
           await window.electronAPI?.system?.getLocalModelPreferences?.();
@@ -284,9 +304,21 @@ export function AgentModelPicker({
           );
         }
       }
-    })();
+    };
+    void load();
+    const onExternalChange = () => {
+      void load();
+    };
+    window.addEventListener(
+      "stella:local-model-preferences-changed",
+      onExternalChange,
+    );
     return () => {
       cancelled = true;
+      window.removeEventListener(
+        "stella:local-model-preferences-changed",
+        onExternalChange,
+      );
     };
   }, []);
 
@@ -574,6 +606,8 @@ export function AgentModelPicker({
           className="agent-model-picker-toggle"
           role="tablist"
           aria-label="Agent"
+          ref={toggleRef}
+          onScroll={updateToggleEdges}
         >
           {(() => {
             const priority = ["orchestrator", "general"];
