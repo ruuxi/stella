@@ -1,0 +1,63 @@
+.workspace-area:has(.embedded-website-glass-placeholder),
+.workspace-content:has(.embedded-website-glass-placeholder) {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.embedded-website-glass-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(
+      circle at 18% 12%,
+      color-mix(in srgb, var(--primary) 22%, transparent) 0,
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at 82% 78%,
+      color-mix(in srgb, var(--foreground) 10%, transparent) 0,
+      transparent 42%
+    ),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--surface-raised-stronger-non-alpha, var(--background)) 92%, transparent),
+      color-mix(in srgb, var(--background) 84%, transparent)
+    );
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--foreground) 8%, transparent);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  transition: opacity 180ms ease;
+}
+
+.embedded-website-glass-placeholder__message {
+  max-width: min(520px, calc(100% - 48px));
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  text-align: center;
+  text-wrap: balance;
+  text-shadow: 0 1px 24px color-mix(in srgb, var(--background) 80%, transparent);
+}
+
+.embedded-website-glass-placeholder[data-active="true"] {
+  opacity: 1;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .embedded-website-glass-placeholder {
+    background: var(--surface-raised-stronger-non-alpha, var(--background));
+  }
+}

@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useDisplayPanelLayout } from "@/shell/display/tab-store";
+import { EmbeddedWebsiteGlassPlaceholder } from "@/global/website-view/EmbeddedWebsiteGlassPlaceholder";
 import { useEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
+import { useNativeWebsiteGlassSuspension } from "@/shared/lib/native-website-overlay";
 
 export function BillingScreen() {
   const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
   const layoutFrameRef = useRef<number | null>(null);
   const embeddedTheme = useEmbeddedWebsiteTheme();
+  const {
+    viewSuspended,
+    placeholderVisible,
+    placeholderActive,
+  } = useNativeWebsiteGlassSuspension();
 
   const syncBillingWebLayout = useCallback(() => {
     const contentArea = document.querySelector<HTMLElement>(".content-area");
@@ -16,10 +23,13 @@ export function BillingScreen() {
     void window.electronAPI?.storeWeb?.setLayout?.({
       x: Math.round(rect.left),
       y: Math.round(rect.top + topInset),
-      width: panelOpen && panelExpanded ? 0 : Math.round(rect.width),
-      height: Math.max(0, Math.round(rect.height - topInset)),
+      width:
+        viewSuspended || (panelOpen && panelExpanded) ? 0 : Math.round(rect.width),
+      height: viewSuspended
+        ? 0
+        : Math.max(0, Math.round(rect.height - topInset)),
     });
-  }, [panelExpanded, panelOpen]);
+  }, [panelExpanded, panelOpen, viewSuspended]);
 
   const scheduleBillingWebLayout = useCallback(() => {
     if (layoutFrameRef.current !== null) return;
@@ -46,7 +56,7 @@ export function BillingScreen() {
         layoutFrameRef.current = null;
       }
     };
-  }, [panelExpanded, panelOpen, panelWidth, scheduleBillingWebLayout]);
+  }, [panelExpanded, panelOpen, panelWidth, scheduleBillingWebLayout, viewSuspended]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +83,13 @@ export function BillingScreen() {
 
   return (
     <div className="workspace-area">
-      <div className="workspace-content workspace-content--full" />
+      <div className="workspace-content workspace-content--full">
+        <EmbeddedWebsiteGlassPlaceholder
+          visible={placeholderVisible}
+          active={placeholderActive}
+          surfaceLabel="Billing"
+        />
+      </div>
     </div>
   );
 }

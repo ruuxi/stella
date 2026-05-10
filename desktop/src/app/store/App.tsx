@@ -25,6 +25,8 @@ import { writeCachedPetById } from "@/shell/pet/pet-catalog-cache";
 import { normalizePet } from "@/shell/pet/built-in-pets";
 import { useDisplayPanelLayout } from "@/shell/display/tab-store";
 import { useEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
+import { EmbeddedWebsiteGlassPlaceholder } from "@/global/website-view/EmbeddedWebsiteGlassPlaceholder";
+import { useNativeWebsiteGlassSuspension } from "@/shared/lib/native-website-overlay";
 
 // Persist the last-active Store tab so clicking the global sidebar's Store
 // icon reopens to wherever the user was last (Discover by default). The URL
@@ -238,6 +240,11 @@ export function StoreApp() {
   const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
   const layoutFrameRef = useRef<number | null>(null);
   const embeddedTheme = useEmbeddedWebsiteTheme();
+  const {
+    viewSuspended,
+    placeholderVisible,
+    placeholderActive,
+  } = useNativeWebsiteGlassSuspension();
 
   const requestedTab = normalizeStoreTab(search.tab);
   const urlIsLegacy = typeof search.tab === "string" && search.tab !== requestedTab;
@@ -251,10 +258,13 @@ export function StoreApp() {
     void window.electronAPI?.storeWeb?.setLayout?.({
       x: Math.round(rect.left),
       y: Math.round(rect.top + topInset),
-      width: panelOpen && panelExpanded ? 0 : Math.round(rect.width),
-      height: Math.max(0, Math.round(rect.height - topInset)),
+      width:
+        viewSuspended || (panelOpen && panelExpanded) ? 0 : Math.round(rect.width),
+      height: viewSuspended
+        ? 0
+        : Math.max(0, Math.round(rect.height - topInset)),
     });
-  }, [panelExpanded, panelOpen]);
+  }, [panelExpanded, panelOpen, viewSuspended]);
 
   const openSignIn = useCallback(() => {
     void navigate({
@@ -291,7 +301,7 @@ export function StoreApp() {
         layoutFrameRef.current = null;
       }
     };
-  }, [panelExpanded, panelOpen, panelWidth, scheduleStoreWebLayout]);
+  }, [panelExpanded, panelOpen, panelWidth, scheduleStoreWebLayout, viewSuspended]);
 
   // Two redirects share this effect:
   //   - Legacy `?tab=installed`/`?tab=publish` URLs collapse to Discover.
@@ -369,7 +379,13 @@ export function StoreApp() {
 
   return (
     <div className="workspace-area">
-      <div className="workspace-content workspace-content--full" />
+      <div className="workspace-content workspace-content--full">
+        <EmbeddedWebsiteGlassPlaceholder
+          visible={placeholderVisible}
+          active={placeholderActive}
+          surfaceLabel="Store"
+        />
+      </div>
     </div>
   );
 }
