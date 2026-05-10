@@ -190,7 +190,7 @@ const createWorkerConnection = (workerEntryPath: string) => {
     input: child.stdout,
     output: child.stdin,
     onError: (error) => {
-      console.error("[runtime-client] worker RPC error:", error);
+      console.error("[runtime-host] worker RPC error:", error);
     },
   });
 

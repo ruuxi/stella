@@ -253,7 +253,7 @@ export const isViteTrackablePath = (repoRelativePath: string): boolean =>
 /**
  * True for repo-relative posix paths whose change should trigger a
  * worker (Electron runtime) restart. Mirrors the rules used by the
- * dist-electron file watcher in runtime/client/index.ts.
+ * dist-electron file watcher in runtime/host/index.ts.
  */
 export const isWorkerRestartRelevantPath = (repoRelativePath: string): boolean => {
   if (!repoRelativePath) return false;

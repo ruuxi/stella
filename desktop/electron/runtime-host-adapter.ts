@@ -18,9 +18,9 @@ import type {
   StorePublishBlueprintArgs,
 } from "../../runtime/protocol/index.js";
 import {
-  StellaRuntimeClient,
-  type StellaRuntimeClientOptions,
-} from "../../runtime/client/index.js";
+  StellaRuntimeHost,
+  type StellaRuntimeHostOptions,
+} from "../../runtime/host/index.js";
 import { createRuntimeUnavailableError } from "../../runtime/protocol/rpc-peer.js";
 import type { AgentLifecycleEvent } from "../../runtime/kernel/agents/local-agent-manager.js";
 import { readConfiguredStellaSiteUrl } from "../../runtime/kernel/convex-urls.js";
@@ -63,8 +63,8 @@ type LocalChatSession = {
   cleanupTimer: ReturnType<typeof setTimeout> | null;
 };
 
-export class RuntimeClientAdapter {
-  readonly client: StellaRuntimeClient;
+export class RuntimeHostAdapter {
+  readonly host: StellaRuntimeHost;
   private lastHealth:
     | { ready: boolean; reason?: string; runnerVersion?: string; engine?: string }
     | null = null;
@@ -96,9 +96,9 @@ export class RuntimeClientAdapter {
     (snapshot: RuntimeAvailabilitySnapshot) => void
   >();
 
-  constructor(options: StellaRuntimeClientOptions) {
-    this.client = new StellaRuntimeClient(options);
-    this.client.on("runtime-connected", () => {
+  constructor(options: StellaRuntimeHostOptions) {
+    this.host = new StellaRuntimeHost(options);
+    this.host.on("runtime-connected", () => {
       this.connected = true;
       if (this.lastHealth && !this.lastHealth.ready) {
         this.lastHealth = { ready: false };
@@ -106,10 +106,10 @@ export class RuntimeClientAdapter {
       this.emitAvailabilityChange();
       // Flush any config patches that failed before the worker was ready
       if (this.started && Object.keys(this.pendingConfig).length > 0) {
-        void this.client.configure(this.pendingConfig).catch(() => {});
+        void this.host.configure(this.pendingConfig).catch(() => {});
       }
     });
-    this.client.on("runtime-disconnected", ({ reason }) => {
+    this.host.on("runtime-disconnected", ({ reason }) => {
       this.connected = false;
       this.lastRuntimeHealth = null;
       this.lastHealth = { ready: false, reason };
@@ -117,11 +117,11 @@ export class RuntimeClientAdapter {
       this.clearLocalChatSessions();
       this.emitAvailabilityChange();
     });
-    this.client.on("runtime-ready", (snapshot) => {
+    this.host.on("runtime-ready", (snapshot) => {
       this.lastRuntimeHealth = snapshot;
       this.emitAvailabilityChange();
     });
-    this.client.on("run-event", (event) => {
+    this.host.on("run-event", (event) => {
       if (
         event.type === AGENT_STREAM_EVENT_TYPES.RUN_STARTED &&
         event.conversationId
@@ -140,7 +140,7 @@ export class RuntimeClientAdapter {
         this.dispatchLocalChatSessionEvent(event.requestId, event);
       }
     });
-    this.client.on("run-self-mod-hmr-state", (payload) => {
+    this.host.on("run-self-mod-hmr-state", (payload) => {
       this.dispatchLocalChatSessionHmrState(payload);
     });
   }
@@ -373,11 +373,11 @@ export class RuntimeClientAdapter {
   }
 
   async start() {
-    await this.client.start();
+    await this.host.start();
     this.started = true;
     if (Object.keys(this.pendingConfig).length > 0) {
       try {
-        await this.client.configure(this.pendingConfig);
+        await this.host.configure(this.pendingConfig);
         this.lastConfigureError = null;
       } catch (error) {
         this.lastConfigureError =
@@ -385,30 +385,30 @@ export class RuntimeClientAdapter {
         throw error;
       }
     }
-    this.lastRuntimeHealth = await this.client.health();
-    this.lastHealth = await this.client.healthCheck();
-    this.activeRun = await this.client.getActiveRun();
+    this.lastRuntimeHealth = await this.host.health();
+    this.lastHealth = await this.host.healthCheck();
+    this.activeRun = await this.host.getActiveRun();
     this.emitAvailabilityChange();
   }
 
   async stop(options?: { killWorker?: boolean }) {
     this.started = false;
     this.clearLocalChatSessions();
-    await this.client.stop(options);
+    await this.host.stop(options);
   }
 
   async warmWorker() {
     if (!this.started) {
       return;
     }
-    await this.client.warmWorker();
-    this.lastRuntimeHealth = await this.client.health();
-    this.lastHealth = await this.client.healthCheck();
+    await this.host.warmWorker();
+    this.lastRuntimeHealth = await this.host.health();
+    this.lastHealth = await this.host.healthCheck();
     this.emitAvailabilityChange();
   }
 
   setHostFocused(focused: boolean) {
-    this.client.setHostFocused(focused);
+    this.host.setHostFocused(focused);
     if (focused) {
       void this.warmWorker().catch((error) => {
         console.warn("[stella-runtime-adapter] Failed to warm runtime worker:", error);
@@ -452,7 +452,7 @@ export class RuntimeClientAdapter {
         return;
       }
 
-      void this.client.configure(nextPatch).then(
+      void this.host.configure(nextPatch).then(
         () => {
           this.lastConfigureError = null;
         },
@@ -534,7 +534,7 @@ export class RuntimeClientAdapter {
 
   async agentHealthCheck() {
     try {
-      const value = await this.client.healthCheck();
+      const value = await this.host.healthCheck();
       this.lastHealth = value ?? { ready: false };
     } catch (error) {
       this.lastHealth = {
@@ -551,7 +551,7 @@ export class RuntimeClientAdapter {
 
   async getActiveOrchestratorRun() {
     try {
-      this.activeRun = await this.client.getActiveRun();
+      this.activeRun = await this.host.getActiveRun();
     } catch {
       this.activeRun = null;
     }
@@ -559,15 +559,15 @@ export class RuntimeClientAdapter {
   }
 
   async listActiveRuns() {
-    return await this.client.listActiveRuns();
+    return await this.host.listActiveRuns();
   }
 
   async resumeRunEvents(payload: { runId: string; lastSeq: number }) {
-    return await this.client.resumeRunEvents(payload);
+    return await this.host.resumeRunEvents(payload);
   }
 
   cancelLocalChat(runId: string) {
-    return void this.client.cancelChat(runId);
+    return void this.host.cancelChat(runId);
   }
 
   async handleLocalChat(
@@ -609,7 +609,7 @@ export class RuntimeClientAdapter {
     });
 
     try {
-      const result = await this.client.startChat({
+      const result = await this.host.startChat({
         ...payload,
         requestId,
       });
@@ -628,11 +628,11 @@ export class RuntimeClientAdapter {
     interrupt?: boolean;
     metadata?: Record<string, unknown>;
   }) {
-    return await this.client.sendAgentInput(payload);
+    return await this.host.sendAgentInput(payload);
   }
 
   runAutomationTurn(payload: RuntimeAutomationTurnRequest) {
-    return this.client.runAutomationTurn(payload);
+    return this.host.runAutomationTurn(payload);
   }
 
   runBlockingLocalAgent(payload: {
@@ -646,7 +646,7 @@ export class RuntimeClientAdapter {
       mode?: "author" | "install" | "update" | "uninstall";
     };
   }) {
-    return this.client.runBlockingLocalAgent(payload);
+    return this.host.runBlockingLocalAgent(payload);
   }
 
   createBackgroundAgent(payload: {
@@ -660,11 +660,11 @@ export class RuntimeClientAdapter {
       mode?: "author" | "install" | "update" | "uninstall";
     };
   }) {
-    return this.client.createBackgroundAgent(payload);
+    return this.host.createBackgroundAgent(payload);
   }
 
   getLocalAgentSnapshot(agentId: string) {
-    return this.client.getLocalAgentSnapshot(agentId);
+    return this.host.getLocalAgentSnapshot(agentId);
   }
 
   appendThreadMessage(args: {
@@ -672,7 +672,7 @@ export class RuntimeClientAdapter {
     role: "user" | "assistant";
     content: string;
   }) {
-    return void this.client.appendThreadMessage(args);
+    return void this.host.appendThreadMessage(args);
   }
 
   persistVoiceTranscript(args: {
@@ -681,7 +681,7 @@ export class RuntimeClientAdapter {
     text: string;
     uiVisibility?: "visible" | "hidden";
   }) {
-    return this.client.persistVoiceTranscript(args);
+    return this.host.persistVoiceTranscript(args);
   }
 
   async handleVoiceChat(
@@ -770,13 +770,13 @@ export class RuntimeClientAdapter {
       maybeUnsubscribe();
     };
 
-    const offEvent = this.client.on("voice-agent-event", (eventPayload) => {
+    const offEvent = this.host.on("voice-agent-event", (eventPayload) => {
       if (eventPayload.requestId !== requestId) {
         return;
       }
       dispatch(eventPayload.event);
     });
-    const offHmr = this.client.on("voice-self-mod-hmr-state", (hmrPayload) => {
+    const offHmr = this.host.on("voice-self-mod-hmr-state", (hmrPayload) => {
       if (hmrPayload.requestId !== requestId) {
         return;
       }
@@ -785,7 +785,7 @@ export class RuntimeClientAdapter {
       }
       callbacks.onSelfModHmrState?.(hmrPayload.state);
     });
-    const offRunHmr = this.client.on("run-self-mod-hmr-state", (hmrPayload) => {
+    const offRunHmr = this.host.on("run-self-mod-hmr-state", (hmrPayload) => {
       if (!hmrPayload.runId && knownRunIds.size === 0) {
         return;
       }
@@ -808,7 +808,7 @@ export class RuntimeClientAdapter {
     };
 
     try {
-      return await this.client.voiceOrchestratorChat({
+      return await this.host.voiceOrchestratorChat({
         requestId,
         ...payload,
       } satisfies RuntimeVoiceChatPayload);
@@ -819,51 +819,51 @@ export class RuntimeClientAdapter {
   }
 
   webSearch(query: string, options?: { category?: string }) {
-    return this.client.webSearch(query, options);
+    return this.host.webSearch(query, options);
   }
 
   voiceWebSearch(payload: { query: string; category?: string }) {
-    return this.client.voiceWebSearch(payload);
+    return this.host.voiceWebSearch(payload);
   }
 
   listStorePackages() {
-    return this.client.listStorePackages();
+    return this.host.listStorePackages();
   }
 
   listInstalledMods() {
-    return this.client.listInstalledMods();
+    return this.host.listInstalledMods();
   }
 
   readSelfModFeatureSnapshot() {
-    return this.client.readSelfModFeatureSnapshot();
+    return this.host.readSelfModFeatureSnapshot();
   }
 
   getStorePackage(packageId: string) {
-    return this.client.getStorePackage(packageId);
+    return this.host.getStorePackage(packageId);
   }
 
   listStorePackageReleases(packageId: string) {
-    return this.client.listStorePackageReleases(packageId);
+    return this.host.listStorePackageReleases(packageId);
   }
 
   getStorePackageRelease(packageId: string, releaseNumber: number) {
-    return this.client.getStorePackageRelease(packageId, releaseNumber);
+    return this.host.getStorePackageRelease(packageId, releaseNumber);
   }
 
   createFirstStoreRelease(args: StorePublishArgs) {
-    return this.client.createFirstStoreRelease(args);
+    return this.host.createFirstStoreRelease(args);
   }
 
   createStoreReleaseUpdate(args: StorePublishArgs) {
-    return this.client.createStoreReleaseUpdate(args);
+    return this.host.createStoreReleaseUpdate(args);
   }
 
   publishStoreBlueprint(args: StorePublishBlueprintArgs) {
-    return this.client.publishStoreBlueprint(args);
+    return this.host.publishStoreBlueprint(args);
   }
 
   uninstallStoreMod(packageId: string) {
-    return this.client.uninstallStoreMod(packageId);
+    return this.host.uninstallStoreMod(packageId);
   }
 
   installFromBlueprint(payload: {
@@ -873,11 +873,11 @@ export class RuntimeClientAdapter {
     blueprintMarkdown: string;
     commits?: Array<{ hash: string; subject: string; diff: string }>;
   }) {
-    return this.client.installFromBlueprint(payload);
+    return this.host.installFromBlueprint(payload);
   }
 
   getStoreThread() {
-    return this.client.getStoreThread();
+    return this.host.getStoreThread();
   }
 
   sendStoreThreadMessage(payload: {
@@ -885,67 +885,67 @@ export class RuntimeClientAdapter {
     attachedFeatureNames?: string[];
     editingBlueprint?: boolean;
   }) {
-    return this.client.sendStoreThreadMessage(payload);
+    return this.host.sendStoreThreadMessage(payload);
   }
 
   cancelStoreThreadTurn() {
-    return this.client.cancelStoreThreadTurn();
+    return this.host.cancelStoreThreadTurn();
   }
 
   denyLatestStoreBlueprint() {
-    return this.client.denyLatestStoreBlueprint();
+    return this.host.denyLatestStoreBlueprint();
   }
 
   markStoreBlueprintPublished(payload: {
     messageId: string;
     releaseNumber: number;
   }) {
-    return this.client.markStoreBlueprintPublished(payload);
+    return this.host.markStoreBlueprintPublished(payload);
   }
 
   listCronJobs() {
-    return this.client.listCronJobs();
+    return this.host.listCronJobs();
   }
 
   listHeartbeats() {
-    return this.client.listHeartbeats();
+    return this.host.listHeartbeats();
   }
 
   runCronJob(jobId: string) {
-    return this.client.runCronJob(jobId);
+    return this.host.runCronJob(jobId);
   }
 
   removeCronJob(jobId: string) {
-    return this.client.removeCronJob(jobId);
+    return this.host.removeCronJob(jobId);
   }
 
   updateCronJob(
     jobId: string,
     patch: import("../../runtime/kernel/shared/scheduling.js").LocalCronJobUpdatePatch,
   ) {
-    return this.client.updateCronJob(jobId, patch);
+    return this.host.updateCronJob(jobId, patch);
   }
 
   upsertHeartbeat(
     input: import("../../runtime/kernel/shared/scheduling.js").LocalHeartbeatUpsertInput,
   ) {
-    return this.client.upsertHeartbeat(input);
+    return this.host.upsertHeartbeat(input);
   }
 
   runHeartbeat(conversationId: string) {
-    return this.client.runHeartbeat(conversationId);
+    return this.host.runHeartbeat(conversationId);
   }
 
   listConversationEvents(args: { conversationId: string; maxItems?: number }) {
-    return this.client.listConversationEvents(args);
+    return this.host.listConversationEvents(args);
   }
 
   getConversationEventCount(args: { conversationId: string }) {
-    return this.client.getConversationEventCount(args);
+    return this.host.getConversationEventCount(args);
   }
 
   onScheduleUpdated(listener: () => void) {
-    return this.client.on("schedule-updated", listener);
+    return this.host.on("schedule-updated", listener);
   }
 
   onLocalChatUpdated(
@@ -953,7 +953,7 @@ export class RuntimeClientAdapter {
       payload: import("../../runtime/contracts/local-chat.js").LocalChatUpdatedPayload | null,
     ) => void,
   ) {
-    return this.client.on("local-chat-updated", listener);
+    return this.host.on("local-chat-updated", listener);
   }
 
   onStoreThreadUpdated(
@@ -961,28 +961,28 @@ export class RuntimeClientAdapter {
       payload: import("../../runtime/contracts/index.js").StoreThreadSnapshot,
     ) => void,
   ) {
-    return this.client.on("store-thread-updated", listener);
+    return this.host.on("store-thread-updated", listener);
   }
 
   onGoogleWorkspaceAuthRequired(listener: () => void) {
-    return this.client.on("google-workspace-auth-required", listener);
+    return this.host.on("google-workspace-auth-required", listener);
   }
 
   onVoiceActionCompleted(
     listener: (payload: RuntimeVoiceActionCompletedPayload) => void,
   ) {
-    return this.client.on("voice-action-completed", listener);
+    return this.host.on("voice-action-completed", listener);
   }
 
   createSocialSession(payload: { roomId: string; workspaceLabel?: string }) {
-    return this.client.createSocialSession(payload);
+    return this.host.createSocialSession(payload);
   }
 
   updateSocialSessionStatus(payload: {
     sessionId: string;
     status: RuntimeSocialSessionStatus;
   }) {
-    return this.client.updateSocialSessionStatus(payload);
+    return this.host.updateSocialSessionStatus(payload);
   }
 
   queueSocialSessionTurn(payload: {
@@ -991,43 +991,43 @@ export class RuntimeClientAdapter {
     agentType?: string;
     clientTurnId?: string;
   }) {
-    return this.client.queueSocialSessionTurn(payload);
+    return this.host.queueSocialSessionTurn(payload);
   }
 
   getSocialSessionStatus() {
-    return this.client.getSocialSessionStatus();
+    return this.host.getSocialSessionStatus();
   }
 
   revertSelfModFeature(payload: { featureId?: string; steps?: number }) {
-    return this.client.revertSelfModFeature(payload);
+    return this.host.revertSelfModFeature(payload);
   }
 
   getCrashRecoveryStatus() {
-    return this.client.getCrashRecoveryStatus();
+    return this.host.getCrashRecoveryStatus();
   }
 
   discardUnfinishedSelfModChanges() {
-    return this.client.discardUnfinishedSelfModChanges();
+    return this.host.discardUnfinishedSelfModChanges();
   }
 
   getLastSelfModFeature() {
-    return this.client.getLastSelfModFeature();
+    return this.host.getLastSelfModFeature();
   }
 
   listRecentSelfModFeatures(limit?: number): Promise<SelfModFeatureSummary[]> {
-    return this.client.listRecentSelfModFeatures(limit);
+    return this.host.listRecentSelfModFeatures(limit);
   }
 
   killAllShells() {
-    return void this.client.killAllShells();
+    return void this.host.killAllShells();
   }
 
   killShellsByPort(port: number) {
-    return this.client.killShellsByPort(port);
+    return this.host.killShellsByPort(port);
   }
 
   collectBrowserData(options?: { selectedBrowser?: string; selectedProfile?: string }) {
-    return this.client.collectBrowserData(options);
+    return this.host.collectBrowserData(options);
   }
 
   collectAllSignals(options?: {
@@ -1035,46 +1035,46 @@ export class RuntimeClientAdapter {
     selectedBrowser?: string;
     selectedProfile?: string;
   }) {
-    return this.client.collectAllSignals(options);
+    return this.host.collectAllSignals(options);
   }
 
   coreMemoryExists() {
-    return this.client.coreMemoryExists();
+    return this.host.coreMemoryExists();
   }
 
   discoveryKnowledgeExists() {
-    return this.client.discoveryKnowledgeExists();
+    return this.host.discoveryKnowledgeExists();
   }
 
   writeCoreMemory(
     content: string,
     options?: { includeLocation?: boolean },
   ) {
-    return this.client.writeCoreMemory(content, options);
+    return this.host.writeCoreMemory(content, options);
   }
 
   writeDiscoveryKnowledge(payload: DiscoveryKnowledgeSeedPayload) {
-    return this.client.writeDiscoveryKnowledge(payload);
+    return this.host.writeDiscoveryKnowledge(payload);
   }
 
   detectPreferredBrowserProfile() {
-    return this.client.detectPreferredBrowserProfile();
+    return this.host.detectPreferredBrowserProfile();
   }
 
   listBrowserProfiles(browserType: string) {
-    return this.client.listBrowserProfiles(browserType);
+    return this.host.listBrowserProfiles(browserType);
   }
 
   googleWorkspaceGetAuthStatus() {
-    return this.client.googleWorkspaceGetAuthStatus();
+    return this.host.googleWorkspaceGetAuthStatus();
   }
 
   googleWorkspaceConnect() {
-    return this.client.googleWorkspaceConnect();
+    return this.host.googleWorkspaceConnect();
   }
 
   googleWorkspaceDisconnect() {
-    return this.client.googleWorkspaceDisconnect();
+    return this.host.googleWorkspaceDisconnect();
   }
 
   triggerDreamNow(
@@ -1084,10 +1084,10 @@ export class RuntimeClientAdapter {
       | "chronicle_summary"
       | "startup_catchup",
   ) {
-    return this.client.triggerDreamNow(trigger);
+    return this.host.triggerDreamNow(trigger);
   }
 
   runChronicleSummaryTick(window: "10m" | "6h") {
-    return this.client.runChronicleSummaryTick(window);
+    return this.host.runChronicleSummaryTick(window);
   }
 }

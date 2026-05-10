@@ -20,10 +20,10 @@ export const shouldRestartElectronForBuildPath = (filename) => {
   }
 
   const hostOwnedPackagePrefixes = [
-    'runtime/client/',
+    'runtime/host/',
     'runtime/protocol/',
     // Keep host reloads scoped to the runtime modules the Electron host
-    // actually executes, either directly or through runtime-client.
+    // actually executes, either directly or through the runtime host adapter.
     'runtime/discovery/browser-data',
     'runtime/kernel/convex-urls',
     'runtime/kernel/dev-projects/',

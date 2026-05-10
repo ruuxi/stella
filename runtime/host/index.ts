@@ -83,7 +83,7 @@ import {
   killDetachedWorker,
 } from "./uds-connection.js";
 
-type RuntimeClientEvents = {
+type RuntimeHostEvents = {
   "runtime-connected": void;
   "runtime-disconnected": { reason: string };
   "runtime-ready": RuntimeHealthSnapshot;
@@ -157,7 +157,7 @@ export type RuntimeHostHandlers = {
   }) => Promise<void> | void;
 };
 
-export type StellaRuntimeClientOptions = {
+export type StellaRuntimeHostOptions = {
   workerEntryPath?: string;
   hostHandlers: RuntimeHostHandlers;
   initializeParams: Omit<RuntimeInitializeParams, "protocolVersion">;
@@ -225,10 +225,7 @@ const bufferAgentEvent = (
   buffers.set(event.runId, { events: [event], updatedAt: Date.now() });
 };
 
-export class StellaRuntimeClient {
-  // This is the Electron-side host adapter for the detached runtime
-  // worker. It still lives under runtime/client from the pre-detach shape;
-  // rename it to runtime/host after the lifecycle split settles.
+export class StellaRuntimeHost {
   private readonly events = new EventEmitter();
   private readonly agentEventBuffers = new Map<
     string,
@@ -262,14 +259,14 @@ export class StellaRuntimeClient {
   private pendingRunEventAcks = new Map<string, number>();
   private runEventAckTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly options: StellaRuntimeClientOptions) {
+  constructor(private readonly options: StellaRuntimeHostOptions) {
     const stellaRoot = this.options.initializeParams.stellaRoot;
     const udsFactory = buildUdsConnectionFactory({
       stellaRoot,
       expectedProtocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
       hostExecutablePath: process.execPath,
       onError: (error) => {
-        console.error("[runtime-client] worker RPC error:", error);
+        console.error("[runtime-host] worker RPC error:", error);
       },
     });
     this.workerController = new RuntimeWorkerLifecycleController({
@@ -927,9 +924,9 @@ export class StellaRuntimeClient {
     this.hostRemoteTurnBridge.kick();
   }
 
-  on<K extends keyof RuntimeClientEvents>(
+  on<K extends keyof RuntimeHostEvents>(
     eventName: K,
-    listener: (payload: RuntimeClientEvents[K]) => void,
+    listener: (payload: RuntimeHostEvents[K]) => void,
   ): () => void {
     this.events.on(eventName, listener as (...args: unknown[]) => void);
     return () => {
@@ -2234,7 +2231,7 @@ export class StellaRuntimeClient {
   }
 }
 
-const resolveDefaultWorkerEntryPath = (options: StellaRuntimeClientOptions) =>
+const resolveDefaultWorkerEntryPath = (options: StellaRuntimeHostOptions) =>
   options.workerEntryPath ??
   path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),

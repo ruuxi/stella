@@ -1,17 +1,17 @@
 import {
-  RuntimeClientAdapter,
-} from "./runtime-client-adapter.js";
+  RuntimeHostAdapter,
+} from "./runtime-host-adapter.js";
 import type {
   RuntimeHostHandlers,
-  StellaRuntimeClientOptions,
-} from "../../runtime/client/index.js";
+  StellaRuntimeHostOptions,
+} from "../../runtime/host/index.js";
 
-export type StellaHostRunner = RuntimeClientAdapter;
+export type StellaHostRunner = RuntimeHostAdapter;
 
-export type StellaHostRunnerOptions = StellaRuntimeClientOptions;
+export type StellaHostRunnerOptions = StellaRuntimeHostOptions;
 
 export const createStellaHostRunner = (
-  options: StellaRuntimeClientOptions,
-): StellaHostRunner => new RuntimeClientAdapter(options);
+  options: StellaRuntimeHostOptions,
+): StellaHostRunner => new RuntimeHostAdapter(options);
 
 export type { RuntimeHostHandlers };
