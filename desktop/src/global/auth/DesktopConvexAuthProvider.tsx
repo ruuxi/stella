@@ -118,6 +118,7 @@ function DesktopAuthRuntimeEffects({
 }) {
   const session = useDesktopAuthSession();
   const attemptedAnonAuthRef = useRef(false);
+  const runtimeIdentityKeyRef = useRef<string | null>(null);
   const runtimeAuthRefreshHandlerRef = useRef<
     | ((args?: {
         forceRefreshToken?: boolean;
@@ -127,12 +128,14 @@ function DesktopAuthRuntimeEffects({
   >(null);
   const sessionUser = (
     session.data as
-      | { user?: { isAnonymous?: boolean | null } }
+      | { user?: { id?: string | null; isAnonymous?: boolean | null } }
       | null
       | undefined
   )?.user;
+  const sessionUserId = sessionUser?.id ?? null;
+  const sessionIsAnonymous = sessionUser?.isAnonymous === true;
   const hasSession = Boolean(session.data);
-  const hasConnectedAccount = hasSession && sessionUser?.isAnonymous !== true;
+  const hasConnectedAccount = hasSession && !sessionIsAnonymous;
   const isSessionPending = Boolean(session.isPending);
 
   useEffect(() => {
@@ -234,6 +237,17 @@ function DesktopAuthRuntimeEffects({
       error: null,
     });
 
+    const runtimeIdentityKey = [
+      sessionUserId ?? "unknown",
+      sessionIsAnonymous ? "anonymous" : "connected",
+    ].join(":");
+    const runtimeIdentityChanged =
+      runtimeIdentityKeyRef.current !== runtimeIdentityKey;
+    runtimeIdentityKeyRef.current = runtimeIdentityKey;
+    if (runtimeIdentityChanged) {
+      clearCachedToken();
+    }
+
     let cancelled = false;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -323,7 +337,7 @@ function DesktopAuthRuntimeEffects({
     };
 
     runtimeAuthRefreshHandlerRef.current = syncToken;
-    void syncToken();
+    void syncToken({ forceRefreshToken: runtimeIdentityChanged });
 
     return () => {
       cancelled = true;
@@ -334,6 +348,8 @@ function DesktopAuthRuntimeEffects({
     hasConnectedAccount,
     hasSession,
     isSessionPending,
+    sessionIsAnonymous,
+    sessionUserId,
     setAuthBootstrapState,
   ]);
 
