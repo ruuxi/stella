@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { StellaRuntimeClient } from "../../../../runtime/client/index.js";
+import { StellaRuntimeHost } from "../../../../runtime/host/index.js";
 import { METHOD_NAMES } from "../../../../runtime/protocol/index.js";
 
-const createClient = () =>
-  new StellaRuntimeClient({
+const createHost = () =>
+  new StellaRuntimeHost({
     hostHandlers: {
       getDeviceIdentity: async () => ({ deviceId: "dev-device", publicKey: "pub" }),
       signHeartbeatPayload: async () => ({ publicKey: "pub", signature: "sig" }),
@@ -31,63 +31,66 @@ describe("runtime reload deferral", () => {
 
   it("flushes a deferred worker restart when the run finishes", async () => {
     vi.useFakeTimers();
-    const client = createClient();
-    const anyClient = client as any;
+    const host = createHost();
+    const anyHost = host as any;
     const restartWorker = vi.fn().mockResolvedValue({ ok: true });
 
-    anyClient.restartWorker = restartWorker;
+    anyHost.restartWorker = restartWorker;
 
-    await anyClient.pauseRuntimeReloads("run-1");
-    await anyClient.scheduleRuntimeReload("worker");
+    await anyHost.pauseRuntimeReloads("run-1");
+    await anyHost.scheduleRuntimeReload("worker");
 
     expect(restartWorker).not.toHaveBeenCalled();
 
-    await anyClient.resumeRuntimeReloads("run-1");
-    await vi.runAllTimersAsync();
+    await anyHost.resumeRuntimeReloads("run-1");
+    vi.runAllTimers();
+    await Promise.resolve();
 
     expect(restartWorker).toHaveBeenCalledTimes(1);
   });
 
   it("coalesces multiple deferred worker restarts", async () => {
     vi.useFakeTimers();
-    const client = createClient();
-    const anyClient = client as any;
+    const host = createHost();
+    const anyHost = host as any;
     const restartWorker = vi.fn().mockResolvedValue({ ok: true });
 
-    anyClient.restartWorker = restartWorker;
+    anyHost.restartWorker = restartWorker;
 
-    await anyClient.pauseRuntimeReloads("run-2");
-    await anyClient.scheduleRuntimeReload("worker");
-    await anyClient.scheduleRuntimeReload("worker");
+    await anyHost.pauseRuntimeReloads("run-2");
+    await anyHost.scheduleRuntimeReload("worker");
+    await anyHost.scheduleRuntimeReload("worker");
 
-    await anyClient.resumeRuntimeReloads("run-2");
-    await vi.runAllTimersAsync();
+    await anyHost.resumeRuntimeReloads("run-2");
+    vi.runAllTimers();
+    await Promise.resolve();
 
     expect(restartWorker).toHaveBeenCalledTimes(1);
   });
 
   it("clears leaked runtime reload pauses when the worker initializes again", async () => {
     vi.useFakeTimers();
-    const client = createClient();
-    const anyClient = client as any;
+    const host = createHost();
+    const anyHost = host as any;
     const restartWorker = vi.fn().mockResolvedValue({ ok: true });
 
-    anyClient.restartWorker = restartWorker;
+    anyHost.restartWorker = restartWorker;
 
-    await anyClient.pauseRuntimeReloads("lost-run");
-    await anyClient.scheduleRuntimeReload("worker");
+    await anyHost.pauseRuntimeReloads("lost-run");
+    await anyHost.scheduleRuntimeReload("worker");
     expect(restartWorker).not.toHaveBeenCalled();
 
-    await anyClient.resetRuntimeReloadPauses();
-    await vi.runAllTimersAsync();
+    await anyHost.resetRuntimeReloadPauses();
+    vi.runAllTimers();
+    await Promise.resolve();
 
-    expect(anyClient.pausedRuntimeReloadRuns.size).toBe(0);
+    expect(anyHost.pausedRuntimeReloadRuns.size).toBe(0);
     expect(restartWorker).toHaveBeenCalledTimes(1);
   });
 
   it("echoes internal runIds for stale cleanup but emits HMR state for visible root run ids", async () => {
-    const client = createClient();
-    const anyClient = client as any;
+    const host = createHost();
+    const anyHost = host as any;
     const handlers = new Map<string, (params: unknown) => Promise<unknown>>();
     const peer = {
       registerRequestHandler: (name: string, handler: (params: unknown) => Promise<unknown>) => {
@@ -96,12 +99,12 @@ describe("runtime reload deferral", () => {
     };
     const requestWorker = vi.fn(async () => ({ ok: false, reason: "unknown-transition" }));
     const hmrStateEvents: Array<{ runId?: string; state: unknown }> = [];
-    client.on("run-self-mod-hmr-state", (event) => {
+    host.on("run-self-mod-hmr-state", (event) => {
       hmrStateEvents.push(event);
     });
-    anyClient.requestWorker = requestWorker;
-    anyClient.registerHostHandlers(peer);
-    anyClient.options.hostHandlers.runHmrTransition = async ({
+    anyHost.requestWorker = requestWorker;
+    anyHost.registerHostHandlers(peer);
+    anyHost.options.hostHandlers.runHmrTransition = async ({
       applyBatch,
       reportState,
     }: any) => {

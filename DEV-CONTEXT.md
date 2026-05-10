@@ -73,7 +73,7 @@ So:
   packaged build — the dev server *is* production.
 - Don't be confused that `bun run electron:dev` is what runs in production.
   It's not a hack. It's the shipping configuration.
-- HMR-related plumbing (`runtime/client/index.ts` worker pause/restart, the
+- HMR-related plumbing (`runtime/host/index.ts` worker pause/restart, the
   Vite load-hook overlay in `desktop/vite.config.ts`) is load-bearing — don't
   remove it because "users wouldn't hit this".
 

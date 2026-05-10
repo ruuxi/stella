@@ -803,7 +803,7 @@ export class BackupService {
 
     let health: RuntimeHealthSnapshot | null = null;
     try {
-      health = await runner.client.health();
+      health = await runner.host.health();
     } catch {
       return false;
     }

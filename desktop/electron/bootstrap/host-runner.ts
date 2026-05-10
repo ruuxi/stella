@@ -195,7 +195,7 @@ const connectHostRunner = async (context: BootstrapContext) => {
   } else {
     runner.setHostFocused(false);
   }
-  const health = await runner.client.health();
+  const health = await runner.host.health();
   state.deviceId = health.deviceId;
 };
 

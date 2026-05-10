@@ -116,7 +116,7 @@ export const buildUdsConnectionFactory = (
       input: lifecycle.socket,
       output: lifecycle.socket,
       onError: options.onError ?? ((error) => {
-        console.error("[runtime-client] worker RPC error:", error);
+        console.error("[runtime-host] worker RPC error:", error);
       }),
     });
 

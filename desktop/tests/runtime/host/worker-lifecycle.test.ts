@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   RuntimeWorkerLifecycleController,
   type WorkerConnection,
-} from "../../../../runtime/client/worker-lifecycle.js";
+} from "../../../../runtime/host/worker-lifecycle.js";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { RuntimeClientAdapter } from "../../electron/runtime-client-adapter.js";
+import { RuntimeHostAdapter } from "../../electron/runtime-host-adapter.js";
 
 const createAdapter = () =>
-  new RuntimeClientAdapter({
+  new RuntimeHostAdapter({
     hostHandlers: {
       getDeviceIdentity: async () => ({ deviceId: "dev-device", publicKey: "pub" }),
       signHeartbeatPayload: async () => ({ publicKey: "pub", signature: "sig" }),
@@ -23,13 +23,13 @@ const createAdapter = () =>
     },
   });
 
-describe("RuntimeClientAdapter config batching", () => {
+describe("RuntimeHostAdapter config batching", () => {
   it("batches same-tick auth patches into one configure call", async () => {
     const adapter = createAdapter();
     const anyAdapter = adapter as any;
     anyAdapter.started = true;
     const configure = vi.fn().mockResolvedValue({ ok: true });
-    anyAdapter.client.configure = configure;
+    anyAdapter.host.configure = configure;
 
     adapter.setHasConnectedAccount(true);
     adapter.setAuthToken("fresh-token");
@@ -46,7 +46,7 @@ describe("RuntimeClientAdapter config batching", () => {
   it("does not mark a completed startChat result as the active run", async () => {
     const adapter = createAdapter();
     const anyAdapter = adapter as any;
-    anyAdapter.client.startChat = vi.fn().mockResolvedValue({ runId: "run-1" });
+    anyAdapter.host.startChat = vi.fn().mockResolvedValue({ runId: "run-1" });
 
     await adapter.handleLocalChat(
       {

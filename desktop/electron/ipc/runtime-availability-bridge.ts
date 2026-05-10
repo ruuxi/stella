@@ -1,7 +1,7 @@
 import { webContents } from "electron";
 import { IPC_RUNTIME_AVAILABILITY } from "../../src/shared/contracts/ipc-channels.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
-import type { RuntimeAvailabilitySnapshot } from "../runtime-client-adapter.js";
+import type { RuntimeAvailabilitySnapshot } from "../runtime-host-adapter.js";
 
 type Options = {
   getStellaHostRunner: () => StellaHostRunner | null;
@@ -11,7 +11,7 @@ type Options = {
 };
 
 /**
- * Forwards `RuntimeClientAdapter.onAvailabilityChange` to every renderer
+ * Forwards `RuntimeHostAdapter.onAvailabilityChange` to every renderer
  * via the `runtime:availability` IPC channel. The renderer's
  * `useResumeAgentRun` hook subscribes so it can re-run the chat-resume
  * flow whenever the host adapter reattaches to a detached worker (e.g.

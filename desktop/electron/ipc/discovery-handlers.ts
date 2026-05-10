@@ -14,7 +14,7 @@ import {
 } from "../../src/shared/contracts/ipc-channels.js";
 
 type DiscoveryHandlersOptions = {
-  getStellaHostRunner: () => import("../runtime-client-adapter.js").RuntimeClientAdapter | null;
+  getStellaHostRunner: () => import("../runtime-host-adapter.js").RuntimeHostAdapter | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
