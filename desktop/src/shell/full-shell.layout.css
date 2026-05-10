@@ -170,6 +170,10 @@
   pointer-events: none;
 }
 
+.shell-topbar[data-platform="mac"] .shell-topbar-sidebar-toggle {
+  transform: translate(5px, 7px);
+}
+
 .shell-topbar-window-controls {
   height: 100%;
   display: flex;

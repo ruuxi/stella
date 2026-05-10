@@ -24,11 +24,15 @@ import {
   DisplaySidebar,
   type DisplaySidebarHandle,
 } from "@/shell/DisplaySidebar";
-import { ShellTopBar } from "@/shell/ShellTopBar";
+import {
+  ShellTopBar,
+  STELLA_TOGGLE_SIDEBAR_RAIL_EVENT,
+} from "@/shell/ShellTopBar";
 import { useDisplayPanelLayout } from "@/shell/display/tab-store";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
+import { useWindowType } from "@/shared/hooks/use-window-type";
 import {
   dispatchClosePanel,
   dispatchOpenWorkspacePanel,
@@ -111,6 +115,7 @@ function RootChrome() {
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [miniRailOpen, setMiniRailOpen] = useState(false);
 
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
 
@@ -119,7 +124,7 @@ function RootChrome() {
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isOnChatRoute = pathname === "/chat";
-  const isMiniWindow = state.window === "mini";
+  const isMiniWindow = useWindowType() === "mini";
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -265,24 +270,34 @@ function RootChrome() {
   }, [pathname]);
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const handleToggleSidebarRail = useCallback(() => {
+    if (isMiniWindow) {
+      setMiniRailOpen((open) => !open);
+      return;
+    }
+    window.dispatchEvent(new Event(STELLA_TOGGLE_SIDEBAR_RAIL_EVENT));
+  }, [isMiniWindow]);
+  const showSidebar = !isMiniWindow || miniRailOpen;
 
   return (
     <>
-      {drawerOpen && (
+      {!isMiniWindow && drawerOpen && (
         <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
       )}
 
-      <ShellTopBar />
+      <ShellTopBar onToggleSidebarRail={handleToggleSidebarRail} />
 
-      <Sidebar
-        className={drawerOpen ? "sidebar--drawer-open" : undefined}
-        onSignIn={showAuthDialog}
-        onConnect={showConnectDialog}
-        onNewAppAskStella={() => {
-          closeDrawer();
-          handleNewAppAskStella();
-        }}
-      />
+      {showSidebar && (
+        <Sidebar
+          className={drawerOpen ? "sidebar--drawer-open" : undefined}
+          onSignIn={showAuthDialog}
+          onConnect={showConnectDialog}
+          onNewAppAskStella={() => {
+            closeDrawer();
+            handleNewAppAskStella();
+          }}
+        />
+      )}
 
       <StellaContextMenu
         isOpen={isContextMenuPanelOpen}
@@ -290,27 +305,29 @@ function RootChrome() {
         onClose={handleContextMenuClosePanel}
       >
         <div className="content-area">
-          <button
-            type="button"
-            className="compact-hamburger"
-            onClick={() => setDrawerOpen(true)}
-            aria-label="Open menu"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {!isMiniWindow && (
+            <button
+              type="button"
+              className="compact-hamburger"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open menu"
             >
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+          )}
           <div
             className={`persistent-chat-surface${isOnChatRoute ? " persistent-chat-surface--active" : ""}`}
             aria-hidden={!isOnChatRoute}

@@ -6,6 +6,7 @@ import {
   Maximize2,
   Minimize2,
   Minus,
+  PanelLeft,
   PanelRight,
   Pin,
   Square,
@@ -76,7 +77,11 @@ const WindowControls = () => {
   );
 };
 
-export const ShellTopBar = () => {
+type ShellTopBarProps = {
+  onToggleSidebarRail?: () => void;
+};
+
+export const ShellTopBar = ({ onToggleSidebarRail }: ShellTopBarProps) => {
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
   const isMiniWindow = useWindowType() === "mini";
@@ -107,6 +112,14 @@ export const ShellTopBar = () => {
       .catch(() => setMiniAlwaysOnTopState(!next));
   }, [miniAlwaysOnTop]);
 
+  const toggleSidebarRail = useCallback(() => {
+    if (onToggleSidebarRail) {
+      onToggleSidebarRail();
+      return;
+    }
+    window.dispatchEvent(new Event(STELLA_TOGGLE_SIDEBAR_RAIL_EVENT));
+  }, [onToggleSidebarRail]);
+
   const tabsStyle: CSSProperties | undefined =
     panelWidth != null
       ? ({ "--display-panel-width": `${panelWidth}px` } as CSSProperties)
@@ -121,6 +134,17 @@ export const ShellTopBar = () => {
       data-route={isStoreRoute ? "store" : undefined}
     >
       <div className="shell-topbar-left">
+        {isMiniWindow ? (
+          <button
+            type="button"
+            className="shell-topbar-icon-btn shell-topbar-sidebar-toggle"
+            onClick={toggleSidebarRail}
+            aria-label="Toggle sidebar"
+            title="Toggle sidebar"
+          >
+            <PanelLeft size={15} strokeWidth={1.75} />
+          </button>
+        ) : null}
         <button
           type="button"
           className="shell-topbar-icon-btn shell-topbar-history-btn"
