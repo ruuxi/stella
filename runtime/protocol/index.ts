@@ -618,7 +618,8 @@ export type StorePublishArgs = {
   packageId: string;
   releaseNumber: number;
   displayName: string;
-  description: string;
+  /** Optional listing description; only meaningful on a first release. */
+  description?: string;
   releaseNotes?: string;
   manifest: StoreReleaseArtifact["manifest"];
   artifact: StoreReleaseArtifact;

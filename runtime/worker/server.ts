@@ -2015,7 +2015,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         packageId: payload.packageId,
         releaseNumber,
         displayName: payload.displayName ?? "",
-        description: payload.description ?? "",
+        ...(payload.description ? { description: payload.description } : {}),
         ...(payload.releaseNotes ? { releaseNotes: payload.releaseNotes } : {}),
         manifest: { ...baseManifest },
         artifact,

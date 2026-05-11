@@ -1,9 +1,14 @@
+import { useEffect, useRef, useState } from "react";
 import { FileText, X } from "lucide-react";
 import {
   ComposerStopButton,
   ComposerSubmitButton,
   ComposerTextarea,
 } from "@/app/chat/ComposerPrimitives";
+import {
+  updateComposerTextareaExpansion,
+  useAnimatedComposerShell,
+} from "@/shared/hooks/use-animated-composer-shell";
 import { storeSidePanelStore } from "../store-side-panel-store";
 import type { StoreThreadMessage } from "./types";
 
@@ -33,10 +38,30 @@ export function StoreComposer({
   onStop,
 }: StoreComposerProps) {
   const showChips = selectedFeatureNames.size > 0 || !!editingBlueprintMessage;
+  const [expanded, setExpanded] = useState(false);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const shellContentRef = useRef<HTMLDivElement | null>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useAnimatedComposerShell({
+    active: true,
+    shellRef,
+    contentRef: shellContentRef,
+    formRef,
+    syncOnNextFrame: true,
+  });
+
+  // Collapse the shell back to a pill once the composer has been cleared
+  // (e.g. after a successful send), matching the chat-sidebar pattern.
+  useEffect(() => {
+    if (composer === "") setExpanded(false);
+  }, [composer]);
+
   return (
     <div className="chat-sidebar-composer">
-      <div className="chat-sidebar-shell">
-        <div className="chat-sidebar-shell-content">
+      <div ref={shellRef} className="chat-sidebar-shell">
+        <div ref={shellContentRef} className="chat-sidebar-shell-content">
           {showChips ? (
             <div className="composer-attached-strip composer-attached-strip--mini">
               {editingBlueprintMessage ? (
@@ -66,13 +91,15 @@ export function StoreComposer({
             </div>
           ) : null}
           <form
-            className="chat-sidebar-form"
+            ref={formRef}
+            className={`chat-sidebar-form${expanded ? " expanded" : ""}`}
             onSubmit={(event) => {
               event.preventDefault();
               onSend();
             }}
           >
             <ComposerTextarea
+              ref={inputRef}
               className="chat-sidebar-input"
               tone="default"
               value={composer}
@@ -83,7 +110,15 @@ export function StoreComposer({
                   : "What do you want to publish?"
               }
               disabled={sending || isInFlight}
-              onChange={(event) => setComposer(event.target.value)}
+              onChange={(event) => {
+                setComposer(event.target.value);
+                requestAnimationFrame(() => {
+                  updateComposerTextareaExpansion(
+                    inputRef.current,
+                    setExpanded,
+                  );
+                });
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();

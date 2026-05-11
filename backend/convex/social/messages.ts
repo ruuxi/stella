@@ -28,15 +28,10 @@ import {
 } from "../runtime_ai/managed";
 import { getModeConfig } from "../agent/model";
 import { maskBannedTerms } from "./censor";
-
-const SOCIAL_MODERATION_SYSTEM_PROMPT = [
-  "You are a social chat moderation classifier.",
-  "Return exactly one token: YES or NO.",
-  "",
-  "YES means the message contains content that should be censored in a social chat: slurs, dehumanizing hate, harassment, explicit sexual content, sexual assault language, child sexual abuse references, or common bypass variants.",
-  "NO means the message should remain visible as written.",
-  "Catch evasion such as repeated letters, leetspeak, separators, zero-width characters, and Unicode lookalikes.",
-].join("\n");
+import {
+  parseModerationResponse,
+  TEXT_MODERATION_SYSTEM_PROMPT,
+} from "../lib/text_moderation";
 
 const GLOBAL_CHAT_DISABLED_ERROR = "Global Chat is disabled.";
 
@@ -65,16 +60,6 @@ const emptyMessagesPage = (): {
   isDone: true;
   continueCursor: "";
 } => ({ page: [], isDone: true, continueCursor: "" });
-
-function parseModerationResponse(raw: string): "clean" | "censored" | null {
-  const normalized = raw.trim().toUpperCase();
-  if (normalized === "YES") return "censored";
-  if (normalized === "NO") return "clean";
-  const firstToken = normalized.split(/\s+/)[0];
-  if (firstToken === "YES") return "censored";
-  if (firstToken === "NO") return "clean";
-  return null;
-}
 
 export const listRoomMessages = query({
   args: {
@@ -190,7 +175,7 @@ export const moderateRoomMessageInternal = internalAction({
           maxOutputTokens: 512,
         },
         context: {
-          systemPrompt: SOCIAL_MODERATION_SYSTEM_PROMPT,
+          systemPrompt: TEXT_MODERATION_SYSTEM_PROMPT,
           messages: [
             {
               role: "user",
@@ -201,7 +186,7 @@ export const moderateRoomMessageInternal = internalAction({
         },
       });
       const parsed = parseModerationResponse(assistantText(result));
-      if (!parsed) {
+      if (parsed === "failed") {
         throw new Error("Moderation model returned an invalid decision");
       }
       await ctx.runMutation(internal.social.messages.applyMessageModerationInternal, {

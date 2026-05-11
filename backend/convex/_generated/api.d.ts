@@ -122,6 +122,7 @@ import type * as lib_shopify_ucp from "../lib/shopify_ucp.js";
 import type * as lib_store_artifacts from "../lib/store_artifacts.js";
 import type * as lib_store_icon from "../lib/store_icon.js";
 import type * as lib_store_release_reviews from "../lib/store_release_reviews.js";
+import type * as lib_text_moderation from "../lib/text_moderation.js";
 import type * as lib_text_utils from "../lib/text_utils.js";
 import type * as lib_thread_compaction from "../lib/thread_compaction.js";
 import type * as lib_tool_call_utils from "../lib/tool_call_utils.js";
@@ -330,6 +331,7 @@ declare const fullApi: ApiFromModules<{
   "lib/store_artifacts": typeof lib_store_artifacts;
   "lib/store_icon": typeof lib_store_icon;
   "lib/store_release_reviews": typeof lib_store_release_reviews;
+  "lib/text_moderation": typeof lib_text_moderation;
   "lib/text_utils": typeof lib_text_utils;
   "lib/thread_compaction": typeof lib_thread_compaction;
   "lib/tool_call_utils": typeof lib_tool_call_utils;

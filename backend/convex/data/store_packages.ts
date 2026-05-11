@@ -34,6 +34,7 @@ import {
   RATE_VERY_EXPENSIVE,
 } from "../lib/rate_limits";
 import { normalizeStoreCategory } from "../lib/store_artifacts";
+import { moderateStoreListingTextOrThrow } from "../lib/text_moderation";
 
 type StorePublishResult = Infer<typeof store_publish_result_validator>;
 
@@ -68,7 +69,7 @@ const create_first_release_args_validator = {
   ...create_release_args_validator,
   category: v.optional(store_package_category_validator),
   displayName: v.string(),
-  description: v.string(),
+  description: v.optional(v.string()),
 };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -360,7 +361,7 @@ export const createFirstReleaseRecord = internalMutation({
     packageId: v.string(),
     category: v.optional(store_package_category_validator),
     displayName: v.string(),
-    description: v.string(),
+    description: v.optional(v.string()),
     releaseNotes: v.optional(v.string()),
     manifest: store_release_manifest_validator,
     blueprintMarkdown: v.string(),
@@ -382,14 +383,16 @@ export const createFirstReleaseRecord = internalMutation({
     const category = normalizeStoreCategory(
       args.category ?? args.manifest.category,
     );
+    const description = args.description ?? "";
     const packageRef = await ctx.db.insert("store_packages", {
       ownerId: args.ownerId,
       packageId: args.packageId,
       category,
       displayName: args.displayName,
-      description: args.description,
-      searchText: buildPackageSearchText(args.displayName, args.description),
+      ...(description ? { description } : {}),
+      searchText: buildPackageSearchText(args.displayName, description),
       latestReleaseNumber: 0,
+      visibility: "public",
       createdAt: now,
       updatedAt: now,
       ...(args.iconUrl ? { iconUrl: args.iconUrl } : {}),
@@ -879,7 +882,7 @@ export const createFirstRelease = action({
       "displayName",
       MAX_DISPLAY_NAME,
     );
-    const description = normalizeRequiredText(
+    const description = normalizeOptionalText(
       args.description,
       "description",
       MAX_DESCRIPTION,
@@ -892,11 +895,19 @@ export const createFirstRelease = action({
     const manifest = normalizeManifest(args.manifest);
     const blueprintMarkdown = normalizeBlueprintMarkdown(args.blueprintMarkdown);
     const commits = normalizeCommits(args.commits);
+    // User-authored display fields go through the cheap moderation
+    // classifier before we hit the heavier security review or write
+    // anything to the catalog. Synchronous fail-closed is fine here —
+    // this is a one-shot deliberate publish, not a chat send.
+    await moderateStoreListingTextOrThrow({
+      displayName,
+      ...(description ? { description } : {}),
+    });
     await enforceStoreReleaseReviewOrThrow(ctx, {
       ownerId,
       packageId,
       displayName,
-      description,
+      description: description ?? "",
       releaseSummary: releaseNotes,
       artifactBody: blueprintMarkdown,
       ...(commits ? { commits } : {}),
@@ -907,7 +918,7 @@ export const createFirstRelease = action({
       manifest.iconUrl ??
       (await generateStoreIconUrl({
         displayName,
-        description,
+        description: description ?? "",
         category: normalizeStoreCategory(args.category ?? manifest.category),
       }));
     const releaseManifest = {
@@ -920,7 +931,7 @@ export const createFirstRelease = action({
         ownerId,
         packageId,
         displayName,
-        description,
+        ...(description ? { description } : {}),
         releaseNotes,
         manifest: releaseManifest,
         blueprintMarkdown,
@@ -974,7 +985,7 @@ export const createUpdateRelease = action({
       ownerId,
       packageId,
       displayName: pkg.displayName,
-      description: pkg.description,
+      description: pkg.description ?? "",
       releaseSummary: releaseNotes,
       artifactBody: blueprintMarkdown,
       ...(commits ? { commits } : {}),
@@ -986,7 +997,7 @@ export const createUpdateRelease = action({
       pkg.iconUrl ??
       (await generateStoreIconUrl({
         displayName: pkg.displayName,
-        description: pkg.description,
+        description: pkg.description ?? "",
         category: normalizeStoreCategory(pkg.category ?? manifest.category),
       }));
     const releaseManifest = {

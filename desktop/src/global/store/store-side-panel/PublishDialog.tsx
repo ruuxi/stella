@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/convex/api";
 import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import { showToast } from "@/ui/toast";
@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/ui/dialog";
+import { packageIdFromName, parseBlueprintMetadata } from "./format";
 import type { StoreCategory, StoreThreadMessage } from "./types";
 
 type PublishDialogProps = {
@@ -36,36 +37,40 @@ export function PublishDialog({
     api.data.store_packages.listMyPackages,
     open ? {} : "skip",
   );
-  const [packageId, setPackageId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<StoreCategory | "">("");
   const [asUpdate, setAsUpdate] = useState(false);
+  const [updatePackageId, setUpdatePackageId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const blueprintMeta = useMemo(
+    () =>
+      blueprint
+        ? parseBlueprintMetadata(blueprint.text)
+        : { name: "", description: "", category: null as StoreCategory | null },
+    [blueprint],
+  );
+
+  // When the dialog opens (or the blueprint changes), seed the form
+  // from the blueprint header so the user can just hit Publish on a
+  // well-formed draft instead of retyping fields the agent already
+  // produced. We re-seed on every open so a different blueprint draft
+  // gets its own pre-fill rather than reusing stale state.
   useEffect(() => {
     if (!open) {
-      setPackageId("");
       setDisplayName("");
       setDescription("");
       setCategory("");
       setAsUpdate(false);
+      setUpdatePackageId("");
       setSubmitting(false);
+      return;
     }
-  }, [open]);
-
-  const handleNameChange = (value: string) => {
-    setDisplayName(value);
-    if (!packageId) {
-      const slug = value
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9-_]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 64);
-      setPackageId(slug);
-    }
-  };
+    setDisplayName(blueprintMeta.name);
+    setDescription(blueprintMeta.description);
+    setCategory(blueprintMeta.category ?? "");
+  }, [open, blueprintMeta]);
 
   const ownedPackages = (myPackages ?? []) as Array<{
     packageId: string;
@@ -75,32 +80,6 @@ export function PublishDialog({
   }>;
 
   const handleSubmit = async () => {
-    const selectedPackage = ownedPackages.find(
-      (pkg) => pkg.packageId === packageId.trim(),
-    );
-    const publishDisplayName = asUpdate
-      ? selectedPackage?.displayName
-      : displayName.trim();
-    const publishDescription = asUpdate
-      ? selectedPackage?.description
-      : description.trim();
-    const publishCategory = asUpdate
-      ? selectedPackage?.category
-      : category || undefined;
-    if (
-      !packageId.trim() ||
-      !publishDisplayName?.trim() ||
-      !publishDescription?.trim()
-    ) {
-      showToast({
-        title: "Missing fields",
-        description: asUpdate
-          ? "Choose the add-on you want to update."
-          : "Package ID, name, and description are all required.",
-        variant: "error",
-      });
-      return;
-    }
     if (!blueprint) {
       showToast({
         title: "No blueprint",
@@ -109,10 +88,59 @@ export function PublishDialog({
       });
       return;
     }
-    const normalizedPackageId = packageId.trim();
+
+    let publishPackageId: string;
+    let publishDisplayName: string;
+    let publishDescription: string;
+    let publishCategory: StoreCategory | undefined;
+
+    if (asUpdate) {
+      const selectedPackage = ownedPackages.find(
+        (pkg) => pkg.packageId === updatePackageId.trim(),
+      );
+      if (!selectedPackage) {
+        showToast({
+          title: "Pick an add-on",
+          description: "Choose the add-on you want to update.",
+          variant: "error",
+        });
+        return;
+      }
+      publishPackageId = selectedPackage.packageId;
+      publishDisplayName = selectedPackage.displayName;
+      publishDescription = selectedPackage.description;
+      publishCategory = selectedPackage.category;
+    } else {
+      const trimmedName = displayName.trim();
+      if (!trimmedName) {
+        showToast({
+          title: "Name required",
+          description: "Give your add-on a short name before publishing.",
+          variant: "error",
+        });
+        return;
+      }
+      const slug = packageIdFromName(trimmedName);
+      if (!slug) {
+        showToast({
+          title: "Pick a different name",
+          description:
+            "Use letters or numbers in the name so we can build an ID.",
+          variant: "error",
+        });
+        return;
+      }
+      publishPackageId = slug;
+      publishDisplayName = trimmedName;
+      publishDescription = description.trim();
+      publishCategory = category || undefined;
+    }
+
     const manifest = {
       ...(publishCategory ? { category: publishCategory } : {}),
-      summary: publishDescription.trim().slice(0, 500),
+      ...(publishDescription
+        ? { summary: publishDescription.slice(0, 500) }
+        : {}),
     };
     const storeApi = window.electronAPI?.store;
     if (!storeApi?.publishBlueprint) {
@@ -125,19 +153,19 @@ export function PublishDialog({
     }
     const publishArgs = {
       messageId: blueprint._id,
-      packageId: normalizedPackageId,
+      packageId: publishPackageId,
       asUpdate,
       manifest,
       ...(asUpdate
         ? {}
         : {
-            displayName: publishDisplayName.trim(),
-            description: publishDescription.trim(),
+            displayName: publishDisplayName,
+            ...(publishDescription ? { description: publishDescription } : {}),
             ...(publishCategory ? { category: publishCategory } : {}),
           }),
     };
     const publishedMessageId = blueprint._id;
-    const toastName = publishDisplayName.trim();
+    const toastName = publishDisplayName;
     setSubmitting(true);
     onClose();
     showToast({
@@ -196,15 +224,15 @@ export function PublishDialog({
                 Existing add-on
               </span>
               <Select
-                value={packageId}
-                onValueChange={(value) => setPackageId(value)}
+                value={updatePackageId}
+                onValueChange={(value) => setUpdatePackageId(value)}
                 aria-label="Existing add-on"
                 placeholder="Select…"
                 options={[
                   { value: "", label: "Select…" },
                   ...ownedPackages.map((pkg) => ({
                     value: pkg.packageId,
-                    label: `${pkg.displayName} (${pkg.packageId})`,
+                    label: pkg.displayName,
                   })),
                 ]}
               />
@@ -216,31 +244,22 @@ export function PublishDialog({
                 <input
                   type="text"
                   value={displayName}
-                  onChange={(event) => handleNameChange(event.target.value)}
+                  onChange={(event) => setDisplayName(event.target.value)}
                   placeholder="Example mod"
                   maxLength={120}
                 />
               </label>
               <label className="store-publish-dialog-field">
                 <span className="store-publish-dialog-field-label">
-                  Package ID
-                </span>
-                <input
-                  type="text"
-                  value={packageId}
-                  onChange={(event) => setPackageId(event.target.value)}
-                  placeholder="example-mod"
-                  maxLength={64}
-                />
-              </label>
-              <label className="store-publish-dialog-field">
-                <span className="store-publish-dialog-field-label">
-                  Description
+                  Description{" "}
+                  <span className="store-publish-dialog-field-hint">
+                    (optional)
+                  </span>
                 </span>
                 <textarea
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
-                  placeholder="A short description for the store listing."
+                  placeholder="A short line for the store listing."
                   rows={3}
                   maxLength={4_000}
                 />

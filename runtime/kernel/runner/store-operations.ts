@@ -21,7 +21,6 @@ export const createStoreOperations = (
     if (
       typeof record.packageId !== "string" ||
       typeof record.displayName !== "string" ||
-      typeof record.description !== "string" ||
       typeof record.latestReleaseNumber !== "number" ||
       typeof record.createdAt !== "number" ||
       typeof record.updatedAt !== "number"
@@ -47,7 +46,9 @@ export const createStoreOperations = (
         : {}),
       ...(tags && tags.length > 0 ? { tags } : {}),
       displayName: record.displayName,
-      description: record.description,
+      ...(typeof record.description === "string" && record.description
+        ? { description: record.description }
+        : {}),
       latestReleaseNumber: record.latestReleaseNumber,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
@@ -130,7 +131,9 @@ export const createStoreOperations = (
             ? (manifest.category as StorePackageRecord["category"] & string)
             : "other",
         displayName: args.packageRecord.displayName,
-        description: args.packageRecord.description,
+        ...(args.packageRecord.description
+          ? { description: args.packageRecord.description }
+          : {}),
         ...(typeof record.releaseNotes === "string"
           ? { releaseNotes: record.releaseNotes }
           : {}),
@@ -258,7 +261,7 @@ export const createStoreOperations = (
         packageId: args.packageId,
         category: args.manifest.category,
         displayName: args.displayName,
-        description: args.description,
+        ...(args.description ? { description: args.description } : {}),
         releaseNotes: args.releaseNotes,
         manifest: toBackendStoreManifest(args.manifest),
         blueprintMarkdown: args.artifact.blueprintMarkdown,
