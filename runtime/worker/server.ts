@@ -607,7 +607,16 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       };
     }
     await stopWorkerServices(state);
-    await releasePendingApplyBatches("worker initialization");
+    // Pending self-mod apply batches conceptually belong to the apply
+    // pipeline, not the runner. Preserve them across same-root re-inits so
+    // a host reattach (e.g., a renderer reload that disrupts IPC briefly)
+    // doesn't strand an in-flight HOST_HMR_RUN_TRANSITION → its resume
+    // callback can still find the pending entry. Only drop them when the
+    // workspace itself changed -- a different root means a different
+    // workspace and the pending apply is no longer valid.
+    if (!sameRuntimeRoot) {
+      await releasePendingApplyBatches("worker initialization");
+    }
     state.init = init;
 
     const db = createDesktopDatabase(init.stellaRoot);
